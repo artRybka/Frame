@@ -1,0 +1,30 @@
+name: Frame
+version: "0.1.0"
+slug: frame
+description: Art & photo frame server for the Samsung EM32DX colour e-paper display
+url: https://github.com/artRybka/Frame
+arch:
+  - aarch64
+  - amd64
+init: false
+startup: application
+boot: auto
+# The panel downloads content from <HA host IP>:<port>, and Wake-on-LAN
+# needs to broadcast on the LAN: both need the host network.
+host_network: true
+options:
+  device_host: ""
+  device_pin: ""
+  device_mac: ""
+  port: 8099
+  public_host: ""
+  api_token: ""
+  palette: ""
+schema:
+  device_host: str?
+  device_pin: password?
+  device_mac: str?
+  port: port
+  public_host: str?
+  api_token: password?
+  palette: str?

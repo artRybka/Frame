@@ -1,0 +1,39 @@
+name: addon
+
+on:
+  push:
+    paths: ["ha-addon/**", "server/**", "scripts/bundle-addon.sh", ".github/workflows/addon.yml"]
+  pull_request:
+    paths: ["ha-addon/**", "server/**", "scripts/bundle-addon.sh", ".github/workflows/addon.yml"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+            base: amd64/python:3.13-slim-bookworm
+          - arch: aarch64
+            platform: linux/arm64
+            base: arm64v8/python:3.13-slim-bookworm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - name: Bundle add-on with this commit's server code
+        run: scripts/bundle-addon.sh dist/frame
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: dist/frame
+          platforms: ${{ matrix.platform }}
+          build-args: BUILD_FROM=${{ matrix.base }}
+          tags: frame-addon:${{ matrix.arch }}
+          load: true
+      - name: Smoke test (CLI starts, numba kernel compiles)
+        run: >
+          docker run --rm --platform ${{ matrix.platform }} frame-addon:${{ matrix.arch }}
+          sh -c "frame --help >/dev/null && frame testchart ramps /tmp/r.png
+          && frame render /tmp/r.png /tmp/out.png --preset photo"
