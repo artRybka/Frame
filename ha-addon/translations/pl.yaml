@@ -1,0 +1,22 @@
+configuration:
+  device_host:
+    name: Adres IP ekranu
+    description: Adres IP EM32DX (warto przypisać mu stały adres w routerze).
+  device_pin:
+    name: PIN ekranu
+    description: PIN do MDC, wyświetlany na ekranie podczas parowania w aplikacji Samsung E-Paper.
+  device_mac:
+    name: Adres MAC ekranu
+    description: Potrzebny do budzenia przez Wake-on-LAN.
+  port:
+    name: Port HTTP
+    description: Port, z którego ekran pobiera treści.
+  public_host:
+    name: Adres publiczny
+    description: Adres, pod którym ekran widzi Home Assistanta; wykrywany automatycznie, gdy puste.
+  api_token:
+    name: Token API
+    description: Token Bearer wymagany przez aplikację iOS i narzędzia.
+  palette:
+    name: Paleta
+    description: Nazwa wbudowanej palety albo ścieżka do skalibrowanej palety JSON.

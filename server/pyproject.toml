@@ -1,0 +1,57 @@
+[project]
+name = "frame-server"
+version = "0.1.0"
+description = "Home art & photo frame server for the Samsung EM32DX colour e-paper display"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "httpx>=0.27",
+    "numpy>=2.0",
+    "numba>=0.61",
+    "pillow>=11.0",
+    "pydantic>=2.8",
+    "pydantic-settings>=2.4",
+    "typer>=0.12",
+    "python-multipart>=0.0.9",
+]
+
+[project.scripts]
+frame = "frame_server.cli:app"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.6",
+    "mypy>=1.11",
+    "trustme>=1.2",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/frame_server"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
+ignore = ["RUF001", "RUF002", "RUF003"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = false
+warn_unused_ignores = true
+ignore_missing_imports = true
+plugins = ["pydantic.mypy"]

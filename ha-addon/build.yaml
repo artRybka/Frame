@@ -1,0 +1,7 @@
+# Debian rather than the Alpine HA base images: numba/llvmlite ship no musl wheels.
+build_from:
+  aarch64: arm64v8/python:3.13-slim-bookworm
+  amd64: amd64/python:3.13-slim-bookworm
+args:
+  # Git ref installed when the add-on is built from the repository (see Dockerfile).
+  FRAME_REF: main

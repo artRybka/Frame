@@ -1,0 +1,55 @@
+# Xcode project definition — generate with:  cd ios && xcodegen generate
+name: Frame
+options:
+  bundleIdPrefix: com.artrybka
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    # Set your Apple Developer Team ID here (or in Xcode → Signing & Capabilities).
+    DEVELOPMENT_TEAM: ""
+targets:
+  Frame:
+    type: application
+    platform: iOS
+    sources:
+      - Frame
+    info:
+      path: Frame/Info.plist
+      properties:
+        CFBundleDisplayName: Frame
+        CFBundleDevelopmentRegion: pl
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        NSLocalNetworkUsageDescription: Frame łączy się z serwerem ramki w Twojej sieci domowej.
+        NSBonjourServices:
+          - _frame._tcp
+        NSAppTransportSecurity:
+          # The frame server lives on the LAN and speaks plain HTTP.
+          NSAllowsLocalNetworking: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.artrybka.frame
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+  FrameTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - FrameTests
+    dependencies:
+      - target: Frame
+schemes:
+  Frame:
+    build:
+      targets:
+        Frame: all
+        FrameTests: [test]
+    test:
+      targets:
+        - FrameTests

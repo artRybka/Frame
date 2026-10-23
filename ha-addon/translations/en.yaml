@@ -1,0 +1,22 @@
+configuration:
+  device_host:
+    name: Panel IP address
+    description: IP address of the EM32DX (give it a fixed lease in your router).
+  device_pin:
+    name: Panel PIN
+    description: MDC PIN shown on the panel while pairing with the Samsung E-Paper app.
+  device_mac:
+    name: Panel MAC address
+    description: Needed for Wake-on-LAN.
+  port:
+    name: HTTP port
+    description: Port the panel downloads content from.
+  public_host:
+    name: Public host
+    description: Address the panel uses to reach Home Assistant; autodetected when empty.
+  api_token:
+    name: API token
+    description: Bearer token required by the iOS app and tools.
+  palette:
+    name: Palette
+    description: Built-in palette name or path to a calibrated palette JSON.

@@ -1,0 +1,17 @@
+{
+  "name": "Frame server",
+  "image": "mcr.microsoft.com/devcontainers/python:3.13-bookworm",
+  "postCreateCommand": "pip install --user uv && cd server && uv sync",
+  "forwardPorts": [
+    8099
+  ],
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "charliermarsh.ruff",
+        "ms-python.python",
+        "ms-python.mypy-type-checker"
+      ]
+    }
+  }
+}
