@@ -36,6 +36,13 @@ git-ignored. iOS 17+, SwiftUI, `@Observable`. CI builds and tests on macOS
 (`.github/workflows/ios.yml`): it is the only compile check when working
 from Linux.
 
+## Deployment
+
+One image, two ways to run it (the user decides later): HA add-on on HA Green
+(aarch64, `ha-addon/`) or a plain container on Synology next to HA Container
+(amd64, `deploy/synology/docker-compose.yml`, image `ghcr.io/artrybka/frame`
+published by `.github/workflows/publish.yml` on `main`).
+
 ## Add-on (`ha-addon/`)
 
 Debian-based (numba has no musl wheels). `scripts/bundle-addon.sh` copies

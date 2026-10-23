@@ -20,3 +20,7 @@ DerivedData/
 
 # macOS
 .DS_Store
+
+# Synology deployment secrets/data
+deploy/synology/frame.env
+deploy/synology/data/

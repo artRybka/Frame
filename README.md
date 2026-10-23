@@ -3,7 +3,8 @@
 Domowa ramka na sztukę i zdjęcia zbudowana na ekranie **Samsung EM32DX**
 (32", kolorowy e-papier E Ink Spectra 6). Wzorem jest ramka InkJoy: biblioteka
 obrazów z opisami, udostępniony album iCloud i aplikacja iOS. Wszystko działa
-na oryginalnym firmware'rze ekranu, a serwer jest add-onem Home Assistant.
+na oryginalnym firmware'rze ekranu, a serwer działa jako add-on Home Assistant
+albo kontener na Synology. Licencja: [MIT](LICENSE).
 
 **Status:** Etap 0, czyli rozpoznanie urządzenia. Narzędzia są gotowe, czekamy
 na eksperymenty z ekranem. Plan: [docs/PLAN.md](docs/PLAN.md).
@@ -41,12 +42,15 @@ uv run pytest                 # testy
 pobiera obraz. Przy pierwszym uruchomieniu zezwól w zaporze macOS na
 połączenia przychodzące.
 
-## Home Assistant
+## Uruchomienie docelowe: Home Assistant Green albo Synology
 
-W *Ustawienia → Dodatki → Sklep z dodatkami → ⋮ → Repozytoria* dodaj
-`https://github.com/artRybka/Frame`, zainstaluj add-on **Frame** i uzupełnij
-konfigurację (IP, PIN i MAC ekranu, token API). Szczegóły w
-[ha-addon/DOCS.md](ha-addon/DOCS.md).
+Ten sam obraz działa na dwa sposoby. Wybór możesz zmienić w każdej chwili.
+
+- **Add-on (HA Green / HA OS):** w *Ustawienia → Dodatki → Sklep z dodatkami → ⋮ → Repozytoria*
+  dodaj `https://github.com/artRybka/Frame`, zainstaluj add-on **Frame** i uzupełnij
+  konfigurację (IP, PIN i MAC ekranu, token API). Szczegóły w [ha-addon/DOCS.md](ha-addon/DOCS.md).
+- **Kontener (Synology, obok HA Container):** `docker-compose` z
+  [deploy/synology](deploy/synology/README.md).
 
 ## Aplikacja iOS
 
@@ -62,6 +66,7 @@ Więcej w [ios/README.md](ios/README.md).
 ```
 server/    serwer i CLI (Python): protokół ekranu, algorytm obrazu, API
 ha-addon/  add-on Home Assistant
+deploy/    uruchomienie poza HA OS (Synology, docker-compose)
 ios/       aplikacja iOS (SwiftUI)
 docs/      dokumentacja projektu
 scripts/   skrypty pomocnicze

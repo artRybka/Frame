@@ -1,0 +1,14 @@
+# Frame server on Synology (Container Manager → Project → Create → this file),
+# next to Home Assistant Container. Same image as the HA add-on.
+services:
+  frame:
+    image: ghcr.io/artrybka/frame:latest
+    container_name: frame
+    restart: unless-stopped
+    # Host network: the panel downloads from <NAS IP>:8099 and Wake-on-LAN
+    # needs to broadcast on the LAN.
+    network_mode: host
+    volumes:
+      - ./data:/data
+    env_file:
+      - frame.env

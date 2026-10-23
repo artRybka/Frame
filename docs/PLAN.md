@@ -9,14 +9,20 @@ zdjęć iCloud i aplikacja iOS do sterowania.
 
 | Temat | Decyzja | Konsekwencje |
 |---|---|---|
-| Firmware | **Oryginalny**, bez modyfikacji | Sterujemy przez protokół MDC (TCP 1515, TLS, PIN). Ekran sam pobiera manifest `content.json` i obraz z naszego serwera. Gwarancja zostaje, nie ryzykujemy zablokowania urządzenia. |
-| Serwer | **Add-on Home Assistant** (Python, FastAPI) | `host_network` (ekran pobiera obrazy z IP Home Assistanta, a Wake-on-LAN wymaga broadcastu). W trakcie prac serwer można uruchamiać na Macu w tej samej sieci. |
+| Firmware | **Oryginalny**, bez modyfikacji; **automatyczne aktualizacje wyłączone** | Sterujemy przez protokół MDC (TCP 1515, TLS, PIN). Ekran sam pobiera manifest `content.json` i obraz z naszego serwera. Gwarancja zostaje, nie ryzykujemy zablokowania urządzenia. Firmware aktualizujemy ręcznie, gdy wiemy, że protokół dalej działa. |
+| Serwer | **Jeden obraz Dockera, dwa sposoby uruchomienia** | (a) add-on na **HA Green** (aarch64), (b) kontener na **Synology RS1619xs+** obok HA Container (amd64, `docker-compose`). Wybór później. Wymagana sieć hosta: ekran pobiera obrazy z IP serwera, a Wake-on-LAN wymaga broadcastu. W trakcie prac serwer można też uruchamiać na Macu. |
 | Zasilanie | **Mieszane** (bateria + doładowywanie) | Potrzebna polityka zasilania: przy ładowarce zmiany na żądanie, na baterii rzadkie zmiany i budzenie. Szczegóły zależą od eksperymentów E6–E8. |
-| iOS | Mac + Xcode + **płatne konto** (do założenia) | SwiftUI, iOS 17+, dystrybucja przez TestFlight, w przyszłości widget i rozszerzenie „Udostępnij”. |
-| iCloud | **Publiczny link albumu** | Serwer sam synchronizuje album. Apple zmniejsza zdjęcia w albumach udostępnionych do ok. 2048 px, więc na ekranie 2560 px trzeba je lekko powiększyć (×1,25), co przy ditheringu jest niewidoczne. |
-| Biblioteka | **Muzea z otwartym API + własne prace** | Tylko domena publiczna / CC0. Opisy i notki o autorach pochodzą z API muzeów, a dla autorów z Wikidata/Wikipedii. |
+| iOS | **TestFlight dla rodziny**, nazwa „Frame”, interfejs **po polsku** | SwiftUI, iOS 17+, płatne konto Apple Developer, w przyszłości widget i rozszerzenie „Udostępnij”. |
+| Użytkownicy | **Rodzina z rolami** | Administrator: wszystko (ustawienia ekranu, kalibracja, użytkownicy). Domownik: wysyłanie zdjęć z rolki, następny/poprzedni/przypnij, tryb i harmonogram, ulubione i wykluczenia. Każdy ma własny token, więc wiadomo, kto co wysłał. |
+| Dostęp spoza domu | **Tailscale / VPN** | Serwer nie jest wystawiony do internetu. |
+| Tryb ramki | **Album iCloud albo obrazy** (bez mieszania) | Wybór w aplikacji. Do tego jednorazowe **zdjęcie z rolki aparatu**: przy wysyłce wybierasz, jak długo zostaje (do następnej zmiany, na X godzin/dni, na stałe). |
+| Częstotliwość | **Ustawiana w aplikacji** | Domyślnie raz dziennie rano. Osobne wartości dla ładowarki i baterii, godziny ciszy. Zmiana co najmniej raz na 3 dni (ochrona panelu). |
+| iCloud | **Publiczny link albumu** | Serwer sam synchronizuje album. Apple zmniejsza zdjęcia w albumach udostępnionych do ok. 2048 px, więc na ekranie 2560 px trzeba je lekko powiększyć (×1,25), co przy ditheringu jest niewidoczne. Szczegóły zdjęcia: data i godzina, miejsce, kto dodał i podpis. |
+| Biblioteka | **Muzea z otwartym API + własne prace** | Priorytety: wielkie muzea światowe, sztuka polska, drzeworyt japoński (ukiyo-e), plakaty i ilustracje. Tylko domena publiczna / CC0. Opisy **w oryginale (angielskim)**, bez tłumaczenia. |
+| Prezentacja | **Do wyboru w aplikacji** | Kadrowanie (passe-partout / wypełnienie / automatycznie) i etykieta na ramce (tytuł, autor, rok albo data zdjęcia): osobno dla sztuki i dla zdjęć. |
 | Orientacja | **Zmieniana** | Każdy obraz renderujemy pod bieżącą orientację; portret obracamy do natywnego bufora 2560×1440. |
-| Kalibracja | **Zdjęcie iPhonem** | Plansza testowa na ekranie, zdjęcie z białą kartką obok jako wzorcem, z tego wyliczamy zmierzoną paletę. |
+| Kalibracja | **Zdjęcie iPhonem** | Plansza testowa na ekranie, zdjęcie z białą kartką obok jako wzorcem, z tego wyliczamy zmierzoną paletę. Ramka wisi w jasnym pomieszczeniu z dużą ilością dziennego światła, więc kalibrujemy w świetle dziennym. |
+| Licencja | **MIT** | Repozytorium jest publiczne. |
 
 ## 2. Dlaczego obrazy z aplikacji Samsunga są za ciemne (hipoteza robocza)
 
@@ -87,30 +93,40 @@ Cel: potwierdzić protokół na Twoim egzemplarzu i poznać zachowanie ekranu.
 
 **Gotowe, gdy:** zdjęcia i obrazy na ramce wyglądają dobrze w ocenie domowników, nie są za ciemne, a kolory mają naturalną tonację.
 
-### Etap 2 — Serwer (add-on Home Assistant)
+### Etap 2 — Serwer (add-on Home Assistant / kontener na Synology)
 
-- [ ] 2.1 Model danych (SQLite): `Item` (dzieło / zdjęcie / własna praca, metadane), `Collection`, `Rotation` (harmonogram), `Render` (cache dla palety i ustawień), `History`.
-- [ ] 2.2 Biblioteka: upload własnych prac z opisem, import z muzeów (Art Institute of Chicago, The Met, Cleveland Museum of Art, Rijksmuseum; do weryfikacji: Smithsonian, National Gallery of Art, Wikimedia Commons, Polona), kolekcje kuratorowane, ocena „przydatności dla e-papieru” (pokrycie gamutu, jasność).
-- [ ] 2.3 Synchronizacja udostępnionego albumu iCloud z publicznego linku: nowe zdjęcia, usunięcia, metadane (data, autor dodania, podpis), deduplikacja.
-- [ ] 2.4 Harmonogram rotacji: interwał, pory dnia, cisza nocna, proporcje źródeł (sztuka / zdjęcia), bez powtórek przez N dni, przypięcie obrazu. Zmiana obrazu co najmniej raz na 3 dni (zalecenie producenta dot. ochrony panelu).
-- [ ] 2.5 Polityka zasilania (wg wyników E6–E8): tryb „ładowarka” / „bateria”, monitorowanie baterii, powiadomienia.
-- [ ] 2.6 API dla aplikacji: Teraz, Biblioteka, Kolekcje, Harmonogram, Ustawienia obrazu, Podgląd renderu na żywo, Kalibracja. Ogłaszanie przez Bonjour `_frame._tcp`.
-- [ ] 2.7 Opisy po polsku: tłumaczenie opisów muzealnych (decyzja: automatyczne czy ręczne), notki o autorach z Wikidata/Wikipedii.
-- [ ] 2.8 Wydawanie add-onu: wersje, obrazy multi-arch w GHCR, kopie zapasowe `/data`.
+- [ ] 2.1 Model danych (SQLite): `Item` (dzieło / zdjęcie / własna praca, metadane, licencja), `Collection`, `Schedule` (tryb, częstotliwość, cisza), `Render` (cache dla palety, ustawień i orientacji), `History`, `User` (rola, token).
+- [ ] 2.2 Biblioteka: upload własnych prac z opisem, import z muzeów, kolekcje kuratorowane, ocena „przydatności dla e-papieru” (pokrycie gamutu, jasność). Źródła według priorytetów:
+  - wielkie muzea: The Met, Art Institute of Chicago, Rijksmuseum, Cleveland Museum of Art;
+  - sztuka polska: Polona (grafiki, plakaty, ilustracje), muzea narodowe (do sprawdzenia, czy mają API i licencje);
+  - drzeworyt japoński (ukiyo-e) z kolekcji powyższych muzeów;
+  - plakaty i ilustracje (polska szkoła plakatu, ilustracje botaniczne, mapy).
+- [ ] 2.3 Synchronizacja udostępnionego albumu iCloud z publicznego linku: nowe zdjęcia, usunięcia, metadane (data i godzina, miejsce, kto dodał, podpis), deduplikacja.
+- [ ] 2.4 Harmonogram: **tryb ramki** (album iCloud albo obrazy, wybrane kolekcje), częstotliwość osobno dla ładowarki i baterii (domyślnie raz dziennie rano), godziny ciszy, bez powtórek przez N dni, ulubione i wykluczenia, przypięcie. Zmiana obrazu co najmniej raz na 3 dni (ochrona panelu).
+- [ ] 2.5 Zdjęcie z rolki: wysyłka z czasem wyświetlania (do następnej zmiany / X godzin lub dni / na stałe), po czym wraca harmonogram.
+- [ ] 2.6 Polityka zasilania (wg wyników E6–E8): tryb „ładowarka” / „bateria”, monitorowanie baterii, powiadomienia.
+- [ ] 2.7 Użytkownicy i role: administrator i domownik, osobne tokeny, parowanie urządzenia kodem QR, „kto wysłał” w historii.
+- [ ] 2.8 API dla aplikacji: Teraz, Następny/Poprzedni/Przypnij, Biblioteka, Kolekcje, Harmonogram, Ustawienia obrazu (kadrowanie i etykieta osobno dla sztuki i zdjęć), Podgląd renderu na żywo, Kalibracja, Użytkownicy. Ogłaszanie przez Bonjour `_frame._tcp`.
+- [ ] 2.9 Etykieta na ramce (opcjonalna): tytuł, autor, rok albo data zdjęcia, wypisane czystą czernią na passe-partout, bez ditheringu.
+- [ ] 2.10 Opisy w oryginale (angielskim) z API muzeów, notki o autorach z Wikidata/Wikipedii (EN).
+- [ ] 2.11 Wydawanie: wersje, obraz multi-arch w GHCR (`ghcr.io/artrybka/frame`), add-on (HA Green) i `docker-compose` (Synology), kopie zapasowe `/data`.
 
-**Gotowe, gdy:** add-on sam zmienia obrazy z biblioteki i albumu iCloud według harmonogramu, a nowe zdjęcie w albumie pojawia się w rotacji.
+**Gotowe, gdy:** serwer sam zmienia obrazy z biblioteki albo albumu iCloud według harmonogramu, a nowe zdjęcie w albumie pojawia się w rotacji.
 
-### Etap 3 — Aplikacja iOS
+### Etap 3 — Aplikacja iOS (po polsku, TestFlight)
 
 - [x] Szkielet: połączenie z serwerem (adres i token w Keychain), ekran „Teraz na ramce” (podgląd, opis), wysyłanie zdjęcia z presetem, stan ekranu (bateria, firmware).
-- [ ] 3.1 Wykrywanie serwera przez Bonjour i parowanie tokenem (kod QR z panelu add-onu).
-- [ ] 3.2 „Teraz”: pełny opis dzieła (tytuł, autor, data, technika, muzeum, notka o autorze) lub zdjęcia (data, miejsce, kto dodał, aparat), przyciski Następny / Poprzedni / Przypnij.
-- [ ] 3.3 Biblioteka: kolekcje, wyszukiwanie w muzeach, ulubione, wykluczenia, upload własnych prac z opisem.
-- [ ] 3.4 Harmonogram i źródła: interwał, cisza nocna, proporcje, album iCloud.
-- [ ] 3.5 Regulacja obrazu: suwaki (jasność, kontrast, nasycenie, cienie) z podglądem renderu na żywo.
-- [ ] 3.6 Kreator kalibracji: wyświetl planszę, zrób zdjęcie, wyślij, zobacz wynik.
-- [ ] 3.7 Widget (aktualny obraz) i rozszerzenie „Udostępnij → Pokaż na ramce”.
-- [ ] 3.8 TestFlight dla domowników.
+- [ ] 3.1 Wykrywanie serwera przez Bonjour i parowanie kodem QR (token użytkownika), działanie przez Tailscale / VPN poza domem.
+- [ ] 3.2 „Teraz”: opis dzieła (tytuł, autor, data, technika, muzeum, notka o autorze; po angielsku) lub zdjęcia (data i godzina, miejsce z GPS przez CLGeocoder, kto dodał, podpis), przyciski Następny / Poprzedni / Przypnij.
+- [ ] 3.3 Wysyłanie z rolki: wybór czasu wyświetlania (do następnej zmiany / X godzin lub dni / na stałe).
+- [ ] 3.4 Tryb i harmonogram: album iCloud albo obrazy (kolekcje), częstotliwość dla ładowarki i baterii, godziny ciszy.
+- [ ] 3.5 Biblioteka: kolekcje, wyszukiwanie w muzeach, ulubione, wykluczenia, upload własnych prac z opisem.
+- [ ] 3.6 Prezentacja: kadrowanie i etykieta na ramce, osobno dla sztuki i dla zdjęć.
+- [ ] 3.7 Regulacja obrazu (administrator): suwaki (jasność, kontrast, nasycenie, cienie) z podglądem renderu na żywo.
+- [ ] 3.8 Kreator kalibracji (administrator): wyświetl planszę, zrób zdjęcie, wyślij, zobacz wynik.
+- [ ] 3.9 Użytkownicy (administrator): zaproszenie domownika (kod QR), role, odebranie dostępu.
+- [ ] 3.10 Widget (aktualny obraz) i rozszerzenie „Udostępnij → Pokaż na ramce”.
+- [ ] 3.11 TestFlight dla domowników.
 
 ### Etap 4 — Integracja z Home Assistant
 
@@ -119,7 +135,7 @@ Cel: potwierdzić protokół na Twoim egzemplarzu i poznać zachowanie ekranu.
 
 ### Etap 5 — Dopracowanie
 
-- [ ] Dostęp spoza domu (Tailscale albo Nabu Casa + ingress).
+- [ ] Dostęp spoza domu przez Tailscale / VPN (instrukcja konfiguracji).
 - [ ] Testy długoterminowe: zużycie baterii, ghosting, stabilność po aktualizacjach firmware.
 - [ ] Dokumentacja użytkownika, kopie zapasowe, ewentualna strona konfiguracji w panelu Home Assistanta (ingress).
 
@@ -129,7 +145,7 @@ Cel: potwierdzić protokół na Twoim egzemplarzu i poznać zachowanie ekranu.
 |---|---|---|
 | M0 | Ekran pokazuje obraz wysłany z naszego serwera | 0 |
 | M1 | Zmierzona paleta EM32DX, wybrana strategia obrazu | 0–1 |
-| M2 | Add-on w Home Assistant rotuje obrazy z biblioteki muzealnej | 2 |
+| M2 | Serwer (add-on lub kontener) rotuje obrazy z biblioteki muzealnej | 2 |
 | M3 | Zdjęcia z albumu iCloud na ramce, z datą i opisem | 2 |
 | M4 | Aplikacja iOS w TestFlight: Teraz, Biblioteka, Harmonogram | 3 |
 | M5 | Encje i automatyzacje w Home Assistant | 4 |
@@ -140,26 +156,25 @@ Cel: potwierdzić protokół na Twoim egzemplarzu i poznać zachowanie ekranu.
 |---|---|---|
 | Ekran sam przetwarza obraz (dithering nałożony na nasz dithering) | gorsza jakość | Eksperyment E5. Jeśli wzory 1 px nie przetrwają, przechodzimy na strategię `compensate` (wstępna korekta, a dithering zostaje po stronie ekranu). |
 | Na baterii ekran nie słucha sieci | brak zmian na żądanie | E6–E8: playlista w manifeście, harmonogram budzenia ekranu, Wake-on-LAN przy network standby. |
-| Protokół MDC i manifest są nieoficjalne; aktualizacja firmware może je zmienić | utrata sterowania | Rozważyć wyłączenie automatycznych aktualizacji, testy po każdej aktualizacji, zapisywanie wersji firmware. |
+| Protokół MDC i manifest są nieoficjalne; aktualizacja firmware może je zmienić | utrata sterowania | Automatyczne aktualizacje wyłączone; aktualizacja ręczna po sprawdzeniu; serwer zapisuje wersję firmware. |
 | Publiczne API albumów iCloud jest nieudokumentowane | sync przestaje działać | Izolowany moduł i testy na nagranych odpowiedziach. W zapasie: wysyłanie z aplikacji iOS (PhotoKit). |
-| Wydajność na ARM (RPi / HA Green) | wolne renderowanie | numba z cache JIT, renderowanie z wyprzedzeniem, cache wyników. |
+| Wydajność na ARM (HA Green) | wolne renderowanie | numba z cache JIT, renderowanie z wyprzedzeniem, cache wyników. Alternatywnie kontener na Synology (x86). |
+| API polskich instytucji (Polona, muzea narodowe) | brak API lub niejasne licencje | Weryfikacja na początku Etapu 2; ewentualnie ręcznie kuratorowane kolekcje z plików. |
 | Licencje obrazów | problemy prawne | Tylko domena publiczna / CC0 i pole licencji w bazie. |
 
 ## 7. Pytania otwarte
 
-1. Na jakim sprzęcie działa Home Assistant (RPi 4/5, HA Green/Yellow, mini-PC x86)? Od tego zależy wydajność i architektura obrazu Dockera.
-2. Czy wyłączamy automatyczne aktualizacje firmware ekranu (stabilność protokołu)?
-3. Czy aplikacja ma działać także poza domem?
-4. Opisy dzieł po polsku: czy akceptujesz tłumaczenie automatyczne (np. przez API modelu językowego), czy wolisz oryginały po angielsku?
-5. Licencja repozytorium (jest publiczne), np. MIT?
-6. Jak często zmieniać obraz i czy obowiązują godziny ciszy?
-7. Kto będzie używał aplikacji (Ty / rodzina)? Od tego zależą uwierzytelnianie i role.
+Wszystkie pytania z 2026-10-23 mają odpowiedzi (sekcja 1 i [DECISIONS.md](DECISIONS.md)). Do rozstrzygnięcia później:
+
+1. Gdzie ostatecznie działa serwer: HA Green (add-on) czy Synology (kontener)? Decyzja po Etapie 1, gdy znamy czas renderowania na ARM.
+2. Strategia obrazu (`dither` / `compensate`) i polityka zasilania: po eksperymentach E5–E8.
 
 ## 8. Do zrobienia po Twojej stronie (start)
 
-1. **Ekran**: w aplikacji Samsung E-Paper podłącz ekran do Wi-Fi. Zanotuj **IP**, **MAC** i **PIN** (PIN pojawia się na ekranie podczas parowania). W routerze przypisz ekranowi stały adres IP.
+1. **Ekran**: w aplikacji Samsung E-Paper podłącz ekran do Wi-Fi. Zanotuj **IP**, **MAC** i **PIN** (PIN pojawia się na ekranie podczas parowania). W routerze przypisz ekranowi stały adres IP. **Wyłącz automatyczne aktualizacje firmware** (jeśli aplikacja na to pozwala) i zanotuj obecną wersję.
 2. **Mac**: zainstaluj `uv` (`brew install uv`), sklonuj repozytorium, uruchom `cd server && uv sync`, skopiuj `.env.example` do `.env` i uzupełnij dane ekranu.
 3. Wykonaj eksperymenty **E1–E5** z [EXPERIMENTS.md](EXPERIMENTS.md). Zdjęcia ekranu wrzuć do `docs/experiments/` (lub prześlij mi).
 4. Załóż konto **Apple Developer Program** (weryfikacja trwa do 48 h).
 5. `brew install xcodegen`, następnie `cd ios && xcodegen generate` i otwórz `Frame.xcodeproj`.
 6. W albumie iCloud włącz **„Witryna publiczna”** i zachowaj link (przyda się w Etapie 2).
+7. Jeśli jeszcze go nie masz: **Tailscale** na iPhonie i na serwerze (HA Green: add-on Tailscale; Synology: pakiet Tailscale) — dostęp do ramki spoza domu.

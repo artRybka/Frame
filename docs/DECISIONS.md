@@ -44,3 +44,47 @@ wysyłki (`dither` / `compensate`) wybierzemy po eksperymencie E5.
 aplikacji iOS (PhotoKit).
 **Konsekwencje.** Zdjęcia mają maksymalnie ok. 2048 px na dłuższym boku, co
 dla tego ekranu jest akceptowalne. API może się zmienić bez ostrzeżenia.
+
+## D6. Serwer: jeden obraz, add-on (HA Green) albo kontener (Synology) — 2026-10-23
+
+**Kontekst.** Są dwie maszyny: HA Green (HA OS, aarch64) oraz Synology
+RS1619xs+ z Home Assistantem w kontenerze (HA Container, bez sklepu z
+dodatkami, amd64).
+**Decyzja.** Budujemy jeden obraz multi-arch. Uruchamiamy go jako add-on na
+HA Green albo jako kontener `docker-compose` na Synology (sieć hosta, wolumen
+`/data`). Wybór zapadnie później, po pomiarze czasu renderowania na ARM.
+Uzupełnia D2.
+
+## D7. Oprogramowanie ekranu aktualizowane ręcznie — 2026-10-23
+
+**Decyzja.** Automatyczne aktualizacje firmware wyłączone. Aktualizujemy
+dopiero po sprawdzeniu, że MDC i `content.json` nadal działają.
+
+## D8. Rodzina z rolami, dostęp spoza domu przez Tailscale / VPN — 2026-10-23
+
+**Decyzja.** Role: *administrator* (wszystko, w tym ustawienia ekranu,
+kalibracja, użytkownicy) i *domownik* (wysyłanie zdjęć z rolki,
+następny/poprzedni/przypnij, tryb i harmonogram, ulubione i wykluczenia).
+Każde urządzenie ma własny token, parowany kodem QR. Serwer nie jest
+wystawiony do internetu; poza domem działa przez Tailscale / VPN.
+Aplikacja: TestFlight dla rodziny, nazwa „Frame”, interfejs po polsku.
+
+## D9. Tryb ramki: album iCloud albo obrazy; zdjęcie z rolki z czasem wyświetlania — 2026-10-23
+
+**Decyzja.** Źródeł nie mieszamy: w aplikacji wybiera się album iCloud albo
+obrazy (kolekcje). Pojedyncze zdjęcie z rolki aparatu wysyła się z wyborem,
+jak długo ma zostać (do następnej zmiany / X godzin lub dni / na stałe).
+Częstotliwość zmian, godziny ciszy, kadrowanie i etykieta na ramce są
+ustawiane w aplikacji (kadrowanie i etykieta osobno dla sztuki i zdjęć).
+
+## D10. Treści: opisy w oryginale, priorytety źródeł — 2026-10-23
+
+**Decyzja.** Opisy dzieł i notki o autorach w oryginale (angielskim), bez
+tłumaczenia. Priorytety źródeł: wielkie muzea światowe, sztuka polska
+(Polona, muzea narodowe — do weryfikacji API i licencji), drzeworyt
+japoński, plakaty i ilustracje. Szczegóły zdjęć: data i godzina, miejsce,
+kto dodał, podpis.
+
+## D11. Licencja MIT — 2026-10-23
+
+**Decyzja.** Repozytorium jest publiczne, kod udostępniamy na licencji MIT (`LICENSE`).

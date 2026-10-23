@@ -5,7 +5,8 @@
 | Komponent | Technologia | Katalog |
 |---|---|---|
 | Serwer ramki | Python 3.12+, FastAPI, numpy, numba, Pillow | `server/` |
-| Add-on Home Assistant | Docker (Debian slim), `host_network` | `ha-addon/` |
+| Add-on Home Assistant (HA Green) | Docker (Debian slim), `host_network` | `ha-addon/` |
+| Kontener (Synology) | ten sam obraz, `docker-compose`, sieć hosta | `deploy/synology/` |
 | Aplikacja iOS | SwiftUI, iOS 17+, XcodeGen | `ios/` |
 | Ekran | Samsung EM32DX, oryginalny firmware | — |
 
@@ -57,8 +58,10 @@ token jest ustawiony. Pełna specyfikacja: `http://<serwer>:8099/docs` (OpenAPI)
 ## Wdrożenie
 
 - **W trakcie prac**: `uv run frame serve` na Macu w tej samej sieci co ekran. Port 8099 musi być osiągalny dla ekranu; zezwól na połączenia przychodzące w zaporze macOS.
-- **Docelowo**: add-on w Home Assistant. Repozytorium dodajesz w *Ustawienia → Dodatki → Sklep z dodatkami → ⋮ → Repozytoria* (`https://github.com/artRybka/Frame`), a add-on instaluje kod z gałęzi `main`. Do testów niewydanych zmian: `scripts/bundle-addon.sh` i skopiowanie wyniku do `/addons` (add-on „Frame (local)”).
-- Dane add-onu znajdują się w `/data` (kopie zapasowe Home Assistanta je obejmują).
+- **Docelowo, wariant A — HA Green**: add-on w Home Assistant. Repozytorium dodajesz w *Ustawienia → Dodatki → Sklep z dodatkami → ⋮ → Repozytoria* (`https://github.com/artRybka/Frame`), a add-on instaluje kod z gałęzi `main`. Do testów niewydanych zmian: `scripts/bundle-addon.sh` i skopiowanie wyniku do `/addons` (add-on „Frame (local)”).
+- **Docelowo, wariant B — Synology** (HA Container, bez add-onów): kontener `ghcr.io/artrybka/frame` z `deploy/synology/docker-compose.yml`, sieć hosta, dane w `./data`. Obraz publikuje `.github/workflows/publish.yml` po scaleniu do `main`.
+- Dane serwera znajdują się w `/data` (add-on: kopie zapasowe Home Assistanta; Synology: Hyper Backup).
+- Dostęp spoza domu: Tailscale / VPN (serwer nie jest wystawiony do internetu).
 
 ## Struktura repozytorium
 
@@ -67,6 +70,7 @@ docs/        plan, protokół, algorytm, eksperymenty, decyzje
 server/      frame_server: device/ (MDC, manifest, WoL), imaging/ (pipeline),
              web/ (FastAPI), service.py, store.py, cli.py; tests/
 ha-addon/    config.yaml, build.yaml, Dockerfile, DOCS.md, translations/
+deploy/      synology/ (docker-compose dla kontenera obok HA Container)
 ios/         project.yml (XcodeGen), Frame/ (SwiftUI), FrameTests/
 scripts/     bundle-addon.sh
 ```
