@@ -144,8 +144,13 @@ class FrameService:
         if content is None:
             raise RuntimeError("nothing published yet")
         url = self.content_url(content.file_id)
-        self.store.expect_fetch(content.file_id)
-        await self.panel.set_content_url(url)
+        if wait:
+            self.store.expect_fetch(content.file_id)
+        try:
+            await self.panel.set_content_url(url)
+        except BaseException:
+            self.store.cancel_fetch(content.file_id)
+            raise
         fetched = await self.store.wait_for_fetch(content.file_id, wait) if wait else False
         message = "" if fetched or not wait else "panel did not download the image in time"
         return PushOutcome(content, pushed=True, fetched=fetched, content_url=url, message=message)

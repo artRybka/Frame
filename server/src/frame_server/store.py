@@ -147,6 +147,9 @@ class ContentStore:
         """Start listening for the panel's download before triggering it."""
         self._fetch_waiters.setdefault(file_id, asyncio.Event())
 
+    def cancel_fetch(self, file_id: str) -> None:
+        self._fetch_waiters.pop(file_id, None)
+
     async def wait_for_fetch(self, file_id: str, timeout: float) -> bool:
         event = self._fetch_waiters.setdefault(file_id, asyncio.Event())
         start = time.monotonic()
