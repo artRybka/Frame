@@ -20,3 +20,6 @@ configuration:
   palette:
     name: Palette
     description: Built-in palette name or path to a calibrated palette JSON.
+  seed_library:
+    name: Starter library
+    description: Fill an empty library with public-domain works from museum collections on first start.

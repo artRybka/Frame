@@ -23,10 +23,20 @@ import numpy as np
 from PIL import Image
 from pydantic import BaseModel, ConfigDict, Field
 
+from .caption import caption_masks
 from .color import linear_to_u8, u8_to_linear
 from .dither import Kernel, error_diffusion, nearest
 from .filters import sharpen
-from .layout import Fit, Orientation, canvas_size, compose, edge_color, load_image, to_panel
+from .layout import (
+    Fit,
+    Orientation,
+    canvas_size,
+    compose,
+    edge_color,
+    load_image,
+    placement,
+    to_panel,
+)
 from .palette import SPECTRA6, Palette
 from .tone import ToneSettings, map_to_panel, precompensate
 
@@ -67,6 +77,7 @@ class RenderSettings(BaseModel):
     dither: DitherSettings = Field(default_factory=DitherSettings)
     sharpen: float = Field(0.0, ge=0, le=3)
     inks: list[str] | None = Field(None, description="Restrict to these inks, e.g. black+white")
+    caption: str | None = Field(None, description="Museum-style label drawn in pure ink")
 
 
 PRESETS: dict[str, RenderSettings] = {
@@ -200,6 +211,18 @@ def render(
                     error_clamp=s.dither.error_clamp,
                 )
             sent = pal.device_u8()[preview_idx]
+
+    if s.caption:
+        _, box = placement(img.size, canvas, s.layout.fit, s.layout.margin)
+        text, card = caption_masks(
+            canvas, box, s.caption, on_white_mat=s.layout.mat == "white" and box != (0, 0, *canvas)
+        )
+        white, black = pal.white_index(), pal.black_index()
+        preview_idx = preview_idx.copy()
+        sent = sent.copy()
+        for mask, ink in ((card, white), (text, black)):
+            preview_idx[mask] = ink
+            sent[mask] = pal.device_u8()[ink]
 
     preview = pal.perceived_u8()[preview_idx]
     panel = to_panel(sent, s.layout.orientation, s.layout.rotation)

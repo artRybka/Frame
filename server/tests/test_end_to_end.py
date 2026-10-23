@@ -63,6 +63,8 @@ async def test_display_flow(tmp_path: Path, server_ssl: ssl.SSLContext) -> None:
         port=_free_port(),
         data_dir=tmp_path,
         api_token="secret",
+        seed_library=False,
+        scheduler=False,
     )
     server = uvicorn.Server(
         uvicorn.Config(

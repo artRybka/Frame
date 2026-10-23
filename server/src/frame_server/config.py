@@ -36,6 +36,10 @@ class Settings(BaseSettings):
     api_token: str | None = None
 
     data_dir: Path = Path("data")
+    # Fill an empty library from museum collections on first start.
+    seed_library: bool = True
+    # Background rotation and status polling (off in some tests).
+    scheduler: bool = True
     palette: str | None = None  # built-in palette name or path to a calibrated JSON
 
     @classmethod
