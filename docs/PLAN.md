@@ -95,33 +95,36 @@ Cel: potwierdzić protokół na Twoim egzemplarzu i poznać zachowanie ekranu.
 
 ### Etap 2 — Serwer (add-on Home Assistant / kontener na Synology)
 
-- [ ] 2.1 Model danych (SQLite): `Item` (dzieło / zdjęcie / własna praca, metadane, licencja), `Collection`, `Schedule` (tryb, częstotliwość, cisza), `Render` (cache dla palety, ustawień i orientacji), `History`, `User` (rola, token).
-- [ ] 2.2 Biblioteka: upload własnych prac z opisem, import z muzeów, kolekcje kuratorowane, ocena „przydatności dla e-papieru” (pokrycie gamutu, jasność). Źródła według priorytetów:
+- [x] 2.1 Model danych (SQLite): `Item` (dzieło / zdjęcie / własna praca, metadane, licencja, paleta, tagi kolorów, ocena dla e-papieru), playlisty, ustawienia i stan odtwarzacza, historia; cache podglądów. *(`User` w 2.7.)*
+- [x] 2.2 Biblioteka: upload własnych prac z opisem, import z muzeów (Art Institute of Chicago, Cleveland, The Met, Wikimedia Commons), biblioteka startowa i domyślne playlisty przy pierwszym uruchomieniu, ocena „przydatności dla e-papieru”. *(Do zrobienia: Polona i muzea narodowe — weryfikacja API.)* Źródła według priorytetów:
   - wielkie muzea: The Met, Art Institute of Chicago, Rijksmuseum, Cleveland Museum of Art;
   - sztuka polska: Polona (grafiki, plakaty, ilustracje), muzea narodowe (do sprawdzenia, czy mają API i licencje);
   - drzeworyt japoński (ukiyo-e) z kolekcji powyższych muzeów;
   - plakaty i ilustracje (polska szkoła plakatu, ilustracje botaniczne, mapy).
 - [ ] 2.3 Synchronizacja udostępnionego albumu iCloud z publicznego linku: nowe zdjęcia, usunięcia, metadane (data i godzina, miejsce, kto dodał, podpis), deduplikacja.
-- [ ] 2.4 Harmonogram: **tryb ramki** (album iCloud albo obrazy, wybrane kolekcje), częstotliwość osobno dla ładowarki i baterii (domyślnie raz dziennie rano), godziny ciszy, bez powtórek przez N dni, ulubione i wykluczenia, przypięcie. Zmiana obrazu co najmniej raz na 3 dni (ochrona panelu).
-- [ ] 2.5 Zdjęcie z rolki: wysyłka z czasem wyświetlania (do następnej zmiany / X godzin lub dni / na stałe), po czym wraca harmonogram.
+- [x] 2.4 Harmonogram: **tryb ramki** (album iCloud albo obrazy, wybrane kolekcje), częstotliwość osobno dla ładowarki i baterii (domyślnie raz dziennie rano), godziny ciszy, bez powtórek przez N dni, ulubione i wykluczenia, przypięcie. Zmiana obrazu co najmniej raz na 3 dni (ochrona panelu).
+- [x] 2.5 Zdjęcie z rolki: wysyłka z czasem wyświetlania (do następnej zmiany / X godzin lub dni / na stałe), po czym wraca harmonogram.
 - [ ] 2.6 Polityka zasilania (wg wyników E6–E8): tryb „ładowarka” / „bateria”, monitorowanie baterii, powiadomienia.
 - [ ] 2.7 Użytkownicy i role: administrator i domownik, osobne tokeny, parowanie urządzenia kodem QR, „kto wysłał” w historii.
-- [ ] 2.8 API dla aplikacji: Teraz, Następny/Poprzedni/Przypnij, Biblioteka, Kolekcje, Harmonogram, Ustawienia obrazu (kadrowanie i etykieta osobno dla sztuki i zdjęć), Podgląd renderu na żywo, Kalibracja, Użytkownicy. Ogłaszanie przez Bonjour `_frame._tcp`.
-- [ ] 2.9 Etykieta na ramce (opcjonalna): tytuł, autor, rok albo data zdjęcia, wypisane czystą czernią na passe-partout, bez ditheringu.
-- [ ] 2.10 Opisy w oryginale (angielskim) z API muzeów, notki o autorach z Wikidata/Wikipedii (EN).
-- [ ] 2.11 Wydawanie: wersje, obraz multi-arch w GHCR (`ghcr.io/artrybka/frame`), add-on (HA Green) i `docker-compose` (Synology), kopie zapasowe `/data`.
+- [x] 2.8 API dla aplikacji: Teraz, Następny/Poprzedni/Przypnij, Biblioteka z filtrami i facetami, wyszukiwanie i import z muzeów, Playlisty (inteligentne i ręczne, podgląd reguł), Harmonogram i Prezentacja, podgląd „na ramce”, Status (bateria, ładowanie, połączenie). *(Do zrobienia: Kalibracja, Użytkownicy, Bonjour `_frame._tcp`.)*
+- [x] 2.9 Etykieta na ramce (opcjonalna): tytuł, autor, rok albo data zdjęcia, wypisane czystą czernią na passe-partout, bez ditheringu.
+- [x] 2.10 Opisy w oryginale (angielskim) z API muzeów. *(Do zrobienia: notki o autorach z Wikidata/Wikipedii.)*
+- [x] 2.11 Wydawanie: obraz multi-arch w GHCR (`ghcr.io/artrybka/frame`), add-on (HA Green) i `docker-compose` (Synology). *(Do zrobienia: numeracja wersji, kopie zapasowe `/data`.)*
 
 **Gotowe, gdy:** serwer sam zmienia obrazy z biblioteki albo albumu iCloud według harmonogramu, a nowe zdjęcie w albumie pojawia się w rotacji.
 
 ### Etap 3 — Aplikacja iOS (po polsku, TestFlight)
 
 - [x] Szkielet: połączenie z serwerem (adres i token w Keychain), ekran „Teraz na ramce” (podgląd, opis), wysyłanie zdjęcia z presetem, stan ekranu (bateria, firmware).
+- [x] Projekt graficzny „galeryjny” (papier, szeryfowe tytuły, oprawione dzieło, tło w kolorach obrazu, tryb ciemny), ikona; tryb demo z prawdziwymi dziełami bez serwera; zrzuty ekranów w CI.
+- [x] Playlisty: inteligentne (artyści, style, tematy, kolorystyka, epoka, słowa kluczowe, ulubione, „najlepsze na e-papier”) z podglądem na żywo i ręczne; odtwarzanie na ramce.
+- [x] Ramka: bateria, zasilanie/ładowanie, połączenie, czuwanie Wi-Fi, następna zmiana; budzenie i usypianie.
 - [ ] 3.1 Wykrywanie serwera przez Bonjour i parowanie kodem QR (token użytkownika), działanie przez Tailscale / VPN poza domem.
-- [ ] 3.2 „Teraz”: opis dzieła (tytuł, autor, data, technika, muzeum, notka o autorze; po angielsku) lub zdjęcia (data i godzina, miejsce z GPS przez CLGeocoder, kto dodał, podpis), przyciski Następny / Poprzedni / Przypnij.
-- [ ] 3.3 Wysyłanie z rolki: wybór czasu wyświetlania (do następnej zmiany / X godzin lub dni / na stałe).
-- [ ] 3.4 Tryb i harmonogram: album iCloud albo obrazy (kolekcje), częstotliwość dla ładowarki i baterii, godziny ciszy.
-- [ ] 3.5 Biblioteka: kolekcje, wyszukiwanie w muzeach, ulubione, wykluczenia, upload własnych prac z opisem.
-- [ ] 3.6 Prezentacja: kadrowanie i etykieta na ramce, osobno dla sztuki i dla zdjęć.
+- [x] 3.2 „Teraz”: opis dzieła (tytuł, autor, data, technika, muzeum, notka o autorze; po angielsku) lub zdjęcia (data i godzina, miejsce z GPS przez CLGeocoder, kto dodał, podpis), przyciski Następny / Poprzedni / Przypnij.
+- [x] 3.3 Wysyłanie z rolki: wybór czasu wyświetlania (do następnej zmiany / X godzin lub dni / na stałe).
+- [x] 3.4 Tryb i harmonogram: album iCloud albo obrazy (kolekcje), częstotliwość dla ładowarki i baterii, godziny ciszy.
+- [x] 3.5 Biblioteka: przeglądanie (siatka, filtry: artyści, style, tematy, kolorystyka, ulubione), szczegóły dzieła z widokiem „na ramce”, wyszukiwanie i import z muzeów, ulubione, wykluczenia. *(Do zrobienia: upload własnych prac z opisem.)*
+- [x] 3.6 Prezentacja: kadrowanie i etykieta na ramce, osobno dla sztuki i dla zdjęć.
 - [ ] 3.7 Regulacja obrazu (administrator): suwaki (jasność, kontrast, nasycenie, cienie) z podglądem renderu na żywo.
 - [ ] 3.8 Kreator kalibracji (administrator): wyświetl planszę, zrób zdjęcie, wyślij, zobacz wynik.
 - [ ] 3.9 Użytkownicy (administrator): zaproszenie domownika (kod QR), role, odebranie dostępu.

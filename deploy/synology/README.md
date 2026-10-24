@@ -14,12 +14,10 @@ Uwagi:
 - Kontener działa w sieci hosta (`network_mode: host`), bo ekran pobiera
   obrazy z adresu NAS-a, a Wake-on-LAN wymaga broadcastu w sieci lokalnej.
   Port 8099 nie może być zajęty przez inną usługę.
-- Dane (bieżący obraz, podglądy, log zapytań ekranu, w przyszłości biblioteka)
+- Dane (biblioteka, bieżący obraz, podglądy, log zapytań ekranu)
   trafiają do `./data`. Warto objąć ten folder kopią zapasową (Hyper Backup).
 - Obraz `ghcr.io/artrybka/frame` publikuje GitHub Actions po każdym scaleniu
-  do `main` (`.github/workflows/publish.yml`). Po pierwszej publikacji trzeba
-  raz ustawić pakiet jako publiczny: *GitHub → Packages → frame → Package
-  settings → Change visibility → Public*. Bez tego NAS musi się logować do
-  GHCR tokenem.
+  do `main` (`.github/workflows/publish.yml`). Pakiet jest publiczny, więc NAS
+  pobiera go bez logowania.
 - Aktualizacja: *Container Manager → Projekt → frame → Akcja → Kompiluj*
   (pobiera nowy `latest`), ewentualnie `docker compose pull && docker compose up -d`.
