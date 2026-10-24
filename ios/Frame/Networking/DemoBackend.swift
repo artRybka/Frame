@@ -49,8 +49,12 @@ actor DemoBackend: FrameBackend {
             for url in [urls.thumb, urls.image].compactMap({ $0 }) { byURL[url] = id }
         }
         idsByURL = byURL
+        // Start out playing the first playlist, like a fresh server does.
         settingsValue.playlistId = 1
-        queue = loaded.items.map(\.id)
+        let first = byID[1].map { playlist in
+            Self.sorted(loaded.items.filter { Self.matches($0, playlist.rules) }, by: "suitability")
+        }
+        queue = (first.flatMap { $0.isEmpty ? nil : $0 } ?? loaded.items).map(\.id)
         currentID = queue.first
         if !queue.isEmpty { queue.removeFirst() }
     }
@@ -66,7 +70,7 @@ actor DemoBackend: FrameBackend {
 
     // MARK: Matching (mirrors server/src/frame_server/library/repo.py)
 
-    private func matches(_ item: Item, _ rules: PlaylistRules) -> Bool {
+    private static func matches(_ item: Item, _ rules: PlaylistRules) -> Bool {
         if item.excluded { return false }
         if rules.favoritesOnly && !item.favorite { return false }
         if !rules.kinds.isEmpty && !rules.kinds.contains(item.kind) { return false }
@@ -94,7 +98,7 @@ actor DemoBackend: FrameBackend {
         return true
     }
 
-    private func sorted(_ list: [Item], by sort: String) -> [Item] {
+    private static func sorted(_ list: [Item], by sort: String) -> [Item] {
         switch sort {
         case "title": list.sorted { $0.title < $1.title }
         case "year": list.sorted { ($0.year ?? 0) < ($1.year ?? 0) }
@@ -108,7 +112,7 @@ actor DemoBackend: FrameBackend {
         if playlist.kind == .manual {
             return playlist.itemIds.compactMap { id in items.first { $0.id == id } }
         }
-        return sorted(items.filter { matches($0, playlist.rules) }, by: "suitability")
+        return Self.sorted(items.filter { Self.matches($0, playlist.rules) }, by: "suitability")
     }
 
     private func summary(_ playlist: Playlist) -> PlaylistSummary {
@@ -210,7 +214,7 @@ actor DemoBackend: FrameBackend {
             query: query.text, artists: query.artists, styles: query.styles, subjects: query.subjects,
             colors: query.colors, kinds: query.kinds, favoritesOnly: query.favoritesOnly
         )
-        let list = sorted(items.filter { matches($0, rules) }, by: query.sort)
+        let list = Self.sorted(items.filter { Self.matches($0, rules) }, by: query.sort)
         let page = list.dropFirst(query.offset).prefix(query.limit)
         return ItemPage(total: list.count, items: page.map(\.summary))
     }
@@ -287,7 +291,7 @@ actor DemoBackend: FrameBackend {
     }
 
     func previewRules(_ rules: PlaylistRules) async throws -> RulesPreview {
-        let list = sorted(items.filter { matches($0, rules) }, by: "suitability")
+        let list = Self.sorted(items.filter { Self.matches($0, rules) }, by: "suitability")
         return RulesPreview(count: list.count, items: list.prefix(24).map(\.summary))
     }
 
@@ -319,7 +323,7 @@ actor DemoBackend: FrameBackend {
 
     func searchMuseum(source: String, query: String, page: Int) async throws -> RemotePage {
         let rules = PlaylistRules(query: query)
-        let found = items.filter { $0.source == source && matches($0, rules) }
+        let found = items.filter { $0.source == source && Self.matches($0, rules) }
         return RemotePage(total: found.count, items: found.map { RemoteItem(item: $0, inLibrary: true) })
     }
 
