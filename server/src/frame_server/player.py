@@ -298,9 +298,10 @@ class Player:
 
     async def _push(self, state: PlayerState) -> None:
         if not self.service.device_configured:
-            return
+            raise RuntimeError("panel not configured (FRAME_DEVICE_HOST / FRAME_DEVICE_PIN)")
         outcome = await self.service.push_current(wait=120)
         if not outcome.fetched:
+            log.warning("%s (%s)", outcome.message, outcome.content_url)
             state.last_error = outcome.message
             self._save_state(state)
 

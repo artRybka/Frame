@@ -12,6 +12,7 @@ import os
 import socket
 from pathlib import Path
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ADDON_OPTIONS = Path(os.environ.get("FRAME_OPTIONS_FILE", "/data/options.json"))
@@ -41,6 +42,18 @@ class Settings(BaseSettings):
     # Background rotation and status polling (off in some tests).
     scheduler: bool = True
     palette: str | None = None  # built-in palette name or path to a calibrated JSON
+
+    @field_validator("public_host")
+    @classmethod
+    def _bare_host(cls, value: str | None) -> str | None:
+        # Accept "http://host:port/" too: base_url() adds scheme and port itself,
+        # and a doubled scheme silently breaks the panel's image download.
+        if not value:
+            return value
+        host = value.strip().split("://", 1)[-1].split("/", 1)[0]
+        if host.count(":") == 1:  # host:port, but leave IPv6 literals alone
+            host = host.split(":", 1)[0]
+        return host or None
 
     @classmethod
     def load(cls) -> Settings:

@@ -79,6 +79,7 @@ Uwagi:
 - Znaczenie `duration` i to, czy kilka pozycji lub wpisów `schedule` tworzy playlistę, sprawdza **E6**.
 - Ekran **zapamiętuje URL** i pobiera go ponownie później. Odpowiedź 404 kończy się komunikatem „Configuration error” na ekranie, dlatego nasz serwer zawsze serwuje bieżącą treść (także po restarcie) i ma treść zastępczą od pierwszego uruchomienia.
 - Do URL dodajemy `?v=<file_id>`, żeby każda wysyłka miała inny adres. Serwer ignoruje ten parametr.
+- Ekran raportuje postęp pobierania zapytaniami `POST /content-transfer-progress` na **główny** adres serwera (nie pod `/panel/`). Zaobserwowane 2026-10-24 przy błędnym `image_url`: kilka raportów w ciągu minuty, obrazu nie pobrał. Treść raportu nie jest jeszcze znana; serwer zapisuje ją w logu (`panel progress report: …`) i odpowiada 200.
 
 ## Tizen / VXT (na później)
 

@@ -191,3 +191,27 @@ async def test_timed_hold_ends_with_the_next_picture(service) -> None:
     await player.tick()
     assert player.state.hold is None
     assert player.state.current_item_id not in (None, a.id)
+
+
+async def test_push_without_panel_reports_an_error(service) -> None:
+    _add(service, 1, (200, 40, 40), "Ala")
+    await service.player.next()
+    assert "panel not configured" in (service.player.state.last_error or "")
+
+
+def test_public_host_accepts_a_url() -> None:
+    from frame_server.config import Settings
+
+    for value in ("192.100.3.185", "http://192.100.3.185", "http://192.100.3.185:8099/"):
+        assert Settings(public_host=value).base_url() == "http://192.100.3.185:8099"
+
+
+def test_panel_progress_report_is_accepted(service) -> None:
+    from frame_server.web import create_app
+
+    app = create_app(service.settings)
+    with TestClient(app) as client:
+        response = client.post("/content-transfer-progress", json={"progress": 100})
+        assert response.status_code == 200
+    paths = [r.path for r in app.state.service.store.recent_requests]
+    assert "/content-transfer-progress" in paths
