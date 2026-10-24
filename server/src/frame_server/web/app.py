@@ -27,7 +27,7 @@ from ..player import hold_from
 from ..service import FrameService, outcome_json
 from ..status import DeviceStatus
 from ..store import PanelRequest
-from . import library_api, player_api, playlists_api
+from . import calibration_api, library_api, player_api, playlists_api
 from .deps import require_token
 
 log = logging.getLogger(__name__)
@@ -83,7 +83,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(title="Frame", version=__version__, lifespan=lifespan)
     app.state.service = service
-    for router in (library_api.router, playlists_api.router, player_api.router):
+    routers = (
+        library_api.router,
+        playlists_api.router,
+        player_api.router,
+        calibration_api.router,
+    )
+    for router in routers:
         app.include_router(router)
 
     @app.middleware("http")

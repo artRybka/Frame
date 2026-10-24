@@ -175,3 +175,19 @@ async def test_presentation_change_redraws_the_current_picture(service) -> None:
     assert player.state.last_change_at == state.last_change_at
     assert player.state.next_change_at == state.next_change_at
     assert service.library.get(item.id).show_count == 1
+
+
+async def test_timed_hold_ends_with_the_next_picture(service) -> None:
+    a = _add(service, 1, (200, 40, 40), "Ala")
+    _add(service, 2, (40, 40, 200), "Ola")
+    player = service.player
+    settings = player.settings
+    settings.quiet_start = settings.quiet_end = None
+    player.save_settings(settings)
+    # "For an hour", and the hour is over: the rotation takes over now, not
+    # at tomorrow's scheduled change.
+    expired = Hold(until=(datetime.now(UTC) - timedelta(minutes=1)).isoformat())
+    await player.show(a, "app", expired)
+    await player.tick()
+    assert player.state.hold is None
+    assert player.state.current_item_id not in (None, a.id)

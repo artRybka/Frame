@@ -8,6 +8,7 @@ import logging
 from collections.abc import AsyncIterator, Coroutine
 from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass
+from pathlib import Path
 
 from PIL import Image
 
@@ -87,7 +88,7 @@ class FrameService:
         self.settings = settings
         self.store = ContentStore(settings.data_dir)
         self.panel = Panel(settings)
-        self.palette: Palette = get_palette(settings.palette)
+        self.palette: Palette = self._initial_palette()
         self.library = Library(settings.data_dir / "library.db")
         self.images = ImageCache(settings.data_dir / "library", museum_client)
         self.importer = Importer(self.library, self.images, self.palette)
@@ -95,6 +96,32 @@ class FrameService:
         self.player = Player(self)
 
         self._tasks: set[asyncio.Task[object]] = set()
+
+    @property
+    def calibrated_palette_path(self) -> Path:
+        return self.settings.data_dir / "palette.json"
+
+    def _initial_palette(self) -> Palette:
+        # A palette measured in the app wins over the configured default.
+        path = self.calibrated_palette_path
+        if path.is_file():
+            try:
+                return Palette.load(path)
+            except (OSError, ValueError, KeyError) as err:
+                log.warning("ignoring unreadable %s: %s", path, err)
+        return get_palette(self.settings.palette)
+
+    def set_palette(self, palette: Palette | None) -> Palette:
+        """Use and keep a calibrated palette; None goes back to the default."""
+        if palette is None:
+            self.calibrated_palette_path.unlink(missing_ok=True)
+            palette = get_palette(self.settings.palette)
+        else:
+            self.settings.data_dir.mkdir(parents=True, exist_ok=True)
+            palette.save(self.calibrated_palette_path)
+        self.palette = palette
+        self.importer.palette = palette
+        return palette
 
     @property
     def device_configured(self) -> bool:

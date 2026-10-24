@@ -187,7 +187,7 @@ class Player:
                 self._save_state(state)
                 await self._push(state)
 
-            await self._guarded(item, state, work)
+            await self._guarded(item.id, state, work)
 
     def needs_restyle(self, old: FrameSettings, new: FrameSettings) -> bool:
         """Whether a settings change alters how the current picture is drawn."""
@@ -221,7 +221,43 @@ class Player:
                 self._save_state(state)
                 await self._push(state)
 
-            await self._guarded(item, state, work)
+            await self._guarded(item.id, state, work)
+
+    async def show_still(
+        self, png: bytes, *, preview_png: bytes, title: str, description: str, hold: Hold
+    ) -> None:
+        """Put a ready-made panel image (e.g. the calibration chart) on the frame
+        and hold it. The current item stays current, so ``resume`` returns to it.
+        """
+        async with self._lock:
+            state = self.state
+
+            async def work() -> None:
+                await run_in_threadpool(
+                    self.service.store.publish,
+                    png,
+                    "png",
+                    preview_png=preview_png,
+                    title=title,
+                    description=description,
+                    source="frame",
+                    render={"raw": True},
+                )
+                state.hold = hold
+                state.last_error = None
+                self._save_state(state)
+                await self._push(state)
+
+            await self._guarded(title, state, work)
+
+    async def resume(self) -> None:
+        """Back to the rotation after ``show_still``: the current picture again
+        (redrawn, e.g. with a new palette), or the next one if there is none."""
+        self.set_hold(None)
+        if self.state.current_item_id and self.library.get(self.state.current_item_id):
+            await self.restyle()
+        else:
+            await self.next("resume")
 
     async def _publish(self, item: Item, settings: FrameSettings) -> None:
         path = await run_in_threadpool(self.service.images.ensure_image, item)
@@ -245,17 +281,17 @@ class Player:
             self._save_state(state)
 
     async def _guarded(
-        self, item: Item, state: PlayerState, work: Callable[[], Awaitable[None]]
+        self, label: str, state: PlayerState, work: Callable[[], Awaitable[None]]
     ) -> None:
         self.busy = True
         try:
             await work()
         except (MdcError, OSError, ValueError, RuntimeError) as err:
-            log.warning("showing %s failed: %s", item.id, err)
+            log.warning("showing %s failed: %s", label, err)
             state.last_error = str(err)
             self._save_state(state)
         except Exception as err:  # keep the scheduler alive whatever happens
-            log.exception("showing %s failed", item.id)
+            log.exception("showing %s failed", label)
             state.last_error = str(err)
             self._save_state(state)
         finally:
@@ -313,7 +349,10 @@ class Player:
         if state.hold is not None:
             if state.hold.active(now):
                 return
+            # A timed hold is over: the rotation takes over now (outside quiet
+            # hours), not at the change that was scheduled before the hold.
             state.hold = None
+            state.next_change_at = now.isoformat(timespec="seconds")
             self._save_state(state)
         if state.next_change_at is None:
             self.reschedule()
