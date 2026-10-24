@@ -236,7 +236,7 @@ def render(
 def render_multi(
     sources: Sequence[Source],
     settings: RenderSettings | None = None,
-    palette: Palette = SPECTRA6,
+    palette: Palette = EM32DX,
     seed: str = "",
 ) -> RenderResult:
     """MULTI: several photos on one board, each in its own mat window.
