@@ -61,7 +61,8 @@ Każde wydanie:
    *TestFlight & App Store*) → **Distribute**. Podpis i certyfikaty Xcode
    załatwia sam. Każdy upload potrzebuje wyższego numeru kompilacji; jeśli
    Xcode zgłosi, że taki już był, zwiększ `CURRENT_PROJECT_VERSION`
-   w `project.yml`.
+   w `project.yml`. Workflow `testflight` ustawia go sam na datę i godzinę
+   (np. `2610241005`), więc jest zawsze wyższy niż wysłany ręcznie.
 4. Po przetworzeniu (kilkanaście minut, przychodzi e-mail) build jest
    w zakładce **TestFlight**.
 
