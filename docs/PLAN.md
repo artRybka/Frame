@@ -78,7 +78,7 @@ Cel: potwierdzić protokół na Twoim egzemplarzu i poznać zachowanie ekranu.
 ### Etap 1 — Algorytm obrazu i kalibracja
 
 - [x] Pipeline v0: przestrzeń liniowa i OKLab, mapowanie tonów, mapowanie gamutu do bryły farb, dyfuzja błędu (7 jąder, serpentyna, ograniczanie błędu), presety `photo` / `painting` / `graphic` / `bw`, podgląd wyglądu na ekranie.
-- [ ] 1.1 Pomiar palety EM32DX: plansza `palette`, zdjęcie iPhonem i skrypt `frame calibrate photo.jpg`, wynik w `palettes/em32dx.json`.
+- [ ] 1.1 Pomiar palety EM32DX: plansza `palette` i zdjęcie iPhonem w kreatorze kalibracji w aplikacji (3.8); wynik w `/data/palette.json`. **Narzędzie gotowe, pomiar wymaga ekranu.**
 - [ ] 1.2 Zestaw testowy ok. 20 obrazów (portrety, krajobrazy, olej, akwarela, drzeworyt, plakat, zdjęcia czarno-białe) i procedura porównań A/B: zdjęcia ekranu w tym samym świetle.
 - [ ] 1.3 Strojenie presetów na prawdziwym ekranie.
 - [ ] 1.4 Ulepszenia algorytmu:
@@ -126,7 +126,7 @@ Cel: potwierdzić protokół na Twoim egzemplarzu i poznać zachowanie ekranu.
 - [x] 3.5 Biblioteka: przeglądanie (siatka, filtry: artyści, style, tematy, kolorystyka, ulubione), szczegóły dzieła z widokiem „na ramce”, wyszukiwanie i import z muzeów, ulubione, wykluczenia. *(Do zrobienia: upload własnych prac z opisem.)*
 - [x] 3.6 Prezentacja: kadrowanie i etykieta na ramce, osobno dla sztuki i dla zdjęć.
 - [ ] 3.7 Regulacja obrazu (administrator): suwaki (jasność, kontrast, nasycenie, cienie) z podglądem renderu na żywo.
-- [ ] 3.8 Kreator kalibracji (administrator): wyświetl planszę, zrób zdjęcie, wyślij, zobacz wynik.
+- [x] 3.8 Kreator kalibracji: wyświetl planszę, zrób zdjęcie, zaznacz narożniki (z lupą i podglądem miejsc pomiaru), zobacz farby przed i po oraz bieżący obraz w obu wersjach, zastosuj albo przywróć domyślne. *(Do sprawdzenia na prawdziwej ramce; role administratora w 2.7.)*
 - [ ] 3.9 Użytkownicy (administrator): zaproszenie domownika (kod QR), role, odebranie dostępu.
 - [ ] 3.10 Widget (aktualny obraz) i rozszerzenie „Udostępnij → Pokaż na ramce”.
 - [ ] 3.11 TestFlight dla domowników. *(Build trafia do TestFlight automatycznie z GitHuba, workflow `testflight` na Xcode 26; do zrobienia: grupy testerów i przegląd Apple dla testów zewnętrznych.)*

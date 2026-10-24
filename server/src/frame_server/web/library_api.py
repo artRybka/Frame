@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+from pathlib import Path
 from typing import Annotated, Any
 
 import httpx
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from starlette.concurrency import run_in_threadpool
 
 from ..imaging.pipeline import encode_image, render
@@ -17,6 +18,7 @@ from ..library import Facets, Item, ItemKind, ItemSummary, Job, PhotoInfo, Playl
 from ..library.museums import MUSEUMS
 from ..library.repo import SortKey
 from ..player import hold_from
+from ..schedule import FrameSettings
 from ..service import FrameService
 from .deps import require_token, service
 
@@ -145,15 +147,32 @@ async def item_image(item_id: str, svc: Svc) -> FileResponse:
 
 
 _preview_locks: dict[str, asyncio.Lock] = {}
+PREVIEW_CACHE_FILES = 200
+
+
+def _prune(directory: Path, keep: int) -> None:
+    files = sorted(directory.glob("*.png"), key=lambda p: p.stat().st_mtime, reverse=True)
+    for old in files[keep:]:
+        old.unlink(missing_ok=True)
 
 
 @router.get("/library/items/{item_id}/preview")
-async def item_preview(item_id: str, svc: Svc) -> FileResponse:
-    """How the picture will look on the panel with the current settings."""
+async def item_preview(item_id: str, svc: Svc, settings: str | None = None) -> FileResponse:
+    """How the picture will look on the panel.
+
+    With the saved settings, or with ``settings`` (FrameSettings JSON; only
+    orientation and presentation matter) to try a framing before saving it.
+    """
     item = _item(svc, item_id)
-    settings = svc.player.render_settings(item, svc.player.settings)
+    frame_settings = svc.player.settings
+    if settings:
+        try:
+            frame_settings = FrameSettings.model_validate_json(settings)
+        except ValidationError as err:
+            raise HTTPException(422, f"invalid settings: {err}") from err
+    render_settings = svc.player.render_settings(item, frame_settings)
     key = hashlib.sha1(
-        (settings.model_dump_json() + svc.palette.name).encode(), usedforsecurity=False
+        (render_settings.model_dump_json() + svc.palette.name).encode(), usedforsecurity=False
     ).hexdigest()[:12]
     path = svc.images.thumbs.parent / "previews" / f"{item.file_stem}-{key}.png"
     if not path.is_file():
@@ -162,11 +181,12 @@ async def item_preview(item_id: str, svc: Svc) -> FileResponse:
                 source = await run_in_threadpool(svc.images.ensure_image, item)
 
                 def build() -> None:
-                    result = render(source, settings, svc.palette)
+                    result = render(source, render_settings, svc.palette)
                     img = result.preview_image()
                     img.thumbnail((1280, 1280))
                     path.parent.mkdir(parents=True, exist_ok=True)
                     path.write_bytes(encode_image(img, "png"))
+                    _prune(path.parent, PREVIEW_CACHE_FILES)
 
                 await run_in_threadpool(build)
     return FileResponse(path, media_type="image/png", headers={"Cache-Control": "max-age=3600"})

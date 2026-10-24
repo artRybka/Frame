@@ -101,7 +101,69 @@ final class FrameAPITests: XCTestCase {
         let thumb = try XCTUnwrap(demo.request(for: .thumb("aic:24645"))?.url)
         XCTAssertTrue(thumb.isFileURL)
         XCTAssertEqual(thumb.lastPathComponent, "aic_24645.jpg")
-        let preview = try XCTUnwrap(demo.request(for: .path("/demo/aic:24645"))?.url)
-        XCTAssertEqual(preview.lastPathComponent, "aic_24645-frame.jpg")
+        let preview = try XCTUnwrap(demo.request(for: .path("/demo/aic:24645?key"))?.url)
+        XCTAssertTrue(preview.isFileURL)
+        XCTAssertTrue(preview.lastPathComponent.hasPrefix("aic_24645-landscape-fit-"))
+    }
+
+    func testDemoPreviewFollowsPresentationSettings() async throws {
+        let demo = DemoBackend()
+        let before = try await demo.player().current?.previewUrl
+        var settings = try await demo.settings()
+        settings.art.fit = "fill"
+        _ = try await demo.saveSettings(settings)
+        let after = try await demo.player().current?.previewUrl
+        XCTAssertNotEqual(before, after)
+        let current = try await demo.player().current
+        let id = try XCTUnwrap(current?.item?.id)
+        let framed = try XCTUnwrap(demo.request(for: .framePreview(id))?.url)
+        XCTAssertTrue(framed.lastPathComponent.contains("-fill-"))
+    }
+
+    func testDemoFramingMatchesServerLayout() {
+        let canvas = DemoFraming.canvas("landscape")
+        // Portrait 2:3 picture, 5% passe-partout: as layout.placement on the server.
+        let fit = DemoFraming.placement(CGSize(width: 800, height: 1200), in: canvas, fit: "fit", margin: 0.05)
+        XCTAssertFalse(fit.fill)
+        XCTAssertEqual(fit.rect, CGRect(x: 424, y: 36, width: 432, height: 648))
+        // Nearly 16:9: "auto" fills.
+        let auto = DemoFraming.placement(CGSize(width: 1500, height: 900), in: canvas, fit: "auto", margin: 0.05)
+        XCTAssertTrue(auto.fill)
+        XCTAssertEqual(auto.rect.width, 1280, accuracy: 0.5)
+    }
+
+    func testQuadMappingHitsTheCorners() throws {
+        let corners = [
+            CGPoint(x: 0.13, y: 0.25), CGPoint(x: 0.88, y: 0.27),
+            CGPoint(x: 0.87, y: 0.84), CGPoint(x: 0.12, y: 0.87),
+        ]
+        let map = try XCTUnwrap(QuadMapping(corners: corners))
+        let unit = [CGPoint(x: 0, y: 0), CGPoint(x: 1, y: 0), CGPoint(x: 1, y: 1), CGPoint(x: 0, y: 1)]
+        for (u, corner) in zip(unit, corners) {
+            XCTAssertEqual(map(u).x, corner.x, accuracy: 1e-9)
+            XCTAssertEqual(map(u).y, corner.y, accuracy: 1e-9)
+        }
+        XCTAssertNil(QuadMapping(corners: Array(repeating: CGPoint(x: 0.5, y: 0.5), count: 4)))
+    }
+
+    func testChartGeometryMatchesTheServerChart() {
+        // testchart.palette_patches: margin 200, gap 60, 680 × 490 px patches.
+        let first = ChartGeometry.patches[0]
+        XCTAssertEqual(first.minX * 2560, 200, accuracy: 0.01)
+        XCTAssertEqual(first.width * 2560, 680, accuracy: 0.01)
+        XCTAssertEqual(ChartGeometry.patches[5].maxY * 1440, 200 + 490 + 60 + 490, accuracy: 0.01)
+    }
+
+    func testDemoCalibration() async throws {
+        let demo = DemoBackend()
+        let before = try await demo.calibration()
+        XCTAssertFalse(before.calibrated)
+        let result = try await demo.measureCalibration(photo: Data(), corners: [])
+        XCTAssertEqual(result.inks.map(\.name), before.palette.colors.map(\.name))
+        let applied = try await demo.applyCalibration(candidateID: result.candidateId)
+        XCTAssertTrue(applied.calibrated)
+        XCTAssertEqual(applied.palette.colors.first { $0.name == "black" }?.perceived, [18, 18, 21])
+        let reset = try await demo.resetCalibration()
+        XCTAssertFalse(reset.calibrated)
     }
 }

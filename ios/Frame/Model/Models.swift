@@ -254,6 +254,8 @@ struct Presentation: Codable, Hashable, Sendable {
     var fit: String  // "fit" | "fill" | "auto"
     var margin: Double
     var label: Bool
+
+    var key: String { "\(preset),\(fit),\(margin),\(label)" }
 }
 
 struct FrameSettings: Codable, Hashable, Sendable {
@@ -272,6 +274,12 @@ struct FrameSettings: Codable, Hashable, Sendable {
     var albumUrl: String
     var timezone: String
     var statusPollMinutes: Int
+
+    /// Changes whenever the way pictures are framed on the panel changes;
+    /// used to refresh cached "on the frame" previews.
+    var presentationKey: String {
+        [orientation, String(rotation), art.key, photo.key].joined(separator: "|")
+    }
 
     static let defaults = FrameSettings(
         mode: "art", playlistId: nil, intervalMinutes: 1440, intervalMinutesBattery: 1440,
@@ -342,4 +350,43 @@ struct AlbumInfo: Codable, Hashable, Sendable {
     var url: String
     var lastSync: AlbumSync?
     var photos: Int
+}
+
+// MARK: Colour calibration (server/src/frame_server/web/calibration_api.py)
+
+/// One ink of the panel: the value written to the file and how it looks.
+struct InkInfo: Codable, Hashable, Sendable, Identifiable {
+    let name: String
+    let device: [Int]
+    let perceived: [Int]
+    var id: String { name }
+}
+
+struct PaletteInfo: Codable, Hashable, Sendable {
+    let name: String
+    let source: String
+    let colors: [InkInfo]
+}
+
+/// `GET /api/calibration`
+struct CalibrationInfo: Codable, Hashable, Sendable {
+    var palette: PaletteInfo
+    var calibrated: Bool  // measured in the app, otherwise the default palette
+}
+
+struct MeasuredInk: Codable, Hashable, Sendable, Identifiable {
+    let name: String
+    let device: [Int]
+    let perceived: [Int]  // measured now
+    let previous: [Int]  // in use until applied
+    let spread: Double
+    var id: String { name }
+}
+
+/// `POST /api/calibration/measure`
+struct CalibrationResult: Codable, Sendable {
+    let candidateId: String
+    let inks: [MeasuredInk]
+    let warnings: [String]
+    let chartUrl: String
 }

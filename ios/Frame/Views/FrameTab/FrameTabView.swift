@@ -21,6 +21,7 @@ struct FrameTabView: View {
                         PresentationSection(settings: binding)
                         ScreenSection(settings: binding)
                     }
+                    ColorsSection()
                     ServerSection()
                 }
                 .padding(.horizontal, Theme.gutter)
@@ -359,8 +360,11 @@ struct ScheduleSection: View {
 }
 
 struct PresentationSection: View {
+    @Environment(AppModel.self) private var model
     @Binding var settings: FrameSettings
     @State private var target = Target.art
+    /// `settings` after a short pause, so a slider drag renders once.
+    @State private var previewed: FrameSettings?
 
     enum Target: String, CaseIterable {
         case art = "Sztuka"
@@ -371,6 +375,12 @@ struct PresentationSection: View {
         target == .art ? $settings.art : $settings.photo
     }
 
+    /// The picture on the frame, when the selected presentation applies to it.
+    private var previewItem: Item? {
+        guard let item = model.player?.current?.item else { return nil }
+        return (item.kind == .photo) == (target == .photo) ? item : nil
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             SectionHeader(title: "Prezentacja", subtitle: "Jak obraz wygląda na ramce")
@@ -378,6 +388,27 @@ struct PresentationSection: View {
                 ForEach(Target.allCases, id: \.self) { Text($0.rawValue).tag($0) }
             }
             .pickerStyle(.segmented)
+            if let item = previewItem {
+                let portrait = settings.orientation == "portrait"
+                VStack(spacing: 10) {
+                    FramedArtwork(
+                        ref: .framePreview(item.id, settings: previewed ?? settings),
+                        aspectRatio: portrait ? 9.0 / 16.0 : 16.0 / 9.0,
+                        moulding: 5
+                    )
+                    .frame(maxWidth: portrait ? 190 : .infinity)
+                    Text("Tak będzie wyglądał obraz, który jest teraz na ramce. Zmiany trafią na ramkę po zapisaniu.")
+                        .font(.caption)
+                        .foregroundStyle(Theme.inkSoft)
+                        .multilineTextAlignment(.center)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 6)
+                .task(id: settings) {
+                    try? await Task.sleep(for: .milliseconds(450))
+                    if !Task.isCancelled { previewed = settings }
+                }
+            }
             Card {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Kadrowanie").foregroundStyle(Theme.ink)
@@ -392,6 +423,19 @@ struct PresentationSection: View {
                         FitOption(title: "Auto", fit: "auto", selected: presentation.fit.wrappedValue == "auto") {
                             presentation.fit.wrappedValue = "auto"
                         }
+                    }
+                }
+                if presentation.fit.wrappedValue != "fill" {
+                    Divider()
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text("Szerokość passe-partout")
+                            Spacer()
+                            Text("\(Int((presentation.margin.wrappedValue * 100).rounded())) %")
+                                .monospacedDigit()
+                                .foregroundStyle(Theme.inkSoft)
+                        }
+                        Slider(value: presentation.margin, in: 0 ... 0.2, step: 0.01)
                     }
                 }
                 Divider()
@@ -472,6 +516,58 @@ struct ScreenSection: View {
                         .foregroundStyle(Theme.inkSoft)
                 }
             }
+        }
+    }
+}
+
+/// The palette the server renders with, and the way to measure the real one.
+struct ColorsSection: View {
+    @Environment(AppModel.self) private var model
+    @State private var calibrating = false
+    @State private var confirmReset = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            SectionHeader(title: "Kolory ekranu", subtitle: "Jak naprawdę wyglądają farby Twojej ramki")
+            Card {
+                if let info = model.calibration {
+                    HStack(spacing: 8) {
+                        ForEach(info.palette.colors) { ink in
+                            Circle()
+                                .fill(Color(rgb: ink.perceived))
+                                .frame(width: 30, height: 30)
+                                .overlay(Circle().strokeBorder(Theme.inkSoft.opacity(0.4), lineWidth: 0.75))
+                                .accessibilityLabel(Names.ink(ink.name))
+                        }
+                    }
+                    Text(info.calibrated ? "Zmierzone w aplikacji" : "Domyślne: pomiar innego panelu Spectra 6")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(Theme.ink)
+                }
+                Text("Obraz jest liczony według tych kolorów. Pomiar Twojej ramki, w Twoim świetle, daje wierniejsze barwy.")
+                    .font(.caption)
+                    .foregroundStyle(Theme.inkSoft)
+                Button {
+                    calibrating = true
+                } label: {
+                    Label("Kalibruj kolory", systemImage: "eyedropper.halffull")
+                }
+                .buttonStyle(PrimaryButtonStyle())
+                if model.calibration?.calibrated == true {
+                    Button("Przywróć domyślne kolory", role: .destructive) { confirmReset = true }
+                        .font(.subheadline.weight(.medium))
+                        .frame(maxWidth: .infinity)
+                }
+            }
+        }
+        .sheet(isPresented: $calibrating) { CalibrationFlow() }
+        .confirmationDialog("Przywrócić domyślne kolory?", isPresented: $confirmReset, titleVisibility: .visible) {
+            Button("Przywróć", role: .destructive) { Task { await model.resetCalibration() } }
+        } message: {
+            Text("Ramka przerysuje obraz według domyślnej palety.")
+        }
+        .onAppear {
+            if LaunchRoute.screen.hasPrefix("calibration") { calibrating = true }
         }
     }
 }

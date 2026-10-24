@@ -8,7 +8,8 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: "0.1.0"
+    MARKETING_VERSION: "1.0"
+    # CI uploads override this with a timestamp (.github/workflows/testflight.yml).
     CURRENT_PROJECT_VERSION: "1"
     # Apple Developer team (not a secret: it is embedded in every signed build).
     DEVELOPMENT_TEAM: 3MQRJF4A9D
@@ -23,11 +24,15 @@ targets:
       path: Frame/Info.plist
       properties:
         CFBundleDisplayName: Frame
+        # XcodeGen otherwise hardcodes 1.0 / 1 and ignores the build settings.
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         CFBundleDevelopmentRegion: pl
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
         NSLocalNetworkUsageDescription: Frame łączy się z serwerem ramki w Twojej sieci domowej.
+        NSCameraUsageDescription: Frame robi zdjęcie ramki z planszą, żeby zmierzyć jej kolory.
         NSBonjourServices:
           - _frame._tcp
         NSAppTransportSecurity:

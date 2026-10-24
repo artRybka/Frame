@@ -43,26 +43,37 @@ def _fiducials(draw: ImageDraw.ImageDraw, size: int = 80) -> None:
         draw.rectangle([x + q, y + q, x + 2 * q - 1, y + 2 * q - 1], fill=(255, 255, 255))
 
 
-def palette_chart(palette: Palette = SPECTRA6) -> Image.Image:
-    img = Image.new("RGB", (W, H), (255, 255, 255))
-    draw = _draw(img)
-    _fiducials(draw)
+def palette_patches(palette: Palette = SPECTRA6) -> list[tuple[str, tuple[int, int, int, int]]]:
+    """Ink patches of the palette chart: (ink name, (x0, y0, x1, y1)), x1/y1 exclusive."""
     cols, rows = 3, 2
     margin, gap = 200, 60
     pw = (W - 2 * margin - (cols - 1) * gap) // cols
     ph = (H - 2 * margin - (rows - 1) * gap) // rows
-    font = _font(36)
+    patches = []
     for i, color in enumerate(palette.colors):
-        cx, cy = i % cols, i // cols
-        x0 = margin + cx * (pw + gap)
-        y0 = margin + cy * (ph + gap)
+        x0 = margin + (i % cols) * (pw + gap)
+        y0 = margin + (i // cols) * (ph + gap)
+        patches.append((color.name, (x0, y0, x0 + pw, y0 + ph)))
+    return patches
+
+
+def palette_chart(palette: Palette = SPECTRA6) -> Image.Image:
+    img = Image.new("RGB", (W, H), (255, 255, 255))
+    draw = _draw(img)
+    _fiducials(draw)
+    margin = 200
+    font = _font(36)
+    for i, (color, (_, (x0, y0, x1, y1))) in enumerate(
+        zip(palette.colors, palette_patches(palette), strict=True)
+    ):
+        pw, ph = x1 - x0, y1 - y0
         draw.rectangle([x0, y0, x0 + pw - 1, y0 + ph - 1], fill=color.device)
         # Thin black outline so the white patch is findable too.
         draw.rectangle([x0 - 4, y0 - 4, x0 + pw + 3, y0 + ph + 3], outline=(0, 0, 0), width=2)
         draw.text((x0, y0 - 50), f"{i}: {color.name}", fill=(0, 0, 0), font=font)
     draw.text(
         (margin, H - 130),
-        "Frame palette chart: photograph in diffuse daylight, white paper sheet next to the panel",
+        "Frame palette chart: photograph it straight on, in daylight, without glare",
         fill=(0, 0, 0),
         font=_font(30),
     )

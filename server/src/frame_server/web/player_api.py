@@ -132,8 +132,14 @@ def get_settings(svc: Svc) -> FrameSettings:
 
 
 @router.put("/settings", response_model=FrameSettings)
-def put_settings(settings: FrameSettings, svc: Svc) -> FrameSettings:
-    return svc.player.save_settings(settings)
+async def put_settings(settings: FrameSettings, svc: Svc) -> FrameSettings:
+    player = svc.player
+    old = player.settings
+    saved = player.save_settings(settings)
+    if player.needs_restyle(old, saved):
+        # New framing should show up now, not at the next scheduled change.
+        svc.background(player.restyle())
+    return saved
 
 
 @router.get("/status", response_model=StatusView)

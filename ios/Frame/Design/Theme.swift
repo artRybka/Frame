@@ -46,6 +46,12 @@ extension Color {
         )
     }
 
+    /// [r, g, b] 0–255 from the server's palette.
+    init(rgb: [Int]) {
+        let c = rgb + [0, 0, 0]
+        self.init(.sRGB, red: Double(c[0]) / 255, green: Double(c[1]) / 255, blue: Double(c[2]) / 255)
+    }
+
     /// "#rrggbb" from the server's colour analysis.
     init?(hexString: String) {
         let digits = hexString.trimmingCharacters(in: CharacterSet(charactersIn: "#"))
@@ -149,6 +155,18 @@ enum Names {
         case .artwork: "Dzieło"
         case .own: "Własna praca"
         case .photo: "Zdjęcie"
+        }
+    }
+
+    static func ink(_ name: String) -> String {
+        switch name {
+        case "black": "Czarna"
+        case "white": "Biała"
+        case "yellow": "Żółta"
+        case "red": "Czerwona"
+        case "blue": "Niebieska"
+        case "green": "Zielona"
+        default: name
         }
     }
 

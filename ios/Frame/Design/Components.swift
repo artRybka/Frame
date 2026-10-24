@@ -242,7 +242,7 @@ struct PrimaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.headline)
-            .foregroundStyle(.white)
+            .foregroundStyle(Theme.paper)  // dark text on the lighter dark-mode accent
             .frame(maxWidth: .infinity)
             .padding(.vertical, 15)
             .background(color, in: RoundedRectangle(cornerRadius: 14, style: .continuous))

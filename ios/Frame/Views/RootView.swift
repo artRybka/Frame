@@ -16,7 +16,7 @@ struct RootView: View {
             switch LaunchRoute.screen {
             case "discover", "detail", "museums": .discover
             case "playlists", "playlist", "editor": .playlists
-            case "frame": .frame
+            case "frame", "calibration", "calibration-result": .frame
             default: .now
             }
         }
