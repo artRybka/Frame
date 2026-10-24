@@ -1,10 +1,11 @@
 """The passe-partout: a paper mat with windows cut at 45°.
 
 Painted in the panel's perceived colours after tone mapping, so the mat's
-colour does not depend on the picture's tone settings. A real mat's core
-shows on the bevel; with the light from the upper left the top and left
-bevels fall in shadow, the bottom and right ones catch the light, and the
-mat throws a thin shadow onto the picture along its top and left edges.
+colour does not depend on the picture's tone settings. The bevel is the
+board's own colour: with the light from the upper left the top and left
+bevels fall in shadow (a little darker), the bottom and right ones catch the
+light (a little lighter), and the mat throws a thin shadow onto the picture
+along its top and left edges.
 """
 
 from __future__ import annotations
@@ -38,11 +39,18 @@ def mat_color(name: str, palette: Palette) -> FloatArray:
     return white.copy()
 
 
+def _toward(colour: FloatArray, target: FloatArray, amount: float) -> FloatArray:
+    """Move ``colour`` part of the way to ``target``, evenly to the eye
+    (cube-root lightness), so a black board's lit bevel stays a dark sheen."""
+    a, b = np.cbrt(colour), np.cbrt(target)
+    return np.asarray((a + (b - a) * amount) ** 3, dtype=np.float32)
+
+
 def _texture(shape: tuple[int, int], seed: int = 7) -> FloatArray:
     """Soft paper grain, the same every time (renders are reproducible)."""
     h, w = shape
     rng = np.random.default_rng(seed)
-    coarse = rng.normal(0.0, 1.0, (h // 6 + 2, w // 6 + 2)).astype(np.float32)
+    coarse = rng.normal(0.0, 1.0, (h // 3 + 2, w // 3 + 2)).astype(np.float32)
     ys = np.linspace(0, coarse.shape[0] - 1.001, h)
     xs = np.linspace(0, coarse.shape[1] - 1.001, w)
     y0, x0 = ys.astype(int), xs.astype(int)
@@ -66,15 +74,17 @@ def paint_mat(target: FloatArray, plan: Plan, palette: Palette, mat: str) -> Non
     if mat != "edge":  # "edge" keeps the picture's border colour composed earlier
         base = mat_color(mat, palette)
         if mat in ("cream", "grey"):
-            grain = 1.0 + 0.02 * _texture((ch, cw))[mask]
+            grain = 1.0 + 0.012 * _texture((ch, cw))[mask]
             target[mask] = np.clip(base[None, :] * grain[:, None], 0.0, 1.0)
         else:
             target[mask] = base  # pure ink: no grain, it would only add dots
 
     bevel = max(3, round(short * BEVEL))
     shadow = max(3, round(short * SHADOW))
-    core_lit = white
-    core_shaded = white + (black - white) * 0.28
+    # The cut is the board itself, lit or shaded: a little lighter or darker.
+    board = target[mask].mean(axis=0) if mat == "edge" else mat_color(mat, palette)
+    core_lit = _toward(board, white, 0.2)
+    core_shaded = _toward(board, black, 0.15)
     for x, y, w, h in (window.rect for window in plan.windows):
         # Edges on the canvas border have no mat beyond them.
         open_edges = {"left": x > 0, "top": y > 0, "right": x + w < cw, "bottom": y + h < ch}

@@ -211,7 +211,7 @@ class FramingView(BaseModel):
 
 class FramingUpdate(BaseModel):
     orientation: Orientation
-    crops: list[Crop]  # one for FILL, two for DETAILS
+    crops: list[Crop]  # one for FILL and DESCRIPTION, two for DETAILS
 
 
 def _framing_plan(
@@ -226,15 +226,14 @@ def _framing_plan(
 def _framing_view(
     item: Item, orientation: Orientation, plan: Plan, size: tuple[int, int]
 ) -> FramingView:
-    saved = item.framing.get(orientation.value)
+    saved = item.framing.get(orientation.value) or Framing()
+    custom = {
+        Fit.FILL: saved.fill is not None,
+        Fit.DETAILS: saved.details is not None,
+        Fit.DESCRIPTION: saved.detail is not None,
+    }.get(plan.fit, False)
     windows = [
-        FramingWindow(
-            role=w.role,
-            aspect=round(w.aspect, 4),
-            crop=w.crop,
-            custom=saved is not None
-            and (saved.fill if w.role == "fill" else saved.details) is not None,
-        )
+        FramingWindow(role=w.role, aspect=round(w.aspect, 4), crop=w.crop, custom=custom)
         for w in plan.windows
         if w.crop is not None
     ]
@@ -270,6 +269,8 @@ async def put_framing(item_id: str, update: FramingUpdate, svc: Svc) -> FramingV
         framing.fill = update.crops[0]
     elif current.fit == Fit.DETAILS and len(update.crops) == 2:
         framing.details = list(update.crops)
+    elif current.fit == Fit.DESCRIPTION and len(update.crops) == 1:
+        framing.detail = update.crops[0]
     else:
         raise HTTPException(422, f"{current.fit.value}: wrong number of crops")
     item = _save_framing(svc, item, update.orientation, framing)

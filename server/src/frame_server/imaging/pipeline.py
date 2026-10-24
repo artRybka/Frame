@@ -14,6 +14,7 @@ Three strategies, to be compared on the real panel (experiment E5):
 from __future__ import annotations
 
 import io
+from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -42,6 +43,7 @@ from .layout import (
 )
 from .mat import paint_mat
 from .palette import SPECTRA6, Palette
+from .text import TextBlock, text_block_mask
 from .tone import ToneSettings, map_to_panel, precompensate
 
 
@@ -63,6 +65,7 @@ class LayoutSettings(BaseModel):
     details: list[Crop] | None = Field(
         None, min_length=2, max_length=2, description="DETAILS: the two close-ups (else automatic)"
     )
+    detail: Crop | None = Field(None, description="DESCRIPTION: the close-up (else automatic)")
 
 
 class DitherSettings(BaseModel):
@@ -84,6 +87,7 @@ class RenderSettings(BaseModel):
     sharpen: float = Field(0.0, ge=0, le=3)
     inks: list[str] | None = Field(None, description="Restrict to these inks, e.g. black+white")
     caption: str | None = Field(None, description="Museum-style label drawn in pure ink")
+    text: TextBlock | None = Field(None, description="DESCRIPTION: printed on the mat")
 
 
 PRESETS: dict[str, RenderSettings] = {
@@ -178,10 +182,10 @@ def plan_for(img: Image.Image, layout: LayoutSettings, caption: bool) -> Plan:
     """Where things go; the picture is analysed only if a crop must be chosen."""
     analysis: InterestMap | None = None
 
-    def auto(aspect: float, zoom: float, count: int) -> list[Crop]:
+    def auto(aspect: float, zooms: Sequence[float]) -> list[Crop]:
         nonlocal analysis
         analysis = analysis or InterestMap(img)
-        return analysis.best(aspect, zoom, count)
+        return analysis.pick(aspect, zooms)
 
     return plan_layout(
         img.size,
@@ -191,6 +195,7 @@ def plan_for(img: Image.Image, layout: LayoutSettings, caption: bool) -> Plan:
         caption=caption,
         crop=layout.crop,
         details=layout.details,
+        detail=layout.detail,
         auto=auto,
     )
 
@@ -240,14 +245,19 @@ def render(
                 )
             sent = pal.device_u8()[preview_idx]
 
+    # Lettering in pure ink on the mat: white on a black mat, black otherwise.
+    letters = []
     if s.caption and plan.caption_at is not None:
-        # Pure ink on the mat: white on a black mat, black otherwise.
-        text = caption_mask(plan.canvas, plan.caption_at, s.caption)
+        letters.append(caption_mask(plan.canvas, plan.caption_at, s.caption))
+    if s.text and plan.text_rect is not None:
+        letters.append(text_block_mask(plan.canvas, plan.text_rect, s.text))
+    if letters:
         ink = pal.white_index() if s.layout.mat == "black" else pal.black_index()
         preview_idx = preview_idx.copy()
         sent = sent.copy()
-        preview_idx[text] = ink
-        sent[text] = pal.device_u8()[ink]
+        for mask in letters:
+            preview_idx[mask] = ink
+            sent[mask] = pal.device_u8()[ink]
 
     preview = pal.perceived_u8()[preview_idx]
     panel = to_panel(sent, s.layout.orientation, s.layout.rotation)
