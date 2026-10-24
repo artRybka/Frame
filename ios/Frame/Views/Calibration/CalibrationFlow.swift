@@ -84,7 +84,7 @@ struct CalibrationFlow: View {
                 Task { await showChart() }
             } label: {
                 HStack(spacing: 10) {
-                    if busy { ProgressView().tint(.white) }
+                    if busy { ProgressView().tint(Theme.paper) }
                     Text(busy ? "Ramka odświeża ekran…" : "Wyświetl planszę")
                 }
             }
@@ -141,7 +141,7 @@ struct CalibrationFlow: View {
                     Task { await measure() }
                 } label: {
                     HStack(spacing: 10) {
-                        if busy { ProgressView().tint(.white) }
+                        if busy { ProgressView().tint(Theme.paper) }
                         Text("Zmierz")
                     }
                 }
@@ -200,7 +200,7 @@ struct CalibrationFlow: View {
                     Task { await apply() }
                 } label: {
                     HStack(spacing: 10) {
-                        if busy { ProgressView().tint(.white) }
+                        if busy { ProgressView().tint(Theme.paper) }
                         Text("Zastosuj nowe kolory")
                     }
                 }

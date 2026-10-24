@@ -49,7 +49,7 @@ struct SendSheet: View {
                         Task { await send() }
                     } label: {
                         HStack(spacing: 10) {
-                            if sending { ProgressView().tint(.white) }
+                            if sending { ProgressView().tint(Theme.paper) }
                             Text(sending ? "Wysyłam…" : "Pokaż na ramce")
                         }
                     }
