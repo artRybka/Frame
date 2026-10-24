@@ -261,7 +261,8 @@ struct ArtworkInfo: View {
             Text(item.title.isEmpty ? "Bez tytułu" : item.title)
                 .font(.serif(28, weight: .semibold))
                 .foregroundStyle(Theme.ink)
-                .fixedSize(horizontal: false, vertical: true)
+                .lineLimit(3)
+                .minimumScaleFactor(0.75)
             if item.kind == .photo {
                 PhotoFacts(item: item)
             } else {
