@@ -1,0 +1,590 @@
+import SwiftUI
+
+/// The frame itself: battery, charging, connection; schedule, presentation,
+/// screen and server settings.
+struct FrameTabView: View {
+    @Environment(AppModel.self) private var model
+    @State private var draft: FrameSettings?
+    @State private var refreshing = false
+
+    private var device: DeviceStatus? { model.status?.device }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 28) {
+                    deviceHero
+                    statusGrid
+                    deviceActions
+                    if draft != nil {
+                        ScheduleSection(settings: binding)
+                        PresentationSection(settings: binding)
+                        ScreenSection(settings: binding)
+                    }
+                    ServerSection()
+                }
+                .padding(.horizontal, Theme.gutter)
+                .padding(.bottom, 40)
+            }
+            .background(Theme.paper)
+            .navigationTitle("Ramka")
+            .toolbar {
+                if let draft, draft != model.settings {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Zapisz") { Task { await model.saveSettings(draft) } }
+                            .fontWeight(.semibold)
+                    }
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cofnij") { self.draft = model.settings }
+                    }
+                }
+            }
+            .refreshable { await refresh() }
+            .onAppear { if draft == nil { draft = model.settings } }
+            .onChange(of: model.settings) { _, new in draft = new }
+        }
+    }
+
+    private var binding: Binding<FrameSettings> {
+        Binding(
+            get: { draft ?? .defaults },
+            set: { draft = $0 }
+        )
+    }
+
+    private func refresh() async {
+        refreshing = true
+        defer { refreshing = false }
+        await model.refreshStatus(live: true)
+        await model.refreshAll()
+    }
+
+    // MARK: Device
+
+    private var deviceHero: some View {
+        HStack(spacing: 18) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(Theme.frameWood)
+                    .frame(width: 104, height: model.isPortrait ? 150 : 66)
+                Group {
+                    if let preview = model.player?.current?.previewUrl {
+                        ArtImage(ref: .path(preview), maxPixel: 400)
+                    } else {
+                        Rectangle().fill(Theme.matWhite)
+                    }
+                }
+                .frame(width: 96, height: model.isPortrait ? 142 : 58)
+                .clipped()
+            }
+            .shadow(color: .black.opacity(0.18), radius: 10, y: 6)
+            VStack(alignment: .leading, spacing: 4) {
+                Eyebrow(device?.model.map { "Samsung \($0)" } ?? "Samsung EM32DX")
+                Text(device?.name ?? "Moja ramka")
+                    .font(.serif(26, weight: .semibold))
+                    .foregroundStyle(Theme.ink)
+                Text(connectionText)
+                    .font(.subheadline)
+                    .foregroundStyle(connectionColor)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.top, 8)
+    }
+
+    private var connectionText: String {
+        guard let device else { return "Brak danych" }
+        if !device.configured { return "Ekran nie jest skonfigurowany na serwerze" }
+        switch device.reachable {
+        case .some(true): return "Połączona · \(When.ago(device.lastSeen) ?? "teraz")"
+        case .some(false): return "Nie odpowiada — śpi lub poza siecią"
+        case .none: return "Nie sprawdzono"
+        }
+    }
+
+    private var connectionColor: Color {
+        switch device?.reachable {
+        case .some(true): Theme.good
+        case .some(false): Theme.bad
+        case .none: Theme.inkSoft
+        }
+    }
+
+    private var statusGrid: some View {
+        LazyVGrid(columns: [GridItem(.flexible(), spacing: 14), GridItem(.flexible(), spacing: 14)], spacing: 14) {
+            StatusTile(title: "Bateria") {
+                BatteryRing(level: device?.batteryLevel, charging: device?.charging == true)
+            }
+            StatusTile(title: "Zasilanie") {
+                VStack(alignment: .leading, spacing: 6) {
+                    Image(systemName: device?.charging == true ? "bolt.fill" : "powerplug.portrait")
+                        .font(.title2)
+                        .foregroundStyle(device?.charging == true ? Theme.warn : Theme.inkSoft)
+                        .symbolEffect(.pulse, options: .repeating, isActive: device?.charging == true)
+                    Text(powerText).font(.headline).foregroundStyle(Theme.ink)
+                    Text(device?.charging == true ? "bateria się ładuje" : "zmiany rzadziej, by oszczędzać")
+                        .font(.caption)
+                        .foregroundStyle(Theme.inkSoft)
+                }
+            }
+            StatusTile(title: "Obraz") {
+                VStack(alignment: .leading, spacing: 6) {
+                    Image(systemName: "clock.arrow.2.circlepath")
+                        .font(.title2)
+                        .foregroundStyle(Theme.accent)
+                    Text(When.schedule(model.player?.nextChangeAt) ?? "—")
+                        .font(.headline)
+                        .foregroundStyle(Theme.ink)
+                    Text("następna zmiana").font(.caption).foregroundStyle(Theme.inkSoft)
+                }
+            }
+            StatusTile(title: "Sieć") {
+                VStack(alignment: .leading, spacing: 6) {
+                    Image(systemName: device?.networkStandby == true ? "wifi" : "wifi.slash")
+                        .font(.title2)
+                        .foregroundStyle(device?.networkStandby == true ? Theme.good : Theme.inkSoft)
+                    Text(device?.networkStandby == true ? "Czuwanie Wi-Fi" : "Głęboki sen")
+                        .font(.headline)
+                        .foregroundStyle(Theme.ink)
+                    Text(device?.firmware.map { "firmware \($0)" } ?? "firmware —")
+                        .font(.caption)
+                        .foregroundStyle(Theme.inkSoft)
+                        .lineLimit(1)
+                }
+            }
+        }
+    }
+
+    private var powerText: String {
+        switch device?.powerSource {
+        case "ac": device?.charging == true ? "Ładowanie" : "Zasilacz"
+        case "battery": "Na baterii"
+        default: "Nieznane"
+        }
+    }
+
+    private var deviceActions: some View {
+        HStack(spacing: 10) {
+            Button {
+                Task { await refresh() }
+            } label: {
+                Label(refreshing ? "Sprawdzam…" : "Sprawdź stan", systemImage: "arrow.clockwise")
+            }
+            .buttonStyle(SecondaryButtonStyle())
+            Menu {
+                Button("Obudź ramkę", systemImage: "sun.max") { Task { await model.wake() } }
+                Button("Uśpij ramkę", systemImage: "moon.zzz") { Task { await model.sleepFrame() } }
+            } label: {
+                Label("Zasilanie", systemImage: "power")
+                    .font(.headline)
+                    .foregroundStyle(Theme.ink)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 15)
+                    .background(Theme.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Theme.hairline))
+            }
+        }
+    }
+}
+
+struct StatusTile<Content: View>: View {
+    let title: String
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Eyebrow(title)
+            content
+            Spacer(minLength: 0)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, minHeight: 150, alignment: .topLeading)
+        .background(Theme.card, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(Theme.hairline.opacity(0.7)))
+    }
+}
+
+struct BatteryRing: View {
+    let level: Int?
+    let charging: Bool
+
+    private var fraction: Double { Double(level ?? 0) / 100 }
+    private var color: Color {
+        guard let level else { return Theme.inkSoft }
+        if charging { return Theme.warn }
+        return level <= 15 ? Theme.bad : level <= 35 ? Theme.warn : Theme.good
+    }
+
+    var body: some View {
+        HStack(spacing: 14) {
+            ZStack {
+                Circle().stroke(Theme.mat, lineWidth: 9)
+                Circle()
+                    .trim(from: 0, to: fraction)
+                    .stroke(color, style: StrokeStyle(lineWidth: 9, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                    .animation(.easeOut(duration: 0.8), value: fraction)
+                if charging {
+                    Image(systemName: "bolt.fill").font(.callout).foregroundStyle(color)
+                }
+            }
+            .frame(width: 64, height: 64)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(level.map { "\($0)%" } ?? "—")
+                    .font(.serif(28, weight: .semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(Theme.ink)
+                Text(estimate).font(.caption).foregroundStyle(Theme.inkSoft)
+            }
+        }
+    }
+
+    /// Rough: ~200 days at one change a day on a full battery (Samsung's figure).
+    private var estimate: String {
+        guard let level, !charging else { return charging ? "ładuje się" : "" }
+        let days = Int(Double(level) / 100 * 200)
+        return days > 60 ? "ok. \(days / 30) mies." : "ok. \(days) dni"
+    }
+}
+
+// MARK: - Settings sections
+
+struct ScheduleSection: View {
+    @Environment(AppModel.self) private var model
+    @Binding var settings: FrameSettings
+
+    private let intervals: [(Int, String)] = [
+        (60, "co godzinę"), (180, "co 3 godziny"), (360, "co 6 godzin"), (720, "2× dziennie"),
+        (1440, "raz dziennie"), (2880, "co 2 dni"), (4320, "co 3 dni"),
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            SectionHeader(title: "Harmonogram", subtitle: "Co i jak często pokazuje ramka")
+            Picker("Tryb", selection: $settings.mode) {
+                Text("Obrazy").tag("art")
+                Text("Album iCloud").tag("album")
+            }
+            .pickerStyle(.segmented)
+
+            Card {
+                if settings.mode == "art" {
+                    row("Playlista") {
+                        Picker("Playlista", selection: $settings.playlistId) {
+                            Text("Cała biblioteka").tag(Int?.none)
+                            ForEach(model.playlists) { Text($0.name).tag(Int?.some($0.id)) }
+                        }
+                    }
+                    Divider()
+                } else {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Link do albumu").foregroundStyle(Theme.inkSoft).font(.subheadline)
+                        TextField("https://www.icloud.com/sharedalbum/#…", text: $settings.albumUrl)
+                            .textInputAutocapitalization(.never)
+                            .keyboardType(.URL)
+                            .font(.subheadline)
+                        Text("W Zdjęciach: album udostępniony → Osoby → Witryna publiczna → Udostępnij link.")
+                            .font(.caption)
+                            .foregroundStyle(Theme.inkSoft)
+                        AlbumStatus()
+                    }
+                    Divider()
+                }
+                row("Przy zasilaczu") { intervalPicker($settings.intervalMinutes) }
+                Divider()
+                row("Na baterii") { intervalPicker($settings.intervalMinutesBattery) }
+                Divider()
+                Toggle("Losowa kolejność", isOn: $settings.shuffle)
+                Divider()
+                Toggle("Cisza nocna", isOn: quietEnabled)
+                if settings.quietStart != nil {
+                    HStack {
+                        DatePicker("Od", selection: time(\.quietStart, fallback: "22:00"), displayedComponents: .hourAndMinute)
+                        DatePicker("Do", selection: time(\.quietEnd, fallback: "07:00"), displayedComponents: .hourAndMinute)
+                    }
+                    .font(.subheadline)
+                    Text("Zmiany zaczynają się codziennie o końcu ciszy nocnej.")
+                        .font(.caption)
+                        .foregroundStyle(Theme.inkSoft)
+                }
+            }
+            .tint(Theme.accent)
+        }
+    }
+
+    private func row<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+        HStack {
+            Text(title).foregroundStyle(Theme.ink)
+            Spacer()
+            content()
+        }
+    }
+
+    private func intervalPicker(_ value: Binding<Int>) -> some View {
+        Picker("", selection: value) {
+            ForEach(intervals, id: \.0) { minutes, label in
+                Text(label).tag(minutes)
+            }
+            if !intervals.contains(where: { $0.0 == value.wrappedValue }) {
+                Text("\(value.wrappedValue) min").tag(value.wrappedValue)
+            }
+        }
+        .labelsHidden()
+    }
+
+    private var quietEnabled: Binding<Bool> {
+        Binding(
+            get: { settings.quietStart != nil },
+            set: { on in
+                settings.quietStart = on ? "22:00" : nil
+                settings.quietEnd = on ? "07:00" : nil
+            }
+        )
+    }
+
+    private func time(_ key: WritableKeyPath<FrameSettings, String?>, fallback: String) -> Binding<Date> {
+        Binding(
+            get: {
+                let parts = (settings[keyPath: key] ?? fallback).split(separator: ":").compactMap { Int($0) }
+                return Calendar.current.date(
+                    bySettingHour: parts.first ?? 0, minute: parts.dropFirst().first ?? 0, second: 0, of: .now
+                ) ?? .now
+            },
+            set: { date in
+                let comps = Calendar.current.dateComponents([.hour, .minute], from: date)
+                settings[keyPath: key] = String(format: "%02d:%02d", comps.hour ?? 0, comps.minute ?? 0)
+            }
+        )
+    }
+}
+
+struct PresentationSection: View {
+    @Binding var settings: FrameSettings
+    @State private var target = Target.art
+
+    enum Target: String, CaseIterable {
+        case art = "Sztuka"
+        case photo = "Zdjęcia"
+    }
+
+    private var presentation: Binding<Presentation> {
+        target == .art ? $settings.art : $settings.photo
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            SectionHeader(title: "Prezentacja", subtitle: "Jak obraz wygląda na ramce")
+            Picker("Dla", selection: $target) {
+                ForEach(Target.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            Card {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Kadrowanie").foregroundStyle(Theme.ink)
+                    HStack(spacing: 10) {
+                        FitOption(title: "Passe-partout", fit: "fit", selected: presentation.fit.wrappedValue == "fit") {
+                            presentation.fit.wrappedValue = "fit"
+                            if presentation.margin.wrappedValue == 0 { presentation.margin.wrappedValue = 0.05 }
+                        }
+                        FitOption(title: "Wypełnij", fit: "fill", selected: presentation.fit.wrappedValue == "fill") {
+                            presentation.fit.wrappedValue = "fill"
+                        }
+                        FitOption(title: "Auto", fit: "auto", selected: presentation.fit.wrappedValue == "auto") {
+                            presentation.fit.wrappedValue = "auto"
+                        }
+                    }
+                }
+                Divider()
+                Toggle("Podpis na ramce", isOn: presentation.label)
+                Text(target == .art ? "Np. „Claude Monet — Lilie wodne, 1906”, czarnym drukiem na passe-partout."
+                                    : "Data i podpis zdjęcia w rogu.")
+                    .font(.caption)
+                    .foregroundStyle(Theme.inkSoft)
+                Divider()
+                HStack {
+                    Text("Styl obrazu")
+                    Spacer()
+                    Picker("Styl obrazu", selection: presentation.preset) {
+                        ForEach(["photo", "painting", "graphic", "bw"], id: \.self) { Text(Names.preset($0)).tag($0) }
+                    }
+                    .labelsHidden()
+                }
+            }
+            .tint(Theme.accent)
+        }
+    }
+}
+
+/// Miniature showing how a fit mode places a portrait picture on the frame.
+struct FitOption: View {
+    let title: String
+    let fit: String
+    let selected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 8) {
+                ZStack {
+                    Rectangle().fill(Theme.matWhite)
+                    switch fit {
+                    case "fill":
+                        Rectangle().fill(Theme.accent.opacity(0.75))
+                    case "auto":
+                        Rectangle().fill(Theme.accent.opacity(0.75)).padding(.horizontal, 6)
+                    default:
+                        Rectangle().fill(Theme.accent.opacity(0.75)).padding(.vertical, 6).padding(.horizontal, 22)
+                    }
+                }
+                .frame(height: 46)
+                .padding(3)
+                .background(Theme.frameWood)
+                Text(title).font(.caption.weight(.medium)).foregroundStyle(Theme.ink)
+            }
+            .padding(8)
+            .background(selected ? Theme.accent.opacity(0.1) : .clear, in: RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(selected ? Theme.accent : Theme.hairline, lineWidth: selected ? 2 : 1))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+struct ScreenSection: View {
+    @Binding var settings: FrameSettings
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            SectionHeader(title: "Ekran")
+            Card {
+                Picker("Orientacja", selection: $settings.orientation) {
+                    Label("Pozioma", systemImage: "rectangle").tag("landscape")
+                    Label("Pionowa", systemImage: "rectangle.portrait").tag("portrait")
+                }
+                .pickerStyle(.segmented)
+                if settings.orientation == "portrait" {
+                    Picker("Obrót", selection: $settings.rotation) {
+                        Text("90° w prawo").tag(90)
+                        Text("90° w lewo").tag(270)
+                    }
+                    .pickerStyle(.segmented)
+                    Text("Jak powieszono ramkę. Gdy obraz jest do góry nogami, zmień kierunek.")
+                        .font(.caption)
+                        .foregroundStyle(Theme.inkSoft)
+                }
+            }
+        }
+    }
+}
+
+struct ServerSection: View {
+    @Environment(AppModel.self) private var model
+    @State private var testing = false
+
+    var body: some View {
+        @Bindable var model = model
+        VStack(alignment: .leading, spacing: 16) {
+            SectionHeader(title: "Serwer ramki", subtitle: "Add-on Home Assistant lub kontener na Synology")
+            Card {
+                Toggle(isOn: $model.demoMode) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Tryb demo")
+                        Text("Przykładowe dzieła bez serwera").font(.caption).foregroundStyle(Theme.inkSoft)
+                    }
+                }
+                .tint(Theme.accent)
+                if !model.demoMode {
+                    Divider()
+                    TextField("http://homeassistant.local:8099", text: $model.serverURL)
+                        .keyboardType(.URL)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    Divider()
+                    SecureField("Token API", text: $model.apiToken)
+                }
+                Divider()
+                Button {
+                    Task {
+                        testing = true
+                        await model.applyConnection()
+                        testing = false
+                    }
+                } label: {
+                    HStack {
+                        Text(model.demoMode ? "Zastosuj" : "Połącz")
+                        if testing { ProgressView() }
+                    }
+                }
+                .fontWeight(.semibold)
+                connectionLine
+                if let server = model.status?.server {
+                    Text("Serwer \(server.version) · \(Names.works(server.libraryCount)) · \(server.playlists) playlist")
+                        .font(.caption)
+                        .foregroundStyle(Theme.inkSoft)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var connectionLine: some View {
+        switch model.connection {
+        case .connected:
+            Label(model.demoMode ? "Tryb demo" : "Połączono", systemImage: "checkmark.circle.fill")
+                .font(.subheadline)
+                .foregroundStyle(Theme.good)
+        case let .failed(message):
+            Label(message, systemImage: "exclamationmark.triangle.fill")
+                .font(.subheadline)
+                .foregroundStyle(Theme.bad)
+        case .unknown:
+            EmptyView()
+        }
+    }
+}
+
+/// Last shared-album sync and a button to sync now.
+struct AlbumStatus: View {
+    @Environment(AppModel.self) private var model
+    @State private var info: AlbumInfo?
+    @State private var syncing = false
+
+    var body: some View {
+        HStack {
+            if let sync = info?.lastSync {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(sync.name.isEmpty ? "Album" : sync.name).font(.subheadline.weight(.medium))
+                    Text("\(info?.photos ?? 0) zdjęć · synchronizacja \(When.ago(sync.at) ?? "")")
+                        .font(.caption)
+                        .foregroundStyle(Theme.inkSoft)
+                }
+            } else {
+                Text("Jeszcze nie synchronizowano").font(.caption).foregroundStyle(Theme.inkSoft)
+            }
+            Spacer()
+            Button {
+                Task {
+                    syncing = true
+                    do {
+                        try await model.backend.syncAlbum()
+                        model.toast = "Synchronizuję album…"
+                        try? await Task.sleep(for: .seconds(3))
+                        info = try? await model.backend.album()
+                    } catch {
+                        model.show(error)
+                    }
+                    syncing = false
+                }
+            } label: {
+                if syncing {
+                    ProgressView()
+                } else {
+                    Label("Synchronizuj", systemImage: "arrow.triangle.2.circlepath")
+                        .font(.subheadline.weight(.semibold))
+                }
+            }
+            .disabled(syncing)
+        }
+        .padding(.top, 4)
+        .task { info = try? await model.backend.album() }
+    }
+}

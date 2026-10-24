@@ -10,8 +10,9 @@ settings:
     SWIFT_VERSION: "5.0"
     MARKETING_VERSION: "0.1.0"
     CURRENT_PROJECT_VERSION: "1"
-    # Set your Apple Developer Team ID here (or in Xcode → Signing & Capabilities).
-    DEVELOPMENT_TEAM: ""
+    # Apple Developer team (not a secret: it is embedded in every signed build).
+    DEVELOPMENT_TEAM: 3MQRJF4A9D
+    CODE_SIGN_STYLE: Automatic
 targets:
   Frame:
     type: application
@@ -32,9 +33,13 @@ targets:
         NSAppTransportSecurity:
           # The frame server lives on the LAN and speaks plain HTTP.
           NSAllowsLocalNetworking: true
+        # Only system TLS (URLSession): exempt, so TestFlight skips the export question.
+        ITSAppUsesNonExemptEncryption: false
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.artrybka.frame
+        # iPhone only: the UI is portrait-only, which iPad builds may not be.
+        TARGETED_DEVICE_FAMILY: "1"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
   FrameTests:

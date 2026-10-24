@@ -20,3 +20,6 @@ configuration:
   palette:
     name: Paleta
     description: Nazwa wbudowanej palety albo ścieżka do skalibrowanej palety JSON.
+  seed_library:
+    name: Biblioteka startowa
+    description: Przy pierwszym uruchomieniu wypełnij pustą bibliotekę dziełami z domeny publicznej z kolekcji muzeów.

@@ -5,6 +5,7 @@ on:
     paths: ["ios/**", ".github/workflows/ios.yml"]
   pull_request:
     paths: ["ios/**", ".github/workflows/ios.yml"]
+  workflow_dispatch:
 
 jobs:
   build:
@@ -29,3 +30,65 @@ jobs:
           -scheme Frame
           -destination "id=${{ steps.sim.outputs.udid }}"
           CODE_SIGNING_ALLOWED=NO
+
+  screenshots:
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: ios
+    steps:
+      - uses: actions/checkout@v4
+      - run: brew install xcodegen
+      - run: xcodegen generate
+      - name: Boot a Pro-size iPhone simulator
+        id: sim
+        run: |
+          udid=$(xcrun simctl list devices available -j | python3 -c "
+          import json, sys
+          devices = json.load(sys.stdin)['devices']
+          phones = [d for runtime, ds in devices.items() if 'iOS' in runtime for d in ds if d['name'].startswith('iPhone')]
+          pro = [d for d in phones if 'Pro' in d['name'] and 'Max' not in d['name']]
+          print((pro or phones)[-1]['udid'])
+          ")
+          echo "udid=$udid" >> "$GITHUB_OUTPUT"
+          xcrun simctl boot "$udid" || true
+          xcrun simctl bootstatus "$udid" -b
+      - name: Build app
+        run: >
+          xcodebuild build
+          -project Frame.xcodeproj
+          -scheme Frame
+          -destination "id=${{ steps.sim.outputs.udid }}"
+          -derivedDataPath build
+          CODE_SIGNING_ALLOWED=NO
+      - name: Capture screens (demo mode)
+        env:
+          UDID: ${{ steps.sim.outputs.udid }}
+        run: |
+          set -x
+          mkdir -p shots
+          xcrun simctl install "$UDID" build/Build/Products/Debug-iphonesimulator/Frame.app
+          xcrun simctl status_bar "$UDID" override --time 9:41 --batteryState charged --batteryLevel 100 --wifiBars 3 || true
+          capture() {
+            xcrun simctl terminate "$UDID" com.artrybka.frame || true
+            xcrun simctl launch "$UDID" com.artrybka.frame -demo YES -screen "$1"
+            sleep "${2:-12}"
+            xcrun simctl io "$UDID" screenshot "shots/$3.png"
+          }
+          for appearance in light dark; do
+            xcrun simctl ui "$UDID" appearance "$appearance"
+            capture now 16 "now-$appearance"
+            capture discover 12 "discover-$appearance"
+            capture detail 14 "detail-$appearance"
+            capture playlists 12 "playlists-$appearance"
+            capture playlist 12 "playlist-$appearance"
+            capture editor 12 "editor-$appearance"
+            capture frame 10 "frame-$appearance"
+            capture museums 8 "museums-$appearance"
+            capture send 8 "send-$appearance"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: ios/shots/*.png
+          retention-days: 14

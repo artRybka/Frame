@@ -230,11 +230,12 @@ def _device_settings(host: str | None, pin: str | None) -> Settings:
 
 @device_app.command("info")
 def device_info(host: HostOpt = None, pin: PinOpt = None) -> None:
-    """Serial, firmware, battery, network standby."""
+    """Serial, firmware, battery, charging, network standby."""
     from .service import Panel
+    from .status import StatusMonitor
 
-    status = asyncio.run(Panel(_device_settings(host, pin)).status())
-    typer.echo(json.dumps(status, indent=2))
+    status = asyncio.run(StatusMonitor(Panel(_device_settings(host, pin))).refresh())
+    typer.echo(status.model_dump_json(indent=2, exclude_none=True))
 
 
 @device_app.command("wake")

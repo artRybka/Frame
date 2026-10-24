@@ -38,22 +38,29 @@ harmonogram ─▶ wybór pozycji (kolekcje, iCloud, własne; bez powtórek)
 
 ## API (stan obecny)
 
-| Metoda | Ścieżka | Opis |
-|---|---|---|
-| GET | `/panel/content.json` | manifest dla ekranu (bez autoryzacji) |
-| GET | `/panel/images/{name}` | obraz dla ekranu (bez autoryzacji) |
-| GET | `/api/health` | wersja, paleta |
-| GET | `/api/now` | co jest na ekranie (tytuł, opis, źródło, URL podglądu) |
-| GET | `/api/previews/{id}.png` | podgląd wyglądu na ekranie |
-| GET | `/api/presets` | presety renderowania |
-| POST | `/api/display` | multipart: `file`, `preset` / `settings_json`, `strategy`, `raw`, `title`, `description`, `push`, `wait` |
-| POST | `/api/device/push` | ponowne wysłanie bieżącej treści |
-| GET | `/api/device/status` | numer seryjny, firmware, bateria, network standby |
-| POST | `/api/device/wake`, `/api/device/sleep` | Wake-on-LAN / uśpienie |
-| GET | `/api/debug/panel-requests` | ostatnie zapytania ekranu |
+Pełna specyfikacja: `http://<serwer>:8099/docs` (OpenAPI). Endpointy `/api/*`
+wymagają nagłówka `Authorization: Bearer <api_token>` (albo `?token=` dla
+adresów obrazów), jeśli token jest ustawiony.
 
-Endpointy `/api/*` wymagają nagłówka `Authorization: Bearer <api_token>`, jeśli
-token jest ustawiony. Pełna specyfikacja: `http://<serwer>:8099/docs` (OpenAPI).
+| Obszar | Endpointy |
+|---|---|
+| Ekran (bez autoryzacji) | `GET /panel/content.json`, `GET /panel/images/{name}` |
+| Odtwarzacz | `GET /api/player` (co na ramce, następne, historia, przypięcie, następna zmiana), `POST /api/player/next`, `POST /api/player/previous`, `POST/DELETE /api/player/hold` |
+| Ustawienia | `GET/PUT /api/settings` (tryb, playlista, interwały przy zasilaczu i na baterii, cisza nocna, prezentacja dla sztuki i zdjęć, orientacja, link do albumu) |
+| Status | `GET /api/status?refresh=` (bateria, ładowanie, połączenie, firmware, serwer), `GET /api/device/status`, `POST /api/device/wake`, `POST /api/device/sleep` |
+| Biblioteka | `GET /api/library/items` (filtry: `q`, `artist`, `style`, `subject`, `color`, `kind`, `favorites`, `sort`), `GET /api/library/facets`, `GET/PATCH/DELETE /api/library/items/{id}`, `GET …/{id}/thumb`, `…/image`, `…/preview` (symulacja e-papieru), `POST …/{id}/show`, `POST /api/library/upload` |
+| Muzea | `GET /api/museums`, `GET /api/museums/{source}/search`, `POST /api/museums/{source}/import`, `POST /api/museums/{source}/import-search`, `GET /api/jobs[/{id}]` |
+| Playlisty | `GET/POST /api/playlists`, `POST /api/playlists/preview`, `GET/PUT/DELETE /api/playlists/{id}`, `POST/DELETE /api/playlists/{id}/items`, `POST /api/playlists/{id}/play` |
+| Jednorazowe zdjęcie | `POST /api/display` (multipart: `file`, `preset`, `title`, `hold`), `POST /api/device/push`, `GET /api/now`, `GET /api/previews/{id}.png` |
+| Diagnostyka | `GET /api/health`, `GET /api/presets`, `GET /api/debug/panel-requests` |
+
+## Rotacja
+
+`player.py`: kolejka z aktywnej playlisty (albo zdjęć w trybie albumu),
+tasowana, bez powtórek przez `avoid_repeat_days`. Zmiany są wyrównane do
+końca ciszy nocnej (domyślnie codziennie o 07:00); na baterii obowiązuje
+osobny interwał. Przypięcie (`hold`) wstrzymuje rotację do określonej chwili
+albo na stałe. Stan i historia są w SQLite, więc przetrwają restart.
 
 ## Wdrożenie
 

@@ -20,6 +20,7 @@ options:
   public_host: ""
   api_token: ""
   palette: ""
+  seed_library: true
 schema:
   device_host: str?
   device_pin: password?
@@ -28,3 +29,4 @@ schema:
   public_host: str?
   api_token: password?
   palette: str?
+  seed_library: bool

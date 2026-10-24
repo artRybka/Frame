@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import io
 import logging
+from collections.abc import AsyncIterator, Coroutine
+from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass
 
 from PIL import Image
@@ -13,6 +15,11 @@ from .config import Settings
 from .device import MdcClient, MdcConnectionError, wol
 from .imaging import Palette, RenderSettings, get_palette, render
 from .imaging.pipeline import encode_image
+from .library import ImageCache, Importer, Job, Library
+from .library.icloud import sync_album
+from .library.museums import client as museum_client
+from .player import Player
+from .status import StatusMonitor
 from .store import ContentInfo, ContentStore
 
 log = logging.getLogger(__name__)
@@ -62,20 +69,11 @@ class Panel:
             finally:
                 await client.close()
 
-    async def status(self) -> dict[str, object]:
+    @asynccontextmanager
+    async def session(self) -> AsyncIterator[MdcClient]:
+        """One short MDC session, never overlapping with another."""
         async with self._lock, self.client() as mdc:
-            battery = await mdc.battery()
-            return {
-                "serial": await mdc.serial_number(),
-                "software": await mdc.software_version(),
-                "model": await mdc.model_name(),
-                "name": await mdc.device_name(),
-                "battery": {
-                    "level": battery.level,
-                    "raw": battery.raw.hex(" "),
-                },
-                "network_standby": await mdc.network_standby(),
-            }
+            yield mdc
 
     async def sleep(self) -> None:
         """Power off but keep network standby, so Wake-on-LAN still works."""
@@ -90,6 +88,36 @@ class FrameService:
         self.store = ContentStore(settings.data_dir)
         self.panel = Panel(settings)
         self.palette: Palette = get_palette(settings.palette)
+        self.library = Library(settings.data_dir / "library.db")
+        self.images = ImageCache(settings.data_dir / "library", museum_client)
+        self.importer = Importer(self.library, self.images, self.palette)
+        self.status = StatusMonitor(self.panel)
+        self.player = Player(self)
+
+        self._tasks: set[asyncio.Task[object]] = set()
+
+    @property
+    def device_configured(self) -> bool:
+        return bool(self.settings.device_host and self.settings.device_pin)
+
+    def start_album_sync(self) -> Job:
+        """Mirror the shared iCloud album (one sync at a time)."""
+        for job in self.importer.jobs.values():
+            if job.description == "album" and not job.finished:
+                return job
+        url = self.player.settings.album_url
+
+        def work(job: Job) -> None:
+            sync_album(self.importer, url, job)
+
+        return self.importer.start_job("album", work)
+
+    def background(self, coro: Coroutine[object, object, object]) -> asyncio.Task[object]:
+        """Run a coroutine after the response; keeps a reference until done."""
+        task = asyncio.create_task(coro)
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
+        return task
 
     def content_url(self, file_id: str) -> str:
         # The query only changes the URL per push; the server ignores it.
@@ -105,6 +133,7 @@ class FrameService:
         title: str = "",
         description: str = "",
         source: str = "",
+        extra: dict[str, object] | None = None,
     ) -> ContentInfo:
         """Render (or pass through untouched with ``raw``) and publish."""
         if raw:
@@ -137,6 +166,7 @@ class FrameService:
             description=description,
             source=source,
             render=settings.model_dump(mode="json") | {"palette": self.palette.name},
+            extra=extra,
         )
 
     async def push_current(self, wait: float = 90.0) -> PushOutcome:
@@ -152,6 +182,7 @@ class FrameService:
             self.store.cancel_fetch(content.file_id)
             raise
         fetched = await self.store.wait_for_fetch(content.file_id, wait) if wait else False
+        self.status.note_push(fetched)
         message = "" if fetched or not wait else "panel did not download the image in time"
         return PushOutcome(content, pushed=True, fetched=fetched, content_url=url, message=message)
 

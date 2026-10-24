@@ -120,26 +120,38 @@ def compose(
     side; it is applied in FIT mode only.
     """
     cw, ch = canvas
+    fit, (x0, y0, w, h) = placement(img.size, canvas, fit, margin, auto_crop_tolerance)
+    if fit == Fit.FILL:
+        cropped = img.crop(_crop_box(img.size, cw / ch, focus))
+        return resize_linear(cropped, canvas)
+
+    placed = resize_linear(img, (w, h))
+    out = np.empty((ch, cw, 3), dtype=np.float32)
+    out[:] = u8_to_linear(np.array(mat_color, dtype=np.uint8))
+    out[y0 : y0 + h, x0 : x0 + w] = placed
+    return out
+
+
+def placement(
+    size: tuple[int, int],
+    canvas: tuple[int, int],
+    fit: Fit,
+    margin: float = 0.0,
+    auto_crop_tolerance: float = 0.12,
+) -> tuple[Fit, tuple[int, int, int, int]]:
+    """Resolve AUTO and return where the picture lands: (fit, (x, y, w, h))."""
+    cw, ch = canvas
     target_ratio = cw / ch
-    ratio = img.width / img.height
+    ratio = size[0] / size[1]
     if fit == Fit.AUTO:
         mismatch = abs(ratio - target_ratio) / max(ratio, target_ratio)
         fit = Fit.FILL if mismatch <= auto_crop_tolerance else Fit.FIT
-
     if fit == Fit.FILL:
-        cropped = img.crop(_crop_box(img.size, target_ratio, focus))
-        return resize_linear(cropped, canvas)
-
+        return fit, (0, 0, cw, ch)
     pad = round(min(cw, ch) * margin)
-    box_w, box_h = cw - 2 * pad, ch - 2 * pad
-    scale = min(box_w / img.width, box_h / img.height)
-    size = (max(1, round(img.width * scale)), max(1, round(img.height * scale)))
-    placed = resize_linear(img, size)
-    out = np.empty((ch, cw, 3), dtype=np.float32)
-    out[:] = u8_to_linear(np.array(mat_color, dtype=np.uint8))
-    x0, y0 = (cw - size[0]) // 2, (ch - size[1]) // 2
-    out[y0 : y0 + size[1], x0 : x0 + size[0]] = placed
-    return out
+    scale = min((cw - 2 * pad) / size[0], (ch - 2 * pad) / size[1])
+    w, h = max(1, round(size[0] * scale)), max(1, round(size[1] * scale))
+    return fit, ((cw - w) // 2, (ch - h) // 2, w, h)
 
 
 def to_panel(canvas_pixels: np.ndarray, orientation: Orientation, rotation: int) -> np.ndarray:

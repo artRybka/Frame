@@ -6,9 +6,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from dataclasses import asdict
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
@@ -19,10 +22,39 @@ from .. import __version__
 from ..config import Settings
 from ..device import MdcError
 from ..imaging import PRESETS, RenderSettings, Strategy
+from ..library.seed import seed_library, seed_playlists
+from ..player import hold_from
 from ..service import FrameService, outcome_json
+from ..status import DeviceStatus
 from ..store import PanelRequest
+from . import library_api, player_api, playlists_api
+from .deps import require_token
 
 log = logging.getLogger(__name__)
+
+
+async def poll_status(service: FrameService) -> None:
+    """Refresh the panel status now and then. On battery only rarely: every
+    MDC session may keep the panel awake (to be measured in E8)."""
+    await asyncio.sleep(5)
+    while True:
+        minutes = service.player.settings.status_poll_minutes
+        if minutes and service.device_configured:
+            last = service.status.status.checked_at
+            stale = last is None or datetime.fromisoformat(last) < datetime.now(UTC) - timedelta(
+                hours=6
+            )
+            if not service.status.on_battery or stale:
+                await service.status.refresh()
+        await asyncio.sleep(max(minutes, 1) * 60)
+
+
+async def sync_album_periodically(service: FrameService, minutes: int = 30) -> None:
+    await asyncio.sleep(20)
+    while True:
+        if service.player.settings.album_url:
+            service.start_album_sync()
+        await asyncio.sleep(minutes * 60)
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -30,8 +62,29 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     service = FrameService(settings)
     service.ensure_initial_content()
 
-    app = FastAPI(title="Frame", version=__version__)
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        tasks = []
+        if settings.scheduler:
+            tasks = [
+                asyncio.create_task(service.player.run()),
+                asyncio.create_task(poll_status(service)),
+                asyncio.create_task(sync_album_periodically(service)),
+            ]
+        if settings.seed_library and service.library.count() == 0:
+            service.importer.start_job(
+                "starter library", lambda job: seed_library(service.importer, job)
+            )
+        else:
+            seed_playlists(service.importer)
+        yield
+        for task in tasks:
+            task.cancel()
+
+    app = FastAPI(title="Frame", version=__version__, lifespan=lifespan)
     app.state.service = service
+    for router in (library_api.router, playlists_api.router, player_api.router):
+        app.include_router(router)
 
     @app.middleware("http")
     async def log_panel_requests(request: Request, call_next):
@@ -49,12 +102,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             service.store.log_request(entry)
             log.info("panel %s %s -> %s", entry.method, request.url, entry.status)
         return response
-
-    def require_token(request: Request) -> None:
-        if not settings.api_token:
-            return
-        if request.headers.get("authorization") != f"Bearer {settings.api_token}":
-            raise HTTPException(401, "invalid or missing API token")
 
     auth = [Depends(require_token)]
 
@@ -109,6 +156,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         description: Annotated[str, Form()] = "",
         push: Annotated[bool, Form()] = True,
         wait: Annotated[float, Form()] = 90.0,
+        hold: Annotated[str | None, Form()] = None,
     ) -> dict[str, object]:
         if settings_json:
             render_settings = RenderSettings.model_validate_json(settings_json)
@@ -128,8 +176,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             description=description,
             source="upload",
         )
-        if not push:
-            return {"content": asdict(content), "pushed": False}
+        service.player.note_external(hold_from(hold))
+        if not push or not service.device_configured:
+            message = "" if not push else "panel not configured"
+            return {"content": asdict(content), "pushed": False, "message": message}
         try:
             outcome = await service.push_current(wait=wait)
         except MdcError as err:
@@ -138,17 +188,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.post("/api/device/push", dependencies=auth)
     async def push_again(wait: float = 90.0) -> dict[str, object]:
+        if not service.device_configured:
+            raise HTTPException(409, "panel not configured")
         try:
             return outcome_json(await service.push_current(wait=wait))
         except MdcError as err:
             raise HTTPException(502, f"panel: {err}") from err
 
     @app.get("/api/device/status", dependencies=auth)
-    async def device_status() -> dict[str, object]:
-        try:
-            return await service.panel.status()
-        except MdcError as err:
-            raise HTTPException(502, f"panel: {err}") from err
+    async def device_status() -> DeviceStatus:
+        return await service.status.refresh()
 
     @app.post("/api/device/wake", dependencies=auth)
     async def device_wake() -> dict[str, object]:
@@ -156,6 +205,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.post("/api/device/sleep", dependencies=auth)
     async def device_sleep() -> dict[str, object]:
+        if not service.device_configured:
+            raise HTTPException(409, "panel not configured")
         try:
             await service.panel.sleep()
         except MdcError as err:
