@@ -32,6 +32,10 @@ from .deps import require_token
 
 log = logging.getLogger(__name__)
 
+# The panel reports download progress (and failures) here, at the root of the
+# content server, whatever path the manifest came from.
+PROGRESS_PATH = "/content-transfer-progress"
+
 
 async def poll_status(service: FrameService) -> None:
     """Refresh the panel status now and then. On battery only rarely: every
@@ -95,7 +99,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.middleware("http")
     async def log_panel_requests(request: Request, call_next):
         response = await call_next(request)
-        if request.url.path.startswith("/panel/"):
+        if request.url.path.startswith("/panel/") or request.url.path == PROGRESS_PATH:
             entry = PanelRequest(
                 time=datetime.now(UTC).isoformat(timespec="milliseconds"),
                 client=request.client.host if request.client else "",
@@ -126,6 +130,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if path is None:
             raise HTTPException(404)
         return FileResponse(path)
+
+    @app.post(PROGRESS_PATH)
+    async def panel_progress(request: Request) -> dict[str, object]:
+        body = (await request.body())[:2000].decode("utf-8", "replace")
+        log.info("panel progress report: %s", body)
+        return {}
 
     # -- API -----------------------------------------------------------------
 
