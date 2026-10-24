@@ -25,11 +25,13 @@ from PIL import Image
 from pydantic import BaseModel, ConfigDict, Field
 
 from .caption import caption_mask
-from .color import linear_to_u8, luminance, u8_to_linear
+from .color import FloatArray, linear_to_u8, luminance, u8_to_linear
 from .dither import Kernel, error_diffusion, nearest
 from .filters import sharpen
+from .grids import MAX_PHOTOS, MIN_PHOTOS, plan_multi
 from .interest import InterestMap
 from .layout import (
+    AutoCrop,
     Crop,
     Fit,
     Orientation,
@@ -69,6 +71,7 @@ class LayoutSettings(BaseModel):
     fit_crop: Crop | None = Field(
         None, description="FIT: the part shown and the window's shape (else the whole picture)"
     )
+    grid: str = Field("auto", description="MULTI: the grid's letter, or auto (by the shapes)")
 
 
 class DitherSettings(BaseModel):
@@ -189,13 +192,6 @@ def _mat_rgb(img: Image.Image, mat: str) -> tuple[int, int, int]:
 
 def plan_for(img: Image.Image, layout: LayoutSettings, caption: bool) -> Plan:
     """Where things go; the picture is analysed only if a crop must be chosen."""
-    analysis: InterestMap | None = None
-
-    def auto(aspect: float, zooms: Sequence[float]) -> list[Crop]:
-        nonlocal analysis
-        analysis = analysis or InterestMap(img)
-        return analysis.pick(aspect, zooms)
-
     return plan_layout(
         img.size,
         canvas_size(layout.orientation),
@@ -206,7 +202,7 @@ def plan_for(img: Image.Image, layout: LayoutSettings, caption: bool) -> Plan:
         details=layout.details,
         detail=layout.detail,
         fit_crop=layout.fit_crop,
-        auto=auto,
+        auto=_interest_picker(img),
     )
 
 
@@ -219,22 +215,78 @@ def simulate_naive(linear: np.ndarray, palette: Palette) -> np.ndarray:
     return error_diffusion(linear, nominal, Kernel.FLOYD_STEINBERG, match_oklab=False)
 
 
+Source = str | Path | bytes | Image.Image
+
+
 def render(
-    source: str | Path | bytes | Image.Image,
+    source: Source,
     settings: RenderSettings | None = None,
     palette: Palette = SPECTRA6,
 ) -> RenderResult:
     s = settings or RenderSettings()
-    pal = palette.subset(s.inks)
     img = load_image(source)
     plan = plan_for(img, s.layout, caption=bool(s.caption))
     linear = compose_plan(img, plan, mat_color=_mat_rgb(img, s.layout.mat))
+    return _finish(linear, plan, s, palette, _mat_rgb(img, s.layout.mat))
+
+
+def render_multi(
+    sources: Sequence[Source],
+    settings: RenderSettings | None = None,
+    palette: Palette = SPECTRA6,
+    seed: str = "",
+) -> RenderResult:
+    """MULTI: several photos on one board, each in its own mat window.
+
+    With a single source this is a passe-partout (FIT). ``seed`` (e.g. the
+    photos' ids) keeps the automatic grid choice the same on a redraw.
+    """
+    s = settings or RenderSettings()
+    if len(sources) < MIN_PHOTOS:
+        return render(sources[0], s, palette)  # MULTI with one picture is a passe-partout
+    imgs = [load_image(source) for source in sources[:MAX_PHOTOS]]
+    pickers = [_interest_picker(img) for img in imgs]
+    plan, order = plan_multi(
+        [img.size for img in imgs],
+        canvas_size(s.layout.orientation),
+        s.layout.margin,
+        s.layout.grid,
+        seed,
+        pickers,
+    )
+    mat_rgb = _mat_rgb(imgs[0], s.layout.mat)
+    linear = compose_plan([imgs[i] for i in order], plan, mat_color=mat_rgb)
+    no_text = s.model_copy(update={"caption": None, "text": None})
+    return _finish(linear, plan, no_text, palette, mat_rgb)
+
+
+def _interest_picker(img: Image.Image) -> AutoCrop:
+    """Crops by the picture's interest analysis, made only when first needed."""
+    analysis: InterestMap | None = None
+
+    def pick(aspect: float, zooms: Sequence[float]) -> list[Crop]:
+        nonlocal analysis
+        analysis = analysis or InterestMap(img)
+        return analysis.pick(aspect, zooms)
+
+    return pick
+
+
+def _finish(
+    linear: FloatArray,
+    plan: Plan,
+    s: RenderSettings,
+    palette: Palette,
+    mat_rgb: tuple[int, int, int],
+) -> RenderResult:
+    """Tone, mat, dither and lettering for a composed canvas."""
+    pal = palette.subset(s.inks)
     linear = sharpen(linear, s.sharpen)
 
     if s.strategy == Strategy.PASSTHROUGH:
         sent = linear_to_u8(linear)
         preview_idx = simulate_naive(linear, pal)
-        mat = u8_to_linear(np.array(_mat_rgb(img, s.layout.mat), dtype=np.uint8))
+        mat = u8_to_linear(np.array(mat_rgb, dtype=np.uint8))
         dark_board = float(luminance(mat)) < 0.18
     else:
         target = map_to_panel(linear, pal, s.tone)

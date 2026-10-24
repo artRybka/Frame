@@ -30,6 +30,7 @@ class Fit(StrEnum):
     FIT = "fit"  # whole image visible, mat around it
     DETAILS = "details"  # whole image edge to edge, two close-ups beside it
     DESCRIPTION = "description"  # like DETAILS, with a printed description for the 2nd
+    MULTI = "multi"  # photos only: several on one board, each in its own window
     AUTO = "auto"  # fill when the crop would be small, details when very different, else fit
 
 
@@ -149,7 +150,7 @@ class Window:
 
 @dataclass(frozen=True)
 class Plan:
-    fit: Fit  # resolved: FIT, FILL, DETAILS or DESCRIPTION
+    fit: Fit  # resolved: FIT, FILL, DETAILS, DESCRIPTION or MULTI
     canvas: tuple[int, int]
     windows: list[Window]
     caption_at: tuple[int, int, int] | None = None  # right x, top y, max width
@@ -212,7 +213,7 @@ def plan_layout(
     ``auto`` (the interest analysis) picks the crops, or they are centred,
     and FIT shows the whole picture.
     """
-    resolved = resolve_fit(size, canvas, fit)
+    resolved = resolve_fit(size, canvas, fit)  # MULTI with one picture: as FIT
     if resolved == Fit.FILL:
         return _plan_fill(size, canvas, caption, crop, auto)
     if resolved in (Fit.DETAILS, Fit.DESCRIPTION):
@@ -388,14 +389,19 @@ def _beside(
 
 
 def compose_plan(
-    img: Image.Image, plan: Plan, mat_color: tuple[int, int, int] = (255, 255, 255)
+    img: Image.Image | Sequence[Image.Image],
+    plan: Plan,
+    mat_color: tuple[int, int, int] = (255, 255, 255),
 ) -> FloatArray:
     """Linear RGB canvas: each window gets its part of the picture, resampled
-    in linear light; the rest is ``mat_color`` (painted over later)."""
+    in linear light; the rest is ``mat_color`` (painted over later).
+
+    ``img`` is one picture for all windows, or one per window (MULTI)."""
     cw, ch = plan.canvas
     out = np.empty((ch, cw, 3), dtype=np.float32)
     out[:] = u8_to_linear(np.array(mat_color, dtype=np.uint8))
-    for window in plan.windows:
+    images = [img] * len(plan.windows) if isinstance(img, Image.Image) else list(img)
+    for window, img in zip(plan.windows, images, strict=True):
         x, y, w, h = window.rect
         x0, y0, x1, y1 = window.box
         part = img.crop((round(x0), round(y0), round(x1), round(y1)))

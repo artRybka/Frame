@@ -19,7 +19,7 @@ import numpy as np
 
 from .color import FloatArray, linear_to_oklab, oklab_to_linear
 from .gamut import compress_chroma
-from .layout import Plan
+from .layout import Fit, Plan
 from .palette import Palette
 
 MAT_COLORS = ("white", "cream", "grey", "black", "picture")
@@ -100,11 +100,15 @@ def picture_tint(pixels: FloatArray, white: FloatArray, black: FloatArray) -> Fl
 
 
 def _picture_mat(target: FloatArray, plan: Plan, palette: Palette) -> FloatArray:
-    """The tint from what the panel shows of the picture, within its gamut."""
-    x, y, w, h = plan.windows[0].rect
+    """The tint from what the panel shows of the picture (with several
+    photos, of all of them), within its gamut."""
+    windows = plan.windows if plan.fit == Fit.MULTI else plan.windows[:1]
+    pixels = np.concatenate(
+        [target[y : y + h, x : x + w].reshape(-1, 3) for x, y, w, h in (w.rect for w in windows)]
+    )
     white = palette.perceived_linear()[palette.white_index()]
     black = palette.perceived_linear()[palette.black_index()]
-    tint = picture_tint(target[y : y + h, x : x + w], white, black)
+    tint = picture_tint(pixels, white, black)
     lab = compress_chroma(linear_to_oklab(tint)[None, :], palette, knee=0.7)
     return np.clip(oklab_to_linear(lab)[0], 0.0, 1.0).astype(np.float32)
 

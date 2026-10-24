@@ -14,6 +14,7 @@ from starlette.concurrency import run_in_threadpool
 
 from .device import MdcError
 from .imaging import PRESETS, RenderSettings
+from .imaging.grids import MAX_PHOTOS, MIN_PHOTOS
 from .imaging.layout import Fit
 from .imaging.text import TextBlock
 from .library import Item, ItemKind, PlaylistRules
@@ -45,6 +46,7 @@ class Hold(BaseModel):
 
 class PlayerState(BaseModel):
     current_item_id: str | None = None
+    current_group: list[str] = Field(default_factory=list)  # MULTI: the other photos shown
     queue: list[str] = Field(default_factory=list)
     history: list[str] = Field(default_factory=list)
     hold: Hold | None = None
@@ -168,6 +170,58 @@ class Player:
         items = (self.library.get(i) for i in state.queue[:limit])
         return [i for i in items if i is not None]
 
+    # -- boards of several photos (MULTI) ------------------------------------
+
+    @staticmethod
+    def multi(item: Item, settings: FrameSettings) -> bool:
+        return item.kind == ItemKind.PHOTO and settings.photo.fit == Fit.MULTI
+
+    def board(
+        self,
+        item: Item,
+        state: PlayerState,
+        settings: FrameSettings,
+        keep: list[str] | None = None,
+    ) -> list[Item]:
+        """The photos shown with ``item``: ``item`` alone unless photos are
+        shown several to a board. ``keep`` (a redraw) are the ones shown with
+        it before; missing photos are taken from the queue (removed from
+        it), then from the rest of the playlist."""
+        if not self.multi(item, settings):
+            return [item]
+        pres = settings.photo
+        kept = [i for i in (self.library.get(x) for x in keep or []) if i and not i.excluded]
+        if pres.multi_random:
+            count = len(kept) + 1 if kept else random.randint(MIN_PHOTOS, MAX_PHOTOS)
+        else:
+            count = pres.multi_count
+        board = [item, *(i for i in kept if i.id != item.id)][:count]
+        taken = {i.id for i in board}
+        for item_id in list(state.queue):
+            if len(board) >= count:
+                break
+            other = self.library.get(item_id) if item_id not in taken else None
+            if other is not None and other.kind == ItemKind.PHOTO and not other.excluded:
+                state.queue.remove(item_id)
+                board.append(other)
+                taken.add(item_id)
+        if len(board) < count:
+            rest = [
+                i
+                for i in self.candidates(settings)
+                if i.kind == ItemKind.PHOTO and not i.excluded and i.id not in taken
+            ]
+            random.shuffle(rest)
+            board += rest[: count - len(board)]
+        return board
+
+    def preview_board(self, item: Item, settings: FrameSettings) -> list[Item]:
+        """The board a preview of ``item`` shows: the one on the frame if
+        ``item`` is current, else the photos that would join it next."""
+        state = self.state
+        keep = state.current_group if state.current_item_id == item.id else None
+        return self.board(item, state, settings, keep)  # state is a copy: nothing is taken
+
     # -- showing -------------------------------------------------------------
 
     def render_settings(self, item: Item, settings: FrameSettings) -> RenderSettings:
@@ -178,6 +232,8 @@ class Player:
         base.layout.margin = pres.margin
         base.layout.orientation = settings.orientation
         base.layout.rotation = settings.rotation
+        if not pres.multi_random:
+            base.layout.grid = pres.multi_grid
         framing = item.framing.get(settings.orientation.value)
         if framing is not None:
             base.layout.crop = framing.fill
@@ -195,11 +251,14 @@ class Player:
             state = self.state
             settings = self.settings
 
+            board = self.board(item, state, settings)
+
             async def work() -> None:
-                await self._publish(item, settings)
+                await self._publish(board, settings)
                 if state.current_item_id and state.current_item_id != item.id:
                     state.history = [*state.history, state.current_item_id][-HISTORY_MAX:]
                 state.current_item_id = item.id
+                state.current_group = [i.id for i in board[1:]]
                 state.hold = hold
                 now = utcnow()
                 state.last_change_at = now.isoformat(timespec="seconds")
@@ -207,7 +266,8 @@ class Player:
                     now, settings, self.service.status.on_battery
                 ).isoformat(timespec="seconds")
                 state.last_error = None
-                self.library.record_shown(item.id, reason)
+                for shown in board:
+                    self.library.record_shown(shown.id, reason)
                 self._save_state(state)
                 await self._push(state)
 
@@ -238,9 +298,11 @@ class Player:
             if item is None:
                 return
             settings = self.settings
+            board = self.board(item, state, settings, keep=state.current_group)
 
             async def work() -> None:
-                await self._publish(item, settings)
+                await self._publish(board, settings)
+                state.current_group = [i.id for i in board[1:]]
                 state.last_error = None
                 self._save_state(state)
                 await self._push(state)
@@ -283,17 +345,25 @@ class Player:
         else:
             await self.next("resume")
 
-    async def _publish(self, item: Item, settings: FrameSettings) -> None:
-        path = await run_in_threadpool(self.service.images.ensure_image, item)
-        data = await run_in_threadpool(path.read_bytes)
+    async def _publish(self, board: list[Item], settings: FrameSettings) -> None:
+        """Render the picture (or, MULTI, the board of photos) and publish it."""
+        item = board[0]
+        images = []
+        for shown in board:
+            path = await run_in_threadpool(self.service.images.ensure_image, shown)
+            images.append(await run_in_threadpool(path.read_bytes))
+        extra: dict[str, object] = {"item_id": item.id, "kind": item.kind.value}
+        if len(board) > 1:
+            extra["item_ids"] = [i.id for i in board]
         await run_in_threadpool(
             self.service.prepare,
-            data,
+            images if self.multi(item, settings) else images[0],
             self.render_settings(item, settings),
             title=item.title,
             description=caption_for(item),
             source=item.source,
-            extra={"item_id": item.id, "kind": item.kind.value},
+            extra=extra,
+            seed=",".join(i.id for i in board),
         )
 
     async def _push(self, state: PlayerState) -> None:
