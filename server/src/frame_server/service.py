@@ -15,7 +15,8 @@ from .config import Settings
 from .device import MdcClient, MdcConnectionError, wol
 from .imaging import Palette, RenderSettings, get_palette, render
 from .imaging.pipeline import encode_image
-from .library import ImageCache, Importer, Library
+from .library import ImageCache, Importer, Job, Library
+from .library.icloud import sync_album
 from .library.museums import client as museum_client
 from .player import Player
 from .status import StatusMonitor
@@ -98,6 +99,18 @@ class FrameService:
     @property
     def device_configured(self) -> bool:
         return bool(self.settings.device_host and self.settings.device_pin)
+
+    def start_album_sync(self) -> Job:
+        """Mirror the shared iCloud album (one sync at a time)."""
+        for job in self.importer.jobs.values():
+            if job.description == "album" and not job.finished:
+                return job
+        url = self.player.settings.album_url
+
+        def work(job: Job) -> None:
+            sync_album(self.importer, url, job)
+
+        return self.importer.start_job("album", work)
 
     def background(self, coro: Coroutine[object, object, object]) -> asyncio.Task[object]:
         """Run a coroutine after the response; keeps a reference until done."""

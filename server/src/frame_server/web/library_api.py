@@ -251,6 +251,25 @@ def museum_import_search(source: str, request: ImportSearchRequest, svc: Svc) ->
     return {"job_id": job.id}
 
 
+@router.get("/album")
+def album(svc: Svc) -> dict[str, Any]:
+    """Last shared-album sync and how many photos the library holds."""
+    photos = svc.library.query(PlaylistRules(kinds=[ItemKind.PHOTO]))[0]
+    return {
+        "url": svc.player.settings.album_url,
+        "last_sync": svc.library.get_state("album_sync"),
+        "photos": photos,
+    }
+
+
+@router.post("/album/sync")
+def album_sync(svc: Svc) -> dict[str, Any]:
+    url = svc.player.settings.album_url
+    if not url:
+        raise HTTPException(409, "no shared album link in settings")
+    return {"job_id": svc.start_album_sync().id}
+
+
 @router.get("/jobs")
 def jobs(svc: Svc) -> list[dict[str, Any]]:
     return [vars(j) for j in svc.importer.jobs.values()]

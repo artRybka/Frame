@@ -30,7 +30,7 @@ class ImageCache:
         self.images = root / "images"
         self.thumbs.mkdir(parents=True, exist_ok=True)
         self.images.mkdir(parents=True, exist_ok=True)
-        self._http = http
+        self.http = http
         self._locks: dict[str, threading.Lock] = {}
         self._guard = threading.Lock()
 
@@ -45,7 +45,7 @@ class ImageCache:
         return self.images / f"{item.file_stem}.jpg"
 
     def _download(self, url: str) -> Image.Image:
-        with self._http() as http:
+        with self.http() as http:
             resp = http.get(url)
             resp.raise_for_status()
         return load_image(resp.content)

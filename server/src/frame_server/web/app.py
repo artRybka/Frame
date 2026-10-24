@@ -49,6 +49,14 @@ async def poll_status(service: FrameService) -> None:
         await asyncio.sleep(max(minutes, 1) * 60)
 
 
+async def sync_album_periodically(service: FrameService, minutes: int = 30) -> None:
+    await asyncio.sleep(20)
+    while True:
+        if service.player.settings.album_url:
+            service.start_album_sync()
+        await asyncio.sleep(minutes * 60)
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings.load()
     service = FrameService(settings)
@@ -61,6 +69,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             tasks = [
                 asyncio.create_task(service.player.run()),
                 asyncio.create_task(poll_status(service)),
+                asyncio.create_task(sync_album_periodically(service)),
             ]
         if settings.seed_library and service.library.count() == 0:
             service.importer.start_job(
