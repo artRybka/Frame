@@ -18,8 +18,10 @@ Przed pierwszym uruchomieniem na iPhonie wybierz w Xcode swój zespół
 Bez serwera aplikacja startuje w **trybie demo**: ok. 40 prawdziwych dzieł
 z kolekcji muzeów (`Frame/Resources/DemoLibrary.json`, wygenerowane
 importerem serwera), z kolorami i tagami. Obrazy są wbudowane w aplikację
-(`Frame/Resources/DemoImages`): oryginał 900 px i podgląd „na ramce”
-wyrenderowany pipeline'em serwera (`<id>-frame.jpg`); gdy pliku brak,
+(`Frame/Resources/DemoImages`): oryginał 900 px i samo dzieło w wyglądzie
+e-papieru wyrenderowane pipeline'em serwera (`<id>-ink.jpg`). Podgląd „na
+ramce” składa z niego aplikacja (`DemoFraming`) według bieżących ustawień
+prezentacji: orientacja, kadrowanie, passe-partout, etykieta. Gdy pliku brak,
 aplikacja sięga do CDN muzeum.
 Przełącznik jest w zakładce *Ramka → Serwer ramki*.
 

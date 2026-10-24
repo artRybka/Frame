@@ -149,12 +149,34 @@ struct LiveBackend: FrameBackend {
         switch image {
         case let .thumb(id): req = request("/api/library/items/\(escape(id))/thumb")
         case let .image(id): req = request("/api/library/items/\(escape(id))/image")
-        case let .framePreview(id): req = request("/api/library/items/\(escape(id))/preview")
+        case let .framePreview(id, settings):
+            req = request("/api/library/items/\(escape(id))/preview", query: framingQuery(settings))
         case let .path(path): req = request(path)
         case let .url(url): req = URLRequest(url: url)
         }
         req.timeoutInterval = 120
         return req
+    }
+
+    /// Only what shapes the render; the rest of the settings would just
+    /// split the caches.
+    private struct Framing: Encodable {
+        let orientation: String
+        let rotation: Int
+        let art: Presentation
+        let photo: Presentation
+    }
+
+    private func framingQuery(_ settings: FrameSettings?) -> [URLQueryItem] {
+        guard let settings else { return [] }
+        let encoder = Self.encoder()
+        encoder.outputFormatting = .sortedKeys  // same settings, same URL
+        let framing = Framing(
+            orientation: settings.orientation, rotation: settings.rotation,
+            art: settings.art, photo: settings.photo
+        )
+        guard let data = try? encoder.encode(framing) else { return [] }
+        return [URLQueryItem(name: "settings", value: String(decoding: data, as: UTF8.self))]
     }
 
     // MARK: Plumbing

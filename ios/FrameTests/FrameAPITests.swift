@@ -101,7 +101,34 @@ final class FrameAPITests: XCTestCase {
         let thumb = try XCTUnwrap(demo.request(for: .thumb("aic:24645"))?.url)
         XCTAssertTrue(thumb.isFileURL)
         XCTAssertEqual(thumb.lastPathComponent, "aic_24645.jpg")
-        let preview = try XCTUnwrap(demo.request(for: .path("/demo/aic:24645"))?.url)
-        XCTAssertEqual(preview.lastPathComponent, "aic_24645-frame.jpg")
+        let preview = try XCTUnwrap(demo.request(for: .path("/demo/aic:24645?key"))?.url)
+        XCTAssertTrue(preview.isFileURL)
+        XCTAssertTrue(preview.lastPathComponent.hasPrefix("aic_24645-landscape-fit-"))
+    }
+
+    func testDemoPreviewFollowsPresentationSettings() async throws {
+        let demo = DemoBackend()
+        let before = try await demo.player().current?.previewUrl
+        var settings = try await demo.settings()
+        settings.art.fit = "fill"
+        _ = try await demo.saveSettings(settings)
+        let after = try await demo.player().current?.previewUrl
+        XCTAssertNotEqual(before, after)
+        let current = try await demo.player().current
+        let id = try XCTUnwrap(current?.item?.id)
+        let framed = try XCTUnwrap(demo.request(for: .framePreview(id))?.url)
+        XCTAssertTrue(framed.lastPathComponent.contains("-fill-"))
+    }
+
+    func testDemoFramingMatchesServerLayout() {
+        let canvas = DemoFraming.canvas("landscape")
+        // Portrait 2:3 picture, 5% passe-partout: as layout.placement on the server.
+        let fit = DemoFraming.placement(CGSize(width: 800, height: 1200), in: canvas, fit: "fit", margin: 0.05)
+        XCTAssertFalse(fit.fill)
+        XCTAssertEqual(fit.rect, CGRect(x: 424, y: 36, width: 432, height: 648))
+        // Nearly 16:9: "auto" fills.
+        let auto = DemoFraming.placement(CGSize(width: 1500, height: 900), in: canvas, fit: "auto", margin: 0.05)
+        XCTAssertTrue(auto.fill)
+        XCTAssertEqual(auto.rect.width, 1280, accuracy: 0.5)
     }
 }

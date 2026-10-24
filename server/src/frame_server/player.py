@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import random
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
@@ -167,21 +168,11 @@ class Player:
     async def show(self, item: Item, reason: str, hold: Hold | None = None) -> None:
         """Render ``item``, publish it and tell the panel. Never raises."""
         async with self._lock:
-            self.busy = True
             state = self.state
             settings = self.settings
-            try:
-                path = await run_in_threadpool(self.service.images.ensure_image, item)
-                data = await run_in_threadpool(path.read_bytes)
-                await run_in_threadpool(
-                    self.service.prepare,
-                    data,
-                    self.render_settings(item, settings),
-                    title=item.title,
-                    description=caption_for(item),
-                    source=item.source,
-                    extra={"item_id": item.id, "kind": item.kind.value},
-                )
+
+            async def work() -> None:
+                await self._publish(item, settings)
                 if state.current_item_id and state.current_item_id != item.id:
                     state.history = [*state.history, state.current_item_id][-HISTORY_MAX:]
                 state.current_item_id = item.id
@@ -194,21 +185,81 @@ class Player:
                 state.last_error = None
                 self.library.record_shown(item.id, reason)
                 self._save_state(state)
-                if self.service.device_configured:
-                    outcome = await self.service.push_current(wait=120)
-                    if not outcome.fetched:
-                        state.last_error = outcome.message
-                        self._save_state(state)
-            except (MdcError, OSError, ValueError, RuntimeError) as err:
-                log.warning("showing %s failed: %s", item.id, err)
-                state.last_error = str(err)
+                await self._push(state)
+
+            await self._guarded(item, state, work)
+
+    def needs_restyle(self, old: FrameSettings, new: FrameSettings) -> bool:
+        """Whether a settings change alters how the current picture is drawn."""
+        state = self.state
+        item = self.library.get(state.current_item_id) if state.current_item_id else None
+        if item is None:
+            return False
+        kind = "photo" if item.kind == ItemKind.PHOTO else "art"
+        return (old.orientation, old.rotation, getattr(old, kind)) != (
+            new.orientation,
+            new.rotation,
+            getattr(new, kind),
+        )
+
+    async def restyle(self) -> None:
+        """Redraw the current picture with the current presentation settings.
+
+        The same picture, framed differently: schedule, hold, history and
+        show counts stay as they are. Never raises.
+        """
+        async with self._lock:
+            state = self.state
+            item = self.library.get(state.current_item_id) if state.current_item_id else None
+            if item is None:
+                return
+            settings = self.settings
+
+            async def work() -> None:
+                await self._publish(item, settings)
+                state.last_error = None
                 self._save_state(state)
-            except Exception as err:  # keep the scheduler alive whatever happens
-                log.exception("showing %s failed", item.id)
-                state.last_error = str(err)
-                self._save_state(state)
-            finally:
-                self.busy = False
+                await self._push(state)
+
+            await self._guarded(item, state, work)
+
+    async def _publish(self, item: Item, settings: FrameSettings) -> None:
+        path = await run_in_threadpool(self.service.images.ensure_image, item)
+        data = await run_in_threadpool(path.read_bytes)
+        await run_in_threadpool(
+            self.service.prepare,
+            data,
+            self.render_settings(item, settings),
+            title=item.title,
+            description=caption_for(item),
+            source=item.source,
+            extra={"item_id": item.id, "kind": item.kind.value},
+        )
+
+    async def _push(self, state: PlayerState) -> None:
+        if not self.service.device_configured:
+            return
+        outcome = await self.service.push_current(wait=120)
+        if not outcome.fetched:
+            state.last_error = outcome.message
+            self._save_state(state)
+
+    async def _guarded(
+        self, item: Item, state: PlayerState, work: Callable[[], Awaitable[None]]
+    ) -> None:
+        self.busy = True
+        try:
+            await work()
+        except (MdcError, OSError, ValueError, RuntimeError) as err:
+            log.warning("showing %s failed: %s", item.id, err)
+            state.last_error = str(err)
+            self._save_state(state)
+        except Exception as err:  # keep the scheduler alive whatever happens
+            log.exception("showing %s failed", item.id)
+            state.last_error = str(err)
+            self._save_state(state)
+        finally:
+            self.busy = False
 
     async def next(self, reason: str = "manual") -> Item | None:
         state, settings = self.state, self.settings

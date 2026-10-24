@@ -254,6 +254,8 @@ struct Presentation: Codable, Hashable, Sendable {
     var fit: String  // "fit" | "fill" | "auto"
     var margin: Double
     var label: Bool
+
+    var key: String { "\(preset),\(fit),\(margin),\(label)" }
 }
 
 struct FrameSettings: Codable, Hashable, Sendable {
@@ -272,6 +274,12 @@ struct FrameSettings: Codable, Hashable, Sendable {
     var albumUrl: String
     var timezone: String
     var statusPollMinutes: Int
+
+    /// Changes whenever the way pictures are framed on the panel changes;
+    /// used to refresh cached "on the frame" previews.
+    var presentationKey: String {
+        [orientation, String(rotation), art.key, photo.key].joined(separator: "|")
+    }
 
     static let defaults = FrameSettings(
         mode: "art", playlistId: nil, intervalMinutes: 1440, intervalMinutesBattery: 1440,

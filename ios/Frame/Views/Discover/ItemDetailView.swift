@@ -66,7 +66,10 @@ struct ItemDetailView: View {
 
     private func picture(_ item: Item) -> some View {
         VStack(spacing: 12) {
-            let ref: ImageRef = view == .original ? .image(item.id) : .framePreview(item.id)
+            let ref: ImageRef =
+                view == .original
+                ? .image(item.id)
+                : .framePreview(item.id, settings: model.settings)
             ArtImage(ref: ref, placeholder: item.placeholderColor, maxPixel: 1800, contentMode: .fit)
                 .id(ref)
                 .aspectRatio(view == .original ? CGFloat(aspect(item)) : (model.isPortrait ? 9.0 / 16.0 : 16.0 / 9.0), contentMode: .fit)

@@ -4,7 +4,9 @@ import Foundation
 enum ImageRef: Hashable, Sendable {
     case thumb(String)  // library item id
     case image(String)  // display-size original
-    case framePreview(String)  // simulated look on the e-paper panel
+    /// Simulated look on the e-paper panel, framed with `settings` (saved or
+    /// still being edited); nil means the server's saved settings.
+    case framePreview(String, settings: FrameSettings? = nil)
     case path(String)  // server-relative path, e.g. /api/previews/<id>.png
     case url(URL)  // public URL (museum CDN)
 }

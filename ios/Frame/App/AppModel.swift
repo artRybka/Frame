@@ -175,10 +175,16 @@ final class AppModel {
     }
 
     func saveSettings(_ new: FrameSettings) async {
+        let reframed = settings?.presentationKey != new.presentationKey
         do {
             settings = try await backend.saveSettings(new)
             toast = "Zapisano ustawienia"
-            await refreshPlayer()
+            if reframed {
+                // The server redraws the current picture with the new framing.
+                await followPlayer()
+            } else {
+                await refreshPlayer()
+            }
         } catch { show(error) }
     }
 

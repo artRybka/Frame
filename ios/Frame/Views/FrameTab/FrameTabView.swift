@@ -359,8 +359,11 @@ struct ScheduleSection: View {
 }
 
 struct PresentationSection: View {
+    @Environment(AppModel.self) private var model
     @Binding var settings: FrameSettings
     @State private var target = Target.art
+    /// `settings` after a short pause, so a slider drag renders once.
+    @State private var previewed: FrameSettings?
 
     enum Target: String, CaseIterable {
         case art = "Sztuka"
@@ -371,6 +374,12 @@ struct PresentationSection: View {
         target == .art ? $settings.art : $settings.photo
     }
 
+    /// The picture on the frame, when the selected presentation applies to it.
+    private var previewItem: Item? {
+        guard let item = model.player?.current?.item else { return nil }
+        return (item.kind == .photo) == (target == .photo) ? item : nil
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             SectionHeader(title: "Prezentacja", subtitle: "Jak obraz wygląda na ramce")
@@ -378,6 +387,27 @@ struct PresentationSection: View {
                 ForEach(Target.allCases, id: \.self) { Text($0.rawValue).tag($0) }
             }
             .pickerStyle(.segmented)
+            if let item = previewItem {
+                let portrait = settings.orientation == "portrait"
+                VStack(spacing: 10) {
+                    FramedArtwork(
+                        ref: .framePreview(item.id, settings: previewed ?? settings),
+                        aspectRatio: portrait ? 9.0 / 16.0 : 16.0 / 9.0,
+                        moulding: 5
+                    )
+                    .frame(maxWidth: portrait ? 190 : .infinity)
+                    Text("Tak będzie wyglądał obraz, który jest teraz na ramce. Zmiany trafią na ramkę po zapisaniu.")
+                        .font(.caption)
+                        .foregroundStyle(Theme.inkSoft)
+                        .multilineTextAlignment(.center)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 6)
+                .task(id: settings) {
+                    try? await Task.sleep(for: .milliseconds(450))
+                    if !Task.isCancelled { previewed = settings }
+                }
+            }
             Card {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Kadrowanie").foregroundStyle(Theme.ink)
@@ -392,6 +422,19 @@ struct PresentationSection: View {
                         FitOption(title: "Auto", fit: "auto", selected: presentation.fit.wrappedValue == "auto") {
                             presentation.fit.wrappedValue = "auto"
                         }
+                    }
+                }
+                if presentation.fit.wrappedValue != "fill" {
+                    Divider()
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text("Szerokość passe-partout")
+                            Spacer()
+                            Text("\(Int((presentation.margin.wrappedValue * 100).rounded())) %")
+                                .monospacedDigit()
+                                .foregroundStyle(Theme.inkSoft)
+                        }
+                        Slider(value: presentation.margin, in: 0 ... 0.2, step: 0.01)
                     }
                 }
                 Divider()

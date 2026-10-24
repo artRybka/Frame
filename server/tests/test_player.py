@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 
 from conftest import jpeg_bytes
@@ -127,6 +128,17 @@ def test_api_library_playlists_player(service) -> None:
         playlist_id = created.json()["playlist"]["id"]
         assert any(p["name"] == "Niebieskie" for p in client.get("/api/playlists").json())
 
+        # Framing tried before saving it: a different render of the same item.
+        saved = client.get(f"/api/library/items/{item_id}/preview")
+        trial = client.get(
+            f"/api/library/items/{item_id}/preview",
+            params={"settings": json.dumps({"art": {"fit": "fill", "margin": 0}})},
+        )
+        assert trial.headers["content-type"] == "image/png"
+        assert trial.content != saved.content
+        bad = client.get(f"/api/library/items/{item_id}/preview", params={"settings": "{"})
+        assert bad.status_code == 422
+
         settings = client.get("/api/settings").json()
         settings["interval_minutes"] = 180
         settings["art"]["label"] = True
@@ -139,3 +151,27 @@ def test_api_library_playlists_player(service) -> None:
         status = client.get("/api/status").json()
         assert status["device"]["configured"] is False
         assert status["server"]["library_count"] == 3
+
+
+async def test_presentation_change_redraws_the_current_picture(service) -> None:
+    item = _add(service, 1, (200, 40, 40), "Ala")
+    player = service.player
+    await player.show(item, "test")
+    before, state = service.store.current(), player.state
+
+    old = player.settings
+    new = old.model_copy(deep=True)
+    new.photo.margin = 0.2  # the current picture is art: no redraw
+    assert not player.needs_restyle(old, new)
+    new.art.margin = 0.12
+    assert player.needs_restyle(old, new)
+
+    player.save_settings(new)
+    await player.restyle()
+    after = service.store.current()
+    assert after.file_id != before.file_id
+    assert after.render["layout"]["margin"] == 0.12
+    # Same picture, framed differently: the schedule and counts stay put.
+    assert player.state.last_change_at == state.last_change_at
+    assert player.state.next_change_at == state.next_change_at
+    assert service.library.get(item.id).show_count == 1
