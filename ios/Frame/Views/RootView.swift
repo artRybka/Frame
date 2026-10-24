@@ -1,19 +1,71 @@
 import SwiftUI
 
+/// Launch arguments used by CI screenshots, e.g. `-demo YES -screen discover`.
+enum LaunchRoute {
+    static let screen = UserDefaults.standard.string(forKey: "screen") ?? ""
+}
+
 struct RootView: View {
+    @Environment(AppModel.self) private var model
+    @State private var tab = Tab.initial
+
+    enum Tab: Hashable {
+        case now, discover, playlists, frame
+
+        static var initial: Tab {
+            switch LaunchRoute.screen {
+            case "discover", "detail", "museums": .discover
+            case "playlists", "playlist", "editor": .playlists
+            case "frame": .frame
+            default: .now
+            }
+        }
+    }
+
     var body: some View {
-        TabView {
-            NowPlayingView()
+        TabView(selection: $tab) {
+            NowView()
                 .tabItem { Label("Teraz", systemImage: "photo.artframe") }
-            SendView()
-                .tabItem { Label("Wyślij", systemImage: "square.and.arrow.up") }
-            SettingsView()
-                .tabItem { Label("Ustawienia", systemImage: "gearshape") }
+                .tag(Tab.now)
+            DiscoverView()
+                .tabItem { Label("Odkrywaj", systemImage: "square.grid.2x2") }
+                .tag(Tab.discover)
+            PlaylistsView()
+                .tabItem { Label("Playlisty", systemImage: "rectangle.stack") }
+                .tag(Tab.playlists)
+            FrameTabView()
+                .tabItem { Label("Ramka", systemImage: "slider.horizontal.3") }
+                .tag(Tab.frame)
+        }
+        .overlay(alignment: .top) { ToastView() }
+        .task { await model.refreshAll() }
+    }
+}
+
+/// Short confirmation / error banner.
+struct ToastView: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        if let message = model.toast {
+            Text(message)
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(Theme.paper)
+                .padding(.horizontal, 18)
+                .padding(.vertical, 11)
+                .background(Theme.ink.opacity(0.92), in: Capsule())
+                .shadow(color: .black.opacity(0.2), radius: 12, y: 6)
+                .padding(.top, 8)
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .task(id: message) {
+                    try? await Task.sleep(for: .seconds(2.6))
+                    withAnimation(.easeOut) { model.toast = nil }
+                }
+                .onTapGesture { model.toast = nil }
         }
     }
 }
 
 #Preview {
-    RootView()
-        .environment(AppModel())
+    RootView().environment(AppModel())
 }

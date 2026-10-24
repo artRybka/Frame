@@ -8,6 +8,7 @@ struct FrameApp: App {
         WindowGroup {
             RootView()
                 .environment(model)
+                .tint(Theme.accent)
         }
     }
 }
