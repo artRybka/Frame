@@ -385,13 +385,14 @@ enum DemoFraming {
             style.lineHeightMultiple = leading
             let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: ink, .paragraphStyle: style]
             let room = CGRect(x: rect.minX, y: cursor, width: rect.width, height: max(0, rect.maxY - cursor))
-            let line = font.lineHeight * leading
-            let limit = CGFloat(lines) * line
+            // Half a line of slack: laid-out lines run a little taller than
+            // lineHeight × multiple, and a box exactly n lines high holds n - 1.
+            let limit = (CGFloat(lines) + 0.5) * font.lineHeight * leading
             let options: NSStringDrawingOptions = [.usesLineFragmentOrigin, .truncatesLastVisibleLine]
             let box = CGRect(origin: room.origin, size: CGSize(width: room.width, height: min(room.height, limit)))
             (text as NSString).draw(with: box, options: options, attributes: attributes, context: nil)
             let used = (text as NSString).boundingRect(with: box.size, options: options, attributes: attributes, context: nil)
-            cursor += min(box.height, ceil(used.height / line) * line)
+            cursor += min(box.height, ceil(used.height))
         }
         if !block.title.isEmpty {
             draw(block.title, title, lines: 2, leading: 1.1)
