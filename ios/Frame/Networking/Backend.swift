@@ -63,8 +63,8 @@ enum BackendError: LocalizedError {
             let detail = (try? JSONDecoder().decode([String: String].self, from: Data(body.utf8)))?[
                 "detail"]
             return "Serwer odpowiedział \(status)" + (detail.map { ": \($0)" } ?? "")
-        case .invalidResponse: "Nieprawidłowa odpowiedź serwera"
-        case .notFound: "Nie znaleziono"
+        case .invalidResponse: return "Nieprawidłowa odpowiedź serwera"
+        case .notFound: return "Nie znaleziono"
         }
     }
 }
