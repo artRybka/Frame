@@ -59,6 +59,8 @@ protocol FrameBackend: Sendable {
     func packs() async throws -> [LibraryPack]
     /// Starts (or joins) a pack's import; returns the job id.
     func importPack(key: String) async throws -> String
+    /// Adds random works by period, style and kind; returns the job id.
+    func drawRandom(_ request: DrawRequest) async throws -> String
     func job(id: String) async throws -> JobStatus
 
     func album() async throws -> AlbumInfo

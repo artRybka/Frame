@@ -343,12 +343,24 @@ struct LibraryPack: Codable, Hashable, Sendable, Identifiable {
     var id: String { key }
 }
 
+/// Random works to add, `POST /api/library/draw`.
+struct DrawRequest: Codable, Hashable, Sendable {
+    var count = 100
+    var yearFrom: Int?
+    var yearTo: Int?
+    /// English, as the museums name styles, e.g. "Impressionism".
+    var style = ""
+    var kind = "any"  // any | painting | print | drawing | poster
+    var minSuitability = 0.0
+}
+
 /// A background import on the server, `GET /api/jobs/{id}`.
 struct JobStatus: Codable, Hashable, Sendable {
     let id: String
     var total: Int
     var done: Int
     var failed: Int
+    var skipped: Int?
     var finished: Bool
     var error: String
     var itemIds: [String]

@@ -429,7 +429,7 @@ actor DemoBackend: FrameBackend {
     func importSearch(source: String, query: String, limit: Int) async throws -> String {
         let found = try await searchMuseum(source: source, query: query, page: 1).items.prefix(limit)
         demoJobs["demo"] = JobStatus(
-            id: "demo", total: found.count, done: found.count, failed: 0, finished: true, error: "",
+            id: "demo", total: found.count, done: found.count, failed: 0, skipped: 0, finished: true, error: "",
             itemIds: found.map(\.id)
         )
         return "demo"
@@ -452,9 +452,13 @@ actor DemoBackend: FrameBackend {
 
     func importPack(key: String) async throws -> String {
         demoJobs["demo"] = JobStatus(
-            id: "demo", total: 0, done: 0, failed: 0, finished: true, error: "", itemIds: []
+            id: "demo", total: 0, done: 0, failed: 0, skipped: 0, finished: true, error: "", itemIds: []
         )
         return "demo"
+    }
+
+    func drawRandom(_ request: DrawRequest) async throws -> String {
+        try await importPack(key: "draw")
     }
 
     func job(id: String) async throws -> JobStatus {

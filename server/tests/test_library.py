@@ -14,6 +14,7 @@ from frame_server.library.museums import (
     MUSEUMS,
     ArtInstituteChicago,
     ClevelandMuseum,
+    Discovery,
     MetropolitanMuseum,
     Museum,
     Rijksmuseum,
@@ -389,3 +390,65 @@ def test_packs_use_known_museums() -> None:
     for _, queries in [("starter", SEED_QUERIES), *[(p.key, p.queries) for p in PACKS]]:
         for source, query, limit in queries:
             assert source in MUSEUMS and query and 0 < limit <= 500
+
+
+def test_discovery_year_check() -> None:
+    spec = Discovery(year_from=1850, year_to=1900)
+    assert spec.fits(_item(1, year=1850)) and not spec.fits(_item(2, year=1901))
+    assert not spec.fits(_item(3)) and Discovery().fits(_item(3))
+    assert Rijksmuseum(httpx.Client())._decades(Discovery(year_from=1855, year_to=1871)) == [
+        1850,
+        1860,
+        1870,
+    ]
+
+
+def test_draw_takes_turns_and_skips_known_or_weak(tmp_path) -> None:
+    import random
+
+    from frame_server.library.importer import Importer, Job
+
+    class Fake(Museum):
+        name = "Fake"
+
+        def search(self, query: str, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
+            return 0, []
+
+        def fetch(self, source_id: str) -> Item | None:
+            return None
+
+        def discover(self, spec, limit=20, page=1):  # type: ignore[no-untyped-def]
+            items = [self._item(str(n), year=1800 + n) for n in range(40)]
+            return len(items), items[(page - 1) * limit : page * limit]
+
+    class A(Fake):
+        key = "aic"
+
+    class B(Fake):
+        key = "cma"
+
+    class Importing(Importer):
+        def _analysed(self, item: Item) -> Item:
+            # Odd ids look weak on e-paper.
+            score = 0.2 if int(item.source_id) % 2 else 0.9
+            return item.model_copy(update={"suitability": score})
+
+    saved = dict(MUSEUMS)
+    MUSEUMS.update(aic=A, cma=B)
+    try:
+        library = Library(tmp_path / "lib.db")
+        library.upsert(A(httpx.Client())._item("10", year=1810))
+        importer = Importing(library, None, None)  # type: ignore[arg-type]
+        importer.cache = type("Cache", (), {"remove": lambda self, item: None})()
+        job = Job(id="j", description="draw")
+        spec = Discovery(year_from=1800, year_to=1830)
+        importer.draw(spec, 8, ["aic", "cma"], job, min_suitability=0.5, rng=random.Random(3))
+    finally:
+        MUSEUMS.clear()
+        MUSEUMS.update(saved)
+    assert job.done == 8 and job.skipped > 0 and len(set(job.item_ids)) == 8
+    assert "aic:10" not in job.item_ids
+    assert {i.split(":")[0] for i in job.item_ids} == {"aic", "cma"}
+    for item_id in job.item_ids:
+        n = int(item_id.split(":")[1])
+        assert n % 2 == 0 and n <= 30

@@ -8,9 +8,12 @@ at import time).
 from __future__ import annotations
 
 import html
+import random
 import re
 from abc import ABC, abstractmethod
-from typing import Any, ClassVar
+from collections.abc import Iterator
+from dataclasses import dataclass
+from typing import Any, ClassVar, Literal
 
 import httpx
 
@@ -36,11 +39,36 @@ def client() -> httpx.Client:
     )
 
 
+Kind = Literal["any", "painting", "print", "drawing", "poster"]
+
+
+@dataclass(frozen=True)
+class Discovery:
+    """What to draw from a collection at random; every field is optional."""
+
+    year_from: int | None = None
+    year_to: int | None = None
+    #: Free text matched against styles and movements, e.g. "Impressionism".
+    style: str = ""
+    kind: Kind = "any"
+
+    def fits(self, item: Item) -> bool:
+        """Museums' date filters are coarse; this checks the year exactly."""
+        if item.year is None:
+            return self.year_from is None and self.year_to is None
+        if self.year_from is not None and item.year < self.year_from:
+            return False
+        return self.year_to is None or item.year <= self.year_to
+
+
 class Museum(ABC):
     key: str
     name: str
     #: Most results one search request may ask for.
     page_size = 100
+    #: How deep random draws reach into results (search engines stop paging
+    #: at 10 000).
+    random_depth = 10_000
 
     def __init__(self, http: httpx.Client, private_use: bool = False) -> None:
         self.http = http
@@ -53,6 +81,24 @@ class Museum(ABC):
     @abstractmethod
     def fetch(self, source_id: str) -> Item | None:
         """One work by its id in the museum's collection."""
+
+    def discover(self, spec: Discovery, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
+        """Works matching ``spec`` (in any order); returns (total, items).
+
+        Sources that cannot filter this way return nothing.
+        """
+        return 0, []
+
+    def random_draw(self, spec: Discovery, rng: random.Random) -> Iterator[Item]:
+        """Works matching ``spec``, from result pages taken in random order."""
+        size = min(self.page_size, 24)
+        total, _ = self.discover(spec, limit=1, page=1)
+        pages = list(range(1, -(-min(total, self.random_depth) // size) + 1))
+        rng.shuffle(pages)
+        for page in pages:
+            _, items = self.discover(spec, limit=size, page=page)
+            rng.shuffle(items)
+            yield from items
 
     def _item(self, source_id: str, **fields: Any) -> Item:
         return Item(
@@ -118,28 +164,60 @@ class ArtInstituteChicago(Museum):
         "medium_display",
     )
 
+    artwork_types: ClassVar[dict[str, str]] = {
+        "painting": "Painting",
+        "print": "Print",
+        "drawing": "Drawing and Watercolor",
+    }
+
+    @staticmethod
+    def _text(query: str, fields: tuple[str, ...]) -> dict[str, Any]:
+        return {
+            "simple_query_string": {
+                "query": query,
+                "fields": list(fields),
+                "default_operator": "and",
+            }
+        }
+
     def search(self, query: str, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
+        must = [self._text(query, self.search_fields)] if query.strip() else []
+        return self._post(query, must, [], limit, page)
+
+    def discover(self, spec: Discovery, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
         must: list[dict[str, Any]] = []
-        if query.strip():
-            must.append(
-                {
-                    "simple_query_string": {
-                        "query": query,
-                        "fields": list(self.search_fields),
-                        "default_operator": "and",
-                    }
-                }
-            )
-        resp = self.http.post(
-            f"{self.api}/artworks/search",
-            json={
-                "q": query,
-                "limit": limit,
-                "page": page,
-                "fields": self.fields.split(","),
-                "query": {"bool": {"must": must, "filter": [{"term": {"is_public_domain": True}}]}},
-            },
-        )
+        filters: list[dict[str, Any]] = []
+        if spec.style.strip():
+            fields = ("style_titles", "term_titles", "subject_titles", "classification_titles")
+            must.append(self._text(spec.style, fields))
+        if spec.kind == "poster":
+            must.append(self._text("poster", ("classification_titles", "term_titles")))
+        elif spec.kind in self.artwork_types:
+            must.append({"match": {"artwork_type_title": self.artwork_types[spec.kind]}})
+        if spec.year_from is not None:
+            filters.append({"range": {"date_start": {"gte": spec.year_from}}})
+        if spec.year_to is not None:
+            filters.append({"range": {"date_start": {"lte": spec.year_to}}})
+        return self._post("", must, filters, limit, page)
+
+    def _post(
+        self,
+        query: str,
+        must: list[dict[str, Any]],
+        filters: list[dict[str, Any]],
+        limit: int,
+        page: int,
+    ) -> tuple[int, list[Item]]:
+        public = {"term": {"is_public_domain": True}}
+        body: dict[str, Any] = {
+            "limit": limit,
+            "page": page,
+            "fields": self.fields.split(","),
+            "query": {"bool": {"must": must, "filter": [public, *filters]}},
+        }
+        if query:
+            body["q"] = query
+        resp = self.http.post(f"{self.api}/artworks/search", json=body)
         resp.raise_for_status()
         body = resp.json()
         items = [i for d in body.get("data", []) if (i := self._map(d))]
@@ -197,11 +275,31 @@ class ClevelandMuseum(Museum):
             height=int(web["height"]) if web.get("height") else None,
         )
 
+    types: ClassVar[dict[str, str]] = {
+        "painting": "Painting",
+        "print": "Print",
+        "drawing": "Drawing",
+    }
+
     def search(self, query: str, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
+        return self._get({"q": query}, limit, page)
+
+    def discover(self, spec: Discovery, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
+        words = [spec.style.strip(), "poster" if spec.kind == "poster" else ""]
+        params: dict[str, Any] = {"q": " ".join(w for w in words if w)}
+        if spec.kind in self.types:
+            params["type"] = self.types[spec.kind]
+        if spec.year_from is not None:
+            params["created_after"] = spec.year_from
+        if spec.year_to is not None:
+            params["created_before"] = spec.year_to
+        return self._get(params, limit, page)
+
+    def _get(self, params: dict[str, Any], limit: int, page: int) -> tuple[int, list[Item]]:
         resp = self.http.get(
             f"{self.api}/artworks/",
             params={
-                "q": query,
+                **params,
                 "has_image": 1,
                 "cc0": 1,
                 "limit": limit,
@@ -250,10 +348,29 @@ class MetropolitanMuseum(Museum):
             thumb_url=d["primaryImageSmall"],
         )
 
+    page_size = 24  # every result is one more request
+
     def search(self, query: str, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
+        return self._search({"q": query}, limit, page)
+
+    # Departments: European Paintings; Drawings and Prints.
+    departments: ClassVar[dict[str, int]] = {"painting": 11, "print": 9, "drawing": 9, "poster": 9}
+
+    def discover(self, spec: Discovery, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
+        words = [spec.style.strip(), "poster" if spec.kind == "poster" else ""]
+        params: dict[str, Any] = {"q": " ".join(w for w in words if w) or "*"}
+        if spec.kind in self.departments:
+            params["departmentId"] = self.departments[spec.kind]
+        if spec.year_from is not None or spec.year_to is not None:
+            # The Met wants both ends of the range.
+            params["dateBegin"] = spec.year_from if spec.year_from is not None else -5000
+            params["dateEnd"] = spec.year_to if spec.year_to is not None else 2100
+        return self._search({**params, "isPublicDomain": "true"}, limit, page)
+
+    def _search(self, params: dict[str, Any], limit: int, page: int) -> tuple[int, list[Item]]:
         resp = self.http.get(
             f"{self.api}/v1.1/search",
-            params={"q": query, "hasImages": "true", "limit": limit, "offset": (page - 1) * limit},
+            params={**params, "hasImages": "true", "limit": limit, "offset": (page - 1) * limit},
         )
         resp.raise_for_status()
         body = resp.json()
@@ -475,7 +592,9 @@ class Rijksmuseum(Museum):
         return self._item(
             str(d["id"]).rsplit("/", 1)[-1],
             title=self._text(names),
-            artist=self._notation(makers[0]) if makers else "",
+            artist=self._notation(makers[0])
+            if makers
+            else self._text(production.get("referred_to_by") or []),
             date_text=self._text(timespan.get("identified_by") or []),
             year=int(year_match.group(1)) if year_match else None,
             medium=self._statement(d, self.medium_type),
@@ -502,6 +621,42 @@ class Rijksmuseum(Museum):
             ids += [o["id"] for o in body.get("orderedItems") or [] if o.get("id")]
             url, query = (body.get("next") or {}).get("id"), None
         return total, ids[skip : skip + limit]
+
+    def _discovery_params(self, spec: Discovery, decade: int | None = None) -> dict[str, str]:
+        params: dict[str, str] = {"type": spec.kind if spec.kind != "any" else "painting"}
+        if decade is not None:
+            params["creationDate"] = f"{decade // 10:03d}*"  # dates match by prefix
+        return params
+
+    def _decades(self, spec: Discovery) -> list[int | None]:
+        if spec.year_from is None and spec.year_to is None:
+            return [None]
+        first = (spec.year_from if spec.year_from is not None else 1000) // 10 * 10
+        last = spec.year_to if spec.year_to is not None else 2000
+        return list(range(first, last + 1, 10))
+
+    def discover(self, spec: Discovery, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
+        if spec.style.strip():
+            return 0, []  # no field for styles or movements
+        decade = self._decades(spec)[0]
+        total, ids = self._ids(self._discovery_params(spec, decade), (page - 1) * limit, limit)
+        return total, self._objects(ids)
+
+    def random_draw(self, spec: Discovery, rng: random.Random) -> Iterator[Item]:
+        """Decades in random order (the API has no date ranges), then the
+        first results of each, shuffled."""
+        if spec.style.strip():
+            return
+        decades = self._decades(spec)
+        rng.shuffle(decades)
+        for decade in decades:
+            _, ids = self._ids(self._discovery_params(spec, decade), 0, 200)
+            rng.shuffle(ids)
+            for start in range(0, len(ids), 10):
+                yield from self._objects(ids[start : start + 10])
+
+    def _objects(self, ids: list[str]) -> list[Item]:
+        return [i for object_id in ids if (i := self.fetch(object_id.rsplit("/", 1)[-1]))]
 
     def search(self, query: str, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
         query = query.strip()

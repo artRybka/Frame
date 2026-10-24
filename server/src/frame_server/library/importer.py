@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import random
 import secrets
 import threading
 from collections.abc import Callable
@@ -15,7 +16,7 @@ from ..imaging.palette import Palette
 from .colors import analyse
 from .images import ImageCache
 from .models import Item, ItemKind, PhotoInfo
-from .museums import client, museum
+from .museums import Discovery, client, museum
 from .repo import Library, now_iso
 
 log = logging.getLogger(__name__)
@@ -28,6 +29,8 @@ class Job:
     total: int = 0
     done: int = 0
     failed: int = 0
+    #: Drawn but left out, e.g. too weak on e-paper.
+    skipped: int = 0
     finished: bool = False
     error: str = ""
     item_ids: list[str] = field(default_factory=list)
@@ -51,21 +54,22 @@ class Importer:
 
     def add(self, item: Item) -> Item:
         """Download the thumbnail, analyse colours and store the item."""
+        return self.library.upsert(self._analysed(item))
+
+    def _analysed(self, item: Item) -> Item:
         with Image.open(self.cache.ensure_thumb(item)) as thumb:
             colors, tags, score = analyse(thumb, self.palette)
             width, height = item.width, item.height
             if not width or not height:
                 width, height = thumb.size
-        return self.library.upsert(
-            item.model_copy(
-                update={
-                    "colors": colors,
-                    "color_tags": tags,
-                    "suitability": score,
-                    "width": width,
-                    "height": height,
-                }
-            )
+        return item.model_copy(
+            update={
+                "colors": colors,
+                "color_tags": tags,
+                "suitability": score,
+                "width": width,
+                "height": height,
+            }
         )
 
     def search(
@@ -116,6 +120,52 @@ class Importer:
                 if job is not None:
                     job.failed += 1
         return added
+
+    def draw(
+        self,
+        spec: Discovery,
+        count: int,
+        sources: list[str],
+        job: Job,
+        min_suitability: float = 0.0,
+        rng: random.Random | None = None,
+    ) -> None:
+        """Add ``count`` random works matching ``spec``, taking turns between
+        ``sources``; works below ``min_suitability`` are drawn again."""
+        rng = rng or random.Random()
+        job.total = count
+        with self.http() as http:
+            streams = [museum(s, http, self.private_use()).random_draw(spec, rng) for s in sources]
+            drawn = 0
+            while streams and job.done < count and drawn < count * 20:
+                for stream in list(streams):
+                    if job.done >= count:
+                        break
+                    try:
+                        item = next(stream)
+                    except StopIteration:
+                        streams.remove(stream)
+                        continue
+                    except (httpx.HTTPError, ValueError) as err:
+                        log.warning("random draw from a source stopped: %s", err)
+                        streams.remove(stream)
+                        continue
+                    drawn += 1
+                    if self.library.has(item.id) or not spec.fits(item):
+                        continue
+                    try:
+                        analysed = self._analysed(item)
+                    except (httpx.HTTPError, OSError) as err:
+                        log.warning("import of %s failed: %s", item.id, err)
+                        job.failed += 1
+                        continue
+                    if (analysed.suitability or 0.0) < min_suitability:
+                        self.cache.remove(item)
+                        job.skipped += 1
+                        continue
+                    self.library.upsert(analysed)
+                    job.done += 1
+                    job.item_ids.append(item.id)
 
     def add_upload(
         self,
