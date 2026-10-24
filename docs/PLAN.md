@@ -129,7 +129,7 @@ Cel: potwierdzić protokół na Twoim egzemplarzu i poznać zachowanie ekranu.
 - [ ] 3.8 Kreator kalibracji (administrator): wyświetl planszę, zrób zdjęcie, wyślij, zobacz wynik.
 - [ ] 3.9 Użytkownicy (administrator): zaproszenie domownika (kod QR), role, odebranie dostępu.
 - [ ] 3.10 Widget (aktualny obraz) i rozszerzenie „Udostępnij → Pokaż na ramce”.
-- [ ] 3.11 TestFlight dla domowników.
+- [ ] 3.11 TestFlight dla domowników. *(Build trafia do TestFlight automatycznie z GitHuba, workflow `testflight` na Xcode 26; do zrobienia: grupy testerów i przegląd Apple dla testów zewnętrznych.)*
 
 ### Etap 4 — Integracja z Home Assistant
 
