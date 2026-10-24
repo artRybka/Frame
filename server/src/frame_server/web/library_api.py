@@ -10,7 +10,7 @@ from typing import Annotated, Any
 import httpx
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 from starlette.concurrency import run_in_threadpool
 
 from ..imaging.layout import Crop, Fit, Orientation, Plan, load_image
@@ -19,6 +19,7 @@ from ..library import Facets, Item, ItemKind, ItemSummary, Job, PhotoInfo, Playl
 from ..library.models import Framing
 from ..library.museums import MUSEUMS
 from ..library.repo import SortKey
+from ..library.seed import PACKS, import_queries, pack
 from ..player import hold_from
 from ..schedule import FrameSettings
 from ..service import FrameService
@@ -61,7 +62,7 @@ class ImportRequest(BaseModel):
 
 class ImportSearchRequest(BaseModel):
     query: str
-    limit: int = 24
+    limit: int = Field(24, ge=1, le=500)
 
 
 def _item(svc: FrameService, item_id: str) -> Item:
@@ -393,6 +394,45 @@ def museum_import_search(source: str, request: ImportSearchRequest, svc: Svc) ->
 
     job = svc.importer.start_job(f"{source}: {request.query}", work)
     return {"job_id": job.id}
+
+
+@router.get("/library/packs")
+def packs(svc: Svc) -> list[dict[str, Any]]:
+    """Themed batches of museum works to add in one go."""
+    running = {j.description for j in svc.importer.jobs.values() if not j.finished}
+    return [
+        {
+            "key": p.key,
+            "name": p.name,
+            "description": p.description,
+            "size": p.size,
+            "importing": f"pack: {p.key}" in running,
+        }
+        for p in PACKS
+    ]
+
+
+@router.post("/library/packs/{key}/import")
+def pack_import(key: str, svc: Svc) -> dict[str, Any]:
+    try:
+        found = pack(key)
+    except KeyError as err:
+        raise HTTPException(404, str(err)) from err
+    running = next(
+        (
+            j
+            for j in svc.importer.jobs.values()
+            if j.description == f"pack: {key}" and not j.finished
+        ),
+        None,
+    )
+    if running is not None:
+        return {"job_id": running.id}
+
+    def work(job: Job) -> None:
+        import_queries(svc.importer, found.queries, job)
+
+    return {"job_id": svc.importer.start_job(f"pack: {key}", work).id}
 
 
 @router.get("/album")

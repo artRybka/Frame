@@ -330,6 +330,28 @@ struct RemotePage: Codable, Sendable {
     let items: [RemoteItem]
 }
 
+/// A themed batch of museum works, `GET /api/library/packs`.
+struct LibraryPack: Codable, Hashable, Sendable, Identifiable {
+    let key: String
+    let name: String
+    let description: String
+    /// Most works the pack can add.
+    let size: Int
+    var importing: Bool
+    var id: String { key }
+}
+
+/// A background import on the server, `GET /api/jobs/{id}`.
+struct JobStatus: Codable, Hashable, Sendable {
+    let id: String
+    var total: Int
+    var done: Int
+    var failed: Int
+    var finished: Bool
+    var error: String
+    var itemIds: [String]
+}
+
 struct DisplayResponse: Codable, Sendable {
     var pushed: Bool
     var fetched: Bool?

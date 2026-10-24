@@ -145,6 +145,29 @@ struct LiveBackend: FrameBackend {
         try await send("/api/museums/\(source)/import", method: "POST", body: ["source_id": sourceID])
     }
 
+    private struct JobRef: Decodable { let jobId: String }
+
+    private struct ImportSearchBody: Encodable {
+        let query: String
+        let limit: Int
+    }
+
+    func importSearch(source: String, query: String, limit: Int) async throws -> String {
+        let ref: JobRef = try await send(
+            "/api/museums/\(source)/import-search", method: "POST", body: ImportSearchBody(query: query, limit: limit)
+        )
+        return ref.jobId
+    }
+
+    func packs() async throws -> [LibraryPack] { try await get("/api/library/packs") }
+
+    func importPack(key: String) async throws -> String {
+        let ref: JobRef = try await send("/api/library/packs/\(key)/import", method: "POST")
+        return ref.jobId
+    }
+
+    func job(id: String) async throws -> JobStatus { try await get("/api/jobs/\(id)") }
+
     // MARK: Album
 
     func album() async throws -> AlbumInfo { try await get("/api/album") }

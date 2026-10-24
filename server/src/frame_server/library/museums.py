@@ -10,7 +10,7 @@ from __future__ import annotations
 import html
 import re
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, ClassVar
 
 import httpx
 
@@ -39,6 +39,8 @@ def client() -> httpx.Client:
 class Museum(ABC):
     key: str
     name: str
+    #: Most results one search request may ask for.
+    page_size = 100
 
     def __init__(self, http: httpx.Client) -> None:
         self.http = http
@@ -279,6 +281,7 @@ class WikimediaCommons(Museum):
 
     key = "wmc"
     name = "Wikimedia Commons"
+    page_size = 50
     api = "https://commons.wikimedia.org/w/api.php"
     meta = "ObjectName|Artist|DateTimeOriginal|LicenseShortName|ImageDescription|Credit"
 
@@ -330,26 +333,53 @@ class WikimediaCommons(Museum):
 
     def search(self, query: str, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
         artist_hint = ""
+        offset = (page - 1) * limit
         if query.startswith("Category:"):
-            params = self._params(
-                generator="categorymembers", gcmtitle=query, gcmtype="file", gcmlimit=limit
-            )
             artist_hint = re.sub(r"^Category:(Paintings|Works|Drawings|Prints) by ", "", query)
             if artist_hint == query:
                 artist_hint = ""
+            body = self._category_page(query, limit, offset)
         else:
-            params = self._params(
-                generator="search",
-                gsrsearch=f"{query} filetype:bitmap",
-                gsrnamespace=6,
-                gsrlimit=limit,
-                gsroffset=(page - 1) * limit,
+            resp = self.http.get(
+                self.api,
+                params=self._params(
+                    generator="search",
+                    gsrsearch=f"{query} filetype:bitmap",
+                    gsrnamespace=6,
+                    gsrlimit=limit,
+                    gsroffset=offset,
+                ),
             )
-        resp = self.http.get(self.api, params=params)
-        resp.raise_for_status()
-        pages = resp.json().get("query", {}).get("pages", {})
+            resp.raise_for_status()
+            body = resp.json()
+        pages = body.get("query", {}).get("pages", {})
         items = [i for p in pages.values() if (i := self._map(p, artist_hint))]
-        return len(items), items
+        # Commons gives no total; claim one more page while it says there is one.
+        total = offset + len(pages) + (limit if "continue" in body else 0)
+        return total, items
+
+    def _category_page(self, category: str, limit: int, offset: int) -> dict[str, Any]:
+        """Category members ``offset:offset+limit``; categories page by token only."""
+        cont: dict[str, Any] = {}
+        skipped = 0
+        while True:
+            want = limit if skipped >= offset else min(self.page_size, offset - skipped)
+            resp = self.http.get(
+                self.api,
+                params=self._params(
+                    generator="categorymembers",
+                    gcmtitle=category,
+                    gcmtype="file",
+                    gcmlimit=want,
+                    **cont,
+                ),
+            )
+            resp.raise_for_status()
+            body: dict[str, Any] = resp.json()
+            if skipped >= offset or "continue" not in body:
+                return body if skipped >= offset else {}
+            skipped += want
+            cont = body["continue"]
 
     def fetch(self, source_id: str) -> Item | None:
         resp = self.http.get(self.api, params=self._params(pageids=source_id))
@@ -359,8 +389,155 @@ class WikimediaCommons(Museum):
         return self._map(page) if page else None
 
 
+class Rijksmuseum(Museum):
+    """Rijksmuseum's Linked Art API (no key needed).
+
+    The search only matches whole fields, so plain text is tried as a creator,
+    then as a title. ``creator=Johannes Vermeer&type=painting`` passes the
+    search parameters as they are.
+    """
+
+    key = "rijks"
+    name = "Rijksmuseum"
+    api = "https://data.rijksmuseum.nl/search/collection"
+    english = "http://vocab.getty.edu/aat/300388277"
+    open_licences: ClassVar[dict[str, str]] = {
+        "https://creativecommons.org/publicdomain/mark/1.0/": "Public Domain Mark 1.0",
+        "https://creativecommons.org/publicdomain/zero/1.0/": "CC0 1.0",
+    }
+    # Getty AAT types of the ``referred_to_by`` statements we read.
+    medium_type = "http://vocab.getty.edu/aat/300435429"
+    description_type = "http://vocab.getty.edu/aat/300435452"
+    credit_type = "http://vocab.getty.edu/aat/300026687"
+
+    @staticmethod
+    def _types(node: dict[str, Any]) -> set[str]:
+        return {c.get("id", "") for c in node.get("classified_as") or []}
+
+    def _is_english(self, node: dict[str, Any]) -> bool:
+        return any(lang.get("id") == self.english for lang in node.get("language") or [])
+
+    def _text(self, nodes: list[dict[str, Any]]) -> str:
+        """The English content among ``nodes`` (any language as a fallback)."""
+        texts = [n for n in nodes if n.get("content")]
+        english = [n for n in texts if self._is_english(n)]
+        return str((english or texts)[0]["content"]) if texts else ""
+
+    def _statement(self, d: dict[str, Any], aat: str) -> str:
+        return self._text([r for r in d.get("referred_to_by") or [] if aat in self._types(r)])
+
+    @staticmethod
+    def _notation(node: dict[str, Any]) -> str:
+        values = node.get("notation") or []
+        english = [v for v in values if v.get("@language") == "en"]
+        return str((english or values or [{}])[0].get("@value", ""))
+
+    def _image(self, d: dict[str, Any]) -> tuple[str, str]:
+        """IIIF base of the public-domain image and its licence, if any."""
+        for subject in d.get("subject_of") or []:
+            for carrier in subject.get("digitally_carried_by") or []:
+                rights = [r.get("content", "") for r in carrier.get("referred_to_by") or []]
+                licence = next(
+                    (self.open_licences[r] for r in rights if r in self.open_licences), ""
+                )
+                for point in carrier.get("access_point") or []:
+                    url = point.get("id", "")
+                    if licence and "iiif" in url:
+                        return re.sub(r"/full/.*$", "", url), licence
+        return "", ""
+
+    def _page_url(self, d: dict[str, Any]) -> str:
+        for subject in d.get("subject_of") or []:
+            for carrier in subject.get("digitally_carried_by") or []:
+                if carrier.get("format") == "text/html":
+                    for point in carrier.get("access_point") or []:
+                        if point.get("id"):
+                            return str(point["id"])
+        return str(d.get("id", ""))
+
+    def _map(self, d: dict[str, Any]) -> Item | None:
+        iiif, licence = self._image(d)
+        if not iiif:
+            return None
+        names = [n for n in d.get("identified_by") or [] if n.get("type") == "Name"]
+        production = d.get("produced_by") or {}
+        makers = [
+            agent
+            for part in [production, *(production.get("part") or [])]
+            for agent in part.get("carried_out_by") or []
+        ]
+        timespan = production.get("timespan") or {}
+        year_match = re.match(r"(\d{4})", timespan.get("begin_of_the_begin", ""))
+        classes = d.get("classified_as") or []
+        return self._item(
+            str(d["id"]).rsplit("/", 1)[-1],
+            title=self._text(names),
+            artist=self._notation(makers[0]) if makers else "",
+            date_text=self._text(timespan.get("identified_by") or []),
+            year=int(year_match.group(1)) if year_match else None,
+            medium=self._statement(d, self.medium_type),
+            classification=self._notation(classes[0]) if classes else "",
+            credit=self._statement(d, self.credit_type),
+            license=licence,
+            url=self._page_url(d),
+            description=self._statement(d, self.description_type),
+            image_url=f"{iiif}/full/max/0/default.jpg",
+            thumb_url=f"{iiif}/full/600,/0/default.jpg",
+        )
+
+    def _ids(self, params: dict[str, str], skip: int, limit: int) -> tuple[int, list[str]]:
+        """Object ids ``skip:skip+limit`` of a search; pages of 100 follow tokens."""
+        url: str | None = self.api
+        query: dict[str, str] | None = {**params, "imageAvailable": "true"}
+        ids: list[str] = []
+        total = 0
+        while url and len(ids) < skip + limit:
+            resp = self.http.get(url, params=query)
+            resp.raise_for_status()
+            body = resp.json()
+            total = int(body.get("partOf", {}).get("totalItems") or 0)
+            ids += [o["id"] for o in body.get("orderedItems") or [] if o.get("id")]
+            url, query = (body.get("next") or {}).get("id"), None
+        return total, ids[skip : skip + limit]
+
+    def search(self, query: str, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
+        query = query.strip()
+        if "=" in query:
+            attempts = [dict(p.split("=", 1) for p in query.split("&") if "=" in p)]
+        else:
+            attempts = [{"creator": query}, {"title": query}]
+        total, ids = 0, list[str]()
+        for params in attempts:
+            total, ids = self._ids(params, (page - 1) * limit, limit)
+            if total:
+                break
+        items = []
+        for object_id in ids:
+            item = self.fetch(object_id.rsplit("/", 1)[-1])
+            if item is not None:
+                items.append(item)
+        return total, items
+
+    def fetch(self, source_id: str) -> Item | None:
+        resp = self.http.get(
+            f"https://id.rijksmuseum.nl/{source_id}",
+            headers={"Accept": "application/ld+json"},
+        )
+        if resp.status_code == 404:
+            return None
+        resp.raise_for_status()
+        return self._map(resp.json())
+
+
 MUSEUMS: dict[str, type[Museum]] = {
-    m.key: m for m in (ArtInstituteChicago, ClevelandMuseum, MetropolitanMuseum, WikimediaCommons)
+    m.key: m
+    for m in (
+        ArtInstituteChicago,
+        ClevelandMuseum,
+        MetropolitanMuseum,
+        Rijksmuseum,
+        WikimediaCommons,
+    )
 }
 
 

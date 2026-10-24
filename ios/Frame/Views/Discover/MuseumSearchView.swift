@@ -10,6 +10,10 @@ struct MuseumSearchView: View {
     @State private var total = 0
     @State private var searching = false
     @State private var adding: Set<String> = []
+    @State private var page = 1
+    @State private var loadingMore = false
+    /// Set while "Dodaj wszystkie" runs; nil inside until the server counts.
+    @State private var bulk: JobStatus?? = nil
 
     private let suggestions = [
         "Hokusai", "Hiroshige", "Monet", "Van Gogh", "Mucha", "Kwiaty", "Morze", "Plakat",
@@ -55,9 +59,14 @@ struct MuseumSearchView: View {
                 Text("Tylko dzieła w domenie publicznej (CC0). Opisy w oryginale, po angielsku.")
                     .font(.footnote)
                     .foregroundStyle(Theme.inkSoft)
+                LibraryPacksSection()
             } else {
-                Text("\(total) wyników")
-                    .font(.serif(17, weight: .medium))
+                HStack {
+                    Text("\(total) wyników")
+                        .font(.serif(17, weight: .medium))
+                    Spacer()
+                    addAllMenu
+                }
                 MasonryGrid(items: results.map(\.item.summary)) { summary in
                     let remote = results.first { $0.id == summary.id }
                     VStack(alignment: .leading, spacing: 8) {
@@ -75,6 +84,22 @@ struct MuseumSearchView: View {
                         addButton(remote)
                     }
                 }
+                if results.count < total {
+                    Button {
+                        Task { await loadMore() }
+                    } label: {
+                        HStack(spacing: 8) {
+                            if loadingMore { ProgressView().controlSize(.small) }
+                            Text("Więcej wyników")
+                        }
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(Theme.card, in: RoundedRectangle(cornerRadius: 12))
+                        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.hairline))
+                    }
+                    .disabled(loadingMore)
+                }
             }
         }
         .task {
@@ -86,6 +111,33 @@ struct MuseumSearchView: View {
         }
         .onChange(of: source) { _, _ in
             if !text.isEmpty { Task { await search() } }
+        }
+    }
+
+    /// Adds many results at once, in the background on the server.
+    @ViewBuilder
+    private var addAllMenu: some View {
+        if let job = bulk {
+            HStack(spacing: 6) {
+                ProgressView().controlSize(.mini)
+                Text(jobProgress(job))
+            }
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(Theme.accent)
+        } else {
+            Menu {
+                ForEach(Set([24, 100, 250].filter { $0 < total } + [min(total, 500)]).sorted(), id: \.self) { limit in
+                    Button(limit == total ? "Wszystkie (\(limit))" : "Pierwsze \(limit)") {
+                        Task { await addAll(limit: limit) }
+                    }
+                }
+            } label: {
+                Label("Dodaj wiele", systemImage: "plus.square.on.square")
+                    .font(.caption.weight(.semibold))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Theme.accent.opacity(0.12), in: Capsule())
+            }
         }
     }
 
@@ -123,9 +175,42 @@ struct MuseumSearchView: View {
         searching = true
         defer { searching = false }
         do {
-            let page = try await model.backend.searchMuseum(source: source, query: text, page: 1)
-            results = page.items
-            total = page.total
+            let found = try await model.backend.searchMuseum(source: source, query: text, page: 1)
+            results = found.items
+            total = found.total
+            page = 1
+        } catch {
+            model.show(error)
+        }
+    }
+
+    private func loadMore() async {
+        loadingMore = true
+        defer { loadingMore = false }
+        do {
+            let found = try await model.backend.searchMuseum(source: source, query: text, page: page + 1)
+            let known = Set(results.map(\.id))
+            results += found.items.filter { !known.contains($0.id) }
+            page += 1
+            // Some sources only learn the total as they go; stop when a page is empty.
+            total = found.items.isEmpty ? results.count : max(found.total, results.count)
+        } catch {
+            model.show(error)
+        }
+    }
+
+    private func addAll(limit: Int) async {
+        bulk = .some(nil)
+        defer { bulk = nil }
+        do {
+            let id = try await model.backend.importSearch(source: source, query: text, limit: limit)
+            let job = try await watchJob(id, backend: model.backend) { bulk = $0 }
+            let added = Set(job.itemIds)
+            for index in results.indices where added.contains(results[index].id) {
+                results[index].inLibrary = true
+            }
+            model.toast = "W bibliotece: \(job.done) dzieł" + (job.failed > 0 ? ", nie udało się \(job.failed)" : "")
+            await model.refreshFacets()
         } catch {
             model.show(error)
         }

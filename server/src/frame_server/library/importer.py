@@ -80,10 +80,25 @@ class Importer:
             item = museum(source, http).fetch(source_id)
         return self.add(item) if item else None
 
+    def search_many(self, source: str, query: str, limit: int) -> list[Item]:
+        """Up to ``limit`` results, over as many result pages as that takes."""
+        with self.http() as http:
+            source_museum = museum(source, http)
+            size = min(limit, source_museum.page_size)
+            found: list[Item] = []
+            page = 1
+            while len(found) < limit:
+                total, items = source_museum.search(query, limit=size, page=page)
+                found += items
+                if page * size >= total:
+                    break
+                page += 1
+        return found[:limit]
+
     def import_search(
         self, source: str, query: str, limit: int, job: Job | None = None
     ) -> list[Item]:
-        _, found = self.search(source, query, limit=limit)
+        found = self.search_many(source, query, limit)
         if job is not None:
             job.total += len(found)
         added = []
