@@ -91,7 +91,12 @@ class FrameService:
         self.palette: Palette = self._initial_palette()
         self.library = Library(settings.data_dir / "library.db")
         self.images = ImageCache(settings.data_dir / "library", museum_client)
-        self.importer = Importer(self.library, self.images, self.palette)
+        self.importer = Importer(
+            self.library,
+            self.images,
+            self.palette,
+            private_use=lambda: self.player.settings.private_use,
+        )
         self.status = StatusMonitor(self.panel)
         self.player = Player(self)
 

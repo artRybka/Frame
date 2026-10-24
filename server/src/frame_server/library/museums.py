@@ -42,8 +42,9 @@ class Museum(ABC):
     #: Most results one search request may ask for.
     page_size = 100
 
-    def __init__(self, http: httpx.Client) -> None:
+    def __init__(self, http: httpx.Client, private_use: bool = False) -> None:
         self.http = http
+        self.private_use = private_use
 
     @abstractmethod
     def search(self, query: str, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
@@ -306,7 +307,9 @@ class WikimediaCommons(Museum):
             return None
         info = infos[0]
         licence = self._meta(info, "LicenseShortName")
-        if "public domain" not in licence.casefold() and "cc0" not in licence.casefold():
+        public = "public domain" in licence.casefold() or "cc0" in licence.casefold()
+        # Everything on Commons is freely licensed; attribution is kept in ``credit``.
+        if not public and not (self.private_use and licence):
             return None
         title = self._meta(info, "ObjectName") or re.sub(
             r"^File:|\.[a-zA-Z]+$", "", page.get("title", "")
@@ -541,7 +544,7 @@ MUSEUMS: dict[str, type[Museum]] = {
 }
 
 
-def museum(key: str, http: httpx.Client) -> Museum:
+def museum(key: str, http: httpx.Client, private_use: bool = False) -> Museum:
     if key not in MUSEUMS:
         raise KeyError(f"unknown museum {key!r}; choose from {sorted(MUSEUMS)}")
-    return MUSEUMS[key](http)
+    return MUSEUMS[key](http, private_use)

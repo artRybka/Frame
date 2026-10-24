@@ -56,9 +56,19 @@ struct MuseumSearchView: View {
                         }
                     }
                 }
-                Text("Tylko dzieła w domenie publicznej (CC0). Opisy w oryginale, po angielsku.")
-                    .font(.footnote)
-                    .foregroundStyle(Theme.inkSoft)
+                Toggle(isOn: privateUse) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Użytek prywatny")
+                        Text(
+                            privateUse.wrappedValue
+                                ? "Z Wikimedia Commons także dzieła na wolnych licencjach (np. CC BY-SA), z podanym autorem. Muzea nadal dają tylko domenę publiczną."
+                                : "Tylko dzieła w domenie publicznej (CC0). Opisy w oryginale, po angielsku."
+                        )
+                        .font(.footnote)
+                        .foregroundStyle(Theme.inkSoft)
+                    }
+                }
+                .disabled(model.settings == nil)
                 LibraryPacksSection()
             } else {
                 HStack {
@@ -112,6 +122,18 @@ struct MuseumSearchView: View {
         .onChange(of: source) { _, _ in
             if !text.isEmpty { Task { await search() } }
         }
+    }
+
+    /// Saved with the frame settings, so imports on the server follow it.
+    private var privateUse: Binding<Bool> {
+        Binding(
+            get: { model.settings?.privateUse ?? false },
+            set: { value in
+                guard var settings = model.settings else { return }
+                settings.privateUse = value
+                Task { await model.saveSettings(settings) }
+            }
+        )
     }
 
     /// Adds many results at once, in the background on the server.

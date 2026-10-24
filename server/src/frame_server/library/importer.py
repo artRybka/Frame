@@ -40,11 +40,13 @@ class Importer:
         cache: ImageCache,
         palette: Palette,
         http: Callable[[], httpx.Client] = client,
+        private_use: Callable[[], bool] = lambda: False,
     ) -> None:
         self.library = library
         self.cache = cache
         self.palette = palette
         self.http = http
+        self.private_use = private_use
         self.jobs: dict[str, Job] = {}
 
     def add(self, item: Item) -> Item:
@@ -70,20 +72,20 @@ class Importer:
         self, source: str, query: str, limit: int = 24, page: int = 1
     ) -> tuple[int, list[Item]]:
         with self.http() as http:
-            return museum(source, http).search(query, limit=limit, page=page)
+            return museum(source, http, self.private_use()).search(query, limit=limit, page=page)
 
     def import_one(self, source: str, source_id: str) -> Item | None:
         existing = self.library.get(f"{source}:{source_id}")
         if existing is not None:
             return existing
         with self.http() as http:
-            item = museum(source, http).fetch(source_id)
+            item = museum(source, http, self.private_use()).fetch(source_id)
         return self.add(item) if item else None
 
     def search_many(self, source: str, query: str, limit: int) -> list[Item]:
         """Up to ``limit`` results, over as many result pages as that takes."""
         with self.http() as http:
-            source_museum = museum(source, http)
+            source_museum = museum(source, http, self.private_use())
             size = min(limit, source_museum.page_size)
             found: list[Item] = []
             page = 1

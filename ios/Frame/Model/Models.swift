@@ -296,6 +296,8 @@ struct FrameSettings: Codable, Hashable, Sendable {
     var albumUrl: String
     var timezone: String
     var statusPollMinutes: Int
+    /// Only seen at home: also accept freely licensed, not public-domain works.
+    var privateUse: Bool? = nil
 
     /// Changes whenever the way pictures are framed on the panel changes;
     /// used to refresh cached "on the frame" previews.

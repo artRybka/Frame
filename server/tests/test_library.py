@@ -234,6 +234,12 @@ def test_wikimedia_mapping() -> None:
     assert item.artist == "Józef Chełmoński" and item.title == "Babie lato" and item.year == 1875
     assert item.kind == ItemKind.ARTWORK and item.id == "wmc:123"
 
+    page["imageinfo"][0]["extmetadata"]["LicenseShortName"]["value"] = "CC BY-SA 4.0"
+    with _client({"https://commons.wikimedia.org/w/api.php": body}) as http:
+        assert WikimediaCommons(http).search("Category:X")[1] == []
+        _, items = WikimediaCommons(http, private_use=True).search("Category:X")
+    assert items[0].license == "CC BY-SA 4.0"
+
 
 def test_wikimedia_category_pages_by_token() -> None:
     def file(n: int) -> dict:
