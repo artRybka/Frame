@@ -42,9 +42,8 @@ discover` (dostępne: `now`, `discover`, `detail`, `museums`, `playlists`,
 
 Jednorazowo:
 
-1. **Team ID**: [developer.apple.com/account](https://developer.apple.com/account)
-   → *Membership details* (10 znaków). Wpisz go w `project.yml` jako
-   `DEVELOPMENT_TEAM` (to nie jest sekret, widać go w każdej podpisanej aplikacji).
+1. **Team ID** (`3MQRJF4A9D`) jest już w `project.yml` jako `DEVELOPMENT_TEAM`
+   (to nie jest sekret, widać go w każdej podpisanej aplikacji).
 2. **Xcode → Settings → Accounts**: dodaj Apple ID konta deweloperskiego.
 3. **Bundle ID**: *Certificates, IDs & Profiles → Identifiers → +* →
    *App IDs → App*, *Explicit*: `com.artrybka.frame`. Żadne dodatkowe

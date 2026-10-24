@@ -10,8 +10,9 @@ settings:
     SWIFT_VERSION: "5.0"
     MARKETING_VERSION: "0.1.0"
     CURRENT_PROJECT_VERSION: "1"
-    # Set your Apple Developer Team ID here (or in Xcode → Signing & Capabilities).
-    DEVELOPMENT_TEAM: ""
+    # Apple Developer team (not a secret: it is embedded in every signed build).
+    DEVELOPMENT_TEAM: 3MQRJF4A9D
+    CODE_SIGN_STYLE: Automatic
 targets:
   Frame:
     type: application
