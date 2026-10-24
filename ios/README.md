@@ -65,6 +65,26 @@ Każde wydanie:
 4. Po przetworzeniu (kilkanaście minut, przychodzi e-mail) build jest
    w zakładce **TestFlight**.
 
+Bez Maca (np. z telefonu) build zrobi GitHub: workflow `testflight`
+archiwizuje aplikację na maszynie macOS i wysyła ją do App Store Connect.
+Uruchamia się po każdej zmianie w `ios/` na `main` albo ręcznie
+(*Actions → testflight → Run workflow*). Potrzebny jest klucz API:
+
+1. App Store Connect → **Użytkownicy i dostęp → Integracje → App Store
+   Connect API** → klucze zespołu → **+**; nazwa „GitHub”, dostęp **Admin**
+   (Xcode musi móc sam utworzyć certyfikaty). Za pierwszym razem trzeba
+   kliknąć „Poproś o dostęp” i zaakceptować warunki.
+2. Pobierz plik `AuthKey_XXXX.p8` (da się to zrobić tylko raz) i zanotuj
+   *Key ID* oraz *Issuer ID* (nad listą kluczy).
+3. GitHub → repozytorium → **Settings → Secrets and variables → Actions →
+   New repository secret**, trzy sekrety: `ASC_KEY_ID`, `ASC_ISSUER_ID`
+   i `ASC_KEY_P8` (cała zawartość pliku `.p8`, razem z liniami `BEGIN`/`END`).
+   Na iPhonie: zapisz plik w aplikacji Pliki, zmień rozszerzenie na `.txt`,
+   otwórz, zaznacz wszystko i skopiuj.
+
+Klucz można w każdej chwili unieważnić w App Store Connect. Bez sekretów
+workflow kończy się bez błędu i niczego nie wysyła.
+
 Testerzy:
 
 - **Ty**: *Internal Testing* → dodaj siebie; build jest od razu dostępny
