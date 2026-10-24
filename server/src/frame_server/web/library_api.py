@@ -13,8 +13,10 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, ValidationError
 from starlette.concurrency import run_in_threadpool
 
-from ..imaging.pipeline import encode_image, render
+from ..imaging.layout import Crop, Fit, Orientation, Plan, load_image
+from ..imaging.pipeline import encode_image, plan_for, render
 from ..library import Facets, Item, ItemKind, ItemSummary, Job, PhotoInfo, PlaylistRules
+from ..library.models import Framing
 from ..library.museums import MUSEUMS
 from ..library.repo import SortKey
 from ..player import hold_from
@@ -190,6 +192,110 @@ async def item_preview(item_id: str, svc: Svc, settings: str | None = None) -> F
 
                 await run_in_threadpool(build)
     return FileResponse(path, media_type="image/png", headers={"Cache-Control": "max-age=3600"})
+
+
+class FramingWindow(BaseModel):
+    role: str  # "fill" or "detail"
+    aspect: float  # width / height of the window on the frame
+    crop: Crop
+    custom: bool  # set by the user (else chosen automatically)
+
+
+class FramingView(BaseModel):
+    orientation: Orientation
+    fit: Fit  # how the picture is shown in this orientation
+    width: int  # the picture, in pixels
+    height: int
+    windows: list[FramingWindow]  # what can be adjusted; none with a passe-partout
+
+
+class FramingUpdate(BaseModel):
+    orientation: Orientation
+    crops: list[Crop]  # one for FILL, two for DETAILS
+
+
+def _framing_plan(
+    svc: FrameService, item: Item, orientation: Orientation
+) -> tuple[Plan, tuple[int, int]]:
+    settings = svc.player.settings.model_copy(update={"orientation": orientation})
+    render_settings = svc.player.render_settings(item, settings)
+    img = load_image(svc.images.ensure_image(item))
+    return plan_for(img, render_settings.layout, caption=bool(render_settings.caption)), img.size
+
+
+def _framing_view(
+    item: Item, orientation: Orientation, plan: Plan, size: tuple[int, int]
+) -> FramingView:
+    saved = item.framing.get(orientation.value)
+    windows = [
+        FramingWindow(
+            role=w.role,
+            aspect=round(w.aspect, 4),
+            crop=w.crop,
+            custom=saved is not None
+            and (saved.fill if w.role == "fill" else saved.details) is not None,
+        )
+        for w in plan.windows
+        if w.crop is not None
+    ]
+    return FramingView(
+        orientation=orientation, fit=plan.fit, width=size[0], height=size[1], windows=windows
+    )
+
+
+async def _plan_and_view(svc: FrameService, item: Item, orientation: Orientation) -> FramingView:
+    try:
+        plan, size = await run_in_threadpool(_framing_plan, svc, item, orientation)
+    except (httpx.HTTPError, OSError) as err:
+        raise HTTPException(502, f"image unavailable: {err}") from err
+    return _framing_view(item, orientation, plan, size)
+
+
+@router.get("/library/items/{item_id}/framing", response_model=FramingView)
+async def get_framing(
+    item_id: str, svc: Svc, orientation: Orientation | None = None
+) -> FramingView:
+    """How the picture is cropped on the frame, and what can be adjusted."""
+    item = _item(svc, item_id)
+    return await _plan_and_view(svc, item, orientation or svc.player.settings.orientation)
+
+
+@router.put("/library/items/{item_id}/framing", response_model=FramingView)
+async def put_framing(item_id: str, update: FramingUpdate, svc: Svc) -> FramingView:
+    """Save a corrected crop (FILL) or close-ups (DETAILS) for this picture."""
+    item = _item(svc, item_id)
+    current = await _plan_and_view(svc, item, update.orientation)
+    framing = item.framing.get(update.orientation.value, Framing()).model_copy()
+    if current.fit == Fit.FILL and len(update.crops) == 1:
+        framing.fill = update.crops[0]
+    elif current.fit == Fit.DETAILS and len(update.crops) == 2:
+        framing.details = list(update.crops)
+    else:
+        raise HTTPException(422, f"{current.fit.value}: wrong number of crops")
+    item = _save_framing(svc, item, update.orientation, framing)
+    return await _plan_and_view(svc, item, update.orientation)
+
+
+@router.delete("/library/items/{item_id}/framing", response_model=FramingView)
+async def reset_framing(item_id: str, svc: Svc, orientation: Orientation) -> FramingView:
+    """Back to the automatic crop for this orientation."""
+    item = _save_framing(svc, _item(svc, item_id), orientation, None)
+    return await _plan_and_view(svc, item, orientation)
+
+
+def _save_framing(
+    svc: FrameService, item: Item, orientation: Orientation, framing: Framing | None
+) -> Item:
+    stored = dict(item.framing)
+    if framing is None:
+        stored.pop(orientation.value, None)
+    else:
+        stored[orientation.value] = framing
+    updated = svc.library.update(item.id, framing=stored) or item
+    player = svc.player
+    if player.state.current_item_id == item.id and player.settings.orientation == orientation:
+        svc.background(player.restyle())  # show the new crop now
+    return updated
 
 
 @router.post("/library/items/{item_id}/show", status_code=202)

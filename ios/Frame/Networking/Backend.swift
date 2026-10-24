@@ -35,6 +35,11 @@ protocol FrameBackend: Sendable {
     func show(itemID: String, hold: HoldSpec) async throws
     func facets() async throws -> Facets
 
+    /// How a picture is cropped for `orientation`, and what can be adjusted.
+    func framing(itemID: String, orientation: String) async throws -> FramingView
+    func saveFraming(itemID: String, orientation: String, crops: [Crop]) async throws -> FramingView
+    func resetFraming(itemID: String, orientation: String) async throws -> FramingView
+
     func playlists() async throws -> [PlaylistSummary]
     func playlist(id: Int) async throws -> PlaylistDetail
     func savePlaylist(_ playlist: Playlist) async throws -> PlaylistDetail

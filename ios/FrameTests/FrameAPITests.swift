@@ -103,7 +103,7 @@ final class FrameAPITests: XCTestCase {
         XCTAssertEqual(thumb.lastPathComponent, "aic_24645.jpg")
         let preview = try XCTUnwrap(demo.request(for: .path("/demo/aic:24645?key"))?.url)
         XCTAssertTrue(preview.isFileURL)
-        XCTAssertTrue(preview.lastPathComponent.hasPrefix("aic_24645-landscape-fit-"))
+        XCTAssertTrue(preview.lastPathComponent.hasPrefix("aic_24645-landscape-"))
     }
 
     func testDemoPreviewFollowsPresentationSettings() async throws {
@@ -120,16 +120,52 @@ final class FrameAPITests: XCTestCase {
         XCTAssertTrue(framed.lastPathComponent.contains("-fill-"))
     }
 
+    func testDemoCropCorrections() async throws {
+        let demo = DemoBackend()
+        let current = try await demo.player().current
+        let id = try XCTUnwrap(current?.item?.id)  // a tall woodblock print: close-ups
+        let view = try await demo.framing(itemID: id, orientation: "landscape")
+        XCTAssertEqual(view.fit, "details")
+        XCTAssertEqual(view.windows.count, 2)
+        XCTAssertFalse(view.windows.contains(where: \.custom))
+
+        var crops = view.windows.map(\.crop)
+        crops[0].zoom = 3
+        let saved = try await demo.saveFraming(itemID: id, orientation: "landscape", crops: crops)
+        XCTAssertTrue(saved.windows.allSatisfy(\.custom))
+        XCTAssertEqual(saved.windows[0].crop.zoom, 3)
+        let after = try await demo.player().current?.previewUrl
+        XCTAssertNotEqual(current?.previewUrl, after)
+
+        let reset = try await demo.resetFraming(itemID: id, orientation: "landscape")
+        XCTAssertFalse(reset.windows.contains(where: \.custom))
+    }
+
     func testDemoFramingMatchesServerLayout() {
         let canvas = DemoFraming.canvas("landscape")
-        // Portrait 2:3 picture, 5% passe-partout: as layout.placement on the server.
-        let fit = DemoFraming.placement(CGSize(width: 800, height: 1200), in: canvas, fit: "fit", margin: 0.05)
-        XCTAssertFalse(fit.fill)
-        XCTAssertEqual(fit.rect, CGRect(x: 424, y: 36, width: 432, height: 648))
-        // Nearly 16:9: "auto" fills.
-        let auto = DemoFraming.placement(CGSize(width: 1500, height: 900), in: canvas, fit: "auto", margin: 0.05)
-        XCTAssertTrue(auto.fill)
-        XCTAssertEqual(auto.rect.width, 1280, accuracy: 0.5)
+        let fit = Presentation(preset: "painting", fit: "fit", margin: 0.05, label: false)
+        // Portrait 2:3 picture, 5% passe-partout: as layout.plan_layout on the server.
+        let framed = DemoFraming.plan(CGSize(width: 800, height: 1200), canvas: canvas, presentation: fit, caption: false, crops: nil)
+        XCTAssertEqual(framed.fit, "fit")
+        XCTAssertEqual(framed.windows[0].rect, CGRect(x: 424, y: 36, width: 432, height: 648))
+        // Nearly 16:9: "auto" fills; a portrait picture gets close-ups.
+        var auto = fit
+        auto.fit = "auto"
+        let wide = DemoFraming.plan(CGSize(width: 1500, height: 900), canvas: canvas, presentation: auto, caption: false, crops: nil)
+        XCTAssertEqual(wide.fit, "fill")
+        XCTAssertEqual(wide.windows[0].rect.width, 1280, accuracy: 0.5)
+        let tall = DemoFraming.plan(CGSize(width: 800, height: 1200), canvas: canvas, presentation: auto, caption: true, crops: nil)
+        XCTAssertEqual(tall.fit, "details")
+        XCTAssertEqual(tall.windows.map(\.role), ["picture", "detail", "detail"])
+        XCTAssertEqual(tall.windows[0].rect, CGRect(x: 0, y: 0, width: 480, height: 720))
+        XCTAssertNotNil(tall.captionAt)
+    }
+
+    func testCropBoxClampsInsideThePicture() {
+        let box = DemoFraming.cropBox(CGSize(width: 1000, height: 1000), aspect: 16.0 / 9.0, crop: Crop(x: 0, y: 1, zoom: 2))
+        XCTAssertEqual(box.minX, 0, accuracy: 0.001)
+        XCTAssertEqual(box.maxY, 1000, accuracy: 0.001)
+        XCTAssertEqual(box.width, 500, accuracy: 0.001)
     }
 
     func testQuadMappingHitsTheCorners() throws {

@@ -163,6 +163,7 @@ class Library:
                         "added_at": existing.added_at,
                         "last_shown_at": existing.last_shown_at,
                         "show_count": existing.show_count,
+                        "framing": existing.framing,
                     }
                 )
             elif not item.added_at:

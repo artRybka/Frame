@@ -22,7 +22,8 @@ RUN if [ -d /addon/server ]; then \
     else \
         pip install "frame-server @ git+https://github.com/artRybka/Frame@${FRAME_REF}#subdirectory=server"; \
     fi \
-    && rm -rf /addon
+    && rm -rf /addon \
+    && python -c "from frame_server.imaging.interest import detect_faces, _face_detector; assert _face_detector()"
 
 WORKDIR /data
 CMD ["frame", "serve"]

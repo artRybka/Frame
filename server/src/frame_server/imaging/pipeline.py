@@ -23,20 +23,24 @@ import numpy as np
 from PIL import Image
 from pydantic import BaseModel, ConfigDict, Field
 
-from .caption import caption_masks
+from .caption import caption_mask
 from .color import linear_to_u8, u8_to_linear
 from .dither import Kernel, error_diffusion, nearest
 from .filters import sharpen
+from .interest import InterestMap
 from .layout import (
+    Crop,
     Fit,
     Orientation,
+    Plan,
     canvas_size,
-    compose,
+    compose_plan,
     edge_color,
     load_image,
-    placement,
+    plan_layout,
     to_panel,
 )
+from .mat import paint_mat
 from .palette import SPECTRA6, Palette
 from .tone import ToneSettings, map_to_panel, precompensate
 
@@ -53,10 +57,12 @@ class LayoutSettings(BaseModel):
     orientation: Orientation = Orientation.LANDSCAPE
     rotation: Literal[90, 270] = Field(90, description="Clockwise rotation of a portrait frame")
     fit: Fit = Fit.AUTO
-    mat: Literal["white", "black", "edge"] = "white"
+    mat: Literal["white", "cream", "grey", "black", "edge"] = "white"
     margin: float = Field(0.0, ge=0, le=0.3, description="Passe-partout, fraction of short side")
-    focus_x: float = Field(0.5, ge=0, le=1)
-    focus_y: float = Field(0.5, ge=0, le=1)
+    crop: Crop | None = Field(None, description="FILL: part of the picture shown (else automatic)")
+    details: list[Crop] | None = Field(
+        None, min_length=2, max_length=2, description="DETAILS: the two close-ups (else automatic)"
+    )
 
 
 class DitherSettings(BaseModel):
@@ -153,12 +159,40 @@ def encode_image(img: Image.Image, fmt: Literal["png", "jpeg"], quality: int = 9
     return out.getvalue()
 
 
+# Mats in nominal colours, for the passthrough strategy (the panel dithers).
+_NOMINAL_MATS = {
+    "white": (255, 255, 255),
+    "cream": (250, 242, 214),
+    "grey": (150, 150, 150),
+    "black": (0, 0, 0),
+}
+
+
 def _mat_rgb(img: Image.Image, mat: str) -> tuple[int, int, int]:
-    if mat == "black":
-        return (0, 0, 0)
     if mat == "edge":
         return edge_color(img)
-    return (255, 255, 255)
+    return _NOMINAL_MATS.get(mat, (255, 255, 255))
+
+
+def plan_for(img: Image.Image, layout: LayoutSettings, caption: bool) -> Plan:
+    """Where things go; the picture is analysed only if a crop must be chosen."""
+    analysis: InterestMap | None = None
+
+    def auto(aspect: float, zoom: float, count: int) -> list[Crop]:
+        nonlocal analysis
+        analysis = analysis or InterestMap(img)
+        return analysis.best(aspect, zoom, count)
+
+    return plan_layout(
+        img.size,
+        canvas_size(layout.orientation),
+        layout.fit,
+        margin=layout.margin,
+        caption=caption,
+        crop=layout.crop,
+        details=layout.details,
+        auto=auto,
+    )
 
 
 def simulate_naive(linear: np.ndarray, palette: Palette) -> np.ndarray:
@@ -178,15 +212,8 @@ def render(
     s = settings or RenderSettings()
     pal = palette.subset(s.inks)
     img = load_image(source)
-    canvas = canvas_size(s.layout.orientation)
-    linear = compose(
-        img,
-        canvas,
-        fit=s.layout.fit,
-        mat_color=_mat_rgb(img, s.layout.mat),
-        margin=s.layout.margin,
-        focus=(s.layout.focus_x, s.layout.focus_y),
-    )
+    plan = plan_for(img, s.layout, caption=bool(s.caption))
+    linear = compose_plan(img, plan, mat_color=_mat_rgb(img, s.layout.mat))
     linear = sharpen(linear, s.sharpen)
 
     if s.strategy == Strategy.PASSTHROUGH:
@@ -194,6 +221,7 @@ def render(
         preview_idx = simulate_naive(linear, pal)
     else:
         target = map_to_panel(linear, pal, s.tone)
+        paint_mat(target, plan, pal, s.layout.mat)
         if s.strategy == Strategy.COMPENSATE:
             nominal = precompensate(target, pal)
             sent = linear_to_u8(nominal)
@@ -212,17 +240,14 @@ def render(
                 )
             sent = pal.device_u8()[preview_idx]
 
-    if s.caption:
-        _, box = placement(img.size, canvas, s.layout.fit, s.layout.margin)
-        text, card = caption_masks(
-            canvas, box, s.caption, on_white_mat=s.layout.mat == "white" and box != (0, 0, *canvas)
-        )
-        white, black = pal.white_index(), pal.black_index()
+    if s.caption and plan.caption_at is not None:
+        # Pure ink on the mat: white on a black mat, black otherwise.
+        text = caption_mask(plan.canvas, plan.caption_at, s.caption)
+        ink = pal.white_index() if s.layout.mat == "black" else pal.black_index()
         preview_idx = preview_idx.copy()
         sent = sent.copy()
-        for mask, ink in ((card, white), (text, black)):
-            preview_idx[mask] = ink
-            sent[mask] = pal.device_u8()[ink]
+        preview_idx[text] = ink
+        sent[text] = pal.device_u8()[ink]
 
     preview = pal.perceived_u8()[preview_idx]
     panel = to_panel(sent, s.layout.orientation, s.layout.rotation)

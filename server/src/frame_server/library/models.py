@@ -6,6 +6,8 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
+from ..imaging.layout import Crop
+
 
 class ItemKind(StrEnum):
     ARTWORK = "artwork"  # from a museum collection
@@ -24,6 +26,13 @@ class PhotoInfo(BaseModel):
     longitude: float | None = None
     contributor: str | None = None
     caption: str | None = None
+
+
+class Framing(BaseModel):
+    """Corrections saved by the user for one orientation of the frame."""
+
+    fill: Crop | None = None  # FILL: the part shown
+    details: list[Crop] | None = Field(None, min_length=2, max_length=2)  # DETAILS
 
 
 class Item(BaseModel):
@@ -61,6 +70,7 @@ class Item(BaseModel):
     last_shown_at: str | None = None
     show_count: int = 0
     photo: PhotoInfo | None = None
+    framing: dict[str, Framing] = Field(default_factory=dict)  # by orientation
 
     @property
     def file_stem(self) -> str:

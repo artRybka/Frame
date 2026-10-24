@@ -72,6 +72,32 @@ struct LiveBackend: FrameBackend {
 
     func facets() async throws -> Facets { try await get("/api/library/facets") }
 
+    func framing(itemID: String, orientation: String) async throws -> FramingView {
+        try await get(
+            "/api/library/items/\(escape(itemID))/framing",
+            query: [URLQueryItem(name: "orientation", value: orientation)]
+        )
+    }
+
+    private struct FramingUpdate: Encodable {
+        let orientation: String
+        let crops: [Crop]
+    }
+
+    func saveFraming(itemID: String, orientation: String, crops: [Crop]) async throws -> FramingView {
+        try await send(
+            "/api/library/items/\(escape(itemID))/framing", method: "PUT",
+            body: FramingUpdate(orientation: orientation, crops: crops)
+        )
+    }
+
+    func resetFraming(itemID: String, orientation: String) async throws -> FramingView {
+        let path = "/api/library/items/\(escape(itemID))/framing"
+        var req = request(path, method: "DELETE", query: [URLQueryItem(name: "orientation", value: orientation)])
+        req.timeoutInterval = 60
+        return try await perform(req)
+    }
+
     // MARK: Playlists
 
     func playlists() async throws -> [PlaylistSummary] { try await get("/api/playlists") }
