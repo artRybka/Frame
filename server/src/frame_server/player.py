@@ -159,9 +159,14 @@ class Player:
         pres = settings.photo if item.kind == ItemKind.PHOTO else settings.art
         base = PRESETS.get(pres.preset, PRESETS["painting"]).model_copy(deep=True)
         base.layout.fit = pres.fit
+        base.layout.mat = pres.mat
         base.layout.margin = pres.margin
         base.layout.orientation = settings.orientation
         base.layout.rotation = settings.rotation
+        framing = item.framing.get(settings.orientation.value)
+        if framing is not None:
+            base.layout.crop = framing.fill
+            base.layout.details = framing.details
         base.caption = caption_for(item) if pres.label else None
         return base
 

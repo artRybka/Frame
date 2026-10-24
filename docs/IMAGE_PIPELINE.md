@@ -64,6 +64,24 @@ kolory, a w rzeczywistości miesza ciemne. Efekt: obraz za ciemny i zgaszony.
 Pełna lista parametrów: `GET /api/presets` albo modele `RenderSettings`,
 `ToneSettings`, `DitherSettings` i `LayoutSettings` w kodzie.
 
+## Kadrowanie i passe-partout
+
+`imaging/layout.py` planuje płótno (`plan_layout`): każdy tryb to zestaw
+okienek z fragmentem obrazu, a reszta to passe-partout.
+
+| tryb | co widać |
+|---|---|
+| `fit` (passe-partout) | cały obraz w okienku, margines według ustawienia |
+| `fill` (wypełnij) | cała szerokość albo wysokość obrazu, kadr ustawiony automatycznie na to, co najciekawsze |
+| `details` (detale) | cały obraz od krawędzi do krawędzi (na pełną wysokość albo szerokość) i dwa przybliżone fragmenty w okienkach obok |
+| `auto` | proporcje prawie jak ekran: `fill`; wyraźnie inne: `fit`; bardzo różne (≥35% ekranu wolne obok obrazu): `details` |
+
+- **Co jest ciekawe** (`imaging/interest.py`): mapa szczegółów i kontrastu (krawędzie), kolorowości i przede wszystkim twarzy (YuNet przez OpenCV, model w `imaging/models/`), z lekkim przyciąganiem do środka, żeby ramki skanu i brzegi papieru nie wygrywały. Kadr to okno o kształcie okienka z największą „ciekawością” na piksel; drugi detal musi pokazać coś innego (pomija to, co pokazuje pierwszy).
+- **Detale** są przybliżone ok. 2,2× względem całości, ale nie bardziej, niż pozwala rozdzielczość źródła (najwyżej 1,6× powiększenia pikseli).
+- **Korekta kadru**: użytkownik może przesunąć i przybliżyć kadr (`fill`) albo detale (`details`) w aplikacji; poprawka jest zapisana przy dziele, osobno dla ramki poziomej i pionowej (`Item.framing`), i wraca przy każdym wyświetleniu.
+- **Passe-partout** (`imaging/mat.py`) jest malowane po mapowaniu tonów, w kolorach odczuwanych farb: biały i czarny to czyste farby (bez faktury, która dałaby tylko kropki), kremowy to biel z domieszką żółtej, szary to mieszanka czerni i bieli; kremowy i szary mają delikatną fakturę papieru. Okienka mają fazę 45° w kolorze rdzenia kartonu (biel), przy świetle z lewej góry: górna i lewa faza w cieniu, dolna i prawa jasne, a karton rzuca wąski cień na obraz przy górnej i lewej krawędzi.
+- **Podpis**: przy passe-partout litery stoją bezpośrednio na kartonie pod obrazem (lub pod detalami), wyrównane do prawej; w trybie `fill` obraz zostawia na dole wąski pasek w kolorze passe-partout na całą szerokość ekranu. Litery czarne, na czarnym kartonie białe; zawsze czyste farby bez ditheringu.
+
 ## Kalibracja (Etap 1)
 
 W aplikacji: *Ramka → Kolory ekranu → Kalibruj kolory*.

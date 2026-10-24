@@ -22,6 +22,7 @@ class Presentation(BaseModel):
 
     preset: str = "painting"
     fit: Fit = Fit.FIT
+    mat: Literal["white", "cream", "grey", "black"] = "white"
     margin: float = Field(0.05, ge=0, le=0.3)
     label: bool = False
 
