@@ -38,6 +38,50 @@ artefakt `screenshots`. Lokalnie: argumenty uruchomienia `-demo YES -screen
 discover` (dostępne: `now`, `discover`, `detail`, `museums`, `playlists`,
 `playlist`, `editor`, `frame`, `send`).
 
+## TestFlight
+
+Jednorazowo:
+
+1. **Team ID**: [developer.apple.com/account](https://developer.apple.com/account)
+   → *Membership details* (10 znaków). Wpisz go w `project.yml` jako
+   `DEVELOPMENT_TEAM` (to nie jest sekret, widać go w każdej podpisanej aplikacji).
+2. **Xcode → Settings → Accounts**: dodaj Apple ID konta deweloperskiego.
+3. **Bundle ID**: *Certificates, IDs & Profiles → Identifiers → +* →
+   *App IDs → App*, *Explicit*: `com.artrybka.frame`. Żadne dodatkowe
+   uprawnienia nie są potrzebne.
+4. **App Store Connect → Aplikacje → + Nowa aplikacja**: iOS, nazwa musi być
+   unikalna w całym App Store („Frame” jest zajęte), np. „Frame – ramka
+   e-papier”; na ekranie telefonu i tak będzie „Frame”. Język główny polski,
+   Bundle ID jak wyżej, SKU np. `frame-ios`.
+
+Każde wydanie:
+
+1. `cd ios && xcodegen generate && open Frame.xcodeproj`
+2. Cel *Any iOS Device (arm64)* → **Product → Archive**.
+3. W Organizerze **Distribute App → App Store Connect** (w nowszym Xcode:
+   *TestFlight & App Store*) → **Distribute**. Podpis i certyfikaty Xcode
+   załatwia sam. Każdy upload potrzebuje wyższego numeru kompilacji; jeśli
+   Xcode zgłosi, że taki już był, zwiększ `CURRENT_PROJECT_VERSION`
+   w `project.yml`.
+4. Po przetworzeniu (kilkanaście minut, przychodzi e-mail) build jest
+   w zakładce **TestFlight**.
+
+Testerzy:
+
+- **Ty**: *Internal Testing* → dodaj siebie; build jest od razu dostępny
+  w aplikacji TestFlight.
+- **Rodzina**: *External Testing* → grupa „Rodzina” → adresy e-mail ich Apple ID
+  (albo link publiczny). Pierwszy build przechodzi Beta App Review (zwykle
+  do doby). W *Test Information* podaj opis i e-mail do opinii, a w notatce
+  dla recenzenta np.:
+
+  > Frame controls a Samsung EM32DX colour e-paper display through the
+  > user's own home server. Without a server the app starts in demo mode
+  > with sample artworks from public museum collections, so every screen can
+  > be explored. No sign-in is required.
+
+Buildy w TestFlight wygasają po 90 dniach.
+
 ## Struktura
 
 ```
