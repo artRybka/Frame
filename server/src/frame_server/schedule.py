@@ -21,7 +21,7 @@ class Presentation(BaseModel):
     model_config = ConfigDict(validate_assignment=True)
 
     preset: str = "painting"
-    fit: Fit = Fit.FIT
+    fit: Fit = Fit.AUTO  # fill, passe-partout or details, by the picture's proportions
     mat: Literal["white", "cream", "grey", "black"] = "white"
     margin: float = Field(0.05, ge=0, le=0.3)
     label: bool = False

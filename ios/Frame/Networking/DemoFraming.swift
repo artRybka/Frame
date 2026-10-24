@@ -1,13 +1,35 @@
 import UIKit
 
 /// The demo's stand-in for the server's render: an artwork's e-paper look
-/// (Resources/DemoImages/<stem>-ink.jpg, made by the server pipeline) placed
-/// on the panel canvas the way the presentation settings say. Mirrors
-/// server/src/frame_server/imaging/layout.py and caption.py.
+/// (Resources/DemoImages/<stem>-ink.jpg, made by the server pipeline) laid
+/// out on the panel canvas as the presentation settings say. Mirrors
+/// server/src/frame_server/imaging/layout.py (plan_layout), mat.py and
+/// caption.py, without the dithering.
 enum DemoFraming {
     struct Art: Sendable {
         let caption: String
         let isPhoto: Bool
+    }
+
+    /// Crops for one orientation: chosen by the server's interest analysis
+    /// for the demo works (DemoLibrary.json "framing"), or corrected by the user.
+    struct Crops: Codable, Hashable, Sendable {
+        var fill: Crop?
+        var details: [Crop]?
+    }
+
+    struct Window {
+        let rect: CGRect  // on the canvas
+        let box: CGRect  // part of the picture shown, in its pixels
+        let role: String  // "picture", "fill" or "detail"
+        let crop: Crop?
+    }
+
+    struct Plan {
+        let fit: String  // resolved: "fit", "fill" or "details"
+        let canvas: CGSize
+        let windows: [Window]
+        let captionAt: CGRect?  // right-aligned within; origin = top-left of the line
     }
 
     /// The panel canvas at half resolution (the frame is 2560×1440).
@@ -29,66 +51,176 @@ enum DemoFraming {
         return item.dateText.isEmpty ? text : "\(text), \(item.dateText)"
     }
 
-    /// Where the picture lands: fill (cover, cropped by the canvas) or fit
-    /// (whole picture, `margin` of passe-partout); "auto" fills when the crop
-    /// would be small.
-    static func placement(
-        _ image: CGSize, in canvas: CGSize, fit: String, margin: Double
-    ) -> (fill: Bool, rect: CGRect) {
-        let target = canvas.width / canvas.height
-        let ratio = image.width / image.height
-        let fill = fit == "fill" || (fit == "auto" && abs(ratio - target) / max(ratio, target) <= 0.12)
-        if fill {
-            let scale = max(canvas.width / image.width, canvas.height / image.height)
-            let size = CGSize(width: image.width * scale, height: image.height * scale)
-            return (
-                true,
-                CGRect(
-                    x: (canvas.width - size.width) / 2, y: (canvas.height - size.height) / 2,
-                    width: size.width, height: size.height
-                )
-            )
+    /// Pixel size of the image the demo frames (the e-paper look, else the original).
+    static func pixelSize(_ id: String) -> CGSize? {
+        let stem = stem(id)
+        guard
+            let url = Bundle.main.url(forResource: stem + "-ink", withExtension: "jpg")
+                ?? Bundle.main.url(forResource: stem, withExtension: "jpg"),
+            let image = UIImage(contentsOfFile: url.path)?.cgImage
+        else { return nil }
+        return CGSize(width: image.width, height: image.height)
+    }
+
+    // MARK: Planning (layout.py)
+
+    static func captionSize(_ canvas: CGSize) -> CGFloat {
+        max(9, (min(canvas.width, canvas.height) * 0.02).rounded())
+    }
+
+    static func captionBand(_ canvas: CGSize) -> CGFloat {
+        (captionSize(canvas) * 2.6).rounded()
+    }
+
+    static func cropBox(_ size: CGSize, aspect: CGFloat, crop: Crop) -> CGRect {
+        var w = size.width, h = size.height
+        if size.width / size.height > aspect { w = size.height * aspect } else { h = size.width / aspect }
+        w /= crop.zoom
+        h /= crop.zoom
+        let cx = min(max(crop.x * size.width, w / 2), size.width - w / 2)
+        let cy = min(max(crop.y * size.height, h / 2), size.height - h / 2)
+        return CGRect(x: cx - w / 2, y: cy - h / 2, width: w, height: h)
+    }
+
+    /// Canvas share left beside the picture at full height (or width).
+    private static func room(_ size: CGSize, _ canvas: CGSize) -> CGFloat {
+        let ratio = size.width / size.height
+        if ratio < canvas.width / canvas.height { return 1 - canvas.height * ratio / canvas.width }
+        return 1 - canvas.width / ratio / canvas.height
+    }
+
+    static func resolveFit(_ size: CGSize, canvas: CGSize, fit: String) -> String {
+        let ratio = size.width / size.height, target = canvas.width / canvas.height
+        if fit == "auto" {
+            if abs(ratio - target) / max(ratio, target) <= 0.12 { return "fill" }
+            return room(size, canvas) >= 0.35 ? "details" : "fit"
         }
+        if fit == "details" && room(size, canvas) < 0.2 { return "fit" }
+        return fit
+    }
+
+    static func plan(
+        _ size: CGSize, canvas: CGSize, presentation: Presentation, caption: Bool, crops: Crops?
+    ) -> Plan {
+        switch resolveFit(size, canvas: canvas, fit: presentation.fit) {
+        case "fill":
+            return planFill(size, canvas, caption, crops?.fill)
+        case "details":
+            if let plan = planDetails(size, canvas, presentation.margin, caption, crops?.details) { return plan }
+            return planFit(size, canvas, presentation.margin, caption)
+        default:
+            return planFit(size, canvas, presentation.margin, caption)
+        }
+    }
+
+    private static func planFit(_ size: CGSize, _ canvas: CGSize, _ margin: Double, _ caption: Bool) -> Plan {
         let pad = (min(canvas.width, canvas.height) * margin).rounded()
-        let scale = min((canvas.width - 2 * pad) / image.width, (canvas.height - 2 * pad) / image.height)
-        let size = CGSize(width: (image.width * scale).rounded(), height: (image.height * scale).rounded())
-        return (
-            false,
-            CGRect(
-                x: ((canvas.width - size.width) / 2).rounded(.down),
-                y: ((canvas.height - size.height) / 2).rounded(.down),
-                width: size.width, height: size.height
-            )
-        )
+        let bottom = caption ? max(pad, captionBand(canvas)) : pad
+        let availW = canvas.width - 2 * pad, availH = canvas.height - pad - bottom
+        let scale = min(availW / size.width, availH / size.height)
+        let w = max(1, (size.width * scale).rounded()), h = max(1, (size.height * scale).rounded())
+        let rect = CGRect(x: ((canvas.width - w) / 2).rounded(.down), y: pad + ((availH - h) / 2).rounded(.down), width: w, height: h)
+        let at = caption ? CGRect(x: rect.minX, y: rect.maxY + (captionSize(canvas) * 0.6).rounded(), width: w, height: captionSize(canvas) * 1.4) : nil
+        return Plan(fit: "fit", canvas: canvas, windows: [Window(rect: rect, box: CGRect(origin: .zero, size: size), role: "picture", crop: nil)], captionAt: at)
+    }
+
+    private static func planFill(_ size: CGSize, _ canvas: CGSize, _ caption: Bool, _ crop: Crop?) -> Plan {
+        let band = caption ? captionBand(canvas) : 0
+        let rect = CGRect(x: 0, y: 0, width: canvas.width, height: canvas.height - band)
+        let aspect = rect.width / rect.height
+        let chosen = crop ?? Crop()
+        var at: CGRect?
+        if caption {
+            let pad = (min(canvas.width, canvas.height) * 0.03).rounded()
+            let top = rect.maxY + ((band - (captionSize(canvas) * 1.2).rounded()) / 2).rounded(.down)
+            at = CGRect(x: pad, y: top, width: canvas.width - 2 * pad, height: captionSize(canvas) * 1.4)
+        }
+        let window = Window(rect: rect, box: cropBox(size, aspect: aspect, crop: chosen), role: "fill", crop: chosen)
+        return Plan(fit: "fill", canvas: canvas, windows: [window], captionAt: at)
+    }
+
+    private static func planDetails(
+        _ size: CGSize, _ canvas: CGSize, _ margin: Double, _ caption: Bool, _ details: [Crop]?
+    ) -> Plan? {
+        let (cw, ch) = (canvas.width, canvas.height)
+        let short = min(cw, ch)
+        let m = (short * max(margin, 0.04)).rounded()
+        let band = caption ? captionBand(canvas) : 0
+        let gap = (captionSize(canvas) * 0.6).rounded()
+        let main: CGRect, rects: [CGRect], at: CGRect
+        if size.width / size.height < cw / ch {  // picture at the left; close-ups stacked
+            let mainW = (ch * size.width / size.height).rounded()
+            main = CGRect(x: 0, y: 0, width: mainW, height: ch)
+            let winW = cw - mainW - 2 * m, winH = ((ch - 3 * m - band) / 2).rounded(.down)
+            rects = [
+                CGRect(x: mainW + m, y: m, width: winW, height: winH),
+                CGRect(x: mainW + m, y: 2 * m + winH, width: winW, height: winH),
+            ]
+            at = CGRect(x: mainW + m, y: 2 * m + 2 * winH + gap, width: winW, height: captionSize(canvas) * 1.4)
+        } else {  // picture on top; close-ups side by side
+            let mainH = (cw * size.height / size.width).rounded()
+            main = CGRect(x: 0, y: 0, width: cw, height: mainH)
+            let winW = ((cw - 3 * m) / 2).rounded(.down), winH = ch - mainH - 2 * m - band
+            rects = [
+                CGRect(x: m, y: mainH + m, width: winW, height: winH),
+                CGRect(x: 2 * m + winW, y: mainH + m, width: winW, height: winH),
+            ]
+            at = CGRect(x: m, y: mainH + m + winH + gap, width: 2 * winW + m, height: captionSize(canvas) * 1.4)
+        }
+        guard let first = rects.first, min(first.width, first.height) >= 0.12 * short else { return nil }
+        let aspect = first.width / first.height
+        let chosen = (details?.count == 2 ? details : nil) ?? [Crop(x: 0.5, y: 0.35, zoom: 2), Crop(x: 0.5, y: 0.65, zoom: 2)]
+        var windows = [Window(rect: main, box: CGRect(origin: .zero, size: size), role: "picture", crop: nil)]
+        for (rect, crop) in zip(rects, chosen) {
+            windows.append(Window(rect: rect, box: cropBox(size, aspect: aspect, crop: crop), role: "detail", crop: crop))
+        }
+        return Plan(fit: "details", canvas: canvas, windows: windows, captionAt: caption ? at : nil)
+    }
+
+    // MARK: Drawing (mat.py, caption.py)
+
+    /// The mats as the server's preview shows them (paper white = screen white).
+    static func matColor(_ name: String) -> UIColor {
+        switch name {
+        case "cream": UIColor(red: 0.98, green: 0.96, blue: 0.89, alpha: 1)
+        case "grey": UIColor(white: 0.68, alpha: 1)
+        case "black": UIColor(white: 0.1, alpha: 1)
+        default: .white
+        }
     }
 
     /// File URL of the framed preview; rendered once per framing and cached.
-    static func framed(_ id: String, art: Art, settings: FrameSettings) -> URL? {
+    static func framed(_ id: String, art: Art, settings: FrameSettings, crops: Crops?) -> URL? {
         let pres = art.isPhoto ? settings.photo : settings.art
         let stem = stem(id)
+        let key = [settings.orientation, pres.key, art.caption, "\(String(describing: crops))"].joined(separator: "|")
         let directory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("DemoFrames", isDirectory: true)
-        let output = directory.appendingPathComponent(
-            "\(stem)-\(settings.orientation)-\(pres.fit)-\(pres.margin)-\(pres.label).jpg"
-        )
+        let output = directory.appendingPathComponent("\(stem)-\(settings.orientation)-\(pres.fit)-\(fnv(key)).jpg")
         if FileManager.default.fileExists(atPath: output.path) { return output }
         guard
             let source = Bundle.main.url(forResource: stem + "-ink", withExtension: "jpg")
                 ?? Bundle.main.url(forResource: stem, withExtension: "jpg"),
-            let image = UIImage(contentsOfFile: source.path)
+            let image = UIImage(contentsOfFile: source.path), let cgImage = image.cgImage
         else { return nil }
 
         let size = canvas(settings.orientation)
-        let (fill, rect) = placement(image.size, in: size, fit: pres.fit, margin: pres.margin)
+        let pixels = CGSize(width: cgImage.width, height: cgImage.height)
+        let layout = plan(pixels, canvas: size, presentation: pres, caption: pres.label && !art.caption.isEmpty, crops: crops)
         let format = UIGraphicsImageRendererFormat()
         format.scale = 1
         format.opaque = true
-        let data = UIGraphicsImageRenderer(size: size, format: format).jpegData(withCompressionQuality: 0.85) { _ in
-            UIColor.white.setFill()  // paper white, as the server's adapted preview shows it
+        let data = UIGraphicsImageRenderer(size: size, format: format).jpegData(withCompressionQuality: 0.85) { context in
+            matColor(pres.mat).setFill()
             UIRectFill(CGRect(origin: .zero, size: size))
-            image.draw(in: rect)
-            if pres.label, !art.caption.isEmpty {
-                drawCaption(art.caption, canvas: size, picture: rect, onMat: !fill)
+            for window in layout.windows {
+                if let part = cgImage.cropping(to: window.box.integral) {
+                    UIImage(cgImage: part).draw(in: window.rect)
+                }
+            }
+            drawBevels(layout, in: context.cgContext)
+            if let at = layout.captionAt {
+                drawCaption(art.caption, in: at, canvas: size, white: pres.mat == "black")
             }
         }
         do {
@@ -100,36 +232,71 @@ enum DemoFraming {
         return output
     }
 
-    /// Below the picture on a white passe-partout, right-aligned like a museum
-    /// label; otherwise on a small white card in the bottom-right corner.
-    private static func drawCaption(_ text: String, canvas: CGSize, picture: CGRect, onMat: Bool) {
-        let size = max(9, (min(canvas.width, canvas.height) * 0.02).rounded())
-        let pad = (size * 0.6).rounded()
+    /// 45° bevels showing the mat's white core (top and left in shadow) and
+    /// the mat's shadow on the picture under its top and left edges.
+    private static func drawBevels(_ plan: Plan, in context: CGContext) {
+        let short = min(plan.canvas.width, plan.canvas.height)
+        let b = max(2, (short * 0.006).rounded()), shadow = max(2, (short * 0.006).rounded())
+        let lit = UIColor.white, shaded = UIColor(white: 0.84, alpha: 1)
+        for window in plan.windows {
+            let r = window.rect
+            let open = (
+                left: r.minX > 0, top: r.minY > 0,
+                right: r.maxX < plan.canvas.width, bottom: r.maxY < plan.canvas.height
+            )
+            func fill(_ points: [CGPoint], _ color: UIColor) {
+                context.beginPath()
+                context.addLines(between: points)
+                context.closePath()
+                context.setFillColor(color.cgColor)
+                context.fillPath()
+            }
+            if open.top {
+                fill([CGPoint(x: r.minX - b, y: r.minY - b), CGPoint(x: r.maxX + b, y: r.minY - b), CGPoint(x: r.maxX, y: r.minY), CGPoint(x: r.minX, y: r.minY)], shaded)
+            }
+            if open.left {
+                fill([CGPoint(x: r.minX - b, y: r.minY - b), CGPoint(x: r.minX, y: r.minY), CGPoint(x: r.minX, y: r.maxY), CGPoint(x: r.minX - b, y: r.maxY + b)], shaded)
+            }
+            if open.bottom {
+                fill([CGPoint(x: r.minX, y: r.maxY), CGPoint(x: r.maxX, y: r.maxY), CGPoint(x: r.maxX + b, y: r.maxY + b), CGPoint(x: r.minX - b, y: r.maxY + b)], lit)
+            }
+            if open.right {
+                fill([CGPoint(x: r.maxX, y: r.minY), CGPoint(x: r.maxX + b, y: r.minY - b), CGPoint(x: r.maxX + b, y: r.maxY + b), CGPoint(x: r.maxX, y: r.maxY)], lit)
+            }
+            let colors = [UIColor.black.withAlphaComponent(0.22).cgColor, UIColor.black.withAlphaComponent(0).cgColor] as CFArray
+            guard let gradient = CGGradient(colorsSpace: nil, colors: colors, locations: [0, 1]) else { continue }
+            context.saveGState()
+            context.clip(to: r)
+            if open.top {
+                context.drawLinearGradient(gradient, start: CGPoint(x: r.minX, y: r.minY), end: CGPoint(x: r.minX, y: r.minY + shadow), options: [])
+            }
+            if open.left {
+                context.drawLinearGradient(gradient, start: CGPoint(x: r.minX, y: r.minY), end: CGPoint(x: r.minX + shadow, y: r.minY), options: [])
+            }
+            context.restoreGState()
+        }
+    }
+
+    /// Right-aligned on the mat, like a museum label.
+    private static func drawCaption(_ text: String, in rect: CGRect, canvas: CGSize, white: Bool) {
         let style = NSMutableParagraphStyle()
+        style.alignment = .right
         style.lineBreakMode = .byTruncatingTail
         let attributes: [NSAttributedString.Key: Any] = [
-            .font: UIFont.systemFont(ofSize: size),
-            .foregroundColor: UIColor.black,
+            .font: UIFont.systemFont(ofSize: captionSize(canvas)),
+            .foregroundColor: white ? UIColor.white : UIColor(white: 0.1, alpha: 1),
             .paragraphStyle: style,
         ]
-        let line = text as NSString
-        let natural = line.size(withAttributes: attributes)
-        if onMat, canvas.height - picture.maxY >= size * 2 {
-            let width = min(natural.width, picture.width)
-            line.draw(
-                in: CGRect(x: picture.maxX - width, y: picture.maxY + pad, width: width, height: natural.height),
-                withAttributes: attributes
-            )
-        } else {
-            let width = min(natural.width, canvas.width * 0.6)
-            let card = CGRect(
-                x: canvas.width - 2 * pad - width - 2 * pad,
-                y: canvas.height - 2 * pad - natural.height - 2 * pad,
-                width: width + 2 * pad, height: natural.height + 2 * pad
-            )
-            UIColor.white.setFill()
-            UIRectFill(card)
-            line.draw(in: card.insetBy(dx: pad, dy: pad), withAttributes: attributes)
+        (text as NSString).draw(in: rect, withAttributes: attributes)
+    }
+
+    /// Stable short hash for cache file names.
+    private static func fnv(_ text: String) -> String {
+        var hash: UInt64 = 0xcbf2_9ce4_8422_2325
+        for byte in text.utf8 {
+            hash ^= UInt64(byte)
+            hash = hash &* 0x100_0000_01b3
         }
+        return String(hash, radix: 16)
     }
 }

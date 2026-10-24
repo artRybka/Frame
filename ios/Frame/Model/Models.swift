@@ -251,11 +251,33 @@ struct StatusView: Codable, Sendable {
 
 struct Presentation: Codable, Hashable, Sendable {
     var preset: String
-    var fit: String  // "fit" | "fill" | "auto"
+    var fit: String  // "fit" | "fill" | "details" | "auto"
+    var mat: String = "white"  // "white" | "cream" | "grey" | "black"
     var margin: Double
     var label: Bool
 
-    var key: String { "\(preset),\(fit),\(margin),\(label)" }
+    var key: String { "\(preset),\(fit),\(mat),\(margin),\(label)" }
+
+    init(preset: String, fit: String, mat: String = "white", margin: Double, label: Bool) {
+        self.preset = preset
+        self.fit = fit
+        self.mat = mat
+        self.margin = margin
+        self.label = label
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case preset, fit, mat, margin, label
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        preset = try c.decode(String.self, forKey: .preset)
+        fit = try c.decode(String.self, forKey: .fit)
+        mat = try c.decodeIfPresent(String.self, forKey: .mat) ?? "white"  // older servers
+        margin = try c.decode(Double.self, forKey: .margin)
+        label = try c.decode(Bool.self, forKey: .label)
+    }
 }
 
 struct FrameSettings: Codable, Hashable, Sendable {
@@ -285,7 +307,7 @@ struct FrameSettings: Codable, Hashable, Sendable {
         mode: "art", playlistId: nil, intervalMinutes: 1440, intervalMinutesBattery: 1440,
         quietStart: "22:00", quietEnd: "07:00", shuffle: true, avoidRepeatDays: 14,
         orientation: "landscape", rotation: 90,
-        art: Presentation(preset: "painting", fit: "fit", margin: 0.05, label: false),
+        art: Presentation(preset: "painting", fit: "auto", margin: 0.05, label: false),
         photo: Presentation(preset: "photo", fit: "auto", margin: 0, label: false),
         albumUrl: "", timezone: "Europe/Warsaw", statusPollMinutes: 15
     )
@@ -389,4 +411,30 @@ struct CalibrationResult: Codable, Sendable {
     let inks: [MeasuredInk]
     let warnings: [String]
     let chartUrl: String
+}
+
+// MARK: Framing (server/src/frame_server/web/library_api.py)
+
+/// Which part of a picture a window shows: centre as fractions of the
+/// picture, zoom 1 = the largest part of the window's shape.
+struct Crop: Codable, Hashable, Sendable {
+    var x: Double = 0.5
+    var y: Double = 0.5
+    var zoom: Double = 1
+}
+
+struct FramingWindow: Codable, Hashable, Sendable {
+    let role: String  // "fill" | "detail"
+    let aspect: Double
+    var crop: Crop
+    let custom: Bool
+}
+
+/// `GET /api/library/items/{id}/framing`
+struct FramingView: Codable, Hashable, Sendable {
+    let orientation: String
+    let fit: String  // resolved: "fit" | "fill" | "details"
+    let width: Int
+    let height: Int
+    var windows: [FramingWindow]
 }

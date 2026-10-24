@@ -11,6 +11,8 @@ actor DemoBackend: FrameBackend {
     private struct DemoFile: Decodable {
         let items: [Item]
         let playlists: [Playlist]
+        /// Crops the server's interest analysis chose: item id -> orientation -> crops.
+        var framing: [String: [String: DemoFraming.Crops]]?
     }
 
     private var items: [Item]
@@ -29,8 +31,10 @@ actor DemoBackend: FrameBackend {
     /// Remote museum URL -> item id, so search results also use bundled files.
     private let idsByURL: [URL: String]
     private let arts: [String: DemoFraming.Art]
-    /// The settings as last saved, for nonisolated image requests.
-    private let framing = FramingSettings()
+    private let autoCrops: [String: [String: DemoFraming.Crops]]
+    /// Settings and crop corrections as last saved, for nonisolated image requests.
+    private let shared = FramingState()
+    private var framingRevision = 0
 
     init() {
         let loaded = Self.load()
@@ -57,6 +61,7 @@ actor DemoBackend: FrameBackend {
                 ($0.id, DemoFraming.Art(caption: DemoFraming.caption(for: $0), isPhoto: $0.kind == .photo))
             }
         )
+        autoCrops = loaded.framing ?? [:]
         // Start out playing the first playlist, like a fresh server does.
         settingsValue.playlistId = 1
         let first = byID[1].map { playlist in
@@ -65,7 +70,7 @@ actor DemoBackend: FrameBackend {
         queue = (first.flatMap { $0.isEmpty ? nil : $0 } ?? loaded.items).map(\.id)
         currentID = queue.first
         if !queue.isEmpty { queue.removeFirst() }
-        framing.current = settingsValue
+        shared.current = settingsValue
     }
 
     private static func load() -> DemoFile {
@@ -73,7 +78,7 @@ actor DemoBackend: FrameBackend {
             let url = Bundle.main.url(forResource: "DemoLibrary", withExtension: "json"),
             let data = try? Data(contentsOf: url),
             let file = try? LiveBackend.decoder().decode(DemoFile.self, from: data)
-        else { return DemoFile(items: [], playlists: []) }
+        else { return DemoFile(items: [], playlists: [], framing: nil) }
         return file
     }
 
@@ -166,7 +171,7 @@ actor DemoBackend: FrameBackend {
             NowShowing(
                 title: $0.title, description: "\($0.artist) — \($0.title)", source: $0.source,
                 created: ISO8601DateFormatter().string(from: .now.addingTimeInterval(-5400)),
-                previewUrl: "/demo/\($0.id)?\(settingsValue.presentationKey)", item: $0
+                previewUrl: "/demo/\($0.id)?\(settingsValue.presentationKey)|\(framingRevision)", item: $0
             )
         }
         let next = Calendar.current.nextDate(
@@ -254,6 +259,52 @@ actor DemoBackend: FrameBackend {
         _ = try await self.hold(hold)
     }
 
+    // MARK: Framing
+
+    func framing(itemID: String, orientation: String) async throws -> FramingView {
+        guard let item = items.first(where: { $0.id == itemID }),
+              let size = DemoFraming.pixelSize(itemID)
+        else { throw BackendError.notFound }
+        let pres = item.kind == .photo ? settingsValue.photo : settingsValue.art
+        let custom = shared.crops[itemID]?[orientation]
+        let plan = DemoFraming.plan(
+            size, canvas: DemoFraming.canvas(orientation), presentation: pres,
+            caption: pres.label, crops: crops(itemID, orientation)
+        )
+        let windows = plan.windows.compactMap { window -> FramingWindow? in
+            guard let crop = window.crop else { return nil }
+            let isCustom = window.role == "fill" ? custom?.fill != nil : custom?.details != nil
+            return FramingWindow(role: window.role, aspect: window.rect.width / window.rect.height, crop: crop, custom: isCustom)
+        }
+        return FramingView(orientation: orientation, fit: plan.fit, width: Int(size.width), height: Int(size.height), windows: windows)
+    }
+
+    func saveFraming(itemID: String, orientation: String, crops: [Crop]) async throws -> FramingView {
+        let current = try await framing(itemID: itemID, orientation: orientation)
+        var saved = shared.crops[itemID]?[orientation] ?? DemoFraming.Crops()
+        switch (current.fit, crops.count) {
+        case ("fill", 1): saved.fill = crops[0]
+        case ("details", 2): saved.details = crops
+        default: throw BackendError.http(status: 422, body: "")
+        }
+        shared.crops[itemID, default: [:]][orientation] = saved
+        framingRevision += 1
+        return try await framing(itemID: itemID, orientation: orientation)
+    }
+
+    func resetFraming(itemID: String, orientation: String) async throws -> FramingView {
+        shared.crops[itemID]?[orientation] = nil
+        framingRevision += 1
+        return try await framing(itemID: itemID, orientation: orientation)
+    }
+
+    /// The user's correction, else what the server's analysis chose.
+    private nonisolated func crops(_ id: String, _ orientation: String) -> DemoFraming.Crops? {
+        let auto = autoCrops[id]?[orientation]
+        guard let custom = shared.crops[id]?[orientation] else { return auto }
+        return DemoFraming.Crops(fill: custom.fill ?? auto?.fill, details: custom.details ?? auto?.details)
+    }
+
     func facets() async throws -> Facets {
         func top(_ values: [String]) -> [FacetValue] {
             Dictionary(values.map { ($0, 1) }, uniquingKeysWith: +)
@@ -318,7 +369,7 @@ actor DemoBackend: FrameBackend {
 
     func saveSettings(_ settings: FrameSettings) async throws -> FrameSettings {
         settingsValue = settings
-        framing.current = settings
+        shared.current = settings
         return settings
     }
 
@@ -452,7 +503,10 @@ actor DemoBackend: FrameBackend {
     }
 
     private nonisolated func framed(_ id: String, _ settings: FrameSettings? = nil) -> URL? {
-        arts[id].flatMap { DemoFraming.framed(id, art: $0, settings: settings ?? framing.current) }
+        let settings = settings ?? shared.current
+        return arts[id].flatMap {
+            DemoFraming.framed(id, art: $0, settings: settings, crops: crops(id, settings.orientation))
+        }
     }
 
     /// Resources/DemoImages/<stem>.jpg
@@ -461,14 +515,21 @@ actor DemoBackend: FrameBackend {
     }
 }
 
-/// Lock-guarded copy of the demo settings for image requests, which run
+/// Lock-guarded settings and crop corrections for image requests, which run
 /// outside the actor.
-private final class FramingSettings: @unchecked Sendable {
+private final class FramingState: @unchecked Sendable {
     private let lock = NSLock()
     private var value = FrameSettings.defaults
+    private var corrections: [String: [String: DemoFraming.Crops]] = [:]
 
     var current: FrameSettings {
         get { lock.withLock { value } }
         set { lock.withLock { value = newValue } }
+    }
+
+    /// Item id -> orientation -> the user's crops.
+    var crops: [String: [String: DemoFraming.Crops]] {
+        get { lock.withLock { corrections } }
+        set { lock.withLock { corrections = newValue } }
     }
 }

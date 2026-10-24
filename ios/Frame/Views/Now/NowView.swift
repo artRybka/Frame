@@ -5,6 +5,7 @@ import SwiftUI
 struct NowView: View {
     @Environment(AppModel.self) private var model
     @State private var showingSend = LaunchRoute.screen == "send"
+    @State private var showingCrop = LaunchRoute.screen == "crop"
     @State private var path = NavigationPath()
 
     private var current: NowShowing? { model.player?.current }
@@ -61,6 +62,11 @@ struct NowView: View {
             .sheet(isPresented: $showingSend) {
                 SendSheet()
             }
+            .sheet(isPresented: $showingCrop) {
+                if let item {
+                    CropEditorSheet(item: item)
+                }
+            }
         }
     }
 
@@ -111,6 +117,20 @@ struct NowView: View {
                             ProgressView()
                         }
                     }
+            }
+        }
+        .overlay(alignment: .bottomTrailing) {
+            if item != nil {
+                Button {
+                    showingCrop = true
+                } label: {
+                    Image(systemName: "crop")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(width: 36, height: 36)
+                        .background(.ultraThinMaterial, in: Circle())
+                }
+                .padding(14)
+                .accessibilityLabel("Kadr na ramce")
             }
         }
         .frame(maxWidth: model.isPortrait ? 260 : .infinity)

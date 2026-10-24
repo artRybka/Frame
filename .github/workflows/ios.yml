@@ -86,6 +86,7 @@ jobs:
             capture frame 10 "frame-$appearance"
             capture museums 8 "museums-$appearance"
             capture send 8 "send-$appearance"
+            capture crop 12 "crop-$appearance"
             capture calibration 12 "calibration-$appearance"
             capture calibration-result 14 "calibration-result-$appearance"
           done

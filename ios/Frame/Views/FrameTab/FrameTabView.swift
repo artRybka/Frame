@@ -412,16 +412,32 @@ struct PresentationSection: View {
             Card {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Kadrowanie").foregroundStyle(Theme.ink)
-                    HStack(spacing: 10) {
-                        FitOption(title: "Passe-partout", fit: "fit", selected: presentation.fit.wrappedValue == "fit") {
-                            presentation.fit.wrappedValue = "fit"
-                            if presentation.margin.wrappedValue == 0 { presentation.margin.wrappedValue = 0.05 }
+                    HStack(spacing: 8) {
+                        ForEach(FitOption.modes, id: \.fit) { mode in
+                            FitOption(
+                                title: mode.title, fit: mode.fit, mat: MatSwatch.color(presentation.mat.wrappedValue),
+                                selected: presentation.fit.wrappedValue == mode.fit
+                            ) {
+                                presentation.fit.wrappedValue = mode.fit
+                                if mode.fit == "fit", presentation.margin.wrappedValue == 0 {
+                                    presentation.margin.wrappedValue = 0.05
+                                }
+                            }
                         }
-                        FitOption(title: "Wypełnij", fit: "fill", selected: presentation.fit.wrappedValue == "fill") {
-                            presentation.fit.wrappedValue = "fill"
-                        }
-                        FitOption(title: "Auto", fit: "auto", selected: presentation.fit.wrappedValue == "auto") {
-                            presentation.fit.wrappedValue = "auto"
+                    }
+                    Text(FitOption.explanation(presentation.fit.wrappedValue))
+                        .font(.caption)
+                        .foregroundStyle(Theme.inkSoft)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Divider()
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Passe-partout").foregroundStyle(Theme.ink)
+                    HStack(spacing: 14) {
+                        ForEach(MatSwatch.names, id: \.self) { name in
+                            MatSwatch(name: name, selected: presentation.mat.wrappedValue == name) {
+                                presentation.mat.wrappedValue = name
+                            }
                         }
                     }
                 }
@@ -440,8 +456,8 @@ struct PresentationSection: View {
                 }
                 Divider()
                 Toggle("Podpis na ramce", isOn: presentation.label)
-                Text(target == .art ? "Np. „Claude Monet — Lilie wodne, 1906”, czarnym drukiem na passe-partout."
-                                    : "Data i podpis zdjęcia w rogu.")
+                Text(target == .art ? "Np. „Claude Monet — Lilie wodne, 1906”, drukiem na passe-partout; przy wypełnieniu na wąskim pasku u dołu."
+                                    : "Data i podpis zdjęcia na passe-partout albo na pasku u dołu.")
                     .font(.caption)
                     .foregroundStyle(Theme.inkSoft)
                 Divider()
@@ -463,33 +479,120 @@ struct PresentationSection: View {
 struct FitOption: View {
     let title: String
     let fit: String
+    var mat: Color = Theme.matWhite
     let selected: Bool
     let action: () -> Void
+
+    static let modes: [(fit: String, title: String)] = [
+        ("fit", "Passe-partout"), ("fill", "Wypełnij"), ("details", "Detale"), ("auto", "Auto"),
+    ]
+
+    static func explanation(_ fit: String) -> String {
+        switch fit {
+        case "fill": "Cały ekran; kadr sam ustawia się na tym, co najciekawsze (twarze, szczegóły). Poprawisz go w „Teraz”."
+        case "details": "Cały obraz od krawędzi do krawędzi, obok dwa przybliżone detale w okienkach passe-partout."
+        case "auto": "Wypełnienie, gdy proporcje pasują; passe-partout, gdy trochę się różnią; detale, gdy bardzo."
+        default: "Cały obraz w okienku passe-partout."
+        }
+    }
 
     var body: some View {
         Button(action: action) {
             VStack(spacing: 8) {
                 ZStack {
-                    Rectangle().fill(Theme.matWhite)
-                    switch fit {
-                    case "fill":
-                        Rectangle().fill(Theme.accent.opacity(0.75))
-                    case "auto":
-                        Rectangle().fill(Theme.accent.opacity(0.75)).padding(.horizontal, 6)
-                    default:
-                        Rectangle().fill(Theme.accent.opacity(0.75)).padding(.vertical, 6).padding(.horizontal, 22)
-                    }
+                    Rectangle().fill(mat)
+                    miniature
                 }
-                .frame(height: 46)
+                .frame(height: 44)
                 .padding(3)
                 .background(Theme.frameWood)
-                Text(title).font(.caption.weight(.medium)).foregroundStyle(Theme.ink)
+                Text(title)
+                    .font(.caption2.weight(.medium))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .foregroundStyle(Theme.ink)
             }
-            .padding(8)
+            .padding(6)
             .background(selected ? Theme.accent.opacity(0.1) : .clear, in: RoundedRectangle(cornerRadius: 10))
             .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(selected ? Theme.accent : Theme.hairline, lineWidth: selected ? 2 : 1))
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    @ViewBuilder private var miniature: some View {
+        let art = Theme.accent.opacity(0.75)
+        switch fit {
+        case "fill":
+            Rectangle().fill(art)
+        case "details":
+            HStack(spacing: 4) {
+                Rectangle().fill(art).frame(width: 16)
+                VStack(spacing: 4) {
+                    Rectangle().fill(art.opacity(0.7))
+                    Rectangle().fill(art.opacity(0.7))
+                }
+                .padding(.vertical, 5)
+                .padding(.trailing, 5)
+            }
+        case "auto":
+            Rectangle().fill(art).padding(.horizontal, 6)
+        default:
+            Rectangle().fill(art).padding(.vertical, 6).padding(.horizontal, 18)
+        }
+    }
+}
+
+/// One passe-partout colour to choose.
+struct MatSwatch: View {
+    let name: String
+    let selected: Bool
+    let action: () -> Void
+
+    static let names = ["white", "cream", "grey", "black"]
+
+    static func color(_ name: String) -> Color {
+        switch name {
+        case "cream": Color(hex: 0xF6EFD9)
+        case "grey": Color(hex: 0xAEADAA)
+        case "black": Color(hex: 0x1F1E1C)
+        default: Color(hex: 0xFBFAF7)
+        }
+    }
+
+    static func title(_ name: String) -> String {
+        switch name {
+        case "cream": "Kremowe"
+        case "grey": "Szare"
+        case "black": "Czarne"
+        default: "Białe"
+        }
+    }
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 6) {
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Self.color(name))
+                    .frame(width: 44, height: 32)
+                    .overlay(
+                        // The window cut at 45°: a light inner edge.
+                        RoundedRectangle(cornerRadius: 2)
+                            .strokeBorder(.white.opacity(name == "white" ? 0 : 0.8), lineWidth: 1.5)
+                            .padding(9)
+                    )
+                    .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Theme.inkSoft.opacity(0.35), lineWidth: 0.75))
+                    .padding(3)
+                    .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(selected ? Theme.accent : .clear, lineWidth: 2))
+                Text(Self.title(name))
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(selected ? Theme.ink : Theme.inkSoft)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Passe-partout \(Self.title(name).lowercased())")
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
 
