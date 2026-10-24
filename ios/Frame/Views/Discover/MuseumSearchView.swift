@@ -4,13 +4,15 @@ import SwiftUI
 struct MuseumSearchView: View {
     @Environment(AppModel.self) private var model
     @State private var museums: [Museum] = []
-    @State private var source = "aic"
+    /// A museum's key, or "all" to search every one at once.
+    @State private var source = "all"
     @State private var text = ""
     @State private var results: [RemoteItem] = []
     @State private var total = 0
     @State private var searching = false
     @State private var adding: Set<String> = []
     @State private var page = 1
+    @State private var failed: [String] = []
     @State private var loadingMore = false
     /// Set while "Dodaj wszystkie" runs; nil inside until the server counts.
     @State private var bulk: JobStatus?? = nil
@@ -23,6 +25,9 @@ struct MuseumSearchView: View {
         VStack(alignment: .leading, spacing: 16) {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
+                    Chip(title: "Wszystkie", systemImage: "square.grid.2x2", selected: source == "all") {
+                        source = "all"
+                    }
                     ForEach(museums) { museum in
                         Chip(title: museum.name, systemImage: "building.columns", selected: source == museum.key) {
                             source = museum.key
@@ -35,7 +40,10 @@ struct MuseumSearchView: View {
 
             HStack(spacing: 10) {
                 Image(systemName: "magnifyingglass").foregroundStyle(Theme.inkSoft)
-                TextField("Szukaj w \(Names.source(source))", text: $text)
+                TextField(
+                    source == "all" ? "Szukaj we wszystkich muzeach" : "Szukaj w \(Names.source(source))",
+                    text: $text
+                )
                     .submitLabel(.search)
                     .onSubmit { Task { await search() } }
                 if searching { ProgressView() }
@@ -76,6 +84,11 @@ struct MuseumSearchView: View {
                         .font(.serif(17, weight: .medium))
                     Spacer()
                     addAllMenu
+                }
+                if !failed.isEmpty {
+                    Text("Nie odpowiedziało: " + failed.map(Names.source).joined(separator: ", "))
+                        .font(.footnote)
+                        .foregroundStyle(Theme.inkSoft)
                 }
                 MasonryGrid(items: results.map(\.item.summary)) { summary in
                     let remote = results.first { $0.id == summary.id }
@@ -200,6 +213,7 @@ struct MuseumSearchView: View {
             let found = try await model.backend.searchMuseum(source: source, query: text, page: 1)
             results = found.items
             total = found.total
+            failed = found.failed ?? []
             page = 1
         } catch {
             model.show(error)

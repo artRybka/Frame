@@ -452,3 +452,34 @@ def test_draw_takes_turns_and_skips_known_or_weak(tmp_path) -> None:
     for item_id in job.item_ids:
         n = int(item_id.split(":")[1])
         assert n % 2 == 0 and n <= 30
+
+
+def test_search_all_interleaves_and_reports_failures(tmp_path) -> None:
+    from frame_server.library.importer import Importer
+
+    def fake(source: str, count: int, fails: bool = False) -> type[Museum]:
+        class Fake(Museum):
+            key = source
+            name = source
+
+            def search(self, query: str, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
+                if fails:
+                    raise httpx.ConnectError("down")
+                return count, [self._item(str(n)) for n in range(min(limit, count))]
+
+            def fetch(self, source_id: str) -> Item | None:
+                return None
+
+        return Fake
+
+    saved = dict(MUSEUMS)
+    MUSEUMS.clear()
+    MUSEUMS.update(a=fake("a", 3), b=fake("b", 1), c=fake("c", 0, fails=True))
+    try:
+        importer = Importer(Library(tmp_path / "lib.db"), None, None)  # type: ignore[arg-type]
+        total, items, failed = importer.search_all("x", limit=2)
+    finally:
+        MUSEUMS.clear()
+        MUSEUMS.update(saved)
+    assert total == 4 and failed == ["c"]
+    assert [i.id for i in items] == ["a:0", "b:0", "a:1"]

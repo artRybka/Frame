@@ -16,6 +16,7 @@ from starlette.concurrency import run_in_threadpool
 from ..imaging.layout import Crop, Fit, Orientation, Plan, load_image
 from ..imaging.pipeline import encode_image, plan_for, render
 from ..library import Facets, Item, ItemKind, ItemSummary, Job, PhotoInfo, PlaylistRules
+from ..library.importer import ALL
 from ..library.models import Framing
 from ..library.museums import MUSEUMS, Discovery, Kind
 from ..library.repo import SortKey
@@ -54,6 +55,8 @@ class RemoteItem(BaseModel):
 class RemotePage(BaseModel):
     total: int
     items: list[RemoteItem]
+    #: Museums that did not answer (searching ``all``).
+    failed: list[str] = []
 
 
 class ImportRequest(BaseModel):
@@ -368,17 +371,25 @@ def museums() -> list[dict[str, str]]:
 
 @router.get("/museums/{source}/search", response_model=RemotePage)
 async def museum_search(
-    source: str, svc: Svc, q: str, page: int = 1, limit: int = 24
+    source: str, svc: Svc, q: str, page: int = 1, limit: int | None = None
 ) -> RemotePage:
-    if source not in MUSEUMS:
+    """One museum, or ``all`` of them (``limit`` results from each)."""
+    failed: list[str] = []
+    if source == ALL:
+        total, items, failed = await run_in_threadpool(svc.importer.search_all, q, limit or 8, page)
+    elif source in MUSEUMS:
+        try:
+            total, items = await run_in_threadpool(
+                svc.importer.search, source, q, limit or 24, page
+            )
+        except httpx.HTTPError as err:
+            raise HTTPException(502, f"{source}: {err}") from err
+    else:
         raise HTTPException(404, f"unknown museum {source!r}")
-    try:
-        total, items = await run_in_threadpool(svc.importer.search, source, q, limit, page)
-    except httpx.HTTPError as err:
-        raise HTTPException(502, f"{source}: {err}") from err
     return RemotePage(
         total=total,
         items=[RemoteItem(item=i, in_library=svc.library.has(i.id)) for i in items],
+        failed=failed,
     )
 
 
@@ -397,7 +408,7 @@ async def museum_import(source: str, request: ImportRequest, svc: Svc) -> Item:
 
 @router.post("/museums/{source}/import-search")
 def museum_import_search(source: str, request: ImportSearchRequest, svc: Svc) -> dict[str, Any]:
-    if source not in MUSEUMS:
+    if source != ALL and source not in MUSEUMS:
         raise HTTPException(404, f"unknown museum {source!r}")
 
     def work(job: Job) -> None:

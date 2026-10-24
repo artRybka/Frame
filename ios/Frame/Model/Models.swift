@@ -330,6 +330,8 @@ struct RemoteItem: Codable, Hashable, Sendable, Identifiable {
 struct RemotePage: Codable, Sendable {
     let total: Int
     let items: [RemoteItem]
+    /// Museums that did not answer a search of all of them.
+    var failed: [String]?
 }
 
 /// A themed batch of museum works, `GET /api/library/packs`.

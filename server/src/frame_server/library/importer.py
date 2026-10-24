@@ -7,7 +7,9 @@ import random
 import secrets
 import threading
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+from itertools import chain, zip_longest
 
 import httpx
 from PIL import Image
@@ -16,10 +18,13 @@ from ..imaging.palette import Palette
 from .colors import analyse
 from .images import ImageCache
 from .models import Item, ItemKind, PhotoInfo
-from .museums import Discovery, client, museum
+from .museums import MUSEUMS, Discovery, client, museum
 from .repo import Library, now_iso
 
 log = logging.getLogger(__name__)
+
+#: Pseudo source: every museum at once.
+ALL = "all"
 
 
 @dataclass
@@ -86,6 +91,28 @@ class Importer:
             item = museum(source, http, self.private_use()).fetch(source_id)
         return self.add(item) if item else None
 
+    def search_all(
+        self, query: str, limit: int = 8, page: int = 1
+    ) -> tuple[int, list[Item], list[str]]:
+        """``limit`` results from every museum at once, interleaved; returns
+        (total, items, museums that failed)."""
+        with ThreadPoolExecutor(len(MUSEUMS)) as pool:
+            futures = {k: pool.submit(self.search, k, query, limit, page) for k in MUSEUMS}
+        found: list[list[Item]] = []
+        failed: list[str] = []
+        total = 0
+        for key, future in futures.items():
+            try:
+                count, items = future.result()
+            except (httpx.HTTPError, ValueError) as err:
+                log.warning("search in %s failed: %s", key, err)
+                failed.append(key)
+                continue
+            total += count
+            found.append(items)
+        mixed = [i for i in chain.from_iterable(zip_longest(*found)) if i is not None]
+        return total, mixed, failed
+
     def search_many(self, source: str, query: str, limit: int) -> list[Item]:
         """Up to ``limit`` results, over as many result pages as that takes."""
         with self.http() as http:
@@ -104,7 +131,16 @@ class Importer:
     def import_search(
         self, source: str, query: str, limit: int, job: Job | None = None
     ) -> list[Item]:
-        found = self.search_many(source, query, limit)
+        if source == ALL:
+            share = -(-limit // len(MUSEUMS))
+            found = []
+            for key in MUSEUMS:
+                try:
+                    found += self.search_many(key, query, share)
+                except (httpx.HTTPError, ValueError) as err:
+                    log.warning("search in %s failed: %s", key, err)
+        else:
+            found = self.search_many(source, query, limit)
         if job is not None:
             job.total += len(found)
         added = []

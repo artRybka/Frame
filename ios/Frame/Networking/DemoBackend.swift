@@ -414,7 +414,7 @@ actor DemoBackend: FrameBackend {
 
     func searchMuseum(source: String, query: String, page: Int) async throws -> RemotePage {
         let rules = PlaylistRules(query: query)
-        let found = items.filter { $0.source == source && Self.matches($0, rules) }
+        let found = items.filter { (source == "all" || $0.source == source) && Self.matches($0, rules) }
         return RemotePage(total: found.count, items: found.map { RemoteItem(item: $0, inLibrary: true) })
     }
 
