@@ -283,6 +283,10 @@ struct ScheduleSection: View {
                             .textInputAutocapitalization(.never)
                             .keyboardType(.URL)
                             .font(.subheadline)
+                        Text("W Zdjęciach: album udostępniony → Osoby → Witryna publiczna → Udostępnij link.")
+                            .font(.caption)
+                            .foregroundStyle(Theme.inkSoft)
+                        AlbumStatus()
                     }
                     Divider()
                 }
@@ -535,5 +539,52 @@ struct ServerSection: View {
         case .unknown:
             EmptyView()
         }
+    }
+}
+
+/// Last shared-album sync and a button to sync now.
+struct AlbumStatus: View {
+    @Environment(AppModel.self) private var model
+    @State private var info: AlbumInfo?
+    @State private var syncing = false
+
+    var body: some View {
+        HStack {
+            if let sync = info?.lastSync {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(sync.name.isEmpty ? "Album" : sync.name).font(.subheadline.weight(.medium))
+                    Text("\(info?.photos ?? 0) zdjęć · synchronizacja \(When.ago(sync.at) ?? "")")
+                        .font(.caption)
+                        .foregroundStyle(Theme.inkSoft)
+                }
+            } else {
+                Text("Jeszcze nie synchronizowano").font(.caption).foregroundStyle(Theme.inkSoft)
+            }
+            Spacer()
+            Button {
+                Task {
+                    syncing = true
+                    do {
+                        try await model.backend.syncAlbum()
+                        model.toast = "Synchronizuję album…"
+                        try? await Task.sleep(for: .seconds(3))
+                        info = try? await model.backend.album()
+                    } catch {
+                        model.show(error)
+                    }
+                    syncing = false
+                }
+            } label: {
+                if syncing {
+                    ProgressView()
+                } else {
+                    Label("Synchronizuj", systemImage: "arrow.triangle.2.circlepath")
+                        .font(.subheadline.weight(.semibold))
+                }
+            }
+            .disabled(syncing)
+        }
+        .padding(.top, 4)
+        .task { info = try? await model.backend.album() }
     }
 }

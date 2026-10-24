@@ -44,6 +44,9 @@ protocol FrameBackend: Sendable {
     func searchMuseum(source: String, query: String, page: Int) async throws -> RemotePage
     func importArtwork(source: String, sourceID: String) async throws -> Item
 
+    func album() async throws -> AlbumInfo
+    func syncAlbum() async throws
+
     func sendPhoto(_ data: Data, title: String, preset: String, hold: HoldSpec) async throws
         -> DisplayResponse
     func wake() async throws

@@ -321,6 +321,19 @@ actor DemoBackend: FrameBackend {
         return item
     }
 
+    func album() async throws -> AlbumInfo {
+        AlbumInfo(
+            url: settingsValue.albumUrl,
+            lastSync: AlbumSync(
+                at: ISO8601DateFormatter().string(from: .now.addingTimeInterval(-1800)), count: 0,
+                name: "Rodzina"
+            ),
+            photos: 0
+        )
+    }
+
+    func syncAlbum() async throws {}
+
     func sendPhoto(_ data: Data, title: String, preset: String, hold: HoldSpec) async throws -> DisplayResponse {
         try await Task.sleep(for: .seconds(1.5))
         return DisplayResponse(pushed: true, fetched: true, message: nil)

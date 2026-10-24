@@ -79,6 +79,10 @@ struct MuseumSearchView: View {
         }
         .task {
             if museums.isEmpty { museums = (try? await model.backend.museums()) ?? [] }
+            if LaunchRoute.screen == "museums", results.isEmpty {
+                text = "Hiroshige"
+                await search()
+            }
         }
         .onChange(of: source) { _, _ in
             if !text.isEmpty { Task { await search() } }

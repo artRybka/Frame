@@ -119,6 +119,11 @@ struct LiveBackend: FrameBackend {
         try await send("/api/museums/\(source)/import", method: "POST", body: ["source_id": sourceID])
     }
 
+    // MARK: Album
+
+    func album() async throws -> AlbumInfo { try await get("/api/album") }
+    func syncAlbum() async throws { try await send("/api/album/sync", method: "POST") }
+
     // MARK: Device
 
     func sendPhoto(_ data: Data, title: String, preset: String, hold: HoldSpec) async throws -> DisplayResponse {

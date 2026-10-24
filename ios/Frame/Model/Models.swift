@@ -330,3 +330,16 @@ struct LibraryQuery: Hashable, Sendable {
             + (favoritesOnly ? 1 : 0)
     }
 }
+
+struct AlbumSync: Codable, Hashable, Sendable {
+    var at: String
+    var count: Int
+    var name: String
+}
+
+/// `GET /api/album`
+struct AlbumInfo: Codable, Hashable, Sendable {
+    var url: String
+    var lastSync: AlbumSync?
+    var photos: Int
+}
