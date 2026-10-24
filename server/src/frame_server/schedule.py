@@ -7,8 +7,9 @@ from enum import StrEnum
 from typing import Literal
 from zoneinfo import ZoneInfo
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from .imaging.grids import MAX_PHOTOS, MIN_PHOTOS
 from .imaging.layout import Fit, Orientation
 
 
@@ -25,6 +26,15 @@ class Presentation(BaseModel):
     mat: Literal["white", "cream", "grey", "black", "picture"] = "white"  # picture: its hue
     margin: float = Field(0.05, ge=0, le=0.3)
     label: bool = False
+    # MULTI (photos): how many on one board, or a random number each time,
+    # and the grid's letter (grids.GRIDS) or automatic by the photos' shapes.
+    multi_count: int = Field(4, ge=MIN_PHOTOS, le=MAX_PHOTOS)
+    multi_random: bool = False
+    multi_grid: Literal["auto", "A", "B", "C"] = "auto"
+
+
+# Photos have their own framings; pictures keep theirs (MULTI is photos only).
+PHOTO_FITS = (Fit.FIT, Fit.FILL, Fit.MULTI)
 
 
 class FrameSettings(BaseModel):
@@ -44,11 +54,20 @@ class FrameSettings(BaseModel):
     rotation: Literal[90, 270] = 90
     art: Presentation = Field(default_factory=Presentation)
     photo: Presentation = Field(
-        default_factory=lambda: Presentation(preset="photo", fit=Fit.AUTO, margin=0.0)
+        default_factory=lambda: Presentation(preset="photo", fit=Fit.FILL, margin=0.0)
     )
     album_url: str = ""
     timezone: str = "Europe/Warsaw"
     status_poll_minutes: int = Field(15, ge=0, le=1440)  # 0 = only on demand
+
+    @model_validator(mode="after")
+    def _own_fits(self) -> FrameSettings:
+        """Older settings: photos framed as pictures fill the screen."""
+        if self.photo.fit not in PHOTO_FITS:
+            self.photo = self.photo.model_copy(update={"fit": Fit.FILL})
+        if self.art.fit == Fit.MULTI:
+            self.art = self.art.model_copy(update={"fit": Fit.AUTO})
+        return self
 
     def tz(self) -> ZoneInfo:
         return ZoneInfo(self.timezone)

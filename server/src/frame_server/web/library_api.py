@@ -13,8 +13,8 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, ValidationError
 from starlette.concurrency import run_in_threadpool
 
-from ..imaging.layout import Crop, Fit, Orientation, Plan, load_image
-from ..imaging.pipeline import encode_image, plan_for, render
+from ..imaging.layout import Crop, Fit, Orientation, Plan, canvas_size, load_image
+from ..imaging.pipeline import encode_image, plan_for, render, render_multi
 from ..library import Facets, Item, ItemKind, ItemSummary, Job, PhotoInfo, PlaylistRules
 from ..library.models import Framing
 from ..library.museums import MUSEUMS
@@ -173,17 +173,25 @@ async def item_preview(item_id: str, svc: Svc, settings: str | None = None) -> F
         except ValidationError as err:
             raise HTTPException(422, f"invalid settings: {err}") from err
     render_settings = svc.player.render_settings(item, frame_settings)
+    board = svc.player.preview_board(item, frame_settings)  # MULTI: with the photos beside it
+    ids = ",".join(i.id for i in board)
     key = hashlib.sha1(
-        (render_settings.model_dump_json() + svc.palette.name).encode(), usedforsecurity=False
+        (render_settings.model_dump_json() + svc.palette.name + ids).encode(),
+        usedforsecurity=False,
     ).hexdigest()[:12]
     path = svc.images.thumbs.parent / "previews" / f"{item.file_stem}-{key}.png"
     if not path.is_file():
         async with _preview_locks.setdefault(path.name, asyncio.Lock()):
             if not path.is_file():
-                source = await run_in_threadpool(svc.images.ensure_image, item)
+                sources = [
+                    await run_in_threadpool(svc.images.ensure_image, shown) for shown in board
+                ]
 
                 def build() -> None:
-                    result = render(source, render_settings, svc.palette)
+                    if svc.player.multi(item, frame_settings):
+                        result = render_multi(sources, render_settings, svc.palette, seed=ids)
+                    else:
+                        result = render(sources[0], render_settings, svc.palette)
                     img = result.preview_image()
                     img.thumbnail((1280, 1280))
                     path.parent.mkdir(parents=True, exist_ok=True)
@@ -220,6 +228,8 @@ def _framing_plan(
     settings = svc.player.settings.model_copy(update={"orientation": orientation})
     render_settings = svc.player.render_settings(item, settings)
     img = load_image(svc.images.ensure_image(item))
+    if svc.player.multi(item, settings):  # each photo cropped automatically to its window
+        return Plan(Fit.MULTI, canvas_size(orientation), []), img.size
     return plan_for(img, render_settings.layout, caption=bool(render_settings.caption)), img.size
 
 
@@ -288,6 +298,8 @@ async def reset_framing(item_id: str, svc: Svc, orientation: Orientation) -> Fra
     current = await _plan_and_view(svc, item, orientation)
     framing = item.framing.get(orientation.value, Framing()).model_copy()
     field = {Fit.FILL: "fill", Fit.DETAILS: "details", Fit.DESCRIPTION: "detail", Fit.FIT: "fit"}
+    if current.fit not in field:
+        raise HTTPException(422, f"{current.fit.value}: nothing to reset")
     setattr(framing, field[current.fit], None)
     empty = framing == Framing()
     item = _save_framing(svc, item, orientation, None if empty else framing)

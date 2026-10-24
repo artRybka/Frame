@@ -251,12 +251,17 @@ struct StatusView: Codable, Sendable {
 
 struct Presentation: Codable, Hashable, Sendable {
     var preset: String
-    var fit: String  // "fit" | "fill" | "details" | "description" | "auto"
+    var fit: String  // "fit" | "fill" | "details" | "description" | "auto"; photos: "fit" | "fill" | "multi"
     var mat: String = "white"  // "white" | "cream" | "grey" | "black" | "picture"
     var margin: Double
     var label: Bool
+    /// "multi": photos on one board (2–8), or a random number each time,
+    /// and the grid's letter (MultiGrid.all) or "auto" (by the photos' shapes).
+    var multiCount: Int = 4
+    var multiRandom: Bool = false
+    var multiGrid: String = "auto"
 
-    var key: String { "\(preset),\(fit),\(mat),\(margin),\(label)" }
+    var key: String { "\(preset),\(fit),\(mat),\(margin),\(label),\(multiCount),\(multiRandom),\(multiGrid)" }
 
     init(preset: String, fit: String, mat: String = "white", margin: Double, label: Bool) {
         self.preset = preset
@@ -267,7 +272,7 @@ struct Presentation: Codable, Hashable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case preset, fit, mat, margin, label
+        case preset, fit, mat, margin, label, multiCount, multiRandom, multiGrid
     }
 
     init(from decoder: Decoder) throws {
@@ -277,6 +282,9 @@ struct Presentation: Codable, Hashable, Sendable {
         mat = try c.decodeIfPresent(String.self, forKey: .mat) ?? "white"  // older servers
         margin = try c.decode(Double.self, forKey: .margin)
         label = try c.decode(Bool.self, forKey: .label)
+        multiCount = try c.decodeIfPresent(Int.self, forKey: .multiCount) ?? 4
+        multiRandom = try c.decodeIfPresent(Bool.self, forKey: .multiRandom) ?? false
+        multiGrid = try c.decodeIfPresent(String.self, forKey: .multiGrid) ?? "auto"
     }
 }
 
@@ -308,7 +316,7 @@ struct FrameSettings: Codable, Hashable, Sendable {
         quietStart: "22:00", quietEnd: "07:00", shuffle: true, avoidRepeatDays: 14,
         orientation: "landscape", rotation: 90,
         art: Presentation(preset: "painting", fit: "auto", margin: 0.05, label: false),
-        photo: Presentation(preset: "photo", fit: "auto", margin: 0, label: false),
+        photo: Presentation(preset: "photo", fit: "fill", margin: 0, label: false),
         albumUrl: "", timezone: "Europe/Warsaw", statusPollMinutes: 15
     )
 }
