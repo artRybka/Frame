@@ -3,7 +3,7 @@
 Protokół ekranu jest nieoficjalny. Opisały go projekty społeczności (patrz
 [DEVICE_PROTOCOL.md](DEVICE_PROTOCOL.md)), ale wiele szczegółów trzeba
 sprawdzić na Twoim egzemplarzu. Wyniki zapisuj w tabeli na dole albo w
-`docs/experiments/EXX-*.md`, a zdjęcia ekranu wrzucaj do `docs/experiments/`.
+`docs/experiments/EXX-*.md`. **Zdjęć nie dodajemy do repo**: zostają u Ciebie, a w tabeli opisujemy, co na nich widać.
 
 ## Przygotowanie
 
@@ -108,14 +108,14 @@ to na baterii, gdy ekran śpi?
 
 | Eksp. | Data | Firmware | Wynik / obserwacje | Zdjęcia |
 |---|---|---|---|---|
-| E1 | | | | |
-| E2 | | | | |
-| E3 | | | | |
-| E4 | | | | |
-| E5 | | | | |
+| E1 | 2026-10-25 | 1130.7 | Połączenie z PIN-em działa (otwarcie sesji TLS ok. 5 s). Samsung EMDX 224B, SN `0WMUHNPY900224B`. Bateria `73 00 01 01 64 02 02` z ładowarką, `… 64 02 00` bez: ostatni bajt = zasilanie USB-C, `payload[4]` = %. Przy 100% `payload[1]` = `00` także z ładowarką (ładowania poniżej 100% jeszcze nie sprawdzono). `0x25` → `00`, `0xA7` → zegar (format w DEVICE_PROTOCOL), `0x10` → `02 7a 01`. | – |
+| E2 | 2026-10-25 | 1130.7 | **M0 osiągnięty.** `0xC7` → GET `content.json` po 0,25 s → GET obrazu zaraz potem. Odświeżanie (JPEG): pobranie 00:11:56, miganie 00:12:08–00:12:39, czyli ok. 12 s przygotowania i 31 s odświeżania. Brak User-Agenta, tylko `Accept: */*`, bez `Range` / `If-Modified-Since`. | – |
+| E3 | 2026-10-25 | 1130.7 | PNG i JPEG działają. JPEG 13 MB działa (miganie od 11 s po pobraniu, 36 s). 1920×1080 `--raw`: skalowany na cały ekran. 1440×2560 `--raw`: wpasowany z zachowaniem proporcji, wąski pas z szarymi bokami, bez obracania. | – |
+| E4 | 2026-10-25 | 1130.7 | Ekran nie obraca obrazu sam (E3). Docelowo raczej pion, z przełącznikiem orientacji w aplikacji. Wariantów `orientation` / `rotation` jeszcze nie testowano. | – |
+| E5 | 2026-10-25 | 1130.7 | **1. Szachownice 1 px odtworzone 1:1, czyste farby.** 2. Gradienty: ekran sam ditheruje szumem (dyfuzja błędu), mocno przycina kolory spoza farb (cyjan → biały, magenta → czerwień, średnia szarość z fioletowym odcieniem). Kalibracja palety lampą światła dziennego: wbudowana paleta `em32dx` w `server/src/frame_server/imaging/palette.py`, teraz domyślna (czerń granatowa, żółta ciemniejsza, niebieska jaśniejsza niż w palecie domyślnej). 3. Zdjęcie (dziecko w lesie, preset `photo`): `passthrough` wygląda najlepiej; `compensate` odpada (przesycony, twarz czerwona); `dither` ma czystszy raster, ale jest wyprany; `dither` z `saturation=1.7 contrast=1.3 shadows=0.15 gamma=1.0` lepiej, nadal słabiej niż `passthrough`. **Decyzja techniczna: `dither` (piksele 1:1), ale strojenie mapowania tonów i gamutu (1.3/1.4) musi dogonić `passthrough`; do tego czasu `passthrough` jest bezpiecznym domyślnym.** | – |
 | E6 | | | | |
-| E7 | | | | |
-| E8 | | | | |
+| E7 | 2026-10-25 | 1130.7 | Wstępnie: po wybudzeniu przyciskiem ekran **nie** pobrał ponownie `content.json`. Test 24 h do zrobienia. | – |
+| E8 | 2026-10-25 | 1130.7 | Po odłączeniu ładowarki ekran od razu zniknął z sieci (ping i MDC). WoL (network standby wł.) przez Wi-Fi nie obudził go przez 2 min; krótkie naciśnięcie przycisku budzi (miga zielona dioda z tyłu, obraz bez zmian), MDC wraca po kilku sekundach. Pomiar 24 h do zrobienia. | – |
 | E9 | | | | |
 | E10 | | | | |
 | E11 | | | | |

@@ -67,8 +67,11 @@ class StatusMonitor:
                 status.battery_level = battery.level
                 status.battery_raw = battery.raw.hex(" ")
                 status.charging = battery.raw[1] == 0x01 if len(battery.raw) > 1 else None
-                if status.charging is not None:
-                    status.power_source = "ac" if status.charging else "battery"
+                plugged = battery.external_power
+                if plugged is None:
+                    plugged = status.charging
+                if plugged is not None:
+                    status.power_source = "ac" if plugged else "battery"
                 status.network_standby = await mdc.network_standby()
                 if not self._static_known:
                     status.firmware = await mdc.software_version()

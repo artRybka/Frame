@@ -81,9 +81,14 @@ class MdcReply:
 class BatteryStatus:
     level: int
     raw: bytes
-    # The meaning of the other bytes is not settled yet (two reference
+    # The meaning of most other bytes is not settled yet (two reference
     # implementations disagree); experiment E1 in docs/EXPERIMENTS.md.
     flags: tuple[int, ...]
+
+    @property
+    def external_power(self) -> bool | None:
+        """USB-C power connected: last byte 0x02 plugged, 0x00 unplugged (E1, fw 1130.7)."""
+        return self.raw[6] == 0x02 if len(self.raw) > 6 else None
 
 
 def build_frame(command: int, data: bytes = b"", display_id: int = 0x00) -> bytes:

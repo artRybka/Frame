@@ -17,7 +17,7 @@ from frame_server.imaging.calibrate import (
 )
 from frame_server.imaging.color import linear_to_u8, u8_to_linear
 from frame_server.imaging.layout import PANEL_HEIGHT, PANEL_WIDTH
-from frame_server.imaging.palette import SPECTRA6
+from frame_server.imaging.palette import EM32DX, SPECTRA6
 from frame_server.imaging.testchart import palette_chart
 from frame_server.library import ItemKind
 
@@ -98,7 +98,7 @@ def test_calibration_from_the_app(service) -> None:
     item = svc.importer.add_upload(jpeg_bytes((200, 40, 40)), kind=ItemKind.OWN, title="Work")
     with TestClient(app) as client:
         info = client.get("/api/calibration").json()
-        assert not info["calibrated"] and info["palette"]["name"] == SPECTRA6.name
+        assert not info["calibrated"] and info["palette"]["name"] == EM32DX.name
 
         assert client.post("/api/calibration/chart").status_code == 202
         _wait(lambda: svc.store.current().title == "Plansza kalibracji")
@@ -131,4 +131,4 @@ def test_calibration_from_the_app(service) -> None:
         assert FrameService(svc.settings).palette.name == svc.palette.name
 
         reset = client.delete("/api/calibration").json()
-        assert not reset["calibrated"] and reset["palette"]["name"] == SPECTRA6.name
+        assert not reset["calibrated"] and reset["palette"]["name"] == EM32DX.name

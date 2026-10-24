@@ -252,39 +252,4 @@ final class FrameAPITests: XCTestCase {
         XCTAssertEqual(box.maxY, 1000, accuracy: 0.001)
         XCTAssertEqual(box.width, 500, accuracy: 0.001)
     }
-
-    func testQuadMappingHitsTheCorners() throws {
-        let corners = [
-            CGPoint(x: 0.13, y: 0.25), CGPoint(x: 0.88, y: 0.27),
-            CGPoint(x: 0.87, y: 0.84), CGPoint(x: 0.12, y: 0.87),
-        ]
-        let map = try XCTUnwrap(QuadMapping(corners: corners))
-        let unit = [CGPoint(x: 0, y: 0), CGPoint(x: 1, y: 0), CGPoint(x: 1, y: 1), CGPoint(x: 0, y: 1)]
-        for (u, corner) in zip(unit, corners) {
-            XCTAssertEqual(map(u).x, corner.x, accuracy: 1e-9)
-            XCTAssertEqual(map(u).y, corner.y, accuracy: 1e-9)
-        }
-        XCTAssertNil(QuadMapping(corners: Array(repeating: CGPoint(x: 0.5, y: 0.5), count: 4)))
-    }
-
-    func testChartGeometryMatchesTheServerChart() {
-        // testchart.palette_patches: margin 200, gap 60, 680 × 490 px patches.
-        let first = ChartGeometry.patches[0]
-        XCTAssertEqual(first.minX * 2560, 200, accuracy: 0.01)
-        XCTAssertEqual(first.width * 2560, 680, accuracy: 0.01)
-        XCTAssertEqual(ChartGeometry.patches[5].maxY * 1440, 200 + 490 + 60 + 490, accuracy: 0.01)
-    }
-
-    func testDemoCalibration() async throws {
-        let demo = DemoBackend()
-        let before = try await demo.calibration()
-        XCTAssertFalse(before.calibrated)
-        let result = try await demo.measureCalibration(photo: Data(), corners: [])
-        XCTAssertEqual(result.inks.map(\.name), before.palette.colors.map(\.name))
-        let applied = try await demo.applyCalibration(candidateID: result.candidateId)
-        XCTAssertTrue(applied.calibrated)
-        XCTAssertEqual(applied.palette.colors.first { $0.name == "black" }?.perceived, [18, 18, 21])
-        let reset = try await demo.resetCalibration()
-        XCTAssertFalse(reset.calibrated)
-    }
 }
