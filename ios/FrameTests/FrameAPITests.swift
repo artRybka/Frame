@@ -139,6 +139,16 @@ final class FrameAPITests: XCTestCase {
 
         let reset = try await demo.resetFraming(itemID: id, orientation: "landscape")
         XCTAssertFalse(reset.windows.contains(where: \.custom))
+
+        // "Opis": one close-up to correct.
+        var settings = try await demo.settings()
+        settings.art.fit = "description"
+        _ = try await demo.saveSettings(settings)
+        let text = try await demo.framing(itemID: id, orientation: "landscape")
+        XCTAssertEqual(text.fit, "description")
+        XCTAssertEqual(text.windows.count, 1)
+        let one = try await demo.saveFraming(itemID: id, orientation: "landscape", crops: [Crop(x: 0.4, y: 0.6, zoom: 2)])
+        XCTAssertEqual(one.windows.map(\.custom), [true])
     }
 
     func testDemoFramingMatchesServerLayout() {
@@ -159,6 +169,24 @@ final class FrameAPITests: XCTestCase {
         XCTAssertEqual(tall.windows.map(\.role), ["picture", "detail", "detail"])
         XCTAssertEqual(tall.windows[0].rect, CGRect(x: 0, y: 0, width: 480, height: 720))
         XCTAssertNotNil(tall.captionAt)
+        // The picture's outer edge stays behind the mat.
+        XCTAssertEqual(tall.windows[0].box.minX, 16, accuracy: 0.5)
+        XCTAssertEqual(framed.windows[0].box.maxY, 1176, accuracy: 0.5)
+        // "Opis": one close-up and the text where the second one was.
+        var description = fit
+        description.fit = "description"
+        let text = DemoFraming.plan(CGSize(width: 800, height: 1200), canvas: canvas, presentation: description, caption: true, crops: nil)
+        XCTAssertEqual(text.fit, "description")
+        XCTAssertEqual(text.windows.map(\.role), ["picture", "detail"])
+        XCTAssertNil(text.captionAt)
+        XCTAssertGreaterThan(text.textRect?.minY ?? 0, text.windows[1].rect.maxY)
+    }
+
+    func testDescriptionKeepsWholeSentences() {
+        XCTAssertEqual(
+            DemoFraming.sentences("Painted c. 1890 in Paris. It shows the artist's room! “Quoted” one."),
+            ["Painted c. 1890 in Paris.", "It shows the artist's room!", "“Quoted” one."]
+        )
     }
 
     func testCropBoxClampsInsideThePicture() {

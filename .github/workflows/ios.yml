@@ -71,7 +71,7 @@ jobs:
           xcrun simctl status_bar "$UDID" override --time 9:41 --batteryState charged --batteryLevel 100 --wifiBars 3 || true
           capture() {
             xcrun simctl terminate "$UDID" com.artrybka.frame || true
-            xcrun simctl launch "$UDID" com.artrybka.frame -demo YES -screen "$1"
+            xcrun simctl launch "$UDID" com.artrybka.frame -demo YES -screen "$1" "${@:4}"
             sleep "${2:-12}"
             xcrun simctl io "$UDID" screenshot "shots/$3.png"
           }
@@ -87,6 +87,8 @@ jobs:
             capture museums 8 "museums-$appearance"
             capture send 8 "send-$appearance"
             capture crop 12 "crop-$appearance"
+            capture now 16 "now-description-$appearance" -fit description -mat black
+            capture now 16 "now-details-$appearance" -fit details -mat cream
             capture calibration 12 "calibration-$appearance"
             capture calibration-result 14 "calibration-result-$appearance"
           done

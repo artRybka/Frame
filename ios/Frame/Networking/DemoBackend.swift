@@ -58,12 +58,17 @@ actor DemoBackend: FrameBackend {
         idsByURL = byURL
         arts = Dictionary(
             uniqueKeysWithValues: loaded.items.map {
-                ($0.id, DemoFraming.Art(caption: DemoFraming.caption(for: $0), isPhoto: $0.kind == .photo))
+                ($0.id, DemoFraming.Art(
+                    caption: DemoFraming.caption(for: $0), text: DemoFraming.textBlock(for: $0),
+                    isPhoto: $0.kind == .photo
+                ))
             }
         )
         autoCrops = loaded.framing ?? [:]
         // Start out playing the first playlist, like a fresh server does.
         settingsValue.playlistId = 1
+        if let fit = LaunchRoute.fit { settingsValue.art.fit = fit }
+        if let mat = LaunchRoute.mat { settingsValue.art.mat = mat }
         let first = byID[1].map { playlist in
             Self.sorted(loaded.items.filter { Self.matches($0, playlist.rules) }, by: "suitability")
         }
@@ -271,9 +276,14 @@ actor DemoBackend: FrameBackend {
             size, canvas: DemoFraming.canvas(orientation), presentation: pres,
             caption: pres.label, crops: crops(itemID, orientation)
         )
+        let isCustom = switch plan.fit {
+        case "fill": custom?.fill != nil
+        case "details": custom?.details != nil
+        case "description": custom?.detail != nil
+        default: false
+        }
         let windows = plan.windows.compactMap { window -> FramingWindow? in
             guard let crop = window.crop else { return nil }
-            let isCustom = window.role == "fill" ? custom?.fill != nil : custom?.details != nil
             return FramingWindow(role: window.role, aspect: window.rect.width / window.rect.height, crop: crop, custom: isCustom)
         }
         return FramingView(orientation: orientation, fit: plan.fit, width: Int(size.width), height: Int(size.height), windows: windows)
@@ -285,6 +295,7 @@ actor DemoBackend: FrameBackend {
         switch (current.fit, crops.count) {
         case ("fill", 1): saved.fill = crops[0]
         case ("details", 2): saved.details = crops
+        case ("description", 1): saved.detail = crops[0]
         default: throw BackendError.http(status: 422, body: "")
         }
         shared.crops[itemID, default: [:]][orientation] = saved
@@ -302,7 +313,10 @@ actor DemoBackend: FrameBackend {
     private nonisolated func crops(_ id: String, _ orientation: String) -> DemoFraming.Crops? {
         let auto = autoCrops[id]?[orientation]
         guard let custom = shared.crops[id]?[orientation] else { return auto }
-        return DemoFraming.Crops(fill: custom.fill ?? auto?.fill, details: custom.details ?? auto?.details)
+        return DemoFraming.Crops(
+            fill: custom.fill ?? auto?.fill, details: custom.details ?? auto?.details,
+            detail: custom.detail ?? auto?.detail
+        )
     }
 
     func facets() async throws -> Facets {

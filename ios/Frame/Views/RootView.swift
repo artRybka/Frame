@@ -1,8 +1,11 @@
 import SwiftUI
 
-/// Launch arguments used by CI screenshots, e.g. `-demo YES -screen discover`.
+/// Launch arguments used by CI screenshots, e.g. `-demo YES -screen discover`,
+/// plus `-fit description -mat black` to start the demo with that presentation.
 enum LaunchRoute {
     static let screen = UserDefaults.standard.string(forKey: "screen") ?? ""
+    static let fit = UserDefaults.standard.string(forKey: "fit")
+    static let mat = UserDefaults.standard.string(forKey: "mat")
 }
 
 struct RootView: View {
