@@ -95,4 +95,13 @@ final class FrameAPITests: XCTestCase {
         let back = try await demo.player()
         XCTAssertEqual(back.current?.item?.id, before.current?.item?.id)
     }
+
+    func testDemoBackendUsesBundledImages() throws {
+        let demo = DemoBackend()
+        let thumb = try XCTUnwrap(demo.request(for: .thumb("aic:24645"))?.url)
+        XCTAssertTrue(thumb.isFileURL)
+        XCTAssertEqual(thumb.lastPathComponent, "aic_24645.jpg")
+        let preview = try XCTUnwrap(demo.request(for: .path("/demo/aic:24645"))?.url)
+        XCTAssertEqual(preview.lastPathComponent, "aic_24645-frame.jpg")
+    }
 }
