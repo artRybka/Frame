@@ -13,6 +13,7 @@ from frame_server.device.mdc import (
     CMD_STATUS,
     MAX_URL_LENGTH,
     ON_TIMER_REPEAT,
+    BatteryStatus,
     MdcAuthError,
     MdcClient,
     MdcError,
@@ -128,3 +129,12 @@ async def test_on_timer(server_ssl: ssl.SSLContext) -> None:
         await panel.stop()
 
     assert (CMD_ON_TIMER, bytes([0x01, 0x02, 7, 5, 0x01])) in panel.received
+
+
+def test_battery_external_power() -> None:
+    # Raw replies read from an EM32DX (firmware S-RSEDWWC-1130.7), experiment E1.
+    plugged = BatteryStatus(level=100, raw=bytes.fromhex("73000101640202"), flags=())
+    unplugged = BatteryStatus(level=100, raw=bytes.fromhex("73000101640200"), flags=())
+    assert plugged.external_power is True
+    assert unplugged.external_power is False
+    assert BatteryStatus(level=50, raw=bytes.fromhex("7300010132"), flags=()).external_power is None

@@ -13,7 +13,7 @@ zdjęć iCloud i aplikacja iOS do sterowania.
 | Serwer | **Jeden obraz Dockera, dwa sposoby uruchomienia** | (a) add-on na **HA Green** (aarch64), (b) kontener na **Synology RS1619xs+** obok HA Container (amd64, `docker-compose`). Wybór później. Wymagana sieć hosta: ekran pobiera obrazy z IP serwera, a Wake-on-LAN wymaga broadcastu. W trakcie prac serwer można też uruchamiać na Macu. |
 | Zasilanie | **Mieszane** (bateria + doładowywanie) | Potrzebna polityka zasilania: przy ładowarce zmiany na żądanie, na baterii rzadkie zmiany i budzenie. Szczegóły zależą od eksperymentów E6–E8. |
 | iOS | **TestFlight dla rodziny**, nazwa „Frame”, interfejs **po polsku** | SwiftUI, iOS 17+, płatne konto Apple Developer, w przyszłości widget i rozszerzenie „Udostępnij”. |
-| Użytkownicy | **Rodzina z rolami** | Administrator: wszystko (ustawienia ekranu, kalibracja, użytkownicy). Domownik: wysyłanie zdjęć z rolki, następny/poprzedni/przypnij, tryb i harmonogram, ulubione i wykluczenia. Każdy ma własny token, więc wiadomo, kto co wysłał. |
+| Użytkownicy | **Rodzina z rolami** | Administrator: wszystko (ustawienia ekranu, użytkownicy). Domownik: wysyłanie zdjęć z rolki, następny/poprzedni/przypnij, tryb i harmonogram, ulubione i wykluczenia. Każdy ma własny token, więc wiadomo, kto co wysłał. |
 | Dostęp spoza domu | **Tailscale / VPN** | Serwer nie jest wystawiony do internetu. |
 | Tryb ramki | **Album iCloud albo obrazy** (bez mieszania) | Wybór w aplikacji. Do tego jednorazowe **zdjęcie z rolki aparatu**: przy wysyłce wybierasz, jak długo zostaje (do następnej zmiany, na X godzin/dni, na stałe). |
 | Częstotliwość | **Ustawiana w aplikacji** | Domyślnie raz dziennie rano. Osobne wartości dla ładowarki i baterii, godziny ciszy. Zmiana co najmniej raz na 3 dni (ochrona panelu). |
@@ -69,16 +69,16 @@ Cel: potwierdzić protokół na Twoim egzemplarzu i poznać zachowanie ekranu.
 - [x] Klient MDC (TLS, PIN, ramki, bateria, network standby, content download), Wake-on-LAN.
 - [x] Serwer treści (`content.json`, obraz, log zapytań ekranu) i CLI `frame`.
 - [x] Plansze testowe: `palette`, `passthrough`, `ramps`.
-- [ ] Eksperymenty E1–E12 na ekranie ([EXPERIMENTS.md](EXPERIMENTS.md)). **Wymaga Ciebie i ekranu.**
+- [ ] Eksperymenty E1–E12 na ekranie ([EXPERIMENTS.md](EXPERIMENTS.md)). **Wymaga Ciebie i ekranu.** Zrobione 2026-10-25: E1–E5, częściowo E7 i E8; zostały testy 24 h (E7, E8), E6, E9–E12.
 - [ ] Narzędzie do eksperymentu E6 (manifest z kilkoma obrazami), po wynikach E2.
-- [ ] Decyzje: strategia obrazu (passthrough / compensate / dither), format pliku (PNG/JPEG), polityka zasilania.
+- [ ] Decyzje: strategia obrazu (passthrough / compensate / dither), format pliku (PNG/JPEG), polityka zasilania. *Stan po E5: piksele są 1:1, więc docelowo `dither` + PNG (JPEG psułby czyste farby); `compensate` odpada. Na razie `passthrough` wygląda lepiej niż nasz `dither`, więc decyzja czeka na strojenie 1.3/1.4. Polityka zasilania czeka na E8 (WoL przez Wi-Fi nie budzi ekranu na baterii).*
 
 **Gotowe, gdy:** ekran pokazuje obraz z naszego serwera, mamy wyniki E1–E8 i podjęte decyzje.
 
 ### Etap 1 — Algorytm obrazu i kalibracja
 
 - [x] Pipeline v0: przestrzeń liniowa i OKLab, mapowanie tonów, mapowanie gamutu do bryły farb, dyfuzja błędu (7 jąder, serpentyna, ograniczanie błędu), presety `photo` / `painting` / `graphic` / `bw`, podgląd wyglądu na ekranie.
-- [ ] 1.1 Pomiar palety EM32DX: plansza `palette` i zdjęcie iPhonem w kreatorze kalibracji w aplikacji (3.8); wynik w `/data/palette.json`. **Narzędzie gotowe, pomiar wymaga ekranu.**
+- [x] 1.1 Pomiar palety EM32DX: plansza `palette` i zdjęcie iPhonem, pomiar przez `/api/calibration`. Pomiar 2026-10-25 (lampa światła dziennego): wbudowana paleta `em32dx` w `server/src/frame_server/imaging/palette.py`, teraz domyślna.
 - [ ] 1.2 Zestaw testowy ok. 20 obrazów (portrety, krajobrazy, olej, akwarela, drzeworyt, plakat, zdjęcia czarno-białe) i procedura porównań A/B: zdjęcia ekranu w tym samym świetle.
 - [ ] 1.3 Strojenie presetów na prawdziwym ekranie.
 - [ ] 1.4 Ulepszenia algorytmu:
@@ -127,7 +127,7 @@ Cel: potwierdzić protokół na Twoim egzemplarzu i poznać zachowanie ekranu.
 - [x] 3.5 Biblioteka: przeglądanie (siatka, filtry: artyści, style, tematy, kolorystyka, ulubione), szczegóły dzieła z widokiem „na ramce”, wyszukiwanie i import z muzeów, ulubione, wykluczenia; ręczna playlista ze zdjęć z rolki (wiele naraz, z datą i miejscem z EXIF). *(Do zrobienia: upload własnych prac z opisem.)*
 - [x] 3.6 Prezentacja: kadrowanie i etykieta na ramce, osobno dla sztuki i dla zdjęć. Tryby: passe-partout (biały, kremowy, szary, czarny albo „z obrazu”, czyli w odcieniu obrazu; faza 45° w kolorze kartonu; obraz chowa brzegi pod kartonem; kadr i kształt okienka do wyboru), wypełnienie z kadrem dobranym automatycznie (twarze, szczegóły), detale (dwa różne fragmenty w różnych zbliżeniach), opis (detal i tekst o dziele nadrukowany na kartonie) i automatyczny; detale i opis działają przy każdych proporcjach; korekta kadru palcami w „Teraz”; „Styl obrazu” z objaśnieniem. Zdjęcia mają własne tryby: passe-partout, wypełnienie i multi: od 2 do 8 zdjęć (albo losowa liczba) na jednej planszy, każde w okienku passe-partout; 16 siatek (po 2–3 na liczbę zdjęć), wybór siatki albo „Auto”, które kieruje pionowe zdjęcia do pionowych okienek.
 - [ ] 3.7 Regulacja obrazu (administrator): suwaki (jasność, kontrast, nasycenie, cienie) z podglądem renderu na żywo.
-- [x] 3.8 Kreator kalibracji: wyświetl planszę, zrób zdjęcie, zaznacz narożniki (z lupą i podglądem miejsc pomiaru), zobacz farby przed i po oraz bieżący obraz w obu wersjach, zastosuj albo przywróć domyślne. *(Do sprawdzenia na prawdziwej ramce; role administratora w 2.7.)*
+- [x] ~~3.8 Kreator kalibracji~~ usunięty z aplikacji po E5: paleta EM32DX jest zmierzona i wbudowana w serwer; ponowny pomiar przez API serwera ([IMAGE_PIPELINE.md](IMAGE_PIPELINE.md#kalibracja-etap-1)).
 - [ ] 3.9 Użytkownicy (administrator): zaproszenie domownika (kod QR), role, odebranie dostępu.
 - [ ] 3.10 Widget (aktualny obraz) i rozszerzenie „Udostępnij → Pokaż na ramce”.
 - [ ] 3.11 TestFlight dla domowników. *(Build trafia do TestFlight automatycznie z GitHuba, workflow `testflight` na Xcode 26; do zrobienia: grupy testerów i przegląd Apple dla testów zewnętrznych.)*

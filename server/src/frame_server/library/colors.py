@@ -7,7 +7,7 @@ from PIL import Image
 
 from ..imaging.color import linear_to_oklab, linear_to_u8, oklab_to_linear, u8_to_linear
 from ..imaging.gamut import gamut_coverage
-from ..imaging.palette import SPECTRA6, Palette
+from ..imaging.palette import EM32DX, Palette
 from .models import ColorSwatch
 
 # Colour families used for tags and smart playlists. The app shows them
@@ -83,7 +83,7 @@ def family(lab: np.ndarray) -> str:
 
 
 def analyse(
-    img: Image.Image, palette: Palette = SPECTRA6
+    img: Image.Image, palette: Palette = EM32DX
 ) -> tuple[list[ColorSwatch], list[str], float]:
     """Dominant colours, colour/mood tags and a 0..1 e-paper suitability score."""
     linear = _sample(img)

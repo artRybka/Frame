@@ -94,7 +94,7 @@ async def test_display_flow(tmp_path: Path, server_ssl: ssl.SSLContext) -> None:
             assert resp.status_code == 200, resp.text
             body = resp.json()
             assert body["fetched"] is True
-            assert body["content"]["file_name"].endswith(".png")
+            assert body["content"]["file_name"].endswith(".jpg")  # photo preset: passthrough
 
             now = (await client.get("/api/now", headers=headers)).json()
             assert now["file_id"] == body["content"]["file_id"]

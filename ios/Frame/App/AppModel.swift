@@ -25,7 +25,6 @@ final class AppModel {
     var settings: FrameSettings?
     var playlists: [PlaylistSummary] = []
     var facets = Facets.empty
-    var calibration: CalibrationInfo?
     var connection = Connection.unknown
     var toast: String?
     var working = false
@@ -60,7 +59,6 @@ final class AppModel {
         settings = nil
         playlists = []
         facets = .empty
-        calibration = nil
         await refreshAll()
     }
 
@@ -84,13 +82,11 @@ final class AppModel {
         let settings = Task { try? await backend.settings() }
         let playlists = Task { try? await backend.playlists() }
         let facets = Task { try? await backend.facets() }
-        let calibration = Task { try? await backend.calibration() }
         self.player = await player.value
         self.status = await status.value
         self.settings = await settings.value
         self.playlists = await playlists.value ?? []
         self.facets = await facets.value ?? .empty
-        self.calibration = await calibration.value
     }
 
     func refreshPlayer() async {
@@ -189,14 +185,6 @@ final class AppModel {
             } else {
                 await refreshPlayer()
             }
-        } catch { show(error) }
-    }
-
-    func resetCalibration() async {
-        do {
-            calibration = try await backend.resetCalibration()
-            toast = "Przywrócono domyślne kolory"
-            await followPlayer()
         } catch { show(error) }
     }
 

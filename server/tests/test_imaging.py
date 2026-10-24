@@ -71,6 +71,7 @@ def test_precompensate_inverts_affine_fit() -> None:
 @pytest.mark.parametrize("orientation", list(Orientation))
 def test_render_dither_outputs_only_inks(orientation: Orientation) -> None:
     settings = PRESETS["photo"].model_copy(deep=True)
+    settings.strategy = Strategy.DITHER
     settings.layout.orientation = orientation
     result = render(_gradient(), settings)
     assert result.panel.shape == (1440, 2560, 3)
@@ -90,6 +91,11 @@ def test_bw_preset_uses_two_inks() -> None:
     assert used <= {(0, 0, 0), (255, 255, 255)}
 
 
+def test_photo_preset_is_passthrough() -> None:
+    # E5: the panel's own colour mapping looked best on photos.
+    assert PRESETS["photo"].strategy == Strategy.PASSTHROUGH
+
+
 def test_passthrough_is_jpeg() -> None:
     result = render(_gradient(), RenderSettings(strategy=Strategy.PASSTHROUGH))
     data, ext = result.encode()
@@ -106,6 +112,7 @@ def test_paper_white_is_the_white_ink() -> None:
     # Spectra 6 yellow is lighter than its white; white must still map to white.
     assert SPECTRA6.names[SPECTRA6.white_index()] == "white"
     settings = PRESETS["photo"].model_copy(deep=True)
+    settings.strategy = Strategy.DITHER
     settings.layout.fit = Fit.FILL
     result = render(Image.new("RGB", (320, 180), (255, 255, 255)), settings)
     white = np.all(result.panel == 255, axis=-1).mean()

@@ -420,45 +420,6 @@ struct AlbumInfo: Codable, Hashable, Sendable {
     var photos: Int
 }
 
-// MARK: Colour calibration (server/src/frame_server/web/calibration_api.py)
-
-/// One ink of the panel: the value written to the file and how it looks.
-struct InkInfo: Codable, Hashable, Sendable, Identifiable {
-    let name: String
-    let device: [Int]
-    let perceived: [Int]
-    var id: String { name }
-}
-
-struct PaletteInfo: Codable, Hashable, Sendable {
-    let name: String
-    let source: String
-    let colors: [InkInfo]
-}
-
-/// `GET /api/calibration`
-struct CalibrationInfo: Codable, Hashable, Sendable {
-    var palette: PaletteInfo
-    var calibrated: Bool  // measured in the app, otherwise the default palette
-}
-
-struct MeasuredInk: Codable, Hashable, Sendable, Identifiable {
-    let name: String
-    let device: [Int]
-    let perceived: [Int]  // measured now
-    let previous: [Int]  // in use until applied
-    let spread: Double
-    var id: String { name }
-}
-
-/// `POST /api/calibration/measure`
-struct CalibrationResult: Codable, Sendable {
-    let candidateId: String
-    let inks: [MeasuredInk]
-    let warnings: [String]
-    let chartUrl: String
-}
-
 // MARK: Framing (server/src/frame_server/web/library_api.py)
 
 /// Which part of a picture a window shows: centre as fractions of the

@@ -44,7 +44,7 @@ from .layout import (
     to_panel,
 )
 from .mat import is_dark, paint_mat, picture_tint
-from .palette import SPECTRA6, Palette
+from .palette import EM32DX, Palette
 from .text import TextBlock, text_block_mask
 from .tone import ToneSettings, map_to_panel, precompensate
 
@@ -98,7 +98,10 @@ class RenderSettings(BaseModel):
 
 PRESETS: dict[str, RenderSettings] = {
     # Photos: lift shadows (dark inks swallow them), mild contrast and colour boost.
+    # Passthrough for now: in E5 the panel's own colour mapping beat our dither on
+    # a real photo (docs/EXPERIMENTS.md). Back to DITHER once 1.3/1.4 catch up.
     "photo": RenderSettings(
+        strategy=Strategy.PASSTHROUGH,
         tone=ToneSettings(gamma=1.15, shadows=0.35, highlights=0.1, contrast=1.1, saturation=1.2),
         sharpen=0.6,
     ),
@@ -221,7 +224,7 @@ Source = str | Path | bytes | Image.Image
 def render(
     source: Source,
     settings: RenderSettings | None = None,
-    palette: Palette = SPECTRA6,
+    palette: Palette = EM32DX,
 ) -> RenderResult:
     s = settings or RenderSettings()
     img = load_image(source)
