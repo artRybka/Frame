@@ -8,9 +8,12 @@ at import time).
 from __future__ import annotations
 
 import html
+import random
 import re
 from abc import ABC, abstractmethod
-from typing import Any
+from collections.abc import Iterator
+from dataclasses import dataclass
+from typing import Any, ClassVar, Literal
 
 import httpx
 
@@ -36,12 +39,40 @@ def client() -> httpx.Client:
     )
 
 
+Kind = Literal["any", "painting", "print", "drawing", "poster"]
+
+
+@dataclass(frozen=True)
+class Discovery:
+    """What to draw from a collection at random; every field is optional."""
+
+    year_from: int | None = None
+    year_to: int | None = None
+    #: Free text matched against styles and movements, e.g. "Impressionism".
+    style: str = ""
+    kind: Kind = "any"
+
+    def fits(self, item: Item) -> bool:
+        """Museums' date filters are coarse; this checks the year exactly."""
+        if item.year is None:
+            return self.year_from is None and self.year_to is None
+        if self.year_from is not None and item.year < self.year_from:
+            return False
+        return self.year_to is None or item.year <= self.year_to
+
+
 class Museum(ABC):
     key: str
     name: str
+    #: Most results one search request may ask for.
+    page_size = 100
+    #: How deep random draws reach into results (search engines stop paging
+    #: at 10 000).
+    random_depth = 10_000
 
-    def __init__(self, http: httpx.Client) -> None:
+    def __init__(self, http: httpx.Client, private_use: bool = False) -> None:
         self.http = http
+        self.private_use = private_use
 
     @abstractmethod
     def search(self, query: str, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
@@ -50,6 +81,24 @@ class Museum(ABC):
     @abstractmethod
     def fetch(self, source_id: str) -> Item | None:
         """One work by its id in the museum's collection."""
+
+    def discover(self, spec: Discovery, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
+        """Works matching ``spec`` (in any order); returns (total, items).
+
+        Sources that cannot filter this way return nothing.
+        """
+        return 0, []
+
+    def random_draw(self, spec: Discovery, rng: random.Random) -> Iterator[Item]:
+        """Works matching ``spec``, from result pages taken in random order."""
+        size = min(self.page_size, 24)
+        total, _ = self.discover(spec, limit=1, page=1)
+        pages = list(range(1, -(-min(total, self.random_depth) // size) + 1))
+        rng.shuffle(pages)
+        for page in pages:
+            _, items = self.discover(spec, limit=size, page=page)
+            rng.shuffle(items)
+            yield from items
 
     def _item(self, source_id: str, **fields: Any) -> Item:
         return Item(
@@ -115,28 +164,60 @@ class ArtInstituteChicago(Museum):
         "medium_display",
     )
 
+    artwork_types: ClassVar[dict[str, str]] = {
+        "painting": "Painting",
+        "print": "Print",
+        "drawing": "Drawing and Watercolor",
+    }
+
+    @staticmethod
+    def _text(query: str, fields: tuple[str, ...]) -> dict[str, Any]:
+        return {
+            "simple_query_string": {
+                "query": query,
+                "fields": list(fields),
+                "default_operator": "and",
+            }
+        }
+
     def search(self, query: str, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
+        must = [self._text(query, self.search_fields)] if query.strip() else []
+        return self._post(query, must, [], limit, page)
+
+    def discover(self, spec: Discovery, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
         must: list[dict[str, Any]] = []
-        if query.strip():
-            must.append(
-                {
-                    "simple_query_string": {
-                        "query": query,
-                        "fields": list(self.search_fields),
-                        "default_operator": "and",
-                    }
-                }
-            )
-        resp = self.http.post(
-            f"{self.api}/artworks/search",
-            json={
-                "q": query,
-                "limit": limit,
-                "page": page,
-                "fields": self.fields.split(","),
-                "query": {"bool": {"must": must, "filter": [{"term": {"is_public_domain": True}}]}},
-            },
-        )
+        filters: list[dict[str, Any]] = []
+        if spec.style.strip():
+            fields = ("style_titles", "term_titles", "subject_titles", "classification_titles")
+            must.append(self._text(spec.style, fields))
+        if spec.kind == "poster":
+            must.append(self._text("poster", ("classification_titles", "term_titles")))
+        elif spec.kind in self.artwork_types:
+            must.append({"match": {"artwork_type_title": self.artwork_types[spec.kind]}})
+        if spec.year_from is not None:
+            filters.append({"range": {"date_start": {"gte": spec.year_from}}})
+        if spec.year_to is not None:
+            filters.append({"range": {"date_start": {"lte": spec.year_to}}})
+        return self._post("", must, filters, limit, page)
+
+    def _post(
+        self,
+        query: str,
+        must: list[dict[str, Any]],
+        filters: list[dict[str, Any]],
+        limit: int,
+        page: int,
+    ) -> tuple[int, list[Item]]:
+        public = {"term": {"is_public_domain": True}}
+        body: dict[str, Any] = {
+            "limit": limit,
+            "page": page,
+            "fields": self.fields.split(","),
+            "query": {"bool": {"must": must, "filter": [public, *filters]}},
+        }
+        if query:
+            body["q"] = query
+        resp = self.http.post(f"{self.api}/artworks/search", json=body)
         resp.raise_for_status()
         body = resp.json()
         items = [i for d in body.get("data", []) if (i := self._map(d))]
@@ -194,11 +275,31 @@ class ClevelandMuseum(Museum):
             height=int(web["height"]) if web.get("height") else None,
         )
 
+    types: ClassVar[dict[str, str]] = {
+        "painting": "Painting",
+        "print": "Print",
+        "drawing": "Drawing",
+    }
+
     def search(self, query: str, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
+        return self._get({"q": query}, limit, page)
+
+    def discover(self, spec: Discovery, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
+        words = [spec.style.strip(), "poster" if spec.kind == "poster" else ""]
+        params: dict[str, Any] = {"q": " ".join(w for w in words if w)}
+        if spec.kind in self.types:
+            params["type"] = self.types[spec.kind]
+        if spec.year_from is not None:
+            params["created_after"] = spec.year_from
+        if spec.year_to is not None:
+            params["created_before"] = spec.year_to
+        return self._get(params, limit, page)
+
+    def _get(self, params: dict[str, Any], limit: int, page: int) -> tuple[int, list[Item]]:
         resp = self.http.get(
             f"{self.api}/artworks/",
             params={
-                "q": query,
+                **params,
                 "has_image": 1,
                 "cc0": 1,
                 "limit": limit,
@@ -247,10 +348,29 @@ class MetropolitanMuseum(Museum):
             thumb_url=d["primaryImageSmall"],
         )
 
+    page_size = 24  # every result is one more request
+
     def search(self, query: str, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
+        return self._search({"q": query}, limit, page)
+
+    # Departments: European Paintings; Drawings and Prints.
+    departments: ClassVar[dict[str, int]] = {"painting": 11, "print": 9, "drawing": 9, "poster": 9}
+
+    def discover(self, spec: Discovery, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
+        words = [spec.style.strip(), "poster" if spec.kind == "poster" else ""]
+        params: dict[str, Any] = {"q": " ".join(w for w in words if w) or "*"}
+        if spec.kind in self.departments:
+            params["departmentId"] = self.departments[spec.kind]
+        if spec.year_from is not None or spec.year_to is not None:
+            # The Met wants both ends of the range.
+            params["dateBegin"] = spec.year_from if spec.year_from is not None else -5000
+            params["dateEnd"] = spec.year_to if spec.year_to is not None else 2100
+        return self._search({**params, "isPublicDomain": "true"}, limit, page)
+
+    def _search(self, params: dict[str, Any], limit: int, page: int) -> tuple[int, list[Item]]:
         resp = self.http.get(
             f"{self.api}/v1.1/search",
-            params={"q": query, "hasImages": "true", "limit": limit, "offset": (page - 1) * limit},
+            params={**params, "hasImages": "true", "limit": limit, "offset": (page - 1) * limit},
         )
         resp.raise_for_status()
         body = resp.json()
@@ -279,6 +399,7 @@ class WikimediaCommons(Museum):
 
     key = "wmc"
     name = "Wikimedia Commons"
+    page_size = 50
     api = "https://commons.wikimedia.org/w/api.php"
     meta = "ObjectName|Artist|DateTimeOriginal|LicenseShortName|ImageDescription|Credit"
 
@@ -303,7 +424,9 @@ class WikimediaCommons(Museum):
             return None
         info = infos[0]
         licence = self._meta(info, "LicenseShortName")
-        if "public domain" not in licence.casefold() and "cc0" not in licence.casefold():
+        public = "public domain" in licence.casefold() or "cc0" in licence.casefold()
+        # Everything on Commons is freely licensed; attribution is kept in ``credit``.
+        if not public and not (self.private_use and licence):
             return None
         title = self._meta(info, "ObjectName") or re.sub(
             r"^File:|\.[a-zA-Z]+$", "", page.get("title", "")
@@ -330,26 +453,53 @@ class WikimediaCommons(Museum):
 
     def search(self, query: str, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
         artist_hint = ""
+        offset = (page - 1) * limit
         if query.startswith("Category:"):
-            params = self._params(
-                generator="categorymembers", gcmtitle=query, gcmtype="file", gcmlimit=limit
-            )
             artist_hint = re.sub(r"^Category:(Paintings|Works|Drawings|Prints) by ", "", query)
             if artist_hint == query:
                 artist_hint = ""
+            body = self._category_page(query, limit, offset)
         else:
-            params = self._params(
-                generator="search",
-                gsrsearch=f"{query} filetype:bitmap",
-                gsrnamespace=6,
-                gsrlimit=limit,
-                gsroffset=(page - 1) * limit,
+            resp = self.http.get(
+                self.api,
+                params=self._params(
+                    generator="search",
+                    gsrsearch=f"{query} filetype:bitmap",
+                    gsrnamespace=6,
+                    gsrlimit=limit,
+                    gsroffset=offset,
+                ),
             )
-        resp = self.http.get(self.api, params=params)
-        resp.raise_for_status()
-        pages = resp.json().get("query", {}).get("pages", {})
+            resp.raise_for_status()
+            body = resp.json()
+        pages = body.get("query", {}).get("pages", {})
         items = [i for p in pages.values() if (i := self._map(p, artist_hint))]
-        return len(items), items
+        # Commons gives no total; claim one more page while it says there is one.
+        total = offset + len(pages) + (limit if "continue" in body else 0)
+        return total, items
+
+    def _category_page(self, category: str, limit: int, offset: int) -> dict[str, Any]:
+        """Category members ``offset:offset+limit``; categories page by token only."""
+        cont: dict[str, Any] = {}
+        skipped = 0
+        while True:
+            want = limit if skipped >= offset else min(self.page_size, offset - skipped)
+            resp = self.http.get(
+                self.api,
+                params=self._params(
+                    generator="categorymembers",
+                    gcmtitle=category,
+                    gcmtype="file",
+                    gcmlimit=want,
+                    **cont,
+                ),
+            )
+            resp.raise_for_status()
+            body: dict[str, Any] = resp.json()
+            if skipped >= offset or "continue" not in body:
+                return body if skipped >= offset else {}
+            skipped += want
+            cont = body["continue"]
 
     def fetch(self, source_id: str) -> Item | None:
         resp = self.http.get(self.api, params=self._params(pageids=source_id))
@@ -359,12 +509,197 @@ class WikimediaCommons(Museum):
         return self._map(page) if page else None
 
 
+class Rijksmuseum(Museum):
+    """Rijksmuseum's Linked Art API (no key needed).
+
+    The search only matches whole fields, so plain text is tried as a creator,
+    then as a title. ``creator=Johannes Vermeer&type=painting`` passes the
+    search parameters as they are.
+    """
+
+    key = "rijks"
+    name = "Rijksmuseum"
+    api = "https://data.rijksmuseum.nl/search/collection"
+    english = "http://vocab.getty.edu/aat/300388277"
+    open_licences: ClassVar[dict[str, str]] = {
+        "https://creativecommons.org/publicdomain/mark/1.0/": "Public Domain Mark 1.0",
+        "https://creativecommons.org/publicdomain/zero/1.0/": "CC0 1.0",
+    }
+    # Getty AAT types of the ``referred_to_by`` statements we read.
+    medium_type = "http://vocab.getty.edu/aat/300435429"
+    description_type = "http://vocab.getty.edu/aat/300435452"
+    credit_type = "http://vocab.getty.edu/aat/300026687"
+
+    @staticmethod
+    def _types(node: dict[str, Any]) -> set[str]:
+        return {c.get("id", "") for c in node.get("classified_as") or []}
+
+    def _is_english(self, node: dict[str, Any]) -> bool:
+        return any(lang.get("id") == self.english for lang in node.get("language") or [])
+
+    def _text(self, nodes: list[dict[str, Any]]) -> str:
+        """The English content among ``nodes`` (any language as a fallback)."""
+        texts = [n for n in nodes if n.get("content")]
+        english = [n for n in texts if self._is_english(n)]
+        return str((english or texts)[0]["content"]) if texts else ""
+
+    def _statement(self, d: dict[str, Any], aat: str) -> str:
+        return self._text([r for r in d.get("referred_to_by") or [] if aat in self._types(r)])
+
+    @staticmethod
+    def _notation(node: dict[str, Any]) -> str:
+        values = node.get("notation") or []
+        english = [v for v in values if v.get("@language") == "en"]
+        return str((english or values or [{}])[0].get("@value", ""))
+
+    def _image(self, d: dict[str, Any]) -> tuple[str, str]:
+        """IIIF base of the public-domain image and its licence, if any."""
+        for subject in d.get("subject_of") or []:
+            for carrier in subject.get("digitally_carried_by") or []:
+                rights = [r.get("content", "") for r in carrier.get("referred_to_by") or []]
+                licence = next(
+                    (self.open_licences[r] for r in rights if r in self.open_licences), ""
+                )
+                for point in carrier.get("access_point") or []:
+                    url = point.get("id", "")
+                    if licence and "iiif" in url:
+                        return re.sub(r"/full/.*$", "", url), licence
+        return "", ""
+
+    def _page_url(self, d: dict[str, Any]) -> str:
+        for subject in d.get("subject_of") or []:
+            for carrier in subject.get("digitally_carried_by") or []:
+                if carrier.get("format") == "text/html":
+                    for point in carrier.get("access_point") or []:
+                        if point.get("id"):
+                            return str(point["id"])
+        return str(d.get("id", ""))
+
+    def _map(self, d: dict[str, Any]) -> Item | None:
+        iiif, licence = self._image(d)
+        if not iiif:
+            return None
+        names = [n for n in d.get("identified_by") or [] if n.get("type") == "Name"]
+        production = d.get("produced_by") or {}
+        makers = [
+            agent
+            for part in [production, *(production.get("part") or [])]
+            for agent in part.get("carried_out_by") or []
+        ]
+        timespan = production.get("timespan") or {}
+        year_match = re.match(r"(\d{4})", timespan.get("begin_of_the_begin", ""))
+        classes = d.get("classified_as") or []
+        return self._item(
+            str(d["id"]).rsplit("/", 1)[-1],
+            title=self._text(names),
+            artist=self._notation(makers[0])
+            if makers
+            else self._text(production.get("referred_to_by") or []),
+            date_text=self._text(timespan.get("identified_by") or []),
+            year=int(year_match.group(1)) if year_match else None,
+            medium=self._statement(d, self.medium_type),
+            classification=self._notation(classes[0]) if classes else "",
+            credit=self._statement(d, self.credit_type),
+            license=licence,
+            url=self._page_url(d),
+            description=self._statement(d, self.description_type),
+            image_url=f"{iiif}/full/max/0/default.jpg",
+            thumb_url=f"{iiif}/full/600,/0/default.jpg",
+        )
+
+    def _ids(self, params: dict[str, str], skip: int, limit: int) -> tuple[int, list[str]]:
+        """Object ids ``skip:skip+limit`` of a search; pages of 100 follow tokens."""
+        url: str | None = self.api
+        query: dict[str, str] | None = {**params, "imageAvailable": "true"}
+        ids: list[str] = []
+        total = 0
+        while url and len(ids) < skip + limit:
+            resp = self.http.get(url, params=query)
+            resp.raise_for_status()
+            body = resp.json()
+            total = int(body.get("partOf", {}).get("totalItems") or 0)
+            ids += [o["id"] for o in body.get("orderedItems") or [] if o.get("id")]
+            url, query = (body.get("next") or {}).get("id"), None
+        return total, ids[skip : skip + limit]
+
+    def _discovery_params(self, spec: Discovery, decade: int | None = None) -> dict[str, str]:
+        params: dict[str, str] = {"type": spec.kind if spec.kind != "any" else "painting"}
+        if decade is not None:
+            params["creationDate"] = f"{decade // 10:03d}*"  # dates match by prefix
+        return params
+
+    def _decades(self, spec: Discovery) -> list[int | None]:
+        if spec.year_from is None and spec.year_to is None:
+            return [None]
+        first = (spec.year_from if spec.year_from is not None else 1000) // 10 * 10
+        last = spec.year_to if spec.year_to is not None else 2000
+        return list(range(first, last + 1, 10))
+
+    def discover(self, spec: Discovery, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
+        if spec.style.strip():
+            return 0, []  # no field for styles or movements
+        decade = self._decades(spec)[0]
+        total, ids = self._ids(self._discovery_params(spec, decade), (page - 1) * limit, limit)
+        return total, self._objects(ids)
+
+    def random_draw(self, spec: Discovery, rng: random.Random) -> Iterator[Item]:
+        """Decades in random order (the API has no date ranges), then the
+        first results of each, shuffled."""
+        if spec.style.strip():
+            return
+        decades = self._decades(spec)
+        rng.shuffle(decades)
+        for decade in decades:
+            _, ids = self._ids(self._discovery_params(spec, decade), 0, 200)
+            rng.shuffle(ids)
+            for start in range(0, len(ids), 10):
+                yield from self._objects(ids[start : start + 10])
+
+    def _objects(self, ids: list[str]) -> list[Item]:
+        return [i for object_id in ids if (i := self.fetch(object_id.rsplit("/", 1)[-1]))]
+
+    def search(self, query: str, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
+        query = query.strip()
+        if "=" in query:
+            attempts = [dict(p.split("=", 1) for p in query.split("&") if "=" in p)]
+        else:
+            attempts = [{"creator": query}, {"title": query}]
+        total, ids = 0, list[str]()
+        for params in attempts:
+            total, ids = self._ids(params, (page - 1) * limit, limit)
+            if total:
+                break
+        items = []
+        for object_id in ids:
+            item = self.fetch(object_id.rsplit("/", 1)[-1])
+            if item is not None:
+                items.append(item)
+        return total, items
+
+    def fetch(self, source_id: str) -> Item | None:
+        resp = self.http.get(
+            f"https://id.rijksmuseum.nl/{source_id}",
+            headers={"Accept": "application/ld+json"},
+        )
+        if resp.status_code == 404:
+            return None
+        resp.raise_for_status()
+        return self._map(resp.json())
+
+
 MUSEUMS: dict[str, type[Museum]] = {
-    m.key: m for m in (ArtInstituteChicago, ClevelandMuseum, MetropolitanMuseum, WikimediaCommons)
+    m.key: m
+    for m in (
+        ArtInstituteChicago,
+        ClevelandMuseum,
+        MetropolitanMuseum,
+        Rijksmuseum,
+        WikimediaCommons,
+    )
 }
 
 
-def museum(key: str, http: httpx.Client) -> Museum:
+def museum(key: str, http: httpx.Client, private_use: bool = False) -> Museum:
     if key not in MUSEUMS:
         raise KeyError(f"unknown museum {key!r}; choose from {sorted(MUSEUMS)}")
-    return MUSEUMS[key](http)
+    return MUSEUMS[key](http, private_use)

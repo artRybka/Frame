@@ -143,6 +143,7 @@ enum Names {
         case "aic": "Art Institute of Chicago"
         case "cma": "Cleveland Museum of Art"
         case "met": "The Met"
+        case "rijks": "Rijksmuseum"
         case "wmc": "Wikimedia Commons"
         case "upload": "Własne"
         case "icloud": "Album iCloud"

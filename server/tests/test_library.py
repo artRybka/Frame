@@ -11,11 +11,16 @@ from frame_server.imaging.color import linear_to_oklab, u8_to_linear
 from frame_server.library import Item, ItemKind, Library, Playlist, PlaylistKind, PlaylistRules
 from frame_server.library.colors import analyse, family
 from frame_server.library.museums import (
+    MUSEUMS,
     ArtInstituteChicago,
     ClevelandMuseum,
+    Discovery,
     MetropolitanMuseum,
+    Museum,
+    Rijksmuseum,
     WikimediaCommons,
 )
+from frame_server.library.seed import PACKS, SEED_QUERIES
 
 
 def _item(n: int, **kw) -> Item:
@@ -229,3 +234,252 @@ def test_wikimedia_mapping() -> None:
     item = items[0]
     assert item.artist == "Józef Chełmoński" and item.title == "Babie lato" and item.year == 1875
     assert item.kind == ItemKind.ARTWORK and item.id == "wmc:123"
+
+    page["imageinfo"][0]["extmetadata"]["LicenseShortName"]["value"] = "CC BY-SA 4.0"
+    with _client({"https://commons.wikimedia.org/w/api.php": body}) as http:
+        assert WikimediaCommons(http).search("Category:X")[1] == []
+        _, items = WikimediaCommons(http, private_use=True).search("Category:X")
+    assert items[0].license == "CC BY-SA 4.0"
+
+
+def test_wikimedia_category_pages_by_token() -> None:
+    def file(n: int) -> dict:
+        info = {"url": f"https://u/{n}.jpg", "extmetadata": {"LicenseShortName": {"value": "CC0"}}}
+        return {"pageid": n, "title": f"File:{n}.jpg", "imageinfo": [info]}
+
+    sent: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        sent.append(request)
+        start = int(request.url.params.get("gcmcontinue", "0"))
+        size = int(request.url.params["gcmlimit"])
+        pages = {str(n): file(n) for n in range(start, min(start + size, 5))}
+        body: dict = {"query": {"pages": pages}}
+        if start + size < 5:
+            body["continue"] = {"gcmcontinue": str(start + size), "continue": "gcmcontinue||"}
+        return httpx.Response(200, json=body)
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http:
+        total, items = WikimediaCommons(http).search("Category:X", limit=2, page=2)
+        assert [i.source_id for i in items] == ["2", "3"] and total == 6
+        total, items = WikimediaCommons(http).search("Category:X", limit=2, page=3)
+        assert [i.source_id for i in items] == ["4"] and total == 5
+
+
+RIJKS_OBJECT = {
+    "id": "https://id.rijksmuseum.nl/200108369",
+    "type": "HumanMadeObject",
+    "classified_as": [
+        {
+            "notation": [
+                {"@language": "nl", "@value": "schilderij"},
+                {"@language": "en", "@value": "painting"},
+            ]
+        }
+    ],
+    "identified_by": [
+        {"type": "Identifier", "content": "SK-A-2344"},
+        {
+            "type": "Name",
+            "content": "Het melkmeisje",
+            "language": [{"id": "http://vocab.getty.edu/aat/300388256"}],
+        },
+        {"type": "Name", "content": "The Milkmaid", "language": [{"id": Rijksmuseum.english}]},
+    ],
+    "produced_by": {
+        "part": [
+            {"carried_out_by": [{"notation": [{"@language": "en", "@value": "Johannes Vermeer"}]}]}
+        ],
+        "timespan": {
+            "begin_of_the_begin": "1660-01-01T00:00:00Z",
+            "identified_by": [{"content": "c. 1660", "language": [{"id": Rijksmuseum.english}]}],
+        },
+    },
+    "referred_to_by": [
+        {
+            "classified_as": [{"id": Rijksmuseum.medium_type}],
+            "content": "oil on canvas",
+            "language": [{"id": Rijksmuseum.english}],
+        },
+        {"classified_as": [{"id": Rijksmuseum.description_type}], "content": "Een dienstmaagd."},
+    ],
+    "subject_of": [
+        {
+            "digitally_carried_by": [
+                {
+                    "access_point": [{"id": "https://iiif.micr.io/QkOGy/full/max/0/default.jpg"}],
+                    "referred_to_by": [
+                        {"content": "https://creativecommons.org/publicdomain/mark/1.0/"}
+                    ],
+                }
+            ]
+        },
+        {
+            "digitally_carried_by": [
+                {
+                    "format": "text/html",
+                    "access_point": [
+                        {"id": "https://www.rijksmuseum.nl/nl/collectie/object/SK-A-2344"}
+                    ],
+                }
+            ]
+        },
+    ],
+}
+
+
+def test_rijksmuseum_mapping_and_fallback_to_title() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if url.startswith(Rijksmuseum.api):
+            found = "title" in request.url.params
+            items = [{"id": "https://id.rijksmuseum.nl/200108369"}] if found else []
+            return httpx.Response(
+                200, json={"partOf": {"totalItems": len(items)}, "orderedItems": items}
+            )
+        if url == "https://id.rijksmuseum.nl/200108369":
+            assert request.headers["Accept"] == "application/ld+json"
+            return httpx.Response(200, json=RIJKS_OBJECT)
+        return httpx.Response(404)
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http:
+        total, items = Rijksmuseum(http).search("Milkmaid")
+    assert total == 1
+    item = items[0]
+    assert item.id == "rijks:200108369" and item.title == "The Milkmaid"
+    assert item.artist == "Johannes Vermeer" and item.year == 1660 and item.date_text == "c. 1660"
+    assert item.medium == "oil on canvas" and item.classification == "painting"
+    assert item.license == "Public Domain Mark 1.0" and item.description == "Een dienstmaagd."
+    assert item.thumb_url == "https://iiif.micr.io/QkOGy/full/600,/0/default.jpg"
+    assert item.url.endswith("SK-A-2344")
+
+
+def test_rijksmuseum_skips_works_without_open_image() -> None:
+    closed = {**RIJKS_OBJECT, "subject_of": [RIJKS_OBJECT["subject_of"][1]]}
+    assert Rijksmuseum(httpx.Client())._map(closed) is None
+
+
+def test_search_many_walks_pages(tmp_path) -> None:
+    from frame_server.library.importer import Importer
+
+    class Counting(Museum):
+        key = "aic"
+        name = "Counting"
+        page_size = 3
+
+        def search(self, query: str, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
+            start = (page - 1) * limit
+            return 7, [self._item(str(n), title="x") for n in range(start, min(start + limit, 7))]
+
+        def fetch(self, source_id: str) -> Item | None:
+            return None
+
+    original = MUSEUMS["aic"]
+    MUSEUMS["aic"] = Counting
+    try:
+        importer = Importer(Library(tmp_path / "lib.db"), None, None)  # type: ignore[arg-type]
+        assert len(importer.search_many("aic", "x", 5)) == 5
+        assert len(importer.search_many("aic", "x", 50)) == 7
+    finally:
+        MUSEUMS["aic"] = original
+
+
+def test_packs_use_known_museums() -> None:
+    keys = [p.key for p in PACKS]
+    assert len(keys) == len(set(keys))
+    for _, queries in [("starter", SEED_QUERIES), *[(p.key, p.queries) for p in PACKS]]:
+        for source, query, limit in queries:
+            assert source in MUSEUMS and query and 0 < limit <= 500
+
+
+def test_discovery_year_check() -> None:
+    spec = Discovery(year_from=1850, year_to=1900)
+    assert spec.fits(_item(1, year=1850)) and not spec.fits(_item(2, year=1901))
+    assert not spec.fits(_item(3)) and Discovery().fits(_item(3))
+    assert Rijksmuseum(httpx.Client())._decades(Discovery(year_from=1855, year_to=1871)) == [
+        1850,
+        1860,
+        1870,
+    ]
+
+
+def test_draw_takes_turns_and_skips_known_or_weak(tmp_path) -> None:
+    import random
+
+    from frame_server.library.importer import Importer, Job
+
+    class Fake(Museum):
+        name = "Fake"
+
+        def search(self, query: str, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
+            return 0, []
+
+        def fetch(self, source_id: str) -> Item | None:
+            return None
+
+        def discover(self, spec, limit=20, page=1):  # type: ignore[no-untyped-def]
+            items = [self._item(str(n), year=1800 + n) for n in range(40)]
+            return len(items), items[(page - 1) * limit : page * limit]
+
+    class A(Fake):
+        key = "aic"
+
+    class B(Fake):
+        key = "cma"
+
+    class Importing(Importer):
+        def _analysed(self, item: Item) -> Item:
+            # Odd ids look weak on e-paper.
+            score = 0.2 if int(item.source_id) % 2 else 0.9
+            return item.model_copy(update={"suitability": score})
+
+    saved = dict(MUSEUMS)
+    MUSEUMS.update(aic=A, cma=B)
+    try:
+        library = Library(tmp_path / "lib.db")
+        library.upsert(A(httpx.Client())._item("10", year=1810))
+        importer = Importing(library, None, None)  # type: ignore[arg-type]
+        importer.cache = type("Cache", (), {"remove": lambda self, item: None})()
+        job = Job(id="j", description="draw")
+        spec = Discovery(year_from=1800, year_to=1830)
+        importer.draw(spec, 8, ["aic", "cma"], job, min_suitability=0.5, rng=random.Random(3))
+    finally:
+        MUSEUMS.clear()
+        MUSEUMS.update(saved)
+    assert job.done == 8 and job.skipped > 0 and len(set(job.item_ids)) == 8
+    assert "aic:10" not in job.item_ids
+    assert {i.split(":")[0] for i in job.item_ids} == {"aic", "cma"}
+    for item_id in job.item_ids:
+        n = int(item_id.split(":")[1])
+        assert n % 2 == 0 and n <= 30
+
+
+def test_search_all_interleaves_and_reports_failures(tmp_path) -> None:
+    from frame_server.library.importer import Importer
+
+    def fake(source: str, count: int, fails: bool = False) -> type[Museum]:
+        class Fake(Museum):
+            key = source
+            name = source
+
+            def search(self, query: str, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
+                if fails:
+                    raise httpx.ConnectError("down")
+                return count, [self._item(str(n)) for n in range(min(limit, count))]
+
+            def fetch(self, source_id: str) -> Item | None:
+                return None
+
+        return Fake
+
+    saved = dict(MUSEUMS)
+    MUSEUMS.clear()
+    MUSEUMS.update(a=fake("a", 3), b=fake("b", 1), c=fake("c", 0, fails=True))
+    try:
+        importer = Importer(Library(tmp_path / "lib.db"), None, None)  # type: ignore[arg-type]
+        total, items, failed = importer.search_all("x", limit=2)
+    finally:
+        MUSEUMS.clear()
+        MUSEUMS.update(saved)
+    assert total == 4 and failed == ["c"]
+    assert [i.id for i in items] == ["a:0", "b:0", "a:1"]

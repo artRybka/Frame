@@ -25,6 +25,7 @@ actor DemoBackend: FrameBackend {
     private var history: [String] = []
     private var currentID: String?
     private var holdValue: Hold?
+    private var demoJobs: [String: JobStatus] = [:]
     private struct ImageURLs: Sendable {
         let thumb: URL?
         let image: URL?
@@ -406,13 +407,14 @@ actor DemoBackend: FrameBackend {
             Museum(key: "aic", name: "Art Institute of Chicago"),
             Museum(key: "cma", name: "Cleveland Museum of Art"),
             Museum(key: "met", name: "The Metropolitan Museum of Art"),
+            Museum(key: "rijks", name: "Rijksmuseum"),
             Museum(key: "wmc", name: "Wikimedia Commons"),
         ]
     }
 
     func searchMuseum(source: String, query: String, page: Int) async throws -> RemotePage {
         let rules = PlaylistRules(query: query)
-        let found = items.filter { $0.source == source && Self.matches($0, rules) }
+        let found = items.filter { (source == "all" || $0.source == source) && Self.matches($0, rules) }
         return RemotePage(total: found.count, items: found.map { RemoteItem(item: $0, inLibrary: true) })
     }
 
@@ -421,6 +423,47 @@ actor DemoBackend: FrameBackend {
             throw BackendError.notFound
         }
         return item
+    }
+
+    /// The demo library already holds every work it knows: imports finish at once.
+    func importSearch(source: String, query: String, limit: Int) async throws -> String {
+        let found = try await searchMuseum(source: source, query: query, page: 1).items.prefix(limit)
+        demoJobs["demo"] = JobStatus(
+            id: "demo", total: found.count, done: found.count, failed: 0, skipped: 0, finished: true, error: "",
+            itemIds: found.map(\.id)
+        )
+        return "demo"
+    }
+
+    func packs() async throws -> [LibraryPack] {
+        [
+            LibraryPack(
+                key: "ukiyo-e", name: "Japońskie drzeworyty",
+                description: "Hokusai, Hiroshige, Utamaro, Kuniyoshi, Harunobu i inni mistrzowie ukiyo-e.",
+                size: 310, importing: false
+            ),
+            LibraryPack(
+                key: "dutch", name: "Malarstwo holenderskie",
+                description: "Rijksmuseum: Vermeer, Rembrandt, Hals, Steen, Ruisdael, aż po Breitnera i Marisa.",
+                size: 155, importing: false
+            ),
+        ]
+    }
+
+    func importPack(key: String) async throws -> String {
+        demoJobs["demo"] = JobStatus(
+            id: "demo", total: 0, done: 0, failed: 0, skipped: 0, finished: true, error: "", itemIds: []
+        )
+        return "demo"
+    }
+
+    func drawRandom(_ request: DrawRequest) async throws -> String {
+        try await importPack(key: "draw")
+    }
+
+    func job(id: String) async throws -> JobStatus {
+        guard let job = demoJobs[id] else { throw BackendError.notFound }
+        return job
     }
 
     func album() async throws -> AlbumInfo {

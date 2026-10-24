@@ -54,6 +54,14 @@ protocol FrameBackend: Sendable {
     func museums() async throws -> [Museum]
     func searchMuseum(source: String, query: String, page: Int) async throws -> RemotePage
     func importArtwork(source: String, sourceID: String) async throws -> Item
+    /// Imports up to `limit` search results in the background; returns the job id.
+    func importSearch(source: String, query: String, limit: Int) async throws -> String
+    func packs() async throws -> [LibraryPack]
+    /// Starts (or joins) a pack's import; returns the job id.
+    func importPack(key: String) async throws -> String
+    /// Adds random works by period, style and kind; returns the job id.
+    func drawRandom(_ request: DrawRequest) async throws -> String
+    func job(id: String) async throws -> JobStatus
 
     func album() async throws -> AlbumInfo
     func syncAlbum() async throws

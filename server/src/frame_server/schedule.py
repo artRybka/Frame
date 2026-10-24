@@ -59,6 +59,9 @@ class FrameSettings(BaseModel):
     album_url: str = ""
     timezone: str = "Europe/Warsaw"
     status_poll_minutes: int = Field(15, ge=0, le=1440)  # 0 = only on demand
+    # The frame is only seen at home: also accept works that are free to use
+    # but not public domain (e.g. CC BY-SA on Wikimedia Commons).
+    private_use: bool = False
 
     @model_validator(mode="after")
     def _own_fits(self) -> FrameSettings:

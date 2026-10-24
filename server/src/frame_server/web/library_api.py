@@ -10,15 +10,17 @@ from typing import Annotated, Any
 import httpx
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 from starlette.concurrency import run_in_threadpool
 
 from ..imaging.layout import Crop, Fit, Orientation, Plan, canvas_size, load_image
 from ..imaging.pipeline import encode_image, plan_for, render, render_multi
 from ..library import Facets, Item, ItemKind, ItemSummary, Job, PhotoInfo, PlaylistRules
+from ..library.importer import ALL
 from ..library.models import Framing
-from ..library.museums import MUSEUMS
+from ..library.museums import MUSEUMS, Discovery, Kind
 from ..library.repo import SortKey
+from ..library.seed import PACKS, import_queries, pack
 from ..player import hold_from
 from ..schedule import FrameSettings
 from ..service import FrameService
@@ -53,15 +55,28 @@ class RemoteItem(BaseModel):
 class RemotePage(BaseModel):
     total: int
     items: list[RemoteItem]
+    #: Museums that did not answer (searching ``all``).
+    failed: list[str] = []
 
 
 class ImportRequest(BaseModel):
     source_id: str
 
 
+class DrawRequest(BaseModel):
+    count: int = Field(100, ge=1, le=500)
+    year_from: int | None = Field(None, ge=0, le=2100)
+    year_to: int | None = Field(None, ge=0, le=2100)
+    style: str = ""
+    kind: Kind = "any"
+    sources: list[str] = Field(default_factory=lambda: ["aic", "cma", "met", "rijks"])
+    #: 0–1; works that look worse on e-paper are drawn again.
+    min_suitability: float = Field(0.0, ge=0, le=1)
+
+
 class ImportSearchRequest(BaseModel):
     query: str
-    limit: int = 24
+    limit: int = Field(24, ge=1, le=500)
 
 
 def _item(svc: FrameService, item_id: str) -> Item:
@@ -368,17 +383,25 @@ def museums() -> list[dict[str, str]]:
 
 @router.get("/museums/{source}/search", response_model=RemotePage)
 async def museum_search(
-    source: str, svc: Svc, q: str, page: int = 1, limit: int = 24
+    source: str, svc: Svc, q: str, page: int = 1, limit: int | None = None
 ) -> RemotePage:
-    if source not in MUSEUMS:
+    """One museum, or ``all`` of them (``limit`` results from each)."""
+    failed: list[str] = []
+    if source == ALL:
+        total, items, failed = await run_in_threadpool(svc.importer.search_all, q, limit or 8, page)
+    elif source in MUSEUMS:
+        try:
+            total, items = await run_in_threadpool(
+                svc.importer.search, source, q, limit or 24, page
+            )
+        except httpx.HTTPError as err:
+            raise HTTPException(502, f"{source}: {err}") from err
+    else:
         raise HTTPException(404, f"unknown museum {source!r}")
-    try:
-        total, items = await run_in_threadpool(svc.importer.search, source, q, limit, page)
-    except httpx.HTTPError as err:
-        raise HTTPException(502, f"{source}: {err}") from err
     return RemotePage(
         total=total,
         items=[RemoteItem(item=i, in_library=svc.library.has(i.id)) for i in items],
+        failed=failed,
     )
 
 
@@ -397,7 +420,7 @@ async def museum_import(source: str, request: ImportRequest, svc: Svc) -> Item:
 
 @router.post("/museums/{source}/import-search")
 def museum_import_search(source: str, request: ImportSearchRequest, svc: Svc) -> dict[str, Any]:
-    if source not in MUSEUMS:
+    if source != ALL and source not in MUSEUMS:
         raise HTTPException(404, f"unknown museum {source!r}")
 
     def work(job: Job) -> None:
@@ -405,6 +428,66 @@ def museum_import_search(source: str, request: ImportSearchRequest, svc: Svc) ->
 
     job = svc.importer.start_job(f"{source}: {request.query}", work)
     return {"job_id": job.id}
+
+
+@router.get("/library/packs")
+def packs(svc: Svc) -> list[dict[str, Any]]:
+    """Themed batches of museum works to add in one go."""
+    running = {j.description for j in svc.importer.jobs.values() if not j.finished}
+    return [
+        {
+            "key": p.key,
+            "name": p.name,
+            "description": p.description,
+            "size": p.size,
+            "importing": f"pack: {p.key}" in running,
+        }
+        for p in PACKS
+    ]
+
+
+@router.post("/library/packs/{key}/import")
+def pack_import(key: str, svc: Svc) -> dict[str, Any]:
+    try:
+        found = pack(key)
+    except KeyError as err:
+        raise HTTPException(404, str(err)) from err
+    running = next(
+        (
+            j
+            for j in svc.importer.jobs.values()
+            if j.description == f"pack: {key}" and not j.finished
+        ),
+        None,
+    )
+    if running is not None:
+        return {"job_id": running.id}
+
+    def work(job: Job) -> None:
+        import_queries(svc.importer, found.queries, job)
+
+    return {"job_id": svc.importer.start_job(f"pack: {key}", work).id}
+
+
+@router.post("/library/draw")
+def draw(request: DrawRequest, svc: Svc) -> dict[str, Any]:
+    """Add random works by period, style and kind from several museums."""
+    unknown = [s for s in request.sources if s not in MUSEUMS]
+    if unknown or not request.sources:
+        raise HTTPException(422, f"unknown museums {unknown}; choose from {sorted(MUSEUMS)}")
+    spec = Discovery(
+        year_from=request.year_from,
+        year_to=request.year_to,
+        style=request.style,
+        kind=request.kind,
+    )
+
+    def work(job: Job) -> None:
+        svc.importer.draw(
+            spec, request.count, request.sources, job, min_suitability=request.min_suitability
+        )
+
+    return {"job_id": svc.importer.start_job(f"draw: {request.count}", work).id}
 
 
 @router.get("/album")

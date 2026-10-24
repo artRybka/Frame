@@ -304,6 +304,8 @@ struct FrameSettings: Codable, Hashable, Sendable {
     var albumUrl: String
     var timezone: String
     var statusPollMinutes: Int
+    /// Only seen at home: also accept freely licensed, not public-domain works.
+    var privateUse: Bool? = nil
 
     /// Changes whenever the way pictures are framed on the panel changes;
     /// used to refresh cached "on the frame" previews.
@@ -336,6 +338,42 @@ struct RemoteItem: Codable, Hashable, Sendable, Identifiable {
 struct RemotePage: Codable, Sendable {
     let total: Int
     let items: [RemoteItem]
+    /// Museums that did not answer a search of all of them.
+    var failed: [String]?
+}
+
+/// A themed batch of museum works, `GET /api/library/packs`.
+struct LibraryPack: Codable, Hashable, Sendable, Identifiable {
+    let key: String
+    let name: String
+    let description: String
+    /// Most works the pack can add.
+    let size: Int
+    var importing: Bool
+    var id: String { key }
+}
+
+/// Random works to add, `POST /api/library/draw`.
+struct DrawRequest: Codable, Hashable, Sendable {
+    var count = 100
+    var yearFrom: Int?
+    var yearTo: Int?
+    /// English, as the museums name styles, e.g. "Impressionism".
+    var style = ""
+    var kind = "any"  // any | painting | print | drawing | poster
+    var minSuitability = 0.0
+}
+
+/// A background import on the server, `GET /api/jobs/{id}`.
+struct JobStatus: Codable, Hashable, Sendable {
+    let id: String
+    var total: Int
+    var done: Int
+    var failed: Int
+    var skipped: Int?
+    var finished: Bool
+    var error: String
+    var itemIds: [String]
 }
 
 struct DisplayResponse: Codable, Sendable {
