@@ -189,6 +189,23 @@ struct LiveBackend: FrameBackend {
         return try await perform(req)
     }
 
+    func uploadPhoto(_ upload: PhotoUpload) async throws -> Item {
+        var form = MultipartForm()
+        form.addField("kind", "photo")
+        form.addField("title", upload.title)
+        if let takenAt = upload.takenAt { form.addField("taken_at", takenAt) }
+        if let latitude = upload.latitude, let longitude = upload.longitude {
+            form.addField("latitude", String(latitude))
+            form.addField("longitude", String(longitude))
+        }
+        form.addFile("file", filename: "photo.jpg", mimeType: "image/jpeg", data: upload.data)
+        var req = request("/api/library/upload", method: "POST")
+        req.setValue(form.contentType, forHTTPHeaderField: "Content-Type")
+        req.httpBody = form.body()
+        req.timeoutInterval = 120
+        return try await perform(req)
+    }
+
     func wake() async throws { try await send("/api/device/wake", method: "POST") }
     func sleep() async throws { try await send("/api/device/sleep", method: "POST") }
 

@@ -86,7 +86,7 @@ struct PlaylistDetailView: View {
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(Theme.inkSoft)
             if isActive {
-                Label("Gra teraz na ramce", systemImage: "waveform")
+                Label("Teraz prezentowane na ramce", systemImage: "photo.artframe")
                     .font(.headline)
                     .foregroundStyle(Theme.vermilion)
                     .frame(maxWidth: .infinity)
@@ -96,7 +96,7 @@ struct PlaylistDetailView: View {
                 Button {
                     Task { await model.play(playlist) }
                 } label: {
-                    Label("Odtwarzaj na ramce", systemImage: "play.fill")
+                    Label("Prezentuj na ramce", systemImage: "photo.artframe")
                 }
                 .buttonStyle(PrimaryButtonStyle())
                 .disabled(playlist.itemCount == 0)

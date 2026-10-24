@@ -163,7 +163,7 @@ final class AppModel {
         await perform { try await self.backend.play(playlistID: playlist.id) }
         settings?.playlistId = playlist.id
         settings?.mode = "art"
-        toast = "Gra teraz: \(playlist.name)"
+        toast = "Teraz prezentowane: \(playlist.name)"
         await followPlayer()
     }
 

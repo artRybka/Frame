@@ -252,7 +252,7 @@ struct StatusView: Codable, Sendable {
 struct Presentation: Codable, Hashable, Sendable {
     var preset: String
     var fit: String  // "fit" | "fill" | "details" | "description" | "auto"
-    var mat: String = "white"  // "white" | "cream" | "grey" | "black"
+    var mat: String = "white"  // "white" | "cream" | "grey" | "black" | "picture"
     var margin: Double
     var label: Bool
 
@@ -421,10 +421,12 @@ struct Crop: Codable, Hashable, Sendable {
     var x: Double = 0.5
     var y: Double = 0.5
     var zoom: Double = 1
+    /// Passe-partout only: the window's shape (width / height); nil keeps the picture's.
+    var aspect: Double?
 }
 
 struct FramingWindow: Codable, Hashable, Sendable {
-    let role: String  // "fill" | "detail"
+    let role: String  // "picture" (passe-partout) | "fill" | "detail"
     let aspect: Double
     var crop: Crop
     let custom: Bool

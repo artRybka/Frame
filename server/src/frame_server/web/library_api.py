@@ -231,6 +231,7 @@ def _framing_view(
         Fit.FILL: saved.fill is not None,
         Fit.DETAILS: saved.details is not None,
         Fit.DESCRIPTION: saved.detail is not None,
+        Fit.FIT: saved.fit is not None,
     }.get(plan.fit, False)
     windows = [
         FramingWindow(role=w.role, aspect=round(w.aspect, 4), crop=w.crop, custom=custom)
@@ -261,7 +262,8 @@ async def get_framing(
 
 @router.put("/library/items/{item_id}/framing", response_model=FramingView)
 async def put_framing(item_id: str, update: FramingUpdate, svc: Svc) -> FramingView:
-    """Save a corrected crop (FILL) or close-ups (DETAILS) for this picture."""
+    """Save a corrected crop (FILL, or FIT with its shape) or close-ups
+    (DETAILS, DESCRIPTION) for this picture."""
     item = _item(svc, item_id)
     current = await _plan_and_view(svc, item, update.orientation)
     framing = item.framing.get(update.orientation.value, Framing()).model_copy()
@@ -271,6 +273,8 @@ async def put_framing(item_id: str, update: FramingUpdate, svc: Svc) -> FramingV
         framing.details = list(update.crops)
     elif current.fit == Fit.DESCRIPTION and len(update.crops) == 1:
         framing.detail = update.crops[0]
+    elif current.fit == Fit.FIT and len(update.crops) == 1:
+        framing.fit = update.crops[0]
     else:
         raise HTTPException(422, f"{current.fit.value}: wrong number of crops")
     item = _save_framing(svc, item, update.orientation, framing)
@@ -279,8 +283,14 @@ async def put_framing(item_id: str, update: FramingUpdate, svc: Svc) -> FramingV
 
 @router.delete("/library/items/{item_id}/framing", response_model=FramingView)
 async def reset_framing(item_id: str, svc: Svc, orientation: Orientation) -> FramingView:
-    """Back to the automatic crop for this orientation."""
-    item = _save_framing(svc, _item(svc, item_id), orientation, None)
+    """Back to the automatic crop of the current mode for this orientation."""
+    item = _item(svc, item_id)
+    current = await _plan_and_view(svc, item, orientation)
+    framing = item.framing.get(orientation.value, Framing()).model_copy()
+    field = {Fit.FILL: "fill", Fit.DETAILS: "details", Fit.DESCRIPTION: "detail", Fit.FIT: "fit"}
+    setattr(framing, field[current.fit], None)
+    empty = framing == Framing()
+    item = _save_framing(svc, item, orientation, None if empty else framing)
     return await _plan_and_view(svc, item, orientation)
 
 
@@ -315,9 +325,16 @@ async def upload(
     artist: Annotated[str, Form()] = "",
     description: Annotated[str, Form()] = "",
     taken_at: Annotated[str | None, Form()] = None,
+    latitude: Annotated[float | None, Form()] = None,
+    longitude: Annotated[float | None, Form()] = None,
 ) -> Item:
+    """Add a picture to the library (e.g. photos from the phone's camera roll)."""
     data = await file.read()
-    photo = PhotoInfo(taken_at=taken_at) if kind == ItemKind.PHOTO else None
+    photo = (
+        PhotoInfo(taken_at=taken_at, latitude=latitude, longitude=longitude)
+        if kind == ItemKind.PHOTO
+        else None
+    )
     return await run_in_threadpool(
         svc.importer.add_upload,
         data,

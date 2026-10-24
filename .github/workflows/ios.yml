@@ -89,6 +89,8 @@ jobs:
             capture crop 12 "crop-$appearance"
             capture now 16 "now-description-$appearance" -fit description -mat black
             capture now 16 "now-details-$appearance" -fit details -mat cream
+            capture now 16 "now-picture-$appearance" -fit fit -mat picture
+            capture crop 12 "crop-fit-$appearance" -fit fit
             capture calibration 12 "calibration-$appearance"
             capture calibration-result 14 "calibration-result-$appearance"
           done
