@@ -81,7 +81,7 @@ struct NowPlayingCard: View {
 
     var body: some View {
         HStack(spacing: 16) {
-            Collage(itemIDs: playlist.coverItemIds)
+            Collage(itemIDs: playlist.coverItemIds, title: playlist.name)
                 .frame(width: 112, height: 112)
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             VStack(alignment: .leading, spacing: 6) {
@@ -116,7 +116,7 @@ struct PlaylistCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Collage(itemIDs: playlist.coverItemIds)
+            Collage(itemIDs: playlist.coverItemIds, title: playlist.name)
                 .aspectRatio(1, contentMode: .fit)
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .overlay(alignment: .topLeading) {

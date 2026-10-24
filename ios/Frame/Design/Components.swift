@@ -351,31 +351,77 @@ struct EmptyStateView: View {
 }
 
 /// 2×2 collage of playlist covers.
+/// Playlist cover: up to four works, laid out by how many there are. An
+/// empty playlist gets a monogram on a mat instead of blank tiles.
 struct Collage: View {
     let itemIDs: [String]
+    var title: String = ""
     var spacing: CGFloat = 2
 
     var body: some View {
         GeometryReader { geo in
-            let half = (geo.size.width - spacing) / 2
-            let rows = (geo.size.height - spacing) / 2
-            VStack(spacing: spacing) {
-                ForEach(0 ..< 2, id: \.self) { row in
-                    HStack(spacing: spacing) {
-                        ForEach(0 ..< 2, id: \.self) { col in
-                            let index = row * 2 + col
-                            Group {
-                                if index < itemIDs.count {
-                                    ArtImage(ref: .thumb(itemIDs[index]), maxPixel: 400)
-                                } else {
-                                    Rectangle().fill(Theme.mat)
-                                }
+            let w = geo.size.width
+            let h = geo.size.height
+            switch itemIDs.count {
+            case 0:
+                EmptyCover(title: title)
+            case 1:
+                tile(0, w, h)
+            case 2:
+                HStack(spacing: spacing) {
+                    tile(0, (w - spacing) / 2, h)
+                    tile(1, (w - spacing) / 2, h)
+                }
+            case 3:
+                HStack(spacing: spacing) {
+                    tile(0, (w - spacing) * 0.6, h)
+                    VStack(spacing: spacing) {
+                        tile(1, (w - spacing) * 0.4, (h - spacing) / 2)
+                        tile(2, (w - spacing) * 0.4, (h - spacing) / 2)
+                    }
+                }
+            default:
+                VStack(spacing: spacing) {
+                    ForEach(0 ..< 2, id: \.self) { row in
+                        HStack(spacing: spacing) {
+                            ForEach(0 ..< 2, id: \.self) { col in
+                                tile(row * 2 + col, (w - spacing) / 2, (h - spacing) / 2)
                             }
-                            .frame(width: half, height: rows)
-                            .clipped()
                         }
                     }
                 }
+            }
+        }
+    }
+
+    private func tile(_ index: Int, _ width: CGFloat, _ height: CGFloat) -> some View {
+        ArtImage(ref: .thumb(itemIDs[index]), maxPixel: 400)
+            .frame(width: width, height: height)
+            .clipped()
+    }
+}
+
+/// Cover for a playlist with nothing in it yet: a passe-partout with the
+/// playlist's initial, like an empty frame waiting for a picture.
+private struct EmptyCover: View {
+    let title: String
+
+    private var monogram: String {
+        title.first.map { String($0).uppercased() } ?? "∗"
+    }
+
+    var body: some View {
+        GeometryReader { geo in
+            let side = min(geo.size.width, geo.size.height)
+            ZStack {
+                Theme.mat
+                RoundedRectangle(cornerRadius: 2)
+                    .strokeBorder(Theme.hairline, lineWidth: max(1, side / 90))
+                    .padding(side * 0.14)
+                Text(monogram)
+                    .font(.serif(side * 0.34, weight: .light))
+                    .italic()
+                    .foregroundStyle(Theme.inkSoft.opacity(0.7))
             }
         }
     }
