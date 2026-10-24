@@ -102,6 +102,11 @@ to na baterii, gdy ekran śpi?
 
 - Czy wysłanie czegoś z aplikacji Samsunga nadpisuje nasz URL? Czy aplikacja zmienia PIN?
 
+### E13 — Budzenie na baterii
+
+Budzik ekranu (`uv run frame device timer HH:MM`), Wi-Fi 2,4 GHz i WoL, przycisk,
+ładowarka. Plan krok po kroku w [WAKE.md](WAKE.md#e13-plan-testu-na-ekranie).
+
 ---
 
 ## Wyniki
@@ -120,3 +125,4 @@ to na baterii, gdy ekran śpi?
 | E10 | | | | |
 | E11 | | | | |
 | E12 | | | | |
+| E13 | | | | |

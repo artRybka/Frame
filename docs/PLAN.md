@@ -104,7 +104,7 @@ Cel: potwierdzić protokół na Twoim egzemplarzu i poznać zachowanie ekranu.
 - [x] 2.3 Synchronizacja udostępnionego albumu iCloud z publicznego linku: nowe zdjęcia, usunięcia, metadane (data i godzina, miejsce, kto dodał, podpis), deduplikacja. *(Do sprawdzenia na prawdziwym albumie: API jest nieudokumentowane.)*
 - [x] 2.4 Harmonogram: **tryb ramki** (album iCloud albo obrazy, wybrane kolekcje), częstotliwość osobno dla ładowarki i baterii (domyślnie raz dziennie rano), godziny ciszy, bez powtórek przez N dni, ulubione i wykluczenia, przypięcie. Zmiana obrazu co najmniej raz na 3 dni (ochrona panelu).
 - [x] 2.5 Zdjęcie z rolki: wysyłka z czasem wyświetlania (do następnej zmiany / X godzin lub dni / na stałe), po czym wraca harmonogram.
-- [ ] 2.6 Polityka zasilania (wg wyników E6–E8): tryb „ładowarka” / „bateria”, monitorowanie baterii, powiadomienia.
+- [ ] 2.6 Polityka zasilania (wg wyników E6–E8 i E13): tryb „ładowarka” / „bateria”, na baterii budzik ekranu (`0x25`) i kolejka zmian do pobudki, monitorowanie baterii, powiadomienia.
 - [ ] 2.7 Użytkownicy i role: administrator i domownik, osobne tokeny, parowanie urządzenia kodem QR, „kto wysłał” w historii.
 - [x] 2.8 API dla aplikacji: Teraz, Następny/Poprzedni/Przypnij, Biblioteka z filtrami i facetami, wyszukiwanie i import z muzeów, Playlisty (inteligentne i ręczne, podgląd reguł), Harmonogram i Prezentacja, podgląd „na ramce”, Status (bateria, ładowanie, połączenie). *(Do zrobienia: Kalibracja, Użytkownicy, Bonjour `_frame._tcp`.)*
 - [x] 2.9 Etykieta na ramce (opcjonalna): tytuł, autor, rok albo data zdjęcia, wypisane czystą czernią na passe-partout, bez ditheringu.
@@ -158,7 +158,7 @@ Cel: potwierdzić protokół na Twoim egzemplarzu i poznać zachowanie ekranu.
 | Ryzyko | Wpływ | Co robimy |
 |---|---|---|
 | Ekran sam przetwarza obraz (dithering nałożony na nasz dithering) | gorsza jakość | Eksperyment E5. Jeśli wzory 1 px nie przetrwają, przechodzimy na strategię `compensate` (wstępna korekta, a dithering zostaje po stronie ekranu). |
-| Na baterii ekran nie słucha sieci | brak zmian na żądanie | E6–E8: playlista w manifeście, harmonogram budzenia ekranu, Wake-on-LAN przy network standby. |
+| Na baterii ekran nie słucha sieci (potwierdzone w E8: WoL nie budzi) | brak zmian na żądanie | [WAKE.md](WAKE.md): budzik ekranu `0x25` i serwer czekający na pobudkę, przycisk, Wi-Fi 2,4 GHz dla WoL, playlista w manifeście (E6). Test E13. |
 | Protokół MDC i manifest są nieoficjalne; aktualizacja firmware może je zmienić | utrata sterowania | Automatyczne aktualizacje wyłączone; aktualizacja ręczna po sprawdzeniu; serwer zapisuje wersję firmware. |
 | Publiczne API albumów iCloud jest nieudokumentowane | sync przestaje działać | Izolowany moduł i testy na nagranych odpowiedziach. W zapasie: wysyłanie z aplikacji iOS (PhotoKit). |
 | Wydajność na ARM (HA Green) | wolne renderowanie | numba z cache JIT, renderowanie z wyprzedzeniem, cache wyników. Alternatywnie kontener na Synology (x86). |
