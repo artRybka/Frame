@@ -157,7 +157,7 @@ struct Chip: View {
                     Circle()
                         .fill(swatch)
                         .frame(width: 12, height: 12)
-                        .overlay(Circle().strokeBorder(.black.opacity(0.12)))
+                        .overlay(Circle().strokeBorder(Theme.inkSoft.opacity(0.4), lineWidth: 0.75))
                 }
                 if let systemImage {
                     Image(systemName: systemImage).font(.caption.weight(.semibold))
@@ -183,7 +183,10 @@ struct TagLabel: View {
     var body: some View {
         HStack(spacing: 5) {
             if let swatch {
-                Circle().fill(swatch).frame(width: 9, height: 9)
+                Circle()
+                    .fill(swatch)
+                    .frame(width: 9, height: 9)
+                    .overlay(Circle().strokeBorder(Theme.inkSoft.opacity(0.4), lineWidth: 0.75))
             }
             Text(text)
         }
