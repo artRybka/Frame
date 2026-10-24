@@ -40,14 +40,16 @@ wysyłamy komend szybciej niż co ~0,3 s.
 | `0x10` | – | model | ? |
 | `0x11` | `00`/`01` | zasilanie wył./wł. (odczyt NAK) | potwierdzone |
 | `0x1B` | `73` | stan baterii: `payload[4]` = poziom %, reszta bajtów sporna | częściowo (E1) |
-| `0x25` | ? | on timer | ? (E9) |
+| `0x25` | `en repeat hh mm 01` | on-timer: ekran sam budzi się o hh:mm (repeat `01` raz, `02` codziennie); odczyt `00` = wyłączony. Sposób budzenia na baterii, patrz [WAKE.md](WAKE.md) | społeczność, u nas E13 |
 | `0x67` | – | nazwa urządzenia | potwierdzone |
 | `0xA7` | ? | zegar | ? |
 | `0xB5` | `00`/`01` | network standby (nasłuch Wi-Fi w uśpieniu, potrzebny do WoL) | potwierdzone |
 | `0xC7` | `53 80 len url` | **content download**: ekran pobiera manifest z `url` | potwierdzone |
 
-Wake-on-LAN: standardowy magic packet (UDP :9). Wysyłamy na 255.255.255.255
-i na broadcast podsieci /24. Działa tylko przy włączonym network standby.
+Wake-on-LAN: standardowy magic packet (UDP :9 i :7). Wysyłamy na 255.255.255.255,
+na broadcast podsieci /24 i unicastem na adres ekranu. Działa tylko przy włączonym
+network standby, a według instrukcji Samsunga (EM32DX-A) tylko w sieci Wi-Fi 2,4 GHz.
+Na baterii w Etapie 0 nie zadziałał ([WAKE.md](WAKE.md)).
 
 ## Treść: manifest `content.json`
 

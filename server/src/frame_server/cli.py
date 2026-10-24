@@ -239,7 +239,10 @@ def device_info(host: HostOpt = None, pin: PinOpt = None) -> None:
 
 
 @device_app.command("wake")
-def device_wake(mac: Annotated[str | None, typer.Option(envvar="FRAME_DEVICE_MAC")] = None) -> None:
+def device_wake(
+    mac: Annotated[str | None, typer.Option(envvar="FRAME_DEVICE_MAC")] = None,
+    seconds: Annotated[int, typer.Option(help="Keep sending once a second this long")] = 0,
+) -> None:
     """Send Wake-on-LAN (needs network standby on)."""
     from .device import wol
 
@@ -247,8 +250,46 @@ def device_wake(mac: Annotated[str | None, typer.Option(envvar="FRAME_DEVICE_MAC
     mac = mac or s.device_mac
     if not mac:
         raise typer.BadParameter("MAC address required (--mac or FRAME_DEVICE_MAC)")
-    asyncio.run(wol.wake(mac, s.device_host))
+    if seconds > 0:
+        asyncio.run(wol.wake(mac, s.device_host, repeats=seconds, interval=1.0))
+    else:
+        asyncio.run(wol.wake(mac, s.device_host))
     typer.echo("magic packet sent")
+
+
+@device_app.command("timer")
+def device_timer(
+    at: Annotated[str | None, typer.Argument(help="HH:MM in the panel's clock; omit: read")] = None,
+    repeat: Annotated[str, typer.Option(help="once, daily, mon-fri, mon-sat, sat-sun")] = "once",
+    off: Annotated[bool, typer.Option("--off", help="Disable the timer")] = False,
+    host: HostOpt = None,
+    pin: PinOpt = None,
+) -> None:
+    """Read or set the on-timer (MDC 0x25): the panel wakes itself at HH:MM."""
+    from .device.mdc import CMD_CLOCK, ON_TIMER_REPEAT
+    from .service import Panel
+
+    if repeat not in ON_TIMER_REPEAT:
+        raise typer.BadParameter(f"repeat must be one of {', '.join(ON_TIMER_REPEAT)}")
+
+    async def run() -> None:
+        async with Panel(_device_settings(host, pin)).client() as mdc:
+            if off or at:
+                current = await mdc.on_timer()
+                hour, minute = current.hour or 0, current.minute or 0
+                if at:
+                    hh, _, mm = at.partition(":")
+                    hour, minute = int(hh), int(mm or 0)
+                await mdc.set_on_timer(hour, minute, ON_TIMER_REPEAT[repeat], enabled=not off)
+            clock = await mdc.command(CMD_CLOCK)
+            timer = await mdc.on_timer()
+            typer.echo(f"on-timer: {timer.raw.hex(' ')}  enabled={timer.enabled}")
+            if timer.hour is not None:
+                when = f"{timer.hour:02d}:{timer.minute:02d}"
+                typer.echo(f"          {when} repeat=0x{timer.repeat:02X}")
+            typer.echo(f"clock:    {clock.payload.hex(' ')}")
+
+    asyncio.run(run())
 
 
 @device_app.command("sleep")
