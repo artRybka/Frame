@@ -412,7 +412,7 @@ struct PresentationSection: View {
             Card {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Kadrowanie").foregroundStyle(Theme.ink)
-                    HStack(spacing: 8) {
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
                         ForEach(FitOption.modes, id: \.fit) { mode in
                             FitOption(
                                 title: mode.title, fit: mode.fit, mat: MatSwatch.color(presentation.mat.wrappedValue),
@@ -484,13 +484,15 @@ struct FitOption: View {
     let action: () -> Void
 
     static let modes: [(fit: String, title: String)] = [
-        ("fit", "Passe-partout"), ("fill", "Wypełnij"), ("details", "Detale"), ("auto", "Auto"),
+        ("fit", "Passe-partout"), ("fill", "Wypełnij"), ("details", "Detale"), ("description", "Opis"),
+        ("auto", "Auto"),
     ]
 
     static func explanation(_ fit: String) -> String {
         switch fit {
         case "fill": "Cały ekran; kadr sam ustawia się na tym, co najciekawsze (twarze, szczegóły). Poprawisz go w „Teraz”."
-        case "details": "Cały obraz od krawędzi do krawędzi, obok dwa przybliżone detale w okienkach passe-partout."
+        case "details": "Cały obraz od krawędzi do krawędzi, obok dwa detale w okienkach passe-partout: szerszy i bliższy, z różnych miejsc obrazu."
+        case "description": "Jak „Detale”, ale zamiast drugiego detalu krótki opis nadrukowany na passe-partout: tytuł, autor, data i kilka zdań o obrazie."
         case "auto": "Wypełnienie, gdy proporcje pasują; passe-partout, gdy trochę się różnią; detale, gdy bardzo."
         default: "Cały obraz w okienku passe-partout."
         }
@@ -532,6 +534,22 @@ struct FitOption: View {
                 VStack(spacing: 4) {
                     Rectangle().fill(art.opacity(0.7))
                     Rectangle().fill(art.opacity(0.7))
+                }
+                .padding(.vertical, 5)
+                .padding(.trailing, 5)
+            }
+        case "description":
+            HStack(spacing: 4) {
+                Rectangle().fill(art).frame(width: 16)
+                VStack(alignment: .leading, spacing: 2) {
+                    Rectangle().fill(art.opacity(0.7))
+                    Spacer(minLength: 2)
+                    ForEach([1.0, 0.9, 0.95, 0.6], id: \.self) { share in
+                        GeometryReader { geo in
+                            Rectangle().fill(Theme.ink.opacity(0.55)).frame(width: geo.size.width * share, height: 1.5)
+                        }
+                        .frame(height: 1.5)
+                    }
                 }
                 .padding(.vertical, 5)
                 .padding(.trailing, 5)

@@ -29,6 +29,7 @@ class Fit(StrEnum):
     FILL = "fill"  # cover the canvas, crop the overflow
     FIT = "fit"  # whole image visible, mat around it
     DETAILS = "details"  # whole image edge to edge, two close-ups beside it
+    DESCRIPTION = "description"  # like DETAILS, with a printed description for the 2nd
     AUTO = "auto"  # fill when the crop would be small, details when very different, else fit
 
 
@@ -119,12 +120,15 @@ def edge_color(img: Image.Image) -> tuple[int, int, int]:
 AUTO_CROP_TOLERANCE = 0.12  # aspect mismatch AUTO still fills
 DETAILS_ROOM = 0.35  # canvas share beside the picture from which AUTO shows details
 DETAILS_MIN_ROOM = 0.2  # below this even an explicit DETAILS falls back to FIT
-DETAIL_ZOOM = 2.2  # close-ups: this much closer than the window-shaped whole
-DETAIL_MAX_UPSCALE = 1.6  # ... unless the source has too few pixels for it
+DETAIL_ZOOM = 3.0  # the closer close-up, if the source has the pixels
+DETAIL_MAX_UPSCALE = 1.6  # never enlarge source pixels more than this
+DETAIL_ZOOM_STEP = 1.7  # the wider close-up is this much less close
+PICTURE_TRIM = 0.02  # a mat window is a bit smaller than the picture behind it
 
 Rect = tuple[int, int, int, int]  # x, y, w, h
-# Picks crops automatically: (window aspect, zoom, how many) -> crops.
-AutoCrop = Callable[[float, float, int], list[Crop]]
+# Picks crops automatically: (window aspect, one zoom per crop) -> crops,
+# each showing something away from the ones before it.
+AutoCrop = Callable[[float, Sequence[float]], list[Crop]]
 
 
 @dataclass(frozen=True)
@@ -143,10 +147,11 @@ class Window:
 
 @dataclass(frozen=True)
 class Plan:
-    fit: Fit  # resolved: FIT, FILL or DETAILS
+    fit: Fit  # resolved: FIT, FILL, DETAILS or DESCRIPTION
     canvas: tuple[int, int]
     windows: list[Window]
     caption_at: tuple[int, int, int] | None = None  # right x, top y, max width
+    text_rect: Rect | None = None  # DESCRIPTION: where the text is printed on the mat
 
     def mat_mask(self) -> np.ndarray:
         """Canvas pixels not covered by a window: the passe-partout."""
@@ -182,7 +187,7 @@ def resolve_fit(size: tuple[int, int], canvas: tuple[int, int], fit: Fit) -> Fit
         if abs(ratio - target) / max(ratio, target) <= AUTO_CROP_TOLERANCE:
             return Fit.FILL
         return Fit.DETAILS if room >= DETAILS_ROOM else Fit.FIT
-    if fit == Fit.DETAILS and room < DETAILS_MIN_ROOM:
+    if fit in (Fit.DETAILS, Fit.DESCRIPTION) and room < DETAILS_MIN_ROOM:
         return Fit.FIT
     return fit
 
@@ -196,26 +201,34 @@ def plan_layout(
     caption: bool = False,
     crop: Crop | None = None,
     details: Sequence[Crop] | None = None,
+    detail: Crop | None = None,
     auto: AutoCrop | None = None,
 ) -> Plan:
-    """Where the picture (and its close-ups) go on the canvas.
+    """Where the picture, its close-ups and its text go on the canvas.
 
-    ``crop``/``details`` are corrections saved by the user; without them
-    ``auto`` (the interest analysis) picks the crops, or they are centred.
+    ``crop`` (FILL), ``details`` (DETAILS) and ``detail`` (DESCRIPTION) are
+    corrections saved by the user; without them ``auto`` (the interest
+    analysis) picks the crops, or they are centred.
     """
     resolved = resolve_fit(size, canvas, fit)
     if resolved == Fit.FILL:
         return _plan_fill(size, canvas, caption, crop, auto)
-    if resolved == Fit.DETAILS:
-        planned = _plan_details(size, canvas, margin, caption, details, auto)
+    if resolved in (Fit.DETAILS, Fit.DESCRIPTION):
+        planned = _plan_beside(size, canvas, resolved, margin, caption, details, detail, auto)
         if planned is not None:
             return planned
     return _plan_fit(size, canvas, margin, caption)
 
 
-def _auto(auto: AutoCrop | None, aspect: float, zoom: float, count: int) -> list[Crop]:
-    found = auto(aspect, zoom, count) if auto else []
-    return (found + [Crop(zoom=zoom)] * count)[:count]
+def _auto(auto: AutoCrop | None, aspect: float, zooms: Sequence[float]) -> list[Crop]:
+    found = auto(aspect, zooms) if auto else []
+    return found if len(found) == len(zooms) else [Crop(zoom=z) for z in zooms]
+
+
+def whole(size: tuple[int, int]) -> tuple[float, float, float, float]:
+    """The picture in a mat window: its outermost edge stays behind the mat."""
+    iw, ih = size
+    return iw * PICTURE_TRIM, ih * PICTURE_TRIM, iw * (1 - PICTURE_TRIM), ih * (1 - PICTURE_TRIM)
 
 
 def _plan_fit(size: tuple[int, int], canvas: tuple[int, int], margin: float, caption: bool) -> Plan:
@@ -227,7 +240,7 @@ def _plan_fit(size: tuple[int, int], canvas: tuple[int, int], margin: float, cap
     w, h = max(1, round(iw * scale)), max(1, round(ih * scale))
     x, y = (cw - w) // 2, pad + (avail_h - h) // 2
     at = (x + w, y + h + round(caption_size(canvas) * 0.6), w) if caption else None
-    return Plan(Fit.FIT, canvas, [Window((x, y, w, h), (0, 0, iw, ih), "picture")], at)
+    return Plan(Fit.FIT, canvas, [Window((x, y, w, h), whole(size), "picture")], at)
 
 
 def _plan_fill(
@@ -240,7 +253,7 @@ def _plan_fill(
     cw, ch = canvas
     band = caption_band(canvas) if caption else 0
     aspect = cw / (ch - band)
-    chosen = crop or _auto(auto, aspect, 1.0, 1)[0]
+    chosen = crop or _auto(auto, aspect, [1.0])[0]
     window = Window((0, 0, cw, ch - band), crop_box(size, aspect, chosen), "fill", chosen)
     at = None
     if caption:
@@ -249,26 +262,41 @@ def _plan_fill(
     return Plan(Fit.FILL, canvas, [window], at)
 
 
-def _plan_details(
+def detail_zooms(size: tuple[int, int], aspect: float, window_width: int) -> tuple[float, float]:
+    """A wider and a closer close-up, as close as the source's pixels allow."""
+    iw, ih = size
+    cover_w = min(iw, ih * aspect)
+    closest = cover_w * DETAIL_MAX_UPSCALE / window_width
+    close = max(1.5, min(DETAIL_ZOOM, closest))
+    return max(1.2, close / DETAIL_ZOOM_STEP), close
+
+
+def _plan_beside(
     size: tuple[int, int],
     canvas: tuple[int, int],
+    fit: Fit,
     margin: float,
     caption: bool,
     details: Sequence[Crop] | None,
+    detail: Crop | None,
     auto: AutoCrop | None,
 ) -> Plan | None:
+    """DETAILS: the whole picture edge to edge and two close-ups beside it.
+    DESCRIPTION: one close-up, and the text printed on the mat instead of the
+    second."""
     (iw, ih), (cw, ch) = size, canvas
     m = round(min(cw, ch) * max(margin, 0.04))
-    band = caption_band(canvas) if caption else 0
+    text = fit == Fit.DESCRIPTION
+    band = caption_band(canvas) if caption and not text else 0
     gap = round(caption_size(canvas) * 0.6)
     rects: list[Rect]
-    if iw / ih < cw / ch:  # picture at the left, full height; close-ups stacked
+    if iw / ih < cw / ch:  # picture at the left, full height; the rest stacked
         main_w = round(ch * iw / ih)
         main: Rect = (0, 0, main_w, ch)
         win_w, win_h = cw - main_w - 2 * m, (ch - 3 * m - band) // 2
         rects = [(main_w + m, m, win_w, win_h), (main_w + m, 2 * m + win_h, win_w, win_h)]
         at = (main_w + m + win_w, 2 * m + 2 * win_h + gap, win_w)
-    else:  # picture at the top, full width; close-ups side by side
+    else:  # picture at the top, full width; the rest side by side
         main_h = round(cw * ih / iw)
         main = (0, 0, cw, main_h)
         win_w, win_h = (cw - 3 * m) // 2, ch - main_h - 2 * m - band
@@ -277,18 +305,20 @@ def _plan_details(
     if min(win_w, win_h) < 0.12 * min(cw, ch):
         return None
     aspect = win_w / win_h
-    if details is not None and len(details) == 2:
+    wide, close = detail_zooms(size, aspect, win_w)
+    if text:
+        chosen = [detail or _auto(auto, aspect, [close])[0]]  # one: a real close-up
+    elif details is not None and len(details) == 2:
         chosen = list(details)
     else:
-        # As close as the source's pixels allow, and at least a little closer.
-        cover_w = min(iw, ih * aspect)
-        zoom = max(1.3, min(DETAIL_ZOOM, cover_w * DETAIL_MAX_UPSCALE / win_w))
-        chosen = _auto(auto, aspect, zoom, 2)
-    windows = [Window(main, (0, 0, iw, ih), "picture")]
+        chosen = _auto(auto, aspect, [wide, close])
+    windows = [Window(main, whole(size), "picture")]
     windows += [
         Window(rect, crop_box(size, aspect, c), "detail", c)
-        for rect, c in zip(rects, chosen, strict=True)
+        for rect, c in zip(rects, chosen, strict=False)
     ]
+    if text:
+        return Plan(Fit.DESCRIPTION, canvas, windows, None, rects[1])
     return Plan(Fit.DETAILS, canvas, windows, at if caption else None)
 
 

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import threading
+from collections.abc import Sequence
 from functools import lru_cache
 from pathlib import Path
 
@@ -86,36 +87,45 @@ class InterestMap:
         r2 = ((xx + 0.5) / w - 0.5) ** 2 + ((yy + 0.5) / h - 0.5) ** 2
         self.map = energy * (1.0 - 0.6 * r2)
 
-    def best(self, aspect: float, zoom: float = 1.0, count: int = 1) -> list[Crop]:
-        """The ``count`` most interesting windows of ``aspect`` at ``zoom``.
+    def pick(self, aspect: float, zooms: Sequence[float]) -> list[Crop]:
+        """One window of ``aspect`` per zoom, the most interesting first.
 
-        Each further window must show something new: what an earlier one
-        shows no longer counts, and they overlap by at most a tenth.
+        Each further window keeps clear of the earlier ones (at least half a
+        window away, so not simply the next strip above or beside them) and
+        what they show no longer counts; the distance is relaxed only if the
+        picture is too small for it.
         """
         mh, mw = self.map.shape
-        x0, y0, x1, y1 = crop_box((mw, mh), aspect, Crop(zoom=zoom))
-        bw, bh = max(1, round(x1 - x0)), max(1, round(y1 - y0))
         interest = self.map.copy()
-        blocked = np.zeros((mh - bh + 1, mw - bw + 1), dtype=bool)
-        ys, xs = np.mgrid[0 : blocked.shape[0], 0 : blocked.shape[1]]
-        chosen: list[tuple[int, int]] = []
-        for _ in range(count):
+        taken: list[tuple[int, int, int, int]] = []  # left, top, w, h in map pixels
+        crops: list[Crop] = []
+        for zoom in zooms:
+            x0, y0, x1, y1 = crop_box((mw, mh), aspect, Crop(zoom=zoom))
+            bw, bh = max(1, round(x1 - x0)), max(1, round(y1 - y0))
             s = np.pad(interest.cumsum(0).cumsum(1), ((1, 0), (1, 0)))
             scores = (s[bh:, bw:] - s[:-bh, bw:] - s[bh:, :-bw] + s[:-bh, :-bw]) / (bw * bh)
-            scores[blocked] = -np.inf
-            if not np.isfinite(scores).any():
-                break
-            top, left = (int(v) for v in np.unravel_index(int(np.argmax(scores)), scores.shape))
-            chosen.append((left, top))
+            ys, xs = np.mgrid[0 : scores.shape[0], 0 : scores.shape[1]]
+            blocked = np.zeros(scores.shape, dtype=bool)
+            for spacing in (0.5, 0.25, 0.0):
+                blocked[:] = False
+                for left, top, w, h in taken:
+                    gx, gy = spacing * max(w, bw), spacing * max(h, bh)
+                    blocked |= (
+                        (xs < left + w + gx)
+                        & (xs + bw > left - gx)
+                        & (ys < top + h + gy)
+                        & (ys + bh > top - gy)
+                    )
+                if not blocked.all():
+                    break
+            else:
+                blocked[:] = False  # nowhere apart: overlap rather than fail
+            best = int(np.argmax(np.where(blocked, -np.inf, scores)))
+            top, left = (int(v) for v in np.unravel_index(best, scores.shape))
+            taken.append((left, top, bw, bh))
             interest[top : top + bh, left : left + bw] = 0.0
-            ox = np.clip(np.minimum(xs + bw, left + bw) - np.maximum(xs, left), 0, None)
-            oy = np.clip(np.minimum(ys + bh, top + bh) - np.maximum(ys, top), 0, None)
-            blocked |= ox * oy > 0.1 * bw * bh
-        crops = [
-            Crop(x=(left + bw / 2) / mw, y=(top + bh / 2) / mh, zoom=zoom) for left, top in chosen
-        ]
-        # Reading order: the upper (or left) close-up first.
-        return sorted(crops, key=lambda c: (round(c.y, 1), c.x))
+            crops.append(Crop(x=(left + bw / 2) / mw, y=(top + bh / 2) / mh, zoom=zoom))
+        return crops
 
-    def auto(self, aspect: float, zoom: float, count: int) -> list[Crop]:
-        return self.best(aspect, zoom, count)
+    def auto(self, aspect: float, zooms: Sequence[float]) -> list[Crop]:
+        return self.pick(aspect, zooms)

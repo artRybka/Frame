@@ -14,6 +14,8 @@ from starlette.concurrency import run_in_threadpool
 
 from .device import MdcError
 from .imaging import PRESETS, RenderSettings
+from .imaging.layout import Fit
+from .imaging.text import TextBlock
 from .library import Item, ItemKind, PlaylistRules
 from .schedule import FrameSettings, Mode, in_quiet_hours, next_change
 
@@ -69,6 +71,19 @@ def caption_for(item: Item) -> str:
     parts = [item.artist, item.title]
     text = " — ".join(p for p in parts if p)
     return f"{text}, {item.date_text}" if item.date_text else text
+
+
+def text_block_for(item: Item) -> TextBlock:
+    """What the DESCRIPTION mode prints on the mat."""
+    if item.kind == ItemKind.PHOTO:
+        info = item.photo
+        title = (info.caption if info and info.caption else "") or item.title
+        when = item.date_text or (info.taken_at[:10] if info and info.taken_at else "")
+        who = info.contributor if info and info.contributor else ""
+        return TextBlock(title=title, meta=[m for m in (when, who) if m])
+    detail = " · ".join(p for p in (item.date_text, item.medium) if p)
+    body = item.description or ", ".join(p for p in (item.museum, item.credit) if p)
+    return TextBlock(title=item.title, meta=[m for m in (item.artist, detail) if m], body=body)
 
 
 class Player:
@@ -167,6 +182,9 @@ class Player:
         if framing is not None:
             base.layout.crop = framing.fill
             base.layout.details = framing.details
+            base.layout.detail = framing.detail
+        if pres.fit == Fit.DESCRIPTION:
+            base.text = text_block_for(item)
         base.caption = caption_for(item) if pres.label else None
         return base
 

@@ -19,7 +19,7 @@ zdjęć iCloud i aplikacja iOS do sterowania.
 | Częstotliwość | **Ustawiana w aplikacji** | Domyślnie raz dziennie rano. Osobne wartości dla ładowarki i baterii, godziny ciszy. Zmiana co najmniej raz na 3 dni (ochrona panelu). |
 | iCloud | **Publiczny link albumu** | Serwer sam synchronizuje album. Apple zmniejsza zdjęcia w albumach udostępnionych do ok. 2048 px, więc na ekranie 2560 px trzeba je lekko powiększyć (×1,25), co przy ditheringu jest niewidoczne. Szczegóły zdjęcia: data i godzina, miejsce, kto dodał i podpis. |
 | Biblioteka | **Muzea z otwartym API + własne prace** | Priorytety: wielkie muzea światowe, sztuka polska, drzeworyt japoński (ukiyo-e), plakaty i ilustracje. Tylko domena publiczna / CC0. Opisy **w oryginale (angielskim)**, bez tłumaczenia. |
-| Prezentacja | **Do wyboru w aplikacji** | Kadrowanie (passe-partout / wypełnienie / automatycznie) i etykieta na ramce (tytuł, autor, rok albo data zdjęcia): osobno dla sztuki i dla zdjęć. |
+| Prezentacja | **Do wyboru w aplikacji** | Kadrowanie (passe-partout / wypełnienie / detale / opis / automatycznie) i etykieta na ramce (tytuł, autor, rok albo data zdjęcia): osobno dla sztuki i dla zdjęć. |
 | Orientacja | **Zmieniana** | Każdy obraz renderujemy pod bieżącą orientację; portret obracamy do natywnego bufora 2560×1440. |
 | Kalibracja | **Zdjęcie iPhonem** | Plansza testowa na ekranie, zdjęcie z białą kartką obok jako wzorcem, z tego wyliczamy zmierzoną paletę. Ramka wisi w jasnym pomieszczeniu z dużą ilością dziennego światła, więc kalibrujemy w świetle dziennym. |
 | Licencja | **MIT** | Repozytorium jest publiczne. |
@@ -124,7 +124,7 @@ Cel: potwierdzić protokół na Twoim egzemplarzu i poznać zachowanie ekranu.
 - [x] 3.3 Wysyłanie z rolki: wybór czasu wyświetlania (do następnej zmiany / X godzin lub dni / na stałe).
 - [x] 3.4 Tryb i harmonogram: album iCloud albo obrazy (kolekcje), częstotliwość dla ładowarki i baterii, godziny ciszy.
 - [x] 3.5 Biblioteka: przeglądanie (siatka, filtry: artyści, style, tematy, kolorystyka, ulubione), szczegóły dzieła z widokiem „na ramce”, wyszukiwanie i import z muzeów, ulubione, wykluczenia. *(Do zrobienia: upload własnych prac z opisem.)*
-- [x] 3.6 Prezentacja: kadrowanie i etykieta na ramce, osobno dla sztuki i dla zdjęć.
+- [x] 3.6 Prezentacja: kadrowanie i etykieta na ramce, osobno dla sztuki i dla zdjęć. Tryby: passe-partout (biały, kremowy, szary, czarny karton z fazą 45° w kolorze kartonu; obraz chowa brzegi pod kartonem), wypełnienie z kadrem dobranym automatycznie (twarze, szczegóły), detale (dwa różne fragmenty w różnych zbliżeniach), opis (detal i tekst o dziele nadrukowany na kartonie) i automatyczny; korekta kadru palcami w „Teraz”.
 - [ ] 3.7 Regulacja obrazu (administrator): suwaki (jasność, kontrast, nasycenie, cienie) z podglądem renderu na żywo.
 - [x] 3.8 Kreator kalibracji: wyświetl planszę, zrób zdjęcie, zaznacz narożniki (z lupą i podglądem miejsc pomiaru), zobacz farby przed i po oraz bieżący obraz w obu wersjach, zastosuj albo przywróć domyślne. *(Do sprawdzenia na prawdziwej ramce; role administratora w 2.7.)*
 - [ ] 3.9 Użytkownicy (administrator): zaproszenie domownika (kod QR), role, odebranie dostępu.

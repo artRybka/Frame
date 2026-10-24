@@ -9,8 +9,8 @@ extension Crop {
 }
 
 /// Adjusting what the frame shows of the current picture: the crop in
-/// "Wypełnij", the two close-ups in "Detale". Saved with the artwork, for
-/// this orientation of the frame.
+/// "Wypełnij", the two close-ups in "Detale", the one in "Opis". Saved with
+/// the artwork, for this orientation of the frame.
 struct CropEditorSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
@@ -61,14 +61,17 @@ struct CropEditorSheet: View {
     private func editor(_ view: FramingView) -> some View {
         let window = view.windows[min(selected, view.windows.count - 1)]
         let portraitFrame = orientation == "portrait"
+        let hint = switch view.fit {
+        case "details": "Przesuń palcem i rozsuń dwa palce, żeby wybrać, co pokażą okienka z detalami."
+        case "description": "Przesuń palcem i rozsuń dwa palce, żeby wybrać detal pokazany obok opisu."
+        default: "Przesuń palcem i rozsuń dwa palce, żeby wybrać, co pokaże ramka."
+        }
         return VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 4) {
                 Eyebrow(item.artist.isEmpty ? "Kadr" : item.artist, color: Theme.vermilion)
                 Text(item.title).font(.serif(22, weight: .semibold)).lineLimit(2)
             }
-            Text(view.fit == "details"
-                 ? "Przesuń palcem i rozsuń dwa palce, żeby wybrać, co pokażą okienka z detalami."
-                 : "Przesuń palcem i rozsuń dwa palce, żeby wybrać, co pokaże ramka.")
+            Text(hint)
                 .font(.callout)
                 .foregroundStyle(Theme.inkSoft)
                 .fixedSize(horizontal: false, vertical: true)
@@ -118,7 +121,7 @@ struct CropEditorSheet: View {
         Card {
             Label("Widać cały obraz", systemImage: "rectangle.inset.filled")
                 .font(.headline)
-            Text("Teraz obraz jest pokazany w całości, w passe-partout, więc nie ma czego kadrować. Kadr ustawisz w trybach „Wypełnij” i „Detale” (Ramka → Prezentacja).")
+            Text("Teraz obraz jest pokazany w całości, w passe-partout, więc nie ma czego kadrować. Kadr ustawisz w trybach „Wypełnij”, „Detale” i „Opis” (Ramka → Prezentacja).")
                 .font(.callout)
                 .foregroundStyle(Theme.inkSoft)
                 .fixedSize(horizontal: false, vertical: true)

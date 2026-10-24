@@ -251,7 +251,7 @@ struct StatusView: Codable, Sendable {
 
 struct Presentation: Codable, Hashable, Sendable {
     var preset: String
-    var fit: String  // "fit" | "fill" | "details" | "auto"
+    var fit: String  // "fit" | "fill" | "details" | "description" | "auto"
     var mat: String = "white"  // "white" | "cream" | "grey" | "black"
     var margin: Double
     var label: Bool
@@ -433,7 +433,7 @@ struct FramingWindow: Codable, Hashable, Sendable {
 /// `GET /api/library/items/{id}/framing`
 struct FramingView: Codable, Hashable, Sendable {
     let orientation: String
-    let fit: String  // resolved: "fit" | "fill" | "details"
+    let fit: String  // resolved: "fit" | "fill" | "details" | "description"
     let width: Int
     let height: Int
     var windows: [FramingWindow]
