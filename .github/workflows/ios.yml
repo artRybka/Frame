@@ -9,7 +9,7 @@ on:
 
 jobs:
   build:
-    runs-on: macos-15
+    runs-on: macos-26
     defaults:
       run:
         working-directory: ios
@@ -32,7 +32,7 @@ jobs:
           CODE_SIGNING_ALLOWED=NO
 
   screenshots:
-    runs-on: macos-15
+    runs-on: macos-26
     defaults:
       run:
         working-directory: ios
