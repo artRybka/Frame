@@ -8,9 +8,10 @@ extension Crop {
     }
 }
 
-/// Adjusting what the frame shows of the current picture: the crop in
-/// "Wypełnij", the two close-ups in "Detale", the one in "Opis". Saved with
-/// the artwork, for this orientation of the frame.
+/// Adjusting what the frame shows of the current picture: the crop and the
+/// window's shape in "Passe-partout", the crop in "Wypełnij", the two
+/// close-ups in "Detale", the one in "Opis". Saved with the artwork, for this
+/// orientation of the frame.
 struct CropEditorSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
@@ -23,6 +24,18 @@ struct CropEditorSheet: View {
     @State private var error: String?
 
     private var orientation: String { model.settings?.orientation ?? "landscape" }
+
+    /// Shapes for the passe-partout window; nil keeps the picture's own.
+    static let shapes: [(title: String, aspect: Double?)] = [
+        ("Oryginał", nil), ("1:1", 1), ("4:5", 4.0 / 5), ("3:4", 3.0 / 4), ("2:3", 2.0 / 3),
+        ("4:3", 4.0 / 3), ("3:2", 3.0 / 2), ("16:9", 16.0 / 9),
+    ]
+
+    /// The viewport's shape: the window's, or in "Passe-partout" the one chosen.
+    private func aspect(_ view: FramingView, _ window: FramingWindow, _ crop: Crop) -> Double {
+        guard view.fit == "fit" else { return window.aspect }
+        return crop.aspect ?? Double(view.width) / Double(max(view.height, 1))
+    }
 
     var body: some View {
         NavigationStack {
@@ -61,7 +74,10 @@ struct CropEditorSheet: View {
     private func editor(_ view: FramingView) -> some View {
         let window = view.windows[min(selected, view.windows.count - 1)]
         let portraitFrame = orientation == "portrait"
+        let index = min(selected, crops.count - 1)
+        let shape = aspect(view, window, crops[index])
         let hint = switch view.fit {
+        case "fit": "Wybierz kształt okienka, potem przesuń palcem i rozsuń dwa palce, żeby wybrać, co pokaże passe-partout."
         case "details": "Przesuń palcem i rozsuń dwa palce, żeby wybrać, co pokażą okienka z detalami."
         case "description": "Przesuń palcem i rozsuń dwa palce, żeby wybrać detal pokazany obok opisu."
         default: "Przesuń palcem i rozsuń dwa palce, żeby wybrać, co pokaże ramka."
@@ -81,14 +97,18 @@ struct CropEditorSheet: View {
                 }
                 .pickerStyle(.segmented)
             }
+            if view.fit == "fit" {
+                shapePicker(index)
+            }
             CropViewport(
                 ref: .image(item.id),
                 imageSize: CGSize(width: view.width, height: view.height),
-                aspect: window.aspect,
+                aspect: shape,
                 maxZoom: window.role == "detail" ? 6 : 4,
-                crop: $crops[min(selected, crops.count - 1)]
+                crop: $crops[index]
             )
-            .id(selected)  // a fresh gesture state per window
+            .frame(maxHeight: 420)
+            .id("\(selected)-\(shape)")  // a fresh gesture state per window and shape
             .padding(5)
             .background(Theme.frameWood)
             .clipShape(RoundedRectangle(cornerRadius: 2))
@@ -117,11 +137,36 @@ struct CropEditorSheet: View {
         }
     }
 
+    /// Chips for the passe-partout window's shape.
+    private func shapePicker(_ index: Int) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(Self.shapes, id: \.title) { shape in
+                    let chosen = crops[index].aspect.map { abs($0 - (shape.aspect ?? -1)) < 0.001 }
+                        ?? (shape.aspect == nil)
+                    Button(shape.title) {
+                        crops[index].aspect = shape.aspect
+                        crops[index].zoom = 1
+                    }
+                    .font(.subheadline.weight(.medium))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .foregroundStyle(chosen ? Theme.paper : Theme.ink)
+                    .background(chosen ? Theme.accent : Theme.card, in: Capsule())
+                    .overlay(Capsule().strokeBorder(chosen ? .clear : Theme.hairline))
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(chosen ? .isSelected : [])
+                }
+            }
+        }
+        .scrollClipDisabled()
+    }
+
     private var wholePicture: some View {
         Card {
             Label("Widać cały obraz", systemImage: "rectangle.inset.filled")
                 .font(.headline)
-            Text("Teraz obraz jest pokazany w całości, w passe-partout, więc nie ma czego kadrować. Kadr ustawisz w trybach „Wypełnij”, „Detale” i „Opis” (Ramka → Prezentacja).")
+            Text("Ten serwer nie pozwala jeszcze kadrować obrazu w passe-partout. Kadr ustawisz w trybach „Wypełnij”, „Detale” i „Opis” (Ramka → Prezentacja).")
                 .font(.callout)
                 .foregroundStyle(Theme.inkSoft)
                 .fixedSize(horizontal: false, vertical: true)

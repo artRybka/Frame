@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Playlists: what is playing now and all collections, smart and manual.
+/// Playlists: what the frame presents now and all collections, smart and manual.
 struct PlaylistsView: View {
     @Environment(AppModel.self) private var model
     @State private var editing: Playlist?
@@ -75,7 +75,7 @@ struct PlaylistsView: View {
 
 extension Playlist: Identifiable {}
 
-/// Large card for the playlist that is playing.
+/// Large card for the playlist the frame presents.
 struct NowPlayingCard: View {
     let playlist: PlaylistSummary
 
@@ -86,9 +86,8 @@ struct NowPlayingCard: View {
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 6) {
-                    Image(systemName: "waveform")
-                        .symbolEffect(.variableColor.iterative, options: .repeating)
-                    Eyebrow("Gra teraz na ramce", color: Theme.vermilion)
+                    Image(systemName: "photo.artframe")
+                    Eyebrow("Teraz prezentowane", color: Theme.vermilion)
                 }
                 .foregroundStyle(Theme.vermilion)
                 Text(playlist.name)

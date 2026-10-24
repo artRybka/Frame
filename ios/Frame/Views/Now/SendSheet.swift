@@ -118,7 +118,7 @@ struct SendSheet: View {
         status = "Przygotowuję obraz dla e-papieru i budzę ramkę…"
         do {
             let result = try await model.backend.sendPhoto(
-                Self.jpeg(imageData), title: title, preset: preset, hold: hold
+                PhotoUpload.jpeg(imageData), title: title, preset: preset, hold: hold
             )
             if result.fetched == true || model.backend.isDemo {
                 model.toast = "Zdjęcie jest na ramce"
@@ -132,15 +132,4 @@ struct SendSheet: View {
         }
     }
 
-    /// HEIC and huge originals → a reasonable JPEG for upload.
-    private static func jpeg(_ data: Data) -> Data {
-        guard let image = UIImage(data: data) else { return data }
-        let maxSide: CGFloat = 3000
-        let scale = min(1, maxSide / max(image.size.width, image.size.height))
-        let size = CGSize(width: image.size.width * scale, height: image.size.height * scale)
-        let rendered = UIGraphicsImageRenderer(size: size).image { _ in
-            image.draw(in: CGRect(origin: .zero, size: size))
-        }
-        return rendered.jpegData(compressionQuality: 0.9) ?? data
-    }
 }

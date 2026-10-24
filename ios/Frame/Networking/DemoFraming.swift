@@ -10,6 +10,7 @@ enum DemoFraming {
         let caption: String
         let text: TextBlock
         let isPhoto: Bool
+        var tint: UIColor?  // the "picture" mat, as the server picks it
     }
 
     /// The wall text "Opis" prints on the mat (server: text.TextBlock).
@@ -25,6 +26,7 @@ enum DemoFraming {
         var fill: Crop?
         var details: [Crop]?
         var detail: Crop?  // "description": its one close-up
+        var fit: Crop?  // "fit": the part shown and the window's shape
     }
 
     struct Window {
@@ -77,13 +79,49 @@ enum DemoFraming {
 
     /// Pixel size of the image the demo frames (the e-paper look, else the original).
     static func pixelSize(_ id: String) -> CGSize? {
-        let stem = stem(id)
-        guard
-            let url = Bundle.main.url(forResource: stem + "-ink", withExtension: "jpg")
-                ?? Bundle.main.url(forResource: stem, withExtension: "jpg"),
-            let image = UIImage(contentsOfFile: url.path)?.cgImage
-        else { return nil }
+        guard let url = source(id), let image = UIImage(contentsOfFile: url.path)?.cgImage else { return nil }
         return CGSize(width: image.width, height: image.height)
+    }
+
+    /// The image the demo frames: the bundled e-paper look, else the bundled
+    /// original, else a photo uploaded in this demo session.
+    static func source(_ id: String) -> URL? {
+        let stem = stem(id)
+        if let url = Bundle.main.url(forResource: stem + "-ink", withExtension: "jpg")
+            ?? Bundle.main.url(forResource: stem, withExtension: "jpg") {
+            return url
+        }
+        let upload = uploadURL(id)
+        return FileManager.default.fileExists(atPath: upload.path) ? upload : nil
+    }
+
+    /// Where the demo keeps a photo "uploaded" from the camera roll.
+    static func uploadURL(_ id: String) -> URL {
+        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("DemoUploads", isDirectory: true)
+            .appendingPathComponent(stem(id) + ".jpg")
+    }
+
+    /// A rough stand-in for the server's picture tint (mat.picture_tint), for
+    /// photos uploaded in the demo: the average hue, pale; deep if dark.
+    static func tint(of image: CGImage) -> UIColor {
+        var pixel = [UInt8](repeating: 0, count: 4)
+        let space = CGColorSpaceCreateDeviceRGB()
+        pixel.withUnsafeMutableBytes { buffer in
+            guard let context = CGContext(
+                data: buffer.baseAddress, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+                space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            ) else { return }
+            context.interpolationQuality = .medium
+            context.draw(image, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+        }
+        let average = UIColor(red: CGFloat(pixel[0]) / 255, green: CGFloat(pixel[1]) / 255, blue: CGFloat(pixel[2]) / 255, alpha: 1)
+        var hue: CGFloat = 0, saturation: CGFloat = 0, brightness: CGFloat = 0, alpha: CGFloat = 0
+        average.getHue(&hue, saturation: &saturation, brightness: &brightness, alpha: &alpha)
+        if brightness < 0.3 {
+            return UIColor(hue: hue, saturation: min(saturation, 0.5) * 0.6, brightness: 0.22, alpha: 1)
+        }
+        return UIColor(hue: hue, saturation: min(saturation * 0.3, 0.16), brightness: 0.93, alpha: 1)
     }
 
     // MARK: Planning (layout.py)
@@ -125,7 +163,6 @@ enum DemoFraming {
             if abs(ratio - target) / max(ratio, target) <= 0.12 { return "fill" }
             return room(size, canvas) >= 0.35 ? "details" : "fit"
         }
-        if fit == "details" || fit == "description", room(size, canvas) < 0.2 { return "fit" }
         return fit
     }
 
@@ -137,21 +174,35 @@ enum DemoFraming {
             return planFill(size, canvas, caption, crops?.fill)
         case let fit where fit == "details" || fit == "description":
             if let plan = planBeside(size, canvas, fit, presentation.margin, caption, crops) { return plan }
-            return planFit(size, canvas, presentation.margin, caption)
+            return planFit(size, canvas, presentation.margin, caption, crops?.fit)
         default:
-            return planFit(size, canvas, presentation.margin, caption)
+            return planFit(size, canvas, presentation.margin, caption, crops?.fit)
         }
     }
 
-    private static func planFit(_ size: CGSize, _ canvas: CGSize, _ margin: Double, _ caption: Bool) -> Plan {
+    /// "Passe-partout" uncropped: `whole` as a crop (layout.WHOLE).
+    static let wholeCrop = Crop(zoom: 1 / (1 - 2 * 0.02))
+
+    private static func fitted(_ aspect: CGFloat, _ availW: CGFloat, _ availH: CGFloat) -> CGSize {
+        if availW / availH > aspect { return CGSize(width: max(1, (availH * aspect).rounded()), height: availH) }
+        return CGSize(width: availW, height: max(1, (availW / aspect).rounded()))
+    }
+
+    /// The picture in one mat window: whole, or cropped to any shape.
+    private static func planFit(_ size: CGSize, _ canvas: CGSize, _ margin: Double, _ caption: Bool, _ crop: Crop?) -> Plan {
+        let chosen = crop ?? wholeCrop
+        let aspect = chosen.aspect.map { CGFloat($0) } ?? size.width / size.height
         let pad = (min(canvas.width, canvas.height) * margin).rounded()
         let bottom = caption ? max(pad, captionBand(canvas)) : pad
         let availW = canvas.width - 2 * pad, availH = canvas.height - pad - bottom
-        let scale = min(availW / size.width, availH / size.height)
-        let w = max(1, (size.width * scale).rounded()), h = max(1, (size.height * scale).rounded())
-        let rect = CGRect(x: ((canvas.width - w) / 2).rounded(.down), y: pad + ((availH - h) / 2).rounded(.down), width: w, height: h)
-        let at = caption ? CGRect(x: rect.minX, y: rect.maxY + (captionSize(canvas) * 0.6).rounded(), width: w, height: captionSize(canvas) * 1.4) : nil
-        return Plan(fit: "fit", canvas: canvas, windows: [Window(rect: rect, box: whole(size), role: "picture", crop: nil)], captionAt: at)
+        let sized = fitted(aspect, availW, availH)
+        let rect = CGRect(
+            x: ((canvas.width - sized.width) / 2).rounded(.down), y: pad + ((availH - sized.height) / 2).rounded(.down),
+            width: sized.width, height: sized.height
+        )
+        let at = caption ? CGRect(x: rect.minX, y: rect.maxY + (captionSize(canvas) * 0.6).rounded(), width: rect.width, height: captionSize(canvas) * 1.4) : nil
+        let window = Window(rect: rect, box: cropBox(size, aspect: aspect, crop: chosen), role: "picture", crop: chosen)
+        return Plan(fit: "fit", canvas: canvas, windows: [window], captionAt: at)
     }
 
     private static func planFill(_ size: CGSize, _ canvas: CGSize, _ caption: Bool, _ crop: Crop?) -> Plan {
@@ -169,40 +220,18 @@ enum DemoFraming {
         return Plan(fit: "fill", canvas: canvas, windows: [window], captionAt: at)
     }
 
-    /// "details": the whole picture edge to edge and two close-ups beside it;
-    /// "description": one close-up and the text printed on the mat instead
-    /// of the second.
+    /// "details": the whole picture and two close-ups beside it; "description":
+    /// one close-up and the text printed on the mat instead of the second.
+    /// Picture at the left or on top, whichever shows it larger; smaller, in
+    /// a mat window, when the frame has its own shape (layout._plan_beside).
     private static func planBeside(
         _ size: CGSize, _ canvas: CGSize, _ fit: String, _ margin: Double, _ caption: Bool, _ crops: Crops?
     ) -> Plan? {
-        let (cw, ch) = (canvas.width, canvas.height)
-        let short = min(cw, ch)
-        let m = (short * max(margin, 0.04)).rounded()
+        let options = [true, false].compactMap { beside(size, canvas, fit, margin, caption, side: $0) }
+        guard let best = options.max(by: { $0.0.width * $0.0.height < $1.0.width * $1.0.height }) else { return nil }
+        let (main, rects, at) = best
+        let aspect = rects[0].width / rects[0].height
         let text = fit == "description"
-        let band = caption && !text ? captionBand(canvas) : 0
-        let gap = (captionSize(canvas) * 0.6).rounded()
-        let main: CGRect, rects: [CGRect], at: CGRect
-        if size.width / size.height < cw / ch {  // picture at the left; the rest stacked
-            let mainW = (ch * size.width / size.height).rounded()
-            main = CGRect(x: 0, y: 0, width: mainW, height: ch)
-            let winW = cw - mainW - 2 * m, winH = ((ch - 3 * m - band) / 2).rounded(.down)
-            rects = [
-                CGRect(x: mainW + m, y: m, width: winW, height: winH),
-                CGRect(x: mainW + m, y: 2 * m + winH, width: winW, height: winH),
-            ]
-            at = CGRect(x: mainW + m, y: 2 * m + 2 * winH + gap, width: winW, height: captionSize(canvas) * 1.4)
-        } else {  // picture on top; the rest side by side
-            let mainH = (cw * size.height / size.width).rounded()
-            main = CGRect(x: 0, y: 0, width: cw, height: mainH)
-            let winW = ((cw - 3 * m) / 2).rounded(.down), winH = ch - mainH - 2 * m - band
-            rects = [
-                CGRect(x: m, y: mainH + m, width: winW, height: winH),
-                CGRect(x: 2 * m + winW, y: mainH + m, width: winW, height: winH),
-            ]
-            at = CGRect(x: m, y: mainH + m + winH + gap, width: 2 * winW + m, height: captionSize(canvas) * 1.4)
-        }
-        guard let first = rects.first, min(first.width, first.height) >= 0.12 * short else { return nil }
-        let aspect = first.width / first.height
         // Without the server's hints: a wider and a closer close-up, apart.
         let chosen: [Crop] = text
             ? [crops?.detail ?? Crop(x: 0.5, y: 0.35, zoom: 2.5)]
@@ -216,6 +245,63 @@ enum DemoFraming {
             return Plan(fit: "description", canvas: canvas, windows: windows, captionAt: nil, textRect: rects[1])
         }
         return Plan(fit: "details", canvas: canvas, windows: windows, captionAt: caption ? at : nil)
+    }
+
+    /// One arrangement: the picture, the two rects beside it, the caption.
+    private static func beside(
+        _ size: CGSize, _ canvas: CGSize, _ fit: String, _ margin: Double, _ caption: Bool, side: Bool
+    ) -> (CGRect, [CGRect], CGRect)? {
+        let (cw, ch) = (canvas.width, canvas.height)
+        let short = min(cw, ch)
+        let m = (short * max(margin, 0.04)).rounded()
+        let band = caption && fit != "description" ? captionBand(canvas) : 0
+        let gap = (captionSize(canvas) * 0.6).rounded()
+        let share: CGFloat = 0.33
+        let ratio = size.width / size.height
+        let main: CGRect, rects: [CGRect], at: CGRect
+        if side {  // picture at the left; the rest stacked in a column at the right
+            let fullW = (ch * ratio).rounded()
+            let col: CGRect
+            if cw - fullW >= cw * share {
+                main = CGRect(x: 0, y: 0, width: fullW, height: ch)
+                col = CGRect(x: fullW + m, y: m, width: cw - fullW - 2 * m, height: ch - 2 * m - band)
+            } else {
+                let colW = ((cw - 3 * m) * share).rounded()
+                let availH = ch - 2 * m - band
+                let sized = fitted(ratio, cw - 3 * m - colW, availH)
+                let x = ((cw - sized.width - m - colW) / 2).rounded(.down), y = m + ((availH - sized.height) / 2).rounded(.down)
+                main = CGRect(x: x, y: y, width: sized.width, height: sized.height)
+                col = CGRect(x: x + sized.width + m, y: y, width: colW, height: sized.height)
+            }
+            let winH = ((col.height - m) / 2).rounded(.down)
+            rects = [
+                CGRect(x: col.minX, y: col.minY, width: col.width, height: winH),
+                CGRect(x: col.minX, y: col.minY + winH + m, width: col.width, height: col.height - winH - m),
+            ]
+            at = CGRect(x: col.minX, y: col.maxY + gap, width: col.width, height: captionSize(canvas) * 1.4)
+        } else {  // picture on top; the rest side by side in a row below
+            let fullH = (cw / ratio).rounded()
+            let row: CGRect
+            if ch - fullH >= ch * share {
+                main = CGRect(x: 0, y: 0, width: cw, height: fullH)
+                row = CGRect(x: m, y: fullH + m, width: cw - 2 * m, height: ch - fullH - 2 * m - band)
+            } else {
+                let rowH = ((ch - 3 * m - band) * share).rounded()
+                let availH = ch - 3 * m - band - rowH
+                let sized = fitted(ratio, cw - 2 * m, availH)
+                let x = ((cw - sized.width) / 2).rounded(.down), y = m + ((availH - sized.height) / 2).rounded(.down)
+                main = CGRect(x: x, y: y, width: sized.width, height: sized.height)
+                row = CGRect(x: x, y: y + sized.height + m, width: sized.width, height: rowH)
+            }
+            let winW = ((row.width - m) / 2).rounded(.down)
+            rects = [
+                CGRect(x: row.minX, y: row.minY, width: winW, height: row.height),
+                CGRect(x: row.minX + winW + m, y: row.minY, width: row.width - winW - m, height: row.height),
+            ]
+            at = CGRect(x: row.minX, y: row.maxY + gap, width: row.width, height: captionSize(canvas) * 1.4)
+        }
+        guard min(rects[0].width, rects[0].height) >= 0.12 * short else { return nil }
+        return (main, rects, at)
     }
 
     // MARK: Drawing (mat.py, caption.py)
@@ -234,16 +320,15 @@ enum DemoFraming {
     static func framed(_ id: String, art: Art, settings: FrameSettings, crops: Crops?) -> URL? {
         let pres = art.isPhoto ? settings.photo : settings.art
         let stem = stem(id)
-        let key = [settings.orientation, pres.key, art.caption, "\(art.text)", "\(String(describing: crops))"].joined(separator: "|")
+        let board = pres.mat == "picture" ? (art.tint ?? matColor("cream")) : matColor(pres.mat)
+        let key = [settings.orientation, pres.key, art.caption, "\(art.text)", "\(board)", "\(String(describing: crops))"].joined(separator: "|")
         let directory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("DemoFrames", isDirectory: true)
         let output = directory.appendingPathComponent("\(stem)-\(settings.orientation)-\(pres.fit)-\(fnv(key)).jpg")
         if FileManager.default.fileExists(atPath: output.path) { return output }
-        guard
-            let source = Bundle.main.url(forResource: stem + "-ink", withExtension: "jpg")
-                ?? Bundle.main.url(forResource: stem, withExtension: "jpg"),
-            let image = UIImage(contentsOfFile: source.path), let cgImage = image.cgImage
+        guard let source = source(id), let image = UIImage(contentsOfFile: source.path), let cgImage = image.cgImage
         else { return nil }
+        let white = isDark(board)
 
         let size = canvas(settings.orientation)
         let pixels = CGSize(width: cgImage.width, height: cgImage.height)
@@ -252,19 +337,19 @@ enum DemoFraming {
         format.scale = 1
         format.opaque = true
         let data = UIGraphicsImageRenderer(size: size, format: format).jpegData(withCompressionQuality: 0.85) { context in
-            matColor(pres.mat).setFill()
+            board.setFill()
             UIRectFill(CGRect(origin: .zero, size: size))
             for window in layout.windows {
                 if let part = cgImage.cropping(to: window.box.integral) {
                     UIImage(cgImage: part).draw(in: window.rect)
                 }
             }
-            drawBevels(layout, board: matColor(pres.mat), in: context.cgContext)
+            drawBevels(layout, board: board, in: context.cgContext)
             if let at = layout.captionAt {
-                drawCaption(art.caption, in: at, canvas: size, white: pres.mat == "black")
+                drawCaption(art.caption, in: at, canvas: size, white: white)
             }
             if let rect = layout.textRect {
-                drawText(art.text, in: rect, canvas: size, white: pres.mat == "black")
+                drawText(art.text, in: rect, canvas: size, white: white)
             }
         }
         do {
@@ -320,6 +405,22 @@ enum DemoFraming {
             }
             context.restoreGState()
         }
+    }
+
+    /// "#rrggbb" as a colour.
+    static func color(hex: String) -> UIColor? {
+        guard hex.hasPrefix("#"), hex.count == 7, let value = UInt32(hex.dropFirst(), radix: 16) else { return nil }
+        return UIColor(
+            red: CGFloat((value >> 16) & 0xFF) / 255, green: CGFloat((value >> 8) & 0xFF) / 255,
+            blue: CGFloat(value & 0xFF) / 255, alpha: 1
+        )
+    }
+
+    /// Whether letters on this board should be white (mat.is_dark).
+    static func isDark(_ color: UIColor) -> Bool {
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        color.getRed(&r, green: &g, blue: &b, alpha: &a)
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b < 0.4
     }
 
     /// Each sRGB component part of the way to `target` (sRGB is roughly even

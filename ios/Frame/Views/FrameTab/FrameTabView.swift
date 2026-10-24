@@ -469,6 +469,10 @@ struct PresentationSection: View {
                     }
                     .labelsHidden()
                 }
+                Text(Names.presetExplanation(presentation.preset.wrappedValue))
+                    .font(.caption)
+                    .foregroundStyle(Theme.inkSoft)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .tint(Theme.accent)
         }
@@ -491,10 +495,10 @@ struct FitOption: View {
     static func explanation(_ fit: String) -> String {
         switch fit {
         case "fill": "Cały ekran; kadr sam ustawia się na tym, co najciekawsze (twarze, szczegóły). Poprawisz go w „Teraz”."
-        case "details": "Cały obraz od krawędzi do krawędzi, obok dwa detale w okienkach passe-partout: szerszy i bliższy, z różnych miejsc obrazu."
+        case "details": "Cały obraz, obok dwa detale w okienkach passe-partout: szerszy i bliższy, z różnych miejsc obrazu. Gdy proporcje obrazu są bliskie ramce, obraz jest mniejszy, żeby zmieściły się detale."
         case "description": "Jak „Detale”, ale zamiast drugiego detalu krótki opis nadrukowany na passe-partout: tytuł, autor, data i kilka zdań o obrazie."
         case "auto": "Wypełnienie, gdy proporcje pasują; passe-partout, gdy trochę się różnią; detale, gdy bardzo."
-        default: "Cały obraz w okienku passe-partout."
+        default: "Cały obraz w okienku passe-partout. Kadr i proporcje okienka zmienisz w „Teraz”."
         }
     }
 
@@ -568,13 +572,14 @@ struct MatSwatch: View {
     let selected: Bool
     let action: () -> Void
 
-    static let names = ["white", "cream", "grey", "black"]
+    static let names = ["white", "cream", "grey", "black", "picture"]
 
     static func color(_ name: String) -> Color {
         switch name {
         case "cream": Color(hex: 0xF6EFD9)
         case "grey": Color(hex: 0xAEADAA)
         case "black": Color(hex: 0x1F1E1C)
+        case "picture": Color(hex: 0xE9DCCB)  // stands in for "a tint of the picture"
         default: Color(hex: 0xFBFAF7)
         }
     }
@@ -584,15 +589,23 @@ struct MatSwatch: View {
         case "cream": "Kremowe"
         case "grey": "Szare"
         case "black": "Czarne"
+        case "picture": "Z obrazu"
         default: "Białe"
         }
+    }
+
+    /// Muted tints in a ring: the mat takes its colour from each picture.
+    private var fill: AnyShapeStyle {
+        guard name == "picture" else { return AnyShapeStyle(Self.color(name)) }
+        let tints = [0xE8C9C0, 0xEADCC0, 0xD3DEC8, 0xC6D6DE, 0xD6CBDD, 0xE8C9C0].map { Color(hex: UInt32($0)) }
+        return AnyShapeStyle(AngularGradient(colors: tints, center: .center))
     }
 
     var body: some View {
         Button(action: action) {
             VStack(spacing: 6) {
                 RoundedRectangle(cornerRadius: 6)
-                    .fill(Self.color(name))
+                    .fill(fill)
                     .frame(width: 44, height: 32)
                     .overlay(
                         // The window cut at 45°: a light inner edge.

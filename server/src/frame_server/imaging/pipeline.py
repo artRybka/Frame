@@ -25,7 +25,7 @@ from PIL import Image
 from pydantic import BaseModel, ConfigDict, Field
 
 from .caption import caption_mask
-from .color import linear_to_u8, u8_to_linear
+from .color import linear_to_u8, luminance, u8_to_linear
 from .dither import Kernel, error_diffusion, nearest
 from .filters import sharpen
 from .interest import InterestMap
@@ -41,7 +41,7 @@ from .layout import (
     plan_layout,
     to_panel,
 )
-from .mat import paint_mat
+from .mat import is_dark, paint_mat, picture_tint
 from .palette import SPECTRA6, Palette
 from .text import TextBlock, text_block_mask
 from .tone import ToneSettings, map_to_panel, precompensate
@@ -59,13 +59,16 @@ class LayoutSettings(BaseModel):
     orientation: Orientation = Orientation.LANDSCAPE
     rotation: Literal[90, 270] = Field(90, description="Clockwise rotation of a portrait frame")
     fit: Fit = Fit.AUTO
-    mat: Literal["white", "cream", "grey", "black", "edge"] = "white"
+    mat: Literal["white", "cream", "grey", "black", "picture", "edge"] = "white"
     margin: float = Field(0.0, ge=0, le=0.3, description="Passe-partout, fraction of short side")
     crop: Crop | None = Field(None, description="FILL: part of the picture shown (else automatic)")
     details: list[Crop] | None = Field(
         None, min_length=2, max_length=2, description="DETAILS: the two close-ups (else automatic)"
     )
     detail: Crop | None = Field(None, description="DESCRIPTION: the close-up (else automatic)")
+    fit_crop: Crop | None = Field(
+        None, description="FIT: the part shown and the window's shape (else the whole picture)"
+    )
 
 
 class DitherSettings(BaseModel):
@@ -175,6 +178,12 @@ _NOMINAL_MATS = {
 def _mat_rgb(img: Image.Image, mat: str) -> tuple[int, int, int]:
     if mat == "edge":
         return edge_color(img)
+    if mat == "picture":
+        small = img.copy()
+        small.thumbnail((256, 256))
+        pixels = u8_to_linear(np.asarray(small.convert("RGB")))
+        tint = picture_tint(pixels, np.ones(3, np.float32), np.zeros(3, np.float32))
+        return tuple(int(v) for v in linear_to_u8(tint))  # type: ignore[return-value]
     return _NOMINAL_MATS.get(mat, (255, 255, 255))
 
 
@@ -196,6 +205,7 @@ def plan_for(img: Image.Image, layout: LayoutSettings, caption: bool) -> Plan:
         crop=layout.crop,
         details=layout.details,
         detail=layout.detail,
+        fit_crop=layout.fit_crop,
         auto=auto,
     )
 
@@ -224,9 +234,12 @@ def render(
     if s.strategy == Strategy.PASSTHROUGH:
         sent = linear_to_u8(linear)
         preview_idx = simulate_naive(linear, pal)
+        mat = u8_to_linear(np.array(_mat_rgb(img, s.layout.mat), dtype=np.uint8))
+        dark_board = float(luminance(mat)) < 0.18
     else:
         target = map_to_panel(linear, pal, s.tone)
-        paint_mat(target, plan, pal, s.layout.mat)
+        board = paint_mat(target, plan, pal, s.layout.mat)
+        dark_board = board is not None and is_dark(board, pal)
         if s.strategy == Strategy.COMPENSATE:
             nominal = precompensate(target, pal)
             sent = linear_to_u8(nominal)
@@ -245,14 +258,14 @@ def render(
                 )
             sent = pal.device_u8()[preview_idx]
 
-    # Lettering in pure ink on the mat: white on a black mat, black otherwise.
+    # Lettering in pure ink on the mat: white on a dark mat, black otherwise.
     letters = []
     if s.caption and plan.caption_at is not None:
         letters.append(caption_mask(plan.canvas, plan.caption_at, s.caption))
     if s.text and plan.text_rect is not None:
         letters.append(text_block_mask(plan.canvas, plan.text_rect, s.text))
     if letters:
-        ink = pal.white_index() if s.layout.mat == "black" else pal.black_index()
+        ink = pal.white_index() if dark_board else pal.black_index()
         preview_idx = preview_idx.copy()
         sent = sent.copy()
         for mask in letters:

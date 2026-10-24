@@ -22,7 +22,7 @@ class Presentation(BaseModel):
 
     preset: str = "painting"
     fit: Fit = Fit.AUTO  # fill, passe-partout or details, by the picture's proportions
-    mat: Literal["white", "cream", "grey", "black"] = "white"
+    mat: Literal["white", "cream", "grey", "black", "picture"] = "white"  # picture: its hue
     margin: float = Field(0.05, ge=0, le=0.3)
     label: bool = False
 

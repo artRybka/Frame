@@ -68,6 +68,8 @@ protocol FrameBackend: Sendable {
 
     func sendPhoto(_ data: Data, title: String, preset: String, hold: HoldSpec) async throws
         -> DisplayResponse
+    /// Adds a photo to the library without showing it (e.g. for a playlist).
+    func uploadPhoto(_ upload: PhotoUpload) async throws -> Item
     func wake() async throws
     func sleep() async throws
 

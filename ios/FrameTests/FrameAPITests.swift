@@ -1,3 +1,4 @@
+import UIKit
 import XCTest
 @testable import Frame
 
@@ -180,6 +181,62 @@ final class FrameAPITests: XCTestCase {
         XCTAssertEqual(text.windows.map(\.role), ["picture", "detail"])
         XCTAssertNil(text.captionAt)
         XCTAssertGreaterThan(text.textRect?.minY ?? 0, text.windows[1].rect.maxY)
+    }
+
+    func testChosenModesAlwaysApply() {
+        let canvas = DemoFraming.canvas("landscape")
+        // A 16:9 picture on the 16:9 frame: no room beside it, so it gets smaller.
+        for fit in ["details", "description"] {
+            let pres = Presentation(preset: "painting", fit: fit, margin: 0.05, label: true)
+            let plan = DemoFraming.plan(CGSize(width: 1600, height: 900), canvas: canvas, presentation: pres, caption: true, crops: nil)
+            XCTAssertEqual(plan.fit, fit)
+            let main = plan.windows[0].rect
+            XCTAssertGreaterThan(main.minX, 0)
+            XCTAssertLessThan(main.width, canvas.width)
+            XCTAssertEqual(main.width / main.height, 16.0 / 9.0, accuracy: 0.01)
+            XCTAssertEqual(plan.windows[1].rect.minY, main.minY)  // aligned with the picture
+        }
+    }
+
+    func testPassePartoutCropTakesAnyShape() {
+        let canvas = DemoFraming.canvas("landscape")
+        let pres = Presentation(preset: "painting", fit: "fit", margin: 0.05, label: false)
+        let plain = DemoFraming.plan(CGSize(width: 800, height: 1200), canvas: canvas, presentation: pres, caption: false, crops: nil)
+        XCTAssertEqual(plain.windows[0].crop, DemoFraming.wholeCrop)
+        let crops = DemoFraming.Crops(fit: Crop(x: 0.5, y: 0.3, zoom: 1.5, aspect: 1))
+        let square = DemoFraming.plan(CGSize(width: 800, height: 1200), canvas: canvas, presentation: pres, caption: false, crops: crops)
+        let rect = square.windows[0].rect
+        XCTAssertEqual(rect.width, rect.height)
+        XCTAssertEqual(rect.height, 648)
+        XCTAssertEqual(square.windows[0].box.width, 800 / 1.5, accuracy: 0.5)
+    }
+
+    func testPhotoUploadReadsExifDates() {
+        XCTAssertEqual(PhotoUpload.iso(exif: "2026:07:01 10:00:00"), "2026-07-01T10:00:00")
+        XCTAssertNil(PhotoUpload.iso(exif: "garbage"))
+        XCTAssertEqual(PickedPhoto.title("2026-07-01T10:00:00"), "Zdjęcie z 1 lipca 2026")
+        XCTAssertEqual(PickedPhoto.title(nil), "Zdjęcie z rolki")
+        XCTAssertEqual(Names.photos(1), "1 zdjęcie")
+        XCTAssertEqual(Names.photos(3), "3 zdjęcia")
+        XCTAssertEqual(Names.photos(12), "12 zdjęć")
+        XCTAssertEqual(Names.photos(22), "22 zdjęcia")
+    }
+
+    func testDemoUploadedPhotosJoinAPlaylist() async throws {
+        let demo = DemoBackend()
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let jpeg = UIGraphicsImageRenderer(size: CGSize(width: 300, height: 200), format: format)
+            .jpegData(withCompressionQuality: 0.8) { context in
+                UIColor.systemTeal.setFill()
+                context.fill(CGRect(x: 0, y: 0, width: 300, height: 200))
+            }
+        let item = try await demo.uploadPhoto(PhotoUpload(data: jpeg, title: "Morze", takenAt: "2026-07-01T10:00:00"))
+        XCTAssertEqual(item.kind, .photo)
+        XCTAssertEqual(item.dateText, "2026-07-01")
+        XCTAssertNotNil(demo.request(for: .thumb(item.id)))
+        let saved = try await demo.savePlaylist(Playlist(name: "Wakacje", kind: .manual, itemIds: [item.id]))
+        XCTAssertEqual(saved.itemIds, [item.id])
     }
 
     func testDescriptionKeepsWholeSentences() {

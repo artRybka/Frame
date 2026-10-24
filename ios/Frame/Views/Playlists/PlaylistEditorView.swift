@@ -1,7 +1,9 @@
+import PhotosUI
 import SwiftUI
 
 /// Create or edit a playlist. Smart playlists are built from rules with a
-/// live preview of the matching pictures.
+/// live preview of the matching pictures; manual ones can take photos from
+/// the camera roll, uploaded to the library when the playlist is saved.
 struct PlaylistEditorView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
@@ -10,6 +12,10 @@ struct PlaylistEditorView: View {
     @State private var facetSheet: FacetKind?
     @State private var saving = false
     @State private var bestOnly: Bool
+    @State private var picked: [PhotosPickerItem] = []
+    @State private var photos: [PickedPhoto] = []
+    @State private var loadingPhotos = false
+    @State private var uploaded = 0
 
     init(playlist: Playlist) {
         _playlist = State(initialValue: playlist)
@@ -31,9 +37,7 @@ struct PlaylistEditorView: View {
                         rules
                         previewSection
                     } else {
-                        Text("Do ręcznej playlisty dodajesz dzieła z ich szczegółów („Dodaj do playlisty”).")
-                            .font(.subheadline)
-                            .foregroundStyle(Theme.inkSoft)
+                        cameraRoll
                     }
                 }
                 .padding(Theme.gutter)
@@ -55,6 +59,8 @@ struct PlaylistEditorView: View {
                     .presentationDetents([.medium, .large])
             }
             .task(id: playlist.rules) { await refreshPreview() }
+            .task(id: picked) { await loadPhotos() }
+            .interactiveDismissDisabled(saving)
             .onChange(of: bestOnly) { _, on in playlist.rules.minSuitability = on ? 0.72 : nil }
         }
     }
@@ -170,6 +176,39 @@ struct PlaylistEditorView: View {
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.hairline))
     }
 
+    private var cameraRoll: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Dodaj zdjęcia z rolki aparatu albo dzieła z ich szczegółów („Dodaj do playlisty”).")
+                .font(.subheadline)
+                .foregroundStyle(Theme.inkSoft)
+                .fixedSize(horizontal: false, vertical: true)
+            PhotosPicker(selection: $picked, maxSelectionCount: 100, selectionBehavior: .ordered, matching: .images) {
+                Label(photos.isEmpty ? "Dodaj zdjęcia z rolki" : "Zmień wybór zdjęć", systemImage: "photo.on.rectangle.angled")
+            }
+            .buttonStyle(SecondaryButtonStyle())
+            .disabled(saving)
+            if loadingPhotos {
+                ProgressView("Wczytywanie zdjęć…")
+                    .frame(maxWidth: .infinity)
+            }
+            if !photos.isEmpty {
+                Text(saving
+                     ? "Wysyłanie: \(uploaded) z \(uploaded + photos.count)…"
+                     : "\(Names.photos(photos.count)) trafi do biblioteki i do tej playlisty po zapisaniu.")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(Theme.accent)
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 4), spacing: 6) {
+                    ForEach(photos) { photo in
+                        Color.clear
+                            .aspectRatio(1, contentMode: .fit)
+                            .overlay(Image(uiImage: photo.thumbnail).resizable().scaledToFill())
+                            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    }
+                }
+            }
+        }
+    }
+
     private var previewSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
@@ -210,10 +249,39 @@ struct PlaylistEditorView: View {
         withAnimation(.snappy) { preview = result }
     }
 
+    /// Reads the chosen photos: an upright JPEG with its date and place, and a thumbnail.
+    private func loadPhotos() async {
+        guard !picked.isEmpty else {
+            photos = []
+            return
+        }
+        loadingPhotos = true
+        defer { loadingPhotos = false }
+        var loaded: [PickedPhoto] = []
+        for item in picked {
+            guard let data = try? await item.loadTransferable(type: Data.self) else { continue }
+            if Task.isCancelled { return }
+            let photo = await Task.detached(priority: .userInitiated) { PickedPhoto(original: data) }.value
+            if let photo { loaded.append(photo) }
+        }
+        photos = loaded
+    }
+
     private func save() async {
         saving = true
+        uploaded = 0
         defer { saving = false }
         do {
+            // Photos first, one by one; each uploaded one leaves the list, so
+            // a retry after an error does not add it twice.
+            if !photos.isEmpty { playlist.kind = .manual }
+            while let photo = photos.first {
+                let item = try await model.backend.uploadPhoto(photo.upload)
+                playlist.itemIds.append(item.id)
+                photos.removeFirst()
+                uploaded += 1
+            }
+            picked = []
             _ = try await model.backend.savePlaylist(playlist)
             await model.refreshPlaylists()
             model.toast = "Zapisano „\(playlist.name)”"
@@ -243,5 +311,31 @@ struct RuleFacetPicker: View {
                 rules.styles = new.styles
                 rules.subjects = new.subjects
             }
+    }
+}
+
+/// A photo chosen from the camera roll, ready to upload.
+struct PickedPhoto: Identifiable, Sendable {
+    let id = UUID()
+    let upload: PhotoUpload
+    let thumbnail: UIImage
+
+    init?(original: Data) {
+        var upload = PhotoUpload(original: original)
+        upload.title = Self.title(upload.takenAt)
+        guard let image = UIImage(data: upload.data),
+              let thumbnail = image.preparingThumbnail(of: CGSize(width: 240, height: 240 * image.size.height / max(image.size.width, 1)))
+        else { return nil }
+        self.upload = upload
+        self.thumbnail = thumbnail
+    }
+
+    /// "Zdjęcie z 1 lipca 2026", or "Zdjęcie z rolki" without a date.
+    static func title(_ takenAt: String?) -> String {
+        let parts = (takenAt ?? "").prefix(10).split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 3,
+              let date = Calendar.current.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2]))
+        else { return "Zdjęcie z rolki" }
+        return "Zdjęcie z " + date.formatted(.dateTime.day().month(.wide).year().locale(Locale(identifier: "pl_PL")))
     }
 }

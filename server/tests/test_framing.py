@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 from frame_server.imaging import PRESETS
+from frame_server.imaging.color import linear_to_oklab
 from frame_server.imaging.interest import InterestMap, detect_faces
 from frame_server.imaging.layout import (
     Crop,
@@ -16,7 +17,9 @@ from frame_server.imaging.layout import (
     detail_zooms,
     plan_layout,
     resolve_fit,
+    whole,
 )
+from frame_server.imaging.mat import picture_tint
 from frame_server.imaging.palette import SPECTRA6
 from frame_server.imaging.pipeline import render
 from frame_server.imaging.text import TextBlock, text_block_mask
@@ -31,7 +34,8 @@ CANVAS = (2560, 1440)
         ((1600, 900), Fit.AUTO, Fit.FILL),  # 16:9 on 16:9
         ((1200, 900), Fit.AUTO, Fit.FIT),  # 4:3: little room beside it
         ((800, 1200), Fit.AUTO, Fit.DETAILS),  # portrait on a landscape frame
-        ((1600, 900), Fit.DETAILS, Fit.FIT),  # no room for close-ups
+        ((1600, 900), Fit.DETAILS, Fit.DETAILS),  # chosen modes always apply
+        ((1600, 900), Fit.DESCRIPTION, Fit.DESCRIPTION),
     ],
 )
 def test_auto_picks_fill_fit_or_details(size, fit, expected) -> None:
@@ -57,6 +61,68 @@ def test_details_layout() -> None:
     plan = plan_layout((1500, 600), (1440, 2560), Fit.DETAILS)
     main, first, second = plan.windows
     assert main.rect == (0, 0, 1440, 576) and first.rect[1] == second.rect[1] > 576
+
+
+@pytest.mark.parametrize("fit", [Fit.DETAILS, Fit.DESCRIPTION])
+@pytest.mark.parametrize("canvas", [CANVAS, (1440, 2560)])
+def test_details_without_room_make_the_picture_smaller(fit, canvas) -> None:
+    size = (canvas[0] * 9, canvas[1] * 9)  # the frame's own shape: no room beside it
+    plan = plan_layout(size, canvas, fit, margin=0.05, caption=True)
+    assert plan.fit == fit
+    main, first = plan.windows[:2]
+    x, y, w, h = main.rect
+    assert x > 0 and y > 0 and w < canvas[0] and h < canvas[1]  # in a mat window now
+    assert abs(w / h - size[0] / size[1]) < 0.01  # the whole picture
+    beside = first.rect
+    rest = plan.text_rect or plan.windows[2].rect
+    # The close-ups (or the text) line up with the picture.
+    if beside[0] > x + w:  # a column at the right
+        assert beside[1] == y and rest[1] + rest[3] == y + h
+    else:  # a row below
+        assert beside[0] == x and rest[0] + rest[2] == x + w
+    assert min(beside[2], beside[3]) > 0.2 * min(canvas)
+
+
+def test_fit_crop_takes_any_shape() -> None:
+    plain = plan_layout((800, 1200), CANVAS, Fit.FIT, margin=0.05)
+    (window,) = plain.windows
+    assert window.crop is not None and window.box == pytest.approx(whole((800, 1200)))
+    square = plan_layout(
+        (800, 1200), CANVAS, Fit.FIT, margin=0.05, fit_crop=Crop(y=0.3, zoom=1.5, aspect=1.0)
+    )
+    (window,) = square.windows
+    _, _, w, h = window.rect
+    assert w == h and h == 1440 - 2 * 72  # the square fills the height between the margins
+    x0, y0, x1, y1 = window.box
+    assert x1 - x0 == pytest.approx(800 / 1.5) and y1 - y0 == pytest.approx(800 / 1.5)
+    assert (y0 + y1) / 2 == pytest.approx(0.3 * 1200)
+
+
+def test_picture_tint_follows_the_main_hue() -> None:
+    white, black = np.ones(3, np.float32), np.zeros(3, np.float32)
+    blue = np.zeros((100, 100, 3), np.float32)
+    blue[:] = (0.1, 0.25, 0.7)
+    blue[:20] = (0.6, 0.1, 0.05)  # a little red
+    tint = picture_tint(blue, white, black)
+    light, a, b = linear_to_oklab(tint)
+    assert light > 0.85 and b < 0 and np.hypot(a, b) <= 0.025  # pale, blue, muted
+    dark = picture_tint(blue * 0.02, white, black)
+    assert linear_to_oklab(dark)[0] < 0.4  # a deep mat for a dark picture
+    grey = picture_tint(np.full((10, 10, 3), 0.4, np.float32), white, black)
+    assert np.hypot(*linear_to_oklab(grey)[1:]) < 0.013  # nearly colourless: an off-white
+
+
+def test_picture_mat_and_its_lettering() -> None:
+    settings = PRESETS["painting"].model_copy(deep=True)
+    settings.layout.fit = Fit.FIT
+    settings.layout.mat = "picture"
+    settings.caption = "Someone — Something"
+    dark = render(Image.new("RGB", (800, 1000), (30, 20, 15)), settings)
+    plan = plan_layout((800, 1000), CANVAS, Fit.FIT, margin=0.05, caption=True)
+    right, top, _ = plan.caption_at
+    white = SPECTRA6.device_u8()[SPECTRA6.white_index()]
+    text = dark.panel[top : top + 40, right - 300 : right]
+    assert np.any(np.all(text == white, axis=-1))  # white letters on a deep mat
 
 
 def test_description_layout() -> None:
@@ -197,3 +263,36 @@ def test_framing_api(service) -> None:
         saved = client.put(url, json=one).json()
         assert saved["windows"][0]["custom"]
         assert svc.library.get(item.id).framing["portrait"].detail == Crop(**crop)
+
+        # Passe-partout: one crop, with the window's shape.
+        settings["art"]["fit"] = "fit"
+        client.put("/api/settings", json=settings)
+        view = client.get(url, params={"orientation": "portrait"}).json()
+        assert view["fit"] == "fit" and not view["windows"][0]["custom"]
+        square = {"x": 0.5, "y": 0.5, "zoom": 1.2, "aspect": 1.0}
+        saved = client.put(url, json={"orientation": "portrait", "crops": [square]}).json()
+        assert saved["windows"][0]["custom"] and saved["windows"][0]["aspect"] == 1.0
+        # Resetting it keeps the description's close-up.
+        client.delete(url, params={"orientation": "portrait"})
+        stored = svc.library.get(item.id).framing["portrait"]
+        assert stored.fit is None and stored.detail == Crop(**crop)
+
+
+def test_upload_photo_with_place(service) -> None:
+    from frame_server.web import create_app
+
+    app = create_app(service.settings)
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/library/upload",
+            files={"file": ("a.jpg", jpeg_bytes((90, 120, 200)), "image/jpeg")},
+            data={
+                "kind": "photo",
+                "title": "Morze",
+                "taken_at": "2026-07-01T10:00:00",
+                "latitude": "54.5",
+                "longitude": "18.6",
+            },
+        ).json()
+    assert response["kind"] == "photo" and response["photo"]["latitude"] == 54.5
+    assert response["date_text"] == "2026-07-01"

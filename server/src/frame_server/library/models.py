@@ -34,6 +34,7 @@ class Framing(BaseModel):
     fill: Crop | None = None  # FILL: the part shown
     details: list[Crop] | None = Field(None, min_length=2, max_length=2)  # DETAILS
     detail: Crop | None = None  # DESCRIPTION: its one close-up
+    fit: Crop | None = None  # FIT: the part shown and the window's shape
 
 
 class Item(BaseModel):

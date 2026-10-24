@@ -48,8 +48,9 @@ struct NowView: View {
                     Button {
                         showingSend = true
                     } label: {
-                        Image(systemName: "plus")
+                        Image(systemName: "square.and.arrow.up")
                             .font(.headline)
+                            .offset(y: -1)
                             .frame(width: 34, height: 34)
                             .background(.ultraThinMaterial, in: Circle())
                     }

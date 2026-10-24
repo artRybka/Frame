@@ -180,6 +180,26 @@ enum Names {
         }
     }
 
+    /// What a style does to the picture on its way to the six inks; it
+    /// never changes the framing (server: imaging.pipeline.PRESETS).
+    static func presetExplanation(_ key: String) -> String {
+        switch key {
+        case "photo": "Do zdjęć: rozjaśnia cienie, które e-papier łatwo zaczernia, lekko podbija kontrast i kolory, mocniej wyostrza."
+        case "graphic": "Do plakatów, ilustracji i drzeworytów: płaskie, nasycone barwy, wyraźny kontrast i ostre krawędzie, drobniejszy raster bez szumu."
+        case "bw": "Do rysunków, grafik i fotografii czarno-białej: tylko czarna i biała farba, delikatny raster dla płynnych przejść."
+        default: "Do obrazów olejnych i akwareli: zachowuje relacje tonów, delikatnie podbija kolory i wyostrza."
+        }
+    }
+
+    /// "1 zdjęcie", "3 zdjęcia", "12 zdjęć".
+    static func photos(_ count: Int) -> String {
+        let mod10 = count % 10
+        let mod100 = count % 100
+        if count == 1 { return "1 zdjęcie" }
+        if (2 ... 4).contains(mod10) && !(12 ... 14).contains(mod100) { return "\(count) zdjęcia" }
+        return "\(count) zdjęć"
+    }
+
     /// "1 dzieło", "3 dzieła", "12 dzieł".
     static func works(_ count: Int) -> String {
         let mod10 = count % 10

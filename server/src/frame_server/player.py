@@ -183,6 +183,7 @@ class Player:
             base.layout.crop = framing.fill
             base.layout.details = framing.details
             base.layout.detail = framing.detail
+            base.layout.fit_crop = framing.fit
         if pres.fit == Fit.DESCRIPTION:
             base.text = text_block_for(item)
         base.caption = caption_for(item) if pres.label else None
