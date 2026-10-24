@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import httpx
 import numpy as np
 from conftest import jpeg_bytes
@@ -100,8 +102,10 @@ def test_analyse_blue_picture() -> None:
     assert swatches[0].hex.startswith("#") and 0 <= score <= 1
 
 
-def _client(routes: dict[str, dict]) -> httpx.Client:
+def _client(routes: dict[str, dict], sent: list[httpx.Request] | None = None) -> httpx.Client:
     def handler(request: httpx.Request) -> httpx.Response:
+        if sent is not None:
+            sent.append(request)
         for prefix, body in routes.items():
             if str(request.url).startswith(prefix):
                 return httpx.Response(200, json=body)
@@ -134,9 +138,14 @@ def test_aic_mapping() -> None:
             {"id": 2, "title": "No image", "is_public_domain": True, "image_id": None},
         ],
     }
-    with _client({"https://api.artic.edu/api/v1/artworks/search": body}) as http:
+    sent: list[httpx.Request] = []
+    with _client({"https://api.artic.edu/api/v1/artworks/search": body}, sent) as http:
         total, items = ArtInstituteChicago(http).search("hokusai")
     assert total == 1 and len(items) == 1
+    # AIC's bare ``q`` matches everything; the query must also restrict.
+    query = json.loads(sent[0].content)["query"]["bool"]
+    assert query["must"][0]["simple_query_string"]["query"] == "hokusai"
+    assert query["filter"] == [{"term": {"is_public_domain": True}}]
     item = items[0]
     assert item.id == "aic:24645" and item.artist_bio == "Japanese, 1760-1849"
     assert item.description == "Famous & blue." and item.subjects == ["waves", "Mount Fuji"]

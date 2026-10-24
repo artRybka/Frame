@@ -100,15 +100,41 @@ class ArtInstituteChicago(Museum):
             height=thumb.get("height"),
         )
 
+    # Searched by the must-clause below; ``q`` alone only ranks and matches
+    # the whole collection when nothing fits.
+    search_fields = (
+        "title",
+        "alt_titles",
+        "artist_title",
+        "artist_display",
+        "style_titles",
+        "subject_titles",
+        "term_titles",
+        "classification_titles",
+        "place_of_origin",
+        "medium_display",
+    )
+
     def search(self, query: str, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
-        resp = self.http.get(
+        must: list[dict[str, Any]] = []
+        if query.strip():
+            must.append(
+                {
+                    "simple_query_string": {
+                        "query": query,
+                        "fields": list(self.search_fields),
+                        "default_operator": "and",
+                    }
+                }
+            )
+        resp = self.http.post(
             f"{self.api}/artworks/search",
-            params={
+            json={
                 "q": query,
                 "limit": limit,
                 "page": page,
-                "fields": self.fields,
-                "query[term][is_public_domain]": "true",
+                "fields": self.fields.split(","),
+                "query": {"bool": {"must": must, "filter": [{"term": {"is_public_domain": True}}]}},
             },
         )
         resp.raise_for_status()
