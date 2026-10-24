@@ -96,12 +96,12 @@ Cel: potwierdzić protokół na Twoim egzemplarzu i poznać zachowanie ekranu.
 ### Etap 2 — Serwer (add-on Home Assistant / kontener na Synology)
 
 - [x] 2.1 Model danych (SQLite): `Item` (dzieło / zdjęcie / własna praca, metadane, licencja, paleta, tagi kolorów, ocena dla e-papieru), playlisty, ustawienia i stan odtwarzacza, historia; cache podglądów. *(`User` w 2.7.)*
-- [x] 2.2 Biblioteka: upload własnych prac z opisem, import z muzeów (Art Institute of Chicago, Cleveland, The Met, Wikimedia Commons), biblioteka startowa i domyślne playlisty przy pierwszym uruchomieniu, ocena „przydatności dla e-papieru”. *(Do zrobienia: Polona i muzea narodowe — weryfikacja API.)* Źródła według priorytetów:
+- [x] 2.2 Biblioteka: upload własnych prac z opisem, import z muzeów (Art Institute of Chicago, Cleveland, The Met, Wikimedia Commons), biblioteka startowa i domyślne playlisty przy pierwszym uruchomieniu, ocena „przydatności dla e-papieru”. *(Do zrobienia: Polona i muzea narodowe — weryfikacja API. Sztuka polska jest na razie tylko z Wikimedia Commons, bo AIC, Cleveland i The Met jej prawie nie mają; Commons ogranicza zapytania z serwerowni, z sieci domowej działa.)* Źródła według priorytetów:
   - wielkie muzea: The Met, Art Institute of Chicago, Rijksmuseum, Cleveland Museum of Art;
   - sztuka polska: Polona (grafiki, plakaty, ilustracje), muzea narodowe (do sprawdzenia, czy mają API i licencje);
   - drzeworyt japoński (ukiyo-e) z kolekcji powyższych muzeów;
   - plakaty i ilustracje (polska szkoła plakatu, ilustracje botaniczne, mapy).
-- [ ] 2.3 Synchronizacja udostępnionego albumu iCloud z publicznego linku: nowe zdjęcia, usunięcia, metadane (data i godzina, miejsce, kto dodał, podpis), deduplikacja.
+- [x] 2.3 Synchronizacja udostępnionego albumu iCloud z publicznego linku: nowe zdjęcia, usunięcia, metadane (data i godzina, miejsce, kto dodał, podpis), deduplikacja. *(Do sprawdzenia na prawdziwym albumie: API jest nieudokumentowane.)*
 - [x] 2.4 Harmonogram: **tryb ramki** (album iCloud albo obrazy, wybrane kolekcje), częstotliwość osobno dla ładowarki i baterii (domyślnie raz dziennie rano), godziny ciszy, bez powtórek przez N dni, ulubione i wykluczenia, przypięcie. Zmiana obrazu co najmniej raz na 3 dni (ochrona panelu).
 - [x] 2.5 Zdjęcie z rolki: wysyłka z czasem wyświetlania (do następnej zmiany / X godzin lub dni / na stałe), po czym wraca harmonogram.
 - [ ] 2.6 Polityka zasilania (wg wyników E6–E8): tryb „ładowarka” / „bateria”, monitorowanie baterii, powiadomienia.
@@ -116,7 +116,7 @@ Cel: potwierdzić protokół na Twoim egzemplarzu i poznać zachowanie ekranu.
 ### Etap 3 — Aplikacja iOS (po polsku, TestFlight)
 
 - [x] Szkielet: połączenie z serwerem (adres i token w Keychain), ekran „Teraz na ramce” (podgląd, opis), wysyłanie zdjęcia z presetem, stan ekranu (bateria, firmware).
-- [x] Projekt graficzny „galeryjny” (papier, szeryfowe tytuły, oprawione dzieło, tło w kolorach obrazu, tryb ciemny), ikona; tryb demo z prawdziwymi dziełami bez serwera; zrzuty ekranów w CI.
+- [x] Projekt graficzny „galeryjny” (papier, szeryfowe tytuły, oprawione dzieło, tło w kolorach obrazu, tryb ciemny), ikona; tryb demo z prawdziwymi dziełami bez serwera (obrazy i podglądy „na ramce” wbudowane w aplikację); zrzuty ekranów w CI.
 - [x] Playlisty: inteligentne (artyści, style, tematy, kolorystyka, epoka, słowa kluczowe, ulubione, „najlepsze na e-papier”) z podglądem na żywo i ręczne; odtwarzanie na ramce.
 - [x] Ramka: bateria, zasilanie/ładowanie, połączenie, czuwanie Wi-Fi, następna zmiana; budzenie i usypianie.
 - [ ] 3.1 Wykrywanie serwera przez Bonjour i parowanie kodem QR (token użytkownika), działanie przez Tailscale / VPN poza domem.
