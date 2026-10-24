@@ -51,6 +51,7 @@ adresów obrazów), jeśli token jest ustawiony.
 | Biblioteka | `GET /api/library/items` (filtry: `q`, `artist`, `style`, `subject`, `color`, `kind`, `favorites`, `sort`), `GET /api/library/facets`, `GET/PATCH/DELETE /api/library/items/{id}`, `GET …/{id}/thumb`, `…/image`, `…/preview` (symulacja e-papieru; opcjonalnie `?settings=<JSON>` z orientacją i prezentacją do podglądu przed zapisaniem), `POST …/{id}/show`, `POST /api/library/upload` |
 | Muzea | `GET /api/museums`, `GET /api/museums/{source}/search`, `POST /api/museums/{source}/import`, `POST /api/museums/{source}/import-search`, `GET /api/jobs[/{id}]` |
 | Playlisty | `GET/POST /api/playlists`, `POST /api/playlists/preview`, `GET/PUT/DELETE /api/playlists/{id}`, `POST/DELETE /api/playlists/{id}/items`, `POST /api/playlists/{id}/play` |
+| Kalibracja kolorów | `GET /api/calibration` (paleta w użyciu), `POST …/chart` (plansza na ramkę, 30 min), `POST …/measure` (multipart: `file`, `corners`), `GET …/candidates/{id}/chart.jpg`, `GET …/candidates/{id}/preview/{item}`, `POST …/apply`, `POST …/cancel`, `DELETE /api/calibration` (powrót do domyślnej) |
 | Jednorazowe zdjęcie | `POST /api/display` (multipart: `file`, `preset`, `title`, `hold`), `POST /api/device/push`, `GET /api/now`, `GET /api/previews/{id}.png` |
 | Diagnostyka | `GET /api/health`, `GET /api/presets`, `GET /api/debug/panel-requests` |
 

@@ -19,7 +19,7 @@ configuration:
     description: Bearer token required by the iOS app and tools.
   palette:
     name: Palette
-    description: Built-in palette name or path to a calibrated palette JSON.
+    description: Built-in palette name or path to a palette JSON. A palette measured in the app (/data/palette.json) takes precedence.
   seed_library:
     name: Starter library
     description: Fill an empty library with public-domain works from museum collections on first start.

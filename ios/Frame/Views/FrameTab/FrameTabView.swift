@@ -21,6 +21,7 @@ struct FrameTabView: View {
                         PresentationSection(settings: binding)
                         ScreenSection(settings: binding)
                     }
+                    ColorsSection()
                     ServerSection()
                 }
                 .padding(.horizontal, Theme.gutter)
@@ -515,6 +516,58 @@ struct ScreenSection: View {
                         .foregroundStyle(Theme.inkSoft)
                 }
             }
+        }
+    }
+}
+
+/// The palette the server renders with, and the way to measure the real one.
+struct ColorsSection: View {
+    @Environment(AppModel.self) private var model
+    @State private var calibrating = false
+    @State private var confirmReset = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            SectionHeader(title: "Kolory ekranu", subtitle: "Jak naprawdę wyglądają farby Twojej ramki")
+            Card {
+                if let info = model.calibration {
+                    HStack(spacing: 8) {
+                        ForEach(info.palette.colors) { ink in
+                            Circle()
+                                .fill(Color(rgb: ink.perceived))
+                                .frame(width: 30, height: 30)
+                                .overlay(Circle().strokeBorder(Theme.inkSoft.opacity(0.4), lineWidth: 0.75))
+                                .accessibilityLabel(Names.ink(ink.name))
+                        }
+                    }
+                    Text(info.calibrated ? "Zmierzone w aplikacji" : "Domyślne: pomiar innego panelu Spectra 6")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(Theme.ink)
+                }
+                Text("Obraz jest liczony według tych kolorów. Pomiar Twojej ramki, w Twoim świetle, daje wierniejsze barwy.")
+                    .font(.caption)
+                    .foregroundStyle(Theme.inkSoft)
+                Button {
+                    calibrating = true
+                } label: {
+                    Label("Kalibruj kolory", systemImage: "eyedropper.halffull")
+                }
+                .buttonStyle(PrimaryButtonStyle())
+                if model.calibration?.calibrated == true {
+                    Button("Przywróć domyślne kolory", role: .destructive) { confirmReset = true }
+                        .font(.subheadline.weight(.medium))
+                        .frame(maxWidth: .infinity)
+                }
+            }
+        }
+        .sheet(isPresented: $calibrating) { CalibrationFlow() }
+        .confirmationDialog("Przywrócić domyślne kolory?", isPresented: $confirmReset, titleVisibility: .visible) {
+            Button("Przywróć", role: .destructive) { Task { await model.resetCalibration() } }
+        } message: {
+            Text("Ramka przerysuje obraz według domyślnej palety.")
+        }
+        .onAppear {
+            if LaunchRoute.screen.hasPrefix("calibration") { calibrating = true }
         }
     }
 }

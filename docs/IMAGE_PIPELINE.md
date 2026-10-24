@@ -66,10 +66,12 @@ Pełna lista parametrów: `GET /api/presets` albo modele `RenderSettings`,
 
 ## Kalibracja (Etap 1)
 
-1. `uv run frame testchart palette p.png && uv run frame push p.png --raw`
-2. Zdjęcie iPhonem według zasad z [EXPERIMENTS.md](EXPERIMENTS.md), z białą kartką w kadrze.
-3. *(do napisania)* `frame calibrate zdjecie.jpg`: wykrywa znaczniki w rogach, uśrednia pola, normalizuje względem kartki i zapisuje `palettes/em32dx.json`.
-4. W add-onie ustawiamy `palette: /data/palette.json` (albo przez aplikację).
+W aplikacji: *Ramka → Kolory ekranu → Kalibruj kolory*.
+
+1. Ramka wyświetla planszę `palette` (sześć pól farb, czarne znaczniki w rogach) i trzyma ją przez 30 minut.
+2. Zdjęcie iPhonem: na wprost, w świetle dziennym, bez lampy błyskowej i odblasków. Aplikacja zgaduje narożniki ekranu (Vision), użytkownik je poprawia; fioletowe ramki pokazują, gdzie serwer zmierzy farby.
+3. Serwer (`imaging/calibrate.py`) prostuje zdjęcie transformacją perspektywiczną, bierze medianę środkowej części każdego pola w świetle liniowym i normalizuje wynik tak, by biała farba była neutralną szarością o poziomie palety referencyjnej. Ekspozycja i balans bieli zdjęcia nie mają więc znaczenia: dithering potrzebuje tylko wzajemnych relacji farb, a odległości w OKLab skalują się z jasnością jednakowo. Odrzuca zdjęcia, na których narożniki nie trafiły w planszę, i ostrzega przed nierówno oświetlonymi polami.
+4. Aplikacja pokazuje farby przed i po oraz bieżący obraz w obu wersjach. Po zatwierdzeniu paleta trafia do `/data/palette.json` (ma pierwszeństwo przed opcją `palette` add-onu), a ramka przerysowuje obraz. „Przywróć domyślne kolory” usuwa plik.
 
 Paletę można też poprawiać ręcznie: `uv run frame palette --export p.json`,
 edycja pól `perceived`, a potem `--palette p.json` w `frame render`.

@@ -32,6 +32,7 @@ targets:
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
         NSLocalNetworkUsageDescription: Frame łączy się z serwerem ramki w Twojej sieci domowej.
+        NSCameraUsageDescription: Frame robi zdjęcie ramki z planszą, żeby zmierzyć jej kolory.
         NSBonjourServices:
           - _frame._tcp
         NSAppTransportSecurity:
