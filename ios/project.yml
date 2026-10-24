@@ -36,8 +36,10 @@ targets:
         NSBonjourServices:
           - _frame._tcp
         NSAppTransportSecurity:
-          # The frame server lives on the LAN and speaks plain HTTP.
-          NSAllowsLocalNetworking: true
+          # The frame server speaks plain HTTP, and home LANs can use non-private
+          # ranges (e.g. 192.100.x.x) that NSAllowsLocalNetworking does not cover.
+          # Do not add NSAllowsLocalNetworking back: it makes iOS ignore this key.
+          NSAllowsArbitraryLoads: true
         # Only system TLS (URLSession): exempt, so TestFlight skips the export question.
         ITSAppUsesNonExemptEncryption: false
     settings:
