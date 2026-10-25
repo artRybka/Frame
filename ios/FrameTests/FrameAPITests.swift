@@ -206,8 +206,10 @@ final class FrameAPITests: XCTestCase {
 
     func testMuseumThumbnailFallsBackToTheServer() async throws {
         let demo = DemoBackend()
-        let theme = try XCTUnwrap(try await demo.themes().first)
-        var item = try XCTUnwrap(try await demo.themePage(key: theme.key, page: 1).items.first).item
+        let themes = try await demo.themes()
+        let theme = try XCTUnwrap(themes.first)
+        let page = try await demo.themePage(key: theme.key, page: 1)
+        var item = try XCTUnwrap(page.items.first).item
         item.thumbUrl = "https://www.artic.edu/iiif/2/abc/full/600,/0/default.jpg"
         let remote = RemoteItem(item: item, inLibrary: false)
         XCTAssertEqual(remote.thumb, .url(try XCTUnwrap(URL(string: item.thumbUrl))))
