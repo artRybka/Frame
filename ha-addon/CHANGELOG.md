@@ -1,6 +1,6 @@
 # Changelog
 
-## Niewydane
+## 0.4.0
 
 - Albumy iCloud jako playlisty (`kind: "album"` z `album: {url, order}`):
   wiele albumów, każdy z kolejnością zdjęć (losowo, najnowsze, najstarsze,
@@ -21,6 +21,24 @@
 - „Styl obrazu” dobierany automatycznie do każdego obrazu (domyślnie):
   bez koloru czarno-biały, zdjęcia jako zdjęcia, drzeworyty, litografie
   i plakaty jako grafika, reszta jako obraz. Ręczny wybór dalej możliwy.
+
+- Dzieła z internetu zamiast importowanej biblioteki: serwer trzyma katalog
+  miniatur (do `FRAME_CATALOGUE_MB`, domyślnie 1000 MB, dorasta co godzinę)
+  i pamięć podręczną oryginałów (`FRAME_IMAGE_CACHE_MB`, 500 MB). Domyślna
+  rotacja to Propozycje; nowe `/api/suggestions`, `/api/themes`,
+  `/api/browse`. Dzieła zaimportowane wcześniej z muzeów są jednorazowo
+  usuwane (własne prace i zdjęcia zostają).
+
+- Pojedyncze dzieła można usuwać z playlist; z inteligentnej trafiają do
+  wyjątków (`rules.exclude_ids`).
+
+- Postęp obrazu w drodze na ramkę: `GET /api/progress` (też `progress` w
+  `GET /api/player`), etapy przetwarzania, ładowania i wyświetlania z
+  szacowanym czasem. Podgląd kadru przed zapisem (`?framing=` w
+  `…/preview`, `?automatic=true` w `…/framing`).
+
+- Tytuły, daty i opisy z Wikimedia Commons bez znaczników wikitekstu;
+  istniejące pozycje poprawiane przy starcie.
 
 ## 0.3.0
 

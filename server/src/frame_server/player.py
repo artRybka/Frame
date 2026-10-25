@@ -21,10 +21,10 @@ from .imaging.grids import MAX_PHOTOS, MIN_PHOTOS
 from .imaging.layout import Fit
 from .imaging.text import TextBlock
 from .library import AlbumOrder, Item, ItemKind, Job, Playlist, PlaylistKind, PlaylistRules
+from .library.colors import tint_spread
 from .library.icloud import refetchable
 from .library.museums import MUSEUMS, Kind
 from .library.seed import PACKS, theme_of_the_day
-from .library.colors import tint_spread
 from .library.style import AUTO, auto_preset
 from .progress import Stage
 from .schedule import FrameSettings, in_quiet_hours, next_change
