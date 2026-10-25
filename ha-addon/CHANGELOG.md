@@ -7,7 +7,8 @@
   (`change_every_days`, 1–3). Cisza nocna trwa od `quiet_start` do
   porannej zmiany; `quiet_end`, `interval_minutes` i
   `interval_minutes_battery` znikają, a stare ustawienia zamieniają się
-  same. Polityka zasilania jest ta sama przy ładowarce i na baterii.
+  same. Harmonogram jest ten sam przy ładowarce i na baterii; głęboki sen
+  w nocy tylko na baterii, na ładowarce zdjęcia idą od razu.
 
 ## 0.3.0
 

@@ -309,7 +309,7 @@ struct ScheduleSection: View {
                         Text("do \(settings.quietEnd ?? "—")").foregroundStyle(Theme.inkSoft)
                     }
                     .font(.subheadline)
-                    Text("Cisza trwa do najbliższej zmiany obrazu. Ramka śpi wtedy z wyłączonym Wi-Fi i budzi się sama na tę zmianę, a zdjęcia wysłane w nocy pojawią się rano. Tak samo przy zasilaczu i na baterii.")
+                    Text("Cisza trwa do najbliższej zmiany obrazu. Na baterii ramka śpi wtedy z wyłączonym Wi-Fi i budzi się sama na tę zmianę, a zdjęcia wysłane w nocy pojawią się rano. Przy zasilaczu trafiają na ramkę od razu.")
                         .font(.caption)
                         .foregroundStyle(Theme.inkSoft)
                 }

@@ -1,9 +1,11 @@
-"""Power policy, the same on the charger and on battery (docs/WAKE.md).
+"""Power policy (docs/WAKE.md). The schedule is the same on the charger and
+on battery; only the night differs.
 
 By day the panel sleeps with network standby on, so Wake-on-LAN (2.4 GHz
 Wi-Fi) wakes it for a picture sent from the app or for a change. In quiet
-hours it sleeps with the Wi-Fi off, and its own alarm (MDC on-timer) wakes
-it for the morning change that ends them. Whatever could not reach the
+hours on battery it sleeps with the Wi-Fi off, and its own alarm (MDC
+on-timer) wakes it for the morning change that ends them; on the charger
+pictures keep going out at once. Whatever could not reach the
 panel waits as a pending push and goes out as soon as the panel shows up
 again: after the alarm or a press of its button.
 """
@@ -82,9 +84,13 @@ class PowerManager:
             self._save(state)
 
     def deep_asleep(self, now: datetime) -> bool:
-        """In quiet hours the Wi-Fi is off: nothing reaches the panel."""
+        """In quiet hours on battery the Wi-Fi is off: nothing reaches the panel."""
         settings = self.service.player.settings
-        return in_quiet_hours(now, settings) and self.state.night_of == night_key(now, settings)
+        return (
+            self.service.status.on_battery
+            and in_quiet_hours(now, settings)
+            and self.state.night_of == night_key(now, settings)
+        )
 
     # -- panel ---------------------------------------------------------------
 
@@ -147,10 +153,11 @@ class PowerManager:
         settings = service.player.settings
         state = self.state
         if in_quiet_hours(now, settings):
-            # A change at the very start of quiet hours goes out first.
-            if state.night_of != night_key(now, settings) and not service.player.change_starting(
-                now
-            ):
+            # On battery only; a change at the very start of quiet hours
+            # goes out first.
+            tonight = state.night_of == night_key(now, settings)
+            starting = service.player.change_starting(now)
+            if service.status.on_battery and not tonight and not starting:
                 await self.enter_night(now, settings)
             return
 

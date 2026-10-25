@@ -52,7 +52,8 @@ def test_night_key_and_alarm() -> None:
 async def test_night_sleep_alarm_and_pending_push(
     tmp_path: Path, server_ssl: ssl.SSLContext, charger: bool
 ) -> None:
-    """The same on the charger and on battery."""
+    """On battery the panel sleeps deeply at night; on the charger it stays
+    reachable and pictures go out at once."""
 
     def handler(command: int, data: bytes) -> tuple[bool, bytes]:
         if command == CMD_STATUS:
@@ -80,6 +81,13 @@ async def test_night_sleep_alarm_and_pending_push(
         service.ensure_initial_content()
         await service.status.refresh()
         assert service.status.on_battery is not charger
+
+        if charger:
+            await service.power.tick(_at("2026-10-25T22:01"))
+            assert (CMD_POWER, b"\x00") not in panel.received
+            assert (CMD_NETWORK_STANDBY, b"\x00") not in panel.received
+            assert not service.power.deep_asleep(_at("2026-10-25T23:00"))
+            return
 
         # Evening: alarm for the morning change, Wi-Fi off, panel off.
         await service.power.tick(_at("2026-10-25T22:01"))

@@ -82,7 +82,7 @@ E8. Zakładamy przejście na 2,4 GHz. Mateusz ustalił zasadę:
 - **w dzień** zdjęcie z aplikacji trafia na ramkę od razu: ekran śpi
   z włączonym network standby, a serwer budzi go Wake-on-LAN (seria
   pakietów przez 15 s, broadcast i unicast);
-- **w ciszy nocnej** ekran śpi całkowicie: serwer ustawia budzik `0x25`
+- **w ciszy nocnej** ekran na baterii śpi całkowicie: serwer ustawia budzik `0x25`
   na koniec ciszy (codziennie), wyłącza network standby i wyłącza ekran.
   Cisza zaczyna się o godzinie ustawionej w aplikacji i trwa do najbliższej
   godziny zmiany obrazu, więc budzik budzi ekran na poranną zmianę;
@@ -96,9 +96,10 @@ E8. Zakładamy przejście na 2,4 GHz. Mateusz ustalił zasadę:
 - budzik jest ustawiony na stałe (codziennie), także w dzień, więc nawet
   gdy WoL zawiedzie, ekran wróci najpóźniej rano. Bez ciszy nocnej budzik
   dzwoni na pierwszą zmianę dnia;
-- **ta sama polityka przy ładowarce i na baterii** (polecenie Mateusza,
-  2026-10-25): jeden zestaw ustawień, a w nocy także ekran na ładowarce
-  śpi do porannej zmiany. Zmiana wypadająca dokładnie na początek ciszy
+- **jeden harmonogram przy ładowarce i na baterii** (polecenie Mateusza,
+  2026-10-25): te same godziny zmiany. Różni się tylko noc: głęboki sen
+  dotyczy wyłącznie baterii, a na ładowarce zdjęcia trafiają na ekran od
+  razu także w ciszy nocnej. Zmiana wypadająca dokładnie na początek ciszy
   idzie na ekran, zanim ten zaśnie.
 
 Uwaga sieciowa: serwer na Synology (192.100.3.185) jest w innej podsieci niż

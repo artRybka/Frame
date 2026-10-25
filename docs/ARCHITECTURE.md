@@ -25,7 +25,7 @@ App/CLI ──POST /api/display──▶ serwer
                               odświeżenie panelu (kilkanaście sekund)
 ```
 
-Gdy ekran śpi, a mamy jego MAC, serwer wysyła Wake-on-LAN i ponawia połączenie. W ciszy nocnej (przy ładowarce i na baterii tak samo) ekran śpi z wyłączonym Wi-Fi i budzi się sam na poranną zmianę (budzik MDC `0x25`); obraz, który nie dotarł, czeka na pobudkę ([WAKE.md](WAKE.md)).
+Gdy ekran śpi, a mamy jego MAC, serwer wysyła Wake-on-LAN i ponawia połączenie. W ciszy nocnej na baterii ekran śpi z wyłączonym Wi-Fi i budzi się sam na poranną zmianę (budzik MDC `0x25`); obraz, który nie dotarł, czeka na pobudkę ([WAKE.md](WAKE.md)).
 
 ## Przepływ docelowy: rotacja (Etap 2)
 
@@ -62,7 +62,8 @@ tasowana, bez powtórek przez `avoid_repeat_days`. Obraz zmienia się
 o ustawionych godzinach (`change_times`, domyślnie 07:00), codziennie albo
 co 2–3 dni licząc od ostatniej zmiany, tak samo przy ładowarce i na
 baterii. Cisza nocna trwa od `quiet_start` do najbliższej godziny zmiany,
-więc budzik ekranu zawsze dzwoni na zmianę. Starsze ustawienia z interwałem
+więc budzik ekranu zawsze dzwoni na zmianę; na ładowarce w ciszy zdjęcia
+idą od razu. Starsze ustawienia z interwałem
 zamieniają się same na godziny, które ten interwał dawał. Przypięcie (`hold`) wstrzymuje rotację do określonej chwili
 albo na stałe. Stan i historia są w SQLite, więc przetrwają restart.
 
