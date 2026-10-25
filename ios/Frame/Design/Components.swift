@@ -147,6 +147,20 @@ struct ArtCard: View {
     }
 }
 
+/// "Dodaj do kolejki" in a picture's context menu: the next one on the frame.
+struct QueueButton: View {
+    @Environment(AppModel.self) private var model
+    let itemID: String
+
+    var body: some View {
+        Button("Dodaj do kolejki", systemImage: QueueButton.symbol) {
+            Task { await model.queueNext(itemID: itemID) }
+        }
+    }
+
+    static let symbol = "text.line.first.and.arrowtriangle.forward"
+}
+
 /// Two-column waterfall layout using the pictures' aspect ratios.
 struct MasonryGrid<Content: View>: View {
     let items: [ItemSummary]

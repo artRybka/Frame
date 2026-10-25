@@ -101,6 +101,7 @@ struct PlaylistDetailView: View {
             NavigationLink(value: item.id) { ArtCard(item: item) }
                 .buttonStyle(.plain)
                 .contextMenu {
+                    QueueButton(itemID: item.id)
                     Button("Usuń z playlisty", systemImage: "minus.circle", role: .destructive) { remove(item) }
                 }
         }

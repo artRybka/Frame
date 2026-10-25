@@ -22,6 +22,8 @@ actor DemoBackend: FrameBackend {
     private var playlistsByID: [Int: Playlist]
     private var settingsValue = FrameSettings.defaults
     private var queue: [String] = []
+    /// Added with "Dodaj do kolejki": at the front of `queue`.
+    private var queued: [String] = []
     private var history: [String] = []
     private var currentID: String?
     private var holdValue: Hold?
@@ -209,6 +211,7 @@ actor DemoBackend: FrameBackend {
         return PlayerView(
             playlist: playlist, current: nowShowing,
             upcoming: queue.prefix(8).compactMap { id in items.first { $0.id == id }?.summary },
+            queued: queued,
             history: history.suffix(8).reversed().compactMap { id in items.first { $0.id == id }?.summary },
             hold: holdValue,
             lastChangeAt: ISO8601DateFormatter().string(from: .now.addingTimeInterval(-5400)),
@@ -252,6 +255,7 @@ actor DemoBackend: FrameBackend {
         guard !queue.isEmpty else { return }
         if let currentID { history.append(currentID) }
         currentID = queue.removeFirst()
+        queued.removeAll { $0 == currentID }
         holdValue = nil
         startRun(itemID: currentID)
     }
@@ -320,8 +324,25 @@ actor DemoBackend: FrameBackend {
         if let currentID { history.append(currentID) }
         currentID = itemID
         queue.removeAll { $0 == itemID }
+        queued.removeAll { $0 == itemID }
         _ = try await self.hold(hold)
         startRun(itemID: itemID)
+    }
+
+    func queueNext(itemID: String) async throws {
+        guard items.contains(where: { $0.id == itemID }) else { throw BackendError.notFound }
+        queue.removeAll { $0 == itemID }
+        queue.insert(itemID, at: 0)
+        queued.removeAll { $0 == itemID }
+        queued.insert(itemID, at: 0)
+    }
+
+    func dequeue(itemID: String) async throws -> PlayerView {
+        if queued.contains(itemID) {
+            queued.removeAll { $0 == itemID }
+            queue.removeAll { $0 == itemID }
+        }
+        return try await player()
     }
 
     // MARK: Framing

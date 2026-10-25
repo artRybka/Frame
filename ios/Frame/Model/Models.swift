@@ -278,6 +278,8 @@ struct PlayerView: Codable, Sendable {
     var playlist: PlaylistSummary?
     var current: NowShowing?
     var upcoming: [ItemSummary]
+    /// Those of `upcoming` added with "Dodaj do kolejki"; nil from older servers.
+    var queued: [String]? = nil
     var history: [ItemSummary]
     var hold: Hold?
     var lastChangeAt: String?

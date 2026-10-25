@@ -417,6 +417,15 @@ async def show_item(item_id: str, request: ShowRequest, svc: Svc) -> dict[str, A
     return {"accepted": True, "item_id": item.id}
 
 
+@router.post("/library/items/{item_id}/queue", status_code=202)
+async def queue_item(item_id: str, svc: Svc) -> dict[str, Any]:
+    """The owner's "Dodaj do kolejki": the work is shown at the next change."""
+    item = await _work(svc, item_id, save=True)
+    svc.player.queue_next(item.id)
+    svc.background(svc.player.get_ready())
+    return {"accepted": True, "item_id": item.id}
+
+
 @router.post("/library/upload", response_model=Item)
 async def upload(
     svc: Svc,

@@ -237,6 +237,32 @@ final class AppModel {
         await followPlayer()
     }
 
+    /// Whether the work was added with "Dodaj do kolejki" and waits its turn.
+    func isQueued(_ itemID: String) -> Bool {
+        player?.queued?.contains(itemID) ?? false
+    }
+
+    /// "Dodaj do kolejki": the work is the next one on the frame.
+    func queueNext(itemID: String) async {
+        do {
+            try await backend.queueNext(itemID: itemID)
+        } catch {
+            show(error)
+            return
+        }
+        await refreshPlayer()
+        toast = player?.hold?.forever == true
+            ? "W kolejce jako następne — po odpięciu obrazu"
+            : "W kolejce jako następne"
+    }
+
+    func dequeue(itemID: String) async {
+        do {
+            player = try await backend.dequeue(itemID: itemID)
+            toast = "Usunięto z kolejki"
+        } catch { show(error) }
+    }
+
     func play(_ playlist: PlaylistSummary) async {
         await perform { try await self.backend.play(playlistID: playlist.id) }
         settings?.playlistId = playlist.id

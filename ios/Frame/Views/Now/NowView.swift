@@ -87,7 +87,7 @@ struct NowView: View {
                             }
                         }
                         if !upcoming.isEmpty {
-                            Strip(title: "Następne", items: upcoming)
+                            Strip(title: "Następne", items: upcoming, queued: Set(model.player?.queued ?? []))
                         }
                         if !history.isEmpty {
                             Strip(title: "Ostatnio na ramce", items: history)
@@ -267,9 +267,14 @@ struct NowView: View {
         case 0: "Teraz na ramce"
         case -1: "Poprzednio na ramce"
         case ..<0: "Wcześniej na ramce"
-        case 1: "Następny w kolejce"
-        default: "W kolejce, za \(offset) \(Names.changes(offset))"
+        case 1: "Następny w kolejce" + addedLine
+        default: "W kolejce, za \(offset) \(Names.changes(offset))" + addedLine
         }
+    }
+
+    private var addedLine: String {
+        guard let id = browsed?.summary.id, model.isQueued(id) else { return "" }
+        return " · dodany przez Ciebie"
     }
 
     private var hintLine: String {
@@ -551,10 +556,13 @@ struct PhotoFacts: View {
     }
 }
 
-/// Horizontal row of small pictures.
+/// Horizontal row of small pictures; a long press queues one next, or
+/// takes back one added with "Dodaj do kolejki" (marked in the corner).
 struct Strip: View {
+    @Environment(AppModel.self) private var model
     let title: String
     let items: [ItemSummary]
+    var queued: Set<String> = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -567,6 +575,17 @@ struct Strip: View {
                                 ArtImage(ref: .thumb(item.id), placeholder: item.placeholderColor, maxPixel: 400)
                                     .frame(width: 120, height: 92)
                                     .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+                                    .overlay(alignment: .topLeading) {
+                                        if queued.contains(item.id) {
+                                            Image(systemName: QueueButton.symbol)
+                                                .font(.caption2.weight(.bold))
+                                                .foregroundStyle(.white)
+                                                .padding(5)
+                                                .background(Theme.vermilion, in: Circle())
+                                                .padding(5)
+                                                .accessibilityLabel("Dodane do kolejki")
+                                        }
+                                    }
                                     .shadow(color: .black.opacity(0.12), radius: 6, y: 4)
                                 Text(item.title)
                                     .font(.serif(13, weight: .medium))
@@ -576,6 +595,15 @@ struct Strip: View {
                             }
                         }
                         .buttonStyle(.plain)
+                        .contextMenu {
+                            if queued.contains(item.id) {
+                                Button("Usuń z kolejki", systemImage: "minus.circle", role: .destructive) {
+                                    Task { await model.dequeue(itemID: item.id) }
+                                }
+                            } else {
+                                QueueButton(itemID: item.id)
+                            }
+                        }
                     }
                 }
                 .padding(.vertical, 4)

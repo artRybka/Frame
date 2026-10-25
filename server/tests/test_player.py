@@ -501,3 +501,78 @@ def test_old_default_styles_become_automatic(service) -> None:
     settings.art.preset = "painting"
     player.save_settings(settings)
     assert Player(service).settings.art.preset == "painting"
+
+
+async def test_work_added_to_the_queue_is_shown_next(service, monkeypatch) -> None:
+    from frame_server import service as service_module
+
+    a, _, c, d = (_add(service, n, (200, 40 * n, 40), "Ala") for n in range(4))
+    playlist = service.library.save_playlist(
+        Playlist(name="Ala", rules=PlaylistRules(artists=["Ala"]))
+    )
+    settings = service.player.settings
+    settings.playlist_id = playlist.id
+    settings.shuffle = False
+    service.player.save_settings(settings)
+    player = service.player
+    await player.next()
+    outsider = _add(service, 9, (40, 40, 200), "Ola")  # not in the playlist
+
+    player.queue_next(c.id)
+    player.queue_next(outsider.id)  # the latest pick goes first
+    assert [i.id for i in player.upcoming(3)][:2] == [outsider.id, c.id]
+    assert player.state.queue.count(c.id) == 0  # not shown twice
+
+    renders = []
+    real = service_module.render
+    monkeypatch.setattr(
+        service_module, "render", lambda *a, **kw: renders.append(1) or real(*a, **kw)
+    )
+    await player.render_ahead()
+    assert len(renders) == 1
+    shown = await player.next()
+    assert shown.id == outsider.id
+    assert len(renders) == 2  # drawn ahead; only the one after it is new
+    assert (await player.next()).id == c.id
+    assert player.state.requested == []
+    assert c.id not in [i.id for i in player.upcoming(8)]  # back in its own turn
+
+    # A pick survives a new playlist and can be taken back.
+    player.queue_next(a.id)
+    player.queue_next(d.id)
+    settings.playlist_id = None
+    player.save_settings(settings)
+    assert player.state.requested == [d.id, a.id]
+    player.dequeue(d.id)
+    assert player.upcoming(1)[0].id == a.id
+
+
+async def test_queued_work_waits_while_its_original_is_unavailable(service) -> None:
+    cached = _artwork(service, 1, cached=True)
+    missing = _artwork(service, 2, cached=False)
+    _offline(service)
+    player = service.player
+    player.queue_next(missing.id)
+
+    shown = await player.next()
+    assert shown is not None and shown.id == cached.id  # took its turn
+    assert player.state.requested == [missing.id]  # still first in line
+
+
+def test_api_adds_a_work_to_the_queue(service) -> None:
+    from frame_server.web import create_app
+
+    app = create_app(service.settings)
+    svc = app.state.service
+    _, b = (_add(svc, n, (40 * n, 40, 200), "Ala") for n in range(1, 3))
+
+    with TestClient(app) as client:
+        assert client.post(f"/api/library/items/{b.id}/queue").status_code == 202
+        view = client.get("/api/player").json()
+        assert view["upcoming"][0]["id"] == b.id
+        assert view["queued"] == [b.id]
+        assert client.post("/api/library/items/nope:1/queue").status_code == 404
+
+        view = client.delete(f"/api/player/queue/{b.id}").json()
+        assert view["queued"] == []
+        assert client.post("/api/player/next").status_code == 202
