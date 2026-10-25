@@ -210,7 +210,7 @@ struct PlaylistEditorView: View {
             VStack(alignment: .leading, spacing: 10) {
                 SectionHeader(title: "Album udostępniony", subtitle: "Z aplikacji Zdjęcia na iPhonie")
                 HStack(spacing: 10) {
-                    TextField("https://www.icloud.com/sharedalbum/#…", text: $album.url)
+                    TextField("https://photos.icloud.com/shared/album/…", text: $album.url)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .keyboardType(.URL)
