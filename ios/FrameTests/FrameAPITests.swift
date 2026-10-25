@@ -199,10 +199,14 @@ final class FrameAPITests: XCTestCase {
         let still = try await demo.framing(itemID: id, orientation: "landscape")
         XCTAssertEqual(still.windows[0].crop.zoom, 3)
 
-        // The windows' places, to crop right on the preview: beside the picture.
+        // The windows' places, to crop right on the preview: two apart, on the canvas.
         let rects = try saved.windows.map { try XCTUnwrap($0.frame) }
-        XCTAssertTrue(rects.allSatisfy { $0.minX > 0.3 && $0.maxX <= 1.0001 && $0.maxY <= 1.0001 })
-        XCTAssertLessThan(rects[0].maxY, rects[1].minY)
+        let canvas = CGRect(x: 0, y: 0, width: 1, height: 1).insetBy(dx: -0.0001, dy: -0.0001)
+        XCTAssertTrue(rects.allSatisfy { canvas.contains($0) && $0.width > 0.05 && $0.height > 0.05 })
+        XCTAssertFalse(rects[0].intersects(rects[1].insetBy(dx: 0.001, dy: 0.001)))
+        for (window, rect) in zip(saved.windows, rects) {
+            XCTAssertEqual(rect.width * 1280 / (rect.height * 720), window.aspect, accuracy: 0.01)
+        }
 
         let reset = try await demo.resetFraming(itemID: id, orientation: "landscape")
         XCTAssertFalse(reset.windows.contains(where: \.custom))
