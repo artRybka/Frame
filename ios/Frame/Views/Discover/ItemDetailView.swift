@@ -60,6 +60,9 @@ struct ItemDetailView: View {
         }
         .background(Theme.paper)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if let item { itemToolbar(item) }
+        }
         .task(id: itemID) {
             do {
                 item = try await model.backend.item(id: itemID)
@@ -159,26 +162,25 @@ struct ItemDetailView: View {
             .pickerStyle(.segmented)
             .frame(maxWidth: 260)
             if view == .frame {
-                if cropping {
-                    CropTools(itemID: item.id, draft: $draft)
-                        .disabled(saving)
-                }
-                Text(frameHint)
-                    .font(.caption)
-                    .foregroundStyle(Theme.inkSoft)
-                    .multilineTextAlignment(.center)
-                    .contentTransition(.opacity)
-                if cropping, draft.changed {
-                    Button {
-                        Task {
-                            if await saveCrop() { model.toast = "Zapisano kadr" }
+                VStack(spacing: 12) {
+                    if cropping {
+                        // One row of crop tools; on a narrow screen "Zapisz kadr"
+                        // goes under them.
+                        ViewThatFits(in: .horizontal) {
+                            HStack(spacing: 10) { cropTools(item) }
+                            VStack(spacing: 10) { cropTools(item) }
                         }
-                    } label: {
-                        Label("Zapisz kadr", systemImage: "crop").toolChip()
+                        .disabled(saving)
                     }
-                    .buttonStyle(.plain)
-                    .disabled(saving)
+                    if let frameHint {
+                        Text(frameHint)
+                            .font(.caption)
+                            .foregroundStyle(Theme.inkSoft)
+                            .multilineTextAlignment(.center)
+                            .transition(.opacity)
+                    }
                 }
+                .animation(.easeInOut(duration: 0.2), value: draft.changed)
             }
         }
         .padding(.top, 8)
@@ -207,13 +209,29 @@ struct ItemDetailView: View {
         }
     }
 
-    private var frameHint: String {
-        guard cropping else {
-            return "Kadr i passe-partout z bieżącymi ustawieniami, w oryginalnych kolorach. Kolory dopasowuje dopiero ekran."
+    @ViewBuilder
+    private func cropTools(_ item: Item) -> some View {
+        CropTools(itemID: item.id, draft: $draft)
+        if draft.changed {
+            Button {
+                Task {
+                    if await saveCrop() { model.toast = "Zapisano kadr" }
+                }
+            } label: {
+                Label("Zapisz kadr", systemImage: "checkmark").toolChip()
+            }
+            .buttonStyle(.plain)
+            .transition(.opacity)
         }
-        return draft.changed
-            ? "Nowy kadr zapisze się po „Pokaż na ramce”, „Dodaj do kolejki” albo dodaniu do playlisty."
-            : "Przesuń obraz palcem albo rozsuń dwa palce, żeby go wykadrować. Kolory dopasowuje dopiero ekran."
+    }
+
+    /// One short line under the preview; none once the crop is edited, as
+    /// its buttons say the rest.
+    private var frameHint: String? {
+        guard cropping else {
+            return "Podgląd w oryginalnych kolorach. Kolory dopasowuje dopiero ekran."
+        }
+        return draft.changed ? nil : "Przesuń obraz palcem albo rozsuń dwa palce, żeby go wykadrować."
     }
 
     private func aspect(_ item: Item) -> Double {
@@ -240,11 +258,34 @@ struct ItemDetailView: View {
         }
     }
 
+    /// The two ways onto the frame, side by side: now, or next. Keeping it
+    /// (favourite, playlist, hiding it) is in the navigation bar.
     private func actions(_ item: Item) -> some View {
-        VStack(spacing: 12) {
-            mainActions(item)
+        HStack(spacing: 12) {
+            showButton
             queueButton(item)
         }
+        .labelStyle(ActionLabelStyle())
+    }
+
+    /// "Pokaż na ramce": until the next change on a tap, longer from its menu.
+    private var showButton: some View {
+        Menu {
+            ForEach(HoldSpec.allCases) { spec in
+                Button(spec.label) {
+                    Task { await show(spec) }
+                }
+            }
+        } label: {
+            Label("Pokaż na ramce", systemImage: "photo.artframe")
+                .foregroundStyle(Theme.paper)  // dark text on the lighter dark-mode accent
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(Theme.accent, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        } primaryAction: {
+            Task { await show(.untilNextChange) }
+        }
+        .disabled(saving)
     }
 
     /// "Dodaj do kolejki": shown at the next change; once it is first in
@@ -262,37 +303,32 @@ struct ItemDetailView: View {
                 systemImage: next ? "checkmark" : QueueButton.symbol
             )
             .contentTransition(.symbolEffect(.replace))
+            .foregroundStyle(Theme.ink)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .background(Theme.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Theme.hairline))
         }
-        .buttonStyle(SecondaryButtonStyle())
-        .disabled(next)
+        .buttonStyle(PressableStyle())
+        .disabled(next || saving)
     }
 
-    private func mainActions(_ item: Item) -> some View {
-        HStack(spacing: 12) {
-            Menu {
-                ForEach(HoldSpec.allCases) { spec in
-                    Button(spec.label) {
-                        Task { await show(spec) }
-                    }
-                }
-            } label: {
-                Label("Pokaż na ramce", systemImage: "photo.artframe")
-                    .font(.headline)
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 15)
-                    .background(Theme.accent, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            } primaryAction: {
-                Task { await show(.untilNextChange) }
-            }
-            .disabled(saving)
-            iconButton(item.favorite ? "heart.fill" : "heart", tint: item.favorite ? Theme.vermilion : Theme.ink) {
+    /// Favourite and the rest of the picture's options, top right.
+    @ToolbarContentBuilder
+    private func itemToolbar(_ item: Item) -> some ToolbarContent {
+        ToolbarItemGroup(placement: .topBarTrailing) {
+            Button {
                 Task {
                     if let updated = await model.setFavorite(item.id, !item.favorite) { self.item = updated }
                 }
+            } label: {
+                Image(systemName: item.favorite ? "heart.fill" : "heart")
+                    .foregroundStyle(item.favorite ? Theme.vermilion : Theme.ink)
+                    .contentTransition(.symbolEffect(.replace))
             }
-            iconButton("text.badge.plus", tint: Theme.ink) { showingPlaylists = true }
+            .accessibilityLabel(item.favorite ? "Usuń z ulubionych" : "Dodaj do ulubionych")
             Menu {
+                Button("Dodaj do playlisty", systemImage: "text.badge.plus") { showingPlaylists = true }
                 Button(item.excluded ? "Pokazuj ponownie" : "Nie pokazuj na ramce", systemImage: "eye.slash") {
                     Task {
                         if let updated = try? await model.backend.setExcluded(id: item.id, !item.excluded) {
@@ -301,30 +337,14 @@ struct ItemDetailView: View {
                     }
                 }
                 if let url = URL(string: item.url), !item.url.isEmpty {
+                    Divider()
                     Link(destination: url) { Label("Otwórz w muzeum", systemImage: "safari") }
                 }
             } label: {
-                Image(systemName: "ellipsis")
-                    .font(.headline)
-                    .foregroundStyle(Theme.ink)
-                    .frame(width: 50, height: 50)
-                    .background(Theme.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Theme.hairline))
+                Image(systemName: "ellipsis.circle").foregroundStyle(Theme.ink)
             }
+            .accessibilityLabel("Więcej")
         }
-    }
-
-    private func iconButton(_ symbol: String, tint: Color, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: symbol)
-                .font(.headline)
-                .foregroundStyle(tint)
-                .frame(width: 50, height: 50)
-                .background(Theme.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Theme.hairline))
-                .contentTransition(.symbolEffect(.replace))
-        }
-        .buttonStyle(PressableStyle())
     }
 
     private func palette(_ item: Item) -> some View {
@@ -460,5 +480,19 @@ struct AddToPlaylistSheet: View {
             model.toast = "Dodano do playlisty"
             dismiss()
         } catch { model.show(error) }
+    }
+}
+
+/// Icon and title on one line, shrinking a little before it would wrap,
+/// for two actions sharing a row.
+private struct ActionLabelStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 7) {
+            configuration.icon
+            configuration.title
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+        .font(.subheadline.weight(.semibold))
     }
 }
