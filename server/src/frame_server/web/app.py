@@ -94,6 +94,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         yield
         for task in tasks:
             task.cancel()
+        service.library.close()
 
     app = FastAPI(title="Frame", version=__version__, lifespan=lifespan)
     app.state.service = service

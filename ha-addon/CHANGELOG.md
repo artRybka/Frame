@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.1
+
+- Serwer znów startuje w kilka sekund po aktualizacji z 0.3.0. Jednorazowe
+  porządki w bibliotece (czyszczenie opisów z Commons, czysty start
+  katalogu) robiły tysiące zapisów do SQLite, każdy z kilkoma
+  synchronizacjami dysku; na dysku NAS start trwał wiele minut, a port
+  8099 był w tym czasie zamknięty („Nie można połączyć się z serwerem”).
+  Biblioteka trzyma teraz jedno połączenie z bazą (`synchronous=NORMAL`
+  w trybie WAL), a porządki idą w jednej transakcji.
+
 ## 0.4.0
 
 - Albumy iCloud jako playlisty (`kind: "album"` z `album: {url, order}`):

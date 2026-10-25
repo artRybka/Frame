@@ -11,6 +11,7 @@ import json
 import random
 import sqlite3
 import threading
+import weakref
 from collections import Counter
 from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
@@ -119,18 +120,51 @@ class Library:
         path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
         self._items: dict[str, Item] | None = None
+        self._conn: sqlite3.Connection | None = None
+        self._depth = 0  # nested _db() blocks share the outermost transaction
         with self._db() as db:
             db.executescript(SCHEMA)
 
     @contextmanager
     def _db(self) -> Iterator[sqlite3.Connection]:
-        conn = sqlite3.connect(self.path, timeout=30)
-        try:
-            conn.execute("PRAGMA journal_mode=WAL")
-            with conn:
+        """The library's one connection, a transaction per outermost block.
+
+        A connection per call made SQLite checkpoint and sync the disk on
+        every close: several syncs per write, minutes for a few thousand
+        writes on a NAS hard disk. In WAL mode ``synchronous=NORMAL`` stays
+        consistent after a power cut and syncs only at checkpoints."""
+        with self._lock:
+            if self._conn is None:
+                conn = sqlite3.connect(self.path, timeout=30, check_same_thread=False)
+                conn.execute("PRAGMA journal_mode=WAL")
+                conn.execute("PRAGMA synchronous=NORMAL")
+                self._conn = conn
+                weakref.finalize(self, conn.close)
+            conn = self._conn
+            if self._depth:
                 yield conn
-        finally:
-            conn.close()
+                return
+            self._depth += 1
+            try:
+                with conn:
+                    yield conn
+            except BaseException:
+                self._items = None  # the cache may hold rolled back changes
+                raise
+            finally:
+                self._depth -= 1
+
+    @contextmanager
+    def batch(self) -> Iterator[None]:
+        """Make the writes inside one transaction (one disk sync for all)."""
+        with self._db():
+            yield
+
+    def close(self) -> None:
+        with self._lock:
+            if self._conn is not None:
+                self._conn.close()
+                self._conn = None
 
     # -- items --------------------------------------------------------------
 
