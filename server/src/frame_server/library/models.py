@@ -119,6 +119,9 @@ class PlaylistRules(BaseModel):
     artists: list[str] = Field(default_factory=list)
     styles: list[str] = Field(default_factory=list)
     subjects: list[str] = Field(default_factory=list)
+    #: Styles, subjects, periods and techniques from library.vocabulary
+    #: (``"subject:sea"``, ``"years:1880-1914"``).
+    terms: list[str] = Field(default_factory=list)
     colors: list[str] = Field(default_factory=list)
     kinds: list[ItemKind] = Field(default_factory=list)
     sources: list[str] = Field(default_factory=list)
@@ -172,6 +175,8 @@ class Playlist(BaseModel):
     rules: PlaylistRules = Field(default_factory=PlaylistRules)
     item_ids: list[str] = Field(default_factory=list)  # manual and album playlists
     album: AlbumSource | None = None  # album playlists
+    #: The Discover theme the playlist was made from.
+    theme: str | None = None
     created_at: str = ""
     updated_at: str = ""
 
@@ -186,6 +191,7 @@ class PlaylistSummary(BaseModel):
     cover_item_ids: list[str]
     album: AlbumSource | None = None
     album_sync: AlbumSync | None = None
+    theme: str | None = None
 
 
 class FacetValue(BaseModel):

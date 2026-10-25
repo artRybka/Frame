@@ -24,8 +24,9 @@ from .library import AlbumOrder, Item, ItemKind, Job, Playlist, PlaylistKind, Pl
 from .library.colors import tint_spread
 from .library.icloud import refetchable
 from .library.museums import MUSEUMS, Kind
-from .library.seed import PACKS, theme_of_the_day
 from .library.style import AUTO, auto_preset
+from .library.themes import SEARCHABLE, theme_of_the_day
+from .library.vocabulary import is_manuscript
 from .progress import Stage
 from .schedule import FrameSettings, in_quiet_hours, next_change
 
@@ -46,6 +47,8 @@ RETRY_AFTER = timedelta(minutes=15)
 SUGGESTIONS_KEY = "suggestions"
 #: Set once the museum works imported before the catalogue are gone.
 RESET_KEY = "library_reset"
+#: Set once the catalogue's manuscripts are gone.
+MANUSCRIPTS_KEY = "manuscripts_dropped"
 #: A rotation with fewer pictures not shown lately asks museums for more,
 #: up to ``POOL_SIZE``; Suggestions remember at most ``POOL_MAX`` works.
 POOL_LOW = 8
@@ -592,7 +595,7 @@ class Player:
                 return None
             artists = self.taste()
             theme = theme_of_the_day(utcnow().date())
-            queries = [(source, query) for source, query, _ in theme.queries]
+            queries = theme.searches()
             queries = random.sample(queries, min(4, len(queries)))
 
             def suggest(job: Job) -> None:
@@ -700,7 +703,7 @@ class Player:
         if self.service.images.thumbs_size() >= limit:
             self.trim_catalogue()
             return None
-        queries = [(source, query) for theme in PACKS for source, query, _ in theme.queries]
+        queries = [search for theme in SEARCHABLE for search in theme.searches()]
         queries = random.sample(queries, min(8, len(queries)))
         return importer.start_job(
             "catalogue",
@@ -743,6 +746,39 @@ class Player:
         self._save_state(state)
         self.library.set_state(SUGGESTIONS_KEY, [])
         log.info("clean start: %d museum works deleted", len(gone))
+        return len(gone)
+
+    def drop_manuscripts(self) -> int:
+        """Once: delete the pages of manuscripts the server put in the
+        catalogue before it learnt to leave them out. Works the owner kept,
+        liked, framed or put in a playlist stay. Returns how many went."""
+        if self.library.get_state(MANUSCRIPTS_KEY, False):
+            return 0
+        self.library.set_state(MANUSCRIPTS_KEY, True)
+        state = self.state
+        kept = {i for p in self.library.playlists() for i in p.item_ids}
+        kept |= {state.current_item_id or "", *state.current_group}
+        gone = [
+            i
+            for i in self.library.query(include_excluded=True)[1]
+            if i.pooled
+            and is_manuscript(i)
+            and not i.favorite
+            and not i.framing
+            and i.id not in kept
+        ]
+        ids = {i.id for i in gone}
+        with self.library.batch():
+            for item in gone:
+                self.library.delete(item.id)
+        for item in gone:
+            self.service.images.remove(item)
+        if ids:
+            state.queue = [i for i in state.queue if i not in ids]
+            self._save_state(state)
+            suggestions = self.library.get_state(SUGGESTIONS_KEY, [])
+            self.library.set_state(SUGGESTIONS_KEY, [i for i in suggestions if i not in ids])
+        log.info("catalogue: %d manuscript pages deleted", len(gone))
         return len(gone)
 
     def trim_cache(self) -> int:
