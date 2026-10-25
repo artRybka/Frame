@@ -104,17 +104,15 @@ actor DemoBackend: FrameBackend {
         if item.excluded || rules.excludeIds.contains(item.id) { return false }
         if rules.favoritesOnly && !item.favorite { return false }
         if !rules.kinds.isEmpty && !rules.kinds.contains(item.kind) { return false }
-        if !rules.artists.isEmpty
-            && !rules.artists.contains(where: { $0.caseInsensitiveCompare(item.artist) == .orderedSame })
-        {
-            return false
-        }
+        if !rules.sources.isEmpty && !rules.sources.contains(item.source) { return false }
+        if !rules.artists.isEmpty && !DemoDiscover.artistMatches(item.artist, rules.artists) { return false }
         func overlaps(_ a: [String], _ b: [String]) -> Bool {
             Set(a.map { $0.lowercased() }).intersection(b.map { $0.lowercased() }).isEmpty == false
         }
         if !rules.styles.isEmpty && !overlaps(item.styles, rules.styles) { return false }
         if !rules.subjects.isEmpty && !overlaps(item.subjects, rules.subjects) { return false }
         if !rules.colors.isEmpty && Set(item.colorTags).isDisjoint(with: rules.colors) { return false }
+        if !rules.terms.isEmpty && !DemoDiscover.matches(item, terms: rules.terms) { return false }
         if let from = rules.yearFrom, (item.year ?? Int.min) < from { return false }
         if let to = rules.yearTo, (item.year ?? Int.max) > to { return false }
         if let minimum = rules.minSuitability, (item.suitability ?? 0) < minimum { return false }
@@ -158,7 +156,8 @@ actor DemoBackend: FrameBackend {
                     at: ISO8601DateFormatter().string(from: .now.addingTimeInterval(-1800)),
                     name: playlist.name, count: list.count
                 )
-            }
+            },
+            theme: playlist.theme
         )
     }
 
@@ -287,7 +286,9 @@ actor DemoBackend: FrameBackend {
     func items(_ query: LibraryQuery) async throws -> ItemPage {
         let rules = PlaylistRules(
             query: query.text, artists: query.artists, styles: query.styles, subjects: query.subjects,
-            colors: query.colors, kinds: query.kinds, favoritesOnly: query.favoritesOnly
+            terms: query.terms, colors: query.colors, kinds: query.kinds, sources: query.sources,
+            yearFrom: query.yearFrom,
+            yearTo: query.yearTo, favoritesOnly: query.favoritesOnly
         )
         let list = Self.sorted(items.filter { Self.matches($0, rules) }, by: query.sort)
         let page = list.dropFirst(query.offset).prefix(query.limit)
@@ -483,46 +484,35 @@ actor DemoBackend: FrameBackend {
 
     // MARK: Discover
 
-    /// Demo themes: artists already in the demo library.
-    private static let demoThemes: [(theme: ArtTheme, artists: [String])] = [
-        (
-            ArtTheme(
-                key: "ukiyo-e", name: "Japońskie drzeworyty",
-                description: "Hokusai, Hiroshige, Utamaro i inni mistrzowie ukiyo-e."
-            ),
-            ["Utagawa Hiroshige", "Katsushika Hokusai", "Kitagawa Utamaro"]
-        ),
-        (
-            ArtTheme(
-                key: "impressionism", name: "Impresjonizm i postimpresjonizm",
-                description: "Monet, Cézanne, van Gogh, Seurat."
-            ),
-            ["Claude Monet", "Paul Cezanne", "Vincent van Gogh", "Georges Seurat"]
-        ),
-        (
-            ArtTheme(
-                key: "posters", name: "Plakaty i secesja",
-                description: "Toulouse-Lautrec, Mucha i plakat przełomu wieków."
-            ),
-            ["Henri de Toulouse-Lautrec", "Alphonse Marie Mucha"]
-        ),
-    ]
-
     private func remote(_ list: [Item]) -> [RemoteItem] {
         list.map { RemoteItem(item: $0, inLibrary: true) }
     }
 
+    private func works(_ theme: ArtTheme) -> [Item] {
+        Self.sorted(items.filter { Self.matches($0, theme.rules ?? PlaylistRules()) }, by: "suitability")
+    }
+
+    private func themePlaylistID(_ theme: ArtTheme) -> Int? {
+        playlistsByID.values.first { $0.theme == theme.key || $0.name == theme.name }?.id
+    }
+
     func suggestions() async throws -> [SuggestionRow] {
-        let theme = Self.demoThemes[Calendar.current.component(.day, from: Date()) % Self.demoThemes.count]
+        let themes = DemoDiscover.themes.filter { !works($0).isEmpty }
+        let theme = themes[Calendar.current.component(.day, from: Date()) % themes.count]
         let best = Self.sorted(items, by: "suitability")
+        let liked = DemoDiscover.themes.first { $0.key == "impressionism" }!
         return [
             SuggestionRow(
                 key: "for-you", title: "Dla Ciebie", subtitle: "Następne w rotacji Propozycje",
                 items: remote(Array(items.shuffled().prefix(12)))
             ),
             SuggestionRow(
-                key: "theme", title: "Motyw dnia: \(theme.theme.name)", subtitle: theme.theme.description,
-                theme: theme.theme.key, items: remote(items.filter { theme.artists.contains($0.artist) })
+                key: "like:impressionism", title: "Bo lubisz: Claude Monet", subtitle: liked.name,
+                theme: liked.key, items: remote(works(liked).filter { $0.artist != "Claude Monet" })
+            ),
+            SuggestionRow(
+                key: "theme", title: "Motyw dnia: \(theme.name)", subtitle: theme.description,
+                theme: theme.key, items: remote(works(theme))
             ),
             SuggestionRow(
                 key: "best", title: "Najlepiej na e-papierze",
@@ -532,14 +522,89 @@ actor DemoBackend: FrameBackend {
         ]
     }
 
-    func themes() async throws -> [ArtTheme] { Self.demoThemes.map(\.theme) }
+    func themes() async throws -> [ArtTheme] {
+        DemoDiscover.themes.map { theme in
+            let found = works(theme)
+            var card = theme
+            card.count = found.count
+            card.cover = remote(Array(found.prefix(4)))
+            card.playlistId = themePlaylistID(theme)
+            return card
+        }
+    }
 
     func themePage(key: String, page: Int) async throws -> ArtThemePage {
-        guard let theme = Self.demoThemes.first(where: { $0.theme.key == key }) else {
+        guard let theme = DemoDiscover.themes.first(where: { $0.key == key }) else {
             throw BackendError.notFound
         }
-        let found = items.filter { theme.artists.contains($0.artist) }
-        return ArtThemePage(items: page == 1 ? remote(found) : [], more: false)
+        return ArtThemePage(items: page == 1 ? remote(works(theme)) : [], more: false)
+    }
+
+    func themePlaylist(key: String, play: Bool) async throws -> ThemePlaylist {
+        guard let theme = DemoDiscover.themes.first(where: { $0.key == key }) else {
+            throw BackendError.notFound
+        }
+        let id: Int
+        if let existing = themePlaylistID(theme) {
+            id = existing
+        } else {
+            let made = try await savePlaylist(
+                Playlist(
+                    name: theme.name, description: theme.description, kind: .smart,
+                    rules: theme.rules ?? PlaylistRules(), theme: theme.key
+                )
+            )
+            id = made.playlist.id
+        }
+        if play { try await self.play(playlistID: id) }
+        guard let playlist = playlistsByID[id] else { throw BackendError.notFound }
+        return ThemePlaylist(playlist: summary(playlist), jobId: nil)
+    }
+
+    func vocabulary() async throws -> [TermInfo] { DemoDiscover.terms }
+
+    func terms(_ text: String) async throws -> [TermHit] {
+        let wanted = DemoDiscover.fold(text.trimmingCharacters(in: .whitespaces))
+        guard !wanted.isEmpty else { return [] }
+        var hits: [TermHit] = []
+        let artists = Dictionary(grouping: items.filter { DemoDiscover.fold($0.artist).contains(wanted) }, by: \.artist)
+        hits += artists.map { TermHit(kind: "artist", key: $0.key, name: $0.key, count: $0.value.count) }
+            .sorted { $0.count > $1.count }
+        for term in DemoDiscover.terms {
+            let names = [term.name] + term.words
+            guard names.contains(where: { DemoDiscover.fold($0).hasPrefix(wanted) }) else { continue }
+            let count = items.filter { Self.matches($0, PlaylistRules(terms: [term.key])) }.count
+            hits.append(
+                TermHit(
+                    kind: term.kind, key: term.key, name: term.name,
+                    detail: term.words.prefix(3).joined(separator: ", "), count: count
+                )
+            )
+        }
+        let words = text.trimmingCharacters(in: .whitespaces)
+        let count = items.filter { Self.matches($0, PlaylistRules(query: words)) }.count
+        hits.append(TermHit(kind: "word", key: words, name: words, count: count))
+        return hits
+    }
+
+    /// The demo has no museums to ask: a pretend answer for any name.
+    func museumHint(_ text: String) async throws -> MuseumHint {
+        try await Task.sleep(for: .milliseconds(500))
+        let words = text.trimmingCharacters(in: .whitespaces)
+        guard words.count >= 3 else { return MuseumHint(total: 0, artists: [], items: []) }
+        let artist = words.prefix(1).uppercased() + words.dropFirst()
+        return MuseumHint(
+            total: 38, artists: [TermHit(kind: "artist", key: artist, name: artist, count: 38)],
+            items: remote(Array(items.shuffled().prefix(4)))
+        )
+    }
+
+    func searchMuseums(_ rules: PlaylistRules, source: String, page: Int) async throws -> RemotePage {
+        try await Task.sleep(for: .milliseconds(700))
+        var loose = rules
+        loose.colors = []
+        let found = items.filter { (source == "all" || $0.source == source) && Self.matches($0, loose) }
+        return RemotePage(total: page == 1 ? found.count : 0, items: page == 1 ? remote(found) : [])
     }
 
     func museums() async throws -> [Museum] {

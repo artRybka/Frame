@@ -112,6 +112,9 @@ struct PlaylistRules: Codable, Hashable, Sendable {
     var artists: [String] = []
     var styles: [String] = []
     var subjects: [String] = []
+    /// Styles, subjects, periods and techniques of the server's vocabulary,
+    /// e.g. "subject:sea", "years:1880-1914".
+    var terms: [String] = []
     var colors: [String] = []
     var kinds: [ItemKind] = []
     var sources: [String] = []
@@ -124,7 +127,8 @@ struct PlaylistRules: Codable, Hashable, Sendable {
 
     /// Whether there are no rules; exceptions (`excludeIds`) don't count.
     var isEmpty: Bool {
-        query.isEmpty && artists.isEmpty && styles.isEmpty && subjects.isEmpty && colors.isEmpty
+        query.isEmpty && artists.isEmpty && styles.isEmpty && subjects.isEmpty && terms.isEmpty
+            && colors.isEmpty
             && kinds.isEmpty && sources.isEmpty && yearFrom == nil && yearTo == nil
             && !favoritesOnly && minSuitability == nil
     }
@@ -137,6 +141,7 @@ extension PlaylistRules {
         artists = try c.decode([String].self, forKey: .artists)
         styles = try c.decode([String].self, forKey: .styles)
         subjects = try c.decode([String].self, forKey: .subjects)
+        terms = try c.decodeIfPresent([String].self, forKey: .terms) ?? []  // older servers
         colors = try c.decode([String].self, forKey: .colors)
         kinds = try c.decode([ItemKind].self, forKey: .kinds)
         sources = try c.decode([String].self, forKey: .sources)
@@ -199,6 +204,8 @@ struct Playlist: Codable, Hashable, Sendable {
     var rules = PlaylistRules()
     var itemIds: [String] = []
     var album: AlbumSource?
+    /// The Discover theme the playlist was made from.
+    var theme: String?
 }
 
 struct PlaylistSummary: Codable, Identifiable, Hashable, Sendable {
@@ -211,6 +218,7 @@ struct PlaylistSummary: Codable, Identifiable, Hashable, Sendable {
     var coverItemIds: [String]
     var album: AlbumSource?
     var albumSync: AlbumSync?
+    var theme: String?
 }
 
 struct PlaylistDetail: Codable, Sendable {
@@ -521,12 +529,129 @@ struct SuggestionRow: Codable, Hashable, Sendable, Identifiable {
     var id: String { key }
 }
 
-/// A theme browsed live from the museums, `GET /api/themes`.
+/// An idea for a playlist, `GET /api/themes`: browsed live from the
+/// museums, or made into a smart playlist with its rules.
 struct ArtTheme: Codable, Hashable, Sendable, Identifiable {
     let key: String
     let name: String
     let description: String
+    /// "Kierunki i style", "Tematy", …
+    var group: String?
+    /// Works in the catalogue that fit, and four of them for the cover.
+    var count: Int?
+    var cover: [RemoteItem]?
+    /// The playlist already made from it.
+    var playlistId: Int?
+    var rules: PlaylistRules?
     var id: String { key }
+}
+
+/// `POST /api/themes/{key}/playlist`
+struct ThemePlaylist: Codable, Sendable {
+    let playlist: PlaylistSummary
+    /// Fetching its first works from the museums, if that started.
+    var jobId: String?
+}
+
+/// A style, subject, period or technique, `GET /api/vocabulary`.
+struct TermInfo: Codable, Hashable, Sendable, Identifiable {
+    let key: String
+    let kind: String  // style | subject | period | technique
+    let name: String
+    var words: [String] = []
+    var yearFrom: Int?
+    var yearTo: Int?
+    var id: String { key }
+}
+
+/// What typed words could mean, `GET /api/terms?q=`.
+struct TermHit: Codable, Hashable, Sendable, Identifiable {
+    let kind: String  // artist | style | subject | period | technique | word
+    let key: String
+    let name: String
+    var detail: String = ""
+    var count: Int = 0
+    var id: String { kind + ":" + key }
+
+    var token: SearchToken { SearchToken(kind: kind, key: key, name: name) }
+}
+
+/// What the museums have for words the catalogue doesn't know, `GET /api/terms/museums?q=`.
+struct MuseumHint: Codable, Sendable {
+    let total: Int
+    let artists: [TermHit]
+    let items: [RemoteItem]
+    var failed: [String]?
+}
+
+/// One chip of a search or of a smart playlist's rules.
+struct SearchToken: Hashable, Sendable, Identifiable {
+    /// artist | word | style | subject | period | technique, or for rules of
+    /// older playlists: legacy-style | legacy-subject (museum facet values).
+    let kind: String
+    let key: String
+    let name: String
+    var id: String { kind + ":" + key }
+
+    var kindName: String {
+        switch kind {
+        case "artist": "Artysta"
+        case "style", "legacy-style": "Styl"
+        case "subject", "legacy-subject": "Temat"
+        case "period": "Epoka"
+        case "technique": "Technika"
+        default: "Słowo"
+        }
+    }
+
+    var icon: String {
+        switch kind {
+        case "artist": "person"
+        case "style", "legacy-style": "paintpalette"
+        case "subject", "legacy-subject": "tag"
+        case "period": "calendar"
+        case "technique": "scribble.variable"
+        default: "text.magnifyingglass"
+        }
+    }
+}
+
+extension PlaylistRules {
+    /// The rules' artists, terms and words as chips; `names` gives the
+    /// Polish names of terms.
+    func tokens(names: [String: String]) -> [SearchToken] {
+        var tokens = artists.map { SearchToken(kind: "artist", key: $0, name: $0) }
+        tokens += terms.map { key in
+            let kind = key.hasPrefix("years:") ? "period" : String(key.prefix { $0 != ":" })
+            return SearchToken(kind: kind, key: key, name: names[key] ?? Self.yearsName(key) ?? key)
+        }
+        tokens += styles.map { SearchToken(kind: "legacy-style", key: $0, name: $0) }
+        tokens += subjects.map { SearchToken(kind: "legacy-subject", key: $0, name: $0) }
+        if !query.trimmingCharacters(in: .whitespaces).isEmpty {
+            tokens.append(SearchToken(kind: "word", key: query, name: query))
+        }
+        return tokens
+    }
+
+    /// Puts chips back into the rules.
+    mutating func setTokens(_ tokens: [SearchToken]) {
+        artists = tokens.filter { $0.kind == "artist" }.map(\.key)
+        terms = tokens.filter { ["style", "subject", "period", "technique"].contains($0.kind) }.map(\.key)
+        styles = tokens.filter { $0.kind == "legacy-style" }.map(\.key)
+        subjects = tokens.filter { $0.kind == "legacy-subject" }.map(\.key)
+        query = tokens.filter { $0.kind == "word" }.map(\.key).joined(separator: " ")
+    }
+
+    /// "years:1880-1914" as "1880–1914".
+    static func yearsName(_ key: String) -> String? {
+        guard key.hasPrefix("years:") else { return nil }
+        return key.dropFirst("years:".count).replacingOccurrences(of: "-", with: "–")
+    }
+
+    /// A name for a playlist made from these rules.
+    func suggestedName(names: [String: String]) -> String {
+        tokens(names: names).prefix(3).map(\.name).joined(separator: " · ")
+    }
 }
 
 /// `GET /api/themes/{key}?page=`
@@ -596,6 +721,11 @@ struct LibraryQuery: Hashable, Sendable {
     var subjects: [String] = []
     var colors: [String] = []
     var kinds: [ItemKind] = []
+    /// Terms of the server's vocabulary, as in `PlaylistRules.terms`.
+    var terms: [String] = []
+    var sources: [String] = []
+    var yearFrom: Int?
+    var yearTo: Int?
     var favoritesOnly = false
     /// Only works the owner kept, not those the server added to the catalogue.
     var keptOnly = false
@@ -604,9 +734,27 @@ struct LibraryQuery: Hashable, Sendable {
     var limit = 200
 
     var activeFilterCount: Int {
-        artists.count + styles.count + subjects.count + colors.count + kinds.count
+        artists.count + styles.count + subjects.count + colors.count + kinds.count + terms.count
             + (favoritesOnly ? 1 : 0) + (keptOnly ? 1 : 0)
     }
+
+    /// Works of the catalogue and library that fit `rules`.
+    init(rules: PlaylistRules, sort: String = "suitability", limit: Int = 60) {
+        text = rules.query
+        artists = rules.artists
+        styles = rules.styles
+        subjects = rules.subjects
+        colors = rules.colors
+        kinds = rules.kinds
+        terms = rules.terms
+        sources = rules.sources
+        yearFrom = rules.yearFrom
+        yearTo = rules.yearTo
+        self.sort = sort
+        self.limit = limit
+    }
+
+    init() {}
 }
 
 /// The last synchronisation of an album playlist with its album.

@@ -53,6 +53,10 @@ struct LiveBackend: FrameBackend {
         query += q.subjects.map { URLQueryItem(name: "subject", value: $0) }
         query += q.colors.map { URLQueryItem(name: "color", value: $0) }
         query += q.kinds.map { URLQueryItem(name: "kind", value: $0.rawValue) }
+        query += q.terms.map { URLQueryItem(name: "term", value: $0) }
+        query += q.sources.map { URLQueryItem(name: "source", value: $0) }
+        if let from = q.yearFrom { query.append(URLQueryItem(name: "year_from", value: String(from))) }
+        if let to = q.yearTo { query.append(URLQueryItem(name: "year_to", value: String(to))) }
         if q.favoritesOnly { query.append(URLQueryItem(name: "favorites", value: "true")) }
         if q.keptOnly { query.append(URLQueryItem(name: "kept", value: "true")) }
         return try await get("/api/library/items", query: query)
@@ -143,6 +147,33 @@ struct LiveBackend: FrameBackend {
 
     func themePage(key: String, page: Int) async throws -> ArtThemePage {
         try await get("/api/themes/\(key)", query: [URLQueryItem(name: "page", value: String(page))])
+    }
+
+    func themePlaylist(key: String, play: Bool) async throws -> ThemePlaylist {
+        try await send("/api/themes/\(key)/playlist", method: "POST", body: ["play": play])
+    }
+
+    func vocabulary() async throws -> [TermInfo] { try await get("/api/vocabulary") }
+
+    func terms(_ text: String) async throws -> [TermHit] {
+        try await get("/api/terms", query: [URLQueryItem(name: "q", value: text)])
+    }
+
+    func museumHint(_ text: String) async throws -> MuseumHint {
+        try await get("/api/terms/museums", query: [URLQueryItem(name: "q", value: text)])
+    }
+
+    func searchMuseums(_ rules: PlaylistRules, source: String, page: Int) async throws -> RemotePage {
+        var query = [
+            URLQueryItem(name: "q", value: rules.query),
+            URLQueryItem(name: "source", value: source),
+            URLQueryItem(name: "page", value: String(page)),
+        ]
+        query += rules.artists.map { URLQueryItem(name: "artist", value: $0) }
+        query += rules.terms.map { URLQueryItem(name: "term", value: $0) }
+        if let from = rules.yearFrom { query.append(URLQueryItem(name: "year_from", value: String(from))) }
+        if let to = rules.yearTo { query.append(URLQueryItem(name: "year_to", value: String(to))) }
+        return try await get("/api/discover/search", query: query)
     }
 
     // MARK: Museums
