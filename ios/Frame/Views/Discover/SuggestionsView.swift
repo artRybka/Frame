@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// What Discover opens with: rows of works the server picked for the frame,
-/// works like the ones the owner likes, the theme of the day and the best on
-/// e-paper, then ideas for playlists in groups.
+/// What Discover opens with: ideas for playlists in groups, then rows of
+/// works the server picked for the frame, works like the ones the owner
+/// likes, the theme of the day and the best on e-paper.
 struct SuggestionsView: View {
     @Environment(AppModel.self) private var model
     @State private var rows: [SuggestionRow] = []
@@ -39,26 +39,31 @@ struct SuggestionsView: View {
                     systemImage: "sparkles"
                 )
             }
-            ForEach(rows) { row in
-                SuggestionRowView(row: row, theme: themes.first { $0.key == row.theme })
-            }
             ForEach(groups) { group in
                 VStack(alignment: .leading, spacing: 12) {
                     Text(group.name)
                         .font(.serif(22, weight: .semibold))
                         .foregroundStyle(Theme.ink)
-                    LazyVGrid(
-                        columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)],
-                        alignment: .leading, spacing: 12
-                    ) {
-                        ForEach(group.themes) { theme in
-                            NavigationLink(value: theme) {
-                                ThemeCard(theme: theme) { await makePlaylist(theme) }
+                    // One row per group, so all groups and the rows of works
+                    // below fit in a few screens.
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(alignment: .top, spacing: 12) {
+                            ForEach(group.themes) { theme in
+                                NavigationLink(value: theme) {
+                                    ThemeCard(theme: theme) { await makePlaylist(theme) }
+                                        .frame(width: 172)
+                                }
+                                .buttonStyle(.plain)
                             }
-                            .buttonStyle(.plain)
                         }
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.vertical, 2)
                     }
+                    .scrollClipDisabled()
                 }
+            }
+            ForEach(rows) { row in
+                SuggestionRowView(row: row, theme: themes.first { $0.key == row.theme })
             }
         }
         .overlay(alignment: .top) {
