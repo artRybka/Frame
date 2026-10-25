@@ -16,6 +16,7 @@ struct TermSearchField: View {
     @State private var hits: [TermHit] = []
     @State private var hint: MuseumHint?
     @State private var askingMuseums = false
+    @State private var picking = false
     @FocusState private var focused: Bool
 
     private var trimmed: String { text.trimmingCharacters(in: .whitespaces) }
@@ -31,6 +32,9 @@ struct TermSearchField: View {
             }
         }
         .task(id: trimmed) { await lookUp() }
+        .sheet(isPresented: $picking) {
+            TermPickerSheet(tokens: $tokens)
+        }
     }
 
     private var field: some View {
@@ -62,6 +66,15 @@ struct TermSearchField: View {
                     .frame(minWidth: 120)
                     .onSubmit { addWords() }
             }
+            Button {
+                picking = true
+            } label: {
+                Image(systemName: "plus.circle.fill")
+                    .font(.title3)
+                    .foregroundStyle(Theme.accent)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Dodaj styl, temat, epokę albo technikę")
             if !text.isEmpty || !tokens.isEmpty {
                 Button {
                     if text.isEmpty { tokens = [] } else { text = "" }
@@ -197,5 +210,111 @@ struct TermSearchField: View {
         askingMuseums = true
         defer { askingMuseums = false }
         hint = try? await model.backend.museumHint(words)
+    }
+}
+
+/// Styles, subjects, periods and techniques to tap, in sections; what is
+/// picked shows selected and a second tap takes it off.
+struct TermBrowser: View {
+    @Environment(AppModel.self) private var model
+    @Binding var tokens: [SearchToken]
+
+    private func terms(_ kind: String) -> [TermInfo] { model.vocabulary.filter { $0.kind == kind } }
+
+    private func picked(_ term: TermInfo) -> Bool { tokens.contains { $0.key == term.key } }
+
+    private func toggle(_ term: TermInfo) {
+        if picked(term) {
+            tokens.removeAll { $0.key == term.key }
+        } else {
+            tokens.append(SearchToken(kind: term.kind, key: term.key, name: term.name))
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 22) {
+            section("Style i kierunki", terms("style"))
+            section("Tematy", terms("subject"))
+            periods
+            section("Techniki", terms("technique"))
+        }
+        .task { await model.loadVocabulary() }
+    }
+
+    private func section(_ title: String, _ terms: [TermInfo]) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Eyebrow(title)
+            FlowLayout(spacing: 8) {
+                ForEach(terms) { term in
+                    Chip(title: term.name, selected: picked(term)) { toggle(term) }
+                }
+            }
+        }
+    }
+
+    private var periods: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Eyebrow("Epoki")
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 0) {
+                    ForEach(terms("period")) { period in
+                        let on = picked(period)
+                        Button { toggle(period) } label: {
+                            VStack(spacing: 2) {
+                                Text(period.name).font(.subheadline.weight(.semibold))
+                                if let from = period.yearFrom ?? period.yearTo {
+                                    Text(period.yearFrom == nil ? "do \(from)" : "od \(from)")
+                                        .font(.caption2.monospacedDigit())
+                                        .foregroundStyle(on ? Theme.paper.opacity(0.8) : Theme.inkSoft)
+                                }
+                            }
+                            .foregroundStyle(on ? Theme.paper : Theme.ink)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 9)
+                            .background(on ? Theme.ink : .clear)
+                            .overlay(alignment: .leading) { Rectangle().fill(Theme.hairline).frame(width: 1) }
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(on ? .isSelected : [])
+                    }
+                }
+                .background(Theme.card, in: RoundedRectangle(cornerRadius: 10))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Theme.hairline))
+            }
+            .scrollClipDisabled()
+        }
+    }
+}
+
+/// The browser in a sheet, opened from the search field's "+" to add a
+/// subject to a style, a period to both, and so on.
+struct TermPickerSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var tokens: [SearchToken]
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("Wybierz dowolnie wiele. Te same rodzaje to alternatywy, różne muszą pasować razem: np. Impresjonizm + Morze + 1850–1900.")
+                        .font(.footnote)
+                        .foregroundStyle(Theme.inkSoft)
+                        .fixedSize(horizontal: false, vertical: true)
+                    TermBrowser(tokens: $tokens)
+                }
+                .padding(.horizontal, Theme.gutter)
+                .padding(.bottom, 32)
+            }
+            .background(Theme.paper)
+            .navigationTitle("Dodaj do wyszukiwania")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Gotowe") { dismiss() }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
     }
 }

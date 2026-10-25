@@ -14,7 +14,7 @@ from .importer import Importer
 from .models import Item, ItemKind, PlaylistRules
 from .repo import Library
 from .seed import MORE_POLISH_PAINTERS, PACKS, POLISH_PAINTERS
-from .vocabulary import is_manuscript, museum_queries
+from .vocabulary import museum_queries, set_aside
 
 #: Museums asked for a theme's artists or words when it names no searches.
 SEARCH_SOURCES = ("aic", "cma", "met")
@@ -497,7 +497,7 @@ def browse_theme(
     round_ = (page - 1) // count + 1
     total, items = importer.search(source, query, limit=limit, page=round_)
     return (
-        [i for i in items if not is_manuscript(i)],
+        [i for i in items if not set_aside(i)],
         page % count != 0 or round_ * limit < total,
     )
 

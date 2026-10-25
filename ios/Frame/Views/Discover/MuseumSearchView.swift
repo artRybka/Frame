@@ -63,45 +63,9 @@ struct MuseumSearchView: View {
 
     private func terms(_ kind: String) -> [TermInfo] { model.vocabulary.filter { $0.kind == kind } }
 
-    private func add(_ term: TermInfo) {
-        var all = rules.tokens(names: model.termNames)
-        all.append(SearchToken(kind: term.kind, key: term.key, name: term.name))
-        rules.setTokens(all)
-    }
-
     private var browse: some View {
         VStack(alignment: .leading, spacing: 22) {
-            browseSection("Style i kierunki", terms("style"))
-            browseSection("Tematy", terms("subject"))
-            VStack(alignment: .leading, spacing: 10) {
-                Eyebrow("Epoki")
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 0) {
-                        ForEach(terms("period")) { period in
-                            Button { add(period) } label: {
-                                VStack(spacing: 2) {
-                                    Text(period.name).font(.subheadline.weight(.semibold))
-                                    if let from = period.yearFrom ?? period.yearTo {
-                                        Text(period.yearFrom == nil ? "do \(from)" : "od \(from)")
-                                            .font(.caption2.monospacedDigit())
-                                            .foregroundStyle(Theme.inkSoft)
-                                    }
-                                }
-                                .foregroundStyle(Theme.ink)
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 9)
-                                .overlay(alignment: .leading) { Rectangle().fill(Theme.hairline).frame(width: 1) }
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .background(Theme.card, in: RoundedRectangle(cornerRadius: 10))
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                    .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Theme.hairline))
-                }
-                .scrollClipDisabled()
-            }
-            browseSection("Techniki", terms("technique"))
+            TermBrowser(tokens: tokens)
             if !museums.isEmpty {
                 VStack(alignment: .leading, spacing: 10) {
                     Eyebrow("Muzea")
@@ -113,17 +77,6 @@ struct MuseumSearchView: View {
                 }
             }
             privateUseToggle
-        }
-    }
-
-    private func browseSection(_ title: String, _ terms: [TermInfo]) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Eyebrow(title)
-            FlowLayout(spacing: 8) {
-                ForEach(terms) { term in
-                    Chip(title: term.name) { add(term) }
-                }
-            }
         }
     }
 
