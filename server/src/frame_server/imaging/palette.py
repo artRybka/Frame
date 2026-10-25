@@ -123,6 +123,15 @@ class Palette:
             colors=tuple(c for c in self.colors if c.name in names),
         )
 
+    def nominal(self) -> Palette:
+        """The inks as ideal colours (perceived = device): the picture's own
+        colours, before any correction for the panel."""
+        return Palette(
+            name=f"{self.name}-nominal",
+            source="nominal RGB values",
+            colors=tuple(PaletteColor(c.name, c.device, c.device) for c in self.colors),
+        )
+
     def with_perceived(self, perceived: dict[str, RGB], *, name: str, source: str) -> Palette:
         return Palette(
             name=name,

@@ -171,6 +171,18 @@ struct LiveBackend: FrameBackend {
         return ref.jobId
     }
 
+    private struct FillBody: Encodable {
+        let rules: PlaylistRules
+        let count: Int
+    }
+
+    func fillLibrary(rules: PlaylistRules, count: Int) async throws -> String {
+        let ref: JobRef = try await send(
+            "/api/library/fill", method: "POST", body: FillBody(rules: rules, count: count)
+        )
+        return ref.jobId
+    }
+
     func job(id: String) async throws -> JobStatus { try await get("/api/jobs/\(id)") }
 
     // MARK: Album

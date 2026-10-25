@@ -233,6 +233,8 @@ struct DeviceStatus: Codable, Hashable, Sendable {
     var error: String?
     var lastPushAt: String?
     var lastFetchAt: String?
+    var pendingPush: Bool?
+    var wakesAt: String?
 }
 
 struct ServerStatus: Codable, Hashable, Sendable {

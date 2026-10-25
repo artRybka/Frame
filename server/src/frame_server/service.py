@@ -8,6 +8,7 @@ import logging
 from collections.abc import AsyncIterator, Coroutine
 from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 from PIL import Image
@@ -20,6 +21,7 @@ from .library import ImageCache, Importer, Job, Library
 from .library.icloud import sync_album
 from .library.museums import client as museum_client
 from .player import Player
+from .power import PowerManager
 from .status import StatusMonitor
 from .store import ContentInfo, ContentStore
 
@@ -48,25 +50,37 @@ class Panel:
         host, pin = self.settings.require_device()
         return MdcClient(host, pin, self.settings.device_port)
 
-    async def wake(self) -> bool:
+    async def wake(self, seconds: int = 0) -> bool:
+        """Wake-on-LAN; with ``seconds`` a packet a second for that long (a
+        dozing Wi-Fi client only listens every few beacons)."""
         if not self.settings.device_mac:
             return False
-        await wol.wake(self.settings.device_mac, self.settings.device_host)
+        if seconds:
+            await wol.wake(
+                self.settings.device_mac, self.settings.device_host, repeats=seconds, interval=1.0
+            )
+        else:
+            await wol.wake(self.settings.device_mac, self.settings.device_host)
         return True
 
     async def set_content_url(self, url: str) -> None:
+        async with self.waking_session() as mdc:
+            await mdc.content_download(url)
+
+    @asynccontextmanager
+    async def waking_session(self) -> AsyncIterator[MdcClient]:
+        """A session, waking the panel with Wake-on-LAN if it does not answer."""
         async with self._lock:
             client = self.client()
             try:
                 await client.connect(attempts=2, retry_delay=5)
             except MdcConnectionError:
-                if not await self.wake():
+                if not await self.wake(seconds=15):
                     raise
                 log.info("panel unreachable, sent Wake-on-LAN")
-                await asyncio.sleep(15)
                 await client.connect(attempts=4, retry_delay=8)
             try:
-                await client.content_download(url)
+                yield client
             finally:
                 await client.close()
 
@@ -99,6 +113,7 @@ class FrameService:
         )
         self.status = StatusMonitor(self.panel)
         self.player = Player(self)
+        self.power = PowerManager(self)
 
         self._tasks: set[asyncio.Task[object]] = set()
 
@@ -195,7 +210,7 @@ class FrameService:
         else:
             result = render(image, settings, self.palette)
         data, ext = result.encode(fmt)  # type: ignore[arg-type]
-        preview = result.preview_image()
+        preview = result.original_image()  # the app shows the picture, not the dither
         preview.thumbnail((PREVIEW_MAX, PREVIEW_MAX))
         return self.store.publish(
             data,
@@ -213,13 +228,25 @@ class FrameService:
         if content is None:
             raise RuntimeError("nothing published yet")
         url = self.content_url(content.file_id)
+        if self.power.deep_asleep(datetime.now(UTC)):
+            # Wi-Fi off until the alarm: the picture goes out when it rings.
+            self.power.mark_pending(True)
+            wakes = self.power.state.timer or "the end of quiet hours"
+            message = f"panel asleep until {wakes}, the picture will follow"
+            return PushOutcome(content, False, False, url, message)
         if wait:
             self.store.expect_fetch(content.file_id)
         try:
             await self.panel.set_content_url(url)
+        except MdcConnectionError as err:
+            self.store.cancel_fetch(content.file_id)
+            self.power.mark_pending(True)
+            message = f"panel unreachable ({err}), the picture waits for it to wake"
+            return PushOutcome(content, False, False, url, message)
         except BaseException:
             self.store.cancel_fetch(content.file_id)
             raise
+        self.power.mark_pending(False)
         fetched = await self.store.wait_for_fetch(content.file_id, wait) if wait else False
         self.status.note_push(fetched)
         message = "" if fetched or not wait else "panel did not download the image in time"

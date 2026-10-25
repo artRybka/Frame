@@ -39,6 +39,9 @@ class DeviceStatus(BaseModel):
     error: str | None = None
     last_push_at: str | None = None
     last_fetch_at: str | None = None
+    # A picture waits for the panel to wake (alarm or button), see power.py.
+    pending_push: bool = False
+    wakes_at: str | None = None  # HH:MM of the panel's own alarm
 
 
 class StatusMonitor:

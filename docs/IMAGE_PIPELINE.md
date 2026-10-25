@@ -42,7 +42,8 @@ kolory, a w rzeczywistości miesza ciemne. Efekt: obraz za ciemny i zgaszony.
 5. **Mapowanie gamutu** (`gamut.py`): kolory osiągalne przez mieszanie farb tworzą bryłę wypukłą w liniowym RGB. Dla każdej pary (L, odcień) wyznaczamy maksymalne nasycenie i miękko kompresujemy nasycenie powyżej progu `gamut_knee`. Bez tego ditherer goni kolory, których nie da się uzyskać, i daje szum.
 6. **Dithering** (`dither.py`, numba): dyfuzja błędu w świetle liniowym, wybór farby w OKLab. Jądra: Floyd–Steinberg, Atkinson, Jarvis, Stucki, Burkes, Sierra, Sierra Lite. Do tego skanowanie serpentynowe i ograniczanie błędu (`error_clamp`).
 7. **Zapis**: indeksy farb zamieniamy na wartości **nominalne** (dla firmware'u). Wynik to PNG, ewentualnie JPEG 4:4:4 q95.
-8. **Podgląd**: indeksy farb zamieniamy na kolory **zmierzone** i normalizujemy do bieli papieru. Ten obraz trafia do aplikacji iOS.
+8. **Podgląd dla aplikacji**: kompozycja z kroku 2 (kadr, passe-partout z fazami, podpis) w **oryginalnych** kolorach, bez mapowania tonów i ditheringu. Korekta kolorów dotyczy tylko obrazu dla ekranu, więc aplikacja pokazuje obraz taki, jaki jest.
+9. **Symulacja** (`--preview` w CLI, kalibracja): indeksy farb zamieniamy na kolory **zmierzone** i normalizujemy do bieli papieru.
 
 ## Strategie (wybór po eksperymencie E5)
 

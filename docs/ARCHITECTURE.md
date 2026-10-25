@@ -25,7 +25,7 @@ App/CLI ──POST /api/display──▶ serwer
                               odświeżenie panelu (kilkanaście sekund)
 ```
 
-Gdy ekran śpi, a mamy jego MAC, serwer wysyła Wake-on-LAN i ponawia połączenie.
+Gdy ekran śpi, a mamy jego MAC, serwer wysyła Wake-on-LAN i ponawia połączenie. Na baterii w ciszy nocnej ekran śpi z wyłączonym Wi-Fi i budzi się sam (budzik MDC `0x25`); obraz, który nie dotarł, czeka na pobudkę ([WAKE.md](WAKE.md)).
 
 ## Przepływ docelowy: rotacja (Etap 2)
 
@@ -48,7 +48,7 @@ adresów obrazów), jeśli token jest ustawiony.
 | Odtwarzacz | `GET /api/player` (co na ramce, następne, historia, przypięcie, następna zmiana), `POST /api/player/next`, `POST /api/player/previous`, `POST/DELETE /api/player/hold` |
 | Ustawienia | `GET/PUT /api/settings` (tryb, playlista, interwały przy zasilaczu i na baterii, cisza nocna, prezentacja dla sztuki i zdjęć, orientacja, link do albumu). Zmiana orientacji lub prezentacji od razu przerysowuje bieżący obraz i wysyła go na ramkę, bez przesuwania harmonogramu. |
 | Status | `GET /api/status?refresh=` (bateria, ładowanie, połączenie, firmware, serwer), `GET /api/device/status`, `POST /api/device/wake`, `POST /api/device/sleep` |
-| Biblioteka | `GET /api/library/items` (filtry: `q`, `artist`, `style`, `subject`, `color`, `kind`, `favorites`, `sort`), `GET /api/library/facets`, `GET/PATCH/DELETE /api/library/items/{id}`, `GET …/{id}/thumb`, `…/image`, `…/preview` (symulacja e-papieru; opcjonalnie `?settings=<JSON>` z orientacją i prezentacją do podglądu przed zapisaniem), `POST …/{id}/show`, `GET/PUT/DELETE …/{id}/framing` (kadr, detale albo kadr w passe-partout z kształtem okienka: odczyt, korekta dla orientacji, powrót do automatu bieżącego trybu), `POST /api/library/upload` (plik i opis; zdjęcia z rolki z datą i miejscem z EXIF) |
+| Biblioteka | `GET /api/library/items` (filtry: `q`, `artist`, `style`, `subject`, `color`, `kind`, `favorites`, `sort`), `GET /api/library/facets`, `GET/PATCH/DELETE /api/library/items/{id}`, `GET …/{id}/thumb`, `…/image`, `…/preview` (obraz w kadrze i passe-partout, w oryginalnych kolorach; opcjonalnie `?settings=<JSON>` z orientacją i prezentacją do podglądu przed zapisaniem), `POST …/{id}/show`, `GET/PUT/DELETE …/{id}/framing` (kadr, detale albo kadr w passe-partout z kształtem okienka: odczyt, korekta dla orientacji, powrót do automatu bieżącego trybu), `POST /api/library/upload` (plik i opis; zdjęcia z rolki z datą i miejscem z EXIF) |
 | Muzea | `GET /api/museums`, `GET /api/museums/{source}/search`, `POST /api/museums/{source}/import`, `POST /api/museums/{source}/import-search`, `GET /api/jobs[/{id}]` |
 | Playlisty | `GET/POST /api/playlists`, `POST /api/playlists/preview`, `GET/PUT/DELETE /api/playlists/{id}`, `POST/DELETE /api/playlists/{id}/items`, `POST /api/playlists/{id}/play` |
 | Kalibracja kolorów (bez aplikacji, po E5) | `GET /api/calibration` (paleta w użyciu), `POST …/chart` (plansza na ramkę, 30 min), `POST …/measure` (multipart: `file`, `corners`), `GET …/candidates/{id}/chart.jpg`, `GET …/candidates/{id}/preview/{item}`, `POST …/apply`, `POST …/cancel`, `DELETE /api/calibration` (powrót do domyślnej) |

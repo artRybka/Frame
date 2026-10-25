@@ -74,6 +74,37 @@ w sieci 5 GHz, przeniesienie go na 2,4 GHz może przywrócić WoL. Polityka:
   czekają w kolejce do pobudki, a aplikacja pokazuje „zmieni się o 07:00
   albo po naciśnięciu przycisku na ramce”.
 
+## Polityka zasilania (wdrożona, `server/src/frame_server/power.py`)
+
+2026-10-25: ekran był połączony z siecią 5 GHz, co najpewniej tłumaczy wynik
+E8. Zakładamy przejście na 2,4 GHz. Mateusz ustalił zasadę:
+
+- **w dzień** zdjęcie z aplikacji trafia na ramkę od razu: ekran śpi
+  z włączonym network standby, a serwer budzi go Wake-on-LAN (seria
+  pakietów przez 15 s, broadcast i unicast);
+- **w ciszy nocnej** (godziny ustawiane w aplikacji) ekran na baterii śpi
+  całkowicie: serwer ustawia budzik `0x25` na koniec ciszy (codziennie),
+  wyłącza network standby i wyłącza ekran;
+- **po pobudce** (budzik albo przycisk) serwer przez 15 minut od końca
+  ciszy co 15 s sprawdza, czy ekran jest w sieci. Gdy go znajdzie, włącza
+  z powrotem network standby i wysyła obraz, który czekał;
+- obraz, który nie dotarł (ekran śpi albo nie odpowiada), czeka jako
+  „zaległy” (`pending_push`). Rotacja wstrzymuje się do jego dostarczenia,
+  a po dostarczeniu zostaje do następnej zmiany. Poza oknem pobudki serwer
+  co 2 minuty sprawdza, czy ktoś nie obudził ekranu przyciskiem;
+- budzik jest ustawiony na stałe (codziennie), także w dzień, więc nawet
+  gdy WoL zawiedzie, ekran wróci najpóźniej rano.
+
+Uwaga sieciowa: serwer na Synology (192.100.3.185) jest w innej podsieci niż
+ekran. Broadcast stamtąd do 192.168.1.x nie dotrze, dociera tylko kopia
+unicast przez router, a router musi znać adres MAC ekranu (wpis ARP). Jeśli
+po przejściu na 2,4 GHz WoL działa z Maca, a z Synology nie, potrzebny jest
+stały wpis ARP (albo rezerwacja DHCP z ARP) w routerze dla 192.168.1.152.
+
+Do sprawdzenia w E13: czy budzik budzi ekran przy wyłączonym network
+standby, jak długo ekran zostaje w sieci po pobudce, czy WoL na 2,4 GHz
+działa na baterii.
+
 ## E13: plan testu na ekranie
 
 Potrzebny Mac w tej samej sieci co ekran (192.168.1.x) i gałąź z komendą

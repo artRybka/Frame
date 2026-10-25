@@ -165,6 +165,7 @@ async def item_image(item_id: str, svc: Svc) -> FileResponse:
 
 _preview_locks: dict[str, asyncio.Lock] = {}
 PREVIEW_CACHE_FILES = 200
+PREVIEW_KIND = "original"  # part of the cache key: earlier previews were the simulated dither
 
 
 def _prune(directory: Path, keep: int) -> None:
@@ -175,7 +176,8 @@ def _prune(directory: Path, keep: int) -> None:
 
 @router.get("/library/items/{item_id}/preview")
 async def item_preview(item_id: str, svc: Svc, settings: str | None = None) -> FileResponse:
-    """How the picture will look on the panel.
+    """The picture framed as on the panel (crop, mat, lettering), in its own
+    colours: the correction for the inks is left to the panel's image.
 
     With the saved settings, or with ``settings`` (FrameSettings JSON; only
     orientation and presentation matter) to try a framing before saving it.
@@ -191,7 +193,7 @@ async def item_preview(item_id: str, svc: Svc, settings: str | None = None) -> F
     board = svc.player.preview_board(item, frame_settings)  # MULTI: with the photos beside it
     ids = ",".join(i.id for i in board)
     key = hashlib.sha1(
-        (render_settings.model_dump_json() + svc.palette.name + ids).encode(),
+        (PREVIEW_KIND + render_settings.model_dump_json() + svc.palette.name + ids).encode(),
         usedforsecurity=False,
     ).hexdigest()[:12]
     path = svc.images.thumbs.parent / "previews" / f"{item.file_stem}-{key}.png"
@@ -207,7 +209,7 @@ async def item_preview(item_id: str, svc: Svc, settings: str | None = None) -> F
                         result = render_multi(sources, render_settings, svc.palette, seed=ids)
                     else:
                         result = render(sources[0], render_settings, svc.palette)
-                    img = result.preview_image()
+                    img = result.original_image()
                     img.thumbnail((1280, 1280))
                     path.parent.mkdir(parents=True, exist_ok=True)
                     path.write_bytes(encode_image(img, "png"))
@@ -488,6 +490,28 @@ def draw(request: DrawRequest, svc: Svc) -> dict[str, Any]:
         )
 
     return {"job_id": svc.importer.start_job(f"draw: {request.count}", work).id}
+
+
+class FillRequest(BaseModel):
+    rules: PlaylistRules
+    count: int = Field(100, ge=1, le=500)
+
+
+@router.post("/library/fill")
+def fill(request: FillRequest, svc: Svc) -> dict[str, Any]:
+    """Add museum works a smart playlist with ``rules`` would pick."""
+    rules = request.rules
+    if rules.favorites_only:
+        raise HTTPException(422, "favourites can't be fetched from museums")
+    if rules.kinds and ItemKind.ARTWORK not in rules.kinds:
+        raise HTTPException(422, "only artworks come from museums")
+    if rules.sources and not any(s in MUSEUMS for s in rules.sources):
+        raise HTTPException(422, "the rules allow no museum")
+
+    def work(job: Job) -> None:
+        svc.importer.fill(rules, request.count, job)
+
+    return {"job_id": svc.importer.start_job(f"fill: {request.count}", work).id}
 
 
 @router.get("/album")

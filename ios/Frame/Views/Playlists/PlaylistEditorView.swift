@@ -16,6 +16,8 @@ struct PlaylistEditorView: View {
     @State private var photos: [PickedPhoto] = []
     @State private var loadingPhotos = false
     @State private var uploaded = 0
+    /// Also fetch this many matching museum works into the library (0: no).
+    @State private var fetchCount = 0
 
     init(playlist: Playlist) {
         _playlist = State(initialValue: playlist)
@@ -36,6 +38,7 @@ struct PlaylistEditorView: View {
                     if playlist.kind == .smart {
                         rules
                         previewSection
+                        fetchSection
                     } else {
                         cameraRoll
                     }
@@ -240,6 +243,50 @@ struct PlaylistEditorView: View {
         }
     }
 
+    /// Why museums can't supply works for these rules, if they can't.
+    private var fetchBlocker: String? {
+        let rules = playlist.rules
+        if rules.favoritesOnly { return "Ulubionych nie da się pobrać z muzeów." }
+        if !rules.kinds.isEmpty, !rules.kinds.contains(.artwork) { return "Z muzeów przychodzą tylko dzieła sztuki." }
+        let museums: Set<String> = ["aic", "cma", "met", "rijks", "wmc"]
+        if !rules.sources.isEmpty, museums.isDisjoint(with: rules.sources) {
+            return "Reguły nie dopuszczają żadnego muzeum."
+        }
+        return nil
+    }
+
+    private var fetchSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Toggle(
+                isOn: Binding(get: { fetchCount > 0 }, set: { fetchCount = $0 ? 100 : 0 })
+            ) {
+                Label("Pobierz pasujące dzieła z muzeów", systemImage: "arrow.down.circle")
+            }
+            .tint(Theme.accent)
+            .disabled(fetchBlocker != nil)
+            if let fetchBlocker {
+                Text(fetchBlocker).font(.footnote).foregroundStyle(Theme.inkSoft)
+            } else if fetchCount > 0 {
+                Picker("Ile dzieł", selection: $fetchCount) {
+                    ForEach([50, 100, 200, 300], id: \.self) { Text("\($0)").tag($0) }
+                }
+                .pickerStyle(.segmented)
+                Text(fetchHint)
+                    .font(.footnote)
+                    .foregroundStyle(Theme.inkSoft)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private var fetchHint: String {
+        var text = "Po zapisaniu serwer poszuka we wszystkich muzeach dzieł spełniających reguły i doda je do biblioteki w tle. Te, które już masz, są pomijane."
+        if !playlist.rules.colors.isEmpty || playlist.rules.minSuitability != nil {
+            text += " Kolorystykę i jakość na e-papierze widać dopiero po pobraniu miniatury, więc to potrwa dłużej."
+        }
+        return text
+    }
+
     // MARK: Actions
 
     private func refreshPreview() async {
@@ -247,6 +294,19 @@ struct PlaylistEditorView: View {
         guard !Task.isCancelled else { return }
         let result = try? await model.backend.previewRules(playlist.rules)
         withAnimation(.snappy) { preview = result }
+    }
+
+    /// Reports the fetch once it ends; runs on after the editor closes.
+    @MainActor
+    private static func followFill(_ id: String, name: String, model: AppModel) async {
+        do {
+            let job = try await watchJob(id, backend: model.backend) { _ in }
+            model.toast = "„\(name)”: dodano \(job.done) dzieł z muzeów"
+            await model.refreshPlaylists()
+            await model.refreshFacets()
+        } catch {
+            model.show(error)
+        }
     }
 
     /// Reads the chosen photos: an upright JPEG with its date and place, and a thumbnail.
@@ -285,6 +345,11 @@ struct PlaylistEditorView: View {
             _ = try await model.backend.savePlaylist(playlist)
             await model.refreshPlaylists()
             model.toast = "Zapisano „\(playlist.name)”"
+            if playlist.kind == .smart, fetchCount > 0, fetchBlocker == nil {
+                let jobID = try await model.backend.fillLibrary(rules: playlist.rules, count: fetchCount)
+                model.toast = "Zapisano „\(playlist.name)”, pobieram do \(fetchCount) dzieł w tle"
+                Task { [model, name = playlist.name] in await Self.followFill(jobID, name: name, model: model) }
+            }
             dismiss()
         } catch {
             model.show(error)
