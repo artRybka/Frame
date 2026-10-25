@@ -19,6 +19,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 
+from .duplicates import Works, dedupe
 from .models import (
     AlbumSync,
     Facets,
@@ -30,6 +31,11 @@ from .models import (
     PlaylistSummary,
 )
 from .vocabulary import artist_matches, matches_terms, set_aside
+
+#: Item fields that tell copies of a work apart or choose between them.
+WORK_FIELDS = frozenset(
+    {"kind", "source", "title", "artist", "year", "width", "height", "url", "image_url", "pooled"}
+)
 
 SortKey = Literal["recent", "title", "artist", "year", "random", "suitability", "shown"]
 
@@ -123,6 +129,7 @@ class Library:
         path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
         self._items: dict[str, Item] | None = None
+        self._works: Works | None = None  # the items grouped by work
         self._conn: sqlite3.Connection | None = None
         self._depth = 0  # nested _db() blocks share the outermost transaction
         with self._db() as db:
@@ -153,6 +160,7 @@ class Library:
                     yield conn
             except BaseException:
                 self._items = None  # the cache may hold rolled back changes
+                self._works = None
                 raise
             finally:
                 self._depth -= 1
@@ -214,6 +222,10 @@ class Library:
                     (item.id, item.model_dump_json()),
                 )
             self._all()[item.id] = item
+            if existing is None and self._works is not None:
+                self._works.add(item)
+            else:
+                self._works = None
             return item
 
     def update(self, item_id: str, **changes: Any) -> Item | None:
@@ -227,6 +239,8 @@ class Library:
                     "UPDATE items SET data = ? WHERE id = ?", (updated.model_dump_json(), item_id)
                 )
             self._all()[item_id] = updated
+            if WORK_FIELDS & changes.keys():
+                self._works = None
             return updated
 
     def delete(self, item_id: str) -> bool:
@@ -236,7 +250,27 @@ class Library:
             with self._db() as db:
                 db.execute("DELETE FROM items WHERE id = ?", (item_id,))
             del self._all()[item_id]
+            self._works = None
             return True
+
+    def works(self) -> Works:
+        """The library's items grouped by work: copies of one work from
+        several sources together, the best copy first."""
+        with self._lock:
+            if self._works is None:
+                self._works = Works(self._all().values())
+            return self._works
+
+    def spare_copies(self) -> set[str]:
+        """Works the server added again from a less reliable source, or of
+        which the owner kept another copy."""
+        return self.works().spare()
+
+    def twin(self, item: Item) -> Item | None:
+        """The library's best copy of ``item``'s work, when that is another
+        item."""
+        best = self.works().best(item)
+        return self.get(best.id) if best is not None and best.id != item.id else None
 
     def query(
         self,
@@ -249,10 +283,14 @@ class Library:
         include_excluded: bool = False,
     ) -> tuple[int, list[Item]]:
         rules = rules or PlaylistRules()
+        # Spare copies of a work stay out, unless a source is asked for.
+        spare = set() if include_excluded or rules.sources else self.spare_copies()
 
         # Photographs and pages of manuscripts the server picked only when
         # asked for (photographs never).
         def selected(item: Item) -> bool:
+            if item.id in spare:
+                return False
             if not include_excluded and item.pooled and set_aside(item, rules.terms):
                 return False
             if include_excluded and item.excluded:
@@ -322,12 +360,14 @@ class Library:
         if playlist.kind != PlaylistKind.SMART:
             all_items = self._all()
             skip = set(playlist.rules.exclude_ids)  # album photos taken out
-            return [
-                all_items[i]
-                for i in playlist.item_ids
-                if i in all_items and not all_items[i].excluded and i not in skip
-            ]
-        return self.query(playlist.rules, sort=sort)[1]
+            return dedupe(
+                [
+                    all_items[i]
+                    for i in playlist.item_ids
+                    if i in all_items and not all_items[i].excluded and i not in skip
+                ]
+            )
+        return dedupe(self.query(playlist.rules, sort=sort)[1])
 
     def playlist_summary(self, playlist: Playlist) -> PlaylistSummary:
         items = self.playlist_items(playlist, sort="suitability")

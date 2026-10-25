@@ -312,8 +312,7 @@ struct MuseumSearchView: View {
         defer { loadingMore = false }
         do {
             let found = try await model.backend.searchMuseums(rules, source: source, page: page + 1)
-            let known = Set(results.map(\.id))
-            results += found.items.filter { !known.contains($0.id) }
+            results = results.adding(found.items)
             page += 1
             // Some sources only learn the total as they go; stop when a page is empty.
             total = found.items.isEmpty ? results.count : max(found.total, results.count)

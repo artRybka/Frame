@@ -238,7 +238,9 @@ class Player:
 
     def suggestions(self) -> list[Item]:
         ids = self.library.get_state(SUGGESTIONS_KEY, [])
-        return [i for i in (self.library.get(item_id) for item_id in ids) if i is not None]
+        spare = self.library.spare_copies()
+        found = (self.library.get(item_id) for item_id in ids if item_id not in spare)
+        return [i for i in found if i is not None]
 
     def fresh(self, items: list[Item], settings: FrameSettings | None = None) -> list[Item]:
         """Those of ``items`` not shown within the no-repeat period."""
@@ -267,10 +269,11 @@ class Player:
         state.queue = [i.id for i in pool]
 
     def _pop_next(self, state: PlayerState, settings: FrameSettings) -> Item | None:
+        spare = self.library.spare_copies()
         for _ in range(2):
             while state.queue:
                 item = self.library.get(state.queue.pop(0))
-                if item is not None and not item.excluded:
+                if item is not None and not item.excluded and item.id not in spare:
                     return item
             self._refill(state, settings)
         return None
@@ -789,19 +792,47 @@ class Player:
             for i in self.library.query(include_excluded=True)[1]
             if i.pooled and set_aside(i) and not i.favorite and not i.framing and i.id not in kept
         ]
+        self._forget(gone)
+        log.info("catalogue: %d photographs and manuscript pages deleted", len(gone))
+        return len(gone)
+
+    def drop_spare_copies(self) -> int:
+        """Delete the works the server added again from another source
+        (``Library.spare_copies``): the copy the owner kept, or the one from
+        the most reliable source, stays. Copies the owner liked, framed or
+        put in a playlist, and the one on the frame, stay too. Returns how
+        many went."""
+        spare = self.library.spare_copies()
+        if not spare:
+            return 0
+        state = self.state
+        kept = {i for p in self.library.playlists() for i in p.item_ids}
+        kept |= {state.current_item_id or "", *state.current_group}
+        gone = [
+            i
+            for i in map(self.library.get, spare - kept)
+            if i is not None and not i.favorite and not i.framing
+        ]
+        self._forget(gone)
+        if gone:
+            log.info("catalogue: %d copies of works held from another source deleted", len(gone))
+        return len(gone)
+
+    def _forget(self, gone: list[Item]) -> None:
+        """Delete ``gone`` with their pictures, from the queue and Suggestions."""
         ids = {i.id for i in gone}
+        if not ids:
+            return
         with self.library.batch():
             for item in gone:
                 self.library.delete(item.id)
         for item in gone:
             self.service.images.remove(item)
-        if ids:
-            state.queue = [i for i in state.queue if i not in ids]
-            self._save_state(state)
-            suggestions = self.library.get_state(SUGGESTIONS_KEY, [])
-            self.library.set_state(SUGGESTIONS_KEY, [i for i in suggestions if i not in ids])
-        log.info("catalogue: %d photographs and manuscript pages deleted", len(gone))
-        return len(gone)
+        state = self.state
+        state.queue = [i for i in state.queue if i not in ids]
+        self._save_state(state)
+        suggestions = self.library.get_state(SUGGESTIONS_KEY, [])
+        self.library.set_state(SUGGESTIONS_KEY, [i for i in suggestions if i not in ids])
 
     def trim_cache(self) -> int:
         """Delete the least recently used museum originals over the size
@@ -814,6 +845,7 @@ class Player:
             i for i in items if i.id in soon or (i.source not in MUSEUMS and not refetchable(i))
         ]
         limit = self.service.settings.image_cache_mb * 1024 * 1024
+        self.drop_spare_copies()
         self.trim_catalogue()
         self.service.images.prune_thumbs(self.library.query(include_excluded=True)[1])
         return self.service.images.prune(limit, keep)
