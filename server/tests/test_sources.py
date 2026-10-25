@@ -176,6 +176,7 @@ def test_openverse_licences_follow_private_use() -> None:
     assert item.subjects == ["abstract"] and item.id == "openverse:uuid-2"
     assert sent[0].url.params["license"] == "cc0,pdm"
     assert sent[0].url.params["page_size"] == "20"  # the anonymous maximum
+    assert sent[0].url.params["category"] == "digitized_artwork,illustration"  # no photos
     assert "by-sa" in sent[1].url.params["license"]
     assert len(sent) == 2  # dates can't be filtered: not even asked
 

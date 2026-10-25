@@ -26,7 +26,7 @@ from .library.icloud import refetchable
 from .library.museums import MUSEUMS, Kind
 from .library.style import AUTO, auto_preset
 from .library.themes import SEARCHABLE, theme_of_the_day
-from .library.vocabulary import is_manuscript
+from .library.vocabulary import set_aside
 from .progress import Stage
 from .schedule import FrameSettings, in_quiet_hours, next_change
 
@@ -48,7 +48,8 @@ SUGGESTIONS_KEY = "suggestions"
 #: Set once the museum works imported before the catalogue are gone.
 RESET_KEY = "library_reset"
 #: Set once the catalogue's manuscripts are gone.
-MANUSCRIPTS_KEY = "manuscripts_dropped"
+#: Set once the catalogue has been cleared of what it leaves out now.
+SET_ASIDE_KEY = "set_aside_dropped"
 #: A rotation with fewer pictures not shown lately asks museums for more,
 #: up to ``POOL_SIZE``; Suggestions remember at most ``POOL_MAX`` works.
 POOL_LOW = 8
@@ -748,24 +749,21 @@ class Player:
         log.info("clean start: %d museum works deleted", len(gone))
         return len(gone)
 
-    def drop_manuscripts(self) -> int:
-        """Once: delete the pages of manuscripts the server put in the
-        catalogue before it learnt to leave them out. Works the owner kept,
-        liked, framed or put in a playlist stay. Returns how many went."""
-        if self.library.get_state(MANUSCRIPTS_KEY, False):
+    def drop_set_aside(self) -> int:
+        """Once: delete the photographs and pages of manuscripts the server
+        put in the catalogue before it learnt to leave them out. Works the
+        owner kept, liked, framed or put in a playlist stay. Returns how
+        many went."""
+        if self.library.get_state(SET_ASIDE_KEY, False):
             return 0
-        self.library.set_state(MANUSCRIPTS_KEY, True)
+        self.library.set_state(SET_ASIDE_KEY, True)
         state = self.state
         kept = {i for p in self.library.playlists() for i in p.item_ids}
         kept |= {state.current_item_id or "", *state.current_group}
         gone = [
             i
             for i in self.library.query(include_excluded=True)[1]
-            if i.pooled
-            and is_manuscript(i)
-            and not i.favorite
-            and not i.framing
-            and i.id not in kept
+            if i.pooled and set_aside(i) and not i.favorite and not i.framing and i.id not in kept
         ]
         ids = {i.id for i in gone}
         with self.library.batch():
@@ -778,7 +776,7 @@ class Player:
             self._save_state(state)
             suggestions = self.library.get_state(SUGGESTIONS_KEY, [])
             self.library.set_state(SUGGESTIONS_KEY, [i for i in suggestions if i not in ids])
-        log.info("catalogue: %d manuscript pages deleted", len(gone))
+        log.info("catalogue: %d photographs and manuscript pages deleted", len(gone))
         return len(gone)
 
     def trim_cache(self) -> int:

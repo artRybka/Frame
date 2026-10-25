@@ -426,7 +426,14 @@ class WikimediaCommons(Museum):
     name = "Wikimedia Commons"
     page_size = 50
     api = "https://commons.wikimedia.org/w/api.php"
-    meta = "ObjectName|Artist|DateTimeOriginal|LicenseShortName|ImageDescription|Credit"
+    meta = "ObjectName|Artist|DateTimeOriginal|LicenseShortName|ImageDescription|Credit|Categories"
+    #: Categories that mark a file as someone's photograph rather than a
+    #: reproduction of a work of art.
+    snapshot = re.compile(
+        r"photographs taken on|taken with|photographs by|photos by|self-published work|"
+        r"uploaded with|files by user|images by user|quality images|valued images",
+        re.IGNORECASE,
+    )
 
     def _params(self, **extra: Any) -> dict[str, Any]:
         return {
@@ -457,6 +464,8 @@ class WikimediaCommons(Museum):
         if not infos:
             return None
         info = infos[0]
+        if self.snapshot.search(self._meta(info, "Categories")):
+            return None
         licence = self._meta(info, "LicenseShortName")
         public = "public domain" in licence.casefold() or "cc0" in licence.casefold()
         # Everything on Commons is freely licensed; attribution is kept in ``credit``.
@@ -497,7 +506,9 @@ class WikimediaCommons(Museum):
                 self.api,
                 params=self._params(
                     generator="search",
-                    gsrsearch=f"{query} filetype:bitmap",
+                    # Only files described as works of art ({{Artwork}},
+                    # {{Painting}}): free text alone finds mostly photographs.
+                    gsrsearch=f"{query} filetype:bitmap hastemplate:Artwork",
                     gsrnamespace=6,
                     gsrlimit=limit,
                     gsroffset=offset,
@@ -980,7 +991,8 @@ class Openverse(Museum):
         return int(body.get("result_count") or 0), items
 
     def search(self, query: str, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
-        return self._get({"q": query}, limit, page)
+        # Art only: without a category most of Openverse is Flickr photos.
+        return self._get({"q": query, "category": "digitized_artwork,illustration"}, limit, page)
 
     def discover(self, spec: Discovery, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
         if spec.year_from is not None or spec.year_to is not None:

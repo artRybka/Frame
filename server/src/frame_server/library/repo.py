@@ -29,7 +29,7 @@ from .models import (
     PlaylistRules,
     PlaylistSummary,
 )
-from .vocabulary import artist_matches, is_manuscript, matches_terms, wants_manuscripts
+from .vocabulary import artist_matches, matches_terms, set_aside
 
 SortKey = Literal["recent", "title", "artist", "year", "random", "suitability", "shown"]
 
@@ -249,11 +249,11 @@ class Library:
         include_excluded: bool = False,
     ) -> tuple[int, list[Item]]:
         rules = rules or PlaylistRules()
-        # Pages of manuscripts the server picked only when asked for.
-        hide = not include_excluded and not wants_manuscripts(rules.terms)
 
+        # Photographs and pages of manuscripts the server picked only when
+        # asked for (photographs never).
         def selected(item: Item) -> bool:
-            if hide and item.pooled and is_manuscript(item):
+            if not include_excluded and item.pooled and set_aside(item, rules.terms):
                 return False
             if include_excluded and item.excluded:
                 return matches(item.model_copy(update={"excluded": False}), rules)
