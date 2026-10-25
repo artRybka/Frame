@@ -100,7 +100,12 @@ struct ArtCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            ArtImage(ref: ref ?? .thumb(item.id), placeholder: item.placeholderColor, maxPixel: 700)
+            ArtImage(
+                ref: ref ?? .thumb(item.id),
+                fallback: ref.flatMap { $0 == .thumb(item.id) ? nil : ImageRef.thumb(item.id) },
+                placeholder: item.placeholderColor,
+                maxPixel: 700
+            )
                 .aspectRatio(max(0.45, min(item.aspectRatio, 2.2)), contentMode: .fit)
                 .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                 .overlay(alignment: .topTrailing) {

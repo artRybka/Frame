@@ -121,7 +121,7 @@ struct TermSearchField: View {
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 6) {
                                 ForEach(hint.items.prefix(6)) { remote in
-                                    ArtImage(ref: remote.thumb, placeholder: remote.item.summary.placeholderColor, maxPixel: 200)
+                                    ArtImage(ref: remote.thumb, fallback: remote.thumbFallback, placeholder: remote.item.summary.placeholderColor, maxPixel: 200)
                                         .frame(width: 56, height: 56)
                                         .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                                 }
