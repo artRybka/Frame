@@ -5,8 +5,10 @@ from __future__ import annotations
 import contextlib
 import os
 import threading
+import time
 from collections.abc import Callable, Iterable
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import httpx
 from PIL import Image
@@ -18,6 +20,13 @@ THUMB_MAX = 640
 IMAGE_MAX = 2560
 #: Thumbnails of works that are not in the library (browsed, previewed).
 THUMB_SPARE = 500
+#: Downloads at once from one host. Commons answers more than two parallel
+#: media requests with 429; museum CDNs throttle bursts too.
+HOST_LIMITS = {"upload.wikimedia.org": 2}
+HOST_LIMIT = 4
+#: Answers worth another try (throttled or briefly down), and how many tries.
+RETRY_STATUS = {408, 429, 500, 502, 503, 504}
+ATTEMPTS = 3
 
 
 def _save_jpeg(img: Image.Image, path: Path, max_side: int, quality: int) -> None:
@@ -26,6 +35,14 @@ def _save_jpeg(img: Image.Image, path: Path, max_side: int, quality: int) -> Non
     tmp = path.with_suffix(".tmp")
     img.save(tmp, "JPEG", quality=quality, optimize=True)
     tmp.replace(path)
+
+
+def _retry_after(resp: httpx.Response, attempt: int) -> float:
+    try:
+        wait = float(resp.headers.get("retry-after", ""))
+    except ValueError:
+        wait = 2.0 * attempt
+    return min(max(wait, 0.5), 8.0)
 
 
 class ImageCache:
@@ -38,7 +55,9 @@ class ImageCache:
         #: Sources whose originals need more than a plain download (by source).
         self.fetchers: dict[str, Callable[[Item], bytes]] = {}
         self._locks: dict[str, threading.Lock] = {}
+        self._gates: dict[str, threading.BoundedSemaphore] = {}
         self._guard = threading.Lock()
+        self.sleep: Callable[[float], None] = time.sleep
 
     def _lock(self, key: str) -> threading.Lock:
         with self._guard:
@@ -50,11 +69,31 @@ class ImageCache:
     def image_path(self, item: Item) -> Path:
         return self.images / f"{item.file_stem}.jpg"
 
+    def _gate(self, host: str) -> threading.BoundedSemaphore:
+        with self._guard:
+            if host not in self._gates:
+                limit = HOST_LIMITS.get(host, HOST_LIMIT)
+                self._gates[host] = threading.BoundedSemaphore(limit)
+            return self._gates[host]
+
     def _download(self, url: str) -> Image.Image:
-        with self.http() as http:
-            resp = http.get(url)
-            resp.raise_for_status()
-        return load_image(resp.content)
+        """A few downloads per host at a time; throttled ones are tried again
+        after the wait the host asks for (a few seconds at most)."""
+        with self._gate(urlsplit(url).hostname or ""), self.http() as http:
+            for attempt in range(1, ATTEMPTS + 1):
+                try:
+                    resp = http.get(url)
+                except httpx.TransportError:
+                    if attempt == ATTEMPTS:
+                        raise
+                    self.sleep(attempt)
+                    continue
+                if resp.status_code in RETRY_STATUS and attempt < ATTEMPTS:
+                    self.sleep(_retry_after(resp, attempt))
+                    continue
+                resp.raise_for_status()
+                return load_image(resp.content)
+        raise AssertionError("unreachable")
 
     def ensure_thumb(self, item: Item) -> Path:
         path = self.thumb_path(item)

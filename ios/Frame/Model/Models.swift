@@ -577,6 +577,11 @@ struct RemoteItem: Codable, Hashable, Sendable, Identifiable {
         if inLibrary { return .thumb(id) }
         return URL(string: item.thumbUrl).map(ImageRef.url) ?? .thumb(id)
     }
+
+    /// The server's copy, when the museum refuses the thumbnail.
+    var thumbFallback: ImageRef? {
+        thumb == .thumb(id) ? nil : .thumb(id)
+    }
 }
 
 /// A row of Discover, `GET /api/suggestions`.

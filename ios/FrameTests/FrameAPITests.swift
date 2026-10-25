@@ -201,6 +201,19 @@ final class FrameAPITests: XCTestCase {
         XCTAssertFalse(page.items.isEmpty)
         XCTAssertFalse(page.more)
         XCTAssertEqual(page.items.first?.thumb, .thumb(page.items[0].id))  // demo works are on the server
+        XCTAssertNil(page.items[0].thumbFallback)
+    }
+
+    func testMuseumThumbnailFallsBackToTheServer() async throws {
+        let demo = DemoBackend()
+        let theme = try XCTUnwrap(try await demo.themes().first)
+        var item = try XCTUnwrap(try await demo.themePage(key: theme.key, page: 1).items.first).item
+        item.thumbUrl = "https://www.artic.edu/iiif/2/abc/full/600,/0/default.jpg"
+        let remote = RemoteItem(item: item, inLibrary: false)
+        XCTAssertEqual(remote.thumb, .url(try XCTUnwrap(URL(string: item.thumbUrl))))
+        XCTAssertEqual(remote.thumbFallback, .thumb(item.id))
+        item.thumbUrl = ""
+        XCTAssertNil(RemoteItem(item: item, inLibrary: false).thumbFallback)
     }
 
     func testThemesBecomePlaylists() async throws {
