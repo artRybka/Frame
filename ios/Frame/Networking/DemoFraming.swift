@@ -306,12 +306,13 @@ enum DemoFraming {
 
     // MARK: Drawing (mat.py, caption.py)
 
-    /// The mats as the server's preview shows them (paper white = screen white).
+    /// The mats as the server's preview shows them: nominal colours, the
+    /// correction for the inks is left to the panel's image.
     static func matColor(_ name: String) -> UIColor {
         switch name {
         case "cream": UIColor(red: 0.98, green: 0.96, blue: 0.89, alpha: 1)
         case "grey": UIColor(white: 0.68, alpha: 1)
-        case "black": UIColor(white: 0.1, alpha: 1)
+        case "black": .black
         default: .white
         }
     }

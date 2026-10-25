@@ -165,6 +165,7 @@ async def item_image(item_id: str, svc: Svc) -> FileResponse:
 
 _preview_locks: dict[str, asyncio.Lock] = {}
 PREVIEW_CACHE_FILES = 200
+PREVIEW_KIND = "original"  # part of the cache key: earlier previews were the simulated dither
 
 
 def _prune(directory: Path, keep: int) -> None:
@@ -175,7 +176,8 @@ def _prune(directory: Path, keep: int) -> None:
 
 @router.get("/library/items/{item_id}/preview")
 async def item_preview(item_id: str, svc: Svc, settings: str | None = None) -> FileResponse:
-    """How the picture will look on the panel.
+    """The picture framed as on the panel (crop, mat, lettering), in its own
+    colours: the correction for the inks is left to the panel's image.
 
     With the saved settings, or with ``settings`` (FrameSettings JSON; only
     orientation and presentation matter) to try a framing before saving it.
@@ -191,7 +193,7 @@ async def item_preview(item_id: str, svc: Svc, settings: str | None = None) -> F
     board = svc.player.preview_board(item, frame_settings)  # MULTI: with the photos beside it
     ids = ",".join(i.id for i in board)
     key = hashlib.sha1(
-        (render_settings.model_dump_json() + svc.palette.name + ids).encode(),
+        (PREVIEW_KIND + render_settings.model_dump_json() + svc.palette.name + ids).encode(),
         usedforsecurity=False,
     ).hexdigest()[:12]
     path = svc.images.thumbs.parent / "previews" / f"{item.file_stem}-{key}.png"
@@ -207,7 +209,7 @@ async def item_preview(item_id: str, svc: Svc, settings: str | None = None) -> F
                         result = render_multi(sources, render_settings, svc.palette, seed=ids)
                     else:
                         result = render(sources[0], render_settings, svc.palette)
-                    img = result.preview_image()
+                    img = result.original_image()
                     img.thumbnail((1280, 1280))
                     path.parent.mkdir(parents=True, exist_ok=True)
                     path.write_bytes(encode_image(img, "png"))

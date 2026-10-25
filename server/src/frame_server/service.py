@@ -195,7 +195,7 @@ class FrameService:
         else:
             result = render(image, settings, self.palette)
         data, ext = result.encode(fmt)  # type: ignore[arg-type]
-        preview = result.preview_image()
+        preview = result.original_image()  # the app shows the picture, not the dither
         preview.thumbnail((PREVIEW_MAX, PREVIEW_MAX))
         return self.store.publish(
             data,

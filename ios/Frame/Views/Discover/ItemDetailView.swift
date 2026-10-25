@@ -85,7 +85,7 @@ struct ItemDetailView: View {
             .pickerStyle(.segmented)
             .frame(maxWidth: 260)
             if view == .frame {
-                Text("Symulacja sześciu farb e-papieru Spectra 6 z bieżącymi ustawieniami.")
+                Text("Kadr i passe-partout z bieżącymi ustawieniami, w oryginalnych kolorach. Kolory dopasowuje dopiero ekran.")
                     .font(.caption)
                     .foregroundStyle(Theme.inkSoft)
                     .multilineTextAlignment(.center)
