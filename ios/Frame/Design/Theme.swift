@@ -170,8 +170,9 @@ enum Names {
     /// What a style does to the picture on its way to the six inks; it
     /// never changes the framing (server: imaging.pipeline.PRESETS,
     /// library.style for "auto").
-    static func presetExplanation(_ key: String) -> String {
+    static func presetExplanation(_ key: String, photo: Bool = false) -> String {
         switch key {
+        case "auto" where photo: "Dobierany do każdego zdjęcia osobno: kolorowe jako Zdjęcie, czarno-białe i w sepii tylko czarną i białą farbą, bez kolorowego szumu w szarościach."
         case "auto": "Dobierany do każdego obrazu osobno: zdjęcia jako Zdjęcie, drzeworyty, litografie i plakaty jako Grafika, a rysunki, ryciny i fotografie bez koloru tylko czarną i białą farbą. Pozostałe jako Obraz."
         case "photo": "Do zdjęć: rozjaśnia cienie, które e-papier łatwo zaczernia, lekko podbija kontrast i kolory, mocniej wyostrza."
         case "graphic": "Do plakatów, ilustracji i drzeworytów: płaskie, nasycone barwy, wyraźny kontrast i ostre krawędzie, drobniejszy raster bez szumu."

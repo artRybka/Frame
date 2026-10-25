@@ -492,7 +492,7 @@ struct PresentationSection: View {
                         .labelsHidden()
                     }
                 }
-                Text(Names.presetExplanation(presentation.preset.wrappedValue))
+                Text(Names.presetExplanation(presentation.preset.wrappedValue, photo: target == .photo))
                     .font(.caption)
                     .foregroundStyle(Theme.inkSoft)
                     .fixedSize(horizontal: false, vertical: true)
