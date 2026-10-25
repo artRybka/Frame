@@ -20,6 +20,7 @@ struct FrameTabView: View {
                         ScheduleSection(settings: binding)
                         PresentationSection(settings: binding)
                         ScreenSection(settings: binding)
+                        SourcesSection(settings: binding)
                     }
                     ServerSection()
                 }
@@ -765,6 +766,35 @@ struct ScreenSection: View {
                         .font(.caption)
                         .foregroundStyle(Theme.inkSoft)
                 }
+            }
+        }
+    }
+}
+
+struct SourcesSection: View {
+    @Binding var settings: FrameSettings
+
+    private var wikiart: Binding<Bool> {
+        Binding(get: { settings.wikiart ?? false }, set: { settings.wikiart = $0 })
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            SectionHeader(title: "Źródła dzieł", subtitle: "Skąd serwer bierze sztukę")
+            Card {
+                Text("Muzea, Wikimedia Commons, Europeana i Openverse dają dzieła wolne do pokazywania: domenę publiczną (w UE 70 lat po śmierci twórcy) i licencje Creative Commons.")
+                    .font(.caption)
+                    .foregroundStyle(Theme.inkSoft)
+                Divider()
+                Toggle(isOn: wikiart) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("WikiArt (tylko testy)")
+                        Text("Wyłącznie do testów panelu na nowszej sztuce. WikiArt pokazuje dzieła chronione prawem autorskim bez licencji, więc nie trafiają one do Propozycji, a po wyłączeniu przełącznika znikają z biblioteki.")
+                            .font(.caption)
+                            .foregroundStyle(Theme.inkSoft)
+                    }
+                }
+                .tint(Theme.accent)
             }
         }
     }

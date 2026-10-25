@@ -20,6 +20,7 @@ from .imaging import Palette, RenderSettings, get_palette, render, render_multi
 from .imaging.pipeline import encode_image
 from .library import ImageCache, Importer, Library
 from .library.commons import repair_library
+from .library.museums import Access
 from .library.museums import client as museum_client
 from .player import Player
 from .power import PowerManager
@@ -119,7 +120,7 @@ class FrameService:
             self.library,
             self.images,
             self.palette,
-            private_use=lambda: self.player.settings.private_use,
+            access=self._access,
         )
         self.status = StatusMonitor(self.panel)
         self.player = Player(self)
@@ -127,6 +128,19 @@ class FrameService:
         self.albums = Albums(self)
 
         self._tasks: set[asyncio.Task[object]] = set()
+
+    def _access(self) -> Access:
+        """What the owner lets art sources return, and their credentials."""
+        chosen, config = self.player.settings, self.settings
+        app = None
+        if config.openverse_client_id and config.openverse_client_secret:
+            app = (config.openverse_client_id, config.openverse_client_secret)
+        return Access(
+            private_use=chosen.private_use,
+            wikiart=chosen.wikiart,
+            europeana_key=config.europeana_key,
+            openverse_app=app,
+        )
 
     @property
     def calibrated_palette_path(self) -> Path:

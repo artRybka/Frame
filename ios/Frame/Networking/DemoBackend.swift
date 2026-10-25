@@ -614,6 +614,8 @@ actor DemoBackend: FrameBackend {
             Museum(key: "met", name: "The Metropolitan Museum of Art"),
             Museum(key: "rijks", name: "Rijksmuseum"),
             Museum(key: "wmc", name: "Wikimedia Commons"),
+            Museum(key: "europeana", name: "Europeana"),
+            Museum(key: "openverse", name: "Openverse"),
         ]
     }
 

@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.6.0
+
+- Nowsze dzieła legalnie. Domena publiczna liczona także według prawa UE
+  (70 lat po śmierci twórcy; daty z Europeany i Wikidata), co otwiera
+  m.in. Kandinsky'ego, Mondriana, Klee, Matisse'a i Légera. Nowe źródła:
+  Europeana (także w Propozycjach; dzieła „in copyright” przyjmowane, gdy
+  twórca zmarł ponad 70 lat temu) i Openverse (Creative Commons; bez
+  „Użytku prywatnego” tylko CC0). Opcjonalne klucze: `europeana_key`,
+  `openverse_client_id`, `openverse_client_secret`.
+
+- WikiArt tylko do testów panelu: nowe ustawienie `wikiart` (przełącznik
+  w aplikacji). Bez niego WikiArt nie pojawia się w `GET /api/museums`
+  ani w wyszukiwaniu; nigdy nie trafia do Propozycji; po wyłączeniu jego
+  dzieła znikają z biblioteki.
+
 ## 0.5.0
 
 - Nowe Odkrywaj. Słownik stylów, tematów, okresów i technik po polsku ze

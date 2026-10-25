@@ -432,6 +432,9 @@ struct FrameSettings: Codable, Hashable, Sendable {
     var statusPollMinutes: Int
     /// Only seen at home: also accept freely licensed, not public-domain works.
     var privateUse: Bool? = nil
+    /// WikiArt as a source, only to test the panel; its works leave the
+    /// library when switched off.
+    var wikiart: Bool? = nil
 
     /// Changes whenever the way pictures are framed on the panel changes;
     /// used to refresh cached "on the frame" previews.
@@ -452,7 +455,7 @@ struct FrameSettings: Codable, Hashable, Sendable {
 extension FrameSettings {
     private enum CodingKeys: String, CodingKey {
         case playlistId, changeTimes, changeEveryDays, quietStart, shuffle, avoidRepeatDays
-        case orientation, rotation, art, photo, timezone, statusPollMinutes, privateUse
+        case orientation, rotation, art, photo, timezone, statusPollMinutes, privateUse, wikiart
         case quietEnd  // older servers: decoded only
     }
 
@@ -473,6 +476,7 @@ extension FrameSettings {
         timezone = try c.decode(String.self, forKey: .timezone)
         statusPollMinutes = try c.decode(Int.self, forKey: .statusPollMinutes)
         privateUse = try c.decodeIfPresent(Bool.self, forKey: .privateUse)
+        wikiart = try c.decodeIfPresent(Bool.self, forKey: .wikiart)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -490,6 +494,7 @@ extension FrameSettings {
         try c.encode(timezone, forKey: .timezone)
         try c.encode(statusPollMinutes, forKey: .statusPollMinutes)
         try c.encodeIfPresent(privateUse, forKey: .privateUse)
+        try c.encodeIfPresent(wikiart, forKey: .wikiart)
     }
 
     /// When quiet hours end: the first change time after their start.
