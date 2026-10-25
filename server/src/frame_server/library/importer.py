@@ -22,7 +22,14 @@ from .lifespan import LifeDates
 from .models import Item, ItemKind, PhotoInfo, PlaylistRules
 from .museums import MUSEUMS, Access, Discovery, Kind, Museum, available, client, museum
 from .repo import Library, matches, now_iso
-from .vocabulary import is_manuscript, museum_kind, museum_queries, wants_manuscripts, years
+from .vocabulary import (
+    is_manuscript,
+    is_photograph,
+    museum_kind,
+    museum_queries,
+    wants_manuscripts,
+    years,
+)
 
 log = logging.getLogger(__name__)
 
@@ -168,6 +175,7 @@ class Importer:
     ) -> tuple[int, list[Item]]:
         with self.http() as http:
             total, items = museum(source, http, self.access()).search(query, limit=limit, page=page)
+        items = [i for i in items if not is_photograph(i)]
         self.remember(items)
         return total, items
 
@@ -199,7 +207,11 @@ class Importer:
                 continue
             total += count
             found.append(items)
-        mixed = [i for i in chain.from_iterable(zip_longest(*found)) if i is not None]
+        mixed = [
+            i
+            for i in chain.from_iterable(zip_longest(*found))
+            if i is not None and not is_photograph(i)
+        ]
         self.remember(mixed)
         return total, mixed, failed
 
@@ -212,7 +224,7 @@ class Importer:
             page = 1
             while len(found) < limit:
                 total, items = source_museum.search(query, limit=size, page=page)
-                found += items
+                found += [i for i in items if not is_photograph(i)]
                 if page * size >= total:
                     break
                 page += 1
@@ -397,7 +409,7 @@ class Importer:
                 drawn += 1
                 if self.library.has(item.id) or not before(item):
                     continue
-                if not manuscripts and is_manuscript(item):
+                if is_photograph(item) or (not manuscripts and is_manuscript(item)):
                     job.skipped += 1
                     continue
                 try:

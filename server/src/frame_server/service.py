@@ -22,6 +22,7 @@ from .library import ImageCache, Importer, Library
 from .library.commons import repair_library
 from .library.museums import Access
 from .library.museums import client as museum_client
+from .panel_config import PanelConfigStore
 from .player import Player
 from .power import PowerManager
 from .progress import ProgressTracker, Stage
@@ -115,6 +116,8 @@ class FrameService:
         self.library = Library(settings.data_dir / "library.db")
         if repaired := repair_library(self.library):
             log.info("cleaned Wikimedia Commons text of %d items", repaired)
+        # Before anything reads the panel's address: the app's values win.
+        self.panel_config = PanelConfigStore(settings, self.library)
         self.images = ImageCache(settings.data_dir / "library", museum_client)
         self.importer = Importer(
             self.library,

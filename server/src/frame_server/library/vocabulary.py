@@ -18,7 +18,7 @@ from functools import cache, cached_property
 from itertools import product
 from typing import Literal
 
-from .models import Item
+from .models import Item, ItemKind
 from .museums import Kind
 
 TermKind = Literal["style", "subject", "period", "technique"]
@@ -303,6 +303,30 @@ def is_manuscript(item: Item) -> bool:
     return bool(_MANUSCRIPT.search(" ".join((item.classification, item.title, item.medium))))
 
 
+#: Photographs in the museums' collections, by department or process; the
+#: frame is for paintings, prints and drawings. ("Photomechanical" and
+#: "photolithograph" posters stay.)
+_PHOTOGRAPH = re.compile(
+    r"\b(photograph(?:s|y|ic)?|fotografi\w*|gelatin[- ]silver|albumen|daguerreotype|ambrotype|"
+    r"tintype|cyanotype|salted[- ]paper|platinum print|palladium print|chromogenic|"
+    r"inkjet print|carte[- ]de[- ]visite|cabinet card|stereograph\w*|collodion|photogravure)\b",
+    re.IGNORECASE,
+)
+
+
+def is_photograph(item: Item) -> bool:
+    """A museum's photograph (never the owner's own photos)."""
+    return item.kind == ItemKind.ARTWORK and bool(
+        _PHOTOGRAPH.search(" ".join((item.classification, item.medium)))
+    )
+
+
+def set_aside(item: Item, keys: list[str] | tuple[str, ...] = ()) -> bool:
+    """Left out of the catalogue and searches: photographs always, pages of
+    manuscripts unless ``keys`` ask for them."""
+    return is_photograph(item) or (is_manuscript(item) and not wants_manuscripts(keys))
+
+
 def term(key: str) -> Term | None:
     """A term by its key; ``years:A-B`` makes one on the fly."""
     if key in BY_KEY:
@@ -364,7 +388,7 @@ def matches_terms(item: Item, keys: list[str]) -> bool:
     return all(any(term_matches(t, item, text) for t in terms) for terms in groups.values())
 
 
-def wants_manuscripts(keys: list[str]) -> bool:
+def wants_manuscripts(keys: list[str] | tuple[str, ...]) -> bool:
     return MANUSCRIPTS in keys
 
 

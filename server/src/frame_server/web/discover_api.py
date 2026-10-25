@@ -22,8 +22,10 @@ from ..library.vocabulary import (
     artist_matches,
     fold,
     is_manuscript,
+    is_photograph,
     museum_kind,
     museum_queries,
+    set_aside,
     suggest,
     wants_manuscripts,
 )
@@ -369,7 +371,7 @@ async def terms_in_museums(svc: Svc, q: str) -> MuseumHint:
     if not words:
         return MuseumHint(total=0, artists=[], items=[])
     total, items, failed = await run_in_threadpool(svc.importer.search_all, words, 8, 1)
-    items = [i for i in items if not is_manuscript(i)]
+    items = [i for i in items if not set_aside(i)]
     wanted = fold(words)
     names: Counter[str] = Counter(i.artist for i in items if i.artist and wanted in fold(i.artist))
     artists = [TermHit(kind="artist", key=n, name=n, count=c) for n, c in names.most_common(3)]
@@ -381,7 +383,9 @@ async def terms_in_museums(svc: Svc, q: str) -> MuseumHint:
 
 def _manuscripts_fit(item: Item, terms: list[str]) -> bool:
     """Pages of manuscripts only when asked for; asked for as the only
-    technique, nothing else."""
+    technique, nothing else. Photographs never."""
+    if is_photograph(item):
+        return False
     if not wants_manuscripts(terms):
         return not is_manuscript(item)
     techniques = [t for t in terms if t.startswith("technique:")]
@@ -477,5 +481,5 @@ async def browse(
     that way, interleaved (``limit`` from each)."""
     spec = Discovery(year_from=year_from, year_to=year_to, style=style, kind=kind)
     total, items, failed = await run_in_threadpool(svc.importer.discover_all, spec, limit, page)
-    items = [i for i in items if spec.fits(i) and not is_manuscript(i)]
+    items = [i for i in items if spec.fits(i) and not set_aside(i)]
     return RemotePage(total=total, items=_remote(svc, items), failed=failed)

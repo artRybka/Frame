@@ -5,14 +5,16 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 from test_pools import _wait, museums  # noqa: F401  (fixture)
 
-from frame_server.library import Item, PlaylistRules
+from frame_server.library import Item, ItemKind, PlaylistRules
 from frame_server.library.repo import matches
 from frame_server.library.themes import GROUPS, THEMES, theme_of_the_day
 from frame_server.library.vocabulary import (
     BY_KEY,
     artist_matches,
     is_manuscript,
+    is_photograph,
     museum_queries,
+    set_aside,
     suggest,
     term,
 )
@@ -76,19 +78,34 @@ def test_manuscripts_are_told_apart() -> None:
     assert not is_manuscript(_work(4, title="Water Lilies", classification="Painting"))
 
 
+def test_photographs_are_told_apart() -> None:
+    assert is_photograph(_work(1, classification="Photographs", medium="Gelatin silver print"))
+    assert is_photograph(_work(2, title="Venice", medium="Albumen print from glass negative"))
+    assert not is_photograph(_work(3, classification="Print", medium="Photomechanical print"))
+    assert not is_photograph(_work(4, classification="Poster", medium="Photolithograph"))
+    own = Item(
+        id="own:1", source="own", source_id="1", kind=ItemKind.PHOTO, classification="Photograph"
+    )
+    assert not is_photograph(own)  # the owner's photos are never set aside
+    page = _work(5, title="Leaf from a Psalter")
+    assert set_aside(page) and not set_aside(page, ["technique:manuscripts"])
+
+
 def test_catalogue_leaves_manuscripts_out(museums) -> None:  # noqa: F811
     service = museums
     library = service.library
     page = library.upsert(_work(1, title="Leaf from a Psalter", pooled=True))
     kept = library.upsert(_work(2, title="Leaf from a Psalter"))  # saved by the owner
     painting = library.upsert(_work(3, title="Haystacks", pooled=True))
+    photo = library.upsert(_work(4, title="Rouen", medium="Salted paper print", pooled=True))
     assert {i.id for i in library.query()[1]} == {kept.id, painting.id}
     asked = library.query(PlaylistRules(terms=["technique:manuscripts"]))[1]
     assert {i.id for i in asked} == {page.id, kept.id}
 
-    assert service.player.drop_manuscripts() == 1
-    assert library.get(page.id) is None and library.get(kept.id) is not None
-    assert service.player.drop_manuscripts() == 0  # once
+    assert service.player.drop_set_aside() == 2
+    assert library.get(page.id) is None and library.get(photo.id) is None
+    assert library.get(kept.id) is not None
+    assert service.player.drop_set_aside() == 0  # once
 
 
 def test_theme_playlists_and_terms(museums) -> None:  # noqa: F811

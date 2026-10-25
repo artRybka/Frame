@@ -29,7 +29,7 @@ from .models import (
     PlaylistRules,
     PlaylistSummary,
 )
-from .vocabulary import artist_matches, is_manuscript, matches_terms, wants_manuscripts
+from .vocabulary import artist_matches, matches_terms, set_aside
 
 SortKey = Literal["recent", "title", "artist", "year", "random", "suitability", "shown"]
 
@@ -249,11 +249,11 @@ class Library:
         include_excluded: bool = False,
     ) -> tuple[int, list[Item]]:
         rules = rules or PlaylistRules()
-        # Pages of manuscripts the server picked only when asked for.
-        hide = not include_excluded and not wants_manuscripts(rules.terms)
 
+        # Photographs and pages of manuscripts the server picked only when
+        # asked for (photographs never).
         def selected(item: Item) -> bool:
-            if hide and item.pooled and is_manuscript(item):
+            if not include_excluded and item.pooled and set_aside(item, rules.terms):
                 return False
             if include_excluded and item.excluded:
                 return matches(item.model_copy(update={"excluded": False}), rules)
@@ -352,8 +352,7 @@ class Library:
     def set_album_sync(self, playlist_id: int, sync: AlbumSync | None) -> None:
         key = f"album_sync:{playlist_id}"
         if sync is None:
-            with self._db() as db:
-                db.execute("DELETE FROM kv WHERE key = ?", (key,))
+            self.delete_state(key)
         else:
             self.set_state(key, sync.model_dump(mode="json"))
 
@@ -369,6 +368,10 @@ class Library:
             db.execute(
                 "INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)", (key, json.dumps(value))
             )
+
+    def delete_state(self, key: str) -> None:
+        with self._db() as db:
+            db.execute("DELETE FROM kv WHERE key = ?", (key,))
 
     # -- history ------------------------------------------------------------
 

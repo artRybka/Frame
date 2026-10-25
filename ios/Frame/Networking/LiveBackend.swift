@@ -274,6 +274,16 @@ struct LiveBackend: FrameBackend {
         return try await perform(req)
     }
 
+    func panelConfig() async throws -> PanelConfig { try await get("/api/device/config") }
+
+    func savePanelConfig(_ update: PanelConfigUpdate) async throws -> PanelConfig {
+        try await send("/api/device/config", method: "PUT", body: update)
+    }
+
+    func resetPanelConfig() async throws -> PanelConfig {
+        try await send("/api/device/config", method: "DELETE")
+    }
+
     func wake() async throws { try await send("/api/device/wake", method: "POST") }
     func sleep() async throws { try await send("/api/device/sleep", method: "POST") }
 

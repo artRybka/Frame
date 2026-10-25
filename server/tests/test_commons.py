@@ -122,3 +122,32 @@ def test_repair_stored_items(tmp_path) -> None:
     lib.update("wmc:7", title=STORED_TITLE)
     assert repair_library(lib) == 0
     assert Library(tmp_path / "lib.db").get("wmc:7").title == STORED_TITLE
+
+
+def test_wikimedia_search_leaves_photographs_out() -> None:
+    def page(n: int, categories: str) -> dict:
+        info = {
+            "url": f"https://upload/{n}.jpg",
+            "extmetadata": {
+                "ObjectName": {"value": f"Work {n}"},
+                "LicenseShortName": {"value": "Public domain"},
+                "Categories": {"value": categories},
+            },
+        }
+        return {"pageid": n, "title": f"File:{n}.jpg", "imageinfo": [info]}
+
+    pages = {
+        "1": page(1, "Paintings by Claude Monet|Seascapes"),
+        "2": page(2, "Photographs taken on 2019-07-14|Taken with Canon EOS 5D"),
+        "3": page(3, "Self-published work|Beaches of Normandy"),
+    }
+    sent: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        sent.append(request)
+        return httpx.Response(200, json={"query": {"pages": pages}})
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http:
+        _, items = WikimediaCommons(http).search("sea")
+    assert [i.title for i in items] == ["Work 1"]
+    assert "hastemplate:Artwork" in sent[0].url.params["gsrsearch"]
