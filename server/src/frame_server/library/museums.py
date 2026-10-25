@@ -17,6 +17,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Any, ClassVar, Literal
+from urllib.parse import unquote
 
 import httpx
 
@@ -879,6 +880,13 @@ class Europeana(Museum):
             low = "*" if spec.year_from is None else spec.year_from
             high = "*" if spec.year_to is None else spec.year_to
             qf.append(f"YEAR:[{low} TO {high}]")
+        elif not spec.style.strip():
+            # Nothing to narrow by: most images are still in copyright, so ask
+            # for openly licensed ones or the pages come back empty.
+            free = "*publicdomain*"
+            if self.private_use:
+                free = f"({free} OR *creativecommons.org/licenses*)"
+            qf.append(f"RIGHTS:{free}")
         return self._get(spec.style, qf, limit, page)
 
     def fetch(self, source_id: str) -> Item | None:
@@ -1058,8 +1066,9 @@ class WikiArt(Museum):
         )
 
     def _page(self, term: str, number: int) -> tuple[list[dict[str, Any]], bool]:
-        """WikiArt's ``number``-th page of results (from 1) and whether more follow."""
-        params: dict[str, str] = {"term": term}
+        """WikiArt's ``number``-th page of results (from 1) and whether more
+        follow; without a ``term``, its most viewed paintings."""
+        params: dict[str, str] = {"term": term} if term else {}
         if number > 1:
             token = self._tokens.get((term, number))
             if token is None:
@@ -1068,20 +1077,19 @@ class WikiArt(Museum):
                 if not more or token is None:
                     return [], False
             params["paginationToken"] = token
-        resp = self.http.get(f"{self.api}/PaintingSearch", params=params)
+        endpoint = "PaintingSearch" if term else "MostViewedPaintings"
+        resp = self.http.get(f"{self.api}/{endpoint}", params=params)
         resp.raise_for_status()
         body = resp.json()
         more = bool(body.get("hasMore")) and bool(body.get("paginationToken"))
         if more:
             if len(self._tokens) > 500:
                 self._tokens.clear()
-            self._tokens[(term, number + 1)] = str(body["paginationToken"])
+            # Tokens come URL-encoded; sent encoded again, WikiArt fails.
+            self._tokens[(term, number + 1)] = unquote(str(body["paginationToken"]))
         return list(body.get("data") or []), more
 
-    def search(self, query: str, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
-        term = query.strip()
-        if not term:
-            return 0, []
+    def _results(self, term: str, limit: int, page: int) -> tuple[int, list[Item]]:
         start = (page - 1) * limit
         first = start // self.page_size + 1
         last = (start + limit - 1) // self.page_size + 1
@@ -1097,8 +1105,13 @@ class WikiArt(Museum):
         seen = (first - 1) * self.page_size + len(found)
         return (start + limit * 2 if more else seen), items
 
+    def search(self, query: str, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
+        term = query.strip()
+        return self._results(term, limit, page) if term else (0, [])
+
     def discover(self, spec: Discovery, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
-        return self.search(spec.style, limit, page)
+        """Works of a style; with nothing asked, the most viewed paintings."""
+        return self._results(spec.style.strip(), limit, page)
 
     def fetch(self, source_id: str) -> Item | None:
         resp = self.http.get(f"{self.api}/Painting", params={"id": source_id})

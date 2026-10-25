@@ -139,6 +139,17 @@ def test_europeana_discovery_and_fetch() -> None:
     assert discover.get_list("qf")[2:] == ["what:painting", "YEAR:[* TO 1955]"]
     assert fetch["query"] == 'europeana_id:"/2048047/Clasate_e91c"'
 
+    # Browsing with nothing asked: openly licensed images only.
+    sent.clear()
+    with _europeana([record], sent) as http:
+        Europeana(http).discover(Discovery())
+        Europeana(http, private_use=True).discover(Discovery())
+    public, licensed = sent[0].url.params, sent[1].url.params
+    assert public["query"] == "*" and public.get_list("qf")[-1] == "RIGHTS:*publicdomain*"
+    assert licensed.get_list("qf")[-1] == (
+        "RIGHTS:(*publicdomain* OR *creativecommons.org/licenses*)"
+    )
+
 
 def _openverse_result(n: int, licence: str) -> dict:
     return {
@@ -217,6 +228,48 @@ def test_wikiart_only_while_switched_on_and_pages_by_token() -> None:
     assert first.image_url == "https://uploads.wikiart.org/images/mark-rothko/no-48.jpg"
     assert first.license == "Tylko do testów ramki (WikiArt)"
     assert first.url == "https://www.wikiart.org/en/mark-rothko/no-48"
+
+
+def test_wikiart_browses_most_viewed_with_tokens_decoded() -> None:
+    sent: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        token = request.url.params.get("paginationToken")
+        rows = [{"id": f"mv{n}", "title": "x", "image": "https://u/x.jpg"} for n in range(60)]
+        return httpx.Response(
+            200, json={"data": rows, "hasMore": token is None, "paginationToken": "a%2fb%3d"}
+        )
+
+    WikiArt._tokens.clear()
+    with _client(handler, sent) as http:
+        source = museum("wikiart", http, Access(wikiart=True))
+        total, items = source.discover(Discovery(), limit=24, page=3)
+        assert source.search("  ") == (0, [])
+    assert len(items) == 24 and total == 120
+    assert [r.url.path for r in sent] == ["/en/api/2/MostViewedPaintings"] * 2
+    assert "term" not in sent[0].url.params
+    assert sent[1].url.params["paginationToken"] == "a/b="  # sent once encoded, not twice
+
+
+def test_one_source_alone_shows_what_it_has(service, monkeypatch) -> None:
+    from frame_server.library.museums import MUSEUMS
+    from frame_server.web import create_app
+
+    asked: list[Discovery] = []
+
+    class Browsed(Openverse):
+        def discover(self, spec, limit=20, page=1):
+            asked.append(spec)
+            item = self._item("w1", title="Work", image_url="https://x/1.jpg")
+            return 1, [item]
+
+    monkeypatch.setitem(MUSEUMS, "openverse", Browsed)
+    app = create_app(service.settings)
+    with TestClient(app) as client:
+        found = client.get("/api/discover/search", params={"source": "openverse"}).json()
+        assert [r["item"]["id"] for r in found["items"]] == ["openverse:w1"]
+        assert asked == [Discovery()]
+        assert client.get("/api/discover/search").json()["total"] == 0  # all: nothing asked
 
 
 def test_wikiart_switch_lists_it_and_switching_off_removes_its_works(service) -> None:

@@ -1,5 +1,15 @@
 # Changelog
 
+## Niewydane
+
+- Muzea → samo źródło (bez frazy) pokazuje dzieła tego źródła, a nie
+  „Nic tu nie ma”: Openverse dzieła w domenie publicznej (z „Użytkiem
+  prywatnym” także CC), WikiArt najczęściej oglądane obrazy, Europeana
+  dzieła na wolnych licencjach. Wcześniej serwer w ogóle nie pytał
+  źródła, więc Openverse i WikiArt, których nie ma w katalogu, były puste.
+- WikiArt: kolejne strony wyników działają (token stronicowania był
+  kodowany dwa razy i WikiArt odpowiadał błędem).
+
 ## 0.7.0
 
 - Adres IP, PIN i MAC ekranu ustawiane w aplikacji (Ramka → Połączenie

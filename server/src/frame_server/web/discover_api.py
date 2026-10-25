@@ -443,7 +443,8 @@ async def search_museums(
     # Several artists take turns, so each page asks for one of them.
     round_ = (page - 1) // len(rules.artists) + 1 if rules.artists else page
     failed: list[str] = []
-    if not text and start is None and end is None and spec.kind == "any":
+    # Nothing asked: one chosen source shows what it has, all of them nothing.
+    if source == ALL and not text and start is None and end is None and spec.kind == "any":
         return RemotePage(total=0, items=[])
 
     def ask() -> tuple[int, list[Item], list[str]]:
