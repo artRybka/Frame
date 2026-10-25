@@ -16,7 +16,7 @@ class Presentation(BaseModel):
     model_config = ConfigDict(validate_assignment=True)
 
     preset: str = "auto"  # library.style.AUTO: chosen per picture; else an imaging.PRESETS key
-    fit: Fit = Fit.AUTO  # fill, passe-partout or details, by the picture's proportions
+    fit: Fit = Fit.AUTO  # fill, passe-partout or description, by the picture's proportions
     mat: Literal["white", "cream", "grey", "black", "picture"] = "white"  # picture: its hue
     margin: float = Field(0.05, ge=0, le=0.3)
     label: bool = False

@@ -434,7 +434,7 @@ struct StatusView: Codable, Sendable {
 
 struct Presentation: Codable, Hashable, Sendable {
     var preset: String
-    var fit: String  // "fit" | "fill" | "details" | "description" | "auto"; photos: "fit" | "fill" | "multi"
+    var fit: String  // "fit" | "fill" | "description" | "auto"; photos: "fit" | "fill" | "multi"
     var mat: String = "white"  // "white" | "cream" | "grey" | "black" | "picture"
     var margin: Double
     var label: Bool
@@ -873,7 +873,7 @@ struct Crop: Codable, Hashable, Sendable {
 }
 
 struct FramingWindow: Codable, Hashable, Sendable {
-    let role: String  // "picture" (passe-partout) | "fill" | "detail"
+    let role: String  // "picture" (passe-partout, opis) | "fill" | "detail"
     let aspect: Double
     var crop: Crop
     let custom: Bool
@@ -896,25 +896,27 @@ struct FramingWindow: Codable, Hashable, Sendable {
 /// with a preview to try crops before they are saved.
 struct FramingCrops: Codable, Hashable, Sendable {
     var fill: Crop?
-    var details: [Crop]?
-    var detail: Crop?  // "description": its one close-up
+    var detail: Crop?  // "description": its close-up
+    var picture: Crop?  // "description": the part of the picture shown
     var fit: Crop?  // "fit": the part shown and the window's shape
 
     /// `crops` as edited in a framing view of resolved mode `mode`.
     init(mode: String, crops: [Crop]) {
         switch mode {
         case "fill": fill = crops.first
-        case "details": details = crops.count == 2 ? crops : nil
+        case "description" where crops.count == 2:  // the picture, then its close-up
+            picture = crops[0]
+            detail = crops[1]
         case "description": detail = crops.first
         case "fit": fit = crops.first
         default: break
         }
     }
 
-    init(fill: Crop? = nil, details: [Crop]? = nil, detail: Crop? = nil, fit: Crop? = nil) {
+    init(fill: Crop? = nil, detail: Crop? = nil, picture: Crop? = nil, fit: Crop? = nil) {
         self.fill = fill
-        self.details = details
         self.detail = detail
+        self.picture = picture
         self.fit = fit
     }
 }
@@ -922,7 +924,7 @@ struct FramingCrops: Codable, Hashable, Sendable {
 /// `GET /api/library/items/{id}/framing`
 struct FramingView: Codable, Hashable, Sendable {
     let orientation: String
-    let fit: String  // resolved: "fit" | "fill" | "details" | "description"
+    let fit: String  // resolved: "fit" | "fill" | "description"
     let width: Int
     let height: Int
     var windows: [FramingWindow]

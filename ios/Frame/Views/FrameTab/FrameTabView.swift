@@ -585,7 +585,7 @@ struct FitOption: View {
     let action: () -> Void
 
     static let modes: [(fit: String, title: String)] = [
-        ("fit", "Passe-partout"), ("fill", "Wypełnij"), ("details", "Detale"), ("description", "Opis"),
+        ("fit", "Passe-partout"), ("fill", "Wypełnij"), ("description", "Opis"),
         ("auto", "Auto"),
     ]
 
@@ -605,9 +605,8 @@ struct FitOption: View {
         }
         return switch fit {
         case "fill": "Cały ekran; kadr sam ustawia się na tym, co najciekawsze (twarze, szczegóły). Poprawisz go w „Teraz”."
-        case "details": "Cały obraz, obok dwa detale w okienkach passe-partout: szerszy i bliższy, z różnych miejsc obrazu. Gdy proporcje obrazu są bliskie ramce, obraz jest mniejszy, żeby zmieściły się detale."
-        case "description": "Jak „Detale”, ale zamiast drugiego detalu krótki opis nadrukowany na passe-partout: tytuł, autor, data i kilka zdań o obrazie."
-        case "auto": "Wypełnienie, gdy proporcje pasują; passe-partout, gdy trochę się różnią; detale, gdy bardzo."
+        case "description": "Obraz, obok jego detal w okienku passe-partout i krótki opis nadrukowany na passe-partout: tytuł, autor, data i kilka zdań o obrazie. Gdy proporcje obrazu są bliskie ramce, obraz jest mniejszy, żeby zmieściły się detal i opis. Kadr obrazu i detalu poprawisz w „Teraz”."
+        case "auto": "Wypełnienie, gdy proporcje pasują; passe-partout, gdy trochę się różnią; opis z detalem, gdy bardzo."
         default: "Cały obraz w okienku passe-partout. Kadr i proporcje okienka zmienisz w „Teraz”."
         }
     }
@@ -641,16 +640,6 @@ struct FitOption: View {
         switch fit {
         case "fill":
             Rectangle().fill(art)
-        case "details":
-            HStack(spacing: 4) {
-                Rectangle().fill(art).frame(width: 16)
-                VStack(spacing: 4) {
-                    Rectangle().fill(art.opacity(0.7))
-                    Rectangle().fill(art.opacity(0.7))
-                }
-                .padding(.vertical, 5)
-                .padding(.trailing, 5)
-            }
         case "description":
             HStack(spacing: 4) {
                 Rectangle().fill(art).frame(width: 16)

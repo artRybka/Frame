@@ -115,7 +115,7 @@ def test_original_keeps_the_pictures_colours(strategy: Strategy) -> None:
 
 @pytest.mark.parametrize("preset", ["painting", "photo", "bw"])
 @pytest.mark.parametrize(
-    ("fit", "mat"), [(Fit.FIT, "picture"), (Fit.FILL, "white"), (Fit.DETAILS, "black")]
+    ("fit", "mat"), [(Fit.FIT, "picture"), (Fit.FILL, "white"), (Fit.DESCRIPTION, "black")]
 )
 def test_fast_original_matches_the_render(preset: str, fit: Fit, mat: str) -> None:
     """The app's quick preview is the render's original, lettering included."""

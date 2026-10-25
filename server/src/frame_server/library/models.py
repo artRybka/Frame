@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from enum import StrEnum
+from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from ..imaging.layout import Crop
 
@@ -37,9 +38,22 @@ class Framing(BaseModel):
     """Corrections saved by the user for one orientation of the frame."""
 
     fill: Crop | None = None  # FILL: the part shown
-    details: list[Crop] | None = Field(None, min_length=2, max_length=2)  # DETAILS
-    detail: Crop | None = None  # DESCRIPTION: its one close-up
+    detail: Crop | None = None  # DESCRIPTION: its close-up
+    picture: Crop | None = None  # DESCRIPTION: the part of the picture shown
     fit: Crop | None = None  # FIT: the part shown and the window's shape
+
+    @model_validator(mode="before")
+    @classmethod
+    def _from_details(cls, data: Any) -> Any:
+        """Older framings: of the retired two close-ups (DETAILS), the closer
+        one becomes the description's close-up unless it has its own."""
+        if not isinstance(data, dict) or "details" not in data:
+            return data
+        data = dict(data)
+        details = data.pop("details")
+        if data.get("detail") is None and isinstance(details, list) and len(details) == 2:
+            data["detail"] = details[1]
+        return data
 
 
 class Item(BaseModel):

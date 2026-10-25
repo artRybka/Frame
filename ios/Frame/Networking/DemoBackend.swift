@@ -356,15 +356,14 @@ actor DemoBackend: FrameBackend {
         let canvas = DemoFraming.canvas(orientation)
         let plan = DemoFraming.plan(
             size, canvas: canvas, presentation: pres, caption: pres.label,
-            crops: automatic ? autoCrops[itemID]?[orientation].map { FramingCrops(fill: $0.fill, details: $0.details, detail: $0.detail) }
+            crops: automatic ? autoCrops[itemID]?[orientation].map { FramingCrops(fill: $0.fill, detail: $0.detail) }
                 : crops(itemID, orientation)
         )
         let area = plan.fit == "fit"
             ? Self.unit(DemoFraming.fitArea(canvas, margin: pres.margin, caption: pres.label), canvas) : nil
         let isCustom = switch plan.fit {
         case "fill": custom?.fill != nil
-        case "details": custom?.details != nil
-        case "description": custom?.detail != nil
+        case "description": custom?.detail != nil || custom?.picture != nil
         case "fit": custom?.fit != nil
         default: false
         }
@@ -388,7 +387,9 @@ actor DemoBackend: FrameBackend {
         var saved = shared.crops[itemID]?[orientation] ?? DemoFraming.Crops()
         switch (current.fit, crops.count) {
         case ("fill", 1): saved.fill = crops[0]
-        case ("details", 2): saved.details = crops
+        case ("description", 2):
+            saved.picture = crops[0] == DemoFraming.wholeCrop ? nil : crops[0]
+            saved.detail = crops[1]
         case ("description", 1): saved.detail = crops[0]
         case ("fit", 1): saved.fit = crops[0]
         default: throw BackendError.http(status: 422, body: "")
@@ -405,8 +406,9 @@ actor DemoBackend: FrameBackend {
         var saved = shared.crops[itemID]?[orientation] ?? DemoFraming.Crops()
         switch current.fit {
         case "fill": saved.fill = nil
-        case "details": saved.details = nil
-        case "description": saved.detail = nil
+        case "description":
+            saved.detail = nil
+            saved.picture = nil
         default: saved.fit = nil
         }
         shared.crops[itemID, default: [:]][orientation] = saved
@@ -420,8 +422,8 @@ actor DemoBackend: FrameBackend {
         let auto = autoCrops[id]?[orientation]
         guard let custom = shared.crops[id]?[orientation] else { return auto }
         return DemoFraming.Crops(
-            fill: custom.fill ?? auto?.fill, details: custom.details ?? auto?.details,
-            detail: custom.detail ?? auto?.detail, fit: custom.fit
+            fill: custom.fill ?? auto?.fill, detail: custom.detail ?? auto?.detail,
+            picture: custom.picture, fit: custom.fit
         )
     }
 
@@ -783,8 +785,8 @@ actor DemoBackend: FrameBackend {
         if let trying {  // as the server: the crops given replace the saved ones
             let saved = chosen ?? FramingCrops()
             chosen = FramingCrops(
-                fill: trying.fill ?? saved.fill, details: trying.details ?? saved.details,
-                detail: trying.detail ?? saved.detail, fit: trying.fit ?? saved.fit
+                fill: trying.fill ?? saved.fill, detail: trying.detail ?? saved.detail,
+                picture: trying.picture ?? saved.picture, fit: trying.fit ?? saved.fit
             )
         }
         return (arts[id] ?? shared.uploads[id]).flatMap {

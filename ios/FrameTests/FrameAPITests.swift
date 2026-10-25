@@ -371,10 +371,10 @@ final class FrameAPITests: XCTestCase {
     func testDemoCropCorrections() async throws {
         let demo = DemoBackend()
         let current = try await demo.player().current
-        let id = try XCTUnwrap(current?.item?.id)  // a tall woodblock print: close-ups
+        let id = try XCTUnwrap(current?.item?.id)  // a tall woodblock print: a description
         let view = try await demo.framing(itemID: id, orientation: "landscape")
-        XCTAssertEqual(view.fit, "details")
-        XCTAssertEqual(view.windows.count, 2)
+        XCTAssertEqual(view.fit, "description")
+        XCTAssertEqual(view.windows.map(\.role), ["picture", "detail"])
         XCTAssertFalse(view.windows.contains(where: \.custom))
 
         var crops = view.windows.map(\.crop)
@@ -404,15 +404,10 @@ final class FrameAPITests: XCTestCase {
         let reset = try await demo.resetFraming(itemID: id, orientation: "landscape")
         XCTAssertFalse(reset.windows.contains(where: \.custom))
 
-        // "Opis": one close-up to correct.
-        var settings = try await demo.settings()
-        settings.art.fit = "description"
-        _ = try await demo.saveSettings(settings)
-        let text = try await demo.framing(itemID: id, orientation: "landscape")
-        XCTAssertEqual(text.fit, "description")
-        XCTAssertEqual(text.windows.count, 1)
+        // Only the close-up, as older versions sent it: the picture stays whole.
         let one = try await demo.saveFraming(itemID: id, orientation: "landscape", crops: [Crop(x: 0.4, y: 0.6, zoom: 2)])
-        XCTAssertEqual(one.windows.map(\.custom), [true])
+        XCTAssertEqual(one.windows[1].crop, Crop(x: 0.4, y: 0.6, zoom: 2))
+        XCTAssertEqual(one.windows[0].crop, DemoFraming.wholeCrop)
     }
 
     func testFramingDraft() {
@@ -456,7 +451,7 @@ final class FrameAPITests: XCTestCase {
         // The preview names the crops just saved: the one cached under the
         // plain address still shows the old crop.
         let named = try XCTUnwrap(after.savedCrops)
-        XCTAssertEqual(named.details?[0].zoom, 3)
+        XCTAssertEqual(named.picture?.zoom, 3)
         let api = LiveBackend(baseURL: URL(string: "http://frame.local:8099")!, token: "secret")
         let plain = try XCTUnwrap(api.request(for: .framePreview(id))?.url)
         let fresh = try XCTUnwrap(api.request(for: .framePreview(id, framing: named))?.url)
@@ -475,34 +470,44 @@ final class FrameAPITests: XCTestCase {
         let framed = DemoFraming.plan(CGSize(width: 800, height: 1200), canvas: canvas, presentation: fit, caption: false, crops: nil)
         XCTAssertEqual(framed.fit, "fit")
         XCTAssertEqual(framed.windows[0].rect, CGRect(x: 424, y: 36, width: 432, height: 648))
-        // Nearly 16:9: "auto" fills; a portrait picture gets close-ups.
+        // Nearly 16:9: "auto" fills; a portrait picture gets a description.
         var auto = fit
         auto.fit = "auto"
         let wide = DemoFraming.plan(CGSize(width: 1500, height: 900), canvas: canvas, presentation: auto, caption: false, crops: nil)
         XCTAssertEqual(wide.fit, "fill")
         XCTAssertEqual(wide.windows[0].rect.width, 1280, accuracy: 0.5)
         let tall = DemoFraming.plan(CGSize(width: 800, height: 1200), canvas: canvas, presentation: auto, caption: true, crops: nil)
-        XCTAssertEqual(tall.fit, "details")
-        XCTAssertEqual(tall.windows.map(\.role), ["picture", "detail", "detail"])
+        XCTAssertEqual(tall.fit, "description")
+        XCTAssertEqual(tall.windows.map(\.role), ["picture", "detail"])
         XCTAssertEqual(tall.windows[0].rect, CGRect(x: 0, y: 0, width: 480, height: 720))
-        XCTAssertNotNil(tall.captionAt)
+        XCTAssertNil(tall.captionAt)
         // The picture's outer edge stays behind the mat.
         XCTAssertEqual(tall.windows[0].box.minX, 16, accuracy: 0.5)
         XCTAssertEqual(framed.windows[0].box.maxY, 1176, accuracy: 0.5)
-        // "Opis": one close-up and the text where the second one was.
+        // "Opis": the text below the close-up, which is at least 1.8× the picture.
+        XCTAssertGreaterThan(tall.textRect?.minY ?? 0, tall.windows[1].rect.maxY)
+        let scale = tall.windows.map { $0.rect.width / $0.box.width }
+        XCTAssertGreaterThanOrEqual(scale[1] / scale[0], 1.8 - 1e-6)
+        // The picture moved and zoomed in its window, which keeps its shape.
         var description = fit
         description.fit = "description"
-        let text = DemoFraming.plan(CGSize(width: 800, height: 1200), canvas: canvas, presentation: description, caption: true, crops: nil)
-        XCTAssertEqual(text.fit, "description")
-        XCTAssertEqual(text.windows.map(\.role), ["picture", "detail"])
-        XCTAssertNil(text.captionAt)
-        XCTAssertGreaterThan(text.textRect?.minY ?? 0, text.windows[1].rect.maxY)
+        let crops = DemoFraming.Crops(picture: Crop(x: 0.3, y: 0.4, zoom: 2))
+        let zoomed = DemoFraming.plan(CGSize(width: 800, height: 1200), canvas: canvas, presentation: description, caption: false, crops: crops)
+        XCTAssertEqual(zoomed.windows[0].rect, tall.windows[0].rect)
+        XCTAssertEqual(zoomed.windows[0].box.width, 400, accuracy: 0.5)
+        XCTAssertEqual(zoomed.windows[0].box.midX, 240, accuracy: 0.5)
+    }
+
+    func testDescriptionCropsFromTheDraft() {
+        let both = FramingCrops(mode: "description", crops: [Crop(zoom: 2), Crop(x: 0.2, zoom: 3)])
+        XCTAssertEqual(both, FramingCrops(detail: Crop(x: 0.2, zoom: 3), picture: Crop(zoom: 2)))
+        XCTAssertEqual(FramingCrops(mode: "description", crops: [Crop(zoom: 3)]), FramingCrops(detail: Crop(zoom: 3)))
     }
 
     func testChosenModesAlwaysApply() {
         let canvas = DemoFraming.canvas("landscape")
         // A 16:9 picture on the 16:9 frame: no room beside it, so it gets smaller.
-        for fit in ["details", "description"] {
+        for fit in ["description"] {
             let pres = Presentation(preset: "painting", fit: fit, margin: 0.05, label: true)
             let plan = DemoFraming.plan(CGSize(width: 1600, height: 900), canvas: canvas, presentation: pres, caption: true, crops: nil)
             XCTAssertEqual(plan.fit, fit)
