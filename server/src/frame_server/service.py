@@ -18,6 +18,7 @@ from .device import MdcClient, MdcConnectionError, wol
 from .imaging import Palette, RenderSettings, get_palette, render, render_multi
 from .imaging.pipeline import encode_image
 from .library import ImageCache, Importer, Job, Library
+from .library.commons import repair_library
 from .library.icloud import sync_album
 from .library.museums import client as museum_client
 from .player import Player
@@ -104,6 +105,8 @@ class FrameService:
         self.panel = Panel(settings)
         self.palette: Palette = self._initial_palette()
         self.library = Library(settings.data_dir / "library.db")
+        if repaired := repair_library(self.library):
+            log.info("cleaned Wikimedia Commons text of %d items", repaired)
         self.images = ImageCache(settings.data_dir / "library", museum_client)
         self.importer = Importer(
             self.library,
