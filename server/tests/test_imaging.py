@@ -85,6 +85,21 @@ def test_render_dither_outputs_only_inks(orientation: Orientation) -> None:
     assert Image.open(io.BytesIO(data)).size == (2560, 1440)
 
 
+@pytest.mark.parametrize("strategy", list(Strategy))
+def test_original_keeps_the_pictures_colours(strategy: Strategy) -> None:
+    """The app shows the framed picture untouched; only the panel is corrected."""
+    colour = (200, 120, 40)
+    settings = PRESETS["painting"].model_copy(deep=True)
+    settings.strategy = strategy
+    settings.layout.orientation = Orientation.LANDSCAPE
+    result = render(Image.new("RGB", (400, 300), colour), settings)
+    original = result.original_image()
+    assert original.size == (2560, 1440)
+    assert original.getpixel((1280, 720)) == colour  # no tone map, no dither
+    assert original.getpixel((5, 5)) == (255, 255, 255)  # the white mat, as paper
+    assert result.preview_image().getpixel((1280, 720)) != colour
+
+
 def test_bw_preset_uses_two_inks() -> None:
     result = render(_gradient(), PRESETS["bw"])
     used = {tuple(c) for c in np.unique(result.panel.reshape(-1, 3), axis=0)}

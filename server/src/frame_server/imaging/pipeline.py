@@ -1,4 +1,5 @@
-"""Source image -> panel framebuffer, plus a preview of how it will look.
+"""Source image -> panel framebuffer, plus the composed picture for the app
+(and a simulation of how the panel will show it).
 
 Three strategies, to be compared on the real panel (experiment E5):
 
@@ -133,6 +134,7 @@ PRESETS: dict[str, RenderSettings] = {
 class RenderResult:
     panel: np.ndarray  # (1440, 2560, 3) uint8, what the panel receives
     preview: np.ndarray  # canvas orientation, uint8, simulated look on the panel
+    original: np.ndarray  # canvas orientation, uint8, framed picture in its own colours
     settings: RenderSettings
     palette: Palette
 
@@ -142,6 +144,11 @@ class RenderResult:
 
     def panel_image(self) -> Image.Image:
         return Image.fromarray(self.panel)
+
+    def original_image(self) -> Image.Image:
+        """The framed picture (crop, mat, lettering) in its own colours: no
+        tone mapping or dither, which only the panel gets. What the app shows."""
+        return Image.fromarray(self.original)
 
     def preview_image(self, adapted: bool = True) -> Image.Image:
         """Simulated look of the panel.
@@ -284,6 +291,10 @@ def _finish(
 ) -> RenderResult:
     """Tone, mat, dither and lettering for a composed canvas."""
     pal = palette.subset(s.inks)
+    # The app's view: the composition in nominal colours, before any correction.
+    original = linear.copy()
+    if s.strategy != Strategy.PASSTHROUGH:  # passthrough sends the plain composed mat
+        paint_mat(original, plan, palette.nominal(), s.layout.mat)
     linear = sharpen(linear, s.sharpen)
 
     if s.strategy == Strategy.PASSTHROUGH:
@@ -319,6 +330,7 @@ def _finish(
         letters.append(caption_mask(plan.canvas, plan.caption_at, s.caption))
     if s.text and plan.text_rect is not None:
         letters.append(text_block_mask(plan.canvas, plan.text_rect, s.text))
+    original_u8 = linear_to_u8(original)
     if letters:
         ink = pal.white_index() if dark_board else pal.black_index()
         preview_idx = preview_idx.copy()
@@ -326,7 +338,8 @@ def _finish(
         for mask in letters:
             preview_idx[mask] = ink
             sent[mask] = pal.device_u8()[ink]
+            original_u8[mask] = pal.device_u8()[ink]
 
     preview = pal.perceived_u8()[preview_idx]
     panel = to_panel(sent, s.layout.orientation, s.layout.rotation)
-    return RenderResult(panel=panel, preview=preview, settings=s, palette=pal)
+    return RenderResult(panel=panel, preview=preview, original=original_u8, settings=s, palette=pal)
