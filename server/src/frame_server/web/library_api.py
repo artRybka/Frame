@@ -111,6 +111,7 @@ def list_items(
     kind: Annotated[list[ItemKind] | None, Query()] = None,
     source: Annotated[list[str] | None, Query()] = None,
     favorites: bool = False,
+    kept: bool = False,
     sort: SortKey = "recent",
     offset: int = 0,
     limit: Annotated[int, Query(le=200)] = 60,
@@ -125,6 +126,7 @@ def list_items(
         kinds=kind or [],
         sources=source or [],
         favorites_only=favorites,
+        kept_only=kept,
     )
     total, items = svc.library.query(rules, sort=sort, offset=offset, limit=limit, seed=seed)
     return ItemPage(total=total, items=[ItemSummary.of(i) for i in items])

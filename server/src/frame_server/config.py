@@ -40,7 +40,11 @@ class Settings(BaseSettings):
     # Downloaded museum originals are a cache: least recently used ones go
     # beyond this size (uploads and photos are always kept).
     image_cache_mb: int = 500
-    # Fill an empty library from museum collections on first start.
+    # The catalogue browsed in the app: museum works with thumbnails and
+    # colours, grown in the background up to this many MB of thumbnails
+    # (0: only what Suggestions and playlists need).
+    catalogue_mb: int = 1000
+    # Ask museums for Suggestions on start (the default rotation) as needed.
     seed_library: bool = True
     # Background rotation and status polling (off in some tests).
     scheduler: bool = True

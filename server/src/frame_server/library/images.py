@@ -103,6 +103,9 @@ class ImageCache:
             removed += 1
         return removed
 
+    def thumbs_size(self) -> int:
+        return sum(p.stat().st_size for p in self.thumbs.glob("*.jpg"))
+
     def prune_thumbs(self, keep: Iterable[Item], spare: int = THUMB_SPARE) -> int:
         """Delete all but the ``spare`` newest thumbnails of works outside
         ``keep`` (works browsed but never kept); returns how many went."""

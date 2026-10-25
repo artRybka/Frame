@@ -68,6 +68,9 @@ class Item(BaseModel):
     suitability: float | None = None
     favorite: bool = False
     excluded: bool = False
+    #: Added by the server for a rotation (Suggestions, a smart playlist), not
+    #: kept by the owner; unshown ones are cleaned up after a while.
+    pooled: bool = False
     added_at: str = ""
     last_shown_at: str | None = None
     show_count: int = 0
@@ -94,6 +97,7 @@ class ItemSummary(BaseModel):
     height: int | None
     favorite: bool
     suitability: float | None
+    pooled: bool = False
 
     @classmethod
     def of(cls, item: Item) -> ItemSummary:
@@ -114,6 +118,8 @@ class PlaylistRules(BaseModel):
     year_from: int | None = None
     year_to: int | None = None
     favorites_only: bool = False
+    #: Only works the owner kept (not those the server added to the catalogue).
+    kept_only: bool = False
     min_suitability: float | None = None
 
 

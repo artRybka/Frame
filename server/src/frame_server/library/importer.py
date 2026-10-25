@@ -19,13 +19,17 @@ from ..imaging.palette import Palette
 from .colors import analyse
 from .images import ImageCache
 from .models import Item, ItemKind, PhotoInfo, PlaylistRules
-from .museums import MUSEUMS, Discovery, Museum, client, museum
+from .museums import MUSEUMS, Discovery, Kind, Museum, client, museum
 from .repo import Library, matches, now_iso
 
 log = logging.getLogger(__name__)
 
 #: Pseudo source: every museum at once.
 ALL = "all"
+#: Museums asked for works by the artists the owner likes.
+TASTE_SOURCES = ("aic", "cma", "met", "rijks")
+#: Museums that draw random paintings for variety.
+DRAW_SOURCES = ("aic", "cma", "met", "rijks")
 #: Museum works seen in search results, kept in memory so that opening one
 #: needs no second request.
 REMOTE_MEMO = 500
@@ -107,6 +111,8 @@ class Importer:
         a work is kept once the owner does something with it."""
         existing = self.library.get(item_id)
         if existing is not None:
+            if existing.pooled:
+                return self.library.update(item_id, pooled=False) or existing
             return existing
         item = self.remote(item_id)
         return self.add(item) if item else None
@@ -149,8 +155,13 @@ class Importer:
     ) -> tuple[int, list[Item], list[str]]:
         """``limit`` results from every museum at once, interleaved; returns
         (total, items, museums that failed)."""
+        return self._from_all(lambda key: self.search(key, query, limit, page))
+
+    def _from_all(
+        self, ask: Callable[[str], tuple[int, list[Item]]]
+    ) -> tuple[int, list[Item], list[str]]:
         with ThreadPoolExecutor(len(MUSEUMS)) as pool:
-            futures = {k: pool.submit(self.search, k, query, limit, page) for k in MUSEUMS}
+            futures = {k: pool.submit(ask, k) for k in MUSEUMS}
         found: list[list[Item]] = []
         failed: list[str] = []
         total = 0
@@ -158,12 +169,13 @@ class Importer:
             try:
                 count, items = future.result()
             except (httpx.HTTPError, ValueError) as err:
-                log.warning("search in %s failed: %s", key, err)
+                log.warning("asking %s failed: %s", key, err)
                 failed.append(key)
                 continue
             total += count
             found.append(items)
         mixed = [i for i in chain.from_iterable(zip_longest(*found)) if i is not None]
+        self.remember(mixed)
         return total, mixed, failed
 
     def search_many(self, source: str, query: str, limit: int) -> list[Item]:
@@ -233,7 +245,12 @@ class Importer:
             )
 
     def fill(
-        self, rules: PlaylistRules, count: int, job: Job, rng: random.Random | None = None
+        self,
+        rules: PlaylistRules,
+        count: int,
+        job: Job,
+        rng: random.Random | None = None,
+        pooled: bool = False,
     ) -> None:
         """Add ``count`` museum works that ``rules`` (a smart playlist) would
         pick, from every museum the rules allow."""
@@ -264,7 +281,57 @@ class Importer:
                 job,
                 before=lambda item: matches(item, cheap),
                 after=lambda item: matches(item, rules),
+                pooled=pooled,
             )
+
+    def collect(
+        self,
+        count: int,
+        job: Job,
+        *,
+        artists: Iterable[str] = (),
+        queries: Iterable[tuple[str, str]] = (),
+        kinds: Iterable[Kind] = ("painting",),
+        min_suitability: float = 0.0,
+        rng: random.Random | None = None,
+    ) -> None:
+        """Add ``count`` works the server picks (``pooled``), taking turns
+        between works by ``artists``, the museum searches ``queries`` (e.g.
+        a theme) and works of ``kinds`` drawn at random; works below
+        ``min_suitability`` are left out."""
+        rng = rng or random.Random()
+        with self.http() as http:
+
+            def source(key: str) -> Museum:
+                return museum(key, http, self.private_use())
+
+            streams = [_search_stream(source(s), a) for a in artists for s in TASTE_SOURCES]
+            streams += [_search_stream(source(s), q) for s, q in queries]
+            streams += [
+                source(s).random_draw(Discovery(kind=kind), rng)
+                for kind in kinds
+                for s in DRAW_SOURCES
+            ]
+            rng.shuffle(streams)
+            self._take(
+                streams,
+                count,
+                job,
+                before=lambda item: True,
+                after=lambda item: (item.suitability or 0.0) >= min_suitability,
+                pooled=True,
+            )
+
+    def discover_all(
+        self, spec: Discovery, limit: int = 8, page: int = 1
+    ) -> tuple[int, list[Item], list[str]]:
+        """Like :meth:`search_all`, for works matching ``spec``."""
+
+        def one(key: str) -> tuple[int, list[Item]]:
+            with self.http() as http:
+                return museum(key, http, self.private_use()).discover(spec, limit, page)
+
+        return self._from_all(one)
 
     def _take(
         self,
@@ -273,6 +340,7 @@ class Importer:
         job: Job,
         before: Callable[[Item], bool],
         after: Callable[[Item], bool],
+        pooled: bool = False,
     ) -> None:
         """Take turns between ``streams`` until ``count`` new works pass
         ``before`` (on museum data) and ``after`` (once analysed)."""
@@ -304,7 +372,7 @@ class Importer:
                     self.cache.remove(item)
                     job.skipped += 1
                     continue
-                self.library.upsert(analysed)
+                self.library.upsert(analysed.model_copy(update={"pooled": pooled}))
                 job.done += 1
                 job.item_ids.append(item.id)
 

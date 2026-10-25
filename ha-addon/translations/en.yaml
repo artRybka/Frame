@@ -21,5 +21,5 @@ configuration:
     name: Palette
     description: Built-in palette name or path to a palette JSON. A palette measured in the app (/data/palette.json) takes precedence.
   seed_library:
-    name: Starter library
-    description: Fill an empty library with public-domain works from museum collections on first start.
+    name: Suggestions from museums
+    description: On start, fetch public-domain works from museum collections for the Suggestions rotation when it runs low.

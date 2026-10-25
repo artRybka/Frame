@@ -56,6 +56,8 @@ def matches(item: Item, rules: PlaylistRules) -> bool:
         return False
     if rules.favorites_only and not item.favorite:
         return False
+    if rules.kept_only and item.pooled and not item.favorite:
+        return False
     if rules.kinds and item.kind not in rules.kinds:
         return False
     if rules.sources and item.source not in rules.sources:

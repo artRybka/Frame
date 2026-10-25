@@ -22,12 +22,12 @@ from .. import __version__
 from ..config import Settings
 from ..device import MdcError
 from ..imaging import PRESETS, RenderSettings, Strategy
-from ..library.seed import seed_library, seed_playlists
+from ..library.seed import seed_playlists
 from ..player import hold_from
 from ..service import FrameService, outcome_json
 from ..status import DeviceStatus
 from ..store import PanelRequest
-from . import calibration_api, library_api, player_api, playlists_api
+from . import calibration_api, discover_api, library_api, player_api, playlists_api
 from .deps import require_token
 
 log = logging.getLogger(__name__)
@@ -76,12 +76,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 asyncio.create_task(poll_status(service)),
                 asyncio.create_task(sync_album_periodically(service)),
             ]
-        if settings.seed_library and service.library.count() == 0:
-            service.importer.start_job(
-                "starter library", lambda job: seed_library(service.importer, job)
-            )
-        else:
-            seed_playlists(service.importer)
+        seed_playlists(service.importer)
+        service.player.migrate_library()
+        if settings.seed_library:
+            service.player.top_up()  # Suggestions come from museums, as needed
         yield
         for task in tasks:
             task.cancel()
@@ -90,6 +88,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.service = service
     routers = (
         library_api.router,
+        discover_api.router,
         playlists_api.router,
         player_api.router,
         calibration_api.router,

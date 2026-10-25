@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import random
+from collections import Counter
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
@@ -18,8 +19,9 @@ from .imaging import PRESETS, RenderSettings
 from .imaging.grids import MAX_PHOTOS, MIN_PHOTOS
 from .imaging.layout import Fit
 from .imaging.text import TextBlock
-from .library import Item, ItemKind, PlaylistRules
-from .library.museums import MUSEUMS
+from .library import Item, ItemKind, Job, Playlist, PlaylistKind, PlaylistRules
+from .library.museums import MUSEUMS, Kind
+from .library.seed import PACKS, theme_of_the_day
 from .schedule import FrameSettings, Mode, in_quiet_hours, next_change
 
 if TYPE_CHECKING:
@@ -34,6 +36,27 @@ HISTORY_MAX = 50
 PREFETCH = 3
 #: When no picture can be shown (offline, nothing cached), try again after this.
 RETRY_AFTER = timedelta(minutes=15)
+#: Works picked by the server for the default rotation (ids, oldest first).
+SUGGESTIONS_KEY = "suggestions"
+#: Set once the old library has been kept as a manual playlist.
+MIGRATED_KEY = "library_migrated"
+MIGRATED_PLAYLIST = "Dotychczasowa biblioteka"
+#: A rotation with fewer pictures not shown lately asks museums for more,
+#: up to ``POOL_SIZE``; Suggestions remember at most ``POOL_MAX`` works.
+POOL_LOW = 8
+POOL_SIZE = 24
+POOL_MAX = 80
+#: Suggestions: least suitability for e-paper.
+SUGGESTION_SUITABILITY = 0.5
+#: Artists of the owner's taste asked for when topping up Suggestions.
+TASTE_ARTISTS = 6
+#: The catalogue grows by this many works at a time, at most every
+#: ``CATALOGUE_EVERY`` (gently for the museums' APIs).
+CATALOGUE_BATCH = 300
+CATALOGUE_EVERY = timedelta(hours=1)
+CATALOGUE_KINDS: tuple[Kind, ...] = ("painting", "print", "drawing", "poster")
+#: Works hardly visible on e-paper are not worth a place in the catalogue.
+CATALOGUE_SUITABILITY = 0.25
 
 
 def utcnow() -> datetime:
@@ -142,18 +165,47 @@ class Player:
         settings = settings or self.settings
         if settings.mode == Mode.ALBUM:
             return self.library.query(PlaylistRules(kinds=[ItemKind.PHOTO]), sort="recent")[1]
-        if settings.playlist_id is not None:
-            playlist = self.library.playlist(settings.playlist_id)
-            if playlist is not None:
-                return self.library.playlist_items(playlist)
+        playlist = self.playlist(settings)
+        if playlist is not None:
+            return self.library.playlist_items(playlist)
+        # Suggestions, with the owner's own works; until the server has
+        # picked any, the whole library.
+        suggested = [i for i in self.suggestions() if not i.excluded]
+        own = self.library.query(PlaylistRules(kinds=[ItemKind.OWN]))[1]
+        if suggested:
+            return suggested + own
         rules = PlaylistRules(kinds=[ItemKind.ARTWORK, ItemKind.OWN])
         return self.library.query(rules, sort="recent")[1]
 
+    def playlist(self, settings: FrameSettings | None = None) -> Playlist | None:
+        """The playlist the frame plays; None for Suggestions."""
+        settings = settings or self.settings
+        if settings.playlist_id is None:
+            return None
+        return self.library.playlist(settings.playlist_id)
+
+    def suggestions(self) -> list[Item]:
+        ids = self.library.get_state(SUGGESTIONS_KEY, [])
+        return [i for i in (self.library.get(item_id) for item_id in ids) if i is not None]
+
+    def fresh(self, items: list[Item], settings: FrameSettings | None = None) -> list[Item]:
+        """Those of ``items`` not shown within the no-repeat period."""
+        settings = settings or self.settings
+        cutoff = (utcnow() - timedelta(days=settings.avoid_repeat_days)).isoformat()
+        return [i for i in items if not i.last_shown_at or i.last_shown_at < cutoff]
+
+    def taste(self) -> list[str]:
+        """Artists the owner likes, most liked first: favourites count most,
+        then works kept in the library (not the ones the server picked)."""
+        scores: Counter[str] = Counter()
+        for item in self.library.query(PlaylistRules(kinds=[ItemKind.ARTWORK]))[1]:
+            if item.artist:
+                scores[item.artist] += 3 * item.favorite + (not item.pooled)
+        return [artist for artist, score in scores.most_common(TASTE_ARTISTS) if score > 0]
+
     def _refill(self, state: PlayerState, settings: FrameSettings) -> None:
         items = self.candidates(settings)
-        cutoff = (utcnow() - timedelta(days=settings.avoid_repeat_days)).isoformat()
-        fresh = [i for i in items if not i.last_shown_at or i.last_shown_at < cutoff]
-        pool = fresh or items
+        pool = self.fresh(items, settings) or items
         ids = [i.id for i in pool if i.id != state.current_item_id] or [i.id for i in pool]
         if settings.shuffle:
             random.shuffle(ids)
@@ -447,6 +499,171 @@ class Player:
             await run_in_threadpool(self.trim_cache)
         except OSError as err:
             log.warning("trimming the image cache failed: %s", err)
+        self.top_up()
+
+    # -- pools: works the server picks from museums --------------------------
+
+    def top_up(self) -> Job | None:
+        """When the current rotation (Suggestions or a smart playlist) runs
+        low on pictures not shown lately, ask museums for more in the
+        background. Returns the job, if one was started."""
+        settings = self.settings
+        importer = self.service.importer
+        if settings.mode != Mode.ART or any(
+            job.description == "pool" and not job.finished for job in importer.jobs.values()
+        ):
+            return None
+        playlist = self.playlist(settings)
+        if playlist is None:
+            have = len(self.fresh(self.suggestions(), settings))
+            if have >= POOL_LOW:
+                return None
+            want = POOL_SIZE - have
+            picked = self._pick_from_catalogue(want, settings)
+            self._add_suggestions([i.id for i in picked])
+            if len(picked) >= want:
+                return None
+            artists = self.taste()
+            theme = theme_of_the_day(utcnow().date())
+            queries = [(source, query) for source, query, _ in theme.queries]
+            queries = random.sample(queries, min(4, len(queries)))
+
+            def suggest(job: Job) -> None:
+                importer.collect(
+                    want - len(picked),
+                    job,
+                    artists=artists,
+                    queries=queries,
+                    min_suitability=SUGGESTION_SUITABILITY,
+                )
+                self._add_suggestions(job.item_ids)
+
+            return importer.start_job("pool", suggest)
+        rules = playlist.rules
+        museum_works = not rules.kinds or ItemKind.ARTWORK in rules.kinds
+        if playlist.kind != PlaylistKind.SMART or rules.favorites_only or not museum_works:
+            return None
+        have = len(self.fresh(self.library.playlist_items(playlist), settings))
+        if have >= POOL_LOW:
+            return None
+        rules = rules.model_copy(update={"kinds": [ItemKind.ARTWORK]})
+        return importer.start_job(
+            "pool", lambda job: importer.fill(rules, POOL_SIZE - have, job, pooled=True)
+        )
+
+    def _pick_from_catalogue(self, count: int, settings: FrameSettings) -> list[Item]:
+        """Up to ``count`` new Suggestions from the catalogue: half by the
+        artists the owner likes, the rest anything good on e-paper."""
+        taken = {i.id for i in self.suggestions()}
+        rules = PlaylistRules(kinds=[ItemKind.ARTWORK], min_suitability=SUGGESTION_SUITABILITY)
+        pool = [i for i in self.fresh(self.library.query(rules)[1], settings) if i.id not in taken]
+        taste = set(self.taste())
+        liked = [i for i in pool if i.artist in taste]
+        others = [i for i in pool if i.artist not in taste]
+        random.shuffle(liked)
+        random.shuffle(others)
+        picked = liked[: count // 2] + others[: count - min(len(liked), count // 2)]
+        picked += [i for i in liked[count // 2 :] if i not in picked][: count - len(picked)]
+        return picked[:count]
+
+    def _add_suggestions(self, ids: list[str]) -> None:
+        """Remember new Suggestions; beyond ``POOL_MAX`` the works shown
+        longest ago go first."""
+        known = self.library.get_state(SUGGESTIONS_KEY, [])
+        pool = self.suggestions() + [i for i in map(self.library.get, ids) if i is not None]
+        pool = list({i.id: i for i in pool}.values())  # once each, in order
+        if len(pool) > POOL_MAX:
+            shown = sorted(
+                (i for i in pool if i.last_shown_at), key=lambda i: i.last_shown_at or ""
+            )
+            drop = {i.id for i in shown[: len(pool) - POOL_MAX]}
+            pool = [i for i in pool if i.id not in drop][-POOL_MAX:]
+        log.info("suggestions: %d → %d works", len(known), len(pool))
+        self.library.set_state(SUGGESTIONS_KEY, [i.id for i in pool])
+
+    def _protected(self) -> set[str]:
+        """Works the catalogue must not lose: kept by the owner, shown,
+        about to be shown or picked for Suggestions."""
+        state = self.state
+        protected = {state.current_item_id or "", *state.current_group, *state.queue}
+        protected |= {i for p in self.library.playlists() for i in p.item_ids}
+        protected |= set(self.library.get_state(SUGGESTIONS_KEY, []))
+        return protected
+
+    def trim_catalogue(self) -> int:
+        """Keep the catalogue's thumbnails within ``catalogue_mb``: works the
+        server added that nobody kept go, the weakest on e-paper first."""
+        images = self.service.images
+        limit = self.service.settings.catalogue_mb * 1024 * 1024
+        total = images.thumbs_size()
+        if total <= limit:
+            return 0
+        protected = self._protected()
+        spare = [
+            i
+            for i in self.library.query(include_excluded=True)[1]
+            if i.pooled
+            and not i.show_count
+            and not i.favorite
+            and not i.framing
+            and i.id not in protected
+        ]
+        spare.sort(key=lambda i: (i.suitability or 0.0, i.added_at))
+        removed = 0
+        for item in spare:
+            if total <= limit:
+                break
+            path = images.thumb_path(item)
+            total -= path.stat().st_size if path.is_file() else 0
+            self.library.delete(item.id)
+            images.remove(item)
+            removed += 1
+        return removed
+
+    def grow_catalogue(self) -> Job | None:
+        """Add a batch of museum works to the catalogue while its thumbnails
+        take less than ``catalogue_mb``; themes and random draws of every
+        kind, so the app can browse widely and filter by colour."""
+        importer = self.service.importer
+        limit = self.service.settings.catalogue_mb * 1024 * 1024
+        if not limit or any(
+            job.description == "catalogue" and not job.finished for job in importer.jobs.values()
+        ):
+            return None
+        if self.service.images.thumbs_size() >= limit:
+            self.trim_catalogue()
+            return None
+        queries = [(source, query) for theme in PACKS for source, query, _ in theme.queries]
+        queries = random.sample(queries, min(8, len(queries)))
+        return importer.start_job(
+            "catalogue",
+            lambda job: importer.collect(
+                CATALOGUE_BATCH,
+                job,
+                queries=queries,
+                kinds=CATALOGUE_KINDS,
+                min_suitability=CATALOGUE_SUITABILITY,
+            ),
+        )
+
+    def migrate_library(self) -> Playlist | None:
+        """Once: keep the works of the old library (the rotation before
+        Suggestions) as a manual playlist, so none of them is lost."""
+        if self.library.get_state(MIGRATED_KEY, False):
+            return None
+        self.library.set_state(MIGRATED_KEY, True)
+        rules = PlaylistRules(kinds=[ItemKind.ARTWORK, ItemKind.OWN])
+        kept = [i.id for i in self.library.query(rules, sort="recent")[1] if not i.pooled]
+        if not kept:
+            return None
+        return self.library.save_playlist(
+            Playlist(
+                name=MIGRATED_PLAYLIST,
+                description="Dzieła z biblioteki sprzed Propozycji.",
+                kind=PlaylistKind.MANUAL,
+                item_ids=kept,
+            )
+        )
 
     def trim_cache(self) -> int:
         """Delete the least recently used museum originals over the size
@@ -457,7 +674,8 @@ class Player:
         _, items = self.library.query(include_excluded=True)
         keep = [i for i in items if i.id in soon or i.source not in MUSEUMS]
         limit = self.service.settings.image_cache_mb * 1024 * 1024
-        self.service.images.prune_thumbs(items)
+        self.trim_catalogue()
+        self.service.images.prune_thumbs(self.library.query(include_excluded=True)[1])
         return self.service.images.prune(limit, keep)
 
     async def previous(self) -> Item | None:
@@ -527,9 +745,14 @@ class Player:
         await self.next("schedule")
 
     async def run(self, period: float = 30.0) -> None:
+        grown: datetime | None = None
         while True:
             try:
                 await self.tick()
+                if grown is None or utcnow() - grown >= CATALOGUE_EVERY:
+                    grown = utcnow()
+                    self.grow_catalogue()
+                    self.top_up()
             except Exception:
                 log.exception("scheduler tick failed")
             await asyncio.sleep(period)
