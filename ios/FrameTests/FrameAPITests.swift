@@ -19,6 +19,7 @@ final class FrameAPITests: XCTestCase {
                         "artist": "Utagawa Hiroshige", "date_text": "1832", "year": 1832,
                         "colors": [{"hex": "#c1b59d", "weight": 0.4}], "width": 900, "height": 600,
                         "favorite": false, "suitability": 0.88}],
+          "queued": ["aic:4371"],
           "history": [],
           "hold": {"until": null, "forever": true},
           "last_change_at": "2026-10-24T05:00:00+00:00",
@@ -39,6 +40,7 @@ final class FrameAPITests: XCTestCase {
         XCTAssertEqual(view.playlist?.rules.query, "woodblock")
         XCTAssertEqual(view.current?.previewUrl, "/api/previews/ABC.png")
         XCTAssertEqual(view.upcoming.first?.aspectRatio ?? 0, 1.5, accuracy: 0.001)
+        XCTAssertEqual(view.queued, ["aic:4371"])
         XCTAssertEqual(view.hold?.forever, true)
         XCTAssertNotNil(When.schedule(view.nextChangeAt))
     }

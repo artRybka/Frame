@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// One picture: original vs. how it will look on the e-paper, its story,
-/// palette, and actions (show now, favourite, add to playlist).
+/// palette, and actions (show now, queue next, favourite, add to playlist).
 struct ItemDetailView: View {
     @Environment(AppModel.self) private var model
     let itemID: String
@@ -124,6 +124,30 @@ struct ItemDetailView: View {
     }
 
     private func actions(_ item: Item) -> some View {
+        VStack(spacing: 12) {
+            mainActions(item)
+            queueButton(item)
+        }
+    }
+
+    /// "Dodaj do kolejki": shown at the next change; once it is first in
+    /// line, the button says so.
+    private func queueButton(_ item: Item) -> some View {
+        let next = model.player?.queued?.first == item.id
+        return Button {
+            Task { await model.queueNext(itemID: item.id) }
+        } label: {
+            Label(
+                next ? "Następne na ramce" : "Dodaj do kolejki",
+                systemImage: next ? "checkmark" : QueueButton.symbol
+            )
+            .contentTransition(.symbolEffect(.replace))
+        }
+        .buttonStyle(SecondaryButtonStyle())
+        .disabled(next)
+    }
+
+    private func mainActions(_ item: Item) -> some View {
         HStack(spacing: 12) {
             Menu {
                 ForEach(HoldSpec.allCases) { spec in

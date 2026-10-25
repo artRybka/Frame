@@ -76,6 +76,14 @@ struct LiveBackend: FrameBackend {
         try await send("/api/library/items/\(escape(itemID))/show", method: "POST", body: ["hold": hold.wireValue])
     }
 
+    func queueNext(itemID: String) async throws {
+        try await send("/api/library/items/\(escape(itemID))/queue", method: "POST")
+    }
+
+    func dequeue(itemID: String) async throws -> PlayerView {
+        try await send("/api/player/queue/\(escape(itemID))", method: "DELETE")
+    }
+
     func facets() async throws -> Facets { try await get("/api/library/facets") }
 
     func framing(itemID: String, orientation: String, automatic: Bool) async throws -> FramingView {

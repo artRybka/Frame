@@ -37,6 +37,7 @@ struct SavedWorksView: View {
                             ArtCard(item: item)
                         }
                         .buttonStyle(.plain)
+                        .contextMenu { QueueButton(itemID: item.id) }
                     }
                 }
             }

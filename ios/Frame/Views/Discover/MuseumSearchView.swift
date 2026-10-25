@@ -176,6 +176,7 @@ struct MuseumSearchView: View {
                         ArtCard(item: item)
                     }
                     .buttonStyle(.plain)
+                    .contextMenu { QueueButton(itemID: item.id) }
                 }
             }
             if !fromMuseums.isEmpty || searching {
@@ -199,6 +200,7 @@ struct MuseumSearchView: View {
                         ArtCard(item: summary, ref: remote?.thumb)
                     }
                     .buttonStyle(.plain)
+                    .contextMenu { QueueButton(itemID: summary.id) }
                     addButton(remote)
                 }
             }

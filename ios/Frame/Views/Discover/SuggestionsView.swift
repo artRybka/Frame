@@ -252,6 +252,7 @@ struct SuggestionRowView: View {
                                 .frame(width: 150)
                         }
                         .buttonStyle(.plain)
+                        .contextMenu { QueueButton(itemID: remote.id) }
                     }
                 }
                 .padding(.vertical, 4)
@@ -285,6 +286,7 @@ struct ThemeView: View {
                         ArtCard(item: summary, ref: items.first { $0.id == summary.id }?.thumb)
                     }
                     .buttonStyle(.plain)
+                    .contextMenu { QueueButton(itemID: summary.id) }
                 }
                 if more {
                     Button {
