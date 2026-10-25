@@ -126,7 +126,7 @@ Cel: potwierdzić protokół na Twoim egzemplarzu i poznać zachowanie ekranu.
 
 - [x] Szkielet: połączenie z serwerem (adres i token w Keychain), ekran „Teraz na ramce” (podgląd, opis), wysyłanie zdjęcia z presetem, stan ekranu (bateria, firmware).
 - [x] Projekt graficzny „galeryjny” (papier, szeryfowe tytuły, oprawione dzieło, tło w kolorach obrazu, tryb ciemny), ikona; tryb demo z prawdziwymi dziełami bez serwera (obrazy i podglądy „na ramce” wbudowane w aplikację); zrzuty ekranów w CI.
-- [x] Playlisty: inteligentne (artyści, style, tematy, kolorystyka, epoka, słowa kluczowe, ulubione, „najlepsze na e-papier”) z podglądem na żywo i ręczne; odtwarzanie na ramce.
+- [x] Playlisty: inteligentne (artyści, style, tematy, kolorystyka, epoka, słowa kluczowe, ulubione, „najlepsze na e-papier”) z podglądem na żywo i ręczne; odtwarzanie na ramce; usuwanie pojedynczych dzieł z playlisty (menu „…” → „Usuń dzieła z playlisty” albo przytrzymanie dzieła). Z inteligentnej dzieło znika jako wyjątek od reguł (`rules.exclude_ids`) i można je przywrócić.
 - [x] Ramka: bateria, zasilanie/ładowanie, połączenie, czuwanie Wi-Fi, następna zmiana; budzenie i usypianie.
 - [ ] 3.1 Wykrywanie serwera przez Bonjour i parowanie kodem QR (token użytkownika), działanie przez Tailscale / VPN poza domem.
 - [x] 3.2 „Teraz”: opis dzieła (tytuł, autor, data, technika, muzeum, notka o autorze; po angielsku) lub zdjęcia (data i godzina, miejsce z GPS przez CLGeocoder, kto dodał, podpis), przyciski Następny / Poprzedni / Przypnij.

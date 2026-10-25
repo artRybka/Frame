@@ -154,6 +154,45 @@ def test_api_library_playlists_player(service) -> None:
         assert status["server"]["library_count"] == 3
 
 
+def test_api_removes_single_works_from_playlists(service) -> None:
+    from frame_server.web import create_app
+
+    app = create_app(service.settings)
+    svc = app.state.service
+    a, b, c = (_add(svc, n, (40 * n, 40, 200), "Ala") for n in range(1, 4))
+
+    with TestClient(app) as client:
+        smart = client.post("/api/playlists", json={"name": "Ala", "rules": {"artists": ["Ala"]}})
+        smart_id = smart.json()["playlist"]["id"]
+        assert client.post(f"/api/playlists/{smart_id}/play").status_code == 202
+        state = svc.player.state
+        state.queue = [a.id, b.id]
+        svc.player._save_state(state)
+
+        # A smart playlist keeps the work out as an exception to its rules.
+        detail = client.delete(f"/api/playlists/{smart_id}/items/{b.id}").json()
+        assert {i["id"] for i in detail["items"]} == {a.id, c.id}
+        assert detail["playlist"]["rules"]["exclude_ids"] == [b.id]
+        assert detail["playlist"]["item_count"] == 2
+        assert b.id not in svc.player.state.queue  # not shown next either
+        assert {i.id for i in svc.player.candidates()} == {a.id, c.id}
+        preview = client.post("/api/playlists/preview", json=detail["playlist"]["rules"]).json()
+        assert preview["count"] == 2
+
+        # Saving the playlist back without exceptions restores the work.
+        rules = {**detail["playlist"]["rules"], "exclude_ids": []}
+        restored = client.put(f"/api/playlists/{smart_id}", json={"name": "Ala", "rules": rules})
+        assert restored.json()["playlist"]["item_count"] == 3
+
+        manual = client.post(
+            "/api/playlists",
+            json={"name": "Wybór", "kind": "manual", "item_ids": [a.id, b.id]},
+        ).json()["playlist"]["id"]
+        detail = client.delete(f"/api/playlists/{manual}/items/{a.id}").json()
+        assert detail["item_ids"] == [b.id]
+        assert detail["playlist"]["rules"]["exclude_ids"] == []
+
+
 async def test_presentation_change_redraws_the_current_picture(service) -> None:
     item = _add(service, 1, (200, 40, 40), "Ala")
     player = service.player

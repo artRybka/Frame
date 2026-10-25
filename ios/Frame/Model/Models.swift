@@ -118,11 +118,32 @@ struct PlaylistRules: Codable, Hashable, Sendable {
     var yearTo: Int?
     var favoritesOnly: Bool = false
     var minSuitability: Double?
+    /// Works taken out of a smart playlist although they match its rules.
+    var excludeIds: [String] = []
 
+    /// Whether there are no rules; exceptions (`excludeIds`) don't count.
     var isEmpty: Bool {
         query.isEmpty && artists.isEmpty && styles.isEmpty && subjects.isEmpty && colors.isEmpty
             && kinds.isEmpty && sources.isEmpty && yearFrom == nil && yearTo == nil
             && !favoritesOnly && minSuitability == nil
+    }
+}
+
+extension PlaylistRules {
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        query = try c.decode(String.self, forKey: .query)
+        artists = try c.decode([String].self, forKey: .artists)
+        styles = try c.decode([String].self, forKey: .styles)
+        subjects = try c.decode([String].self, forKey: .subjects)
+        colors = try c.decode([String].self, forKey: .colors)
+        kinds = try c.decode([ItemKind].self, forKey: .kinds)
+        sources = try c.decode([String].self, forKey: .sources)
+        yearFrom = try c.decodeIfPresent(Int.self, forKey: .yearFrom)
+        yearTo = try c.decodeIfPresent(Int.self, forKey: .yearTo)
+        favoritesOnly = try c.decode(Bool.self, forKey: .favoritesOnly)
+        minSuitability = try c.decodeIfPresent(Double.self, forKey: .minSuitability)
+        excludeIds = try c.decodeIfPresent([String].self, forKey: .excludeIds) ?? []  // older servers
     }
 }
 

@@ -41,6 +41,8 @@ protocol FrameBackend: Sendable {
     func savePlaylist(_ playlist: Playlist) async throws -> PlaylistDetail
     func deletePlaylist(id: Int) async throws
     func addToPlaylist(id: Int, itemIDs: [String]) async throws -> PlaylistDetail
+    /// Takes one work out; a smart playlist keeps it in `rules.excludeIds`.
+    func removeFromPlaylist(id: Int, itemID: String) async throws -> PlaylistDetail
     func previewRules(_ rules: PlaylistRules) async throws -> RulesPreview
     func play(playlistID: Int) async throws
 

@@ -7,6 +7,8 @@ struct PlaylistDetailView: View {
     @State private var detail: PlaylistDetail?
     @State private var editing: Playlist?
     @State private var confirmDelete = false
+    /// Tapping a work takes it out of the playlist instead of opening it.
+    @State private var removingItems = false
 
     private var isActive: Bool {
         model.settings?.mode != "album" && model.settings?.playlistId == playlistID
@@ -18,10 +20,7 @@ struct PlaylistDetailView: View {
                 VStack(alignment: .leading, spacing: 22) {
                     header(detail.playlist)
                     if !detail.items.isEmpty {
-                        MasonryGrid(items: detail.items) { item in
-                            NavigationLink(value: item.id) { ArtCard(item: item) }
-                                .buttonStyle(.plain)
-                        }
+                        MasonryGrid(items: detail.items) { item in card(item) }
                     } else {
                         EmptyStateView(
                             title: "Pusta playlista",
@@ -41,11 +40,27 @@ struct PlaylistDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Menu {
-                    Button("Edytuj", systemImage: "slider.horizontal.3") { editing = playlistBody() }
-                    Button("Usuń", systemImage: "trash", role: .destructive) { confirmDelete = true }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
+                if removingItems {
+                    Button("Gotowe") { withAnimation { removingItems = false } }
+                        .fontWeight(.semibold)
+                } else {
+                    Menu {
+                        Button("Edytuj", systemImage: "slider.horizontal.3") { editing = playlistBody() }
+                        Button("Usuń dzieła z playlisty", systemImage: "minus.circle") {
+                            withAnimation { removingItems = true }
+                        }
+                        .disabled(detail?.items.isEmpty ?? true)
+                        if let removed = detail?.playlist.rules.excludeIds.count, removed > 0,
+                           detail?.playlist.kind == .smart
+                        {
+                            Button("Przywróć usunięte (\(removed))", systemImage: "arrow.uturn.backward") {
+                                restoreRemoved()
+                            }
+                        }
+                        Button("Usuń playlistę", systemImage: "trash", role: .destructive) { confirmDelete = true }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
                 }
             }
         }
@@ -61,6 +76,31 @@ struct PlaylistDetailView: View {
                     dismiss()
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private func card(_ item: ItemSummary) -> some View {
+        if removingItems {
+            Button { remove(item) } label: {
+                ArtCard(item: item)
+                    .overlay(alignment: .topLeading) {
+                        Image(systemName: "minus.circle.fill")
+                            .font(.title2)
+                            .symbolRenderingMode(.palette)
+                            .foregroundStyle(.white, Theme.vermilion)
+                            .shadow(color: .black.opacity(0.25), radius: 3, y: 1)
+                            .padding(6)
+                    }
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Usuń z playlisty: \(item.title)")
+        } else {
+            NavigationLink(value: item.id) { ArtCard(item: item) }
+                .buttonStyle(.plain)
+                .contextMenu {
+                    Button("Usuń z playlisty", systemImage: "minus.circle", role: .destructive) { remove(item) }
+                }
         }
     }
 
@@ -85,7 +125,20 @@ struct PlaylistDetailView: View {
             Text(Names.works(playlist.itemCount))
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(Theme.inkSoft)
-            if isActive {
+            if removingItems {
+                Label(
+                    playlist.kind == .smart
+                        ? "Stuknij dzieło, aby usunąć je z playlisty. Nie wróci, choć pasuje do reguł; "
+                            + "przywrócisz je w menu „…”."
+                        : "Stuknij dzieło, aby usunąć je z playlisty.",
+                    systemImage: "hand.tap"
+                )
+                .font(.subheadline)
+                .foregroundStyle(Theme.ink)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(14)
+                .background(Theme.vermilion.opacity(0.1), in: RoundedRectangle(cornerRadius: 14))
+            } else if isActive {
                 Label("Teraz prezentowane na ramce", systemImage: "photo.artframe")
                     .font(.headline)
                     .foregroundStyle(Theme.vermilion)
@@ -110,6 +163,36 @@ struct PlaylistDetailView: View {
             id: summary.id, name: summary.name, description: summary.description, kind: summary.kind,
             rules: summary.rules, itemIds: detail?.itemIds ?? []
         )
+    }
+
+    private func remove(_ item: ItemSummary) {
+        Task {
+            do {
+                let updated = try await model.backend.removeFromPlaylist(id: playlistID, itemID: item.id)
+                withAnimation(.snappy) {
+                    detail = updated
+                    if updated.items.isEmpty { removingItems = false }
+                }
+                await model.refreshPlaylists()
+            } catch {
+                model.show(error)
+            }
+        }
+    }
+
+    /// Brings back the works taken out of a smart playlist.
+    private func restoreRemoved() {
+        guard var playlist = playlistBody() else { return }
+        playlist.rules.excludeIds = []
+        Task {
+            do {
+                let updated = try await model.backend.savePlaylist(playlist)
+                withAnimation(.snappy) { detail = updated }
+                await model.refreshPlaylists()
+            } catch {
+                model.show(error)
+            }
+        }
     }
 
     private func load() async {
