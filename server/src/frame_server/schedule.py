@@ -58,6 +58,9 @@ class FrameSettings(BaseModel):
     # The frame is only seen at home: also accept works that are free to use
     # but not public domain (e.g. CC BY-SA on Wikimedia Commons).
     private_use: bool = False
+    # WikiArt as a source, only to test the panel with newer art; its works
+    # leave the library when this is switched off.
+    wikiart: bool = False
 
     @model_validator(mode="before")
     @classmethod

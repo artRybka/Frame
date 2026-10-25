@@ -86,7 +86,7 @@ struct MuseumSearchView: View {
                 Text("Użytek prywatny")
                 Text(
                     privateUse.wrappedValue
-                        ? "Z Wikimedia Commons także dzieła na wolnych licencjach (np. CC BY-SA), z podanym autorem. Muzea nadal dają tylko domenę publiczną."
+                        ? "Z Wikimedia Commons, Europeany i Openverse także dzieła na wolnych licencjach (np. CC BY-SA), z podanym autorem. Muzea nadal dają tylko domenę publiczną."
                         : "Tylko dzieła w domenie publicznej (CC0). Opisy w oryginale, po angielsku."
                 )
                 .font(.footnote)

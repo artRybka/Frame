@@ -158,6 +158,9 @@ enum Names {
         case "met": "The Met"
         case "rijks": "Rijksmuseum"
         case "wmc": "Wikimedia Commons"
+        case "europeana": "Europeana"
+        case "openverse": "Openverse"
+        case "wikiart": "WikiArt (test)"
         case "upload": "Własne"
         case "icloud": "Album iCloud"
         default: key

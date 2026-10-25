@@ -1,8 +1,9 @@
 """Open-access museum collections: search and metadata import.
 
-Only public-domain / CC0 works are returned. Every museum maps its records
-onto :class:`Item` (without colours; those are computed from the thumbnail
-at import time).
+Only works free to show are returned: public domain / CC0, public domain in
+the EU (author dead for more than 70 years), and with ``private_use`` also
+works under free licences. Every museum maps its records onto :class:`Item`
+(without colours; those are computed from the thumbnail at import time).
 """
 
 from __future__ import annotations
@@ -10,6 +11,8 @@ from __future__ import annotations
 import html
 import random
 import re
+import threading
+import time
 from abc import ABC, abstractmethod
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -18,6 +21,7 @@ from typing import Any, ClassVar, Literal
 import httpx
 
 from .commons import commons_html, commons_year
+from .lifespan import EUROPEANA_AGENT, WIKIDATA_ENTITY, LifeDates, free_in_eu
 from .models import Item, ItemKind
 
 USER_AGENT = "Frame/0.2 (home e-paper art frame; +https://github.com/artRybka/Frame)"
@@ -41,6 +45,21 @@ def client() -> httpx.Client:
 
 
 Kind = Literal["any", "painting", "print", "drawing", "poster"]
+
+
+@dataclass(frozen=True)
+class Access:
+    """What the owner lets sources return, and how to reach them."""
+
+    #: The frame is only seen at home: also free licences (CC BY-SA and the like).
+    private_use: bool = False
+    #: WikiArt, only to test the panel (it shows works without licences).
+    wikiart: bool = False
+    #: Death years for the EU rule; without it only works marked free count.
+    life: LifeDates | None = None
+    europeana_key: str = "api2demo"
+    #: Openverse app credentials (client id, secret); anonymous without them.
+    openverse_app: tuple[str, str] | None = None
 
 
 @dataclass(frozen=True)
@@ -70,10 +89,15 @@ class Museum(ABC):
     #: How deep random draws reach into results (search engines stop paging
     #: at 10 000).
     random_depth = 10_000
+    #: Only offered while the owner has switched it on for tests.
+    testing: ClassVar[bool] = False
 
-    def __init__(self, http: httpx.Client, private_use: bool = False) -> None:
+    def __init__(
+        self, http: httpx.Client, private_use: bool = False, access: Access | None = None
+    ) -> None:
         self.http = http
-        self.private_use = private_use
+        self.access = access or Access(private_use=private_use)
+        self.private_use = self.access.private_use
 
     @abstractmethod
     def search(self, query: str, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
@@ -708,6 +732,383 @@ class Rijksmuseum(Museum):
         return self._map(resp.json())
 
 
+def _first(values: Any) -> str:
+    """The first string of an API list field (Europeana wraps most in lists)."""
+    if isinstance(values, list):
+        return str(values[0]) if values else ""
+    return str(values or "")
+
+
+def _person(name: str) -> str:
+    """ "Matisse, Henri (1869-1954)" -> "Henri Matisse"."""
+    name = re.sub(r"\s*\([^)]*\)\s*$", "", name).strip()
+    last, comma, first = name.partition(",")
+    if comma and first.strip() and "," not in first and not re.search(r"\d", name):
+        return f"{first.strip()} {last.strip()}"
+    return name
+
+
+#: Creative Commons licence URLs: "creativecommons.org/licenses/by-sa/4.0/".
+CC_LICENCE = re.compile(r"creativecommons\.org/licenses/([a-z-]+)/(\d\.\d)")
+PUBLIC_MARKS = {
+    "creativecommons.org/publicdomain/mark/": "Public Domain Mark 1.0",
+    "creativecommons.org/publicdomain/zero/": "CC0 1.0",
+}
+
+
+def cc_name(code: str, version: str) -> str:
+    return f"CC {code.upper()} {version}"
+
+
+class Europeana(Museum):
+    """Europe's cultural heritage portal, Polish collections included.
+
+    Besides works marked free it takes those whose authors died more than 70
+    years ago (the EU rule): many providers still mark Kandinsky or Matisse
+    "in copyright". Without a key of its own (``FRAME_EUROPEANA_KEY``, free
+    at europeana.eu) it uses the shared demo key.
+    """
+
+    key = "europeana"
+    name = "Europeana"
+    api = "https://api.europeana.eu/record/v2/search.json"
+    page_size = 100
+    #: Deeper result pages need a cursor.
+    random_depth = 1000
+    #: ``what`` (object type) values; "any" stays with artworks, not photos
+    #: of buildings or film stills.
+    whats: ClassVar[dict[str, str]] = {
+        "any": "what:(painting OR drawing OR print OR poster)",
+        "painting": "what:painting",
+        "print": "what:print",
+        "drawing": "what:drawing",
+        "poster": "what:poster",
+    }
+
+    def _death(self, d: dict[str, Any]) -> int | None:
+        """When the work's last author died, if every author is known."""
+        life = self.access.life
+        if life is None:
+            return None
+        creators = [str(c) for c in d.get("dcCreator") or []]
+        refs = [c for c in creators if EUROPEANA_AGENT.match(c) or WIKIDATA_ENTITY.match(c)]
+        refs = refs or [c for c in creators if not c.startswith("http")][:1]
+        years = [life.death_year(self.http, ref) for ref in refs]
+        if not years or any(y is None for y in years):
+            return None
+        return max(y for y in years if y is not None)
+
+    def _licence(self, d: dict[str, Any]) -> str:
+        """What makes the work free to show here; empty when nothing does."""
+        rights = _first(d.get("rights"))
+        for mark, label in PUBLIC_MARKS.items():
+            if mark in rights:
+                return label
+        if cc := CC_LICENCE.search(rights):
+            return cc_name(*cc.groups()) if self.private_use else ""
+        died = self._death(d)
+        if died is not None and free_in_eu(died):
+            return f"Domena publiczna w UE (twórca zm. {died})"
+        return ""
+
+    def _map(self, d: dict[str, Any]) -> Item | None:
+        image = _first(d.get("edmIsShownBy"))
+        preview = _first(d.get("edmPreview"))
+        if not image or not preview or not d.get("id"):
+            return None
+        licence = self._licence(d)
+        if not licence:
+            return None
+        if "/thumbnail/" in preview and "size=" not in preview:
+            preview += "&size=w400"
+        # Labels by language; "def" mixes in authority URIs.
+        labels = d.get("dcCreatorLangAware") or {}
+        names = [
+            str(n)
+            for lang in ("en", "pl", "def", *labels)
+            for n in labels.get(lang) or []
+            if "://" not in str(n)
+        ] or [str(c) for c in d.get("dcCreator") or [] if "://" not in str(c)]
+        year = _first(d.get("year"))
+        kinds = [t for t in (d.get("dcTypeLangAware") or {}).get("en") or [] if "://" not in t]
+        record = str(d["id"])
+        return self._item(
+            record.strip("/").replace("/", "~"),
+            title=_first(d.get("title")),
+            artist=_person(names[0]) if names else "",
+            date_text=year,
+            year=int(year) if year.isdigit() else None,
+            classification=kinds[0] if kinds else "",
+            credit=_first(d.get("dataProvider")),
+            license=licence,
+            url=_first(d.get("guid")) or f"https://www.europeana.eu/item{record}",
+            description=strip_html(_first(d.get("dcDescription")))[:2000],
+            image_url=image,
+            thumb_url=preview,
+        )
+
+    def _get(self, query: str, qf: list[str], limit: int, page: int) -> tuple[int, list[Item]]:
+        start = (page - 1) * limit + 1
+        if start + limit > self.random_depth + 1:
+            return 0, []
+        params: list[tuple[str, str | int | float | bool | None]] = [
+            ("wskey", self.access.europeana_key),
+            ("query", query.strip() or "*"),
+            ("qf", "TYPE:IMAGE"),
+            # Tier 1 is anything from 0.1 megapixel: thumbnails, not pictures.
+            ("qf", "contentTier:(2 OR 3 OR 4)"),
+            *(("qf", q) for q in qf),
+            ("media", "true"),
+            ("thumbnail", "true"),
+            ("profile", "rich"),
+            ("rows", limit),
+            ("start", start),
+        ]
+        resp = self.http.get(self.api, params=params)
+        resp.raise_for_status()
+        body = resp.json()
+        items = [i for d in body.get("items") or [] if (i := self._map(d))]
+        return int(body.get("totalResults") or 0), items
+
+    def search(self, query: str, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
+        return self._get(query, [], limit, page)
+
+    def discover(self, spec: Discovery, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
+        qf = [self.whats[spec.kind]]
+        if spec.year_from is not None or spec.year_to is not None:
+            low = "*" if spec.year_from is None else spec.year_from
+            high = "*" if spec.year_to is None else spec.year_to
+            qf.append(f"YEAR:[{low} TO {high}]")
+        return self._get(spec.style, qf, limit, page)
+
+    def fetch(self, source_id: str) -> Item | None:
+        record = "/" + source_id.replace("~", "/")
+        _, items = self._get(f'europeana_id:"{record}"', [], 1, 1)
+        return items[0] if items else None
+
+
+class Openverse(Museum):
+    """Openly licensed images (Flickr, Wikimedia Commons, museums) via Openverse.
+
+    Without ``private_use`` only CC0 and public-domain works; with it every
+    Creative Commons licence, credited on the frame. Anonymous use allows 20
+    requests a minute, 200 a day and 240 results a search; app credentials
+    (``FRAME_OPENVERSE_CLIENT_ID`` and ``_SECRET``) lift that.
+    """
+
+    key = "openverse"
+    name = "Openverse"
+    api = "https://api.openverse.org/v1"
+    page_size = 20  # the most an anonymous page may hold
+    random_depth = 240
+    public: ClassVar[tuple[str, ...]] = ("cc0", "pdm")
+    licensed: ClassVar[tuple[str, ...]] = (
+        "by",
+        "by-sa",
+        "by-nc",
+        "by-nd",
+        "by-nc-sa",
+        "by-nc-nd",
+    )
+    categories: ClassVar[dict[str, str]] = {
+        "any": "digitized_artwork",
+        "painting": "digitized_artwork",
+        "print": "illustration",
+        "drawing": "illustration",
+        "poster": "illustration",
+    }
+    _tokens: ClassVar[dict[str, tuple[str, float]]] = {}
+    _token_lock: ClassVar[threading.Lock] = threading.Lock()
+
+    def _licences(self) -> tuple[str, ...]:
+        return (*self.public, *self.licensed) if self.private_use else self.public
+
+    def _headers(self) -> dict[str, str]:
+        if not self.access.openverse_app:
+            return {}
+        client_id, secret = self.access.openverse_app
+        with self._token_lock:
+            token, expires = self._tokens.get(client_id, ("", 0.0))
+            if time.time() > expires - 60:
+                resp = self.http.post(
+                    f"{self.api}/auth_tokens/token/",
+                    data={
+                        "grant_type": "client_credentials",
+                        "client_id": client_id,
+                        "client_secret": secret,
+                    },
+                )
+                resp.raise_for_status()
+                body = resp.json()
+                token = str(body["access_token"])
+                expires = time.time() + float(body.get("expires_in") or 3600)
+                self._tokens[client_id] = (token, expires)
+        return {"Authorization": f"Bearer {token}"}
+
+    def _map(self, d: dict[str, Any]) -> Item | None:
+        code = str(d.get("license") or "")
+        if code not in self._licences() or not d.get("url") or not d.get("id"):
+            return None
+        version = str(d.get("license_version") or "")
+        licence = {"cc0": "CC0", "pdm": "Public Domain Mark"}.get(code) or f"CC {code.upper()}"
+        attribution = str(d.get("attribution") or "").split(". To view", 1)[0]
+        tags = [
+            t["name"] for t in d.get("tags") or [] if t.get("name") and t.get("accuracy") is None
+        ]
+        return self._item(
+            str(d["id"]),
+            title=str(d.get("title") or ""),
+            artist=str(d.get("creator") or ""),
+            classification=str(d.get("category") or ""),
+            subjects=tags[:12],
+            credit=attribution[:300],
+            license=f"{licence} {version}".strip(),
+            url=str(d.get("foreign_landing_url") or ""),
+            image_url=str(d["url"]),
+            thumb_url=str(d.get("thumbnail") or d["url"]),
+            width=d.get("width"),
+            height=d.get("height"),
+        )
+
+    def _get(self, params: dict[str, Any], limit: int, page: int) -> tuple[int, list[Item]]:
+        size = min(limit, self.page_size)
+        if page * size > self.random_depth and not self.access.openverse_app:
+            return 0, []
+        resp = self.http.get(
+            f"{self.api}/images/",
+            params={
+                **params,
+                "license": ",".join(self._licences()),
+                "page_size": size,
+                "page": page,
+                "mature": "false",
+            },
+            headers=self._headers(),
+        )
+        resp.raise_for_status()
+        body = resp.json()
+        items = [i for d in body.get("results") or [] if (i := self._map(d))]
+        return int(body.get("result_count") or 0), items
+
+    def search(self, query: str, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
+        # Art only: without a category most of Openverse is Flickr photos.
+        return self._get({"q": query, "category": "digitized_artwork,illustration"}, limit, page)
+
+    def discover(self, spec: Discovery, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
+        if spec.year_from is not None or spec.year_to is not None:
+            return 0, []  # no dates to filter by
+        params = {"category": self.categories[spec.kind]}
+        words = [spec.style.strip(), "poster" if spec.kind == "poster" else ""]
+        if text := " ".join(w for w in words if w):
+            params["q"] = text
+        return self._get(params, limit, page)
+
+    def fetch(self, source_id: str) -> Item | None:
+        resp = self.http.get(f"{self.api}/images/{source_id}/", headers=self._headers())
+        if resp.status_code == 404:
+            return None
+        resp.raise_for_status()
+        return self._map(resp.json())
+
+
+class WikiArt(Museum):
+    """WikiArt, only to test the panel with newer art.
+
+    WikiArt shows works still under copyright without licences, so it is no
+    lawful source for keeping copies: it is offered only while switched on in
+    the app, never feeds Suggestions, and its works leave the library when it
+    is switched off again.
+    """
+
+    key = "wikiart"
+    name = "WikiArt (test)"
+    testing = True
+    api = "https://www.wikiart.org/en/api/2"
+    #: WikiArt's own pages hold 60 works.
+    page_size = 60
+    licence = "Tylko do testów ramki (WikiArt)"
+    #: (search, page) -> token that asks for that page.
+    _tokens: ClassVar[dict[tuple[str, int], str]] = {}
+
+    def _map(self, d: dict[str, Any]) -> Item | None:
+        image = str(d.get("image") or "")
+        if not image or not d.get("id"):
+            return None
+        year = d.get("completitionYear")
+        artist_url = str(d.get("artistUrl") or "")
+        page = f"https://www.wikiart.org/en/{artist_url}"
+        if d.get("url"):
+            page += f"/{d['url']}"
+        return self._item(
+            str(d["id"]),
+            title=str(d.get("title") or ""),
+            artist=str(d.get("artistName") or ""),
+            date_text=str(year or ""),
+            year=year if isinstance(year, int) else None,
+            classification="Painting",
+            styles=list(d.get("styles") or []),
+            subjects=list(d.get("genres") or []),
+            license=self.licence,
+            url=page,
+            # "...jpg!Large.jpg" is a resized copy; without the suffix, the original.
+            image_url=re.sub(r"![^/]*$", "", image),
+            thumb_url=image,
+            width=d.get("width"),
+            height=d.get("height"),
+        )
+
+    def _page(self, term: str, number: int) -> tuple[list[dict[str, Any]], bool]:
+        """WikiArt's ``number``-th page of results (from 1) and whether more follow."""
+        params: dict[str, str] = {"term": term}
+        if number > 1:
+            token = self._tokens.get((term, number))
+            if token is None:
+                _, more = self._page(term, number - 1)
+                token = self._tokens.get((term, number))
+                if not more or token is None:
+                    return [], False
+            params["paginationToken"] = token
+        resp = self.http.get(f"{self.api}/PaintingSearch", params=params)
+        resp.raise_for_status()
+        body = resp.json()
+        more = bool(body.get("hasMore")) and bool(body.get("paginationToken"))
+        if more:
+            if len(self._tokens) > 500:
+                self._tokens.clear()
+            self._tokens[(term, number + 1)] = str(body["paginationToken"])
+        return list(body.get("data") or []), more
+
+    def search(self, query: str, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
+        term = query.strip()
+        if not term:
+            return 0, []
+        start = (page - 1) * limit
+        first = start // self.page_size + 1
+        last = (start + limit - 1) // self.page_size + 1
+        found: list[dict[str, Any]] = []
+        more = False
+        for number in range(first, last + 1):
+            rows, more = self._page(term, number)
+            found += rows
+            if not more:
+                break
+        skip = start - (first - 1) * self.page_size
+        items = [i for d in found[skip : skip + limit] if (i := self._map(d))]
+        seen = (first - 1) * self.page_size + len(found)
+        return (start + limit * 2 if more else seen), items
+
+    def discover(self, spec: Discovery, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
+        return self.search(spec.style, limit, page)
+
+    def fetch(self, source_id: str) -> Item | None:
+        resp = self.http.get(f"{self.api}/Painting", params={"id": source_id})
+        if resp.status_code == 404:
+            return None
+        resp.raise_for_status()
+        body = resp.json()
+        return self._map(body) if isinstance(body, dict) else None
+
+
 MUSEUMS: dict[str, type[Museum]] = {
     m.key: m
     for m in (
@@ -716,11 +1117,22 @@ MUSEUMS: dict[str, type[Museum]] = {
         MetropolitanMuseum,
         Rijksmuseum,
         WikimediaCommons,
+        Europeana,
+        Openverse,
+        WikiArt,
     )
 }
 
 
-def museum(key: str, http: httpx.Client, private_use: bool = False) -> Museum:
-    if key not in MUSEUMS:
-        raise KeyError(f"unknown museum {key!r}; choose from {sorted(MUSEUMS)}")
-    return MUSEUMS[key](http, private_use)
+def available(access: Access) -> dict[str, type[Museum]]:
+    """The sources on offer: test-only ones just while switched on."""
+    return {k: m for k, m in MUSEUMS.items() if not m.testing or access.wikiart}
+
+
+def museum(key: str, http: httpx.Client, access: Access | bool = False) -> Museum:
+    if isinstance(access, bool):
+        access = Access(private_use=access)
+    sources = available(access)
+    if key not in sources:
+        raise KeyError(f"unknown museum {key!r}; choose from {sorted(sources)}")
+    return sources[key](http, access=access)

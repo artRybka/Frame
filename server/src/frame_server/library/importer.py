@@ -9,7 +9,7 @@ import threading
 from collections import OrderedDict
 from collections.abc import Callable, Iterable, Iterator
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from itertools import chain, zip_longest
 
 import httpx
@@ -18,8 +18,9 @@ from PIL import Image
 from ..imaging.palette import Palette
 from .colors import analyse, tint_spread
 from .images import ImageCache
+from .lifespan import LifeDates
 from .models import Item, ItemKind, PhotoInfo, PlaylistRules
-from .museums import MUSEUMS, Discovery, Kind, Museum, client, museum
+from .museums import MUSEUMS, Access, Discovery, Kind, Museum, available, client, museum
 from .repo import Library, matches, now_iso
 from .vocabulary import (
     is_manuscript,
@@ -35,9 +36,9 @@ log = logging.getLogger(__name__)
 #: Pseudo source: every museum at once.
 ALL = "all"
 #: Museums asked for works by the artists the owner likes.
-TASTE_SOURCES = ("aic", "cma", "met", "rijks")
+TASTE_SOURCES = ("aic", "cma", "met", "rijks", "europeana")
 #: Museums that draw random paintings for variety.
-DRAW_SOURCES = ("aic", "cma", "met", "rijks")
+DRAW_SOURCES = ("aic", "cma", "met", "rijks", "europeana")
 #: Museum works seen in search results, kept in memory so that opening one
 #: needs no second request.
 REMOTE_MEMO = 500
@@ -86,16 +87,28 @@ class Importer:
         cache: ImageCache,
         palette: Palette,
         http: Callable[[], httpx.Client] = client,
-        private_use: Callable[[], bool] = lambda: False,
+        access: Callable[[], Access] = Access,
     ) -> None:
         self.library = library
         self.cache = cache
         self.palette = palette
         self.http = http
-        self.private_use = private_use
+        self._access = access
+        self.life = LifeDates()
         self.jobs: dict[str, Job] = {}
         self._remote: OrderedDict[str, Item] = OrderedDict()
         self._remote_lock = threading.Lock()
+
+    def access(self) -> Access:
+        """The owner's current choices, with the shared death-year cache."""
+        access = self._access()
+        if self.life.europeana_key != access.europeana_key:
+            self.life = LifeDates(access.europeana_key)
+        return replace(access, life=self.life)
+
+    def sources(self) -> list[str]:
+        """Keys of the sources on offer now."""
+        return list(available(self.access()))
 
     def remember(self, items: Iterable[Item]) -> None:
         with self._remote_lock:
@@ -112,10 +125,10 @@ class Importer:
             if item_id in self._remote:
                 return self._remote[item_id]
         source, _, source_id = item_id.partition(":")
-        if source not in MUSEUMS or not source_id:
+        if source not in self.sources() or not source_id:
             return None
         with self.http() as http:
-            item = museum(source, http, self.private_use()).fetch(source_id)
+            item = museum(source, http, self.access()).fetch(source_id)
         if item is not None:
             self.remember([item])
         return item
@@ -161,9 +174,7 @@ class Importer:
         self, source: str, query: str, limit: int = 24, page: int = 1
     ) -> tuple[int, list[Item]]:
         with self.http() as http:
-            total, items = museum(source, http, self.private_use()).search(
-                query, limit=limit, page=page
-            )
+            total, items = museum(source, http, self.access()).search(query, limit=limit, page=page)
         items = [i for i in items if not is_photograph(i)]
         self.remember(items)
         return total, items
@@ -181,8 +192,9 @@ class Importer:
     def _from_all(
         self, ask: Callable[[str], tuple[int, list[Item]]]
     ) -> tuple[int, list[Item], list[str]]:
-        with ThreadPoolExecutor(len(MUSEUMS)) as pool:
-            futures = {k: pool.submit(ask, k) for k in MUSEUMS}
+        keys = self.sources()
+        with ThreadPoolExecutor(len(keys)) as pool:
+            futures = {k: pool.submit(ask, k) for k in keys}
         found: list[list[Item]] = []
         failed: list[str] = []
         total = 0
@@ -206,7 +218,7 @@ class Importer:
     def search_many(self, source: str, query: str, limit: int) -> list[Item]:
         """Up to ``limit`` results, over as many result pages as that takes."""
         with self.http() as http:
-            source_museum = museum(source, http, self.private_use())
+            source_museum = museum(source, http, self.access())
             size = min(limit, source_museum.page_size)
             found: list[Item] = []
             page = 1
@@ -222,9 +234,10 @@ class Importer:
         self, source: str, query: str, limit: int, job: Job | None = None
     ) -> list[Item]:
         if source == ALL:
-            share = -(-limit // len(MUSEUMS))
+            keys = self.sources()
+            share = -(-limit // len(keys))
             found = []
-            for key in MUSEUMS:
+            for key in keys:
                 try:
                     found += self.search_many(key, query, share)
                 except (httpx.HTTPError, ValueError) as err:
@@ -260,7 +273,7 @@ class Importer:
         ``sources``; works below ``min_suitability`` are drawn again."""
         rng = rng or random.Random()
         with self.http() as http:
-            streams = [museum(s, http, self.private_use()).random_draw(spec, rng) for s in sources]
+            streams = [museum(s, http, self.access()).random_draw(spec, rng) for s in sources]
             self._take(
                 streams,
                 count,
@@ -280,11 +293,15 @@ class Importer:
         """Add ``count`` museum works that ``rules`` (a smart playlist) would
         pick, from every museum the rules allow."""
         rng = rng or random.Random()
-        sources = [s for s in rules.sources if s in MUSEUMS] or list(MUSEUMS)
+        offered = self.sources()
+        # Test-only sources just when the playlist names them.
+        sources = [s for s in rules.sources if s in offered] or [
+            s for s in offered if not MUSEUMS[s].testing
+        ]
         # Colours and suitability are only known once the thumbnail is in.
         cheap = rules.model_copy(update={"colors": [], "min_suitability": None})
         with self.http() as http:
-            museums = [museum(s, http, self.private_use()) for s in sources]
+            museums = [museum(s, http, self.access()) for s in sources]
             if rules.artists or rules.query:
                 # Named artists or words: the museums' own search finds them.
                 queries = rules.artists or [rules.query]
@@ -331,7 +348,7 @@ class Importer:
         with self.http() as http:
 
             def source(key: str) -> Museum:
-                return museum(key, http, self.private_use())
+                return museum(key, http, self.access())
 
             streams = [_search_stream(source(s), a) for a in artists for s in TASTE_SOURCES]
             streams += [_search_stream(source(s), q) for s, q in queries]
@@ -357,7 +374,7 @@ class Importer:
 
         def one(key: str) -> tuple[int, list[Item]]:
             with self.http() as http:
-                return museum(key, http, self.private_use()).discover(spec, limit, page)
+                return museum(key, http, self.access()).discover(spec, limit, page)
 
         return self._from_all(one)
 

@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from .. import __version__
-from ..library import Item, ItemSummary, PlaylistSummary
+from ..library import Item, ItemSummary, PlaylistRules, PlaylistSummary
 from ..player import Hold, hold_from
 from ..progress import DisplayProgress
 from ..schedule import FrameSettings
@@ -137,6 +137,12 @@ async def put_settings(settings: FrameSettings, svc: Svc) -> FrameSettings:
     player = svc.player
     old = player.settings
     saved = player.save_settings(settings)
+    if old.wikiart and not saved.wikiart:
+        # WikiArt was only for tests: its copies go with the switch.
+        _, tests = svc.library.query(PlaylistRules(sources=["wikiart"]), include_excluded=True)
+        for item in tests:
+            svc.library.delete(item.id)
+            svc.images.remove(item)
     if player.needs_restyle(old, saved):
         # New framing should show up now, not at the next scheduled change.
         svc.background(player.restyle())
