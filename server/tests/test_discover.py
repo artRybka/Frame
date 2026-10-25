@@ -99,9 +99,7 @@ def test_theme_playlists_and_terms(museums) -> None:  # noqa: F811
     with TestClient(app) as client:
         cards = client.get("/api/themes").json()
         assert len(cards) == len(THEMES)
-        assert [c["group"] for c in cards] == sorted(
-            (c["group"] for c in cards), key=GROUPS.index
-        )
+        assert [c["group"] for c in cards] == sorted((c["group"] for c in cards), key=GROUPS.index)
         made = client.post("/api/themes/romanticism/playlist", json={}).json()
         assert made["playlist"]["theme"] == "romanticism" and made["job_id"]
         _wait(service.importer.jobs[made["job_id"]])
