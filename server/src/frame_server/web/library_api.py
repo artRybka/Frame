@@ -451,8 +451,8 @@ async def upload(
 
 
 @router.get("/museums")
-def museums() -> list[dict[str, str]]:
-    return [{"key": k, "name": m.name} for k, m in MUSEUMS.items()]
+def museums(svc: Svc) -> list[dict[str, str]]:
+    return [{"key": k, "name": MUSEUMS[k].name} for k in svc.importer.sources()]
 
 
 @router.get("/museums/{source}/search", response_model=RemotePage)
@@ -463,7 +463,7 @@ async def museum_search(
     failed: list[str] = []
     if source == ALL:
         total, items, failed = await run_in_threadpool(svc.importer.search_all, q, limit or 8, page)
-    elif source in MUSEUMS:
+    elif source in svc.importer.sources():
         try:
             total, items = await run_in_threadpool(
                 svc.importer.search, source, q, limit or 24, page
@@ -481,7 +481,7 @@ async def museum_search(
 
 @router.post("/museums/{source}/import", response_model=Item)
 async def museum_import(source: str, request: ImportRequest, svc: Svc) -> Item:
-    if source not in MUSEUMS:
+    if source not in svc.importer.sources():
         raise HTTPException(404, f"unknown museum {source!r}")
     try:
         item = await run_in_threadpool(svc.importer.import_one, source, request.source_id)
@@ -494,7 +494,7 @@ async def museum_import(source: str, request: ImportRequest, svc: Svc) -> Item:
 
 @router.post("/museums/{source}/import-search")
 def museum_import_search(source: str, request: ImportSearchRequest, svc: Svc) -> dict[str, Any]:
-    if source != ALL and source not in MUSEUMS:
+    if source != ALL and source not in svc.importer.sources():
         raise HTTPException(404, f"unknown museum {source!r}")
 
     def work(job: Job) -> None:
@@ -546,9 +546,10 @@ def pack_import(key: str, svc: Svc) -> dict[str, Any]:
 @router.post("/library/draw")
 def draw(request: DrawRequest, svc: Svc) -> dict[str, Any]:
     """Add random works by period, style and kind from several museums."""
-    unknown = [s for s in request.sources if s not in MUSEUMS]
+    offered = svc.importer.sources()
+    unknown = [s for s in request.sources if s not in offered]
     if unknown or not request.sources:
-        raise HTTPException(422, f"unknown museums {unknown}; choose from {sorted(MUSEUMS)}")
+        raise HTTPException(422, f"unknown museums {unknown}; choose from {sorted(offered)}")
     spec = Discovery(
         year_from=request.year_from,
         year_to=request.year_to,
@@ -577,7 +578,7 @@ def fill(request: FillRequest, svc: Svc) -> dict[str, Any]:
         raise HTTPException(422, "favourites can't be fetched from museums")
     if rules.kinds and ItemKind.ARTWORK not in rules.kinds:
         raise HTTPException(422, "only artworks come from museums")
-    if rules.sources and not any(s in MUSEUMS for s in rules.sources):
+    if rules.sources and not any(s in svc.importer.sources() for s in rules.sources):
         raise HTTPException(422, "the rules allow no museum")
 
     def work(job: Job) -> None:

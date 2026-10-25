@@ -15,7 +15,7 @@ from starlette.concurrency import run_in_threadpool
 
 from ..library import Item, ItemKind, Job, Playlist, PlaylistKind, PlaylistRules, PlaylistSummary
 from ..library.importer import ALL, span
-from ..library.museums import MUSEUMS, Discovery, Kind, museum
+from ..library.museums import Discovery, Kind, museum
 from ..library.themes import GROUPS, THEMES, Theme, browse_theme, theme, theme_of_the_day
 from ..library.vocabulary import (
     TERMS,
@@ -430,7 +430,7 @@ async def search_museums(
     each museum): their own search for words, artists, styles and subjects,
     else works of the periods and technique. Colours are only known in the
     catalogue."""
-    if source != ALL and source not in MUSEUMS:
+    if source != ALL and source not in svc.importer.sources():
         raise HTTPException(404, f"unknown museum {source!r}")
     rules = rules_from(q, artist, term, None, year_from, year_to)
     start, end = span(rules)
@@ -451,7 +451,7 @@ async def search_museums(
         if source == ALL:
             return importer.discover_all(spec, limit, page)
         with importer.http() as http:
-            found = museum(source, http, importer.private_use()).discover(spec, limit, page)
+            found = museum(source, http, importer.access()).discover(spec, limit, page)
         importer.remember(found[1])
         return (*found, [])
 

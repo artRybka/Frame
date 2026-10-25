@@ -1,5 +1,5 @@
 name: Frame
-version: "0.5.0"
+version: "0.6.0"
 slug: frame
 description: Art & photo frame server for the Samsung EM32DX colour e-paper display
 url: https://github.com/artRybka/Frame
@@ -21,6 +21,9 @@ options:
   api_token: ""
   palette: ""
   seed_library: true
+  europeana_key: ""
+  openverse_client_id: ""
+  openverse_client_secret: ""
 schema:
   device_host: str?
   device_pin: password?
@@ -30,3 +33,6 @@ schema:
   api_token: password?
   palette: str?
   seed_library: bool
+  europeana_key: password?
+  openverse_client_id: str?
+  openverse_client_secret: password?
