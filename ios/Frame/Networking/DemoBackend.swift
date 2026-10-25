@@ -132,8 +132,10 @@ actor DemoBackend: FrameBackend {
     }
 
     private func items(for playlist: Playlist) -> [Item] {
-        if playlist.kind == .manual {
-            return playlist.itemIds.compactMap { id in items.first { $0.id == id } }
+        if playlist.kind != .smart {
+            return playlist.itemIds
+                .filter { !playlist.rules.excludeIds.contains($0) }
+                .compactMap { id in items.first { $0.id == id } }
         }
         return Self.sorted(items.filter { Self.matches($0, playlist.rules) }, by: "suitability")
     }
@@ -143,7 +145,13 @@ actor DemoBackend: FrameBackend {
         return PlaylistSummary(
             id: playlist.id ?? 0, name: playlist.name, description: playlist.description,
             kind: playlist.kind, rules: playlist.rules, itemCount: list.count,
-            coverItemIds: list.prefix(4).map(\.id)
+            coverItemIds: list.prefix(4).map(\.id), album: playlist.album,
+            albumSync: playlist.album.map { _ in
+                AlbumSync(
+                    at: ISO8601DateFormatter().string(from: .now.addingTimeInterval(-1800)),
+                    name: playlist.name, count: list.count
+                )
+            }
         )
     }
 
@@ -191,7 +199,7 @@ actor DemoBackend: FrameBackend {
             )
         }.min()
         return PlayerView(
-            mode: settingsValue.mode, playlist: playlist, current: nowShowing,
+            playlist: playlist, current: nowShowing,
             upcoming: queue.prefix(8).compactMap { id in items.first { $0.id == id }?.summary },
             history: history.suffix(8).reversed().compactMap { id in items.first { $0.id == id }?.summary },
             hold: holdValue,
@@ -403,7 +411,6 @@ actor DemoBackend: FrameBackend {
     func play(playlistID: Int) async throws {
         guard let playlist = playlistsByID[playlistID] else { throw BackendError.notFound }
         settingsValue.playlistId = playlistID
-        settingsValue.mode = "art"
         queue = items(for: playlist).map(\.id).shuffled()
         try await next()
     }
@@ -547,18 +554,17 @@ actor DemoBackend: FrameBackend {
         return job
     }
 
-    func album() async throws -> AlbumInfo {
-        AlbumInfo(
-            url: settingsValue.albumUrl,
-            lastSync: AlbumSync(
-                at: ISO8601DateFormatter().string(from: .now.addingTimeInterval(-1800)), count: 0,
-                name: "Rodzina"
-            ),
-            photos: 0
-        )
+    func checkAlbum(url: String) async throws -> AlbumCheck {
+        try await Task.sleep(for: .milliseconds(400))
+        guard url.contains("icloud.com/sharedalbum/#") else {
+            throw BackendError.http(status: 422, body: #"{"detail": "to nie jest link do albumu udostępnionego"}"#)
+        }
+        return AlbumCheck(name: "Rodzina", count: 0)
     }
 
-    func syncAlbum() async throws {}
+    func syncAlbum(playlistID: Int) async throws -> String {
+        try await importPack(key: "album")
+    }
 
     func uploadPhoto(_ upload: PhotoUpload) async throws -> Item {
         try await Task.sleep(for: .milliseconds(300))

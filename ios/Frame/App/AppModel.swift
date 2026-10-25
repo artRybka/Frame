@@ -158,7 +158,6 @@ final class AppModel {
     func play(_ playlist: PlaylistSummary) async {
         await perform { try await self.backend.play(playlistID: playlist.id) }
         settings?.playlistId = playlist.id
-        settings?.mode = "art"
         toast = "Teraz prezentowane: \(playlist.name)"
         await followPlayer()
     }

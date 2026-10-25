@@ -54,11 +54,10 @@ async def poll_status(service: FrameService) -> None:
         await asyncio.sleep(max(minutes, 1) * 60)
 
 
-async def sync_album_periodically(service: FrameService, minutes: int = 30) -> None:
+async def sync_albums_periodically(service: FrameService, minutes: int = 30) -> None:
     await asyncio.sleep(20)
     while True:
-        if service.player.settings.album_url:
-            service.start_album_sync()
+        service.albums.sync_all()
         await asyncio.sleep(minutes * 60)
 
 
@@ -75,9 +74,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 asyncio.create_task(service.player.run()),
                 asyncio.create_task(service.power.run()),
                 asyncio.create_task(poll_status(service)),
-                asyncio.create_task(sync_album_periodically(service)),
+                asyncio.create_task(sync_albums_periodically(service)),
             ]
         seed_playlists(service.importer)
+        service.albums.migrate()  # once: the album of older settings becomes a playlist
         service.player.reset_library()  # once: a clean start for the catalogue
         if settings.seed_library:
             service.player.top_up()  # Suggestions come from museums, as needed

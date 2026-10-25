@@ -3,6 +3,9 @@
 from .images import ImageCache
 from .importer import Importer, Job
 from .models import (
+    AlbumOrder,
+    AlbumSource,
+    AlbumSync,
     Facets,
     Item,
     ItemKind,
@@ -16,6 +19,9 @@ from .models import (
 from .repo import Library
 
 __all__ = [
+    "AlbumOrder",
+    "AlbumSource",
+    "AlbumSync",
     "Facets",
     "ImageCache",
     "Importer",

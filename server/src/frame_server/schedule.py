@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import datetime, time, timedelta
-from enum import StrEnum
 from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
@@ -11,11 +10,6 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from .imaging.grids import MAX_PHOTOS, MIN_PHOTOS
 from .imaging.layout import Fit, Orientation
-
-
-class Mode(StrEnum):
-    ART = "art"  # pictures from a playlist
-    ALBUM = "album"  # the shared iCloud album
 
 
 class Presentation(BaseModel):
@@ -42,7 +36,8 @@ PHOTO_FITS = (Fit.FIT, Fit.FILL, Fit.MULTI)
 class FrameSettings(BaseModel):
     model_config = ConfigDict(validate_assignment=True)
 
-    mode: Mode = Mode.ART
+    # The playlist the frame plays (an album playlist shows its photos);
+    # None: Suggestions.
     playlist_id: int | None = None
     # When the picture changes: at these times of day (HH:MM, local), every
     # day or every second or third day. The same on the charger and on
@@ -60,7 +55,6 @@ class FrameSettings(BaseModel):
     photo: Presentation = Field(
         default_factory=lambda: Presentation(preset="photo", fit=Fit.FILL, margin=0.0)
     )
-    album_url: str = ""
     timezone: str = "Europe/Warsaw"
     status_poll_minutes: int = Field(15, ge=0, le=1440)  # 0 = only on demand
     # The frame is only seen at home: also accept works that are free to use

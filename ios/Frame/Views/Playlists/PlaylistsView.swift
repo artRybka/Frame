@@ -7,7 +7,7 @@ struct PlaylistsView: View {
     @State private var path = NavigationPath()
 
     private var active: PlaylistSummary? {
-        guard model.settings?.mode != "album", let id = model.settings?.playlistId else { return nil }
+        guard let id = model.settings?.playlistId else { return nil }
         return model.playlists.first { $0.id == id }
     }
 
@@ -21,7 +21,7 @@ struct PlaylistsView: View {
                         }
                         .buttonStyle(.plain)
                     }
-                    SectionHeader(title: "Kolekcje", subtitle: "Według artystów, stylów, kolorów i tematów")
+                    SectionHeader(title: "Kolekcje", subtitle: "Dzieła według artystów, stylów i kolorów oraz albumy iCloud")
                     LazyVGrid(columns: [GridItem(.flexible(), spacing: 16), GridItem(.flexible(), spacing: 16)], spacing: 22) {
                         ForEach(model.playlists) { playlist in
                             NavigationLink(value: playlist.id) {
@@ -75,6 +75,22 @@ struct PlaylistsView: View {
 
 extension Playlist: Identifiable {}
 
+extension PlaylistSummary {
+    /// "12 dzieł", or "12 zdjęć" for an album.
+    var countText: String { kind == .album ? Names.photos(itemCount) : Names.works(itemCount) }
+}
+
+extension PlaylistKind {
+    /// Small symbol next to a playlist's name; none for manual ones.
+    var icon: String? {
+        switch self {
+        case .smart: "sparkles"
+        case .album: "icloud"
+        case .manual: nil
+        }
+    }
+}
+
 /// Large card for the playlist the frame presents.
 struct NowPlayingCard: View {
     let playlist: PlaylistSummary
@@ -94,7 +110,7 @@ struct NowPlayingCard: View {
                     .font(.serif(24, weight: .semibold))
                     .foregroundStyle(Theme.ink)
                     .lineLimit(2)
-                Text(Names.works(playlist.itemCount))
+                Text(playlist.countText)
                     .font(.subheadline)
                     .foregroundStyle(Theme.inkSoft)
             }
@@ -135,10 +151,10 @@ struct PlaylistCard: View {
                     .foregroundStyle(Theme.ink)
                     .lineLimit(2)
                 HStack(spacing: 4) {
-                    if playlist.kind == .smart {
-                        Image(systemName: "sparkles").font(.caption2)
+                    if let icon = playlist.kind.icon {
+                        Image(systemName: icon).font(.caption2)
                     }
-                    Text(Names.works(playlist.itemCount))
+                    Text(playlist.countText)
                 }
                 .font(.caption)
                 .foregroundStyle(Theme.inkSoft)

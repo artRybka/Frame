@@ -31,7 +31,6 @@ class NowShowing(BaseModel):
 
 
 class PlayerView(BaseModel):
-    mode: str
     playlist: PlaylistSummary | None
     current: NowShowing | None
     upcoming: list[ItemSummary]
@@ -82,7 +81,6 @@ def _player_view(svc: FrameService) -> PlayerView:
         playlist = svc.library.playlist_summary(found) if found else None
     history = [svc.library.get(i) for i in reversed(state.history[-12:])]
     return PlayerView(
-        mode=settings.mode.value,
         playlist=playlist,
         current=current,
         upcoming=[ItemSummary.of(i) for i in player.upcoming(8)],

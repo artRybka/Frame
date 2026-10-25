@@ -364,6 +364,47 @@ final class FrameAPITests: XCTestCase {
         XCTAssertEqual(saved.itemIds, [item.id])
     }
 
+    func testDecodesAlbumPlaylists() throws {
+        let json = """
+        {"id": 7, "name": "Rodzina", "description": "", "kind": "album",
+         "rules": {"query": "", "artists": [], "styles": [], "subjects": [], "colors": [], "kinds": [],
+                   "sources": [], "year_from": null, "year_to": null, "favorites_only": false,
+                   "min_suitability": null, "exclude_ids": []},
+         "item_count": 12, "cover_item_ids": ["icloud:G1"],
+         "album": {"url": "https://www.icloud.com/sharedalbum/#B0aGWZuqDGKPOC", "order": "newest"},
+         "album_sync": {"at": "2026-10-25T09:00:00+00:00", "name": "Rodzina", "count": 12, "added": 2,
+                        "error": ""}}
+        """
+        let summary = try LiveBackend.decoder().decode(PlaylistSummary.self, from: Data(json.utf8))
+        XCTAssertEqual(summary.kind, .album)
+        XCTAssertEqual(summary.album?.order, .newest)
+        XCTAssertEqual(summary.albumSync?.added, 2)
+        XCTAssertEqual(summary.countText, "12 zdjęć")
+
+        let playlist = Playlist(name: "Góry", kind: .album, album: AlbumSource(url: "https://x", order: .added))
+        let text = String(decoding: try LiveBackend.encoder().encode(playlist), as: UTF8.self)
+        XCTAssertTrue(text.contains("\"order\":\"added\""))
+        XCTAssertTrue(text.contains("\"kind\":\"album\""))
+    }
+
+    func testDemoAlbumPlaylists() async throws {
+        let demo = DemoBackend()
+        let check = try await demo.checkAlbum(url: "https://www.icloud.com/sharedalbum/#B0aGWZuqDGKPOC")
+        XCTAssertEqual(check.name, "Rodzina")
+        do {
+            _ = try await demo.checkAlbum(url: "https://example.com")
+            XCTFail("a link that is not an album")
+        } catch {}
+        let saved = try await demo.savePlaylist(
+            Playlist(name: "Rodzina", kind: .album, album: AlbumSource(url: "https://www.icloud.com/sharedalbum/#B0"))
+        )
+        XCTAssertEqual(saved.playlist.album?.order, .random)
+        XCTAssertNotNil(saved.playlist.albumSync)
+        let job = try await demo.syncAlbum(playlistID: saved.playlist.id)
+        let status = try await demo.job(id: job)
+        XCTAssertTrue(status.finished)
+    }
+
     func testDescriptionKeepsWholeSentences() {
         XCTAssertEqual(
             DemoFraming.sentences("Painted c. 1890 in Paris. It shows the artist's room! “Quoted” one."),

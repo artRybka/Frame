@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from .models import (
+    AlbumSync,
     Facets,
     FacetValue,
     Item,
@@ -277,12 +278,13 @@ class Library:
         return cur.rowcount > 0
 
     def playlist_items(self, playlist: Playlist, sort: SortKey = "recent") -> list[Item]:
-        if playlist.kind == PlaylistKind.MANUAL:
+        if playlist.kind != PlaylistKind.SMART:
             all_items = self._all()
+            skip = set(playlist.rules.exclude_ids)  # album photos taken out
             return [
                 all_items[i]
                 for i in playlist.item_ids
-                if i in all_items and not all_items[i].excluded
+                if i in all_items and not all_items[i].excluded and i not in skip
             ]
         return self.query(playlist.rules, sort=sort)[1]
 
@@ -297,7 +299,21 @@ class Library:
             rules=playlist.rules,
             item_count=len(items),
             cover_item_ids=[i.id for i in items[:4]],
+            album=playlist.album,
+            album_sync=self.album_sync(playlist.id),
         )
+
+    def album_sync(self, playlist_id: int) -> AlbumSync | None:
+        data = self.get_state(f"album_sync:{playlist_id}")
+        return AlbumSync.model_validate(data) if data else None
+
+    def set_album_sync(self, playlist_id: int, sync: AlbumSync | None) -> None:
+        key = f"album_sync:{playlist_id}"
+        if sync is None:
+            with self._db() as db:
+                db.execute("DELETE FROM kv WHERE key = ?", (key,))
+        else:
+            self.set_state(key, sync.model_dump(mode="json"))
 
     # -- key/value state ----------------------------------------------------
 

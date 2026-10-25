@@ -68,8 +68,10 @@ protocol FrameBackend: Sendable {
     func fillLibrary(rules: PlaylistRules, count: Int) async throws -> String
     func job(id: String) async throws -> JobStatus
 
-    func album() async throws -> AlbumInfo
-    func syncAlbum() async throws
+    /// A shared iCloud album's name and number of photos; fails on a bad link.
+    func checkAlbum(url: String) async throws -> AlbumCheck
+    /// Syncs an album playlist with its album now; returns the job id.
+    func syncAlbum(playlistID: Int) async throws -> String
 
     func sendPhoto(_ data: Data, title: String, preset: String, hold: HoldSpec) async throws
         -> DisplayResponse

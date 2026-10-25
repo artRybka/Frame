@@ -19,10 +19,11 @@ from .imaging import PRESETS, RenderSettings
 from .imaging.grids import MAX_PHOTOS, MIN_PHOTOS
 from .imaging.layout import Fit
 from .imaging.text import TextBlock
-from .library import Item, ItemKind, Job, Playlist, PlaylistKind, PlaylistRules
+from .library import AlbumOrder, Item, ItemKind, Job, Playlist, PlaylistKind, PlaylistRules
+from .library.icloud import refetchable
 from .library.museums import MUSEUMS, Kind
 from .library.seed import PACKS, theme_of_the_day
-from .schedule import FrameSettings, Mode, in_quiet_hours, next_change
+from .schedule import FrameSettings, in_quiet_hours, next_change
 
 if TYPE_CHECKING:
     from .service import FrameService
@@ -118,6 +119,23 @@ def text_block_for(item: Item) -> TextBlock:
     return TextBlock(title=item.title, meta=[m for m in (item.artist, detail) if m], body=body)
 
 
+def _when_taken(item: Item) -> str:
+    return (item.photo.taken_at if item.photo else None) or item.date_text or item.added_at
+
+
+def _when_shared(item: Item) -> str:
+    return (item.photo.shared_at if item.photo else None) or item.added_at
+
+
+def album_order(items: list[Item], order: AlbumOrder) -> list[Item]:
+    """An album's photos in the order its playlist shows them."""
+    if order == AlbumOrder.RANDOM:
+        return random.sample(items, len(items))
+    if order == AlbumOrder.ADDED:
+        return sorted(items, key=_when_shared, reverse=True)
+    return sorted(items, key=_when_taken, reverse=order == AlbumOrder.NEWEST)
+
+
 class Player:
     def __init__(self, service: FrameService) -> None:
         self.service = service
@@ -134,14 +152,8 @@ class Player:
     def save_settings(self, settings: FrameSettings) -> FrameSettings:
         old = self.settings
         self.library.set_state(SETTINGS_KEY, settings.model_dump(mode="json"))
-        if (old.mode, old.playlist_id, old.shuffle) != (
-            settings.mode,
-            settings.playlist_id,
-            settings.shuffle,
-        ):
-            state = self.state
-            state.queue = []
-            self._save_state(state)
+        if (old.playlist_id, old.shuffle) != (settings.playlist_id, settings.shuffle):
+            self.reset_queue()
         self.reschedule()
         return settings
 
@@ -151,6 +163,18 @@ class Player:
 
     def _save_state(self, state: PlayerState) -> None:
         self.library.set_state(STATE_KEY, state.model_dump(mode="json"))
+
+    def reset_queue(self) -> None:
+        """Forget the order of the next pictures; it is drawn again."""
+        state = self.state
+        state.queue = []
+        self._save_state(state)
+
+    def playlist_changed(self, playlist_id: int) -> None:
+        """The playlist's pictures or their order changed (e.g. new photos in
+        an album): if the frame plays it, the next ones are drawn again."""
+        if self.settings.playlist_id == playlist_id:
+            self.reset_queue()
 
     def unqueue(self, item_id: str) -> None:
         """Forget a work already queued, e.g. one taken out of the playlist."""
@@ -169,8 +193,6 @@ class Player:
 
     def candidates(self, settings: FrameSettings | None = None) -> list[Item]:
         settings = settings or self.settings
-        if settings.mode == Mode.ALBUM:
-            return self.library.query(PlaylistRules(kinds=[ItemKind.PHOTO]), sort="recent")[1]
         playlist = self.playlist(settings)
         if playlist is not None:
             return self.library.playlist_items(playlist)
@@ -212,10 +234,13 @@ class Player:
     def _refill(self, state: PlayerState, settings: FrameSettings) -> None:
         items = self.candidates(settings)
         pool = self.fresh(items, settings) or items
-        ids = [i.id for i in pool if i.id != state.current_item_id] or [i.id for i in pool]
-        if settings.shuffle:
-            random.shuffle(ids)
-        state.queue = ids
+        pool = [i for i in pool if i.id != state.current_item_id] or pool
+        playlist = self.playlist(settings)
+        if playlist is not None and playlist.album is not None:
+            pool = album_order(pool, playlist.album.order)
+        elif settings.shuffle:
+            random.shuffle(pool)
+        state.queue = [i.id for i in pool]
 
     def _pop_next(self, state: PlayerState, settings: FrameSettings) -> Item | None:
         for _ in range(2):
@@ -513,9 +538,7 @@ class Player:
         background. Returns the job, if one was started."""
         settings = self.settings
         importer = self.service.importer
-        if settings.mode != Mode.ART or any(
-            job.description == "pool" and not job.finished for job in importer.jobs.values()
-        ):
+        if any(job.description == "pool" and not job.finished for job in importer.jobs.values()):
             return None
         playlist = self.playlist(settings)
         if playlist is None:
@@ -686,7 +709,9 @@ class Player:
         state = self.state
         soon = {state.current_item_id, *state.current_group, *state.queue[:PREFETCH]}
         _, items = self.library.query(include_excluded=True)
-        keep = [i for i in items if i.id in soon or i.source not in MUSEUMS]
+        keep = [
+            i for i in items if i.id in soon or (i.source not in MUSEUMS and not refetchable(i))
+        ]
         limit = self.service.settings.image_cache_mb * 1024 * 1024
         self.trim_catalogue()
         self.service.images.prune_thumbs(self.library.query(include_excluded=True)[1])

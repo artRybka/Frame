@@ -35,6 +35,8 @@ class ImageCache:
         self.thumbs.mkdir(parents=True, exist_ok=True)
         self.images.mkdir(parents=True, exist_ok=True)
         self.http = http
+        #: Sources whose originals need more than a plain download (by source).
+        self.fetchers: dict[str, Callable[[Item], bytes]] = {}
         self._locks: dict[str, threading.Lock] = {}
         self._guard = threading.Lock()
 
@@ -76,7 +78,13 @@ class ImageCache:
             return path
         with self._lock(f"i:{item.id}"):
             if not path.is_file():
-                _save_jpeg(self._download(item.image_url or item.thumb_url), path, IMAGE_MAX, 92)
+                fetch = self.fetchers.get(item.source)
+                img = (
+                    load_image(fetch(item))
+                    if fetch is not None
+                    else self._download(item.image_url or item.thumb_url)
+                )
+                _save_jpeg(img, path, IMAGE_MAX, 92)
         return path
 
     def store(self, item: Item, data: bytes) -> tuple[int, int]:

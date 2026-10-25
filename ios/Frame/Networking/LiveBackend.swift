@@ -202,8 +202,14 @@ struct LiveBackend: FrameBackend {
 
     // MARK: Album
 
-    func album() async throws -> AlbumInfo { try await get("/api/album") }
-    func syncAlbum() async throws { try await send("/api/album/sync", method: "POST") }
+    func checkAlbum(url: String) async throws -> AlbumCheck {
+        try await send("/api/albums/check", method: "POST", body: ["url": url])
+    }
+
+    func syncAlbum(playlistID: Int) async throws -> String {
+        let ref: JobRef = try await send("/api/playlists/\(playlistID)/sync", method: "POST")
+        return ref.jobId
+    }
 
     // MARK: Device
 

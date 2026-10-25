@@ -2,6 +2,14 @@
 
 ## Niewydane
 
+- Albumy iCloud jako playlisty (`kind: "album"` z `album: {url, order}`):
+  wiele albumów, każdy z kolejnością zdjęć (losowo, najnowsze, najstarsze,
+  ostatnio dodane). Synchronizacja co 30 min pobiera tylko miniatury, a
+  oryginał przez świeży link przed pokazaniem. Nowe endpointy
+  `POST/GET /api/playlists/{id}/sync` i `POST /api/albums/check`; znikają
+  `/api/album`, `/api/album/sync` oraz `mode` i `album_url` w ustawieniach
+  (stary album zamienia się sam w playlistę).
+
 - Harmonogram: zamiast interwałów osobno dla zasilacza i baterii godziny
   zmiany obrazu (`change_times`, jedna lub kilka dziennie) i co ile dni
   (`change_every_days`, 1–3). Cisza nocna trwa od `quiet_start` do

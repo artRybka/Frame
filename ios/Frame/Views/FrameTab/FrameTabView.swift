@@ -258,38 +258,31 @@ struct ScheduleSection: View {
     private let everyDays: [(Int, String)] = [(1, "codziennie"), (2, "co 2 dni"), (3, "co 3 dni")]
     private let maxTimes = 12
 
+    private var artPlaylists: [PlaylistSummary] { model.playlists.filter { $0.kind != .album } }
+    private var albums: [PlaylistSummary] { model.playlists.filter { $0.kind == .album } }
+    private var playingAlbum: PlaylistSummary? { albums.first { $0.id == settings.playlistId } }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             SectionHeader(title: "Harmonogram", subtitle: "Co i jak często pokazuje ramka")
-            Picker("Tryb", selection: $settings.mode) {
-                Text("Obrazy").tag("art")
-                Text("Album iCloud").tag("album")
-            }
-            .pickerStyle(.segmented)
 
             Card {
-                if settings.mode == "art" {
-                    row("Playlista") {
-                        Picker("Playlista", selection: $settings.playlistId) {
-                            Text("Propozycje").tag(Int?.none)
-                            ForEach(model.playlists) { Text($0.name).tag(Int?.some($0.id)) }
+                row("Playlista") {
+                    Picker("Playlista", selection: $settings.playlistId) {
+                        Text("Propozycje").tag(Int?.none)
+                        if !artPlaylists.isEmpty {
+                            Section("Sztuka") {
+                                ForEach(artPlaylists) { Text($0.name).tag(Int?.some($0.id)) }
+                            }
+                        }
+                        if !albums.isEmpty {
+                            Section("Albumy iCloud") {
+                                ForEach(albums) { Label($0.name, systemImage: "icloud").tag(Int?.some($0.id)) }
+                            }
                         }
                     }
-                    Divider()
-                } else {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Link do albumu").foregroundStyle(Theme.inkSoft).font(.subheadline)
-                        TextField("https://www.icloud.com/sharedalbum/#…", text: $settings.albumUrl)
-                            .textInputAutocapitalization(.never)
-                            .keyboardType(.URL)
-                            .font(.subheadline)
-                        Text("W Zdjęciach: album udostępniony → Osoby → Witryna publiczna → Udostępnij link.")
-                            .font(.caption)
-                            .foregroundStyle(Theme.inkSoft)
-                        AlbumStatus()
-                    }
-                    Divider()
                 }
+                Divider()
                 row("Zmiana") {
                     Picker("Zmiana", selection: $settings.changeEveryDays) {
                         ForEach(everyDays, id: \.0) { days, label in Text(label).tag(days) }
@@ -299,7 +292,16 @@ struct ScheduleSection: View {
                 Divider()
                 changeTimesEditor
                 Divider()
-                Toggle("Losowa kolejność", isOn: $settings.shuffle)
+                if let album = playingAlbum?.album {
+                    row("Kolejność") {
+                        Text(album.order.title).foregroundStyle(Theme.inkSoft)
+                    }
+                    Text("Album ma własną kolejność zdjęć; zmienisz ją w jego playliście.")
+                        .font(.caption)
+                        .foregroundStyle(Theme.inkSoft)
+                } else {
+                    Toggle("Losowa kolejność", isOn: $settings.shuffle)
+                }
                 Divider()
                 Toggle("Cisza nocna", isOn: quietEnabled)
                 if settings.quietStart != nil {
@@ -453,6 +455,11 @@ struct PresentationSection: View {
                 ForEach(Target.allCases, id: \.self) { Text($0.rawValue).tag($0) }
             }
             .pickerStyle(.segmented)
+            Text(target == .art
+                ? "Dla playlist z dziełami z muzeów i własnymi pracami oraz dla Propozycji."
+                : "Dla albumów iCloud i zdjęć z rolki aparatu.")
+                .font(.caption)
+                .foregroundStyle(Theme.inkSoft)
             if let item = previewItem {
                 let portrait = settings.orientation == "portrait"
                 VStack(spacing: 10) {
@@ -815,52 +822,5 @@ struct ServerSection: View {
         case .unknown:
             EmptyView()
         }
-    }
-}
-
-/// Last shared-album sync and a button to sync now.
-struct AlbumStatus: View {
-    @Environment(AppModel.self) private var model
-    @State private var info: AlbumInfo?
-    @State private var syncing = false
-
-    var body: some View {
-        HStack {
-            if let sync = info?.lastSync {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(sync.name.isEmpty ? "Album" : sync.name).font(.subheadline.weight(.medium))
-                    Text("\(info?.photos ?? 0) zdjęć · synchronizacja \(When.ago(sync.at) ?? "")")
-                        .font(.caption)
-                        .foregroundStyle(Theme.inkSoft)
-                }
-            } else {
-                Text("Jeszcze nie synchronizowano").font(.caption).foregroundStyle(Theme.inkSoft)
-            }
-            Spacer()
-            Button {
-                Task {
-                    syncing = true
-                    do {
-                        try await model.backend.syncAlbum()
-                        model.toast = "Synchronizuję album…"
-                        try? await Task.sleep(for: .seconds(3))
-                        info = try? await model.backend.album()
-                    } catch {
-                        model.show(error)
-                    }
-                    syncing = false
-                }
-            } label: {
-                if syncing {
-                    ProgressView()
-                } else {
-                    Label("Synchronizuj", systemImage: "arrow.triangle.2.circlepath")
-                        .font(.subheadline.weight(.semibold))
-                }
-            }
-            .disabled(syncing)
-        }
-        .padding(.top, 4)
-        .task { info = try? await model.backend.album() }
     }
 }

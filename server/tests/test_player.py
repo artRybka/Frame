@@ -196,7 +196,7 @@ def test_api_library_playlists_player(service) -> None:
 
         assert client.post(f"/api/playlists/{playlist_id}/play").status_code == 202
         view = client.get("/api/player").json()
-        assert view["playlist"]["id"] == playlist_id and view["mode"] == "art"
+        assert view["playlist"]["id"] == playlist_id
 
         status = client.get("/api/status").json()
         assert status["device"]["configured"] is False

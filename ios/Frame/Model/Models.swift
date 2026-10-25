@@ -149,6 +149,44 @@ extension PlaylistRules {
 
 enum PlaylistKind: String, Codable, Hashable, Sendable {
     case smart, manual
+    case album  // mirrors a shared iCloud album
+}
+
+/// In which order an album playlist shows its photos.
+enum AlbumOrder: String, Codable, Hashable, Sendable, CaseIterable, Identifiable {
+    case random, newest, oldest, added
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .random: "Losowo"
+        case .newest: "Najnowsze"
+        case .oldest: "Najstarsze"
+        case .added: "Ostatnio dodane"
+        }
+    }
+
+    var explanation: String {
+        switch self {
+        case .random: "Zdjęcia w losowej kolejności, bez powtórek, dopóki nie pokażą się wszystkie."
+        case .newest: "Od zrobionych najpóźniej do najstarszych. Nowe zdjęcia w albumie idą na początek."
+        case .oldest: "Od najstarszych zdjęć do najnowszych, jak w kronice."
+        case .added: "Najpierw te, które ktoś niedawno dodał do albumu."
+        }
+    }
+}
+
+/// The shared iCloud album an album playlist mirrors.
+struct AlbumSource: Codable, Hashable, Sendable {
+    var url: String
+    var order: AlbumOrder = .random
+}
+
+/// `POST /api/albums/check`
+struct AlbumCheck: Codable, Hashable, Sendable {
+    let name: String
+    let count: Int
 }
 
 /// Body for creating or updating a playlist.
@@ -159,6 +197,7 @@ struct Playlist: Codable, Hashable, Sendable {
     var kind: PlaylistKind = .smart
     var rules = PlaylistRules()
     var itemIds: [String] = []
+    var album: AlbumSource?
 }
 
 struct PlaylistSummary: Codable, Identifiable, Hashable, Sendable {
@@ -169,6 +208,8 @@ struct PlaylistSummary: Codable, Identifiable, Hashable, Sendable {
     var rules: PlaylistRules
     var itemCount: Int
     var coverItemIds: [String]
+    var album: AlbumSource?
+    var albumSync: AlbumSync?
 }
 
 struct PlaylistDetail: Codable, Sendable {
@@ -225,7 +266,6 @@ struct NowShowing: Codable, Hashable, Sendable {
 }
 
 struct PlayerView: Codable, Sendable {
-    var mode: String
     var playlist: PlaylistSummary?
     var current: NowShowing?
     var upcoming: [ItemSummary]
@@ -312,7 +352,7 @@ struct Presentation: Codable, Hashable, Sendable {
 }
 
 struct FrameSettings: Codable, Hashable, Sendable {
-    var mode: String  // "art" | "album"
+    /// The playlist the frame plays (an album playlist shows its photos); nil: Suggestions.
     var playlistId: Int?
     /// Times of day ("HH:MM") the picture changes at, the same on the
     /// charger and on battery; every day or every 2nd/3rd day.
@@ -326,7 +366,6 @@ struct FrameSettings: Codable, Hashable, Sendable {
     var rotation: Int
     var art: Presentation
     var photo: Presentation
-    var albumUrl: String
     var timezone: String
     var statusPollMinutes: Int
     /// Only seen at home: also accept freely licensed, not public-domain works.
@@ -339,25 +378,24 @@ struct FrameSettings: Codable, Hashable, Sendable {
     }
 
     static let defaults = FrameSettings(
-        mode: "art", playlistId: nil, changeTimes: ["07:00"], changeEveryDays: 1,
+        playlistId: nil, changeTimes: ["07:00"], changeEveryDays: 1,
         quietStart: "22:00", shuffle: true, avoidRepeatDays: 14,
         orientation: "landscape", rotation: 90,
         art: Presentation(preset: "painting", fit: "auto", margin: 0.05, label: false),
         photo: Presentation(preset: "photo", fit: "fill", margin: 0, label: false),
-        albumUrl: "", timezone: "Europe/Warsaw", statusPollMinutes: 15
+        timezone: "Europe/Warsaw", statusPollMinutes: 15
     )
 }
 
 extension FrameSettings {
     private enum CodingKeys: String, CodingKey {
-        case mode, playlistId, changeTimes, changeEveryDays, quietStart, shuffle, avoidRepeatDays
-        case orientation, rotation, art, photo, albumUrl, timezone, statusPollMinutes, privateUse
+        case playlistId, changeTimes, changeEveryDays, quietStart, shuffle, avoidRepeatDays
+        case orientation, rotation, art, photo, timezone, statusPollMinutes, privateUse
         case quietEnd  // older servers: decoded only
     }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        mode = try c.decode(String.self, forKey: .mode)
         playlistId = try c.decodeIfPresent(Int.self, forKey: .playlistId)
         // Older servers have intervals instead: their changes start at the end of quiet hours.
         let quietEnd = try c.decodeIfPresent(String.self, forKey: .quietEnd)
@@ -370,7 +408,6 @@ extension FrameSettings {
         rotation = try c.decode(Int.self, forKey: .rotation)
         art = try c.decode(Presentation.self, forKey: .art)
         photo = try c.decode(Presentation.self, forKey: .photo)
-        albumUrl = try c.decode(String.self, forKey: .albumUrl)
         timezone = try c.decode(String.self, forKey: .timezone)
         statusPollMinutes = try c.decode(Int.self, forKey: .statusPollMinutes)
         privateUse = try c.decodeIfPresent(Bool.self, forKey: .privateUse)
@@ -378,7 +415,6 @@ extension FrameSettings {
 
     func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
-        try c.encode(mode, forKey: .mode)
         try c.encodeIfPresent(playlistId, forKey: .playlistId)
         try c.encode(changeTimes, forKey: .changeTimes)
         try c.encode(changeEveryDays, forKey: .changeEveryDays)
@@ -389,7 +425,6 @@ extension FrameSettings {
         try c.encode(rotation, forKey: .rotation)
         try c.encode(art, forKey: .art)
         try c.encode(photo, forKey: .photo)
-        try c.encode(albumUrl, forKey: .albumUrl)
         try c.encode(timezone, forKey: .timezone)
         try c.encode(statusPollMinutes, forKey: .statusPollMinutes)
         try c.encodeIfPresent(privateUse, forKey: .privateUse)
@@ -520,17 +555,13 @@ struct LibraryQuery: Hashable, Sendable {
     }
 }
 
+/// The last synchronisation of an album playlist with its album.
 struct AlbumSync: Codable, Hashable, Sendable {
     var at: String
-    var count: Int
     var name: String
-}
-
-/// `GET /api/album`
-struct AlbumInfo: Codable, Hashable, Sendable {
-    var url: String
-    var lastSync: AlbumSync?
-    var photos: Int
+    var count: Int
+    var added: Int?
+    var error: String?
 }
 
 // MARK: Framing (server/src/frame_server/web/library_api.py)
