@@ -102,6 +102,7 @@ def _diffuse(
     clamp_hi: float,
     m1: np.ndarray,
     m2: np.ndarray,
+    only: np.ndarray,
 ) -> np.ndarray:
     h, wd, _ = img.shape
     out = np.zeros((h, wd), dtype=np.uint8)
@@ -111,6 +112,8 @@ def _diffuse(
         reverse = serpentine and (y % 2 == 1)
         for i in range(wd):
             x = wd - 1 - i if reverse else i
+            if not only[y, x]:
+                continue
             r = min(max(buf[y, x, 0], clamp_lo), clamp_hi)
             g = min(max(buf[y, x, 1], clamp_lo), clamp_hi)
             b = min(max(buf[y, x, 2], clamp_lo), clamp_hi)
@@ -135,7 +138,7 @@ def _diffuse(
             for t in range(dy.shape[0]):
                 yy = y + dy[t]
                 xx = x - dx[t] if reverse else x + dx[t]
-                if yy < h and 0 <= xx < wd:
+                if yy < h and 0 <= xx < wd and only[yy, xx]:
                     buf[yy, xx, 0] += er * w[t]
                     buf[yy, xx, 1] += eg * w[t]
                     buf[yy, xx, 2] += eb * w[t]
@@ -150,12 +153,15 @@ def error_diffusion(
     serpentine: bool = True,
     match_oklab: bool = True,
     error_clamp: float = 0.25,
+    only: np.ndarray | None = None,
 ) -> np.ndarray:
     """Dither a linear-RGB image (H, W, 3) to palette indices (H, W) uint8.
 
     ``error_clamp`` bounds how far an accumulated pixel may stray outside
     [0, 1] (in linear units) before it is matched; small values reduce
     smearing from out-of-gamut colours, large values preserve average colour.
+    ``only`` (H, W bool) dithers just those pixels, as if the rest were not
+    there: no error flows into or out of them, and they are left at 0.
     """
     dy, dx, w = kernel_arrays(kernel)
     pal_lin = np.ascontiguousarray(pal_linear, dtype=np.float32)
@@ -176,6 +182,7 @@ def error_diffusion(
         1.0 + error_clamp,
         OKLAB_M1,
         OKLAB_M2,
+        np.ones(linear.shape[:2], dtype=np.bool_) if only is None else only,
     )
 
 

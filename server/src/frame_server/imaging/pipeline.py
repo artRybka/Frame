@@ -28,7 +28,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .bands import by_rows
 from .caption import caption_mask
-from .color import FloatArray, linear_to_u8, luminance, u8_to_linear
+from .color import FloatArray, linear_to_u8, u8_to_linear
 from .dither import Kernel, error_diffusion, nearest
 from .filters import sharpen
 from .grids import MAX_PHOTOS, MIN_PHOTOS, plan_multi
@@ -46,10 +46,18 @@ from .layout import (
     plan_layout,
     to_panel,
 )
-from .mat import is_dark, paint_mat, picture_tint
+from .mat import (
+    CREASE_ON_DARK,
+    CREASE_ON_LIGHT,
+    crease_dots,
+    is_dark,
+    paint_mat,
+    picture_tint,
+    shade_pictures,
+)
 from .palette import EM32DX, Palette
 from .text import TextBlock, text_block_mask
-from .tone import ToneSettings, map_to_panel, precompensate
+from .tone import ToneSettings, grade_for_panel, map_to_panel, precompensate
 
 
 class Strategy(StrEnum):
@@ -99,35 +107,44 @@ class RenderSettings(BaseModel):
     text: TextBlock | None = Field(None, description="DESCRIPTION: printed on the mat")
 
 
+# The presets let the panel dither (passthrough): in E5 and in the tuning by
+# eye of E14 its own mapping beat our dither on every kind of picture, once
+# light parts are pulled to paper white and muted and greys are kept off green.
+_LIGHT = {"white_point": 0.93, "highlight_chroma": 0.55}
+# Greys lean green on the panel: nudge them towards magenta and a little cooler.
+_NEUTRAL = {"tint": 0.006, "temperature": -0.003, "tint_region": "neutral"}
+
 PRESETS: dict[str, RenderSettings] = {
-    # Photos: lift shadows (dark inks swallow them), mild contrast and colour boost.
-    # Passthrough for now: in E5 the panel's own colour mapping beat our dither on
-    # a real photo (docs/EXPERIMENTS.md). Back to DITHER once 1.3/1.4 catch up.
     "photo": RenderSettings(
         strategy=Strategy.PASSTHROUGH,
-        tone=ToneSettings(gamma=1.15, shadows=0.35, highlights=0.1, contrast=1.1, saturation=1.2),
+        tone=ToneSettings(**_LIGHT, **_NEUTRAL, contrast=1.05, saturation=1.05),
         sharpen=0.6,
     ),
-    # Paintings: keep tonal relationships, gentle saturation, a passe-partout.
+    # Paintings: lighter midtones and light parts, a passe-partout.
     "painting": RenderSettings(
+        strategy=Strategy.PASSTHROUGH,
         layout=LayoutSettings(fit=Fit.FIT, margin=0.05),
-        tone=ToneSettings(gamma=1.1, shadows=0.25, contrast=1.05, saturation=1.15),
+        tone=ToneSettings(**_LIGHT, **_NEUTRAL, gamma=1.1, highlights=-0.15),
         sharpen=0.4,
     ),
-    # Posters, prints, illustrations: flat colour, crisp edges.
+    # Posters, prints, illustrations: as paintings, with more punch and crisper edges.
     "graphic": RenderSettings(
+        strategy=Strategy.PASSTHROUGH,
         layout=LayoutSettings(fit=Fit.FIT, margin=0.04),
-        tone=ToneSettings(contrast=1.2, saturation=1.3, gamut_knee=0.9),
-        dither=DitherSettings(method=Kernel.ATKINSON, error_clamp=0.1),
+        tone=ToneSettings(
+            **_LIGHT, **_NEUTRAL, gamma=1.1, highlights=-0.15, contrast=1.1, saturation=1.1
+        ),
         sharpen=0.8,
     ),
-    # Drawings, etchings, B&W photography: black and white ink only.
+    # Drawings, etchings, B&W photography: greys the panel dithers with all its
+    # inks (smoother and deeper than black and white ink alone), kept off green.
     "bw": RenderSettings(
+        strategy=Strategy.PASSTHROUGH,
         layout=LayoutSettings(fit=Fit.FIT, margin=0.05),
-        tone=ToneSettings(gamma=1.1, shadows=0.2, contrast=1.1, saturation=0.0),
-        dither=DitherSettings(method=Kernel.JARVIS),
-        inks=["black", "white"],
-        sharpen=0.5,
+        tone=ToneSettings(
+            white_point=0.93, saturation=0.0, contrast=1.1, tint=0.012, temperature=-0.006
+        ),
+        sharpen=0.9,
     ),
 }
 
@@ -190,7 +207,7 @@ def encode_image(img: Image.Image, fmt: Literal["png", "jpeg"], quality: int = 9
     return out.getvalue()
 
 
-# Mats in nominal colours, for the passthrough strategy (the panel dithers).
+# The colour a mat is composed with; paint_mat paints all but "edge" over it.
 _NOMINAL_MATS = {
     "white": (255, 255, 255),
     "cream": (250, 242, 214),
@@ -245,8 +262,8 @@ def render(
     palette: Palette = EM32DX,
 ) -> RenderResult:
     s = settings or RenderSettings()
-    linear, plan, mat_rgb = _compose_one(load_image(source), s)
-    return _finish(linear, plan, s, palette, mat_rgb)
+    linear, plan = _compose_one(load_image(source), s)
+    return _finish(linear, plan, s, palette)
 
 
 def render_original(
@@ -267,34 +284,29 @@ def render_original(
     s = settings or RenderSettings()
     imgs = [load_image(source) for source in sources[:MAX_PHOTOS]]
     if multi and len(imgs) >= MIN_PHOTOS:
-        linear, plan, mat_rgb = _compose_multi(imgs, s, seed, fast=True)
+        linear, plan = _compose_multi(imgs, s, seed, fast=True)
         s = s.model_copy(update={"caption": None, "text": None})
     else:
-        linear, plan, mat_rgb = _compose_one(imgs[0], s, fast=True)
+        linear, plan = _compose_one(imgs[0], s, fast=True)
     pal = palette.subset(s.inks)
-    if s.strategy == Strategy.PASSTHROUGH:
-        dark_board = float(luminance(u8_to_linear(np.array(mat_rgb, dtype=np.uint8)))) < 0.18
-    else:
-        board = paint_mat(linear, plan, palette.nominal(), s.layout.mat)
-        dark_board = board is not None and is_dark(board, palette.nominal())
+    board = paint_mat(linear, plan, palette.nominal(), s.layout.mat)
+    dark_board = board is not None and is_dark(board, palette.nominal())
     original = by_rows(linear_to_u8, linear)
-    ink = pal.device_u8()[pal.white_index() if dark_board else pal.black_index()]
-    for mask in _letters(plan, s):
-        original[mask] = ink
+    for index, mask in _marks(plan, s, pal, dark_board):
+        original[mask] = pal.device_u8()[index]
     return Image.fromarray(original)
 
 
 def _compose_one(
     img: Image.Image, s: RenderSettings, fast: bool = False
-) -> tuple[FloatArray, Plan, tuple[int, int, int]]:
+) -> tuple[FloatArray, Plan]:
     plan = plan_for(img, s.layout, caption=bool(s.caption))
-    mat_rgb = _mat_rgb(img, s.layout.mat)
-    return compose_plan(img, plan, mat_color=mat_rgb, fast=fast), plan, mat_rgb
+    return compose_plan(img, plan, mat_color=_mat_rgb(img, s.layout.mat), fast=fast), plan
 
 
 def _compose_multi(
     imgs: list[Image.Image], s: RenderSettings, seed: str, fast: bool = False
-) -> tuple[FloatArray, Plan, tuple[int, int, int]]:
+) -> tuple[FloatArray, Plan]:
     pickers = [_interest_picker(img) for img in imgs]
     plan, order = plan_multi(
         [img.size for img in imgs],
@@ -306,7 +318,7 @@ def _compose_multi(
     )
     mat_rgb = _mat_rgb(imgs[0], s.layout.mat)
     linear = compose_plan([imgs[i] for i in order], plan, mat_color=mat_rgb, fast=fast)
-    return linear, plan, mat_rgb
+    return linear, plan
 
 
 def render_multi(
@@ -324,9 +336,9 @@ def render_multi(
     if len(sources) < MIN_PHOTOS:
         return render(sources[0], s, palette)  # MULTI with one picture is a passe-partout
     imgs = [load_image(source) for source in sources[:MAX_PHOTOS]]
-    linear, plan, mat_rgb = _compose_multi(imgs, s, seed)
+    linear, plan = _compose_multi(imgs, s, seed)
     no_text = s.model_copy(update={"caption": None, "text": None})
-    return _finish(linear, plan, no_text, palette, mat_rgb)
+    return _finish(linear, plan, no_text, palette)
 
 
 def _interest_picker(img: Image.Image) -> AutoCrop:
@@ -346,25 +358,39 @@ def _finish(
     plan: Plan,
     s: RenderSettings,
     palette: Palette,
-    mat_rgb: tuple[int, int, int],
 ) -> RenderResult:
     """Tone, mat, dither and lettering for a composed canvas."""
     pal = palette.subset(s.inks)
     # The app's view: the composition in nominal colours, before any correction.
     original = linear.copy()
-    if s.strategy != Strategy.PASSTHROUGH:  # passthrough sends the plain composed mat
-        paint_mat(original, plan, palette.nominal(), s.layout.mat)
+    paint_mat(original, plan, palette.nominal(), s.layout.mat)
     linear = sharpen(linear, s.sharpen)
 
     # The panel's look: our own dither, or (when the panel dithers) a
     # simulation of its dither of ``naive``, made only when asked for.
     naive: FloatArray | None = None
     dithered = np.zeros(0, dtype=np.uint8)
+    on_mat: np.ndarray | None = None  # passthrough: the mat, dithered by us
     if s.strategy == Strategy.PASSTHROUGH:
-        sent = by_rows(linear_to_u8, linear)
-        naive = linear
-        mat = u8_to_linear(np.array(mat_rgb, dtype=np.uint8))
-        dark_board = float(luminance(mat)) < 0.18
+        picture = by_rows(lambda part: grade_for_panel(part, s.tone), linear)
+        mask = plan.mat_mask()
+        dark_board = False
+        if mask.any():
+            # The mat and its bevels in pure inks, as in DITHER: the panel
+            # keeps them 1:1 and dithers only the picture (E5). Our dither
+            # runs on the mat alone.
+            if s.layout.mat in ("picture", "edge"):  # coloured by the picture
+                target = by_rows(lambda part: map_to_panel(part, pal, s.tone), linear)
+            else:  # only the mat matters here
+                target = np.empty_like(linear)
+            board = paint_mat(target, plan, pal, s.layout.mat, shade=False)
+            dark_board = board is not None and is_dark(board, pal)
+            shade_pictures(picture, plan)
+            on_mat = _dither(target, pal, s.dither, only=mask)
+        sent = by_rows(linear_to_u8, picture)
+        naive = picture
+        if on_mat is not None:
+            sent[mask] = pal.device_u8()[on_mat[mask]]
     else:
         target = by_rows(lambda part: map_to_panel(part, pal, s.tone), linear)
         board = paint_mat(target, plan, pal, s.layout.mat)
@@ -374,41 +400,63 @@ def _finish(
             sent = by_rows(linear_to_u8, nominal)
             naive = nominal
         else:
-            if s.dither.method == "none":
-                dithered = nearest(target, pal.perceived_linear(), match_oklab=True)
-            else:
-                dithered = error_diffusion(
-                    target,
-                    pal.perceived_linear(),
-                    Kernel(s.dither.method),
-                    serpentine=s.dither.serpentine,
-                    match_oklab=s.dither.match == "oklab",
-                    error_clamp=s.dither.error_clamp,
-                )
+            dithered = _dither(target, pal, s.dither)
             sent = pal.device_u8()[dithered]
 
-    # Lettering in pure ink on the mat: white on a dark mat, black otherwise.
-    letters = _letters(plan, s)
-    ink = pal.white_index() if dark_board else pal.black_index()
+    # The crease and the lettering in pure ink on the mat.
+    marks = _marks(plan, s, pal, dark_board)
     original_u8 = by_rows(linear_to_u8, original)
-    if letters:
+    if marks:
         sent = sent.copy()
-        for mask in letters:
-            sent[mask] = pal.device_u8()[ink]
-            original_u8[mask] = pal.device_u8()[ink]
+        for index, where in marks:
+            sent[where] = pal.device_u8()[index]
+            original_u8[where] = pal.device_u8()[index]
 
     def preview() -> np.ndarray:
         preview_idx = dithered if naive is None else simulate_naive(naive, pal)
-        if letters:
+        if on_mat is not None or marks:
             preview_idx = preview_idx.copy()
-            for mask in letters:
-                preview_idx[mask] = ink
+        if on_mat is not None:
+            preview_idx[mask] = on_mat[mask]
+        for index, where in marks:
+            preview_idx[where] = index
         return pal.perceived_u8()[preview_idx]
 
     panel = to_panel(sent, s.layout.orientation, s.layout.rotation)
     return RenderResult(
         panel=panel, original=original_u8, settings=s, palette=pal, simulate=preview
     )
+
+
+def _dither(
+    target: FloatArray, pal: Palette, d: DitherSettings, only: np.ndarray | None = None
+) -> np.ndarray:
+    if d.method == "none":
+        return nearest(target, pal.perceived_linear(), match_oklab=True)
+    return error_diffusion(
+        target,
+        pal.perceived_linear(),
+        Kernel(d.method),
+        serpentine=d.serpentine,
+        match_oklab=d.match == "oklab",
+        error_clamp=d.error_clamp,
+        only=only,
+    )
+
+
+def _marks(
+    plan: Plan, s: RenderSettings, pal: Palette, dark_board: bool
+) -> list[tuple[int, np.ndarray]]:
+    """(ink index, mask) of what is printed on the mat in pure ink: the
+    crease around the cut, then the lettering, white on a dark mat."""
+    pattern = CREASE_ON_DARK if dark_board else CREASE_ON_LIGHT
+    marks = [
+        (pal.index(name), dots)
+        for name, dots in crease_dots(plan, pattern).items()
+        if name in pal.names
+    ]
+    ink = pal.white_index() if dark_board else pal.black_index()
+    return marks + [(ink, mask) for mask in _letters(plan, s)]
 
 
 def _letters(plan: Plan, s: RenderSettings) -> list[np.ndarray]:

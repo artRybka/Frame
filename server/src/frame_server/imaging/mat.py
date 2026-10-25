@@ -33,6 +33,11 @@ BEVEL = 0.006  # bevel width, fraction of the canvas's short side
 SHADOW = 0.006  # shadow on the picture, same unit
 GRAIN = 0.003  # paper grain, relative brightness swing: barely there
 GRAIN_CELL = 8  # grain size in pixels: soft clouds, not specks
+# The crease where the bevel meets the face (crease_dots): its dots along the
+# line, one character per pixel: an ink's initial or "." for none (E14).
+CREASE_ON_LIGHT = "k."
+CREASE_ON_DARK = "w.b."  # white alone stands out too much on a dark board
+CREASE_INKS = {"k": "black", "w": "white", "b": "blue", "r": "red", "g": "green", "y": "yellow"}
 
 
 def _ink(palette: Palette, name: str) -> FloatArray | None:
@@ -138,8 +143,51 @@ def _texture(shape: tuple[int, int], seed: int = 7) -> FloatArray:
     return grain
 
 
-def paint_mat(target: FloatArray, plan: Plan, palette: Palette, mat: str) -> FloatArray | None:
-    """Paint the mat, bevels and shadows into ``target`` (panel linear RGB).
+def bevel_width(plan: Plan) -> int:
+    return max(3, round(min(plan.canvas) * BEVEL))
+
+
+def crease_dots(plan: Plan, pattern: str) -> dict[str, np.ndarray]:
+    """Dots where the bevels meet the face, all around each window: a mask
+    per ink name, ``pattern`` repeated along the line.
+
+    On a light board the lit bevels are as light as the face and the cut
+    would vanish; the line all around keeps the cut even. Set after
+    dithering, like lettering: a grey line would turn into red, green and
+    blue dots, and the picture's error would leak into it.
+    """
+    cw, ch = plan.canvas
+    line = np.zeros((ch, cw), dtype=bool)
+    mask = plan.mat_mask()
+    if mask.any():
+        d = bevel_width(plan)
+        for x, y, w, h in (window.rect for window in plan.windows):
+            # The outer edge of the bevel ring, mitred corners included.
+            x0, y0, x1, y1 = max(x - d, 0), max(y - d, 0), min(x + w + d, cw), min(y + h + d, ch)
+            if y - d >= 0:
+                line[y - d, x0:x1] = True
+            if y + h - 1 + d < ch:
+                line[y + h - 1 + d, x0:x1] = True
+            if x - d >= 0:
+                line[y0:y1, x - d] = True
+            if x + w - 1 + d < cw:
+                line[y0:y1, x + w - 1 + d] = True
+        line &= mask
+    ys, xs = np.nonzero(line)
+    step = (xs + ys) % len(pattern)
+    marks: dict[str, np.ndarray] = {}
+    for i, c in enumerate(pattern):
+        if c in CREASE_INKS:
+            dots = marks.setdefault(CREASE_INKS[c], np.zeros((ch, cw), dtype=bool))
+            dots[ys[step == i], xs[step == i]] = True
+    return marks
+
+
+def paint_mat(
+    target: FloatArray, plan: Plan, palette: Palette, mat: str, shade: bool = True
+) -> FloatArray | None:
+    """Paint the mat, bevels and (with ``shade``) the shadows on the
+    pictures into ``target`` (panel linear RGB).
 
     Returns the board's colour, or None when the picture covers the canvas.
     """
@@ -147,7 +195,6 @@ def paint_mat(target: FloatArray, plan: Plan, palette: Palette, mat: str) -> Flo
     if not mask.any():
         return None
     cw, ch = plan.canvas
-    short = min(cw, ch)
     white = palette.perceived_linear()[palette.white_index()]
     black = palette.perceived_linear()[palette.black_index()]
     if mat != "edge":  # "edge" keeps the picture's border colour composed earlier
@@ -158,8 +205,7 @@ def paint_mat(target: FloatArray, plan: Plan, palette: Palette, mat: str) -> Flo
         else:
             target[mask] = base  # pure ink: no grain, it would only add dots
 
-    bevel = max(3, round(short * BEVEL))
-    shadow = max(3, round(short * SHADOW))
+    bevel = bevel_width(plan)
     # The cut is the board itself, lit or shaded: a little lighter or darker.
     board = target[mask].mean(axis=0) if mat == "edge" else base
     core_lit = _toward(board, white, 0.2)
@@ -195,12 +241,20 @@ def paint_mat(target: FloatArray, plan: Plan, palette: Palette, mat: str) -> Flo
             ):
                 if open_edges[name]:
                     region[ring & (side == index)] = colour
-        # The mat's shadow on the picture, under its top and left edges.
-        ramp = np.linspace(0.78, 1.0, shadow, dtype=np.float32)
-        if open_edges["top"]:
+    if shade:
+        shade_pictures(target, plan)
+    return board
+
+
+def shade_pictures(target: FloatArray, plan: Plan) -> None:
+    """The mat's shadow on the pictures, under the top and left edges of
+    each window (``target`` in linear light)."""
+    shadow = max(3, round(min(plan.canvas) * SHADOW))
+    ramp = np.linspace(0.78, 1.0, shadow, dtype=np.float32)
+    for x, y, w, h in (window.rect for window in plan.windows):
+        if y > 0:
             n = min(shadow, h)
             target[y : y + n, x : x + w] *= ramp[:n, None, None]
-        if open_edges["left"]:
+        if x > 0:
             n = min(shadow, w)
             target[y : y + h, x : x + n] *= ramp[None, :n, None]
-    return board

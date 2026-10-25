@@ -24,9 +24,9 @@ from frame_server.imaging.color import (
 )
 from frame_server.imaging.dither import Kernel, error_diffusion
 from frame_server.imaging.gamut import hull_planes, inside
-from frame_server.imaging.layout import Fit, Orientation
+from frame_server.imaging.layout import Fit, Orientation, plan_layout
 from frame_server.imaging.testchart import CHARTS
-from frame_server.imaging.tone import ToneSettings, map_to_panel, precompensate
+from frame_server.imaging.tone import ToneSettings, grade_for_panel, map_to_panel, precompensate
 
 
 def _gradient(w: int = 400, h: int = 300) -> Image.Image:
@@ -132,15 +132,55 @@ def test_fast_original_matches_the_render(preset: str, fit: Fit, mat: str) -> No
     assert np.percentile(np.abs(full - fast), 99.9) <= 2
 
 
-def test_bw_preset_uses_two_inks() -> None:
-    result = render(_gradient(), PRESETS["bw"])
+def test_inks_restrict_the_dither() -> None:
+    settings = RenderSettings(inks=["black", "white"])
+    result = render(_gradient(), settings)
     used = {tuple(c) for c in np.unique(result.panel.reshape(-1, 3), axis=0)}
     assert used <= {(0, 0, 0), (255, 255, 255)}
 
 
-def test_photo_preset_is_passthrough() -> None:
-    # E5: the panel's own colour mapping looked best on photos.
-    assert PRESETS["photo"].strategy == Strategy.PASSTHROUGH
+def test_bw_preset_sends_near_greys() -> None:
+    settings = PRESETS["bw"].model_copy(deep=True)
+    settings.layout.fit = Fit.FILL
+    result = render(_gradient(), settings)
+    lab = linear_to_oklab(u8_to_linear(result.panel))
+    assert np.hypot(lab[..., 1], lab[..., 2]).max() < 0.03  # nudged off green, still grey
+
+
+def test_presets_are_passthrough() -> None:
+    # E5 and E14: the panel's own colour mapping, corrected, looked best.
+    assert all(p.strategy == Strategy.PASSTHROUGH for p in PRESETS.values())
+
+
+def test_grade_for_panel() -> None:
+    def lab(rgb: tuple[int, int, int], s: ToneSettings) -> np.ndarray:
+        return linear_to_oklab(grade_for_panel(u8_to_linear(np.array([rgb], np.uint8)), s))[0]
+
+    neutral = ToneSettings()
+    assert np.allclose(lab((180, 120, 90), neutral), linear_to_oklab(u8_to_linear([180, 120, 90])))
+    assert lab((238, 238, 238), ToneSettings(white_point=0.93))[0] > 0.999
+    muted = ToneSettings(highlight_chroma=0.5)
+    pale, dark = (240, 225, 200), (90, 60, 30)
+    assert np.hypot(*lab(pale, muted)[1:]) < 0.6 * np.hypot(*lab(pale, neutral)[1:])
+    assert np.allclose(lab(dark, muted), lab(dark, neutral), atol=1e-4)
+    greys = ToneSettings(tint=0.01, tint_region="neutral")
+    assert lab((128, 128, 128), greys)[1] > 0.009
+    assert np.isclose(lab((200, 30, 30), greys)[1], lab((200, 30, 30), neutral)[1], atol=1e-4)
+
+
+def test_passthrough_mat_is_pure_ink() -> None:
+    settings = PRESETS["painting"].model_copy(deep=True)
+    settings.layout.mat = "grey"
+    result = render(_gradient(), settings)
+    plan = plan_layout((400, 300), (2560, 1440), Fit.FIT, margin=0.05)
+    inks = {tuple(c) for c in SPECTRA6.device_u8()}
+    mat = {tuple(c) for c in np.unique(result.panel[plan.mat_mask()], axis=0)}
+    assert mat <= inks
+    x, y, w, h = plan.windows[0].rect
+    picture = np.unique(
+        result.panel[y + 20 : y + h - 20, x + 20 : x + w - 20].reshape(-1, 3), axis=0
+    )
+    assert len(picture) > 50  # continuous tone: the panel dithers the picture
 
 
 def test_passthrough_is_jpeg() -> None:
@@ -164,3 +204,14 @@ def test_paper_white_is_the_white_ink() -> None:
     result = render(Image.new("RGB", (320, 180), (255, 255, 255)), settings)
     white = np.all(result.panel == 255, axis=-1).mean()
     assert white > 0.99
+
+
+def test_dither_only_some_pixels() -> None:
+    img = np.full((40, 60, 3), 0.5, dtype=np.float32)
+    only = np.zeros((40, 60), dtype=bool)
+    only[:, :20] = True
+    part = error_diffusion(img, SPECTRA6.perceived_linear(), only=only)
+    full = error_diffusion(img[:, :20].copy(), SPECTRA6.perceived_linear(), serpentine=False)
+    assert not part[:, 20:].any()  # the rest is left alone
+    left = error_diffusion(img, SPECTRA6.perceived_linear(), only=only, serpentine=False)
+    assert np.array_equal(left[:, :20], full)  # as if the rest were not there

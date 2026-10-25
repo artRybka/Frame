@@ -21,7 +21,7 @@ from frame_server.imaging.layout import (
     resolve_fit,
     whole,
 )
-from frame_server.imaging.mat import picture_tint
+from frame_server.imaging.mat import crease_dots, picture_tint
 from frame_server.imaging.palette import SPECTRA6
 from frame_server.imaging.pipeline import render
 from frame_server.imaging.text import TextBlock, text_block_mask
@@ -321,3 +321,28 @@ def test_upload_photo_with_place(service) -> None:
         ).json()
     assert response["kind"] == "photo" and response["photo"]["latitude"] == 54.5
     assert response["date_text"] == "2026-07-01"
+
+
+def test_crease_outlines_the_cut() -> None:
+    settings = PRESETS["painting"].model_copy(deep=True)
+    settings.layout.mat = "white"
+    result = render(Image.new("RGB", (800, 1000), (200, 60, 40)), settings)
+    plan = plan_layout((800, 1000), CANVAS, Fit.FIT, margin=0.05)
+    (marks,) = crease_dots(plan, "k.").values()
+    x, y, w, h = plan.windows[0].rect
+    assert np.all(result.panel[marks] == SPECTRA6.device_u8()[SPECTRA6.black_index()])
+    edges = (
+        marks[y + h :, x : x + w],
+        marks[:y, x : x + w],
+        marks[y : y + h, :x],
+        marks[y : y + h, x + w :],
+    )
+    assert all(edge.any() for edge in edges)
+    assert not marks[y : y + h, x : x + w].any()  # never on the picture
+    # On a dark board: white and blue dots, half as many of each.
+    settings.layout.mat = "black"
+    dark = render(Image.new("RGB", (800, 1000), (200, 60, 40)), settings)
+    dots = crease_dots(plan, "w.b.")
+    assert dots["white"].sum() + dots["blue"].sum() == marks.sum()
+    for name, where in dots.items():
+        assert np.all(dark.panel[where] == SPECTRA6.device_u8()[SPECTRA6.index(name)])

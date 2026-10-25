@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.9.0
+
+- Presety dobrane na oko na prawdziwym ekranie (E14, piętnaście plansz
+  porównawczych): wszystkie na `passthrough`, czyli dithering robi ekran,
+  a serwer tylko poprawia obraz pod jego mapowanie. Jasne partie
+  przesunięte do bieli papieru i odbarwione (ekran sypał w nich
+  niebieskie i zielone kropki), szarości odsunięte od zieleni. Nowe pola
+  `ToneSettings`: `white_point`, `highlight_chroma`, `tint`,
+  `temperature`, `tint_region`.
+- Kropkowana linia dookoła okna passe-partout, tam gdzie faza styka się
+  z kartonem: czarna, a na ciemnym kartonie na przemian biała i
+  niebieska. Bez niej na białym kartonie cięcie znikało.
+- Karton, fazy i podpisy przy `passthrough` w czystych farbach (nasz
+  dithering tylko na kartonie), ekran ditheruje sam obraz; karton
+  nadal rzuca cień na obraz.
+- Podgląd w aplikacji pokazuje karton i linię dookoła okna tak jak
+  ramka, także w szybkim podglądzie.
+
 ## 0.8.0
 
 - Muzea → samo źródło (bez frazy) pokazuje dzieła tego źródła, a nie
