@@ -612,7 +612,7 @@ actor DemoBackend: FrameBackend {
 
     func checkAlbum(url: String) async throws -> AlbumCheck {
         try await Task.sleep(for: .milliseconds(400))
-        guard url.contains("icloud.com/sharedalbum/#") else {
+        guard url.contains("icloud.com/sharedalbum/#") || url.contains("icloud.com/shared/album/") else {
             throw BackendError.http(status: 422, body: #"{"detail": "to nie jest link do albumu udostępnionego"}"#)
         }
         return AlbumCheck(name: "Rodzina", count: 0)

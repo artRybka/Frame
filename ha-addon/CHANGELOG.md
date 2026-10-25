@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.2
+
+- Nowe linki do albumów udostępnionych z iOS 26
+  (`https://photos.icloud.com/shared/album/<token>`) działają. To albumy
+  w nowym API iCloud (CloudKit, „shared collections”), a serwer znał tylko
+  stary format `www.icloud.com/sharedalbum/#<token>`. Z nowych albumów
+  przychodzą pełne oryginały (zamiast ok. 2048 px), także HEIC (nowa
+  zależność `pillow-heif`), do tego data i miejsce zdjęcia od razu przy
+  synchronizacji. Stare linki działają jak dotąd.
+
 ## 0.4.1
 
 - Serwer znów startuje w kilka sekund po aktualizacji z 0.3.0. Jednorazowe

@@ -10,6 +10,7 @@ from pathlib import Path
 
 import numpy as np
 from PIL import Image, ImageCms, ImageOps
+from pillow_heif import register_heif_opener
 from pydantic import BaseModel, Field
 
 from .color import FloatArray, linear_to_u8, u8_to_linear
@@ -18,6 +19,9 @@ PANEL_WIDTH = 2560
 PANEL_HEIGHT = 1440
 
 _SRGB_PROFILE = ImageCms.createProfile("sRGB")
+
+# iPhone originals (newer shared iCloud albums, uploads) are HEIC.
+register_heif_opener()
 
 
 class Orientation(StrEnum):
