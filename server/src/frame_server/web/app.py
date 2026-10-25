@@ -72,6 +72,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if settings.scheduler:
             tasks = [
                 asyncio.create_task(service.player.run()),
+                asyncio.create_task(service.power.run()),
                 asyncio.create_task(poll_status(service)),
                 asyncio.create_task(sync_album_periodically(service)),
             ]

@@ -135,7 +135,9 @@ struct FrameTabView: View {
                     Text(When.schedule(model.player?.nextChangeAt) ?? "—")
                         .font(.headline)
                         .foregroundStyle(Theme.ink)
-                    Text("następna zmiana").font(.caption).foregroundStyle(Theme.inkSoft)
+                    Text(device?.pendingPush == true ? "obraz czeka na pobudkę ramki" : "następna zmiana")
+                        .font(.caption)
+                        .foregroundStyle(Theme.inkSoft)
                 }
             }
             StatusTile(title: "Sieć") {
@@ -303,7 +305,7 @@ struct ScheduleSection: View {
                         DatePicker("Do", selection: time(\.quietEnd, fallback: "07:00"), displayedComponents: .hourAndMinute)
                     }
                     .font(.subheadline)
-                    Text("Zmiany zaczynają się codziennie o końcu ciszy nocnej.")
+                    Text("Zmiany zaczynają się codziennie o końcu ciszy nocnej. Na baterii ramka śpi wtedy z wyłączonym Wi-Fi i budzi się sama o tej godzinie, a zdjęcia wysłane w nocy pojawią się rano.")
                         .font(.caption)
                         .foregroundStyle(Theme.inkSoft)
                 }
