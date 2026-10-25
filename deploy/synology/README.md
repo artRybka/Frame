@@ -19,5 +19,12 @@ Uwagi:
 - Obraz `ghcr.io/artrybka/frame` publikuje GitHub Actions po każdym scaleniu
   do `main` (`.github/workflows/publish.yml`). Pakiet jest publiczny, więc NAS
   pobiera go bez logowania.
-- Aktualizacja: *Container Manager → Projekt → frame → Akcja → Kompiluj*
-  (pobiera nowy `latest`), ewentualnie `docker compose pull && docker compose up -d`.
+- Aktualizacja: *Container Manager → Projekt → frame → Akcja → Kompiluj*.
+  Dzięki `pull_policy: always` w `docker-compose.yml` kompilacja sama pobiera
+  nowy `latest`, nie trzeba wcześniej usuwać ani aktualizować obrazu.
+  Odpowiednik z wiersza poleceń: `docker compose up -d`.
+- Projekt utworzony ze starszej wersji pliku (bez `pull_policy`) trzeba raz
+  poprawić: *Projekt → frame → Akcja → Zatrzymaj*, potem w zakładce
+  *Konfiguracja YAML* kliknij *Edytuj*, dopisz pod linią `image:`
+  wiersz `pull_policy: always` (z tym samym wcięciem), zapisz i kliknij
+  *Kompiluj*. Można też podmienić plik w folderze projektu przez File Station.
