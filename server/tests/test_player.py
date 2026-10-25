@@ -1,38 +1,84 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, time, timedelta
 
+import pytest
 from conftest import jpeg_bytes
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
 from frame_server.library import ItemKind, Playlist, PlaylistRules
 from frame_server.player import Hold, hold_from
-from frame_server.schedule import FrameSettings, in_quiet_hours, next_change
+from frame_server.schedule import (
+    FrameSettings,
+    in_quiet_hours,
+    morning_change,
+    next_change,
+    quiet_hours,
+)
 
 
 def _at(text: str) -> datetime:
     return datetime.fromisoformat(text).replace(tzinfo=FrameSettings().tz())
 
 
-def test_daily_changes_happen_at_end_of_quiet_hours() -> None:
-    s = FrameSettings()  # daily, quiet 22:00-07:00, Europe/Warsaw
+def test_daily_change_at_seven() -> None:
+    s = FrameSettings()  # 07:00 daily, quiet from 22:00, Europe/Warsaw
     assert next_change(_at("2026-10-24T15:00"), s) == _at("2026-10-25T07:00")
     assert next_change(_at("2026-10-24T06:00"), s) == _at("2026-10-24T07:00")
+    assert next_change(_at("2026-10-24T07:00"), s) == _at("2026-10-25T07:00")
 
 
-def test_interval_skips_quiet_hours() -> None:
-    s = FrameSettings(interval_minutes=180)
-    assert next_change(_at("2026-10-24T08:00"), s) == _at("2026-10-24T10:00")
-    # 22:00 and later slots fall into quiet hours -> next morning.
+def test_several_change_times_a_day() -> None:
+    s = FrameSettings(change_times=["19:00", "7:00", "13:30", "07:00"])
+    assert s.change_times == ["07:00", "13:30", "19:00"]
+    assert next_change(_at("2026-10-24T08:00"), s) == _at("2026-10-24T13:30")
     assert next_change(_at("2026-10-24T19:30"), s) == _at("2026-10-25T07:00")
+    # Quiet hours run from 22:00 to the morning change.
+    assert quiet_hours(s) == (time(22, 0), time(7, 0))
     assert in_quiet_hours(_at("2026-10-24T23:00"), s)
     assert not in_quiet_hours(_at("2026-10-24T12:00"), s)
+    assert morning_change(s) == time(7, 0)
 
 
-def test_battery_interval() -> None:
-    s = FrameSettings(interval_minutes=60, interval_minutes_battery=720)
-    assert next_change(_at("2026-10-24T08:30"), s, on_battery=True) == _at("2026-10-24T19:00")
+def test_every_few_days() -> None:
+    s = FrameSettings(change_times=["08:00"], change_every_days=3)
+    # Shown on Saturday 08:00 (or by hand at noon): the next one on Tuesday.
+    assert next_change(_at("2026-10-24T08:00"), s) == _at("2026-10-27T08:00")
+    assert next_change(_at("2026-10-24T12:00"), s) == _at("2026-10-27T08:00")
+    assert next_change(_at("2026-10-24T06:00"), s) == _at("2026-10-24T08:00")
+
+
+def test_quiet_hours_end_with_a_change() -> None:
+    assert quiet_hours(FrameSettings(quiet_start=None)) is None
+    early = FrameSettings(change_times=["06:30", "21:00"], quiet_start="23:15")
+    assert quiet_hours(early) == (time(23, 15), time(6, 30))
+    # Starting before the morning change: a short night.
+    assert quiet_hours(FrameSettings(quiet_start="05:00")) == (time(5, 0), time(7, 0))
+    # Starting at the only change: no quiet hours at all.
+    assert quiet_hours(FrameSettings(quiet_start="07:00")) is None
+    assert morning_change(FrameSettings(change_times=["12:00", "09:00"], quiet_start=None)) == time(
+        9, 0
+    )
+    with pytest.raises(ValidationError):
+        FrameSettings(change_times=[])
+    with pytest.raises(ValidationError):
+        FrameSettings(change_times=["7 rano"])
+
+
+def test_older_interval_settings_become_change_times() -> None:
+    daily = FrameSettings.model_validate(
+        {"interval_minutes": 1440, "interval_minutes_battery": 2880, "quiet_end": "07:30"}
+    )
+    assert daily.change_times == ["07:30"] and daily.change_every_days == 1
+    every3 = FrameSettings.model_validate({"interval_minutes": 4320, "quiet_end": "07:00"})
+    assert every3.change_every_days == 3
+    hours = FrameSettings.model_validate(
+        {"interval_minutes": 180, "quiet_start": "22:00", "quiet_end": "07:00"}
+    )
+    assert hours.change_times == ["07:00", "10:00", "13:00", "16:00", "19:00"]
+    assert hours.quiet_start == "22:00"
 
 
 def test_hold_specs() -> None:
@@ -82,7 +128,7 @@ async def test_tick_respects_hold_and_schedule(service) -> None:
     state.hold = Hold(forever=True)
     player._save_state(state)
     settings = player.settings
-    settings.quiet_start = settings.quiet_end = None
+    settings.quiet_start = None
     player.save_settings(settings)
     state = player.state
     state.next_change_at = (datetime.now(UTC) - timedelta(minutes=1)).isoformat()
@@ -140,9 +186,12 @@ def test_api_library_playlists_player(service) -> None:
         assert bad.status_code == 422
 
         settings = client.get("/api/settings").json()
-        settings["interval_minutes"] = 180
+        settings["change_times"] = ["19:00", "07:00"]
         settings["art"]["label"] = True
-        assert client.put("/api/settings", json=settings).json()["interval_minutes"] == 180
+        assert client.put("/api/settings", json=settings).json()["change_times"] == [
+            "07:00",
+            "19:00",
+        ]
 
         assert client.post(f"/api/playlists/{playlist_id}/play").status_code == 202
         view = client.get("/api/player").json()
@@ -182,7 +231,7 @@ async def test_timed_hold_ends_with_the_next_picture(service) -> None:
     _add(service, 2, (40, 40, 200), "Ola")
     player = service.player
     settings = player.settings
-    settings.quiet_start = settings.quiet_end = None
+    settings.quiet_start = None
     player.save_settings(settings)
     # "For an hour", and the hour is over: the rotation takes over now, not
     # at tomorrow's scheduled change.

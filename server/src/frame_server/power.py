@@ -1,10 +1,11 @@
-"""Power policy for a panel on battery (docs/WAKE.md).
+"""Power policy, the same on the charger and on battery (docs/WAKE.md).
 
 By day the panel sleeps with network standby on, so Wake-on-LAN (2.4 GHz
-Wi-Fi) wakes it for a picture sent from the app. In quiet hours it sleeps
-with the Wi-Fi off, and its own alarm (MDC on-timer) wakes it when they end.
-Whatever could not reach the panel waits as a pending push and goes out as
-soon as the panel shows up again: after the alarm or a press of its button.
+Wi-Fi) wakes it for a picture sent from the app or for a change. In quiet
+hours it sleeps with the Wi-Fi off, and its own alarm (MDC on-timer) wakes
+it for the morning change that ends them. Whatever could not reach the
+panel waits as a pending push and goes out as soon as the panel shows up
+again: after the alarm or a press of its button.
 """
 
 from __future__ import annotations
@@ -18,7 +19,7 @@ from pydantic import BaseModel
 
 from .device import MdcError
 from .device.mdc import ON_TIMER_REPEAT
-from .schedule import FrameSettings, in_quiet_hours, quiet_hours
+from .schedule import FrameSettings, in_quiet_hours, morning_change, quiet_hours
 
 if TYPE_CHECKING:
     from .service import FrameService
@@ -52,10 +53,9 @@ def night_key(moment: datetime, settings: FrameSettings) -> str:
     return day.isoformat()
 
 
-def alarm_time(settings: FrameSettings) -> time | None:
-    """The panel wakes itself when quiet hours end."""
-    hours = quiet_hours(settings)
-    return hours[1] if hours else None
+def alarm_time(settings: FrameSettings) -> time:
+    """The panel wakes itself for the morning change, when quiet hours end."""
+    return morning_change(settings)
 
 
 class PowerManager:
@@ -82,38 +82,28 @@ class PowerManager:
             self._save(state)
 
     def deep_asleep(self, now: datetime) -> bool:
-        """In quiet hours on battery the Wi-Fi is off: nothing reaches the panel."""
+        """In quiet hours the Wi-Fi is off: nothing reaches the panel."""
         settings = self.service.player.settings
-        return (
-            self.service.status.on_battery
-            and in_quiet_hours(now, settings)
-            and self.state.night_of == night_key(now, settings)
-        )
+        return in_quiet_hours(now, settings) and self.state.night_of == night_key(now, settings)
 
     # -- panel ---------------------------------------------------------------
 
     async def arm(self, settings: FrameSettings) -> None:
-        """Set the panel's alarm to the end of quiet hours (or turn it off)."""
+        """Set the panel's alarm to the morning change, every day."""
         wake = alarm_time(settings)
-        want = wake.strftime("%H:%M") if wake else None
         async with self.service.panel.session() as mdc:
-            if wake:
-                await mdc.set_on_timer(wake.hour, wake.minute, ON_TIMER_REPEAT["daily"])
-            else:
-                await mdc.set_on_timer(0, 0, ON_TIMER_REPEAT["daily"], enabled=False)
+            await mdc.set_on_timer(wake.hour, wake.minute, ON_TIMER_REPEAT["daily"])
         state = self.state
-        state.timer = want
+        state.timer = wake.strftime("%H:%M")
         self._save(state)
-        log.info("panel alarm %s", want or "off")
+        log.info("panel alarm %s", state.timer)
 
     async def enter_night(self, now: datetime, settings: FrameSettings) -> None:
-        """Alarm at the end of quiet hours, Wi-Fi off, panel off."""
+        """Alarm for the morning change, Wi-Fi off, panel off."""
         state = self.state
         state.night_of = night_key(now, settings)  # one attempt per night
         self._save(state)
         wake = alarm_time(settings)
-        if wake is None:
-            return
         try:
             async with self.service.panel.waking_session() as mdc:
                 await mdc.set_on_timer(wake.hour, wake.minute, ON_TIMER_REPEAT["daily"])
@@ -157,12 +147,14 @@ class PowerManager:
         settings = service.player.settings
         state = self.state
         if in_quiet_hours(now, settings):
-            if service.status.on_battery and state.night_of != night_key(now, settings):
+            # A change at the very start of quiet hours goes out first.
+            if state.night_of != night_key(now, settings) and not service.player.change_starting(
+                now
+            ):
                 await self.enter_night(now, settings)
             return
 
-        wake = alarm_time(settings)
-        want = wake.strftime("%H:%M") if wake else None
+        want = alarm_time(settings).strftime("%H:%M")
         if state.timer != want and self._due(self._last_arm, now, RETRY_ARM):
             self._last_arm = now
             try:
@@ -179,8 +171,6 @@ class PowerManager:
 
     def _in_wake_window(self, now: datetime, settings: FrameSettings, today: date) -> bool:
         wake = alarm_time(settings)
-        if wake is None:
-            return False
         start = datetime.combine(today, wake, tzinfo=settings.tz())
         return start - timedelta(minutes=1) <= now < start + WAKE_WINDOW
 

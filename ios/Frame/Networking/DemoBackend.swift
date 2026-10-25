@@ -183,9 +183,13 @@ actor DemoBackend: FrameBackend {
                 previewUrl: "/demo/\($0.id)?\(settingsValue.presentationKey)|\(framingRevision)", item: $0
             )
         }
-        let next = Calendar.current.nextDate(
-            after: .now, matching: DateComponents(hour: 7, minute: 0), matchingPolicy: .nextTime
-        )
+        let next = settingsValue.changeTimes.compactMap { time -> Date? in
+            let parts = time.split(separator: ":").compactMap { Int($0) }
+            guard parts.count == 2 else { return nil }
+            return Calendar.current.nextDate(
+                after: .now, matching: DateComponents(hour: parts[0], minute: parts[1]), matchingPolicy: .nextTime
+            )
+        }.min()
         return PlayerView(
             mode: settingsValue.mode, playlist: playlist, current: nowShowing,
             upcoming: queue.prefix(8).compactMap { id in items.first { $0.id == id }?.summary },

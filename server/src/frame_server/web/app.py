@@ -48,7 +48,8 @@ async def poll_status(service: FrameService) -> None:
             stale = last is None or datetime.fromisoformat(last) < datetime.now(UTC) - timedelta(
                 hours=6
             )
-            if not service.status.on_battery or stale:
+            asleep = service.power.deep_asleep(datetime.now(UTC))
+            if not asleep and (not service.status.on_battery or stale):
                 await service.status.refresh()
         await asyncio.sleep(max(minutes, 1) * 60)
 

@@ -28,6 +28,8 @@ log = logging.getLogger(__name__)
 SETTINGS_KEY = "settings"
 STATE_KEY = "player"
 HISTORY_MAX = 50
+# How long a due change may keep the panel from its night sleep.
+CHANGE_GRACE = timedelta(minutes=3)
 
 
 def utcnow() -> datetime:
@@ -125,9 +127,7 @@ class Player:
     def reschedule(self) -> None:
         state = self.state
         base = datetime.fromisoformat(state.last_change_at) if state.last_change_at else utcnow()
-        state.next_change_at = next_change(
-            base, self.settings, self.service.status.on_battery
-        ).isoformat(timespec="seconds")
+        state.next_change_at = next_change(base, self.settings).isoformat(timespec="seconds")
         self._save_state(state)
 
     # -- choosing pictures ---------------------------------------------------
@@ -262,9 +262,7 @@ class Player:
                 state.hold = hold
                 now = utcnow()
                 state.last_change_at = now.isoformat(timespec="seconds")
-                state.next_change_at = next_change(
-                    now, settings, self.service.status.on_battery
-                ).isoformat(timespec="seconds")
+                state.next_change_at = next_change(now, settings).isoformat(timespec="seconds")
                 state.last_error = None
                 for shown in board:
                     self.library.record_shown(shown.id, reason)
@@ -429,17 +427,13 @@ class Player:
         state.hold = hold
         now = utcnow()
         state.last_change_at = now.isoformat(timespec="seconds")
-        state.next_change_at = next_change(
-            now, self.settings, self.service.status.on_battery
-        ).isoformat(timespec="seconds")
+        state.next_change_at = next_change(now, self.settings).isoformat(timespec="seconds")
         self._save_state(state)
 
     def postpone(self) -> None:
         """A picture that waited for the panel to wake stays until the next change."""
         state = self.state
-        state.next_change_at = next_change(
-            utcnow(), self.settings, self.service.status.on_battery
-        ).isoformat(timespec="seconds")
+        state.next_change_at = next_change(utcnow(), self.settings).isoformat(timespec="seconds")
         self._save_state(state)
 
     # -- scheduler -----------------------------------------------------------
@@ -454,17 +448,27 @@ class Player:
         if state.hold is not None:
             if state.hold.active(now):
                 return
-            # A timed hold is over: the rotation takes over now (outside quiet
-            # hours), not at the change that was scheduled before the hold.
+            # A timed hold is over: the rotation takes over now, not at the
+            # change that was scheduled before the hold (in quiet hours: at
+            # the next change, the panel is asleep).
             state.hold = None
-            state.next_change_at = now.isoformat(timespec="seconds")
+            state.next_change_at = (
+                next_change(now, settings) if in_quiet_hours(now, settings) else now
+            ).isoformat(timespec="seconds")
             self._save_state(state)
         if state.next_change_at is None:
             self.reschedule()
             return
-        if now < datetime.fromisoformat(state.next_change_at) or in_quiet_hours(now, settings):
-            return
-        await self.next("schedule")
+        if now >= datetime.fromisoformat(state.next_change_at):
+            await self.next("schedule")
+
+    def change_starting(self, now: datetime) -> bool:
+        """A picture is being shown, or a change was due just now: the panel
+        should stay awake for it."""
+        if self.busy:
+            return True
+        due = self.state.next_change_at
+        return due is not None and timedelta(0) <= now - datetime.fromisoformat(due) < CHANGE_GRACE
 
     async def run(self, period: float = 30.0) -> None:
         while True:

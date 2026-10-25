@@ -42,8 +42,46 @@ final class FrameAPITests: XCTestCase {
         let data = try LiveBackend.encoder().encode(settings)
         let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
         XCTAssertEqual(object["playlist_id"] as? Int, 4)
-        XCTAssertEqual(object["interval_minutes_battery"] as? Int, 1440)
+        XCTAssertEqual(object["change_times"] as? [String], ["07:00"])
+        XCTAssertEqual(object["change_every_days"] as? Int, 1)
         XCTAssertNotNil(object["quiet_start"])
+        XCTAssertNil(object["interval_minutes"])
+    }
+
+    func testQuietHoursOffIsSentAsNull() throws {
+        var settings = FrameSettings.defaults
+        settings.quietStart = nil
+        let text = String(decoding: try LiveBackend.encoder().encode(settings), as: UTF8.self)
+        XCTAssertTrue(text.contains("\"quiet_start\":null"))
+    }
+
+    func testQuietHoursEndAtTheNextChange() {
+        var settings = FrameSettings.defaults
+        settings.changeTimes = ["19:00", "07:30"]
+        XCTAssertEqual(settings.quietEnd, "07:30")
+        settings.quietStart = "05:00"
+        XCTAssertEqual(settings.quietEnd, "07:30")
+        settings.quietStart = "07:30"
+        XCTAssertEqual(settings.quietEnd, "19:00")
+        settings.changeTimes = ["07:30"]
+        XCTAssertNil(settings.quietEnd)
+        XCTAssertEqual(ScheduleSection.nextFreeTime(after: ["07:00"]), "10:00")
+        XCTAssertEqual(ScheduleSection.nextFreeTime(after: ["07:00", "22:00"]), "01:00")
+    }
+
+    func testDecodesSettingsFromAnOlderServer() throws {
+        let json = """
+        {"mode": "art", "playlist_id": null, "interval_minutes": 1440,
+         "interval_minutes_battery": 1440, "quiet_start": "22:00", "quiet_end": "06:30",
+         "shuffle": true, "avoid_repeat_days": 14, "orientation": "portrait", "rotation": 90,
+         "art": {"preset": "painting", "fit": "auto", "margin": 0.05, "label": false},
+         "photo": {"preset": "photo", "fit": "fill", "margin": 0, "label": false},
+         "album_url": "", "timezone": "Europe/Warsaw", "status_poll_minutes": 15}
+        """
+        let settings = try LiveBackend.decoder().decode(FrameSettings.self, from: Data(json.utf8))
+        XCTAssertEqual(settings.changeTimes, ["06:30"])
+        XCTAssertEqual(settings.changeEveryDays, 1)
+        XCTAssertEqual(settings.quietStart, "22:00")
     }
 
     func testPhotoMultiSettingsRoundTrip() throws {

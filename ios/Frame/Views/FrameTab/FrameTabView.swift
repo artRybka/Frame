@@ -255,10 +255,8 @@ struct ScheduleSection: View {
     @Environment(AppModel.self) private var model
     @Binding var settings: FrameSettings
 
-    private let intervals: [(Int, String)] = [
-        (60, "co godzinę"), (180, "co 3 godziny"), (360, "co 6 godzin"), (720, "2× dziennie"),
-        (1440, "raz dziennie"), (2880, "co 2 dni"), (4320, "co 3 dni"),
-    ]
+    private let everyDays: [(Int, String)] = [(1, "codziennie"), (2, "co 2 dni"), (3, "co 3 dni")]
+    private let maxTimes = 12
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -292,9 +290,14 @@ struct ScheduleSection: View {
                     }
                     Divider()
                 }
-                row("Przy zasilaczu") { intervalPicker($settings.intervalMinutes) }
+                row("Zmiana") {
+                    Picker("Zmiana", selection: $settings.changeEveryDays) {
+                        ForEach(everyDays, id: \.0) { days, label in Text(label).tag(days) }
+                    }
+                    .labelsHidden()
+                }
                 Divider()
-                row("Na baterii") { intervalPicker($settings.intervalMinutesBattery) }
+                changeTimesEditor
                 Divider()
                 Toggle("Losowa kolejność", isOn: $settings.shuffle)
                 Divider()
@@ -302,10 +305,11 @@ struct ScheduleSection: View {
                 if settings.quietStart != nil {
                     HStack {
                         DatePicker("Od", selection: time(\.quietStart, fallback: "22:00"), displayedComponents: .hourAndMinute)
-                        DatePicker("Do", selection: time(\.quietEnd, fallback: "07:00"), displayedComponents: .hourAndMinute)
+                        Spacer()
+                        Text("do \(settings.quietEnd ?? "—")").foregroundStyle(Theme.inkSoft)
                     }
                     .font(.subheadline)
-                    Text("Zmiany zaczynają się codziennie o końcu ciszy nocnej. Na baterii ramka śpi wtedy z wyłączonym Wi-Fi i budzi się sama o tej godzinie, a zdjęcia wysłane w nocy pojawią się rano.")
+                    Text("Cisza trwa do najbliższej zmiany obrazu. Ramka śpi wtedy z wyłączonym Wi-Fi i budzi się sama na tę zmianę, a zdjęcia wysłane w nocy pojawią się rano. Tak samo przy zasilaczu i na baterii.")
                         .font(.caption)
                         .foregroundStyle(Theme.inkSoft)
                 }
@@ -322,25 +326,83 @@ struct ScheduleSection: View {
         }
     }
 
-    private func intervalPicker(_ value: Binding<Int>) -> some View {
-        Picker("", selection: value) {
-            ForEach(intervals, id: \.0) { minutes, label in
-                Text(label).tag(minutes)
+    /// The times of day the picture changes at: one or more, sorted.
+    private var changeTimesEditor: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(settings.changeTimes.count > 1 ? "Godziny zmiany" : "Godzina zmiany").foregroundStyle(Theme.ink)
+            ForEach(settings.changeTimes.indices, id: \.self) { index in
+                HStack {
+                    DatePicker(
+                        "Godzina \(index + 1)", selection: changeTime(at: index), displayedComponents: .hourAndMinute
+                    )
+                    .labelsHidden()
+                    Spacer()
+                    if settings.changeTimes.count > 1 {
+                        Button(role: .destructive) {
+                            settings.changeTimes.remove(at: index)
+                        } label: {
+                            Image(systemName: "minus.circle.fill")
+                        }
+                        .buttonStyle(.borderless)
+                        .accessibilityLabel("Usuń godzinę \(settings.changeTimes[index])")
+                    }
+                }
             }
-            if !intervals.contains(where: { $0.0 == value.wrappedValue }) {
-                Text("\(value.wrappedValue) min").tag(value.wrappedValue)
+            if settings.changeTimes.count < maxTimes {
+                Button {
+                    settings.changeTimes = Self.sorted(settings.changeTimes + [Self.nextFreeTime(after: settings.changeTimes)])
+                } label: {
+                    Label("Dodaj godzinę", systemImage: "plus.circle")
+                }
+                .buttonStyle(.borderless)
+                .font(.subheadline)
             }
         }
-        .labelsHidden()
+    }
+
+    private func changeTime(at index: Int) -> Binding<Date> {
+        Binding(
+            get: { Self.date(settings.changeTimes.indices.contains(index) ? settings.changeTimes[index] : "07:00") },
+            set: { date in
+                // Sorted (and duplicates dropped) by the server on save, so
+                // the row being edited does not jump away under the finger.
+                guard settings.changeTimes.indices.contains(index) else { return }
+                settings.changeTimes[index] = Self.hhmm(date)
+            }
+        )
+    }
+
+    static func sorted(_ times: [String]) -> [String] {
+        Array(Set(times)).sorted()
+    }
+
+    /// A sensible new time: three hours after the last one, wrapping at midnight.
+    static func nextFreeTime(after times: [String]) -> String {
+        let minutes = times.compactMap { t -> Int? in
+            let parts = t.split(separator: ":").compactMap { Int($0) }
+            return parts.count == 2 ? parts[0] * 60 + parts[1] : nil
+        }
+        var candidate = ((minutes.max() ?? 7 * 60) + 180) % (24 * 60)
+        while minutes.contains(candidate) { candidate = (candidate + 60) % (24 * 60) }
+        return String(format: "%02d:%02d", candidate / 60, candidate % 60)
+    }
+
+    private static func date(_ hhmm: String) -> Date {
+        let parts = hhmm.split(separator: ":").compactMap { Int($0) }
+        return Calendar.current.date(
+            bySettingHour: parts.first ?? 0, minute: parts.dropFirst().first ?? 0, second: 0, of: .now
+        ) ?? .now
+    }
+
+    private static func hhmm(_ date: Date) -> String {
+        let comps = Calendar.current.dateComponents([.hour, .minute], from: date)
+        return String(format: "%02d:%02d", comps.hour ?? 0, comps.minute ?? 0)
     }
 
     private var quietEnabled: Binding<Bool> {
         Binding(
             get: { settings.quietStart != nil },
-            set: { on in
-                settings.quietStart = on ? "22:00" : nil
-                settings.quietEnd = on ? "07:00" : nil
-            }
+            set: { on in settings.quietStart = on ? "22:00" : nil }
         )
     }
 
