@@ -181,7 +181,7 @@ def test_api_library_playlists_player(service) -> None:
             f"/api/library/items/{item_id}/preview",
             params={"settings": json.dumps({"art": {"fit": "fill", "margin": 0}})},
         )
-        assert trial.headers["content-type"] == "image/png"
+        assert trial.headers["content-type"] == "image/jpeg"
         assert trial.content != saved.content
         bad = client.get(f"/api/library/items/{item_id}/preview", params={"settings": "{"})
         assert bad.status_code == 422

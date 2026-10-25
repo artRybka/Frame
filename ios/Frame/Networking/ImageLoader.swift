@@ -56,6 +56,7 @@ actor ImageLoader {
 /// artwork's own dominant colour while it loads.
 struct ArtImage: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.artImageLoaded) private var loaded
     let ref: ImageRef
     var placeholder: Color = Theme.mat
     var maxPixel: CGFloat = 900
@@ -90,8 +91,10 @@ struct ArtImage: View {
     }
 
     private func load() async {
+        let ref = ref
         guard let request = model.backend.request(for: ref) else {
             failed = true
+            loaded(ref)
             return
         }
         do {
@@ -99,5 +102,18 @@ struct ArtImage: View {
         } catch {
             failed = true
         }
+        if !Task.isCancelled { loaded(ref) }
+    }
+}
+
+private struct ArtImageLoadedKey: EnvironmentKey {
+    static let defaultValue: (ImageRef) -> Void = { _ in }
+}
+
+extension EnvironmentValues {
+    /// Told when an `ArtImage` inside has its picture, or gave up on it.
+    var artImageLoaded: (ImageRef) -> Void {
+        get { self[ArtImageLoadedKey.self] }
+        set { self[ArtImageLoadedKey.self] = newValue }
     }
 }
