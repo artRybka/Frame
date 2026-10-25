@@ -17,6 +17,7 @@ from typing import Any, ClassVar, Literal
 
 import httpx
 
+from .commons import commons_html, commons_year
 from .models import Item, ItemKind
 
 USER_AGENT = "Frame/0.2 (home e-paper art frame; +https://github.com/artRybka/Frame)"
@@ -412,12 +413,20 @@ class WikimediaCommons(Museum):
             # Commons serves (and rate-limits by) a fixed set of widths.
             "iiurlwidth": 500,
             "iiextmetadatafilter": self.meta,
+            "iiextmetadatalanguage": "pl",
             **extra,
         }
 
     @staticmethod
-    def _meta(info: dict[str, Any], key: str) -> str:
-        return strip_html(info.get("extmetadata", {}).get(key, {}).get("value", ""))
+    def _raw(info: dict[str, Any], key: str) -> str:
+        return str(info.get("extmetadata", {}).get(key, {}).get("value", ""))
+
+    def _meta(self, info: dict[str, Any], key: str) -> str:
+        return strip_html(self._raw(info, key))
+
+    def _text(self, info: dict[str, Any], key: str, *, title: bool = False) -> str:
+        """Rendered wikitext in one language, without the hidden QuickStatements."""
+        return commons_html(self._raw(info, key), title=title)
 
     def _map(self, page: dict[str, Any], artist_hint: str = "") -> Item | None:
         infos = page.get("imageinfo") or []
@@ -429,23 +438,22 @@ class WikimediaCommons(Museum):
         # Everything on Commons is freely licensed; attribution is kept in ``credit``.
         if not public and not (self.private_use and licence):
             return None
-        title = self._meta(info, "ObjectName") or re.sub(
+        title = self._text(info, "ObjectName", title=True) or re.sub(
             r"^File:|\.[a-zA-Z]+$", "", page.get("title", "")
         )
-        date_text = self._meta(info, "DateTimeOriginal")
-        year_match = re.search(r"\b(1[0-9]{3})\b", date_text)
+        date_text = self._text(info, "DateTimeOriginal")
         artist = artist_hint or self._meta(info, "Artist").split("\n")[0]
         return self._item(
             str(page["pageid"]),
             title=title,
             artist=artist,
             date_text=date_text[:40],
-            year=int(year_match.group(1)) if year_match else None,
+            year=commons_year(self._meta(info, "DateTimeOriginal")),
             classification="Painting",
             license=licence,
             credit=self._meta(info, "Credit")[:200],
             url=info.get("descriptionurl", ""),
-            description=self._meta(info, "ImageDescription")[:2000],
+            description=self._text(info, "ImageDescription")[:2000],
             image_url=info.get("url", ""),
             thumb_url=info.get("thumburl") or info.get("url", ""),
             width=info.get("width"),

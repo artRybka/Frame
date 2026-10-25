@@ -118,7 +118,7 @@ Cel: potwierdzić protokół na Twoim egzemplarzu i poznać zachowanie ekranu.
 - [ ] 2.7 Użytkownicy i role: administrator i domownik, osobne tokeny, parowanie urządzenia kodem QR, „kto wysłał” w historii.
 - [x] 2.8 API dla aplikacji: Teraz, Następny/Poprzedni/Przypnij, Biblioteka z filtrami i facetami, wyszukiwanie i import z muzeów, Playlisty (inteligentne i ręczne, podgląd reguł), Harmonogram i Prezentacja, podgląd „na ramce”, Status (bateria, ładowanie, połączenie). *(Do zrobienia: Kalibracja, Użytkownicy, Bonjour `_frame._tcp`.)*
 - [x] 2.9 Etykieta na ramce (opcjonalna): tytuł, autor, rok albo data zdjęcia, wypisane czystą czernią na passe-partout, bez ditheringu.
-- [x] 2.10 Opisy w oryginale (angielskim) z API muzeów. *(Do zrobienia: notki o autorach z Wikidata/Wikipedii.)*
+- [x] 2.10 Opisy w oryginale (angielskim) z API muzeów. Tytuły, daty i opisy z Wikimedia Commons są czyszczone z ukrytych znaczników QuickStatements (`title QS:P1476,…`) i etykiet języka („Polish: ”); z wielojęzycznych pól brany jest polski, potem angielski. Wpisy zapisane przez starsze wersje serwer poprawia raz, przy starcie. *(Do zrobienia: notki o autorach z Wikidata/Wikipedii.)*
 - [x] 2.11 Wydawanie: obraz multi-arch w GHCR (`ghcr.io/artrybka/frame`), add-on (HA Green) i `docker-compose` (Synology). *(Do zrobienia: numeracja wersji, kopie zapasowe `/data`.)*
 
 **Gotowe, gdy:** serwer sam zmienia obrazy z biblioteki albo albumu iCloud według harmonogramu, a nowe zdjęcie w albumie pojawia się w rotacji.
