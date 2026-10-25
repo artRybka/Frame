@@ -2,9 +2,9 @@ import CoreLocation
 import SwiftUI
 
 /// Home: the picture on the frame, presented like an exhibit. The arrows
-/// browse what was and what will be on the frame without sending anything;
-/// the picture is cropped right on it, and "Pokaż na ramce" sends the one
-/// browsed to with its crop.
+/// browse what was and what will be on the frame without sending anything,
+/// and "Wróć do obrazu na ramce" jumps back to it; the picture is cropped
+/// right on it, and "Pokaż na ramce" sends the one browsed to with its crop.
 struct NowView: View {
     @Environment(AppModel.self) private var model
     @State private var showingSend = LaunchRoute.screen == "send"
@@ -229,6 +229,9 @@ struct NowView: View {
                     .multilineTextAlignment(.center)
             }
             .contentTransition(.opacity)
+            if offset != 0 {
+                backToNow
+            }
             if draft.key == draftKey, let id = selectedID, draft.view?.windows.isEmpty == false {
                 CropTools(itemID: id, draft: $draft).disabled(sending)
             }
@@ -255,6 +258,19 @@ struct NowView: View {
             .foregroundStyle(Theme.inkSoft)
         }
         .frame(maxWidth: .infinity)
+    }
+
+    /// Back to the picture on the frame from wherever the arrows went.
+    private var backToNow: some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.25)) { browsed = nil }
+        } label: {
+            Label("Wróć do obrazu na ramce", systemImage: offset > 0 ? "arrow.uturn.left" : "arrow.uturn.right")
+                .toolChip()
+        }
+        .buttonStyle(.plain)
+        .disabled(sending)
+        .transition(.opacity)
     }
 
     private var canSend: Bool {
