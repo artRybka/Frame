@@ -16,6 +16,7 @@ from ..library import (
     PlaylistRules,
     PlaylistSummary,
 )
+from ..library.duplicates import Works
 from ..library.icloud import album_token
 from ..service import FrameService
 from .deps import require_token, service
@@ -162,6 +163,14 @@ def add_items(playlist_id: int, body: ItemIds, svc: Svc) -> PlaylistDetail:
             svc.importer.save(item_id)
         except httpx.HTTPError as err:
             raise HTTPException(502, f"{item_id}: {err}") from err
+    # A work the playlist has from another source is not added again.
+    works = Works(i for i in map(svc.library.get, playlist.item_ids) if i is not None)
+    for item_id in ids[len(playlist.item_ids) :]:
+        item = svc.library.get(item_id)
+        if item is not None and works.group_of(item) is not None:
+            ids.remove(item_id)
+        elif item is not None:
+            works.add(item)
     return _detail(svc, svc.library.save_playlist(playlist.model_copy(update={"item_ids": ids})))
 
 

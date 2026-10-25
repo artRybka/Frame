@@ -97,6 +97,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         service.albums.migrate()  # once: the album of older settings becomes a playlist
         service.player.reset_library()  # once: a clean start for the catalogue
         service.player.drop_set_aside()  # once: the catalogue leaves them out now
+        service.player.drop_spare_copies()  # a work once, from the most reliable source
         if settings.seed_library:
             service.player.top_up()  # Suggestions come from museums, as needed
         yield

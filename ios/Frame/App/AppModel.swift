@@ -202,14 +202,7 @@ final class AppModel {
     /// "next" would, so the playlist keeps its order. False if it failed.
     func present(itemID: String, offset: Int, framing change: FramingChange?) async -> Bool {
         do {
-            switch change {
-            case let .save(orientation, crops)?:
-                _ = try await backend.saveFraming(itemID: itemID, orientation: orientation, crops: crops)
-            case let .reset(orientation)?:
-                _ = try await backend.resetFraming(itemID: itemID, orientation: orientation)
-            case nil:
-                break
-            }
+            if let change { _ = try await applyFraming(itemID: itemID, change) }
             switch offset {
             case 0: break  // a new crop: the server redraws the picture on its own
             case 1: try await backend.next()
@@ -224,6 +217,17 @@ final class AppModel {
         return true
     }
 
+    /// Saves a crop edited in the app (or forgets it); the framing as the
+    /// server has it now.
+    func applyFraming(itemID: String, _ change: FramingChange) async throws -> FramingView {
+        switch change {
+        case let .save(orientation, crops):
+            try await backend.saveFraming(itemID: itemID, orientation: orientation, crops: crops)
+        case let .reset(orientation):
+            try await backend.resetFraming(itemID: itemID, orientation: orientation)
+        }
+    }
+
     func releaseHold() async {
         do {
             player = try await backend.releaseHold()
@@ -235,6 +239,32 @@ final class AppModel {
         await perform { try await self.backend.show(itemID: itemID, hold: hold) }
         toast = "Wysyłam na ramkę…"
         await followPlayer()
+    }
+
+    /// Whether the work was added with "Dodaj do kolejki" and waits its turn.
+    func isQueued(_ itemID: String) -> Bool {
+        player?.queued?.contains(itemID) ?? false
+    }
+
+    /// "Dodaj do kolejki": the work is the next one on the frame.
+    func queueNext(itemID: String) async {
+        do {
+            try await backend.queueNext(itemID: itemID)
+        } catch {
+            show(error)
+            return
+        }
+        await refreshPlayer()
+        toast = player?.hold?.forever == true
+            ? "W kolejce jako następne — po odpięciu obrazu"
+            : "W kolejce jako następne"
+    }
+
+    func dequeue(itemID: String) async {
+        do {
+            player = try await backend.dequeue(itemID: itemID)
+            toast = "Usunięto z kolejki"
+        } catch { show(error) }
     }
 
     func play(_ playlist: PlaylistSummary) async {

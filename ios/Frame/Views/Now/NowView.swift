@@ -87,7 +87,7 @@ struct NowView: View {
                             }
                         }
                         if !upcoming.isEmpty {
-                            Strip(title: "Następne", items: upcoming)
+                            Strip(title: "Następne", items: upcoming, queued: Set(model.player?.queued ?? []))
                         }
                         if !history.isEmpty {
                             Strip(title: "Ostatnio na ramce", items: history)
@@ -229,8 +229,8 @@ struct NowView: View {
                     .multilineTextAlignment(.center)
             }
             .contentTransition(.opacity)
-            if draft.key == draftKey, let view = draft.view, !view.windows.isEmpty {
-                cropTools(view)
+            if draft.key == draftKey, let id = selectedID, draft.view?.windows.isEmpty == false {
+                CropTools(itemID: id, draft: $draft).disabled(sending)
             }
             Button {
                 Task { await send() }
@@ -267,9 +267,14 @@ struct NowView: View {
         case 0: "Teraz na ramce"
         case -1: "Poprzednio na ramce"
         case ..<0: "Wcześniej na ramce"
-        case 1: "Następny w kolejce"
-        default: "W kolejce, za \(offset) \(Names.changes(offset))"
+        case 1: "Następny w kolejce" + addedLine
+        default: "W kolejce, za \(offset) \(Names.changes(offset))" + addedLine
         }
+    }
+
+    private var addedLine: String {
+        guard let id = browsed?.summary.id, model.isQueued(id) else { return "" }
+        return " · dodany przez Ciebie"
     }
 
     private var hintLine: String {
@@ -279,51 +284,6 @@ struct NowView: View {
                 : "Przesuń obraz palcem albo rozsuń dwa palce, żeby go wykadrować."
         }
         return offset == 0 ? " " : "Na ramkę trafi po „Pokaż na ramce”."
-    }
-
-    /// The passe-partout window's shape and the way back to the automatic crop.
-    private func cropTools(_ view: FramingView) -> some View {
-        HStack(spacing: 10) {
-            if view.fit == "fit" {
-                Menu {
-                    ForEach(windowShapes, id: \.title) { shape in
-                        Button {
-                            draft.crops[0].aspect = shape.aspect
-                            draft.crops[0].zoom = shape.aspect == nil ? DemoFraming.wholeCrop.zoom : 1
-                        } label: {
-                            if sameShape(draft.crops.first?.aspect, shape.aspect) {
-                                Label(shape.title, systemImage: "checkmark")
-                            } else {
-                                Text(shape.title)
-                            }
-                        }
-                    }
-                } label: {
-                    Label(
-                        "Kształt: " + (windowShapes.first { sameShape(draft.crops.first?.aspect, $0.aspect) }?.title ?? "własny"),
-                        systemImage: "aspectratio"
-                    )
-                    .toolChip()
-                }
-            }
-            if draft.custom && draft.automatic == nil || draft.crops != (draft.automatic ?? draft.saved) {
-                Button {
-                    Task { await automaticCrop() }
-                } label: {
-                    Label("Kadr automatyczny", systemImage: "sparkles").toolChip()
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .disabled(sending)
-    }
-
-    private func sameShape(_ a: Double?, _ b: Double?) -> Bool {
-        switch (a, b) {
-        case (nil, nil): true
-        case let (a?, b?): abs(a - b) < 0.001
-        default: false
-        }
     }
 
     private var scheduleLine: String {
@@ -366,29 +326,10 @@ struct NowView: View {
         draft = FramingDraft(key: "")
         guard let id = selectedID else { return }
         let orientation = model.settings?.orientation ?? "landscape"
-        guard let view = try? await model.backend.framing(itemID: id, orientation: orientation),
+        guard let loaded = await FramingDraft.load(model.backend, itemID: id, orientation: orientation, key: key),
               key == draftKey
         else { return }
-        let crops = view.windows.map(\.crop)
-        draft = FramingDraft(key: key, view: view, saved: crops, crops: crops)
-    }
-
-    private func automaticCrop() async {
-        guard draft.custom else {
-            draft.crops = draft.saved  // the saved crop is the automatic one
-            draft.automatic = nil
-            return
-        }
-        guard let id = selectedID, let view = draft.view else { return }
-        let key = draft.key
-        do {
-            let auto = try await model.backend.framing(itemID: id, orientation: view.orientation, automatic: true)
-            guard key == draft.key, auto.windows.count == draft.crops.count else { return }
-            draft.automatic = auto.windows.map(\.crop)
-            draft.crops = auto.windows.map(\.crop)
-        } catch {
-            model.show(error)
-        }
+        draft = loaded
     }
 
     private func send() async {
@@ -408,7 +349,7 @@ struct NowView: View {
 }
 
 /// A spinner with a line of text, laid over the picture while it loads.
-private struct LoadingBadge: View {
+struct LoadingBadge: View {
     let text: String
 
     var body: some View {
@@ -422,18 +363,6 @@ private struct LoadingBadge: View {
         .background(.black.opacity(0.45), in: RoundedRectangle(cornerRadius: 14))
         .allowsHitTesting(false)
         .transition(.opacity)
-    }
-}
-
-private extension View {
-    /// A small capsule control under the picture.
-    func toolChip() -> some View {
-        font(.footnote.weight(.semibold))
-            .foregroundStyle(Theme.ink)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 7)
-            .background(.ultraThinMaterial, in: Capsule())
-            .overlay(Capsule().strokeBorder(Theme.hairline))
     }
 }
 
@@ -551,10 +480,13 @@ struct PhotoFacts: View {
     }
 }
 
-/// Horizontal row of small pictures.
+/// Horizontal row of small pictures; a long press queues one next, or
+/// takes back one added with "Dodaj do kolejki" (marked in the corner).
 struct Strip: View {
+    @Environment(AppModel.self) private var model
     let title: String
     let items: [ItemSummary]
+    var queued: Set<String> = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -567,6 +499,17 @@ struct Strip: View {
                                 ArtImage(ref: .thumb(item.id), placeholder: item.placeholderColor, maxPixel: 400)
                                     .frame(width: 120, height: 92)
                                     .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+                                    .overlay(alignment: .topLeading) {
+                                        if queued.contains(item.id) {
+                                            Image(systemName: QueueButton.symbol)
+                                                .font(.caption2.weight(.bold))
+                                                .foregroundStyle(.white)
+                                                .padding(5)
+                                                .background(Theme.vermilion, in: Circle())
+                                                .padding(5)
+                                                .accessibilityLabel("Dodane do kolejki")
+                                        }
+                                    }
                                     .shadow(color: .black.opacity(0.12), radius: 6, y: 4)
                                 Text(item.title)
                                     .font(.serif(13, weight: .medium))
@@ -576,6 +519,15 @@ struct Strip: View {
                             }
                         }
                         .buttonStyle(.plain)
+                        .contextMenu {
+                            if queued.contains(item.id) {
+                                Button("Usuń z kolejki", systemImage: "minus.circle", role: .destructive) {
+                                    Task { await model.dequeue(itemID: item.id) }
+                                }
+                            } else {
+                                QueueButton(itemID: item.id)
+                            }
+                        }
                     }
                 }
                 .padding(.vertical, 4)

@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.10.0
+
+- Jedno dzieło z kilku źródeł pokazuje się raz. Agregatory (Openverse,
+  Europeana, Commons) mają te same obrazy co muzea, więc wyszukiwanie,
+  Propozycje, katalog i playlisty pokazywały jeden obraz dwa albo trzy
+  razy. Serwer łączy kopie po tytule i autorze (z rokiem ±2 i proporcjami
+  obrazu ±15% jako sprawdzeniem, ten sam adres strony lub pliku zawsze)
+  i zostawia kopię, którą właściciel trzyma, a w innym razie tę z
+  najpewniejszego źródła: muzeum, Europeana, Commons, Openverse, WikiArt.
+  Zbędne kopie w puli są usuwane przy starcie i przy porządkach (ulubione,
+  kadrowane, z playlist i z kolejki zostają). Ręczne playlisty nie biorą
+  dzieła dwa razy.
+- „Dodaj do kolejki”: dzieło wybrane przez właściciela pokazuje się przy
+  następnej zmianie, przed resztą kolejki, i przetrwa zmianę playlisty.
+  Nowe `POST /api/library/items/{id}/queue` (dzieła z muzeów trafiają do
+  biblioteki), `DELETE /api/player/queue/{id}` i pole `queued` w stanie
+  odtwarzacza. `/api/player/next` i `/previous` są teraz asynchroniczne.
+- Aplikacja: kadrowanie bezpośrednio na podglądzie „Na ramce” w
+  szczegółach dzieła (jak w „Teraz”), „Zapisz kadr”; „Pokaż na ramce”,
+  „Dodaj do kolejki” i dodanie do playlisty najpierw zapisują nowy kadr.
+
 ## 0.9.1
 
 - Naprawiona wysyłka na ekran na Synology („[Errno 21] Is a directory:

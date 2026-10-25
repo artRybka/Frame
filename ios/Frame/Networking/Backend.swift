@@ -32,6 +32,11 @@ protocol FrameBackend: Sendable {
     func setFavorite(id: String, _ favorite: Bool) async throws -> Item
     func setExcluded(id: String, _ excluded: Bool) async throws -> Item
     func show(itemID: String, hold: HoldSpec) async throws
+    /// "Dodaj do kolejki": the work goes on the frame at the next change,
+    /// before the rest of the queue (a museum work joins the library).
+    func queueNext(itemID: String) async throws
+    /// Takes back a work added with `queueNext`.
+    func dequeue(itemID: String) async throws -> PlayerView
     func facets() async throws -> Facets
 
     /// How a picture is cropped for `orientation`, and what can be adjusted;

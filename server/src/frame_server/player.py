@@ -88,6 +88,8 @@ class PlayerState(BaseModel):
     current_item_id: str | None = None
     current_group: list[str] = Field(default_factory=list)  # MULTI: the other photos shown
     queue: list[str] = Field(default_factory=list)
+    #: Added from the app ("Dodaj do kolejki"): shown before ``queue``.
+    requested: list[str] = Field(default_factory=list)
     history: list[str] = Field(default_factory=list)
     hold: Hold | None = None
     last_change_at: str | None = None
@@ -207,6 +209,21 @@ class Player:
             state.queue = [i for i in state.queue if i != item_id]
             self._save_state(state)
 
+    def queue_next(self, item_id: str) -> None:
+        """The owner's pick: shown at the next change, before the rest of
+        the queue (and before earlier picks), whatever the frame plays."""
+        state = self.state
+        state.requested = [item_id, *(i for i in state.requested if i != item_id)]
+        state.queue = [i for i in state.queue if i != item_id]
+        self._save_state(state)
+
+    def dequeue(self, item_id: str) -> None:
+        """Take back a pick added with ``queue_next``."""
+        state = self.state
+        if item_id in state.requested:
+            state.requested = [i for i in state.requested if i != item_id]
+            self._save_state(state)
+
     def reschedule(self) -> None:
         state = self.state
         base = datetime.fromisoformat(state.last_change_at) if state.last_change_at else utcnow()
@@ -238,7 +255,9 @@ class Player:
 
     def suggestions(self) -> list[Item]:
         ids = self.library.get_state(SUGGESTIONS_KEY, [])
-        return [i for i in (self.library.get(item_id) for item_id in ids) if i is not None]
+        spare = self.library.spare_copies()
+        found = (self.library.get(item_id) for item_id in ids if item_id not in spare)
+        return [i for i in found if i is not None]
 
     def fresh(self, items: list[Item], settings: FrameSettings | None = None) -> list[Item]:
         """Those of ``items`` not shown within the no-repeat period."""
@@ -258,6 +277,7 @@ class Player:
     def _refill(self, state: PlayerState, settings: FrameSettings) -> None:
         items = self.candidates(settings)
         pool = self.fresh(items, settings) or items
+        pool = [i for i in pool if i.id not in state.requested]  # shown first anyway
         pool = [i for i in pool if i.id != state.current_item_id] or pool
         playlist = self.playlist(settings)
         if playlist is not None and playlist.album is not None:
@@ -267,10 +287,15 @@ class Player:
         state.queue = [i.id for i in pool]
 
     def _pop_next(self, state: PlayerState, settings: FrameSettings) -> Item | None:
+        while state.requested:
+            item = self.library.get(state.requested.pop(0))
+            if item is not None:  # asked for: shown even if left out of the rotation
+                return item
+        spare = self.library.spare_copies()
         for _ in range(2):
             while state.queue:
                 item = self.library.get(state.queue.pop(0))
-                if item is not None and not item.excluded:
+                if item is not None and not item.excluded and item.id not in spare:
                     return item
             self._refill(state, settings)
         return None
@@ -280,7 +305,7 @@ class Player:
         if not state.queue:
             self._refill(state, settings)
             self._save_state(state)
-        items = (self.library.get(i) for i in state.queue[:limit])
+        items = (self.library.get(i) for i in [*state.requested, *state.queue][:limit])
         return [i for i in items if i is not None]
 
     # -- boards of several photos (MULTI) ------------------------------------
@@ -554,14 +579,15 @@ class Player:
         self._save_state(state)
         if item is not None:
             await self.show(item, reason)
-            await self.prefetch()
-            await self.render_ahead()
+            await self.get_ready()
         return item
 
     async def _pop_ready(self, state: PlayerState, settings: FrameSettings) -> Item | None:
         """The next picture whose original is at hand. One that cannot be
         downloaded now (no internet, museum down) goes to the back of the
-        queue and the first one already cached takes its turn."""
+        queue and the first one already cached takes its turn; the owner's
+        pick stays first in line."""
+        asked = set(state.requested)
         item = self._pop_next(state, settings)
         if item is None:
             return None
@@ -572,14 +598,26 @@ class Player:
         except (httpx.HTTPError, OSError, ValueError) as err:
             log.warning("original of %s unavailable: %s", item.id, err)
             state.last_error = f"{item.title or item.id}: {err}"
-        for item_id in state.queue:
-            cached = self.library.get(item_id)
-            if cached is not None and not cached.excluded and images.has_image(cached):
-                state.queue.remove(item_id)
-                state.queue.append(item.id)
-                return cached
-        state.queue.append(item.id)
+        if item.id in asked:
+            state.requested.insert(0, item.id)
+        else:
+            state.queue.append(item.id)
+        if not state.queue:
+            self._refill(state, settings)
+        for line in (state.requested, state.queue):
+            for item_id in line:
+                cached = self.library.get(item_id)
+                if cached is not None and images.has_image(cached):
+                    if line is state.queue and cached.excluded:
+                        continue
+                    line.remove(item_id)
+                    return cached
         return None
+
+    async def get_ready(self) -> None:
+        """After the next pictures changed: download them, draw the first."""
+        await self.prefetch()
+        await self.render_ahead()
 
     async def prefetch(self) -> None:
         """Download the originals of the next pictures now, so that a change
@@ -681,6 +719,7 @@ class Player:
         about to be shown or picked for Suggestions."""
         state = self.state
         protected = {state.current_item_id or "", *state.current_group, *state.queue}
+        protected |= set(state.requested)
         protected |= {i for p in self.library.playlists() for i in p.item_ids}
         protected |= set(self.library.get_state(SUGGESTIONS_KEY, []))
         return protected
@@ -764,6 +803,7 @@ class Player:
                 self.service.images.remove(item)
         state = self.state
         state.queue = [i for i in state.queue if i not in gone]
+        state.requested = [i for i in state.requested if i not in gone]
         state.history = [i for i in state.history if i not in gone]
         if state.current_item_id in gone:
             state.current_item_id = None
@@ -783,37 +823,68 @@ class Player:
         self.library.set_state(SET_ASIDE_KEY, True)
         state = self.state
         kept = {i for p in self.library.playlists() for i in p.item_ids}
-        kept |= {state.current_item_id or "", *state.current_group}
+        kept |= {state.current_item_id or "", *state.current_group, *state.requested}
         gone = [
             i
             for i in self.library.query(include_excluded=True)[1]
             if i.pooled and set_aside(i) and not i.favorite and not i.framing and i.id not in kept
         ]
+        self._forget(gone)
+        log.info("catalogue: %d photographs and manuscript pages deleted", len(gone))
+        return len(gone)
+
+    def drop_spare_copies(self) -> int:
+        """Delete the works the server added again from another source
+        (``Library.spare_copies``): the copy the owner kept, or the one from
+        the most reliable source, stays. Copies the owner liked, framed or
+        put in a playlist, and the one on the frame, stay too. Returns how
+        many went."""
+        spare = self.library.spare_copies()
+        if not spare:
+            return 0
+        state = self.state
+        kept = {i for p in self.library.playlists() for i in p.item_ids}
+        kept |= {state.current_item_id or "", *state.current_group, *state.requested}
+        gone = [
+            i
+            for i in map(self.library.get, spare - kept)
+            if i is not None and not i.favorite and not i.framing
+        ]
+        self._forget(gone)
+        if gone:
+            log.info("catalogue: %d copies of works held from another source deleted", len(gone))
+        return len(gone)
+
+    def _forget(self, gone: list[Item]) -> None:
+        """Delete ``gone`` with their pictures, from the queue and Suggestions."""
         ids = {i.id for i in gone}
+        if not ids:
+            return
         with self.library.batch():
             for item in gone:
                 self.library.delete(item.id)
         for item in gone:
             self.service.images.remove(item)
-        if ids:
-            state.queue = [i for i in state.queue if i not in ids]
-            self._save_state(state)
-            suggestions = self.library.get_state(SUGGESTIONS_KEY, [])
-            self.library.set_state(SUGGESTIONS_KEY, [i for i in suggestions if i not in ids])
-        log.info("catalogue: %d photographs and manuscript pages deleted", len(gone))
-        return len(gone)
+        state = self.state
+        state.queue = [i for i in state.queue if i not in ids]
+        state.requested = [i for i in state.requested if i not in ids]
+        self._save_state(state)
+        suggestions = self.library.get_state(SUGGESTIONS_KEY, [])
+        self.library.set_state(SUGGESTIONS_KEY, [i for i in suggestions if i not in ids])
 
     def trim_cache(self) -> int:
         """Delete the least recently used museum originals over the size
         limit (the current picture and the next ones stay) and thumbnails
         of works browsed but not kept."""
         state = self.state
-        soon = {state.current_item_id, *state.current_group, *state.queue[:PREFETCH]}
+        soon = {state.current_item_id, *state.current_group, *state.requested}
+        soon |= set(state.queue[:PREFETCH])
         _, items = self.library.query(include_excluded=True)
         keep = [
             i for i in items if i.id in soon or (i.source not in MUSEUMS and not refetchable(i))
         ]
         limit = self.service.settings.image_cache_mb * 1024 * 1024
+        self.drop_spare_copies()
         self.trim_catalogue()
         self.service.images.prune_thumbs(self.library.query(include_excluded=True)[1])
         return self.service.images.prune(limit, keep)

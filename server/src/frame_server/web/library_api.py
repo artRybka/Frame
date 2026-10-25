@@ -17,6 +17,7 @@ from ..fsutil import own_files
 from ..imaging.layout import Crop, Fit, Orientation, Plan, canvas_size, fit_area, load_image
 from ..imaging.pipeline import RenderSettings, encode_image, plan_for, render_original
 from ..library import Facets, Item, ItemKind, ItemSummary, Job, PhotoInfo, PlaylistRules
+from ..library.duplicates import work_key
 from ..library.importer import ALL
 from ..library.models import Framing
 from ..library.museums import MUSEUMS, Discovery, Kind
@@ -51,6 +52,25 @@ class ShowRequest(BaseModel):
 class RemoteItem(BaseModel):
     item: Item
     in_library: bool
+    #: What copies of one work from several sources share
+    #: (``duplicates.work_key``), to leave out copies on later pages.
+    work: str = ""
+
+
+def remote_items(svc: FrameService, items: list[Item], copies: bool = True) -> list[RemoteItem]:
+    """Works found for the app, each once, marked whether the library holds
+    them. With ``copies`` (results from several sources) a work the library
+    holds from another source comes as the library's copy, unless this one
+    is from a more reliable source than a copy only the server added."""
+    found: dict[str, Item] = {}
+    for item in items:
+        if copies and not svc.library.has(item.id):
+            item = svc.importer.copy_of(item) or item
+        found.setdefault(item.id, item)
+    return [
+        RemoteItem(item=i, in_library=svc.library.has(i.id), work=work_key(i))
+        for i in found.values()
+    ]
 
 
 class RemotePage(BaseModel):
@@ -418,6 +438,15 @@ async def show_item(item_id: str, request: ShowRequest, svc: Svc) -> dict[str, A
     return {"accepted": True, "item_id": item.id}
 
 
+@router.post("/library/items/{item_id}/queue", status_code=202)
+async def queue_item(item_id: str, svc: Svc) -> dict[str, Any]:
+    """The owner's "Dodaj do kolejki": the work is shown at the next change."""
+    item = await _work(svc, item_id, save=True)
+    svc.player.queue_next(item.id)
+    svc.background(svc.player.get_ready())
+    return {"accepted": True, "item_id": item.id}
+
+
 @router.post("/library/upload", response_model=Item)
 async def upload(
     svc: Svc,
@@ -474,9 +503,7 @@ async def museum_search(
     else:
         raise HTTPException(404, f"unknown museum {source!r}")
     return RemotePage(
-        total=total,
-        items=[RemoteItem(item=i, in_library=svc.library.has(i.id)) for i in items],
-        failed=failed,
+        total=total, items=remote_items(svc, items, copies=source == ALL), failed=failed
     )
 
 

@@ -35,6 +35,8 @@ class PlayerView(BaseModel):
     playlist: PlaylistSummary | None
     current: NowShowing | None
     upcoming: list[ItemSummary]
+    #: Those of ``upcoming`` added from the app ("Dodaj do kolejki").
+    queued: list[str]
     history: list[ItemSummary]
     hold: Hold | None
     last_change_at: str | None
@@ -86,6 +88,7 @@ def _player_view(svc: FrameService) -> PlayerView:
         playlist=playlist,
         current=current,
         upcoming=[ItemSummary.of(i) for i in player.upcoming(8)],
+        queued=state.requested,
         history=[ItemSummary.of(i) for i in history if i is not None],
         hold=state.hold,
         last_change_at=state.last_change_at,
@@ -102,17 +105,25 @@ def player(svc: Svc) -> PlayerView:
 
 
 @router.post("/player/next", status_code=202)
-def next_picture(svc: Svc) -> dict[str, Any]:
+async def next_picture(svc: Svc) -> dict[str, Any]:
     svc.player.set_hold(None)
     svc.background(svc.player.next("manual"))
     return {"accepted": True}
 
 
 @router.post("/player/previous", status_code=202)
-def previous_picture(svc: Svc) -> dict[str, Any]:
+async def previous_picture(svc: Svc) -> dict[str, Any]:
     svc.player.set_hold(None)
     svc.background(svc.player.previous())
     return {"accepted": True}
+
+
+@router.delete("/player/queue/{item_id}", response_model=PlayerView)
+async def dequeue(item_id: str, svc: Svc) -> PlayerView:
+    """Take back a work added with "Dodaj do kolejki"."""
+    svc.player.dequeue(item_id)
+    svc.background(svc.player.render_ahead())
+    return _player_view(svc)
 
 
 @router.post("/player/hold", response_model=PlayerView)

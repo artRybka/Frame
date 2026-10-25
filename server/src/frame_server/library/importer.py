@@ -17,6 +17,7 @@ from PIL import Image
 
 from ..imaging.palette import Palette
 from .colors import analyse, tint_spread
+from .duplicates import dedupe, rank
 from .images import ImageCache
 from .lifespan import LifeDates
 from .models import Item, ItemKind, PhotoInfo, PlaylistRules
@@ -207,13 +208,24 @@ class Importer:
                 continue
             total += count
             found.append(items)
-        mixed = [
-            i
-            for i in chain.from_iterable(zip_longest(*found))
-            if i is not None and not is_photograph(i)
-        ]
+        mixed = dedupe(
+            [
+                i
+                for i in chain.from_iterable(zip_longest(*found))
+                if i is not None and not is_photograph(i)
+            ]
+        )
         self.remember(mixed)
         return total, mixed, failed
+
+    def copy_of(self, item: Item) -> Item | None:
+        """The library's copy of ``item``'s work from another source, unless
+        ``item`` is from a more reliable source than a copy only the server
+        added."""
+        twin = self.library.twin(item)
+        if twin is None or (twin.pooled and rank(item.source) < rank(twin.source)):
+            return None
+        return twin
 
     def search_many(self, source: str, query: str, limit: int) -> list[Item]:
         """Up to ``limit`` results, over as many result pages as that takes."""
@@ -244,12 +256,13 @@ class Importer:
                     log.warning("search in %s failed: %s", key, err)
         else:
             found = self.search_many(source, query, limit)
+        found = dedupe(found)
         if job is not None:
             job.total += len(found)
         added = []
         for item in found:
             try:
-                stored = self.library.get(item.id) or self.add(item)
+                stored = self.library.get(item.id) or self.copy_of(item) or self.add(item)
                 added.append(stored)
                 if job is not None:
                     job.done += 1
@@ -407,7 +420,7 @@ class Importer:
                     streams.remove(stream)
                     continue
                 drawn += 1
-                if self.library.has(item.id) or not before(item):
+                if self.library.has(item.id) or self.copy_of(item) or not before(item):
                     continue
                 if is_photograph(item) or (not manuscripts and is_manuscript(item)):
                     job.skipped += 1
@@ -422,7 +435,12 @@ class Importer:
                     self.cache.remove(item)
                     job.skipped += 1
                     continue
+                worse = self.library.twin(analysed)  # pooled, from a less reliable source
                 self.library.upsert(analysed.model_copy(update={"pooled": pooled}))
+                if worse is not None and worse.id in job.item_ids:
+                    # A better copy of a work taken already, in its place.
+                    job.item_ids[job.item_ids.index(worse.id)] = item.id
+                    continue
                 job.done += 1
                 job.item_ids.append(item.id)
 

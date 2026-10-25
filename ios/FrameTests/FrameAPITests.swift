@@ -19,6 +19,7 @@ final class FrameAPITests: XCTestCase {
                         "artist": "Utagawa Hiroshige", "date_text": "1832", "year": 1832,
                         "colors": [{"hex": "#c1b59d", "weight": 0.4}], "width": 900, "height": 600,
                         "favorite": false, "suitability": 0.88}],
+          "queued": ["aic:4371"],
           "history": [],
           "hold": {"until": null, "forever": true},
           "last_change_at": "2026-10-24T05:00:00+00:00",
@@ -39,6 +40,7 @@ final class FrameAPITests: XCTestCase {
         XCTAssertEqual(view.playlist?.rules.query, "woodblock")
         XCTAssertEqual(view.current?.previewUrl, "/api/previews/ABC.png")
         XCTAssertEqual(view.upcoming.first?.aspectRatio ?? 0, 1.5, accuracy: 0.001)
+        XCTAssertEqual(view.queued, ["aic:4371"])
         XCTAssertEqual(view.hold?.forever, true)
         XCTAssertNotNil(When.schedule(view.nextChangeAt))
     }
@@ -250,6 +252,36 @@ final class FrameAPITests: XCTestCase {
         XCTAssertEqual(try LiveBackend.decoder().decode(TermHit.self, from: Data(json.utf8)).count, 3)
     }
 
+    func testLaterPagesLeaveOutCopiesOfWorks() async throws {
+        let demo = DemoBackend()
+        let themes = try await demo.themes()
+        let theme = try XCTUnwrap(themes.first)
+        let page = try await demo.themePage(key: theme.key, page: 1)
+        var item = try XCTUnwrap(page.items.first).item
+        item.year = 1889
+        item.source = "met"
+        let met = RemoteItem(item: item, inLibrary: false, work: "gogh|irises")
+        // The same work from Commons: another id and source.
+        let encoded = try LiveBackend.encoder().encode(item)
+        var fields = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        fields["id"] = "wmc:1"
+        fields["source"] = "wmc"
+        fields["year"] = NSNull()
+        let data = try JSONSerialization.data(withJSONObject: fields)
+        var copy = try LiveBackend.decoder().decode(Item.self, from: data)
+        let commons = RemoteItem(item: copy, inLibrary: false, work: "gogh|irises")
+        copy.year = 1880
+        let older = RemoteItem(item: copy, inLibrary: false, work: "gogh|irises")
+        let other = RemoteItem(item: copy, inLibrary: false, work: "")
+        XCTAssertEqual([met].adding([commons, met]).map(\.id), [met.id])
+        XCTAssertEqual([met].adding([older]).map(\.id), [met.id, "wmc:1"])
+        XCTAssertEqual([met].adding([other]).map(\.id), [met.id, "wmc:1"])
+        let decoded = try LiveBackend.decoder().decode(
+            RemoteItem.self, from: try LiveBackend.encoder().encode(met)
+        )
+        XCTAssertEqual(decoded.work, "gogh|irises")
+    }
+
     func testDecodesThemePage() throws {
         let json = #"{"items": [], "more": true}"#
         let page = try LiveBackend.decoder().decode(ArtThemePage.self, from: Data(json.utf8))
@@ -404,6 +436,31 @@ final class FrameAPITests: XCTestCase {
         draft.automatic = [Crop()]
         draft.crops = [Crop()]
         XCTAssertEqual(draft.change, .reset(orientation: "landscape"))
+    }
+
+    func testCropSavedFromWorkDetails() async throws {
+        let demo = DemoBackend()
+        let current = try await demo.player().current
+        let id = try XCTUnwrap(current?.item?.id)
+        let view = try await demo.framing(itemID: id, orientation: "landscape")
+        var draft = FramingDraft(saved: view, key: "k")
+        XCTAssertNil(draft.change)
+
+        draft.crops[0].zoom = 3
+        guard case let .save(orientation, crops)? = draft.change else { return XCTFail("no change to save") }
+        let saved = try await demo.saveFraming(itemID: id, orientation: orientation, crops: crops)
+        let after = FramingDraft(saved: saved, key: "k")
+        XCTAssertNil(after.change)
+        XCTAssertEqual(after.crops[0].zoom, 3)
+
+        // The preview names the crops just saved: the one cached under the
+        // plain address still shows the old crop.
+        let named = try XCTUnwrap(after.savedCrops)
+        XCTAssertEqual(named.details?[0].zoom, 3)
+        let api = LiveBackend(baseURL: URL(string: "http://frame.local:8099")!, token: "secret")
+        let plain = try XCTUnwrap(api.request(for: .framePreview(id))?.url)
+        let fresh = try XCTUnwrap(api.request(for: .framePreview(id, framing: named))?.url)
+        XCTAssertNotEqual(plain, fresh)
     }
 
     func testChangesPlural() {

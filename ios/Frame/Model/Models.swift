@@ -278,6 +278,8 @@ struct PlayerView: Codable, Sendable {
     var playlist: PlaylistSummary?
     var current: NowShowing?
     var upcoming: [ItemSummary]
+    /// Those of `upcoming` added with "Dodaj do kolejki"; nil from older servers.
+    var queued: [String]? = nil
     var history: [ItemSummary]
     var hold: Hold?
     var lastChangeAt: String?
@@ -570,7 +572,21 @@ struct Museum: Codable, Hashable, Sendable, Identifiable {
 struct RemoteItem: Codable, Hashable, Sendable, Identifiable {
     var item: Item
     var inLibrary: Bool
+    /// What copies of one work from several sources share (artist's surname
+    /// and title); empty when the server can't tell.
+    var work: String? = nil
     var id: String { item.id }
+
+    /// The same work, maybe from another source (copies' years differ by
+    /// two at most).
+    func isSameWork(as other: RemoteItem) -> Bool {
+        if id == other.id { return true }
+        guard let work, !work.isEmpty, work == other.work, item.source != other.item.source else {
+            return false
+        }
+        if let year = item.year, let otherYear = other.item.year { return abs(year - otherYear) <= 2 }
+        return true
+    }
 
     /// The server's copy once it has one, else straight from the museum.
     var thumb: ImageRef {
@@ -581,6 +597,18 @@ struct RemoteItem: Codable, Hashable, Sendable, Identifiable {
     /// The server's copy, when the museum refuses the thumbnail.
     var thumbFallback: ImageRef? {
         thumb == .thumb(id) ? nil : .thumb(id)
+    }
+}
+
+extension Array where Element == RemoteItem {
+    /// These and the works of the next page not here yet: the server leaves
+    /// copies out within a page, this across pages.
+    func adding(_ more: [RemoteItem]) -> [RemoteItem] {
+        var result = self
+        for candidate in more where !result.contains(where: { $0.isSameWork(as: candidate) }) {
+            result.append(candidate)
+        }
+        return result
     }
 }
 

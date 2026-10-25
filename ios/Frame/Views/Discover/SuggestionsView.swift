@@ -252,6 +252,7 @@ struct SuggestionRowView: View {
                                 .frame(width: 150)
                         }
                         .buttonStyle(.plain)
+                        .contextMenu { QueueButton(itemID: remote.id) }
                     }
                 }
                 .padding(.vertical, 4)
@@ -285,6 +286,7 @@ struct ThemeView: View {
                         ArtCard(item: summary, ref: items.first { $0.id == summary.id }?.thumb)
                     }
                     .buttonStyle(.plain)
+                    .contextMenu { QueueButton(itemID: summary.id) }
                 }
                 if more {
                     Button {
@@ -352,8 +354,7 @@ struct ThemeView: View {
         defer { loading = false }
         do {
             let found = try await model.backend.themePage(key: theme.key, page: page + 1)
-            let known = Set(items.map(\.id))
-            items += found.items.filter { !known.contains($0.id) }
+            items = items.adding(found.items)
             page += 1
             more = found.more
         } catch {
