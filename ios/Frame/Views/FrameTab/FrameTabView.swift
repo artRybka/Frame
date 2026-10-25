@@ -127,7 +127,7 @@ struct FrameTabView: View {
                         .foregroundStyle(device?.charging == true ? Theme.warn : Theme.inkSoft)
                         .symbolEffect(.pulse, options: .repeating, isActive: device?.charging == true)
                     Text(powerText).font(.headline).foregroundStyle(Theme.ink)
-                    Text(device?.charging == true ? "bateria się ładuje" : "zmiany rzadziej, by oszczędzać")
+                    Text(powerNote)
                         .font(.caption)
                         .foregroundStyle(Theme.inkSoft)
                 }
@@ -167,6 +167,18 @@ struct FrameTabView: View {
         case "ac": device?.charging == true ? "Ładowanie" : "Zasilacz"
         case "battery": "Na baterii"
         default: "Nieznane"
+        }
+    }
+
+    /// What the power source changes: the schedule is the same either way,
+    /// only quiet hours on battery are spent in deep sleep.
+    private var powerNote: String {
+        if device?.charging == true { return "bateria się ładuje" }
+        let quiet = model.settings?.quietStart != nil
+        switch device?.powerSource {
+        case "ac": return quiet ? "zdjęcia trafiają od razu, także w nocy" : "zdjęcia trafiają od razu"
+        case "battery": return quiet ? "w ciszy nocnej śpi bez Wi-Fi" : "zmiany według harmonogramu"
+        default: return "zmiany według harmonogramu"
         }
     }
 
@@ -766,6 +778,10 @@ struct ScreenSection: View {
 struct SourcesSection: View {
     @Binding var settings: FrameSettings
 
+    private var privateUse: Binding<Bool> {
+        Binding(get: { settings.privateUse ?? false }, set: { settings.privateUse = $0 })
+    }
+
     private var wikiart: Binding<Bool> {
         Binding(get: { settings.wikiart ?? false }, set: { settings.wikiart = $0 })
     }
@@ -774,9 +790,23 @@ struct SourcesSection: View {
         VStack(alignment: .leading, spacing: 16) {
             SectionHeader(title: "Źródła dzieł", subtitle: "Skąd serwer bierze sztukę")
             Card {
-                Text("Muzea, Wikimedia Commons, Europeana i Openverse dają dzieła wolne do pokazywania: domenę publiczną (w UE 70 lat po śmierci twórcy) i licencje Creative Commons.")
+                Text("Muzea, Wikimedia Commons, Europeana i Openverse dają dzieła wolne do pokazywania: domenę publiczną (w UE 70 lat po śmierci twórcy), a przy użytku prywatnym także licencje Creative Commons.")
                     .font(.caption)
                     .foregroundStyle(Theme.inkSoft)
+                Divider()
+                Toggle(isOn: privateUse) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Użytek prywatny")
+                        Text(
+                            privateUse.wrappedValue
+                                ? "Z Wikimedia Commons, Europeany i Openverse także dzieła na wolnych licencjach (np. CC BY-SA), z podanym autorem. Muzea nadal dają tylko domenę publiczną."
+                                : "Tylko dzieła w domenie publicznej (CC0). Opisy w oryginale, po angielsku."
+                        )
+                        .font(.caption)
+                        .foregroundStyle(Theme.inkSoft)
+                    }
+                }
+                .tint(Theme.accent)
                 Divider()
                 Toggle(isOn: wikiart) {
                     VStack(alignment: .leading, spacing: 2) {
