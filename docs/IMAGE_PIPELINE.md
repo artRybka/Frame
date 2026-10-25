@@ -43,7 +43,19 @@ kolory, a w rzeczywistości miesza ciemne. Efekt: obraz za ciemny i zgaszony.
 6. **Dithering** (`dither.py`, numba): dyfuzja błędu w świetle liniowym, wybór farby w OKLab. Jądra: Floyd–Steinberg, Atkinson, Jarvis, Stucki, Burkes, Sierra, Sierra Lite. Do tego skanowanie serpentynowe i ograniczanie błędu (`error_clamp`).
 7. **Zapis**: indeksy farb zamieniamy na wartości **nominalne** (dla firmware'u). Wynik to PNG, ewentualnie JPEG 4:4:4 q95.
 8. **Podgląd dla aplikacji**: kompozycja z kroku 2 (kadr, passe-partout z fazami, podpis) w **oryginalnych** kolorach, bez mapowania tonów i ditheringu. Korekta kolorów dotyczy tylko obrazu dla ekranu, więc aplikacja pokazuje obraz taki, jaki jest.
-9. **Symulacja** (`--preview` w CLI, kalibracja): indeksy farb zamieniamy na kolory **zmierzone** i normalizujemy do bieli papieru.
+9. **Symulacja** (`--preview` w CLI, kalibracja): indeksy farb zamieniamy na kolory **zmierzone** i normalizujemy do bieli papieru. Liczona dopiero na żądanie: publikacja jej nie potrzebuje.
+
+## Wydajność
+
+Pełny render na NAS-ie trwał kilkanaście sekund; teraz kilka razy krócej, z wynikiem identycznym bit w bit (porównanie panelu, symulacji i podglądu na 17 przypadkach: presety, kartony, pion, wypełnienie, detale, opis, podpis, multi).
+
+- **PNG bez `optimize`** (zlib poziom 6): zapis 2560×1440 po ditheringu ~0,6 s zamiast ~5,5 s, plik ok. 10% większy.
+- **sRGB → liniowe z tablicy** 256 wartości zamiast potęgowania każdego piksela (dla dużych oryginałów ~3 s mniej).
+- **Liczenie pasami po 64 wiersze** (`bands.py`) dla operacji na pojedynczych pikselach (mapowanie tonów i gamutu, OKLab w wyostrzaniu, zapis do sRGB): pośrednie tablice mieszczą się w cache procesora, a pasy liczą się na wszystkich rdzeniach (numpy zwalnia GIL). Skalowanie Lanczos trzech kanałów równolegle.
+- **Karton**: faza liczona tylko w pasach wokół okienek, faktura papieru liczona raz na orientację.
+- **Render z wyprzedzeniem** (`rendered.py`, `Player.render_ahead`): po każdej zmianie serwer od razu rysuje następny obraz z kolejki (także po restarcie i po zmianie ustawień prezentacji). Gotowy wynik (plik dla ekranu i podgląd dla aplikacji) czeka w pamięci pod kluczem: zawartość oryginału, ustawienia renderu, paleta, format. Przy zmianie zostaje tylko zapis plików. Plansze multi nie są rysowane z góry, bo zdjęcia do nich dobiera się dopiero przy pokazaniu.
+
+Na 2 rdzeniach (zwykły PC): obraz z passe-partout ~10 s → ~2 s, duży oryginał 6000×4500 ~16 s → ~4 s, zdjęcie (passthrough) ~3 s → ~1,4 s; najdłużej trwa teraz dithering (~0,35 s, numba, z natury sekwencyjny) i dekodowanie dużego JPEG-a.
 
 ## Strategie (wybór po eksperymencie E5)
 

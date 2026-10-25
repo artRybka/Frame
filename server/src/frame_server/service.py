@@ -26,6 +26,7 @@ from .panel_config import PanelConfigStore
 from .player import Player
 from .power import PowerManager
 from .progress import ProgressTracker, Stage
+from .rendered import RenderCache, Rendered, render_key
 from .status import StatusMonitor
 from .store import ContentInfo, ContentStore
 
@@ -111,6 +112,7 @@ class FrameService:
         self.store = ContentStore(settings.data_dir)
         self.panel = Panel(settings)
         self.progress = ProgressTracker()
+        self.rendered = RenderCache()
         self.panel.on_wake = lambda: self.progress.advance(Stage.WAKING)
         self.palette: Palette = self._initial_palette()
         self.library = Library(settings.data_dir / "library.db")
@@ -221,23 +223,49 @@ class FrameService:
             )
 
         settings = render_settings or RenderSettings()
-        if isinstance(image, list):
-            result = render_multi(image, settings, self.palette, seed=seed)
-        else:
-            result = render(image, settings, self.palette)
-        data, ext = result.encode(fmt)  # type: ignore[arg-type]
-        preview = result.original_image()  # the app shows the picture, not the dither
-        preview.thumbnail((PREVIEW_MAX, PREVIEW_MAX))
+        done = self.render_content(image, settings, fmt=fmt, seed=seed)
         return self.store.publish(
-            data,
-            ext,
-            preview_png=encode_image(preview, "png"),
+            done.data,
+            done.ext,
+            preview_png=done.preview_png,
             title=title,
             description=description,
             source=source,
             render=settings.model_dump(mode="json") | {"palette": self.palette.name},
             extra=extra,
         )
+
+    def render_content(
+        self,
+        image: bytes | list[bytes],
+        settings: RenderSettings,
+        *,
+        fmt: str | None = None,
+        seed: str = "",
+    ) -> Rendered:
+        """The panel's image and the app's preview; a render made ahead of
+        time (``Player.render_ahead``) with the same inputs is reused."""
+        palette = self.palette
+        images = image if isinstance(image, list) else [image]
+        key = render_key(
+            images,
+            settings.model_dump_json(),
+            repr(palette),
+            fmt or "",
+            seed if isinstance(image, list) else "",
+        )
+
+        def make() -> Rendered:
+            if isinstance(image, list):
+                result = render_multi(image, settings, palette, seed=seed)
+            else:
+                result = render(image, settings, palette)
+            data, ext = result.encode(fmt)  # type: ignore[arg-type]
+            preview = result.original_image()  # the app shows the picture, not the dither
+            preview.thumbnail((PREVIEW_MAX, PREVIEW_MAX))
+            return Rendered(data, ext, encode_image(preview, "png"))
+
+        return self.rendered.get(key, make)
 
     async def push_current(self, wait: float = 90.0) -> PushOutcome:
         content = self.store.current()

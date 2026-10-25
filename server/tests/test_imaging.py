@@ -36,6 +36,11 @@ def _gradient(w: int = 400, h: int = 300) -> Image.Image:
     return Image.fromarray(arr.astype(np.uint8))
 
 
+def test_u8_lookup_matches_the_formula() -> None:
+    values = np.arange(256, dtype=np.uint8)
+    assert np.array_equal(u8_to_linear(values), srgb_to_linear(values / np.float32(255.0)))
+
+
 def test_color_roundtrips() -> None:
     v = np.linspace(0, 1, 101, dtype=np.float32)
     assert np.allclose(linear_to_srgb(srgb_to_linear(v)), v, atol=1e-5)

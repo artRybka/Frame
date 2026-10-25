@@ -89,7 +89,7 @@ Cel: potwierdzić protokół na Twoim egzemplarzu i poznać zachowanie ekranu.
   - inteligentne kadrowanie (twarze i ważne obszary),
   - podpisy i passe-partout bez ditheringu (czysty tekst).
 - [ ] 1.5 Obiektywna metryka jakości (ΔE po rozmyciu, w stylu S-CIELAB) do porównywania ustawień.
-- [ ] 1.6 Wydajność na sprzęcie Home Assistanta (cel: poniżej 10 s na obraz) i cache renderów.
+- [x] 1.6 Wydajność na sprzęcie Home Assistanta (cel: poniżej 10 s na obraz) i cache renderów: render kilka razy szybszy bez zmiany wyniku (PNG bez `optimize`, tablica sRGB, liczenie pasami na wszystkich rdzeniach), następny obraz rysowany z wyprzedzeniem, więc zmiana o czasie tylko publikuje gotowy plik ([IMAGE_PIPELINE.md](IMAGE_PIPELINE.md#wydajność)). *(Do potwierdzenia czas na Synology: pasek postępu uczy się czasu etapu „przetwarzanie”.)*
 
 **Gotowe, gdy:** zdjęcia i obrazy na ramce wyglądają dobrze w ocenie domowników, nie są za ciemne, a kolory mają naturalną tonację.
 

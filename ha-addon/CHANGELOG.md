@@ -9,6 +9,14 @@
   źródła, więc Openverse i WikiArt, których nie ma w katalogu, były puste.
 - WikiArt: kolejne strony wyników działają (token stronicowania był
   kodowany dwa razy i WikiArt odpowiadał błędem).
+- Szybsze przygotowanie obrazu dla ekranu, z wynikiem identycznym bit
+  w bit: PNG zapisywany bez `optimize` (~5 s mniej), sRGB → światło
+  liniowe z tablicy, mapowanie tonów i kolorów liczone pasami na
+  wszystkich rdzeniach, szybszy karton. Na 2 rdzeniach obraz
+  z passe-partout ok. 10 s → 2 s.
+- Następny obraz z kolejki rysowany z wyprzedzeniem, zaraz po zmianie
+  (i po restarcie serwera), więc zmiana o czasie tylko publikuje gotowy
+  plik.
 
 ## 0.7.0
 
