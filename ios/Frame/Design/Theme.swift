@@ -153,8 +153,12 @@ enum Names {
         }
     }
 
+    /// Styles that can be picked by hand; "auto" chooses one of them per picture.
+    static let manualPresets = ["photo", "painting", "graphic", "bw"]
+
     static func preset(_ key: String) -> String {
         switch key {
+        case "auto": "Auto"
         case "photo": "Zdjęcie"
         case "painting": "Obraz"
         case "graphic": "Grafika"
@@ -164,9 +168,11 @@ enum Names {
     }
 
     /// What a style does to the picture on its way to the six inks; it
-    /// never changes the framing (server: imaging.pipeline.PRESETS).
+    /// never changes the framing (server: imaging.pipeline.PRESETS,
+    /// library.style for "auto").
     static func presetExplanation(_ key: String) -> String {
         switch key {
+        case "auto": "Dobierany do każdego obrazu osobno: zdjęcia jako Zdjęcie, drzeworyty, litografie i plakaty jako Grafika, a rysunki, ryciny i fotografie bez koloru tylko czarną i białą farbą. Pozostałe jako Obraz."
         case "photo": "Do zdjęć: rozjaśnia cienie, które e-papier łatwo zaczernia, lekko podbija kontrast i kolory, mocniej wyostrza."
         case "graphic": "Do plakatów, ilustracji i drzeworytów: płaskie, nasycone barwy, wyraźny kontrast i ostre krawędzie, drobniejszy raster bez szumu."
         case "bw": "Do rysunków, grafik i fotografii czarno-białej: tylko czarna i biała farba, delikatny raster dla płynnych przejść."

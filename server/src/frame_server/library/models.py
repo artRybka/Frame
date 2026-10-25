@@ -66,6 +66,8 @@ class Item(BaseModel):
     colors: list[ColorSwatch] = Field(default_factory=list)
     color_tags: list[str] = Field(default_factory=list)
     suitability: float | None = None
+    # colors.tint_spread: ~0 when the picture has no colour of its own.
+    tint_spread: float | None = None
     favorite: bool = False
     excluded: bool = False
     added_at: str = ""

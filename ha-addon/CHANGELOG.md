@@ -1,5 +1,11 @@
 # Changelog
 
+## Następna wersja
+
+- „Styl obrazu” dobierany automatycznie do każdego obrazu (domyślnie):
+  bez koloru czarno-biały, zdjęcia jako zdjęcia, drzeworyty, litografie
+  i plakaty jako grafika, reszta jako obraz. Ręczny wybór dalej możliwy.
+
 ## 0.3.0
 
 - Zasilanie na baterii: w godzinach ciszy ekran dostaje budzik (MDC `0x25`)

@@ -215,3 +215,47 @@ def test_panel_progress_report_is_accepted(service) -> None:
         assert response.status_code == 200
     paths = [r.path for r in app.state.service.store.recent_requests]
     assert "/content-transfer-progress" in paths
+
+
+def test_auto_style_follows_the_picture(service) -> None:
+    from frame_server.imaging import PRESETS
+
+    player = service.player
+    settings = player.settings
+    assert settings.art.preset == "auto" and settings.photo.preset == "auto"
+    colour = service.importer.add_upload(
+        jpeg_bytes((200, 40, 40)), kind=ItemKind.OWN, title="Red", artist="Ala"
+    )
+    colour = service.library.update(colour.id, medium="Colour woodcut") or colour
+    grey = service.importer.add_upload(jpeg_bytes((150, 150, 150)), kind=ItemKind.PHOTO)
+    assert colour.tint_spread is not None and grey.tint_spread is not None
+    assert player.preset_for(colour, settings) == "graphic"
+    assert player.preset_for(grey, settings) == "bw"
+    assert player.render_settings(grey, settings).inks == PRESETS["bw"].inks
+    # Picked by hand: kept.
+    settings.art.preset = "painting"
+    assert player.preset_for(colour, settings) == "painting"
+    # Pictures from before automatic styles are measured on first use.
+    old = service.library.update(grey.id, tint_spread=None)
+    assert old is not None and old.tint_spread is None
+    assert player.preset_for(old, settings) == "bw"
+    assert service.library.get(grey.id).tint_spread is not None
+
+
+def test_old_default_styles_become_automatic(service) -> None:
+    from frame_server.player import AUTO_STYLE_KEY, SETTINGS_KEY, Player
+
+    library = service.library
+    raw = FrameSettings().model_dump(mode="json")
+    raw["art"]["preset"] = "painting"  # the old default
+    raw["photo"]["preset"] = "bw"  # picked by hand
+    library.set_state(SETTINGS_KEY, raw)
+    library.set_state(AUTO_STYLE_KEY, None)
+    player = Player(service)
+    assert player.settings.art.preset == "auto"
+    assert player.settings.photo.preset == "bw"
+    # Only once: choosing "painting" by hand later sticks.
+    settings = player.settings
+    settings.art.preset = "painting"
+    player.save_settings(settings)
+    assert Player(service).settings.art.preset == "painting"

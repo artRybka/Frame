@@ -21,7 +21,7 @@ class Mode(StrEnum):
 class Presentation(BaseModel):
     model_config = ConfigDict(validate_assignment=True)
 
-    preset: str = "painting"
+    preset: str = "auto"  # library.style.AUTO: chosen per picture; else an imaging.PRESETS key
     fit: Fit = Fit.AUTO  # fill, passe-partout or details, by the picture's proportions
     mat: Literal["white", "cream", "grey", "black", "picture"] = "white"  # picture: its hue
     margin: float = Field(0.05, ge=0, le=0.3)
@@ -53,9 +53,7 @@ class FrameSettings(BaseModel):
     orientation: Orientation = Orientation.LANDSCAPE
     rotation: Literal[90, 270] = 90
     art: Presentation = Field(default_factory=Presentation)
-    photo: Presentation = Field(
-        default_factory=lambda: Presentation(preset="photo", fit=Fit.FILL, margin=0.0)
-    )
+    photo: Presentation = Field(default_factory=lambda: Presentation(fit=Fit.FILL, margin=0.0))
     album_url: str = ""
     timezone: str = "Europe/Warsaw"
     status_poll_minutes: int = Field(15, ge=0, le=1440)  # 0 = only on demand

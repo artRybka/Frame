@@ -9,6 +9,7 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
+from PIL import Image
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
@@ -18,6 +19,8 @@ from .imaging.grids import MAX_PHOTOS, MIN_PHOTOS
 from .imaging.layout import Fit
 from .imaging.text import TextBlock
 from .library import Item, ItemKind, PlaylistRules
+from .library.colors import tint_spread
+from .library.style import AUTO, auto_preset
 from .schedule import FrameSettings, Mode, in_quiet_hours, next_change
 
 if TYPE_CHECKING:
@@ -26,6 +29,7 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 SETTINGS_KEY = "settings"
+AUTO_STYLE_KEY = "auto_style_migrated"
 STATE_KEY = "player"
 HISTORY_MAX = 50
 
@@ -94,6 +98,21 @@ class Player:
         self.library = service.library
         self._lock = asyncio.Lock()
         self.busy = False
+        self._migrate_auto_style()
+
+    def _migrate_auto_style(self) -> None:
+        """Once (add-on 0.4): the old default styles become automatic; a
+        style picked by hand stays."""
+        if self.library.get_state(AUTO_STYLE_KEY):
+            return
+        raw = self.library.get_state(SETTINGS_KEY)
+        if raw:
+            for key, old_default in (("art", "painting"), ("photo", "photo")):
+                pres = raw.get(key)
+                if isinstance(pres, dict) and pres.get("preset") == old_default:
+                    pres["preset"] = AUTO
+            self.library.set_state(SETTINGS_KEY, raw)
+        self.library.set_state(AUTO_STYLE_KEY, True)
 
     # -- persisted settings and state --------------------------------------
 
@@ -224,9 +243,24 @@ class Player:
 
     # -- showing -------------------------------------------------------------
 
+    def preset_for(self, item: Item, settings: FrameSettings) -> str:
+        """The rendering preset ``item`` gets: the chosen one, or by the picture."""
+        pres = settings.photo if item.kind == ItemKind.PHOTO else settings.art
+        if pres.preset != AUTO:
+            return pres.preset
+        if item.tint_spread is None:
+            # Pictures added before automatic styles: measure the thumbnail once.
+            thumb = self.service.images.thumb_path(item)
+            if thumb.is_file():
+                with Image.open(thumb) as img:
+                    spread = tint_spread(img)
+                item = self.library.update(item.id, tint_spread=spread) or item
+        return auto_preset(item)
+
     def render_settings(self, item: Item, settings: FrameSettings) -> RenderSettings:
         pres = settings.photo if item.kind == ItemKind.PHOTO else settings.art
-        base = PRESETS.get(pres.preset, PRESETS["painting"]).model_copy(deep=True)
+        preset = self.preset_for(item, settings)
+        base = PRESETS.get(preset, PRESETS["painting"]).model_copy(deep=True)
         base.layout.fit = pres.fit
         base.layout.mat = pres.mat
         base.layout.margin = pres.margin
