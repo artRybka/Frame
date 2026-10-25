@@ -19,6 +19,12 @@ struct NowView: View {
                     VStack(alignment: .leading, spacing: 26) {
                         header
                         hero
+                        if let progress = model.displayProgress {
+                            DisplayProgressBar(progress: progress)
+                                .frame(maxWidth: model.isPortrait ? 420 : .infinity)
+                                .frame(maxWidth: .infinity)
+                                .transition(.opacity.combined(with: .move(edge: .top)))
+                        }
                         controls
                         if let item {
                             ArtworkInfo(item: item)
@@ -40,6 +46,7 @@ struct NowView: View {
                     }
                     .padding(.horizontal, Theme.gutter)
                     .padding(.bottom, 40)
+                    .animation(.easeInOut, value: model.displayProgress == nil)
                 }
                 .refreshable { await model.refreshAll() }
             }
@@ -137,7 +144,8 @@ struct NowView: View {
         .frame(maxWidth: model.isPortrait ? 260 : .infinity)
         .frame(maxWidth: .infinity)
         .overlay {
-            if model.working || model.player?.busy == true {
+            // Servers that report no progress: a spinner instead of the bar.
+            if model.displayProgress == nil, model.working || model.player?.busy == true {
                 VStack(spacing: 10) {
                     ProgressView().tint(.white)
                     Text("Przygotowuję obraz…")

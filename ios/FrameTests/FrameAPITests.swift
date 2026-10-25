@@ -24,16 +24,34 @@ final class FrameAPITests: XCTestCase {
           "last_change_at": "2026-10-24T05:00:00+00:00",
           "next_change_at": "2026-10-25T05:00:00+00:00",
           "busy": false,
-          "last_error": null
+          "last_error": null,
+          "progress": {"stage": "downloading", "phase": "loading", "active": true,
+                       "title": "Under the Wave off Kanagawa", "fraction": 0.31, "seconds_left": 47,
+                       "started_at": "2026-10-24T05:00:00+00:00", "finished_at": null, "message": null}
         }
         """
         let view = try LiveBackend.decoder().decode(PlayerView.self, from: Data(json.utf8))
+        XCTAssertEqual(view.progress?.stage, "downloading")
+        XCTAssertEqual(view.progress?.phaseIndex, 1)
+        XCTAssertEqual(view.progress?.secondsLeft, 47)
+        XCTAssertEqual(view.progress?.timeLeftLabel, "ok. 47 s")
         XCTAssertEqual(view.playlist?.itemCount, 21)
         XCTAssertEqual(view.playlist?.rules.query, "woodblock")
         XCTAssertEqual(view.current?.previewUrl, "/api/previews/ABC.png")
         XCTAssertEqual(view.upcoming.first?.aspectRatio ?? 0, 1.5, accuracy: 0.001)
         XCTAssertEqual(view.hold?.forever, true)
         XCTAssertNotNil(When.schedule(view.nextChangeAt))
+    }
+
+    func testProgressPhasesAndLabels() {
+        var progress = DisplayProgress(stage: "refreshing", phase: "displaying", active: true,
+                                       title: "", fraction: 0.8, secondsLeft: 150)
+        XCTAssertEqual(progress.phaseIndex, 2)
+        XCTAssertEqual(progress.timeLeftLabel, "ok. 3 min")
+        progress = DisplayProgress(stage: "done", active: false, title: "", fraction: 1)
+        XCTAssertEqual(progress.phaseIndex, DisplayProgress.phases.count)
+        XCTAssertNil(progress.timeLeftLabel)
+        XCTAssertEqual(progress.stageLabel, "Obraz jest na ramce")
     }
 
     func testEncodesSettingsInSnakeCase() throws {

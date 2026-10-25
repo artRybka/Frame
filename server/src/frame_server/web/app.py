@@ -24,6 +24,7 @@ from ..device import MdcError
 from ..imaging import PRESETS, RenderSettings, Strategy
 from ..library.seed import seed_library, seed_playlists
 from ..player import hold_from
+from ..progress import DisplayProgress, Stage
 from ..service import FrameService, outcome_json
 from ..status import DeviceStatus
 from ..store import PanelRequest
@@ -184,18 +185,28 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if strategy is not None:
             render_settings.strategy = strategy
         data = await file.read()
-        content = await run_in_threadpool(
-            service.prepare,
-            data,
-            render_settings,
-            raw=raw,
-            title=title or (file.filename or ""),
-            description=description,
-            source="upload",
-        )
+        title = title or (file.filename or "")
+        if push:
+            service.progress.begin(title)
+        try:
+            content = await run_in_threadpool(
+                service.prepare,
+                data,
+                render_settings,
+                raw=raw,
+                title=title,
+                description=description,
+                source="upload",
+            )
+        except Exception as err:
+            if push:
+                service.progress.finish(Stage.FAILED, str(err))
+            raise
         service.player.note_external(hold_from(hold))
         if not push or not service.device_configured:
             message = "" if not push else "panel not configured"
+            if push:
+                service.progress.finish(Stage.FAILED, message)
             return {"content": asdict(content), "pushed": False, "message": message}
         try:
             outcome = await service.push_current(wait=wait)
@@ -211,6 +222,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return outcome_json(await service.push_current(wait=wait))
         except MdcError as err:
             raise HTTPException(502, f"panel: {err}") from err
+
+    @app.get("/api/progress", dependencies=auth)
+    def progress() -> DisplayProgress:
+        """The picture on its way to the frame (the app polls this every second)."""
+        return service.progress.view()
 
     @app.get("/api/device/status", dependencies=auth)
     async def device_status() -> DeviceStatus:

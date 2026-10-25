@@ -19,6 +19,8 @@ protocol FrameBackend: Sendable {
     func health() async throws -> Health
     func status(refresh: Bool) async throws -> StatusView
     func player() async throws -> PlayerView
+    /// The picture on its way to the frame; polled while one is.
+    func progress() async throws -> DisplayProgress
     func next() async throws
     func previous() async throws
     func hold(_ spec: HoldSpec) async throws -> PlayerView

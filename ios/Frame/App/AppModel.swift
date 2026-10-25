@@ -28,6 +28,10 @@ final class AppModel {
     var connection = Connection.unknown
     var toast: String?
     var working = false
+    /// The bar under the picture: set while a picture is on its way to the
+    /// frame, and for a moment after it arrives.
+    var displayProgress: DisplayProgress?
+    private var progressTask: Task<Void, Never>?
 
     init() {
         let defaults = UserDefaults.standard
@@ -56,6 +60,7 @@ final class AppModel {
         backend = Self.makeBackend(demo: demoMode, url: serverURL, token: apiToken)
         player = nil
         status = nil
+        displayProgress = nil
         settings = nil
         playlists = []
         facets = .empty
@@ -83,6 +88,7 @@ final class AppModel {
         let playlists = Task { try? await backend.playlists() }
         let facets = Task { try? await backend.facets() }
         self.player = await player.value
+        if self.player?.progress?.active == true { trackProgress() }
         self.status = await status.value
         self.settings = await settings.value
         self.playlists = await playlists.value ?? []
@@ -110,16 +116,64 @@ final class AppModel {
     }
 
     /// After an action the server renders and pushes in the background;
-    /// follow it until it is done.
+    /// follow it until the panel has the picture. The bar goes on through
+    /// the panel's redraw on its own.
     func followPlayer() async {
         working = true
         defer { working = false }
+        trackProgress(expectingStart: true)
         for attempt in 0 ..< 90 {
             try? await Task.sleep(for: .seconds(attempt == 0 ? 0.4 : 1.5))
             await refreshPlayer()
             if player?.busy != true { break }
         }
         if let error = player?.lastError, !error.isEmpty { toast = error }
+    }
+
+    /// Poll the server's progress while a picture is on its way. With
+    /// `expectingStart` the run may not have begun yet (the request was just
+    /// sent), so an idle or finished state is not the end at first.
+    func trackProgress(expectingStart: Bool = false) {
+        if expectingStart { progressTask?.cancel() } else if progressTask != nil { return }
+        progressTask = Task { [weak self] in
+            await self?.pollProgress(expectingStart: expectingStart)
+        }
+    }
+
+    private func pollProgress(expectingStart: Bool) async {
+        let started = Date.now
+        var seenActive = false
+        var first: DisplayProgress?  // with `expectingStart`, maybe the run before
+        while !Task.isCancelled, Date.now.timeIntervalSince(started) < 300 {
+            guard let value = try? await backend.progress() else { break }  // older server
+            if Task.isCancelled { return }
+            if let first, value.startedAt != first.startedAt {
+                seenActive = true  // a new run, even if it ended between two polls
+            }
+            first = first ?? value
+            if value.active {
+                seenActive = true
+                displayProgress = value
+            } else if seenActive || !expectingStart || Date.now.timeIntervalSince(started) > 20 {
+                if seenActive { await finishProgress(value) }
+                break
+            }
+            try? await Task.sleep(for: .seconds(1))
+        }
+        if !Task.isCancelled {
+            displayProgress = nil
+            progressTask = nil
+        }
+    }
+
+    private func finishProgress(_ value: DisplayProgress) async {
+        displayProgress = value
+        if value.isDone {
+            await refreshPlayer()
+            try? await Task.sleep(for: .seconds(2.5))
+        } else {
+            try? await Task.sleep(for: .seconds(5))  // long enough to read why
+        }
     }
 
     // MARK: Actions
@@ -152,7 +206,6 @@ final class AppModel {
         await perform { try await self.backend.show(itemID: itemID, hold: hold) }
         toast = "Wysyłam na ramkę…"
         await followPlayer()
-        toast = "Gotowe — obraz jest na ramce"
     }
 
     func play(_ playlist: PlaylistSummary) async {

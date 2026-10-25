@@ -214,6 +214,59 @@ struct PlayerView: Codable, Sendable {
     var nextChangeAt: String?
     var busy: Bool
     var lastError: String?
+    var progress: DisplayProgress?  // nil from older servers
+}
+
+/// A picture on its way to the frame (GET /api/progress): processing on the
+/// server, loading onto the panel, the panel redrawing its e-paper. The
+/// redraw is estimated: the panel does not say when it is done.
+struct DisplayProgress: Codable, Hashable, Sendable {
+    var stage: String
+    var phase: String?
+    var active: Bool
+    var title: String
+    var fraction: Double
+    var secondsLeft: Int?
+    var startedAt: String?
+    var finishedAt: String?
+    var message: String?
+
+    static let idle = DisplayProgress(stage: "idle", active: false, title: "", fraction: 0)
+
+    /// The three parts of the bar, in order.
+    static let phases: [(key: String, label: String)] = [
+        ("processing", "Przetwarzanie"), ("loading", "Ładowanie"), ("displaying", "Wyświetlanie"),
+    ]
+
+    var isDone: Bool { stage == "done" }
+    var isFailed: Bool { stage == "failed" }
+    var isWaiting: Bool { stage == "waiting" }
+
+    /// Index of the current part of the bar; past the last one when done.
+    var phaseIndex: Int? {
+        if isDone { return Self.phases.count }
+        return phase.flatMap { key in Self.phases.firstIndex { $0.key == key } }
+    }
+
+    var stageLabel: String {
+        switch stage {
+        case "rendering": "Przygotowuję obraz dla e-papieru"
+        case "sending": "Łączę się z ramką"
+        case "waking": "Budzę ramkę"
+        case "downloading": "Ramka pobiera obraz"
+        case "refreshing": "Ramka odświeża ekran"
+        case "done": "Obraz jest na ramce"
+        case "waiting": "Obraz poczeka, aż ramka się obudzi"
+        case "failed": "Nie udało się wysłać obrazu"
+        default: ""
+        }
+    }
+
+    var timeLeftLabel: String? {
+        guard active, let left = secondsLeft, left > 1 else { return nil }
+        if left < 90 { return "ok. \(left) s" }
+        return "ok. \((left + 30) / 60) min"
+    }
 }
 
 struct DeviceStatus: Codable, Hashable, Sendable {

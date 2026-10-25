@@ -27,6 +27,7 @@ struct LiveBackend: FrameBackend {
     }
 
     func player() async throws -> PlayerView { try await get("/api/player") }
+    func progress() async throws -> DisplayProgress { try await get("/api/progress") }
     func next() async throws { try await send("/api/player/next", method: "POST") }
     func previous() async throws { try await send("/api/player/previous", method: "POST") }
 

@@ -25,6 +25,13 @@ actor DemoBackend: FrameBackend {
     private var history: [String] = []
     private var currentID: String?
     private var holdValue: Hold?
+    /// The picture "on its way" to the pretend frame, for the progress bar.
+    private var run: (title: String, start: Date)?
+    /// Demo stages: 14 s in all, where a real panel takes about a minute.
+    private static let runStages: [(stage: String, phase: String, seconds: Double)] = [
+        ("rendering", "processing", 2.5), ("sending", "loading", 1), ("downloading", "loading", 1.5),
+        ("refreshing", "displaying", 9),
+    ]
     private var demoJobs: [String: JobStatus] = [:]
     private struct ImageURLs: Sendable {
         let thumb: URL?
@@ -193,7 +200,38 @@ actor DemoBackend: FrameBackend {
             hold: holdValue,
             lastChangeAt: ISO8601DateFormatter().string(from: .now.addingTimeInterval(-5400)),
             nextChangeAt: next.map { ISO8601DateFormatter().string(from: $0) },
-            busy: false, lastError: nil
+            busy: runElapsed.map { $0 < 5 } ?? false, lastError: nil, progress: try await progress()
+        )
+    }
+
+    private var runElapsed: Double? { run.map { Date.now.timeIntervalSince($0.start) } }
+
+    private func startRun(_ title: String) {
+        run = (title: title, start: Date.now)
+    }
+
+    private func startRun(itemID: String?) {
+        startRun(items.first { $0.id == itemID }?.title ?? "")
+    }
+
+    func progress() async throws -> DisplayProgress {
+        guard let run, let elapsed = runElapsed else { return .idle }
+        let stamp = ISO8601DateFormatter().string(from: run.start)
+        let total = Self.runStages.reduce(0) { $0 + $1.seconds }
+        var end = 0.0
+        for step in Self.runStages {
+            end += step.seconds
+            if elapsed < end {
+                return DisplayProgress(
+                    stage: step.stage, phase: step.phase, active: true, title: run.title,
+                    fraction: elapsed / total, secondsLeft: Int((total - elapsed).rounded(.up)),
+                    startedAt: stamp
+                )
+            }
+        }
+        return DisplayProgress(
+            stage: "done", active: false, title: run.title, fraction: 1, startedAt: stamp,
+            finishedAt: ISO8601DateFormatter().string(from: run.start.addingTimeInterval(total))
         )
     }
 
@@ -202,6 +240,7 @@ actor DemoBackend: FrameBackend {
         if let currentID { history.append(currentID) }
         currentID = queue.removeFirst()
         holdValue = nil
+        startRun(itemID: currentID)
     }
 
     func previous() async throws {
@@ -209,6 +248,7 @@ actor DemoBackend: FrameBackend {
         if let currentID { queue.insert(currentID, at: 0) }
         currentID = previous
         holdValue = nil
+        startRun(itemID: currentID)
     }
 
     func hold(_ spec: HoldSpec) async throws -> PlayerView {
@@ -266,6 +306,7 @@ actor DemoBackend: FrameBackend {
         currentID = itemID
         queue.removeAll { $0 == itemID }
         _ = try await self.hold(hold)
+        startRun(itemID: itemID)
     }
 
     // MARK: Framing
@@ -306,6 +347,7 @@ actor DemoBackend: FrameBackend {
         }
         shared.crops[itemID, default: [:]][orientation] = saved
         framingRevision += 1
+        if itemID == currentID { startRun(itemID: itemID) }
         return try await framing(itemID: itemID, orientation: orientation)
     }
 
@@ -321,6 +363,7 @@ actor DemoBackend: FrameBackend {
         }
         shared.crops[itemID, default: [:]][orientation] = saved
         framingRevision += 1
+        if itemID == currentID { startRun(itemID: itemID) }
         return try await framing(itemID: itemID, orientation: orientation)
     }
 
@@ -397,6 +440,7 @@ actor DemoBackend: FrameBackend {
     func settings() async throws -> FrameSettings { settingsValue }
 
     func saveSettings(_ settings: FrameSettings) async throws -> FrameSettings {
+        if settings.presentationKey != settingsValue.presentationKey { startRun(itemID: currentID) }
         settingsValue = settings
         shared.current = settings
         return settings
@@ -509,7 +553,8 @@ actor DemoBackend: FrameBackend {
     }
 
     func sendPhoto(_ data: Data, title: String, preset: String, hold: HoldSpec) async throws -> DisplayResponse {
-        try await Task.sleep(for: .seconds(1.5))
+        startRun(title)
+        try await Task.sleep(for: .seconds(5))  // until the pretend panel has the picture
         return DisplayResponse(pushed: true, fetched: true, message: nil)
     }
 

@@ -18,6 +18,7 @@ from .imaging.grids import MAX_PHOTOS, MIN_PHOTOS
 from .imaging.layout import Fit
 from .imaging.text import TextBlock
 from .library import Item, ItemKind, PlaylistRules
+from .progress import Stage
 from .schedule import FrameSettings, Mode, in_quiet_hours, next_change
 
 if TYPE_CHECKING:
@@ -254,6 +255,7 @@ class Player:
             board = self.board(item, state, settings)
 
             async def work() -> None:
+                self.service.progress.begin(item.title)
                 await self._publish(board, settings)
                 if state.current_item_id and state.current_item_id != item.id:
                     state.history = [*state.history, state.current_item_id][-HISTORY_MAX:]
@@ -301,6 +303,7 @@ class Player:
             board = self.board(item, state, settings, keep=state.current_group)
 
             async def work() -> None:
+                self.service.progress.begin(item.title)
                 await self._publish(board, settings)
                 state.current_group = [i.id for i in board[1:]]
                 state.last_error = None
@@ -319,6 +322,7 @@ class Player:
             state = self.state
 
             async def work() -> None:
+                self.service.progress.begin(title, render=False)
                 await run_in_threadpool(
                     self.service.store.publish,
                     png,
@@ -385,10 +389,12 @@ class Player:
             log.warning("showing %s failed: %s", label, err)
             state.last_error = str(err)
             self._save_state(state)
+            self.service.progress.finish(Stage.FAILED, str(err))
         except Exception as err:  # keep the scheduler alive whatever happens
             log.exception("showing %s failed", label)
             state.last_error = str(err)
             self._save_state(state)
+            self.service.progress.finish(Stage.FAILED, str(err))
         finally:
             self.busy = False
 
