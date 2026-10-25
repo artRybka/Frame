@@ -1,28 +1,79 @@
 import CoreLocation
 import SwiftUI
 
-/// Home: the picture on the frame, presented like an exhibit.
+/// Home: the picture on the frame, presented like an exhibit. The arrows
+/// browse what was and what will be on the frame without sending anything;
+/// the picture is cropped right on it, and "Pokaż na ramce" sends the one
+/// browsed to with its crop.
 struct NowView: View {
     @Environment(AppModel.self) private var model
     @State private var showingSend = LaunchRoute.screen == "send"
-    @State private var showingCrop = LaunchRoute.screen == "crop"
     @State private var path = NavigationPath()
+    /// The picture browsed to; nil is the one on the frame.
+    @State private var browsed: Browsed?
+    @State private var details: [String: Item] = [:]
+    @State private var draft = FramingDraft()
+    /// Unsent crops of pictures browsed away from, by draft key.
+    @State private var drafts: [String: FramingDraft] = [:]
+    @State private var sending = false
+    @State private var routed = false
+
+    struct Browsed: Equatable {
+        let summary: ItemSummary
+        let offset: Int  // where it was when browsed to: −n back, +n ahead
+    }
 
     private var current: NowShowing? { model.player?.current }
     private var item: Item? { current?.item }
+    private var history: [ItemSummary] { model.player?.history ?? [] }  // newest first
+    private var upcoming: [ItemSummary] { model.player?.upcoming ?? [] }
+
+    private func summary(at offset: Int) -> ItemSummary? {
+        if offset < 0, -offset <= history.count { return history[-offset - 1] }
+        if offset > 0, offset <= upcoming.count { return upcoming[offset - 1] }
+        return nil
+    }
+
+    /// Places from the picture on the frame to the one browsed to. The lists
+    /// move when the frame changes, so the picture is looked up again.
+    private var offset: Int {
+        guard let browsed else { return 0 }
+        let id = browsed.summary.id
+        if id == item?.id { return 0 }
+        if summary(at: browsed.offset)?.id == id { return browsed.offset }
+        if let index = upcoming.firstIndex(where: { $0.id == id }) { return index + 1 }
+        if let index = history.firstIndex(where: { $0.id == id }) { return -(index + 1) }
+        return browsed.offset  // on its way to the frame
+    }
+
+    private var selectedID: String? { offset == 0 ? item?.id : browsed?.summary.id }
+    private var selectedItem: Item? {
+        offset == 0 ? item : browsed.flatMap { details[$0.summary.id] }
+    }
+
+    private var draftKey: String {
+        guard let selectedID else { return "" }
+        return [selectedID, model.settings?.presentationKey ?? ""].joined(separator: "|")
+    }
 
     var body: some View {
         NavigationStack(path: $path) {
             ZStack {
-                AmbientBackground(swatches: item?.colors ?? [])
+                AmbientBackground(swatches: selectedItem?.colors ?? browsed?.summary.colors ?? [])
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 26) {
-                        header
+                    VStack(alignment: .leading, spacing: 22) {
                         hero
+                        if let progress = model.displayProgress {
+                            DisplayProgressBar(progress: progress)
+                                .frame(maxWidth: model.isPortrait ? 420 : .infinity)
+                                .frame(maxWidth: .infinity)
+                                .transition(.opacity.combined(with: .move(edge: .top)))
+                        }
                         controls
-                        if let item {
-                            ArtworkInfo(item: item)
-                        } else if let current {
+                        if let selectedItem {
+                            ArtworkInfo(item: selectedItem)
+                                .id(selectedItem.id)
+                        } else if offset == 0, let current {
                             Card {
                                 Text(current.title.isEmpty ? "Bez tytułu" : current.title)
                                     .font(.serif(26, weight: .semibold))
@@ -31,15 +82,17 @@ struct NowView: View {
                                 }
                             }
                         }
-                        if let upcoming = model.player?.upcoming, !upcoming.isEmpty {
+                        if !upcoming.isEmpty {
                             Strip(title: "Następne", items: upcoming)
                         }
-                        if let history = model.player?.history, !history.isEmpty {
+                        if !history.isEmpty {
                             Strip(title: "Ostatnio na ramce", items: history)
                         }
                     }
                     .padding(.horizontal, Theme.gutter)
+                    .padding(.top, 4)
                     .padding(.bottom, 40)
+                    .animation(.easeInOut, value: model.displayProgress == nil)
                 }
                 .refreshable { await model.refreshAll() }
             }
@@ -57,142 +110,210 @@ struct NowView: View {
                     .accessibilityLabel("Wyślij zdjęcie na ramkę")
                 }
             }
+            .toolbarTitleDisplayMode(.inline)
             .navigationDestination(for: String.self) { id in
                 ItemDetailView(itemID: id)
             }
             .sheet(isPresented: $showingSend) {
                 SendSheet()
             }
-            .sheet(isPresented: $showingCrop) {
-                if let item {
-                    CropEditorSheet(item: item)
-                }
+            .onChange(of: item?.id) { _, id in
+                // The picture sent has arrived: back to "on the frame now".
+                if browsed?.summary.id == id { browsed = nil }
             }
-        }
-    }
-
-    // MARK: Header
-
-    private var header: some View {
-        HStack(alignment: .center) {
-            VStack(alignment: .leading, spacing: 4) {
-                Eyebrow(model.status?.device.name.map { "Na ramce · \($0)" } ?? "Na ramce")
-                Text(sourceTitle)
-                    .font(.serif(17, weight: .medium))
-                    .foregroundStyle(Theme.ink)
-                    .lineLimit(1)
+            .onChange(of: upcoming.first?.id, initial: true) { _, first in
+                // CI screenshots: `-screen browse` starts at the next picture.
+                guard LaunchRoute.screen == "browse", !routed, let first else { return }
+                routed = true
+                if let next = upcoming.first, next.id == first { browsed = Browsed(summary: next, offset: 1) }
             }
-            Spacer(minLength: 12)
-            StatusCluster(status: model.status?.device)
+            .task(id: browsed?.summary.id) { await loadDetails() }
+            .task(id: draftKey) { await loadFraming() }
         }
-        .padding(.top, 6)
-    }
-
-    private var sourceTitle: String {
-        model.player?.playlist?.name ?? "Propozycje"
     }
 
     // MARK: Hero
 
     private var heroRef: ImageRef? {
+        if let id = selectedID, let trial = draft.trial, draft.key == draftKey {
+            return .framePreview(id, framing: trial)  // the mat with the new window
+        }
+        if offset != 0, let browsed { return .framePreview(browsed.summary.id) }
         if let current { return .path(current.previewUrl) }
         return nil
     }
 
-    @ViewBuilder
     private var hero: some View {
         let aspect: CGFloat = model.isPortrait ? 9.0 / 16.0 : 16.0 / 9.0
-        Group {
-            if let heroRef {
-                FramedArtwork(
-                    ref: heroRef, aspectRatio: aspect, placeholder: item?.placeholderColor ?? Theme.mat
-                )
-                .onTapGesture {
-                    if let id = item?.id { path.append(id) }
+        return HStack(spacing: 0) {
+            arrow(-1)
+            Spacer(minLength: 2)
+            FramedArtwork(
+                ref: heroRef, aspectRatio: aspect,
+                placeholder: selectedItem?.placeholderColor ?? browsed?.summary.placeholderColor ?? Theme.mat
+            ) {
+                if let id = selectedID, draft.key == draftKey {
+                    CropWindows(itemID: id, draft: $draft)
                 }
-            } else {
-                FramedArtwork(ref: nil, aspectRatio: aspect)
-                    .overlay {
-                        if model.connection != .connected {
-                            ProgressView()
-                        }
+            }
+            .id(selectedID ?? "")  // a fresh picture for each one browsed to
+            .overlay {
+                if heroRef == nil, model.connection != .connected {
+                    ProgressView()
+                }
+            }
+            .overlay {
+                // Servers that report no progress: a spinner instead of the bar.
+                if model.displayProgress == nil, offset == 0, model.working || model.player?.busy == true {
+                    VStack(spacing: 10) {
+                        ProgressView().tint(.white)
+                        Text("Przygotowuję obraz…")
+                            .font(.footnote.weight(.medium))
+                            .foregroundStyle(.white)
                     }
-            }
-        }
-        .overlay(alignment: .bottomTrailing) {
-            if item != nil {
-                Button {
-                    showingCrop = true
-                } label: {
-                    Image(systemName: "crop")
-                        .font(.subheadline.weight(.semibold))
-                        .frame(width: 36, height: 36)
-                        .background(.ultraThinMaterial, in: Circle())
+                    .padding(18)
+                    .background(.black.opacity(0.45), in: RoundedRectangle(cornerRadius: 14))
+                    .allowsHitTesting(false)
                 }
-                .padding(14)
-                .accessibilityLabel("Kadr na ramce")
             }
+            .frame(maxWidth: model.isPortrait ? 290 : .infinity)
+            Spacer(minLength: 2)
+            arrow(1)
         }
-        .frame(maxWidth: model.isPortrait ? 260 : .infinity)
-        .frame(maxWidth: .infinity)
-        .overlay {
-            if model.working || model.player?.busy == true {
-                VStack(spacing: 10) {
-                    ProgressView().tint(.white)
-                    Text("Przygotowuję obraz…")
-                        .font(.footnote.weight(.medium))
-                        .foregroundStyle(.white)
-                }
-                .padding(18)
-                .background(.black.opacity(0.45), in: RoundedRectangle(cornerRadius: 14))
-            }
-        }
+        .padding(.horizontal, -Theme.gutter + 2)  // the arrows at the sides of the screen
         .animation(.easeInOut, value: model.working)
+    }
+
+    /// Browse one picture back (−1) or ahead (+1); nothing is sent.
+    private func arrow(_ direction: Int) -> some View {
+        let target = offset + direction
+        let enabled = target == 0 || summary(at: target) != nil
+        return Button {
+            withAnimation(.easeInOut(duration: 0.25)) {
+                browsed = target == 0 ? nil : summary(at: target).map { Browsed(summary: $0, offset: target) }
+            }
+        } label: {
+            Image(systemName: direction < 0 ? "chevron.left" : "chevron.right")
+                .font(.system(size: 22, weight: .semibold))
+                .foregroundStyle(Theme.ink.opacity(0.75))
+                .frame(width: 34, height: 72)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(PressableStyle())
+        .disabled(!enabled || sending)
+        .opacity(enabled ? 1 : 0.2)
+        .accessibilityLabel(direction < 0 ? "Poprzedni" : "Następny")
     }
 
     // MARK: Controls
 
     private var controls: some View {
-        VStack(spacing: 14) {
-            HStack(spacing: 22) {
-                GlassButton(systemImage: "backward.fill", label: "Poprzedni") {
-                    Task { await model.previous() }
-                }
-                pinMenu
-                GlassButton(systemImage: "forward.fill", label: "Następny") {
-                    Task { await model.next() }
+        VStack(spacing: 12) {
+            VStack(spacing: 3) {
+                Text(placeLine)
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(offset == 0 ? Theme.ink : Theme.vermilion)
+                Text(hintLine)
+                    .font(.caption)
+                    .foregroundStyle(Theme.inkSoft)
+                    .multilineTextAlignment(.center)
+            }
+            .contentTransition(.opacity)
+            if draft.key == draftKey, let view = draft.view, !view.windows.isEmpty {
+                cropTools(view)
+            }
+            Button {
+                Task { await send() }
+            } label: {
+                HStack(spacing: 10) {
+                    if sending { ProgressView().tint(Theme.paper) }
+                    Text(canSend || sending ? "Pokaż na ramce" : "Jest na ramce")
                 }
             }
-            .disabled(model.working)
-            Text(scheduleLine)
-                .font(.footnote)
-                .foregroundStyle(Theme.inkSoft)
+            .buttonStyle(PrimaryButtonStyle())
+            .disabled(!canSend || sending)
+            .opacity(canSend || sending ? 1 : 0.45)
+            .frame(maxWidth: model.isPortrait ? 420 : .infinity)
+            HStack(spacing: 8) {
+                Text(scheduleLine)
+                if model.player?.hold != nil {
+                    Button("Odepnij") { Task { await model.releaseHold() } }
+                        .fontWeight(.semibold)
+                }
+            }
+            .font(.footnote)
+            .foregroundStyle(Theme.inkSoft)
         }
         .frame(maxWidth: .infinity)
     }
 
-    private var isHeld: Bool { model.player?.hold != nil }
+    private var canSend: Bool {
+        guard selectedID != nil, !model.working else { return false }
+        return offset != 0 || draft.change != nil && draft.key == draftKey
+    }
 
-    private var pinMenu: some View {
-        Menu {
-            if isHeld {
-                Button("Odepnij", systemImage: "pin.slash") { Task { await model.releaseHold() } }
-            }
-            Section("Zatrzymaj ten obraz") {
-                ForEach([HoldSpec.oneHour, .threeHours, .oneDay, .forever]) { spec in
-                    Button(spec.label) { Task { await model.hold(spec) } }
+    private var placeLine: String {
+        switch offset {
+        case 0: "Teraz na ramce"
+        case -1: "Poprzednio na ramce"
+        case ..<0: "Wcześniej na ramce"
+        case 1: "Następny w kolejce"
+        default: "W kolejce, za \(offset) \(Names.changes(offset))"
+        }
+    }
+
+    private var hintLine: String {
+        if draft.key == draftKey, draft.view?.windows.isEmpty == false {
+            return draft.changed
+                ? "Nowy kadr trafi na ramkę po „Pokaż na ramce”."
+                : "Przesuń obraz palcem albo rozsuń dwa palce, żeby go wykadrować."
+        }
+        return offset == 0 ? " " : "Na ramkę trafi po „Pokaż na ramce”."
+    }
+
+    /// The passe-partout window's shape and the way back to the automatic crop.
+    private func cropTools(_ view: FramingView) -> some View {
+        HStack(spacing: 10) {
+            if view.fit == "fit" {
+                Menu {
+                    ForEach(windowShapes, id: \.title) { shape in
+                        Button {
+                            draft.crops[0].aspect = shape.aspect
+                            draft.crops[0].zoom = shape.aspect == nil ? DemoFraming.wholeCrop.zoom : 1
+                        } label: {
+                            if sameShape(draft.crops.first?.aspect, shape.aspect) {
+                                Label(shape.title, systemImage: "checkmark")
+                            } else {
+                                Text(shape.title)
+                            }
+                        }
+                    }
+                } label: {
+                    Label(
+                        "Kształt: " + (windowShapes.first { sameShape(draft.crops.first?.aspect, $0.aspect) }?.title ?? "własny"),
+                        systemImage: "aspectratio"
+                    )
+                    .toolChip()
                 }
             }
-        } label: {
-            Image(systemName: isHeld ? "pin.fill" : "pin")
-                .font(.system(size: 26, weight: .semibold))
-                .foregroundStyle(isHeld ? Theme.paper : Theme.ink)
-                .frame(width: 72, height: 72)
-                .background(isHeld ? AnyShapeStyle(Theme.vermilion) : AnyShapeStyle(.ultraThinMaterial), in: Circle())
-                .overlay(Circle().strokeBorder(Color.white.opacity(0.35)))
-                .shadow(color: .black.opacity(0.14), radius: 12, y: 7)
+            if draft.custom && draft.automatic == nil || draft.crops != (draft.automatic ?? draft.saved) {
+                Button {
+                    Task { await automaticCrop() }
+                } label: {
+                    Label("Kadr automatyczny", systemImage: "sparkles").toolChip()
+                }
+                .buttonStyle(.plain)
+            }
         }
-        .accessibilityLabel(isHeld ? "Przypięte" : "Przypnij")
+        .disabled(sending)
+    }
+
+    private func sameShape(_ a: Double?, _ b: Double?) -> Bool {
+        switch (a, b) {
+        case (nil, nil): true
+        case let (a?, b?): abs(a - b) < 0.001
+        default: false
+        }
     }
 
     private var scheduleLine: String {
@@ -204,51 +325,76 @@ struct NowView: View {
         if let next = When.schedule(player.nextChangeAt) { return "Następna zmiana: \(next)" }
         return " "
     }
+
+    // MARK: Loading and sending
+
+    private func loadDetails() async {
+        guard let id = browsed?.summary.id, details[id] == nil else { return }
+        if let loaded = try? await model.backend.item(id: id) { details[id] = loaded }
+    }
+
+    /// The crop of the picture browsed to: an unsent one kept from before,
+    /// else as the server has it.
+    private func loadFraming() async {
+        let key = draftKey
+        if draft.key != key, draft.changed, !draft.key.isEmpty { drafts[draft.key] = draft }
+        if let kept = drafts[key] {
+            draft = kept
+            return
+        }
+        draft = FramingDraft(key: "")
+        guard let id = selectedID else { return }
+        let orientation = model.settings?.orientation ?? "landscape"
+        guard let view = try? await model.backend.framing(itemID: id, orientation: orientation),
+              key == draftKey
+        else { return }
+        let crops = view.windows.map(\.crop)
+        draft = FramingDraft(key: key, view: view, saved: crops, crops: crops)
+    }
+
+    private func automaticCrop() async {
+        guard draft.custom else {
+            draft.crops = draft.saved  // the saved crop is the automatic one
+            draft.automatic = nil
+            return
+        }
+        guard let id = selectedID, let view = draft.view else { return }
+        let key = draft.key
+        do {
+            let auto = try await model.backend.framing(itemID: id, orientation: view.orientation, automatic: true)
+            guard key == draft.key, auto.windows.count == draft.crops.count else { return }
+            draft.automatic = auto.windows.map(\.crop)
+            draft.crops = auto.windows.map(\.crop)
+        } catch {
+            model.show(error)
+        }
+    }
+
+    private func send() async {
+        guard let id = selectedID else { return }
+        sending = true
+        defer { sending = false }
+        let change = draft.key == draftKey ? draft.change : nil
+        guard await model.present(itemID: id, offset: offset, framing: change) else { return }
+        drafts[draftKey] = nil
+        await model.followPlayer()
+        if browsed?.summary.id == model.player?.current?.item?.id { browsed = nil }
+        if change != nil {
+            draft = FramingDraft()
+            await loadFraming()  // as saved now
+        }
+    }
 }
 
-/// Battery and connection at a glance.
-struct StatusCluster: View {
-    let status: DeviceStatus?
-
-    var body: some View {
-        HStack(spacing: 8) {
-            if let level = status?.batteryLevel {
-                HStack(spacing: 4) {
-                    Image(systemName: Self.batteryIcon(level: level, charging: status?.charging == true))
-                        .symbolRenderingMode(.hierarchical)
-                    Text("\(level)%").monospacedDigit()
-                }
-                .foregroundStyle(level <= 15 ? Theme.bad : Theme.ink)
-            }
-            Circle()
-                .fill(connectionColor)
-                .frame(width: 8, height: 8)
-                .overlay(Circle().stroke(connectionColor.opacity(0.35), lineWidth: 4))
-        }
-        .font(.footnote.weight(.semibold))
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(.ultraThinMaterial, in: Capsule())
-        .accessibilityElement(children: .combine)
-    }
-
-    private var connectionColor: Color {
-        switch status?.reachable {
-        case .some(true): Theme.good
-        case .some(false): Theme.bad
-        case .none: Theme.warn
-        }
-    }
-
-    static func batteryIcon(level: Int, charging: Bool) -> String {
-        if charging { return "battery.100percent.bolt" }
-        switch level {
-        case ..<13: return "battery.0percent"
-        case ..<38: return "battery.25percent"
-        case ..<63: return "battery.50percent"
-        case ..<88: return "battery.75percent"
-        default: return "battery.100percent"
-        }
+private extension View {
+    /// A small capsule control under the picture.
+    func toolChip() -> some View {
+        font(.footnote.weight(.semibold))
+            .foregroundStyle(Theme.ink)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(.ultraThinMaterial, in: Capsule())
+            .overlay(Capsule().strokeBorder(Theme.hairline))
     }
 }
 

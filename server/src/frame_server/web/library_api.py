@@ -13,8 +13,8 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, ValidationError
 from starlette.concurrency import run_in_threadpool
 
-from ..imaging.layout import Crop, Fit, Orientation, Plan, canvas_size, load_image
-from ..imaging.pipeline import encode_image, plan_for, render, render_multi
+from ..imaging.layout import Crop, Fit, Orientation, Plan, canvas_size, fit_area, load_image
+from ..imaging.pipeline import RenderSettings, encode_image, plan_for, render, render_multi
 from ..library import Facets, Item, ItemKind, ItemSummary, Job, PhotoInfo, PlaylistRules
 from ..library.importer import ALL
 from ..library.models import Framing
@@ -191,20 +191,30 @@ def _prune(directory: Path, keep: int) -> None:
 
 
 @router.get("/library/items/{item_id}/preview")
-async def item_preview(item_id: str, svc: Svc, settings: str | None = None) -> FileResponse:
+async def item_preview(
+    item_id: str, svc: Svc, settings: str | None = None, framing: str | None = None
+) -> FileResponse:
     """The picture framed as on the panel (crop, mat, lettering), in its own
     colours: the correction for the inks is left to the panel's image.
 
     With the saved settings, or with ``settings`` (FrameSettings JSON; only
     orientation and presentation matter) to try a framing before saving it.
+    ``framing`` (Framing JSON) likewise tries crops before they are saved:
+    the ones it gives replace the saved ones for that orientation.
     """
     item = await _work(svc, item_id)
     frame_settings = svc.player.settings
-    if settings:
-        try:
+    try:
+        if settings:
             frame_settings = FrameSettings.model_validate_json(settings)
-        except ValidationError as err:
-            raise HTTPException(422, f"invalid settings: {err}") from err
+        if framing:
+            orientation = frame_settings.orientation.value
+            saved = item.framing.get(orientation) or Framing()
+            trial = Framing.model_validate_json(framing).model_dump(exclude_none=True)
+            tried = Framing.model_validate(saved.model_dump() | trial)
+            item = item.model_copy(update={"framing": {**item.framing, orientation: tried}})
+    except ValidationError as err:
+        raise HTTPException(422, f"invalid preview: {err}") from err
     render_settings = svc.player.render_settings(item, frame_settings)
     board = svc.player.preview_board(item, frame_settings)  # MULTI: with the photos beside it
     ids = ",".join(i.id for i in board)
@@ -235,11 +245,16 @@ async def item_preview(item_id: str, svc: Svc, settings: str | None = None) -> F
     return FileResponse(path, media_type="image/png", headers={"Cache-Control": "max-age=3600"})
 
 
+Box = tuple[float, float, float, float]  # x, y, w, h as fractions of the canvas
+
+
 class FramingWindow(BaseModel):
-    role: str  # "fill" or "detail"
+    role: str  # "picture" (FIT), "fill" or "detail"
     aspect: float  # width / height of the window on the frame
     crop: Crop
     custom: bool  # set by the user (else chosen automatically)
+    rect: Box | None = None  # where the window is on the canvas
+    area: Box | None = None  # FIT: where a window of another shape would be centred
 
 
 class FramingView(BaseModel):
@@ -256,28 +271,56 @@ class FramingUpdate(BaseModel):
 
 
 def _framing_plan(
-    svc: FrameService, item: Item, orientation: Orientation
-) -> tuple[Plan, tuple[int, int]]:
+    svc: FrameService, item: Item, orientation: Orientation, automatic: bool = False
+) -> tuple[Plan, tuple[int, int], RenderSettings]:
     settings = svc.player.settings.model_copy(update={"orientation": orientation})
     render_settings = svc.player.render_settings(item, settings)
+    if automatic:  # as if nothing had been saved
+        layout = render_settings.layout.model_copy(
+            update={"crop": None, "details": None, "detail": None, "fit_crop": None}
+        )
+        render_settings = render_settings.model_copy(update={"layout": layout})
     img = load_image(svc.images.ensure_image(item))
     if svc.player.multi(item, settings):  # each photo cropped automatically to its window
-        return Plan(Fit.MULTI, canvas_size(orientation), []), img.size
-    return plan_for(img, render_settings.layout, caption=bool(render_settings.caption)), img.size
+        return Plan(Fit.MULTI, canvas_size(orientation), []), img.size, render_settings
+    plan = plan_for(img, render_settings.layout, caption=bool(render_settings.caption))
+    return plan, img.size, render_settings
+
+
+def _box(rect: tuple[int, int, int, int], canvas: tuple[int, int]) -> Box:
+    x, y, w, h = rect
+    cw, ch = canvas
+    return round(x / cw, 5), round(y / ch, 5), round(w / cw, 5), round(h / ch, 5)
 
 
 def _framing_view(
-    item: Item, orientation: Orientation, plan: Plan, size: tuple[int, int]
+    item: Item,
+    orientation: Orientation,
+    plan: Plan,
+    size: tuple[int, int],
+    render_settings: RenderSettings,
+    automatic: bool = False,
 ) -> FramingView:
     saved = item.framing.get(orientation.value) or Framing()
-    custom = {
+    custom = not automatic and {
         Fit.FILL: saved.fill is not None,
         Fit.DETAILS: saved.details is not None,
         Fit.DESCRIPTION: saved.detail is not None,
         Fit.FIT: saved.fit is not None,
     }.get(plan.fit, False)
+    area = None
+    if plan.fit == Fit.FIT:
+        margin, caption = render_settings.layout.margin, bool(render_settings.caption)
+        area = _box(fit_area(plan.canvas, margin, caption), plan.canvas)
     windows = [
-        FramingWindow(role=w.role, aspect=round(w.aspect, 4), crop=w.crop, custom=custom)
+        FramingWindow(
+            role=w.role,
+            aspect=round(w.aspect, 4),
+            crop=w.crop,
+            custom=custom,
+            rect=_box(w.rect, plan.canvas),
+            area=area if w.role == "picture" else None,
+        )
         for w in plan.windows
         if w.crop is not None
     ]
@@ -286,21 +329,28 @@ def _framing_view(
     )
 
 
-async def _plan_and_view(svc: FrameService, item: Item, orientation: Orientation) -> FramingView:
+async def _plan_and_view(
+    svc: FrameService, item: Item, orientation: Orientation, automatic: bool = False
+) -> FramingView:
     try:
-        plan, size = await run_in_threadpool(_framing_plan, svc, item, orientation)
+        plan, size, render_settings = await run_in_threadpool(
+            _framing_plan, svc, item, orientation, automatic
+        )
     except (httpx.HTTPError, OSError) as err:
         raise HTTPException(502, f"image unavailable: {err}") from err
-    return _framing_view(item, orientation, plan, size)
+    return _framing_view(item, orientation, plan, size, render_settings, automatic)
 
 
 @router.get("/library/items/{item_id}/framing", response_model=FramingView)
 async def get_framing(
-    item_id: str, svc: Svc, orientation: Orientation | None = None
+    item_id: str, svc: Svc, orientation: Orientation | None = None, automatic: bool = False
 ) -> FramingView:
-    """How the picture is cropped on the frame, and what can be adjusted."""
+    """How the picture is cropped on the frame, and what can be adjusted.
+    With ``automatic`` the crops the server would choose, ignoring saved ones
+    (nothing is changed: the app offers them before the user sends them)."""
     item = await _work(svc, item_id)
-    return await _plan_and_view(svc, item, orientation or svc.player.settings.orientation)
+    orientation = orientation or svc.player.settings.orientation
+    return await _plan_and_view(svc, item, orientation, automatic)
 
 
 @router.put("/library/items/{item_id}/framing", response_model=FramingView)

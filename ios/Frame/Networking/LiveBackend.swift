@@ -27,6 +27,7 @@ struct LiveBackend: FrameBackend {
     }
 
     func player() async throws -> PlayerView { try await get("/api/player") }
+    func progress() async throws -> DisplayProgress { try await get("/api/progress") }
     func next() async throws { try await send("/api/player/next", method: "POST") }
     func previous() async throws { try await send("/api/player/previous", method: "POST") }
 
@@ -73,11 +74,10 @@ struct LiveBackend: FrameBackend {
 
     func facets() async throws -> Facets { try await get("/api/library/facets") }
 
-    func framing(itemID: String, orientation: String) async throws -> FramingView {
-        try await get(
-            "/api/library/items/\(escape(itemID))/framing",
-            query: [URLQueryItem(name: "orientation", value: orientation)]
-        )
+    func framing(itemID: String, orientation: String, automatic: Bool) async throws -> FramingView {
+        var query = [URLQueryItem(name: "orientation", value: orientation)]
+        if automatic { query.append(URLQueryItem(name: "automatic", value: "true")) }
+        return try await get("/api/library/items/\(escape(itemID))/framing", query: query)
     }
 
     private struct FramingUpdate: Encodable {
@@ -253,8 +253,14 @@ struct LiveBackend: FrameBackend {
         switch image {
         case let .thumb(id): req = request("/api/library/items/\(escape(id))/thumb")
         case let .image(id): req = request("/api/library/items/\(escape(id))/image")
-        case let .framePreview(id, settings):
-            req = request("/api/library/items/\(escape(id))/preview", query: framingQuery(settings))
+        case let .framePreview(id, settings, framing):
+            var query = framingQuery(settings)
+            let encoder = Self.encoder()
+            encoder.outputFormatting = .sortedKeys
+            if let framing, let data = try? encoder.encode(framing) {
+                query.append(URLQueryItem(name: "framing", value: String(decoding: data, as: UTF8.self)))
+            }
+            req = request("/api/library/items/\(escape(id))/preview", query: query)
         case let .path(path): req = request(path)
         case let .url(url): req = URLRequest(url: url)
         }

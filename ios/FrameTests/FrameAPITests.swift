@@ -24,16 +24,34 @@ final class FrameAPITests: XCTestCase {
           "last_change_at": "2026-10-24T05:00:00+00:00",
           "next_change_at": "2026-10-25T05:00:00+00:00",
           "busy": false,
-          "last_error": null
+          "last_error": null,
+          "progress": {"stage": "downloading", "phase": "loading", "active": true,
+                       "title": "Under the Wave off Kanagawa", "fraction": 0.31, "seconds_left": 47,
+                       "started_at": "2026-10-24T05:00:00+00:00", "finished_at": null, "message": null}
         }
         """
         let view = try LiveBackend.decoder().decode(PlayerView.self, from: Data(json.utf8))
+        XCTAssertEqual(view.progress?.stage, "downloading")
+        XCTAssertEqual(view.progress?.phaseIndex, 1)
+        XCTAssertEqual(view.progress?.secondsLeft, 47)
+        XCTAssertEqual(view.progress?.timeLeftLabel, "ok. 47 s")
         XCTAssertEqual(view.playlist?.itemCount, 21)
         XCTAssertEqual(view.playlist?.rules.query, "woodblock")
         XCTAssertEqual(view.current?.previewUrl, "/api/previews/ABC.png")
         XCTAssertEqual(view.upcoming.first?.aspectRatio ?? 0, 1.5, accuracy: 0.001)
         XCTAssertEqual(view.hold?.forever, true)
         XCTAssertNotNil(When.schedule(view.nextChangeAt))
+    }
+
+    func testProgressPhasesAndLabels() {
+        var progress = DisplayProgress(stage: "refreshing", phase: "displaying", active: true,
+                                       title: "", fraction: 0.8, secondsLeft: 150)
+        XCTAssertEqual(progress.phaseIndex, 2)
+        XCTAssertEqual(progress.timeLeftLabel, "ok. 3 min")
+        progress = DisplayProgress(stage: "done", active: false, title: "", fraction: 1)
+        XCTAssertEqual(progress.phaseIndex, DisplayProgress.phases.count)
+        XCTAssertNil(progress.timeLeftLabel)
+        XCTAssertEqual(progress.stageLabel, "Obraz jest na ramce")
     }
 
     func testEncodesSettingsInSnakeCase() throws {
@@ -263,6 +281,22 @@ final class FrameAPITests: XCTestCase {
         let after = try await demo.player().current?.previewUrl
         XCTAssertNotEqual(current?.previewUrl, after)
 
+        // "Kadr automatyczny" is offered without forgetting the saved crop.
+        let auto = try await demo.framing(itemID: id, orientation: "landscape", automatic: true)
+        XCTAssertFalse(auto.windows.contains(where: \.custom))
+        XCTAssertEqual(auto.windows.map(\.crop), view.windows.map(\.crop))
+        let still = try await demo.framing(itemID: id, orientation: "landscape")
+        XCTAssertEqual(still.windows[0].crop.zoom, 3)
+
+        // The windows' places, to crop right on the preview: two apart, on the canvas.
+        let rects = try saved.windows.map { try XCTUnwrap($0.frame) }
+        let canvas = CGRect(x: 0, y: 0, width: 1, height: 1).insetBy(dx: -0.0001, dy: -0.0001)
+        XCTAssertTrue(rects.allSatisfy { canvas.contains($0) && $0.width > 0.05 && $0.height > 0.05 })
+        XCTAssertFalse(rects[0].intersects(rects[1].insetBy(dx: 0.001, dy: 0.001)))
+        for (window, rect) in zip(saved.windows, rects) {
+            XCTAssertEqual(rect.width * 1280 / (rect.height * 720), window.aspect, accuracy: 0.01)
+        }
+
         let reset = try await demo.resetFraming(itemID: id, orientation: "landscape")
         XCTAssertFalse(reset.windows.contains(where: \.custom))
 
@@ -275,6 +309,34 @@ final class FrameAPITests: XCTestCase {
         XCTAssertEqual(text.windows.count, 1)
         let one = try await demo.saveFraming(itemID: id, orientation: "landscape", crops: [Crop(x: 0.4, y: 0.6, zoom: 2)])
         XCTAssertEqual(one.windows.map(\.custom), [true])
+    }
+
+    func testFramingDraft() {
+        let window = FramingWindow(role: "picture", aspect: 0.667, crop: Crop(zoom: 1.04), custom: true,
+                                   rect: [0.3, 0.05, 0.4, 0.8], area: [0.05, 0.05, 0.9, 0.8])
+        let view = FramingView(orientation: "landscape", fit: "fit", width: 800, height: 1200, windows: [window])
+        var draft = FramingDraft(key: "a", view: view, saved: [window.crop], crops: [window.crop])
+        XCTAssertNil(draft.change)
+        XCTAssertNil(draft.trial)
+
+        draft.crops[0].x = 0.4  // moved: saved on sending, same window
+        XCTAssertEqual(draft.change, .save(orientation: "landscape", crops: draft.crops))
+        XCTAssertFalse(draft.reshaped)
+
+        draft.crops[0].aspect = 1  // a square window: the preview tries it first
+        XCTAssertTrue(draft.reshaped)
+        XCTAssertEqual(draft.trial, FramingCrops(fit: Crop(aspect: 1)))
+        XCTAssertEqual(draft.aspect(0), 1)
+
+        // Back to automatic: sending forgets the saved crop.
+        draft.automatic = [Crop()]
+        draft.crops = [Crop()]
+        XCTAssertEqual(draft.change, .reset(orientation: "landscape"))
+    }
+
+    func testChangesPlural() {
+        XCTAssertEqual([1, 2, 4, 5, 12, 22, 25].map(Names.changes),
+                       ["zmianę", "zmiany", "zmiany", "zmian", "zmian", "zmiany", "zmian"])
     }
 
     func testDemoFramingMatchesServerLayout() {

@@ -56,7 +56,9 @@ struct SendSheet: View {
                     .buttonStyle(PrimaryButtonStyle())
                     .disabled(imageData == nil || sending)
                     .opacity(imageData == nil ? 0.5 : 1)
-                    if let status {
+                    if sending, let progress = model.displayProgress {
+                        DisplayProgressBar(progress: progress)
+                    } else if let status {
                         Text(status)
                             .font(.footnote)
                             .foregroundStyle(Theme.inkSoft)
@@ -88,8 +90,7 @@ struct SendSheet: View {
                         .aspectRatio(contentMode: .fit)
                         .padding(14)
                         .background(Theme.matWhite)
-                        .padding(6)
-                        .background(Theme.frameWood)
+                        .whiteFrame(6)
                         .shadow(color: .black.opacity(0.2), radius: 14, y: 10)
                 } else {
                     VStack(spacing: 12) {
@@ -116,14 +117,15 @@ struct SendSheet: View {
         sending = true
         defer { sending = false }
         status = "Przygotowuję obraz dla e-papieru i budzę ramkę…"
+        // The upload answers once the panel has the picture; the bar shows the way there.
+        model.trackProgress(expectingStart: true)
         do {
             let result = try await model.backend.sendPhoto(
                 PhotoUpload.jpeg(imageData), title: title, preset: preset, hold: hold
             )
             if result.fetched == true || model.backend.isDemo {
-                model.toast = "Zdjęcie jest na ramce"
                 await model.refreshPlayer()
-                dismiss()
+                dismiss()  // the bar goes on under the picture while the panel redraws
             } else {
                 status = result.message ?? "Wysłano — ramka pobierze obraz po wybudzeniu."
             }

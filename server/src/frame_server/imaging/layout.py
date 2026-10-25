@@ -243,6 +243,14 @@ def _fitted(aspect: float, avail_w: int, avail_h: int) -> tuple[int, int]:
     return avail_w, max(1, round(avail_w / aspect))
 
 
+def fit_area(canvas: tuple[int, int], margin: float, caption: bool) -> Rect:
+    """FIT: where the mat window may go; it is centred in it at any shape."""
+    cw, ch = canvas
+    pad = round(min(cw, ch) * margin)
+    bottom = max(pad, caption_band(canvas)) if caption else pad
+    return pad, pad, cw - 2 * pad, ch - pad - bottom
+
+
 def _plan_fit(
     size: tuple[int, int],
     canvas: tuple[int, int],
@@ -251,12 +259,10 @@ def _plan_fit(
     crop: Crop | None = None,
 ) -> Plan:
     """The picture in one mat window: whole, or cropped to any shape."""
-    (iw, ih), (cw, ch) = size, canvas
+    (iw, ih), (cw, _) = size, canvas
     chosen = crop or WHOLE
     aspect = chosen.aspect or iw / ih
-    pad = round(min(cw, ch) * margin)
-    bottom = max(pad, caption_band(canvas)) if caption else pad
-    avail_w, avail_h = cw - 2 * pad, ch - pad - bottom
+    pad, _, avail_w, avail_h = fit_area(canvas, margin, caption)
     w, h = _fitted(aspect, avail_w, avail_h)
     x, y = (cw - w) // 2, pad + (avail_h - h) // 2
     at = (x + w, y + h + round(caption_size(canvas) * 0.6), w) if caption else None

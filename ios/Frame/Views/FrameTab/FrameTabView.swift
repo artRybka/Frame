@@ -65,7 +65,8 @@ struct FrameTabView: View {
         HStack(spacing: 18) {
             ZStack {
                 RoundedRectangle(cornerRadius: 3)
-                    .fill(Theme.frameWood)
+                    .fill(Theme.moulding)
+                    .overlay(RoundedRectangle(cornerRadius: 3).strokeBorder(Theme.mouldingEdge, lineWidth: 0.5))
                     .frame(width: 104, height: model.isPortrait ? 150 : 66)
                 Group {
                     if let preview = model.player?.current?.previewUrl {
@@ -604,8 +605,7 @@ struct FitOption: View {
                     miniature
                 }
                 .frame(height: 44)
-                .padding(3)
-                .background(Theme.frameWood)
+                .whiteFrame(3, corner: 1)
                 Text(title)
                     .font(.caption2.weight(.medium))
                     .lineLimit(1)

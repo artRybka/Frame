@@ -25,6 +25,13 @@ actor DemoBackend: FrameBackend {
     private var history: [String] = []
     private var currentID: String?
     private var holdValue: Hold?
+    /// The picture "on its way" to the pretend frame, for the progress bar.
+    private var run: (title: String, start: Date)?
+    /// Demo stages: 14 s in all, where a real panel takes about a minute.
+    private static let runStages: [(stage: String, phase: String, seconds: Double)] = [
+        ("rendering", "processing", 2.5), ("sending", "loading", 1), ("downloading", "loading", 1.5),
+        ("refreshing", "displaying", 9),
+    ]
     private var demoJobs: [String: JobStatus] = [:]
     private struct ImageURLs: Sendable {
         let thumb: URL?
@@ -205,7 +212,38 @@ actor DemoBackend: FrameBackend {
             hold: holdValue,
             lastChangeAt: ISO8601DateFormatter().string(from: .now.addingTimeInterval(-5400)),
             nextChangeAt: next.map { ISO8601DateFormatter().string(from: $0) },
-            busy: false, lastError: nil
+            busy: runElapsed.map { $0 < 5 } ?? false, lastError: nil, progress: try await progress()
+        )
+    }
+
+    private var runElapsed: Double? { run.map { Date.now.timeIntervalSince($0.start) } }
+
+    private func startRun(_ title: String) {
+        run = (title: title, start: Date.now)
+    }
+
+    private func startRun(itemID: String?) {
+        startRun(items.first { $0.id == itemID }?.title ?? "")
+    }
+
+    func progress() async throws -> DisplayProgress {
+        guard let run, let elapsed = runElapsed else { return .idle }
+        let stamp = ISO8601DateFormatter().string(from: run.start)
+        let total = Self.runStages.reduce(0) { $0 + $1.seconds }
+        var end = 0.0
+        for step in Self.runStages {
+            end += step.seconds
+            if elapsed < end {
+                return DisplayProgress(
+                    stage: step.stage, phase: step.phase, active: true, title: run.title,
+                    fraction: elapsed / total, secondsLeft: Int((total - elapsed).rounded(.up)),
+                    startedAt: stamp
+                )
+            }
+        }
+        return DisplayProgress(
+            stage: "done", active: false, title: run.title, fraction: 1, startedAt: stamp,
+            finishedAt: ISO8601DateFormatter().string(from: run.start.addingTimeInterval(total))
         )
     }
 
@@ -214,6 +252,7 @@ actor DemoBackend: FrameBackend {
         if let currentID { history.append(currentID) }
         currentID = queue.removeFirst()
         holdValue = nil
+        startRun(itemID: currentID)
     }
 
     func previous() async throws {
@@ -221,6 +260,7 @@ actor DemoBackend: FrameBackend {
         if let currentID { queue.insert(currentID, at: 0) }
         currentID = previous
         holdValue = nil
+        startRun(itemID: currentID)
     }
 
     func hold(_ spec: HoldSpec) async throws -> PlayerView {
@@ -278,20 +318,25 @@ actor DemoBackend: FrameBackend {
         currentID = itemID
         queue.removeAll { $0 == itemID }
         _ = try await self.hold(hold)
+        startRun(itemID: itemID)
     }
 
     // MARK: Framing
 
-    func framing(itemID: String, orientation: String) async throws -> FramingView {
+    func framing(itemID: String, orientation: String, automatic: Bool) async throws -> FramingView {
         guard let item = items.first(where: { $0.id == itemID }),
               let size = DemoFraming.pixelSize(itemID)
         else { throw BackendError.notFound }
         let pres = item.kind == .photo ? settingsValue.photo : settingsValue.art
-        let custom = shared.crops[itemID]?[orientation]
+        let custom = automatic ? nil : shared.crops[itemID]?[orientation]
+        let canvas = DemoFraming.canvas(orientation)
         let plan = DemoFraming.plan(
-            size, canvas: DemoFraming.canvas(orientation), presentation: pres,
-            caption: pres.label, crops: crops(itemID, orientation)
+            size, canvas: canvas, presentation: pres, caption: pres.label,
+            crops: automatic ? autoCrops[itemID]?[orientation].map { FramingCrops(fill: $0.fill, details: $0.details, detail: $0.detail) }
+                : crops(itemID, orientation)
         )
+        let area = plan.fit == "fit"
+            ? Self.unit(DemoFraming.fitArea(canvas, margin: pres.margin, caption: pres.label), canvas) : nil
         let isCustom = switch plan.fit {
         case "fill": custom?.fill != nil
         case "details": custom?.details != nil
@@ -301,9 +346,17 @@ actor DemoBackend: FrameBackend {
         }
         let windows = plan.windows.compactMap { window -> FramingWindow? in
             guard let crop = window.crop else { return nil }
-            return FramingWindow(role: window.role, aspect: window.rect.width / window.rect.height, crop: crop, custom: isCustom)
+            return FramingWindow(
+                role: window.role, aspect: window.rect.width / window.rect.height, crop: crop, custom: isCustom,
+                rect: Self.unit(window.rect, canvas), area: window.role == "picture" ? area : nil
+            )
         }
         return FramingView(orientation: orientation, fit: plan.fit, width: Int(size.width), height: Int(size.height), windows: windows)
+    }
+
+    /// A rect on the canvas as fractions of it, as the server sends it.
+    private static func unit(_ rect: CGRect, _ canvas: CGSize) -> [Double] {
+        [rect.minX / canvas.width, rect.minY / canvas.height, rect.width / canvas.width, rect.height / canvas.height]
     }
 
     func saveFraming(itemID: String, orientation: String, crops: [Crop]) async throws -> FramingView {
@@ -318,6 +371,7 @@ actor DemoBackend: FrameBackend {
         }
         shared.crops[itemID, default: [:]][orientation] = saved
         framingRevision += 1
+        if itemID == currentID { startRun(itemID: itemID) }
         return try await framing(itemID: itemID, orientation: orientation)
     }
 
@@ -333,6 +387,7 @@ actor DemoBackend: FrameBackend {
         }
         shared.crops[itemID, default: [:]][orientation] = saved
         framingRevision += 1
+        if itemID == currentID { startRun(itemID: itemID) }
         return try await framing(itemID: itemID, orientation: orientation)
     }
 
@@ -420,6 +475,7 @@ actor DemoBackend: FrameBackend {
     func settings() async throws -> FrameSettings { settingsValue }
 
     func saveSettings(_ settings: FrameSettings) async throws -> FrameSettings {
+        if settings.presentationKey != settingsValue.presentationKey { startRun(itemID: currentID) }
         settingsValue = settings
         shared.current = settings
         return settings
@@ -592,7 +648,8 @@ actor DemoBackend: FrameBackend {
     }
 
     func sendPhoto(_ data: Data, title: String, preset: String, hold: HoldSpec) async throws -> DisplayResponse {
-        try await Task.sleep(for: .seconds(1.5))
+        startRun(title)
+        try await Task.sleep(for: .seconds(5))  // until the pretend panel has the picture
         return DisplayResponse(pushed: true, fetched: true, message: nil)
     }
 
@@ -606,8 +663,8 @@ actor DemoBackend: FrameBackend {
         switch image {
         case let .thumb(id): url = Self.bundled(id) ?? imageURLs[id]?.thumb
         case let .image(id): url = Self.bundled(id) ?? imageURLs[id]?.image ?? imageURLs[id]?.thumb
-        case let .framePreview(id, settings):
-            url = framed(id, settings) ?? Self.bundled(id) ?? imageURLs[id]?.thumb
+        case let .framePreview(id, settings, framing):
+            url = framed(id, settings, trying: framing) ?? Self.bundled(id) ?? imageURLs[id]?.thumb
         case let .path(path):
             // "/demo/<id>?<presentation key>"; the key only makes the path change.
             let id = String(path.dropFirst("/demo/".count).prefix { $0 != "?" })
@@ -617,10 +674,18 @@ actor DemoBackend: FrameBackend {
         return url.map { URLRequest(url: $0, timeoutInterval: 60) }
     }
 
-    private nonisolated func framed(_ id: String, _ settings: FrameSettings? = nil) -> URL? {
+    private nonisolated func framed(_ id: String, _ settings: FrameSettings? = nil, trying: FramingCrops? = nil) -> URL? {
         let settings = settings ?? shared.current
+        var chosen = crops(id, settings.orientation)
+        if let trying {  // as the server: the crops given replace the saved ones
+            let saved = chosen ?? FramingCrops()
+            chosen = FramingCrops(
+                fill: trying.fill ?? saved.fill, details: trying.details ?? saved.details,
+                detail: trying.detail ?? saved.detail, fit: trying.fit ?? saved.fit
+            )
+        }
         return (arts[id] ?? shared.uploads[id]).flatMap {
-            DemoFraming.framed(id, art: $0, settings: settings, crops: crops(id, settings.orientation))
+            DemoFraming.framed(id, art: $0, settings: settings, crops: chosen)
         }
     }
 

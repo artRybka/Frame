@@ -5,8 +5,9 @@ enum ImageRef: Hashable, Sendable {
     case thumb(String)  // library item id
     case image(String)  // display-size original
     /// Simulated look on the e-paper panel, framed with `settings` (saved or
-    /// still being edited); nil means the server's saved settings.
-    case framePreview(String, settings: FrameSettings? = nil)
+    /// still being edited); nil means the server's saved settings. `framing`
+    /// tries crops not saved yet.
+    case framePreview(String, settings: FrameSettings? = nil, framing: FramingCrops? = nil)
     case path(String)  // server-relative path, e.g. /api/previews/<id>.png
     case url(URL)  // public URL (museum CDN)
 }
@@ -19,6 +20,8 @@ protocol FrameBackend: Sendable {
     func health() async throws -> Health
     func status(refresh: Bool) async throws -> StatusView
     func player() async throws -> PlayerView
+    /// The picture on its way to the frame; polled while one is.
+    func progress() async throws -> DisplayProgress
     func next() async throws
     func previous() async throws
     func hold(_ spec: HoldSpec) async throws -> PlayerView
@@ -31,8 +34,9 @@ protocol FrameBackend: Sendable {
     func show(itemID: String, hold: HoldSpec) async throws
     func facets() async throws -> Facets
 
-    /// How a picture is cropped for `orientation`, and what can be adjusted.
-    func framing(itemID: String, orientation: String) async throws -> FramingView
+    /// How a picture is cropped for `orientation`, and what can be adjusted;
+    /// with `automatic` the crops the server would choose, ignoring saved ones.
+    func framing(itemID: String, orientation: String, automatic: Bool) async throws -> FramingView
     func saveFraming(itemID: String, orientation: String, crops: [Crop]) async throws -> FramingView
     func resetFraming(itemID: String, orientation: String) async throws -> FramingView
 
@@ -81,6 +85,12 @@ protocol FrameBackend: Sendable {
     func sleep() async throws
 
     func request(for image: ImageRef) -> URLRequest?
+}
+
+extension FrameBackend {
+    func framing(itemID: String, orientation: String) async throws -> FramingView {
+        try await framing(itemID: itemID, orientation: orientation, automatic: false)
+    }
 }
 
 enum BackendError: LocalizedError {

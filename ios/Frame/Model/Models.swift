@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 
 // Mirrors the server models (server/src/frame_server/library/models.py,
@@ -275,6 +276,59 @@ struct PlayerView: Codable, Sendable {
     var nextChangeAt: String?
     var busy: Bool
     var lastError: String?
+    var progress: DisplayProgress?  // nil from older servers
+}
+
+/// A picture on its way to the frame (GET /api/progress): processing on the
+/// server, loading onto the panel, the panel redrawing its e-paper. The
+/// redraw is estimated: the panel does not say when it is done.
+struct DisplayProgress: Codable, Hashable, Sendable {
+    var stage: String
+    var phase: String?
+    var active: Bool
+    var title: String
+    var fraction: Double
+    var secondsLeft: Int?
+    var startedAt: String?
+    var finishedAt: String?
+    var message: String?
+
+    static let idle = DisplayProgress(stage: "idle", active: false, title: "", fraction: 0)
+
+    /// The three parts of the bar, in order.
+    static let phases: [(key: String, label: String)] = [
+        ("processing", "Przetwarzanie"), ("loading", "Ładowanie"), ("displaying", "Wyświetlanie"),
+    ]
+
+    var isDone: Bool { stage == "done" }
+    var isFailed: Bool { stage == "failed" }
+    var isWaiting: Bool { stage == "waiting" }
+
+    /// Index of the current part of the bar; past the last one when done.
+    var phaseIndex: Int? {
+        if isDone { return Self.phases.count }
+        return phase.flatMap { key in Self.phases.firstIndex { $0.key == key } }
+    }
+
+    var stageLabel: String {
+        switch stage {
+        case "rendering": "Przygotowuję obraz dla e-papieru"
+        case "sending": "Łączę się z ramką"
+        case "waking": "Budzę ramkę"
+        case "downloading": "Ramka pobiera obraz"
+        case "refreshing": "Ramka odświeża ekran"
+        case "done": "Obraz jest na ramce"
+        case "waiting": "Obraz poczeka, aż ramka się obudzi"
+        case "failed": "Nie udało się wysłać obrazu"
+        default: ""
+        }
+    }
+
+    var timeLeftLabel: String? {
+        guard active, let left = secondsLeft, left > 1 else { return nil }
+        if left < 90 { return "ok. \(left) s" }
+        return "ok. \((left + 30) / 60) min"
+    }
 }
 
 struct DeviceStatus: Codable, Hashable, Sendable {
@@ -581,6 +635,46 @@ struct FramingWindow: Codable, Hashable, Sendable {
     let aspect: Double
     var crop: Crop
     let custom: Bool
+    /// Where the window is on the canvas: x, y, width, height as fractions
+    /// of it. Nil from older servers.
+    var rect: [Double]?
+    /// Passe-partout: where a window of another shape would be centred.
+    var area: [Double]?
+
+    var frame: CGRect? { Self.unit(rect) }
+    var areaFrame: CGRect? { Self.unit(area) }
+
+    private static func unit(_ values: [Double]?) -> CGRect? {
+        guard let values, values.count == 4 else { return nil }
+        return CGRect(x: values[0], y: values[1], width: values[2], height: values[3])
+    }
+}
+
+/// Crops for one orientation, by mode (server: library.models.Framing). Sent
+/// with a preview to try crops before they are saved.
+struct FramingCrops: Codable, Hashable, Sendable {
+    var fill: Crop?
+    var details: [Crop]?
+    var detail: Crop?  // "description": its one close-up
+    var fit: Crop?  // "fit": the part shown and the window's shape
+
+    /// `crops` as edited in a framing view of resolved mode `mode`.
+    init(mode: String, crops: [Crop]) {
+        switch mode {
+        case "fill": fill = crops.first
+        case "details": details = crops.count == 2 ? crops : nil
+        case "description": detail = crops.first
+        case "fit": fit = crops.first
+        default: break
+        }
+    }
+
+    init(fill: Crop? = nil, details: [Crop]? = nil, detail: Crop? = nil, fit: Crop? = nil) {
+        self.fill = fill
+        self.details = details
+        self.detail = detail
+        self.fit = fit
+    }
 }
 
 /// `GET /api/library/items/{id}/framing`

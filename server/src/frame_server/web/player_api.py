@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from .. import __version__
 from ..library import Item, ItemSummary, PlaylistSummary
 from ..player import Hold, hold_from
+from ..progress import DisplayProgress
 from ..schedule import FrameSettings
 from ..service import FrameService
 from ..status import DeviceStatus
@@ -40,6 +41,7 @@ class PlayerView(BaseModel):
     next_change_at: str | None
     busy: bool
     last_error: str | None
+    progress: DisplayProgress
 
 
 class HoldRequest(BaseModel):
@@ -90,6 +92,7 @@ def _player_view(svc: FrameService) -> PlayerView:
         next_change_at=state.next_change_at,
         busy=player.busy,
         last_error=state.last_error,
+        progress=svc.progress.view(),
     )
 
 

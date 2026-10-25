@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import io
 import logging
-from collections.abc import AsyncIterator, Coroutine
+from collections.abc import AsyncIterator, Callable, Coroutine
 from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
@@ -22,6 +22,7 @@ from .library import ImageCache, Importer, Library
 from .library.museums import client as museum_client
 from .player import Player
 from .power import PowerManager
+from .progress import ProgressTracker, Stage
 from .status import StatusMonitor
 from .store import ContentInfo, ContentStore
 
@@ -45,6 +46,7 @@ class Panel:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self._lock = asyncio.Lock()
+        self.on_wake: Callable[[], None] | None = None  # e.g. to show "waking" in the app
 
     def client(self) -> MdcClient:
         host, pin = self.settings.require_device()
@@ -75,8 +77,11 @@ class Panel:
             try:
                 await client.connect(attempts=2, retry_delay=5)
             except MdcConnectionError:
-                if not await self.wake(seconds=15):
+                if not self.settings.device_mac:
                     raise
+                if self.on_wake:
+                    self.on_wake()
+                await self.wake(seconds=15)
                 log.info("panel unreachable, sent Wake-on-LAN")
                 await client.connect(attempts=4, retry_delay=8)
             try:
@@ -102,6 +107,8 @@ class FrameService:
         self.settings = settings
         self.store = ContentStore(settings.data_dir)
         self.panel = Panel(settings)
+        self.progress = ProgressTracker()
+        self.panel.on_wake = lambda: self.progress.advance(Stage.WAKING)
         self.palette: Palette = self._initial_palette()
         self.library = Library(settings.data_dir / "library.db")
         self.images = ImageCache(settings.data_dir / "library", museum_client)
@@ -217,11 +224,16 @@ class FrameService:
         if content is None:
             raise RuntimeError("nothing published yet")
         url = self.content_url(content.file_id)
+        progress = self.progress
+        if not progress.active:
+            progress.begin(content.title, render=False)
+        progress.advance(Stage.SENDING)
         if self.power.deep_asleep(datetime.now(UTC)):
             # Wi-Fi off until the alarm: the picture goes out when it rings.
             self.power.mark_pending(True)
             wakes = self.power.state.timer or "the end of quiet hours"
             message = f"panel asleep until {wakes}, the picture will follow"
+            progress.finish(Stage.WAITING, message)
             return PushOutcome(content, False, False, url, message)
         if wait:
             self.store.expect_fetch(content.file_id)
@@ -231,14 +243,23 @@ class FrameService:
             self.store.cancel_fetch(content.file_id)
             self.power.mark_pending(True)
             message = f"panel unreachable ({err}), the picture waits for it to wake"
+            progress.finish(Stage.WAITING, message)
             return PushOutcome(content, False, False, url, message)
-        except BaseException:
+        except BaseException as err:
             self.store.cancel_fetch(content.file_id)
+            progress.finish(Stage.FAILED, str(err))
             raise
         self.power.mark_pending(False)
+        progress.advance(Stage.DOWNLOADING)
         fetched = await self.store.wait_for_fetch(content.file_id, wait) if wait else False
         self.status.note_push(fetched)
         message = "" if fetched or not wait else "panel did not download the image in time"
+        if fetched:
+            progress.advance(Stage.REFRESHING)
+        elif wait:
+            progress.finish(Stage.FAILED, message)
+        else:
+            progress.finish(Stage.DONE, "sent, not waiting for the download")
         return PushOutcome(content, pushed=True, fetched=fetched, content_url=url, message=message)
 
     def ensure_initial_content(self) -> None:
