@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.7.0
+
+- Adres IP, PIN i MAC ekranu ustawiane w aplikacji (Ramka → Połączenie
+  z ekranem). Serwer trzyma je w bazie (kv `panel_config`), mają
+  pierwszeństwo przed `frame.env` i opcjami add-onu i przetrwają restart.
+  Nowe `GET`/`PUT`/`DELETE /api/device/config`; PIN nigdy nie wraca do
+  aplikacji, tylko `pin_set`. Po zapisie aplikacja od razu sprawdza, czy
+  ekran odpowiada (albo odrzuca PIN).
+
+- Muzea bez zwykłych zdjęć. Wikimedia Commons szuka tylko plików
+  opisanych jako dzieła sztuki i pomija pliki z kategorii zdjęć
+  użytkowników; fotografie z muzeów (odbitki żelatynowo-srebrowe,
+  albuminy, dagerotypy…) nie trafiają do wyszukiwania, losowania ani
+  katalogu, a już pobrane znikają jednorazowo razem z rękopisami.
+  Openverse szuka tylko w kategoriach dzieł i ilustracji.
+
+- „+” przy wyszukiwaniu (Muzea i edytor playlisty) otwiera style,
+  tematy, okresy i techniki do zaznaczenia, więc do stylu można dodać
+  temat.
+
 ## 0.6.0
 
 - Nowsze dzieła legalnie. Domena publiczna liczona także według prawa UE
