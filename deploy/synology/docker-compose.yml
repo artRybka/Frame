@@ -3,6 +3,9 @@
 services:
   frame:
     image: ghcr.io/artrybka/frame:latest
+    # Pull the image on every start, so Container Manager's "Build" picks up
+    # a newly published `latest` without deleting the old image first.
+    pull_policy: always
     container_name: frame
     restart: unless-stopped
     # Host network: the panel downloads from <NAS IP>:8099 and Wake-on-LAN
