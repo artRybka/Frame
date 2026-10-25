@@ -37,17 +37,20 @@ wysyłamy komend szybciej niż co ~0,3 s.
 |---|---|---|---|
 | `0x0B` | – | numer seryjny | potwierdzone (społeczność) |
 | `0x0E` | – | wersja oprogramowania | potwierdzone |
-| `0x10` | – | model | ? |
+| `0x10` | – | model: kod `02 7a 01`, nie tekst | odczytane (E1) |
 | `0x11` | `00`/`01` | zasilanie wył./wł. (odczyt NAK) | potwierdzone |
-| `0x1B` | `73` | stan baterii: `payload[4]` = poziom %, reszta bajtów sporna | częściowo (E1) |
-| `0x25` | ? | on timer | ? (E9) |
+| `0x1B` | `73` | stan baterii: `payload[4]` = poziom %, `payload[6]` = zasilanie USB-C (`02` podłączone, `00` odłączone); reszta (`00 01 01`, `02`) bez zmian | częściowo (E1) |
+| `0x25` | `en repeat hh mm 01` | on-timer: ekran sam budzi się o hh:mm (repeat `01` raz, `02` codziennie); odczyt `00` = wyłączony. Sposób budzenia na baterii, patrz [WAKE.md](WAKE.md) | społeczność, u nas E13 |
 | `0x67` | – | nazwa urządzenia | potwierdzone |
-| `0xA7` | ? | zegar | ? |
+| `0xA7` | – | zegar: dzień, godzina 1–12, minuta, miesiąc, rok (2 bajty), `01` = AM (np. `19 0c 00 0a 07 ea 01` = 25.10.2026 00:00) | odczytane (E1) |
 | `0xB5` | `00`/`01` | network standby (nasłuch Wi-Fi w uśpieniu, potrzebny do WoL) | potwierdzone |
 | `0xC7` | `53 80 len url` | **content download**: ekran pobiera manifest z `url` | potwierdzone |
 
-Wake-on-LAN: standardowy magic packet (UDP :9). Wysyłamy na 255.255.255.255
-i na broadcast podsieci /24. Działa tylko przy włączonym network standby.
+Wake-on-LAN: standardowy magic packet (UDP :9 i :7). Wysyłamy na 255.255.255.255,
+na broadcast podsieci /24 i unicastem na adres ekranu. Działa tylko przy włączonym
+network standby, a według instrukcji Samsunga (EM32DX-A) tylko w sieci Wi-Fi 2,4 GHz.
+**E8: przez Wi-Fi nie obudził ekranu uśpionego na baterii** (firmware 1130.7); budzi go
+krótkie naciśnięcie przycisku. Więcej w [WAKE.md](WAKE.md).
 
 ## Treść: manifest `content.json`
 
@@ -75,10 +78,14 @@ Format naśladuje to, co publikuje aplikacja Samsung E-Paper na iOS
 
 Uwagi:
 
+- Zapytania ekranu (E2): brak User-Agenta, tylko `Accept: */*`, bez `Range` i `If-Modified-Since`. Pobiera `content.json` ok. 0,25 s po `0xC7`, obraz zaraz po nim.
+- Obraz (E3): PNG i JPEG działają, także JPEG 13 MB. Inna rozdzielczość jest wpasowywana w 2560×1440 z zachowaniem proporcji (pion 1440×2560 = wąski pas z szarymi bokami, bez obracania). Piksele 2560×1440 są pokazywane 1:1 (E5). Obraz spoza 6 farb ekran sam ditheruje szumem w stylu dyfuzji błędu.
+
 - Ukośniki są escapowane (`\/`), tak jak robi to aplikacja Samsunga. Robimy to samo na wszelki wypadek.
 - Znaczenie `duration` i to, czy kilka pozycji lub wpisów `schedule` tworzy playlistę, sprawdza **E6**.
 - Ekran **zapamiętuje URL** i pobiera go ponownie później. Odpowiedź 404 kończy się komunikatem „Configuration error” na ekranie, dlatego nasz serwer zawsze serwuje bieżącą treść (także po restarcie) i ma treść zastępczą od pierwszego uruchomienia.
 - Do URL dodajemy `?v=<file_id>`, żeby każda wysyłka miała inny adres. Serwer ignoruje ten parametr.
+- Ekran raportuje postęp pobierania zapytaniami `POST /content-transfer-progress` na **główny** adres serwera (nie pod `/panel/`). Zaobserwowane 2026-10-24 przy błędnym `image_url`: kilka raportów w ciągu minuty, obrazu nie pobrał. Treść raportu nie jest jeszcze znana; serwer zapisuje ją w logu (`panel progress report: …`) i odpowiada 200.
 
 ## Tizen / VXT (na później)
 

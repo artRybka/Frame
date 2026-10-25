@@ -14,7 +14,7 @@ from PIL import Image
 
 from .config import Settings
 from .device import MdcClient, MdcConnectionError, wol
-from .imaging import Palette, RenderSettings, get_palette, render
+from .imaging import Palette, RenderSettings, get_palette, render, render_multi
 from .imaging.pipeline import encode_image
 from .library import ImageCache, Importer, Job, Library
 from .library.icloud import sync_album
@@ -91,7 +91,12 @@ class FrameService:
         self.palette: Palette = self._initial_palette()
         self.library = Library(settings.data_dir / "library.db")
         self.images = ImageCache(settings.data_dir / "library", museum_client)
-        self.importer = Importer(self.library, self.images, self.palette)
+        self.importer = Importer(
+            self.library,
+            self.images,
+            self.palette,
+            private_use=lambda: self.player.settings.private_use,
+        )
         self.status = StatusMonitor(self.panel)
         self.player = Player(self)
 
@@ -152,7 +157,7 @@ class FrameService:
 
     def prepare(
         self,
-        image: bytes,
+        image: bytes | list[bytes],
         render_settings: RenderSettings | None,
         *,
         raw: bool = False,
@@ -161,9 +166,13 @@ class FrameService:
         description: str = "",
         source: str = "",
         extra: dict[str, object] | None = None,
+        seed: str = "",
     ) -> ContentInfo:
-        """Render (or pass through untouched with ``raw``) and publish."""
-        if raw:
+        """Render (or pass through untouched with ``raw``) and publish.
+
+        Several images are one board of photos (MULTI); ``seed`` keeps its
+        automatic grid the same on a redraw."""
+        if raw and not isinstance(image, list):
             img = Image.open(io.BytesIO(image))
             ext = "png" if img.format == "PNG" else "jpg"
             if img.format not in ("PNG", "JPEG"):
@@ -181,7 +190,10 @@ class FrameService:
             )
 
         settings = render_settings or RenderSettings()
-        result = render(image, settings, self.palette)
+        if isinstance(image, list):
+            result = render_multi(image, settings, self.palette, seed=seed)
+        else:
+            result = render(image, settings, self.palette)
         data, ext = result.encode(fmt)  # type: ignore[arg-type]
         preview = result.preview_image()
         preview.thumbnail((PREVIEW_MAX, PREVIEW_MAX))

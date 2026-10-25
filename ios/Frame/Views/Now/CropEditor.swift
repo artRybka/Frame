@@ -163,10 +163,14 @@ struct CropEditorSheet: View {
     }
 
     private var wholePicture: some View {
-        Card {
-            Label("Widać cały obraz", systemImage: "rectangle.inset.filled")
+        let multi = view?.fit == "multi"
+        return Card {
+            Label(multi ? "Kilka zdjęć na planszy" : "Widać cały obraz",
+                  systemImage: multi ? "square.grid.2x2" : "rectangle.inset.filled")
                 .font(.headline)
-            Text("Ten serwer nie pozwala jeszcze kadrować obrazu w passe-partout. Kadr ustawisz w trybach „Wypełnij”, „Detale” i „Opis” (Ramka → Prezentacja).")
+            Text(multi
+                 ? "W trybie Multi każde zdjęcie jest przycinane do swojego okienka automatycznie. Kadr ustawisz w trybach „Passe-partout” i „Wypełnij” (Ramka → Prezentacja)."
+                 : "Ten serwer nie pozwala jeszcze kadrować obrazu w passe-partout. Kadr ustawisz w trybach „Wypełnij”, „Detale” i „Opis” (Ramka → Prezentacja).")
                 .font(.callout)
                 .foregroundStyle(Theme.inkSoft)
                 .fixedSize(horizontal: false, vertical: true)

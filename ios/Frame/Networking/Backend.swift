@@ -9,10 +9,6 @@ enum ImageRef: Hashable, Sendable {
     case framePreview(String, settings: FrameSettings? = nil)
     case path(String)  // server-relative path, e.g. /api/previews/<id>.png
     case url(URL)  // public URL (museum CDN)
-    /// A library item rendered with a measured, not yet applied palette.
-    case calibrationPreview(candidate: String, item: String)
-    /// The straightened photo of the chart with the measured areas marked.
-    case calibrationChart(candidate: String)
 }
 
 /// Everything the app needs from the frame server. Implemented by the live
@@ -54,17 +50,17 @@ protocol FrameBackend: Sendable {
     func museums() async throws -> [Museum]
     func searchMuseum(source: String, query: String, page: Int) async throws -> RemotePage
     func importArtwork(source: String, sourceID: String) async throws -> Item
+    /// Imports up to `limit` search results in the background; returns the job id.
+    func importSearch(source: String, query: String, limit: Int) async throws -> String
+    func packs() async throws -> [LibraryPack]
+    /// Starts (or joins) a pack's import; returns the job id.
+    func importPack(key: String) async throws -> String
+    /// Adds random works by period, style and kind; returns the job id.
+    func drawRandom(_ request: DrawRequest) async throws -> String
+    func job(id: String) async throws -> JobStatus
 
     func album() async throws -> AlbumInfo
     func syncAlbum() async throws
-
-    func calibration() async throws -> CalibrationInfo
-    func showCalibrationChart() async throws
-    /// `corners`: the panel's corners in the photo (TL, TR, BR, BL), 0–1.
-    func measureCalibration(photo: Data, corners: [CGPoint]) async throws -> CalibrationResult
-    func applyCalibration(candidateID: String) async throws -> CalibrationInfo
-    func cancelCalibration() async throws
-    func resetCalibration() async throws -> CalibrationInfo
 
     func sendPhoto(_ data: Data, title: String, preset: String, hold: HoldSpec) async throws
         -> DisplayResponse

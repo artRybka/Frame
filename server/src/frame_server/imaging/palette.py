@@ -134,10 +134,9 @@ class Palette:
         )
 
 
-# Starting point until the EM32DX itself is calibrated (Etap 1). These are
-# measurements of smaller E Ink Spectra 6 panels published with
-# aitjcize/epaper-image-convert (MIT); the EM32DX uses the same ink system
-# but its front light/laminate may shift the values.
+# Measurements of smaller E Ink Spectra 6 panels published with
+# aitjcize/epaper-image-convert (MIT). Still the reference that calibration
+# normalises white against, so the scale of every palette stays comparable.
 SPECTRA6 = Palette(
     name="spectra6-reference",
     source="aitjcize/epaper-image-convert Spectra 6 measured palette",
@@ -159,12 +158,28 @@ SPECTRA6_THEORETICAL = Palette(
     colors=tuple(PaletteColor(c.name, c.device, c.device) for c in SPECTRA6.colors),
 )
 
-BUILTIN = {p.name: p for p in (SPECTRA6, SPECTRA6_THEORETICAL)}
+# The EM32DX itself, measured from a photo of the `palette` chart under a
+# daylight lamp (experiment E5, firmware S-RSEDWWC-1130.7). Its black is bluish
+# and its yellow darker than the reference panel's. The default palette.
+EM32DX = Palette(
+    name="em32dx",
+    source="EM32DX palette chart photographed under a daylight lamp, 2026-10-25",
+    colors=(
+        PaletteColor("black", (0, 0, 0), (18, 14, 30)),
+        PaletteColor("white", (255, 255, 255), (190, 190, 190)),
+        PaletteColor("yellow", (255, 255, 0), (199, 172, 0)),
+        PaletteColor("red", (255, 0, 0), (135, 0, 3)),
+        PaletteColor("blue", (0, 0, 255), (25, 91, 174)),
+        PaletteColor("green", (0, 255, 0), (49, 103, 75)),
+    ),
+)
+
+BUILTIN = {p.name: p for p in (EM32DX, SPECTRA6, SPECTRA6_THEORETICAL)}
 
 
 def get_palette(name_or_path: str | Path | None) -> Palette:
     if not name_or_path:
-        return SPECTRA6
+        return EM32DX
     if str(name_or_path) in BUILTIN:
         return BUILTIN[str(name_or_path)]
     return Palette.load(Path(name_or_path))

@@ -25,6 +25,7 @@ actor DemoBackend: FrameBackend {
     private var history: [String] = []
     private var currentID: String?
     private var holdValue: Hold?
+    private var demoJobs: [String: JobStatus] = [:]
     private struct ImageURLs: Sendable {
         let thumb: URL?
         let image: URL?
@@ -406,13 +407,14 @@ actor DemoBackend: FrameBackend {
             Museum(key: "aic", name: "Art Institute of Chicago"),
             Museum(key: "cma", name: "Cleveland Museum of Art"),
             Museum(key: "met", name: "The Metropolitan Museum of Art"),
+            Museum(key: "rijks", name: "Rijksmuseum"),
             Museum(key: "wmc", name: "Wikimedia Commons"),
         ]
     }
 
     func searchMuseum(source: String, query: String, page: Int) async throws -> RemotePage {
         let rules = PlaylistRules(query: query)
-        let found = items.filter { $0.source == source && Self.matches($0, rules) }
+        let found = items.filter { (source == "all" || $0.source == source) && Self.matches($0, rules) }
         return RemotePage(total: found.count, items: found.map { RemoteItem(item: $0, inLibrary: true) })
     }
 
@@ -421,6 +423,47 @@ actor DemoBackend: FrameBackend {
             throw BackendError.notFound
         }
         return item
+    }
+
+    /// The demo library already holds every work it knows: imports finish at once.
+    func importSearch(source: String, query: String, limit: Int) async throws -> String {
+        let found = try await searchMuseum(source: source, query: query, page: 1).items.prefix(limit)
+        demoJobs["demo"] = JobStatus(
+            id: "demo", total: found.count, done: found.count, failed: 0, skipped: 0, finished: true, error: "",
+            itemIds: found.map(\.id)
+        )
+        return "demo"
+    }
+
+    func packs() async throws -> [LibraryPack] {
+        [
+            LibraryPack(
+                key: "ukiyo-e", name: "Japońskie drzeworyty",
+                description: "Hokusai, Hiroshige, Utamaro, Kuniyoshi, Harunobu i inni mistrzowie ukiyo-e.",
+                size: 310, importing: false
+            ),
+            LibraryPack(
+                key: "dutch", name: "Malarstwo holenderskie",
+                description: "Rijksmuseum: Vermeer, Rembrandt, Hals, Steen, Ruisdael, aż po Breitnera i Marisa.",
+                size: 155, importing: false
+            ),
+        ]
+    }
+
+    func importPack(key: String) async throws -> String {
+        demoJobs["demo"] = JobStatus(
+            id: "demo", total: 0, done: 0, failed: 0, skipped: 0, finished: true, error: "", itemIds: []
+        )
+        return "demo"
+    }
+
+    func drawRandom(_ request: DrawRequest) async throws -> String {
+        try await importPack(key: "draw")
+    }
+
+    func job(id: String) async throws -> JobStatus {
+        guard let job = demoJobs[id] else { throw BackendError.notFound }
+        return job
     }
 
     func album() async throws -> AlbumInfo {
@@ -435,72 +478,6 @@ actor DemoBackend: FrameBackend {
     }
 
     func syncAlbum() async throws {}
-
-    // MARK: Calibration (no server to measure with: plausible EM32DX values)
-
-    /// server/src/frame_server/imaging/palette.py SPECTRA6
-    static let referencePalette = PaletteInfo(
-        name: "spectra6-reference",
-        source: "aitjcize/epaper-image-convert Spectra 6 measured palette",
-        colors: [
-            InkInfo(name: "black", device: [0, 0, 0], perceived: [2, 2, 2]),
-            InkInfo(name: "white", device: [255, 255, 255], perceived: [190, 190, 190]),
-            InkInfo(name: "yellow", device: [255, 255, 0], perceived: [205, 202, 0]),
-            InkInfo(name: "red", device: [255, 0, 0], perceived: [135, 19, 0]),
-            InkInfo(name: "blue", device: [0, 0, 255], perceived: [5, 64, 158]),
-            InkInfo(name: "green", device: [0, 255, 0], perceived: [39, 102, 60]),
-        ]
-    )
-
-    private static let demoMeasured: [String: [Int]] = [
-        "black": [18, 18, 21], "white": [190, 190, 190], "yellow": [214, 196, 28],
-        "red": [150, 38, 26], "blue": [34, 74, 152], "green": [58, 112, 74],
-    ]
-
-    private var calibratedPalette: PaletteInfo?
-
-    func calibration() async throws -> CalibrationInfo {
-        CalibrationInfo(palette: calibratedPalette ?? Self.referencePalette, calibrated: calibratedPalette != nil)
-    }
-
-    func showCalibrationChart() async throws {
-        try await Task.sleep(for: .seconds(1))
-    }
-
-    func measureCalibration(photo: Data, corners: [CGPoint]) async throws -> CalibrationResult {
-        try await Task.sleep(for: .seconds(1.2))
-        let current = calibratedPalette ?? Self.referencePalette
-        return CalibrationResult(
-            candidateId: "demo",
-            inks: current.colors.map { ink in
-                MeasuredInk(
-                    name: ink.name, device: ink.device,
-                    perceived: Self.demoMeasured[ink.name] ?? ink.perceived,
-                    previous: ink.perceived, spread: 0.02
-                )
-            },
-            warnings: [],
-            chartUrl: ""
-        )
-    }
-
-    func applyCalibration(candidateID: String) async throws -> CalibrationInfo {
-        calibratedPalette = PaletteInfo(
-            name: "em32dx-demo",
-            source: "Kalibracja ze zdjęcia w aplikacji Frame (demo)",
-            colors: Self.referencePalette.colors.map {
-                InkInfo(name: $0.name, device: $0.device, perceived: Self.demoMeasured[$0.name] ?? $0.perceived)
-            }
-        )
-        return try await calibration()
-    }
-
-    func cancelCalibration() async throws {}
-
-    func resetCalibration() async throws -> CalibrationInfo {
-        calibratedPalette = nil
-        return try await calibration()
-    }
 
     func uploadPhoto(_ upload: PhotoUpload) async throws -> Item {
         try await Task.sleep(for: .milliseconds(300))
@@ -549,8 +526,6 @@ actor DemoBackend: FrameBackend {
             let id = String(path.dropFirst("/demo/".count).prefix { $0 != "?" })
             url = framed(id) ?? Self.bundled(id) ?? imageURLs[id]?.image
         case let .url(remote): url = idsByURL[remote].flatMap { Self.bundled($0) } ?? remote
-        case let .calibrationPreview(_, item): url = framed(item) ?? Self.bundled(item)
-        case .calibrationChart: url = nil  // nothing measured without a server
         }
         return url.map { URLRequest(url: $0, timeoutInterval: 60) }
     }

@@ -15,7 +15,7 @@ symulacja wyglądu na ekranie z uwzględnieniem adaptacji oka do „bieli” pap
 *Van Gogh, „Pole pszenicy z cyprysami” (The Met, domena publiczna). Od lewej:
 oryginał, model naiwnego ditheringu (tak przypuszczalnie działa ścieżka
 Samsunga), nasz preset `painting`. Symulacja używa palety referencyjnej
-Spectra 6; po kalibracji EM32DX (Etap 1) wartości się zmienią.*
+Spectra 6; od E5 domyślna jest zmierzona paleta EM32DX.*
 
 ## Problem
 
@@ -88,12 +88,16 @@ okienek z fragmentem obrazu, a reszta to passe-partout.
 
 ## Kalibracja (Etap 1)
 
-W aplikacji: *Ramka → Kolory ekranu → Kalibruj kolory*.
+Paletę EM32DX zmierzyliśmy raz (E5, 2026-10-25) i jest wbudowana jako
+domyślna paleta `em32dx` (`imaging/palette.py`). Kreator kalibracji w
+aplikacji iOS usunęliśmy: farby nie zmieniają się w czasie, więc ponowny
+pomiar przyda się tylko dla innego egzemplarza ekranu. Służy do tego API
+serwera `/api/calibration` (bez aplikacji, np. `curl`):
 
-1. Ramka wyświetla planszę `palette` (sześć pól farb, czarne znaczniki w rogach) i trzyma ją przez 30 minut.
-2. Zdjęcie iPhonem: na wprost, w świetle dziennym, bez lampy błyskowej i odblasków. Aplikacja zgaduje narożniki ekranu (Vision), użytkownik je poprawia; fioletowe ramki pokazują, gdzie serwer zmierzy farby.
+1. `POST /api/calibration/chart`: ramka wyświetla planszę `palette` (sześć pól farb, czarne znaczniki w rogach) i trzyma ją przez 30 minut.
+2. Zdjęcie iPhonem: na wprost, w świetle dziennym, bez lampy błyskowej i odblasków. `POST /api/calibration/measure` ze zdjęciem i narożnikami planszy (`[[x, y] × 4]`, TL, TR, BR, BL, 0–1); `GET …/candidates/<id>/chart.jpg` pokazuje fioletowe ramki w miejscach pomiaru.
 3. Serwer (`imaging/calibrate.py`) prostuje zdjęcie transformacją perspektywiczną, bierze medianę środkowej części każdego pola w świetle liniowym i normalizuje wynik tak, by biała farba była neutralną szarością o poziomie palety referencyjnej. Ekspozycja i balans bieli zdjęcia nie mają więc znaczenia: dithering potrzebuje tylko wzajemnych relacji farb, a odległości w OKLab skalują się z jasnością jednakowo. Odrzuca zdjęcia, na których narożniki nie trafiły w planszę, i ostrzega przed nierówno oświetlonymi polami.
-4. Aplikacja pokazuje farby przed i po oraz bieżący obraz w obu wersjach. Po zatwierdzeniu paleta trafia do `/data/palette.json` (ma pierwszeństwo przed opcją `palette` add-onu), a ramka przerysowuje obraz. „Przywróć domyślne kolory” usuwa plik.
+4. `POST /api/calibration/apply` zapisuje paletę do `/data/palette.json` (ma pierwszeństwo przed opcją `palette` add-onu), a ramka przerysowuje obraz. `DELETE /api/calibration` usuwa plik.
 
 Paletę można też poprawiać ręcznie: `uv run frame palette --export p.json`,
 edycja pól `perceived`, a potem `--palette p.json` w `frame render`.

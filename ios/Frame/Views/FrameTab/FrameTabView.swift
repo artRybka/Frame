@@ -21,7 +21,6 @@ struct FrameTabView: View {
                         PresentationSection(settings: binding)
                         ScreenSection(settings: binding)
                     }
-                    ColorsSection()
                     ServerSection()
                 }
                 .padding(.horizontal, Theme.gutter)
@@ -375,6 +374,8 @@ struct PresentationSection: View {
         target == .art ? $settings.art : $settings.photo
     }
 
+    private var isMulti: Bool { target == .photo && presentation.fit.wrappedValue == "multi" }
+
     /// The picture on the frame, when the selected presentation applies to it.
     private var previewItem: Item? {
         guard let item = model.player?.current?.item else { return nil }
@@ -413,7 +414,7 @@ struct PresentationSection: View {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Kadrowanie").foregroundStyle(Theme.ink)
                     LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
-                        ForEach(FitOption.modes, id: \.fit) { mode in
+                        ForEach(target == .photo ? FitOption.photoModes : FitOption.modes, id: \.fit) { mode in
                             FitOption(
                                 title: mode.title, fit: mode.fit, mat: MatSwatch.color(presentation.mat.wrappedValue),
                                 selected: presentation.fit.wrappedValue == mode.fit
@@ -422,13 +423,20 @@ struct PresentationSection: View {
                                 if mode.fit == "fit", presentation.margin.wrappedValue == 0 {
                                     presentation.margin.wrappedValue = 0.05
                                 }
+                                if mode.fit == "multi", presentation.margin.wrappedValue < 0.05 {
+                                    presentation.margin.wrappedValue = 0.07
+                                }
                             }
                         }
                     }
-                    Text(FitOption.explanation(presentation.fit.wrappedValue))
+                    Text(FitOption.explanation(presentation.fit.wrappedValue, photo: target == .photo))
                         .font(.caption)
                         .foregroundStyle(Theme.inkSoft)
                         .fixedSize(horizontal: false, vertical: true)
+                }
+                if isMulti {
+                    Divider()
+                    MultiSettings(presentation: presentation, portrait: settings.orientation == "portrait")
                 }
                 Divider()
                 VStack(alignment: .leading, spacing: 10) {
@@ -454,12 +462,14 @@ struct PresentationSection: View {
                         Slider(value: presentation.margin, in: 0 ... 0.2, step: 0.01)
                     }
                 }
-                Divider()
-                Toggle("Podpis na ramce", isOn: presentation.label)
-                Text(target == .art ? "Np. „Claude Monet — Lilie wodne, 1906”, drukiem na passe-partout; przy wypełnieniu na wąskim pasku u dołu."
-                                    : "Data i podpis zdjęcia na passe-partout albo na pasku u dołu.")
-                    .font(.caption)
-                    .foregroundStyle(Theme.inkSoft)
+                if !isMulti {
+                    Divider()
+                    Toggle("Podpis na ramce", isOn: presentation.label)
+                    Text(target == .art ? "Np. „Claude Monet — Lilie wodne, 1906”, drukiem na passe-partout; przy wypełnieniu na wąskim pasku u dołu."
+                                        : "Data i podpis zdjęcia na passe-partout albo na pasku u dołu.")
+                        .font(.caption)
+                        .foregroundStyle(Theme.inkSoft)
+                }
                 Divider()
                 HStack {
                     Text("Styl obrazu")
@@ -492,8 +502,21 @@ struct FitOption: View {
         ("auto", "Auto"),
     ]
 
-    static func explanation(_ fit: String) -> String {
-        switch fit {
+    /// Photos have their own framings (server: schedule.PHOTO_FITS).
+    static let photoModes: [(fit: String, title: String)] = [
+        ("fit", "Passe-partout"), ("fill", "Wypełnij"), ("multi", "Multi"),
+    ]
+
+    static func explanation(_ fit: String, photo: Bool = false) -> String {
+        if photo {
+            switch fit {
+            case "fit": return "Całe zdjęcie w okienku passe-partout. Kadr i proporcje okienka zmienisz w „Teraz”."
+            case "multi": return "Kilka zdjęć na jednej planszy, każde w swoim okienku passe-partout, przycięte do niego automatycznie."
+            case "fill": break
+            default: return "Wybierz jeden z trybów dla zdjęć."
+            }
+        }
+        return switch fit {
         case "fill": "Cały ekran; kadr sam ustawia się na tym, co najciekawsze (twarze, szczegóły). Poprawisz go w „Teraz”."
         case "details": "Cały obraz, obok dwa detale w okienkach passe-partout: szerszy i bliższy, z różnych miejsc obrazu. Gdy proporcje obrazu są bliskie ramce, obraz jest mniejszy, żeby zmieściły się detale."
         case "description": "Jak „Detale”, ale zamiast drugiego detalu krótki opis nadrukowany na passe-partout: tytuł, autor, data i kilka zdań o obrazie."
@@ -560,6 +583,17 @@ struct FitOption: View {
             }
         case "auto":
             Rectangle().fill(art).padding(.horizontal, 6)
+        case "multi":
+            HStack(spacing: 4) {
+                Rectangle().fill(art)
+                VStack(spacing: 4) {
+                    Rectangle().fill(art.opacity(0.8))
+                    Rectangle().fill(art.opacity(0.8))
+                }
+                .frame(width: 14)
+            }
+            .padding(.vertical, 6)
+            .padding(.horizontal, 10)
         default:
             Rectangle().fill(art).padding(.vertical, 6).padding(.horizontal, 18)
         }
@@ -650,58 +684,6 @@ struct ScreenSection: View {
                         .foregroundStyle(Theme.inkSoft)
                 }
             }
-        }
-    }
-}
-
-/// The palette the server renders with, and the way to measure the real one.
-struct ColorsSection: View {
-    @Environment(AppModel.self) private var model
-    @State private var calibrating = false
-    @State private var confirmReset = false
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            SectionHeader(title: "Kolory ekranu", subtitle: "Jak naprawdę wyglądają farby Twojej ramki")
-            Card {
-                if let info = model.calibration {
-                    HStack(spacing: 8) {
-                        ForEach(info.palette.colors) { ink in
-                            Circle()
-                                .fill(Color(rgb: ink.perceived))
-                                .frame(width: 30, height: 30)
-                                .overlay(Circle().strokeBorder(Theme.inkSoft.opacity(0.4), lineWidth: 0.75))
-                                .accessibilityLabel(Names.ink(ink.name))
-                        }
-                    }
-                    Text(info.calibrated ? "Zmierzone w aplikacji" : "Domyślne: pomiar innego panelu Spectra 6")
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(Theme.ink)
-                }
-                Text("Obraz jest liczony według tych kolorów. Pomiar Twojej ramki, w Twoim świetle, daje wierniejsze barwy.")
-                    .font(.caption)
-                    .foregroundStyle(Theme.inkSoft)
-                Button {
-                    calibrating = true
-                } label: {
-                    Label("Kalibruj kolory", systemImage: "eyedropper.halffull")
-                }
-                .buttonStyle(PrimaryButtonStyle())
-                if model.calibration?.calibrated == true {
-                    Button("Przywróć domyślne kolory", role: .destructive) { confirmReset = true }
-                        .font(.subheadline.weight(.medium))
-                        .frame(maxWidth: .infinity)
-                }
-            }
-        }
-        .sheet(isPresented: $calibrating) { CalibrationFlow() }
-        .confirmationDialog("Przywrócić domyślne kolory?", isPresented: $confirmReset, titleVisibility: .visible) {
-            Button("Przywróć", role: .destructive) { Task { await model.resetCalibration() } }
-        } message: {
-            Text("Ramka przerysuje obraz według domyślnej palety.")
-        }
-        .onAppear {
-            if LaunchRoute.screen.hasPrefix("calibration") { calibrating = true }
         }
     }
 }

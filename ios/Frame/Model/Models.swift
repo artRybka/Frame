@@ -251,12 +251,17 @@ struct StatusView: Codable, Sendable {
 
 struct Presentation: Codable, Hashable, Sendable {
     var preset: String
-    var fit: String  // "fit" | "fill" | "details" | "description" | "auto"
+    var fit: String  // "fit" | "fill" | "details" | "description" | "auto"; photos: "fit" | "fill" | "multi"
     var mat: String = "white"  // "white" | "cream" | "grey" | "black" | "picture"
     var margin: Double
     var label: Bool
+    /// "multi": photos on one board (2–8), or a random number each time,
+    /// and the grid's letter (MultiGrid.all) or "auto" (by the photos' shapes).
+    var multiCount: Int = 4
+    var multiRandom: Bool = false
+    var multiGrid: String = "auto"
 
-    var key: String { "\(preset),\(fit),\(mat),\(margin),\(label)" }
+    var key: String { "\(preset),\(fit),\(mat),\(margin),\(label),\(multiCount),\(multiRandom),\(multiGrid)" }
 
     init(preset: String, fit: String, mat: String = "white", margin: Double, label: Bool) {
         self.preset = preset
@@ -267,7 +272,7 @@ struct Presentation: Codable, Hashable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case preset, fit, mat, margin, label
+        case preset, fit, mat, margin, label, multiCount, multiRandom, multiGrid
     }
 
     init(from decoder: Decoder) throws {
@@ -277,6 +282,9 @@ struct Presentation: Codable, Hashable, Sendable {
         mat = try c.decodeIfPresent(String.self, forKey: .mat) ?? "white"  // older servers
         margin = try c.decode(Double.self, forKey: .margin)
         label = try c.decode(Bool.self, forKey: .label)
+        multiCount = try c.decodeIfPresent(Int.self, forKey: .multiCount) ?? 4
+        multiRandom = try c.decodeIfPresent(Bool.self, forKey: .multiRandom) ?? false
+        multiGrid = try c.decodeIfPresent(String.self, forKey: .multiGrid) ?? "auto"
     }
 }
 
@@ -296,6 +304,8 @@ struct FrameSettings: Codable, Hashable, Sendable {
     var albumUrl: String
     var timezone: String
     var statusPollMinutes: Int
+    /// Only seen at home: also accept freely licensed, not public-domain works.
+    var privateUse: Bool? = nil
 
     /// Changes whenever the way pictures are framed on the panel changes;
     /// used to refresh cached "on the frame" previews.
@@ -308,7 +318,7 @@ struct FrameSettings: Codable, Hashable, Sendable {
         quietStart: "22:00", quietEnd: "07:00", shuffle: true, avoidRepeatDays: 14,
         orientation: "landscape", rotation: 90,
         art: Presentation(preset: "painting", fit: "auto", margin: 0.05, label: false),
-        photo: Presentation(preset: "photo", fit: "auto", margin: 0, label: false),
+        photo: Presentation(preset: "photo", fit: "fill", margin: 0, label: false),
         albumUrl: "", timezone: "Europe/Warsaw", statusPollMinutes: 15
     )
 }
@@ -328,6 +338,42 @@ struct RemoteItem: Codable, Hashable, Sendable, Identifiable {
 struct RemotePage: Codable, Sendable {
     let total: Int
     let items: [RemoteItem]
+    /// Museums that did not answer a search of all of them.
+    var failed: [String]?
+}
+
+/// A themed batch of museum works, `GET /api/library/packs`.
+struct LibraryPack: Codable, Hashable, Sendable, Identifiable {
+    let key: String
+    let name: String
+    let description: String
+    /// Most works the pack can add.
+    let size: Int
+    var importing: Bool
+    var id: String { key }
+}
+
+/// Random works to add, `POST /api/library/draw`.
+struct DrawRequest: Codable, Hashable, Sendable {
+    var count = 100
+    var yearFrom: Int?
+    var yearTo: Int?
+    /// English, as the museums name styles, e.g. "Impressionism".
+    var style = ""
+    var kind = "any"  // any | painting | print | drawing | poster
+    var minSuitability = 0.0
+}
+
+/// A background import on the server, `GET /api/jobs/{id}`.
+struct JobStatus: Codable, Hashable, Sendable {
+    let id: String
+    var total: Int
+    var done: Int
+    var failed: Int
+    var skipped: Int?
+    var finished: Bool
+    var error: String
+    var itemIds: [String]
 }
 
 struct DisplayResponse: Codable, Sendable {
@@ -372,45 +418,6 @@ struct AlbumInfo: Codable, Hashable, Sendable {
     var url: String
     var lastSync: AlbumSync?
     var photos: Int
-}
-
-// MARK: Colour calibration (server/src/frame_server/web/calibration_api.py)
-
-/// One ink of the panel: the value written to the file and how it looks.
-struct InkInfo: Codable, Hashable, Sendable, Identifiable {
-    let name: String
-    let device: [Int]
-    let perceived: [Int]
-    var id: String { name }
-}
-
-struct PaletteInfo: Codable, Hashable, Sendable {
-    let name: String
-    let source: String
-    let colors: [InkInfo]
-}
-
-/// `GET /api/calibration`
-struct CalibrationInfo: Codable, Hashable, Sendable {
-    var palette: PaletteInfo
-    var calibrated: Bool  // measured in the app, otherwise the default palette
-}
-
-struct MeasuredInk: Codable, Hashable, Sendable, Identifiable {
-    let name: String
-    let device: [Int]
-    let perceived: [Int]  // measured now
-    let previous: [Int]  // in use until applied
-    let spread: Double
-    var id: String { name }
-}
-
-/// `POST /api/calibration/measure`
-struct CalibrationResult: Codable, Sendable {
-    let candidateId: String
-    let inks: [MeasuredInk]
-    let warnings: [String]
-    let chartUrl: String
 }
 
 // MARK: Framing (server/src/frame_server/web/library_api.py)

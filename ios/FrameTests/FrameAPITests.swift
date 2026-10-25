@@ -46,6 +46,42 @@ final class FrameAPITests: XCTestCase {
         XCTAssertNotNil(object["quiet_start"])
     }
 
+    func testPhotoMultiSettingsRoundTrip() throws {
+        var settings = FrameSettings.defaults
+        settings.photo.fit = "multi"
+        settings.photo.multiCount = 6
+        settings.photo.multiGrid = "B"
+        let data = try LiveBackend.encoder().encode(settings)
+        let text = String(decoding: data, as: UTF8.self)
+        XCTAssertTrue(text.contains("\"multi_count\":6"))
+        XCTAssertTrue(text.contains("\"multi_grid\":\"B\""))
+        let back = try LiveBackend.decoder().decode(FrameSettings.self, from: data)
+        XCTAssertEqual(back.photo, settings.photo)
+        // Older servers send no multi fields.
+        let old = #"{"preset": "photo", "fit": "fill", "margin": 0, "label": false}"#
+        let pres = try LiveBackend.decoder().decode(Presentation.self, from: Data(old.utf8))
+        XCTAssertEqual(pres.multiCount, 4)
+        XCTAssertEqual(pres.multiGrid, "auto")
+    }
+
+    func testMultiGridsMatchTheServer() {
+        XCTAssertEqual(Array(MultiGrid.all.keys).sorted(), Array(MultiGrid.counts))
+        let canvas = CGRect(x: 0, y: 0, width: 2560, height: 1440)
+        for (count, grids) in MultiGrid.all {
+            for grid in grids {
+                let rects = grid.rects(in: canvas.size, margin: 0.07)
+                XCTAssertEqual(rects.count, count)
+                XCTAssertTrue(rects.allSatisfy { canvas.contains($0) })
+            }
+        }
+        // Two portrait windows; on a portrait frame, two landscape ones.
+        let pair = MultiGrid.grids(2)[0]
+        let wide = pair.rects(in: canvas.size, margin: 0.07)[0]
+        XCTAssertGreaterThan(wide.height, wide.width)
+        let tall = pair.rects(in: CGSize(width: 1440, height: 2560), margin: 0.07)[0]
+        XCTAssertGreaterThan(tall.width, tall.height)
+    }
+
     func testRequestsCarryTokenAndEscapeIDs() throws {
         let api = LiveBackend(baseURL: URL(string: "http://frame.local:8099")!, token: "secret")
         let request = try XCTUnwrap(api.request(for: .thumb("aic:24645")))
@@ -251,40 +287,5 @@ final class FrameAPITests: XCTestCase {
         XCTAssertEqual(box.minX, 0, accuracy: 0.001)
         XCTAssertEqual(box.maxY, 1000, accuracy: 0.001)
         XCTAssertEqual(box.width, 500, accuracy: 0.001)
-    }
-
-    func testQuadMappingHitsTheCorners() throws {
-        let corners = [
-            CGPoint(x: 0.13, y: 0.25), CGPoint(x: 0.88, y: 0.27),
-            CGPoint(x: 0.87, y: 0.84), CGPoint(x: 0.12, y: 0.87),
-        ]
-        let map = try XCTUnwrap(QuadMapping(corners: corners))
-        let unit = [CGPoint(x: 0, y: 0), CGPoint(x: 1, y: 0), CGPoint(x: 1, y: 1), CGPoint(x: 0, y: 1)]
-        for (u, corner) in zip(unit, corners) {
-            XCTAssertEqual(map(u).x, corner.x, accuracy: 1e-9)
-            XCTAssertEqual(map(u).y, corner.y, accuracy: 1e-9)
-        }
-        XCTAssertNil(QuadMapping(corners: Array(repeating: CGPoint(x: 0.5, y: 0.5), count: 4)))
-    }
-
-    func testChartGeometryMatchesTheServerChart() {
-        // testchart.palette_patches: margin 200, gap 60, 680 × 490 px patches.
-        let first = ChartGeometry.patches[0]
-        XCTAssertEqual(first.minX * 2560, 200, accuracy: 0.01)
-        XCTAssertEqual(first.width * 2560, 680, accuracy: 0.01)
-        XCTAssertEqual(ChartGeometry.patches[5].maxY * 1440, 200 + 490 + 60 + 490, accuracy: 0.01)
-    }
-
-    func testDemoCalibration() async throws {
-        let demo = DemoBackend()
-        let before = try await demo.calibration()
-        XCTAssertFalse(before.calibrated)
-        let result = try await demo.measureCalibration(photo: Data(), corners: [])
-        XCTAssertEqual(result.inks.map(\.name), before.palette.colors.map(\.name))
-        let applied = try await demo.applyCalibration(candidateID: result.candidateId)
-        XCTAssertTrue(applied.calibrated)
-        XCTAssertEqual(applied.palette.colors.first { $0.name == "black" }?.perceived, [18, 18, 21])
-        let reset = try await demo.resetCalibration()
-        XCTAssertFalse(reset.calibrated)
     }
 }

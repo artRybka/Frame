@@ -9,3 +9,9 @@ uv sync                 # środowisko + zależności
 uv run pytest           # testy
 uv run frame --help     # CLI
 ```
+
+Na Macu z katalogiem `Documents` w iCloud Drive iCloud oznacza pliki w `.venv`
+jako ukryte, a Python 3.13 pomija ukryte pliki `.pth`, więc znika pakiet
+`frame_server` (`ModuleNotFoundError`). Trzymaj środowisko poza iCloud, np.
+`export UV_PROJECT_ENVIRONMENT=~/.venvs/frame`, albo doraźnie
+`chflags nohidden .venv/lib/python3.13/site-packages/*.pth`.

@@ -145,34 +145,38 @@ struct LiveBackend: FrameBackend {
         try await send("/api/museums/\(source)/import", method: "POST", body: ["source_id": sourceID])
     }
 
+    private struct JobRef: Decodable { let jobId: String }
+
+    private struct ImportSearchBody: Encodable {
+        let query: String
+        let limit: Int
+    }
+
+    func importSearch(source: String, query: String, limit: Int) async throws -> String {
+        let ref: JobRef = try await send(
+            "/api/museums/\(source)/import-search", method: "POST", body: ImportSearchBody(query: query, limit: limit)
+        )
+        return ref.jobId
+    }
+
+    func packs() async throws -> [LibraryPack] { try await get("/api/library/packs") }
+
+    func importPack(key: String) async throws -> String {
+        let ref: JobRef = try await send("/api/library/packs/\(key)/import", method: "POST")
+        return ref.jobId
+    }
+
+    func drawRandom(_ request: DrawRequest) async throws -> String {
+        let ref: JobRef = try await send("/api/library/draw", method: "POST", body: request)
+        return ref.jobId
+    }
+
+    func job(id: String) async throws -> JobStatus { try await get("/api/jobs/\(id)") }
+
     // MARK: Album
 
     func album() async throws -> AlbumInfo { try await get("/api/album") }
     func syncAlbum() async throws { try await send("/api/album/sync", method: "POST") }
-
-    // MARK: Calibration
-
-    func calibration() async throws -> CalibrationInfo { try await get("/api/calibration") }
-    func showCalibrationChart() async throws { try await send("/api/calibration/chart", method: "POST") }
-
-    func measureCalibration(photo: Data, corners: [CGPoint]) async throws -> CalibrationResult {
-        var form = MultipartForm()
-        let points = corners.map { [Double($0.x), Double($0.y)] }
-        form.addField("corners", String(decoding: try JSONEncoder().encode(points), as: UTF8.self))
-        form.addFile("file", filename: "chart.jpg", mimeType: "image/jpeg", data: photo)
-        var req = request("/api/calibration/measure", method: "POST")
-        req.setValue(form.contentType, forHTTPHeaderField: "Content-Type")
-        req.httpBody = form.body()
-        req.timeoutInterval = 120
-        return try await perform(req)
-    }
-
-    func applyCalibration(candidateID: String) async throws -> CalibrationInfo {
-        try await send("/api/calibration/apply", method: "POST", body: ["candidate_id": candidateID])
-    }
-
-    func cancelCalibration() async throws { try await send("/api/calibration/cancel", method: "POST") }
-    func resetCalibration() async throws -> CalibrationInfo { try await send("/api/calibration", method: "DELETE") }
 
     // MARK: Device
 
@@ -220,10 +224,6 @@ struct LiveBackend: FrameBackend {
             req = request("/api/library/items/\(escape(id))/preview", query: framingQuery(settings))
         case let .path(path): req = request(path)
         case let .url(url): req = URLRequest(url: url)
-        case let .calibrationPreview(candidate, item):
-            req = request("/api/calibration/candidates/\(candidate)/preview/\(escape(item))")
-        case let .calibrationChart(candidate):
-            req = request("/api/calibration/candidates/\(candidate)/chart.jpg")
         }
         req.timeoutInterval = 120
         return req
