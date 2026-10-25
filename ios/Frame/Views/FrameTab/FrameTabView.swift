@@ -22,6 +22,9 @@ struct FrameTabView: View {
                         ScreenSection(settings: binding)
                         SourcesSection(settings: binding)
                     }
+                    if let panel = model.panelConfig {
+                        PanelSection(config: panel)
+                    }
                     ServerSection()
                 }
                 .padding(.horizontal, Theme.gutter)
@@ -96,7 +99,7 @@ struct FrameTabView: View {
 
     private var connectionText: String {
         guard let device else { return "Brak danych" }
-        if !device.configured { return "Ekran nie jest skonfigurowany na serwerze" }
+        if !device.configured { return "Podaj adres i PIN ekranu w „Połączenie z ekranem”" }
         switch device.reachable {
         case .some(true): return "Połączona · \(When.ago(device.lastSeen) ?? "teraz")"
         case .some(false): return "Nie odpowiada — śpi lub poza siecią"
@@ -797,6 +800,114 @@ struct SourcesSection: View {
                 .tint(Theme.accent)
             }
         }
+    }
+}
+
+/// How the server reaches the panel: its address, the MDC PIN and the MAC
+/// for Wake-on-LAN, saved on the server (over frame.env / add-on options).
+struct PanelSection: View {
+    @Environment(AppModel.self) private var model
+    let config: PanelConfig
+    @State private var host = ""
+    @State private var pin = ""
+    @State private var mac = ""
+    @State private var saving = false
+
+    private var hostValue: String? { PanelAddress.host(host) }
+    private var macValue: String? { PanelAddress.mac(mac) }
+    private var changed: Bool {
+        hostValue != (config.host ?? "") || macValue != (config.mac ?? "") || !pin.isEmpty
+    }
+    private var valid: Bool { !(hostValue ?? "").isEmpty && macValue != nil }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            SectionHeader(title: "Połączenie z ekranem", subtitle: "Gdzie serwer szuka ramki w sieci")
+            Card {
+                field("Adres IP ekranu", error: hostValue == nil ? "To nie wygląda na adres IP" : nil) {
+                    TextField("np. 192.168.1.152", text: $host)
+                        .keyboardType(.numbersAndPunctuation)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                }
+                Divider()
+                field("Kod PIN", hint: "PIN do sterowania (MDC), ekran pokazuje go przy parowaniu w aplikacji Samsung E-Paper.") {
+                    SecureField(config.pinSet ? "ustawiony · puste zostawia bez zmian" : "np. 000000", text: $pin)
+                        .keyboardType(.numberPad)
+                }
+                Divider()
+                field(
+                    "Adres MAC",
+                    hint: "Do budzenia ekranu (Wake-on-LAN). Puste pole wyłącza budzenie.",
+                    error: macValue == nil ? "MAC to 12 znaków szesnastkowych, np. A4:30:7A:01:02:FF" : nil
+                ) {
+                    TextField("AA:BB:CC:DD:EE:FF", text: $mac)
+                        .textInputAutocapitalization(.characters)
+                        .autocorrectionDisabled()
+                }
+                Divider()
+                Button {
+                    Task { await save() }
+                } label: {
+                    HStack {
+                        Text("Zapisz i sprawdź")
+                        if saving { ProgressView() }
+                    }
+                }
+                .fontWeight(.semibold)
+                .disabled(!changed || !valid || saving)
+                Text(config.fromApp
+                    ? "Ustawione w aplikacji, mają pierwszeństwo przed frame.env i opcjami add-onu."
+                    : "Wartości z frame.env lub opcji add-onu. Zapisane tutaj będą miały pierwszeństwo.")
+                    .font(.caption)
+                    .foregroundStyle(Theme.inkSoft)
+                if config.fromApp {
+                    Button("Przywróć wartości z serwera") {
+                        Task {
+                            saving = true
+                            await model.resetPanelConfig()
+                            saving = false
+                        }
+                    }
+                    .font(.subheadline)
+                    .disabled(saving)
+                }
+            }
+        }
+        .onAppear { load(config) }
+        .onChange(of: config) { _, new in load(new) }
+    }
+
+    private func field<Content: View>(
+        _ title: String, hint: String? = nil, error: String? = nil, @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.ink)
+            content()
+            if let error {
+                Text(error).font(.caption).foregroundStyle(Theme.bad)
+            } else if let hint {
+                Text(hint).font(.caption).foregroundStyle(Theme.inkSoft)
+            }
+        }
+    }
+
+    private func load(_ config: PanelConfig) {
+        host = config.host ?? ""
+        mac = config.mac ?? ""
+        pin = ""
+    }
+
+    private func save() async {
+        saving = true
+        defer { saving = false }
+        let update = PanelConfigUpdate(
+            host: hostValue,
+            pin: pin.isEmpty ? nil : pin,
+            mac: macValue?.isEmpty == false ? macValue : nil,
+            port: config.port
+        )
+        await model.savePanelConfig(update)
     }
 }
 

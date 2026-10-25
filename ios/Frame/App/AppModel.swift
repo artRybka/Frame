@@ -23,6 +23,8 @@ final class AppModel {
     var player: PlayerView?
     var status: StatusView?
     var settings: FrameSettings?
+    /// How the server reaches the panel; nil before it is loaded or on an older server.
+    var panelConfig: PanelConfig?
     var playlists: [PlaylistSummary] = []
     var facets = Facets.empty
     /// Styles, subjects, periods and techniques to search by, with Polish names.
@@ -64,6 +66,7 @@ final class AppModel {
         status = nil
         displayProgress = nil
         settings = nil
+        panelConfig = nil
         playlists = []
         facets = .empty
         vocabulary = []
@@ -90,12 +93,14 @@ final class AppModel {
         let settings = Task { try? await backend.settings() }
         let playlists = Task { try? await backend.playlists() }
         let facets = Task { try? await backend.facets() }
+        let panelConfig = Task { try? await backend.panelConfig() }
         self.player = await player.value
         if self.player?.progress?.active == true { trackProgress() }
         self.status = await status.value
         self.settings = await settings.value
         self.playlists = await playlists.value ?? []
         self.facets = await facets.value ?? .empty
+        self.panelConfig = await panelConfig.value
     }
 
     func refreshPlayer() async {
@@ -262,6 +267,45 @@ final class AppModel {
                 await refreshPlayer()
             }
         } catch { show(error) }
+    }
+
+    /// Saves the panel's address, PIN and MAC on the server, then checks
+    /// whether the panel answers there.
+    func savePanelConfig(_ update: PanelConfigUpdate) async {
+        do {
+            panelConfig = try await backend.savePanelConfig(update)
+        } catch {
+            show(error)
+            return
+        }
+        await checkPanel(saved: "Zapisano ustawienia ekranu")
+    }
+
+    func resetPanelConfig() async {
+        do {
+            panelConfig = try await backend.resetPanelConfig()
+        } catch {
+            show(error)
+            return
+        }
+        await checkPanel(saved: "Przywrócono ustawienia z serwera")
+    }
+
+    private func checkPanel(saved: String) async {
+        guard panelConfig?.host != nil, panelConfig?.pinSet == true else {
+            await refreshStatus(live: false)
+            toast = saved
+            return
+        }
+        toast = "\(saved) · sprawdzam ekran…"
+        await refreshStatus(live: true)
+        switch status?.device.reachable {
+        case .some(true): toast = "\(saved) · ekran odpowiada"
+        case .some(false) where status?.device.error?.contains("authentication") == true:
+            toast = "\(saved) · ekran odrzucił PIN"
+        case .some(false): toast = "\(saved) · ekran nie odpowiada (może śpi)"
+        case .none: toast = saved
+        }
     }
 
     func wake() async {

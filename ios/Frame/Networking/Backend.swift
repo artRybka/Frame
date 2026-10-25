@@ -93,6 +93,11 @@ protocol FrameBackend: Sendable {
         -> DisplayResponse
     /// Adds a photo to the library without showing it (e.g. for a playlist).
     func uploadPhoto(_ upload: PhotoUpload) async throws -> Item
+    /// The panel's address, PIN and MAC as the server uses them.
+    func panelConfig() async throws -> PanelConfig
+    func savePanelConfig(_ update: PanelConfigUpdate) async throws -> PanelConfig
+    /// Back to the values in frame.env or the add-on options.
+    func resetPanelConfig() async throws -> PanelConfig
     func wake() async throws
     func sleep() async throws
 

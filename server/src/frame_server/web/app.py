@@ -30,7 +30,14 @@ from ..progress import DisplayProgress, Stage
 from ..service import FrameService, outcome_json
 from ..status import DeviceStatus
 from ..store import PanelRequest
-from . import calibration_api, discover_api, library_api, player_api, playlists_api
+from . import (
+    calibration_api,
+    device_api,
+    discover_api,
+    library_api,
+    player_api,
+    playlists_api,
+)
 from .deps import require_token
 
 log = logging.getLogger(__name__)
@@ -105,6 +112,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         playlists_api.router,
         player_api.router,
         calibration_api.router,
+        device_api.router,
     )
     for router in routers:
         app.include_router(router)

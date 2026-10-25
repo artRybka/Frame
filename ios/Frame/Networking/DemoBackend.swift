@@ -25,6 +25,8 @@ actor DemoBackend: FrameBackend {
     private var history: [String] = []
     private var currentID: String?
     private var holdValue: Hold?
+    private static let demoPanel = PanelConfig(host: "192.168.1.50", mac: nil, port: 1515, pinSet: true, fromApp: false)
+    private var panelValue = DemoBackend.demoPanel
     /// The picture "on its way" to the pretend frame, for the progress bar.
     private var run: (title: String, start: Date)?
     /// Demo stages: 14 s in all, where a real panel takes about a minute.
@@ -718,6 +720,19 @@ actor DemoBackend: FrameBackend {
         startRun(title)
         try await Task.sleep(for: .seconds(5))  // until the pretend panel has the picture
         return DisplayResponse(pushed: true, fetched: true, message: nil)
+    }
+
+    func panelConfig() async throws -> PanelConfig { panelValue }
+
+    func savePanelConfig(_ update: PanelConfigUpdate) async throws -> PanelConfig {
+        let pinSet = update.pin.map { !$0.isEmpty } ?? panelValue.pinSet
+        panelValue = PanelConfig(host: update.host, mac: update.mac, port: update.port, pinSet: pinSet, fromApp: true)
+        return panelValue
+    }
+
+    func resetPanelConfig() async throws -> PanelConfig {
+        panelValue = Self.demoPanel
+        return panelValue
     }
 
     func wake() async throws {}

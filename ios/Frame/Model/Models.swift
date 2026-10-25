@@ -360,6 +360,62 @@ struct DeviceStatus: Codable, Hashable, Sendable {
     var wakesAt: String?
 }
 
+/// How the server reaches the panel (Ramka → Ekran); the PIN is never sent back.
+struct PanelConfig: Codable, Hashable, Sendable {
+    var host: String?
+    var mac: String?
+    var port: Int
+    var pinSet: Bool
+    /// Saved in the app; otherwise taken from frame.env or the add-on options.
+    var fromApp: Bool
+}
+
+struct PanelConfigUpdate: Encodable, Sendable {
+    var host: String?
+    /// Left out keeps the PIN on the server, "" removes it.
+    var pin: String?
+    var mac: String?
+    var port: Int
+
+    /// Optionals are always written, so an empty MAC clears it on the server.
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(host, forKey: .host)
+        try container.encodeIfPresent(pin, forKey: .pin)
+        try container.encode(mac, forKey: .mac)
+        try container.encode(port, forKey: .port)
+    }
+
+    private enum CodingKeys: String, CodingKey { case host, pin, mac, port }
+}
+
+/// The same checks the server makes, to point at a typo before saving.
+enum PanelAddress {
+    /// A bare address: "http://192.168.1.152/" becomes 192.168.1.152; nil if it cannot be one.
+    static func host(_ text: String) -> String? {
+        var host = text.trimmingCharacters(in: .whitespaces)
+        if let scheme = host.range(of: "://") { host = String(host[scheme.upperBound...]) }
+        host = String(host.prefix { $0 != "/" })
+        let allowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-")
+        guard host.unicodeScalars.allSatisfy(allowed.contains) else { return nil }
+        return host
+    }
+
+    /// Any common spelling as AA:BB:CC:DD:EE:FF, "" for none; nil if it cannot be one.
+    static func mac(_ text: String) -> String? {
+        let hex = text.filter { !" :-.".contains($0) }.uppercased()
+        if hex.isEmpty { return "" }
+        guard hex.count == 12, hex.allSatisfy(\.isHexDigit) else { return nil }
+        var pairs: [String] = []
+        var rest = Substring(hex)
+        while !rest.isEmpty {
+            pairs.append(String(rest.prefix(2)))
+            rest = rest.dropFirst(2)
+        }
+        return pairs.joined(separator: ":")
+    }
+}
+
 struct ServerStatus: Codable, Hashable, Sendable {
     var version: String
     var uptimeS: Int
