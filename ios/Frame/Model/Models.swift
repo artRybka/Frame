@@ -314,10 +314,12 @@ struct Presentation: Codable, Hashable, Sendable {
 struct FrameSettings: Codable, Hashable, Sendable {
     var mode: String  // "art" | "album"
     var playlistId: Int?
-    var intervalMinutes: Int
-    var intervalMinutesBattery: Int
+    /// Times of day ("HH:MM") the picture changes at, the same on the
+    /// charger and on battery; every day or every 2nd/3rd day.
+    var changeTimes: [String]
+    var changeEveryDays: Int
+    /// Quiet hours run from here until the next change time (the morning one).
     var quietStart: String?
-    var quietEnd: String?
     var shuffle: Bool
     var avoidRepeatDays: Int
     var orientation: String  // "landscape" | "portrait"
@@ -337,13 +339,68 @@ struct FrameSettings: Codable, Hashable, Sendable {
     }
 
     static let defaults = FrameSettings(
-        mode: "art", playlistId: nil, intervalMinutes: 1440, intervalMinutesBattery: 1440,
-        quietStart: "22:00", quietEnd: "07:00", shuffle: true, avoidRepeatDays: 14,
+        mode: "art", playlistId: nil, changeTimes: ["07:00"], changeEveryDays: 1,
+        quietStart: "22:00", shuffle: true, avoidRepeatDays: 14,
         orientation: "landscape", rotation: 90,
         art: Presentation(preset: "painting", fit: "auto", margin: 0.05, label: false),
         photo: Presentation(preset: "photo", fit: "fill", margin: 0, label: false),
         albumUrl: "", timezone: "Europe/Warsaw", statusPollMinutes: 15
     )
+}
+
+extension FrameSettings {
+    private enum CodingKeys: String, CodingKey {
+        case mode, playlistId, changeTimes, changeEveryDays, quietStart, shuffle, avoidRepeatDays
+        case orientation, rotation, art, photo, albumUrl, timezone, statusPollMinutes, privateUse
+        case quietEnd  // older servers: decoded only
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        mode = try c.decode(String.self, forKey: .mode)
+        playlistId = try c.decodeIfPresent(Int.self, forKey: .playlistId)
+        // Older servers have intervals instead: their changes start at the end of quiet hours.
+        let quietEnd = try c.decodeIfPresent(String.self, forKey: .quietEnd)
+        changeTimes = try c.decodeIfPresent([String].self, forKey: .changeTimes) ?? [quietEnd ?? "07:00"]
+        changeEveryDays = try c.decodeIfPresent(Int.self, forKey: .changeEveryDays) ?? 1
+        quietStart = try c.decodeIfPresent(String.self, forKey: .quietStart)
+        shuffle = try c.decode(Bool.self, forKey: .shuffle)
+        avoidRepeatDays = try c.decode(Int.self, forKey: .avoidRepeatDays)
+        orientation = try c.decode(String.self, forKey: .orientation)
+        rotation = try c.decode(Int.self, forKey: .rotation)
+        art = try c.decode(Presentation.self, forKey: .art)
+        photo = try c.decode(Presentation.self, forKey: .photo)
+        albumUrl = try c.decode(String.self, forKey: .albumUrl)
+        timezone = try c.decode(String.self, forKey: .timezone)
+        statusPollMinutes = try c.decode(Int.self, forKey: .statusPollMinutes)
+        privateUse = try c.decodeIfPresent(Bool.self, forKey: .privateUse)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(mode, forKey: .mode)
+        try c.encodeIfPresent(playlistId, forKey: .playlistId)
+        try c.encode(changeTimes, forKey: .changeTimes)
+        try c.encode(changeEveryDays, forKey: .changeEveryDays)
+        try c.encode(quietStart, forKey: .quietStart)  // null turns quiet hours off
+        try c.encode(shuffle, forKey: .shuffle)
+        try c.encode(avoidRepeatDays, forKey: .avoidRepeatDays)
+        try c.encode(orientation, forKey: .orientation)
+        try c.encode(rotation, forKey: .rotation)
+        try c.encode(art, forKey: .art)
+        try c.encode(photo, forKey: .photo)
+        try c.encode(albumUrl, forKey: .albumUrl)
+        try c.encode(timezone, forKey: .timezone)
+        try c.encode(statusPollMinutes, forKey: .statusPollMinutes)
+        try c.encodeIfPresent(privateUse, forKey: .privateUse)
+    }
+
+    /// When quiet hours end: the first change time after their start.
+    var quietEnd: String? {
+        guard let start = quietStart, let first = changeTimes.sorted().first else { return nil }
+        let end = changeTimes.sorted().first { $0 > start } ?? first
+        return end == start ? nil : end
+    }
 }
 
 struct Museum: Codable, Hashable, Sendable, Identifiable {

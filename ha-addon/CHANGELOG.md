@@ -1,5 +1,15 @@
 # Changelog
 
+## Niewydane
+
+- Harmonogram: zamiast interwałów osobno dla zasilacza i baterii godziny
+  zmiany obrazu (`change_times`, jedna lub kilka dziennie) i co ile dni
+  (`change_every_days`, 1–3). Cisza nocna trwa od `quiet_start` do
+  porannej zmiany; `quiet_end`, `interval_minutes` i
+  `interval_minutes_battery` znikają, a stare ustawienia zamieniają się
+  same. Harmonogram jest ten sam przy ładowarce i na baterii; głęboki sen
+  w nocy tylko na baterii, na ładowarce zdjęcia idą od razu.
+
 ## 0.3.0
 
 - Zasilanie na baterii: w godzinach ciszy ekran dostaje budzik (MDC `0x25`)

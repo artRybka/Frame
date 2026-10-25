@@ -25,7 +25,7 @@ App/CLI ──POST /api/display──▶ serwer
                               odświeżenie panelu (kilkanaście sekund)
 ```
 
-Gdy ekran śpi, a mamy jego MAC, serwer wysyła Wake-on-LAN i ponawia połączenie. Na baterii w ciszy nocnej ekran śpi z wyłączonym Wi-Fi i budzi się sam (budzik MDC `0x25`); obraz, który nie dotarł, czeka na pobudkę ([WAKE.md](WAKE.md)).
+Gdy ekran śpi, a mamy jego MAC, serwer wysyła Wake-on-LAN i ponawia połączenie. W ciszy nocnej na baterii ekran śpi z wyłączonym Wi-Fi i budzi się sam na poranną zmianę (budzik MDC `0x25`); obraz, który nie dotarł, czeka na pobudkę ([WAKE.md](WAKE.md)).
 
 ## Przepływ docelowy: rotacja (Etap 2)
 
@@ -46,7 +46,7 @@ adresów obrazów), jeśli token jest ustawiony.
 |---|---|
 | Ekran (bez autoryzacji) | `GET /panel/content.json`, `GET /panel/images/{name}` |
 | Odtwarzacz | `GET /api/player` (co na ramce, następne, historia, przypięcie, następna zmiana), `POST /api/player/next`, `POST /api/player/previous`, `POST/DELETE /api/player/hold` |
-| Ustawienia | `GET/PUT /api/settings` (tryb, playlista, interwały przy zasilaczu i na baterii, cisza nocna, prezentacja dla sztuki i zdjęć, orientacja, link do albumu). Zmiana orientacji lub prezentacji od razu przerysowuje bieżący obraz i wysyła go na ramkę, bez przesuwania harmonogramu. |
+| Ustawienia | `GET/PUT /api/settings` (tryb, playlista, godziny zmiany `change_times` i co ile dni `change_every_days`, początek ciszy nocnej `quiet_start`, prezentacja dla sztuki i zdjęć, orientacja, link do albumu). Zmiana orientacji lub prezentacji od razu przerysowuje bieżący obraz i wysyła go na ramkę, bez przesuwania harmonogramu. |
 | Status | `GET /api/status?refresh=` (bateria, ładowanie, połączenie, firmware, serwer), `GET /api/device/status`, `POST /api/device/wake`, `POST /api/device/sleep` |
 | Biblioteka | `GET /api/library/items` (filtry: `q`, `artist`, `style`, `subject`, `color`, `kind`, `favorites`, `sort`), `GET /api/library/facets`, `GET/PATCH/DELETE /api/library/items/{id}`, `GET …/{id}/thumb`, `…/image`, `…/preview` (obraz w kadrze i passe-partout, w oryginalnych kolorach; opcjonalnie `?settings=<JSON>` z orientacją i prezentacją do podglądu przed zapisaniem), `POST …/{id}/show`, `GET/PUT/DELETE …/{id}/framing` (kadr, detale albo kadr w passe-partout z kształtem okienka: odczyt, korekta dla orientacji, powrót do automatu bieżącego trybu), `POST /api/library/upload` (plik i opis; zdjęcia z rolki z datą i miejscem z EXIF) |
 | Muzea | `GET /api/museums`, `GET /api/museums/{source}/search`, `POST /api/museums/{source}/import`, `POST /api/museums/{source}/import-search`, `GET /api/jobs[/{id}]` |
@@ -58,9 +58,13 @@ adresów obrazów), jeśli token jest ustawiony.
 ## Rotacja
 
 `player.py`: kolejka z aktywnej playlisty (albo zdjęć w trybie albumu),
-tasowana, bez powtórek przez `avoid_repeat_days`. Zmiany są wyrównane do
-końca ciszy nocnej (domyślnie codziennie o 07:00); na baterii obowiązuje
-osobny interwał. Przypięcie (`hold`) wstrzymuje rotację do określonej chwili
+tasowana, bez powtórek przez `avoid_repeat_days`. Obraz zmienia się
+o ustawionych godzinach (`change_times`, domyślnie 07:00), codziennie albo
+co 2–3 dni licząc od ostatniej zmiany, tak samo przy ładowarce i na
+baterii. Cisza nocna trwa od `quiet_start` do najbliższej godziny zmiany,
+więc budzik ekranu zawsze dzwoni na zmianę; na ładowarce w ciszy zdjęcia
+idą od razu. Starsze ustawienia z interwałem
+zamieniają się same na godziny, które ten interwał dawał. Przypięcie (`hold`) wstrzymuje rotację do określonej chwili
 albo na stałe. Stan i historia są w SQLite, więc przetrwają restart.
 
 ## Wdrożenie
