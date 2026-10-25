@@ -86,6 +86,20 @@ def _item(svc: FrameService, item_id: str) -> Item:
     return item
 
 
+async def _work(svc: FrameService, item_id: str, save: bool = False) -> Item:
+    """A library item or any museum work (``<museum>:<id>``). Museum works
+    are added to the library with ``save``: when the owner shows, crops,
+    likes or otherwise keeps one."""
+    lookup = svc.importer.save if save else svc.importer.resolve
+    try:
+        item = await run_in_threadpool(lookup, item_id)
+    except httpx.HTTPError as err:
+        raise HTTPException(502, f"{item_id}: {err}") from err
+    if item is None:
+        raise HTTPException(404, f"no item {item_id!r}")
+    return item
+
+
 @router.get("/library/items", response_model=ItemPage)
 def list_items(
     svc: Svc,
@@ -122,13 +136,13 @@ def facets(svc: Svc) -> Facets:
 
 
 @router.get("/library/items/{item_id}", response_model=Item)
-def get_item(item_id: str, svc: Svc) -> Item:
-    return _item(svc, item_id)
+async def get_item(item_id: str, svc: Svc) -> Item:
+    return await _work(svc, item_id)
 
 
 @router.patch("/library/items/{item_id}", response_model=Item)
-def patch_item(item_id: str, patch: ItemPatch, svc: Svc) -> Item:
-    _item(svc, item_id)
+async def patch_item(item_id: str, patch: ItemPatch, svc: Svc) -> Item:
+    await _work(svc, item_id, save=True)
     changes = patch.model_dump(exclude_none=True)
     updated = svc.library.update(item_id, **changes)
     assert updated is not None
@@ -145,7 +159,7 @@ def delete_item(item_id: str, svc: Svc) -> dict[str, bool]:
 
 @router.get("/library/items/{item_id}/thumb")
 async def item_thumb(item_id: str, svc: Svc) -> FileResponse:
-    item = _item(svc, item_id)
+    item = await _work(svc, item_id)
     try:
         path = await run_in_threadpool(svc.images.ensure_thumb, item)
     except (httpx.HTTPError, OSError) as err:
@@ -155,7 +169,7 @@ async def item_thumb(item_id: str, svc: Svc) -> FileResponse:
 
 @router.get("/library/items/{item_id}/image")
 async def item_image(item_id: str, svc: Svc) -> FileResponse:
-    item = _item(svc, item_id)
+    item = await _work(svc, item_id)
     try:
         path = await run_in_threadpool(svc.images.ensure_image, item)
     except (httpx.HTTPError, OSError) as err:
@@ -182,7 +196,7 @@ async def item_preview(item_id: str, svc: Svc, settings: str | None = None) -> F
     With the saved settings, or with ``settings`` (FrameSettings JSON; only
     orientation and presentation matter) to try a framing before saving it.
     """
-    item = _item(svc, item_id)
+    item = await _work(svc, item_id)
     frame_settings = svc.player.settings
     if settings:
         try:
@@ -283,7 +297,7 @@ async def get_framing(
     item_id: str, svc: Svc, orientation: Orientation | None = None
 ) -> FramingView:
     """How the picture is cropped on the frame, and what can be adjusted."""
-    item = _item(svc, item_id)
+    item = await _work(svc, item_id)
     return await _plan_and_view(svc, item, orientation or svc.player.settings.orientation)
 
 
@@ -291,7 +305,7 @@ async def get_framing(
 async def put_framing(item_id: str, update: FramingUpdate, svc: Svc) -> FramingView:
     """Save a corrected crop (FILL, or FIT with its shape) or close-ups
     (DETAILS, DESCRIPTION) for this picture."""
-    item = _item(svc, item_id)
+    item = await _work(svc, item_id, save=True)
     current = await _plan_and_view(svc, item, update.orientation)
     framing = item.framing.get(update.orientation.value, Framing()).model_copy()
     if current.fit == Fit.FILL and len(update.crops) == 1:
@@ -311,7 +325,7 @@ async def put_framing(item_id: str, update: FramingUpdate, svc: Svc) -> FramingV
 @router.delete("/library/items/{item_id}/framing", response_model=FramingView)
 async def reset_framing(item_id: str, svc: Svc, orientation: Orientation) -> FramingView:
     """Back to the automatic crop of the current mode for this orientation."""
-    item = _item(svc, item_id)
+    item = await _work(svc, item_id, save=True)
     current = await _plan_and_view(svc, item, orientation)
     framing = item.framing.get(orientation.value, Framing()).model_copy()
     field = {Fit.FILL: "fill", Fit.DETAILS: "details", Fit.DESCRIPTION: "detail", Fit.FIT: "fit"}
@@ -340,7 +354,7 @@ def _save_framing(
 
 @router.post("/library/items/{item_id}/show", status_code=202)
 async def show_item(item_id: str, request: ShowRequest, svc: Svc) -> dict[str, Any]:
-    item = _item(svc, item_id)
+    item = await _work(svc, item_id, save=True)
     svc.background(svc.player.show(item, "app", hold_from(request.hold)))
     return {"accepted": True, "item_id": item.id}
 

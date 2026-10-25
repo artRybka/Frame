@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     api_token: str | None = None
 
     data_dir: Path = Path("data")
+    # Downloaded museum originals are a cache: least recently used ones go
+    # beyond this size (uploads and photos are always kept).
+    image_cache_mb: int = 500
     # Fill an empty library from museum collections on first start.
     seed_library: bool = True
     # Background rotation and status polling (off in some tests).

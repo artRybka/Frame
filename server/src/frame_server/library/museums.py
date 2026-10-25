@@ -409,7 +409,8 @@ class WikimediaCommons(Museum):
             "format": "json",
             "prop": "imageinfo",
             "iiprop": "url|size|extmetadata",
-            "iiurlwidth": 600,
+            # Commons serves (and rate-limits by) a fixed set of widths.
+            "iiurlwidth": 500,
             "iiextmetadatafilter": self.meta,
             **extra,
         }

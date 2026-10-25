@@ -9,6 +9,7 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
+import httpx
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
@@ -18,6 +19,7 @@ from .imaging.grids import MAX_PHOTOS, MIN_PHOTOS
 from .imaging.layout import Fit
 from .imaging.text import TextBlock
 from .library import Item, ItemKind, PlaylistRules
+from .library.museums import MUSEUMS
 from .schedule import FrameSettings, Mode, in_quiet_hours, next_change
 
 if TYPE_CHECKING:
@@ -28,6 +30,10 @@ log = logging.getLogger(__name__)
 SETTINGS_KEY = "settings"
 STATE_KEY = "player"
 HISTORY_MAX = 50
+#: Next pictures whose originals are downloaded ahead of their turn.
+PREFETCH = 3
+#: When no picture can be shown (offline, nothing cached), try again after this.
+RETRY_AFTER = timedelta(minutes=15)
 
 
 def utcnow() -> datetime:
@@ -394,11 +400,65 @@ class Player:
 
     async def next(self, reason: str = "manual") -> Item | None:
         state, settings = self.state, self.settings
-        item = self._pop_next(state, settings)
+        item = await self._pop_ready(state, settings)
+        if item is None and state.last_error:
+            state.next_change_at = (utcnow() + RETRY_AFTER).isoformat(timespec="seconds")
         self._save_state(state)
         if item is not None:
             await self.show(item, reason)
+            await self.prefetch()
         return item
+
+    async def _pop_ready(self, state: PlayerState, settings: FrameSettings) -> Item | None:
+        """The next picture whose original is at hand. One that cannot be
+        downloaded now (no internet, museum down) goes to the back of the
+        queue and the first one already cached takes its turn."""
+        item = self._pop_next(state, settings)
+        if item is None:
+            return None
+        images = self.service.images
+        try:
+            await run_in_threadpool(images.ensure_image, item)
+            return item
+        except (httpx.HTTPError, OSError, ValueError) as err:
+            log.warning("original of %s unavailable: %s", item.id, err)
+            state.last_error = f"{item.title or item.id}: {err}"
+        for item_id in state.queue:
+            cached = self.library.get(item_id)
+            if cached is not None and not cached.excluded and images.has_image(cached):
+                state.queue.remove(item_id)
+                state.queue.append(item.id)
+                return cached
+        state.queue.append(item.id)
+        return None
+
+    async def prefetch(self) -> None:
+        """Download the originals of the next pictures now, so that a change
+        needs no internet, then trim the cache. Never raises."""
+        images = self.service.images
+        for item in self.upcoming(PREFETCH):
+            if images.has_image(item):
+                continue
+            try:
+                await run_in_threadpool(images.ensure_image, item)
+            except (httpx.HTTPError, OSError, ValueError) as err:
+                log.info("prefetch of %s failed: %s", item.id, err)
+        try:
+            await run_in_threadpool(self.trim_cache)
+        except OSError as err:
+            log.warning("trimming the image cache failed: %s", err)
+
+    def trim_cache(self) -> int:
+        """Delete the least recently used museum originals over the size
+        limit (the current picture and the next ones stay) and thumbnails
+        of works browsed but not kept."""
+        state = self.state
+        soon = {state.current_item_id, *state.current_group, *state.queue[:PREFETCH]}
+        _, items = self.library.query(include_excluded=True)
+        keep = [i for i in items if i.id in soon or i.source not in MUSEUMS]
+        limit = self.service.settings.image_cache_mb * 1024 * 1024
+        self.service.images.prune_thumbs(items)
+        return self.service.images.prune(limit, keep)
 
     async def previous(self) -> Item | None:
         state = self.state

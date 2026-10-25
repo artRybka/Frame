@@ -3,11 +3,12 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime, timedelta
 
+import httpx
 from conftest import jpeg_bytes
 from fastapi.testclient import TestClient
 
-from frame_server.library import ItemKind, Playlist, PlaylistRules
-from frame_server.player import Hold, hold_from
+from frame_server.library import Item, ItemKind, Playlist, PlaylistRules
+from frame_server.player import RETRY_AFTER, Hold, hold_from
 from frame_server.schedule import FrameSettings, in_quiet_hours, next_change
 
 
@@ -215,3 +216,132 @@ def test_panel_progress_report_is_accepted(service) -> None:
         assert response.status_code == 200
     paths = [r.path for r in app.state.service.store.recent_requests]
     assert "/content-transfer-progress" in paths
+
+
+def _artwork(service, n: int, cached: bool) -> Item:
+    item = service.library.upsert(
+        Item(
+            id=f"aic:{n}",
+            source="aic",
+            source_id=str(n),
+            title=f"Painting {n}",
+            image_url=f"https://museum.invalid/{n}.jpg",
+            thumb_url=f"https://museum.invalid/{n}-small.jpg",
+        )
+    )
+    if cached:
+        service.images.store(item, jpeg_bytes((30 * n, 90, 120)))
+    return item
+
+
+def _offline(service) -> None:
+    def refuse(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("offline", request=request)
+
+    service.images.http = lambda: httpx.Client(transport=httpx.MockTransport(refuse))
+
+
+async def test_offline_change_takes_a_cached_picture(service) -> None:
+    missing = _artwork(service, 1, cached=False)
+    ready = _artwork(service, 2, cached=True)
+    _offline(service)
+    state = service.player.state
+    state.queue = [missing.id, ready.id]
+    service.player._save_state(state)
+
+    shown = await service.player.next()
+
+    assert shown is not None and shown.id == ready.id
+    assert service.player.state.current_item_id == ready.id
+    assert missing.id in service.player.state.queue  # tried again later
+
+
+async def test_offline_with_nothing_cached_keeps_the_picture_and_retries(service) -> None:
+    missing = _artwork(service, 1, cached=False)
+    _offline(service)
+    state = service.player.state
+    state.queue = [missing.id]
+    service.player._save_state(state)
+
+    assert await service.player.next() is None
+    state = service.player.state
+    assert state.current_item_id is None
+    assert "Painting 1" in (state.last_error or "")
+    retry = datetime.fromisoformat(state.next_change_at or "")
+    assert retry > datetime.now(UTC) + RETRY_AFTER - timedelta(minutes=1)
+
+
+def test_cache_drops_least_recently_used_museum_originals(service) -> None:
+    import os
+
+    old, recent, current = (_artwork(service, n, cached=True) for n in (1, 2, 3))
+    own = _add(service, 4, (200, 40, 40), "Ala")
+    images = service.images
+    for age, item in ((3000, old), (2000, recent), (1000, current)):
+        stamp = datetime.now(UTC).timestamp() - age
+        os.utime(images.image_path(item), (stamp, stamp))
+    images.ensure_image(recent)  # used just now
+    state = service.player.state
+    state.current_item_id = current.id
+    service.player._save_state(state)
+
+    # Room for about two originals: the oldest unused one goes first.
+    sizes = sorted(p.stat().st_size for p in images.images.glob("*.jpg"))
+    assert images.prune(sum(sizes) - 1, [current, own]) == 1
+    assert not images.has_image(old) and images.has_image(recent)
+
+    service.settings.image_cache_mb = 0
+    service.player.trim_cache()
+    assert not images.has_image(recent)
+    assert images.has_image(current)  # on the frame now
+    assert images.has_image(own)  # an upload cannot be downloaded again
+
+
+def test_museum_works_join_the_library_only_when_kept(service, monkeypatch) -> None:
+    from frame_server.library.museums import MUSEUMS, Museum
+    from frame_server.web import create_app
+
+    fetched: list[str] = []
+
+    class Fake(Museum):
+        key = "fake"
+        name = "Fake Museum"
+
+        def search(self, query: str, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
+            return 0, []
+
+        def fetch(self, source_id: str) -> Item | None:
+            fetched.append(source_id)
+            url = f"https://museum.invalid/{source_id}.jpg"
+            return self._item(source_id, title=f"Work {source_id}", image_url=url, thumb_url=url)
+
+    monkeypatch.setitem(MUSEUMS, "fake", Fake)
+    app = create_app(service.settings)
+    svc = app.state.service
+    picture = jpeg_bytes((40, 40, 200))
+    svc.images.http = lambda: httpx.Client(
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, content=picture))
+    )
+    playlist = svc.library.save_playlist(Playlist(name="Mine", kind="manual"))
+
+    with TestClient(app) as client:
+        # Browsing: details and pictures, nothing kept.
+        assert client.get("/api/library/items/fake:1").json()["title"] == "Work 1"
+        assert client.get("/api/library/items/fake:1/thumb").status_code == 200
+        assert client.get("/api/library/items/fake:1/preview").status_code == 200
+        assert not svc.library.has("fake:1")
+        assert fetched == ["1"]  # remembered after the first request
+        assert client.get("/api/library/items/nope:1").status_code == 404
+
+        # A heart or a playlist keeps the work, with its colours.
+        liked = client.patch("/api/library/items/fake:1", json={"favorite": True}).json()
+        assert liked["favorite"] and liked["colors"]
+        assert svc.library.get("fake:1").favorite
+        client.post(f"/api/playlists/{playlist.id}/items", json={"item_ids": ["fake:2"]})
+        assert svc.library.has("fake:2")
+        assert client.get("/api/library/items/fake:3/thumb").status_code == 200
+
+    # Browsed thumbnails beyond the spare ones go with the next trim.
+    svc.images.prune_thumbs(svc.library.query()[1], spare=0)
+    assert svc.images.thumb_path(svc.library.get("fake:1")).is_file()
+    assert not svc.images.thumb_path(svc.importer.remote("fake:3")).is_file()

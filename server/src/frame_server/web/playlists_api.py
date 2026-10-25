@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
@@ -94,6 +95,11 @@ def add_items(playlist_id: int, body: ItemIds, svc: Svc) -> PlaylistDetail:
     if playlist.kind != PlaylistKind.MANUAL:
         raise HTTPException(400, "items can only be added to manual playlists")
     ids = playlist.item_ids + [i for i in body.item_ids if i not in playlist.item_ids]
+    for item_id in ids:  # museum works found by search join the library now
+        try:
+            svc.importer.save(item_id)
+        except httpx.HTTPError as err:
+            raise HTTPException(502, f"{item_id}: {err}") from err
     return _detail(svc, svc.library.save_playlist(playlist.model_copy(update={"item_ids": ids})))
 
 

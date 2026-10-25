@@ -6,7 +6,8 @@ import logging
 import random
 import secrets
 import threading
-from collections.abc import Callable, Iterator
+from collections import OrderedDict
+from collections.abc import Callable, Iterable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from itertools import chain, zip_longest
@@ -25,6 +26,9 @@ log = logging.getLogger(__name__)
 
 #: Pseudo source: every museum at once.
 ALL = "all"
+#: Museum works seen in search results, kept in memory so that opening one
+#: needs no second request.
+REMOTE_MEMO = 500
 
 
 def _search_stream(source: Museum, query: str) -> Iterator[Item]:
@@ -68,6 +72,44 @@ class Importer:
         self.http = http
         self.private_use = private_use
         self.jobs: dict[str, Job] = {}
+        self._remote: OrderedDict[str, Item] = OrderedDict()
+        self._remote_lock = threading.Lock()
+
+    def remember(self, items: Iterable[Item]) -> None:
+        with self._remote_lock:
+            for item in items:
+                self._remote[item.id] = item
+                self._remote.move_to_end(item.id)
+            while len(self._remote) > REMOTE_MEMO:
+                self._remote.popitem(last=False)
+
+    def remote(self, item_id: str) -> Item | None:
+        """A museum work by its id, without adding it to the library: from
+        recent search results, else asked from the museum."""
+        with self._remote_lock:
+            if item_id in self._remote:
+                return self._remote[item_id]
+        source, _, source_id = item_id.partition(":")
+        if source not in MUSEUMS or not source_id:
+            return None
+        with self.http() as http:
+            item = museum(source, http, self.private_use()).fetch(source_id)
+        if item is not None:
+            self.remember([item])
+        return item
+
+    def resolve(self, item_id: str) -> Item | None:
+        """A library item, or a museum work that is not (yet) in the library."""
+        return self.library.get(item_id) or self.remote(item_id)
+
+    def save(self, item_id: str) -> Item | None:
+        """The library item, adding the museum work first if it is not there:
+        a work is kept once the owner does something with it."""
+        existing = self.library.get(item_id)
+        if existing is not None:
+            return existing
+        item = self.remote(item_id)
+        return self.add(item) if item else None
 
     def add(self, item: Item) -> Item:
         """Download the thumbnail, analyse colours and store the item."""
@@ -93,15 +135,14 @@ class Importer:
         self, source: str, query: str, limit: int = 24, page: int = 1
     ) -> tuple[int, list[Item]]:
         with self.http() as http:
-            return museum(source, http, self.private_use()).search(query, limit=limit, page=page)
+            total, items = museum(source, http, self.private_use()).search(
+                query, limit=limit, page=page
+            )
+        self.remember(items)
+        return total, items
 
     def import_one(self, source: str, source_id: str) -> Item | None:
-        existing = self.library.get(f"{source}:{source_id}")
-        if existing is not None:
-            return existing
-        with self.http() as http:
-            item = museum(source, http, self.private_use()).fetch(source_id)
-        return self.add(item) if item else None
+        return self.save(f"{source}:{source_id}")
 
     def search_all(
         self, query: str, limit: int = 8, page: int = 1
