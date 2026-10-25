@@ -10,6 +10,7 @@ from .pipeline import (
     Strategy,
     render,
     render_multi,
+    render_original,
 )
 from .tone import ToneSettings
 
@@ -29,4 +30,5 @@ __all__ = [
     "get_palette",
     "render",
     "render_multi",
+    "render_original",
 ]

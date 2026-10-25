@@ -3,11 +3,12 @@ from __future__ import annotations
 import io
 from itertools import combinations
 
+import numpy as np
 import pytest
 from conftest import jpeg_bytes
 from PIL import Image
 
-from frame_server.imaging import RenderSettings, render_multi
+from frame_server.imaging import RenderSettings, render_multi, render_original
 from frame_server.imaging.grids import GRIDS, MAX_PHOTOS, MIN_PHOTOS, choose, grid_rects
 from frame_server.imaging.layout import Fit, Orientation
 from frame_server.library import ItemKind, Playlist, PlaylistKind
@@ -74,6 +75,9 @@ def test_render_multi_composes_one_board() -> None:
     assert render_multi(sources, settings).preview.shape == (2560, 1440, 3)
     single = render_multi(sources[:1], settings)  # one photo: a passe-partout
     assert single.panel.shape == (1440, 2560, 3)
+    board = np.asarray(render_multi(sources, settings, seed="s").original_image(), dtype=np.float32)
+    fast = np.asarray(render_original(sources, settings, multi=True, seed="s"), dtype=np.float32)
+    assert np.abs(board - fast).mean() < 0.5
 
 
 def test_photos_keep_their_own_fits() -> None:

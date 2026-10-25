@@ -10,6 +10,7 @@ from pathlib import Path
 
 import numpy as np
 from PIL import Image, ImageCms, ImageOps
+from pillow_heif import register_heif_opener
 from pydantic import BaseModel, Field
 
 from .color import FloatArray, linear_to_u8, u8_to_linear
@@ -18,6 +19,9 @@ PANEL_WIDTH = 2560
 PANEL_HEIGHT = 1440
 
 _SRGB_PROFILE = ImageCms.createProfile("sRGB")
+
+# iPhone originals (newer shared iCloud albums, uploads) are HEIC.
+register_heif_opener()
 
 
 class Orientation(StrEnum):
@@ -398,11 +402,14 @@ def compose_plan(
     img: Image.Image | Sequence[Image.Image],
     plan: Plan,
     mat_color: tuple[int, int, int] = (255, 255, 255),
+    fast: bool = False,
 ) -> FloatArray:
     """Linear RGB canvas: each window gets its part of the picture, resampled
     in linear light; the rest is ``mat_color`` (painted over later).
 
-    ``img`` is one picture for all windows, or one per window (MULTI)."""
+    ``img`` is one picture for all windows, or one per window (MULTI).
+    ``fast`` resamples in sRGB instead, a little darker in fine detail but
+    much quicker: for previews in the app."""
     cw, ch = plan.canvas
     out = np.empty((ch, cw, 3), dtype=np.float32)
     out[:] = u8_to_linear(np.array(mat_color, dtype=np.uint8))
@@ -411,6 +418,8 @@ def compose_plan(
         x, y, w, h = window.rect
         x0, y0, x1, y1 = window.box
         part = img.crop((round(x0), round(y0), round(x1), round(y1)))
+        if fast:
+            part = part.resize((w, h), Image.Resampling.LANCZOS)
         out[y : y + h, x : x + w] = resize_linear(part, (w, h))
     return out
 

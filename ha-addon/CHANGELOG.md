@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.5.0
+
+- Nowe Odkrywaj. Słownik stylów, tematów, okresów i technik po polsku ze
+  słowami, których używają muzea (`PlaylistRules.terms`, artyści
+  dopasowywani po słowach: „Hokusai” pasuje do „Katsushika Hokusai”).
+  36 tematów w grupach z okładkami i liczbą dzieł z katalogu
+  (`GET /api/themes`, `GET /api/themes/{key}`,
+  `POST /api/themes/{key}/playlist`), nowe `GET /api/vocabulary`,
+  `/api/terms`, `/api/terms/museums` i `/api/discover/search`;
+  `/api/library/items` przyjmuje `terms` i lata. Rękopisy nie trafiają do
+  katalogu i są ukryte, chyba że ktoś o nie zapyta
+  (`technique:manuscripts`); już pobrane znikają z katalogu jednorazowo.
+
+- Podgląd z passe-partout dla aplikacji 5–8× szybciej: składa tylko
+  układ, karton i opis (bez mapowania tonów i ditheringu) i idzie jako
+  JPEG. Serwer pobiera z wyprzedzeniem oryginały wszystkich 8 obrazów
+  z „Następne” (było 3).
+
+- Gładsza faktura kartonu (0,3% w miękkich plamach zamiast 1,2% w drobnym
+  ziarnie). Mniejszy tekst opisu (treść ok. 60% dawnej wielkości, wiersze
+  do połowy krótszego boku); tytuł i autor prawie jak dotąd.
+
+- Nowe linki do albumów udostępnionych z iOS 26 do albumów udostępnionych z iOS 26
+  (`https://photos.icloud.com/shared/album/<token>`) działają. To albumy
+  w nowym API iCloud (CloudKit, „shared collections”), a serwer znał tylko
+  stary format `www.icloud.com/sharedalbum/#<token>`. Z nowych albumów
+  przychodzą pełne oryginały (zamiast ok. 2048 px), także HEIC (nowa
+  zależność `pillow-heif`), do tego data i miejsce zdjęcia od razu przy
+  synchronizacji. Stare linki działają jak dotąd.
+
+- Synology: `pull_policy: always` w `deploy/synology/docker-compose.yml`,
+  więc Projekt → frame → Kompiluj sam pobiera nowy obraz (bez usuwania
+  starego).
+
 ## 0.4.1
 
 - Serwer znów startuje w kilka sekund po aktualizacji z 0.3.0. Jednorazowe

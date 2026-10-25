@@ -29,6 +29,8 @@ TINT_DARK = (0.24, 0.035, 0.5)  # dark picture: a deep mat
 NEUTRAL_CHROMA = 0.02  # pictures below this mean chroma count as colourless
 BEVEL = 0.006  # bevel width, fraction of the canvas's short side
 SHADOW = 0.006  # shadow on the picture, same unit
+GRAIN = 0.003  # paper grain, relative brightness swing: barely there
+GRAIN_CELL = 8  # grain size in pixels: soft clouds, not specks
 
 
 def _ink(palette: Palette, name: str) -> FloatArray | None:
@@ -114,10 +116,10 @@ def _picture_mat(target: FloatArray, plan: Plan, palette: Palette) -> FloatArray
 
 
 def _texture(shape: tuple[int, int], seed: int = 7) -> FloatArray:
-    """Soft paper grain, the same every time (renders are reproducible)."""
+    """Faint, smooth paper grain, the same every time (renders are reproducible)."""
     h, w = shape
     rng = np.random.default_rng(seed)
-    coarse = rng.normal(0.0, 1.0, (h // 3 + 2, w // 3 + 2)).astype(np.float32)
+    coarse = rng.normal(0.0, 1.0, (h // GRAIN_CELL + 2, w // GRAIN_CELL + 2)).astype(np.float32)
     ys = np.linspace(0, coarse.shape[0] - 1.001, h)
     xs = np.linspace(0, coarse.shape[1] - 1.001, w)
     y0, x0 = ys.astype(int), xs.astype(int)
@@ -144,7 +146,7 @@ def paint_mat(target: FloatArray, plan: Plan, palette: Palette, mat: str) -> Flo
     if mat != "edge":  # "edge" keeps the picture's border colour composed earlier
         base = _picture_mat(target, plan, palette) if mat == "picture" else mat_color(mat, palette)
         if mat in ("cream", "grey", "picture"):
-            grain = 1.0 + 0.012 * _texture((ch, cw))[mask]
+            grain = 1.0 + GRAIN * _texture((ch, cw))[mask]
             target[mask] = np.clip(base[None, :] * grain[:, None], 0.0, 1.0)
         else:
             target[mask] = base  # pure ink: no grain, it would only add dots
