@@ -13,13 +13,25 @@ enum Theme {
     static let hairline = Color(light: 0xDDD5C8, dark: 0x34302B)
     static let accent = Color(light: 0x23466B, dark: 0x9DBCE0)
     static let vermilion = Color(light: 0xB8432F, dark: 0xE58A6F)
-    static let frameWood = Color(light: 0x2A2521, dark: 0x0C0B0A)
+    /// The frame around the panel: white, like the real one.
+    static let moulding = Color(light: 0xFFFFFF, dark: 0xE6E2DA)
+    static let mouldingEdge = Color(light: 0xD3CBBE, dark: 0x4A453F)
     static let good = Color(light: 0x3E7B56, dark: 0x7CC49A)
     static let warn = Color(light: 0xB7832A, dark: 0xE2B45E)
     static let bad = Color(light: 0xB8432F, dark: 0xE58A6F)
 
     static let corner: CGFloat = 14
     static let gutter: CGFloat = 20
+}
+
+extension View {
+    /// A thin white frame around a miniature of the panel.
+    func whiteFrame(_ width: CGFloat, corner: CGFloat = 2) -> some View {
+        padding(width)
+            .background(Theme.moulding)
+            .clipShape(RoundedRectangle(cornerRadius: corner))
+            .overlay(RoundedRectangle(cornerRadius: corner).strokeBorder(Theme.mouldingEdge, lineWidth: 0.5))
+    }
 }
 
 extension Color {
@@ -132,6 +144,13 @@ enum ColorTag {
 }
 
 enum Names {
+    /// "zmianę", "zmiany" or "zmian" after `count`.
+    static func changes(_ count: Int) -> String {
+        if count == 1 { return "zmianę" }
+        let tens = count % 100 / 10, ones = count % 10
+        return tens != 1 && (2 ... 4).contains(ones) ? "zmiany" : "zmian"
+    }
+
     static func source(_ key: String) -> String {
         switch key {
         case "aic": "Art Institute of Chicago"

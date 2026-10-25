@@ -74,8 +74,13 @@ struct ItemDetailView: View {
                 .id(ref)
                 .aspectRatio(view == .original ? CGFloat(aspect(item)) : (model.isPortrait ? 9.0 / 16.0 : 16.0 / 9.0), contentMode: .fit)
                 .padding(view == .frame ? 7 : 0)
-                .background(view == .frame ? Theme.frameWood : .clear)
+                .background(view == .frame ? Theme.moulding : .clear)
                 .clipShape(RoundedRectangle(cornerRadius: view == .frame ? 2 : 8, style: .continuous))
+                .overlay {
+                    if view == .frame {
+                        RoundedRectangle(cornerRadius: 2).strokeBorder(Theme.mouldingEdge, lineWidth: 0.5)
+                    }
+                }
                 .shadow(color: .black.opacity(0.22), radius: 16, y: 12)
                 .frame(maxHeight: 460)
                 .frame(maxWidth: .infinity)

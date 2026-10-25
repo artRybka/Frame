@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 
 // Mirrors the server models (server/src/frame_server/library/models.py,
@@ -492,6 +493,46 @@ struct FramingWindow: Codable, Hashable, Sendable {
     let aspect: Double
     var crop: Crop
     let custom: Bool
+    /// Where the window is on the canvas: x, y, width, height as fractions
+    /// of it. Nil from older servers.
+    var rect: [Double]?
+    /// Passe-partout: where a window of another shape would be centred.
+    var area: [Double]?
+
+    var frame: CGRect? { Self.unit(rect) }
+    var areaFrame: CGRect? { Self.unit(area) }
+
+    private static func unit(_ values: [Double]?) -> CGRect? {
+        guard let values, values.count == 4 else { return nil }
+        return CGRect(x: values[0], y: values[1], width: values[2], height: values[3])
+    }
+}
+
+/// Crops for one orientation, by mode (server: library.models.Framing). Sent
+/// with a preview to try crops before they are saved.
+struct FramingCrops: Codable, Hashable, Sendable {
+    var fill: Crop?
+    var details: [Crop]?
+    var detail: Crop?  // "description": its one close-up
+    var fit: Crop?  // "fit": the part shown and the window's shape
+
+    /// `crops` as edited in a framing view of resolved mode `mode`.
+    init(mode: String, crops: [Crop]) {
+        switch mode {
+        case "fill": fill = crops.first
+        case "details": details = crops.count == 2 ? crops : nil
+        case "description": detail = crops.first
+        case "fit": fit = crops.first
+        default: break
+        }
+    }
+
+    init(fill: Crop? = nil, details: [Crop]? = nil, detail: Crop? = nil, fit: Crop? = nil) {
+        self.fill = fill
+        self.details = details
+        self.detail = detail
+        self.fit = fit
+    }
 }
 
 /// `GET /api/library/items/{id}/framing`

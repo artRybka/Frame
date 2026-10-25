@@ -86,11 +86,11 @@ jobs:
             capture frame 10 "frame-$appearance"
             capture museums 8 "museums-$appearance"
             capture send 8 "send-$appearance"
-            capture crop 12 "crop-$appearance"
+            capture browse 14 "browse-$appearance"
             capture now 16 "now-description-$appearance" -fit description -mat black
             capture now 16 "now-details-$appearance" -fit details -mat cream
             capture now 16 "now-picture-$appearance" -fit fit -mat picture
-            capture crop 12 "crop-fit-$appearance" -fit fit
+            capture browse 14 "browse-fit-$appearance" -fit fit
           done
       - uses: actions/upload-artifact@v4
         with:

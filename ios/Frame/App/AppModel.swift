@@ -178,21 +178,32 @@ final class AppModel {
 
     // MARK: Actions
 
-    func next() async {
-        await perform { try await self.backend.next() }
-        await followPlayer()
-    }
-
-    func previous() async {
-        await perform { try await self.backend.previous() }
-        await followPlayer()
-    }
-
-    func hold(_ spec: HoldSpec) async {
+    /// "Pokaż na ramce" on "Teraz": the picture browsed to, `offset` places
+    /// from the one on the frame (back in the history, ahead in the queue),
+    /// with its crop changed first. The neighbours go as "previous" and
+    /// "next" would, so the playlist keeps its order. False if it failed.
+    func present(itemID: String, offset: Int, framing change: FramingChange?) async -> Bool {
         do {
-            player = try await backend.hold(spec)
-            toast = spec == .untilNextChange ? "Wróci zwykły harmonogram" : "Przypięto: \(spec.label.lowercased())"
-        } catch { show(error) }
+            switch change {
+            case let .save(orientation, crops)?:
+                _ = try await backend.saveFraming(itemID: itemID, orientation: orientation, crops: crops)
+            case let .reset(orientation)?:
+                _ = try await backend.resetFraming(itemID: itemID, orientation: orientation)
+            case nil:
+                break
+            }
+            switch offset {
+            case 0: break  // a new crop: the server redraws the picture on its own
+            case 1: try await backend.next()
+            case -1: try await backend.previous()
+            default: try await backend.show(itemID: itemID, hold: .untilNextChange)
+            }
+        } catch {
+            show(error)
+            return false
+        }
+        toast = offset == 0 ? "Nowy kadr — ramka odświeża obraz" : "Wysyłam na ramkę…"
+        return true
     }
 
     func releaseHold() async {

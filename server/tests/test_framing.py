@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import numpy as np
 import pytest
 from conftest import jpeg_bytes
@@ -240,12 +242,19 @@ def test_framing_api(service) -> None:
         view = client.get(url, params={"orientation": "landscape"}).json()
         assert view["fit"] == "fill" and len(view["windows"]) == 1
         assert not view["windows"][0]["custom"]
+        # The app draws its crop over the preview, at the window's place.
+        x, y, w, h = view["windows"][0]["rect"]
+        assert (x, y, w) == (0, 0, 1) and 0.9 < h <= 1 and view["windows"][0]["area"] is None
 
         crop = {"x": 0.3, "y": 0.5, "zoom": 1.5}
         saved = client.put(url, json={"orientation": "landscape", "crops": [crop]}).json()
         assert saved["windows"][0]["custom"] and saved["windows"][0]["crop"]["zoom"] == 1.5
         stored = svc.library.get(item.id).framing["landscape"].fill
         assert stored.zoom == 1.5
+        # The automatic crop, offered without forgetting the saved one.
+        auto = client.get(url, params={"orientation": "landscape", "automatic": True}).json()
+        assert not auto["windows"][0]["custom"] and auto["windows"][0]["crop"]["zoom"] == 1
+        assert svc.library.get(item.id).framing["landscape"].fill == stored
         render_settings = svc.player.render_settings(svc.library.get(item.id), svc.player.settings)
         assert render_settings.layout.crop == stored
 
@@ -272,6 +281,22 @@ def test_framing_api(service) -> None:
         square = {"x": 0.5, "y": 0.5, "zoom": 1.2, "aspect": 1.0}
         saved = client.put(url, json={"orientation": "portrait", "crops": [square]}).json()
         assert saved["windows"][0]["custom"] and saved["windows"][0]["aspect"] == 1.0
+        # A square window centred in the area a window of any shape may take.
+        _, ay, aw, ah = saved["windows"][0]["area"]
+        x, y, w, h = saved["windows"][0]["rect"]
+        assert w * 1440 == pytest.approx(h * 2560, abs=2) and w == pytest.approx(aw, abs=1e-3)
+        assert y - ay == pytest.approx(ay + ah - y - h, abs=1e-3)
+        # Another shape, tried on the preview before it is sent.
+        preview = f"/api/library/items/{item.id}/preview"
+        portrait = svc.player.settings.model_copy(update={"orientation": "portrait"})
+        tall = {"fit": {"x": 0.5, "y": 0.5, "zoom": 1, "aspect": 0.5}}
+        query = {"settings": portrait.model_dump_json()}
+        saved_png = client.get(preview, params=query).content
+        tried_png = client.get(preview, params=query | {"framing": json.dumps(tall)}).content
+        assert saved_png != tried_png
+        assert svc.library.get(item.id).framing["portrait"].fit.aspect == 1.0
+        bad = client.get(preview, params={"framing": '{"fit": {"zoom": 0}}'})
+        assert bad.status_code == 422
         # Resetting it keeps the description's close-up.
         client.delete(url, params={"orientation": "portrait"})
         stored = svc.library.get(item.id).framing["portrait"]

@@ -22,12 +22,7 @@ enum DemoFraming {
 
     /// Crops for one orientation: chosen by the server's interest analysis
     /// for the demo works (DemoLibrary.json "framing"), or corrected by the user.
-    struct Crops: Codable, Hashable, Sendable {
-        var fill: Crop?
-        var details: [Crop]?
-        var detail: Crop?  // "description": its one close-up
-        var fit: Crop?  // "fit": the part shown and the window's shape
-    }
+    typealias Crops = FramingCrops
 
     struct Window {
         let rect: CGRect  // on the canvas
@@ -188,13 +183,19 @@ enum DemoFraming {
         return CGSize(width: availW, height: max(1, (availW / aspect).rounded()))
     }
 
+    /// "Passe-partout": where the mat window may go (layout.fit_area).
+    static func fitArea(_ canvas: CGSize, margin: Double, caption: Bool) -> CGRect {
+        let pad = (min(canvas.width, canvas.height) * margin).rounded()
+        let bottom = caption ? max(pad, captionBand(canvas)) : pad
+        return CGRect(x: pad, y: pad, width: canvas.width - 2 * pad, height: canvas.height - pad - bottom)
+    }
+
     /// The picture in one mat window: whole, or cropped to any shape.
     private static func planFit(_ size: CGSize, _ canvas: CGSize, _ margin: Double, _ caption: Bool, _ crop: Crop?) -> Plan {
         let chosen = crop ?? wholeCrop
         let aspect = chosen.aspect.map { CGFloat($0) } ?? size.width / size.height
-        let pad = (min(canvas.width, canvas.height) * margin).rounded()
-        let bottom = caption ? max(pad, captionBand(canvas)) : pad
-        let availW = canvas.width - 2 * pad, availH = canvas.height - pad - bottom
+        let area = fitArea(canvas, margin: margin, caption: caption)
+        let pad = area.minY, availW = area.width, availH = area.height
         let sized = fitted(aspect, availW, availH)
         let rect = CGRect(
             x: ((canvas.width - sized.width) / 2).rounded(.down), y: pad + ((availH - sized.height) / 2).rounded(.down),

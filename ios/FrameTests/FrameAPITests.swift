@@ -192,6 +192,18 @@ final class FrameAPITests: XCTestCase {
         let after = try await demo.player().current?.previewUrl
         XCTAssertNotEqual(current?.previewUrl, after)
 
+        // "Kadr automatyczny" is offered without forgetting the saved crop.
+        let auto = try await demo.framing(itemID: id, orientation: "landscape", automatic: true)
+        XCTAssertFalse(auto.windows.contains(where: \.custom))
+        XCTAssertEqual(auto.windows.map(\.crop), view.windows.map(\.crop))
+        let still = try await demo.framing(itemID: id, orientation: "landscape")
+        XCTAssertEqual(still.windows[0].crop.zoom, 3)
+
+        // The windows' places, to crop right on the preview: beside the picture.
+        let rects = try saved.windows.map { try XCTUnwrap($0.frame) }
+        XCTAssertTrue(rects.allSatisfy { $0.minX > 0.3 && $0.maxX <= 1.0001 && $0.maxY <= 1.0001 })
+        XCTAssertLessThan(rects[0].maxY, rects[1].minY)
+
         let reset = try await demo.resetFraming(itemID: id, orientation: "landscape")
         XCTAssertFalse(reset.windows.contains(where: \.custom))
 
@@ -204,6 +216,34 @@ final class FrameAPITests: XCTestCase {
         XCTAssertEqual(text.windows.count, 1)
         let one = try await demo.saveFraming(itemID: id, orientation: "landscape", crops: [Crop(x: 0.4, y: 0.6, zoom: 2)])
         XCTAssertEqual(one.windows.map(\.custom), [true])
+    }
+
+    func testFramingDraft() {
+        let window = FramingWindow(role: "picture", aspect: 0.667, crop: Crop(zoom: 1.04), custom: true,
+                                   rect: [0.3, 0.05, 0.4, 0.8], area: [0.05, 0.05, 0.9, 0.8])
+        let view = FramingView(orientation: "landscape", fit: "fit", width: 800, height: 1200, windows: [window])
+        var draft = FramingDraft(key: "a", view: view, saved: [window.crop], crops: [window.crop])
+        XCTAssertNil(draft.change)
+        XCTAssertNil(draft.trial)
+
+        draft.crops[0].x = 0.4  // moved: saved on sending, same window
+        XCTAssertEqual(draft.change, .save(orientation: "landscape", crops: draft.crops))
+        XCTAssertFalse(draft.reshaped)
+
+        draft.crops[0].aspect = 1  // a square window: the preview tries it first
+        XCTAssertTrue(draft.reshaped)
+        XCTAssertEqual(draft.trial, FramingCrops(fit: Crop(aspect: 1)))
+        XCTAssertEqual(draft.aspect(0), 1)
+
+        // Back to automatic: sending forgets the saved crop.
+        draft.automatic = [Crop()]
+        draft.crops = [Crop()]
+        XCTAssertEqual(draft.change, .reset(orientation: "landscape"))
+    }
+
+    func testChangesPlural() {
+        XCTAssertEqual([1, 2, 4, 5, 12, 22, 25].map(Names.changes),
+                       ["zmianę", "zmiany", "zmiany", "zmian", "zmian", "zmiany", "zmian"])
     }
 
     func testDemoFramingMatchesServerLayout() {

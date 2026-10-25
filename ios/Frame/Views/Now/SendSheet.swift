@@ -90,8 +90,7 @@ struct SendSheet: View {
                         .aspectRatio(contentMode: .fit)
                         .padding(14)
                         .background(Theme.matWhite)
-                        .padding(6)
-                        .background(Theme.frameWood)
+                        .whiteFrame(6)
                         .shadow(color: .black.opacity(0.2), radius: 14, y: 10)
                 } else {
                     VStack(spacing: 12) {

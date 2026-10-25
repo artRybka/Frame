@@ -311,16 +311,20 @@ actor DemoBackend: FrameBackend {
 
     // MARK: Framing
 
-    func framing(itemID: String, orientation: String) async throws -> FramingView {
+    func framing(itemID: String, orientation: String, automatic: Bool) async throws -> FramingView {
         guard let item = items.first(where: { $0.id == itemID }),
               let size = DemoFraming.pixelSize(itemID)
         else { throw BackendError.notFound }
         let pres = item.kind == .photo ? settingsValue.photo : settingsValue.art
-        let custom = shared.crops[itemID]?[orientation]
+        let custom = automatic ? nil : shared.crops[itemID]?[orientation]
+        let canvas = DemoFraming.canvas(orientation)
         let plan = DemoFraming.plan(
-            size, canvas: DemoFraming.canvas(orientation), presentation: pres,
-            caption: pres.label, crops: crops(itemID, orientation)
+            size, canvas: canvas, presentation: pres, caption: pres.label,
+            crops: automatic ? autoCrops[itemID]?[orientation].map { FramingCrops(fill: $0.fill, details: $0.details, detail: $0.detail) }
+                : crops(itemID, orientation)
         )
+        let area = plan.fit == "fit"
+            ? Self.unit(DemoFraming.fitArea(canvas, margin: pres.margin, caption: pres.label), canvas) : nil
         let isCustom = switch plan.fit {
         case "fill": custom?.fill != nil
         case "details": custom?.details != nil
@@ -330,9 +334,17 @@ actor DemoBackend: FrameBackend {
         }
         let windows = plan.windows.compactMap { window -> FramingWindow? in
             guard let crop = window.crop else { return nil }
-            return FramingWindow(role: window.role, aspect: window.rect.width / window.rect.height, crop: crop, custom: isCustom)
+            return FramingWindow(
+                role: window.role, aspect: window.rect.width / window.rect.height, crop: crop, custom: isCustom,
+                rect: Self.unit(window.rect, canvas), area: window.role == "picture" ? area : nil
+            )
         }
         return FramingView(orientation: orientation, fit: plan.fit, width: Int(size.width), height: Int(size.height), windows: windows)
+    }
+
+    /// A rect on the canvas as fractions of it, as the server sends it.
+    private static func unit(_ rect: CGRect, _ canvas: CGSize) -> [Double] {
+        [rect.minX / canvas.width, rect.minY / canvas.height, rect.width / canvas.width, rect.height / canvas.height]
     }
 
     func saveFraming(itemID: String, orientation: String, crops: [Crop]) async throws -> FramingView {
@@ -568,8 +580,8 @@ actor DemoBackend: FrameBackend {
         switch image {
         case let .thumb(id): url = Self.bundled(id) ?? imageURLs[id]?.thumb
         case let .image(id): url = Self.bundled(id) ?? imageURLs[id]?.image ?? imageURLs[id]?.thumb
-        case let .framePreview(id, settings):
-            url = framed(id, settings) ?? Self.bundled(id) ?? imageURLs[id]?.thumb
+        case let .framePreview(id, settings, framing):
+            url = framed(id, settings, trying: framing) ?? Self.bundled(id) ?? imageURLs[id]?.thumb
         case let .path(path):
             // "/demo/<id>?<presentation key>"; the key only makes the path change.
             let id = String(path.dropFirst("/demo/".count).prefix { $0 != "?" })
@@ -579,10 +591,18 @@ actor DemoBackend: FrameBackend {
         return url.map { URLRequest(url: $0, timeoutInterval: 60) }
     }
 
-    private nonisolated func framed(_ id: String, _ settings: FrameSettings? = nil) -> URL? {
+    private nonisolated func framed(_ id: String, _ settings: FrameSettings? = nil, trying: FramingCrops? = nil) -> URL? {
         let settings = settings ?? shared.current
+        var chosen = crops(id, settings.orientation)
+        if let trying {  // as the server: the crops given replace the saved ones
+            let saved = chosen ?? FramingCrops()
+            chosen = FramingCrops(
+                fill: trying.fill ?? saved.fill, details: trying.details ?? saved.details,
+                detail: trying.detail ?? saved.detail, fit: trying.fit ?? saved.fit
+            )
+        }
         return (arts[id] ?? shared.uploads[id]).flatMap {
-            DemoFraming.framed(id, art: $0, settings: settings, crops: crops(id, settings.orientation))
+            DemoFraming.framed(id, art: $0, settings: settings, crops: chosen)
         }
     }
 
