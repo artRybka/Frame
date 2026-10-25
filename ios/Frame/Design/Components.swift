@@ -59,12 +59,7 @@ struct FramedArtwork<Inner: View>: View {
             .overlay { inner }
             .padding(mat)
             .background(Theme.matWhite)
-            .overlay(
-                Rectangle()
-                    .strokeBorder(Color.black.opacity(0.18), lineWidth: 1)
-                    .blur(radius: 1.5)
-                    .allowsHitTesting(false)
-            )
+            .overlay { ScreenEdge(depth: moulding).allowsHitTesting(false) }
             .padding(moulding)
             .background(
                 LinearGradient(
@@ -77,6 +72,28 @@ struct FramedArtwork<Inner: View>: View {
             .overlay(RoundedRectangle(cornerRadius: 2).strokeBorder(Theme.mouldingEdge, lineWidth: 0.5))
             .shadow(color: .black.opacity(0.22), radius: 18, x: 0, y: 14)
             .shadow(color: .black.opacity(0.12), radius: 2, x: 0, y: 1)
+    }
+}
+
+/// Where the screen meets the moulding. The screen sits a little deeper, so
+/// the moulding casts a soft shadow onto it (more from above) and a fine line
+/// marks the edge: a light picture or a white passe-partout no longer runs
+/// into the white frame.
+private struct ScreenEdge: View {
+    var depth: CGFloat
+
+    var body: some View {
+        let shadow = max(depth * 0.5, 2.5)
+        ZStack {
+            // Centred on the edge, so it is darkest there and fades inwards.
+            Rectangle()
+                .stroke(Color.black.opacity(0.22), lineWidth: shadow * 2)
+                .blur(radius: shadow * 0.7)
+                .offset(y: shadow * 0.6)
+            Rectangle()
+                .strokeBorder(Color.black.opacity(0.16), lineWidth: 0.75)
+        }
+        .clipped()
     }
 }
 
