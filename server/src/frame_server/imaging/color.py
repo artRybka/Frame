@@ -45,7 +45,14 @@ def linear_to_srgb(linear: npt.ArrayLike) -> FloatArray:
     return np.where(x <= 0.0031308, x * 12.92, 1.055 * x ** (1 / 2.4) - 0.055).astype(np.float32)
 
 
+# Every 8-bit value's linear light: a lookup is much quicker than the power
+# function on a large picture, and gives exactly the same numbers.
+_U8_LINEAR = srgb_to_linear(np.arange(256, dtype=np.float32) / 255.0)
+
+
 def u8_to_linear(rgb: npt.ArrayLike) -> FloatArray:
+    if isinstance(rgb, np.ndarray) and rgb.dtype == np.uint8:
+        return _U8_LINEAR[rgb]
     return srgb_to_linear(np.asarray(rgb, dtype=np.float32) / 255.0)
 
 

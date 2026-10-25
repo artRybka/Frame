@@ -436,6 +436,7 @@ class Player:
                 await self._push(state)
 
             await self._guarded(item.id, state, work)
+        await self.render_ahead()  # new settings may draw the next one differently too
 
     async def show_still(
         self, png: bytes, *, preview_png: bytes, title: str, description: str, hold: Hold
@@ -474,19 +475,23 @@ class Player:
         else:
             await self.next("resume")
 
-    async def _publish(self, board: list[Item], settings: FrameSettings) -> None:
-        """Render the picture (or, MULTI, the board of photos) and publish it."""
-        item = board[0]
+    async def _originals(self, board: list[Item], settings: FrameSettings) -> bytes | list[bytes]:
+        """The picture's original (MULTI: the board's), downloaded if need be."""
         images = []
         for shown in board:
             path = await run_in_threadpool(self.service.images.ensure_image, shown)
             images.append(await run_in_threadpool(path.read_bytes))
+        return images if self.multi(board[0], settings) else images[0]
+
+    async def _publish(self, board: list[Item], settings: FrameSettings) -> None:
+        """Render the picture (or, MULTI, the board of photos) and publish it."""
+        item = board[0]
         extra: dict[str, object] = {"item_id": item.id, "kind": item.kind.value}
         if len(board) > 1:
             extra["item_ids"] = [i.id for i in board]
         await run_in_threadpool(
             self.service.prepare,
-            images if self.multi(item, settings) else images[0],
+            await self._originals(board, settings),
             self.render_settings(item, settings),
             title=item.title,
             description=caption_for(item),
@@ -494,6 +499,24 @@ class Player:
             extra=extra,
             seed=",".join(i.id for i in board),
         )
+
+    async def render_ahead(self) -> None:
+        """Draw the next picture while the current one is on the frame, so
+        its change only publishes it. Never raises.
+
+        Not for boards of photos: which photos join one is decided when it
+        is shown."""
+        settings = self.settings
+        upcoming = self.upcoming(1)
+        if not upcoming or self.multi(upcoming[0], settings):
+            return
+        item = upcoming[0]
+        try:
+            image = await self._originals([item], settings)
+            render_settings = self.render_settings(item, settings)
+            await run_in_threadpool(self.service.render_content, image, render_settings)
+        except Exception as err:  # it is drawn again at its turn
+            log.info("rendering %s ahead failed: %s", item.id, err)
 
     async def _push(self, state: PlayerState) -> None:
         if not self.service.device_configured:
@@ -532,6 +555,7 @@ class Player:
         if item is not None:
             await self.show(item, reason)
             await self.prefetch()
+            await self.render_ahead()
         return item
 
     async def _pop_ready(self, state: PlayerState, settings: FrameSettings) -> Item | None:
@@ -868,9 +892,13 @@ class Player:
 
     async def run(self, period: float = 30.0) -> None:
         grown: datetime | None = None
+        ahead = False
         while True:
             try:
                 await self.tick()
+                if not ahead:  # after a restart; also loads the ditherer's code
+                    ahead = True
+                    await self.render_ahead()
                 if grown is None or utcnow() - grown >= CATALOGUE_EVERY:
                     grown = utcnow()
                     self.grow_catalogue()

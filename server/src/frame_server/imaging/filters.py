@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 
+from .bands import by_rows
 from .color import FloatArray, linear_to_oklab, oklab_to_linear
 
 
@@ -32,7 +33,7 @@ def sharpen(linear: FloatArray, amount: float, sigma: float = 1.2) -> FloatArray
     """
     if amount <= 0:
         return linear
-    lab = linear_to_oklab(np.clip(linear, 0.0, None))
+    lab = by_rows(lambda part: linear_to_oklab(np.clip(part, 0.0, None)), linear)
     light = lab[..., 0]
     lab[..., 0] = np.clip(light + amount * (light - gaussian_blur(light, sigma)), 0.0, 1.0)
-    return np.clip(oklab_to_linear(lab), 0.0, 1.0).astype(np.float32)
+    return by_rows(lambda part: np.clip(oklab_to_linear(part), 0.0, 1.0).astype(np.float32), lab)
