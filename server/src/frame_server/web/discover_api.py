@@ -32,7 +32,7 @@ from ..library.vocabulary import (
 from ..player import POOL_SIZE
 from ..service import FrameService
 from .deps import require_token, service
-from .library_api import RemoteItem, RemotePage
+from .library_api import RemoteItem, RemotePage, remote_items
 
 router = APIRouter(prefix="/api", dependencies=[Depends(require_token)], tags=["discover"])
 Svc = Annotated[FrameService, Depends(service)]
@@ -117,10 +117,6 @@ class MuseumHint(BaseModel):
     failed: list[str] = []
 
 
-def _remote(svc: FrameService, items: list[Item]) -> list[RemoteItem]:
-    return [RemoteItem(item=i, in_library=svc.library.has(i.id)) for i in items]
-
-
 def _theme_playlist(svc: FrameService, found: Theme) -> Playlist | None:
     for playlist in svc.library.playlists():
         if playlist.theme == found.key or fold(playlist.name) == fold(found.name):
@@ -161,7 +157,7 @@ def _card(svc: FrameService, found: Theme, cards: dict[str, tuple[int, list[Item
         description=found.description,
         group=found.group,
         count=count,
-        cover=_remote(svc, cover),
+        cover=remote_items(svc, cover),
         playlist_id=playlist.id if playlist else None,
         rules=found.rules(),
     )
@@ -191,7 +187,7 @@ def _taste_rows(svc: FrameService, day: date) -> list[SuggestionRow]:
                 title=f"Bo lubisz: {artist}",
                 subtitle=found.name,
                 theme=found.key,
-                items=_remote(svc, others[:ROW_SIZE]),
+                items=remote_items(svc, others[:ROW_SIZE]),
             )
         )
         if len(rows) == TASTE_ROWS:
@@ -213,7 +209,7 @@ async def suggestions(svc: Svc) -> list[SuggestionRow]:
                 key="for-you",
                 title="Dla Ciebie",
                 subtitle="Następne w rotacji Propozycje",
-                items=_remote(svc, picked[::-1][:ROW_SIZE]),
+                items=remote_items(svc, picked[::-1][:ROW_SIZE]),
             )
         )
     today = date.today()
@@ -233,7 +229,7 @@ async def suggestions(svc: Svc) -> list[SuggestionRow]:
                 title=f"Motyw dnia: {found.name}",
                 subtitle=found.description,
                 theme=found.key,
-                items=_remote(svc, _theme_rows[today]),
+                items=remote_items(svc, _theme_rows[today]),
             )
         )
     rules = PlaylistRules(kinds=[ItemKind.ARTWORK], min_suitability=BEST_SUITABILITY)
@@ -245,7 +241,7 @@ async def suggestions(svc: Svc) -> list[SuggestionRow]:
                 title="Najlepiej na e-papierze",
                 subtitle="Wyraziste barwy i kontrast, które ten ekran oddaje najlepiej",
                 theme="best",
-                items=_remote(svc, best[:ROW_SIZE]),
+                items=remote_items(svc, best[:ROW_SIZE]),
             )
         )
     return rows
@@ -275,7 +271,7 @@ async def theme_page(key: str, svc: Svc, page: Annotated[int, Query(ge=1)] = 1) 
         items, more = await run_in_threadpool(browse_theme, svc.importer, found, page, ROW_SIZE)
     except httpx.HTTPError as err:
         raise HTTPException(502, f"{key}: {err}") from err
-    return ThemePage(items=_remote(svc, items), more=more)
+    return ThemePage(items=remote_items(svc, items), more=more)
 
 
 @router.post("/themes/{key}/playlist", response_model=ThemePlaylist)
@@ -375,7 +371,9 @@ async def terms_in_museums(svc: Svc, q: str) -> MuseumHint:
     wanted = fold(words)
     names: Counter[str] = Counter(i.artist for i in items if i.artist and wanted in fold(i.artist))
     artists = [TermHit(kind="artist", key=n, name=n, count=c) for n, c in names.most_common(3)]
-    return MuseumHint(total=total, artists=artists, items=_remote(svc, items[:8]), failed=failed)
+    return MuseumHint(
+        total=total, artists=artists, items=remote_items(svc, items[:8]), failed=failed
+    )
 
 
 # -- searching the museums --------------------------------------------------------
@@ -465,7 +463,9 @@ async def search_museums(
     except httpx.HTTPError as err:
         raise HTTPException(502, f"{source}: {err}") from err
     items = [i for i in items if spec.fits(i) and _manuscripts_fit(i, rules.terms)]
-    return RemotePage(total=total, items=_remote(svc, items), failed=failed)
+    return RemotePage(
+        total=total, items=remote_items(svc, items, copies=source == ALL), failed=failed
+    )
 
 
 @router.get("/browse", response_model=RemotePage)
@@ -483,4 +483,4 @@ async def browse(
     spec = Discovery(year_from=year_from, year_to=year_to, style=style, kind=kind)
     total, items, failed = await run_in_threadpool(svc.importer.discover_all, spec, limit, page)
     items = [i for i in items if spec.fits(i) and not set_aside(i)]
-    return RemotePage(total=total, items=_remote(svc, items), failed=failed)
+    return RemotePage(total=total, items=remote_items(svc, items), failed=failed)

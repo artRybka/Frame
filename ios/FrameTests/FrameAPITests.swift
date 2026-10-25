@@ -250,6 +250,35 @@ final class FrameAPITests: XCTestCase {
         XCTAssertEqual(try LiveBackend.decoder().decode(TermHit.self, from: Data(json.utf8)).count, 3)
     }
 
+    func testLaterPagesLeaveOutCopiesOfWorks() async throws {
+        let demo = DemoBackend()
+        let theme = try XCTUnwrap(try await demo.themes().first)
+        let page = try await demo.themePage(key: theme.key, page: 1)
+        var item = try XCTUnwrap(page.items.first).item
+        item.year = 1889
+        item.source = "met"
+        let met = RemoteItem(item: item, inLibrary: false, work: "gogh|irises")
+        // The same work from Commons: another id and source.
+        let encoded = try LiveBackend.encoder().encode(item)
+        var fields = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        fields["id"] = "wmc:1"
+        fields["source"] = "wmc"
+        fields["year"] = NSNull()
+        let data = try JSONSerialization.data(withJSONObject: fields)
+        var copy = try LiveBackend.decoder().decode(Item.self, from: data)
+        let commons = RemoteItem(item: copy, inLibrary: false, work: "gogh|irises")
+        copy.year = 1880
+        let older = RemoteItem(item: copy, inLibrary: false, work: "gogh|irises")
+        let other = RemoteItem(item: copy, inLibrary: false, work: "")
+        XCTAssertEqual([met].adding([commons, met]).map(\.id), [met.id])
+        XCTAssertEqual([met].adding([older]).map(\.id), [met.id, "wmc:1"])
+        XCTAssertEqual([met].adding([other]).map(\.id), [met.id, "wmc:1"])
+        let decoded = try LiveBackend.decoder().decode(
+            RemoteItem.self, from: try LiveBackend.encoder().encode(met)
+        )
+        XCTAssertEqual(decoded.work, "gogh|irises")
+    }
+
     func testDecodesThemePage() throws {
         let json = #"{"items": [], "more": true}"#
         let page = try LiveBackend.decoder().decode(ArtThemePage.self, from: Data(json.utf8))

@@ -352,8 +352,7 @@ struct ThemeView: View {
         defer { loading = false }
         do {
             let found = try await model.backend.themePage(key: theme.key, page: page + 1)
-            let known = Set(items.map(\.id))
-            items += found.items.filter { !known.contains($0.id) }
+            items = items.adding(found.items)
             page += 1
             more = found.more
         } catch {
