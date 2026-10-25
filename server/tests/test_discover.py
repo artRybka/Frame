@@ -50,7 +50,7 @@ def test_terms_are_suggested_in_polish_and_english() -> None:
     assert suggest("1885")[0].key == "years:1880-1889"
     assert term("years:1880-1914") is not None and term("years:x") is None
     assert museum_queries(["style:impressionism", "subject:sea", "period:17c"]) == [
-        "impressionism seascape"
+        "impressionism sea"
     ]
     # Every theme's terms are known.
     assert all(t in BY_KEY for theme in THEMES for t in theme.terms)

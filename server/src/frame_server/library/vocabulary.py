@@ -116,8 +116,8 @@ TERMS: list[Term] = [
     _t(
         "subject:sea",
         "Morze",
-        "seascape*",
         "sea",
+        "seascape*",
         "marine",
         "ocean*",
         "coast*",
