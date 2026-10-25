@@ -1,13 +1,23 @@
 import SwiftUI
 
 /// One picture: original vs. how it will look on the e-paper, its story,
-/// palette, and actions (show now, favourite, add to playlist).
+/// palette, and actions (show now, favourite, add to playlist). On "Na
+/// ramce" the picture is cropped right on the preview, and showing it or
+/// adding it to a playlist saves that crop first.
 struct ItemDetailView: View {
     @Environment(AppModel.self) private var model
     let itemID: String
     @State private var item: Item?
     @State private var view = ViewMode.original
     @State private var showingPlaylists = false
+    @State private var draft = FramingDraft()
+    /// Crops saved here: the preview asks for them by name, as the one
+    /// cached from before shows the old crop.
+    @State private var applied: FramingCrops?
+    /// The preview last loaded: the crop windows wait for the first one, so
+    /// a half-loaded preview never shows.
+    @State private var loadedPreview: ImageRef?
+    @State private var saving = false
 
     enum ViewMode: String, CaseIterable {
         case original = "Oryginał"
@@ -57,46 +67,153 @@ struct ItemDetailView: View {
                 model.show(error)
             }
         }
+        .task(id: view == .frame ? draftKey : "") { await loadFraming() }
         .sheet(isPresented: $showingPlaylists) {
-            if let item { AddToPlaylistSheet(item: item) }
+            if let item { AddToPlaylistSheet(item: item, beforeAdding: saveCrop) }
         }
+    }
+
+    // MARK: Crop
+
+    /// Item, orientation and presentation: a crop belongs to all three.
+    private var draftKey: String {
+        [itemID, model.settings?.presentationKey ?? ""].joined(separator: "|")
+    }
+
+    private var cropping: Bool {
+        draft.key == draftKey && draft.view?.windows.isEmpty == false
+    }
+
+    private var previewRef: ImageRef {
+        let current = draft.key == draftKey
+        return .framePreview(
+            itemID, settings: model.settings,
+            framing: current ? draft.trial ?? applied : nil
+        )
+    }
+
+    /// The crop as the server has it, once "Na ramce" is opened; an edited
+    /// one is kept while the settings stay the same.
+    private func loadFraming() async {
+        let key = draftKey
+        guard view == .frame, draft.key != key else { return }
+        draft = FramingDraft()
+        applied = nil
+        let orientation = model.settings?.orientation ?? "landscape"
+        guard let loaded = await FramingDraft.load(model.backend, itemID: itemID, orientation: orientation, key: key),
+              key == draftKey
+        else { return }
+        draft = loaded
+    }
+
+    /// Saves the crop edited on "Na ramce", if it was; false if that failed,
+    /// so nothing goes out with the old crop.
+    private func saveCrop() async -> Bool {
+        guard draft.key == draftKey, let change = draft.change else { return true }
+        saving = true
+        defer { saving = false }
+        let key = draft.key
+        do {
+            let saved = try await model.applyFraming(itemID: itemID, change)
+            guard key == draft.key else { return true }
+            draft = FramingDraft(saved: saved, key: key)
+            applied = draft.savedCrops
+            return true
+        } catch {
+            model.show(error)
+            return false
+        }
+    }
+
+    private func show(_ hold: HoldSpec) async {
+        let cropped = draft.key == draftKey && draft.change != nil
+        guard await saveCrop() else { return }
+        if cropped, hold == .untilNextChange, model.player?.current?.item?.id == itemID {
+            // Already on the frame: the server redraws it with the new crop.
+            model.toast = "Nowy kadr — ramka odświeża obraz"
+            await model.followPlayer()
+            return
+        }
+        await model.show(itemID: itemID, hold: hold)
     }
 
     // MARK: Sections
 
     private func picture(_ item: Item) -> some View {
         VStack(spacing: 12) {
-            let ref: ImageRef =
-                view == .original
-                ? .image(item.id)
-                : .framePreview(item.id, settings: model.settings)
-            ArtImage(ref: ref, placeholder: item.placeholderColor, maxPixel: 1800, contentMode: .fit)
-                .id(ref)
-                .aspectRatio(view == .original ? CGFloat(aspect(item)) : (model.isPortrait ? 9.0 / 16.0 : 16.0 / 9.0), contentMode: .fit)
-                .padding(view == .frame ? 7 : 0)
-                .background(view == .frame ? Theme.moulding : .clear)
-                .clipShape(RoundedRectangle(cornerRadius: view == .frame ? 2 : 8, style: .continuous))
-                .overlay {
-                    if view == .frame {
-                        RoundedRectangle(cornerRadius: 2).strokeBorder(Theme.mouldingEdge, lineWidth: 0.5)
-                    }
+            Group {
+                if view == .original {
+                    ArtImage(ref: .image(item.id), placeholder: item.placeholderColor, maxPixel: 1800, contentMode: .fit)
+                        .aspectRatio(CGFloat(aspect(item)), contentMode: .fit)
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .shadow(color: .black.opacity(0.22), radius: 16, y: 12)
+                } else {
+                    framePreview(item)
                 }
-                .shadow(color: .black.opacity(0.22), radius: 16, y: 12)
-                .frame(maxHeight: 460)
-                .frame(maxWidth: .infinity)
+            }
+            .frame(maxHeight: 460)
+            .frame(maxWidth: .infinity)
             Picker("Widok", selection: $view.animation(.easeInOut)) {
                 ForEach(ViewMode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
             }
             .pickerStyle(.segmented)
             .frame(maxWidth: 260)
             if view == .frame {
-                Text("Kadr i passe-partout z bieżącymi ustawieniami, w oryginalnych kolorach. Kolory dopasowuje dopiero ekran.")
+                if cropping {
+                    CropTools(itemID: item.id, draft: $draft)
+                        .disabled(saving)
+                }
+                Text(frameHint)
                     .font(.caption)
                     .foregroundStyle(Theme.inkSoft)
                     .multilineTextAlignment(.center)
+                    .contentTransition(.opacity)
+                if cropping, draft.changed {
+                    Button {
+                        Task {
+                            if await saveCrop() { model.toast = "Zapisano kadr" }
+                        }
+                    } label: {
+                        Label("Zapisz kadr", systemImage: "crop").toolChip()
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(saving)
+                }
             }
         }
         .padding(.top, 8)
+    }
+
+    /// The picture as the frame will show it, with its crop windows over it.
+    private func framePreview(_ item: Item) -> some View {
+        let ref = previewRef
+        return FramedArtwork(
+            ref: ref, aspectRatio: model.isPortrait ? 9.0 / 16.0 : 16.0 / 9.0,
+            placeholder: item.placeholderColor, moulding: 7
+        ) {
+            if draft.key == draftKey, loadedPreview != nil {
+                CropWindows(itemID: item.id, draft: $draft)
+                    .transition(.opacity)
+            }
+        }
+        .environment(\.artImageLoaded) { loaded in
+            guard loaded == previewRef else { return }
+            withAnimation(.easeOut(duration: 0.3)) { loadedPreview = loaded }
+        }
+        .overlay {
+            if loadedPreview != ref {
+                LoadingBadge(text: "Wczytuję podgląd…")
+            }
+        }
+    }
+
+    private var frameHint: String {
+        guard cropping else {
+            return "Kadr i passe-partout z bieżącymi ustawieniami, w oryginalnych kolorach. Kolory dopasowuje dopiero ekran."
+        }
+        return draft.changed
+            ? "Nowy kadr zapisze się po „Pokaż na ramce” albo dodaniu do playlisty."
+            : "Przesuń obraz palcem albo rozsuń dwa palce, żeby go wykadrować. Kolory dopasowuje dopiero ekran."
     }
 
     private func aspect(_ item: Item) -> Double {
@@ -128,7 +245,7 @@ struct ItemDetailView: View {
             Menu {
                 ForEach(HoldSpec.allCases) { spec in
                     Button(spec.label) {
-                        Task { await model.show(itemID: item.id, hold: spec) }
+                        Task { await show(spec) }
                     }
                 }
             } label: {
@@ -139,8 +256,9 @@ struct ItemDetailView: View {
                     .padding(.vertical, 15)
                     .background(Theme.accent, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             } primaryAction: {
-                Task { await model.show(itemID: item.id, hold: .untilNextChange) }
+                Task { await show(.untilNextChange) }
             }
+            .disabled(saving)
             iconButton(item.favorite ? "heart.fill" : "heart", tint: item.favorite ? Theme.vermilion : Theme.ink) {
                 Task {
                     if let updated = await model.setFavorite(item.id, !item.favorite) { self.item = updated }
@@ -255,6 +373,8 @@ struct AddToPlaylistSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     let item: Item
+    /// Run first, e.g. to save the crop edited for it; false stops the adding.
+    var beforeAdding: () async -> Bool = { true }
     @State private var newName = ""
 
     private var manual: [PlaylistSummary] { model.playlists.filter { $0.kind == .manual } }
@@ -295,6 +415,7 @@ struct AddToPlaylistSheet: View {
     }
 
     private func create() async {
+        guard await beforeAdding() else { return }
         let playlist = Playlist(name: newName, kind: .manual, itemIds: [item.id])
         do {
             _ = try await model.backend.savePlaylist(playlist)
@@ -305,6 +426,7 @@ struct AddToPlaylistSheet: View {
     }
 
     private func add(to id: Int) async {
+        guard await beforeAdding() else { return }
         do {
             _ = try await model.backend.addToPlaylist(id: id, itemIDs: [item.id])
             await model.refreshPlaylists()

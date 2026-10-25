@@ -202,14 +202,7 @@ final class AppModel {
     /// "next" would, so the playlist keeps its order. False if it failed.
     func present(itemID: String, offset: Int, framing change: FramingChange?) async -> Bool {
         do {
-            switch change {
-            case let .save(orientation, crops)?:
-                _ = try await backend.saveFraming(itemID: itemID, orientation: orientation, crops: crops)
-            case let .reset(orientation)?:
-                _ = try await backend.resetFraming(itemID: itemID, orientation: orientation)
-            case nil:
-                break
-            }
+            if let change { _ = try await applyFraming(itemID: itemID, change) }
             switch offset {
             case 0: break  // a new crop: the server redraws the picture on its own
             case 1: try await backend.next()
@@ -222,6 +215,17 @@ final class AppModel {
         }
         toast = offset == 0 ? "Nowy kadr — ramka odświeża obraz" : "Wysyłam na ramkę…"
         return true
+    }
+
+    /// Saves a crop edited in the app (or forgets it); the framing as the
+    /// server has it now.
+    func applyFraming(itemID: String, _ change: FramingChange) async throws -> FramingView {
+        switch change {
+        case let .save(orientation, crops):
+            try await backend.saveFraming(itemID: itemID, orientation: orientation, crops: crops)
+        case let .reset(orientation):
+            try await backend.resetFraming(itemID: itemID, orientation: orientation)
+        }
     }
 
     func releaseHold() async {

@@ -52,9 +52,112 @@ struct FramingDraft: Equatable {
     }
 }
 
+extension FramingDraft {
+    /// The picture's crop as the server has it now, for draft `key`; nil if
+    /// it could not be loaded.
+    @MainActor static func load(_ backend: any FrameBackend, itemID: String, orientation: String, key: String) async -> FramingDraft? {
+        guard let view = try? await backend.framing(itemID: itemID, orientation: orientation) else { return nil }
+        return FramingDraft(saved: view, key: key)
+    }
+
+    /// A draft with nothing edited yet: what `view` says is saved.
+    init(saved view: FramingView, key: String) {
+        let crops = view.windows.map(\.crop)
+        self.init(key: key, view: view, saved: crops, crops: crops)
+    }
+
+    /// The crops as saved now, for a preview that must not come from the
+    /// cache made before they were saved.
+    var savedCrops: FramingCrops? {
+        guard let view, !saved.isEmpty else { return nil }
+        return FramingCrops(mode: view.fit, crops: saved)
+    }
+}
+
 enum FramingChange: Equatable {
     case save(orientation: String, crops: [Crop])
     case reset(orientation: String)
+}
+
+/// Under the picture being cropped: the passe-partout window's shape and the
+/// way back to the automatic crop.
+struct CropTools: View {
+    @Environment(AppModel.self) private var model
+    let itemID: String
+    @Binding var draft: FramingDraft
+
+    var body: some View {
+        HStack(spacing: 10) {
+            if draft.view?.fit == "fit" {
+                Menu {
+                    ForEach(windowShapes, id: \.title) { shape in
+                        Button {
+                            draft.crops[0].aspect = shape.aspect
+                            draft.crops[0].zoom = shape.aspect == nil ? DemoFraming.wholeCrop.zoom : 1
+                        } label: {
+                            if sameShape(draft.crops.first?.aspect, shape.aspect) {
+                                Label(shape.title, systemImage: "checkmark")
+                            } else {
+                                Text(shape.title)
+                            }
+                        }
+                    }
+                } label: {
+                    Label(
+                        "Kształt: " + (windowShapes.first { sameShape(draft.crops.first?.aspect, $0.aspect) }?.title ?? "własny"),
+                        systemImage: "aspectratio"
+                    )
+                    .toolChip()
+                }
+            }
+            if draft.custom && draft.automatic == nil || draft.crops != (draft.automatic ?? draft.saved) {
+                Button {
+                    Task { await automaticCrop() }
+                } label: {
+                    Label("Kadr automatyczny", systemImage: "sparkles").toolChip()
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private func sameShape(_ a: Double?, _ b: Double?) -> Bool {
+        switch (a, b) {
+        case (nil, nil): true
+        case let (a?, b?): abs(a - b) < 0.001
+        default: false
+        }
+    }
+
+    private func automaticCrop() async {
+        guard draft.custom else {
+            draft.crops = draft.saved  // the saved crop is the automatic one
+            draft.automatic = nil
+            return
+        }
+        guard let view = draft.view else { return }
+        let key = draft.key
+        do {
+            let auto = try await model.backend.framing(itemID: itemID, orientation: view.orientation, automatic: true)
+            guard key == draft.key, auto.windows.count == draft.crops.count else { return }
+            draft.automatic = auto.windows.map(\.crop)
+            draft.crops = auto.windows.map(\.crop)
+        } catch {
+            model.show(error)
+        }
+    }
+}
+
+extension View {
+    /// A small capsule control under the picture.
+    func toolChip() -> some View {
+        font(.footnote.weight(.semibold))
+            .foregroundStyle(Theme.ink)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(.ultraThinMaterial, in: Capsule())
+            .overlay(Capsule().strokeBorder(Theme.hairline))
+    }
 }
 
 /// Shapes for the passe-partout window; nil keeps the picture's own.
