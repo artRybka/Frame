@@ -492,6 +492,28 @@ def draw(request: DrawRequest, svc: Svc) -> dict[str, Any]:
     return {"job_id": svc.importer.start_job(f"draw: {request.count}", work).id}
 
 
+class FillRequest(BaseModel):
+    rules: PlaylistRules
+    count: int = Field(100, ge=1, le=500)
+
+
+@router.post("/library/fill")
+def fill(request: FillRequest, svc: Svc) -> dict[str, Any]:
+    """Add museum works a smart playlist with ``rules`` would pick."""
+    rules = request.rules
+    if rules.favorites_only:
+        raise HTTPException(422, "favourites can't be fetched from museums")
+    if rules.kinds and ItemKind.ARTWORK not in rules.kinds:
+        raise HTTPException(422, "only artworks come from museums")
+    if rules.sources and not any(s in MUSEUMS for s in rules.sources):
+        raise HTTPException(422, "the rules allow no museum")
+
+    def work(job: Job) -> None:
+        svc.importer.fill(rules, request.count, job)
+
+    return {"job_id": svc.importer.start_job(f"fill: {request.count}", work).id}
+
+
 @router.get("/album")
 def album(svc: Svc) -> dict[str, Any]:
     """Last shared-album sync and how many photos the library holds."""

@@ -461,6 +461,10 @@ actor DemoBackend: FrameBackend {
         try await importPack(key: "draw")
     }
 
+    func fillLibrary(rules: PlaylistRules, count: Int) async throws -> String {
+        try await importPack(key: "fill")
+    }
+
     func job(id: String) async throws -> JobStatus {
         guard let job = demoJobs[id] else { throw BackendError.notFound }
         return job

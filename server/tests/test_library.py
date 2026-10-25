@@ -483,3 +483,46 @@ def test_search_all_interleaves_and_reports_failures(tmp_path) -> None:
         MUSEUMS.update(saved)
     assert total == 4 and failed == ["c"]
     assert [i.id for i in items] == ["a:0", "b:0", "a:1"]
+
+
+def test_fill_adds_only_what_the_playlist_would_pick(tmp_path) -> None:
+    import random
+
+    from frame_server.library.importer import Importer, Job
+
+    class Searching(Museum):
+        key = "aic"
+        name = "Searching"
+        page_size = 3
+
+        def search(self, query: str, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
+            # Results mix the artist's works with works about them.
+            items = [
+                self._item(str(n), artist=query if n % 3 else "Someone Else", year=1880 + n)
+                for n in range(12)
+            ]
+            return len(items), items[(page - 1) * limit : page * limit]
+
+        def fetch(self, source_id: str) -> Item | None:
+            return None
+
+    class Importing(Importer):
+        def _analysed(self, item: Item) -> Item:
+            tags = ["blue"] if int(item.source_id) % 2 else ["warm"]
+            return item.model_copy(update={"color_tags": tags})
+
+    saved = dict(MUSEUMS)
+    MUSEUMS.clear()
+    MUSEUMS.update(aic=Searching)
+    try:
+        importer = Importing(Library(tmp_path / "lib.db"), None, None)  # type: ignore[arg-type]
+        importer.cache = type("Cache", (), {"remove": lambda self, item: None})()
+        job = Job(id="j", description="fill")
+        rules = PlaylistRules(artists=["Claude Monet"], colors=["blue"], year_to=1890)
+        importer.fill(rules, 10, job, rng=random.Random(1))
+    finally:
+        MUSEUMS.clear()
+        MUSEUMS.update(saved)
+    # Monet (n % 3), blue (odd), up to 1890 (n <= 10): 1, 5, 7.
+    assert sorted(job.item_ids) == ["aic:1", "aic:5", "aic:7"]
+    assert job.done == 3 and job.skipped == 4  # Monet, until 1890, but not blue: 2, 4, 8, 10
