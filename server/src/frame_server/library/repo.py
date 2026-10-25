@@ -52,7 +52,7 @@ def _fold(values: Iterable[str]) -> set[str]:
 
 
 def matches(item: Item, rules: PlaylistRules) -> bool:
-    if item.excluded:
+    if item.excluded or item.id in rules.exclude_ids:
         return False
     if rules.favorites_only and not item.favorite:
         return False

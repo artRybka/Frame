@@ -115,6 +115,8 @@ class PlaylistRules(BaseModel):
     year_to: int | None = None
     favorites_only: bool = False
     min_suitability: float | None = None
+    #: Works the owner removed from this smart playlist although they match.
+    exclude_ids: list[str] = Field(default_factory=list)
 
 
 class PlaylistKind(StrEnum):

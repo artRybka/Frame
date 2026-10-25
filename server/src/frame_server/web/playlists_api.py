@@ -99,9 +99,21 @@ def add_items(playlist_id: int, body: ItemIds, svc: Svc) -> PlaylistDetail:
 
 @router.delete("/playlists/{playlist_id}/items/{item_id}", response_model=PlaylistDetail)
 def remove_item(playlist_id: int, item_id: str, svc: Svc) -> PlaylistDetail:
+    """Take one work out of a playlist. A smart playlist remembers it as an
+    exception to its rules; clearing ``rules.exclude_ids`` brings it back."""
     playlist = _playlist(svc, playlist_id)
-    ids = [i for i in playlist.item_ids if i != item_id]
-    return _detail(svc, svc.library.save_playlist(playlist.model_copy(update={"item_ids": ids})))
+    if playlist.kind == PlaylistKind.MANUAL:
+        ids = [i for i in playlist.item_ids if i != item_id]
+        update: dict[str, Any] = {"item_ids": ids}
+    else:
+        rules = playlist.rules
+        if item_id not in rules.exclude_ids:
+            rules = rules.model_copy(update={"exclude_ids": [*rules.exclude_ids, item_id]})
+        update = {"rules": rules}
+    saved = svc.library.save_playlist(playlist.model_copy(update=update))
+    if svc.player.settings.playlist_id == playlist_id:
+        svc.player.unqueue(item_id)
+    return _detail(svc, saved)
 
 
 @router.post("/playlists/{playlist_id}/play", status_code=202)

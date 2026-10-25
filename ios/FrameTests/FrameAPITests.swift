@@ -133,6 +133,35 @@ final class FrameAPITests: XCTestCase {
         XCTAssertEqual(back.current?.item?.id, before.current?.item?.id)
     }
 
+    func testRemovingSingleWorksFromPlaylists() async throws {
+        let demo = DemoBackend()
+        let playlists = try await demo.playlists()
+        let smart = try XCTUnwrap(playlists.first { $0.kind == .smart && $0.itemCount > 1 })
+        let detail = try await demo.playlist(id: smart.id)
+        let victim = try XCTUnwrap(detail.items.first)
+        let trimmed = try await demo.removeFromPlaylist(id: smart.id, itemID: victim.id)
+        XCTAssertEqual(trimmed.playlist.itemCount, smart.itemCount - 1)
+        XCTAssertFalse(trimmed.items.contains { $0.id == victim.id })
+        XCTAssertEqual(trimmed.playlist.rules.excludeIds, [victim.id])
+
+        let manual = try await demo.savePlaylist(
+            Playlist(name: "Wybór", kind: .manual, itemIds: trimmed.items.prefix(2).map(\.id))
+        )
+        let left = try await demo.removeFromPlaylist(id: manual.playlist.id, itemID: manual.itemIds[0])
+        XCTAssertEqual(left.itemIds, [manual.itemIds[1]])
+    }
+
+    func testRulesFromOlderServersHaveNoExceptions() throws {
+        let json = """
+            {"query": "", "artists": ["Ala"], "styles": [], "subjects": [], "colors": [], "kinds": [],
+             "sources": [], "year_from": null, "year_to": null, "favorites_only": false, "min_suitability": null}
+            """
+        let rules = try LiveBackend.decoder().decode(PlaylistRules.self, from: Data(json.utf8))
+        XCTAssertEqual(rules.artists, ["Ala"])
+        XCTAssertEqual(rules.excludeIds, [])
+        XCTAssertTrue(PlaylistRules(excludeIds: ["x"]).isEmpty)
+    }
+
     func testDemoBackendUsesBundledImages() throws {
         let demo = DemoBackend()
         let thumb = try XCTUnwrap(demo.request(for: .thumb("aic:24645"))?.url)

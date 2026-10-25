@@ -94,7 +94,7 @@ actor DemoBackend: FrameBackend {
     // MARK: Matching (mirrors server/src/frame_server/library/repo.py)
 
     private static func matches(_ item: Item, _ rules: PlaylistRules) -> Bool {
-        if item.excluded { return false }
+        if item.excluded || rules.excludeIds.contains(item.id) { return false }
         if rules.favoritesOnly && !item.favorite { return false }
         if !rules.kinds.isEmpty && !rules.kinds.contains(item.kind) { return false }
         if !rules.artists.isEmpty
@@ -376,6 +376,18 @@ actor DemoBackend: FrameBackend {
         guard var playlist = playlistsByID[id] else { throw BackendError.notFound }
         playlist.itemIds += itemIDs.filter { !playlist.itemIds.contains($0) }
         playlistsByID[id] = playlist
+        return detail(playlist)
+    }
+
+    func removeFromPlaylist(id: Int, itemID: String) async throws -> PlaylistDetail {
+        guard var playlist = playlistsByID[id] else { throw BackendError.notFound }
+        if playlist.kind == .manual {
+            playlist.itemIds.removeAll { $0 == itemID }
+        } else if !playlist.rules.excludeIds.contains(itemID) {
+            playlist.rules.excludeIds.append(itemID)
+        }
+        playlistsByID[id] = playlist
+        if settingsValue.playlistId == id { queue.removeAll { $0 == itemID } }
         return detail(playlist)
     }
 

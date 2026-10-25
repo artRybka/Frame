@@ -122,6 +122,13 @@ class Player:
     def _save_state(self, state: PlayerState) -> None:
         self.library.set_state(STATE_KEY, state.model_dump(mode="json"))
 
+    def unqueue(self, item_id: str) -> None:
+        """Forget a work already queued, e.g. one taken out of the playlist."""
+        state = self.state
+        if item_id in state.queue:
+            state.queue = [i for i in state.queue if i != item_id]
+            self._save_state(state)
+
     def reschedule(self) -> None:
         state = self.state
         base = datetime.fromisoformat(state.last_change_at) if state.last_change_at else utcnow()
