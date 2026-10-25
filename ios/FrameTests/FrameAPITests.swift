@@ -437,6 +437,31 @@ final class FrameAPITests: XCTestCase {
         XCTAssertEqual(draft.change, .reset(orientation: "landscape"))
     }
 
+    func testCropSavedFromWorkDetails() async throws {
+        let demo = DemoBackend()
+        let current = try await demo.player().current
+        let id = try XCTUnwrap(current?.item?.id)
+        let view = try await demo.framing(itemID: id, orientation: "landscape")
+        var draft = FramingDraft(saved: view, key: "k")
+        XCTAssertNil(draft.change)
+
+        draft.crops[0].zoom = 3
+        guard case let .save(orientation, crops)? = draft.change else { return XCTFail("no change to save") }
+        let saved = try await demo.saveFraming(itemID: id, orientation: orientation, crops: crops)
+        let after = FramingDraft(saved: saved, key: "k")
+        XCTAssertNil(after.change)
+        XCTAssertEqual(after.crops[0].zoom, 3)
+
+        // The preview names the crops just saved: the one cached under the
+        // plain address still shows the old crop.
+        let named = try XCTUnwrap(after.savedCrops)
+        XCTAssertEqual(named.details?[0].zoom, 3)
+        let api = LiveBackend(baseURL: URL(string: "http://frame.local:8099")!, token: "secret")
+        let plain = try XCTUnwrap(api.request(for: .framePreview(id))?.url)
+        let fresh = try XCTUnwrap(api.request(for: .framePreview(id, framing: named))?.url)
+        XCTAssertNotEqual(plain, fresh)
+    }
+
     func testChangesPlural() {
         XCTAssertEqual([1, 2, 4, 5, 12, 22, 25].map(Names.changes),
                        ["zmianę", "zmiany", "zmiany", "zmian", "zmian", "zmiany", "zmian"])
