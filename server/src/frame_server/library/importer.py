@@ -6,7 +6,7 @@ import logging
 import random
 import secrets
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from itertools import chain, zip_longest
@@ -17,14 +17,26 @@ from PIL import Image
 from ..imaging.palette import Palette
 from .colors import analyse
 from .images import ImageCache
-from .models import Item, ItemKind, PhotoInfo
-from .museums import MUSEUMS, Discovery, client, museum
-from .repo import Library, now_iso
+from .models import Item, ItemKind, PhotoInfo, PlaylistRules
+from .museums import MUSEUMS, Discovery, Museum, client, museum
+from .repo import Library, matches, now_iso
 
 log = logging.getLogger(__name__)
 
 #: Pseudo source: every museum at once.
 ALL = "all"
+
+
+def _search_stream(source: Museum, query: str) -> Iterator[Item]:
+    """A museum's search results, page after page."""
+    size = min(source.page_size, 24)
+    page = 1
+    while True:
+        total, items = source.search(query, limit=size, page=page)
+        yield from items
+        if page * size >= total:
+            return
+        page += 1
 
 
 @dataclass
@@ -169,39 +181,91 @@ class Importer:
         """Add ``count`` random works matching ``spec``, taking turns between
         ``sources``; works below ``min_suitability`` are drawn again."""
         rng = rng or random.Random()
-        job.total = count
         with self.http() as http:
             streams = [museum(s, http, self.private_use()).random_draw(spec, rng) for s in sources]
-            drawn = 0
-            while streams and job.done < count and drawn < count * 20:
-                for stream in list(streams):
-                    if job.done >= count:
-                        break
-                    try:
-                        item = next(stream)
-                    except StopIteration:
-                        streams.remove(stream)
-                        continue
-                    except (httpx.HTTPError, ValueError) as err:
-                        log.warning("random draw from a source stopped: %s", err)
-                        streams.remove(stream)
-                        continue
-                    drawn += 1
-                    if self.library.has(item.id) or not spec.fits(item):
-                        continue
-                    try:
-                        analysed = self._analysed(item)
-                    except (httpx.HTTPError, OSError) as err:
-                        log.warning("import of %s failed: %s", item.id, err)
-                        job.failed += 1
-                        continue
-                    if (analysed.suitability or 0.0) < min_suitability:
-                        self.cache.remove(item)
-                        job.skipped += 1
-                        continue
-                    self.library.upsert(analysed)
-                    job.done += 1
-                    job.item_ids.append(item.id)
+            self._take(
+                streams,
+                count,
+                job,
+                before=spec.fits,
+                after=lambda item: (item.suitability or 0.0) >= min_suitability,
+            )
+
+    def fill(
+        self, rules: PlaylistRules, count: int, job: Job, rng: random.Random | None = None
+    ) -> None:
+        """Add ``count`` museum works that ``rules`` (a smart playlist) would
+        pick, from every museum the rules allow."""
+        rng = rng or random.Random()
+        sources = [s for s in rules.sources if s in MUSEUMS] or list(MUSEUMS)
+        # Colours and suitability are only known once the thumbnail is in.
+        cheap = rules.model_copy(update={"colors": [], "min_suitability": None})
+        with self.http() as http:
+            museums = [museum(s, http, self.private_use()) for s in sources]
+            if rules.artists or rules.query:
+                # Named artists or words: the museums' own search finds them.
+                queries = rules.artists or [rules.query]
+                streams = [_search_stream(m, q) for q in queries for m in museums]
+            else:
+                texts = [*rules.styles, *rules.subjects] or [""]
+                streams = [
+                    m.random_draw(
+                        Discovery(year_from=rules.year_from, year_to=rules.year_to, style=text),
+                        rng,
+                    )
+                    for text in texts
+                    for m in museums
+                ]
+            rng.shuffle(streams)
+            self._take(
+                streams,
+                count,
+                job,
+                before=lambda item: matches(item, cheap),
+                after=lambda item: matches(item, rules),
+            )
+
+    def _take(
+        self,
+        streams: list[Iterator[Item]],
+        count: int,
+        job: Job,
+        before: Callable[[Item], bool],
+        after: Callable[[Item], bool],
+    ) -> None:
+        """Take turns between ``streams`` until ``count`` new works pass
+        ``before`` (on museum data) and ``after`` (once analysed)."""
+        job.total = count
+        drawn = 0
+        while streams and job.done < count and drawn < max(count * 20, 200):
+            for stream in list(streams):
+                if job.done >= count:
+                    break
+                try:
+                    item = next(stream)
+                except StopIteration:
+                    streams.remove(stream)
+                    continue
+                except Exception as err:
+                    log.warning("a museum stopped answering: %s", err)
+                    streams.remove(stream)
+                    continue
+                drawn += 1
+                if self.library.has(item.id) or not before(item):
+                    continue
+                try:
+                    analysed = self._analysed(item)
+                except (httpx.HTTPError, OSError) as err:
+                    log.warning("import of %s failed: %s", item.id, err)
+                    job.failed += 1
+                    continue
+                if not after(analysed):
+                    self.cache.remove(item)
+                    job.skipped += 1
+                    continue
+                self.library.upsert(analysed)
+                job.done += 1
+                job.item_ids.append(item.id)
 
     def add_upload(
         self,

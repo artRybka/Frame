@@ -548,7 +548,8 @@ class Rijksmuseum(Museum):
 
     @staticmethod
     def _notation(node: dict[str, Any]) -> str:
-        values = node.get("notation") or []
+        # Either language-tagged values or plain strings.
+        values = [v if isinstance(v, dict) else {"@value": v} for v in node.get("notation") or []]
         english = [v for v in values if v.get("@language") == "en"]
         return str((english or values or [{}])[0].get("@value", ""))
 
