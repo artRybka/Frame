@@ -85,7 +85,7 @@ Cel: potwierdzić protokół na Twoim egzemplarzu i poznać zachowanie ekranu.
   - szarości bez kolorowego szumu (preferencja osi czarny–biały),
   - kompromis jasność/nasycenie przy mapowaniu gamutu (np. niebo bardziej niebieskie kosztem jasności),
   - dithering uporządkowany / blue-noise dla grafiki płaskiej,
-  - automatyczny dobór presetu według treści,
+  - [x] automatyczny dobór presetu według treści: „Styl obrazu automatycznie” (domyślnie włączony, `preset: "auto"`). Obraz bez własnego koloru (rysunek, rycina, fotografia czarno-biała lub w sepii, mierzone jako rozrzut barwy wokół jednego odcienia, `tint_spread`) idzie jako `bw`; zdjęcia i fotografie z muzeów jako `photo`; drzeworyty, litografie, ryciny, plakaty i ilustracje (po klasyfikacji i technice, także po niderlandzku i polsku) jako `graphic`; reszta jako `painting`. Dotychczasowe domyślne style przełączone raz na automatyczne, wybrane ręcznie zostają. Do sprawdzenia na ekranie w 1.3.
   - inteligentne kadrowanie (twarze i ważne obszary),
   - podpisy i passe-partout bez ditheringu (czysty tekst).
 - [ ] 1.5 Obiektywna metryka jakości (ΔE po rozmyciu, w stylu S-CIELAB) do porównywania ustawień.

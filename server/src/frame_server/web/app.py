@@ -22,7 +22,9 @@ from .. import __version__
 from ..config import Settings
 from ..device import MdcError
 from ..imaging import PRESETS, RenderSettings, Strategy
+from ..imaging.layout import load_image
 from ..library.seed import seed_playlists
+from ..library.style import AUTO, preset_for_photo
 from ..player import hold_from
 from ..progress import DisplayProgress, Stage
 from ..service import FrameService, outcome_json
@@ -36,6 +38,13 @@ log = logging.getLogger(__name__)
 # The panel reports download progress (and failures) here, at the root of the
 # content server, whatever path the manifest came from.
 PROGRESS_PATH = "/content-transfer-progress"
+
+
+def _photo_preset(data: bytes) -> str:
+    try:
+        return preset_for_photo(load_image(data))
+    except OSError:
+        return "photo"  # not an image: prepare() says so
 
 
 async def poll_status(service: FrameService) -> None:
@@ -176,6 +185,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         wait: Annotated[float, Form()] = 90.0,
         hold: Annotated[str | None, Form()] = None,
     ) -> dict[str, object]:
+        data = await file.read()
+        if preset == AUTO and not settings_json:
+            preset = await run_in_threadpool(_photo_preset, data)
         if settings_json:
             render_settings = RenderSettings.model_validate_json(settings_json)
         elif preset in PRESETS:
@@ -184,7 +196,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(400, f"unknown preset {preset!r}")
         if strategy is not None:
             render_settings.strategy = strategy
-        data = await file.read()
         title = title or (file.filename or "")
         if push:
             service.progress.begin(title)

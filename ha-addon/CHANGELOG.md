@@ -18,6 +18,10 @@
   same. Harmonogram jest ten sam przy ładowarce i na baterii; głęboki sen
   w nocy tylko na baterii, na ładowarce zdjęcia idą od razu.
 
+- „Styl obrazu” dobierany automatycznie do każdego obrazu (domyślnie):
+  bez koloru czarno-biały, zdjęcia jako zdjęcia, drzeworyty, litografie
+  i plakaty jako grafika, reszta jako obraz. Ręczny wybór dalej możliwy.
+
 ## 0.3.0
 
 - Zasilanie na baterii: w godzinach ciszy ekran dostaje budzik (MDC `0x25`)

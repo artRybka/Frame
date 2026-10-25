@@ -441,6 +441,14 @@ struct PresentationSection: View {
         target == .art ? $settings.art : $settings.photo
     }
 
+    /// Off: one style picked by hand, starting from the usual one for the target.
+    private var autoStyle: Binding<Bool> {
+        Binding(
+            get: { presentation.preset.wrappedValue == "auto" },
+            set: { presentation.preset.wrappedValue = $0 ? "auto" : (target == .photo ? "photo" : "painting") }
+        )
+    }
+
     private var isMulti: Bool { target == .photo && presentation.fit.wrappedValue == "multi" }
 
     /// The picture on the frame, when the selected presentation applies to it.
@@ -543,15 +551,18 @@ struct PresentationSection: View {
                         .foregroundStyle(Theme.inkSoft)
                 }
                 Divider()
-                HStack {
-                    Text("Styl obrazu")
-                    Spacer()
-                    Picker("Styl obrazu", selection: presentation.preset) {
-                        ForEach(["photo", "painting", "graphic", "bw"], id: \.self) { Text(Names.preset($0)).tag($0) }
+                Toggle("Styl obrazu automatycznie", isOn: autoStyle)
+                if !autoStyle.wrappedValue {
+                    HStack {
+                        Text("Styl obrazu")
+                        Spacer()
+                        Picker("Styl obrazu", selection: presentation.preset) {
+                            ForEach(Names.manualPresets, id: \.self) { Text(Names.preset($0)).tag($0) }
+                        }
+                        .labelsHidden()
                     }
-                    .labelsHidden()
                 }
-                Text(Names.presetExplanation(presentation.preset.wrappedValue))
+                Text(Names.presetExplanation(presentation.preset.wrappedValue, photo: target == .photo))
                     .font(.caption)
                     .foregroundStyle(Theme.inkSoft)
                     .fixedSize(horizontal: false, vertical: true)

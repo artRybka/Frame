@@ -8,7 +8,7 @@ struct SendSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var selection: PhotosPickerItem?
     @State private var imageData: Data?
-    @State private var preset = "photo"
+    @State private var preset = "auto"
     @State private var hold = HoldSpec.untilNextChange
     @State private var title = ""
     @State private var sending = false
@@ -29,7 +29,7 @@ struct SendSheet: View {
                     VStack(alignment: .leading, spacing: 10) {
                         Eyebrow("Styl obrazu")
                         Picker("Styl", selection: $preset) {
-                            ForEach(["photo", "painting", "graphic", "bw"], id: \.self) { key in
+                            ForEach(["auto"] + Names.manualPresets, id: \.self) { key in
                                 Text(Names.preset(key)).tag(key)
                             }
                         }

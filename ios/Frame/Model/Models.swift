@@ -435,8 +435,8 @@ struct FrameSettings: Codable, Hashable, Sendable {
         playlistId: nil, changeTimes: ["07:00"], changeEveryDays: 1,
         quietStart: "22:00", shuffle: true, avoidRepeatDays: 14,
         orientation: "landscape", rotation: 90,
-        art: Presentation(preset: "painting", fit: "auto", margin: 0.05, label: false),
-        photo: Presentation(preset: "photo", fit: "fill", margin: 0, label: false),
+        art: Presentation(preset: "auto", fit: "auto", margin: 0.05, label: false),
+        photo: Presentation(preset: "auto", fit: "fill", margin: 0, label: false),
         timezone: "Europe/Warsaw", statusPollMinutes: 15
     )
 }

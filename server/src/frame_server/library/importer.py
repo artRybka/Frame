@@ -16,7 +16,7 @@ import httpx
 from PIL import Image
 
 from ..imaging.palette import Palette
-from .colors import analyse
+from .colors import analyse, tint_spread
 from .images import ImageCache
 from .models import Item, ItemKind, PhotoInfo, PlaylistRules
 from .museums import MUSEUMS, Discovery, Kind, Museum, client, museum
@@ -124,6 +124,7 @@ class Importer:
     def _analysed(self, item: Item) -> Item:
         with Image.open(self.cache.ensure_thumb(item)) as thumb:
             colors, tags, score = analyse(thumb, self.palette)
+            spread = tint_spread(thumb)
             width, height = item.width, item.height
             if not width or not height:
                 width, height = thumb.size
@@ -132,6 +133,7 @@ class Importer:
                 "colors": colors,
                 "color_tags": tags,
                 "suitability": score,
+                "tint_spread": spread,
                 "width": width,
                 "height": height,
             }
