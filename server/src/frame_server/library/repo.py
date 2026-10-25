@@ -352,8 +352,7 @@ class Library:
     def set_album_sync(self, playlist_id: int, sync: AlbumSync | None) -> None:
         key = f"album_sync:{playlist_id}"
         if sync is None:
-            with self._db() as db:
-                db.execute("DELETE FROM kv WHERE key = ?", (key,))
+            self.delete_state(key)
         else:
             self.set_state(key, sync.model_dump(mode="json"))
 
@@ -369,6 +368,10 @@ class Library:
             db.execute(
                 "INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)", (key, json.dumps(value))
             )
+
+    def delete_state(self, key: str) -> None:
+        with self._db() as db:
+            db.execute("DELETE FROM kv WHERE key = ?", (key,))
 
     # -- history ------------------------------------------------------------
 

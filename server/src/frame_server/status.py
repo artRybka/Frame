@@ -54,6 +54,15 @@ class StatusMonitor:
         s = self.panel.settings
         return bool(s.device_host and s.device_pin)
 
+    def forget(self) -> None:
+        """Another panel (or address): nothing known about it yet, but what
+        was sent and what waits for a wake stays."""
+        keep = self.status.model_dump(
+            include={"last_push_at", "last_fetch_at", "pending_push", "wakes_at"}
+        )
+        self.status = DeviceStatus(configured=self._configured(), **keep)
+        self._static_known = False
+
     @property
     def on_battery(self) -> bool:
         return self.status.power_source == "battery"

@@ -54,6 +54,29 @@ final class FrameAPITests: XCTestCase {
         XCTAssertEqual(progress.stageLabel, "Obraz jest na ramce")
     }
 
+    func testPanelAddressChecks() {
+        XCTAssertEqual(PanelAddress.host(" http://192.168.1.152/ "), "192.168.1.152")
+        XCTAssertNil(PanelAddress.host("192.168.1.152; rm"))
+        XCTAssertEqual(PanelAddress.mac("a4-30-7a-01-02-ff"), "A4:30:7A:01:02:FF")
+        XCTAssertEqual(PanelAddress.mac(""), "")
+        XCTAssertNil(PanelAddress.mac("A4:30:7A:01:02"))
+    }
+
+    func testPanelConfigUpdateKeepsPinUnlessTyped() throws {
+        let update = PanelConfigUpdate(host: "192.168.1.152", pin: nil, mac: nil, port: 1515)
+        let json = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: LiveBackend.encoder().encode(update)) as? [String: Any]
+        )
+        XCTAssertNil(json["pin"])  // left out: the server keeps its PIN
+        XCTAssertTrue(json["mac"] is NSNull)  // sent as null: no Wake-on-LAN
+        let config = try LiveBackend.decoder().decode(
+            PanelConfig.self,
+            from: Data(#"{"host": "192.168.1.152", "mac": null, "port": 1515, "pin_set": true, "from_app": true}"#.utf8)
+        )
+        XCTAssertTrue(config.pinSet)
+        XCTAssertTrue(config.fromApp)
+    }
+
     func testEncodesSettingsInSnakeCase() throws {
         var settings = FrameSettings.defaults
         settings.playlistId = 4
