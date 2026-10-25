@@ -7,7 +7,8 @@ uv run frame render obraz.jpg out.png -p painting --preview podglad.png
 uv run frame render obraz.jpg out.png -p photo --set tone.gamma=1.25 --set dither.method='"atkinson"'
 ```
 
-`out.png` to plik dla ekranu (tylko czyste kolory farb), a `podglad.png` to
+`out.png` to plik dla ekranu (przy strategii `dither` tylko czyste kolory farb,
+przy `passthrough` obraz ciągłotonalny, który ditheruje ekran), a `podglad.png` to
 symulacja wyglądu na ekranie z uwzględnieniem adaptacji oka do „bieli” papieru.
 
 ![Porównanie](img/pipeline-compare.jpg)
@@ -53,6 +54,7 @@ Pełny render na NAS-ie trwał kilkanaście sekund; teraz kilka razy krócej, z 
 - **sRGB → liniowe z tablicy** 256 wartości zamiast potęgowania każdego piksela (dla dużych oryginałów ~3 s mniej).
 - **Liczenie pasami po 64 wiersze** (`bands.py`) dla operacji na pojedynczych pikselach (mapowanie tonów i gamutu, OKLab w wyostrzaniu, zapis do sRGB): pośrednie tablice mieszczą się w cache procesora, a pasy liczą się na wszystkich rdzeniach (numpy zwalnia GIL). Skalowanie Lanczos trzech kanałów równolegle.
 - **Karton**: faza liczona tylko w pasach wokół okienek, faktura papieru liczona raz na orientację.
+- **Passthrough z passe-partout** (E14): nasz dither tylko na pikselach kartonu (`error_diffusion(..., only=maska)`, błąd nie przepływa do obrazu ani z niego), mapowanie tonów tylko dla kartonu `picture` i `edge`. Na Macu (Apple Silicon) obraz z kartonem ~0,65 s, czyli mniej niż nasz pełny dither (~0,9 s).
 - **Render z wyprzedzeniem** (`rendered.py`, `Player.render_ahead`): po każdej zmianie serwer od razu rysuje następny obraz z kolejki (także po restarcie i po zmianie ustawień prezentacji). Gotowy wynik (plik dla ekranu i podgląd dla aplikacji) czeka w pamięci pod kluczem: zawartość oryginału, ustawienia renderu, paleta, format. Przy zmianie zostaje tylko zapis plików. Plansze multi nie są rysowane z góry, bo zdjęcia do nich dobiera się dopiero przy pokazaniu.
 
 Na 2 rdzeniach (zwykły PC): obraz z passe-partout ~10 s → ~2 s, duży oryginał 6000×4500 ~16 s → ~4 s, zdjęcie (passthrough) ~3 s → ~1,4 s; najdłużej trwa teraz dithering (~0,35 s, numba, z natury sekwencyjny) i dekodowanie dużego JPEG-a.
@@ -61,18 +63,36 @@ Na 2 rdzeniach (zwykły PC): obraz z passe-partout ~10 s → ~2 s, duży orygina
 
 | strategia | co wysyłamy | kiedy |
 |---|---|---|
-| `passthrough` | tylko przeskalowany obraz; całą resztę robi ekran | punkt odniesienia (tak robi aplikacja Samsunga) |
+| `passthrough` | przeskalowany obraz z korektą pod mapowanie ekranu; dithering robi ekran | **domyślna od E14** (wygrała z `dither` na oko we wszystkich stylach) |
 | `compensate` | obraz po naszym mapowaniu tonów i gamutu, wstępnie skorygowany macierzą afiniczną (farby nominalne → zmierzone), tak żeby dithering ekranu trafił w nasz cel | gdy ekran przetwarza każdy obraz po swojemu |
 | `dither` | gotowy obraz z samych czystych farb | gdy ekran pokazuje czyste farby 1:1 (najlepsza kontrola) |
 
 ## Presety
 
+Od E14 wszystkie presety używają `passthrough` z korektą (ustawienia dobrane na
+oko na prawdziwym ekranie, `docs/EXPERIMENTS.md`). Wspólne dla wszystkich:
+punkt bieli 0.93 i odbarwienie jasnych partii do 0.55.
+
 | preset | dla | najważniejsze ustawienia |
 |---|---|---|
-| `photo` | zdjęcia | gamma 1.15, cienie +0.35, nasycenie 1.2, wyostrzenie 0.6 |
-| `painting` | obrazy olejne, akwarele | passe-partout 5%, gamma 1.1, nasycenie 1.15 |
-| `graphic` | plakaty, ilustracje, drzeworyty | Atkinson, kontrast 1.2, nasycenie 1.3 |
-| `bw` | rysunki, grafiki, zdjęcia czarno-białe | tylko czarna i biała farba, Jarvis |
+| `photo` | zdjęcia | nasycenie i kontrast 1.05, szarości lekko od zieleni, wyostrzenie 0.6 |
+| `painting` | obrazy olejne, akwarele | passe-partout 5%, gamma 1.1, jasne partie podniesione (`highlights` −0.15) |
+| `graphic` | plakaty, ilustracje, drzeworyty | jak `painting`, plus nasycenie i kontrast 1.1, wyostrzenie 0.8 |
+| `bw` | rysunki, grafiki, zdjęcia czarno-białe | szarości (ekran miesza wszystkie farby), kontrast 1.1, przesunięcie od zieleni, wyostrzenie 0.9 |
+
+### Korekta dla `passthrough`
+
+Ekran sam ditheruje obraz, więc nie wysyłamy mu naszego mapowania tonów i
+gamutu, tylko poprawiamy obraz pod jego własne mapowanie (`grade_for_panel`
+w `tone.py`, pola `ToneSettings`):
+
+- `white_point`: jasność źródła, która staje się bielą papieru. Prawie białe miejsca ekran rozpraszał niebieskimi i zielonymi kropkami.
+- `highlight_chroma`: mnożnik nasycenia w jasnych partiach (rampa L 0.55–0.9). Z tego samego powodu.
+- `tint` / `temperature`: przesunięcie OKLab a (magenta / zieleń) i b (ciepło / chłód); `tint_region` mówi gdzie: `all`, `highlights` albo `neutral` (szarości, zanika do chroma 0.06). Szarości ekranu ciągną w zieleń.
+- `gamma`, `shadows`, `highlights`, `contrast`, `saturation` działają jak w `dither`; `compress_range` i `gamut_knee` nie mają znaczenia.
+
+Passe-partout, faza i podpisy nadal są w czystych farbach (nasz dither tylko na
+kartonie), a ekran ditheruje sam obraz. Plik jest wtedy JPEG.
 
 Pełna lista parametrów: `GET /api/presets` albo modele `RenderSettings`,
 `ToneSettings`, `DitherSettings` i `LayoutSettings` w kodzie.
@@ -95,7 +115,7 @@ okienek z fragmentem obrazu, a reszta to passe-partout.
 - **Obraz chowa się za passe-partout**: w okienku widać obraz bez 2% z każdej krawędzi, jak w prawdziwej oprawie, gdzie karton zachodzi na brzeg odbitki (również w trybach `details` i `description`).
 - **Tryby wybrane wprost zawsze działają**: `details` i `description` nie przechodzą już w zwykłe passe-partout. Obraz idzie na lewo (reszta w kolumnie) albo na górę (reszta w rzędzie), w tym układzie, w którym jest większy. Na pełną wysokość lub szerokość, jeśli zostaje co najmniej 33% ekranu na detale; inaczej jest pomniejszony do okienka passe-partout, a kolumna lub rząd detali ma jego wysokość lub szerokość.
 - **Korekta kadru**: użytkownik może przesunąć i przybliżyć kadr (`fill`), kadr i kształt okienka w passe-partout (`fit`) albo detale (`details`, `description`) w aplikacji; poprawka jest zapisana przy dziele, osobno dla ramki poziomej i pionowej (`Item.framing`), i wraca przy każdym wyświetleniu.
-- **Passe-partout** (`imaging/mat.py`) jest malowane po mapowaniu tonów, w kolorach odczuwanych farb: biały i czarny to czyste farby (bez faktury, która dałaby tylko kropki), kremowy to biel z domieszką żółtej, szary to mieszanka czerni i bieli; kremowy i szary mają ledwie wyczuwalną, gładką fakturę papieru (wahania jasności 0,3%, miękkie plamki ok. 8 px, żeby karton nie wyglądał na ziarnisty). **Z obrazu** (`picture`) barwi karton odcieniem obrazu, jak robią to ramiarze: z tego, co ramka pokaże (po mapowaniu tonów), wybiera barwę o największym „ładunku koloru” (powierzchnia × nasycenie, histogram odcieni w OKLab), uśrednia jej sąsiedztwo i robi z niej bardzo jasny, stonowany karton (jasność 90% między czernią a bielą ekranu, nasycenie najwyżej 0,024 w OKLab). Obraz ciemny (mediana jasności poniżej 35%) dostaje głęboki, ciemny ton tej barwy i białe litery. Obraz prawie bezbarwny: złamana biel ciepła albo chłodna, jak sam obraz. Kolor zawsze mieści się w gamucie farb, ma fakturę papieru i jest rastrowany jak kremowy i szary. Okienka mają fazę 45° w kolorze samego kartonu (bez białego rdzenia, także na czarnym), przy świetle z lewej góry: górna i lewa faza trochę ciemniejsza, dolna i prawa trochę jaśniejsza (mieszane równo dla oka, w pierwiastku sześciennym jasności), a karton rzuca wąski cień na obraz przy górnej i lewej krawędzi.
+- **Passe-partout** (`imaging/mat.py`) jest malowane po mapowaniu tonów, w kolorach odczuwanych farb: biały i czarny to czyste farby (bez faktury, która dałaby tylko kropki), kremowy to biel z domieszką żółtej, szary to mieszanka czerni i bieli; kremowy i szary mają ledwie wyczuwalną, gładką fakturę papieru (wahania jasności 0,3%, miękkie plamki ok. 8 px, żeby karton nie wyglądał na ziarnisty). **Z obrazu** (`picture`) barwi karton odcieniem obrazu, jak robią to ramiarze: z tego, co ramka pokaże (po mapowaniu tonów), wybiera barwę o największym „ładunku koloru” (powierzchnia × nasycenie, histogram odcieni w OKLab), uśrednia jej sąsiedztwo i robi z niej bardzo jasny, stonowany karton (jasność 90% między czernią a bielą ekranu, nasycenie najwyżej 0,024 w OKLab). Obraz ciemny (mediana jasności poniżej 35%) dostaje głęboki, ciemny ton tej barwy i białe litery. Obraz prawie bezbarwny: złamana biel ciepła albo chłodna, jak sam obraz. Kolor zawsze mieści się w gamucie farb, ma fakturę papieru i jest rastrowany jak kremowy i szary. Okienka mają fazę 45° w kolorze samego kartonu (bez białego rdzenia, także na czarnym), przy świetle z lewej góry: górna i lewa faza trochę ciemniejsza, dolna i prawa trochę jaśniejsza (mieszane równo dla oka, w pierwiastku sześciennym jasności), a karton rzuca wąski cień na obraz przy górnej i lewej krawędzi. Tam, gdzie faza styka się z powierzchnią kartonu, biegnie dookoła okna cienka linia z kropek (1 px, co drugi piksel, E14): czarnych, a na ciemnym kartonie na przemian białych i niebieskich (same białe były za jasne): na białym kartonie oświetlona faza jest tak biała jak karton i bez niej cięcie znika. Linię wstawiamy po ditheringu, jak podpisy, bo szara linia rozsypałaby się na kolorowe kropki.
 - **Opis** (`imaging/text.py`, tryb `description`): jak tabliczka w muzeum, w miejscu drugiego detalu. Tytuł szeryfowy pogrubiony (najwyżej dwa wiersze), pod nim autor oraz data i technika, krótka kreska i tekst z opisu dzieła z muzeum (dla zdjęć: podpis, data i kto dodał). Z opisu wchodzi tyle **całych zdań**, ile się mieści; wielokropek tylko wtedy, gdy nie mieści się nawet pierwsze. Bez opisu: muzeum i informacja o pochodzeniu. Tekst opisu jest drobny, jak na tabliczce: 1,5% krótszego boku (ok. 22 px); tytuł 3,6% (ok. 52 px), autor i data 2,1% (ok. 30 px); wiersz najwyżej pół krótszego boku (ok. 70 znaków). Czyste farby bez ditheringu, białe na czarnym kartonie; podpis pod obrazem w tym trybie nie jest potrzebny.
 - **Podpis**: przy passe-partout litery stoją bezpośrednio na kartonie pod obrazem (lub pod detalami), wyrównane do prawej; w trybie `fill` obraz zostawia na dole wąski pasek w kolorze passe-partout na całą szerokość ekranu. Litery czarne, na ciemnym kartonie (czarnym albo ciemnym „z obrazu”) białe; zawsze czyste farby bez ditheringu.
 

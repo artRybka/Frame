@@ -71,7 +71,7 @@ Cel: potwierdzić protokół na Twoim egzemplarzu i poznać zachowanie ekranu.
 - [x] Plansze testowe: `palette`, `passthrough`, `ramps`.
 - [ ] Eksperymenty E1–E12 na ekranie ([EXPERIMENTS.md](EXPERIMENTS.md)). **Wymaga Ciebie i ekranu.** Zrobione 2026-10-25: E1–E5, częściowo E7 i E8; zostały testy 24 h (E7, E8), E6, E9–E12.
 - [ ] Narzędzie do eksperymentu E6 (manifest z kilkoma obrazami), po wynikach E2.
-- [ ] Decyzje: strategia obrazu (passthrough / compensate / dither), format pliku (PNG/JPEG), polityka zasilania. *Stan po E5: piksele są 1:1, więc docelowo `dither` + PNG (JPEG psułby czyste farby); `compensate` odpada. Na razie `passthrough` wygląda lepiej niż nasz `dither`, więc decyzja czeka na strojenie 1.3/1.4. Polityka zasilania czeka na E8 (WoL przez Wi-Fi nie budzi ekranu na baterii).*
+- [ ] Decyzje: strategia obrazu (passthrough / compensate / dither), format pliku (PNG/JPEG), polityka zasilania. *Stan po E5: piksele są 1:1, więc docelowo `dither` + PNG (JPEG psułby czyste farby); `compensate` odpada. Strojenie na oko (E14): `passthrough` z korektą wygrał we wszystkich presetach, więc jest domyślny; `dither` zostaje do porównań i dla podpisów i passe-partout. Polityka zasilania czeka na E8 (WoL przez Wi-Fi nie budzi ekranu na baterii).*
 
 **Gotowe, gdy:** ekran pokazuje obraz z naszego serwera, mamy wyniki E1–E8 i podjęte decyzje.
 
@@ -80,7 +80,7 @@ Cel: potwierdzić protokół na Twoim egzemplarzu i poznać zachowanie ekranu.
 - [x] Pipeline v0: przestrzeń liniowa i OKLab, mapowanie tonów, mapowanie gamutu do bryły farb, dyfuzja błędu (7 jąder, serpentyna, ograniczanie błędu), presety `photo` / `painting` / `graphic` / `bw`, podgląd wyglądu na ekranie.
 - [x] 1.1 Pomiar palety EM32DX: plansza `palette` i zdjęcie iPhonem, pomiar przez `/api/calibration`. Pomiar 2026-10-25 (lampa światła dziennego): wbudowana paleta `em32dx` w `server/src/frame_server/imaging/palette.py`, teraz domyślna.
 - [ ] 1.2 Zestaw testowy ok. 20 obrazów (portrety, krajobrazy, olej, akwarela, drzeworyt, plakat, zdjęcia czarno-białe) i procedura porównań A/B: zdjęcia ekranu w tym samym świetle.
-- [ ] 1.3 Strojenie presetów na prawdziwym ekranie.
+- [ ] 1.3 Strojenie presetów na prawdziwym ekranie. *Pierwsza runda (E14, 12 plansz po 6 wariantów): wszystkie presety na `passthrough` z korektą jasnych partii i szarości. Do zrobienia: potwierdzenie na zdjęciach z rolki i na dłuższej playliście.*
 - [ ] 1.4 Ulepszenia algorytmu:
   - szarości bez kolorowego szumu (preferencja osi czarny–biały),
   - kompromis jasność/nasycenie przy mapowaniu gamutu (np. niebo bardziej niebieskie kosztem jasności),

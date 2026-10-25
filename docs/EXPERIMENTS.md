@@ -107,6 +107,11 @@ to na baterii, gdy ekran śpi?
 Budzik ekranu (`uv run frame device timer HH:MM`), Wi-Fi 2,4 GHz i WoL, przycisk,
 ładowarka. Plan krok po kroku w [WAKE.md](WAKE.md#e13-plan-testu-na-ekranie).
 
+### E14 — Strojenie na oko (plansze porównawcze)
+
+- Jedna plansza 2560×1440 = sześć kafelków 3×2, każdy to inny wariant tych samych kadrów (dwa obrazy obok siebie), podpisany literą. Wysyłana `--raw`, więc kafelki passthrough ditheruje ekran, a kafelki `dither` zostają w czystych farbach 1:1 (E5). Obok, na ekranie telefonu, wzorzec: te same kadry bez obróbki.
+- Ocena subiektywna w świetle pokoju: najlepszy wariant, ewentualnie „za mało / za dużo”, i kolejna plansza wokół zwycięzcy. Obrazy z AIC i Wikimedia Commons, różne style: zdjęcia (portrety, góry), olej, drzeworyt, plakat, miedzioryt, zdjęcie cz-b.
+
 ---
 
 ## Wyniki
@@ -126,3 +131,4 @@ Budzik ekranu (`uv run frame device timer HH:MM`), Wi-Fi 2,4 GHz i WoL, przycisk
 | E11 | | | | |
 | E12 | | | | |
 | E13 | | | | |
+| E14 | 2026-10-25 | 1130.7 | 12 plansz. **Passthrough z korektą wygrał z naszym ditherem w każdym stylu.** Wyjściowy problem: za dużo niebieskiego i zieleni w jasnych partiach. 1. Jasne partie: odbarwienie do 0.55 (rampa L 0.55–0.9) i punkt bieli 0.93 (L ≥ 0.93 → biel papieru); same ocieplenie pomagało mniej. 2. Zdjęcia: nasycenie i kontrast +5% (+10% już za dużo). 3. Malarstwo: passthrough lepszy niż nasz dither (także z poprawką jasnych), ale bez korekty za ciemny; γ 1.1 i podniesione jasne partie (`highlights` −0.15). 4. Grafika (Hokusai, Toulouse-Lautrec): jak malarstwo, plus nasycenie i kontrast +10%; nasz dither Atkinson/F-S słabszy. 5. Cz-b: nasz dither z czerni i bieli ma dobrą szarość, ale passthrough w szarościach płynniejsze przejścia i głębię; wygrał passthrough, kontrast +10%, wyostrzenie 0.9, szarość przesunięta od zieleni (OKLab a +0.012) i odrobinę chłodniej (b −0.006). 6. Ta sama korekta w kolorze: najlepiej połowa, tylko w szarych miejscach (chroma < 0.06). 7. Białe passe-partout: dolna i prawa faza zlewała się z kartonem; z sześciu linii załamania (plansza 13, wycinki 1:1) wygrała 1 px z co drugim pikselem czarnym, dookoła całego okna i na każdym kartonie. Na czarnym kartonie białe kropki były za mocne; wygrały na przemian biała i niebieska co drugi piksel (plansze 14–15, Vermeer). Wartości są w presetach (`pipeline.py`) i w `mat.py`. | – |
