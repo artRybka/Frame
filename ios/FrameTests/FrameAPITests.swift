@@ -254,7 +254,8 @@ final class FrameAPITests: XCTestCase {
 
     func testLaterPagesLeaveOutCopiesOfWorks() async throws {
         let demo = DemoBackend()
-        let theme = try XCTUnwrap(try await demo.themes().first)
+        let themes = try await demo.themes()
+        let theme = try XCTUnwrap(themes.first)
         let page = try await demo.themePage(key: theme.key, page: 1)
         var item = try XCTUnwrap(page.items.first).item
         item.year = 1889
