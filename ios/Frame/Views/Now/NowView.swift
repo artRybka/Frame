@@ -17,6 +17,10 @@ struct NowView: View {
     @State private var drafts: [String: FramingDraft] = [:]
     @State private var sending = false
     @State private var routed = false
+    /// The hero picture last loaded, and the picture it was of: the crop
+    /// windows wait for it, so a half-loaded preview never shows.
+    @State private var loadedHero: ImageRef?
+    @State private var loadedFor: String?
 
     struct Browsed: Equatable {
         let summary: ItemSummary
@@ -143,6 +147,9 @@ struct NowView: View {
         return nil
     }
 
+    /// The server is still making the preview, or it is on its way.
+    private var heroLoading: Bool { heroRef != nil && loadedHero != heroRef }
+
     private var hero: some View {
         let aspect: CGFloat = model.isPortrait ? 9.0 / 16.0 : 16.0 / 9.0
         return HStack(spacing: 0) {
@@ -152,8 +159,16 @@ struct NowView: View {
                 ref: heroRef, aspectRatio: aspect,
                 placeholder: selectedItem?.placeholderColor ?? browsed?.summary.placeholderColor ?? Theme.mat
             ) {
-                if let id = selectedID, draft.key == draftKey {
+                if let id = selectedID, draft.key == draftKey, loadedFor == id {
                     CropWindows(itemID: id, draft: $draft)
+                        .transition(.opacity)
+                }
+            }
+            .environment(\.artImageLoaded) { ref in
+                guard ref == heroRef else { return }
+                withAnimation(.easeOut(duration: 0.3)) {
+                    loadedHero = ref
+                    loadedFor = selectedID
                 }
             }
             .id(selectedID ?? "")  // a fresh picture for each one browsed to
@@ -165,15 +180,9 @@ struct NowView: View {
             .overlay {
                 // Servers that report no progress: a spinner instead of the bar.
                 if model.displayProgress == nil, offset == 0, model.working || model.player?.busy == true {
-                    VStack(spacing: 10) {
-                        ProgressView().tint(.white)
-                        Text("Przygotowuję obraz…")
-                            .font(.footnote.weight(.medium))
-                            .foregroundStyle(.white)
-                    }
-                    .padding(18)
-                    .background(.black.opacity(0.45), in: RoundedRectangle(cornerRadius: 14))
-                    .allowsHitTesting(false)
+                    LoadingBadge(text: "Przygotowuję obraz…")
+                } else if heroLoading {
+                    LoadingBadge(text: "Wczytuję podgląd…")
                 }
             }
             .frame(maxWidth: model.isPortrait ? 290 : .infinity)
@@ -383,6 +392,24 @@ struct NowView: View {
             draft = FramingDraft()
             await loadFraming()  // as saved now
         }
+    }
+}
+
+/// A spinner with a line of text, laid over the picture while it loads.
+private struct LoadingBadge: View {
+    let text: String
+
+    var body: some View {
+        VStack(spacing: 10) {
+            ProgressView().tint(.white)
+            Text(text)
+                .font(.footnote.weight(.medium))
+                .foregroundStyle(.white)
+        }
+        .padding(18)
+        .background(.black.opacity(0.45), in: RoundedRectangle(cornerRadius: 14))
+        .allowsHitTesting(false)
+        .transition(.opacity)
     }
 }
 
