@@ -410,7 +410,7 @@ def museum_text(rules: PlaylistRules, page: int) -> str:
     """What to ask the museums: the words, an artist (one per page, in
     turns) and the styles and subjects."""
     artist = rules.artists[(page - 1) % len(rules.artists)] if rules.artists else ""
-    topics = museum_queries(rules.terms, limit=1)
+    topics = museum_queries(rules.terms)[:1]
     return " ".join(w for w in (rules.query.strip(), artist, *topics) if w)
 
 

@@ -389,13 +389,18 @@ def museum_kind(keys: list[str]) -> Kind:
 
 def museum_queries(keys: list[str], limit: int = 6) -> list[str]:
     """Texts to ask museums for: one word of each style and subject, in
-    every combination (an impressionist sea: ``impressionism seascape``)."""
+    every combination (an impressionist sea: ``impressionism sea``). Such
+    pairs find few works, so each word alone follows; what comes back is
+    checked against every term anyway."""
     groups = grouped(keys)
     words = [[t.query for t in groups[k] if t.query] for k in ("style", "subject") if k in groups]
     words = [w for w in words if w]
     if not words:
         return []
-    return [" ".join(combo) for combo in product(*words)][:limit]
+    texts = [" ".join(combo) for combo in product(*words)][:limit]
+    if len(words) > 1:
+        texts += [w for group in words for w in group if w not in texts]
+    return texts
 
 
 def fold(text: str) -> str:
