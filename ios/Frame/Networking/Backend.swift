@@ -53,10 +53,22 @@ protocol FrameBackend: Sendable {
     func settings() async throws -> FrameSettings
     func saveSettings(_ settings: FrameSettings) async throws -> FrameSettings
 
-    /// Discover's rows: picked for the frame, theme of the day, best on e-paper.
+    /// Discover's rows: picked for the frame, because you like…, theme of
+    /// the day, best on e-paper.
     func suggestions() async throws -> [SuggestionRow]
     func themes() async throws -> [ArtTheme]
     func themePage(key: String, page: Int) async throws -> ArtThemePage
+    /// The smart playlist made from a theme (made now if there is none);
+    /// `play` also puts it on the frame.
+    func themePlaylist(key: String, play: Bool) async throws -> ThemePlaylist
+    /// Every style, subject, period and technique, with Polish names.
+    func vocabulary() async throws -> [TermInfo]
+    /// What typed words could mean: artists, terms and the words themselves.
+    func terms(_ text: String) async throws -> [TermHit]
+    /// What the museums have for words the catalogue does not know.
+    func museumHint(_ text: String) async throws -> MuseumHint
+    /// The museums' works for a search's words, artists, terms and years.
+    func searchMuseums(_ rules: PlaylistRules, source: String, page: Int) async throws -> RemotePage
 
     func museums() async throws -> [Museum]
     func searchMuseum(source: String, query: String, page: Int) async throws -> RemotePage

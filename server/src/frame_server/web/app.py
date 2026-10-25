@@ -89,6 +89,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         seed_playlists(service.importer)
         service.albums.migrate()  # once: the album of older settings becomes a playlist
         service.player.reset_library()  # once: a clean start for the catalogue
+        service.player.drop_manuscripts()  # once: the catalogue leaves them out now
         if settings.seed_library:
             service.player.top_up()  # Suggestions come from museums, as needed
         yield

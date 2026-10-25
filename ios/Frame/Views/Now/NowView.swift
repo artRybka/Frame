@@ -17,6 +17,10 @@ struct NowView: View {
     @State private var drafts: [String: FramingDraft] = [:]
     @State private var sending = false
     @State private var routed = false
+    /// The hero picture last loaded, and the picture it was of: the crop
+    /// windows wait for it, so a half-loaded preview never shows.
+    @State private var loadedHero: ImageRef?
+    @State private var loadedFor: String?
 
     struct Browsed: Equatable {
         let summary: ItemSummary
@@ -129,6 +133,7 @@ struct NowView: View {
             }
             .task(id: browsed?.summary.id) { await loadDetails() }
             .task(id: draftKey) { await loadFraming() }
+            .task(id: selectedID) { await prefetchNeighbours() }
         }
     }
 
@@ -143,6 +148,9 @@ struct NowView: View {
         return nil
     }
 
+    /// The server is still making the preview, or it is on its way.
+    private var heroLoading: Bool { heroRef != nil && loadedHero != heroRef }
+
     private var hero: some View {
         let aspect: CGFloat = model.isPortrait ? 9.0 / 16.0 : 16.0 / 9.0
         return HStack(spacing: 0) {
@@ -152,8 +160,16 @@ struct NowView: View {
                 ref: heroRef, aspectRatio: aspect,
                 placeholder: selectedItem?.placeholderColor ?? browsed?.summary.placeholderColor ?? Theme.mat
             ) {
-                if let id = selectedID, draft.key == draftKey {
+                if let id = selectedID, draft.key == draftKey, loadedFor == id {
                     CropWindows(itemID: id, draft: $draft)
+                        .transition(.opacity)
+                }
+            }
+            .environment(\.artImageLoaded) { ref in
+                guard ref == heroRef else { return }
+                withAnimation(.easeOut(duration: 0.3)) {
+                    loadedHero = ref
+                    loadedFor = selectedID
                 }
             }
             .id(selectedID ?? "")  // a fresh picture for each one browsed to
@@ -165,15 +181,9 @@ struct NowView: View {
             .overlay {
                 // Servers that report no progress: a spinner instead of the bar.
                 if model.displayProgress == nil, offset == 0, model.working || model.player?.busy == true {
-                    VStack(spacing: 10) {
-                        ProgressView().tint(.white)
-                        Text("Przygotowuję obraz…")
-                            .font(.footnote.weight(.medium))
-                            .foregroundStyle(.white)
-                    }
-                    .padding(18)
-                    .background(.black.opacity(0.45), in: RoundedRectangle(cornerRadius: 14))
-                    .allowsHitTesting(false)
+                    LoadingBadge(text: "Przygotowuję obraz…")
+                } else if heroLoading {
+                    LoadingBadge(text: "Wczytuję podgląd…")
                 }
             }
             .frame(maxWidth: model.isPortrait ? 290 : .infinity)
@@ -328,6 +338,17 @@ struct NowView: View {
 
     // MARK: Loading and sending
 
+    /// The previews one back and one ahead, so the server makes them while
+    /// this one is looked at and the arrows show them at once.
+    private func prefetchNeighbours() async {
+        for target in [offset + 1, offset - 1] where target != 0 {
+            guard let id = summary(at: target)?.id,
+                  let request = model.backend.request(for: .framePreview(id))
+            else { continue }
+            _ = try? await ImageLoader.shared.image(for: request, maxPixel: 1600)  // as FramedArtwork loads it
+        }
+    }
+
     private func loadDetails() async {
         guard let id = browsed?.summary.id, details[id] == nil else { return }
         if let loaded = try? await model.backend.item(id: id) { details[id] = loaded }
@@ -383,6 +404,24 @@ struct NowView: View {
             draft = FramingDraft()
             await loadFraming()  // as saved now
         }
+    }
+}
+
+/// A spinner with a line of text, laid over the picture while it loads.
+private struct LoadingBadge: View {
+    let text: String
+
+    var body: some View {
+        VStack(spacing: 10) {
+            ProgressView().tint(.white)
+            Text(text)
+                .font(.footnote.weight(.medium))
+                .foregroundStyle(.white)
+        }
+        .padding(18)
+        .background(.black.opacity(0.45), in: RoundedRectangle(cornerRadius: 14))
+        .allowsHitTesting(false)
+        .transition(.opacity)
     }
 }
 

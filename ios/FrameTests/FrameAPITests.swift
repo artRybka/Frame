@@ -168,14 +168,48 @@ final class FrameAPITests: XCTestCase {
     func testDemoSuggestionsAndThemes() async throws {
         let demo = DemoBackend()
         let rows = try await demo.suggestions()
-        XCTAssertEqual(rows.map(\.key), ["for-you", "theme", "best"])
+        XCTAssertEqual(rows.map(\.key), ["for-you", "like:impressionism", "theme", "best"])
         XCTAssertTrue(rows.allSatisfy { !$0.items.isEmpty })
         let themes = try await demo.themes()
-        let theme = try XCTUnwrap(themes.first { $0.key == rows[1].theme })
+        let theme = try XCTUnwrap(themes.first { $0.key == rows[2].theme })
+        XCTAssertNotNil(theme.group)
+        XCTAssertFalse(theme.cover?.isEmpty ?? true)
         let page = try await demo.themePage(key: theme.key, page: 1)
         XCTAssertFalse(page.items.isEmpty)
         XCTAssertFalse(page.more)
         XCTAssertEqual(page.items.first?.thumb, .thumb(page.items[0].id))  // demo works are on the server
+    }
+
+    func testThemesBecomePlaylists() async throws {
+        let demo = DemoBackend()
+        let made = try await demo.themePlaylist(key: "sea", play: false)
+        XCTAssertEqual(made.playlist.theme, "sea")
+        XCTAssertGreaterThan(made.playlist.itemCount, 0)
+        let again = try await demo.themePlaylist(key: "sea", play: false)
+        XCTAssertEqual(again.playlist.id, made.playlist.id)
+        let card = try await demo.themes().first { $0.key == "sea" }
+        XCTAssertEqual(card?.playlistId, made.playlist.id)
+    }
+
+    func testSearchTokensRoundTrip() async throws {
+        var rules = PlaylistRules(query: "mgła", artists: ["Claude Monet"], styles: ["Impressionism"])
+        rules.terms = ["subject:sea", "years:1880-1914"]
+        let tokens = rules.tokens(names: ["subject:sea": "Morze"])
+        XCTAssertEqual(tokens.map(\.name), ["Claude Monet", "Morze", "1880–1914", "Impressionism", "mgła"])
+        XCTAssertEqual(tokens[2].kind, "period")
+        var back = PlaylistRules()
+        back.setTokens(tokens)
+        XCTAssertEqual(back, rules)
+        XCTAssertEqual(rules.suggestedName(names: ["subject:sea": "Morze"]), "Claude Monet · Morze · 1880–1914")
+
+        let demo = DemoBackend()
+        let hits = try await demo.terms("mor")
+        XCTAssertEqual(hits.first { $0.kind == "subject" }?.key, "subject:sea")
+        XCTAssertEqual(hits.last?.kind, "word")
+        let sea = try await demo.items(LibraryQuery(rules: PlaylistRules(terms: ["subject:sea"])))
+        XCTAssertGreaterThan(sea.total, 0)
+        let json = #"{"kind": "artist", "key": "Hokusai", "name": "Hokusai", "detail": "", "count": 3}"#
+        XCTAssertEqual(try LiveBackend.decoder().decode(TermHit.self, from: Data(json.utf8)).count, 3)
     }
 
     func testDecodesThemePage() throws {

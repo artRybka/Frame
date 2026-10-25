@@ -36,6 +36,29 @@ struct PlaylistsView: View {
                         }
                         .buttonStyle(.plain)
                     }
+                    NavigationLink(value: SavedWorksView.Route()) {
+                        HStack(spacing: 12) {
+                            Image(systemName: "bookmark")
+                                .font(.title3)
+                                .foregroundStyle(Theme.accent)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Zapisane dzieła")
+                                    .font(.serif(17, weight: .medium))
+                                    .foregroundStyle(Theme.ink)
+                                Text("Wszystko, co zapisałeś z muzeów i propozycji")
+                                    .font(.footnote)
+                                    .foregroundStyle(Theme.inkSoft)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(Theme.inkSoft)
+                        }
+                        .padding(14)
+                        .background(Theme.card, in: RoundedRectangle(cornerRadius: 12))
+                        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.hairline))
+                    }
+                    .buttonStyle(.plain)
                 }
                 .padding(.horizontal, Theme.gutter)
                 .padding(.bottom, 40)
@@ -57,6 +80,9 @@ struct PlaylistsView: View {
             }
             .navigationDestination(for: String.self) { id in
                 ItemDetailView(itemID: id)
+            }
+            .navigationDestination(for: SavedWorksView.Route.self) { _ in
+                SavedWorksView()
             }
             .sheet(item: $editing) { playlist in
                 PlaylistEditorView(playlist: playlist)

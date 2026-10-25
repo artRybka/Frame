@@ -25,6 +25,8 @@ final class AppModel {
     var settings: FrameSettings?
     var playlists: [PlaylistSummary] = []
     var facets = Facets.empty
+    /// Styles, subjects, periods and techniques to search by, with Polish names.
+    var vocabulary: [TermInfo] = []
     var connection = Connection.unknown
     var toast: String?
     var working = false
@@ -64,6 +66,7 @@ final class AppModel {
         settings = nil
         playlists = []
         facets = .empty
+        vocabulary = []
         await refreshAll()
     }
 
@@ -113,6 +116,16 @@ final class AppModel {
 
     func refreshFacets() async {
         if let value = try? await backend.facets() { facets = value }
+    }
+
+    func loadVocabulary() async {
+        guard vocabulary.isEmpty else { return }
+        if let value = try? await backend.vocabulary() { vocabulary = value }
+    }
+
+    /// Polish names of the vocabulary's terms by key.
+    var termNames: [String: String] {
+        Dictionary(vocabulary.map { ($0.key, $0.name) }, uniquingKeysWith: { first, _ in first })
     }
 
     /// After an action the server renders and pushes in the background;

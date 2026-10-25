@@ -21,6 +21,7 @@ from .images import ImageCache
 from .models import Item, ItemKind, PhotoInfo, PlaylistRules
 from .museums import MUSEUMS, Discovery, Kind, Museum, client, museum
 from .repo import Library, matches, now_iso
+from .vocabulary import is_manuscript, museum_kind, museum_queries, wants_manuscripts, years
 
 log = logging.getLogger(__name__)
 
@@ -33,6 +34,16 @@ DRAW_SOURCES = ("aic", "cma", "met", "rijks")
 #: Museum works seen in search results, kept in memory so that opening one
 #: needs no second request.
 REMOTE_MEMO = 500
+
+
+def span(rules: PlaylistRules) -> tuple[int | None, int | None]:
+    """The years ``rules`` allow: their own range within their periods'."""
+    start, end = years(rules.terms)
+    if rules.year_from is not None:
+        start = rules.year_from if start is None else max(start, rules.year_from)
+    if rules.year_to is not None:
+        end = rules.year_to if end is None else min(end, rules.year_to)
+    return start, end
 
 
 def _search_stream(source: Museum, query: str) -> Iterator[Item]:
@@ -267,10 +278,12 @@ class Importer:
                 queries = rules.artists or [rules.query]
                 streams = [_search_stream(m, q) for q in queries for m in museums]
             else:
-                texts = [*rules.styles, *rules.subjects] or [""]
+                texts = [*rules.styles, *rules.subjects, *museum_queries(rules.terms)] or [""]
+                year_from, year_to = span(rules)
+                kind = museum_kind(rules.terms)
                 streams = [
                     m.random_draw(
-                        Discovery(year_from=rules.year_from, year_to=rules.year_to, style=text),
+                        Discovery(year_from=year_from, year_to=year_to, style=text, kind=kind),
                         rng,
                     )
                     for text in texts
@@ -284,6 +297,7 @@ class Importer:
                 before=lambda item: matches(item, cheap),
                 after=lambda item: matches(item, rules),
                 pooled=pooled,
+                manuscripts=wants_manuscripts(rules.terms),
             )
 
     def collect(
@@ -343,9 +357,11 @@ class Importer:
         before: Callable[[Item], bool],
         after: Callable[[Item], bool],
         pooled: bool = False,
+        manuscripts: bool = False,
     ) -> None:
         """Take turns between ``streams`` until ``count`` new works pass
-        ``before`` (on museum data) and ``after`` (once analysed)."""
+        ``before`` (on museum data) and ``after`` (once analysed); pages of
+        manuscripts only with ``manuscripts``."""
         job.total = count
         drawn = 0
         while streams and job.done < count and drawn < max(count * 20, 200):
@@ -363,6 +379,9 @@ class Importer:
                     continue
                 drawn += 1
                 if self.library.has(item.id) or not before(item):
+                    continue
+                if not manuscripts and is_manuscript(item):
+                    job.skipped += 1
                     continue
                 try:
                     analysed = self._analysed(item)

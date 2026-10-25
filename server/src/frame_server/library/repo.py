@@ -29,6 +29,7 @@ from .models import (
     PlaylistRules,
     PlaylistSummary,
 )
+from .vocabulary import artist_matches, is_manuscript, matches_terms, wants_manuscripts
 
 SortKey = Literal["recent", "title", "artist", "year", "random", "suitability", "shown"]
 
@@ -64,13 +65,15 @@ def matches(item: Item, rules: PlaylistRules) -> bool:
         return False
     if rules.sources and item.source not in rules.sources:
         return False
-    if rules.artists and item.artist.casefold() not in _fold(rules.artists):
+    if rules.artists and not artist_matches(item.artist, rules.artists):
         return False
     if rules.styles and not _fold(item.styles) & _fold(rules.styles):
         return False
     if rules.subjects and not _fold(item.subjects) & _fold(rules.subjects):
         return False
     if rules.colors and not set(item.color_tags) & set(rules.colors):
+        return False
+    if rules.terms and not matches_terms(item, rules.terms):
         return False
     if rules.year_from is not None and (item.year is None or item.year < rules.year_from):
         return False
@@ -246,8 +249,12 @@ class Library:
         include_excluded: bool = False,
     ) -> tuple[int, list[Item]]:
         rules = rules or PlaylistRules()
+        # Pages of manuscripts the server picked only when asked for.
+        hide = not include_excluded and not wants_manuscripts(rules.terms)
 
         def selected(item: Item) -> bool:
+            if hide and item.pooled and is_manuscript(item):
+                return False
             if include_excluded and item.excluded:
                 return matches(item.model_copy(update={"excluded": False}), rules)
             return matches(item, rules)
@@ -335,6 +342,7 @@ class Library:
             cover_item_ids=[i.id for i in items[:4]],
             album=playlist.album,
             album_sync=self.album_sync(playlist.id),
+            theme=playlist.theme,
         )
 
     def album_sync(self, playlist_id: int) -> AlbumSync | None:
