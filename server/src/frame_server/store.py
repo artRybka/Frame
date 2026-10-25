@@ -17,6 +17,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from .device.manifest import Manifest, ManifestItem, new_file_id
+from .fsutil import own_files
 
 log = logging.getLogger(__name__)
 
@@ -104,7 +105,7 @@ class ContentStore:
 
     def _prune(self) -> None:
         current = self.current()
-        files = sorted(self.images.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True)
+        files = sorted(own_files(self.images), key=lambda p: p.stat().st_mtime, reverse=True)
         for old in files[KEEP_IMAGES:]:
             if current and old.name == current.file_name:
                 continue

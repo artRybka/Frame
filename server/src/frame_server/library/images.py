@@ -13,6 +13,7 @@ from urllib.parse import urlsplit
 import httpx
 from PIL import Image
 
+from ..fsutil import own_files
 from ..imaging.layout import load_image
 from .models import Item
 
@@ -138,7 +139,7 @@ class ImageCache:
         """Delete the least recently used originals until all of them fit in
         ``limit_bytes``; returns how many went. Originals of ``keep`` stay:
         pictures about to be shown and those that cannot be downloaded again."""
-        sizes = {p: p.stat().st_size for p in self.images.glob("*.jpg")}
+        sizes = {p: p.stat().st_size for p in own_files(self.images, "*.jpg")}
         total = sum(sizes.values())
         kept = {self.image_path(i) for i in keep}
         removed = 0
@@ -151,14 +152,14 @@ class ImageCache:
         return removed
 
     def thumbs_size(self) -> int:
-        return sum(p.stat().st_size for p in self.thumbs.glob("*.jpg"))
+        return sum(p.stat().st_size for p in own_files(self.thumbs, "*.jpg"))
 
     def prune_thumbs(self, keep: Iterable[Item], spare: int = THUMB_SPARE) -> int:
         """Delete all but the ``spare`` newest thumbnails of works outside
         ``keep`` (works browsed but never kept); returns how many went."""
         kept = {self.thumb_path(i) for i in keep}
         others = sorted(
-            (p for p in self.thumbs.glob("*.jpg") if p not in kept),
+            (p for p in own_files(self.thumbs, "*.jpg") if p not in kept),
             key=lambda p: p.stat().st_mtime,
             reverse=True,
         )

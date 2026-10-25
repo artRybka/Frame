@@ -15,6 +15,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, ValidationError
 from starlette.concurrency import run_in_threadpool
 
+from ..fsutil import own_dirs
 from ..imaging import Palette
 from ..imaging.calibrate import CalibrationError, measure
 from ..imaging.palette import RGB, SPECTRA6
@@ -99,7 +100,7 @@ def _candidate(svc: FrameService, candidate_id: str) -> Path:
 
 def _prune(directory: Path, keep: int) -> None:
     runs = sorted(
-        (p for p in directory.iterdir() if p.is_dir()),
+        (p for p in own_dirs(directory) if _CANDIDATE_ID.match(p.name)),
         key=lambda p: p.stat().st_mtime,
         reverse=True,
     )
