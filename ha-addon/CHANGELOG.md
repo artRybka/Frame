@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.8.0
+
+- Muzea → samo źródło (bez frazy) pokazuje dzieła tego źródła, a nie
+  „Nic tu nie ma”: Openverse dzieła w domenie publicznej (z „Użytkiem
+  prywatnym” także CC), WikiArt najczęściej oglądane obrazy, Europeana
+  dzieła na wolnych licencjach. Wcześniej serwer w ogóle nie pytał
+  źródła, więc Openverse i WikiArt, których nie ma w katalogu, były puste.
+- WikiArt: kolejne strony wyników działają (token stronicowania był
+  kodowany dwa razy i WikiArt odpowiadał błędem).
+- Szybsze przygotowanie obrazu dla ekranu, z wynikiem identycznym bit
+  w bit: PNG zapisywany bez `optimize` (~5 s mniej), sRGB → światło
+  liniowe z tablicy, mapowanie tonów i kolorów liczone pasami na
+  wszystkich rdzeniach, szybszy karton. Na 2 rdzeniach obraz
+  z passe-partout ok. 10 s → 2 s.
+- Następny obraz z kolejki rysowany z wyprzedzeniem, zaraz po zmianie
+  (i po restarcie serwera), więc zmiana o czasie tylko publikuje gotowy
+  plik.
+- Pobieranie obrazów z muzeów ponawiane przy 408/429/5xx i błędach
+  sieci (do 3 prób, przerwa wg `Retry-After`), najwyżej kilka pobrań
+  naraz z jednego hosta. W aplikacji miniatury w Odkrywaj ponawiane tak
+  samo, a ta, która nie przyszła z muzeum, jest brana z serwera
+  (`/api/library/items/<id>/thumb`).
+- Aplikacja: obrys i wewnętrzny cień na styku ramki i ekranu w
+  wizualizacji ramki.
+
 ## 0.7.0
 
 - Adres IP, PIN i MAC ekranu ustawiane w aplikacji (Ramka → Połączenie

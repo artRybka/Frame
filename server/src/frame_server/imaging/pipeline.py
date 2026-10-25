@@ -15,9 +15,10 @@ Three strategies, to be compared on the real panel (experiment E5):
 from __future__ import annotations
 
 import io
-from collections.abc import Sequence
-from dataclasses import dataclass
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass, field
 from enum import StrEnum
+from functools import cached_property
 from pathlib import Path
 from typing import Literal
 
@@ -25,6 +26,7 @@ import numpy as np
 from PIL import Image
 from pydantic import BaseModel, ConfigDict, Field
 
+from .bands import by_rows
 from .caption import caption_mask
 from .color import FloatArray, linear_to_u8, luminance, u8_to_linear
 from .dither import Kernel, error_diffusion, nearest
@@ -133,10 +135,17 @@ PRESETS: dict[str, RenderSettings] = {
 @dataclass
 class RenderResult:
     panel: np.ndarray  # (1440, 2560, 3) uint8, what the panel receives
-    preview: np.ndarray  # canvas orientation, uint8, simulated look on the panel
     original: np.ndarray  # canvas orientation, uint8, framed picture in its own colours
     settings: RenderSettings
     palette: Palette
+    simulate: Callable[[], np.ndarray] = field(repr=False)
+
+    @cached_property
+    def preview(self) -> np.ndarray:
+        """Canvas orientation, uint8, simulated look on the panel. Made when
+        first asked for: publishing does not need it, and when the panel
+        dithers, simulating that is a whole dither of its own."""
+        return self.simulate()
 
     @property
     def pure_inks(self) -> bool:
@@ -172,7 +181,9 @@ class RenderResult:
 def encode_image(img: Image.Image, fmt: Literal["png", "jpeg"], quality: int = 95) -> bytes:
     out = io.BytesIO()
     if fmt == "png":
-        img.save(out, "PNG", optimize=True)
+        # zlib's default level: as good as "optimize" within ~10 % of the
+        # size, ten times quicker on a dithered 2560x1440 (seconds on a NAS).
+        img.save(out, "PNG", compress_level=6)
     else:
         # 4:4:4 chroma: subsampling would smear single-pixel ink dots.
         img.save(out, "JPEG", quality=quality, subsampling=0, optimize=True)
@@ -266,7 +277,7 @@ def render_original(
     else:
         board = paint_mat(linear, plan, palette.nominal(), s.layout.mat)
         dark_board = board is not None and is_dark(board, palette.nominal())
-    original = linear_to_u8(linear)
+    original = by_rows(linear_to_u8, linear)
     ink = pal.device_u8()[pal.white_index() if dark_board else pal.black_index()]
     for mask in _letters(plan, s):
         original[mask] = ink
@@ -345,24 +356,28 @@ def _finish(
         paint_mat(original, plan, palette.nominal(), s.layout.mat)
     linear = sharpen(linear, s.sharpen)
 
+    # The panel's look: our own dither, or (when the panel dithers) a
+    # simulation of its dither of ``naive``, made only when asked for.
+    naive: FloatArray | None = None
+    dithered = np.zeros(0, dtype=np.uint8)
     if s.strategy == Strategy.PASSTHROUGH:
-        sent = linear_to_u8(linear)
-        preview_idx = simulate_naive(linear, pal)
+        sent = by_rows(linear_to_u8, linear)
+        naive = linear
         mat = u8_to_linear(np.array(mat_rgb, dtype=np.uint8))
         dark_board = float(luminance(mat)) < 0.18
     else:
-        target = map_to_panel(linear, pal, s.tone)
+        target = by_rows(lambda part: map_to_panel(part, pal, s.tone), linear)
         board = paint_mat(target, plan, pal, s.layout.mat)
         dark_board = board is not None and is_dark(board, pal)
         if s.strategy == Strategy.COMPENSATE:
             nominal = precompensate(target, pal)
-            sent = linear_to_u8(nominal)
-            preview_idx = simulate_naive(nominal, pal)
+            sent = by_rows(linear_to_u8, nominal)
+            naive = nominal
         else:
             if s.dither.method == "none":
-                preview_idx = nearest(target, pal.perceived_linear(), match_oklab=True)
+                dithered = nearest(target, pal.perceived_linear(), match_oklab=True)
             else:
-                preview_idx = error_diffusion(
+                dithered = error_diffusion(
                     target,
                     pal.perceived_linear(),
                     Kernel(s.dither.method),
@@ -370,23 +385,30 @@ def _finish(
                     match_oklab=s.dither.match == "oklab",
                     error_clamp=s.dither.error_clamp,
                 )
-            sent = pal.device_u8()[preview_idx]
+            sent = pal.device_u8()[dithered]
 
     # Lettering in pure ink on the mat: white on a dark mat, black otherwise.
     letters = _letters(plan, s)
-    original_u8 = linear_to_u8(original)
+    ink = pal.white_index() if dark_board else pal.black_index()
+    original_u8 = by_rows(linear_to_u8, original)
     if letters:
-        ink = pal.white_index() if dark_board else pal.black_index()
-        preview_idx = preview_idx.copy()
         sent = sent.copy()
         for mask in letters:
-            preview_idx[mask] = ink
             sent[mask] = pal.device_u8()[ink]
             original_u8[mask] = pal.device_u8()[ink]
 
-    preview = pal.perceived_u8()[preview_idx]
+    def preview() -> np.ndarray:
+        preview_idx = dithered if naive is None else simulate_naive(naive, pal)
+        if letters:
+            preview_idx = preview_idx.copy()
+            for mask in letters:
+                preview_idx[mask] = ink
+        return pal.perceived_u8()[preview_idx]
+
     panel = to_panel(sent, s.layout.orientation, s.layout.rotation)
-    return RenderResult(panel=panel, preview=preview, original=original_u8, settings=s, palette=pal)
+    return RenderResult(
+        panel=panel, original=original_u8, settings=s, palette=pal, simulate=preview
+    )
 
 
 def _letters(plan: Plan, s: RenderSettings) -> list[np.ndarray]:

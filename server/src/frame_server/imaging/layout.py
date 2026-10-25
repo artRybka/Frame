@@ -13,6 +13,7 @@ from PIL import Image, ImageCms, ImageOps
 from pillow_heif import register_heif_opener
 from pydantic import BaseModel, Field
 
+from . import bands
 from .color import FloatArray, linear_to_u8, u8_to_linear
 
 PANEL_WIDTH = 2560
@@ -89,19 +90,18 @@ def load_image(source: str | Path | bytes | Image.Image) -> Image.Image:
 
 def resize_linear(img: Image.Image, size: tuple[int, int]) -> FloatArray:
     """Resample in linear light (gamma-correct) and return linear float RGB."""
-    lin = u8_to_linear(np.asarray(img, dtype=np.uint8))
+    pixels = np.asarray(img, dtype=np.uint8)
     if img.size == size:
-        return lin
-    channels = [
-        np.asarray(
-            Image.fromarray(np.ascontiguousarray(lin[..., c])).resize(
-                size, Image.Resampling.LANCZOS
-            ),
-            dtype=np.float32,
-        )
-        for c in range(3)
-    ]
-    return np.clip(np.stack(channels, axis=-1), 0.0, 1.0)
+        return u8_to_linear(pixels)
+    out = np.empty((size[1], size[0], 3), dtype=np.float32)
+
+    def plane(c: int) -> None:  # the three side by side: Pillow lets go of the GIL
+        channel = Image.fromarray(u8_to_linear(pixels[..., c]))
+        out[..., c] = np.asarray(channel.resize(size, Image.Resampling.LANCZOS))
+
+    for _ in bands.pool.map(plane, range(3)):
+        pass
+    return np.clip(out, 0.0, 1.0, out=out)
 
 
 def crop_box(size: tuple[int, int], aspect: float, crop: Crop) -> tuple[float, float, float, float]:

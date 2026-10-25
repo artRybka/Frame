@@ -15,6 +15,8 @@ a warm or cool off-white.
 
 from __future__ import annotations
 
+from functools import lru_cache
+
 import numpy as np
 
 from .color import FloatArray, linear_to_oklab, oklab_to_linear
@@ -115,8 +117,11 @@ def _picture_mat(target: FloatArray, plan: Plan, palette: Palette) -> FloatArray
     return np.clip(oklab_to_linear(lab)[0], 0.0, 1.0).astype(np.float32)
 
 
+@lru_cache(maxsize=2)  # one per orientation
 def _texture(shape: tuple[int, int], seed: int = 7) -> FloatArray:
-    """Faint, smooth paper grain, the same every time (renders are reproducible)."""
+    """Faint, smooth paper grain, the same every time (renders are reproducible).
+
+    Kept between renders: read only."""
     h, w = shape
     rng = np.random.default_rng(seed)
     coarse = rng.normal(0.0, 1.0, (h // GRAIN_CELL + 2, w // GRAIN_CELL + 2)).astype(np.float32)
@@ -128,7 +133,9 @@ def _texture(shape: tuple[int, int], seed: int = 7) -> FloatArray:
     b = coarse[y0][:, x0 + 1]
     c = coarse[y0 + 1][:, x0]
     d = coarse[y0 + 1][:, x0 + 1]
-    return (a * (1 - fx) + b * fx) * (1 - fy) + (c * (1 - fx) + d * fx) * fy
+    grain = (a * (1 - fx) + b * fx) * (1 - fy) + (c * (1 - fx) + d * fx) * fy
+    grain.flags.writeable = False
+    return grain
 
 
 def paint_mat(target: FloatArray, plan: Plan, palette: Palette, mat: str) -> FloatArray | None:
@@ -162,17 +169,32 @@ def paint_mat(target: FloatArray, plan: Plan, palette: Palette, mat: str) -> Flo
         open_edges = {"left": x > 0, "top": y > 0, "right": x + w < cw, "bottom": y + h < ch}
         x0, y0 = max(x - bevel, 0), max(y - bevel, 0)
         x1, y1 = min(x + w + bevel, cw), min(y + h + bevel, ch)
-        yy, xx = np.mgrid[y0:y1, x0:x1]
-        out = np.stack([x - xx, yy * 0 + (y - yy), xx - (x + w - 1), yy - (y + h - 1)])
-        dist = out.max(axis=0)  # Chebyshev distance outside the window
-        side = out.argmax(axis=0)  # which edge: mitred 45° corners
-        ring = (dist > 0) & (dist <= bevel) & mask[y0:y1, x0:x1]
-        region = target[y0:y1, x0:x1]
-        for index, (name, colour) in enumerate(
-            (("left", core_shaded), ("top", core_shaded), ("right", core_lit), ("bottom", core_lit))
-        ):
-            if open_edges[name]:
-                region[ring & (side == index)] = colour
+        # The bevel lies around the window: only these four bands can hold it.
+        bands = (
+            (x0, y0, x1, y),
+            (x0, y + h, x1, y1),
+            (x0, y, x, y + h),
+            (x + w, y, x1, y + h),
+        )
+        for bx0, by0, bx1, by1 in bands:
+            if bx1 <= bx0 or by1 <= by0:
+                continue
+            yy, xx = np.mgrid[by0:by1, bx0:bx1]
+            out = np.stack([x - xx, yy * 0 + (y - yy), xx - (x + w - 1), yy - (y + h - 1)])
+            dist = out.max(axis=0)  # Chebyshev distance outside the window
+            side = out.argmax(axis=0)  # which edge: mitred 45° corners
+            ring = (dist > 0) & (dist <= bevel) & mask[by0:by1, bx0:bx1]
+            region = target[by0:by1, bx0:bx1]
+            for index, (name, colour) in enumerate(
+                (
+                    ("left", core_shaded),
+                    ("top", core_shaded),
+                    ("right", core_lit),
+                    ("bottom", core_lit),
+                )
+            ):
+                if open_edges[name]:
+                    region[ring & (side == index)] = colour
         # The mat's shadow on the picture, under its top and left edges.
         ramp = np.linspace(0.78, 1.0, shadow, dtype=np.float32)
         if open_edges["top"]:

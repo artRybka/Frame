@@ -120,6 +120,30 @@ async def test_rotation_next_previous_and_history(service) -> None:
     assert b.id not in service.player.state.queue
 
 
+async def test_next_picture_is_rendered_ahead(service, monkeypatch) -> None:
+    from frame_server import service as service_module
+
+    for n in range(3):
+        _add(service, n, (200, 40 * n, 40), "Ala")
+    settings = service.player.settings
+    settings.shuffle = False
+    service.player.save_settings(settings)
+    renders = []
+    real = service_module.render
+    monkeypatch.setattr(
+        service_module, "render", lambda *a, **kw: renders.append(1) or real(*a, **kw)
+    )
+
+    await service.player.next()
+    upcoming = service.player.state.queue[0]
+    assert len(renders) == 2  # the picture shown and the one after it
+
+    shown = await service.player.next()
+    assert shown.id == upcoming
+    assert service.store.current().extra["item_id"] == upcoming
+    assert len(renders) == 3  # it was ready; only the one after it is new
+
+
 async def test_tick_respects_hold_and_schedule(service) -> None:
     _add(service, 1, (200, 40, 40), "Ala")
     player = service.player

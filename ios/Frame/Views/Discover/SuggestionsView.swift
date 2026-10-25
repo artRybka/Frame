@@ -203,6 +203,7 @@ struct ThemeCard: View {
                                 if index < works.count {
                                     ArtImage(
                                         ref: works[index].thumb,
+                                        fallback: works[index].thumbFallback,
                                         placeholder: works[index].item.summary.placeholderColor,
                                         maxPixel: 240
                                     )

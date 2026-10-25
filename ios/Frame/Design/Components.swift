@@ -59,12 +59,7 @@ struct FramedArtwork<Inner: View>: View {
             .overlay { inner }
             .padding(mat)
             .background(Theme.matWhite)
-            .overlay(
-                Rectangle()
-                    .strokeBorder(Color.black.opacity(0.18), lineWidth: 1)
-                    .blur(radius: 1.5)
-                    .allowsHitTesting(false)
-            )
+            .overlay { ScreenEdge().allowsHitTesting(false) }
             .padding(moulding)
             .background(
                 LinearGradient(
@@ -77,6 +72,23 @@ struct FramedArtwork<Inner: View>: View {
             .overlay(RoundedRectangle(cornerRadius: 2).strokeBorder(Theme.mouldingEdge, lineWidth: 0.5))
             .shadow(color: .black.opacity(0.22), radius: 18, x: 0, y: 14)
             .shadow(color: .black.opacity(0.12), radius: 2, x: 0, y: 1)
+    }
+}
+
+/// Where the screen meets the moulding: a short shadow, darkest right at the
+/// edge, and a fine line, so a light picture or a white passe-partout does
+/// not run into the white frame.
+private struct ScreenEdge: View {
+    var body: some View {
+        ZStack {
+            // Centred on the edge, so it is darkest there and fades within ~3 pt.
+            Rectangle()
+                .stroke(Color.black.opacity(0.3), lineWidth: 3)
+                .blur(radius: 1.5)
+            Rectangle()
+                .strokeBorder(Color.black.opacity(0.16), lineWidth: 0.75)
+        }
+        .clipped()
     }
 }
 
@@ -100,7 +112,12 @@ struct ArtCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            ArtImage(ref: ref ?? .thumb(item.id), placeholder: item.placeholderColor, maxPixel: 700)
+            ArtImage(
+                ref: ref ?? .thumb(item.id),
+                fallback: ref.flatMap { $0 == .thumb(item.id) ? nil : ImageRef.thumb(item.id) },
+                placeholder: item.placeholderColor,
+                maxPixel: 700
+            )
                 .aspectRatio(max(0.45, min(item.aspectRatio, 2.2)), contentMode: .fit)
                 .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                 .overlay(alignment: .topTrailing) {
