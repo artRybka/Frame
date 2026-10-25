@@ -109,6 +109,28 @@ final class FrameAPITests: XCTestCase {
         XCTAssertEqual(Names.works(22), "22 dzieła")
     }
 
+    func testDemoSuggestionsAndThemes() async throws {
+        let demo = DemoBackend()
+        let rows = try await demo.suggestions()
+        XCTAssertEqual(rows.map(\.key), ["for-you", "theme", "best"])
+        XCTAssertTrue(rows.allSatisfy { !$0.items.isEmpty })
+        let themes = try await demo.themes()
+        let theme = try XCTUnwrap(themes.first { $0.key == rows[1].theme })
+        let page = try await demo.themePage(key: theme.key, page: 1)
+        XCTAssertFalse(page.items.isEmpty)
+        XCTAssertFalse(page.more)
+        XCTAssertEqual(page.items.first?.thumb, .thumb(page.items[0].id))  // demo works are on the server
+    }
+
+    func testDecodesThemePage() throws {
+        let json = #"{"items": [], "more": true}"#
+        let page = try LiveBackend.decoder().decode(ArtThemePage.self, from: Data(json.utf8))
+        XCTAssertTrue(page.more)
+        let row = #"{"key": "theme", "title": "Motyw dnia", "subtitle": "", "theme": "ukiyo-e", "items": []}"#
+        let decoded = try LiveBackend.decoder().decode(SuggestionRow.self, from: Data(row.utf8))
+        XCTAssertEqual(decoded.theme, "ukiyo-e")
+    }
+
     func testDemoBackendFiltersAndPlaylists() async throws {
         let demo = DemoBackend()
         let all = try await demo.items(LibraryQuery())

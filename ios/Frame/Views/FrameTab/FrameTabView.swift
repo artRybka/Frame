@@ -273,7 +273,7 @@ struct ScheduleSection: View {
                 if settings.mode == "art" {
                     row("Playlista") {
                         Picker("Playlista", selection: $settings.playlistId) {
-                            Text("Cała biblioteka").tag(Int?.none)
+                            Text("Propozycje").tag(Int?.none)
                             ForEach(model.playlists) { Text($0.name).tag(Int?.some($0.id)) }
                         }
                     }

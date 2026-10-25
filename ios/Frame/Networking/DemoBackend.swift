@@ -402,6 +402,67 @@ actor DemoBackend: FrameBackend {
         return settings
     }
 
+    // MARK: Discover
+
+    /// Demo themes: artists already in the demo library.
+    private static let demoThemes: [(theme: ArtTheme, artists: [String])] = [
+        (
+            ArtTheme(
+                key: "ukiyo-e", name: "Japońskie drzeworyty",
+                description: "Hokusai, Hiroshige, Utamaro i inni mistrzowie ukiyo-e."
+            ),
+            ["Utagawa Hiroshige", "Katsushika Hokusai", "Kitagawa Utamaro"]
+        ),
+        (
+            ArtTheme(
+                key: "impressionism", name: "Impresjonizm i postimpresjonizm",
+                description: "Monet, Cézanne, van Gogh, Seurat."
+            ),
+            ["Claude Monet", "Paul Cezanne", "Vincent van Gogh", "Georges Seurat"]
+        ),
+        (
+            ArtTheme(
+                key: "posters", name: "Plakaty i secesja",
+                description: "Toulouse-Lautrec, Mucha i plakat przełomu wieków."
+            ),
+            ["Henri de Toulouse-Lautrec", "Alphonse Marie Mucha"]
+        ),
+    ]
+
+    private func remote(_ list: [Item]) -> [RemoteItem] {
+        list.map { RemoteItem(item: $0, inLibrary: true) }
+    }
+
+    func suggestions() async throws -> [SuggestionRow] {
+        let theme = Self.demoThemes[Calendar.current.component(.day, from: Date()) % Self.demoThemes.count]
+        let best = Self.sorted(items, by: "suitability")
+        return [
+            SuggestionRow(
+                key: "for-you", title: "Dla Ciebie", subtitle: "Następne w rotacji Propozycje",
+                items: remote(Array(items.shuffled().prefix(12)))
+            ),
+            SuggestionRow(
+                key: "theme", title: "Motyw dnia: \(theme.theme.name)", subtitle: theme.theme.description,
+                theme: theme.theme.key, items: remote(items.filter { theme.artists.contains($0.artist) })
+            ),
+            SuggestionRow(
+                key: "best", title: "Najlepiej na e-papierze",
+                subtitle: "Wyraziste barwy i kontrast, które ten ekran oddaje najlepiej",
+                items: remote(Array(best.prefix(12)))
+            ),
+        ]
+    }
+
+    func themes() async throws -> [ArtTheme] { Self.demoThemes.map(\.theme) }
+
+    func themePage(key: String, page: Int) async throws -> ArtThemePage {
+        guard let theme = Self.demoThemes.first(where: { $0.theme.key == key }) else {
+            throw BackendError.notFound
+        }
+        let found = items.filter { theme.artists.contains($0.artist) }
+        return ArtThemePage(items: page == 1 ? remote(found) : [], more: false)
+    }
+
     func museums() async throws -> [Museum] {
         [
             Museum(key: "aic", name: "Art Institute of Chicago"),

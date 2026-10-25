@@ -79,10 +79,12 @@ struct FramedArtwork: View {
 struct ArtCard: View {
     let item: ItemSummary
     var showsCaption = true
+    /// Where the picture comes from; the server's thumbnail by default.
+    var ref: ImageRef?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            ArtImage(ref: .thumb(item.id), placeholder: item.placeholderColor, maxPixel: 700)
+            ArtImage(ref: ref ?? .thumb(item.id), placeholder: item.placeholderColor, maxPixel: 700)
                 .aspectRatio(max(0.45, min(item.aspectRatio, 2.2)), contentMode: .fit)
                 .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                 .overlay(alignment: .topTrailing) {

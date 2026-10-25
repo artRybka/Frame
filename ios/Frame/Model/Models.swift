@@ -335,6 +335,37 @@ struct RemoteItem: Codable, Hashable, Sendable, Identifiable {
     var item: Item
     var inLibrary: Bool
     var id: String { item.id }
+
+    /// The server's copy once it has one, else straight from the museum.
+    var thumb: ImageRef {
+        if inLibrary { return .thumb(id) }
+        return URL(string: item.thumbUrl).map(ImageRef.url) ?? .thumb(id)
+    }
+}
+
+/// A row of Discover, `GET /api/suggestions`.
+struct SuggestionRow: Codable, Hashable, Sendable, Identifiable {
+    let key: String  // "for-you" | "theme" | "best"
+    let title: String
+    var subtitle: String
+    /// The theme to browse further (the theme of the day).
+    var theme: String?
+    var items: [RemoteItem]
+    var id: String { key }
+}
+
+/// A theme browsed live from the museums, `GET /api/themes`.
+struct ArtTheme: Codable, Hashable, Sendable, Identifiable {
+    let key: String
+    let name: String
+    let description: String
+    var id: String { key }
+}
+
+/// `GET /api/themes/{key}?page=`
+struct ArtThemePage: Codable, Sendable {
+    let items: [RemoteItem]
+    let more: Bool
 }
 
 struct RemotePage: Codable, Sendable {
@@ -399,13 +430,15 @@ struct LibraryQuery: Hashable, Sendable {
     var colors: [String] = []
     var kinds: [ItemKind] = []
     var favoritesOnly = false
+    /// Only works the owner kept, not those the server added to the catalogue.
+    var keptOnly = false
     var sort = "artist"
     var offset = 0
     var limit = 200
 
     var activeFilterCount: Int {
         artists.count + styles.count + subjects.count + colors.count + kinds.count
-            + (favoritesOnly ? 1 : 0)
+            + (favoritesOnly ? 1 : 0) + (keptOnly ? 1 : 0)
     }
 }
 

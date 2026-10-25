@@ -1,10 +1,11 @@
 import SwiftUI
 
-/// Browse the library (filters by artist, style, subject, colour) or search
-/// the museums' open collections.
+/// Suggestions and themes, the catalogue the server grows from museum
+/// collections (filters by artist, style, subject, colour), or a search of
+/// the museums themselves.
 struct DiscoverView: View {
     @Environment(AppModel.self) private var model
-    @State private var scope = LaunchRoute.screen == "museums" ? Scope.museums : Scope.library
+    @State private var scope = Scope.initial
     @State private var query = LibraryQuery()
     @State private var page: ItemPage?
     @State private var loading = false
@@ -12,8 +13,18 @@ struct DiscoverView: View {
     @State private var path = NavigationPath()
 
     enum Scope: String, CaseIterable {
-        case library = "Biblioteka"
+        case suggestions = "Propozycje"
+        case library = "Katalog"
         case museums = "Muzea"
+
+        /// Suggestions, unless CI screenshots ask for another screen.
+        static var initial: Scope {
+            switch LaunchRoute.screen {
+            case "museums": .museums
+            case "detail": .library
+            default: .suggestions
+            }
+        }
     }
 
     var body: some View {
@@ -25,11 +36,12 @@ struct DiscoverView: View {
                     }
                     .pickerStyle(.segmented)
 
-                    if scope == .library {
+                    switch scope {
+                    case .suggestions: SuggestionsView()
+                    case .library:
                         filters
                         results
-                    } else {
-                        MuseumSearchView()
+                    case .museums: MuseumSearchView()
                     }
                 }
                 .padding(.horizontal, Theme.gutter)
@@ -37,15 +49,24 @@ struct DiscoverView: View {
             }
             .background(Theme.paper)
             .navigationTitle("Odkrywaj")
-            .searchable(text: $query.text, prompt: "Tytuł, artysta, temat")
+            .searchable(text: $query.text, prompt: "Szukaj w katalogu: tytuł, artysta, temat")
             .navigationDestination(for: String.self) { id in
                 ItemDetailView(itemID: id)
+            }
+            .navigationDestination(for: ArtTheme.self) { theme in
+                ThemeView(theme: theme)
             }
             .sheet(item: $facetSheet) { kind in
                 FacetPicker(kind: kind, query: $query)
                     .presentationDetents([.medium, .large])
             }
-            .task(id: query) { await load() }
+            .task(id: query) { if scope == .library { await load() } }
+            .onChange(of: scope) { _, scope in
+                if scope == .library, page == nil { Task { await load() } }
+            }
+            .onChange(of: query.text) { _, text in
+                if !text.isEmpty, scope == .suggestions { scope = .library }  // search the catalogue
+            }
             .refreshable {
                 await model.refreshFacets()
                 await load()
@@ -69,6 +90,9 @@ struct DiscoverView: View {
                 HStack(spacing: 8) {
                     Chip(title: "Ulubione", systemImage: "heart", selected: query.favoritesOnly) {
                         query.favoritesOnly.toggle()
+                    }
+                    Chip(title: "Moje", systemImage: "bookmark", selected: query.keptOnly) {
+                        query.keptOnly.toggle()
                     }
                     ForEach(FacetKind.allCases) { kind in
                         let count = kind.selected(in: query).count
@@ -122,7 +146,7 @@ struct DiscoverView: View {
             if let page, page.items.isEmpty, !loading {
                 EmptyStateView(
                     title: "Nic tu nie ma",
-                    message: "Zmień filtry albo poszukaj w muzeach i dodaj dzieła do biblioteki.",
+                    message: "Katalog rośnie sam w tle. Zmień filtry albo poszukaj w muzeach.",
                     systemImage: "magnifyingglass"
                 )
             } else {

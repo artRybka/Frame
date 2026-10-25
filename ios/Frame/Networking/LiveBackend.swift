@@ -53,6 +53,7 @@ struct LiveBackend: FrameBackend {
         query += q.colors.map { URLQueryItem(name: "color", value: $0) }
         query += q.kinds.map { URLQueryItem(name: "kind", value: $0.rawValue) }
         if q.favoritesOnly { query.append(URLQueryItem(name: "favorites", value: "true")) }
+        if q.keptOnly { query.append(URLQueryItem(name: "kept", value: "true")) }
         return try await get("/api/library/items", query: query)
     }
 
@@ -128,6 +129,16 @@ struct LiveBackend: FrameBackend {
 
     func saveSettings(_ settings: FrameSettings) async throws -> FrameSettings {
         try await send("/api/settings", method: "PUT", body: settings)
+    }
+
+    // MARK: Discover
+
+    func suggestions() async throws -> [SuggestionRow] { try await get("/api/suggestions") }
+
+    func themes() async throws -> [ArtTheme] { try await get("/api/themes") }
+
+    func themePage(key: String, page: Int) async throws -> ArtThemePage {
+        try await get("/api/themes/\(key)", query: [URLQueryItem(name: "page", value: String(page))])
     }
 
     // MARK: Museums

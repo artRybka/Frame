@@ -90,7 +90,7 @@ struct NowView: View {
 
     private var sourceTitle: String {
         if model.player?.mode == "album" { return "Album rodzinny" }
-        return model.player?.playlist?.name ?? "Cała biblioteka"
+        return model.player?.playlist?.name ?? "Propozycje"
     }
 
     // MARK: Hero
