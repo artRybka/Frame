@@ -1,9 +1,9 @@
-"""Battery power policy against a fake panel: deep sleep at night, alarm, pending push."""
+"""Power policy against a fake panel: deep sleep at night, alarm, pending push."""
 
 from __future__ import annotations
 
 import ssl
-from datetime import datetime
+from datetime import datetime, time
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -38,20 +38,27 @@ def server_ssl() -> ssl.SSLContext:
 
 
 def test_night_key_and_alarm() -> None:
-    settings = FrameSettings()  # quiet hours 22:00-07:00
+    settings = FrameSettings()  # quiet hours 22:00 until the 07:00 change
     assert night_key(_at("2026-10-25T23:30"), settings) == "2026-10-25"
     assert night_key(_at("2026-10-26T03:00"), settings) == "2026-10-25"
-    assert alarm_time(settings) is not None and alarm_time(settings).hour == 7
-    assert alarm_time(FrameSettings(quiet_start=None, quiet_end=None)) is None
+    assert alarm_time(settings) == time(7, 0)
+    later = FrameSettings(change_times=["06:45", "18:00"], quiet_start="20:00")
+    assert alarm_time(later) == time(6, 45)
+    # Without quiet hours the alarm still wakes the panel for the first change.
+    assert alarm_time(FrameSettings(change_times=["09:00"], quiet_start=None)) == time(9, 0)
 
 
+@pytest.mark.parametrize("charger", [False, True])
 async def test_night_sleep_alarm_and_pending_push(
-    tmp_path: Path, server_ssl: ssl.SSLContext
+    tmp_path: Path, server_ssl: ssl.SSLContext, charger: bool
 ) -> None:
+    """On battery the panel sleeps deeply at night; on the charger it stays
+    reachable and pictures go out at once."""
+
     def handler(command: int, data: bytes) -> tuple[bool, bytes]:
         if command == CMD_STATUS:
-            # Last byte 00: no charger (E1).
-            return True, bytes([0x73, 0x00, 0x01, 0x01, 80, 0x02, 0x00])
+            # Last byte 02: charger plugged in, 00: on battery (E1).
+            return True, bytes([0x73, 0x00, 0x01, 0x01, 80, 0x02, 0x02 if charger else 0x00])
         if command == CMD_NETWORK_STANDBY and not data:
             return True, b"\x01"
         if command in (0x0E, 0x10, 0x0B, 0x67):
@@ -73,9 +80,16 @@ async def test_night_sleep_alarm_and_pending_push(
         service = FrameService(settings)
         service.ensure_initial_content()
         await service.status.refresh()
-        assert service.status.on_battery
+        assert service.status.on_battery is not charger
 
-        # Evening: alarm at the end of quiet hours, Wi-Fi off, panel off.
+        if charger:
+            await service.power.tick(_at("2026-10-25T22:01"))
+            assert (CMD_POWER, b"\x00") not in panel.received
+            assert (CMD_NETWORK_STANDBY, b"\x00") not in panel.received
+            assert not service.power.deep_asleep(_at("2026-10-25T23:00"))
+            return
+
+        # Evening: alarm for the morning change, Wi-Fi off, panel off.
         await service.power.tick(_at("2026-10-25T22:01"))
         assert (CMD_ON_TIMER, bytes([0x01, 0x02, 7, 0, 0x01])) in panel.received
         assert (CMD_NETWORK_STANDBY, b"\x00") in panel.received

@@ -41,6 +41,16 @@ struct RootView: View {
                 .tag(Tab.frame)
         }
         .overlay(alignment: .top) { ToastView() }
+        .overlay(alignment: .bottom) {
+            // "Teraz" shows the full bar under the picture.
+            if tab != .now, let progress = model.displayProgress {
+                DisplayProgressBar(progress: progress, compact: true)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 58)  // above the tab bar
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(.easeInOut, value: model.displayProgress == nil)
         .task { await model.refreshAll() }
     }
 }

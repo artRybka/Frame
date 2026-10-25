@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 
 // Mirrors the server models (server/src/frame_server/library/models.py,
@@ -118,7 +119,10 @@ struct PlaylistRules: Codable, Hashable, Sendable {
     var yearTo: Int?
     var favoritesOnly: Bool = false
     var minSuitability: Double?
+    /// Works taken out of a smart playlist although they match its rules.
+    var excludeIds: [String] = []
 
+    /// Whether there are no rules; exceptions (`excludeIds`) don't count.
     var isEmpty: Bool {
         query.isEmpty && artists.isEmpty && styles.isEmpty && subjects.isEmpty && colors.isEmpty
             && kinds.isEmpty && sources.isEmpty && yearFrom == nil && yearTo == nil
@@ -126,8 +130,64 @@ struct PlaylistRules: Codable, Hashable, Sendable {
     }
 }
 
+extension PlaylistRules {
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        query = try c.decode(String.self, forKey: .query)
+        artists = try c.decode([String].self, forKey: .artists)
+        styles = try c.decode([String].self, forKey: .styles)
+        subjects = try c.decode([String].self, forKey: .subjects)
+        colors = try c.decode([String].self, forKey: .colors)
+        kinds = try c.decode([ItemKind].self, forKey: .kinds)
+        sources = try c.decode([String].self, forKey: .sources)
+        yearFrom = try c.decodeIfPresent(Int.self, forKey: .yearFrom)
+        yearTo = try c.decodeIfPresent(Int.self, forKey: .yearTo)
+        favoritesOnly = try c.decode(Bool.self, forKey: .favoritesOnly)
+        minSuitability = try c.decodeIfPresent(Double.self, forKey: .minSuitability)
+        excludeIds = try c.decodeIfPresent([String].self, forKey: .excludeIds) ?? []  // older servers
+    }
+}
+
 enum PlaylistKind: String, Codable, Hashable, Sendable {
     case smart, manual
+    case album  // mirrors a shared iCloud album
+}
+
+/// In which order an album playlist shows its photos.
+enum AlbumOrder: String, Codable, Hashable, Sendable, CaseIterable, Identifiable {
+    case random, newest, oldest, added
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .random: "Losowo"
+        case .newest: "Najnowsze"
+        case .oldest: "Najstarsze"
+        case .added: "Ostatnio dodane"
+        }
+    }
+
+    var explanation: String {
+        switch self {
+        case .random: "Zdjęcia w losowej kolejności, bez powtórek, dopóki nie pokażą się wszystkie."
+        case .newest: "Od zrobionych najpóźniej do najstarszych. Nowe zdjęcia w albumie idą na początek."
+        case .oldest: "Od najstarszych zdjęć do najnowszych, jak w kronice."
+        case .added: "Najpierw te, które ktoś niedawno dodał do albumu."
+        }
+    }
+}
+
+/// The shared iCloud album an album playlist mirrors.
+struct AlbumSource: Codable, Hashable, Sendable {
+    var url: String
+    var order: AlbumOrder = .random
+}
+
+/// `POST /api/albums/check`
+struct AlbumCheck: Codable, Hashable, Sendable {
+    let name: String
+    let count: Int
 }
 
 /// Body for creating or updating a playlist.
@@ -138,6 +198,7 @@ struct Playlist: Codable, Hashable, Sendable {
     var kind: PlaylistKind = .smart
     var rules = PlaylistRules()
     var itemIds: [String] = []
+    var album: AlbumSource?
 }
 
 struct PlaylistSummary: Codable, Identifiable, Hashable, Sendable {
@@ -148,6 +209,8 @@ struct PlaylistSummary: Codable, Identifiable, Hashable, Sendable {
     var rules: PlaylistRules
     var itemCount: Int
     var coverItemIds: [String]
+    var album: AlbumSource?
+    var albumSync: AlbumSync?
 }
 
 struct PlaylistDetail: Codable, Sendable {
@@ -204,7 +267,6 @@ struct NowShowing: Codable, Hashable, Sendable {
 }
 
 struct PlayerView: Codable, Sendable {
-    var mode: String
     var playlist: PlaylistSummary?
     var current: NowShowing?
     var upcoming: [ItemSummary]
@@ -214,6 +276,59 @@ struct PlayerView: Codable, Sendable {
     var nextChangeAt: String?
     var busy: Bool
     var lastError: String?
+    var progress: DisplayProgress?  // nil from older servers
+}
+
+/// A picture on its way to the frame (GET /api/progress): processing on the
+/// server, loading onto the panel, the panel redrawing its e-paper. The
+/// redraw is estimated: the panel does not say when it is done.
+struct DisplayProgress: Codable, Hashable, Sendable {
+    var stage: String
+    var phase: String?
+    var active: Bool
+    var title: String
+    var fraction: Double
+    var secondsLeft: Int?
+    var startedAt: String?
+    var finishedAt: String?
+    var message: String?
+
+    static let idle = DisplayProgress(stage: "idle", active: false, title: "", fraction: 0)
+
+    /// The three parts of the bar, in order.
+    static let phases: [(key: String, label: String)] = [
+        ("processing", "Przetwarzanie"), ("loading", "Ładowanie"), ("displaying", "Wyświetlanie"),
+    ]
+
+    var isDone: Bool { stage == "done" }
+    var isFailed: Bool { stage == "failed" }
+    var isWaiting: Bool { stage == "waiting" }
+
+    /// Index of the current part of the bar; past the last one when done.
+    var phaseIndex: Int? {
+        if isDone { return Self.phases.count }
+        return phase.flatMap { key in Self.phases.firstIndex { $0.key == key } }
+    }
+
+    var stageLabel: String {
+        switch stage {
+        case "rendering": "Przygotowuję obraz dla e-papieru"
+        case "sending": "Łączę się z ramką"
+        case "waking": "Budzę ramkę"
+        case "downloading": "Ramka pobiera obraz"
+        case "refreshing": "Ramka odświeża ekran"
+        case "done": "Obraz jest na ramce"
+        case "waiting": "Obraz poczeka, aż ramka się obudzi"
+        case "failed": "Nie udało się wysłać obrazu"
+        default: ""
+        }
+    }
+
+    var timeLeftLabel: String? {
+        guard active, let left = secondsLeft, left > 1 else { return nil }
+        if left < 90 { return "ok. \(left) s" }
+        return "ok. \((left + 30) / 60) min"
+    }
 }
 
 struct DeviceStatus: Codable, Hashable, Sendable {
@@ -291,19 +406,20 @@ struct Presentation: Codable, Hashable, Sendable {
 }
 
 struct FrameSettings: Codable, Hashable, Sendable {
-    var mode: String  // "art" | "album"
+    /// The playlist the frame plays (an album playlist shows its photos); nil: Suggestions.
     var playlistId: Int?
-    var intervalMinutes: Int
-    var intervalMinutesBattery: Int
+    /// Times of day ("HH:MM") the picture changes at, the same on the
+    /// charger and on battery; every day or every 2nd/3rd day.
+    var changeTimes: [String]
+    var changeEveryDays: Int
+    /// Quiet hours run from here until the next change time (the morning one).
     var quietStart: String?
-    var quietEnd: String?
     var shuffle: Bool
     var avoidRepeatDays: Int
     var orientation: String  // "landscape" | "portrait"
     var rotation: Int
     var art: Presentation
     var photo: Presentation
-    var albumUrl: String
     var timezone: String
     var statusPollMinutes: Int
     /// Only seen at home: also accept freely licensed, not public-domain works.
@@ -316,13 +432,64 @@ struct FrameSettings: Codable, Hashable, Sendable {
     }
 
     static let defaults = FrameSettings(
-        mode: "art", playlistId: nil, intervalMinutes: 1440, intervalMinutesBattery: 1440,
-        quietStart: "22:00", quietEnd: "07:00", shuffle: true, avoidRepeatDays: 14,
+        playlistId: nil, changeTimes: ["07:00"], changeEveryDays: 1,
+        quietStart: "22:00", shuffle: true, avoidRepeatDays: 14,
         orientation: "landscape", rotation: 90,
-        art: Presentation(preset: "painting", fit: "auto", margin: 0.05, label: false),
-        photo: Presentation(preset: "photo", fit: "fill", margin: 0, label: false),
-        albumUrl: "", timezone: "Europe/Warsaw", statusPollMinutes: 15
+        art: Presentation(preset: "auto", fit: "auto", margin: 0.05, label: false),
+        photo: Presentation(preset: "auto", fit: "fill", margin: 0, label: false),
+        timezone: "Europe/Warsaw", statusPollMinutes: 15
     )
+}
+
+extension FrameSettings {
+    private enum CodingKeys: String, CodingKey {
+        case playlistId, changeTimes, changeEveryDays, quietStart, shuffle, avoidRepeatDays
+        case orientation, rotation, art, photo, timezone, statusPollMinutes, privateUse
+        case quietEnd  // older servers: decoded only
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        playlistId = try c.decodeIfPresent(Int.self, forKey: .playlistId)
+        // Older servers have intervals instead: their changes start at the end of quiet hours.
+        let quietEnd = try c.decodeIfPresent(String.self, forKey: .quietEnd)
+        changeTimes = try c.decodeIfPresent([String].self, forKey: .changeTimes) ?? [quietEnd ?? "07:00"]
+        changeEveryDays = try c.decodeIfPresent(Int.self, forKey: .changeEveryDays) ?? 1
+        quietStart = try c.decodeIfPresent(String.self, forKey: .quietStart)
+        shuffle = try c.decode(Bool.self, forKey: .shuffle)
+        avoidRepeatDays = try c.decode(Int.self, forKey: .avoidRepeatDays)
+        orientation = try c.decode(String.self, forKey: .orientation)
+        rotation = try c.decode(Int.self, forKey: .rotation)
+        art = try c.decode(Presentation.self, forKey: .art)
+        photo = try c.decode(Presentation.self, forKey: .photo)
+        timezone = try c.decode(String.self, forKey: .timezone)
+        statusPollMinutes = try c.decode(Int.self, forKey: .statusPollMinutes)
+        privateUse = try c.decodeIfPresent(Bool.self, forKey: .privateUse)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encodeIfPresent(playlistId, forKey: .playlistId)
+        try c.encode(changeTimes, forKey: .changeTimes)
+        try c.encode(changeEveryDays, forKey: .changeEveryDays)
+        try c.encode(quietStart, forKey: .quietStart)  // null turns quiet hours off
+        try c.encode(shuffle, forKey: .shuffle)
+        try c.encode(avoidRepeatDays, forKey: .avoidRepeatDays)
+        try c.encode(orientation, forKey: .orientation)
+        try c.encode(rotation, forKey: .rotation)
+        try c.encode(art, forKey: .art)
+        try c.encode(photo, forKey: .photo)
+        try c.encode(timezone, forKey: .timezone)
+        try c.encode(statusPollMinutes, forKey: .statusPollMinutes)
+        try c.encodeIfPresent(privateUse, forKey: .privateUse)
+    }
+
+    /// When quiet hours end: the first change time after their start.
+    var quietEnd: String? {
+        guard let start = quietStart, let first = changeTimes.sorted().first else { return nil }
+        let end = changeTimes.sorted().first { $0 > start } ?? first
+        return end == start ? nil : end
+    }
 }
 
 struct Museum: Codable, Hashable, Sendable, Identifiable {
@@ -335,6 +502,37 @@ struct RemoteItem: Codable, Hashable, Sendable, Identifiable {
     var item: Item
     var inLibrary: Bool
     var id: String { item.id }
+
+    /// The server's copy once it has one, else straight from the museum.
+    var thumb: ImageRef {
+        if inLibrary { return .thumb(id) }
+        return URL(string: item.thumbUrl).map(ImageRef.url) ?? .thumb(id)
+    }
+}
+
+/// A row of Discover, `GET /api/suggestions`.
+struct SuggestionRow: Codable, Hashable, Sendable, Identifiable {
+    let key: String  // "for-you" | "theme" | "best"
+    let title: String
+    var subtitle: String
+    /// The theme to browse further (the theme of the day).
+    var theme: String?
+    var items: [RemoteItem]
+    var id: String { key }
+}
+
+/// A theme browsed live from the museums, `GET /api/themes`.
+struct ArtTheme: Codable, Hashable, Sendable, Identifiable {
+    let key: String
+    let name: String
+    let description: String
+    var id: String { key }
+}
+
+/// `GET /api/themes/{key}?page=`
+struct ArtThemePage: Codable, Sendable {
+    let items: [RemoteItem]
+    let more: Bool
 }
 
 struct RemotePage: Codable, Sendable {
@@ -399,27 +597,25 @@ struct LibraryQuery: Hashable, Sendable {
     var colors: [String] = []
     var kinds: [ItemKind] = []
     var favoritesOnly = false
+    /// Only works the owner kept, not those the server added to the catalogue.
+    var keptOnly = false
     var sort = "artist"
     var offset = 0
     var limit = 200
 
     var activeFilterCount: Int {
         artists.count + styles.count + subjects.count + colors.count + kinds.count
-            + (favoritesOnly ? 1 : 0)
+            + (favoritesOnly ? 1 : 0) + (keptOnly ? 1 : 0)
     }
 }
 
+/// The last synchronisation of an album playlist with its album.
 struct AlbumSync: Codable, Hashable, Sendable {
     var at: String
-    var count: Int
     var name: String
-}
-
-/// `GET /api/album`
-struct AlbumInfo: Codable, Hashable, Sendable {
-    var url: String
-    var lastSync: AlbumSync?
-    var photos: Int
+    var count: Int
+    var added: Int?
+    var error: String?
 }
 
 // MARK: Framing (server/src/frame_server/web/library_api.py)
@@ -439,6 +635,46 @@ struct FramingWindow: Codable, Hashable, Sendable {
     let aspect: Double
     var crop: Crop
     let custom: Bool
+    /// Where the window is on the canvas: x, y, width, height as fractions
+    /// of it. Nil from older servers.
+    var rect: [Double]?
+    /// Passe-partout: where a window of another shape would be centred.
+    var area: [Double]?
+
+    var frame: CGRect? { Self.unit(rect) }
+    var areaFrame: CGRect? { Self.unit(area) }
+
+    private static func unit(_ values: [Double]?) -> CGRect? {
+        guard let values, values.count == 4 else { return nil }
+        return CGRect(x: values[0], y: values[1], width: values[2], height: values[3])
+    }
+}
+
+/// Crops for one orientation, by mode (server: library.models.Framing). Sent
+/// with a preview to try crops before they are saved.
+struct FramingCrops: Codable, Hashable, Sendable {
+    var fill: Crop?
+    var details: [Crop]?
+    var detail: Crop?  // "description": its one close-up
+    var fit: Crop?  // "fit": the part shown and the window's shape
+
+    /// `crops` as edited in a framing view of resolved mode `mode`.
+    init(mode: String, crops: [Crop]) {
+        switch mode {
+        case "fill": fill = crops.first
+        case "details": details = crops.count == 2 ? crops : nil
+        case "description": detail = crops.first
+        case "fit": fit = crops.first
+        default: break
+        }
+    }
+
+    init(fill: Crop? = nil, details: [Crop]? = nil, detail: Crop? = nil, fit: Crop? = nil) {
+        self.fill = fill
+        self.details = details
+        self.detail = detail
+        self.fit = fit
+    }
 }
 
 /// `GET /api/library/items/{id}/framing`

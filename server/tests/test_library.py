@@ -526,3 +526,49 @@ def test_fill_adds_only_what_the_playlist_would_pick(tmp_path) -> None:
     # Monet (n % 3), blue (odd), up to 1890 (n <= 10): 1, 5, 7.
     assert sorted(job.item_ids) == ["aic:1", "aic:5", "aic:7"]
     assert job.done == 3 and job.skipped == 4  # Monet, until 1890, but not blue: 2, 4, 8, 10
+
+
+def _gradient(dark: tuple[int, int, int], light: tuple[int, int, int]) -> Image.Image:
+    t = np.linspace(0, 1, 200)[None, :, None]
+    pixels = (np.array(dark) * (1 - t) + np.array(light) * t) * np.ones((150, 1, 1))
+    return Image.fromarray(pixels.astype(np.uint8))
+
+
+def test_tint_spread_tells_monochrome_from_colour() -> None:
+    from frame_server.library.colors import tint_spread
+    from frame_server.library.style import MONOCHROME_SPREAD
+
+    grey = _gradient((0, 0, 0), (255, 255, 255))
+    sepia = _gradient((40, 25, 10), (235, 215, 180))
+    ink_on_old_paper = _gradient((30, 30, 30), (240, 228, 200))
+    for img in (grey, sepia, ink_on_old_paper):
+        assert tint_spread(img) < MONOCHROME_SPREAD
+    red_chalk = _gradient((150, 50, 30), (245, 230, 215))
+    cyanotype = _gradient((0, 30, 110), (200, 220, 250))
+    sky_and_sand = Image.new("RGB", (200, 150), (70, 120, 200))
+    sky_and_sand.paste((220, 170, 90), (0, 75, 200, 150))
+    for img in (red_chalk, cyanotype, sky_and_sand):
+        assert tint_spread(img) > 2 * MONOCHROME_SPREAD
+
+
+def test_auto_preset_by_kind_metadata_and_colour() -> None:
+    from frame_server.library.style import auto_preset
+
+    def item(kind: ItemKind = ItemKind.ARTWORK, spread: float = 0.05, **meta: str) -> Item:
+        return Item(id="t:1", kind=kind, source="t", source_id="1", tint_spread=spread, **meta)
+
+    assert auto_preset(item(classification="Painting", medium="Oil on canvas")) == "painting"
+    assert auto_preset(item(classification="Print", medium="Color woodblock print")) == "graphic"
+    assert auto_preset(item(classification="prent", medium="houtsnede")) == "graphic"
+    assert auto_preset(item(classification="Poster")) == "graphic"
+    assert auto_preset(item(medium="engraving, hand-colored")) == "graphic"
+    assert auto_preset(item(classification="Photograph")) == "photo"
+    assert auto_preset(item(ItemKind.PHOTO)) == "photo"
+    assert auto_preset(item(ItemKind.OWN)) == "painting"
+    # No colour of its own: black and white, whatever it is.
+    assert auto_preset(item(spread=0.004, classification="Print", medium="Etching")) == "bw"
+    assert auto_preset(item(ItemKind.PHOTO, spread=0.002)) == "bw"
+    # Not measured yet: by kind and metadata only.
+    assert auto_preset(item(spread=None, medium="Lithograph")) == "graphic"  # type: ignore[arg-type]
+    # "Painting" is not a print, "sketch" is not Dutch "ets".
+    assert auto_preset(item(classification="Paintings", medium="Oil sketch")) == "painting"

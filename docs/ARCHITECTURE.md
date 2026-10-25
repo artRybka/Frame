@@ -25,7 +25,7 @@ App/CLI ──POST /api/display──▶ serwer
                               odświeżenie panelu (kilkanaście sekund)
 ```
 
-Gdy ekran śpi, a mamy jego MAC, serwer wysyła Wake-on-LAN i ponawia połączenie. Na baterii w ciszy nocnej ekran śpi z wyłączonym Wi-Fi i budzi się sam (budzik MDC `0x25`); obraz, który nie dotarł, czeka na pobudkę ([WAKE.md](WAKE.md)).
+Gdy ekran śpi, a mamy jego MAC, serwer wysyła Wake-on-LAN i ponawia połączenie. W ciszy nocnej na baterii ekran śpi z wyłączonym Wi-Fi i budzi się sam na poranną zmianę (budzik MDC `0x25`); obraz, który nie dotarł, czeka na pobudkę ([WAKE.md](WAKE.md)).
 
 ## Przepływ docelowy: rotacja (Etap 2)
 
@@ -46,21 +46,29 @@ adresów obrazów), jeśli token jest ustawiony.
 |---|---|
 | Ekran (bez autoryzacji) | `GET /panel/content.json`, `GET /panel/images/{name}` |
 | Odtwarzacz | `GET /api/player` (co na ramce, następne, historia, przypięcie, następna zmiana), `POST /api/player/next`, `POST /api/player/previous`, `POST/DELETE /api/player/hold` |
-| Ustawienia | `GET/PUT /api/settings` (tryb, playlista, interwały przy zasilaczu i na baterii, cisza nocna, prezentacja dla sztuki i zdjęć, orientacja, link do albumu). Zmiana orientacji lub prezentacji od razu przerysowuje bieżący obraz i wysyła go na ramkę, bez przesuwania harmonogramu. |
+| Postęp wyświetlania | `GET /api/progress` (też pole `progress` w `GET /api/player`): etap obrazu w drodze na ramkę (`rendering` → `sending` → [`waking`] → `downloading` → `refreshing` → `done`, albo `waiting` / `failed`), część (`processing` / `loading` / `displaying`, w aplikacji „Przetwarzanie”, „Ładowanie”, „Wyświetlanie”), szacowany ułamek drogi i sekundy do końca. Etapy serwera są mierzone i uczą się czasów z ostatnich obrazów; odświeżanie ekranu po pobraniu jest szacowane na 45 s (E2/E3: ok. 12 s przygotowania i 31–36 s migania), bo ekran nie zgłasza końca. |
+| Ustawienia | `GET/PUT /api/settings` (playlista, godziny zmiany `change_times` i co ile dni `change_every_days`, początek ciszy nocnej `quiet_start`, prezentacja dla sztuki i zdjęć, orientacja). Zmiana orientacji lub prezentacji od razu przerysowuje bieżący obraz i wysyła go na ramkę, bez przesuwania harmonogramu. |
 | Status | `GET /api/status?refresh=` (bateria, ładowanie, połączenie, firmware, serwer), `GET /api/device/status`, `POST /api/device/wake`, `POST /api/device/sleep` |
-| Biblioteka | `GET /api/library/items` (filtry: `q`, `artist`, `style`, `subject`, `color`, `kind`, `favorites`, `sort`), `GET /api/library/facets`, `GET/PATCH/DELETE /api/library/items/{id}`, `GET …/{id}/thumb`, `…/image`, `…/preview` (obraz w kadrze i passe-partout, w oryginalnych kolorach; opcjonalnie `?settings=<JSON>` z orientacją i prezentacją do podglądu przed zapisaniem), `POST …/{id}/show`, `GET/PUT/DELETE …/{id}/framing` (kadr, detale albo kadr w passe-partout z kształtem okienka: odczyt, korekta dla orientacji, powrót do automatu bieżącego trybu), `POST /api/library/upload` (plik i opis; zdjęcia z rolki z datą i miejscem z EXIF) |
+| Biblioteka | `GET /api/library/items` (filtry: `q`, `artist`, `style`, `subject`, `color`, `kind`, `favorites`, `sort`), `GET /api/library/facets`, `GET/PATCH/DELETE /api/library/items/{id}`, `GET …/{id}/thumb`, `…/image`, `…/preview` (obraz w kadrze i passe-partout, w oryginalnych kolorach; opcjonalnie `?settings=<JSON>` z orientacją i prezentacją oraz `?framing=<JSON>` z kadrami do podglądu przed zapisaniem), `POST …/{id}/show`, `GET/PUT/DELETE …/{id}/framing` (kadr, detale albo kadr w passe-partout z kształtem okienka: odczyt z położeniem okienek na płótnie (`rect`, w passe-partout też `area`), `?automatic=true` pokazuje kadr automatyczny bez zapisu, korekta dla orientacji, powrót do automatu bieżącego trybu), `POST /api/library/upload` (plik i opis; zdjęcia z rolki z datą i miejscem z EXIF) |
 | Muzea | `GET /api/museums`, `GET /api/museums/{source}/search`, `POST /api/museums/{source}/import`, `POST /api/museums/{source}/import-search`, `GET /api/jobs[/{id}]` |
-| Playlisty | `GET/POST /api/playlists`, `POST /api/playlists/preview`, `GET/PUT/DELETE /api/playlists/{id}`, `POST/DELETE /api/playlists/{id}/items`, `POST /api/playlists/{id}/play` |
+| Playlisty | `GET/POST /api/playlists` (inteligentne, ręczne i albumy iCloud: `kind: "album"`, `album: {url, order}`), `POST /api/playlists/preview`, `GET/PUT/DELETE /api/playlists/{id}`, `POST/DELETE /api/playlists/{id}/items`, `POST /api/playlists/{id}/play`, `POST /api/playlists/{id}/sync` (synchronizacja albumu, zwraca zadanie), `GET /api/playlists/{id}/sync` (ostatnia), `POST /api/albums/check` (nazwa i liczba zdjęć albumu z linku) |
 | Kalibracja kolorów (bez aplikacji, po E5) | `GET /api/calibration` (paleta w użyciu), `POST …/chart` (plansza na ramkę, 30 min), `POST …/measure` (multipart: `file`, `corners`), `GET …/candidates/{id}/chart.jpg`, `GET …/candidates/{id}/preview/{item}`, `POST …/apply`, `POST …/cancel`, `DELETE /api/calibration` (powrót do domyślnej) |
 | Jednorazowe zdjęcie | `POST /api/display` (multipart: `file`, `preset`, `title`, `hold`), `POST /api/device/push`, `GET /api/now`, `GET /api/previews/{id}.png` |
 | Diagnostyka | `GET /api/health`, `GET /api/presets`, `GET /api/debug/panel-requests` |
 
 ## Rotacja
 
-`player.py`: kolejka z aktywnej playlisty (albo zdjęć w trybie albumu),
-tasowana, bez powtórek przez `avoid_repeat_days`. Zmiany są wyrównane do
-końca ciszy nocnej (domyślnie codziennie o 07:00); na baterii obowiązuje
-osobny interwał. Przypięcie (`hold`) wstrzymuje rotację do określonej chwili
+`player.py`: kolejka z aktywnej playlisty, tasowana (album iCloud: w swojej
+kolejności, np. od najnowszych), bez powtórek przez `avoid_repeat_days`.
+`albums.py`: każda playlista-album synchronizuje się z albumem co 30 min;
+nowe zdjęcia trafiają na początek kolejki, jeśli album ich kolejność
+stawia pierwsze. Obraz zmienia się
+o ustawionych godzinach (`change_times`, domyślnie 07:00), codziennie albo
+co 2–3 dni licząc od ostatniej zmiany, tak samo przy ładowarce i na
+baterii. Cisza nocna trwa od `quiet_start` do najbliższej godziny zmiany,
+więc budzik ekranu zawsze dzwoni na zmianę; na ładowarce w ciszy zdjęcia
+idą od razu. Starsze ustawienia z interwałem
+zamieniają się same na godziny, które ten interwał dawał. Przypięcie (`hold`) wstrzymuje rotację do określonej chwili
 albo na stałe. Stan i historia są w SQLite, więc przetrwają restart.
 
 ## Wdrożenie

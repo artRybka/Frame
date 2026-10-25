@@ -65,7 +65,8 @@ struct FrameTabView: View {
         HStack(spacing: 18) {
             ZStack {
                 RoundedRectangle(cornerRadius: 3)
-                    .fill(Theme.frameWood)
+                    .fill(Theme.moulding)
+                    .overlay(RoundedRectangle(cornerRadius: 3).strokeBorder(Theme.mouldingEdge, lineWidth: 0.5))
                     .frame(width: 104, height: model.isPortrait ? 150 : 66)
                 Group {
                     if let preview = model.player?.current?.previewUrl {
@@ -255,57 +256,63 @@ struct ScheduleSection: View {
     @Environment(AppModel.self) private var model
     @Binding var settings: FrameSettings
 
-    private let intervals: [(Int, String)] = [
-        (60, "co godzinę"), (180, "co 3 godziny"), (360, "co 6 godzin"), (720, "2× dziennie"),
-        (1440, "raz dziennie"), (2880, "co 2 dni"), (4320, "co 3 dni"),
-    ]
+    private let everyDays: [(Int, String)] = [(1, "codziennie"), (2, "co 2 dni"), (3, "co 3 dni")]
+    private let maxTimes = 12
+
+    private var artPlaylists: [PlaylistSummary] { model.playlists.filter { $0.kind != .album } }
+    private var albums: [PlaylistSummary] { model.playlists.filter { $0.kind == .album } }
+    private var playingAlbum: PlaylistSummary? { albums.first { $0.id == settings.playlistId } }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             SectionHeader(title: "Harmonogram", subtitle: "Co i jak często pokazuje ramka")
-            Picker("Tryb", selection: $settings.mode) {
-                Text("Obrazy").tag("art")
-                Text("Album iCloud").tag("album")
-            }
-            .pickerStyle(.segmented)
 
             Card {
-                if settings.mode == "art" {
-                    row("Playlista") {
-                        Picker("Playlista", selection: $settings.playlistId) {
-                            Text("Cała biblioteka").tag(Int?.none)
-                            ForEach(model.playlists) { Text($0.name).tag(Int?.some($0.id)) }
+                row("Playlista") {
+                    Picker("Playlista", selection: $settings.playlistId) {
+                        Text("Propozycje").tag(Int?.none)
+                        if !artPlaylists.isEmpty {
+                            Section("Sztuka") {
+                                ForEach(artPlaylists) { Text($0.name).tag(Int?.some($0.id)) }
+                            }
+                        }
+                        if !albums.isEmpty {
+                            Section("Albumy iCloud") {
+                                ForEach(albums) { Label($0.name, systemImage: "icloud").tag(Int?.some($0.id)) }
+                            }
                         }
                     }
-                    Divider()
-                } else {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Link do albumu").foregroundStyle(Theme.inkSoft).font(.subheadline)
-                        TextField("https://www.icloud.com/sharedalbum/#…", text: $settings.albumUrl)
-                            .textInputAutocapitalization(.never)
-                            .keyboardType(.URL)
-                            .font(.subheadline)
-                        Text("W Zdjęciach: album udostępniony → Osoby → Witryna publiczna → Udostępnij link.")
-                            .font(.caption)
-                            .foregroundStyle(Theme.inkSoft)
-                        AlbumStatus()
-                    }
-                    Divider()
                 }
-                row("Przy zasilaczu") { intervalPicker($settings.intervalMinutes) }
                 Divider()
-                row("Na baterii") { intervalPicker($settings.intervalMinutesBattery) }
+                row("Zmiana") {
+                    Picker("Zmiana", selection: $settings.changeEveryDays) {
+                        ForEach(everyDays, id: \.0) { days, label in Text(label).tag(days) }
+                    }
+                    .labelsHidden()
+                }
                 Divider()
-                Toggle("Losowa kolejność", isOn: $settings.shuffle)
+                changeTimesEditor
+                Divider()
+                if let album = playingAlbum?.album {
+                    row("Kolejność") {
+                        Text(album.order.title).foregroundStyle(Theme.inkSoft)
+                    }
+                    Text("Album ma własną kolejność zdjęć; zmienisz ją w jego playliście.")
+                        .font(.caption)
+                        .foregroundStyle(Theme.inkSoft)
+                } else {
+                    Toggle("Losowa kolejność", isOn: $settings.shuffle)
+                }
                 Divider()
                 Toggle("Cisza nocna", isOn: quietEnabled)
                 if settings.quietStart != nil {
                     HStack {
                         DatePicker("Od", selection: time(\.quietStart, fallback: "22:00"), displayedComponents: .hourAndMinute)
-                        DatePicker("Do", selection: time(\.quietEnd, fallback: "07:00"), displayedComponents: .hourAndMinute)
+                        Spacer()
+                        Text("do \(settings.quietEnd ?? "—")").foregroundStyle(Theme.inkSoft)
                     }
                     .font(.subheadline)
-                    Text("Zmiany zaczynają się codziennie o końcu ciszy nocnej. Na baterii ramka śpi wtedy z wyłączonym Wi-Fi i budzi się sama o tej godzinie, a zdjęcia wysłane w nocy pojawią się rano.")
+                    Text("Cisza trwa do najbliższej zmiany obrazu. Na baterii ramka śpi wtedy z wyłączonym Wi-Fi i budzi się sama na tę zmianę, a zdjęcia wysłane w nocy pojawią się rano. Przy zasilaczu trafiają na ramkę od razu.")
                         .font(.caption)
                         .foregroundStyle(Theme.inkSoft)
                 }
@@ -322,25 +329,83 @@ struct ScheduleSection: View {
         }
     }
 
-    private func intervalPicker(_ value: Binding<Int>) -> some View {
-        Picker("", selection: value) {
-            ForEach(intervals, id: \.0) { minutes, label in
-                Text(label).tag(minutes)
+    /// The times of day the picture changes at: one or more, sorted.
+    private var changeTimesEditor: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(settings.changeTimes.count > 1 ? "Godziny zmiany" : "Godzina zmiany").foregroundStyle(Theme.ink)
+            ForEach(settings.changeTimes.indices, id: \.self) { index in
+                HStack {
+                    DatePicker(
+                        "Godzina \(index + 1)", selection: changeTime(at: index), displayedComponents: .hourAndMinute
+                    )
+                    .labelsHidden()
+                    Spacer()
+                    if settings.changeTimes.count > 1 {
+                        Button(role: .destructive) {
+                            settings.changeTimes.remove(at: index)
+                        } label: {
+                            Image(systemName: "minus.circle.fill")
+                        }
+                        .buttonStyle(.borderless)
+                        .accessibilityLabel("Usuń godzinę \(settings.changeTimes[index])")
+                    }
+                }
             }
-            if !intervals.contains(where: { $0.0 == value.wrappedValue }) {
-                Text("\(value.wrappedValue) min").tag(value.wrappedValue)
+            if settings.changeTimes.count < maxTimes {
+                Button {
+                    settings.changeTimes = Self.sorted(settings.changeTimes + [Self.nextFreeTime(after: settings.changeTimes)])
+                } label: {
+                    Label("Dodaj godzinę", systemImage: "plus.circle")
+                }
+                .buttonStyle(.borderless)
+                .font(.subheadline)
             }
         }
-        .labelsHidden()
+    }
+
+    private func changeTime(at index: Int) -> Binding<Date> {
+        Binding(
+            get: { Self.date(settings.changeTimes.indices.contains(index) ? settings.changeTimes[index] : "07:00") },
+            set: { date in
+                // Sorted (and duplicates dropped) by the server on save, so
+                // the row being edited does not jump away under the finger.
+                guard settings.changeTimes.indices.contains(index) else { return }
+                settings.changeTimes[index] = Self.hhmm(date)
+            }
+        )
+    }
+
+    static func sorted(_ times: [String]) -> [String] {
+        Array(Set(times)).sorted()
+    }
+
+    /// A sensible new time: three hours after the last one, wrapping at midnight.
+    static func nextFreeTime(after times: [String]) -> String {
+        let minutes = times.compactMap { t -> Int? in
+            let parts = t.split(separator: ":").compactMap { Int($0) }
+            return parts.count == 2 ? parts[0] * 60 + parts[1] : nil
+        }
+        var candidate = ((minutes.max() ?? 7 * 60) + 180) % (24 * 60)
+        while minutes.contains(candidate) { candidate = (candidate + 60) % (24 * 60) }
+        return String(format: "%02d:%02d", candidate / 60, candidate % 60)
+    }
+
+    private static func date(_ hhmm: String) -> Date {
+        let parts = hhmm.split(separator: ":").compactMap { Int($0) }
+        return Calendar.current.date(
+            bySettingHour: parts.first ?? 0, minute: parts.dropFirst().first ?? 0, second: 0, of: .now
+        ) ?? .now
+    }
+
+    private static func hhmm(_ date: Date) -> String {
+        let comps = Calendar.current.dateComponents([.hour, .minute], from: date)
+        return String(format: "%02d:%02d", comps.hour ?? 0, comps.minute ?? 0)
     }
 
     private var quietEnabled: Binding<Bool> {
         Binding(
             get: { settings.quietStart != nil },
-            set: { on in
-                settings.quietStart = on ? "22:00" : nil
-                settings.quietEnd = on ? "07:00" : nil
-            }
+            set: { on in settings.quietStart = on ? "22:00" : nil }
         )
     }
 
@@ -376,6 +441,14 @@ struct PresentationSection: View {
         target == .art ? $settings.art : $settings.photo
     }
 
+    /// Off: one style picked by hand, starting from the usual one for the target.
+    private var autoStyle: Binding<Bool> {
+        Binding(
+            get: { presentation.preset.wrappedValue == "auto" },
+            set: { presentation.preset.wrappedValue = $0 ? "auto" : (target == .photo ? "photo" : "painting") }
+        )
+    }
+
     private var isMulti: Bool { target == .photo && presentation.fit.wrappedValue == "multi" }
 
     /// The picture on the frame, when the selected presentation applies to it.
@@ -391,6 +464,11 @@ struct PresentationSection: View {
                 ForEach(Target.allCases, id: \.self) { Text($0.rawValue).tag($0) }
             }
             .pickerStyle(.segmented)
+            Text(target == .art
+                ? "Dla playlist z dziełami z muzeów i własnymi pracami oraz dla Propozycji."
+                : "Dla albumów iCloud i zdjęć z rolki aparatu.")
+                .font(.caption)
+                .foregroundStyle(Theme.inkSoft)
             if let item = previewItem {
                 let portrait = settings.orientation == "portrait"
                 VStack(spacing: 10) {
@@ -473,15 +551,18 @@ struct PresentationSection: View {
                         .foregroundStyle(Theme.inkSoft)
                 }
                 Divider()
-                HStack {
-                    Text("Styl obrazu")
-                    Spacer()
-                    Picker("Styl obrazu", selection: presentation.preset) {
-                        ForEach(["photo", "painting", "graphic", "bw"], id: \.self) { Text(Names.preset($0)).tag($0) }
+                Toggle("Styl obrazu automatycznie", isOn: autoStyle)
+                if !autoStyle.wrappedValue {
+                    HStack {
+                        Text("Styl obrazu")
+                        Spacer()
+                        Picker("Styl obrazu", selection: presentation.preset) {
+                            ForEach(Names.manualPresets, id: \.self) { Text(Names.preset($0)).tag($0) }
+                        }
+                        .labelsHidden()
                     }
-                    .labelsHidden()
                 }
-                Text(Names.presetExplanation(presentation.preset.wrappedValue))
+                Text(Names.presetExplanation(presentation.preset.wrappedValue, photo: target == .photo))
                     .font(.caption)
                     .foregroundStyle(Theme.inkSoft)
                     .fixedSize(horizontal: false, vertical: true)
@@ -535,8 +616,7 @@ struct FitOption: View {
                     miniature
                 }
                 .frame(height: 44)
-                .padding(3)
-                .background(Theme.frameWood)
+                .whiteFrame(3, corner: 1)
                 Text(title)
                     .font(.caption2.weight(.medium))
                     .lineLimit(1)
@@ -753,52 +833,5 @@ struct ServerSection: View {
         case .unknown:
             EmptyView()
         }
-    }
-}
-
-/// Last shared-album sync and a button to sync now.
-struct AlbumStatus: View {
-    @Environment(AppModel.self) private var model
-    @State private var info: AlbumInfo?
-    @State private var syncing = false
-
-    var body: some View {
-        HStack {
-            if let sync = info?.lastSync {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(sync.name.isEmpty ? "Album" : sync.name).font(.subheadline.weight(.medium))
-                    Text("\(info?.photos ?? 0) zdjęć · synchronizacja \(When.ago(sync.at) ?? "")")
-                        .font(.caption)
-                        .foregroundStyle(Theme.inkSoft)
-                }
-            } else {
-                Text("Jeszcze nie synchronizowano").font(.caption).foregroundStyle(Theme.inkSoft)
-            }
-            Spacer()
-            Button {
-                Task {
-                    syncing = true
-                    do {
-                        try await model.backend.syncAlbum()
-                        model.toast = "Synchronizuję album…"
-                        try? await Task.sleep(for: .seconds(3))
-                        info = try? await model.backend.album()
-                    } catch {
-                        model.show(error)
-                    }
-                    syncing = false
-                }
-            } label: {
-                if syncing {
-                    ProgressView()
-                } else {
-                    Label("Synchronizuj", systemImage: "arrow.triangle.2.circlepath")
-                        .font(.subheadline.weight(.semibold))
-                }
-            }
-            .disabled(syncing)
-        }
-        .padding(.top, 4)
-        .task { info = try? await model.backend.album() }
     }
 }

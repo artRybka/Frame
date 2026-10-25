@@ -27,6 +27,7 @@ struct LiveBackend: FrameBackend {
     }
 
     func player() async throws -> PlayerView { try await get("/api/player") }
+    func progress() async throws -> DisplayProgress { try await get("/api/progress") }
     func next() async throws { try await send("/api/player/next", method: "POST") }
     func previous() async throws { try await send("/api/player/previous", method: "POST") }
 
@@ -53,6 +54,7 @@ struct LiveBackend: FrameBackend {
         query += q.colors.map { URLQueryItem(name: "color", value: $0) }
         query += q.kinds.map { URLQueryItem(name: "kind", value: $0.rawValue) }
         if q.favoritesOnly { query.append(URLQueryItem(name: "favorites", value: "true")) }
+        if q.keptOnly { query.append(URLQueryItem(name: "kept", value: "true")) }
         return try await get("/api/library/items", query: query)
     }
 
@@ -72,11 +74,10 @@ struct LiveBackend: FrameBackend {
 
     func facets() async throws -> Facets { try await get("/api/library/facets") }
 
-    func framing(itemID: String, orientation: String) async throws -> FramingView {
-        try await get(
-            "/api/library/items/\(escape(itemID))/framing",
-            query: [URLQueryItem(name: "orientation", value: orientation)]
-        )
+    func framing(itemID: String, orientation: String, automatic: Bool) async throws -> FramingView {
+        var query = [URLQueryItem(name: "orientation", value: orientation)]
+        if automatic { query.append(URLQueryItem(name: "automatic", value: "true")) }
+        return try await get("/api/library/items/\(escape(itemID))/framing", query: query)
     }
 
     private struct FramingUpdate: Encodable {
@@ -116,6 +117,10 @@ struct LiveBackend: FrameBackend {
         try await send("/api/playlists/\(id)/items", method: "POST", body: ["item_ids": itemIDs])
     }
 
+    func removeFromPlaylist(id: Int, itemID: String) async throws -> PlaylistDetail {
+        try await send("/api/playlists/\(id)/items/\(escape(itemID))", method: "DELETE")
+    }
+
     func previewRules(_ rules: PlaylistRules) async throws -> RulesPreview {
         try await send("/api/playlists/preview", method: "POST", body: rules)
     }
@@ -128,6 +133,16 @@ struct LiveBackend: FrameBackend {
 
     func saveSettings(_ settings: FrameSettings) async throws -> FrameSettings {
         try await send("/api/settings", method: "PUT", body: settings)
+    }
+
+    // MARK: Discover
+
+    func suggestions() async throws -> [SuggestionRow] { try await get("/api/suggestions") }
+
+    func themes() async throws -> [ArtTheme] { try await get("/api/themes") }
+
+    func themePage(key: String, page: Int) async throws -> ArtThemePage {
+        try await get("/api/themes/\(key)", query: [URLQueryItem(name: "page", value: String(page))])
     }
 
     // MARK: Museums
@@ -187,8 +202,14 @@ struct LiveBackend: FrameBackend {
 
     // MARK: Album
 
-    func album() async throws -> AlbumInfo { try await get("/api/album") }
-    func syncAlbum() async throws { try await send("/api/album/sync", method: "POST") }
+    func checkAlbum(url: String) async throws -> AlbumCheck {
+        try await send("/api/albums/check", method: "POST", body: ["url": url])
+    }
+
+    func syncAlbum(playlistID: Int) async throws -> String {
+        let ref: JobRef = try await send("/api/playlists/\(playlistID)/sync", method: "POST")
+        return ref.jobId
+    }
 
     // MARK: Device
 
@@ -232,8 +253,14 @@ struct LiveBackend: FrameBackend {
         switch image {
         case let .thumb(id): req = request("/api/library/items/\(escape(id))/thumb")
         case let .image(id): req = request("/api/library/items/\(escape(id))/image")
-        case let .framePreview(id, settings):
-            req = request("/api/library/items/\(escape(id))/preview", query: framingQuery(settings))
+        case let .framePreview(id, settings, framing):
+            var query = framingQuery(settings)
+            let encoder = Self.encoder()
+            encoder.outputFormatting = .sortedKeys
+            if let framing, let data = try? encoder.encode(framing) {
+                query.append(URLQueryItem(name: "framing", value: String(decoding: data, as: UTF8.self)))
+            }
+            req = request("/api/library/items/\(escape(id))/preview", query: query)
         case let .path(path): req = request(path)
         case let .url(url): req = URLRequest(url: url)
         }

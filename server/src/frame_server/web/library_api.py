@@ -13,8 +13,8 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, ValidationError
 from starlette.concurrency import run_in_threadpool
 
-from ..imaging.layout import Crop, Fit, Orientation, Plan, canvas_size, load_image
-from ..imaging.pipeline import encode_image, plan_for, render, render_multi
+from ..imaging.layout import Crop, Fit, Orientation, Plan, canvas_size, fit_area, load_image
+from ..imaging.pipeline import RenderSettings, encode_image, plan_for, render, render_multi
 from ..library import Facets, Item, ItemKind, ItemSummary, Job, PhotoInfo, PlaylistRules
 from ..library.importer import ALL
 from ..library.models import Framing
@@ -86,6 +86,20 @@ def _item(svc: FrameService, item_id: str) -> Item:
     return item
 
 
+async def _work(svc: FrameService, item_id: str, save: bool = False) -> Item:
+    """A library item or any museum work (``<museum>:<id>``). Museum works
+    are added to the library with ``save``: when the owner shows, crops,
+    likes or otherwise keeps one."""
+    lookup = svc.importer.save if save else svc.importer.resolve
+    try:
+        item = await run_in_threadpool(lookup, item_id)
+    except httpx.HTTPError as err:
+        raise HTTPException(502, f"{item_id}: {err}") from err
+    if item is None:
+        raise HTTPException(404, f"no item {item_id!r}")
+    return item
+
+
 @router.get("/library/items", response_model=ItemPage)
 def list_items(
     svc: Svc,
@@ -97,6 +111,7 @@ def list_items(
     kind: Annotated[list[ItemKind] | None, Query()] = None,
     source: Annotated[list[str] | None, Query()] = None,
     favorites: bool = False,
+    kept: bool = False,
     sort: SortKey = "recent",
     offset: int = 0,
     limit: Annotated[int, Query(le=200)] = 60,
@@ -111,6 +126,7 @@ def list_items(
         kinds=kind or [],
         sources=source or [],
         favorites_only=favorites,
+        kept_only=kept,
     )
     total, items = svc.library.query(rules, sort=sort, offset=offset, limit=limit, seed=seed)
     return ItemPage(total=total, items=[ItemSummary.of(i) for i in items])
@@ -122,13 +138,13 @@ def facets(svc: Svc) -> Facets:
 
 
 @router.get("/library/items/{item_id}", response_model=Item)
-def get_item(item_id: str, svc: Svc) -> Item:
-    return _item(svc, item_id)
+async def get_item(item_id: str, svc: Svc) -> Item:
+    return await _work(svc, item_id)
 
 
 @router.patch("/library/items/{item_id}", response_model=Item)
-def patch_item(item_id: str, patch: ItemPatch, svc: Svc) -> Item:
-    _item(svc, item_id)
+async def patch_item(item_id: str, patch: ItemPatch, svc: Svc) -> Item:
+    await _work(svc, item_id, save=True)
     changes = patch.model_dump(exclude_none=True)
     updated = svc.library.update(item_id, **changes)
     assert updated is not None
@@ -145,7 +161,7 @@ def delete_item(item_id: str, svc: Svc) -> dict[str, bool]:
 
 @router.get("/library/items/{item_id}/thumb")
 async def item_thumb(item_id: str, svc: Svc) -> FileResponse:
-    item = _item(svc, item_id)
+    item = await _work(svc, item_id)
     try:
         path = await run_in_threadpool(svc.images.ensure_thumb, item)
     except (httpx.HTTPError, OSError) as err:
@@ -155,7 +171,7 @@ async def item_thumb(item_id: str, svc: Svc) -> FileResponse:
 
 @router.get("/library/items/{item_id}/image")
 async def item_image(item_id: str, svc: Svc) -> FileResponse:
-    item = _item(svc, item_id)
+    item = await _work(svc, item_id)
     try:
         path = await run_in_threadpool(svc.images.ensure_image, item)
     except (httpx.HTTPError, OSError) as err:
@@ -175,20 +191,30 @@ def _prune(directory: Path, keep: int) -> None:
 
 
 @router.get("/library/items/{item_id}/preview")
-async def item_preview(item_id: str, svc: Svc, settings: str | None = None) -> FileResponse:
+async def item_preview(
+    item_id: str, svc: Svc, settings: str | None = None, framing: str | None = None
+) -> FileResponse:
     """The picture framed as on the panel (crop, mat, lettering), in its own
     colours: the correction for the inks is left to the panel's image.
 
     With the saved settings, or with ``settings`` (FrameSettings JSON; only
     orientation and presentation matter) to try a framing before saving it.
+    ``framing`` (Framing JSON) likewise tries crops before they are saved:
+    the ones it gives replace the saved ones for that orientation.
     """
-    item = _item(svc, item_id)
+    item = await _work(svc, item_id)
     frame_settings = svc.player.settings
-    if settings:
-        try:
+    try:
+        if settings:
             frame_settings = FrameSettings.model_validate_json(settings)
-        except ValidationError as err:
-            raise HTTPException(422, f"invalid settings: {err}") from err
+        if framing:
+            orientation = frame_settings.orientation.value
+            saved = item.framing.get(orientation) or Framing()
+            trial = Framing.model_validate_json(framing).model_dump(exclude_none=True)
+            tried = Framing.model_validate(saved.model_dump() | trial)
+            item = item.model_copy(update={"framing": {**item.framing, orientation: tried}})
+    except ValidationError as err:
+        raise HTTPException(422, f"invalid preview: {err}") from err
     render_settings = svc.player.render_settings(item, frame_settings)
     board = svc.player.preview_board(item, frame_settings)  # MULTI: with the photos beside it
     ids = ",".join(i.id for i in board)
@@ -219,11 +245,16 @@ async def item_preview(item_id: str, svc: Svc, settings: str | None = None) -> F
     return FileResponse(path, media_type="image/png", headers={"Cache-Control": "max-age=3600"})
 
 
+Box = tuple[float, float, float, float]  # x, y, w, h as fractions of the canvas
+
+
 class FramingWindow(BaseModel):
-    role: str  # "fill" or "detail"
+    role: str  # "picture" (FIT), "fill" or "detail"
     aspect: float  # width / height of the window on the frame
     crop: Crop
     custom: bool  # set by the user (else chosen automatically)
+    rect: Box | None = None  # where the window is on the canvas
+    area: Box | None = None  # FIT: where a window of another shape would be centred
 
 
 class FramingView(BaseModel):
@@ -240,28 +271,56 @@ class FramingUpdate(BaseModel):
 
 
 def _framing_plan(
-    svc: FrameService, item: Item, orientation: Orientation
-) -> tuple[Plan, tuple[int, int]]:
+    svc: FrameService, item: Item, orientation: Orientation, automatic: bool = False
+) -> tuple[Plan, tuple[int, int], RenderSettings]:
     settings = svc.player.settings.model_copy(update={"orientation": orientation})
     render_settings = svc.player.render_settings(item, settings)
+    if automatic:  # as if nothing had been saved
+        layout = render_settings.layout.model_copy(
+            update={"crop": None, "details": None, "detail": None, "fit_crop": None}
+        )
+        render_settings = render_settings.model_copy(update={"layout": layout})
     img = load_image(svc.images.ensure_image(item))
     if svc.player.multi(item, settings):  # each photo cropped automatically to its window
-        return Plan(Fit.MULTI, canvas_size(orientation), []), img.size
-    return plan_for(img, render_settings.layout, caption=bool(render_settings.caption)), img.size
+        return Plan(Fit.MULTI, canvas_size(orientation), []), img.size, render_settings
+    plan = plan_for(img, render_settings.layout, caption=bool(render_settings.caption))
+    return plan, img.size, render_settings
+
+
+def _box(rect: tuple[int, int, int, int], canvas: tuple[int, int]) -> Box:
+    x, y, w, h = rect
+    cw, ch = canvas
+    return round(x / cw, 5), round(y / ch, 5), round(w / cw, 5), round(h / ch, 5)
 
 
 def _framing_view(
-    item: Item, orientation: Orientation, plan: Plan, size: tuple[int, int]
+    item: Item,
+    orientation: Orientation,
+    plan: Plan,
+    size: tuple[int, int],
+    render_settings: RenderSettings,
+    automatic: bool = False,
 ) -> FramingView:
     saved = item.framing.get(orientation.value) or Framing()
-    custom = {
+    custom = not automatic and {
         Fit.FILL: saved.fill is not None,
         Fit.DETAILS: saved.details is not None,
         Fit.DESCRIPTION: saved.detail is not None,
         Fit.FIT: saved.fit is not None,
     }.get(plan.fit, False)
+    area = None
+    if plan.fit == Fit.FIT:
+        margin, caption = render_settings.layout.margin, bool(render_settings.caption)
+        area = _box(fit_area(plan.canvas, margin, caption), plan.canvas)
     windows = [
-        FramingWindow(role=w.role, aspect=round(w.aspect, 4), crop=w.crop, custom=custom)
+        FramingWindow(
+            role=w.role,
+            aspect=round(w.aspect, 4),
+            crop=w.crop,
+            custom=custom,
+            rect=_box(w.rect, plan.canvas),
+            area=area if w.role == "picture" else None,
+        )
         for w in plan.windows
         if w.crop is not None
     ]
@@ -270,28 +329,35 @@ def _framing_view(
     )
 
 
-async def _plan_and_view(svc: FrameService, item: Item, orientation: Orientation) -> FramingView:
+async def _plan_and_view(
+    svc: FrameService, item: Item, orientation: Orientation, automatic: bool = False
+) -> FramingView:
     try:
-        plan, size = await run_in_threadpool(_framing_plan, svc, item, orientation)
+        plan, size, render_settings = await run_in_threadpool(
+            _framing_plan, svc, item, orientation, automatic
+        )
     except (httpx.HTTPError, OSError) as err:
         raise HTTPException(502, f"image unavailable: {err}") from err
-    return _framing_view(item, orientation, plan, size)
+    return _framing_view(item, orientation, plan, size, render_settings, automatic)
 
 
 @router.get("/library/items/{item_id}/framing", response_model=FramingView)
 async def get_framing(
-    item_id: str, svc: Svc, orientation: Orientation | None = None
+    item_id: str, svc: Svc, orientation: Orientation | None = None, automatic: bool = False
 ) -> FramingView:
-    """How the picture is cropped on the frame, and what can be adjusted."""
-    item = _item(svc, item_id)
-    return await _plan_and_view(svc, item, orientation or svc.player.settings.orientation)
+    """How the picture is cropped on the frame, and what can be adjusted.
+    With ``automatic`` the crops the server would choose, ignoring saved ones
+    (nothing is changed: the app offers them before the user sends them)."""
+    item = await _work(svc, item_id)
+    orientation = orientation or svc.player.settings.orientation
+    return await _plan_and_view(svc, item, orientation, automatic)
 
 
 @router.put("/library/items/{item_id}/framing", response_model=FramingView)
 async def put_framing(item_id: str, update: FramingUpdate, svc: Svc) -> FramingView:
     """Save a corrected crop (FILL, or FIT with its shape) or close-ups
     (DETAILS, DESCRIPTION) for this picture."""
-    item = _item(svc, item_id)
+    item = await _work(svc, item_id, save=True)
     current = await _plan_and_view(svc, item, update.orientation)
     framing = item.framing.get(update.orientation.value, Framing()).model_copy()
     if current.fit == Fit.FILL and len(update.crops) == 1:
@@ -311,7 +377,7 @@ async def put_framing(item_id: str, update: FramingUpdate, svc: Svc) -> FramingV
 @router.delete("/library/items/{item_id}/framing", response_model=FramingView)
 async def reset_framing(item_id: str, svc: Svc, orientation: Orientation) -> FramingView:
     """Back to the automatic crop of the current mode for this orientation."""
-    item = _item(svc, item_id)
+    item = await _work(svc, item_id, save=True)
     current = await _plan_and_view(svc, item, orientation)
     framing = item.framing.get(orientation.value, Framing()).model_copy()
     field = {Fit.FILL: "fill", Fit.DETAILS: "details", Fit.DESCRIPTION: "detail", Fit.FIT: "fit"}
@@ -340,7 +406,7 @@ def _save_framing(
 
 @router.post("/library/items/{item_id}/show", status_code=202)
 async def show_item(item_id: str, request: ShowRequest, svc: Svc) -> dict[str, Any]:
-    item = _item(svc, item_id)
+    item = await _work(svc, item_id, save=True)
     svc.background(svc.player.show(item, "app", hold_from(request.hold)))
     return {"accepted": True, "item_id": item.id}
 
@@ -512,25 +578,6 @@ def fill(request: FillRequest, svc: Svc) -> dict[str, Any]:
         svc.importer.fill(rules, request.count, job)
 
     return {"job_id": svc.importer.start_job(f"fill: {request.count}", work).id}
-
-
-@router.get("/album")
-def album(svc: Svc) -> dict[str, Any]:
-    """Last shared-album sync and how many photos the library holds."""
-    photos = svc.library.query(PlaylistRules(kinds=[ItemKind.PHOTO]))[0]
-    return {
-        "url": svc.player.settings.album_url,
-        "last_sync": svc.library.get_state("album_sync"),
-        "photos": photos,
-    }
-
-
-@router.post("/album/sync")
-def album_sync(svc: Svc) -> dict[str, Any]:
-    url = svc.player.settings.album_url
-    if not url:
-        raise HTTPException(409, "no shared album link in settings")
-    return {"job_id": svc.start_album_sync().id}
 
 
 @router.get("/jobs")

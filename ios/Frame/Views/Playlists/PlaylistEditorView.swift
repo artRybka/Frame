@@ -3,7 +3,8 @@ import SwiftUI
 
 /// Create or edit a playlist. Smart playlists are built from rules with a
 /// live preview of the matching pictures; manual ones can take photos from
-/// the camera roll, uploaded to the library when the playlist is saved.
+/// the camera roll, uploaded to the library when the playlist is saved;
+/// album playlists mirror a shared iCloud album.
 struct PlaylistEditorView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
@@ -18,10 +19,22 @@ struct PlaylistEditorView: View {
     @State private var uploaded = 0
     /// Also fetch this many matching museum works into the library (0: no).
     @State private var fetchCount = 0
+    @State private var album: AlbumSource
+    @State private var albumCheck: Result<AlbumCheck, Error>?
+    @State private var checkingAlbum = false
+    /// An album playlist being edited stays one (its photos are the album's).
+    private let wasAlbum: Bool
 
     init(playlist: Playlist) {
         _playlist = State(initialValue: playlist)
         _bestOnly = State(initialValue: playlist.rules.minSuitability != nil)
+        _album = State(initialValue: playlist.album ?? AlbumSource(url: ""))
+        wasAlbum = playlist.id != nil && playlist.kind == .album
+    }
+
+    private var canSave: Bool {
+        !playlist.name.trimmingCharacters(in: .whitespaces).isEmpty && !saving
+            && (playlist.kind != .album || !album.url.trimmingCharacters(in: .whitespaces).isEmpty)
     }
 
     var body: some View {
@@ -29,18 +42,24 @@ struct PlaylistEditorView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 26) {
                     nameFields
-                    Picker("Rodzaj", selection: $playlist.kind) {
-                        Text("Inteligentna").tag(PlaylistKind.smart)
-                        Text("Ręczna").tag(PlaylistKind.manual)
+                    if !wasAlbum {
+                        Picker("Rodzaj", selection: $playlist.kind) {
+                            Text("Inteligentna").tag(PlaylistKind.smart)
+                            Text("Ręczna").tag(PlaylistKind.manual)
+                            Text("Album iCloud").tag(PlaylistKind.album)
+                        }
+                        .pickerStyle(.segmented)
                     }
-                    .pickerStyle(.segmented)
 
-                    if playlist.kind == .smart {
+                    switch playlist.kind {
+                    case .smart:
                         rules
                         previewSection
                         fetchSection
-                    } else {
+                    case .manual:
                         cameraRoll
+                    case .album:
+                        albumSection
                     }
                 }
                 .padding(Theme.gutter)
@@ -54,7 +73,7 @@ struct PlaylistEditorView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Zapisz") { Task { await save() } }
-                        .disabled(playlist.name.trimmingCharacters(in: .whitespaces).isEmpty || saving)
+                        .disabled(!canSave)
                 }
             }
             .sheet(item: $facetSheet) { kind in
@@ -63,6 +82,7 @@ struct PlaylistEditorView: View {
             }
             .task(id: playlist.rules) { await refreshPreview() }
             .task(id: picked) { await loadPhotos() }
+            .task(id: playlist.kind == .album ? album.url : "") { await checkAlbum() }
             .interactiveDismissDisabled(saving)
             .onChange(of: bestOnly) { _, on in playlist.rules.minSuitability = on ? 0.72 : nil }
         }
@@ -212,6 +232,104 @@ struct PlaylistEditorView: View {
         }
     }
 
+    private var albumSection: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: 10) {
+                SectionHeader(title: "Album udostępniony", subtitle: "Z aplikacji Zdjęcia na iPhonie")
+                HStack(spacing: 10) {
+                    TextField("https://www.icloud.com/sharedalbum/#…", text: $album.url)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .keyboardType(.URL)
+                        .font(.subheadline)
+                    PasteButton(payloadType: String.self) { strings in
+                        if let link = strings.first?.trimmingCharacters(in: .whitespacesAndNewlines) {
+                            album.url = link
+                        }
+                    }
+                    .labelStyle(.iconOnly)
+                    .buttonBorderShape(.capsule)
+                }
+                .padding(12)
+                .background(Theme.card, in: RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.hairline))
+                albumCheckStatus
+                Text("W Zdjęciach: album udostępniony → Osoby → Witryna publiczna → Udostępnij link.")
+                    .font(.caption)
+                    .foregroundStyle(Theme.inkSoft)
+            }
+
+            VStack(alignment: .leading, spacing: 10) {
+                Eyebrow("Kolejność zdjęć")
+                VStack(spacing: 0) {
+                    ForEach(AlbumOrder.allCases) { order in
+                        Button {
+                            album.order = order
+                        } label: {
+                            HStack {
+                                Text(order.title).foregroundStyle(Theme.ink)
+                                Spacer()
+                                if album.order == order {
+                                    Image(systemName: "checkmark").foregroundStyle(Theme.accent)
+                                }
+                            }
+                            .padding(.vertical, 12)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        if order != AlbumOrder.allCases.last { Divider() }
+                    }
+                }
+                .padding(.horizontal, 14)
+                .background(Theme.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Theme.hairline))
+                Text(album.order.explanation)
+                    .font(.footnote)
+                    .foregroundStyle(Theme.inkSoft)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Label(
+                "Po zapisaniu serwer pobierze miniatury zdjęć z albumu, a oryginał każdego zdjęcia tuż przed "
+                    + "pokazaniem go na ramce. Nowe zdjęcia z albumu dochodzą same co 30 minut. "
+                    + "Wygląd zdjęć ustawisz w zakładce Ramka → Prezentacja → Zdjęcia.",
+                systemImage: "icloud.and.arrow.down"
+            )
+            .font(.footnote)
+            .foregroundStyle(Theme.inkSoft)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    @ViewBuilder
+    private var albumCheckStatus: some View {
+        if checkingAlbum {
+            HStack(spacing: 8) {
+                ProgressView()
+                Text("Sprawdzanie albumu…")
+            }
+            .font(.footnote)
+            .foregroundStyle(Theme.inkSoft)
+        } else {
+            switch albumCheck {
+            case let .success(check):
+                Label(
+                    "\(check.name.isEmpty ? "Album" : "„\(check.name)”") · \(Names.photos(check.count))",
+                    systemImage: "checkmark.circle.fill"
+                )
+                .font(.footnote.weight(.medium))
+                .foregroundStyle(Theme.accent)
+            case .failure:
+                Label("Nie udało się otworzyć albumu. Sprawdź, czy link jest pełny, a witryna publiczna włączona.",
+                      systemImage: "exclamationmark.triangle")
+                    .font(.footnote)
+                    .foregroundStyle(Theme.bad)
+            case nil:
+                EmptyView()
+            }
+        }
+    }
+
     private var previewSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
@@ -289,6 +407,44 @@ struct PlaylistEditorView: View {
 
     // MARK: Actions
 
+    /// Opens the album the link points to: its name (proposed as the
+    /// playlist's) and number of photos.
+    private func checkAlbum() async {
+        let url = album.url.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard playlist.kind == .album, !url.isEmpty else {
+            albumCheck = nil
+            return
+        }
+        try? await Task.sleep(for: .milliseconds(500))
+        guard !Task.isCancelled else { return }
+        checkingAlbum = true
+        defer { checkingAlbum = false }
+        do {
+            let check = try await model.backend.checkAlbum(url: url)
+            guard !Task.isCancelled else { return }
+            albumCheck = .success(check)
+            if playlist.name.trimmingCharacters(in: .whitespaces).isEmpty, !check.name.isEmpty {
+                playlist.name = check.name
+            }
+        } catch {
+            if !Task.isCancelled { albumCheck = .failure(error) }
+        }
+    }
+
+    /// Reports the first sync of an album once it ends; runs on after the editor closes.
+    @MainActor
+    private static func followSync(_ id: String, name: String, model: AppModel) async {
+        do {
+            let job = try await watchJob(id, backend: model.backend) { _ in }
+            model.toast = job.error.isEmpty
+                ? "„\(name)”: \(Names.photos(job.done)) z albumu"
+                : "„\(name)”: nie udało się pobrać albumu"
+            await model.refreshPlaylists()
+        } catch {
+            model.show(error)
+        }
+    }
+
     private func refreshPreview() async {
         try? await Task.sleep(for: .milliseconds(250))
         guard !Task.isCancelled else { return }
@@ -342,9 +498,21 @@ struct PlaylistEditorView: View {
                 uploaded += 1
             }
             picked = []
-            _ = try await model.backend.savePlaylist(playlist)
+            if playlist.kind == .album {
+                album.url = album.url.trimmingCharacters(in: .whitespacesAndNewlines)
+                playlist.album = album
+            } else {
+                playlist.album = nil
+            }
+            let saved = try await model.backend.savePlaylist(playlist)
             await model.refreshPlaylists()
             model.toast = "Zapisano „\(playlist.name)”"
+            if saved.playlist.kind == .album, saved.playlist.albumSync == nil {
+                // A new album (or a new link): its first sync is running.
+                let jobID = try await model.backend.syncAlbum(playlistID: saved.playlist.id)
+                model.toast = "Zapisano „\(playlist.name)”, pobieram miniatury zdjęć"
+                Task { [model, name = playlist.name] in await Self.followSync(jobID, name: name, model: model) }
+            }
             if playlist.kind == .smart, fetchCount > 0, fetchBlocker == nil {
                 let jobID = try await model.backend.fillLibrary(rules: playlist.rules, count: fetchCount)
                 model.toast = "Zapisano „\(playlist.name)”, pobieram do \(fetchCount) dzieł w tle"

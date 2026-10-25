@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// Search public-domain collections and add works to the library.
+/// Search public-domain collections; a work found can be opened, shown or
+/// kept (saved on the server) without browsing the catalogue.
 struct MuseumSearchView: View {
     @Environment(AppModel.self) private var model
     @State private var museums: [Museum] = []
@@ -14,7 +15,7 @@ struct MuseumSearchView: View {
     @State private var page = 1
     @State private var failed: [String] = []
     @State private var loadingMore = false
-    /// Set while "Dodaj wszystkie" runs; nil inside until the server counts.
+    /// Set while "Zapisz wiele" runs; nil inside until the server counts.
     @State private var bulk: JobStatus?? = nil
 
     private let suggestions = [
@@ -77,7 +78,6 @@ struct MuseumSearchView: View {
                     }
                 }
                 .disabled(model.settings == nil)
-                LibraryPacksSection()
             } else {
                 HStack {
                     Text("\(total) wyników")
@@ -93,17 +93,10 @@ struct MuseumSearchView: View {
                 MasonryGrid(items: results.map(\.item.summary)) { summary in
                     let remote = results.first { $0.id == summary.id }
                     VStack(alignment: .leading, spacing: 8) {
-                        ArtImage(
-                            ref: URL(string: remote?.item.thumbUrl ?? "").map(ImageRef.url) ?? .thumb(summary.id),
-                            placeholder: Theme.mat,
-                            maxPixel: 700
-                        )
-                        .aspectRatio(max(0.45, min(summary.aspectRatio, 2.2)), contentMode: .fit)
-                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                        Text(summary.title)
-                            .font(.serif(15, weight: .medium))
-                            .lineLimit(2)
-                        Text(summary.artist).font(.caption).foregroundStyle(Theme.inkSoft).lineLimit(1)
+                        NavigationLink(value: summary.id) {
+                            ArtCard(item: summary, ref: remote?.thumb)
+                        }
+                        .buttonStyle(.plain)
                         addButton(remote)
                     }
                 }
@@ -167,7 +160,7 @@ struct MuseumSearchView: View {
                     }
                 }
             } label: {
-                Label("Dodaj wiele", systemImage: "plus.square.on.square")
+                Label("Zapisz wiele", systemImage: "plus.square.on.square")
                     .font(.caption.weight(.semibold))
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
@@ -180,7 +173,7 @@ struct MuseumSearchView: View {
     private func addButton(_ remote: RemoteItem?) -> some View {
         if let remote {
             if remote.inLibrary {
-                Label("W bibliotece", systemImage: "checkmark")
+                Label("Zapisane", systemImage: "checkmark")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Theme.good)
             } else {
@@ -193,7 +186,7 @@ struct MuseumSearchView: View {
                         } else {
                             Image(systemName: "plus")
                         }
-                        Text("Dodaj")
+                        Text("Zapisz")
                     }
                     .font(.caption.weight(.semibold))
                     .padding(.horizontal, 12)
@@ -245,7 +238,7 @@ struct MuseumSearchView: View {
             for index in results.indices where added.contains(results[index].id) {
                 results[index].inLibrary = true
             }
-            model.toast = "W bibliotece: \(job.done) dzieł" + (job.failed > 0 ? ", nie udało się \(job.failed)" : "")
+            model.toast = "Zapisane: \(job.done) dzieł" + (job.failed > 0 ? ", nie udało się \(job.failed)" : "")
             await model.refreshFacets()
         } catch {
             model.show(error)
@@ -260,7 +253,7 @@ struct MuseumSearchView: View {
             if let index = results.firstIndex(where: { $0.id == remote.id }) {
                 results[index].inLibrary = true
             }
-            model.toast = "Dodano do biblioteki"
+            model.toast = "Zapisano"
             await model.refreshFacets()
         } catch {
             model.show(error)

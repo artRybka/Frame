@@ -37,13 +37,15 @@ struct SectionHeader: View {
     }
 }
 
-/// A picture in a real-looking frame: thin dark moulding, white passe-partout.
-struct FramedArtwork: View {
+/// A picture in a real-looking frame: white moulding, as the real frame.
+/// `inner` is laid over the picture (e.g. the crop windows on "Teraz").
+struct FramedArtwork<Inner: View>: View {
     let ref: ImageRef?
     var aspectRatio: CGFloat = 16.0 / 9.0
     var placeholder: Color = Theme.mat
     var mat: CGFloat = 0
-    var moulding: CGFloat = 7
+    var moulding: CGFloat = 8
+    @ViewBuilder var inner: Inner
 
     var body: some View {
         Group {
@@ -54,24 +56,38 @@ struct FramedArtwork: View {
             }
         }
             .aspectRatio(aspectRatio, contentMode: .fit)
+            .overlay { inner }
             .padding(mat)
             .background(Theme.matWhite)
             .overlay(
                 Rectangle()
                     .strokeBorder(Color.black.opacity(0.18), lineWidth: 1)
                     .blur(radius: 1.5)
+                    .allowsHitTesting(false)
             )
             .padding(moulding)
             .background(
                 LinearGradient(
-                    colors: [Theme.frameWood.opacity(0.92), Theme.frameWood],
+                    colors: [Theme.moulding, Theme.moulding.opacity(0.94)],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
             )
             .clipShape(RoundedRectangle(cornerRadius: 2))
-            .shadow(color: .black.opacity(0.28), radius: 18, x: 0, y: 14)
+            .overlay(RoundedRectangle(cornerRadius: 2).strokeBorder(Theme.mouldingEdge, lineWidth: 0.5))
+            .shadow(color: .black.opacity(0.22), radius: 18, x: 0, y: 14)
             .shadow(color: .black.opacity(0.12), radius: 2, x: 0, y: 1)
+    }
+}
+
+extension FramedArtwork where Inner == EmptyView {
+    init(
+        ref: ImageRef?, aspectRatio: CGFloat = 16.0 / 9.0, placeholder: Color = Theme.mat,
+        mat: CGFloat = 0, moulding: CGFloat = 8
+    ) {
+        self.init(ref: ref, aspectRatio: aspectRatio, placeholder: placeholder, mat: mat, moulding: moulding) {
+            EmptyView()
+        }
     }
 }
 
@@ -79,10 +95,12 @@ struct FramedArtwork: View {
 struct ArtCard: View {
     let item: ItemSummary
     var showsCaption = true
+    /// Where the picture comes from; the server's thumbnail by default.
+    var ref: ImageRef?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            ArtImage(ref: .thumb(item.id), placeholder: item.placeholderColor, maxPixel: 700)
+            ArtImage(ref: ref ?? .thumb(item.id), placeholder: item.placeholderColor, maxPixel: 700)
                 .aspectRatio(max(0.45, min(item.aspectRatio, 2.2)), contentMode: .fit)
                 .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                 .overlay(alignment: .topTrailing) {

@@ -27,6 +27,9 @@ COLOR_FAMILIES = (
     "white",
 )
 MOODS = ("warm", "cool", "vivid", "muted", "monochrome", "dark", "light")
+#: OKLab chroma of the strongest tint that still reads as aged paper or a
+#: sepia print rather than as colour.
+PAPER_TINT = 0.07
 
 
 def _sample(img: Image.Image, size: int = 64) -> np.ndarray:
@@ -140,3 +143,23 @@ def analyse(
     brightness = 1.0 - min(1.0, abs(mean_light - 0.65) / 0.45)
     score = 0.5 * coverage + 0.3 * contrast + 0.2 * brightness
     return swatches, tags, round(score, 3)
+
+
+def tint_spread(img: Image.Image) -> float:
+    """How far the colours stray from a faint single tint (OKLab chroma, 95th
+    percentile): ~0 for drawings, etchings, black-and-white and sepia photos,
+    however yellowed the paper; above ~0.014 once there is any real colour.
+
+    Toned monochrome lies on one line through the grey axis in the a/b
+    plane. Distance from that line, colour on the far side of grey (blue
+    sky against orange sand) and a tint stronger than old paper's (a
+    cyanotype, red chalk) all count."""
+    ab = linear_to_oklab(_sample(img, 128))[:, 1:]
+    _, vectors = np.linalg.eigh(ab.T @ ab)
+    axis = vectors[:, -1]
+    along = ab @ axis
+    if along.mean() < 0:
+        along = -along
+    across = np.abs(ab @ np.array([-axis[1], axis[0]]))
+    beyond = np.maximum(np.maximum(-along, along - PAPER_TINT), 0.0)
+    return round(float(np.percentile(np.maximum(across, beyond), 95)), 4)

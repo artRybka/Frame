@@ -154,8 +154,7 @@ private struct GridOption: View {
                 }
                 .aspectRatio(portrait ? 9.0 / 16.0 : 16.0 / 9.0, contentMode: .fit)
                 .frame(height: portrait ? 64 : 44)
-                .padding(3)
-                .background(Theme.frameWood)
+                .whiteFrame(3, corner: 1)
                 Text(title)
                     .font(.caption2.weight(.medium))
                     .lineLimit(1)

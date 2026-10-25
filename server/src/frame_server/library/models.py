@@ -26,6 +26,11 @@ class PhotoInfo(BaseModel):
     longitude: float | None = None
     contributor: str | None = None
     caption: str | None = None
+    #: iCloud: when the photo was added to the shared album.
+    shared_at: str | None = None
+    #: iCloud: checksum of the full-size picture, to ask for a fresh link
+    #: (Apple's links expire) when the original is needed.
+    asset: str | None = None
 
 
 class Framing(BaseModel):
@@ -66,8 +71,13 @@ class Item(BaseModel):
     colors: list[ColorSwatch] = Field(default_factory=list)
     color_tags: list[str] = Field(default_factory=list)
     suitability: float | None = None
+    # colors.tint_spread: ~0 when the picture has no colour of its own.
+    tint_spread: float | None = None
     favorite: bool = False
     excluded: bool = False
+    #: Added by the server for a rotation (Suggestions, a smart playlist), not
+    #: kept by the owner; unshown ones are cleaned up after a while.
+    pooled: bool = False
     added_at: str = ""
     last_shown_at: str | None = None
     show_count: int = 0
@@ -94,6 +104,7 @@ class ItemSummary(BaseModel):
     height: int | None
     favorite: bool
     suitability: float | None
+    pooled: bool = False
 
     @classmethod
     def of(cls, item: Item) -> ItemSummary:
@@ -114,12 +125,43 @@ class PlaylistRules(BaseModel):
     year_from: int | None = None
     year_to: int | None = None
     favorites_only: bool = False
+    #: Only works the owner kept (not those the server added to the catalogue).
+    kept_only: bool = False
     min_suitability: float | None = None
+    #: Works the owner removed from this smart playlist although they match.
+    exclude_ids: list[str] = Field(default_factory=list)
 
 
 class PlaylistKind(StrEnum):
     SMART = "smart"
     MANUAL = "manual"
+    ALBUM = "album"  # mirrors a shared iCloud album
+
+
+class AlbumOrder(StrEnum):
+    """In which order an album's photos are shown."""
+
+    RANDOM = "random"
+    NEWEST = "newest"  # taken most recently first
+    OLDEST = "oldest"  # taken longest ago first
+    ADDED = "added"  # added to the album most recently first
+
+
+class AlbumSource(BaseModel):
+    """The shared iCloud album an album playlist mirrors."""
+
+    url: str
+    order: AlbumOrder = AlbumOrder.RANDOM
+
+
+class AlbumSync(BaseModel):
+    """The last synchronisation of an album playlist."""
+
+    at: str
+    name: str = ""  # the album's own name in Photos
+    count: int = 0
+    added: int = 0
+    error: str = ""
 
 
 class Playlist(BaseModel):
@@ -128,7 +170,8 @@ class Playlist(BaseModel):
     description: str = ""
     kind: PlaylistKind = PlaylistKind.SMART
     rules: PlaylistRules = Field(default_factory=PlaylistRules)
-    item_ids: list[str] = Field(default_factory=list)  # manual playlists
+    item_ids: list[str] = Field(default_factory=list)  # manual and album playlists
+    album: AlbumSource | None = None  # album playlists
     created_at: str = ""
     updated_at: str = ""
 
@@ -141,6 +184,8 @@ class PlaylistSummary(BaseModel):
     rules: PlaylistRules
     item_count: int
     cover_item_ids: list[str]
+    album: AlbumSource | None = None
+    album_sync: AlbumSync | None = None
 
 
 class FacetValue(BaseModel):

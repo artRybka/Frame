@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import contextlib
+import os
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 
 import httpx
@@ -14,6 +16,8 @@ from .models import Item
 
 THUMB_MAX = 640
 IMAGE_MAX = 2560
+#: Thumbnails of works that are not in the library (browsed, previewed).
+THUMB_SPARE = 500
 
 
 def _save_jpeg(img: Image.Image, path: Path, max_side: int, quality: int) -> None:
@@ -31,6 +35,8 @@ class ImageCache:
         self.thumbs.mkdir(parents=True, exist_ok=True)
         self.images.mkdir(parents=True, exist_ok=True)
         self.http = http
+        #: Sources whose originals need more than a plain download (by source).
+        self.fetchers: dict[str, Callable[[Item], bytes]] = {}
         self._locks: dict[str, threading.Lock] = {}
         self._guard = threading.Lock()
 
@@ -61,13 +67,24 @@ class ImageCache:
                 _save_jpeg(img, path, THUMB_MAX, 85)
         return path
 
+    def has_image(self, item: Item) -> bool:
+        return self.image_path(item).is_file()
+
     def ensure_image(self, item: Item) -> Path:
         path = self.image_path(item)
         if path.is_file():
+            with contextlib.suppress(OSError):
+                os.utime(path)  # recently used: pruned last
             return path
         with self._lock(f"i:{item.id}"):
             if not path.is_file():
-                _save_jpeg(self._download(item.image_url or item.thumb_url), path, IMAGE_MAX, 92)
+                fetch = self.fetchers.get(item.source)
+                img = (
+                    load_image(fetch(item))
+                    if fetch is not None
+                    else self._download(item.image_url or item.thumb_url)
+                )
+                _save_jpeg(img, path, IMAGE_MAX, 92)
         return path
 
     def store(self, item: Item, data: bytes) -> tuple[int, int]:
@@ -77,6 +94,38 @@ class ImageCache:
         self.thumb_path(item).unlink(missing_ok=True)
         self.ensure_thumb(item)
         return img.size
+
+    def prune(self, limit_bytes: int, keep: Iterable[Item]) -> int:
+        """Delete the least recently used originals until all of them fit in
+        ``limit_bytes``; returns how many went. Originals of ``keep`` stay:
+        pictures about to be shown and those that cannot be downloaded again."""
+        sizes = {p: p.stat().st_size for p in self.images.glob("*.jpg")}
+        total = sum(sizes.values())
+        kept = {self.image_path(i) for i in keep}
+        removed = 0
+        for path in sorted(sizes.keys() - kept, key=lambda p: p.stat().st_mtime):
+            if total <= limit_bytes:
+                break
+            path.unlink(missing_ok=True)
+            total -= sizes[path]
+            removed += 1
+        return removed
+
+    def thumbs_size(self) -> int:
+        return sum(p.stat().st_size for p in self.thumbs.glob("*.jpg"))
+
+    def prune_thumbs(self, keep: Iterable[Item], spare: int = THUMB_SPARE) -> int:
+        """Delete all but the ``spare`` newest thumbnails of works outside
+        ``keep`` (works browsed but never kept); returns how many went."""
+        kept = {self.thumb_path(i) for i in keep}
+        others = sorted(
+            (p for p in self.thumbs.glob("*.jpg") if p not in kept),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        for path in others[spare:]:
+            path.unlink(missing_ok=True)
+        return max(len(others) - spare, 0)
 
     def remove(self, item: Item) -> None:
         self.thumb_path(item).unlink(missing_ok=True)

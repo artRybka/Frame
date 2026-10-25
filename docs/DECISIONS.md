@@ -71,6 +71,8 @@ Aplikacja: TestFlight dla rodziny, nazwa „Frame”, interfejs po polsku.
 
 ## D9. Tryb ramki: album iCloud albo obrazy; zdjęcie z rolki z czasem wyświetlania — 2026-10-23
 
+*Tryb zastąpiony przez D12: album iCloud jest teraz playlistą.*
+
 **Decyzja.** Źródeł nie mieszamy: w aplikacji wybiera się album iCloud albo
 obrazy (kolekcje). Pojedyncze zdjęcie z rolki aparatu wysyła się z wyborem,
 jak długo ma zostać (do następnej zmiany / X godzin lub dni / na stałe).
@@ -88,3 +90,15 @@ kto dodał, podpis.
 ## D11. Licencja MIT — 2026-10-23
 
 **Decyzja.** Repozytorium jest publiczne, kod udostępniamy na licencji MIT (`LICENSE`).
+
+## D12. Albumy iCloud jako playlisty — 2026-10-25
+
+**Kontekst.** Album iCloud był trybem ramki w ustawieniach (jeden link).
+**Decyzja.** Album to rodzaj playlisty: przy tworzeniu podaje się link i
+kolejność (losowo, najnowsze, najstarsze, ostatnio dodane); albumów może
+być wiele. Harmonogram wybiera tylko playlistę. Synchronizacja pobiera
+miniatury, a oryginały przez świeży link przed pokazaniem (pamięć podręczna
+z limitem). Prezentacja zostaje osobno dla sztuki (playlisty dzieł,
+Propozycje) i zdjęć (albumy, zdjęcia z rolki).
+**Konsekwencje.** Starsze ustawienia (`mode`, `album_url`) zamieniają się
+same w playlistę-album, odtwarzaną, jeśli był włączony tryb albumu.

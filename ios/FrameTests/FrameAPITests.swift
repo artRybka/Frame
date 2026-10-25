@@ -24,10 +24,17 @@ final class FrameAPITests: XCTestCase {
           "last_change_at": "2026-10-24T05:00:00+00:00",
           "next_change_at": "2026-10-25T05:00:00+00:00",
           "busy": false,
-          "last_error": null
+          "last_error": null,
+          "progress": {"stage": "downloading", "phase": "loading", "active": true,
+                       "title": "Under the Wave off Kanagawa", "fraction": 0.31, "seconds_left": 47,
+                       "started_at": "2026-10-24T05:00:00+00:00", "finished_at": null, "message": null}
         }
         """
         let view = try LiveBackend.decoder().decode(PlayerView.self, from: Data(json.utf8))
+        XCTAssertEqual(view.progress?.stage, "downloading")
+        XCTAssertEqual(view.progress?.phaseIndex, 1)
+        XCTAssertEqual(view.progress?.secondsLeft, 47)
+        XCTAssertEqual(view.progress?.timeLeftLabel, "ok. 47 s")
         XCTAssertEqual(view.playlist?.itemCount, 21)
         XCTAssertEqual(view.playlist?.rules.query, "woodblock")
         XCTAssertEqual(view.current?.previewUrl, "/api/previews/ABC.png")
@@ -36,14 +43,63 @@ final class FrameAPITests: XCTestCase {
         XCTAssertNotNil(When.schedule(view.nextChangeAt))
     }
 
+    func testProgressPhasesAndLabels() {
+        var progress = DisplayProgress(stage: "refreshing", phase: "displaying", active: true,
+                                       title: "", fraction: 0.8, secondsLeft: 150)
+        XCTAssertEqual(progress.phaseIndex, 2)
+        XCTAssertEqual(progress.timeLeftLabel, "ok. 3 min")
+        progress = DisplayProgress(stage: "done", active: false, title: "", fraction: 1)
+        XCTAssertEqual(progress.phaseIndex, DisplayProgress.phases.count)
+        XCTAssertNil(progress.timeLeftLabel)
+        XCTAssertEqual(progress.stageLabel, "Obraz jest na ramce")
+    }
+
     func testEncodesSettingsInSnakeCase() throws {
         var settings = FrameSettings.defaults
         settings.playlistId = 4
         let data = try LiveBackend.encoder().encode(settings)
         let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
         XCTAssertEqual(object["playlist_id"] as? Int, 4)
-        XCTAssertEqual(object["interval_minutes_battery"] as? Int, 1440)
+        XCTAssertEqual(object["change_times"] as? [String], ["07:00"])
+        XCTAssertEqual(object["change_every_days"] as? Int, 1)
         XCTAssertNotNil(object["quiet_start"])
+        XCTAssertNil(object["interval_minutes"])
+    }
+
+    func testQuietHoursOffIsSentAsNull() throws {
+        var settings = FrameSettings.defaults
+        settings.quietStart = nil
+        let text = String(decoding: try LiveBackend.encoder().encode(settings), as: UTF8.self)
+        XCTAssertTrue(text.contains("\"quiet_start\":null"))
+    }
+
+    func testQuietHoursEndAtTheNextChange() {
+        var settings = FrameSettings.defaults
+        settings.changeTimes = ["19:00", "07:30"]
+        XCTAssertEqual(settings.quietEnd, "07:30")
+        settings.quietStart = "05:00"
+        XCTAssertEqual(settings.quietEnd, "07:30")
+        settings.quietStart = "07:30"
+        XCTAssertEqual(settings.quietEnd, "19:00")
+        settings.changeTimes = ["07:30"]
+        XCTAssertNil(settings.quietEnd)
+        XCTAssertEqual(ScheduleSection.nextFreeTime(after: ["07:00"]), "10:00")
+        XCTAssertEqual(ScheduleSection.nextFreeTime(after: ["07:00", "22:00"]), "01:00")
+    }
+
+    func testDecodesSettingsFromAnOlderServer() throws {
+        let json = """
+        {"mode": "art", "playlist_id": null, "interval_minutes": 1440,
+         "interval_minutes_battery": 1440, "quiet_start": "22:00", "quiet_end": "06:30",
+         "shuffle": true, "avoid_repeat_days": 14, "orientation": "portrait", "rotation": 90,
+         "art": {"preset": "painting", "fit": "auto", "margin": 0.05, "label": false},
+         "photo": {"preset": "photo", "fit": "fill", "margin": 0, "label": false},
+         "album_url": "", "timezone": "Europe/Warsaw", "status_poll_minutes": 15}
+        """
+        let settings = try LiveBackend.decoder().decode(FrameSettings.self, from: Data(json.utf8))
+        XCTAssertEqual(settings.changeTimes, ["06:30"])
+        XCTAssertEqual(settings.changeEveryDays, 1)
+        XCTAssertEqual(settings.quietStart, "22:00")
     }
 
     func testPhotoMultiSettingsRoundTrip() throws {
@@ -109,6 +165,28 @@ final class FrameAPITests: XCTestCase {
         XCTAssertEqual(Names.works(22), "22 dzieła")
     }
 
+    func testDemoSuggestionsAndThemes() async throws {
+        let demo = DemoBackend()
+        let rows = try await demo.suggestions()
+        XCTAssertEqual(rows.map(\.key), ["for-you", "theme", "best"])
+        XCTAssertTrue(rows.allSatisfy { !$0.items.isEmpty })
+        let themes = try await demo.themes()
+        let theme = try XCTUnwrap(themes.first { $0.key == rows[1].theme })
+        let page = try await demo.themePage(key: theme.key, page: 1)
+        XCTAssertFalse(page.items.isEmpty)
+        XCTAssertFalse(page.more)
+        XCTAssertEqual(page.items.first?.thumb, .thumb(page.items[0].id))  // demo works are on the server
+    }
+
+    func testDecodesThemePage() throws {
+        let json = #"{"items": [], "more": true}"#
+        let page = try LiveBackend.decoder().decode(ArtThemePage.self, from: Data(json.utf8))
+        XCTAssertTrue(page.more)
+        let row = #"{"key": "theme", "title": "Motyw dnia", "subtitle": "", "theme": "ukiyo-e", "items": []}"#
+        let decoded = try LiveBackend.decoder().decode(SuggestionRow.self, from: Data(row.utf8))
+        XCTAssertEqual(decoded.theme, "ukiyo-e")
+    }
+
     func testDemoBackendFiltersAndPlaylists() async throws {
         let demo = DemoBackend()
         let all = try await demo.items(LibraryQuery())
@@ -131,6 +209,35 @@ final class FrameAPITests: XCTestCase {
         try await demo.previous()
         let back = try await demo.player()
         XCTAssertEqual(back.current?.item?.id, before.current?.item?.id)
+    }
+
+    func testRemovingSingleWorksFromPlaylists() async throws {
+        let demo = DemoBackend()
+        let playlists = try await demo.playlists()
+        let smart = try XCTUnwrap(playlists.first { $0.kind == .smart && $0.itemCount > 1 })
+        let detail = try await demo.playlist(id: smart.id)
+        let victim = try XCTUnwrap(detail.items.first)
+        let trimmed = try await demo.removeFromPlaylist(id: smart.id, itemID: victim.id)
+        XCTAssertEqual(trimmed.playlist.itemCount, smart.itemCount - 1)
+        XCTAssertFalse(trimmed.items.contains { $0.id == victim.id })
+        XCTAssertEqual(trimmed.playlist.rules.excludeIds, [victim.id])
+
+        let manual = try await demo.savePlaylist(
+            Playlist(name: "Wybór", kind: .manual, itemIds: trimmed.items.prefix(2).map(\.id))
+        )
+        let left = try await demo.removeFromPlaylist(id: manual.playlist.id, itemID: manual.itemIds[0])
+        XCTAssertEqual(left.itemIds, [manual.itemIds[1]])
+    }
+
+    func testRulesFromOlderServersHaveNoExceptions() throws {
+        let json = """
+            {"query": "", "artists": ["Ala"], "styles": [], "subjects": [], "colors": [], "kinds": [],
+             "sources": [], "year_from": null, "year_to": null, "favorites_only": false, "min_suitability": null}
+            """
+        let rules = try LiveBackend.decoder().decode(PlaylistRules.self, from: Data(json.utf8))
+        XCTAssertEqual(rules.artists, ["Ala"])
+        XCTAssertEqual(rules.excludeIds, [])
+        XCTAssertTrue(PlaylistRules(excludeIds: ["x"]).isEmpty)
     }
 
     func testDemoBackendUsesBundledImages() throws {
@@ -174,6 +281,22 @@ final class FrameAPITests: XCTestCase {
         let after = try await demo.player().current?.previewUrl
         XCTAssertNotEqual(current?.previewUrl, after)
 
+        // "Kadr automatyczny" is offered without forgetting the saved crop.
+        let auto = try await demo.framing(itemID: id, orientation: "landscape", automatic: true)
+        XCTAssertFalse(auto.windows.contains(where: \.custom))
+        XCTAssertEqual(auto.windows.map(\.crop), view.windows.map(\.crop))
+        let still = try await demo.framing(itemID: id, orientation: "landscape")
+        XCTAssertEqual(still.windows[0].crop.zoom, 3)
+
+        // The windows' places, to crop right on the preview: two apart, on the canvas.
+        let rects = try saved.windows.map { try XCTUnwrap($0.frame) }
+        let canvas = CGRect(x: 0, y: 0, width: 1, height: 1).insetBy(dx: -0.0001, dy: -0.0001)
+        XCTAssertTrue(rects.allSatisfy { canvas.contains($0) && $0.width > 0.05 && $0.height > 0.05 })
+        XCTAssertFalse(rects[0].intersects(rects[1].insetBy(dx: 0.001, dy: 0.001)))
+        for (window, rect) in zip(saved.windows, rects) {
+            XCTAssertEqual(rect.width * 1280 / (rect.height * 720), window.aspect, accuracy: 0.01)
+        }
+
         let reset = try await demo.resetFraming(itemID: id, orientation: "landscape")
         XCTAssertFalse(reset.windows.contains(where: \.custom))
 
@@ -186,6 +309,34 @@ final class FrameAPITests: XCTestCase {
         XCTAssertEqual(text.windows.count, 1)
         let one = try await demo.saveFraming(itemID: id, orientation: "landscape", crops: [Crop(x: 0.4, y: 0.6, zoom: 2)])
         XCTAssertEqual(one.windows.map(\.custom), [true])
+    }
+
+    func testFramingDraft() {
+        let window = FramingWindow(role: "picture", aspect: 0.667, crop: Crop(zoom: 1.04), custom: true,
+                                   rect: [0.3, 0.05, 0.4, 0.8], area: [0.05, 0.05, 0.9, 0.8])
+        let view = FramingView(orientation: "landscape", fit: "fit", width: 800, height: 1200, windows: [window])
+        var draft = FramingDraft(key: "a", view: view, saved: [window.crop], crops: [window.crop])
+        XCTAssertNil(draft.change)
+        XCTAssertNil(draft.trial)
+
+        draft.crops[0].x = 0.4  // moved: saved on sending, same window
+        XCTAssertEqual(draft.change, .save(orientation: "landscape", crops: draft.crops))
+        XCTAssertFalse(draft.reshaped)
+
+        draft.crops[0].aspect = 1  // a square window: the preview tries it first
+        XCTAssertTrue(draft.reshaped)
+        XCTAssertEqual(draft.trial, FramingCrops(fit: Crop(aspect: 1)))
+        XCTAssertEqual(draft.aspect(0), 1)
+
+        // Back to automatic: sending forgets the saved crop.
+        draft.automatic = [Crop()]
+        draft.crops = [Crop()]
+        XCTAssertEqual(draft.change, .reset(orientation: "landscape"))
+    }
+
+    func testChangesPlural() {
+        XCTAssertEqual([1, 2, 4, 5, 12, 22, 25].map(Names.changes),
+                       ["zmianę", "zmiany", "zmiany", "zmian", "zmian", "zmiany", "zmian"])
     }
 
     func testDemoFramingMatchesServerLayout() {
@@ -273,6 +424,47 @@ final class FrameAPITests: XCTestCase {
         XCTAssertNotNil(demo.request(for: .thumb(item.id)))
         let saved = try await demo.savePlaylist(Playlist(name: "Wakacje", kind: .manual, itemIds: [item.id]))
         XCTAssertEqual(saved.itemIds, [item.id])
+    }
+
+    func testDecodesAlbumPlaylists() throws {
+        let json = """
+        {"id": 7, "name": "Rodzina", "description": "", "kind": "album",
+         "rules": {"query": "", "artists": [], "styles": [], "subjects": [], "colors": [], "kinds": [],
+                   "sources": [], "year_from": null, "year_to": null, "favorites_only": false,
+                   "min_suitability": null, "exclude_ids": []},
+         "item_count": 12, "cover_item_ids": ["icloud:G1"],
+         "album": {"url": "https://www.icloud.com/sharedalbum/#B0aGWZuqDGKPOC", "order": "newest"},
+         "album_sync": {"at": "2026-10-25T09:00:00+00:00", "name": "Rodzina", "count": 12, "added": 2,
+                        "error": ""}}
+        """
+        let summary = try LiveBackend.decoder().decode(PlaylistSummary.self, from: Data(json.utf8))
+        XCTAssertEqual(summary.kind, .album)
+        XCTAssertEqual(summary.album?.order, .newest)
+        XCTAssertEqual(summary.albumSync?.added, 2)
+        XCTAssertEqual(summary.countText, "12 zdjęć")
+
+        let playlist = Playlist(name: "Góry", kind: .album, album: AlbumSource(url: "https://x", order: .added))
+        let text = String(decoding: try LiveBackend.encoder().encode(playlist), as: UTF8.self)
+        XCTAssertTrue(text.contains("\"order\":\"added\""))
+        XCTAssertTrue(text.contains("\"kind\":\"album\""))
+    }
+
+    func testDemoAlbumPlaylists() async throws {
+        let demo = DemoBackend()
+        let check = try await demo.checkAlbum(url: "https://www.icloud.com/sharedalbum/#B0aGWZuqDGKPOC")
+        XCTAssertEqual(check.name, "Rodzina")
+        do {
+            _ = try await demo.checkAlbum(url: "https://example.com")
+            XCTFail("a link that is not an album")
+        } catch {}
+        let saved = try await demo.savePlaylist(
+            Playlist(name: "Rodzina", kind: .album, album: AlbumSource(url: "https://www.icloud.com/sharedalbum/#B0"))
+        )
+        XCTAssertEqual(saved.playlist.album?.order, .random)
+        XCTAssertNotNil(saved.playlist.albumSync)
+        let job = try await demo.syncAlbum(playlistID: saved.playlist.id)
+        let status = try await demo.job(id: job)
+        XCTAssertTrue(status.finished)
     }
 
     func testDescriptionKeepsWholeSentences() {
