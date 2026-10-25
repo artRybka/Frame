@@ -38,9 +38,8 @@ PREFETCH = 3
 RETRY_AFTER = timedelta(minutes=15)
 #: Works picked by the server for the default rotation (ids, oldest first).
 SUGGESTIONS_KEY = "suggestions"
-#: Set once the old library has been kept as a manual playlist.
-MIGRATED_KEY = "library_migrated"
-MIGRATED_PLAYLIST = "Dotychczasowa biblioteka"
+#: Set once the museum works imported before the catalogue are gone.
+RESET_KEY = "library_reset"
 #: A rotation with fewer pictures not shown lately asks museums for more,
 #: up to ``POOL_SIZE``; Suggestions remember at most ``POOL_MAX`` works.
 POOL_LOW = 8
@@ -646,24 +645,34 @@ class Player:
             ),
         )
 
-    def migrate_library(self) -> Playlist | None:
-        """Once: keep the works of the old library (the rotation before
-        Suggestions) as a manual playlist, so none of them is lost."""
-        if self.library.get_state(MIGRATED_KEY, False):
-            return None
-        self.library.set_state(MIGRATED_KEY, True)
-        rules = PlaylistRules(kinds=[ItemKind.ARTWORK, ItemKind.OWN])
-        kept = [i.id for i in self.library.query(rules, sort="recent")[1] if not i.pooled]
-        if not kept:
-            return None
-        return self.library.save_playlist(
-            Playlist(
-                name=MIGRATED_PLAYLIST,
-                description="Dzieła z biblioteki sprzed Propozycji.",
-                kind=PlaylistKind.MANUAL,
-                item_ids=kept,
-            )
-        )
+    def reset_library(self) -> int:
+        """Once, on the owner's wish for a clean start: delete the museum works
+        imported before the catalogue, with their pictures, and forget them in
+        playlists and the rotation. Own works and photos stay. Returns how
+        many works went."""
+        if self.library.get_state(RESET_KEY, False):
+            return 0
+        self.library.set_state(RESET_KEY, True)
+        old = self.library.query(PlaylistRules(kinds=[ItemKind.ARTWORK]), include_excluded=True)[1]
+        gone = {i.id for i in old if not i.pooled}
+        for item in old:
+            if item.id in gone:
+                self.library.delete(item.id)
+                self.service.images.remove(item)
+        for playlist in self.library.playlists():
+            if set(playlist.item_ids) & gone:
+                ids = [i for i in playlist.item_ids if i not in gone]
+                self.library.save_playlist(playlist.model_copy(update={"item_ids": ids}))
+        state = self.state
+        state.queue = [i for i in state.queue if i not in gone]
+        state.history = [i for i in state.history if i not in gone]
+        if state.current_item_id in gone:
+            state.current_item_id = None
+            state.current_group = []
+        self._save_state(state)
+        self.library.set_state(SUGGESTIONS_KEY, [])
+        log.info("clean start: %d museum works deleted", len(gone))
+        return len(gone)
 
     def trim_cache(self) -> int:
         """Delete the least recently used museum originals over the size

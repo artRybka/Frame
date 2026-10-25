@@ -13,7 +13,7 @@ from fastapi.testclient import TestClient
 
 from frame_server.library import Item, ItemKind, Playlist, PlaylistKind, PlaylistRules
 from frame_server.library.museums import MUSEUMS, Discovery, Museum
-from frame_server.player import MIGRATED_PLAYLIST, POOL_SIZE
+from frame_server.player import POOL_SIZE
 
 COLOURS = [(200, 30, 30), (30, 60, 180), (240, 200, 30), (30, 140, 60)]
 
@@ -172,13 +172,25 @@ def test_catalogue_stays_within_its_size(museums) -> None:
     assert player.grow_catalogue() is None  # disabled
 
 
-def test_old_library_is_kept_as_a_playlist(service) -> None:
+def test_clean_start_deletes_the_old_museum_works(service) -> None:
     own = service.importer.add_upload(jpeg_bytes((200, 40, 40)), kind=ItemKind.OWN)
-    service.library.upsert(Item(id="aic:9", source="aic", source_id="9", pooled=True))
-    playlist = service.player.migrate_library()
-    assert playlist is not None and playlist.name == MIGRATED_PLAYLIST
-    assert playlist.kind == PlaylistKind.MANUAL and playlist.item_ids == [own.id]
-    assert service.player.migrate_library() is None  # once
+    old = service.library.upsert(Item(id="aic:1", source="aic", source_id="1", favorite=True))
+    service.images.store(old, jpeg_bytes((40, 40, 200)))
+    picked = service.library.upsert(Item(id="aic:9", source="aic", source_id="9", pooled=True))
+    mine = service.library.save_playlist(
+        Playlist(name="Mix", kind=PlaylistKind.MANUAL, item_ids=[old.id, own.id])
+    )
+    state = service.player.state
+    state.current_item_id, state.queue = old.id, [old.id, own.id]
+    service.player._save_state(state)
+
+    assert service.player.reset_library() == 1
+    assert {i.id for i in service.library.query()[1]} == {own.id, picked.id}
+    assert not service.images.has_image(old)
+    assert service.library.playlist(mine.id).item_ids == [own.id]
+    state = service.player.state
+    assert state.current_item_id is None and state.queue == [own.id]
+    assert service.player.reset_library() == 0  # once
 
 
 def test_discover_endpoints(museums) -> None:

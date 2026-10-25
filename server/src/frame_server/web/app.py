@@ -77,7 +77,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 asyncio.create_task(sync_album_periodically(service)),
             ]
         seed_playlists(service.importer)
-        service.player.migrate_library()
+        service.player.reset_library()  # once: a clean start for the catalogue
         if settings.seed_library:
             service.player.top_up()  # Suggestions come from museums, as needed
         yield
