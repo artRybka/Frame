@@ -1,133 +1,147 @@
 import SwiftUI
 
-/// Search public-domain collections; a work found can be opened, shown or
-/// kept (saved on the server) without browsing the catalogue.
+/// Discover's search: words, artists, styles, subjects, periods and
+/// techniques as chips, over the catalogue (at once, with colours) and the
+/// museums (as they answer). With nothing asked yet it offers styles,
+/// subjects, periods and museums to browse by.
 struct MuseumSearchView: View {
     @Environment(AppModel.self) private var model
     @State private var museums: [Museum] = []
-    /// A museum's key, or "all" to search every one at once.
+    /// What is asked for, as playlist rules (a playlist can be made from it).
+    @State private var rules = PlaylistRules()
+    /// A museum's key, or "all".
     @State private var source = "all"
-    @State private var text = ""
+    @State private var catalogue: ItemPage?
     @State private var results: [RemoteItem] = []
     @State private var total = 0
-    @State private var searching = false
-    @State private var adding: Set<String> = []
-    @State private var page = 1
     @State private var failed: [String] = []
+    @State private var page = 1
+    @State private var searching = false
     @State private var loadingMore = false
-    /// Set while "Zapisz wiele" runs; nil inside until the server counts.
-    @State private var bulk: JobStatus?? = nil
+    @State private var adding: Set<String> = []
+    @State private var editing: Playlist?
 
-    private let suggestions = [
-        "Hokusai", "Hiroshige", "Monet", "Van Gogh", "Mucha", "Kwiaty", "Morze", "Plakat",
-    ]
+    private var tokens: Binding<[SearchToken]> {
+        Binding(
+            get: { rules.tokens(names: model.termNames) },
+            set: { rules.setTokens($0) }
+        )
+    }
+
+    private var asked: Bool { !rules.isEmpty || source != "all" }
+
+    /// Museum works the catalogue doesn't hold already.
+    private var fromMuseums: [RemoteItem] {
+        let known = Set(catalogue?.items.map(\.id) ?? [])
+        return results.filter { !known.contains($0.id) }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    Chip(title: "Wszystkie", systemImage: "square.grid.2x2", selected: source == "all") {
-                        source = "all"
-                    }
-                    ForEach(museums) { museum in
-                        Chip(title: museum.name, systemImage: "building.columns", selected: source == museum.key) {
-                            source = museum.key
-                        }
-                    }
-                }
-                .padding(.vertical, 2)
-            }
-            .scrollClipDisabled()
-
-            HStack(spacing: 10) {
-                Image(systemName: "magnifyingglass").foregroundStyle(Theme.inkSoft)
-                TextField(
-                    source == "all" ? "Szukaj we wszystkich muzeach" : "Szukaj w \(Names.source(source))",
-                    text: $text
-                )
-                    .submitLabel(.search)
-                    .onSubmit { Task { await search() } }
-                if searching { ProgressView() }
-            }
-            .padding(14)
-            .background(Theme.card, in: RoundedRectangle(cornerRadius: 12))
-            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.hairline))
-
-            if results.isEmpty && !searching {
-                VStack(alignment: .leading, spacing: 10) {
-                    Eyebrow("Podpowiedzi")
-                    FlowLayout(spacing: 8) {
-                        ForEach(suggestions, id: \.self) { word in
-                            Chip(title: word) {
-                                text = word
-                                Task { await search() }
-                            }
-                        }
-                    }
-                }
-                Toggle(isOn: privateUse) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Użytek prywatny")
-                        Text(
-                            privateUse.wrappedValue
-                                ? "Z Wikimedia Commons także dzieła na wolnych licencjach (np. CC BY-SA), z podanym autorem. Muzea nadal dają tylko domenę publiczną."
-                                : "Tylko dzieła w domenie publicznej (CC0). Opisy w oryginale, po angielsku."
-                        )
-                        .font(.footnote)
-                        .foregroundStyle(Theme.inkSoft)
-                    }
-                }
-                .disabled(model.settings == nil)
+            TermSearchField(tokens: tokens)
+            if asked {
+                filters
+                resultsView
             } else {
-                HStack {
-                    Text("\(total) wyników")
-                        .font(.serif(17, weight: .medium))
-                    Spacer()
-                    addAllMenu
-                }
-                if !failed.isEmpty {
-                    Text("Nie odpowiedziało: " + failed.map(Names.source).joined(separator: ", "))
-                        .font(.footnote)
-                        .foregroundStyle(Theme.inkSoft)
-                }
-                MasonryGrid(items: results.map(\.item.summary)) { summary in
-                    let remote = results.first { $0.id == summary.id }
-                    VStack(alignment: .leading, spacing: 8) {
-                        NavigationLink(value: summary.id) {
-                            ArtCard(item: summary, ref: remote?.thumb)
-                        }
-                        .buttonStyle(.plain)
-                        addButton(remote)
-                    }
-                }
-                if results.count < total {
-                    Button {
-                        Task { await loadMore() }
-                    } label: {
-                        HStack(spacing: 8) {
-                            if loadingMore { ProgressView().controlSize(.small) }
-                            Text("Więcej wyników")
-                        }
-                        .font(.subheadline.weight(.semibold))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(Theme.card, in: RoundedRectangle(cornerRadius: 12))
-                        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.hairline))
-                    }
-                    .disabled(loadingMore)
-                }
+                browse
             }
         }
         .task {
+            await model.loadVocabulary()
             if museums.isEmpty { museums = (try? await model.backend.museums()) ?? [] }
-            if LaunchRoute.screen == "museums", results.isEmpty {
-                text = "Hiroshige"
-                await search()
+            if LaunchRoute.screen == "museums", rules.isEmpty {
+                rules.artists = ["Utagawa Hiroshige"]
             }
         }
-        .onChange(of: source) { _, _ in
-            if !text.isEmpty { Task { await search() } }
+        .task(id: SearchKey(rules: rules, source: source)) { await search() }
+        .sheet(item: $editing) { playlist in
+            PlaylistEditorView(playlist: playlist)
         }
+    }
+
+    // MARK: Browsing
+
+    private func terms(_ kind: String) -> [TermInfo] { model.vocabulary.filter { $0.kind == kind } }
+
+    private func add(_ term: TermInfo) {
+        var all = rules.tokens(names: model.termNames)
+        all.append(SearchToken(kind: term.kind, key: term.key, name: term.name))
+        rules.setTokens(all)
+    }
+
+    private var browse: some View {
+        VStack(alignment: .leading, spacing: 22) {
+            browseSection("Style i kierunki", terms("style"))
+            browseSection("Tematy", terms("subject"))
+            VStack(alignment: .leading, spacing: 10) {
+                Eyebrow("Epoki")
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 0) {
+                        ForEach(terms("period")) { period in
+                            Button { add(period) } label: {
+                                VStack(spacing: 2) {
+                                    Text(period.name).font(.subheadline.weight(.semibold))
+                                    if let from = period.yearFrom ?? period.yearTo {
+                                        Text(period.yearFrom == nil ? "do \(from)" : "od \(from)")
+                                            .font(.caption2.monospacedDigit())
+                                            .foregroundStyle(Theme.inkSoft)
+                                    }
+                                }
+                                .foregroundStyle(Theme.ink)
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 9)
+                                .overlay(alignment: .leading) { Rectangle().fill(Theme.hairline).frame(width: 1) }
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .background(Theme.card, in: RoundedRectangle(cornerRadius: 10))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Theme.hairline))
+                }
+                .scrollClipDisabled()
+            }
+            browseSection("Techniki", terms("technique"))
+            if !museums.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    Eyebrow("Muzea")
+                    FlowLayout(spacing: 8) {
+                        ForEach(museums) { museum in
+                            Chip(title: museum.name, systemImage: "building.columns") { source = museum.key }
+                        }
+                    }
+                }
+            }
+            privateUseToggle
+        }
+    }
+
+    private func browseSection(_ title: String, _ terms: [TermInfo]) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Eyebrow(title)
+            FlowLayout(spacing: 8) {
+                ForEach(terms) { term in
+                    Chip(title: term.name) { add(term) }
+                }
+            }
+        }
+    }
+
+    private var privateUseToggle: some View {
+        Toggle(isOn: privateUse) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Użytek prywatny")
+                Text(
+                    privateUse.wrappedValue
+                        ? "Z Wikimedia Commons także dzieła na wolnych licencjach (np. CC BY-SA), z podanym autorem. Muzea nadal dają tylko domenę publiczną."
+                        : "Tylko dzieła w domenie publicznej (CC0). Opisy w oryginale, po angielsku."
+                )
+                .font(.footnote)
+                .foregroundStyle(Theme.inkSoft)
+            }
+        }
+        .tint(Theme.accent)
+        .disabled(model.settings == nil)
     }
 
     /// Saved with the frame settings, so imports on the server follow it.
@@ -142,31 +156,129 @@ struct MuseumSearchView: View {
         )
     }
 
-    /// Adds many results at once, in the background on the server.
-    @ViewBuilder
-    private var addAllMenu: some View {
-        if let job = bulk {
-            HStack(spacing: 6) {
-                ProgressView().controlSize(.mini)
-                Text(jobProgress(job))
-            }
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(Theme.accent)
-        } else {
-            Menu {
-                ForEach(Set([24, 100, 250].filter { $0 < total } + [min(total, 500)]).sorted(), id: \.self) { limit in
-                    Button(limit == total ? "Wszystkie (\(limit))" : "Pierwsze \(limit)") {
-                        Task { await addAll(limit: limit) }
+    // MARK: Filters and results
+
+    private var filters: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(terms("technique")) { technique in
+                        let on = rules.terms.contains(technique.key)
+                        Chip(title: technique.name, selected: on) {
+                            if on { rules.terms.removeAll { $0 == technique.key } } else { rules.terms.append(technique.key) }
+                        }
+                    }
+                    Menu {
+                        Picker("Muzeum", selection: $source) {
+                            Text("Wszystkie muzea").tag("all")
+                            ForEach(museums) { Text($0.name).tag($0.key) }
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "building.columns").font(.caption.weight(.semibold))
+                            Text(source == "all" ? "Muzea" : Names.source(source)).font(.subheadline.weight(.medium))
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
+                        .foregroundStyle(source == "all" ? Theme.ink : Theme.paper)
+                        .background(source == "all" ? Theme.card : Theme.ink, in: Capsule())
+                        .overlay(Capsule().strokeBorder(source == "all" ? Theme.hairline : .clear))
                     }
                 }
-            } label: {
-                Label("Zapisz wiele", systemImage: "plus.square.on.square")
-                    .font(.caption.weight(.semibold))
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(Theme.accent.opacity(0.12), in: Capsule())
+                .padding(.vertical, 2)
+            }
+            .scrollClipDisabled()
+            ColorFilterRow(selected: $rules.colors, available: model.facets.colors.map(\.value))
+        }
+    }
+
+    private var resultsView: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(summary)
+                    .font(.serif(17, weight: .medium))
+                    .foregroundStyle(Theme.ink)
+                Spacer()
+                if searching { ProgressView().controlSize(.small) }
+            }
+            if !rules.colors.isEmpty {
+                Text("Kolory są znane tylko w katalogu, więc wyniki z muzeów ich nie uwzględniają.")
+                    .font(.footnote)
+                    .foregroundStyle(Theme.inkSoft)
+            }
+            if !rules.isEmpty {
+                Button {
+                    editing = Playlist(
+                        name: rules.suggestedName(names: model.termNames), kind: .smart, rules: rules
+                    )
+                } label: {
+                    Label("Utwórz playlistę z tego wyszukiwania", systemImage: "text.badge.plus")
+                }
+                .buttonStyle(PrimaryButtonStyle())
+            }
+            if let catalogue, !catalogue.items.isEmpty {
+                Eyebrow("W katalogu · \(Names.works(catalogue.total))")
+                MasonryGrid(items: catalogue.items) { item in
+                    NavigationLink(value: item.id) {
+                        ArtCard(item: item)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            if !fromMuseums.isEmpty || searching {
+                HStack {
+                    Eyebrow("Z muzeów" + (total > 0 ? " · \(Names.works(total))" : ""))
+                    Spacer()
+                    if searching {
+                        Text("doczytuję…").font(.caption).foregroundStyle(Theme.inkSoft)
+                    }
+                }
+            }
+            if !failed.isEmpty {
+                Text("Nie odpowiedziało: " + failed.map(Names.source).joined(separator: ", "))
+                    .font(.footnote)
+                    .foregroundStyle(Theme.inkSoft)
+            }
+            MasonryGrid(items: fromMuseums.map(\.item.summary)) { summary in
+                let remote = fromMuseums.first { $0.id == summary.id }
+                VStack(alignment: .leading, spacing: 8) {
+                    NavigationLink(value: summary.id) {
+                        ArtCard(item: summary, ref: remote?.thumb)
+                    }
+                    .buttonStyle(.plain)
+                    addButton(remote)
+                }
+            }
+            if !searching, catalogue?.items.isEmpty ?? true, fromMuseums.isEmpty {
+                EmptyStateView(
+                    title: "Nic tu nie ma",
+                    message: "Usuń któryś z chipów albo poszukaj innymi słowami.",
+                    systemImage: "magnifyingglass"
+                )
+            }
+            if !searching, results.count < total, !results.isEmpty {
+                Button {
+                    Task { await loadMore() }
+                } label: {
+                    HStack(spacing: 8) {
+                        if loadingMore { ProgressView().controlSize(.small) }
+                        Text("Więcej z muzeów")
+                    }
+                    .font(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(Theme.card, in: RoundedRectangle(cornerRadius: 12))
+                    .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.hairline))
+                }
+                .disabled(loadingMore)
             }
         }
+    }
+
+    private var summary: String {
+        let inCatalogue = catalogue?.total ?? 0
+        if searching && inCatalogue == 0 { return "Szukam…" }
+        return Names.works(inCatalogue + fromMuseums.count) + (results.count < total ? "+" : "")
     }
 
     @ViewBuilder
@@ -198,18 +310,47 @@ struct MuseumSearchView: View {
         }
     }
 
+    // MARK: Loading
+
+    /// What a search depends on, to start it again when it changes.
+    private struct SearchKey: Hashable {
+        let rules: PlaylistRules
+        let source: String
+    }
+
     private func search() async {
-        guard !text.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        guard asked else {
+            catalogue = nil
+            results = []
+            total = 0
+            return
+        }
+        try? await Task.sleep(for: .milliseconds(150))
+        guard !Task.isCancelled else { return }
         searching = true
         defer { searching = false }
+        var query = LibraryQuery(rules: rules)
+        if source != "all" { query.sources = [source] }
         do {
-            let found = try await model.backend.searchMuseum(source: source, query: text, page: 1)
+            catalogue = try await model.backend.items(query)
+        } catch is CancellationError {
+            return
+        } catch {
+            model.show(error)
+        }
+        results = []
+        total = 0
+        failed = []
+        page = 1
+        do {
+            let found = try await model.backend.searchMuseums(rules, source: source, page: 1)
+            guard !Task.isCancelled else { return }
             results = found.items
             total = found.total
             failed = found.failed ?? []
-            page = 1
+        } catch is CancellationError {
         } catch {
-            model.show(error)
+            if !Task.isCancelled { failed = [source] }
         }
     }
 
@@ -217,29 +358,12 @@ struct MuseumSearchView: View {
         loadingMore = true
         defer { loadingMore = false }
         do {
-            let found = try await model.backend.searchMuseum(source: source, query: text, page: page + 1)
+            let found = try await model.backend.searchMuseums(rules, source: source, page: page + 1)
             let known = Set(results.map(\.id))
             results += found.items.filter { !known.contains($0.id) }
             page += 1
             // Some sources only learn the total as they go; stop when a page is empty.
             total = found.items.isEmpty ? results.count : max(found.total, results.count)
-        } catch {
-            model.show(error)
-        }
-    }
-
-    private func addAll(limit: Int) async {
-        bulk = .some(nil)
-        defer { bulk = nil }
-        do {
-            let id = try await model.backend.importSearch(source: source, query: text, limit: limit)
-            let job = try await watchJob(id, backend: model.backend) { bulk = $0 }
-            let added = Set(job.itemIds)
-            for index in results.indices where added.contains(results[index].id) {
-                results[index].inLibrary = true
-            }
-            model.toast = "Zapisane: \(job.done) dzieł" + (job.failed > 0 ? ", nie udało się \(job.failed)" : "")
-            await model.refreshFacets()
         } catch {
             model.show(error)
         }

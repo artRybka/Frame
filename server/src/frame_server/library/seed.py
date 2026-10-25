@@ -7,12 +7,11 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import date
 
 import httpx
 
 from .importer import Importer, Job
-from .models import Item, Playlist, PlaylistKind, PlaylistRules
+from .models import Playlist, PlaylistKind, PlaylistRules
 
 log = logging.getLogger(__name__)
 
@@ -200,25 +199,6 @@ PACKS: list[Pack] = [
         ],
     ),
 ]
-
-
-def theme_of_the_day(day: date) -> Pack:
-    return PACKS[day.toordinal() % len(PACKS)]
-
-
-def browse_theme(
-    importer: Importer, theme: Pack, page: int = 1, limit: int = 24
-) -> tuple[list[Item], bool]:
-    """One page of a theme, browsed live: page 1 is its first search, page 2
-    the next one, and after the last search the second result pages follow.
-    Returns the works and whether there are more pages."""
-    count = len(theme.queries)
-    source, query, _ = theme.queries[(page - 1) % count]
-    round_ = (page - 1) // count + 1
-    total, items = importer.search(source, query, limit=limit, page=round_)
-    # Later searches of this round are still to come; after the last one,
-    # another round while this search has more.
-    return items, page % count != 0 or round_ * limit < total
 
 
 def pack(key: str) -> Pack:

@@ -10,7 +10,6 @@ struct PlaylistEditorView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var playlist: Playlist
     @State private var preview: RulesPreview?
-    @State private var facetSheet: FacetKind?
     @State private var saving = false
     @State private var bestOnly: Bool
     @State private var picked: [PhotosPickerItem] = []
@@ -76,10 +75,7 @@ struct PlaylistEditorView: View {
                         .disabled(!canSave)
                 }
             }
-            .sheet(item: $facetSheet) { kind in
-                RuleFacetPicker(kind: kind, rules: $playlist.rules)
-                    .presentationDetents([.medium, .large])
-            }
+            .task { await model.loadVocabulary() }
             .task(id: playlist.rules) { await refreshPreview() }
             .task(id: picked) { await loadPhotos() }
             .task(id: playlist.kind == .album ? album.url : "") { await checkAlbum() }
@@ -104,9 +100,17 @@ struct PlaylistEditorView: View {
     private var rules: some View {
         VStack(alignment: .leading, spacing: 20) {
             SectionHeader(title: "Reguły", subtitle: "Wszystkie warunki muszą być spełnione")
-            ruleRow(.artists, values: playlist.rules.artists)
-            ruleRow(.styles, values: playlist.rules.styles)
-            ruleRow(.subjects, values: playlist.rules.subjects)
+            VStack(alignment: .leading, spacing: 8) {
+                Eyebrow("Czego szukasz")
+                TermSearchField(tokens: tokens) {
+                    // The catalogue has nothing for it yet: museums will.
+                    if fetchCount == 0, fetchBlocker == nil { fetchCount = 100 }
+                }
+                Text("Artyści, style i tematy tego samego rodzaju to alternatywy; różne rodzaje muszą pasować razem.")
+                    .font(.footnote)
+                    .foregroundStyle(Theme.inkSoft)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
             VStack(alignment: .leading, spacing: 10) {
                 Eyebrow("Kolorystyka")
@@ -136,15 +140,6 @@ struct PlaylistEditorView: View {
                 }
             }
 
-            VStack(alignment: .leading, spacing: 10) {
-                Eyebrow("Słowa kluczowe")
-                TextField("np. woodblock, sea, flowers", text: $playlist.rules.query)
-                    .textInputAutocapitalization(.never)
-                    .padding(12)
-                    .background(Theme.card, in: RoundedRectangle(cornerRadius: 12))
-                    .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.hairline))
-            }
-
             Toggle(isOn: $playlist.rules.favoritesOnly) {
                 Label("Tylko ulubione", systemImage: "heart")
             }
@@ -155,33 +150,11 @@ struct PlaylistEditorView: View {
         .tint(Theme.accent)
     }
 
-    private func ruleRow(_ kind: FacetKind, values: [String]) -> some View {
-        Button {
-            facetSheet = kind
-        } label: {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Label(kind.title, systemImage: kind.icon)
-                        .font(.headline)
-                        .foregroundStyle(Theme.ink)
-                    Spacer()
-                    Text(values.isEmpty ? "dowolne" : "\(values.count)")
-                        .foregroundStyle(Theme.inkSoft)
-                    Image(systemName: "chevron.right")
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(Theme.inkSoft)
-                }
-                if !values.isEmpty {
-                    FlowLayout(spacing: 6) {
-                        ForEach(values, id: \.self) { TagLabel(text: $0) }
-                    }
-                }
-            }
-            .padding(14)
-            .background(Theme.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Theme.hairline))
-        }
-        .buttonStyle(.plain)
+    private var tokens: Binding<[SearchToken]> {
+        Binding(
+            get: { playlist.rules.tokens(names: model.termNames) },
+            set: { playlist.rules.setTokens($0) }
+        )
     }
 
     private func yearField(_ title: String, value: Binding<Int?>) -> some View {
@@ -354,7 +327,7 @@ struct PlaylistEditorView: View {
                 }
                 .scrollClipDisabled()
             } else if preview != nil {
-                Text("Żadne dzieło w bibliotece nie spełnia tych reguł.")
+                Text("W bazie nic jeszcze nie pasuje. Włącz pobieranie z muzeów poniżej, a playlista zapełni się w tle.")
                     .font(.subheadline)
                     .foregroundStyle(Theme.inkSoft)
             }
@@ -522,28 +495,6 @@ struct PlaylistEditorView: View {
         } catch {
             model.show(error)
         }
-    }
-}
-
-/// Facet picker editing playlist rules instead of a library query.
-struct RuleFacetPicker: View {
-    @Environment(AppModel.self) private var model
-    let kind: FacetKind
-    @Binding var rules: PlaylistRules
-    @State private var query = LibraryQuery()
-
-    var body: some View {
-        FacetPicker(kind: kind, query: $query)
-            .onAppear {
-                query.artists = rules.artists
-                query.styles = rules.styles
-                query.subjects = rules.subjects
-            }
-            .onChange(of: query) { _, new in
-                rules.artists = new.artists
-                rules.styles = new.styles
-                rules.subjects = new.subjects
-            }
     }
 }
 
