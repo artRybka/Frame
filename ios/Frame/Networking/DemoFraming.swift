@@ -469,17 +469,19 @@ enum DemoFraming {
 
     /// A museum wall text on the mat (text.py): serif title, the artist and
     /// date, a short rule, then as many whole sentences as fit.
-    private static func drawText(_ block: TextBlock, in rect: CGRect, canvas: CGSize, white: Bool) {
+    private static func drawText(_ block: TextBlock, in full: CGRect, canvas: CGSize, white: Bool) {
         let short = min(canvas.width, canvas.height)
+        // Lines of about 70 characters at most, like the server (MEASURE).
+        let rect = CGRect(x: full.minX, y: full.minY, width: min(full.width, (short * 0.5).rounded()), height: full.height)
         let ink = white ? UIColor.white : UIColor(white: 0.1, alpha: 1)
         let serif = UIFontDescriptor.preferredFontDescriptor(withTextStyle: .body).withDesign(.serif)
         func serifFont(_ size: CGFloat, bold: Bool = false) -> UIFont {
             let descriptor = bold ? serif?.withSymbolicTraits(.traitBold) : serif
             return descriptor.map { UIFont(descriptor: $0, size: size) } ?? UIFont.systemFont(ofSize: size)
         }
-        let title = serifFont((short * 0.04).rounded(), bold: true)
-        let meta = UIFont.systemFont(ofSize: (short * 0.024).rounded())
-        let body = serifFont((short * 0.024).rounded())
+        let title = serifFont((short * 0.036).rounded(), bold: true)
+        let meta = UIFont.systemFont(ofSize: (short * 0.021).rounded())
+        let body = serifFont((short * 0.015).rounded())
 
         var cursor = rect.minY
         func draw(_ text: String, _ font: UIFont, lines: Int, leading: CGFloat) {
@@ -499,17 +501,17 @@ enum DemoFraming {
         }
         if !block.title.isEmpty {
             draw(block.title, title, lines: 2, leading: 1.1)
-            cursor += (short * 0.008).rounded()
+            cursor += (short * 0.007).rounded()
         }
         for line in block.meta where !line.isEmpty {
             draw(line, meta, lines: 1, leading: 1.25)
         }
-        let rule = max(1, (short * 0.0015).rounded())
-        guard !block.body.isEmpty, cursor + rule + short * 0.05 < rect.maxY else { return }
-        cursor += (short * 0.012).rounded()
+        let rule = max(1, (short * 0.001).rounded())
+        guard !block.body.isEmpty, cursor + rule + short * 0.03 < rect.maxY else { return }
+        cursor += (short * 0.008).rounded()
         ink.setFill()
         UIRectFill(CGRect(x: rect.minX, y: cursor, width: (rect.width * 0.12).rounded(), height: rule))
-        cursor += rule + (short * 0.016).rounded()
+        cursor += rule + (short * 0.01).rounded()
 
         // As many whole sentences as fit; an ellipsis only if not even one does.
         let style = NSMutableParagraphStyle()

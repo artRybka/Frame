@@ -18,6 +18,12 @@ from .caption import Font, fit_text, font
 from .layout import Rect
 
 MAX_BODY = 900  # characters worth considering; the space decides the rest
+# Sizes and gaps as fractions of the canvas's short side; the body text is
+# small, like a wall label, under a title and credit line that stand out.
+TITLE_SIZE = 0.036
+META_SIZE = 0.021
+BODY_SIZE = 0.015
+MEASURE = 0.5  # widest line, about 70 characters of body text
 
 
 class TextBlock(BaseModel):
@@ -79,9 +85,10 @@ def text_block_mask(canvas: tuple[int, int], rect: Rect, block: TextBlock) -> np
     cw, ch = canvas
     x, y, w, h = rect
     short = min(cw, ch)
-    title_font = font(round(short * 0.04), "serif-bold")
-    meta_font = font(round(short * 0.024), "sans")
-    body_font = font(round(short * 0.024), "serif")
+    w = min(w, round(short * MEASURE))
+    title_font = font(round(short * TITLE_SIZE), "serif-bold")
+    meta_font = font(round(short * META_SIZE), "sans")
+    body_font = font(round(short * BODY_SIZE), "serif")
     img = Image.new("1", (cw, ch), 0)
     draw = ImageDraw.Draw(img)
     draw.fontmode = "1"
@@ -105,15 +112,15 @@ def text_block_mask(canvas: tuple[int, int], rect: Rect, block: TextBlock) -> np
     cursor = y
     if block.title:
         cursor = lines_of(block.title, title_font, 2, 1.2, cursor)
-        cursor += round(short * 0.008)
+        cursor += round(short * 0.007)
     for line in block.meta:
         if line:
             cursor = lines_of(line, meta_font, 1, 1.4, cursor)
-    rule = max(2, round(short * 0.0015))
-    if block.body and cursor + rule + round(short * 0.05) < bottom:
-        cursor += round(short * 0.012)
+    rule = max(2, round(short * 0.001))
+    if block.body and cursor + rule + round(short * 0.03) < bottom:
+        cursor += round(short * 0.008)
         draw.rectangle([x, cursor, x + round(w * 0.12), cursor + rule - 1], fill=1)
-        cursor += rule + round(short * 0.016)
+        cursor += rule + round(short * 0.01)
         room = max(0, (bottom - cursor) // step_of(body_font, 1.42))
         body = whole_sentences(draw, block.body, body_font, w, room)
         lines_of(body, body_font, room, 1.42, cursor)
