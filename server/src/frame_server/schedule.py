@@ -83,10 +83,18 @@ def _parse(hhmm: str | None) -> time | None:
     return time(int(hour), int(minute))
 
 
-def in_quiet_hours(moment: datetime, settings: FrameSettings) -> bool:
+def quiet_hours(settings: FrameSettings) -> tuple[time, time] | None:
     start, end = _parse(settings.quiet_start), _parse(settings.quiet_end)
     if start is None or end is None or start == end:
+        return None
+    return start, end
+
+
+def in_quiet_hours(moment: datetime, settings: FrameSettings) -> bool:
+    hours = quiet_hours(settings)
+    if hours is None:
         return False
+    start, end = hours
     local = moment.astimezone(settings.tz()).time()
     if start < end:
         return start <= local < end

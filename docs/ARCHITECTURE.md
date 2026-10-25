@@ -25,7 +25,7 @@ App/CLI ──POST /api/display──▶ serwer
                               odświeżenie panelu (kilkanaście sekund)
 ```
 
-Gdy ekran śpi, a mamy jego MAC, serwer wysyła Wake-on-LAN i ponawia połączenie.
+Gdy ekran śpi, a mamy jego MAC, serwer wysyła Wake-on-LAN i ponawia połączenie. Na baterii w ciszy nocnej ekran śpi z wyłączonym Wi-Fi i budzi się sam (budzik MDC `0x25`); obraz, który nie dotarł, czeka na pobudkę ([WAKE.md](WAKE.md)).
 
 ## Przepływ docelowy: rotacja (Etap 2)
 

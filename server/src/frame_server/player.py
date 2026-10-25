@@ -434,11 +434,21 @@ class Player:
         ).isoformat(timespec="seconds")
         self._save_state(state)
 
+    def postpone(self) -> None:
+        """A picture that waited for the panel to wake stays until the next change."""
+        state = self.state
+        state.next_change_at = next_change(
+            utcnow(), self.settings, self.service.status.on_battery
+        ).isoformat(timespec="seconds")
+        self._save_state(state)
+
     # -- scheduler -----------------------------------------------------------
 
     async def tick(self) -> None:
         if self.busy:
             return
+        if self.service.power.state.pending_push:
+            return  # the waiting picture goes first, when the panel wakes
         state, settings = self.state, self.settings
         now = utcnow()
         if state.hold is not None:
