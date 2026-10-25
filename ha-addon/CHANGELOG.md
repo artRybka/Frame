@@ -1,6 +1,6 @@
 # Changelog
 
-## Niewydane
+## 0.8.0
 
 - Muzea → samo źródło (bez frazy) pokazuje dzieła tego źródła, a nie
   „Nic tu nie ma”: Openverse dzieła w domenie publicznej (z „Użytkiem
@@ -17,6 +17,13 @@
 - Następny obraz z kolejki rysowany z wyprzedzeniem, zaraz po zmianie
   (i po restarcie serwera), więc zmiana o czasie tylko publikuje gotowy
   plik.
+- Pobieranie obrazów z muzeów ponawiane przy 408/429/5xx i błędach
+  sieci (do 3 prób, przerwa wg `Retry-After`), najwyżej kilka pobrań
+  naraz z jednego hosta. W aplikacji miniatury w Odkrywaj ponawiane tak
+  samo, a ta, która nie przyszła z muzeum, jest brana z serwera
+  (`/api/library/items/<id>/thumb`).
+- Aplikacja: obrys i wewnętrzny cień na styku ramki i ekranu w
+  wizualizacji ramki.
 
 ## 0.7.0
 
