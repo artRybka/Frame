@@ -39,7 +39,7 @@ AUTO_STYLE_KEY = "auto_style_migrated"
 STATE_KEY = "player"
 HISTORY_MAX = 50
 #: Next pictures whose originals are downloaded ahead of their turn.
-PREFETCH = 3
+PREFETCH = 8  # as many as "Następne" shows in the app
 #: When no picture can be shown (offline, nothing cached), try again after this.
 RETRY_AFTER = timedelta(minutes=15)
 #: Works picked by the server for the default rotation (ids, oldest first).

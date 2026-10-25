@@ -101,8 +101,13 @@ def test_calibration_from_the_app(service) -> None:
         assert not info["calibrated"] and info["palette"]["name"] == EM32DX.name
 
         assert client.post("/api/calibration/chart").status_code == 202
-        _wait(lambda: svc.store.current().title == "Plansza kalibracji")
-        assert svc.player.state.hold is not None
+        # The hold is set just after the chart is published: wait for both.
+        _wait(
+            lambda: (
+                svc.store.current().title == "Plansza kalibracji"
+                and svc.player.state.hold is not None
+            )
+        )
 
         bad = client.post(
             "/api/calibration/measure",

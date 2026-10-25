@@ -234,10 +234,68 @@ def render(
     palette: Palette = EM32DX,
 ) -> RenderResult:
     s = settings or RenderSettings()
-    img = load_image(source)
+    linear, plan, mat_rgb = _compose_one(load_image(source), s)
+    return _finish(linear, plan, s, palette, mat_rgb)
+
+
+def render_original(
+    sources: Sequence[Source],
+    settings: RenderSettings | None = None,
+    palette: Palette = EM32DX,
+    multi: bool = False,
+    seed: str = "",
+) -> Image.Image:
+    """The framed picture in its own colours, as ``original_image()`` of
+    ``render`` (or ``render_multi`` with ``multi``), several times faster:
+    no tone mapping or dither, and each window is resampled in sRGB.
+
+    For the app's previews only. Lettering on a mat of the picture's tint is
+    white or black by the picture's own colours, not by the panel's, so it
+    may differ from the panel's at the very edge between the two.
+    """
+    s = settings or RenderSettings()
+    imgs = [load_image(source) for source in sources[:MAX_PHOTOS]]
+    if multi and len(imgs) >= MIN_PHOTOS:
+        linear, plan, mat_rgb = _compose_multi(imgs, s, seed, fast=True)
+        s = s.model_copy(update={"caption": None, "text": None})
+    else:
+        linear, plan, mat_rgb = _compose_one(imgs[0], s, fast=True)
+    pal = palette.subset(s.inks)
+    if s.strategy == Strategy.PASSTHROUGH:
+        dark_board = float(luminance(u8_to_linear(np.array(mat_rgb, dtype=np.uint8)))) < 0.18
+    else:
+        board = paint_mat(linear, plan, palette.nominal(), s.layout.mat)
+        dark_board = board is not None and is_dark(board, palette.nominal())
+    original = linear_to_u8(linear)
+    ink = pal.device_u8()[pal.white_index() if dark_board else pal.black_index()]
+    for mask in _letters(plan, s):
+        original[mask] = ink
+    return Image.fromarray(original)
+
+
+def _compose_one(
+    img: Image.Image, s: RenderSettings, fast: bool = False
+) -> tuple[FloatArray, Plan, tuple[int, int, int]]:
     plan = plan_for(img, s.layout, caption=bool(s.caption))
-    linear = compose_plan(img, plan, mat_color=_mat_rgb(img, s.layout.mat))
-    return _finish(linear, plan, s, palette, _mat_rgb(img, s.layout.mat))
+    mat_rgb = _mat_rgb(img, s.layout.mat)
+    return compose_plan(img, plan, mat_color=mat_rgb, fast=fast), plan, mat_rgb
+
+
+def _compose_multi(
+    imgs: list[Image.Image], s: RenderSettings, seed: str, fast: bool = False
+) -> tuple[FloatArray, Plan, tuple[int, int, int]]:
+    pickers = [_interest_picker(img) for img in imgs]
+    plan, order = plan_multi(
+        [img.size for img in imgs],
+        canvas_size(s.layout.orientation),
+        s.layout.margin,
+        s.layout.grid,
+        seed,
+        pickers,
+    )
+    mat_rgb = _mat_rgb(imgs[0], s.layout.mat)
+    linear = compose_plan([imgs[i] for i in order], plan, mat_color=mat_rgb, fast=fast)
+    return linear, plan, mat_rgb
 
 
 def render_multi(
@@ -255,17 +313,7 @@ def render_multi(
     if len(sources) < MIN_PHOTOS:
         return render(sources[0], s, palette)  # MULTI with one picture is a passe-partout
     imgs = [load_image(source) for source in sources[:MAX_PHOTOS]]
-    pickers = [_interest_picker(img) for img in imgs]
-    plan, order = plan_multi(
-        [img.size for img in imgs],
-        canvas_size(s.layout.orientation),
-        s.layout.margin,
-        s.layout.grid,
-        seed,
-        pickers,
-    )
-    mat_rgb = _mat_rgb(imgs[0], s.layout.mat)
-    linear = compose_plan([imgs[i] for i in order], plan, mat_color=mat_rgb)
+    linear, plan, mat_rgb = _compose_multi(imgs, s, seed)
     no_text = s.model_copy(update={"caption": None, "text": None})
     return _finish(linear, plan, no_text, palette, mat_rgb)
 
@@ -325,11 +373,7 @@ def _finish(
             sent = pal.device_u8()[preview_idx]
 
     # Lettering in pure ink on the mat: white on a dark mat, black otherwise.
-    letters = []
-    if s.caption and plan.caption_at is not None:
-        letters.append(caption_mask(plan.canvas, plan.caption_at, s.caption))
-    if s.text and plan.text_rect is not None:
-        letters.append(text_block_mask(plan.canvas, plan.text_rect, s.text))
+    letters = _letters(plan, s)
     original_u8 = linear_to_u8(original)
     if letters:
         ink = pal.white_index() if dark_board else pal.black_index()
@@ -343,3 +387,13 @@ def _finish(
     preview = pal.perceived_u8()[preview_idx]
     panel = to_panel(sent, s.layout.orientation, s.layout.rotation)
     return RenderResult(panel=panel, preview=preview, original=original_u8, settings=s, palette=pal)
+
+
+def _letters(plan: Plan, s: RenderSettings) -> list[np.ndarray]:
+    """Masks of the caption and the description printed on the mat."""
+    letters = []
+    if s.caption and plan.caption_at is not None:
+        letters.append(caption_mask(plan.canvas, plan.caption_at, s.caption))
+    if s.text and plan.text_rect is not None:
+        letters.append(text_block_mask(plan.canvas, plan.text_rect, s.text))
+    return letters

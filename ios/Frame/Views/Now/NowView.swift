@@ -133,6 +133,7 @@ struct NowView: View {
             }
             .task(id: browsed?.summary.id) { await loadDetails() }
             .task(id: draftKey) { await loadFraming() }
+            .task(id: selectedID) { await prefetchNeighbours() }
         }
     }
 
@@ -336,6 +337,17 @@ struct NowView: View {
     }
 
     // MARK: Loading and sending
+
+    /// The previews one back and one ahead, so the server makes them while
+    /// this one is looked at and the arrows show them at once.
+    private func prefetchNeighbours() async {
+        for target in [offset + 1, offset - 1] where target != 0 {
+            guard let id = summary(at: target)?.id,
+                  let request = model.backend.request(for: .framePreview(id))
+            else { continue }
+            _ = try? await ImageLoader.shared.image(for: request, maxPixel: 1600)  // as FramedArtwork loads it
+        }
+    }
 
     private func loadDetails() async {
         guard let id = browsed?.summary.id, details[id] == nil else { return }

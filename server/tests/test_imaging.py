@@ -6,7 +6,15 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from frame_server.imaging import PRESETS, SPECTRA6, Palette, RenderSettings, Strategy, render
+from frame_server.imaging import (
+    PRESETS,
+    SPECTRA6,
+    Palette,
+    RenderSettings,
+    Strategy,
+    render,
+    render_original,
+)
 from frame_server.imaging.color import (
     linear_to_oklab,
     linear_to_srgb,
@@ -98,6 +106,25 @@ def test_original_keeps_the_pictures_colours(strategy: Strategy) -> None:
     assert original.getpixel((1280, 720)) == colour  # no tone map, no dither
     assert original.getpixel((5, 5)) == (255, 255, 255)  # the white mat, as paper
     assert result.preview_image().getpixel((1280, 720)) != colour
+
+
+@pytest.mark.parametrize("preset", ["painting", "photo", "bw"])
+@pytest.mark.parametrize(
+    ("fit", "mat"), [(Fit.FIT, "picture"), (Fit.FILL, "white"), (Fit.DETAILS, "black")]
+)
+def test_fast_original_matches_the_render(preset: str, fit: Fit, mat: str) -> None:
+    """The app's quick preview is the render's original, lettering included."""
+    settings = PRESETS[preset].model_copy(deep=True)
+    settings.layout.fit = fit
+    settings.layout.mat = mat
+    settings.layout.orientation = Orientation.PORTRAIT
+    settings.caption = "Claude Monet, Gare Saint-Lazare, 1877"
+    source = _gradient(900, 700)
+    full = np.asarray(render(source, settings).original_image(), dtype=np.float32)
+    fast = np.asarray(render_original([source], settings), dtype=np.float32)
+    assert fast.shape == full.shape
+    assert np.abs(full - fast).mean() < 0.5
+    assert np.percentile(np.abs(full - fast), 99.9) <= 2
 
 
 def test_bw_preset_uses_two_inks() -> None:

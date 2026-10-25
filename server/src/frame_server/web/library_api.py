@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field, ValidationError
 from starlette.concurrency import run_in_threadpool
 
 from ..imaging.layout import Crop, Fit, Orientation, Plan, canvas_size, fit_area, load_image
-from ..imaging.pipeline import RenderSettings, encode_image, plan_for, render, render_multi
+from ..imaging.pipeline import RenderSettings, encode_image, plan_for, render_original
 from ..library import Facets, Item, ItemKind, ItemSummary, Job, PhotoInfo, PlaylistRules
 from ..library.importer import ALL
 from ..library.models import Framing
@@ -181,11 +181,12 @@ async def item_image(item_id: str, svc: Svc) -> FileResponse:
 
 _preview_locks: dict[str, asyncio.Lock] = {}
 PREVIEW_CACHE_FILES = 200
-PREVIEW_KIND = "original"  # part of the cache key: earlier previews were the simulated dither
+PREVIEW_KIND = "fast"  # part of the cache key: earlier previews went through the whole render
 
 
 def _prune(directory: Path, keep: int) -> None:
-    files = sorted(directory.glob("*.png"), key=lambda p: p.stat().st_mtime, reverse=True)
+    files = [p for p in directory.iterdir() if p.is_file()]
+    files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
     for old in files[keep:]:
         old.unlink(missing_ok=True)
 
@@ -222,7 +223,7 @@ async def item_preview(
         (PREVIEW_KIND + render_settings.model_dump_json() + svc.palette.name + ids).encode(),
         usedforsecurity=False,
     ).hexdigest()[:12]
-    path = svc.images.thumbs.parent / "previews" / f"{item.file_stem}-{key}.png"
+    path = svc.images.thumbs.parent / "previews" / f"{item.file_stem}-{key}.jpg"
     if not path.is_file():
         async with _preview_locks.setdefault(path.name, asyncio.Lock()):
             if not path.is_file():
@@ -231,18 +232,17 @@ async def item_preview(
                 ]
 
                 def build() -> None:
-                    if svc.player.multi(item, frame_settings):
-                        result = render_multi(sources, render_settings, svc.palette, seed=ids)
-                    else:
-                        result = render(sources[0], render_settings, svc.palette)
-                    img = result.original_image()
+                    multi = svc.player.multi(item, frame_settings)
+                    img = render_original(
+                        sources, render_settings, svc.palette, multi=multi, seed=ids
+                    )
                     img.thumbnail((1280, 1280))
                     path.parent.mkdir(parents=True, exist_ok=True)
-                    path.write_bytes(encode_image(img, "png"))
+                    path.write_bytes(encode_image(img, "jpeg", quality=90))
                     _prune(path.parent, PREVIEW_CACHE_FILES)
 
                 await run_in_threadpool(build)
-    return FileResponse(path, media_type="image/png", headers={"Cache-Control": "max-age=3600"})
+    return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "max-age=3600"})
 
 
 Box = tuple[float, float, float, float]  # x, y, w, h as fractions of the canvas
