@@ -209,23 +209,24 @@ def repair_library(library: Library) -> int:
         return 0
     changed = 0
     _, items = library.query(include_excluded=True)
-    for item in items:
-        if item.source != "wmc":
-            continue
-        fixes: dict[str, object] = {}
-        title = commons_plain(item.title, title=True)
-        if title and title != item.title:
-            fixes["title"] = title
-        date_text = commons_plain(item.date_text)
-        if date_text != item.date_text:
-            fixes["date_text"] = date_text
-        description = commons_plain(item.description)
-        if description != item.description:
-            fixes["description"] = description
-        if item.year is None and (year := commons_year(item.date_text)):
-            fixes["year"] = year
-        if fixes:
-            library.update(item.id, **fixes)
-            changed += 1
-    library.set_state(REPAIR_STATE_KEY, REPAIR_VERSION)
+    with library.batch():
+        for item in items:
+            if item.source != "wmc":
+                continue
+            fixes: dict[str, object] = {}
+            title = commons_plain(item.title, title=True)
+            if title and title != item.title:
+                fixes["title"] = title
+            date_text = commons_plain(item.date_text)
+            if date_text != item.date_text:
+                fixes["date_text"] = date_text
+            description = commons_plain(item.description)
+            if description != item.description:
+                fixes["description"] = description
+            if item.year is None and (year := commons_year(item.date_text)):
+                fixes["year"] = year
+            if fixes:
+                library.update(item.id, **fixes)
+                changed += 1
+        library.set_state(REPAIR_STATE_KEY, REPAIR_VERSION)
     return changed

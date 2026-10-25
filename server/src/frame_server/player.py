@@ -723,14 +723,17 @@ class Player:
         self.library.set_state(RESET_KEY, True)
         old = self.library.query(PlaylistRules(kinds=[ItemKind.ARTWORK]), include_excluded=True)[1]
         gone = {i.id for i in old if not i.pooled}
+        with self.library.batch():
+            for item in old:
+                if item.id in gone:
+                    self.library.delete(item.id)
+            for playlist in self.library.playlists():
+                if set(playlist.item_ids) & gone:
+                    ids = [i for i in playlist.item_ids if i not in gone]
+                    self.library.save_playlist(playlist.model_copy(update={"item_ids": ids}))
         for item in old:
             if item.id in gone:
-                self.library.delete(item.id)
                 self.service.images.remove(item)
-        for playlist in self.library.playlists():
-            if set(playlist.item_ids) & gone:
-                ids = [i for i in playlist.item_ids if i not in gone]
-                self.library.save_playlist(playlist.model_copy(update={"item_ids": ids}))
         state = self.state
         state.queue = [i for i in state.queue if i not in gone]
         state.history = [i for i in state.history if i not in gone]

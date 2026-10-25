@@ -62,6 +62,26 @@ def test_upsert_keeps_user_state(tmp_path) -> None:
     assert reloaded is not None and reloaded.favorite and reloaded.title == "Renamed"
 
 
+def test_batch_is_one_transaction(tmp_path) -> None:
+    lib = Library(tmp_path / "lib.db")
+    with lib.batch():
+        for n in range(3):
+            lib.upsert(_item(n))
+        # Not committed yet: another connection does not see the writes.
+        assert Library(tmp_path / "lib.db").count() == 0
+    assert Library(tmp_path / "lib.db").count() == 3
+
+    try:
+        with lib.batch():
+            lib.delete("test:0")
+            lib.update("test:1", favorite=True)
+            raise RuntimeError("halfway")
+    except RuntimeError:
+        pass
+    # Rolled back on disk and in the cached copy alike.
+    assert lib.count() == 3 and not lib.get("test:1").favorite  # type: ignore[union-attr]
+
+
 def test_playlists_and_state(tmp_path) -> None:
     lib = Library(tmp_path / "lib.db")
     for n in range(5):
