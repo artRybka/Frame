@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.1
+
+- Naprawiona wysyłka na ekran na Synology („[Errno 21] Is a directory:
+  '/data/images/@eaDir'”): porządkowanie starych obrazów próbowało usunąć
+  katalog miniatur, który DSM zakłada w zamontowanych folderach. Serwer
+  pomija teraz katalogi oraz wpisy `@eaDir`, `#recycle` i `.DS_Store`
+  wszędzie, gdzie listuje lub sprząta pliki w `/data`.
+
 ## 0.9.0
 
 - Presety dobrane na oko na prawdziwym ekranie (E14, piętnaście plansz

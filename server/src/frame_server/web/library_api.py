@@ -13,6 +13,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, ValidationError
 from starlette.concurrency import run_in_threadpool
 
+from ..fsutil import own_files
 from ..imaging.layout import Crop, Fit, Orientation, Plan, canvas_size, fit_area, load_image
 from ..imaging.pipeline import RenderSettings, encode_image, plan_for, render_original
 from ..library import Facets, Item, ItemKind, ItemSummary, Job, PhotoInfo, PlaylistRules
@@ -191,7 +192,7 @@ PREVIEW_KIND = "fast"  # part of the cache key: earlier previews went through th
 
 
 def _prune(directory: Path, keep: int) -> None:
-    files = [p for p in directory.iterdir() if p.is_file()]
+    files = list(own_files(directory))
     files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
     for old in files[keep:]:
         old.unlink(missing_ok=True)
