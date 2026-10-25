@@ -479,8 +479,8 @@ enum DemoFraming {
             let descriptor = bold ? serif?.withSymbolicTraits(.traitBold) : serif
             return descriptor.map { UIFont(descriptor: $0, size: size) } ?? UIFont.systemFont(ofSize: size)
         }
-        let title = serifFont((short * 0.026).rounded(), bold: true)
-        let meta = UIFont.systemFont(ofSize: (short * 0.015).rounded())
+        let title = serifFont((short * 0.036).rounded(), bold: true)
+        let meta = UIFont.systemFont(ofSize: (short * 0.021).rounded())
         let body = serifFont((short * 0.015).rounded())
 
         var cursor = rect.minY
@@ -501,7 +501,7 @@ enum DemoFraming {
         }
         if !block.title.isEmpty {
             draw(block.title, title, lines: 2, leading: 1.1)
-            cursor += (short * 0.005).rounded()
+            cursor += (short * 0.007).rounded()
         }
         for line in block.meta where !line.isEmpty {
             draw(line, meta, lines: 1, leading: 1.25)

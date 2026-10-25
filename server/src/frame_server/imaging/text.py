@@ -18,9 +18,10 @@ from .caption import Font, fit_text, font
 from .layout import Rect
 
 MAX_BODY = 900  # characters worth considering; the space decides the rest
-# Sizes and gaps as fractions of the canvas's short side: small, like a wall label.
-TITLE_SIZE = 0.026
-META_SIZE = 0.015
+# Sizes and gaps as fractions of the canvas's short side; the body text is
+# small, like a wall label, under a title and credit line that stand out.
+TITLE_SIZE = 0.036
+META_SIZE = 0.021
 BODY_SIZE = 0.015
 MEASURE = 0.5  # widest line, about 70 characters of body text
 
@@ -111,7 +112,7 @@ def text_block_mask(canvas: tuple[int, int], rect: Rect, block: TextBlock) -> np
     cursor = y
     if block.title:
         cursor = lines_of(block.title, title_font, 2, 1.2, cursor)
-        cursor += round(short * 0.005)
+        cursor += round(short * 0.007)
     for line in block.meta:
         if line:
             cursor = lines_of(line, meta_font, 1, 1.4, cursor)
