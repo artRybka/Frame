@@ -99,11 +99,11 @@ enum DemoFraming {
     }
 
     /// The dark mat from the light one, where the server's is not known: the
-    /// same hue, deep and richer.
+    /// same hue, deep and muted.
     static func deep(_ tint: UIColor) -> UIColor {
         var hue: CGFloat = 0, saturation: CGFloat = 0, brightness: CGFloat = 0, alpha: CGFloat = 0
         tint.getHue(&hue, saturation: &saturation, brightness: &brightness, alpha: &alpha)
-        return UIColor(hue: hue, saturation: min(0.2 + saturation * 2.5, 0.55), brightness: 0.3, alpha: 1)
+        return UIColor(hue: hue, saturation: min(0.1 + saturation * 1.5, 0.35), brightness: 0.25, alpha: 1)
     }
 
     /// A rough stand-in for the server's picture tint (mat.picture_tint), for
@@ -354,7 +354,7 @@ enum DemoFraming {
                     UIImage(cgImage: part).draw(in: window.rect)
                 }
             }
-            drawBevels(layout, board: board, in: context.cgContext)
+            drawBevels(layout, board: board, whiteCore: pres.mat == "picture_dark", in: context.cgContext)
             if let at = layout.captionAt {
                 drawCaption(art.caption, in: at, canvas: size, white: white)
             }
@@ -371,13 +371,14 @@ enum DemoFraming {
         return output
     }
 
-    /// 45° bevels cut in the board's colour, a little lighter at the bottom
-    /// and right, darker at the top and left, and the mat's shadow on the
-    /// picture under its top and left edges.
-    private static func drawBevels(_ plan: Plan, board: UIColor, in context: CGContext) {
+    /// 45° bevels cut in the board's colour (or a white core), a little
+    /// lighter at the bottom and right, darker at the top and left, and the
+    /// mat's shadow on the picture under its top and left edges.
+    private static func drawBevels(_ plan: Plan, board: UIColor, whiteCore: Bool, in context: CGContext) {
         let short = min(plan.canvas.width, plan.canvas.height)
         let b = max(2, (short * 0.006).rounded()), shadow = max(2, (short * 0.006).rounded())
-        let lit = toward(board, 1, 0.2), shaded = toward(board, 0, 0.15)
+        let core = whiteCore ? UIColor.white : board
+        let lit = whiteCore ? core : toward(core, 1, 0.2), shaded = toward(core, 0, whiteCore ? 0.18 : 0.15)
         for window in plan.windows {
             let r = window.rect
             let open = (

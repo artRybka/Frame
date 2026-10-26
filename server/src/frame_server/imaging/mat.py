@@ -10,8 +10,8 @@ along its top and left edges.
 "picture" (the app's "Jasne") tints the mat in the picture's own hue, as a
 framer would: the hue that carries the most colour (area times saturation),
 made light and muted; nearly colourless pictures get a warm or cool
-off-white. "picture_dark" ("Ciemne") is the same hue on a dark board, deep
-and richer in colour: burgundy, brown, navy, bottle green.
+off-white. "picture_dark" ("Ciemne") is the same hue on a deep, muted
+board with a white core: its bevels are white, lit and shaded.
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ MAT_COLORS = ("white", "cream", "grey", "black", "picture", "picture_dark")
 PICTURE_MATS = ("picture", "picture_dark")  # tinted by the picture
 HUE_BINS = 36
 TINT_LIGHT = (0.9, 0.024, 0.3)  # light mat: lightness (black 0, white 1), max chroma, share
-TINT_DARK = (0.3, 0.07, 0.9)  # dark mat: deep, its colour plain to see
+TINT_DARK = (0.24, 0.035, 0.5)  # dark mat: deep and muted
 NEUTRAL_CHROMA = 0.02  # pictures below this mean chroma count as colourless
 BEVEL = 0.006  # bevel width, fraction of the canvas's short side
 SHADOW = 0.006  # shadow on the picture, same unit
@@ -231,8 +231,11 @@ def paint_mat(
     bevel = bevel_width(plan)
     # The cut is the board itself, lit or shaded: a little lighter or darker.
     board = target[mask].mean(axis=0) if mat == "edge" else base
-    core_lit = _toward(board, white, 0.2)
-    core_shaded = _toward(board, black, 0.15)
+    if mat == "picture_dark":  # a white core
+        core_lit, core_shaded = white, _toward(white, black, 0.18)
+    else:
+        core_lit = _toward(board, white, 0.2)
+        core_shaded = _toward(board, black, 0.15)
     for x, y, w, h in (window.rect for window in plan.windows):
         # Edges on the canvas border have no mat beyond them.
         open_edges = {"left": x > 0, "top": y > 0, "right": x + w < cw, "bottom": y + h < ch}

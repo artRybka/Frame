@@ -791,7 +791,7 @@ struct MatSwatch: View {
         case "grey": Color(hex: 0xAEADAA)
         case "black": Color(hex: 0x1F1E1C)
         case "picture": Color(hex: 0xE9DCCB)  // stands in for "a tint of the picture"
-        case "picture_dark": Color(hex: 0x4A3530)  // the same, on a dark board
+        case "picture_dark": Color(hex: 0x3A302C)  // the same, on a deep board
         default: Color(hex: 0xFBFAF7)
         }
     }
@@ -812,7 +812,7 @@ struct MatSwatch: View {
         let ring: [UInt32]
         switch name {
         case "picture": ring = [0xE8C9C0, 0xEADCC0, 0xD3DEC8, 0xC6D6DE, 0xD6CBDD, 0xE8C9C0]
-        case "picture_dark": ring = [0x5A2A2A, 0x4E3A26, 0x2C4234, 0x263A52, 0x3E2E4C, 0x5A2A2A]
+        case "picture_dark": ring = [0x45302D, 0x403628, 0x2D3A31, 0x2B3444, 0x382F40, 0x45302D]
         default: return AnyShapeStyle(Self.color(name))
         }
         return AnyShapeStyle(AngularGradient(colors: ring.map { Color(hex: $0) }, center: .center))
