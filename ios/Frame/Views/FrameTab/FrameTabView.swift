@@ -40,7 +40,7 @@ struct FrameTabView: View {
                     } label: {
                         Image(systemName: "gearshape")
                     }
-                    .accessibilityLabel("Połączenie z ekranem i serwerem")
+                    .accessibilityLabel("Konfiguracja ekranu i serwera")
                 }
                 if let draft, draft != model.settings {
                     ToolbarItem(placement: .confirmationAction) {
@@ -964,8 +964,9 @@ struct SourcesSection: View {
     }
 }
 
-/// Behind the gear in "Ramka": how the server reaches the panel and how the
-/// app reaches the server; set once, rarely touched again.
+/// Behind the gear in "Ramka": how the server reaches the panel, how the
+/// app reaches the server and how much disk the library may take; set once,
+/// rarely touched again.
 struct ConnectionSettingsView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
@@ -978,6 +979,9 @@ struct ConnectionSettingsView: View {
                         PanelSection(config: panel)
                     }
                     ServerSection()
+                    if let storage = model.libraryStorage {
+                        LibrarySizeSection(storage: storage)
+                    }
                 }
                 .padding(.horizontal, Theme.gutter)
                 .padding(.top, 8)
@@ -985,7 +989,8 @@ struct ConnectionSettingsView: View {
             }
             .background(Theme.paper)
             .scrollDismissesKeyboard(.interactively)
-            .navigationTitle("Połączenie")
+            .task { await model.loadLibraryStorage() }
+            .navigationTitle("Konfiguracja")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
@@ -1182,6 +1187,95 @@ struct ServerSection: View {
         case .remote: return "Połączono spoza domu"
         case .home where !model.remoteURL.isEmpty: return "Połączono w domu"
         default: return "Połączono"
+        }
+    }
+}
+
+/// How much disk the library takes on the server, and its limit: beyond it
+/// the server trims what it can fetch again.
+struct LibrarySizeSection: View {
+    @Environment(AppModel.self) private var model
+    let storage: LibraryStorage
+
+    /// Limits to pick from, in MB; the frame.env value and the current one too.
+    private var options: [Int] {
+        let common = [500, 1000, 1500, 2000, 3000, 5000, 10000, 20000]
+        return Set(common + [storage.defaultMb, storage.limitMb]).sorted()
+    }
+
+    private var usage: LibraryStorage.Usage { storage.usage }
+
+    /// The part the limit holds: the catalogue and the originals.
+    private var limited: Int64 { usage.catalogueBytes + usage.originalsBytes }
+
+    private var fill: Double {
+        let limit = Double(storage.limitMb) * 1_048_576
+        return limit > 0 ? Double(limited) / limit : 1
+    }
+
+    var body: some View {
+        let limit = Binding(
+            get: { storage.limitMb },
+            set: { mb in Task { await model.setLibraryLimit(mb: mb) } }
+        )
+        VStack(alignment: .leading, spacing: 16) {
+            SectionHeader(title: "Biblioteka na serwerze", subtitle: "Ile miejsca zajmują dzieła i zdjęcia")
+            Card {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(ByteSize.bytes(usage.totalBytes))
+                            .font(.title3.weight(.semibold))
+                            .foregroundStyle(Theme.ink)
+                        Spacer()
+                        Text("limit \(ByteSize.mb(storage.limitMb))")
+                            .font(.subheadline)
+                            .foregroundStyle(Theme.inkSoft)
+                    }
+                    ProgressView(value: min(fill, 1))
+                        .tint(fill > 1.02 ? Theme.bad : Theme.accent)
+                        .accessibilityLabel("Zajęte \(Int((fill * 100).rounded())) procent limitu")
+                }
+                Divider()
+                row("Katalog (miniatury)", usage.catalogueBytes)
+                row("Oryginały dzieł i zdjęć", usage.originalsBytes)
+                row("Obrazy przygotowane dla ekranu", usage.panelBytes)
+                row("Baza danych", usage.databaseBytes)
+                if let free = usage.freeBytes {
+                    Divider()
+                    row("Wolne na dysku", free)
+                }
+                Divider()
+                HStack {
+                    Text("Maksymalny rozmiar").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.ink)
+                    Spacer()
+                    Picker("Maksymalny rozmiar", selection: limit) {
+                        ForEach(options, id: \.self) { mb in
+                            Text(mb == storage.defaultMb ? "\(ByteSize.mb(mb)) · domyślnie" : ByteSize.mb(mb))
+                                .tag(mb)
+                        }
+                    }
+                    .labelsHidden()
+                    .tint(Theme.accent)
+                }
+                Text("Ponad limit serwer usuwa najpierw najsłabsze na e-papierze dzieła z katalogu i dawno oglądane oryginały, które może pobrać ponownie. Ulubione, playlisty, kolejka, pokazane dzieła i Twoje zdjęcia zostają. Większy limit to bogatszy katalog w Odkrywaj.")
+                    .font(.caption)
+                    .foregroundStyle(Theme.inkSoft)
+                if !storage.fromApp {
+                    Text("Domyślny limit z frame.env lub opcji add-onu. Zmieniony tutaj ma pierwszeństwo.")
+                        .font(.caption)
+                        .foregroundStyle(Theme.inkSoft)
+                }
+            }
+        }
+    }
+
+    private func row(_ title: String, _ bytes: Int64) -> some View {
+        HStack {
+            Text(title).font(.subheadline).foregroundStyle(Theme.ink)
+            Spacer()
+            Text(ByteSize.bytes(bytes))
+                .font(.subheadline.monospacedDigit())
+                .foregroundStyle(Theme.inkSoft)
         }
     }
 }

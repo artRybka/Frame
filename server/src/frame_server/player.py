@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import random
+import threading
 from collections import Counter
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
@@ -162,6 +163,7 @@ class Player:
         self.service = service
         self.library = service.library
         self._lock = asyncio.Lock()
+        self._trimming = threading.Lock()  # after a change and after a new limit at once
         self.busy = False
         self._migrate_auto_style()
 
@@ -779,16 +781,16 @@ class Player:
             and i.id not in protected
         ]
         spare.sort(key=lambda i: (i.suitability or 0.0, i.added_at))
-        removed = 0
+        gone: list[Item] = []
         for item in spare:
             if total <= limit:
                 break
             path = images.thumb_path(item)
             total -= path.stat().st_size if path.is_file() else 0
-            self.library.delete(item.id)
-            images.remove(item)
-            removed += 1
-        return removed
+            gone.append(item)
+        # A lowered limit can drop thousands at once: one transaction.
+        self._forget(gone)
+        return len(gone)
 
     def grow_catalogue(self) -> Job | None:
         """Add a batch of museum works to the catalogue while its thumbnails
@@ -940,6 +942,10 @@ class Player:
         """Delete the least recently used museum originals over the size
         limit (the current picture and the next ones stay) and thumbnails
         of works browsed but not kept."""
+        with self._trimming:
+            return self._trim_cache()
+
+    def _trim_cache(self) -> int:
         state = self.state
         soon = {state.current_item_id, *state.current_group, *state.requested}
         soon |= set(state.queue[:PREFETCH])
@@ -948,10 +954,12 @@ class Player:
             i for i in items if i.id in soon or (i.source not in MUSEUMS and not refetchable(i))
         ]
         limit = self.service.settings.image_cache_mb * 1024 * 1024
-        self.drop_spare_copies()
-        self.trim_catalogue()
-        self.service.images.prune_thumbs(self.library.query(include_excluded=True)[1])
-        return self.service.images.prune(limit, keep)
+        gone = self.drop_spare_copies() + self.trim_catalogue()
+        gone += self.service.images.prune_thumbs(self.library.query(include_excluded=True)[1])
+        pruned = self.service.images.prune(limit, keep)
+        if gone or pruned:
+            self.service.storage.forget()
+        return pruned
 
     async def previous(self) -> Item | None:
         state = self.state

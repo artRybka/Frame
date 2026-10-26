@@ -31,6 +31,7 @@ actor DemoBackend: FrameBackend {
     private var holdValue: Hold?
     private static let demoPanel = PanelConfig(host: "192.168.1.50", mac: nil, port: 1515, pinSet: true, fromApp: false)
     private var panelValue = DemoBackend.demoPanel
+    private var libraryLimitMb: Int?
     private var demoAsleep = false
     /// The picture "on its way" to the pretend frame, for the progress bar.
     private var run: (title: String, start: Date)?
@@ -759,6 +760,30 @@ actor DemoBackend: FrameBackend {
     func resetPanelConfig() async throws -> PanelConfig {
         panelValue = Self.demoPanel
         return panelValue
+    }
+
+    func libraryStorage() async throws -> LibraryStorage {
+        let mb: Int64 = 1024 * 1024
+        let limit = libraryLimitMb ?? 1500
+        let usage = LibraryStorage.Usage(
+            catalogueBytes: 742 * mb, originalsBytes: 318 * mb, panelBytes: 14 * mb, databaseBytes: 9 * mb,
+            totalBytes: 1083 * mb, freeBytes: 1_200_000 * mb, measuredAt: Date().timeIntervalSince1970
+        )
+        let catalogue = limit * 2 / 3
+        return LibraryStorage(
+            usage: usage, limitMb: limit, defaultMb: 1500, catalogueMb: catalogue,
+            imageCacheMb: limit - catalogue, fromApp: libraryLimitMb != nil
+        )
+    }
+
+    func saveLibraryLimit(mb: Int) async throws -> LibraryStorage {
+        libraryLimitMb = mb
+        return try await libraryStorage()
+    }
+
+    func resetLibraryLimit() async throws -> LibraryStorage {
+        libraryLimitMb = nil
+        return try await libraryStorage()
     }
 
     func wake(sleepAfter: Bool) async throws -> WakeResult {

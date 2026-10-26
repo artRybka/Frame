@@ -151,6 +151,26 @@ enum ColorTag {
     }
 }
 
+/// Disk sizes as the server counts them (1 MB = 1 MiB, 1 GB = 1000 MB), so
+/// a limit of "1,5 GB" and a library at its limit read the same.
+enum ByteSize {
+    static func mb(_ mb: Int) -> String {
+        guard mb >= 1000 else { return "\(mb) MB" }
+        let gb = Double(mb) / 1000
+        return gb.formatted(.number.precision(.fractionLength(0 ... 1)).locale(Locale(identifier: "pl_PL"))) + " GB"
+    }
+
+    static func bytes(_ bytes: Int64) -> String {
+        let mb = Double(bytes) / 1_048_576
+        if mb >= 1_000_000 {
+            let tb = mb / 1_000_000
+            return tb.formatted(.number.precision(.fractionLength(0 ... 1)).locale(Locale(identifier: "pl_PL"))) + " TB"
+        }
+        if mb < 1 && bytes > 0 { return "< 1 MB" }
+        return Self.mb(Int(mb.rounded()))
+    }
+}
+
 enum Names {
     /// "zmianę", "zmiany" or "zmian" after `count`.
     static func changes(_ count: Int) -> String {

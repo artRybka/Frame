@@ -28,6 +28,7 @@ from .power import PowerManager
 from .progress import ProgressTracker, Stage
 from .rendered import RenderCache, Rendered, render_key
 from .status import StatusMonitor
+from .storage import StorageStore
 from .store import ContentInfo, ContentStore
 
 log = logging.getLogger(__name__)
@@ -128,6 +129,8 @@ class FrameService:
         # Before anything reads the panel's address: the app's values win.
         self.panel_config = PanelConfigStore(settings, self.library)
         self.images = ImageCache(settings.data_dir / "library", museum_client)
+        # Before the player trims or grows the catalogue: the app's limit wins.
+        self.storage = StorageStore(settings, self.library, self.images, self.store)
         self.importer = Importer(
             self.library,
             self.images,
