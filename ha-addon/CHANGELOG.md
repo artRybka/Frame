@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.16.0
+
+- Szukaj: pod „+” na górze są Muzea i Kolory; można wybrać kilka muzeów
+  naraz, a każde muzeum i kolor jest etykietką w polu. Kolory działają też
+  dla wyników z muzeów i WikiArt (serwer ocenia miniatury). WikiArt bez
+  „(test)”, bez filtrów pod polem. Pusty ekran ma zabawę z kwadracików.
+- Odkrywaj: „Pokaż na ramce” na stronie motywu; bez wiersza i motywu
+  „Najlepiej na e-papierze”.
+- Playlisty: bez „Tylko najlepsze na e-papier” (nowa instalacja nie tworzy
+  już tej playlisty); muzea wybiera się pod „+”, a playlista i pobieranie w
+  tle biorą wtedy tylko z nich.
+- Ulubione: po kliknięciu serca lub „Nie pokazuj na ramce” aplikacja od razu
+  odświeża playlisty i kolejkę. Gdy ramka gra Ulubione (lub inną
+  inteligentną playlistę), nowa praca wchodzi do kolejki zaraz po
+  najbliższym obrazie, a usunięta z niej znika.
+
 ## 0.15.1
 
 - Nowa ikona aplikacji z napisem „Frame”, z osobnym wariantem dla trybu
