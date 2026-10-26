@@ -548,6 +548,41 @@ def test_fill_adds_only_what_the_playlist_would_pick(tmp_path) -> None:
     assert job.done == 3 and job.skipped == 4  # Monet, until 1890, but not blue: 2, 4, 8, 10
 
 
+def test_fill_asks_the_museums_as_discover_search_does(tmp_path) -> None:
+    import random
+
+    from frame_server.library.importer import Importer, Job, fill_queries
+
+    asked: list[str] = []
+
+    class Recording(Museum):
+        key = "aic"
+        name = "Recording"
+
+        def search(self, query: str, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
+            asked.append(query)
+            return 0, []
+
+        def fetch(self, source_id: str) -> Item | None:
+            return None
+
+    rules = PlaylistRules(artists=["Claude Monet", "Paul Signac"], terms=["subject:sea"])
+    assert fill_queries(rules) == ["Claude Monet sea", "Paul Signac sea"]
+    assert fill_queries(PlaylistRules(query="harbour", terms=["subject:sea"])) == ["harbour sea"]
+    assert fill_queries(PlaylistRules(terms=["subject:sea"])) == ["sea"]
+    saved = dict(MUSEUMS)
+    MUSEUMS.clear()
+    MUSEUMS.update(aic=Recording)
+    try:
+        importer = Importer(Library(tmp_path / "lib.db"), None, None)  # type: ignore[arg-type]
+        importer.fill(rules, 5, Job(id="j", description="fill"), rng=random.Random(1))
+    finally:
+        MUSEUMS.clear()
+        MUSEUMS.update(saved)
+    # What Szukaj shows first, then each artist alone.
+    assert sorted(asked) == ["Claude Monet", "Claude Monet sea", "Paul Signac", "Paul Signac sea"]
+
+
 def _gradient(dark: tuple[int, int, int], light: tuple[int, int, int]) -> Image.Image:
     t = np.linspace(0, 1, 200)[None, :, None]
     pixels = (np.array(dark) * (1 - t) + np.array(light) * t) * np.ones((150, 1, 1))
