@@ -32,7 +32,7 @@ enum DemoFraming {
     }
 
     struct Plan {
-        let fit: String  // resolved: "fit", "fill", "details" or "description"
+        let fit: String  // resolved: "fit", "fill" or "description"
         let canvas: CGSize
         let windows: [Window]
         let captionAt: CGRect?  // right-aligned within; origin = top-left of the line
@@ -156,7 +156,7 @@ enum DemoFraming {
         let ratio = size.width / size.height, target = canvas.width / canvas.height
         if fit == "auto" {
             if abs(ratio - target) / max(ratio, target) <= 0.12 { return "fill" }
-            return room(size, canvas) >= 0.35 ? "details" : "fit"
+            return room(size, canvas) >= 0.35 ? "description" : "fit"
         }
         return fit
     }
@@ -167,8 +167,8 @@ enum DemoFraming {
         switch resolveFit(size, canvas: canvas, fit: presentation.fit) {
         case "fill":
             return planFill(size, canvas, caption, crops?.fill)
-        case let fit where fit == "details" || fit == "description":
-            if let plan = planBeside(size, canvas, fit, presentation.margin, caption, crops) { return plan }
+        case "description":
+            if let plan = planDescription(size, canvas, presentation.margin, crops) { return plan }
             return planFit(size, canvas, presentation.margin, caption, crops?.fit)
         default:
             return planFit(size, canvas, presentation.margin, caption, crops?.fit)
@@ -221,54 +221,55 @@ enum DemoFraming {
         return Plan(fit: "fill", canvas: canvas, windows: [window], captionAt: at)
     }
 
-    /// "details": the whole picture and two close-ups beside it; "description":
-    /// one close-up and the text printed on the mat instead of the second.
-    /// Picture at the left or on top, whichever shows it larger; smaller, in
-    /// a mat window, when the frame has its own shape (layout._plan_beside).
-    private static func planBeside(
-        _ size: CGSize, _ canvas: CGSize, _ fit: String, _ margin: Double, _ caption: Bool, _ crops: Crops?
-    ) -> Plan? {
-        let options = [true, false].compactMap { beside(size, canvas, fit, margin, caption, side: $0) }
-        guard let best = options.max(by: { $0.0.width * $0.0.height < $1.0.width * $1.0.height }) else { return nil }
-        let (main, rects, at) = best
-        let aspect = rects[0].width / rects[0].height
-        let text = fit == "description"
-        // Without the server's hints: a wider and a closer close-up, apart.
-        let chosen: [Crop] = text
-            ? [crops?.detail ?? Crop(x: 0.5, y: 0.35, zoom: 2.5)]
-            : (crops?.details?.count == 2 ? crops?.details : nil)
-                ?? [Crop(x: 0.5, y: 0.3, zoom: 1.5), Crop(x: 0.5, y: 0.75, zoom: 2.5)]
-        var windows = [Window(rect: main, box: whole(size), role: "picture", crop: nil)]
-        for (rect, crop) in zip(rects, chosen) {
-            windows.append(Window(rect: rect, box: cropBox(size, aspect: aspect, crop: crop), role: "detail", crop: crop))
-        }
-        if text {
-            return Plan(fit: "description", canvas: canvas, windows: windows, captionAt: nil, textRect: rects[1])
-        }
-        return Plan(fit: "details", canvas: canvas, windows: windows, captionAt: caption ? at : nil)
+    /// The close-up as close as the source's pixels allow, and at least 1.8×
+    /// the picture beside it, shown at `picture` canvas points per source
+    /// pixel (layout.detail_zoom).
+    static func detailZoom(_ size: CGSize, aspect: CGFloat, windowWidth: CGFloat, picture: CGFloat) -> CGFloat {
+        let cover = min(size.width, size.height * aspect)
+        // The demo's canvas is half the panel's: its window half as wide.
+        let closest = cover * 1.6 / (windowWidth * 2)
+        let least = 1.8 * picture * cover / windowWidth
+        return min(max(1.5, min(3, closest), least), 8)
     }
 
-    /// One arrangement: the picture, the two rects beside it, the caption.
-    private static func beside(
-        _ size: CGSize, _ canvas: CGSize, _ fit: String, _ margin: Double, _ caption: Bool, side: Bool
-    ) -> (CGRect, [CGRect], CGRect)? {
+    /// "description": the picture, a close-up beside it and the text printed
+    /// on the mat. Picture at the left or on top, whichever shows it larger;
+    /// smaller, in a mat window, when the frame has its own shape. Its crop
+    /// moves and zooms it in a window of its own shape (layout._plan_description).
+    private static func planDescription(_ size: CGSize, _ canvas: CGSize, _ margin: Double, _ crops: Crops?) -> Plan? {
+        let options = [true, false].compactMap { beside(size, canvas, margin, side: $0) }
+        guard let best = options.max(by: { $0.0.width * $0.0.height < $1.0.width * $1.0.height }) else { return nil }
+        let (main, rects) = best
+        let shown = crops?.picture ?? wholeCrop
+        let box = crops?.picture.map { cropBox(size, aspect: main.width / main.height, crop: $0) } ?? whole(size)
+        let aspect = rects[0].width / rects[0].height
+        // Without the server's hint: the upper middle, close enough.
+        let zoom = detailZoom(size, aspect: aspect, windowWidth: rects[0].width, picture: main.width / box.width)
+        let detail = crops?.detail ?? Crop(x: 0.5, y: 0.35, zoom: zoom)
+        let windows = [
+            Window(rect: main, box: box, role: "picture", crop: shown),
+            Window(rect: rects[0], box: cropBox(size, aspect: aspect, crop: detail), role: "detail", crop: detail),
+        ]
+        return Plan(fit: "description", canvas: canvas, windows: windows, captionAt: nil, textRect: rects[1])
+    }
+
+    /// One arrangement: the picture, then the close-up and the text beside it.
+    private static func beside(_ size: CGSize, _ canvas: CGSize, _ margin: Double, side: Bool) -> (CGRect, [CGRect])? {
         let (cw, ch) = (canvas.width, canvas.height)
         let short = min(cw, ch)
         let m = (short * max(margin, 0.04)).rounded()
-        let band = caption && fit != "description" ? captionBand(canvas) : 0
-        let gap = (captionSize(canvas) * 0.6).rounded()
         let share: CGFloat = 0.33
         let ratio = size.width / size.height
-        let main: CGRect, rects: [CGRect], at: CGRect
+        let main: CGRect, rects: [CGRect]
         if side {  // picture at the left; the rest stacked in a column at the right
             let fullW = (ch * ratio).rounded()
             let col: CGRect
             if cw - fullW >= cw * share {
                 main = CGRect(x: 0, y: 0, width: fullW, height: ch)
-                col = CGRect(x: fullW + m, y: m, width: cw - fullW - 2 * m, height: ch - 2 * m - band)
+                col = CGRect(x: fullW + m, y: m, width: cw - fullW - 2 * m, height: ch - 2 * m)
             } else {
                 let colW = ((cw - 3 * m) * share).rounded()
-                let availH = ch - 2 * m - band
+                let availH = ch - 2 * m
                 let sized = fitted(ratio, cw - 3 * m - colW, availH)
                 let x = ((cw - sized.width - m - colW) / 2).rounded(.down), y = m + ((availH - sized.height) / 2).rounded(.down)
                 main = CGRect(x: x, y: y, width: sized.width, height: sized.height)
@@ -279,16 +280,15 @@ enum DemoFraming {
                 CGRect(x: col.minX, y: col.minY, width: col.width, height: winH),
                 CGRect(x: col.minX, y: col.minY + winH + m, width: col.width, height: col.height - winH - m),
             ]
-            at = CGRect(x: col.minX, y: col.maxY + gap, width: col.width, height: captionSize(canvas) * 1.4)
         } else {  // picture on top; the rest side by side in a row below
             let fullH = (cw / ratio).rounded()
             let row: CGRect
             if ch - fullH >= ch * share {
                 main = CGRect(x: 0, y: 0, width: cw, height: fullH)
-                row = CGRect(x: m, y: fullH + m, width: cw - 2 * m, height: ch - fullH - 2 * m - band)
+                row = CGRect(x: m, y: fullH + m, width: cw - 2 * m, height: ch - fullH - 2 * m)
             } else {
-                let rowH = ((ch - 3 * m - band) * share).rounded()
-                let availH = ch - 3 * m - band - rowH
+                let rowH = ((ch - 3 * m) * share).rounded()
+                let availH = ch - 3 * m - rowH
                 let sized = fitted(ratio, cw - 2 * m, availH)
                 let x = ((cw - sized.width) / 2).rounded(.down), y = m + ((availH - sized.height) / 2).rounded(.down)
                 main = CGRect(x: x, y: y, width: sized.width, height: sized.height)
@@ -299,10 +299,9 @@ enum DemoFraming {
                 CGRect(x: row.minX, y: row.minY, width: winW, height: row.height),
                 CGRect(x: row.minX + winW + m, y: row.minY, width: row.width - winW - m, height: row.height),
             ]
-            at = CGRect(x: row.minX, y: row.maxY + gap, width: row.width, height: captionSize(canvas) * 1.4)
         }
         guard min(rects[0].width, rects[0].height) >= 0.12 * short else { return nil }
-        return (main, rects, at)
+        return (main, rects)
     }
 
     // MARK: Drawing (mat.py, caption.py)
@@ -467,8 +466,8 @@ enum DemoFraming {
         return out
     }
 
-    /// A museum wall text on the mat (text.py): serif title, the artist and
-    /// date, a short rule, then as many whole sentences as fit.
+    /// A museum wall text on the mat (text.py): serif title (up to three
+    /// lines), the artist and date, a short rule, then as many whole sentences as fit.
     private static func drawText(_ block: TextBlock, in full: CGRect, canvas: CGSize, white: Bool) {
         let short = min(canvas.width, canvas.height)
         // Lines of about 70 characters at most, like the server (MEASURE).
@@ -479,7 +478,7 @@ enum DemoFraming {
             let descriptor = bold ? serif?.withSymbolicTraits(.traitBold) : serif
             return descriptor.map { UIFont(descriptor: $0, size: size) } ?? UIFont.systemFont(ofSize: size)
         }
-        let title = serifFont((short * 0.036).rounded(), bold: true)
+        let title = serifFont((short * 0.03).rounded(), bold: true)
         let meta = UIFont.systemFont(ofSize: (short * 0.021).rounded())
         let body = serifFont((short * 0.015).rounded())
 
@@ -500,7 +499,7 @@ enum DemoFraming {
             cursor += min(box.height, ceil(used.height))
         }
         if !block.title.isEmpty {
-            draw(block.title, title, lines: 2, leading: 1.1)
+            draw(block.title, title, lines: 3, leading: 1.1)
             cursor += (short * 0.007).rounded()
         }
         for line in block.meta where !line.isEmpty {

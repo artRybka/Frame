@@ -390,10 +390,10 @@ class Player:
         framing = item.framing.get(settings.orientation.value)
         if framing is not None:
             base.layout.crop = framing.fill
-            base.layout.details = framing.details
             base.layout.detail = framing.detail
+            base.layout.picture_crop = framing.picture
             base.layout.fit_crop = framing.fit
-        if pres.fit == Fit.DESCRIPTION:
+        if pres.fit in (Fit.DESCRIPTION, Fit.AUTO):  # AUTO may come out as DESCRIPTION
             base.text = text_block_for(item)
         base.caption = caption_for(item) if pres.label else None
         return base

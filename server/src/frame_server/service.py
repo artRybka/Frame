@@ -273,6 +273,7 @@ class FrameService:
             raise RuntimeError("nothing published yet")
         url = self.content_url(content.file_id)
         progress = self.progress
+        self.power.cancel_light_sleep()
         if not progress.active:
             progress.begin(content.title, render=False)
         progress.advance(Stage.SENDING)
@@ -301,6 +302,7 @@ class FrameService:
         progress.advance(Stage.DOWNLOADING)
         fetched = await self.store.wait_for_fetch(content.file_id, wait) if wait else False
         self.status.note_push(fetched)
+        self.power.after_push(fetched)
         message = "" if fetched or not wait else "panel did not download the image in time"
         if fetched:
             progress.advance(Stage.REFRESHING)

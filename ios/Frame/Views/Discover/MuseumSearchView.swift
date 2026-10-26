@@ -76,37 +76,7 @@ struct MuseumSearchView: View {
                     }
                 }
             }
-            privateUseToggle
         }
-    }
-
-    private var privateUseToggle: some View {
-        Toggle(isOn: privateUse) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Użytek prywatny")
-                Text(
-                    privateUse.wrappedValue
-                        ? "Z Wikimedia Commons, Europeany i Openverse także dzieła na wolnych licencjach (np. CC BY-SA), z podanym autorem. Muzea nadal dają tylko domenę publiczną."
-                        : "Tylko dzieła w domenie publicznej (CC0). Opisy w oryginale, po angielsku."
-                )
-                .font(.footnote)
-                .foregroundStyle(Theme.inkSoft)
-            }
-        }
-        .tint(Theme.accent)
-        .disabled(model.settings == nil)
-    }
-
-    /// Saved with the frame settings, so imports on the server follow it.
-    private var privateUse: Binding<Bool> {
-        Binding(
-            get: { model.settings?.privateUse ?? false },
-            set: { value in
-                guard var settings = model.settings else { return }
-                settings.privateUse = value
-                Task { await model.saveSettings(settings) }
-            }
-        )
     }
 
     // MARK: Filters and results

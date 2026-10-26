@@ -75,10 +75,10 @@ class LayoutSettings(BaseModel):
     mat: Literal["white", "cream", "grey", "black", "picture", "edge"] = "white"
     margin: float = Field(0.0, ge=0, le=0.3, description="Passe-partout, fraction of short side")
     crop: Crop | None = Field(None, description="FILL: part of the picture shown (else automatic)")
-    details: list[Crop] | None = Field(
-        None, min_length=2, max_length=2, description="DETAILS: the two close-ups (else automatic)"
-    )
     detail: Crop | None = Field(None, description="DESCRIPTION: the close-up (else automatic)")
+    picture_crop: Crop | None = Field(
+        None, description="DESCRIPTION: the part of the picture in its window (else all of it)"
+    )
     fit_crop: Crop | None = Field(
         None, description="FIT: the part shown and the window's shape (else the whole picture)"
     )
@@ -237,8 +237,8 @@ def plan_for(img: Image.Image, layout: LayoutSettings, caption: bool) -> Plan:
         margin=layout.margin,
         caption=caption,
         crop=layout.crop,
-        details=layout.details,
         detail=layout.detail,
+        picture_crop=layout.picture_crop,
         fit_crop=layout.fit_crop,
         auto=_interest_picker(img),
     )

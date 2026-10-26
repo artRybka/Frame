@@ -1,7 +1,7 @@
 """A short description printed on the mat, like a museum wall text.
 
-Title in serif, the artist and date below, a thin rule, then the text,
-wrapped to the space: as many whole sentences as fit, an ellipsis only if
+Title in serif (up to three lines), the artist and date below, a thin rule,
+then the text, wrapped to the space: as many whole sentences as fit, an ellipsis only if
 not even the first one does. Pure ink,
 no anti-aliasing, like the caption.
 """
@@ -20,7 +20,8 @@ from .layout import Rect
 MAX_BODY = 900  # characters worth considering; the space decides the rest
 # Sizes and gaps as fractions of the canvas's short side; the body text is
 # small, like a wall label, under a title and credit line that stand out.
-TITLE_SIZE = 0.036
+TITLE_SIZE = 0.03
+TITLE_LINES = 3  # a long title wraps; only a longer one ends in an ellipsis
 META_SIZE = 0.021
 BODY_SIZE = 0.015
 MEASURE = 0.5  # widest line, about 70 characters of body text
@@ -111,7 +112,7 @@ def text_block_mask(canvas: tuple[int, int], rect: Rect, block: TextBlock) -> np
 
     cursor = y
     if block.title:
-        cursor = lines_of(block.title, title_font, 2, 1.2, cursor)
+        cursor = lines_of(block.title, title_font, TITLE_LINES, 1.2, cursor)
         cursor += round(short * 0.007)
     for line in block.meta:
         if line:

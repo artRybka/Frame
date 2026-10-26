@@ -14,7 +14,16 @@ from pydantic import BaseModel, Field, ValidationError
 from starlette.concurrency import run_in_threadpool
 
 from ..fsutil import own_files
-from ..imaging.layout import Crop, Fit, Orientation, Plan, canvas_size, fit_area, load_image
+from ..imaging.layout import (
+    WHOLE,
+    Crop,
+    Fit,
+    Orientation,
+    Plan,
+    canvas_size,
+    fit_area,
+    load_image,
+)
 from ..imaging.pipeline import RenderSettings, encode_image, plan_for, render_original
 from ..library import Facets, Item, ItemKind, ItemSummary, Job, PhotoInfo, PlaylistRules
 from ..library.duplicates import work_key
@@ -276,7 +285,7 @@ Box = tuple[float, float, float, float]  # x, y, w, h as fractions of the canvas
 
 
 class FramingWindow(BaseModel):
-    role: str  # "picture" (FIT), "fill" or "detail"
+    role: str  # "picture" (FIT, DESCRIPTION), "fill" or "detail"
     aspect: float  # width / height of the window on the frame
     crop: Crop
     custom: bool  # set by the user (else chosen automatically)
@@ -294,7 +303,9 @@ class FramingView(BaseModel):
 
 class FramingUpdate(BaseModel):
     orientation: Orientation
-    crops: list[Crop]  # one for FILL and DESCRIPTION, two for DETAILS
+    # One for FILL and FIT; DESCRIPTION: the picture's and the close-up's,
+    # or only the close-up's (apps from before the picture could be cropped).
+    crops: list[Crop]
 
 
 def _framing_plan(
@@ -304,7 +315,7 @@ def _framing_plan(
     render_settings = svc.player.render_settings(item, settings)
     if automatic:  # as if nothing had been saved
         layout = render_settings.layout.model_copy(
-            update={"crop": None, "details": None, "detail": None, "fit_crop": None}
+            update={"crop": None, "detail": None, "picture_crop": None, "fit_crop": None}
         )
         render_settings = render_settings.model_copy(update={"layout": layout})
     img = load_image(svc.images.ensure_image(item))
@@ -331,8 +342,7 @@ def _framing_view(
     saved = item.framing.get(orientation.value) or Framing()
     custom = not automatic and {
         Fit.FILL: saved.fill is not None,
-        Fit.DETAILS: saved.details is not None,
-        Fit.DESCRIPTION: saved.detail is not None,
+        Fit.DESCRIPTION: saved.detail is not None or saved.picture is not None,
         Fit.FIT: saved.fit is not None,
     }.get(plan.fit, False)
     area = None
@@ -382,15 +392,17 @@ async def get_framing(
 
 @router.put("/library/items/{item_id}/framing", response_model=FramingView)
 async def put_framing(item_id: str, update: FramingUpdate, svc: Svc) -> FramingView:
-    """Save a corrected crop (FILL, or FIT with its shape) or close-ups
-    (DETAILS, DESCRIPTION) for this picture."""
+    """Save a corrected crop (FILL, or FIT with its shape) or the picture
+    and its close-up (DESCRIPTION) for this picture."""
     item = await _work(svc, item_id, save=True)
     current = await _plan_and_view(svc, item, update.orientation)
     framing = item.framing.get(update.orientation.value, Framing()).model_copy()
     if current.fit == Fit.FILL and len(update.crops) == 1:
         framing.fill = update.crops[0]
-    elif current.fit == Fit.DETAILS and len(update.crops) == 2:
-        framing.details = list(update.crops)
+    elif current.fit == Fit.DESCRIPTION and len(update.crops) == 2:
+        picture, framing.detail = update.crops
+        # The whole picture, untouched, stays automatic.
+        framing.picture = None if _uncropped(picture) else picture
     elif current.fit == Fit.DESCRIPTION and len(update.crops) == 1:
         framing.detail = update.crops[0]
     elif current.fit == Fit.FIT and len(update.crops) == 1:
@@ -407,13 +419,20 @@ async def reset_framing(item_id: str, svc: Svc, orientation: Orientation) -> Fra
     item = await _work(svc, item_id, save=True)
     current = await _plan_and_view(svc, item, orientation)
     framing = item.framing.get(orientation.value, Framing()).model_copy()
-    field = {Fit.FILL: "fill", Fit.DETAILS: "details", Fit.DESCRIPTION: "detail", Fit.FIT: "fit"}
-    if current.fit not in field:
+    fields = {Fit.FILL: ["fill"], Fit.DESCRIPTION: ["detail", "picture"], Fit.FIT: ["fit"]}
+    if current.fit not in fields:
         raise HTTPException(422, f"{current.fit.value}: nothing to reset")
-    setattr(framing, field[current.fit], None)
+    for field in fields[current.fit]:
+        setattr(framing, field, None)
     empty = framing == Framing()
     item = _save_framing(svc, item, orientation, None if empty else framing)
     return await _plan_and_view(svc, item, orientation)
+
+
+def _uncropped(crop: Crop) -> bool:
+    """The picture's window as it is without a correction (layout.WHOLE)."""
+    off = max(abs(crop.zoom - WHOLE.zoom), abs(crop.x - WHOLE.x), abs(crop.y - WHOLE.y))
+    return crop.aspect is None and off < 1e-3
 
 
 def _save_framing(

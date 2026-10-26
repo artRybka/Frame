@@ -12,11 +12,13 @@ from frame_server.imaging import PRESETS
 from frame_server.imaging.color import linear_to_oklab
 from frame_server.imaging.interest import InterestMap, detect_faces
 from frame_server.imaging.layout import (
+    WHOLE,
     Crop,
     Fit,
+    Orientation,
     caption_band,
     crop_box,
-    detail_zooms,
+    detail_zoom,
     plan_layout,
     resolve_fit,
     whole,
@@ -35,13 +37,25 @@ CANVAS = (2560, 1440)
     [
         ((1600, 900), Fit.AUTO, Fit.FILL),  # 16:9 on 16:9
         ((1200, 900), Fit.AUTO, Fit.FIT),  # 4:3: little room beside it
-        ((800, 1200), Fit.AUTO, Fit.DETAILS),  # portrait on a landscape frame
-        ((1600, 900), Fit.DETAILS, Fit.DETAILS),  # chosen modes always apply
-        ((1600, 900), Fit.DESCRIPTION, Fit.DESCRIPTION),
+        ((800, 1200), Fit.AUTO, Fit.DESCRIPTION),  # portrait on a landscape frame
+        ((1600, 900), Fit.DESCRIPTION, Fit.DESCRIPTION),  # chosen modes always apply
     ],
 )
-def test_auto_picks_fill_fit_or_details(size, fit, expected) -> None:
+def test_auto_picks_fill_fit_or_description(size, fit, expected) -> None:
     assert resolve_fit(size, CANVAS, fit) == expected
+
+
+def test_retired_details_mode_becomes_description() -> None:
+    from frame_server.library.models import Framing
+    from frame_server.schedule import FrameSettings
+
+    settings = FrameSettings.model_validate({"art": {"fit": "details"}})
+    assert settings.art.fit == Fit.DESCRIPTION
+    wide, close = {"x": 0.2, "zoom": 1.5}, {"x": 0.7, "zoom": 2.5}
+    framing = Framing.model_validate({"details": [wide, close]})
+    assert framing.detail == Crop(**close)  # the closer one
+    kept = Framing.model_validate({"details": [wide, close], "detail": wide})
+    assert kept.detail == Crop(**wide)
 
 
 def test_crop_box_zoom_and_clamping() -> None:
@@ -51,33 +65,32 @@ def test_crop_box_zoom_and_clamping() -> None:
     assert (x0, y1) == (0, 1000) and x1 == pytest.approx(500)
 
 
-def test_details_layout() -> None:
-    plan = plan_layout((800, 1200), CANVAS, Fit.DETAILS, margin=0.05, caption=True)
-    main, first, second = plan.windows
+def test_description_layout_sides() -> None:
+    plan = plan_layout((800, 1200), CANVAS, Fit.DESCRIPTION, margin=0.05)
+    main, close_up = plan.windows
     assert main.role == "picture" and main.rect == (0, 0, 960, 1440)
-    assert first.role == second.role == "detail"
-    assert first.rect[0] == second.rect[0] > 960  # stacked beside the picture
-    assert first.rect[1] + first.rect[3] < second.rect[1]  # mat between them
-    assert plan.caption_at is not None and plan.caption_at[1] > second.rect[1] + second.rect[3]
-    # The portrait frame and a landscape picture: picture on top, close-ups side by side.
-    plan = plan_layout((1500, 600), (1440, 2560), Fit.DETAILS)
-    main, first, second = plan.windows
-    assert main.rect == (0, 0, 1440, 576) and first.rect[1] == second.rect[1] > 576
+    assert close_up.role == "detail" and close_up.rect[0] > 960  # beside the picture
+    assert plan.text_rect is not None and plan.text_rect[1] > close_up.rect[1] + close_up.rect[3]
+    # The portrait frame and a landscape picture: picture on top, the rest side by side.
+    plan = plan_layout((1500, 600), (1440, 2560), Fit.DESCRIPTION)
+    main, close_up = plan.windows
+    assert main.rect == (0, 0, 1440, 576) and close_up.rect[1] > 576
+    assert plan.text_rect is not None and plan.text_rect[1] == close_up.rect[1]
 
 
-@pytest.mark.parametrize("fit", [Fit.DETAILS, Fit.DESCRIPTION])
 @pytest.mark.parametrize("canvas", [CANVAS, (1440, 2560)])
-def test_details_without_room_make_the_picture_smaller(fit, canvas) -> None:
+def test_description_without_room_makes_the_picture_smaller(canvas) -> None:
     size = (canvas[0] * 9, canvas[1] * 9)  # the frame's own shape: no room beside it
-    plan = plan_layout(size, canvas, fit, margin=0.05, caption=True)
-    assert plan.fit == fit
-    main, first = plan.windows[:2]
+    plan = plan_layout(size, canvas, Fit.DESCRIPTION, margin=0.05, caption=True)
+    assert plan.fit == Fit.DESCRIPTION
+    main, first = plan.windows
     x, y, w, h = main.rect
     assert x > 0 and y > 0 and w < canvas[0] and h < canvas[1]  # in a mat window now
     assert abs(w / h - size[0] / size[1]) < 0.01  # the whole picture
     beside = first.rect
-    rest = plan.text_rect or plan.windows[2].rect
-    # The close-ups (or the text) line up with the picture.
+    rest = plan.text_rect
+    assert rest is not None
+    # The close-up and the text line up with the picture.
     if beside[0] > x + w:  # a column at the right
         assert beside[1] == y and rest[1] + rest[3] == y + h
     else:  # a row below
@@ -133,13 +146,55 @@ def test_description_layout() -> None:
     assert plan.fit == Fit.DESCRIPTION and (main.role, close_up.role) == ("picture", "detail")
     assert plan.caption_at is None  # the text says it all
     assert plan.text_rect is not None and plan.text_rect[1] > close_up.rect[1] + close_up.rect[3]
-    # The closer of the two DETAILS zooms, as close as the source's pixels allow.
-    wide, close = detail_zooms((800, 1200), close_up.aspect, close_up.rect[2])
-    assert close_up.crop is not None and close_up.crop.zoom == close > wide
+    assert main.crop == WHOLE and main.box == pytest.approx(whole((800, 1200)))
+
+
+def enlargement(plan) -> float:
+    """How much larger the close-up shows the picture than the main window."""
+    main, close_up = plan.windows
+    scale = [w.rect[2] / (w.box[2] - w.box[0]) for w in (main, close_up)]
+    return scale[1] / scale[0]
+
+
+@pytest.mark.parametrize(
+    ("size", "canvas"),
+    [
+        ((800, 1200), CANVAS),  # a small source: the pixels would allow little zoom
+        ((8000, 12000), CANVAS),  # a large one
+        ((1500, 600), (1440, 2560)),
+        ((2400, 1500), (1440, 2560)),  # little room: the picture is smaller
+    ],
+)
+def test_automatic_close_up_is_at_least_much_larger(size, canvas) -> None:
+    plan = plan_layout(size, canvas, Fit.DESCRIPTION)
+    assert enlargement(plan) >= 1.8 - 1e-6
+    # Also when the picture itself is zoomed in its window.
+    zoomed = plan_layout(size, canvas, Fit.DESCRIPTION, picture_crop=Crop(zoom=1.5))
+    assert enlargement(zoomed) >= 1.8 - 1e-6
+    # A close-up chosen by the user is kept as it is.
+    mine = plan_layout(size, canvas, Fit.DESCRIPTION, detail=Crop(zoom=1.0))
+    assert mine.windows[1].crop == Crop(zoom=1.0)
+
+
+def test_detail_zoom_prefers_the_sources_pixels() -> None:
+    # A large source and a small picture: as close as DETAIL_ZOOM, beyond 1.8×.
+    assert detail_zoom((8000, 8000), 1.0, 800, 0.05) == pytest.approx(3.0)
+    # The picture shown large: 1.8× it, even past the pixels' limit.
+    assert detail_zoom((1000, 1000), 1.0, 800, 1.0) == pytest.approx(1.8 * 1000 / 800)
+
+
+def test_description_picture_can_be_cropped() -> None:
+    crop = Crop(x=0.3, y=0.4, zoom=2.0)
+    plan = plan_layout((800, 1200), CANVAS, Fit.DESCRIPTION, picture_crop=crop)
+    main = plan.windows[0]
+    assert main.crop == crop and main.rect == (0, 0, 960, 1440)  # same window, same shape
+    x0, y0, x1, y1 = main.box
+    assert x1 - x0 == pytest.approx(400) and y1 - y0 == pytest.approx(600)
+    assert (x0 + x1) / 2 == pytest.approx(0.3 * 800) and (y0 + y1) / 2 == pytest.approx(480)
 
 
 def test_picture_edge_hides_behind_the_mat() -> None:
-    for fit in (Fit.FIT, Fit.DETAILS):
+    for fit in (Fit.FIT, Fit.DESCRIPTION):
         picture = plan_layout((800, 1200), CANVAS, fit).windows[0]
         x0, y0, x1, y1 = picture.box
         assert 0 < x0 < 0.05 * 800 and 0 < y0 < 0.05 * 1200
@@ -267,11 +322,30 @@ def test_framing_api(service) -> None:
         settings["art"]["fit"] = "description"
         client.put("/api/settings", json=settings)
         view = client.get(url, params={"orientation": "portrait"}).json()
-        assert view["fit"] == "description" and len(view["windows"]) == 1
+        assert view["fit"] == "description" and len(view["windows"]) == 2
+        picture, close_up = view["windows"]
+        assert (picture["role"], close_up["role"]) == ("picture", "detail")
+        # Only the close-up (apps that could not crop the picture yet).
         one = {"orientation": "portrait", "crops": [crop]}
         saved = client.put(url, json=one).json()
-        assert saved["windows"][0]["custom"]
-        assert svc.library.get(item.id).framing["portrait"].detail == Crop(**crop)
+        assert saved["windows"][1]["custom"]
+        stored = svc.library.get(item.id).framing["portrait"]
+        assert stored.detail == Crop(**crop) and stored.picture is None
+        # The picture left as it was stays automatic; a moved one is saved.
+        both = {"orientation": "portrait", "crops": [picture["crop"], crop]}
+        client.put(url, json=both)
+        assert svc.library.get(item.id).framing["portrait"].picture is None
+        moved = {"x": 0.4, "y": 0.5, "zoom": 1.6}
+        both = {"orientation": "portrait", "crops": [moved, crop]}
+        saved = client.put(url, json=both).json()
+        assert saved["windows"][0]["crop"]["zoom"] == 1.6
+        stored = svc.library.get(item.id).framing["portrait"]
+        assert stored.picture == Crop(**moved) and stored.detail == Crop(**crop)
+        render_settings = svc.player.render_settings(
+            svc.library.get(item.id),
+            svc.player.settings.model_copy(update={"orientation": Orientation.PORTRAIT}),
+        )
+        assert render_settings.layout.picture_crop == stored.picture
 
         # Passe-partout: one crop, with the window's shape.
         settings["art"]["fit"] = "fit"
@@ -288,7 +362,7 @@ def test_framing_api(service) -> None:
         assert y - ay == pytest.approx(ay + ah - y - h, abs=1e-3)
         # Another shape, tried on the preview before it is sent.
         preview = f"/api/library/items/{item.id}/preview"
-        portrait = svc.player.settings.model_copy(update={"orientation": "portrait"})
+        portrait = svc.player.settings.model_copy(update={"orientation": Orientation.PORTRAIT})
         tall = {"fit": {"x": 0.5, "y": 0.5, "zoom": 1, "aspect": 0.5}}
         query = {"settings": portrait.model_dump_json()}
         saved_png = client.get(preview, params=query).content
@@ -297,10 +371,11 @@ def test_framing_api(service) -> None:
         assert svc.library.get(item.id).framing["portrait"].fit.aspect == 1.0
         bad = client.get(preview, params={"framing": '{"fit": {"zoom": 0}}'})
         assert bad.status_code == 422
-        # Resetting it keeps the description's close-up.
+        # Resetting it keeps the description's crops.
         client.delete(url, params={"orientation": "portrait"})
         stored = svc.library.get(item.id).framing["portrait"]
         assert stored.fit is None and stored.detail == Crop(**crop)
+        assert stored.picture == Crop(**moved)
 
 
 def test_upload_photo_with_place(service) -> None:
