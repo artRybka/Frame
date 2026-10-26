@@ -135,6 +135,16 @@ serwera `/api/calibration` (bez aplikacji, np. `curl`):
 Paletę można też poprawiać ręcznie: `uv run frame palette --export p.json`,
 edycja pól `perceived`, a potem `--palette p.json` w `frame render`.
 
+## Ocena dla e-papieru
+
+Każde dzieło dostaje przy imporcie ocenę 0–1 (`library/colors.py`, `suitability`), według której działa wiersz i motyw „Najlepiej na e-papierze” (od 0,72), Propozycje (od 0,4) i katalog (od 0,25). Liczy się z miniatury:
+
+- **kolor (50%)**: czy dzieło ma kilka barw (rozrzut odcieni z `tint_spread`, od 0,01 do 0,035), i jak mocne są (chroma najbardziej nasyconej dziesiątej części pikseli, pełne od 0,08); średnia geometryczna, więc sepia na pożółkłym papierze i szare zdjęcie mają 0;
+- **kontrast (20%)**, **jasność bliska średniej (20%)**: ciemne obrazy na e-papierze mętnieją;
+- **mieszczenie się w barwach ekranu (10%)**: mapowanie gamutu dobrze radzi sobie z barwami poza farbami, więc liczy się mało.
+
+Rysunki, ryciny i zdjęcia czarno-białe mają więc najwyżej 0,5: wyglądają poprawnie, ale nie wykorzystują sześciu farb. Do wersji 0.11 ocena składała się głównie z pokrycia gamutu i kontrastu, przez co ryciny miały ok. 0,9, a Van Gogh 0,63 i „Najlepiej na e-papierze” wypełniały czarno-białe prace. Po zmianie wzoru (`SCORE_VERSION`) serwer raz ocenia bibliotekę na nowo z zapisanych miniatur, w tle po starcie.
+
 ## Pomysły na dalsze ulepszenia
 
 - Szarości bez kolorowego szumu: neutralne tony mieszane z czerni i bieli zamiast z R+G+B.

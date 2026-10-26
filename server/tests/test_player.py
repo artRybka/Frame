@@ -609,3 +609,22 @@ def test_api_adds_a_work_to_the_queue(service) -> None:
         view = client.delete(f"/api/player/queue/{b.id}").json()
         assert view["queued"] == []
         assert client.post("/api/player/next").status_code == 202
+
+
+def test_library_is_scored_again_once(service) -> None:
+    from frame_server.library.colors import SCORE_VERSION
+    from frame_server.player import SCORE_KEY
+
+    library = service.library
+    work = service.importer.add_upload(
+        jpeg_bytes((150, 150, 150)), kind=ItemKind.OWN, title="Grey", artist="Ala"
+    )
+    fresh = work.suitability
+    assert fresh is not None and fresh <= 0.5  # no colour of its own
+    library.update(work.id, suitability=0.95)  # the score of an older version
+    library.set_state(SCORE_KEY, SCORE_VERSION - 1)
+    assert service.player.rescore() >= 1
+    assert library.get(work.id).suitability == fresh
+    assert library.get_state(SCORE_KEY) == SCORE_VERSION
+    library.update(work.id, suitability=0.95)
+    assert service.player.rescore() == 0  # only once

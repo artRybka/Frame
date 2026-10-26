@@ -155,8 +155,8 @@ class Importer:
 
     def _analysed(self, item: Item) -> Item:
         with Image.open(self.cache.ensure_thumb(item)) as thumb:
-            colors, tags, score = analyse(thumb, self.palette)
             spread = tint_spread(thumb)
+            colors, tags, score = analyse(thumb, self.palette, spread)
             width, height = item.width, item.height
             if not width or not height:
                 width, height = thumb.size

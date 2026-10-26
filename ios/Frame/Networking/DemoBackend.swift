@@ -547,7 +547,7 @@ actor DemoBackend: FrameBackend {
             ),
             SuggestionRow(
                 key: "best", title: "Najlepiej na e-papierze",
-                subtitle: "Wyraziste barwy i kontrast, które ten ekran oddaje najlepiej",
+                subtitle: "Kolorowe dzieła: sześć farb ekranu oddaje je najpiękniej",
                 items: remote(Array(best.prefix(12)))
             ),
         ]
