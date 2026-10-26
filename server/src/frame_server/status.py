@@ -53,6 +53,13 @@ class DeviceStatus(BaseModel):
     wakes_at: str | None = None  # HH:MM of the panel's own alarm
 
 
+def _readable(text: str) -> str | None:
+    """The EM32DX answers the model query with a code (``02 7a 01``), not
+    a name: keep only text worth showing."""
+    text = text.strip()
+    return text if len(text) >= 2 and text.isprintable() else None
+
+
 class StatusMonitor:
     def __init__(self, panel: Panel) -> None:
         self.panel = panel
@@ -98,7 +105,7 @@ class StatusMonitor:
                 status.network_standby = await mdc.network_standby()
                 if not self._static_known:
                     status.firmware = await mdc.software_version()
-                    status.model = await mdc.model_name()
+                    status.model = _readable(await mdc.model_name())
                     status.serial = await mdc.serial_number()
                     status.name = await mdc.device_name()
                     self._static_known = True

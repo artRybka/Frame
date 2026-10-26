@@ -426,17 +426,18 @@ class Player:
             await self._guarded(item.id, state, work)
 
     def needs_restyle(self, old: FrameSettings, new: FrameSettings) -> bool:
-        """Whether a settings change alters how the current picture is drawn."""
-        state = self.state
-        item = self.library.get(state.current_item_id) if state.current_item_id else None
-        if item is None:
+        """Whether a settings change must redraw the current picture now.
+
+        Only turning the screen does: the picture would hang sideways.
+        A new presentation (framing, mat, style) waits for the next picture
+        sent to the frame, so saving it does not wake the panel."""
+        if not self.state.current_item_id:
             return False
-        kind = "photo" if item.kind == ItemKind.PHOTO else "art"
-        return (old.orientation, old.rotation, getattr(old, kind)) != (
-            new.orientation,
-            new.rotation,
-            getattr(new, kind),
-        )
+        return (old.orientation, old.rotation) != (new.orientation, new.rotation)
+
+    def presentation_changed(self, old: FrameSettings, new: FrameSettings) -> bool:
+        """Whether pictures are framed differently from now on."""
+        return (old.art, old.photo) != (new.art, new.photo)
 
     async def restyle(self) -> None:
         """Redraw the current picture with the current presentation settings.

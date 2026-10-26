@@ -61,6 +61,8 @@ class FrameSettings(BaseModel):
     # WikiArt as a source, only to test the panel with newer art; its works
     # leave the library when this is switched off.
     wikiart: bool = False
+    # The frame's name in the app; None: the name the panel reports.
+    name: str | None = Field(None, max_length=40)
 
     @model_validator(mode="before")
     @classmethod
@@ -102,6 +104,13 @@ class FrameSettings(BaseModel):
     @classmethod
     def _valid_start(cls, value: str | None) -> str | None:
         return _hhmm(value).strftime("%H:%M") if value else None
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def _trimmed_name(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            return " ".join(value.split()) or None
+        return value
 
     @model_validator(mode="after")
     def _own_fits(self) -> FrameSettings:

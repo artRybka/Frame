@@ -155,8 +155,11 @@ async def put_settings(settings: FrameSettings, svc: Svc) -> FrameSettings:
             svc.library.delete(item.id)
             svc.images.remove(item)
     if player.needs_restyle(old, saved):
-        # New framing should show up now, not at the next scheduled change.
+        # The screen was turned: the picture on it is redrawn to match.
         svc.background(player.restyle())
+    elif player.presentation_changed(old, saved):
+        # The picture on the frame stays; the next one is drawn the new way.
+        svc.background(player.render_ahead())
     return saved
 
 

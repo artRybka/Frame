@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import UTC, datetime, time, timedelta
 
@@ -9,6 +10,7 @@ from conftest import jpeg_bytes
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
+from frame_server.imaging.layout import Orientation
 from frame_server.library import Item, ItemKind, Playlist, PlaylistRules
 from frame_server.player import RETRY_AFTER, Hold, hold_from
 from frame_server.schedule import (
@@ -266,7 +268,7 @@ def test_api_removes_single_works_from_playlists(service) -> None:
         assert detail["playlist"]["rules"]["exclude_ids"] == []
 
 
-async def test_presentation_change_redraws_the_current_picture(service) -> None:
+async def test_presentation_change_waits_for_the_next_picture(service) -> None:
     item = _add(service, 1, (200, 40, 40), "Ala")
     player = service.player
     await player.show(item, "test")
@@ -274,9 +276,12 @@ async def test_presentation_change_redraws_the_current_picture(service) -> None:
 
     old = player.settings
     new = old.model_copy(deep=True)
-    new.photo.margin = 0.2  # the current picture is art: no redraw
-    assert not player.needs_restyle(old, new)
     new.art.margin = 0.12
+    # A new framing is only for the pictures still to come.
+    assert player.presentation_changed(old, new)
+    assert not player.needs_restyle(old, new)
+    # Turning the screen redraws the picture on it.
+    new.orientation = Orientation.PORTRAIT
     assert player.needs_restyle(old, new)
 
     player.save_settings(new)
@@ -288,6 +293,34 @@ async def test_presentation_change_redraws_the_current_picture(service) -> None:
     assert player.state.last_change_at == state.last_change_at
     assert player.state.next_change_at == state.next_change_at
     assert service.library.get(item.id).show_count == 1
+
+
+def test_saving_presentation_keeps_the_picture_on_the_frame(service) -> None:
+    from frame_server.web import create_app
+
+    app = create_app(service.settings)
+    svc = app.state.service
+    item = _add(svc, 1, (200, 40, 40), "Ala")
+    asyncio.run(svc.player.show(item, "test"))
+    before = svc.store.current()
+    with TestClient(app) as client:
+        settings = client.get("/api/settings").json()
+        settings["art"]["margin"] = 0.15
+        settings["art"]["mat"] = "black"
+        assert client.put("/api/settings", json=settings).status_code == 200
+        assert svc.store.current().file_id == before.file_id
+        assert svc.player.settings.art.margin == 0.15
+
+
+def test_frame_name_is_trimmed(service) -> None:
+    settings = service.player.settings
+    assert settings.name is None
+    settings.name = "  Salon \n przy oknie "
+    assert settings.name == "Salon przy oknie"
+    settings.name = "   "
+    assert settings.name is None
+    service.player.save_settings(settings.model_copy(update={"name": "Salon"}))
+    assert service.player.settings.name == "Salon"
 
 
 async def test_timed_hold_ends_with_the_next_picture(service) -> None:

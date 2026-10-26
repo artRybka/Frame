@@ -308,16 +308,28 @@ final class AppModel {
     }
 
     func saveSettings(_ new: FrameSettings) async {
-        let reframed = settings?.presentationKey != new.presentationKey
+        let turned = settings?.screenKey != new.screenKey
+        let restyled = settings?.presentationKey != new.presentationKey
         do {
             settings = try await backend.saveSettings(new)
-            toast = "Zapisano ustawienia"
-            if reframed {
-                // The server redraws the current picture with the new framing.
+            toast = !turned && restyled ? "Zapisano. Nowy wygląd dostanie następny obraz" : "Zapisano ustawienia"
+            if turned {
+                // The server redraws the current picture for the turned screen.
                 await followPlayer()
             } else {
                 await refreshPlayer()
             }
+        } catch { show(error) }
+    }
+
+    /// The frame's name in the app; empty goes back to the panel's own.
+    func renameFrame(_ name: String) async {
+        guard var new = settings else { return }
+        let trimmed = String(name.split(whereSeparator: \.isWhitespace).joined(separator: " ").prefix(40))
+        new.name = trimmed.isEmpty ? nil : trimmed
+        do {
+            settings = try await backend.saveSettings(new)
+            toast = new.name.map { "Ramka nazywa się teraz „\($0)”" } ?? "Przywrócono nazwę z ekranu"
         } catch { show(error) }
     }
 
