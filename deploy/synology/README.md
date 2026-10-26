@@ -29,3 +29,21 @@ Uwagi:
   *Konfiguracja YAML* kliknij *Edytuj*, dopisz pod linią `image:`
   wiersz `pull_policy: always` (z tym samym wcięciem), zapisz i kliknij
   *Kompiluj*. Można też podmienić plik w folderze projektu przez File Station.
+
+## Dostęp spoza domu (Tailscale)
+
+Serwer nie powinien być wystawiony do internetu. Aplikacja łączy się z nim
+spoza domu przez Tailscale:
+
+1. Na NAS-ie zainstaluj pakiet *Tailscale* z Centrum pakietów i zaloguj go
+   na swoje konto. Kontener działa w sieci hosta, więc serwer od razu
+   odpowiada pod adresem Tailscale NAS-a (`100.x.y.z`, widocznym w panelu
+   Tailscale) na porcie 8099.
+2. Na iPhonie zainstaluj aplikację Tailscale na to samo konto.
+3. W aplikacji Frame: *Ramka → trybik → Serwer ramki*, w polu *Spoza domu*
+   wpisz `http://100.x.y.z:8099` (albo nazwę MagicDNS, np.
+   `http://nas.tailXXXX.ts.net:8099`) i stuknij *Połącz*.
+
+Aplikacja sama wybiera adres, który odpowiada; domowy ma pierwszeństwo. Pod
+przyciskiem *Połącz* widać, którędy jest połączona („w domu” albo „spoza
+domu”). Poza domem Tailscale na iPhonie musi być włączony.

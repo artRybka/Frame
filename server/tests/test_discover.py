@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 from fastapi.testclient import TestClient
 from test_pools import _wait, museums  # noqa: F401  (fixture)
 
@@ -11,13 +12,17 @@ from frame_server.library.themes import GROUPS, THEMES, theme_of_the_day
 from frame_server.library.vocabulary import (
     BY_KEY,
     artist_matches,
+    is_copy,
+    is_grey_painting,
     is_manuscript,
     is_photograph,
+    is_reproduction,
     museum_queries,
     set_aside,
     suggest,
     term,
 )
+from frame_server.player import SET_ASIDE_KEY
 
 
 def _work(n: int, **fields) -> Item:
@@ -91,6 +96,32 @@ def test_photographs_are_told_apart() -> None:
     assert set_aside(page) and not set_aside(page, ["technique:manuscripts"])
 
 
+def test_reproductions_are_told_apart() -> None:
+    album = 'Album reprodukcji obrazów z wystawy "Sto lat malarstwa polskiego"'
+    assert is_reproduction(_work(1, title=album, classification="Painting"))
+    assert is_reproduction(_work(2, title="Józef Chełmoński. Wspomnienie (page 41 crop)"))
+    assert is_reproduction(_work(3, title="Jozef Chelmonski. Aanval van wolven, GD017005"))
+    assert is_reproduction(_work(4, title="Babie lato", classification="glass slide"))
+    assert is_reproduction(_work(5, title="Jozef Chelmonski műveinek reprodukciója"))
+    assert is_reproduction(_work(6, title="Babie lato", classification="Pocztówka"))
+    assert not is_reproduction(_work(7, title="Babie lato", classification="Painting"))
+    # Posters are "photomechanical reproductions"; artists' postcards are prints.
+    assert not is_reproduction(_work(8, title="Job", medium="Photomechanical reproduction"))
+    assert not is_reproduction(_work(9, title="Postcard for the Wiener Werkstätte"))
+    assert not is_reproduction(_work(10, title="The Birds of America, Plate 26"))
+
+
+def test_paintings_without_colour_are_copies() -> None:
+    grey = _work(1, title="Babie lato", classification="Painting", tint_spread=0.002)
+    assert is_grey_painting(grey) and is_copy(grey) and set_aside(grey)
+    oil = _work(2, title="Babie lato", medium="Oil on canvas", tint_spread=0.002)
+    assert is_grey_painting(oil)
+    coloured = _work(3, title="Babie lato", classification="Painting", tint_spread=0.03)
+    unknown = _work(4, title="Babie lato", classification="Painting")
+    etching = _work(5, title="Melencolia I", classification="Print", tint_spread=0.0)
+    assert not any(is_grey_painting(i) for i in (coloured, unknown, etching))
+
+
 def test_catalogue_leaves_manuscripts_out(museums) -> None:  # noqa: F811
     service = museums
     library = service.library
@@ -98,14 +129,23 @@ def test_catalogue_leaves_manuscripts_out(museums) -> None:  # noqa: F811
     kept = library.upsert(_work(2, title="Leaf from a Psalter"))  # saved by the owner
     painting = library.upsert(_work(3, title="Haystacks", pooled=True))
     photo = library.upsert(_work(4, title="Rouen", medium="Salted paper print", pooled=True))
+    plate = library.upsert(
+        _work(5, title="Orka", classification="Painting", tint_spread=0.001, pooled=True)
+    )
     assert {i.id for i in library.query()[1]} == {kept.id, painting.id}
     asked = library.query(PlaylistRules(terms=["technique:manuscripts"]))[1]
     assert {i.id for i in asked} == {page.id, kept.id}
 
-    assert service.player.drop_set_aside() == 2
+    assert service.player.drop_set_aside() == 3
     assert library.get(page.id) is None and library.get(photo.id) is None
+    assert library.get(plate.id) is None
     assert library.get(kept.id) is not None
     assert service.player.drop_set_aside() == 0  # once
+
+    # Libraries cleaned by the first version are cleaned again.
+    library.set_state(SET_ASIDE_KEY, True)
+    library.upsert(plate)
+    assert service.player.drop_set_aside() == 1
 
 
 def test_theme_playlists_and_terms(museums) -> None:  # noqa: F811
@@ -209,3 +249,50 @@ def test_discover_does_not_wait_for_slow_work(museums, monkeypatch) -> None:  # 
     discover_api._day_fetch[1].join(5)
     assert [i.title for i in discover_api._day_row(service, sea, day)] == ["Wave"]
     discover_api._theme_rows.clear()
+
+
+def test_theme_pages_pass_over_searches_that_find_nothing() -> None:
+    import httpx
+
+    from frame_server.library.themes import Theme, browse_theme, theme
+
+    class Museums:
+        """Nothing for the first two searches, one failing, works after."""
+
+        def __init__(self, found: dict[str, int], failing: set[str] = frozenset()) -> None:
+            self.found = found
+            self.failing = failing
+            self.asked: list[str] = []
+
+        def search(self, source: str, query: str, limit: int, page: int) -> tuple[int, list[Item]]:
+            self.asked.append(query)
+            if query in self.failing:
+                raise httpx.ConnectError("down")
+            total = self.found.get(query, 0)
+            start = (page - 1) * limit
+            return total, [
+                _work(n, title=f"{query} {n}", artist=query)
+                for n in range(start, min(total, start + limit))
+            ]
+
+    found = Theme("t", "T", "", GROUPS[0], queries=(("aic", "A"), ("aic", "B"), ("aic", "C")))
+    fake = Museums({"C": 30}, failing={"B"})
+    items, following = browse_theme(fake, found, 1, 24)  # type: ignore[arg-type]
+    assert fake.asked == ["A", "B", "C"] and len(items) == 24 and following == 4
+    # Page 4 is C's second round... after A's and B's, which have none.
+    fake.asked.clear()
+    items, following = browse_theme(fake, found, 4, 24)  # type: ignore[arg-type]
+    assert fake.asked == ["A", "B", "C"] and len(items) == 6 and following is None
+
+    # Out of time: an empty page that says where to go on.
+    items, following = browse_theme(Museums({}), found, 1, 24, wait=0)  # type: ignore[arg-type]
+    assert items == [] and following == 2
+    # Nothing anywhere: the last page.
+    assert browse_theme(Museums({}), found, 1, 24) == ([], None)  # type: ignore[arg-type]
+    # Every museum down: an error, not an empty theme.
+    with pytest.raises(httpx.HTTPError):
+        browse_theme(Museums({}, failing={"A", "B", "C"}), found, 1, 24)  # type: ignore[arg-type]
+
+    # Polish painters are looked for on Commons, where they are.
+    assert all(source == "wmc" for source, _ in theme("young-poland").searches())
+    assert all(source == "wmc" for source, _ in theme("polish-landscape").searches())

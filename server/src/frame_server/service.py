@@ -134,7 +134,7 @@ class FrameService:
             self.palette,
             access=self._access,
         )
-        self.status = StatusMonitor(self.panel)
+        self.status = StatusMonitor(self.panel, self.library)
         self.player = Player(self)
         self.power = PowerManager(self)
         self.albums = Albums(self)

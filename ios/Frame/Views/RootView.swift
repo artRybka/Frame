@@ -10,6 +10,7 @@ enum LaunchRoute {
 
 struct RootView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.scenePhase) private var scenePhase
     @State private var tab = Tab.initial
 
     enum Tab: Hashable {
@@ -55,6 +56,10 @@ struct RootView: View {
             if artist != nil { tab = .discover }
         }
         .task { await model.refreshAll() }
+        .onChange(of: scenePhase) { old, phase in
+            // Back from the background, maybe on another network.
+            if old == .background, phase != .background { Task { await model.recheckServer() } }
+        }
     }
 }
 

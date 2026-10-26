@@ -126,6 +126,27 @@ def test_europeana_takes_works_free_in_the_eu() -> None:
     assert [i.license for i in licensed] == ["Public Domain Mark 1.0", "CC BY-SA 4.0"]
 
 
+def test_europeana_leaves_slides_and_reproductions_out() -> None:
+    free = "http://creativecommons.org/publicdomain/mark/1.0/"
+    slide = {"def": ["http://vocab.getty.edu/aat/300128371"]}
+    records = [
+        _europeana_record(free, [], id="/1/painting"),
+        _europeana_record(
+            free,
+            [],
+            id="/1/marburg",
+            dcTypeLangAware=slide,
+            edmConceptPrefLabelLangAware={"en": ["slides (photographs)"]},
+        ),
+        _europeana_record(
+            free, [], id="/1/leuven", dcTypeLangAware={"en": ["Photography", "glass slide"]}
+        ),
+    ]
+    with _europeana(records, []) as http:
+        items = Europeana(http).search("Chełmoński")[1]
+    assert [i.id for i in items] == ["europeana:1~painting"]
+
+
 def test_europeana_discovery_and_fetch() -> None:
     sent: list[httpx.Request] = []
     record = _europeana_record("http://creativecommons.org/publicdomain/zero/1.0/", [])

@@ -3,7 +3,7 @@ import SwiftUI
 
 /// Home: the picture on the frame, presented like an exhibit. The arrows
 /// browse what was and what will be on the frame without sending anything,
-/// and "Wróć do obrazu na ramce" jumps back to it; a tap on the picture opens
+/// and "Teraz" jumps back to the one on it; a tap on the picture opens
 /// it on the crop screen, and "Pokaż na ramce" sends the one browsed to.
 /// A picture that did not reach the frame says so, with the one the frame
 /// still shows and a way to send it again.
@@ -164,7 +164,7 @@ struct NowView: View {
             }
             .task(id: browsed?.summary.id) { await loadDetails() }
             .task(id: draftKey) { await loadFraming() }
-            .task(id: selectedID) { await prefetchNeighbours() }
+            .task(id: draftKey) { await prefetchNeighbours() }  // again with a new presentation
         }
     }
 
@@ -172,9 +172,13 @@ struct NowView: View {
 
     private var heroRef: ImageRef? {
         if let id = selectedID, let trial = draft.trial, draft.key == draftKey {
-            return .framePreview(id, framing: trial)  // the mat with the new window
+            return .framePreview(id, settings: model.settings, framing: trial)  // the mat with the new window
         }
-        if offset != 0, let browsed { return .framePreview(browsed.summary.id, framing: applied[draftKey]) }
+        // With the settings in the address, a new presentation redraws the
+        // pictures still to come instead of showing the ones cached before.
+        if offset != 0, let browsed {
+            return .framePreview(browsed.summary.id, settings: model.settings, framing: applied[draftKey])
+        }
         if let current { return .path(current.previewUrl) }
         return nil
     }
@@ -252,44 +256,86 @@ struct NowView: View {
 
     // MARK: Controls
 
+    /// Under the picture: on the frame, only when it changes next; browsed
+    /// to, where it is in the queue (the next one also says when, on the
+    /// same line), with "Teraz" back to it and "Pokaż na ramce". A picture that did
+    /// not reach the frame says why and what can be done.
     private var controls: some View {
         VStack(spacing: 12) {
             VStack(spacing: 3) {
-                Text(placeLine)
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(offset == 0 && undelivered == nil ? Theme.ink : Theme.vermilion)
-                Text(hintLine)
-                    .font(.caption)
-                    .foregroundStyle(Theme.inkSoft)
-                    .multilineTextAlignment(.center)
+                if let placeLine {
+                    let place = Text(placeLine).fontWeight(.semibold).foregroundStyle(Theme.vermilion)
+                    let when = Text(nextChange.map { " · \($0)" } ?? "").foregroundStyle(Theme.inkSoft)
+                    Text("\(place)\(when)")
+                        .font(.footnote)
+                        .multilineTextAlignment(.center)
+                }
+                if let undelivered {
+                    Text(undelivered.explanation)
+                        .font(.caption)
+                        .foregroundStyle(Theme.inkSoft)
+                        .multilineTextAlignment(.center)
+                } else if offset == 0 {
+                    schedule
+                }
             }
             .contentTransition(.opacity)
             if offset != 0 {
-                backToNow
-            }
-            Button {
-                Task { await primaryAction() }
-            } label: {
-                HStack(spacing: 10) {
-                    if sending { ProgressView().tint(Theme.paper) }
-                    Text(primaryTitle)
+                HStack(spacing: 12) {
+                    backToNow
+                    Button {
+                        Task { await primaryAction() }
+                    } label: {
+                        Label {
+                            Text("Pokaż na ramce")
+                        } icon: {
+                            if sending {
+                                ProgressView().tint(Theme.paper)
+                            } else {
+                                Image(systemName: "photo.artframe")
+                            }
+                        }
+                    }
+                    .buttonStyle(ActionButtonStyle(prominent: true))
+                    .disabled(!primaryEnabled || sending)
+                    .opacity(primaryEnabled || sending ? 1 : 0.45)
                 }
-            }
-            .buttonStyle(PrimaryButtonStyle())
-            .disabled(!primaryEnabled || sending)
-            .opacity(primaryEnabled || sending ? 1 : 0.45)
-            .frame(maxWidth: model.isPortrait ? 420 : .infinity)
-            HStack(spacing: 8) {
-                Text(scheduleLine)
-                if model.player?.hold != nil {
-                    Button("Odepnij") { Task { await model.releaseHold() } }
-                        .fontWeight(.semibold)
+                .frame(maxWidth: model.isPortrait ? 420 : .infinity)
+                .transition(.opacity)
+            } else if undelivered != nil || primaryEnabled || sending {
+                Button {
+                    Task { await primaryAction() }
+                } label: {
+                    HStack(spacing: 10) {
+                        if sending { ProgressView().tint(Theme.paper) }
+                        Text(primaryTitle)
+                    }
                 }
+                .buttonStyle(PrimaryButtonStyle())
+                .disabled(!primaryEnabled || sending)
+                .opacity(primaryEnabled || sending ? 1 : 0.45)
+                .frame(maxWidth: model.isPortrait ? 420 : .infinity)
+                .transition(.opacity)
             }
-            .font(.footnote)
-            .foregroundStyle(Theme.inkSoft)
+            if undelivered != nil {
+                schedule
+            }
         }
         .frame(maxWidth: .infinity)
+        .padding(.top, -12)  // the caption close under the frame
+    }
+
+    /// When the frame changes next, or how long the picture is pinned.
+    private var schedule: some View {
+        HStack(spacing: 8) {
+            Text(scheduleLine)
+            if model.player?.hold != nil {
+                Button("Odepnij") { Task { await model.releaseHold() } }
+                    .fontWeight(.semibold)
+            }
+        }
+        .font(.footnote)
+        .foregroundStyle(Theme.inkSoft)
     }
 
     /// Back to the picture on the frame from wherever the arrows went.
@@ -297,11 +343,11 @@ struct NowView: View {
         Button {
             withAnimation(.easeInOut(duration: 0.25)) { browsed = nil }
         } label: {
-            Label("Wróć do obrazu na ramce", systemImage: offset > 0 ? "arrow.uturn.left" : "arrow.uturn.right")
-                .toolChip()
+            Label("Teraz", systemImage: offset > 0 ? "arrow.uturn.left" : "arrow.uturn.right")
         }
-        .buttonStyle(.plain)
+        .buttonStyle(ActionButtonStyle(wide: false))
         .disabled(sending)
+        .accessibilityLabel("Wróć do obrazu na ramce")
         .transition(.opacity)
     }
 
@@ -338,9 +384,10 @@ struct NowView: View {
         }
     }
 
-    private var placeLine: String {
+    /// Where the picture browsed to is; nil for the one on the frame.
+    private var placeLine: String? {
         switch offset {
-        case 0: undelivered?.headline ?? "Teraz na ramce"
+        case 0: undelivered?.headline
         case -1: "Poprzednio na ramce"
         case ..<0: "Wcześniej na ramce"
         case 1: "Następny w kolejce" + addedLine
@@ -348,16 +395,18 @@ struct NowView: View {
         }
     }
 
+    /// When the next one in the queue goes on the frame.
+    private var nextChange: String? {
+        guard offset == 1, let player = model.player else { return nil }
+        if let hold = player.hold {
+            return hold.forever ? "po odpięciu" : When.schedule(hold.until)
+        }
+        return When.schedule(player.nextChangeAt)
+    }
+
     private var addedLine: String {
         guard let id = browsed?.summary.id, model.isQueued(id) else { return "" }
         return " · dodany przez Ciebie"
-    }
-
-    private var hintLine: String {
-        let crop = canCrop ? "Dotknij obrazu, żeby go wykadrować." : nil
-        if let undelivered { return undelivered.explanation }
-        guard offset != 0 else { return crop ?? " " }
-        return ["Na ramkę trafi po „Pokaż na ramce”.", crop].compactMap { $0 }.joined(separator: " ")
     }
 
     private var scheduleLine: String {
@@ -377,7 +426,7 @@ struct NowView: View {
     private func prefetchNeighbours() async {
         for target in [offset + 1, offset - 1] where target != 0 {
             guard let id = summary(at: target)?.id,
-                  let request = model.backend.request(for: .framePreview(id))
+                  let request = model.backend.request(for: .framePreview(id, settings: model.settings))
             else { continue }
             _ = try? await ImageLoader.shared.image(for: request, maxPixel: 1600)  // as FramedArtwork loads it
         }

@@ -209,6 +209,9 @@ def test_api_library_playlists_player(service) -> None:
         )
         assert trial.headers["content-type"] == "image/jpeg"
         assert trial.content != saved.content
+        # Named settings keep their address; the saved ones change under it.
+        assert trial.headers["cache-control"] == "max-age=3600"
+        assert saved.headers["cache-control"] == "no-cache"
         bad = client.get(f"/api/library/items/{item_id}/preview", params={"settings": "{"})
         assert bad.status_code == 422
 

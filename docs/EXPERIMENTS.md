@@ -112,6 +112,24 @@ Budzik ekranu (`uv run frame device timer HH:MM`), Wi-Fi 2,4 GHz i WoL, przycisk
 - Jedna plansza 2560×1440 = sześć kafelków 3×2, każdy to inny wariant tych samych kadrów (dwa obrazy obok siebie), podpisany literą. Wysyłana `--raw`, więc kafelki passthrough ditheruje ekran, a kafelki `dither` zostają w czystych farbach 1:1 (E5). Obok, na ekranie telefonu, wzorzec: te same kadry bez obróbki.
 - Ocena subiektywna w świetle pokoju: najlepszy wariant, ewentualnie „za mało / za dużo”, i kolejna plansza wokół zwycięzcy. Obrazy z AIC i Wikimedia Commons, różne style: zdjęcia (portrety, góry), olej, drzeworyt, plakat, miedzioryt, zdjęcie cz-b.
 
+### E15 — Uśpiony ekran w sieci (ARP)
+
+Czy uśpiony ekran z network standby wł. odpowiada na ARP (moduł Wi-Fi w jego
+imieniu), choć MDC i ping milczą? Serwer patrzy w tablicę sąsiadów jądra
+(`device/presence.py`), bez MDC i bez budzenia. Sprawdzenie musi iść z serwera
+albo komputera w **tej samej podsieci** co ekran (192.100.3.x): z innej podsieci
+ARP do ekranu nie sięga (Mac w 192.168.0.0/22 widzi tylko router).
+
+1. Ekran na baterii, uśpiony z aplikacji („Uśpij ramkę”), odczekać 3 min.
+2. W terminalu kontenera (Container Manager → kontener frame → Akcja → Otwórz
+   terminal): `frame device presence`. Oczekiwane: `on the network` i stan `0x02`.
+3. W aplikacji: Ramka (wejście w zakładkę albo przeciągnięcie w dół) → kafelek
+   Sieć „Czuwanie”, „śpi, ale jest w sieci Wi-Fi”. Ekran nie może się obudzić.
+4. Kontrola: ekran w głębokim śnie albo wyłączony → `not on the network`.
+
+Wynik decyduje, czy brak odpowiedzi na ARP może znaczyć „poza siecią”: do tego
+czasu serwer ufa tylko odpowiedzi (wtedy „Czuwanie”), a jej brak nie zmienia stanu.
+
 ---
 
 ## Wyniki

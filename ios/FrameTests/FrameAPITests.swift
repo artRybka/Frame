@@ -192,6 +192,30 @@ final class FrameAPITests: XCTestCase {
         XCTAssertEqual(preview.url?.path, "/api/previews/X.png")
     }
 
+    func testRequestsFollowTheServerAddressInUse() throws {
+        let home = try XCTUnwrap(URL(string: "http://192.100.3.185:8099"))
+        let remote = try XCTUnwrap(URL(string: "http://nas.tail0.ts.net:8099/"))
+        XCTAssertFalse(ServerRoute(home: home, remote: home).hasRemote)
+        XCTAssertEqual(ServerRoute(home: home, active: .remote).active, .home)
+
+        let atHome = ServerRoute(home: home, remote: remote)
+        let built = LiveBackend(route: atHome, token: "secret").request("/api/items", query: [URLQueryItem(name: "q", value: "a b")])
+        XCTAssertEqual(built.url?.absoluteString, "http://192.100.3.185:8099/api/items?q=a%20b")
+        XCTAssertNil(atHome.rebased(built))
+
+        let away = ServerRoute(home: home, remote: remote, active: .remote)
+        let api = LiveBackend(route: away, token: "secret")
+        let thumb = try XCTUnwrap(api.request(for: .thumb("aic:1")))
+        XCTAssertEqual(thumb.url?.absoluteString, "http://nas.tail0.ts.net:8099/api/library/items/aic:1/thumb")
+        let moved = try XCTUnwrap(away.rebased(built))
+        XCTAssertEqual(moved.url?.absoluteString, "http://nas.tail0.ts.net:8099/api/items?q=a%20b")
+        XCTAssertEqual(moved.value(forHTTPHeaderField: "Authorization"), "Bearer secret")
+        XCTAssertTrue(ServerRoute.neverArrived(URLError(.cannotConnectToHost)))
+        XCTAssertFalse(ServerRoute.neverArrived(URLError(.timedOut)))
+        XCTAssertTrue(ServerRoute.unreachable(URLError(.timedOut)))
+        XCTAssertFalse(ServerRoute.unreachable(URLError(.cancelled)))
+    }
+
     func testMultipartBodyContainsFieldsAndFile() throws {
         var form = MultipartForm()
         form.addField("hold", "forever")
@@ -323,6 +347,9 @@ final class FrameAPITests: XCTestCase {
         let json = #"{"items": [], "more": true}"#
         let page = try LiveBackend.decoder().decode(ArtThemePage.self, from: Data(json.utf8))
         XCTAssertTrue(page.more)
+        XCTAssertNil(page.nextPage)
+        let skipped = #"{"items": [], "more": true, "next_page": 4}"#
+        XCTAssertEqual(try LiveBackend.decoder().decode(ArtThemePage.self, from: Data(skipped.utf8)).nextPage, 4)
         let row = #"{"key": "theme", "title": "Motyw dnia", "subtitle": "", "theme": "ukiyo-e", "items": []}"#
         let decoded = try LiveBackend.decoder().decode(SuggestionRow.self, from: Data(row.utf8))
         XCTAssertEqual(decoded.theme, "ukiyo-e")

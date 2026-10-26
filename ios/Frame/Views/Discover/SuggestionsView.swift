@@ -266,8 +266,12 @@ struct ThemeView: View {
     @State private var page = 0
     @State private var more = true
     @State private var loading = false
+    @State private var failed = false
     @State private var playlistID: Int?
     @State private var busy = false
+
+    /// Pages that found nothing are followed by themselves, this many at most.
+    private static let emptyPagesInARow = 6
 
     var body: some View {
         ScrollView {
@@ -283,13 +287,20 @@ struct ThemeView: View {
                     .buttonStyle(.plain)
                     .contextMenu { QueueButton(itemID: summary.id) }
                 }
+                if items.isEmpty && !more && !loading {
+                    EmptyStateView(
+                        title: "Muzea nic tu nie mają",
+                        message: "Nie znalazłem teraz dzieł z tego motywu. Spróbuj później albo w zakładce Muzea.",
+                        systemImage: "magnifyingglass"
+                    )
+                }
                 if more {
                     Button {
                         Task { await loadMore() }
                     } label: {
                         HStack(spacing: 8) {
                             if loading { ProgressView().controlSize(.small) }
-                            Text(items.isEmpty ? "Wczytuję…" : "Więcej")
+                            Text(moreLabel)
                         }
                         .font(.subheadline.weight(.semibold))
                         .frame(maxWidth: .infinity)
@@ -310,6 +321,12 @@ struct ThemeView: View {
             playlistID = theme.playlistId
             if items.isEmpty { await loadMore() }
         }
+    }
+
+    private var moreLabel: String {
+        if loading { return items.isEmpty ? "Wczytuję…" : "Wczytuję więcej…" }
+        if failed { return "Spróbuj ponownie" }
+        return items.isEmpty ? "Wczytaj" : "Więcej"
     }
 
     private var actions: some View {
@@ -346,13 +363,18 @@ struct ThemeView: View {
     private func loadMore() async {
         guard !loading else { return }
         loading = true
+        failed = false
         defer { loading = false }
         do {
-            let found = try await model.backend.themePage(key: theme.key, page: page + 1)
-            items = items.adding(found.items)
-            page += 1
-            more = found.more
+            for _ in 0 ..< Self.emptyPagesInARow {
+                let found = try await model.backend.themePage(key: theme.key, page: page + 1)
+                items = items.adding(found.items)
+                page = (found.nextPage ?? page + 2) - 1
+                more = found.more
+                if !found.items.isEmpty || !more { break }
+            }
         } catch {
+            failed = !error.isCancellation
             model.show(error)
         }
     }

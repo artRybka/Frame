@@ -7,6 +7,7 @@ struct FrameTabView: View {
     @Environment(AppModel.self) private var model
     @State private var draft: FrameSettings?
     @State private var refreshing = false
+    @State private var lastLook: Date?
     @State private var renaming = false
     @State private var newName = ""
     @State private var showingConnection = LaunchRoute.screen == "connection"
@@ -60,7 +61,10 @@ struct FrameTabView: View {
             // view changes under it ("Sprawdzam…"), and the requests with it.
             .sheet(isPresented: $showingConnection) { ConnectionSettingsView() }
             .refreshable { await Task { await refresh() }.value }
-            .onAppear { if draft == nil { draft = model.settings } }
+            .onAppear {
+                if draft == nil { draft = model.settings }
+                look()
+            }
             .onChange(of: model.settings) { old, new in
                 // Changes not saved yet stay; a new name comes in either way.
                 if draft == nil || draft == old { draft = new } else { draft?.name = new?.name }
@@ -95,6 +99,7 @@ struct FrameTabView: View {
     /// sleeping frame; pulling to refresh only looks.
     private func refresh(waking: Bool = false) async {
         refreshing = true
+        lastLook = .now
         defer { refreshing = false }
         if waking {
             await model.checkStatus()
@@ -102,6 +107,20 @@ struct FrameTabView: View {
             await model.refreshStatus(live: true)
         }
         await model.refreshAll()
+    }
+
+    /// Opening the tab looks at the frame without waking it: the server asks
+    /// it over MDC and, if it sleeps, whether it is still on the Wi-Fi. Not
+    /// again within half a minute.
+    private func look() {
+        guard !refreshing, device?.configured == true else { return }
+        if let lastLook, Date.now.timeIntervalSince(lastLook) < 30 { return }
+        lastLook = .now
+        Task {
+            refreshing = true
+            defer { refreshing = false }
+            await model.refreshStatus(live: true)
+        }
     }
 
     // MARK: Device
@@ -148,9 +167,11 @@ struct FrameTabView: View {
         if !device.configured { return "Podaj adres i PIN ekranu pod trybikiem u góry" }
         switch device.powerState {
         case "online": return "Połączona · \(When.ago(device.lastSeen) ?? "teraz")"
-        case "standby": return "Śpi, czeka na sygnał budzenia"
+        case "standby":
+            return device.onNetwork == true ? "Śpi w sieci, czeka na sygnał budzenia" : "Śpi, czeka na sygnał budzenia"
         case "deep_sleep": return "Głęboki sen, bez Wi-Fi"
-        case "offline": return "Nie odpowiada — poza siecią lub wyłączona"
+        case "offline":
+            return device.onNetwork == false ? "Nie ma jej w sieci Wi-Fi" : "Nie odpowiada — śpi lub poza siecią"
         default: break  // a server before 0.12
         }
         switch device.reachable {
@@ -231,12 +252,16 @@ struct FrameTabView: View {
         case "online":
             return ("wifi", Theme.good, "Online", "odpowiada · \(When.ago(device.lastSeen) ?? "teraz")")
         case "standby":
-            return ("moon.zzz", Theme.accent, "Czuwanie", "śpi, Wi-Fi czeka na sygnał budzenia")
+            let note = device.onNetwork == true ? "śpi, ale jest w sieci Wi-Fi" : "śpi, Wi-Fi czeka na sygnał budzenia"
+            return ("moon.zzz", Theme.accent, "Czuwanie", note)
         case "deep_sleep":
             let note = device.wakesAt.map { "Wi-Fi wyłączone, budzik o \($0)" } ?? "Wi-Fi wyłączone, budzi przycisk"
             return ("wifi.slash", Theme.inkSoft, "Głęboki sen", note)
         case "offline":
-            return ("wifi.exclamationmark", Theme.bad, "Nie odpowiada", "poza siecią lub wyłączona")
+            if device.onNetwork == false {
+                return ("wifi.exclamationmark", Theme.bad, "Poza siecią", "nie ma jej w Wi-Fi")
+            }
+            return ("wifi.exclamationmark", Theme.bad, "Nie odpowiada", "śpi lub poza siecią")
         default:
             break
         }
@@ -1102,10 +1127,12 @@ struct ServerSection: View {
                 .tint(Theme.accent)
                 if !model.demoMode {
                     Divider()
-                    TextField("http://homeassistant.local:8099", text: $model.serverURL)
-                        .keyboardType(.URL)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
+                    AddressField(title: "W domu", prompt: "http://homeassistant.local:8099", text: $model.serverURL)
+                    Divider()
+                    AddressField(title: "Spoza domu", prompt: "Tailscale, np. http://100.64.0.5:8099", text: $model.remoteURL)
+                    Text("Opcjonalny. Aplikacja sama wybiera adres, który odpowiada, a domowy ma pierwszeństwo.")
+                        .font(.caption)
+                        .foregroundStyle(Theme.inkSoft)
                     Divider()
                     SecureField("Token API", text: $model.apiToken)
                 }
@@ -1137,7 +1164,7 @@ struct ServerSection: View {
     private var connectionLine: some View {
         switch model.connection {
         case .connected:
-            Label(model.demoMode ? "Tryb demo" : "Połączono", systemImage: "checkmark.circle.fill")
+            Label(connectedText, systemImage: "checkmark.circle.fill")
                 .font(.subheadline)
                 .foregroundStyle(Theme.good)
         case let .failed(message):
@@ -1146,6 +1173,32 @@ struct ServerSection: View {
                 .foregroundStyle(Theme.bad)
         case .unknown:
             EmptyView()
+        }
+    }
+
+    private var connectedText: String {
+        if model.demoMode { return "Tryb demo" }
+        switch model.serverPath {
+        case .remote: return "Połączono spoza domu"
+        case .home where !model.remoteURL.isEmpty: return "Połączono w domu"
+        default: return "Połączono"
+        }
+    }
+}
+
+/// A server address with its label above.
+private struct AddressField: View {
+    let title: String
+    let prompt: String
+    @Binding var text: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title).font(.caption).foregroundStyle(Theme.inkSoft)
+            TextField(prompt, text: $text)
+                .keyboardType(.URL)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
         }
     }
 }
