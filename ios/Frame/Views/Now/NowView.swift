@@ -253,23 +253,25 @@ struct NowView: View {
     // MARK: Controls
 
     /// Under the picture: on the frame, only when it changes next; browsed
-    /// to, where it is in the queue (the next one also says when), with
-    /// "Pokaż na ramce" and a way back. A picture that did not reach the
-    /// frame says why and what can be done.
+    /// to, where it is in the queue (the next one also says when, on the
+    /// same line), with "Pokaż na ramce" and a way back. A picture that did
+    /// not reach the frame says why and what can be done.
     private var controls: some View {
         VStack(spacing: 12) {
             VStack(spacing: 3) {
                 if let placeLine {
-                    Text(placeLine)
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(Theme.vermilion)
+                    let place = Text(placeLine).fontWeight(.semibold).foregroundStyle(Theme.vermilion)
+                    let when = Text(nextChange.map { " · \($0)" } ?? "").foregroundStyle(Theme.inkSoft)
+                    Text("\(place)\(when)")
+                        .font(.footnote)
+                        .multilineTextAlignment(.center)
                 }
                 if let undelivered {
                     Text(undelivered.explanation)
                         .font(.caption)
                         .foregroundStyle(Theme.inkSoft)
                         .multilineTextAlignment(.center)
-                } else if offset == 0 || offset == 1 {
+                } else if offset == 0 {
                     schedule
                 }
             }
@@ -370,6 +372,15 @@ struct NowView: View {
         case 1: "Następny w kolejce" + addedLine
         default: "W kolejce, za \(offset) \(Names.changes(offset))" + addedLine
         }
+    }
+
+    /// When the next one in the queue goes on the frame.
+    private var nextChange: String? {
+        guard offset == 1, let player = model.player else { return nil }
+        if let hold = player.hold {
+            return hold.forever ? "po odpięciu" : When.schedule(hold.until)
+        }
+        return When.schedule(player.nextChangeAt)
     }
 
     private var addedLine: String {
