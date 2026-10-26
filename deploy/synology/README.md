@@ -5,7 +5,7 @@ Ten sam obraz co add-on HA, uruchamiany jako zwykły kontener.
 1. Na NAS-ie utwórz folder, np. `/volume1/docker/frame`, i skopiuj do niego
    `docker-compose.yml` oraz `frame.env.example` jako `frame.env`.
    Uzupełnij `frame.env` (token API; IP, PIN i MAC ekranu można wpisać tu
-   albo później w aplikacji: Ramka → Połączenie z ekranem).
+   albo później w aplikacji: Ramka → trybik → Połączenie z ekranem).
 2. *Container Manager → Projekt → Utwórz*, wskaż ten folder i
    `docker-compose.yml`, a następnie uruchom.
 3. Sprawdź `http://<IP NAS>:8099/api/health`.

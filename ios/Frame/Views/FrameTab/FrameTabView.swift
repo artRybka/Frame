@@ -1,13 +1,15 @@
 import SwiftUI
 
-/// The frame itself: battery, charging, connection; schedule, presentation,
-/// screen and server settings.
+/// The frame itself: battery, charging, connection; schedule, presentation
+/// and screen settings. How to reach the panel and the server sits behind the
+/// gear at the top.
 struct FrameTabView: View {
     @Environment(AppModel.self) private var model
     @State private var draft: FrameSettings?
     @State private var refreshing = false
     @State private var renaming = false
     @State private var newName = ""
+    @State private var showingConnection = LaunchRoute.screen == "connection"
 
     private var device: DeviceStatus? { model.status?.device }
 
@@ -24,10 +26,6 @@ struct FrameTabView: View {
                         ScreenSection(settings: binding)
                         SourcesSection(settings: binding)
                     }
-                    if let panel = model.panelConfig {
-                        PanelSection(config: panel)
-                    }
-                    ServerSection()
                 }
                 .padding(.horizontal, Theme.gutter)
                 .padding(.bottom, 40)
@@ -35,6 +33,14 @@ struct FrameTabView: View {
             .background(Theme.paper)
             .navigationTitle("Ramka")
             .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showingConnection = true
+                    } label: {
+                        Image(systemName: "gearshape")
+                    }
+                    .accessibilityLabel("Połączenie z ekranem i serwerem")
+                }
                 if let draft, draft != model.settings {
                     ToolbarItem(placement: .confirmationAction) {
                         Button("Zapisz") {
@@ -52,6 +58,7 @@ struct FrameTabView: View {
             }
             // In a task of its own: SwiftUI cancels the refresh's task when the
             // view changes under it ("Sprawdzam…"), and the requests with it.
+            .sheet(isPresented: $showingConnection) { ConnectionSettingsView() }
             .refreshable { await Task { await refresh() }.value }
             .onAppear { if draft == nil { draft = model.settings } }
             .onChange(of: model.settings) { old, new in
@@ -138,7 +145,7 @@ struct FrameTabView: View {
 
     private var connectionText: String {
         guard let device else { return "Brak danych" }
-        if !device.configured { return "Podaj adres i PIN ekranu w „Połączenie z ekranem”" }
+        if !device.configured { return "Podaj adres i PIN ekranu pod trybikiem u góry" }
         switch device.powerState {
         case "online": return "Połączona · \(When.ago(device.lastSeen) ?? "teraz")"
         case "standby": return "Śpi, czeka na sygnał budzenia"
@@ -174,7 +181,7 @@ struct FrameTabView: View {
             }
             StatusTile(title: "Zasilanie") {
                 VStack(alignment: .leading, spacing: 6) {
-                    Image(systemName: device?.charging == true ? "bolt.fill" : "powerplug.portrait")
+                    Image(systemName: powerIcon)
                         .font(.title2)
                         .foregroundStyle(device?.charging == true ? Theme.warn : Theme.inkSoft)
                         .symbolEffect(.pulse, options: .repeating, isActive: device?.charging == true)
@@ -238,6 +245,18 @@ struct FrameTabView: View {
         return device.networkStandby == true
             ? ("wifi", Theme.good, "Czuwanie Wi-Fi", "budzi go sygnał Wi-Fi")
             : ("wifi.slash", Theme.inkSoft, "Głęboki sen", "Wi-Fi wyłączone")
+    }
+
+    private var powerIcon: String {
+        if device?.charging == true { return "bolt.fill" }
+        guard device?.powerSource == "battery" else { return "powerplug.portrait" }
+        return switch device?.batteryLevel ?? 100 {
+        case ..<13: "battery.0percent"
+        case ..<38: "battery.25percent"
+        case ..<63: "battery.50percent"
+        case ..<88: "battery.75percent"
+        default: "battery.100percent"
+        }
     }
 
     private var powerText: String {
@@ -915,6 +934,38 @@ struct SourcesSection: View {
                     }
                 }
                 .tint(Theme.accent)
+            }
+        }
+    }
+}
+
+/// Behind the gear in "Ramka": how the server reaches the panel and how the
+/// app reaches the server; set once, rarely touched again.
+struct ConnectionSettingsView: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 28) {
+                    if let panel = model.panelConfig {
+                        PanelSection(config: panel)
+                    }
+                    ServerSection()
+                }
+                .padding(.horizontal, Theme.gutter)
+                .padding(.top, 8)
+                .padding(.bottom, 40)
+            }
+            .background(Theme.paper)
+            .scrollDismissesKeyboard(.interactively)
+            .navigationTitle("Połączenie")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Gotowe") { dismiss() }
+                }
             }
         }
     }
