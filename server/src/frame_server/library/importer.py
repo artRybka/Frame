@@ -120,6 +120,8 @@ class Importer:
         self._remote_lock = threading.Lock()
         #: ``tint_spread`` of works looked at in search results, by id.
         self._spreads: OrderedDict[str, float] = OrderedDict()
+        #: Colour tags of works looked at in search results, by id.
+        self._tags: OrderedDict[str, list[str]] = OrderedDict()
 
     def access(self) -> Access:
         """The owner's current choices, with the shared death-year cache."""
@@ -224,6 +226,42 @@ class Importer:
                 self._spreads.popitem(last=False)
         return spread
 
+    def color_tags_of(self, item: Item) -> list[str] | None:
+        """``item``'s colour tags, from the library, memory or a small
+        thumbnail; None when the thumbnail cannot be had."""
+        if item.color_tags:
+            return item.color_tags
+        stored = self.library.get(item.id)
+        if stored is not None and stored.color_tags:
+            return stored.color_tags
+        with self._remote_lock:
+            if item.id in self._tags:
+                return self._tags[item.id]
+        try:
+            with self.cache.sample(small_thumb(item)) as img:
+                spread = tint_spread(img)
+                _, tags, _ = analyse(img, self.palette, spread)
+        except (httpx.HTTPError, OSError, ValueError) as err:
+            log.info("no thumbnail of %s to look at: %s", item.id, err)
+            return None
+        with self._remote_lock:
+            self._tags[item.id] = tags
+            self._spreads[item.id] = spread
+            for memo in (self._tags, self._spreads):
+                while len(memo) > SPREAD_MEMO:
+                    memo.popitem(last=False)
+        return tags
+
+    def in_colors(self, items: list[Item], colors: list[str]) -> list[Item]:
+        """``items`` with any of ``colors`` (colour or mood tags), judged
+        from their thumbnails; museums don't know colours."""
+        if not colors or not items:
+            return items
+        with ThreadPoolExecutor(min(len(items), 16)) as pool:
+            found = list(pool.map(self.color_tags_of, items))
+        wanted = set(colors)
+        return [i for i, tags in zip(items, found, strict=True) if tags and wanted & set(tags)]
+
     def without_grey(self, items: list[Item]) -> list[Item]:
         """``items`` without black-and-white copies of paintings, for the
         sources that have many (:data:`GREY_PRONE`)."""
@@ -241,16 +279,16 @@ class Importer:
         return self.save(f"{source}:{source_id}")
 
     def search_all(
-        self, query: str, limit: int = 8, page: int = 1
+        self, query: str, limit: int = 8, page: int = 1, keys: list[str] | None = None
     ) -> tuple[int, list[Item], list[str]]:
-        """``limit`` results from every museum at once, interleaved; returns
-        (total, items, museums that failed)."""
-        return self._from_all(lambda key: self.search(key, query, limit, page))
+        """``limit`` results from every museum (or those of ``keys``) at
+        once, interleaved; returns (total, items, museums that failed)."""
+        return self._from_all(lambda key: self.search(key, query, limit, page), keys)
 
     def _from_all(
-        self, ask: Callable[[str], tuple[int, list[Item]]]
+        self, ask: Callable[[str], tuple[int, list[Item]]], keys: list[str] | None = None
     ) -> tuple[int, list[Item], list[str]]:
-        keys = self.sources()
+        keys = keys or self.sources()
         with ThreadPoolExecutor(len(keys)) as pool:
             futures = {k: pool.submit(ask, k) for k in keys}
         found: list[list[Item]] = []
@@ -438,7 +476,7 @@ class Importer:
             )
 
     def discover_all(
-        self, spec: Discovery, limit: int = 8, page: int = 1
+        self, spec: Discovery, limit: int = 8, page: int = 1, keys: list[str] | None = None
     ) -> tuple[int, list[Item], list[str]]:
         """Like :meth:`search_all`, for works matching ``spec``."""
 
@@ -446,7 +484,7 @@ class Importer:
             with self.http() as http:
                 return museum(key, http, self.access()).discover(spec, limit, page)
 
-        return self._from_all(one)
+        return self._from_all(one, keys)
 
     def _take(
         self,

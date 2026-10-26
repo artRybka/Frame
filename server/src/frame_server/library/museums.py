@@ -1059,7 +1059,7 @@ class WikiArt(Museum):
     """
 
     key = "wikiart"
-    name = "WikiArt (test)"
+    name = "WikiArt"
     testing = True
     api = "https://www.wikiart.org/en/api/2"
     #: WikiArt's own pages hold 60 works.

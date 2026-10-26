@@ -13,7 +13,7 @@ struct DiscoverView: View {
 
         /// Suggestions, unless CI screenshots ask for another screen.
         static var initial: Scope {
-            LaunchRoute.screen == "museums" ? .museums : .suggestions
+            ["museums", "search", "search-picker"].contains(LaunchRoute.screen) ? .museums : .suggestions
         }
     }
 
@@ -53,40 +53,5 @@ struct DiscoverView: View {
             scope = .museums
             path = NavigationPath()
         }
-    }
-}
-
-/// Colour and mood dots.
-struct ColorFilterRow: View {
-    @Binding var selected: [String]
-    let available: [String]
-
-    private var tags: [String] {
-        let order = ColorTag.families + ColorTag.moods
-        let present = Set(available)
-        let shown = order.filter { present.contains($0) }
-        return shown.isEmpty ? ColorTag.families : shown
-    }
-
-    var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(tags, id: \.self) { tag in
-                    Chip(
-                        title: ColorTag.name(tag),
-                        swatch: ColorTag.color(tag),
-                        selected: selected.contains(tag)
-                    ) {
-                        if selected.contains(tag) {
-                            selected.removeAll { $0 == tag }
-                        } else {
-                            selected.append(tag)
-                        }
-                    }
-                }
-            }
-            .padding(.vertical, 2)
-        }
-        .scrollClipDisabled()
     }
 }

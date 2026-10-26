@@ -16,7 +16,7 @@ from starlette.concurrency import run_in_threadpool
 
 from ..library import Item, Job, Playlist, PlaylistKind, PlaylistRules, PlaylistSummary
 from ..library.importer import ALL, span
-from ..library.museums import Discovery, Kind, museum
+from ..library.museums import Discovery, Kind
 from ..library.themes import GROUPS, THEMES, Theme, browse_theme, theme, theme_of_the_day
 from ..library.vocabulary import (
     TERMS,
@@ -501,49 +501,55 @@ async def search_museums(
     q: str = "",
     artist: Annotated[list[str] | None, Query()] = None,
     term: Annotated[list[str] | None, Query()] = None,
+    color: Annotated[list[str] | None, Query()] = None,
     year_from: Annotated[int | None, Query(ge=0, le=2100)] = None,
     year_to: Annotated[int | None, Query(ge=0, le=2100)] = None,
-    source: str = ALL,
+    source: Annotated[list[str] | None, Query()] = None,
     page: Annotated[int, Query(ge=1)] = 1,
     limit: Annotated[int, Query(ge=1, le=24)] = 8,
 ) -> RemotePage:
     """The museums' works for what Discover's search asks (``limit`` from
-    each museum): their own search for words, artists, styles and subjects,
-    else works of the periods and technique. Colours are only known in the
-    catalogue."""
-    if source != ALL and source not in svc.importer.sources():
-        raise HTTPException(404, f"unknown museum {source!r}")
-    rules = rules_from(q, artist, term, None, year_from, year_to)
+    each museum; every museum, or those of ``source``): their own search for
+    words, artists, styles and subjects, else works of the periods and
+    technique. Museums don't know colours, so with ``color`` their works are
+    judged by their thumbnails, from twice as many."""
+    keys = [s for s in dict.fromkeys(source or []) if s != ALL]
+    offered = svc.importer.sources()
+    if unknown := [s for s in keys if s not in offered]:
+        raise HTTPException(404, f"unknown museum {unknown[0]!r}")
+    colors = color or []
+    rules = rules_from(q, artist, term, colors, year_from, year_to)
     start, end = span(rules)
     spec = Discovery(year_from=start, year_to=end, kind=museum_kind(rules.terms))
     text = museum_text(rules, page)
     # Several artists take turns, so each page asks for one of them.
     round_ = (page - 1) // len(rules.artists) + 1 if rules.artists else page
-    failed: list[str] = []
-    # Nothing asked: one chosen source shows what it has, all of them nothing.
-    if source == ALL and not text and start is None and end is None and spec.kind == "any":
+    asked = limit if not colors else min(24, limit * 2)
+    # Nothing asked: chosen sources show what they have, all of them nothing.
+    if (
+        not keys
+        and not text
+        and not colors
+        and start is None
+        and end is None
+        and spec.kind == "any"
+    ):
         return RemotePage(total=0, items=[])
 
     def ask() -> tuple[int, list[Item], list[str]]:
         importer = svc.importer
         if text:
-            if source == ALL:
-                return importer.search_all(text, limit, round_)
-            return (*importer.search(source, text, limit, round_), [])
-        if source == ALL:
-            return importer.discover_all(spec, limit, page)
-        with importer.http() as http:
-            found = museum(source, http, importer.access()).discover(spec, limit, page)
-        importer.remember(found[1])
-        return (*found, [])
+            total, items, failed = importer.search_all(text, asked, round_, keys)
+        else:
+            total, items, failed = importer.discover_all(spec, asked, page, keys)
+        return total, importer.in_colors(items, colors), failed
 
-    try:
-        total, items, failed = await run_in_threadpool(ask)
-    except httpx.HTTPError as err:
-        raise HTTPException(502, f"{source}: {err}") from err
+    total, items, failed = await run_in_threadpool(ask)
+    if keys and len(failed) == len(keys):
+        raise HTTPException(502, f"{', '.join(failed)} did not answer")
     items = [i for i in items if spec.fits(i) and _manuscripts_fit(i, rules.terms)]
     return RemotePage(
-        total=total, items=remote_items(svc, items, copies=source == ALL), failed=failed
+        total=total, items=remote_items(svc, items, copies=len(keys) != 1), failed=failed
     )
 
 

@@ -72,8 +72,9 @@ protocol FrameBackend: Sendable {
     func terms(_ text: String) async throws -> [TermHit]
     /// What the museums have for words the catalogue does not know.
     func museumHint(_ text: String) async throws -> MuseumHint
-    /// The museums' works for a search's words, artists, terms and years.
-    func searchMuseums(_ rules: PlaylistRules, source: String, page: Int) async throws -> RemotePage
+    /// The museums' works for a search's words, artists, terms, colours and
+    /// years, from the museums of `sources` (every museum when empty).
+    func searchMuseums(_ rules: PlaylistRules, sources: [String], page: Int) async throws -> RemotePage
 
     func museums() async throws -> [Museum]
     func searchMuseum(source: String, query: String, page: Int) async throws -> RemotePage
