@@ -2,9 +2,19 @@ import Foundation
 
 /// HTTP client for the frame server (server/src/frame_server/web/*).
 struct LiveBackend: FrameBackend {
-    let baseURL: URL
+    let route: ServerRoute
     let token: String?
     var isDemo: Bool { false }
+    var baseURL: URL { route.baseURL }
+
+    init(route: ServerRoute, token: String?) {
+        self.route = route
+        self.token = token
+    }
+
+    init(baseURL: URL, token: String?) {
+        self.init(route: ServerRoute(home: baseURL), token: token)
+    }
 
     static func decoder() -> JSONDecoder {
         let decoder = JSONDecoder()
@@ -396,13 +406,28 @@ struct LiveBackend: FrameBackend {
     }
 
     private func perform<T: Decodable>(_ req: URLRequest) async throws -> T {
-        let (data, response) = try await URLSession.shared.data(for: req)
+        let (data, response) = try await load(req)
         guard let http = response as? HTTPURLResponse else { throw BackendError.invalidResponse }
         guard (200 ..< 300).contains(http.statusCode) else {
             throw BackendError.http(status: http.statusCode, body: String(decoding: data, as: UTF8.self))
         }
         if T.self == EmptyResponse.self { return EmptyResponse() as! T }  // swiftlint:disable:this force_cast
         return try Self.decoder().decode(T.self, from: data)
+    }
+
+    /// Sends the request. When the address in use does not answer (left
+    /// home, or came back), finds the one that does and, if nothing can
+    /// happen twice, sends the request there once more.
+    private func load(_ req: URLRequest) async throws -> (Data, URLResponse) {
+        do {
+            return try await URLSession.shared.data(for: req)
+        } catch let error as URLError where route.hasRemote && ServerRoute.unreachable(error) {
+            guard await route.resolve() != nil,
+                  req.httpMethod == "GET" || ServerRoute.neverArrived(error),
+                  let moved = route.rebased(req)
+            else { throw error }
+            return try await URLSession.shared.data(for: moved)
+        }
     }
 }
 

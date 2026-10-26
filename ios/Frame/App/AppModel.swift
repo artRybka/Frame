@@ -1,4 +1,5 @@
 import Foundation
+import Network
 import Observation
 
 /// App-wide state: connection, what the frame shows, its status and settings.
@@ -7,6 +8,7 @@ import Observation
 final class AppModel {
     private enum Keys {
         static let serverURL = "serverURL"
+        static let remoteURL = "remoteServerURL"
         static let apiToken = "apiToken"
         static let demoMode = "demoMode"
     }
@@ -16,9 +18,14 @@ final class AppModel {
     }
 
     var serverURL: String
+    /// Optional second address used away from home, e.g. the NAS in Tailscale.
+    var remoteURL: String
     var apiToken: String
     var demoMode: Bool
     private(set) var backend: any FrameBackend
+    /// Which of the server's addresses the app talks to; nil in the demo or
+    /// before the server answered.
+    private(set) var serverPath: ServerRoute.Kind?
 
     var player: PlayerView?
     var status: StatusView?
@@ -47,33 +54,56 @@ final class AppModel {
     private var discoverLoad: Task<Void, Never>?
     private var discoverLoadedAt: Date?
     private var progressTask: Task<Void, Never>?
+    private var route: ServerRoute?
+    private let network = NWPathMonitor()
+    private var networkSeen: String?
+    private var networkSettle: Task<Void, Never>?
 
     init() {
         let defaults = UserDefaults.standard
         let url = defaults.string(forKey: Keys.serverURL) ?? ""
+        let remote = defaults.string(forKey: Keys.remoteURL) ?? ""
         let token = KeychainStore.read(Keys.apiToken) ?? ""
         let forcedDemo = defaults.bool(forKey: "demo")  // launch argument -demo YES
         let demo = forcedDemo || (defaults.object(forKey: Keys.demoMode) as? Bool ?? url.isEmpty)
         serverURL = url
+        remoteURL = remote
         apiToken = token
         demoMode = demo
-        backend = Self.makeBackend(demo: demo, url: url, token: token)
+        backend = DemoBackend()
+        connect(demo: demo, url: url, remote: remote, token: token)
         restoreDiscover()
+        watchNetwork()
     }
 
-    private static func makeBackend(demo: Bool, url: String, token: String) -> any FrameBackend {
-        if !demo, let base = URL(string: url), base.scheme != nil {
-            return LiveBackend(baseURL: base, token: token.isEmpty ? nil : token)
+    private func connect(demo: Bool, url: String, remote: String, token: String) {
+        serverPath = nil
+        guard !demo, let home = Self.serverAddress(url) else {
+            route = nil
+            backend = DemoBackend()
+            return
         }
-        return DemoBackend()
+        let route = ServerRoute(home: home, remote: Self.serverAddress(remote))
+        route.onSwitch = { [weak self] kind in
+            Task { @MainActor in self?.serverPath = kind }
+        }
+        self.route = route
+        backend = LiveBackend(route: route, token: token.isEmpty ? nil : token)
+    }
+
+    private static func serverAddress(_ text: String) -> URL? {
+        let text = text.trimmingCharacters(in: .whitespaces)
+        guard let url = URL(string: text), url.scheme != nil else { return nil }
+        return url
     }
 
     /// Persist connection settings and switch backend.
     func applyConnection() async {
         UserDefaults.standard.set(serverURL, forKey: Keys.serverURL)
+        UserDefaults.standard.set(remoteURL, forKey: Keys.remoteURL)
         UserDefaults.standard.set(demoMode, forKey: Keys.demoMode)
         KeychainStore.write(Keys.apiToken, value: apiToken)
-        backend = Self.makeBackend(demo: demoMode, url: serverURL, token: apiToken)
+        connect(demo: demoMode, url: serverURL, remote: remoteURL, token: apiToken)
         player = nil
         status = nil
         displayProgress = nil
@@ -93,9 +123,14 @@ final class AppModel {
     // MARK: Loading
 
     func refreshAll() async {
+        if let route, route.hasRemote, await route.resolve() == nil {
+            connection = .failed("Serwer nie odpowiada pod żadnym adresem. Poza domem włącz Tailscale.")
+            return
+        }
         do {
             _ = try await backend.health()
             connection = .connected
+            serverPath = route?.active
         } catch {
             if !error.isCancellation { connection = .failed(error.localizedDescription) }
             return
@@ -116,6 +151,38 @@ final class AppModel {
         self.panelConfig = await panelConfig.value
         // Ready before Discover is opened.
         Task { await refreshDiscover() }
+    }
+
+    // MARK: Server address
+
+    /// Back in the app or on another network: checks which of the server's
+    /// addresses answers now, and reloads when that changed or the server
+    /// was out of reach.
+    func recheckServer() async {
+        guard let route, route.hasRemote, connection != .unknown else { return }
+        let before = route.active
+        guard let found = await route.resolve() else { return }
+        if found != before || connection != .connected { await refreshAll() }
+    }
+
+    private func watchNetwork() {
+        network.pathUpdateHandler = { [weak self] path in
+            let seen = "\(path.status) \(path.availableInterfaces.map(\.name).sorted())"
+            Task { @MainActor in self?.networkChanged(seen) }
+        }
+        network.start(queue: .main)
+    }
+
+    private func networkChanged(_ seen: String) {
+        defer { networkSeen = seen }
+        guard let before = networkSeen, before != seen else { return }
+        // A new network (or the VPN coming up) takes a moment to settle.
+        networkSettle?.cancel()
+        networkSettle = Task {
+            try? await Task.sleep(for: .seconds(1.5))
+            guard !Task.isCancelled else { return }
+            await recheckServer()
+        }
     }
 
     // MARK: Discover
