@@ -19,6 +19,10 @@
   są odrzucane z Commons i Europeany; katalog jest raz jeszcze czyszczony.
 - „Teraz”: po zmianie Prezentacji plansze z kolejki od razu pokazują się w
   nowym wyglądzie; podgląd bez ustawień w adresie nie jest zapamiętywany.
+- „Teraz”: krótsze podpisy pod ramką (tylko kiedy nastąpi następna zmiana,
+  bez „Teraz na ramce” i wskazówki kadrowania); następny w kolejce mówi,
+  kiedy ramka się zmieni. Powrót do „Teraz” jest przyciskiem po lewej od
+  „Pokaż na ramce”.
 
 ## 0.14.0
 
