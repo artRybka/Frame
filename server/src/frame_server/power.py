@@ -269,7 +269,8 @@ class PowerManager:
                     await asyncio.sleep(3)
         finally:
             burst.cancel()
-        if woke and (self.state.pending_push or self.state.standby_off):
+        standby_off = self.state.standby_off or service.status.status.network_standby is False
+        if woke and (self.state.pending_push or standby_off):
             # Network standby back on, and whatever waited goes out.
             self._background = asyncio.create_task(self.rendezvous(datetime.now(UTC)))
         log.info("Wake-on-LAN from the app: panel %s", "woke" if woke else "did not answer")
