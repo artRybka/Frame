@@ -6,6 +6,8 @@ struct FrameTabView: View {
     @Environment(AppModel.self) private var model
     @State private var draft: FrameSettings?
     @State private var refreshing = false
+    @State private var renaming = false
+    @State private var newName = ""
 
     private var device: DeviceStatus? { model.status?.device }
 
@@ -35,8 +37,13 @@ struct FrameTabView: View {
             .toolbar {
                 if let draft, draft != model.settings {
                     ToolbarItem(placement: .confirmationAction) {
-                        Button("Zapisz") { Task { await model.saveSettings(draft) } }
-                            .fontWeight(.semibold)
+                        Button("Zapisz") {
+                            Task {
+                                await model.saveSettings(draft)
+                                self.draft = model.settings  // as the server keeps it (e.g. times sorted)
+                            }
+                        }
+                        .fontWeight(.semibold)
                     }
                     ToolbarItem(placement: .cancellationAction) {
                         Button("Cofnij") { self.draft = model.settings }
@@ -45,9 +52,28 @@ struct FrameTabView: View {
             }
             .refreshable { await refresh() }
             .onAppear { if draft == nil { draft = model.settings } }
-            .onChange(of: model.settings) { _, new in draft = new }
+            .onChange(of: model.settings) { old, new in
+                // Changes not saved yet stay; a new name comes in either way.
+                if draft == nil || draft == old { draft = new } else { draft?.name = new?.name }
+            }
+            .alert("Nazwa ramki", isPresented: $renaming) {
+                TextField(panelName, text: $newName)
+                    .textInputAutocapitalization(.sentences)
+                Button("Zapisz") { Task { await model.renameFrame(newName) } }
+                if model.settings?.name != nil {
+                    Button("Nazwa z ekranu") { Task { await model.renameFrame("") } }
+                }
+                Button("Anuluj", role: .cancel) {}
+            } message: {
+                Text("Tak ramka będzie się nazywać w aplikacji.")
+            }
         }
     }
+
+    /// What the panel calls itself (set in Samsung's own app).
+    private var panelName: String { device?.name.flatMap { $0.isEmpty ? nil : $0 } ?? "Moja ramka" }
+
+    private var frameName: String { model.settings?.name ?? panelName }
 
     private var binding: Binding<FrameSettings> {
         Binding(
@@ -67,27 +93,32 @@ struct FrameTabView: View {
 
     private var deviceHero: some View {
         HStack(spacing: 18) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 3)
-                    .fill(Theme.moulding)
-                    .overlay(RoundedRectangle(cornerRadius: 3).strokeBorder(Theme.mouldingEdge, lineWidth: 0.5))
-                    .frame(width: 104, height: model.isPortrait ? 150 : 66)
-                Group {
-                    if let preview = model.player?.current?.previewUrl {
-                        ArtImage(ref: .path(preview), maxPixel: 400)
-                    } else {
-                        Rectangle().fill(Theme.matWhite)
+            // The screen's own proportions (2560 × 1440), as in "Teraz".
+            FramedArtwork(
+                ref: model.player?.current.map { ImageRef.path($0.previewUrl) },
+                aspectRatio: model.isPortrait ? 9.0 / 16.0 : 16.0 / 9.0,
+                placeholder: Theme.matWhite,
+                moulding: 4
+            )
+            .frame(width: model.isPortrait ? 108 : 150)
+            VStack(alignment: .leading, spacing: 4) {
+                Eyebrow(model.settings?.name != nil ? panelName : "Samsung \(device?.model ?? "EM32DX")")
+                Button {
+                    newName = model.settings?.name ?? ""
+                    renaming = true
+                } label: {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(frameName)
+                            .font(.serif(26, weight: .semibold))
+                            .foregroundStyle(Theme.ink)
+                            .multilineTextAlignment(.leading)
+                        Image(systemName: "pencil")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(Theme.inkSoft)
                     }
                 }
-                .frame(width: 96, height: model.isPortrait ? 142 : 58)
-                .clipped()
-            }
-            .shadow(color: .black.opacity(0.18), radius: 10, y: 6)
-            VStack(alignment: .leading, spacing: 4) {
-                Eyebrow(device?.model.map { "Samsung \($0)" } ?? "Samsung EM32DX")
-                Text(device?.name ?? "Moja ramka")
-                    .font(.serif(26, weight: .semibold))
-                    .foregroundStyle(Theme.ink)
+                .buttonStyle(.plain)
+                .accessibilityLabel("\(frameName), zmień nazwę")
                 Text(connectionText)
                     .font(.subheadline)
                     .foregroundStyle(connectionColor)
@@ -494,7 +525,7 @@ struct PresentationSection: View {
                         moulding: 5
                     )
                     .frame(maxWidth: portrait ? 190 : .infinity)
-                    Text("Tak będzie wyglądał obraz, który jest teraz na ramce. Zmiany trafią na ramkę po zapisaniu.")
+                    Text("Tak wyglądałby obraz, który jest teraz na ramce. Po zapisaniu ramka pokaże nowy wygląd od następnego obrazu.")
                         .font(.caption)
                         .foregroundStyle(Theme.inkSoft)
                         .multilineTextAlignment(.center)

@@ -501,12 +501,18 @@ struct FrameSettings: Codable, Hashable, Sendable {
     /// WikiArt as a source, only to test the panel; its works leave the
     /// library when switched off.
     var wikiart: Bool? = nil
+    /// The frame's name in the app; nil: the name the panel reports.
+    var name: String? = nil
 
     /// Changes whenever the way pictures are framed on the panel changes;
     /// used to refresh cached "on the frame" previews.
     var presentationKey: String {
         [orientation, String(rotation), art.key, photo.key].joined(separator: "|")
     }
+
+    /// Changes when the screen is turned; only then the server redraws the
+    /// picture on the frame. A new presentation waits for the next picture.
+    var screenKey: String { [orientation, String(rotation)].joined(separator: "|") }
 
     static let defaults = FrameSettings(
         playlistId: nil, changeTimes: ["07:00"], changeEveryDays: 1,
@@ -521,7 +527,7 @@ struct FrameSettings: Codable, Hashable, Sendable {
 extension FrameSettings {
     private enum CodingKeys: String, CodingKey {
         case playlistId, changeTimes, changeEveryDays, quietStart, shuffle, avoidRepeatDays
-        case orientation, rotation, art, photo, timezone, statusPollMinutes, privateUse, wikiart
+        case orientation, rotation, art, photo, timezone, statusPollMinutes, privateUse, wikiart, name
         case quietEnd  // older servers: decoded only
     }
 
@@ -543,6 +549,7 @@ extension FrameSettings {
         statusPollMinutes = try c.decode(Int.self, forKey: .statusPollMinutes)
         privateUse = try c.decodeIfPresent(Bool.self, forKey: .privateUse)
         wikiart = try c.decodeIfPresent(Bool.self, forKey: .wikiart)
+        name = try c.decodeIfPresent(String.self, forKey: .name)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -561,6 +568,7 @@ extension FrameSettings {
         try c.encode(statusPollMinutes, forKey: .statusPollMinutes)
         try c.encodeIfPresent(privateUse, forKey: .privateUse)
         try c.encodeIfPresent(wikiart, forKey: .wikiart)
+        try c.encodeIfPresent(name, forKey: .name)
     }
 
     /// When quiet hours end: the first change time after their start.

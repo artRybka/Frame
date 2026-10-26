@@ -354,18 +354,40 @@ final class FrameAPITests: XCTestCase {
         XCTAssertTrue(preview.lastPathComponent.hasPrefix("aic_24645-landscape-"))
     }
 
-    func testDemoPreviewFollowsPresentationSettings() async throws {
+    func testDemoPresentationWaitsForTheNextPicture() async throws {
         let demo = DemoBackend()
         let before = try await demo.player().current?.previewUrl
         var settings = try await demo.settings()
         settings.art.fit = "fill"
         _ = try await demo.saveSettings(settings)
-        let after = try await demo.player().current?.previewUrl
-        XCTAssertNotEqual(before, after)
+        // The picture on the frame stays as it was drawn.
+        let kept = try await demo.player().current?.previewUrl
+        XCTAssertEqual(before, kept)
         let current = try await demo.player().current
         let id = try XCTUnwrap(current?.item?.id)
         let framed = try XCTUnwrap(demo.request(for: .framePreview(id))?.url)
         XCTAssertTrue(framed.lastPathComponent.contains("-fill-"))
+        // Turning the screen redraws it, with the new presentation too.
+        settings.orientation = settings.orientation == "portrait" ? "landscape" : "portrait"
+        _ = try await demo.saveSettings(settings)
+        let after = try await demo.player().current?.previewUrl
+        XCTAssertNotEqual(before, after)
+    }
+
+    func testFrameNameRoundTrip() throws {
+        var settings = FrameSettings.defaults
+        var text = String(decoding: try LiveBackend.encoder().encode(settings), as: UTF8.self)
+        XCTAssertFalse(text.contains("\"name\""))
+        settings.name = "Salon"
+        let data = try LiveBackend.encoder().encode(settings)
+        text = String(decoding: data, as: UTF8.self)
+        XCTAssertTrue(text.contains("\"name\":\"Salon\""))
+        XCTAssertEqual(try LiveBackend.decoder().decode(FrameSettings.self, from: data).name, "Salon")
+        // A turned screen redraws the picture; a new presentation does not.
+        var restyled = settings
+        restyled.art.mat = "black"
+        XCTAssertEqual(restyled.screenKey, settings.screenKey)
+        XCTAssertNotEqual(restyled.presentationKey, settings.presentationKey)
     }
 
     func testDemoCropCorrections() async throws {
