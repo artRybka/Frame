@@ -9,7 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from frame_server.library import Item
-from frame_server.library.lifespan import LifeDates, free_in_eu
+from frame_server.library.lifespan import LifeDates, death_in_name, free_in_eu, last_free_year
 from frame_server.library.museums import (
     Access,
     Discovery,
@@ -56,6 +56,15 @@ def test_eu_rule_counts_seventy_full_years() -> None:
     assert free_in_eu(1955, date(2026, 1, 1))
     assert not free_in_eu(1956, date(2026, 12, 31))
     assert free_in_eu(1956, date(2027, 1, 1))
+
+
+def test_last_free_year_and_dates_in_names() -> None:
+    assert last_free_year(date(2026, 10, 26)) == 1955
+    assert free_in_eu(last_free_year(date(2031, 1, 1)), date(2031, 1, 1))
+    assert death_in_name("Kandinsky, Wassily (1866-1944) (Künstler/Hersteller)") == 1944
+    assert death_in_name("Oskar Schlemmer (04.09.1888 - 13.04.1943)") == 1943
+    assert death_in_name("Mondrian, Piet (Künstler/in)") is None
+    assert death_in_name("Atelier (1650-1890)") is None  # not a lifetime
 
 
 def test_death_years_by_uri_and_exact_name_and_cached() -> None:
@@ -124,6 +133,29 @@ def test_europeana_takes_works_free_in_the_eu() -> None:
     with _europeana(records, []) as http:
         licensed = Europeana(http, access=Access(private_use=True)).search("x")[1]
     assert [i.license for i in licensed] == ["Public Domain Mark 1.0", "CC BY-SA 4.0"]
+
+
+def test_europeana_takes_free_works_whatever_their_photo_licence() -> None:
+    """A CC licence on the photograph of a painting free in the EU, or life
+    dates only in the creator's name, still let the work in."""
+    by_sa = "http://creativecommons.org/licenses/by-sa/4.0/"
+    records = [
+        _europeana_record(by_sa, [MATISSE], id="/1/matisse"),
+        _europeana_record(
+            by_sa, ["Kandinsky, Wassily (1866-1944) (Künstler/Hersteller)"], id="/1/kandinsky"
+        ),
+        _europeana_record(by_sa, ["Matisse, Henri (Künstler/in)"], id="/1/by-name"),
+        _europeana_record(by_sa, [WARHOL], id="/1/warhol"),
+    ]
+    access = Access(life=LifeDates("key"), europeana_key="key")
+    with _europeana(records, []) as http:
+        items = Europeana(http, access=access).search("x")[1]
+    assert [(i.id, i.license) for i in items] == [
+        ("europeana:1~matisse", "Domena publiczna w UE (twórca zm. 1954)"),
+        ("europeana:1~kandinsky", "Domena publiczna w UE (twórca zm. 1944)"),
+        ("europeana:1~by-name", "Domena publiczna w UE (twórca zm. 1954)"),
+    ]
+    assert items[1].artist == "Wassily Kandinsky"
 
 
 def test_europeana_leaves_slides_and_reproductions_out() -> None:
