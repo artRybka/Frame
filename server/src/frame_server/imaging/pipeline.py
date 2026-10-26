@@ -49,6 +49,7 @@ from .layout import (
 from .mat import (
     CREASE_ON_DARK,
     CREASE_ON_LIGHT,
+    PICTURE_MATS,
     crease_dots,
     is_dark,
     paint_mat,
@@ -72,7 +73,7 @@ class LayoutSettings(BaseModel):
     orientation: Orientation = Orientation.LANDSCAPE
     rotation: Literal[90, 270] = Field(90, description="Clockwise rotation of a portrait frame")
     fit: Fit = Fit.AUTO
-    mat: Literal["white", "cream", "grey", "black", "picture", "edge"] = "white"
+    mat: Literal["white", "cream", "grey", "black", "picture", "picture_dark", "edge"] = "white"
     margin: float = Field(0.0, ge=0, le=0.3, description="Passe-partout, fraction of short side")
     crop: Crop | None = Field(None, description="FILL: part of the picture shown (else automatic)")
     detail: Crop | None = Field(None, description="DESCRIPTION: the close-up (else automatic)")
@@ -219,11 +220,12 @@ _NOMINAL_MATS = {
 def _mat_rgb(img: Image.Image, mat: str) -> tuple[int, int, int]:
     if mat == "edge":
         return edge_color(img)
-    if mat == "picture":
+    if mat in PICTURE_MATS:
         small = img.copy()
         small.thumbnail((256, 256))
         pixels = u8_to_linear(np.asarray(small.convert("RGB")))
-        tint = picture_tint(pixels, np.ones(3, np.float32), np.zeros(3, np.float32))
+        dark = mat == "picture_dark"
+        tint = picture_tint(pixels, np.ones(3, np.float32), np.zeros(3, np.float32), dark)
         return tuple(int(v) for v in linear_to_u8(tint))  # type: ignore[return-value]
     return _NOMINAL_MATS.get(mat, (255, 255, 255))
 
@@ -379,7 +381,7 @@ def _finish(
             # The mat and its bevels in pure inks, as in DITHER: the panel
             # keeps them 1:1 and dithers only the picture (E5). Our dither
             # runs on the mat alone.
-            if s.layout.mat in ("picture", "edge"):  # coloured by the picture
+            if s.layout.mat in (*PICTURE_MATS, "edge"):  # coloured by the picture
                 target = by_rows(lambda part: map_to_panel(part, pal, s.tone), linear)
             else:  # only the mat matters here
                 target = np.empty_like(linear)

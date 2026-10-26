@@ -7,10 +7,11 @@ bevels fall in shadow (a little darker), the bottom and right ones catch the
 light (a little lighter), and the mat throws a thin shadow onto the picture
 along its top and left edges.
 
-"picture" tints the mat in the picture's own hue, as a framer would: the
-hue that carries the most colour (area times saturation), made light and
-muted, or deep and muted for a dark picture; nearly colourless pictures get
-a warm or cool off-white.
+"picture" (the app's "Jasne") tints the mat in the picture's own hue, as a
+framer would: the hue that carries the most colour (area times saturation),
+made light and muted; nearly colourless pictures get a warm or cool
+off-white. "picture_dark" ("Ciemne") is the same hue on a deep, muted
+board with a white core: its bevels are white, lit and shaded.
 """
 
 from __future__ import annotations
@@ -24,10 +25,11 @@ from .gamut import compress_chroma
 from .layout import Fit, Plan
 from .palette import EM32DX, Palette
 
-MAT_COLORS = ("white", "cream", "grey", "black", "picture")
+MAT_COLORS = ("white", "cream", "grey", "black", "picture", "picture_dark")
+PICTURE_MATS = ("picture", "picture_dark")  # tinted by the picture
 HUE_BINS = 36
 TINT_LIGHT = (0.9, 0.024, 0.3)  # light mat: lightness (black 0, white 1), max chroma, share
-TINT_DARK = (0.24, 0.035, 0.5)  # dark picture: a deep mat
+TINT_DARK = (0.24, 0.035, 0.5)  # dark mat: deep and muted
 NEUTRAL_CHROMA = 0.02  # pictures below this mean chroma count as colourless
 BEVEL = 0.006  # bevel width, fraction of the canvas's short side
 SHADOW = 0.006  # shadow on the picture, same unit
@@ -93,16 +95,18 @@ def is_dark(colour: FloatArray, palette: Palette) -> bool:
     return _relative_light(colour, palette) < 0.5
 
 
-def picture_tint(pixels: FloatArray, white: FloatArray, black: FloatArray) -> FloatArray:
+def picture_tint(
+    pixels: FloatArray, white: FloatArray, black: FloatArray, dark: bool = False
+) -> FloatArray:
     """A mat colour from the picture's ``pixels`` (linear RGB, any shape),
-    between ``black`` and ``white`` in lightness."""
+    between ``black`` and ``white`` in lightness: a light board, or with
+    ``dark`` a deep one."""
     flat = pixels.reshape(-1, 3)
     lab = linear_to_oklab(flat[:: max(1, len(flat) // 40000)])
-    light, a, b = lab[:, 0], lab[:, 1], lab[:, 2]
+    a, b = lab[:, 1], lab[:, 2]
     chroma = np.hypot(a, b)
     lw, lb = float(linear_to_oklab(white)[0]), float(linear_to_oklab(black)[0])
-    relative = (float(np.median(light)) - lb) / max(lw - lb, 1e-6)
-    tone, max_c, share = TINT_DARK if relative < 0.35 else TINT_LIGHT
+    tone, max_c, share = TINT_DARK if dark else TINT_LIGHT
     if float(chroma.mean()) < NEUTRAL_CHROMA:
         # Colourless: lean the off-white the way the picture leans, barely.
         hue = float(np.arctan2(b.mean(), a.mean()))
@@ -124,7 +128,7 @@ def picture_tint(pixels: FloatArray, white: FloatArray, black: FloatArray) -> Fl
     return np.clip(oklab_to_linear(lab_mat), 0.0, 1.0).astype(np.float32)
 
 
-def _picture_mat(target: FloatArray, plan: Plan, palette: Palette) -> FloatArray:
+def _picture_mat(target: FloatArray, plan: Plan, palette: Palette, dark: bool) -> FloatArray:
     """The tint from what the panel shows of the picture (with several
     photos, of all of them), within its gamut."""
     windows = plan.windows if plan.fit == Fit.MULTI else plan.windows[:1]
@@ -133,7 +137,7 @@ def _picture_mat(target: FloatArray, plan: Plan, palette: Palette) -> FloatArray
     )
     white = palette.perceived_linear()[palette.white_index()]
     black = palette.perceived_linear()[palette.black_index()]
-    tint = picture_tint(pixels, white, black)
+    tint = picture_tint(pixels, white, black, dark)
     lab = compress_chroma(linear_to_oklab(tint)[None, :], palette, knee=0.7)
     return np.clip(oklab_to_linear(lab)[0], 0.0, 1.0).astype(np.float32)
 
@@ -214,8 +218,11 @@ def paint_mat(
     white = palette.perceived_linear()[palette.white_index()]
     black = palette.perceived_linear()[palette.black_index()]
     if mat != "edge":  # "edge" keeps the picture's border colour composed earlier
-        base = _picture_mat(target, plan, palette) if mat == "picture" else mat_color(mat, palette)
-        if mat in ("cream", "grey", "picture"):
+        if mat in PICTURE_MATS:
+            base = _picture_mat(target, plan, palette, dark=mat == "picture_dark")
+        else:
+            base = mat_color(mat, palette)
+        if mat in ("cream", "grey", *PICTURE_MATS):
             grain = 1.0 + GRAIN * _texture((ch, cw))[mask]
             target[mask] = np.clip(base[None, :] * grain[:, None], 0.0, 1.0)
         else:
@@ -224,8 +231,11 @@ def paint_mat(
     bevel = bevel_width(plan)
     # The cut is the board itself, lit or shaded: a little lighter or darker.
     board = target[mask].mean(axis=0) if mat == "edge" else base
-    core_lit = _toward(board, white, 0.2)
-    core_shaded = _toward(board, black, 0.15)
+    if mat == "picture_dark":  # a white core
+        core_lit, core_shaded = white, _toward(white, black, 0.18)
+    else:
+        core_lit = _toward(board, white, 0.2)
+        core_shaded = _toward(board, black, 0.15)
     for x, y, w, h in (window.rect for window in plan.windows):
         # Edges on the canvas border have no mat beyond them.
         open_edges = {"left": x > 0, "top": y > 0, "right": x + w < cw, "bottom": y + h < ch}

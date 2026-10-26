@@ -16,6 +16,8 @@ actor DemoBackend: FrameBackend {
         var framing: [String: [String: DemoFraming.Crops]]?
         /// The "picture" mat the server picks for each work (#rrggbb, screen colours).
         var tints: [String: String]?
+        /// And the "picture_dark" one.
+        var darkTints: [String: String]?
     }
 
     private var items: [Item]
@@ -76,7 +78,8 @@ actor DemoBackend: FrameBackend {
             uniqueKeysWithValues: loaded.items.map {
                 ($0.id, DemoFraming.Art(
                     caption: DemoFraming.caption(for: $0), text: DemoFraming.textBlock(for: $0),
-                    isPhoto: $0.kind == .photo, tint: loaded.tints?[$0.id].flatMap(DemoFraming.color(hex:))
+                    isPhoto: $0.kind == .photo, tint: loaded.tints?[$0.id].flatMap(DemoFraming.color(hex:)),
+                    darkTint: loaded.darkTints?[$0.id].flatMap(DemoFraming.color(hex:))
                 ))
             }
         )

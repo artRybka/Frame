@@ -494,7 +494,7 @@ struct StatusView: Codable, Sendable {
 struct Presentation: Codable, Hashable, Sendable {
     var preset: String
     var fit: String  // "fit" | "fill" | "description" | "auto"; photos: "fit" | "fill" | "multi"
-    var mat: String = "white"  // "white" | "cream" | "grey" | "black" | "picture"
+    var mat: String = "white"  // "white" | "cream" | "grey" | "black" | "picture" | "picture_dark"
     var margin: Double
     var label: Bool
     /// "multi": photos on one board (2–8), or a random number each time,
