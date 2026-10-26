@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 from fastapi.testclient import TestClient
 from test_pools import _wait, museums  # noqa: F401  (fixture)
 
@@ -248,3 +249,50 @@ def test_discover_does_not_wait_for_slow_work(museums, monkeypatch) -> None:  # 
     discover_api._day_fetch[1].join(5)
     assert [i.title for i in discover_api._day_row(service, sea, day)] == ["Wave"]
     discover_api._theme_rows.clear()
+
+
+def test_theme_pages_pass_over_searches_that_find_nothing() -> None:
+    import httpx
+
+    from frame_server.library.themes import Theme, browse_theme, theme
+
+    class Museums:
+        """Nothing for the first two searches, one failing, works after."""
+
+        def __init__(self, found: dict[str, int], failing: set[str] = frozenset()) -> None:
+            self.found = found
+            self.failing = failing
+            self.asked: list[str] = []
+
+        def search(self, source: str, query: str, limit: int, page: int) -> tuple[int, list[Item]]:
+            self.asked.append(query)
+            if query in self.failing:
+                raise httpx.ConnectError("down")
+            total = self.found.get(query, 0)
+            start = (page - 1) * limit
+            return total, [
+                _work(n, title=f"{query} {n}", artist=query)
+                for n in range(start, min(total, start + limit))
+            ]
+
+    found = Theme("t", "T", "", GROUPS[0], queries=(("aic", "A"), ("aic", "B"), ("aic", "C")))
+    fake = Museums({"C": 30}, failing={"B"})
+    items, following = browse_theme(fake, found, 1, 24)  # type: ignore[arg-type]
+    assert fake.asked == ["A", "B", "C"] and len(items) == 24 and following == 4
+    # Page 4 is C's second round... after A's and B's, which have none.
+    fake.asked.clear()
+    items, following = browse_theme(fake, found, 4, 24)  # type: ignore[arg-type]
+    assert fake.asked == ["A", "B", "C"] and len(items) == 6 and following is None
+
+    # Out of time: an empty page that says where to go on.
+    items, following = browse_theme(Museums({}), found, 1, 24, wait=0)  # type: ignore[arg-type]
+    assert items == [] and following == 2
+    # Nothing anywhere: the last page.
+    assert browse_theme(Museums({}), found, 1, 24) == ([], None)  # type: ignore[arg-type]
+    # Every museum down: an error, not an empty theme.
+    with pytest.raises(httpx.HTTPError):
+        browse_theme(Museums({}, failing={"A", "B", "C"}), found, 1, 24)  # type: ignore[arg-type]
+
+    # Polish painters are looked for on Commons, where they are.
+    assert all(source == "wmc" for source, _ in theme("young-poland").searches())
+    assert all(source == "wmc" for source, _ in theme("polish-landscape").searches())

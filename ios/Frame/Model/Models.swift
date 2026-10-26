@@ -825,6 +825,9 @@ extension PlaylistRules {
 struct ArtThemePage: Codable, Sendable {
     let items: [RemoteItem]
     let more: Bool
+    /// The page to ask for next: the server skips searches that found
+    /// nothing (an older server sends none, then it is the following one).
+    var nextPage: Int?
 }
 
 struct RemotePage: Codable, Sendable {
