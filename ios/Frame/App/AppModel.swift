@@ -321,6 +321,8 @@ final class AppModel {
         let started = Date.now
         var seenActive = false
         var first: DisplayProgress?  // with `expectingStart`, maybe the run before
+        let clock = ContinuousClock()
+        var beat = clock.now  // a steady second, whatever a request takes: the bar glides
         while !Task.isCancelled, Date.now.timeIntervalSince(started) < 300 {
             guard let value = try? await backend.progress() else { break }  // older server
             if Task.isCancelled { return }
@@ -335,7 +337,8 @@ final class AppModel {
                 if seenActive { await finishProgress(value) }
                 break
             }
-            try? await Task.sleep(for: .seconds(1))
+            beat = max(beat + .seconds(1), clock.now)
+            try? await Task.sleep(until: beat, clock: clock)
         }
         if !Task.isCancelled {
             displayProgress = nil

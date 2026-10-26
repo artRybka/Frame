@@ -385,12 +385,6 @@ struct DisplayProgress: Codable, Hashable, Sendable {
         default: ""
         }
     }
-
-    var timeLeftLabel: String? {
-        guard active, let left = secondsLeft, left > 1 else { return nil }
-        if left < 90 { return "ok. \(left) s" }
-        return "ok. \((left + 30) / 60) min"
-    }
 }
 
 struct DeviceStatus: Codable, Hashable, Sendable {

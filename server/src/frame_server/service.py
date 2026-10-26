@@ -33,6 +33,7 @@ from .store import ContentInfo, ContentStore
 log = logging.getLogger(__name__)
 
 PREVIEW_MAX = 1280
+PROGRESS_KEY = "progress_expected"
 
 
 @dataclass
@@ -135,6 +136,9 @@ class FrameService:
             access=self._access,
         )
         self.status = StatusMonitor(self.panel, self.library)
+        self.progress.restore(self.library.get_state(PROGRESS_KEY, {}))
+        self.progress.on_learn = lambda learned: self.library.set_state(PROGRESS_KEY, learned)
+        self.progress.likely_asleep = lambda: self.status.sleeping
         self.player = Player(self)
         self.power = PowerManager(self)
         self.albums = Albums(self)
