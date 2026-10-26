@@ -34,6 +34,8 @@ struct MuseumSearchView: View {
     /// Whether the playlist made from the search fetches the museums' works.
     @State private var fetchForPlaylist = false
     @State private var typing = false
+    /// Where the squares start, from the top of Discover's content.
+    @State private var squaresTop: CGFloat = 0
 
     /// The rules' chips, then the colours' and the museums'.
     private var tokens: Binding<[SearchToken]> {
@@ -115,16 +117,22 @@ struct MuseumSearchView: View {
 
     private var idle: some View {
         VStack(spacing: 4) {
-            Text("Muzea, kolory, style, tematy, epoki i techniki dodasz przyciskiem \(Image(systemName: "plus.circle.fill")) w polu wyszukiwania.")
+            Text("Muzea, style, tematy, epoki, techniki i kolory dodasz przyciskiem \(Image(systemName: "plus.circle.fill")) w polu wyszukiwania.")
                 .font(.footnote)
                 .foregroundStyle(Theme.inkSoft)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 12)
-            // Room below the row for the squares to fall to the bottom.
+            // Down to the tab bar, so the squares have room below their row
+            // (in the middle of the screen) to fall to the bottom.
             SquaresAnimation()
                 .frame(maxWidth: .infinity)
-                .containerRelativeFrame(.vertical) { height, _ in height * 0.55 }
+                .containerRelativeFrame(.vertical) { height, _ in
+                    max(200, height - squaresTop - DiscoverView.bottomPadding)
+                }
+                .onGeometryChange(for: CGFloat.self) { proxy in
+                    proxy.frame(in: .named(DiscoverView.content)).minY
+                } action: { squaresTop = $0 }
         }
         .frame(maxWidth: .infinity)
     }
