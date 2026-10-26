@@ -33,6 +33,9 @@ final class AppModel {
     /// How the server reaches the panel; nil before it is loaded or on an older server.
     var panelConfig: PanelConfig?
     var playlists: [PlaylistSummary] = []
+    /// Goes up when a work is liked, unliked, left out or brought back:
+    /// views listing a playlist's works load them again.
+    private(set) var libraryRevision = 0
     var facets = Facets.empty
     /// Styles, subjects, periods and techniques to search by, with Polish names.
     var vocabulary: [TermInfo] = []
@@ -434,10 +437,33 @@ final class AppModel {
         do {
             let item = try await backend.setFavorite(id: id, favorite)
             if player?.current?.item?.id == id { player?.current?.item = item }
+            libraryChanged()
             return item
         } catch {
             show(error)
             return nil
+        }
+    }
+
+    /// "Nie pokazuj na ramce" and back.
+    func setExcluded(_ id: String, _ excluded: Bool) async -> Item? {
+        do {
+            let item = try await backend.setExcluded(id: id, excluded)
+            libraryChanged()
+            return item
+        } catch {
+            show(error)
+            return nil
+        }
+    }
+
+    /// A work joined or left playlists (Ulubione and smart ones): their
+    /// tiles and counts, and the queue in "Teraz", which the server updates.
+    private func libraryChanged() {
+        libraryRevision += 1
+        Task {
+            await refreshPlaylists()
+            await refreshPlayer()
         }
     }
 

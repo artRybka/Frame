@@ -365,7 +365,7 @@ struct ItemDetailView: View {
                 .disabled(savingPhoto)
                 Button(item.excluded ? "Pokazuj ponownie" : "Nie pokazuj na ramce", systemImage: "eye.slash") {
                     Task {
-                        if let updated = try? await model.backend.setExcluded(id: item.id, !item.excluded) {
+                        if let updated = await model.setExcluded(item.id, !item.excluded) {
                             self.item = updated
                         }
                     }
