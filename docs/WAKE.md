@@ -131,7 +131,12 @@ możliwe przyczyny, od najbardziej prawdopodobnej:
    U nas router to UniFi Dream Machine Pro: nie ma w panelu stałych wpisów
    ARP (przez SSH da się je dodać, ale znikają po restarcie i aktualizacji),
    więc zalecana droga to drugi port LAN Synology RS1619xs+ w sieci
-   192.168.1.x (DHCP, brama domyślna zostaje na LAN 1).
+   ekranu (DHCP, brama domyślna zostaje na LAN 1). Od 2026-10-26 ekran jest
+   w sieci IoT UniFi (192.168.3.x): port przełącznika dla LAN 2 dostaje
+   profil z siecią IoT jako natywną. W ustawieniach SSID IoT
+   „Multicast and Broadcast Control” musi przepuszczać broadcast. Jeśli sieć
+   IoT jest izolowana, ekran nie pobierze obrazu z 192.100.3.185; wtedy
+   `FRAME_PUBLIC_HOST` = adres NAS-a w sieci IoT.
 2. **Network standby został wyłączony na noc i nie wrócił.** Na baterii
    w ciszy nocnej serwer wyłącza network standby (głęboki sen). Włączał go
    z powrotem tylko wtedy, gdy znalazł ekran w oknie porannej pobudki albo
