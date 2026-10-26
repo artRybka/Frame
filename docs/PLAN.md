@@ -169,7 +169,7 @@ Cel: potwierdzić protokół na Twoim egzemplarzu i poznać zachowanie ekranu.
 
 ### Etap 5 — Dopracowanie
 
-- [ ] Dostęp spoza domu przez Tailscale / VPN (instrukcja konfiguracji).
+- [x] Dostęp spoza domu przez Tailscale: w aplikacji adres domowy i zdalny z automatycznym wyborem, instrukcja w [deploy/synology/README.md](../deploy/synology/README.md) *(2026-10-26, D13)*.
 - [ ] Testy długoterminowe: zużycie baterii, ghosting, stabilność po aktualizacjach firmware.
 - [ ] Dokumentacja użytkownika, kopie zapasowe, ewentualna strona konfiguracji w panelu Home Assistanta (ingress).
 

@@ -1102,10 +1102,12 @@ struct ServerSection: View {
                 .tint(Theme.accent)
                 if !model.demoMode {
                     Divider()
-                    TextField("http://homeassistant.local:8099", text: $model.serverURL)
-                        .keyboardType(.URL)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
+                    AddressField(title: "W domu", prompt: "http://homeassistant.local:8099", text: $model.serverURL)
+                    Divider()
+                    AddressField(title: "Spoza domu", prompt: "Tailscale, np. http://100.64.0.5:8099", text: $model.remoteURL)
+                    Text("Opcjonalny. Aplikacja sama wybiera adres, który odpowiada, a domowy ma pierwszeństwo.")
+                        .font(.caption)
+                        .foregroundStyle(Theme.inkSoft)
                     Divider()
                     SecureField("Token API", text: $model.apiToken)
                 }
@@ -1137,7 +1139,7 @@ struct ServerSection: View {
     private var connectionLine: some View {
         switch model.connection {
         case .connected:
-            Label(model.demoMode ? "Tryb demo" : "Połączono", systemImage: "checkmark.circle.fill")
+            Label(connectedText, systemImage: "checkmark.circle.fill")
                 .font(.subheadline)
                 .foregroundStyle(Theme.good)
         case let .failed(message):
@@ -1146,6 +1148,32 @@ struct ServerSection: View {
                 .foregroundStyle(Theme.bad)
         case .unknown:
             EmptyView()
+        }
+    }
+
+    private var connectedText: String {
+        if model.demoMode { return "Tryb demo" }
+        switch model.serverPath {
+        case .remote: return "Połączono spoza domu"
+        case .home where !model.remoteURL.isEmpty: return "Połączono w domu"
+        default: return "Połączono"
+        }
+    }
+}
+
+/// A server address with its label above.
+private struct AddressField: View {
+    let title: String
+    let prompt: String
+    @Binding var text: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title).font(.caption).foregroundStyle(Theme.inkSoft)
+            TextField(prompt, text: $text)
+                .keyboardType(.URL)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
         }
     }
 }

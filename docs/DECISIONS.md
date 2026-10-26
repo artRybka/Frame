@@ -102,3 +102,20 @@ z limitem). Prezentacja zostaje osobno dla sztuki (playlisty dzieł,
 Propozycje) i zdjęć (albumy, zdjęcia z rolki).
 **Konsekwencje.** Starsze ustawienia (`mode`, `album_url`) zamieniają się
 same w playlistę-album, odtwarzaną, jeśli był włączony tryb albumu.
+
+## D13. Dostęp spoza domu: dwa adresy serwera i Tailscale — 2026-10-26
+
+**Decyzja.** Serwer nie jest wystawiany do internetu. Poza domem aplikacja
+łączy się przez Tailscale (pakiet na NAS-ie, aplikacja na iPhonie). W
+ustawieniach są dwa adresy: „W domu” i opcjonalny „Spoza domu”. Aplikacja
+pyta oba o `/api/health` naraz (bez tokenu, bo domowy adres nie jest
+prywatny i poza domem może należeć do kogoś innego) i wybiera domowy, jeśli
+odpowie w 2 s, inaczej zdalny. Sprawdza to przy starcie, przeciągnięciu w
+dół, powrocie do aplikacji, zmianie sieci (także włączeniu VPN) i gdy
+zapytanie nie dojdzie; zapytanie powtarza na drugim adresie tylko wtedy,
+gdy nie mogło niczego zrobić dwa razy (GET albo brak połączenia).
+**Konsekwencje.** Serwer bez zmian: ekran dalej pobiera obrazy z adresu
+lokalnego (`public_host`), a aplikacja używa ścieżek względnych. Odrzucone:
+publiczny adres HTTPS przez reverse proxy (serwer chroniony tylko tokenem)
+oraz sam VPN z jednym adresem (trzeba pamiętać o włączaniu go także w domu
+albo routować podsieć).
