@@ -7,8 +7,12 @@ museums spell full names differently; rules match them word by word.
 
 from __future__ import annotations
 
+import logging
+import time
 from dataclasses import dataclass
 from datetime import date
+
+import httpx
 
 from .importer import Importer
 from .models import Item, ItemKind, PlaylistRules
@@ -16,8 +20,13 @@ from .repo import Library
 from .seed import MORE_POLISH_PAINTERS, PACKS, POLISH_PAINTERS
 from .vocabulary import museum_queries, set_aside
 
+log = logging.getLogger(__name__)
+
 #: Museums asked for a theme's artists or words when it names no searches.
 SEARCH_SOURCES = ("aic", "cma", "met")
+#: A theme's page goes on to its next searches while one finds nothing,
+#: for this many seconds at most; the app asks for the rest.
+BROWSE_WAIT = 8.0
 
 GROUPS = (
     "Kierunki i style",
@@ -64,6 +73,34 @@ class Theme:
 def _pack_queries(key: str) -> tuple[tuple[str, str], ...]:
     found = next(p for p in PACKS if p.key == key)
     return tuple((source, query) for source, query, _ in found.queries)
+
+
+def _commons(artists: tuple[str, ...]) -> tuple[tuple[str, str], ...]:
+    """Commons categories of painters the big museums hardly have (Polish
+    ones: Chicago, Cleveland and the Met find nothing for Wyspiański)."""
+    return tuple(("wmc", f"Category:Paintings by {name}") for name in artists)
+
+
+YOUNG_POLAND = (
+    "Stanisław Wyspiański",
+    "Józef Mehoffer",
+    "Jacek Malczewski",
+    "Olga Boznańska",
+    "Leon Wyczółkowski",
+    "Jan Stanisławski",
+    "Wojciech Weiss",
+    "Teodor Axentowicz",
+    "Józef Pankiewicz",
+    "Władysław Podkowiński",
+)
+POLISH_LANDSCAPE = (
+    "Józef Chełmoński",
+    "Jan Stanisławski",
+    "Julian Fałat",
+    "Ferdynand Ruszczyc",
+    "Kazimierz Stabrowski",
+    "Leon Wyczółkowski",
+)
 
 
 STYLES = "Kierunki i style"
@@ -378,32 +415,16 @@ THEMES: list[Theme] = [
         "Młoda Polska",
         "Wyspiański, Mehoffer, Malczewski, Boznańska, Stanisławski, Weiss.",
         POLISH,
-        artists=(
-            "Stanisław Wyspiański",
-            "Józef Mehoffer",
-            "Jacek Malczewski",
-            "Olga Boznańska",
-            "Leon Wyczółkowski",
-            "Jan Stanisławski",
-            "Wojciech Weiss",
-            "Teodor Axentowicz",
-            "Józef Pankiewicz",
-            "Władysław Podkowiński",
-        ),
+        artists=YOUNG_POLAND,
+        queries=_commons(YOUNG_POLAND),
     ),
     Theme(
         "polish-landscape",
         "Polski pejzaż",
         "Chełmoński, Stanisławski, Fałat, Ruszczyc, Stabrowski.",
         POLISH,
-        artists=(
-            "Józef Chełmoński",
-            "Jan Stanisławski",
-            "Julian Fałat",
-            "Ferdynand Ruszczyc",
-            "Kazimierz Stabrowski",
-            "Leon Wyczółkowski",
-        ),
+        artists=POLISH_LANDSCAPE,
+        queries=_commons(POLISH_LANDSCAPE),
     ),
     # Colour and mood: browsed in the catalogue, where colours are known
     Theme(
@@ -483,23 +504,40 @@ def theme_of_the_day(day: date) -> Theme:
 
 
 def browse_theme(
-    importer: Importer, found: Theme, page: int = 1, limit: int = 24
-) -> tuple[list[Item], bool]:
+    importer: Importer, found: Theme, page: int = 1, limit: int = 24, wait: float = BROWSE_WAIT
+) -> tuple[list[Item], int | None]:
     """One page of a theme: its museum searches one after another (page 1
     is the first search, page 2 the next; after the last one their second
-    pages follow), or the catalogue for themes without searches. Returns the
-    works and whether there are more pages."""
+    pages follow), or the catalogue for themes without searches. A search
+    that finds nothing (or fails) is passed over for the next one, for
+    ``wait`` seconds at most. Returns the works and the page to ask for
+    next, None after the last."""
     searches = found.searches()
     if not searches:
-        return browse_catalogue(importer.library, found, page, limit)
+        items, more = browse_catalogue(importer.library, found, page, limit)
+        return items, page + 1 if more else None
     count = len(searches)
-    source, query = searches[(page - 1) % count]
-    round_ = (page - 1) // count + 1
-    total, items = importer.search(source, query, limit=limit, page=round_)
-    return (
-        [i for i in items if not set_aside(i)],
-        page % count != 0 or round_ * limit < total,
-    )
+    started = time.monotonic()
+    failed: httpx.HTTPError | ValueError | None = None
+    answered = False
+    while True:
+        source, query = searches[(page - 1) % count]
+        round_ = (page - 1) // count + 1
+        kept: list[Item] = []
+        total = 0
+        try:
+            total, items = importer.search(source, query, limit=limit, page=round_)
+            kept = [i for i in items if not set_aside(i)]
+            answered = True
+        except (httpx.HTTPError, ValueError) as err:
+            log.warning("theme %s: asking %s for %r failed: %s", found.key, source, query, err)
+            failed = err
+        following = page + 1 if page % count != 0 or round_ * limit < total else None
+        if kept or following is None or time.monotonic() - started >= wait:
+            if not kept and not answered and failed is not None:
+                raise failed  # every museum asked failed: say so
+            return kept, following
+        page = following
 
 
 def browse_catalogue(

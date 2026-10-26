@@ -323,6 +323,9 @@ final class FrameAPITests: XCTestCase {
         let json = #"{"items": [], "more": true}"#
         let page = try LiveBackend.decoder().decode(ArtThemePage.self, from: Data(json.utf8))
         XCTAssertTrue(page.more)
+        XCTAssertNil(page.nextPage)
+        let skipped = #"{"items": [], "more": true, "next_page": 4}"#
+        XCTAssertEqual(try LiveBackend.decoder().decode(ArtThemePage.self, from: Data(skipped.utf8)).nextPage, 4)
         let row = #"{"key": "theme", "title": "Motyw dnia", "subtitle": "", "theme": "ukiyo-e", "items": []}"#
         let decoded = try LiveBackend.decoder().decode(SuggestionRow.self, from: Data(row.utf8))
         XCTAssertEqual(decoded.theme, "ukiyo-e")

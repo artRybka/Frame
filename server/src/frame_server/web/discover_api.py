@@ -89,6 +89,8 @@ class SuggestionRow(BaseModel):
 class ThemePage(BaseModel):
     items: list[RemoteItem]
     more: bool
+    #: The page to ask for next: searches that found nothing are skipped.
+    next_page: int | None = None
 
 
 class ThemePlaylistRequest(BaseModel):
@@ -356,10 +358,14 @@ async def theme_page(key: str, svc: Svc, page: Annotated[int, Query(ge=1)] = 1) 
     """A theme, page by page, from the museums (or the catalogue)."""
     found = _theme(key)
     try:
-        items, more = await run_in_threadpool(browse_theme, svc.importer, found, page, ROW_SIZE)
-    except httpx.HTTPError as err:
+        items, following = await run_in_threadpool(
+            browse_theme, svc.importer, found, page, ROW_SIZE
+        )
+    except (httpx.HTTPError, ValueError) as err:
         raise HTTPException(502, f"{key}: {err}") from err
-    return ThemePage(items=remote_items(svc, items), more=more)
+    return ThemePage(
+        items=remote_items(svc, items), more=following is not None, next_page=following
+    )
 
 
 @router.post("/themes/{key}/playlist", response_model=ThemePlaylist)
