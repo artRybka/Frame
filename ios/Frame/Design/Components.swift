@@ -313,6 +313,42 @@ struct SecondaryButtonStyle: ButtonStyle {
     }
 }
 
+/// Icon and title on one line, shrinking a little before it would wrap,
+/// for two actions sharing a row.
+struct ActionLabelStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 7) {
+            configuration.icon
+            configuration.title
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+        .font(.subheadline.weight(.semibold))
+    }
+}
+
+/// One of two actions sharing a row, like "Pokaż na ramce" and "Dodaj do
+/// kolejki": filled when prominent, else on a card; a narrow one is as wide
+/// as its label.
+struct ActionButtonStyle: ButtonStyle {
+    var prominent = false
+    var wide = true
+
+    func makeBody(configuration: Configuration) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
+        return configuration.label
+            .labelStyle(ActionLabelStyle())
+            .foregroundStyle(prominent ? Theme.paper : Theme.ink)  // dark text on the lighter dark-mode accent
+            .frame(maxWidth: wide ? .infinity : nil)
+            .padding(.horizontal, wide ? 0 : 18)
+            .padding(.vertical, 14)
+            .background(prominent ? Theme.accent : Theme.card, in: shape)
+            .overlay(shape.strokeBorder(prominent ? Color.clear : Theme.hairline))
+            .scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .animation(.spring(response: 0.25, dampingFraction: 0.7), value: configuration.isPressed)
+    }
+}
+
 /// Rounded card container.
 struct Card<Content: View>: View {
     var padding: CGFloat = 18

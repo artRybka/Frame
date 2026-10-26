@@ -516,17 +516,3 @@ struct AddToPlaylistSheet: View {
         } catch { model.show(error) }
     }
 }
-
-/// Icon and title on one line, shrinking a little before it would wrap,
-/// for two actions sharing a row.
-private struct ActionLabelStyle: LabelStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        HStack(spacing: 7) {
-            configuration.icon
-            configuration.title
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-        }
-        .font(.subheadline.weight(.semibold))
-    }
-}

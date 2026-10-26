@@ -3,7 +3,7 @@ import SwiftUI
 
 /// Home: the picture on the frame, presented like an exhibit. The arrows
 /// browse what was and what will be on the frame without sending anything,
-/// and "Wróć do obrazu na ramce" jumps back to it; a tap on the picture opens
+/// and "Teraz" jumps back to the one on it; a tap on the picture opens
 /// it on the crop screen, and "Pokaż na ramce" sends the one browsed to.
 /// A picture that did not reach the frame says so, with the one the frame
 /// still shows and a way to send it again.
@@ -254,7 +254,7 @@ struct NowView: View {
 
     /// Under the picture: on the frame, only when it changes next; browsed
     /// to, where it is in the queue (the next one also says when, on the
-    /// same line), with "Pokaż na ramce" and a way back. A picture that did
+    /// same line), with "Teraz" back to it and "Pokaż na ramce". A picture that did
     /// not reach the frame says why and what can be done.
     private var controls: some View {
         VStack(spacing: 12) {
@@ -276,23 +276,40 @@ struct NowView: View {
                 }
             }
             .contentTransition(.opacity)
-            if offset != 0 || undelivered != nil || primaryEnabled || sending {
-                HStack(spacing: 10) {
+            if offset != 0 {
+                HStack(spacing: 12) {
+                    backToNow
                     Button {
                         Task { await primaryAction() }
                     } label: {
-                        HStack(spacing: 10) {
-                            if sending { ProgressView().tint(Theme.paper) }
-                            Text(primaryTitle)
+                        Label {
+                            Text("Pokaż na ramce")
+                        } icon: {
+                            if sending {
+                                ProgressView().tint(Theme.paper)
+                            } else {
+                                Image(systemName: "photo.artframe")
+                            }
                         }
                     }
-                    .buttonStyle(PrimaryButtonStyle())
+                    .buttonStyle(ActionButtonStyle(prominent: true))
                     .disabled(!primaryEnabled || sending)
                     .opacity(primaryEnabled || sending ? 1 : 0.45)
-                    if offset != 0 {
-                        backToNow
+                }
+                .frame(maxWidth: model.isPortrait ? 420 : .infinity)
+                .transition(.opacity)
+            } else if undelivered != nil || primaryEnabled || sending {
+                Button {
+                    Task { await primaryAction() }
+                } label: {
+                    HStack(spacing: 10) {
+                        if sending { ProgressView().tint(Theme.paper) }
+                        Text(primaryTitle)
                     }
                 }
+                .buttonStyle(PrimaryButtonStyle())
+                .disabled(!primaryEnabled || sending)
+                .opacity(primaryEnabled || sending ? 1 : 0.45)
                 .frame(maxWidth: model.isPortrait ? 420 : .infinity)
                 .transition(.opacity)
             }
@@ -301,6 +318,7 @@ struct NowView: View {
             }
         }
         .frame(maxWidth: .infinity)
+        .padding(.top, -12)  // the caption close under the frame
     }
 
     /// When the frame changes next, or how long the picture is pinned.
@@ -321,10 +339,9 @@ struct NowView: View {
         Button {
             withAnimation(.easeInOut(duration: 0.25)) { browsed = nil }
         } label: {
-            Image(systemName: offset > 0 ? "arrow.uturn.left" : "arrow.uturn.right")
+            Label("Teraz", systemImage: offset > 0 ? "arrow.uturn.left" : "arrow.uturn.right")
         }
-        .buttonStyle(SecondaryButtonStyle())
-        .frame(width: 58)
+        .buttonStyle(ActionButtonStyle(wide: false))
         .disabled(sending)
         .accessibilityLabel("Wróć do obrazu na ramce")
         .transition(.opacity)
