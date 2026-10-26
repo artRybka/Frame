@@ -248,11 +248,6 @@ DEFAULT_PLAYLISTS: list[Playlist] = [
         rules=PlaylistRules(colors=["warm"]),
     ),
     Playlist(
-        name="Najlepiej na e-papierze",
-        description="Obrazy, które najlepiej wychodzą na tym ekranie.",
-        rules=PlaylistRules(min_suitability=0.72),
-    ),
-    Playlist(
         name="Ulubione",
         description="Twoje serduszka.",
         rules=PlaylistRules(favorites_only=True),

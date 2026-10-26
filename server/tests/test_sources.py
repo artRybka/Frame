@@ -293,6 +293,57 @@ def test_one_source_alone_shows_what_it_has(service, monkeypatch) -> None:
         assert client.get("/api/discover/search").json()["total"] == 0  # all: nothing asked
 
 
+def test_search_asks_the_chosen_museums_and_judges_colours(service, monkeypatch) -> None:
+    from PIL import Image
+
+    from frame_server.library.museums import MUSEUMS
+    from frame_server.web import create_app
+
+    asked: list[str] = []
+
+    def answering(key: str, base: type[Openverse] | type[Europeana]) -> type:
+        class Answering(base):  # type: ignore[valid-type, misc]
+            def search(self, query, limit=20, page=1):
+                asked.append(key)
+                items = [
+                    self._item(
+                        f"{key}-{tint}",
+                        title=f"{key} {tint}",
+                        image_url=f"https://x/{key}/{tint}.jpg",
+                        thumb_url=f"https://x/{key}/{tint}.jpg",
+                    )
+                    for tint in ("red", "blue")
+                ]
+                return 2, items
+
+        return Answering
+
+    monkeypatch.setitem(MUSEUMS, "openverse", answering("openverse", Openverse))
+    monkeypatch.setitem(MUSEUMS, "europeana", answering("europeana", Europeana))
+    app = create_app(service.settings)
+    svc = app.state.service
+    tints = {"red": (200, 30, 30), "blue": (30, 60, 210)}
+    monkeypatch.setattr(
+        svc.importer.cache,
+        "sample",
+        lambda url: Image.new("RGB", (32, 32), tints[url.rsplit("/", 1)[1].split(".")[0]]),
+    )
+    with TestClient(app) as client:
+        found = client.get(
+            "/api/discover/search", params={"q": "sea", "source": ["openverse", "europeana"]}
+        ).json()
+        assert sorted(asked) == ["europeana", "openverse"]
+        assert len(found["items"]) == 4, found
+        asked.clear()
+        found = client.get(
+            "/api/discover/search",
+            params={"q": "sea", "source": ["openverse", "europeana"], "color": ["red"]},
+        ).json()
+        ids = sorted(r["item"]["id"] for r in found["items"])
+        assert ids == ["europeana:europeana-red", "openverse:openverse-red"]
+        assert client.get("/api/discover/search", params={"source": "nowhere"}).status_code == 404
+
+
 def test_wikiart_switch_lists_it_and_switching_off_removes_its_works(service) -> None:
     from frame_server.web import create_app
 

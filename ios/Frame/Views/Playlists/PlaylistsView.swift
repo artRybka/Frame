@@ -221,7 +221,7 @@ struct RulesSummary: View {
             if let from = rules.yearFrom { TagLabel(text: "od \(String(from))") }
             if let to = rules.yearTo { TagLabel(text: "do \(String(to))") }
             if rules.favoritesOnly { TagLabel(text: "♥ ulubione") }
-            if rules.minSuitability != nil { TagLabel(text: "najlepsze na e-papier") }
+            ForEach(rules.sources, id: \.self) { TagLabel(text: Names.source($0)) }
         }
     }
 }

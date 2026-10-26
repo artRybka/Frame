@@ -684,7 +684,7 @@ extension Array where Element == RemoteItem {
 
 /// A row of Discover, `GET /api/suggestions`.
 struct SuggestionRow: Codable, Hashable, Sendable, Identifiable {
-    let key: String  // "for-you" | "theme" | "best"
+    let key: String  // "for-you" | "like:<theme>" | "theme"
     let title: String
     var subtitle: String
     /// The theme to browse further (the theme of the day).
@@ -750,8 +750,8 @@ struct MuseumHint: Codable, Sendable {
 
 /// One chip of a search or of a smart playlist's rules.
 struct SearchToken: Hashable, Sendable, Identifiable {
-    /// artist | word | style | subject | period | technique | museum (Discover's
-    /// search only, not a rule), or for rules of
+    /// artist | word | style | subject | period | technique | museum | color
+    /// (the last two in Discover's search only), or for rules of
     /// older playlists: legacy-style | legacy-subject (museum facet values).
     let kind: String
     let key: String
@@ -766,6 +766,7 @@ struct SearchToken: Hashable, Sendable, Identifiable {
         case "period": "Epoka"
         case "technique": "Technika"
         case "museum": "Muzeum"
+        case "color": "Kolor"
         default: "Słowo"
         }
     }
@@ -778,6 +779,7 @@ struct SearchToken: Hashable, Sendable, Identifiable {
         case "period": "calendar"
         case "technique": "scribble.variable"
         case "museum": "building.columns"
+        case "color": "circle.fill"
         default: "text.magnifyingglass"
         }
     }
