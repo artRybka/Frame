@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.16.1
+
+- Kolejka Ulubionych (i innych playlist) nie kurczy się już do kilku świeżo
+  polubionych prac: obejmuje całą playlistę, najpierw prace niepokazywane
+  ostatnio, potem resztę. Gdy w międzyczasie dojdą nowe prace (np. z
+  muzeów), kolejka losuje się od nowa, żeby poszły pierwsze.
+
 ## 0.16.0
 
 - Szukaj: pod „+” na górze są Muzea i Kolory; można wybrać kilka muzeów
