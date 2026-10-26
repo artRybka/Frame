@@ -2,11 +2,18 @@
 
 from __future__ import annotations
 
+from itertools import pairwise
+
 from conftest import jpeg_bytes
 
 from frame_server.device import MdcConnectionError
 from frame_server.library import ItemKind
-from frame_server.progress import DEFAULT_SECONDS, ProgressTracker, Stage
+from frame_server.progress import (
+    DEFAULT_FAILED_CONNECT,
+    DEFAULT_SECONDS,
+    ProgressTracker,
+    Stage,
+)
 
 
 class Clock:
@@ -72,6 +79,82 @@ def test_durations_are_learned_but_not_from_a_wake() -> None:
     clock.now += 20
     tracker.advance(Stage.WAKING)
     assert tracker.expected[Stage.SENDING] == DEFAULT_SECONDS[Stage.SENDING]
+    assert tracker.failed_connect == (DEFAULT_FAILED_CONNECT + 20) / 2
+
+
+def test_a_picture_drawn_ahead_does_not_teach_the_render_time() -> None:
+    clock = Clock()
+    tracker = ProgressTracker(clock)
+    tracker.begin("x")
+    clock.now += 0.2  # only published
+    tracker.advance(Stage.SENDING)
+    assert tracker.expected[Stage.RENDERING] == DEFAULT_SECONDS[Stage.RENDERING]
+
+
+def bar_through(tracker: ProgressTracker, clock: Clock, took: dict[Stage, float]) -> list[float]:
+    """The bar once a second, as the app asks, through a send that wakes the panel."""
+    seen: list[float] = []
+    tracker.begin("x")
+    for stage, seconds in took.items():
+        if stage != Stage.RENDERING:
+            tracker.advance(stage)
+        for _ in range(round(seconds * 4)):
+            clock.now += 0.25
+            if clock.now % 1 == 0:
+                seen.append(tracker.view().fraction)
+    return seen
+
+
+def steps(seen: list[float]) -> list[float]:
+    return [b - a for a, b in pairwise(seen)]
+
+
+ON_TIME = {
+    Stage.RENDERING: DEFAULT_SECONDS[Stage.RENDERING],
+    Stage.SENDING: DEFAULT_FAILED_CONNECT,
+    Stage.WAKING: DEFAULT_SECONDS[Stage.WAKING],
+    Stage.DOWNLOADING: DEFAULT_SECONDS[Stage.DOWNLOADING],
+    Stage.REFRESHING: DEFAULT_SECONDS[Stage.REFRESHING] - 0.25,
+}
+
+
+def test_on_time_the_bar_moves_evenly_to_the_end() -> None:
+    clock = Clock()
+    tracker = ProgressTracker(clock)
+    tracker.likely_asleep = lambda: True
+    seen = bar_through(tracker, clock, ON_TIME)
+    assert min(steps(seen)) > 0  # never stands still
+    assert max(steps(seen)) < 2 * min(steps(seen))  # nor jumps
+    assert seen[-1] > 0.98
+    clock.now += 0.25
+    assert tracker.view().fraction == 1.0
+
+
+def test_a_late_stage_slows_the_bar_without_stopping_it() -> None:
+    clock = Clock()
+    tracker = ProgressTracker(clock)
+    tracker.likely_asleep = lambda: True
+    seen = bar_through(tracker, clock, ON_TIME | {Stage.WAKING: 60.0})
+    assert min(steps(seen)) > 0
+
+
+def test_a_wake_nobody_expected_holds_the_bar() -> None:
+    clock = Clock()
+    seen = bar_through(ProgressTracker(clock), clock, ON_TIME)
+    assert min(steps(seen)) == 0  # why the service says when the panel sleeps
+
+
+def test_learned_times_survive_a_restart(service, tmp_path) -> None:
+    from frame_server.service import FrameService
+
+    tracker = service.progress
+    tracker.begin("x")
+    tracker.expected[Stage.RENDERING] = 3.0
+    tracker._learn(Stage.SENDING, 4.0, woke=False)
+    again = FrameService(service.settings).progress
+    assert again.expected[Stage.RENDERING] == 3.0
+    assert again.expected[Stage.SENDING] == (DEFAULT_SECONDS[Stage.SENDING] + 4) / 2
+    assert again.expected[Stage.REFRESHING] == DEFAULT_SECONDS[Stage.REFRESHING]
 
 
 def test_waiting_and_failing_keep_their_reason() -> None:

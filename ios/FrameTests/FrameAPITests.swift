@@ -35,7 +35,6 @@ final class FrameAPITests: XCTestCase {
         XCTAssertEqual(view.progress?.stage, "downloading")
         XCTAssertEqual(view.progress?.phaseIndex, 1)
         XCTAssertEqual(view.progress?.secondsLeft, 47)
-        XCTAssertEqual(view.progress?.timeLeftLabel, "ok. 47 s")
         XCTAssertEqual(view.playlist?.itemCount, 21)
         XCTAssertEqual(view.playlist?.rules.query, "woodblock")
         XCTAssertEqual(view.current?.previewUrl, "/api/previews/ABC.png")
@@ -69,10 +68,8 @@ final class FrameAPITests: XCTestCase {
         var progress = DisplayProgress(stage: "refreshing", phase: "displaying", active: true,
                                        title: "", fraction: 0.8, secondsLeft: 150)
         XCTAssertEqual(progress.phaseIndex, 2)
-        XCTAssertEqual(progress.timeLeftLabel, "ok. 3 min")
         progress = DisplayProgress(stage: "done", active: false, title: "", fraction: 1)
         XCTAssertEqual(progress.phaseIndex, DisplayProgress.phases.count)
-        XCTAssertNil(progress.timeLeftLabel)
         XCTAssertEqual(progress.stageLabel, "Obraz jest na ramce")
     }
 
