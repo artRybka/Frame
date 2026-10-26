@@ -431,6 +431,37 @@ struct PanelConfig: Codable, Hashable, Sendable {
     var fromApp: Bool
 }
 
+/// How much disk the library takes on the server and how much it may take
+/// (Ramka → trybik → Konfiguracja). Sizes in bytes; limits in MB, as the
+/// server counts them (1 MB = 1 MiB).
+struct LibraryStorage: Codable, Hashable, Sendable {
+    struct Usage: Codable, Hashable, Sendable {
+        /// Thumbnails of the catalogue browsed in the app.
+        var catalogueBytes: Int64
+        /// Display-size originals: museum cache, uploads and photos.
+        var originalsBytes: Int64
+        /// Pictures prepared for the panel and their previews.
+        var panelBytes: Int64
+        var databaseBytes: Int64
+        var totalBytes: Int64
+        var freeBytes: Int64?
+        var measuredAt: Double
+    }
+
+    var usage: Usage
+    /// Catalogue and originals together; the server splits it between them.
+    var limitMb: Int
+    /// From frame.env or the add-on options.
+    var defaultMb: Int
+    var catalogueMb: Int
+    var imageCacheMb: Int
+    var fromApp: Bool
+}
+
+struct LibraryStorageUpdate: Encodable, Sendable {
+    var limitMb: Int
+}
+
 struct PanelConfigUpdate: Encodable, Sendable {
     var host: String?
     /// Left out keeps the PIN on the server, "" removes it.

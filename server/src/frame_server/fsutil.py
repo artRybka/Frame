@@ -7,6 +7,7 @@ A NAS adds its own entries to mounted folders: Synology puts thumbnails in
 
 from __future__ import annotations
 
+import os
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -30,3 +31,24 @@ def own_dirs(directory: Path) -> Iterator[Path]:
     for path in directory.iterdir():
         if not is_foreign(path) and path.is_dir():
             yield path
+
+
+def dir_bytes(directory: Path) -> int:
+    """Bytes in the regular files directly in ``directory`` (none when it is
+    missing), without the entries of a NAS or another OS. One directory read
+    and one stat per file: the cheapest walk on a slow disk."""
+    total = 0
+    try:
+        entries = os.scandir(directory)
+    except FileNotFoundError:
+        return 0
+    with entries:
+        for entry in entries:
+            if entry.name.startswith(_FOREIGN_PREFIXES):
+                continue
+            try:
+                if entry.is_file(follow_symlinks=False):
+                    total += entry.stat(follow_symlinks=False).st_size
+            except FileNotFoundError:
+                continue  # trimmed meanwhile
+    return total

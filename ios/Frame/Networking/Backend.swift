@@ -111,6 +111,11 @@ protocol FrameBackend: Sendable {
     func savePanelConfig(_ update: PanelConfigUpdate) async throws -> PanelConfig
     /// Back to the values in frame.env or the add-on options.
     func resetPanelConfig() async throws -> PanelConfig
+    /// How much disk the library takes on the server, and its limit.
+    func libraryStorage() async throws -> LibraryStorage
+    func saveLibraryLimit(mb: Int) async throws -> LibraryStorage
+    /// Back to the limits in frame.env or the add-on options.
+    func resetLibraryLimit() async throws -> LibraryStorage
     /// `sleepAfter`: woken only to check its state, so on battery it goes back to light sleep.
     func wake(sleepAfter: Bool) async throws -> WakeResult
     /// The current picture to the panel again; waits until it is downloaded.

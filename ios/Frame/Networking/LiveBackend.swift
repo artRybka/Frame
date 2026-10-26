@@ -344,6 +344,16 @@ struct LiveBackend: FrameBackend {
         try await send("/api/device/config", method: "DELETE")
     }
 
+    func libraryStorage() async throws -> LibraryStorage { try await get("/api/library/storage") }
+
+    func saveLibraryLimit(mb: Int) async throws -> LibraryStorage {
+        try await send("/api/library/storage", method: "PUT", body: LibraryStorageUpdate(limitMb: mb))
+    }
+
+    func resetLibraryLimit() async throws -> LibraryStorage {
+        try await send("/api/library/storage", method: "DELETE")
+    }
+
     func wake(sleepAfter: Bool) async throws -> WakeResult {
         // The server sends magic packets for a while and then looks for the panel.
         let query = sleepAfter ? [URLQueryItem(name: "sleep_after", value: "true")] : []
