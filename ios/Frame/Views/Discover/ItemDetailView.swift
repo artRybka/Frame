@@ -1,7 +1,8 @@
 import SwiftUI
 
 /// One picture: original vs. how it will look on the e-paper, its story,
-/// palette, and actions (show now, queue next, favourite, add to playlist).
+/// palette, and actions (show now, queue next, favourite, add to playlist,
+/// save to Photos).
 /// Tapping the original opens it on the whole screen; tapping the preview on
 /// "Na ramce" opens it there to be cropped.
 struct ItemDetailView: View {
@@ -19,6 +20,7 @@ struct ItemDetailView: View {
     @State private var loadedPreview: ImageRef?
     @State private var saving = false
     @State private var opened: Opened?
+    @State private var savingPhoto = false
 
     /// What a tap on the picture opened on the whole screen.
     enum Opened: String, Identifiable {
@@ -356,6 +358,14 @@ struct ItemDetailView: View {
             .accessibilityLabel(item.favorite ? "Usuń z ulubionych" : "Dodaj do ulubionych")
             Menu {
                 Button("Dodaj do playlisty", systemImage: "text.badge.plus") { showingPlaylists = true }
+                Button("Zapisz w Zdjęciach", systemImage: "square.and.arrow.down") {
+                    savingPhoto = true
+                    Task {
+                        await model.saveToPhotos(item)
+                        savingPhoto = false
+                    }
+                }
+                .disabled(savingPhoto)
                 Button(item.excluded ? "Pokazuj ponownie" : "Nie pokazuj na ramce", systemImage: "eye.slash") {
                     Task {
                         if let updated = try? await model.backend.setExcluded(id: item.id, !item.excluded) {

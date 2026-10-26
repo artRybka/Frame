@@ -415,6 +415,19 @@ final class AppModel {
         await refreshPlayer()
     }
 
+    /// "Zapisz w Zdjęciach" on a work's screen.
+    func saveToPhotos(_ item: Item) async {
+        toast = "Pobieram obraz…"
+        do {
+            try await PhotoSaver.save(item, backend: backend)
+            toast = "Zapisano w Zdjęciach"
+        } catch is CancellationError {
+            toast = nil
+        } catch {
+            show(error)
+        }
+    }
+
     func sleepFrame() async {
         await perform { try await self.backend.sleep() }
         toast = "Ramka uśpiona"
