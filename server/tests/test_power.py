@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import socket
 import ssl
 from datetime import datetime, time
 from pathlib import Path
@@ -11,6 +12,7 @@ import pytest
 import trustme
 from fake_panel import FakePanel
 
+from frame_server import status as status_module
 from frame_server.config import Settings
 from frame_server.device.mdc import (
     CMD_NETWORK_STANDBY,
@@ -326,6 +328,11 @@ async def test_power_state_for_the_network_tile(tmp_path: Path, server_ssl: ssl.
     # Asleep with network standby on: Wake-on-LAN should reach it.
     status = await service.status.refresh(force=True)
     assert not status.reachable and status.power_state == "standby"
+    # The server restarts while the panel sleeps: it still knows standby is on.
+    restarted = FrameService(settings)
+    assert restarted.status.status.network_standby is True
+    assert restarted.status.status.power_state is None
+    assert (await restarted.status.refresh(force=True)).power_state == "standby"
     # The night turned the Wi-Fi off and the panel has not been found since.
     state = service.power.state
     state.standby_off = True
@@ -336,6 +343,58 @@ async def test_power_state_for_the_network_tile(tmp_path: Path, server_ssl: ssl.
     service.status.forget()
     service.power._save(state.model_copy(update={"standby_off": False}))
     assert (await service.status.refresh()).power_state == "offline"
+
+
+@pytest.mark.parametrize(
+    ("standby", "on_network", "expected"),
+    [
+        (None, True, "standby"),  # never seen, but on the Wi-Fi: asleep
+        (True, True, "standby"),
+        (True, False, "standby"),  # no ARP answer: not taken as gone yet (E15)
+        (False, True, "standby"),  # it is on the Wi-Fi after all
+        (False, False, "deep_sleep"),
+        (None, False, "offline"),
+        (True, None, "standby"),  # cannot tell (behind a router): as before
+    ],
+)
+async def test_asleep_on_the_network(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    standby: bool | None,
+    on_network: bool | None,
+    expected: str,
+) -> None:
+    """Not answering MDC: whether it still answers ARP tells sleep from gone,
+    without waking it."""
+    asked: list[str] = []
+
+    async def presence(host: str) -> bool | None:
+        asked.append(host)
+        return on_network
+
+    monkeypatch.setattr(status_module, "on_network", presence)
+    settings = Settings(
+        data_dir=tmp_path,
+        seed_library=False,
+        scheduler=False,
+        public_host="127.0.0.1",
+        device_host="127.0.0.1",
+        device_pin="123456",
+        device_port=_closed_port(),
+    )
+    service = FrameService(settings)
+    service.status.status.network_standby = standby
+    status = await service.status.refresh(force=True)
+    assert not status.reachable
+    assert asked == ["127.0.0.1"]
+    assert status.on_network is on_network
+    assert status.power_state == expected
+
+
+def _closed_port() -> int:
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        return int(sock.getsockname()[1])
 
 
 @pytest.mark.parametrize("charger", [False, True])

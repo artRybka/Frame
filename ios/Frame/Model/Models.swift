@@ -411,6 +411,9 @@ struct DeviceStatus: Codable, Hashable, Sendable {
     var wakesAt: String?
     /// "online" | "standby" | "deep_sleep" | "offline"; missing from servers before 0.12.
     var powerState: String?
+    /// Not answering, yet still on the Wi-Fi (answers ARP): asleep, not gone.
+    /// Nil when not asked or when the server cannot tell; missing before 0.15.
+    var onNetwork: Bool?
 }
 
 /// "Obudź ramkę": whether the magic packets went out and the panel answered.

@@ -9,10 +9,12 @@ from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel
 
-from .device import MdcError
+from .device import MdcConnectionError, MdcError
+from .device.presence import connect_says_gone, on_network
 
 if TYPE_CHECKING:
     from .device import MdcClient
+    from .library import Library
     from .service import Panel
 
 log = logging.getLogger(__name__)
@@ -28,6 +30,24 @@ PanelPower = Literal["online", "standby", "deep_sleep", "offline"]
 # minutes in node-samsung-emdx), and a session then may keep it awake: status
 # checks leave it alone for that long and report the sleep it is going into.
 SLEEP_SETTLE = timedelta(minutes=3)
+
+# What was last read from the panel, kept across server restarts: a panel
+# asleep since then is still known to sleep with network standby on.
+STATUS_KEY = "device_status"
+REMEMBERED = {
+    "last_seen",
+    "battery_level",
+    "battery_raw",
+    "charging",
+    "power_source",
+    "network_standby",
+    "firmware",
+    "model",
+    "serial",
+    "name",
+    "last_push_at",
+    "last_fetch_at",
+}
 
 
 def _now() -> str:
@@ -47,6 +67,9 @@ class DeviceStatus(BaseModel):
     battery_raw: str | None = None
     network_standby: bool | None = None
     power_state: PanelPower | None = None
+    # Not answering MDC, but on the Wi-Fi (answers ARP): asleep, not gone.
+    # None: not asked, or cannot be told (panel behind a router).
+    on_network: bool | None = None
     firmware: str | None = None
     model: str | None = None
     serial: str | None = None
@@ -67,9 +90,12 @@ def _readable(text: str) -> str | None:
 
 
 class StatusMonitor:
-    def __init__(self, panel: Panel) -> None:
+    def __init__(self, panel: Panel, library: Library | None = None) -> None:
         self.panel = panel
-        self.status = DeviceStatus(configured=self._configured())
+        self.library = library
+        saved = library.get_state(STATUS_KEY, {}) if library else {}
+        known = {k: v for k, v in saved.items() if k in REMEMBERED}
+        self.status = DeviceStatus.model_validate({**known, "configured": self._configured()})
         self._static_known = False
         self._slept_at: datetime | None = None  # the server last put it to sleep
         # Which sleep a panel that does not answer is in (see PowerManager).
@@ -88,6 +114,11 @@ class StatusMonitor:
         self.status = DeviceStatus(configured=self._configured(), **keep)
         self._static_known = False
         self._slept_at = None
+        self._remember()
+
+    def _remember(self) -> None:
+        if self.library is not None:
+            self.library.set_state(STATUS_KEY, self.status.model_dump(include=REMEMBERED))
 
     @property
     def on_battery(self) -> bool:
@@ -125,14 +156,37 @@ class StatusMonitor:
             status.last_seen = status.checked_at
             status.error = None
             status.power_state = "online"
+            status.on_network = True
             self._slept_at = None
         except MdcError as err:
             status.reachable = False
             status.error = str(err)
-            status.power_state = self.asleep(status) if self.asleep else "offline"
-            log.info("panel status check failed: %s", err)
+            status.on_network = await self._on_network(err)
+            status.power_state = self._sleep_state(status)
+            log.info("panel status check failed: %s (on the network: %s)", err, status.on_network)
         self.status = status
+        self._remember()
         return status
+
+    async def _on_network(self, err: MdcError) -> bool | None:
+        """Asleep on the Wi-Fi or gone? Asked without waking the panel."""
+        if not isinstance(err, MdcConnectionError):
+            return None  # it answered, and something else went wrong
+        host = self.panel.settings.device_host
+        if not host:
+            return None
+        if connect_says_gone(err.__cause__):
+            return False
+        return await on_network(host)
+
+    def _sleep_state(self, status: DeviceStatus) -> PanelPower:
+        """A panel that does not answer MDC: what it is most likely doing."""
+        guess = self.asleep(status) if self.asleep else "offline"
+        if status.on_network is True:
+            return "standby"  # still on the Wi-Fi: Wake-on-LAN reaches it
+        # No ARP answer is not taken as gone until the EM32DX is known to
+        # answer ARP in its sleep (E15): the guess stands.
+        return guess
 
     @staticmethod
     async def _read_battery(mdc: MdcClient, status: DeviceStatus) -> None:
@@ -159,9 +213,12 @@ class StatusMonitor:
             self.status.last_seen = stamp
             self.status.power_state = "online"
             self._slept_at = None
+        self._remember()
 
     def note_sleep(self, deep: bool) -> None:
         """The server put the panel to sleep: light (network standby on) or deep."""
         self.status.network_standby = not deep
+        self.status.on_network = None
         self.status.power_state = "deep_sleep" if deep else "standby"
         self._slept_at = datetime.now(UTC)
+        self._remember()

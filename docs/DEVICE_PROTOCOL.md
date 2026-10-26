@@ -52,6 +52,14 @@ network standby, a według instrukcji Samsunga (EM32DX-A) tylko w sieci Wi-Fi 2,
 **E8: przez Wi-Fi nie obudził ekranu uśpionego na baterii** (firmware 1130.7); budzi go
 krótkie naciśnięcie przycisku. Więcej w [WAKE.md](WAKE.md).
 
+Obecność w sieci bez budzenia: uśpiony ekran nie odpowiada na MDC (TCP :1515
+milczy, połączenie kończy się timeoutem). Gdy MDC milczy, serwer sprawdza tablicę
+sąsiadów jądra (rtnetlink, bez uprawnień; kontener działa w sieci hosta): po
+próbie połączenia wpis ekranu kończy jako REACHABLE (moduł Wi-Fi odpowiedział na
+ARP, czyli ekran śpi w sieci) albo FAILED (brak odpowiedzi; `connect` zwraca
+wtedy od razu „No route to host”). Za routerem wpisu nie ma i nic nie wiadomo.
+Czy EM32DX odpowiada na ARP w uśpieniu: E15.
+
 ## Treść: manifest `content.json`
 
 Po `0xC7` ekran pobiera (HTTP GET) manifest, a potem obraz z `image_url`.
