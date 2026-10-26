@@ -362,6 +362,14 @@ struct DeviceStatus: Codable, Hashable, Sendable {
     var wakesAt: String?
 }
 
+/// "Obudź ramkę": whether the magic packets went out and the panel answered.
+struct WakeResult: Codable, Hashable, Sendable {
+    var sent: Bool
+    var woke: Bool?  // missing from servers before 0.11
+    var asleepUntil: String?
+    var reason: String?
+}
+
 /// How the server reaches the panel (Ramka → Ekran); the PIN is never sent back.
 struct PanelConfig: Codable, Hashable, Sendable {
     var host: String?

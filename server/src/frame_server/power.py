@@ -7,7 +7,9 @@ hours on battery it sleeps with the Wi-Fi off, and its own alarm (MDC
 on-timer) wakes it for the morning change that ends them; on the charger
 pictures keep going out at once. Whatever could not reach the
 panel waits as a pending push and goes out as soon as the panel shows up
-again: after the alarm or a press of its button.
+again: after the alarm or a press of its button. The same goes for network
+standby: the night turns it off, and until the panel is found again (alarm or
+button) Wake-on-LAN cannot reach it, so the server keeps looking for it.
 """
 
 from __future__ import annotations
@@ -35,6 +37,9 @@ PROBE_IN_WINDOW = timedelta(seconds=15)
 # A picture is waiting outside that window: the button may wake the panel.
 PROBE_PENDING = timedelta(minutes=2)
 RETRY_ARM = timedelta(minutes=10)
+# "Obudź ramkę": how long to keep sending magic packets and looking for the panel.
+WAKE_BURST_SECONDS = 15
+WAKE_LOOK = timedelta(seconds=30)
 
 
 class PowerState(BaseModel):
@@ -42,6 +47,16 @@ class PowerState(BaseModel):
     night_of: str | None = None  # quiet hours (by start date) the deep sleep was entered for
     woke_on: str | None = None  # date the panel was found after the alarm
     timer: str | None = None  # HH:MM the panel's alarm is armed for, None: off
+    # Network standby is off (the night turned it off, or a status check found
+    # it off): Wake-on-LAN cannot work until the panel is found and it is back on.
+    standby_off: bool = False
+
+
+class WakeResult(BaseModel):
+    sent: bool  # magic packets went out
+    woke: bool  # the panel answered MDC afterwards
+    asleep_until: str | None = None  # deep sleep: Wake-on-LAN cannot reach it
+    reason: str | None = None
 
 
 def night_key(moment: datetime, settings: FrameSettings) -> str:
@@ -65,6 +80,7 @@ class PowerManager:
         self.service = service
         self._last_probe: datetime | None = None
         self._last_arm: datetime | None = None
+        self._background: asyncio.Task[bool] | None = None
 
     # -- persisted state ------------------------------------------------------
 
@@ -120,6 +136,7 @@ class PowerManager:
             return
         state = self.state
         state.timer = wake.strftime("%H:%M")
+        state.standby_off = True
         self._save(state)
         log.info("panel in deep sleep until %s", state.timer)
 
@@ -138,6 +155,11 @@ class PowerManager:
                 await mdc.set_network_standby(True)
         except MdcError as err:
             log.warning("could not turn network standby back on: %s", err)
+        else:
+            state = self.state
+            state.standby_off = False
+            self._save(state)
+            self.service.status.status.network_standby = True
         if state.pending_push:
             outcome = await self.service.push_current(wait=120)
             if outcome.fetched:
@@ -169,12 +191,57 @@ class PowerManager:
             except MdcError as err:
                 log.info("could not set the panel alarm: %s", err)
 
+        if service.status.status.reachable and service.status.status.network_standby is False:
+            # Found off by a status check (the alarm missed, or the button
+            # woke the panel unnoticed): Wake-on-LAN would not reach it.
+            state.standby_off = True
+            self._save(state)
+
         today = now.astimezone(settings.tz()).date()
         if self._in_wake_window(now, settings, today) and state.woke_on != today.isoformat():
             if self._due(self._last_probe, now, PROBE_IN_WINDOW):
                 await self.rendezvous(now)
-        elif state.pending_push and self._due(self._last_probe, now, PROBE_PENDING):
+        elif (state.pending_push or state.standby_off) and self._due(
+            self._last_probe, now, PROBE_PENDING
+        ):
             await self.rendezvous(now)
+
+    async def wake_now(self) -> WakeResult:
+        """The app's "Obudź ramkę": a burst of magic packets, then look for
+        the panel, so the app can say whether it actually woke."""
+        service = self.service
+        now = datetime.now(UTC)
+        if self.deep_asleep(now):
+            state = self.state
+            return WakeResult(
+                sent=False,
+                woke=False,
+                asleep_until=state.timer,
+                reason="deep sleep (Wi-Fi off) until the alarm, only the button wakes it",
+            )
+        if not service.settings.device_mac:
+            return WakeResult(sent=False, woke=False, reason="no MAC address set")
+        burst = asyncio.create_task(service.panel.wake(seconds=WAKE_BURST_SECONDS))
+        woke = False
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + WAKE_LOOK.total_seconds()
+        try:
+            await asyncio.sleep(2)
+            while not woke and loop.time() < deadline:
+                woke = bool((await service.status.refresh()).reachable)
+                if not woke:
+                    await asyncio.sleep(3)
+        finally:
+            burst.cancel()
+        if woke and (self.state.pending_push or self.state.standby_off):
+            # Network standby back on, and whatever waited goes out.
+            self._background = asyncio.create_task(self.rendezvous(datetime.now(UTC)))
+        log.info("Wake-on-LAN from the app: panel %s", "woke" if woke else "did not answer")
+        return WakeResult(
+            sent=True,
+            woke=woke,
+            reason=None if woke else "no answer: the packets may not reach it (see docs/WAKE.md)",
+        )
 
     def _in_wake_window(self, now: datetime, settings: FrameSettings, today: date) -> bool:
         wake = alarm_time(settings)

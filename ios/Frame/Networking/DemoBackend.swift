@@ -756,7 +756,7 @@ actor DemoBackend: FrameBackend {
         return panelValue
     }
 
-    func wake() async throws {}
+    func wake() async throws -> WakeResult { WakeResult(sent: true, woke: true) }
     func sleep() async throws {}
 
     // MARK: Images
