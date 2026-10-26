@@ -423,7 +423,8 @@ class Importer:
                 # Named artists or words: the museums' own search finds them,
                 # asked first as Discover's search asks (with the words and a
                 # style or subject), then by the artist or words alone.
-                queries = list(dict.fromkeys([*fill_queries(rules), *(rules.artists or [rules.query])]))
+                alone = rules.artists or [rules.query]
+                queries = list(dict.fromkeys([*fill_queries(rules), *alone]))
                 streams = [_search_stream(m, q) for q in queries for m in museums]
             else:
                 texts = [*rules.styles, *rules.subjects, *museum_queries(rules.terms)] or [""]
