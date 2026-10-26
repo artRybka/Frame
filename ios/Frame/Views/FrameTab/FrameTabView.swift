@@ -697,7 +697,7 @@ struct MatSwatch: View {
 
     static func color(_ name: String) -> Color {
         switch name {
-        case "cream": Color(hex: 0xF6EFD9)
+        case "cream": Color(hex: 0xFBF3D3)  // the white swatch as mat._cream tints it
         case "grey": Color(hex: 0xAEADAA)
         case "black": Color(hex: 0x1F1E1C)
         case "picture": Color(hex: 0xE9DCCB)  // stands in for "a tint of the picture"

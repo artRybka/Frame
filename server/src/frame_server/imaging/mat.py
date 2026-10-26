@@ -22,7 +22,7 @@ import numpy as np
 from .color import FloatArray, linear_to_oklab, oklab_to_linear
 from .gamut import compress_chroma
 from .layout import Fit, Plan
-from .palette import Palette
+from .palette import EM32DX, Palette
 
 MAT_COLORS = ("white", "cream", "grey", "black", "picture")
 HUE_BINS = 36
@@ -31,6 +31,8 @@ TINT_DARK = (0.24, 0.035, 0.5)  # dark picture: a deep mat
 NEUTRAL_CHROMA = 0.02  # pictures below this mean chroma count as colourless
 BEVEL = 0.006  # bevel width, fraction of the canvas's short side
 SHADOW = 0.006  # shadow on the picture, same unit
+CREAM_YELLOW = 0.3  # the cream board: white with this share of yellow ink, and no other ink
+# (not 0.2 to 0.25: Floyd-Steinberg draws streaks and patches of yellow there)
 GRAIN = 0.003  # paper grain, relative brightness swing: barely there
 GRAIN_CELL = 8  # grain size in pixels: soft clouds, not specks
 # The crease where the bevel meets the face (crease_dots): its dots along the
@@ -53,9 +55,23 @@ def mat_color(name: str, palette: Palette) -> FloatArray:
     if name == "grey":
         return black + (white - black) * 0.42
     if name == "cream":
-        yellow = _ink(palette, "yellow")
-        return white.copy() if yellow is None else white * 0.9 + yellow * 0.1
+        return _cream(palette)
     return white.copy()
+
+
+def _cream(palette: Palette) -> FloatArray:
+    """White and a little yellow: on the panel just these two inks, the
+    yellow a warm ochre there. The ideal inks of the app's previews would
+    make it lemon, so they get the panel's cream as it looks beside its white."""
+    white = palette.perceived_linear()[palette.white_index()]
+    yellow = _ink(palette, "yellow")
+    if yellow is None:
+        return white.copy()
+    if all(c.device == c.perceived for c in palette.colors):  # Palette.nominal()
+        panel_white = EM32DX.perceived_linear()[EM32DX.white_index()]
+        on_panel = _cream(EM32DX)
+        return np.asarray(np.clip(white * on_panel / panel_white, 0.0, 1.0), dtype=np.float32)
+    return white * (1 - CREAM_YELLOW) + yellow * CREAM_YELLOW
 
 
 def _toward(colour: FloatArray, target: FloatArray, amount: float) -> FloatArray:
