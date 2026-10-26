@@ -335,7 +335,7 @@ struct PlaylistEditorView: View {
             }
         } else if let remote, fetchBlocker == nil {
             if missing.isEmpty {
-                Text(remote.total == 0 ? "W muzeach nic więcej nie znaleziono." : "Z muzeów nic nowego na pierwszej stronie wyników.")
+                Text(remote.total == 0 ? "W muzeach nic więcej nie znaleziono." : "Muzea nie pokazały nic, czego nie ma już w bazie.")
                     .font(.footnote)
                     .foregroundStyle(Theme.inkSoft)
             } else {
