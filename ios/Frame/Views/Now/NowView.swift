@@ -527,7 +527,20 @@ struct ArtworkInfo: View {
             } else {
                 VStack(alignment: .leading, spacing: 3) {
                     if !item.artist.isEmpty {
-                        Text(item.artist).font(.serif(18)).foregroundStyle(Theme.ink)
+                        // Their other works, on Discover's search.
+                        Button {
+                            model.artistSearch = item.artist
+                        } label: {
+                            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                Text(item.artist).font(.serif(18)).foregroundStyle(Theme.ink)
+                                Image(systemName: "magnifyingglass")
+                                    .font(.footnote.weight(.semibold))
+                                    .foregroundStyle(Theme.inkSoft)
+                            }
+                            .multilineTextAlignment(.leading)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityHint(Text("Szuka innych dzieł tego autora"))
                     }
                     if !item.artistBio.isEmpty {
                         Text(item.artistBio).font(.subheadline).foregroundStyle(Theme.inkSoft)

@@ -174,9 +174,6 @@ struct ItemDetailView: View {
                     ArtImage(ref: .image(item.id), placeholder: item.placeholderColor, maxPixel: 1800, contentMode: .fit)
                         .aspectRatio(CGFloat(aspect(item)), contentMode: .fit)
                         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                        .overlay(alignment: .bottomTrailing) {
-                            CornerBadge(systemImage: "arrow.up.left.and.arrow.down.right")
-                        }
                         .shadow(color: .black.opacity(0.22), radius: 16, y: 12)
                         .contentShape(Rectangle())
                         .onTapGesture { opened = .original }

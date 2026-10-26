@@ -40,6 +40,12 @@ final class AppModel {
     /// An artist whose works Discover's search should show: set by tapping
     /// the name on a work, taken (and cleared) by the search.
     var artistSearch: String?
+    /// Discover's rows and themes as last loaded (also by the previous
+    /// launch): shown at once while fresh ones load.
+    var suggestionRows: [SuggestionRow]?
+    var themes: [ArtTheme]?
+    private var discoverLoad: Task<Void, Never>?
+    private var discoverLoadedAt: Date?
     private var progressTask: Task<Void, Never>?
 
     init() {
@@ -52,6 +58,7 @@ final class AppModel {
         apiToken = token
         demoMode = demo
         backend = Self.makeBackend(demo: demo, url: url, token: token)
+        restoreDiscover()
     }
 
     private static func makeBackend(demo: Bool, url: String, token: String) -> any FrameBackend {
@@ -75,6 +82,7 @@ final class AppModel {
         playlists = []
         facets = .empty
         vocabulary = []
+        restoreDiscover()
         await refreshAll()
     }
 
@@ -106,6 +114,62 @@ final class AppModel {
         self.playlists = await playlists.value ?? []
         self.facets = await facets.value ?? .empty
         self.panelConfig = await panelConfig.value
+        // Ready before Discover is opened.
+        Task { await refreshDiscover() }
+    }
+
+    // MARK: Discover
+
+    /// Loads Discover's rows and themes, each shown as soon as it comes, and
+    /// keeps them for the next launch. A load a minute ago is enough, unless
+    /// `force` (pull to refresh).
+    func refreshDiscover(force: Bool = false) async {
+        if let running = discoverLoad { return await running.value }
+        if !force, let at = discoverLoadedAt, Date().timeIntervalSince(at) < 60 { return }
+        let load = Task { await loadDiscover() }
+        discoverLoad = load
+        await load.value
+        discoverLoad = nil
+    }
+
+    private func loadDiscover() async {
+        let backend = self.backend
+        async let rows = loadSuggestionRows(backend)
+        async let themes = loadThemes(backend)
+        let (gotRows, gotThemes) = await (rows, themes)
+        guard gotRows, gotThemes else { return }
+        discoverLoadedAt = Date()
+        if !demoMode, let suggestionRows, let themes = self.themes {
+            DiscoverCache.save(.init(rows: suggestionRows, themes: themes), server: serverURL)
+        }
+    }
+
+    private func loadSuggestionRows(_ backend: any FrameBackend) async -> Bool {
+        do {
+            suggestionRows = try await backend.suggestions()
+            return true
+        } catch {
+            if suggestionRows == nil { show(error) }  // else the last ones stay
+            return false
+        }
+    }
+
+    private func loadThemes(_ backend: any FrameBackend) async -> Bool {
+        do {
+            themes = try await backend.themes()
+            return true
+        } catch {
+            if themes == nil { show(error) }
+            return false
+        }
+    }
+
+    /// The last Discover of this server, from the previous launch.
+    private func restoreDiscover() {
+        let saved = demoMode ? nil : DiscoverCache.load(server: serverURL)
+        suggestionRows = saved?.rows
+        themes = saved?.themes
+        discoverLoadedAt = nil
     }
 
     func refreshPlayer() async {
