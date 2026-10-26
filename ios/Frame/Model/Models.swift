@@ -684,7 +684,7 @@ extension Array where Element == RemoteItem {
 
 /// A row of Discover, `GET /api/suggestions`.
 struct SuggestionRow: Codable, Hashable, Sendable, Identifiable {
-    let key: String  // "for-you" | "theme" | "best"
+    let key: String  // "for-you" | "like:<theme>" | "theme"
     let title: String
     var subtitle: String
     /// The theme to browse further (the theme of the day).

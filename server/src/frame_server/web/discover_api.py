@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 
-from ..library import Item, ItemKind, Job, Playlist, PlaylistKind, PlaylistRules, PlaylistSummary
+from ..library import Item, Job, Playlist, PlaylistKind, PlaylistRules, PlaylistSummary
 from ..library.importer import ALL, span
 from ..library.museums import Discovery, Kind, museum
 from ..library.themes import GROUPS, THEMES, Theme, browse_theme, theme, theme_of_the_day
@@ -39,8 +39,6 @@ router = APIRouter(prefix="/api", dependencies=[Depends(require_token)], tags=["
 Svc = Annotated[FrameService, Depends(service)]
 
 ROW_SIZE = 24
-#: The best on e-paper row: suitability from this up.
-BEST_SUITABILITY = 0.72
 #: Rows of works by artists like the ones the owner likes.
 TASTE_ROWS = 2
 #: Theme covers and counts are worked out again (in the background) after
@@ -79,7 +77,7 @@ class ThemeCard(BaseModel):
 
 
 class SuggestionRow(BaseModel):
-    key: str  # "for-you", "like:<theme>", "theme", "best"
+    key: str  # "for-you", "like:<theme>", "theme"
     title: str
     subtitle: str = ""
     theme: str | None = None  # the theme to browse further
@@ -302,26 +300,13 @@ def _suggestion_rows(svc: FrameService) -> list[SuggestionRow]:
                 items=remote_items(svc, day),
             )
         )
-    rules = PlaylistRules(kinds=[ItemKind.ARTWORK], min_suitability=BEST_SUITABILITY)
-    best = player.fresh(svc.library.query(rules, sort="suitability")[1])
-    if best:
-        rows.append(
-            SuggestionRow(
-                key="best",
-                title="Najlepiej na e-papierze",
-                subtitle="Kolorowe dzieła: sześć farb ekranu oddaje je najpiękniej",
-                theme="best",
-                items=remote_items(svc, best[:ROW_SIZE]),
-            )
-        )
     return [row.model_copy(update={"items": _light(row.items)}) for row in rows]
 
 
 @router.get("/suggestions", response_model=list[SuggestionRow])
 async def suggestions(svc: Svc) -> list[SuggestionRow]:
     """What Discover opens with: the works the server picked for the frame,
-    works like the ones the owner likes, the theme of the day and what looks
-    best on e-paper."""
+    works like the ones the owner likes and the theme of the day."""
     return await run_in_threadpool(_suggestion_rows, svc)
 
 

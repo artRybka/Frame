@@ -59,7 +59,7 @@ protocol FrameBackend: Sendable {
     func saveSettings(_ settings: FrameSettings) async throws -> FrameSettings
 
     /// Discover's rows: picked for the frame, because you like…, theme of
-    /// the day, best on e-paper.
+    /// the day.
     func suggestions() async throws -> [SuggestionRow]
     func themes() async throws -> [ArtTheme]
     func themePage(key: String, page: Int) async throws -> ArtThemePage

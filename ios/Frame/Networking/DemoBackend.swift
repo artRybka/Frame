@@ -534,7 +534,6 @@ actor DemoBackend: FrameBackend {
     func suggestions() async throws -> [SuggestionRow] {
         let themes = DemoDiscover.themes.filter { !works($0).isEmpty }
         let theme = themes[Calendar.current.component(.day, from: Date()) % themes.count]
-        let best = Self.sorted(items, by: "suitability")
         let liked = DemoDiscover.themes.first { $0.key == "impressionism" }!
         return [
             SuggestionRow(
@@ -548,11 +547,6 @@ actor DemoBackend: FrameBackend {
             SuggestionRow(
                 key: "theme", title: "Motyw dnia: \(theme.name)", subtitle: theme.description,
                 theme: theme.key, items: remote(works(theme))
-            ),
-            SuggestionRow(
-                key: "best", title: "Najlepiej na e-papierze",
-                subtitle: "Kolorowe dzieła: sześć farb ekranu oddaje je najpiękniej",
-                items: remote(Array(best.prefix(12)))
             ),
         ]
     }
