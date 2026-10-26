@@ -23,14 +23,14 @@ e-papieru wyrenderowane pipeline'em serwera (`<id>-ink.jpg`). Podgląd „na
 ramce” składa z niego aplikacja (`DemoFraming`) według bieżących ustawień
 prezentacji: orientacja, kadrowanie, passe-partout, etykieta. Gdy pliku brak,
 aplikacja sięga do CDN muzeum.
-Przełącznik jest w zakładce *Ramka → Serwer ramki*.
+Przełącznik jest w zakładce *Ramka → trybik → Serwer ramki*.
 
 ## Ekrany
 
 - **Teraz**: obraz na ramce w „oprawie”, tło w kolorach dzieła, bateria i połączenie, poprzedni / przypnij / następny, opis jak etykieta w muzeum, dla zdjęć data, miejsce i kto dodał, następne i ostatnie obrazy. Przycisk **+** wysyła zdjęcie z rolki z wyborem, jak długo ma zostać.
 - **Odkrywaj**: siatka biblioteki z filtrami (artyści, style, tematy, kolorystyka, ulubione), sortowanie; szczegóły dzieła z przełącznikiem *Oryginał / Na ramce* (symulacja e-papieru), paletą, „Pokaż na ramce”, ulubionymi i playlistami; wyszukiwanie w muzeach z importem.
 - **Playlisty**: co gra teraz, kolekcje inteligentne (reguły z podglądem na żywo) i ręczne, odtwarzanie na ramce.
-- **Ramka**: bateria, zasilanie i ładowanie, połączenie, czuwanie Wi-Fi, następna zmiana; harmonogram, prezentacja, orientacja ekranu, połączenie z serwerem.
+- **Ramka**: bateria, zasilanie i ładowanie, połączenie, czuwanie Wi-Fi, następna zmiana; harmonogram, prezentacja, orientacja ekranu; pod trybikiem w prawym górnym rogu połączenie z ekranem i z serwerem.
 
 ## Zrzuty ekranów
 

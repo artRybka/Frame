@@ -16,7 +16,7 @@ MDC). Z serwerem łączy się aplikacja iOS.
 | `api_token` | Token dla aplikacji iOS i narzędzi (zalecany) |
 | `palette` | Nazwa wbudowanej palety albo ścieżka do skalibrowanej palety JSON (np. `/data/palette.json`) |
 
-Adres IP, PIN i MAC ekranu można też ustawić w aplikacji (Ramka →
+Adres IP, PIN i MAC ekranu można też ustawić w aplikacji (Ramka → trybik →
 Połączenie z ekranem). Zapisane tam mają pierwszeństwo przed opcjami
 add-onu i przetrwają restart; „Przywróć wartości z serwera” wraca do opcji.
 
