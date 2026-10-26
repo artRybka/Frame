@@ -212,6 +212,31 @@ class Player:
         if self.settings.playlist_id == playlist_id:
             self.reset_queue()
 
+    def item_changed(self, item_id: str) -> None:
+        """A work was liked, unliked, left out or brought back: the queue of
+        the playlist the frame plays follows, without a redraw. A work that
+        joined the playlist comes right after the next picture (already
+        drawn ahead), or at the end if shown lately or the playlist keeps an
+        album's order; one that left it is dropped. The owner's picks
+        (``queue_next``) stay either way."""
+        playlist = self.playlist()
+        state = self.state
+        if playlist is None or not state.queue:
+            return  # Suggestions, or drawn from the playlist at the next change
+        member = any(i.id == item_id for i in self.library.playlist_items(playlist))
+        if not member:
+            self.unqueue(item_id)
+            return
+        shown = {state.current_item_id, *state.current_group, *state.requested}
+        item = self.library.get(item_id)
+        if item is None or item_id in state.queue or item_id in shown:
+            return
+        if playlist.album is not None or not self.fresh([item]):
+            state.queue.append(item_id)
+        else:
+            state.queue.insert(1, item_id)
+        self._save_state(state)
+
     def unqueue(self, item_id: str) -> None:
         """Forget a work already queued, e.g. one taken out of the playlist."""
         state = self.state

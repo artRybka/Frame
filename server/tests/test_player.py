@@ -614,6 +614,41 @@ def test_api_adds_a_work_to_the_queue(service) -> None:
         assert client.post("/api/player/next").status_code == 202
 
 
+async def test_liked_works_join_the_favourites_playing_now(service) -> None:
+    from frame_server.web import create_app
+
+    app = create_app(service.settings)
+    svc = app.state.service
+    a, b, c, d, e = (_add(svc, n, (40 * n, 40, 200), "Ala") for n in range(1, 6))
+    for item in (a, b, c):
+        svc.library.update(item.id, favorite=True)
+    playlist = svc.library.save_playlist(
+        Playlist(name="Ulubione", rules=PlaylistRules(favorites_only=True))
+    )
+    player = svc.player
+    settings = player.settings
+    settings.playlist_id = playlist.id
+    player.save_settings(settings)
+    await player.next()
+    upcoming = [i.id for i in player.upcoming(8)]
+    assert len(upcoming) == 2 and d.id not in upcoming
+
+    with TestClient(app) as client:
+        assert client.post(f"/api/library/items/{e.id}/queue").status_code == 202
+        client.patch(f"/api/library/items/{d.id}", json={"favorite": True})
+        view = client.get("/api/player").json()
+        # The owner's pick first, then the picture drawn ahead, then the new favourite.
+        assert [i["id"] for i in view["upcoming"]] == [e.id, upcoming[0], d.id, upcoming[1]]
+        assert view["queued"] == [e.id]
+
+        client.patch(f"/api/library/items/{upcoming[1]}", json={"favorite": False})
+        client.patch(f"/api/library/items/{e.id}", json={"favorite": False})  # a pick stays
+        view = client.get("/api/player").json()
+        assert [i["id"] for i in view["upcoming"]] == [e.id, upcoming[0], d.id]
+        favourites = next(p for p in client.get("/api/playlists").json() if p["id"] == playlist.id)
+        assert favourites["item_count"] == 3
+
+
 def test_library_is_scored_again_once(service) -> None:
     from frame_server.library.colors import SCORE_VERSION
     from frame_server.player import SCORE_KEY

@@ -66,7 +66,7 @@ struct PlaylistDetailView: View {
                 }
             }
         }
-        .task(id: playlistID) { await load() }
+        .task(id: [playlistID, model.libraryRevision]) { await load() }
         .sheet(item: $editing, onDismiss: { Task { await load() } }) { playlist in
             PlaylistEditorView(playlist: playlist)
         }
