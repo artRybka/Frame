@@ -128,6 +128,10 @@ możliwe przyczyny, od najbardziej prawdopodobnej:
    routerze, albo serwer z nogą w sieci 192.168.1.x (np. drugi port LAN
    NAS-a; z `network_mode: host` broadcast na 192.168.1.255 wyjdzie wtedy
    prosto do tej sieci, bez zmian w kodzie).
+   U nas router to UniFi Dream Machine Pro: nie ma w panelu stałych wpisów
+   ARP (przez SSH da się je dodać, ale znikają po restarcie i aktualizacji),
+   więc zalecana droga to drugi port LAN Synology RS1619xs+ w sieci
+   192.168.1.x (DHCP, brama domyślna zostaje na LAN 1).
 2. **Network standby został wyłączony na noc i nie wrócił.** Na baterii
    w ciszy nocnej serwer wyłącza network standby (głęboki sen). Włączał go
    z powrotem tylko wtedy, gdy znalazł ekran w oknie porannej pobudki albo
