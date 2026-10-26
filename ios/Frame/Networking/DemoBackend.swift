@@ -182,7 +182,7 @@ actor DemoBackend: FrameBackend {
             configured: true, reachable: true, checkedAt: now, lastSeen: now, batteryLevel: 76,
             charging: false, powerSource: "battery", batteryRaw: nil, networkStandby: true,
             firmware: "S-RSEDWWC-1050.1", model: "EM32DX", serial: "DEMO0001", name: "Salon",
-            error: nil, lastPushAt: now, lastFetchAt: now
+            error: nil, lastPushAt: now, lastFetchAt: now, powerState: "online"
         )
         let server = ServerStatus(
             version: "demo", uptimeS: 3600, libraryCount: items.count,
@@ -758,7 +758,7 @@ actor DemoBackend: FrameBackend {
         return panelValue
     }
 
-    func wake() async throws -> WakeResult { WakeResult(sent: true, woke: true) }
+    func wake(sleepAfter: Bool) async throws -> WakeResult { WakeResult(sent: true, woke: true) }
     func sleep() async throws {}
 
     // MARK: Images

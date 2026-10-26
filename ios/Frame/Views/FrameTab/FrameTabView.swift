@@ -56,10 +56,16 @@ struct FrameTabView: View {
         )
     }
 
-    private func refresh() async {
+    /// `waking`: the "Sprawdź stan" button, which also tries to wake a
+    /// sleeping frame; pulling to refresh only looks.
+    private func refresh(waking: Bool = false) async {
         refreshing = true
         defer { refreshing = false }
-        await model.refreshStatus(live: true)
+        if waking {
+            await model.checkStatus()
+        } else {
+            await model.refreshStatus(live: true)
+        }
         await model.refreshAll()
     }
 
@@ -100,6 +106,13 @@ struct FrameTabView: View {
     private var connectionText: String {
         guard let device else { return "Brak danych" }
         if !device.configured { return "Podaj adres i PIN ekranu w „Połączenie z ekranem”" }
+        switch device.powerState {
+        case "online": return "Połączona · \(When.ago(device.lastSeen) ?? "teraz")"
+        case "standby": return "Śpi, czeka na sygnał budzenia"
+        case "deep_sleep": return "Głęboki sen, bez Wi-Fi"
+        case "offline": return "Nie odpowiada — poza siecią lub wyłączona"
+        default: break  // a server before 0.12
+        }
         switch device.reachable {
         case .some(true): return "Połączona · \(When.ago(device.lastSeen) ?? "teraz")"
         case .some(false): return "Nie odpowiada — śpi lub poza siecią"
@@ -108,10 +121,16 @@ struct FrameTabView: View {
     }
 
     private var connectionColor: Color {
+        switch device?.powerState {
+        case "online": return Theme.good
+        case "standby", "deep_sleep": return Theme.inkSoft
+        case "offline": return Theme.bad
+        default: break
+        }
         switch device?.reachable {
-        case .some(true): Theme.good
-        case .some(false): Theme.bad
-        case .none: Theme.inkSoft
+        case .some(true): return Theme.good
+        case .some(false): return Theme.bad
+        case .none: return Theme.inkSoft
         }
     }
 
@@ -146,20 +165,46 @@ struct FrameTabView: View {
                 }
             }
             StatusTile(title: "Sieć") {
+                let state = network
                 VStack(alignment: .leading, spacing: 6) {
-                    Image(systemName: device?.networkStandby == true ? "wifi" : "wifi.slash")
+                    Image(systemName: state.icon)
                         .font(.title2)
-                        .foregroundStyle(device?.networkStandby == true ? Theme.good : Theme.inkSoft)
-                    Text(device?.networkStandby == true ? "Czuwanie Wi-Fi" : "Głęboki sen")
+                        .foregroundStyle(state.color)
+                    Text(state.title)
                         .font(.headline)
                         .foregroundStyle(Theme.ink)
-                    Text(device?.firmware.map { "firmware \($0)" } ?? "firmware —")
+                    Text(state.note)
                         .font(.caption)
                         .foregroundStyle(Theme.inkSoft)
-                        .lineLimit(1)
+                        .lineLimit(2)
                 }
             }
         }
+    }
+
+    /// The Sieć tile: what the frame is doing, as far as the server can tell.
+    private var network: (icon: String, color: Color, title: String, note: String) {
+        guard let device, device.configured else {
+            return ("wifi", Theme.inkSoft, "—", "ekran nie jest ustawiony")
+        }
+        switch device.powerState {
+        case "online":
+            return ("wifi", Theme.good, "Online", "odpowiada · \(When.ago(device.lastSeen) ?? "teraz")")
+        case "standby":
+            return ("moon.zzz", Theme.accent, "Czuwanie", "śpi, Wi-Fi czeka na sygnał budzenia")
+        case "deep_sleep":
+            let note = device.wakesAt.map { "Wi-Fi wyłączone, budzik o \($0)" } ?? "Wi-Fi wyłączone, budzi przycisk"
+            return ("wifi.slash", Theme.inkSoft, "Głęboki sen", note)
+        case "offline":
+            return ("wifi.exclamationmark", Theme.bad, "Nie odpowiada", "poza siecią lub wyłączona")
+        default:
+            break
+        }
+        // A server before 0.12 only says whether network standby is on.
+        if device.reachable == nil { return ("wifi", Theme.inkSoft, "Nie sprawdzono", "—") }
+        return device.networkStandby == true
+            ? ("wifi", Theme.good, "Czuwanie Wi-Fi", "budzi go sygnał Wi-Fi")
+            : ("wifi.slash", Theme.inkSoft, "Głęboki sen", "Wi-Fi wyłączone")
     }
 
     private var powerText: String {
@@ -182,14 +227,20 @@ struct FrameTabView: View {
         }
     }
 
+    private var checkLabel: String {
+        if model.wakingForStatus { return "Budzę ramkę…" }
+        return refreshing ? "Sprawdzam…" : "Sprawdź stan"
+    }
+
     private var deviceActions: some View {
         HStack(spacing: 10) {
             Button {
-                Task { await refresh() }
+                Task { await refresh(waking: true) }
             } label: {
-                Label(refreshing ? "Sprawdzam…" : "Sprawdź stan", systemImage: "arrow.clockwise")
+                Label(checkLabel, systemImage: model.wakingForStatus ? "sun.max" : "arrow.clockwise")
             }
             .buttonStyle(SecondaryButtonStyle())
+            .disabled(refreshing)
             Menu {
                 Button("Obudź ramkę", systemImage: "sun.max") { Task { await model.wake() } }
                 Button("Uśpij ramkę", systemImage: "moon.zzz") { Task { await model.sleepFrame() } }
@@ -880,6 +931,11 @@ struct PanelSection: View {
                     : "Wartości z frame.env lub opcji add-onu. Zapisane tutaj będą miały pierwszeństwo.")
                     .font(.caption)
                     .foregroundStyle(Theme.inkSoft)
+                if let device = model.status?.device, let firmware = device.firmware {
+                    Text("Ekran \(device.model ?? "EM32DX") · firmware \(firmware)")
+                        .font(.caption)
+                        .foregroundStyle(Theme.inkSoft)
+                }
                 if config.fromApp {
                     Button("Przywróć wartości z serwera") {
                         Task {

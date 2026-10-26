@@ -161,6 +161,19 @@ wył. Kolejny obraz w tym czasie odwołuje usypianie. Na ładowarce serwer nie
 usypia ekranu. Przycisk „Uśpij ramkę”
 w aplikacji daje ten sam lekki sen.
 
+„Sprawdź stan” w aplikacji (2026-10-26): gdy ekran nie odpowiada, aplikacja
+od razu próbuje go obudzić tak samo jak „Obudź ramkę”. Na baterii ekran
+obudzony tylko po to wraca po 60 s do lekkiego snu, chyba że w tym czasie
+coś zostanie na niego wysłane. W głębokim śnie nic nie jest wysyłane,
+aplikacja tylko mówi, kiedy zadzwoni budzik. Kafelek „Sieć” pokazuje, co
+ekran robi według serwera: **online** (odpowiada przez MDC), **czuwanie**
+(śpi z network standby, WoL powinien go obudzić), **głęboki sen** (Wi-Fi
+wyłączone na noc albo network standby nie wrócił: budzi tylko budzik lub
+przycisk), **nie odpowiada** (serwer nigdy go nie widział albo nie wie,
+dlaczego milczy). Śpiący ekran nie odpowiada na MDC, więc czuwanie i głęboki
+sen serwer wnioskuje z tego, co sam zrobił i co zobaczył przy ostatnim
+kontakcie.
+
 ## E13: plan testu na ekranie
 
 Potrzebny Mac w tej samej sieci co ekran (192.168.1.x) i gałąź z komendą
