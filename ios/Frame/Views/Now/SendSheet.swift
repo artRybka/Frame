@@ -5,8 +5,8 @@ import UIKit
 /// "Zdjęcie na ramkę": one photo from the camera roll, shown once. Picked,
 /// it goes to the server as a photo sent once; here it gets its look (over
 /// the whole frame or in a passe-partout) and its crop on the frame's
-/// preview, then goes on the frame now or next in the queue. Its style is
-/// always automatic.
+/// preview, then goes on the frame now or next in the queue, and into the
+/// playlist "Historia przesłanych". Its style is always automatic.
 struct SendSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
@@ -317,6 +317,7 @@ struct SendSheet: View {
         sent = true
         dismiss()  // the bar under the picture follows it onto the frame
         await model.show(itemID: item.id, hold: hold)
+        await model.refreshPlaylists()  // it joined "Historia przesłanych"
     }
 
     private func queue() async {
@@ -327,5 +328,6 @@ struct SendSheet: View {
         guard model.isQueued(item.id) else { return }
         sent = true
         dismiss()
+        await model.refreshPlaylists()  // it joined "Historia przesłanych"
     }
 }

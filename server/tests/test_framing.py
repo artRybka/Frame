@@ -447,8 +447,17 @@ def test_photo_sent_once_has_its_own_look(service) -> None:
         assert client.get(f"{url}/framing").json()["fit"] == "fill"
         assert client.post(f"{url}/queue").status_code == 202
         assert client.get("/api/player").json()["queued"] == [item["id"]]
+        # Sent: first in "Historia przesłanych", made for it, and again once deleted.
+        (history,) = [p for p in svc.library.playlists() if p.name == "Historia przesłanych"]
+        assert history.item_ids == [item["id"]]
+        assert svc.library.delete_playlist(history.id)
+        assert client.post(f"{url}/queue").status_code == 202
+        (history,) = [p for p in svc.library.playlists() if p.name == "Historia przesłanych"]
+        assert history.item_ids == [item["id"]]
 
         own = client.post("/api/library/upload", files=upload["files"]).json()
+        assert client.post(f"/api/library/items/{own['id']}/queue").status_code == 202
+        assert svc.library.playlist(history.id).item_ids == [item["id"]]  # works stay out
         bad = client.patch(f"/api/library/items/{own['id']}", json={"look": {"fit": "fit"}})
         assert bad.status_code == 422
         bad = client.post(

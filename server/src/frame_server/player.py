@@ -55,6 +55,9 @@ SET_ASIDE_KEY = "set_aside_dropped"
 SET_ASIDE_VERSION = 2
 #: Version of the suitability score the library's pictures carry.
 SCORE_KEY = "suitability_version"
+#: The playlist the photos sent once gather in, newest first.
+SENT_KEY = "sent_photos_playlist"
+SENT_NAME = "Historia przesłanych"
 #: A rotation with fewer pictures not shown lately asks museums for more,
 #: up to ``POOL_SIZE``; Suggestions remember at most ``POOL_MAX`` works.
 POOL_LOW = 8
@@ -251,6 +254,20 @@ class Player:
         state.requested = [item_id, *(i for i in state.requested if i != item_id)]
         state.queue = [i for i in state.queue if i != item_id]
         self._save_state(state)
+
+    def remember_sent(self, item: Item) -> None:
+        """A photo sent once, shown or queued, goes first in "Historia
+        przesłanych"; the playlist is made when first needed, and again if
+        the owner deleted it."""
+        if item.look is None:
+            return
+        playlist_id = self.library.get_state(SENT_KEY, None)
+        playlist = self.library.playlist(playlist_id) if playlist_id is not None else None
+        if playlist is None:
+            playlist = Playlist(name=SENT_NAME, kind=PlaylistKind.MANUAL)
+        ids = [item.id, *(i for i in playlist.item_ids if i != item.id)]
+        saved = self.library.save_playlist(playlist.model_copy(update={"item_ids": ids}))
+        self.library.set_state(SENT_KEY, saved.id)
 
     def dequeue(self, item_id: str) -> None:
         """Take back a pick added with ``queue_next``."""
