@@ -392,6 +392,26 @@ final class AppModel {
         }
     }
 
+    /// "Wyślij ponownie" on "Teraz": the picture that did not reach the frame.
+    func pushAgain() async {
+        working = true
+        defer { working = false }
+        trackProgress(expectingStart: true)
+        do {
+            let result = try await backend.pushAgain()
+            if result.fetched == true {
+                toast = "Ramka pobrała obraz"
+            } else if !result.pushed {
+                toast = "Ramka nie odpowiada, obraz trafi na nią, gdy się obudzi"
+            } else {
+                toast = "Ramka znowu nie pobrała obrazu"
+            }
+        } catch {
+            show(error)
+        }
+        await refreshPlayer()
+    }
+
     func sleepFrame() async {
         await perform { try await self.backend.sleep() }
         toast = "Ramka uśpiona"

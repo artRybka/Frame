@@ -3,6 +3,9 @@
 The panel remembers the content URL it was given and re-fetches it later
 (e.g. after waking up). If that URL ever 404s it shows "Configuration
 error", so the current content must survive server restarts.
+
+What it actually shows is the content whose image it downloaded last: a
+picture published while the panel slept or did not answer is not on it yet.
 """
 
 from __future__ import annotations
@@ -39,6 +42,28 @@ class ContentInfo:
 
 
 @dataclass
+class Delivery:
+    """What reached the panel: the content it downloaded last, and why the
+    last push of another one did not get there."""
+
+    shown: ContentInfo | None = None
+    shown_at: str | None = None
+    failed_file_id: str | None = None
+    failed_at: str | None = None
+    failure: str | None = None  # "timeout" (sent, never downloaded) or "error"
+    message: str = ""
+
+    @classmethod
+    def from_json(cls, data: dict[str, object]) -> Delivery:
+        shown = data.get("shown")
+        fields = {k: v for k, v in data.items() if k != "shown"}
+        return cls(
+            shown=ContentInfo(**shown) if isinstance(shown, dict) else None,
+            **fields,  # type: ignore[arg-type]
+        )
+
+
+@dataclass
 class PanelRequest:
     time: str
     client: str
@@ -58,8 +83,11 @@ class ContentStore:
             d.mkdir(parents=True, exist_ok=True)
         self._current_file = data_dir / "current.json"
         self._log_file = data_dir / "panel-requests.jsonl"
+        self._delivery_file = data_dir / "delivery.json"
         self.recent_requests: deque[PanelRequest] = deque(maxlen=200)
         self._fetch_waiters: dict[str, asyncio.Event] = {}
+        if not self._delivery_file.is_file():
+            self._recover_delivery()
 
     # -- content ------------------------------------------------------------
 
@@ -132,6 +160,76 @@ class ContentStore:
         )
         return Manifest.single(item, manifest_id=info.file_id)
 
+    # -- what reached the panel ----------------------------------------------
+
+    def delivery(self) -> Delivery:
+        if not self._delivery_file.is_file():
+            return Delivery()
+        try:
+            return Delivery.from_json(json.loads(self._delivery_file.read_text()))
+        except (OSError, ValueError, TypeError) as err:
+            log.warning("ignoring unreadable %s: %s", self._delivery_file, err)
+            return Delivery()
+
+    def _save_delivery(self, delivery: Delivery) -> None:
+        tmp = self._delivery_file.with_suffix(".tmp")
+        tmp.write_text(json.dumps(asdict(delivery), indent=2))
+        tmp.replace(self._delivery_file)
+
+    def on_panel(self) -> bool | None:
+        """Whether the panel has downloaded the current content; None: not known."""
+        current, shown = self.current(), self.delivery().shown
+        if current is None or shown is None:
+            return None
+        return shown.file_id == current.file_id
+
+    def note_downloaded(self, file_id: str, at: str | None = None) -> None:
+        """The panel downloaded an image. Only the current content's counts:
+        it is what content.json points to."""
+        current = self.current()
+        if current is None or current.file_id != file_id:
+            return
+        delivery = self.delivery()
+        if delivery.shown and delivery.shown.file_id == file_id:
+            return
+        delivery.shown = current
+        delivery.shown_at = at or datetime.now(UTC).isoformat(timespec="seconds")
+        if delivery.failed_file_id == file_id:
+            delivery.failed_file_id = delivery.failed_at = delivery.failure = None
+            delivery.message = ""
+        self._save_delivery(delivery)
+
+    def note_failed(self, file_id: str, failure: str, message: str) -> None:
+        """A push of ``file_id`` did not get it onto the panel."""
+        delivery = self.delivery()
+        if delivery.shown and delivery.shown.file_id == file_id:
+            return  # downloaded after all
+        delivery.failed_file_id = file_id
+        delivery.failed_at = datetime.now(UTC).isoformat(timespec="seconds")
+        delivery.failure = failure
+        delivery.message = message
+        self._save_delivery(delivery)
+
+    def _recover_delivery(self) -> None:
+        """Before delivery.json: the last download in the request log."""
+        if not self._log_file.is_file():
+            return
+        try:
+            with self._log_file.open("rb") as fh:
+                fh.seek(max(0, fh.seek(0, 2) - 256 * 1024))
+                lines = fh.read().decode(errors="replace").splitlines()
+        except OSError:
+            return
+        for line in reversed(lines):
+            try:
+                req = json.loads(line)
+            except ValueError:
+                continue
+            path = str(req.get("path", ""))
+            if path.startswith("/panel/images/") and req.get("status") == 200:
+                self.note_downloaded(Path(path).stem, at=req.get("time"))
+                return
+
     # -- panel request log -------------------------------------------------
 
     def log_request(self, req: PanelRequest) -> None:
@@ -140,6 +238,7 @@ class ContentStore:
             fh.write(json.dumps(asdict(req)) + "\n")
         if req.path.startswith("/panel/images/") and req.status == 200:
             file_id = Path(req.path).stem
+            self.note_downloaded(file_id, at=req.time)
             waiter = self._fetch_waiters.get(file_id)
             if waiter:
                 waiter.set()

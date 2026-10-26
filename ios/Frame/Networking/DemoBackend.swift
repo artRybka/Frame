@@ -765,6 +765,7 @@ actor DemoBackend: FrameBackend {
     }
 
     func wake(sleepAfter: Bool) async throws -> WakeResult { WakeResult(sent: true, woke: true) }
+    func pushAgain() async throws -> DisplayResponse { DisplayResponse(pushed: true, fetched: true) }
     func sleep() async throws {}
 
     // MARK: Images

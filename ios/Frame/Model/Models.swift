@@ -287,6 +287,55 @@ struct PlayerView: Codable, Sendable {
     var busy: Bool
     var lastError: String?
     var progress: DisplayProgress?  // nil from older servers
+    var delivery: Delivery? = nil  // nil from older servers
+}
+
+/// Whether `current` reached the panel: the server knows which picture the
+/// panel downloaded last, and why a push did not get there.
+struct Delivery: Codable, Hashable, Sendable {
+    var state: String  // shown, sending, waiting, failed, unknown
+    /// What the panel shows instead of `current`.
+    var onFrame: NowShowing?
+    var shownAt: String?
+    var failedAt: String?
+    var failure: String?  // "timeout" or "error"
+    var message: String?
+    /// Waiting in deep sleep (Wi-Fi off): HH:MM of the panel's alarm.
+    var asleepUntil: String?
+
+    var isShown: Bool { state == "shown" || state == "unknown" }
+    var isWaiting: Bool { state == "waiting" }
+    var isFailed: Bool { state == "failed" }
+
+    /// "Teraz" over the picture that did not reach the frame.
+    var headline: String {
+        switch state {
+        case "sending": "W drodze na ramkę"
+        case "waiting": "Czeka na ramkę"
+        case "failed": "Nie dotarł na ramkę"
+        default: "Teraz na ramce"
+        }
+    }
+
+    /// Why it is not on the frame (yet).
+    var explanation: String {
+        let why: String
+        switch state {
+        case "waiting":
+            why = asleepUntil.map { "Ramka śpi do \($0), obraz trafi na nią po przebudzeniu." }
+                ?? "Ramka nie odpowiada, obraz trafi na nią, gdy się obudzi."
+        case "failed":
+            let when = When.schedule(failedAt).map { " (\($0))" } ?? ""
+            switch failure {
+            case "timeout": why = "Wysyłka\(when) nie udała się: ramka nie pobrała obrazu."
+            case "error": why = "Wysyłka\(when) nie udała się: błąd połączenia z ramką."
+            default: why = "Ramka nie pobrała jeszcze tego obrazu."
+            }
+        default:
+            why = " "
+        }
+        return why
+    }
 }
 
 /// A picture on its way to the frame (GET /api/progress): processing on the

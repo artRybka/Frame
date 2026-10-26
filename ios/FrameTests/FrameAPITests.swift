@@ -45,6 +45,26 @@ final class FrameAPITests: XCTestCase {
         XCTAssertNotNil(When.schedule(view.nextChangeAt))
     }
 
+    func testDecodesUndeliveredPicture() throws {
+        let json = """
+        {"state": "failed", "failure": "timeout", "failed_at": "2026-10-26T06:00:00+00:00",
+         "message": "panel did not download the image in time", "asleep_until": null,
+         "shown_at": "2026-10-25T18:00:02.120+00:00",
+         "on_frame": {"title": "Most w Argenteuil", "description": "", "source": "aic",
+                      "created": "2026-10-25T18:00:00+00:00", "preview_url": "/api/previews/OLD.png",
+                      "item": null}}
+        """
+        var delivery = try LiveBackend.decoder().decode(Delivery.self, from: Data(json.utf8))
+        XCTAssertTrue(delivery.isFailed)
+        XCTAssertFalse(delivery.isShown)
+        XCTAssertEqual(delivery.headline, "Nie dotarł na ramkę")
+        XCTAssertTrue(delivery.explanation.contains("ramka nie pobrała obrazu"))
+        XCTAssertEqual(delivery.onFrame?.previewUrl, "/api/previews/OLD.png")
+        delivery = Delivery(state: "waiting", asleepUntil: "07:00")
+        XCTAssertEqual(delivery.explanation, "Ramka śpi do 07:00, obraz trafi na nią po przebudzeniu.")
+        XCTAssertTrue(Delivery(state: "unknown").isShown)
+    }
+
     func testProgressPhasesAndLabels() {
         var progress = DisplayProgress(stage: "refreshing", phase: "displaying", active: true,
                                        title: "", fraction: 0.8, secondsLeft: 150)

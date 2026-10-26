@@ -105,6 +105,8 @@ protocol FrameBackend: Sendable {
     func resetPanelConfig() async throws -> PanelConfig
     /// `sleepAfter`: woken only to check its state, so on battery it goes back to light sleep.
     func wake(sleepAfter: Bool) async throws -> WakeResult
+    /// The current picture to the panel again; waits until it is downloaded.
+    func pushAgain() async throws -> DisplayResponse
     func sleep() async throws
 
     func request(for image: ImageRef) -> URLRequest?
