@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.11.1
+
+- Wake-on-LAN z serwera naprawdę wychodzi: uvicorn działa na uvloop, a
+  uvloop nie ma `loop.sock_sendto`, więc każde budzenie kończyło się
+  błędem przed pierwszym pakietem. Teraz zwykły `sendto` (porty 9 i 7),
+  w logu liczba wysłanych pakietów i nieudane adresy; test pod uvloop.
+- „Obudź ramkę” przywraca network standby także wtedy, gdy ekran sam
+  zgłasza je jako wyłączone.
+- Polecenia CLI dla ekranu używają adresu, PIN-u i MAC-a zapisanych w
+  aplikacji.
+
 ## 0.11.0
 
 - Tryb „Opis”: sam obraz w oknie też można przesunąć i przybliżyć
