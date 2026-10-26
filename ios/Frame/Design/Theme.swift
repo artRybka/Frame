@@ -160,7 +160,7 @@ enum Names {
         case "wmc": "Wikimedia Commons"
         case "europeana": "Europeana"
         case "openverse": "Openverse"
-        case "wikiart": "WikiArt (test)"
+        case "wikiart": "WikiArt"
         case "upload": "Własne"
         case "icloud": "Album iCloud"
         default: key
