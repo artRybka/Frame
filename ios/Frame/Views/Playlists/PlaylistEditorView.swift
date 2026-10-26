@@ -11,7 +11,7 @@ struct PlaylistEditorView: View {
     @State private var playlist: Playlist
     @State private var preview: RulesPreview?
     @State private var saving = false
-    @State private var bestOnly: Bool
+    @State private var museums: [Museum] = []
     @State private var picked: [PhotosPickerItem] = []
     @State private var photos: [PickedPhoto] = []
     @State private var loadingPhotos = false
@@ -25,8 +25,10 @@ struct PlaylistEditorView: View {
     private let wasAlbum: Bool
 
     init(playlist: Playlist) {
+        var playlist = playlist
+        // "Only the best on e-paper" is gone from the editor: saving drops it.
+        playlist.rules.minSuitability = nil
         _playlist = State(initialValue: playlist)
-        _bestOnly = State(initialValue: playlist.rules.minSuitability != nil)
         _album = State(initialValue: playlist.album ?? AlbumSource(url: ""))
         wasAlbum = playlist.id != nil && playlist.kind == .album
     }
@@ -76,11 +78,11 @@ struct PlaylistEditorView: View {
                 }
             }
             .task { await model.loadVocabulary() }
+            .task { if museums.isEmpty { museums = (try? await model.backend.museums()) ?? [] } }
             .task(id: playlist.rules) { await refreshPreview() }
             .task(id: picked) { await loadPhotos() }
             .task(id: playlist.kind == .album ? album.url : "") { await checkAlbum() }
             .interactiveDismissDisabled(saving)
-            .onChange(of: bestOnly) { _, on in playlist.rules.minSuitability = on ? 0.72 : nil }
         }
     }
 
@@ -102,11 +104,11 @@ struct PlaylistEditorView: View {
             SectionHeader(title: "Reguły", subtitle: "Wszystkie warunki muszą być spełnione")
             VStack(alignment: .leading, spacing: 8) {
                 Eyebrow("Czego szukasz")
-                TermSearchField(tokens: tokens) {
+                TermSearchField(tokens: tokens, museums: museums) {
                     // The catalogue has nothing for it yet: museums will.
                     if fetchCount == 0, fetchBlocker == nil { fetchCount = 100 }
                 }
-                Text("Artyści, style i tematy tego samego rodzaju to alternatywy; różne rodzaje muszą pasować razem.")
+                Text("Artyści, style, tematy i muzea tego samego rodzaju to alternatywy; różne rodzaje muszą pasować razem. Bez muzeów playlista bierze ze wszystkich.")
                     .font(.footnote)
                     .foregroundStyle(Theme.inkSoft)
                     .fixedSize(horizontal: false, vertical: true)
@@ -143,18 +145,32 @@ struct PlaylistEditorView: View {
             Toggle(isOn: $playlist.rules.favoritesOnly) {
                 Label("Tylko ulubione", systemImage: "heart")
             }
-            Toggle(isOn: $bestOnly) {
-                Label("Tylko najlepsze na e-papier", systemImage: "sparkles")
-            }
         }
         .tint(Theme.accent)
     }
 
+    /// The rules' chips, then the museums' (the playlist's `sources`; other
+    /// sources, such as the owner's photos, stay as they are).
     private var tokens: Binding<[SearchToken]> {
         Binding(
-            get: { playlist.rules.tokens(names: model.termNames) },
-            set: { playlist.rules.setTokens($0) }
+            get: {
+                let keys = Set(museums.map(\.key))
+                return playlist.rules.tokens(names: model.termNames)
+                    + playlist.rules.sources.filter { keys.contains($0) }.map {
+                        SearchToken(kind: "museum", key: $0, name: museumName($0))
+                    }
+            },
+            set: { tokens in
+                let keys = Set(museums.map(\.key))
+                playlist.rules.setTokens(tokens)
+                playlist.rules.sources = playlist.rules.sources.filter { !keys.contains($0) }
+                    + tokens.filter { $0.kind == "museum" }.map(\.key)
+            }
         )
+    }
+
+    private func museumName(_ key: String) -> String {
+        museums.first { $0.key == key }?.name ?? Names.source(key)
     }
 
     private func yearField(_ title: String, value: Binding<Int?>) -> some View {
@@ -371,9 +387,9 @@ struct PlaylistEditorView: View {
     }
 
     private var fetchHint: String {
-        var text = "Po zapisaniu serwer poszuka we wszystkich muzeach dzieł spełniających reguły i doda je do biblioteki w tle. Te, które już masz, są pomijane."
-        if !playlist.rules.colors.isEmpty || playlist.rules.minSuitability != nil {
-            text += " Kolorystykę i jakość na e-papierze widać dopiero po pobraniu miniatury, więc to potrwa dłużej."
+        var text = "Po zapisaniu serwer poszuka w wybranych muzeach (bez wyboru we wszystkich) dzieł spełniających reguły i doda je do biblioteki w tle. Te, które już masz, są pomijane."
+        if !playlist.rules.colors.isEmpty {
+            text += " Kolorystykę widać dopiero po pobraniu miniatury, więc to potrwa dłużej."
         }
         return text
     }

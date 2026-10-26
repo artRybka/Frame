@@ -455,13 +455,6 @@ THEMES: list[Theme] = [
         COLOUR,
         colors=("vivid",),
     ),
-    Theme(
-        "best",
-        "Najlepiej na e-papierze",
-        "Kolorowe obrazy, które najlepiej wychodzą na tym ekranie.",
-        COLOUR,
-        min_suitability=0.72,
-    ),
     # Periods: browsed in the catalogue
     Theme(
         "17c",

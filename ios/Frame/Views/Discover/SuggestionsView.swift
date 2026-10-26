@@ -2,7 +2,7 @@ import SwiftUI
 
 /// What Discover opens with: ideas for playlists in groups, then rows of
 /// works the server picked for the frame, works like the ones the owner
-/// likes, the theme of the day and the best on e-paper.
+/// likes and the theme of the day.
 ///
 /// The last ones loaded show at once (also after a launch) while fresh ones
 /// load, and only the cards and works on screen fetch their pictures.
@@ -334,7 +334,7 @@ struct ThemeView: View {
             Button {
                 Task { await make(play: true) }
             } label: {
-                Label("Graj na ramce", systemImage: "play.fill")
+                Label("Pokaż na ramce", systemImage: "photo.artframe")
             }
             .buttonStyle(PrimaryButtonStyle())
             if playlistID == nil {

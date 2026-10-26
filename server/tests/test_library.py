@@ -614,8 +614,8 @@ def test_colourful_works_score_best_on_epaper() -> None:
     etching = score(_etching([(238, 226, 198)]))  # sepia ink on yellowed paper
     grey = score(_etching([(225, 225, 225)]))
     print_ = score(_etching([(220, 60, 50), (40, 90, 200), (240, 200, 40), (60, 160, 70)]))
-    # However crisp, pictures without colour of their own stay out of
-    # "Najlepiej na e-papierze" (0.72); a colourful one makes it.
+    # However crisp, pictures without colour of their own score below 0.72;
+    # a colourful one makes it.
     assert etching <= 0.5 and grey <= 0.5
     assert print_ >= 0.72
     _, _, analysed = analyse(_etching([(238, 226, 198)]))

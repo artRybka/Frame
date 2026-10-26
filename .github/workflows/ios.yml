@@ -86,6 +86,8 @@ jobs:
             capture frame 10 "frame-$appearance"
             capture connection 10 "connection-$appearance"
             capture museums 8 "museums-$appearance"
+            capture search 8 "search-$appearance"
+            capture search-picker 8 "search-picker-$appearance"
             capture send 8 "send-$appearance"
             capture browse 14 "browse-$appearance"
             capture now 16 "now-description-$appearance" -fit description -mat black

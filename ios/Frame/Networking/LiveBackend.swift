@@ -181,14 +181,15 @@ struct LiveBackend: FrameBackend {
         try await get("/api/terms/museums", query: [URLQueryItem(name: "q", value: text)])
     }
 
-    func searchMuseums(_ rules: PlaylistRules, source: String, page: Int) async throws -> RemotePage {
+    func searchMuseums(_ rules: PlaylistRules, sources: [String], page: Int) async throws -> RemotePage {
         var query = [
             URLQueryItem(name: "q", value: rules.query),
-            URLQueryItem(name: "source", value: source),
             URLQueryItem(name: "page", value: String(page)),
         ]
+        query += sources.map { URLQueryItem(name: "source", value: $0) }
         query += rules.artists.map { URLQueryItem(name: "artist", value: $0) }
         query += rules.terms.map { URLQueryItem(name: "term", value: $0) }
+        query += rules.colors.map { URLQueryItem(name: "color", value: $0) }
         if let from = rules.yearFrom { query.append(URLQueryItem(name: "year_from", value: String(from))) }
         if let to = rules.yearTo { query.append(URLQueryItem(name: "year_to", value: String(to))) }
         return try await get("/api/discover/search", query: query)

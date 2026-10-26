@@ -184,6 +184,8 @@ async def patch_item(item_id: str, patch: ItemPatch, svc: Svc) -> Item:
     changes = patch.model_dump(exclude_none=True)
     updated = svc.library.update(item_id, **changes)
     assert updated is not None
+    if changes.keys() & {"favorite", "excluded"}:
+        svc.player.item_changed(item_id)  # e.g. a new favourite joins Ulubione playing now
     return updated
 
 
