@@ -228,11 +228,6 @@ struct ItemDetailView: View {
             guard loaded == previewRef else { return }
             withAnimation(.easeOut(duration: 0.3)) { loadedPreview = loaded }
         }
-        .overlay(alignment: .bottomTrailing) {
-            if cropping, loadedPreview == ref {
-                CornerBadge(systemImage: "crop").transition(.opacity)
-            }
-        }
         .overlay {
             if loadedPreview != ref {
                 LoadingBadge(text: "Wczytuję podgląd…")
