@@ -252,44 +252,66 @@ struct NowView: View {
 
     // MARK: Controls
 
+    /// Under the picture: on the frame, only when it changes next; browsed
+    /// to, where it is in the queue (the next one also says when), with
+    /// "Pokaż na ramce" and a way back. A picture that did not reach the
+    /// frame says why and what can be done.
     private var controls: some View {
         VStack(spacing: 12) {
             VStack(spacing: 3) {
-                Text(placeLine)
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(offset == 0 && undelivered == nil ? Theme.ink : Theme.vermilion)
-                Text(hintLine)
-                    .font(.caption)
-                    .foregroundStyle(Theme.inkSoft)
-                    .multilineTextAlignment(.center)
+                if let placeLine {
+                    Text(placeLine)
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(Theme.vermilion)
+                }
+                if let undelivered {
+                    Text(undelivered.explanation)
+                        .font(.caption)
+                        .foregroundStyle(Theme.inkSoft)
+                        .multilineTextAlignment(.center)
+                } else if offset == 0 || offset == 1 {
+                    schedule
+                }
             }
             .contentTransition(.opacity)
-            if offset != 0 {
-                backToNow
-            }
-            Button {
-                Task { await primaryAction() }
-            } label: {
+            if offset != 0 || undelivered != nil || primaryEnabled || sending {
                 HStack(spacing: 10) {
-                    if sending { ProgressView().tint(Theme.paper) }
-                    Text(primaryTitle)
+                    Button {
+                        Task { await primaryAction() }
+                    } label: {
+                        HStack(spacing: 10) {
+                            if sending { ProgressView().tint(Theme.paper) }
+                            Text(primaryTitle)
+                        }
+                    }
+                    .buttonStyle(PrimaryButtonStyle())
+                    .disabled(!primaryEnabled || sending)
+                    .opacity(primaryEnabled || sending ? 1 : 0.45)
+                    if offset != 0 {
+                        backToNow
+                    }
                 }
+                .frame(maxWidth: model.isPortrait ? 420 : .infinity)
+                .transition(.opacity)
             }
-            .buttonStyle(PrimaryButtonStyle())
-            .disabled(!primaryEnabled || sending)
-            .opacity(primaryEnabled || sending ? 1 : 0.45)
-            .frame(maxWidth: model.isPortrait ? 420 : .infinity)
-            HStack(spacing: 8) {
-                Text(scheduleLine)
-                if model.player?.hold != nil {
-                    Button("Odepnij") { Task { await model.releaseHold() } }
-                        .fontWeight(.semibold)
-                }
+            if undelivered != nil {
+                schedule
             }
-            .font(.footnote)
-            .foregroundStyle(Theme.inkSoft)
         }
         .frame(maxWidth: .infinity)
+    }
+
+    /// When the frame changes next, or how long the picture is pinned.
+    private var schedule: some View {
+        HStack(spacing: 8) {
+            Text(scheduleLine)
+            if model.player?.hold != nil {
+                Button("Odepnij") { Task { await model.releaseHold() } }
+                    .fontWeight(.semibold)
+            }
+        }
+        .font(.footnote)
+        .foregroundStyle(Theme.inkSoft)
     }
 
     /// Back to the picture on the frame from wherever the arrows went.
@@ -297,11 +319,12 @@ struct NowView: View {
         Button {
             withAnimation(.easeInOut(duration: 0.25)) { browsed = nil }
         } label: {
-            Label("Wróć do obrazu na ramce", systemImage: offset > 0 ? "arrow.uturn.left" : "arrow.uturn.right")
-                .toolChip()
+            Image(systemName: offset > 0 ? "arrow.uturn.left" : "arrow.uturn.right")
         }
-        .buttonStyle(.plain)
+        .buttonStyle(SecondaryButtonStyle())
+        .frame(width: 58)
         .disabled(sending)
+        .accessibilityLabel("Wróć do obrazu na ramce")
         .transition(.opacity)
     }
 
@@ -338,9 +361,10 @@ struct NowView: View {
         }
     }
 
-    private var placeLine: String {
+    /// Where the picture browsed to is; nil for the one on the frame.
+    private var placeLine: String? {
         switch offset {
-        case 0: undelivered?.headline ?? "Teraz na ramce"
+        case 0: undelivered?.headline
         case -1: "Poprzednio na ramce"
         case ..<0: "Wcześniej na ramce"
         case 1: "Następny w kolejce" + addedLine
@@ -351,13 +375,6 @@ struct NowView: View {
     private var addedLine: String {
         guard let id = browsed?.summary.id, model.isQueued(id) else { return "" }
         return " · dodany przez Ciebie"
-    }
-
-    private var hintLine: String {
-        let crop = canCrop ? "Dotknij obrazu, żeby go wykadrować." : nil
-        if let undelivered { return undelivered.explanation }
-        guard offset != 0 else { return crop ?? " " }
-        return ["Na ramkę trafi po „Pokaż na ramce”.", crop].compactMap { $0 }.joined(separator: " ")
     }
 
     private var scheduleLine: String {
