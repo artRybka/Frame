@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import asdict
@@ -101,6 +102,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         service.player.drop_spare_copies()  # a work once, from the most reliable source
         if settings.seed_library:
             service.player.top_up()  # Suggestions come from museums, as needed
+        if settings.scheduler:
+            # Discover's first visit then finds its themes worked out.
+            threading.Thread(target=discover_api.warm_up, args=(service,), daemon=True).start()
         yield
         for task in tasks:
             task.cancel()

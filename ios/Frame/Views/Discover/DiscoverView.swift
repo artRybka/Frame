@@ -35,6 +35,9 @@ struct DiscoverView: View {
                 .padding(.bottom, 32)
             }
             .scrollDismissesKeyboard(.interactively)
+            .refreshable {
+                if scope == .suggestions { await model.refreshDiscover(force: true) }
+            }
             .background(Theme.paper)
             .navigationTitle("Odkrywaj")
             .navigationDestination(for: String.self) { id in
