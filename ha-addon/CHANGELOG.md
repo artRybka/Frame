@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.14.0
+
+- Odkrywaj → Propozycje wczytują się szybciej: serwer liczy motywy w tle
+  (po starcie i co 10 minut, w międzyczasie oddaje poprzednie), Motyw dnia
+  bierze z katalogu, gdy ma co najmniej 8 dzieł, a na muzeum czeka
+  najwyżej 3 s; rozpoznawanie fotografii i rękopisów jest zapamiętywane,
+  rzędy i okładki idą bez długich opisów. Aplikacja od razu pokazuje
+  ostatnie Propozycje, wczytuje je już przy starcie, miniatury pobiera
+  tylko dla widocznych kart i trzyma je na dysku; pociągnięcie w dół
+  odświeża.
+- „Szukaj” bez dymków stylów, kierunków, tematów, epok i technik (zostają
+  pod „+”); zostają Muzea, a wybrane muzeum jest żetonem w polu
+  wyszukiwania. Autor w „Teraz” też otwiera wyszukiwanie jego prac.
+- Ramka: „Połączenie z ekranem” i „Serwer ramki” są w osobnym arkuszu pod
+  trybikiem w prawym górnym rogu. Kafelek Zasilanie pokazuje baterię na
+  baterii, wtyczkę przy zasilaczu i błyskawicę przy ładowaniu.
+- Oryginał dzieła bez ikonki powiększenia; klikalny jest cały obraz.
+- „Zapisz w Zdjęciach” znowu działa (Zdjęcia odrzucały pobrany plik bez
+  rozszerzenia); przy błędzie komunikat podaje powód.
+
 ## 0.13.0
 
 - Passe-partout „z obrazu” nazywa się teraz „Jasne”, a nowe „Ciemne”
