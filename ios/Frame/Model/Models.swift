@@ -747,7 +747,8 @@ struct MuseumHint: Codable, Sendable {
 
 /// One chip of a search or of a smart playlist's rules.
 struct SearchToken: Hashable, Sendable, Identifiable {
-    /// artist | word | style | subject | period | technique, or for rules of
+    /// artist | word | style | subject | period | technique | museum (Discover's
+    /// search only, not a rule), or for rules of
     /// older playlists: legacy-style | legacy-subject (museum facet values).
     let kind: String
     let key: String
@@ -761,6 +762,7 @@ struct SearchToken: Hashable, Sendable, Identifiable {
         case "subject", "legacy-subject": "Temat"
         case "period": "Epoka"
         case "technique": "Technika"
+        case "museum": "Muzeum"
         default: "Słowo"
         }
     }
@@ -772,6 +774,7 @@ struct SearchToken: Hashable, Sendable, Identifiable {
         case "subject", "legacy-subject": "tag"
         case "period": "calendar"
         case "technique": "scribble.variable"
+        case "museum": "building.columns"
         default: "text.magnifyingglass"
         }
     }

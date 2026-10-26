@@ -1,9 +1,9 @@
 import SwiftUI
 
-/// Discover's search: words, artists, styles, subjects, periods and
-/// techniques as chips, over the catalogue (at once, with colours) and the
-/// museums (as they answer). With nothing asked yet it offers styles,
-/// subjects, periods and museums to browse by.
+/// Discover's search: words, artists, styles, subjects, periods, techniques
+/// and a museum as chips, over the catalogue (at once, with colours) and the
+/// museums (as they answer). With nothing asked yet it offers the museums to
+/// browse; styles, subjects, periods and techniques come from the field's "+".
 struct MuseumSearchView: View {
     @Environment(AppModel.self) private var model
     @State private var museums: [Museum] = []
@@ -21,11 +21,25 @@ struct MuseumSearchView: View {
     @State private var adding: Set<String> = []
     @State private var editing: Playlist?
 
+    /// The rules' chips, and the museum's last when one is picked.
     private var tokens: Binding<[SearchToken]> {
         Binding(
-            get: { rules.tokens(names: model.termNames) },
-            set: { rules.setTokens($0) }
+            get: {
+                var tokens = rules.tokens(names: model.termNames)
+                if source != "all" {
+                    tokens.append(SearchToken(kind: "museum", key: source, name: museumName(source)))
+                }
+                return tokens
+            },
+            set: { tokens in
+                rules.setTokens(tokens)
+                if !tokens.contains(where: { $0.kind == "museum" }) { source = "all" }
+            }
         )
+    }
+
+    private func museumName(_ key: String) -> String {
+        museums.first { $0.key == key }?.name ?? Names.source(key)
     }
 
     private var asked: Bool { !rules.isEmpty || source != "all" }
@@ -70,11 +84,12 @@ struct MuseumSearchView: View {
 
     // MARK: Browsing
 
-    private func terms(_ kind: String) -> [TermInfo] { model.vocabulary.filter { $0.kind == kind } }
-
     private var browse: some View {
         VStack(alignment: .leading, spacing: 22) {
-            TermBrowser(tokens: tokens)
+            Text("Styl, temat, epokę albo technikę dodasz przyciskiem \(Image(systemName: "plus.circle.fill")) w polu wyszukiwania.")
+                .font(.footnote)
+                .foregroundStyle(Theme.inkSoft)
+                .fixedSize(horizontal: false, vertical: true)
             if !museums.isEmpty {
                 VStack(alignment: .leading, spacing: 10) {
                     Eyebrow("Muzea")
@@ -91,35 +106,24 @@ struct MuseumSearchView: View {
     // MARK: Filters and results
 
     private var filters: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(terms("technique")) { technique in
-                        let on = rules.terms.contains(technique.key)
-                        Chip(title: technique.name, selected: on) {
-                            if on { rules.terms.removeAll { $0 == technique.key } } else { rules.terms.append(technique.key) }
-                        }
-                    }
-                    Menu {
-                        Picker("Muzeum", selection: $source) {
-                            Text("Wszystkie muzea").tag("all")
-                            ForEach(museums) { Text($0.name).tag($0.key) }
-                        }
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: "building.columns").font(.caption.weight(.semibold))
-                            Text(source == "all" ? "Muzea" : Names.source(source)).font(.subheadline.weight(.medium))
-                        }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 7)
-                        .foregroundStyle(source == "all" ? Theme.ink : Theme.paper)
-                        .background(source == "all" ? Theme.card : Theme.ink, in: Capsule())
-                        .overlay(Capsule().strokeBorder(source == "all" ? Theme.hairline : .clear))
-                    }
+        HStack(spacing: 8) {
+            Menu {
+                Picker("Muzeum", selection: $source) {
+                    Text("Wszystkie muzea").tag("all")
+                    ForEach(museums) { Text($0.name).tag($0.key) }
                 }
-                .padding(.vertical, 2)
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "building.columns").font(.caption.weight(.semibold))
+                    Text("Muzea").font(.subheadline.weight(.medium))
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .foregroundStyle(Theme.ink)
+                .background(Theme.card, in: Capsule())
+                .overlay(Capsule().strokeBorder(Theme.hairline))
             }
-            .scrollClipDisabled()
+            .fixedSize()
             ColorFilterRow(selected: $rules.colors, available: model.facets.colors.map(\.value))
         }
     }
