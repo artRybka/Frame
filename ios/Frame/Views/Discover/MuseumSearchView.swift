@@ -97,8 +97,8 @@ struct MuseumSearchView: View {
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 12)
-            // Down to the tab bar: the row in the middle of what is left,
-            // and room below it for the squares to fall to the bottom.
+            // Down to the tab bar, so the squares have room below their row
+            // (in the middle of the screen) to fall to the bottom.
             SquaresAnimation()
                 .frame(maxWidth: .infinity)
                 .containerRelativeFrame(.vertical) { height, _ in

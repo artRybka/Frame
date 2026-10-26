@@ -1,14 +1,17 @@
 import SwiftUI
+import UIKit
 
 /// The app icon's colour squares at play, while Discover's search is still
 /// empty: one of a few games, picked at random, and a tap moves on to the
-/// next. The row stands in the middle of the view, which reaches down to
-/// the tab bar so there is room to fall to; every round they rest a while
-/// in it. With Reduce Motion they just stand in their row.
+/// next. The row stands in the middle of the screen; the view reaches down
+/// to the tab bar so there is room to fall to. Every round they rest a
+/// while in the row. With Reduce Motion they just stand in it.
 struct SquaresAnimation: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var game = SquareGame.allCases.randomElement() ?? .wave
     @State private var start = Date.now
+    /// The middle of the screen, from the view's top.
+    @State private var middle: Double?
 
     var body: some View {
         TimelineView(.animation(paused: reduceMotion)) { context in
@@ -17,6 +20,11 @@ struct SquaresAnimation: View {
                 let squares = reduceMotion ? SquareGame.row : game.squares(at: time)
                 draw(squares, in: &canvas, size: size)
             }
+        }
+        .onGeometryChange(for: Double.self) { proxy in
+            Double(proxy.frame(in: .global).minY)
+        } action: { top in
+            middle = Self.screenHeight.map { $0 / 2 - top }
         }
         .contentShape(Rectangle())
         .onTapGesture {
@@ -27,12 +35,20 @@ struct SquaresAnimation: View {
         .accessibilityHidden(true)
     }
 
+    /// The height of the window the app shows in.
+    private static var screenHeight: Double? {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        let scene = scenes.first { $0.activationState == .foregroundActive } ?? scenes.first
+        return (scene?.keyWindow ?? scene?.windows.first).map { Double($0.bounds.height) }
+    }
+
     private func draw(_ squares: [PlayingSquare], in canvas: inout GraphicsContext, size: CGSize) {
         let side = SquareGame.side
         // The row's left edge, and the line the squares stand on: the row
-        // centred in the view.
+        // in the middle of the screen (of the view until that is known).
         let left = (Double(size.width) - SquareGame.row.width) / 2
-        let base = (Double(size.height) + side) / 2
+        let height = Double(size.height)
+        let base = min(height - side, max(5 * side, (middle ?? height / 2) + side / 2))
         for square in squares where square.alpha > 0 {
             var context = canvas
             // Falling ones fade out at the bottom.
