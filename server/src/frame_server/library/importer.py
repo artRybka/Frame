@@ -74,6 +74,15 @@ def span(rules: PlaylistRules) -> tuple[int | None, int | None]:
     return start, end
 
 
+def fill_queries(rules: PlaylistRules) -> list[str]:
+    """What Discover's search asks the museums for ``rules``, one text per
+    artist: the words, the artist and the first style or subject."""
+    topics = museum_queries(rules.terms)[:1]
+    words = rules.query.strip()
+    texts = [" ".join(w for w in (words, artist, *topics) if w) for artist in rules.artists or [""]]
+    return [t for t in dict.fromkeys(texts) if t]
+
+
 def _search_stream(source: Museum, query: str) -> Iterator[Item]:
     """A museum's search results, page after page."""
     size = min(source.page_size, 24)
@@ -416,8 +425,11 @@ class Importer:
         with self.http() as http:
             museums = [museum(s, http, self.access()) for s in sources]
             if rules.artists or rules.query:
-                # Named artists or words: the museums' own search finds them.
-                queries = rules.artists or [rules.query]
+                # Named artists or words: the museums' own search finds them,
+                # asked first as Discover's search asks (with the words and a
+                # style or subject), then by the artist or words alone.
+                alone = rules.artists or [rules.query]
+                queries = list(dict.fromkeys([*fill_queries(rules), *alone]))
                 streams = [_search_stream(m, q) for q in queries for m in museums]
             else:
                 texts = [*rules.styles, *rules.subjects, *museum_queries(rules.terms)] or [""]

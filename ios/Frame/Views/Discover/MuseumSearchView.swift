@@ -31,6 +31,8 @@ struct MuseumSearchView: View {
     @State private var loader: Task<Void, Never>?
     @State private var adding: Set<String> = []
     @State private var editing: Playlist?
+    /// Whether the playlist made from the search fetches the museums' works.
+    @State private var fetchForPlaylist = false
     @State private var typing = false
 
     /// The rules' chips, then the colours' and the museums'.
@@ -105,7 +107,7 @@ struct MuseumSearchView: View {
             Task { model.artistSearch = nil }
         }
         .sheet(item: $editing) { playlist in
-            PlaylistEditorView(playlist: playlist)
+            PlaylistEditorView(playlist: playlist, fetchFromMuseums: fetchForPlaylist)
         }
     }
 
@@ -138,11 +140,18 @@ struct MuseumSearchView: View {
                 Spacer()
                 if searching || asking { ProgressView().controlSize(.small) }
             }
-            if !rules.isEmpty {
+            if asked {
                 Button {
+                    // The same search, museums included; what they show
+                    // comes along when fetching is on.
+                    var playlistRules = rules
+                    playlistRules.sources = sources
+                    let name = rules.suggestedName(names: model.termNames)
                     editing = Playlist(
-                        name: rules.suggestedName(names: model.termNames), kind: .smart, rules: rules
+                        name: name.isEmpty ? sources.map(museumName).joined(separator: " · ") : name,
+                        kind: .smart, rules: playlistRules
                     )
+                    fetchForPlaylist = !fromMuseums.isEmpty
                 } label: {
                     Label("Utwórz playlistę z tego wyszukiwania", systemImage: "text.badge.plus")
                 }

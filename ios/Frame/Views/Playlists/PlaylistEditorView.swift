@@ -1,8 +1,9 @@
 import PhotosUI
 import SwiftUI
 
-/// Create or edit a playlist. Smart playlists are built from rules with a
-/// live preview of the matching pictures; manual ones can take photos from
+/// Create or edit a playlist. Smart playlists are built with Discover's
+/// search (chips, with museums, colours, styles, subjects and periods under
+/// "+") and show what the catalogue and the museums have for it; manual ones can take photos from
 /// the camera roll, uploaded to the library when the playlist is saved;
 /// album playlists mirror a shared iCloud album.
 struct PlaylistEditorView: View {
@@ -10,6 +11,9 @@ struct PlaylistEditorView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var playlist: Playlist
     @State private var preview: RulesPreview?
+    /// What the museums have for the rules, as Discover's search shows it.
+    @State private var remote: RemotePage?
+    @State private var askingMuseums = false
     @State private var saving = false
     @State private var museums: [Museum] = []
     @State private var picked: [PhotosPickerItem] = []
@@ -17,18 +21,28 @@ struct PlaylistEditorView: View {
     @State private var loadingPhotos = false
     @State private var uploaded = 0
     /// Also fetch this many matching museum works into the library (0: no).
-    @State private var fetchCount = 0
+    @State private var fetchCount: Int
     @State private var album: AlbumSource
     @State private var albumCheck: Result<AlbumCheck, Error>?
     @State private var checkingAlbum = false
     /// An album playlist being edited stays one (its photos are the album's).
     private let wasAlbum: Bool
 
-    init(playlist: Playlist) {
+    /// `fetchFromMuseums` starts with fetching on, e.g. for a playlist made
+    /// from a search that showed museum works.
+    init(playlist: Playlist, fetchFromMuseums: Bool = false) {
         var playlist = playlist
         // "Only the best on e-paper" is gone from the editor: saving drops it.
         playlist.rules.minSuitability = nil
+        // A range of years from older editors becomes a period chip.
+        if playlist.rules.yearFrom != nil || playlist.rules.yearTo != nil {
+            let years = "years:\(playlist.rules.yearFrom.map(String.init) ?? "")-\(playlist.rules.yearTo.map(String.init) ?? "")"
+            if !playlist.rules.terms.contains(years) { playlist.rules.terms.append(years) }
+            playlist.rules.yearFrom = nil
+            playlist.rules.yearTo = nil
+        }
         _playlist = State(initialValue: playlist)
+        _fetchCount = State(initialValue: fetchFromMuseums ? 100 : 0)
         _album = State(initialValue: playlist.album ?? AlbumSource(url: ""))
         wasAlbum = playlist.id != nil && playlist.kind == .album
     }
@@ -80,6 +94,7 @@ struct PlaylistEditorView: View {
             .task { await model.loadVocabulary() }
             .task { if museums.isEmpty { museums = (try? await model.backend.museums()) ?? [] } }
             .task(id: playlist.rules) { await refreshPreview() }
+            .task(id: playlist.kind == .smart ? playlist.rules : nil) { await askMuseums() }
             .task(id: picked) { await loadPhotos() }
             .task(id: playlist.kind == .album ? album.url : "") { await checkAlbum() }
             .interactiveDismissDisabled(saving)
@@ -101,45 +116,16 @@ struct PlaylistEditorView: View {
 
     private var rules: some View {
         VStack(alignment: .leading, spacing: 20) {
-            SectionHeader(title: "Reguły", subtitle: "Wszystkie warunki muszą być spełnione")
             VStack(alignment: .leading, spacing: 8) {
-                Eyebrow("Czego szukasz")
-                TermSearchField(tokens: tokens, museums: museums) {
+                SectionHeader(title: "Czego szukasz", subtitle: "Jak w Odkrywaj → Szukaj")
+                TermSearchField(tokens: tokens, museums: museums, colors: ColorTag.families + ColorTag.moods) {
                     // The catalogue has nothing for it yet: museums will.
                     if fetchCount == 0, fetchBlocker == nil { fetchCount = 100 }
                 }
-                Text("Artyści, style, tematy i muzea tego samego rodzaju to alternatywy; różne rodzaje muszą pasować razem. Bez muzeów playlista bierze ze wszystkich.")
+                Text("Muzea, kolory, style, tematy, epoki i techniki dodasz przyciskiem \(Image(systemName: "plus.circle.fill")). Te same rodzaje to alternatywy, różne muszą pasować razem. Bez muzeów playlista bierze ze wszystkich.")
                     .font(.footnote)
                     .foregroundStyle(Theme.inkSoft)
                     .fixedSize(horizontal: false, vertical: true)
-            }
-
-            VStack(alignment: .leading, spacing: 10) {
-                Eyebrow("Kolorystyka")
-                FlowLayout(spacing: 8) {
-                    ForEach(ColorTag.families + ColorTag.moods, id: \.self) { tag in
-                        Chip(
-                            title: ColorTag.name(tag),
-                            swatch: ColorTag.color(tag),
-                            selected: playlist.rules.colors.contains(tag)
-                        ) {
-                            if playlist.rules.colors.contains(tag) {
-                                playlist.rules.colors.removeAll { $0 == tag }
-                            } else {
-                                playlist.rules.colors.append(tag)
-                            }
-                        }
-                    }
-                }
-            }
-
-            VStack(alignment: .leading, spacing: 10) {
-                Eyebrow("Epoka")
-                HStack(spacing: 12) {
-                    yearField("od roku", value: $playlist.rules.yearFrom)
-                    Text("–").foregroundStyle(Theme.inkSoft)
-                    yearField("do roku", value: $playlist.rules.yearTo)
-                }
             }
 
             Toggle(isOn: $playlist.rules.favoritesOnly) {
@@ -149,13 +135,14 @@ struct PlaylistEditorView: View {
         .tint(Theme.accent)
     }
 
-    /// The rules' chips, then the museums' (the playlist's `sources`; other
-    /// sources, such as the owner's photos, stay as they are).
+    /// The rules' chips, then the colours' and the museums' (the playlist's
+    /// `sources`; other sources, such as the owner's photos, stay as they are).
     private var tokens: Binding<[SearchToken]> {
         Binding(
             get: {
                 let keys = Set(museums.map(\.key))
                 return playlist.rules.tokens(names: model.termNames)
+                    + playlist.rules.colors.map { SearchToken(kind: "color", key: $0, name: ColorTag.name($0)) }
                     + playlist.rules.sources.filter { keys.contains($0) }.map {
                         SearchToken(kind: "museum", key: $0, name: museumName($0))
                     }
@@ -163,29 +150,21 @@ struct PlaylistEditorView: View {
             set: { tokens in
                 let keys = Set(museums.map(\.key))
                 playlist.rules.setTokens(tokens)
+                playlist.rules.colors = tokens.filter { $0.kind == "color" }.map(\.key)
                 playlist.rules.sources = playlist.rules.sources.filter { !keys.contains($0) }
                     + tokens.filter { $0.kind == "museum" }.map(\.key)
             }
         )
     }
 
-    private func museumName(_ key: String) -> String {
-        museums.first { $0.key == key }?.name ?? Names.source(key)
+    /// The rules' museums, to ask (none: all of them).
+    private var museumKeys: [String] {
+        let keys = Set(museums.map(\.key))
+        return playlist.rules.sources.filter { keys.contains($0) }
     }
 
-    private func yearField(_ title: String, value: Binding<Int?>) -> some View {
-        TextField(
-            title,
-            text: Binding(
-                get: { value.wrappedValue.map(String.init) ?? "" },
-                set: { value.wrappedValue = Int($0.filter(\.isNumber)) }
-            )
-        )
-        .keyboardType(.numberPad)
-        .padding(12)
-        .frame(maxWidth: 140)
-        .background(Theme.card, in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.hairline))
+    private func museumName(_ key: String) -> String {
+        museums.first { $0.key == key }?.name ?? Names.source(key)
     }
 
     private var cameraRoll: some View {
@@ -332,22 +311,64 @@ struct PlaylistEditorView: View {
                 }
             }
             if let items = preview?.items, !items.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 10) {
-                        ForEach(items) { item in
-                            ArtImage(ref: .thumb(item.id), placeholder: item.placeholderColor, maxPixel: 300)
-                                .frame(width: 84, height: 84)
-                                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                        }
-                    }
-                }
-                .scrollClipDisabled()
+                Eyebrow("W katalogu")
+                strip(items.map { Thumb(id: $0.id, ref: .thumb($0.id), placeholder: $0.placeholderColor) })
             } else if preview != nil {
                 Text("W bazie nic jeszcze nie pasuje. Włącz pobieranie z muzeów poniżej, a playlista zapełni się w tle.")
                     .font(.subheadline)
                     .foregroundStyle(Theme.inkSoft)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            museumPreview
+        }
+    }
+
+    /// The museums' works the catalogue doesn't hold yet: what fetching
+    /// would bring.
+    @ViewBuilder
+    private var museumPreview: some View {
+        let missing = remote?.items.filter { !$0.inLibrary } ?? []
+        if askingMuseums {
+            HStack(spacing: 8) {
+                ProgressView().controlSize(.small)
+                Text("Pytam muzea…").font(.footnote).foregroundStyle(Theme.inkSoft)
+            }
+        } else if let remote, fetchBlocker == nil {
+            if missing.isEmpty {
+                Text(remote.total == 0 ? "W muzeach nic więcej nie znaleziono." : "Muzea nie pokazały nic, czego nie ma już w bazie.")
+                    .font(.footnote)
+                    .foregroundStyle(Theme.inkSoft)
+            } else {
+                Eyebrow("Z muzeów · \(Names.works(remote.total))", color: Theme.accent)
+                strip(missing.map { Thumb(id: $0.id, ref: $0.thumb, fallback: $0.thumbFallback, placeholder: $0.item.placeholderColor) })
+                if fetchCount == 0 {
+                    Text("Takie dzieła trafią do playlisty, gdy włączysz pobieranie z muzeów.")
+                        .font(.footnote)
+                        .foregroundStyle(Theme.inkSoft)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
+    }
+
+    private struct Thumb: Identifiable {
+        let id: String
+        let ref: ImageRef
+        var fallback: ImageRef?
+        let placeholder: Color
+    }
+
+    private func strip(_ pictures: [Thumb]) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 10) {
+                ForEach(pictures) { picture in
+                    ArtImage(ref: picture.ref, fallback: picture.fallback, placeholder: picture.placeholder, maxPixel: 300)
+                        .frame(width: 84, height: 84)
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                }
+            }
+        }
+        .scrollClipDisabled()
     }
 
     /// Why museums can't supply works for these rules, if they can't.
@@ -439,6 +460,21 @@ struct PlaylistEditorView: View {
         guard !Task.isCancelled else { return }
         let result = try? await model.backend.previewRules(playlist.rules)
         withAnimation(.snappy) { preview = result }
+    }
+
+    /// Asks the museums what Discover's search would show for the rules.
+    private func askMuseums() async {
+        guard playlist.kind == .smart, fetchBlocker == nil, !playlist.rules.isEmpty else {
+            remote = nil
+            return
+        }
+        try? await Task.sleep(for: .milliseconds(600))  // they answer slowly
+        guard !Task.isCancelled else { return }
+        askingMuseums = true
+        defer { askingMuseums = false }
+        let found = try? await model.backend.searchMuseums(playlist.rules, sources: museumKeys, page: 1)
+        guard !Task.isCancelled else { return }
+        withAnimation(.snappy) { remote = found }
     }
 
     /// Reports the fetch once it ends; runs on after the editor closes.
