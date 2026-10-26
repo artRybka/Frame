@@ -549,6 +549,14 @@ struct PresentationSection: View {
 
     private var isMulti: Bool { target == .photo && presentation.fit.wrappedValue == "multi" }
 
+    private var matSwatches: some View {
+        ForEach(MatSwatch.names, id: \.self) { name in
+            MatSwatch(name: name, selected: presentation.mat.wrappedValue == name) {
+                presentation.mat.wrappedValue = name
+            }
+        }
+    }
+
     /// The picture on the frame, when the selected presentation applies to it.
     private var previewItem: Item? {
         guard let item = model.player?.current?.item else { return nil }
@@ -619,11 +627,11 @@ struct PresentationSection: View {
                 Divider()
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Passe-partout").foregroundStyle(Theme.ink)
-                    HStack(spacing: 14) {
-                        ForEach(MatSwatch.names, id: \.self) { name in
-                            MatSwatch(name: name, selected: presentation.mat.wrappedValue == name) {
-                                presentation.mat.wrappedValue = name
-                            }
+                    // Six swatches: one row where they fit, else two rows of three.
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 10) { matSwatches }
+                        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 10) {
+                            matSwatches
                         }
                     }
                 }
@@ -775,7 +783,7 @@ struct MatSwatch: View {
     let selected: Bool
     let action: () -> Void
 
-    static let names = ["white", "cream", "grey", "black", "picture"]
+    static let names = ["white", "cream", "grey", "black", "picture", "picture_dark"]
 
     static func color(_ name: String) -> Color {
         switch name {
@@ -783,6 +791,7 @@ struct MatSwatch: View {
         case "grey": Color(hex: 0xAEADAA)
         case "black": Color(hex: 0x1F1E1C)
         case "picture": Color(hex: 0xE9DCCB)  // stands in for "a tint of the picture"
+        case "picture_dark": Color(hex: 0x4A3530)  // the same, on a dark board
         default: Color(hex: 0xFBFAF7)
         }
     }
@@ -792,16 +801,21 @@ struct MatSwatch: View {
         case "cream": "Kremowe"
         case "grey": "Szare"
         case "black": "Czarne"
-        case "picture": "Z obrazu"
+        case "picture": "Jasne"
+        case "picture_dark": "Ciemne"
         default: "Białe"
         }
     }
 
-    /// Muted tints in a ring: the mat takes its colour from each picture.
+    /// Tints in a ring, muted or deep: the mat takes its colour from each picture.
     private var fill: AnyShapeStyle {
-        guard name == "picture" else { return AnyShapeStyle(Self.color(name)) }
-        let tints = [0xE8C9C0, 0xEADCC0, 0xD3DEC8, 0xC6D6DE, 0xD6CBDD, 0xE8C9C0].map { Color(hex: UInt32($0)) }
-        return AnyShapeStyle(AngularGradient(colors: tints, center: .center))
+        let ring: [UInt32]
+        switch name {
+        case "picture": ring = [0xE8C9C0, 0xEADCC0, 0xD3DEC8, 0xC6D6DE, 0xD6CBDD, 0xE8C9C0]
+        case "picture_dark": ring = [0x5A2A2A, 0x4E3A26, 0x2C4234, 0x263A52, 0x3E2E4C, 0x5A2A2A]
+        default: return AnyShapeStyle(Self.color(name))
+        }
+        return AnyShapeStyle(AngularGradient(colors: ring.map { Color(hex: $0) }, center: .center))
     }
 
     var body: some View {

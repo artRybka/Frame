@@ -134,8 +134,9 @@ def test_picture_tint_follows_the_main_hue() -> None:
     tint = picture_tint(blue, white, black)
     light, a, b = linear_to_oklab(tint)
     assert light > 0.85 and b < 0 and np.hypot(a, b) <= 0.025  # pale, blue, muted
-    dark = picture_tint(blue * 0.02, white, black)
-    assert linear_to_oklab(dark)[0] < 0.4  # a deep mat for a dark picture
+    assert linear_to_oklab(picture_tint(blue * 0.02, white, black))[0] > 0.85  # light stays light
+    light, a, b = linear_to_oklab(picture_tint(blue, white, black, dark=True))
+    assert light < 0.4 and b < 0 and np.hypot(a, b) > 0.04  # deep, blue, its colour plain
     grey = picture_tint(np.full((10, 10, 3), 0.4, np.float32), white, black)
     assert np.hypot(*linear_to_oklab(grey)[1:]) < 0.013  # nearly colourless: an off-white
 
@@ -143,7 +144,7 @@ def test_picture_tint_follows_the_main_hue() -> None:
 def test_picture_mat_and_its_lettering() -> None:
     settings = PRESETS["painting"].model_copy(deep=True)
     settings.layout.fit = Fit.FIT
-    settings.layout.mat = "picture"
+    settings.layout.mat = "picture_dark"
     settings.caption = "Someone — Something"
     dark = render(Image.new("RGB", (800, 1000), (30, 20, 15)), settings)
     plan = plan_layout((800, 1000), CANVAS, Fit.FIT, margin=0.05, caption=True)

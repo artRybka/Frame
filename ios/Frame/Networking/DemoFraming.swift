@@ -11,6 +11,7 @@ enum DemoFraming {
         let text: TextBlock
         let isPhoto: Bool
         var tint: UIColor?  // the "picture" mat, as the server picks it
+        var darkTint: UIColor?  // and the "picture_dark" one
     }
 
     /// The wall text "Opis" prints on the mat (server: text.TextBlock).
@@ -97,8 +98,16 @@ enum DemoFraming {
             .appendingPathComponent(stem(id) + ".jpg")
     }
 
+    /// The dark mat from the light one, where the server's is not known: the
+    /// same hue, deep and richer.
+    static func deep(_ tint: UIColor) -> UIColor {
+        var hue: CGFloat = 0, saturation: CGFloat = 0, brightness: CGFloat = 0, alpha: CGFloat = 0
+        tint.getHue(&hue, saturation: &saturation, brightness: &brightness, alpha: &alpha)
+        return UIColor(hue: hue, saturation: min(0.2 + saturation * 2.5, 0.55), brightness: 0.3, alpha: 1)
+    }
+
     /// A rough stand-in for the server's picture tint (mat.picture_tint), for
-    /// photos uploaded in the demo: the average hue, pale; deep if dark.
+    /// photos uploaded in the demo: the average hue, pale.
     static func tint(of image: CGImage) -> UIColor {
         var pixel = [UInt8](repeating: 0, count: 4)
         let space = CGColorSpaceCreateDeviceRGB()
@@ -113,9 +122,6 @@ enum DemoFraming {
         let average = UIColor(red: CGFloat(pixel[0]) / 255, green: CGFloat(pixel[1]) / 255, blue: CGFloat(pixel[2]) / 255, alpha: 1)
         var hue: CGFloat = 0, saturation: CGFloat = 0, brightness: CGFloat = 0, alpha: CGFloat = 0
         average.getHue(&hue, saturation: &saturation, brightness: &brightness, alpha: &alpha)
-        if brightness < 0.3 {
-            return UIColor(hue: hue, saturation: min(saturation, 0.5) * 0.6, brightness: 0.22, alpha: 1)
-        }
         return UIColor(hue: hue, saturation: min(saturation * 0.3, 0.16), brightness: 0.93, alpha: 1)
     }
 
@@ -320,7 +326,11 @@ enum DemoFraming {
     static func framed(_ id: String, art: Art, settings: FrameSettings, crops: Crops?) -> URL? {
         let pres = art.isPhoto ? settings.photo : settings.art
         let stem = stem(id)
-        let board = pres.mat == "picture" ? (art.tint ?? matColor("cream")) : matColor(pres.mat)
+        let board = switch pres.mat {
+        case "picture": art.tint ?? matColor("cream")
+        case "picture_dark": art.darkTint ?? deep(art.tint ?? matColor("cream"))
+        default: matColor(pres.mat)
+        }
         let key = [settings.orientation, pres.key, art.caption, "\(art.text)", "\(board)", "\(String(describing: crops))"].joined(separator: "|")
         let directory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("DemoFrames", isDirectory: true)

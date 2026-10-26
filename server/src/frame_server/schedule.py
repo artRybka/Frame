@@ -17,7 +17,8 @@ class Presentation(BaseModel):
 
     preset: str = "auto"  # library.style.AUTO: chosen per picture; else an imaging.PRESETS key
     fit: Fit = Fit.AUTO  # fill, passe-partout or description, by the picture's proportions
-    mat: Literal["white", "cream", "grey", "black", "picture"] = "white"  # picture: its hue
+    # picture, picture_dark: a light or a dark board in the picture's hue
+    mat: Literal["white", "cream", "grey", "black", "picture", "picture_dark"] = "white"
     margin: float = Field(0.05, ge=0, le=0.3)
     label: bool = False
     # MULTI (photos): how many on one board, or a random number each time,
