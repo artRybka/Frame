@@ -653,6 +653,8 @@ class Rijksmuseum(Museum):
             for agent in part.get("carried_out_by") or []
         ]
         timespan = production.get("timespan") or {}
+        if isinstance(timespan, list):  # some records give several spans
+            timespan = timespan[0] if timespan else {}
         year_match = re.match(r"(\d{4})", timespan.get("begin_of_the_begin", ""))
         classes = d.get("classified_as") or []
         return self._item(

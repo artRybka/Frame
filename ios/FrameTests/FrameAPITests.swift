@@ -687,6 +687,26 @@ final class FrameAPITests: XCTestCase {
         XCTAssertTrue(status.finished)
     }
 
+    func testDecodesMuseumAnswerLines() throws {
+        let line = #"{"source":"aic","total":120,"items":[],"failed":[],"next":4}"#
+        let answer = try LiveBackend.decoder().decode(MuseumAnswer.self, from: Data(line.utf8))
+        XCTAssertEqual(answer.source, "aic")
+        XCTAssertEqual(answer.next, 4)
+        let last = try LiveBackend.decoder().decode(
+            MuseumAnswer.self, from: Data(#"{"source":"cma","total":3,"items":[],"next":null}"#.utf8)
+        )
+        XCTAssertNil(last.next)
+    }
+
+    func testDemoMuseumsAnswerOneByOne() async throws {
+        let demo = DemoBackend()
+        var sources: [String] = []
+        for try await answer in try await demo.museumAnswers(PlaylistRules(), sources: ["aic", "met"], page: 1) {
+            sources.append(answer.source)
+        }
+        XCTAssertEqual(sources, ["aic", "met"])
+    }
+
     func testDescriptionKeepsWholeSentences() {
         XCTAssertEqual(
             DemoFraming.sentences("Painted c. 1890 in Paris. It shows the artist's room! “Quoted” one."),
