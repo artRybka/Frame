@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.15.0
+
+- Ramka: uśpiona ramka, która nie odpowiada, ale jest w sieci Wi-Fi
+  (odpowiada na ARP), pokazuje się jako „Czuwanie”, a nie „Nie odpowiada”.
+  Aplikacja sprawdza stan bez budzenia przy wejściu na kartę Ramka (najwyżej
+  co 30 s) i przy pociągnięciu w dół. Ostatni odczyt ekranu przeżywa
+  restart serwera; `frame device presence` sprawdza obecność z terminala.
+- Serwer ramki: drugi, opcjonalny adres „Spoza domu” (np. Tailscale).
+  Aplikacja sama wybiera adres, który odpowiada (domowy ma pierwszeństwo),
+  i pokazuje, którędy jest połączona.
+- Odkrywaj → Propozycje: strona motywu nie zostaje pusta z „Wczytuję…”.
+  Motywy polskie (np. Młoda Polska) są przeglądane w kategoriach Commons,
+  puste wyniki są pomijane (`next_page`), a przy błędzie można spróbować
+  ponownie.
+- Bez czarno-białych reprodukcji: plansze z albumów i książek (Polona,
+  Biblioteka Narodowa), przezrocza, pocztówki i obrazy bez własnego koloru
+  są odrzucane z Commons i Europeany; katalog jest raz jeszcze czyszczony.
+- „Teraz”: po zmianie Prezentacji plansze z kolejki od razu pokazują się w
+  nowym wyglądzie; podgląd bez ustawień w adresie nie jest zapamiętywany.
+
 ## 0.14.0
 
 - Odkrywaj → Propozycje wczytują się szybciej: serwer liczy motywy w tle
