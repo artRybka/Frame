@@ -96,6 +96,10 @@ class ImageCache:
                 return load_image(resp.content)
         raise AssertionError("unreachable")
 
+    def sample(self, url: str) -> Image.Image:
+        """A picture downloaded to be looked at, not kept."""
+        return self._download(url)
+
     def ensure_thumb(self, item: Item) -> Path:
         path = self.thumb_path(item)
         if path.is_file():

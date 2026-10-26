@@ -50,6 +50,9 @@ RESET_KEY = "library_reset"
 #: Set once the catalogue's manuscripts are gone.
 #: Set once the catalogue has been cleared of what it leaves out now.
 SET_ASIDE_KEY = "set_aside_dropped"
+#: Bump when ``set_aside`` leaves out more, so the catalogue is cleaned again
+#: (1: photographs and manuscripts, 2: reproductions and B&W copies).
+SET_ASIDE_VERSION = 2
 #: Version of the suitability score the library's pictures carry.
 SCORE_KEY = "suitability_version"
 #: A rotation with fewer pictures not shown lately asks museums for more,
@@ -849,13 +852,14 @@ class Player:
         return len(gone)
 
     def drop_set_aside(self) -> int:
-        """Once: delete the photographs and pages of manuscripts the server
-        put in the catalogue before it learnt to leave them out. Works the
-        owner kept, liked, framed or put in a playlist stay. Returns how
-        many went."""
-        if self.library.get_state(SET_ASIDE_KEY, False):
+        """Once per :data:`SET_ASIDE_VERSION`: delete the photographs, copies
+        and pages of manuscripts the server put in the catalogue before it
+        learnt to leave them out. Works the owner kept, liked, framed or put
+        in a playlist stay. Returns how many went."""
+        # Version 1 was stored as ``True``.
+        if int(self.library.get_state(SET_ASIDE_KEY, 0)) >= SET_ASIDE_VERSION:
             return 0
-        self.library.set_state(SET_ASIDE_KEY, True)
+        self.library.set_state(SET_ASIDE_KEY, SET_ASIDE_VERSION)
         state = self.state
         kept = {i for p in self.library.playlists() for i in p.item_ids}
         kept |= {state.current_item_id or "", *state.current_group, *state.requested}
@@ -865,7 +869,7 @@ class Player:
             if i.pooled and set_aside(i) and not i.favorite and not i.framing and i.id not in kept
         ]
         self._forget(gone)
-        log.info("catalogue: %d photographs and manuscript pages deleted", len(gone))
+        log.info("catalogue: %d photographs, copies and manuscript pages deleted", len(gone))
         return len(gone)
 
     def drop_spare_copies(self) -> int:

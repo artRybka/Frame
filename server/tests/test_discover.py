@@ -11,13 +11,17 @@ from frame_server.library.themes import GROUPS, THEMES, theme_of_the_day
 from frame_server.library.vocabulary import (
     BY_KEY,
     artist_matches,
+    is_copy,
+    is_grey_painting,
     is_manuscript,
     is_photograph,
+    is_reproduction,
     museum_queries,
     set_aside,
     suggest,
     term,
 )
+from frame_server.player import SET_ASIDE_KEY
 
 
 def _work(n: int, **fields) -> Item:
@@ -91,6 +95,32 @@ def test_photographs_are_told_apart() -> None:
     assert set_aside(page) and not set_aside(page, ["technique:manuscripts"])
 
 
+def test_reproductions_are_told_apart() -> None:
+    album = 'Album reprodukcji obrazów z wystawy "Sto lat malarstwa polskiego"'
+    assert is_reproduction(_work(1, title=album, classification="Painting"))
+    assert is_reproduction(_work(2, title="Józef Chełmoński. Wspomnienie (page 41 crop)"))
+    assert is_reproduction(_work(3, title="Jozef Chelmonski. Aanval van wolven, GD017005"))
+    assert is_reproduction(_work(4, title="Babie lato", classification="glass slide"))
+    assert is_reproduction(_work(5, title="Jozef Chelmonski műveinek reprodukciója"))
+    assert is_reproduction(_work(6, title="Babie lato", classification="Pocztówka"))
+    assert not is_reproduction(_work(7, title="Babie lato", classification="Painting"))
+    # Posters are "photomechanical reproductions"; artists' postcards are prints.
+    assert not is_reproduction(_work(8, title="Job", medium="Photomechanical reproduction"))
+    assert not is_reproduction(_work(9, title="Postcard for the Wiener Werkstätte"))
+    assert not is_reproduction(_work(10, title="The Birds of America, Plate 26"))
+
+
+def test_paintings_without_colour_are_copies() -> None:
+    grey = _work(1, title="Babie lato", classification="Painting", tint_spread=0.002)
+    assert is_grey_painting(grey) and is_copy(grey) and set_aside(grey)
+    oil = _work(2, title="Babie lato", medium="Oil on canvas", tint_spread=0.002)
+    assert is_grey_painting(oil)
+    coloured = _work(3, title="Babie lato", classification="Painting", tint_spread=0.03)
+    unknown = _work(4, title="Babie lato", classification="Painting")
+    etching = _work(5, title="Melencolia I", classification="Print", tint_spread=0.0)
+    assert not any(is_grey_painting(i) for i in (coloured, unknown, etching))
+
+
 def test_catalogue_leaves_manuscripts_out(museums) -> None:  # noqa: F811
     service = museums
     library = service.library
@@ -98,14 +128,23 @@ def test_catalogue_leaves_manuscripts_out(museums) -> None:  # noqa: F811
     kept = library.upsert(_work(2, title="Leaf from a Psalter"))  # saved by the owner
     painting = library.upsert(_work(3, title="Haystacks", pooled=True))
     photo = library.upsert(_work(4, title="Rouen", medium="Salted paper print", pooled=True))
+    plate = library.upsert(
+        _work(5, title="Orka", classification="Painting", tint_spread=0.001, pooled=True)
+    )
     assert {i.id for i in library.query()[1]} == {kept.id, painting.id}
     asked = library.query(PlaylistRules(terms=["technique:manuscripts"]))[1]
     assert {i.id for i in asked} == {page.id, kept.id}
 
-    assert service.player.drop_set_aside() == 2
+    assert service.player.drop_set_aside() == 3
     assert library.get(page.id) is None and library.get(photo.id) is None
+    assert library.get(plate.id) is None
     assert library.get(kept.id) is not None
     assert service.player.drop_set_aside() == 0  # once
+
+    # Libraries cleaned by the first version are cleaned again.
+    library.set_state(SET_ASIDE_KEY, True)
+    library.upsert(plate)
+    assert service.player.drop_set_aside() == 1
 
 
 def test_theme_playlists_and_terms(museums) -> None:  # noqa: F811

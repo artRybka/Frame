@@ -12,6 +12,7 @@ from conftest import jpeg_bytes
 from fastapi.testclient import TestClient
 
 from frame_server.library import Item, ItemKind, Playlist, PlaylistKind, PlaylistRules
+from frame_server.library.importer import Job
 from frame_server.library.museums import MUSEUMS, Discovery, Museum
 from frame_server.player import POOL_SIZE
 
@@ -226,3 +227,57 @@ def test_kept_filter() -> None:
     assert not matches(picked, PlaylistRules(kept_only=True))
     assert matches(picked.model_copy(update={"favorite": True}), PlaylistRules(kept_only=True))
     assert matches(picked, PlaylistRules())
+
+
+def _grey_copies(key: str) -> type[Museum]:
+    """Paintings whose even works come as black-and-white plates."""
+
+    class Copies(_fake(key)):  # type: ignore[misc]
+        def _work(self, n: int, artist: str) -> Item:
+            url = f"https://{key}.invalid/{'grey' if n % 2 == 0 else 'colour'}-{n}.jpg"
+            return self._item(
+                f"{artist}-{n}",
+                artist=artist,
+                title=f"{artist} {n}",
+                image_url=url,
+                thumb_url=url,
+                classification="Painting",
+            )
+
+    Copies.key = key
+    return Copies
+
+
+def test_black_and_white_copies_of_paintings_are_left_out(museums, monkeypatch) -> None:
+    service = museums
+    for key in ("wmc", "europeana"):
+        monkeypatch.setitem(MUSEUMS, key, _grey_copies(key))
+    grey = jpeg_bytes((128, 128, 128))
+    sent: list[str] = []
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        sent.append(request.url.path)
+        return httpx.Response(200, content=grey if "grey" in request.url.path else _picture(0))
+
+    service.images.http = lambda: httpx.Client(transport=httpx.MockTransport(answer))
+    importer = service.importer
+
+    # Browsing: thumbnails are looked at, once.
+    _, items = importer.search("wmc", "Chełmoński", limit=6)
+    assert [i.title for i in items] == ["Chełmoński 1", "Chełmoński 3", "Chełmoński 5"]
+    asked = len(sent)
+    assert asked == 6
+    importer.search("wmc", "Chełmoński", limit=6)
+    assert len(sent) == asked
+    # Other museums' paintings are not looked at.
+    assert len(importer.search("aic", "Monet", limit=6)[1]) == 6
+    assert len(sent) == asked
+
+    # Filling a rotation: analysed copies are skipped.
+    job = Job(id="j", description="")
+    with importer.http() as http:
+        stream = MUSEUMS["europeana"](http).random_draw(Discovery(), random.Random(1))
+        importer._take([stream], 4, job, before=lambda i: True, after=lambda i: True)
+    taken = [service.library.get(i) for i in job.item_ids]
+    assert len(taken) == 4 and all("colour" in i.thumb_url for i in taken)
+    assert job.skipped >= 4

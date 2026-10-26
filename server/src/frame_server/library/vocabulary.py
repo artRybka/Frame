@@ -330,10 +330,73 @@ def _is_photograph(classification: str, medium: str) -> bool:
     return bool(_PHOTOGRAPH.search(" ".join((classification, medium))))
 
 
+#: Copies of works rather than the works: plates of exhibition albums,
+#: pages of books and magazines, glass and lantern slides, postcards of
+#: paintings. (Postcards in English stay: artists designed many, e.g. for
+#: the Wiener Werkstätte.)
+_REPRODUCTION = re.compile(
+    r"\b(reprodu[ckz]\w*|glass[- ]slides?|lantern[- ]slides?|slides? \(photographs\)|"
+    r"diapozytyw\w*|przezrocz\w*|glasdia\w*|pocztówk\w*|ansichtskarte\w*)\b"
+    # "Wspomnienie (page 41 crop)", "Tygodnik Ilustrowany (strona 5)".
+    r"|\((?:page|pages|p\.|strona|str\.|s\.|seite|tabl?\.?|tablica|plansza) ?\d+"
+    # Leuven's glass slides: "Jozef Chelmonski. Aanval van wolven, GD017005".
+    r"|, GD\d{6}\b",
+    re.IGNORECASE,
+)
+
+
+def is_reproduction(item: Item) -> bool:
+    """A plate, page, slide or postcard reproducing a work, by its title
+    and type (the medium is left alone: "photomechanical reproduction" is
+    how museums describe posters)."""
+    return item.kind == ItemKind.ARTWORK and _is_reproduction(item.title, item.classification)
+
+
+@lru_cache(maxsize=1 << 15)
+def _is_reproduction(title: str, classification: str) -> bool:
+    return bool(_REPRODUCTION.search(f"{title} {classification}"))
+
+
+#: Words for paintings in museums' types and materials.
+_PAINTING = re.compile(
+    r"\b(paintings?|oil|oils|olej\w*|tempera|canvas|płótn\w*|gouache|acrylic|fresco)\b",
+    re.IGNORECASE,
+)
+#: Pictures with less tint spread (``colors.tint_spread``) have no colour of
+#: their own: a painting like that is a black-and-white copy (an album
+#: plate, a slide, an old photo of it); real grisailles are rare. Muted
+#: paintings (Chełmoński's "Wrony", 0.0055) stay above it.
+GREY_PAINTING_SPREAD = 0.005
+
+
+def is_grey_painting(item: Item, spread: float | None = None) -> bool:
+    """A painting whose picture has no colour: a black-and-white copy.
+    ``spread`` stands in for the item's own ``tint_spread`` when given."""
+    if spread is None:
+        spread = item.tint_spread
+    return spread is not None and spread < GREY_PAINTING_SPREAD and is_painting(item)
+
+
+def is_painting(item: Item) -> bool:
+    """A museum work its museum calls a painting (by type or material)."""
+    return item.kind == ItemKind.ARTWORK and _is_painting(item.classification, item.medium)
+
+
+@lru_cache(maxsize=1 << 15)
+def _is_painting(classification: str, medium: str) -> bool:
+    return bool(_PAINTING.search(f"{classification} {medium}"))
+
+
+def is_copy(item: Item) -> bool:
+    """A museum's photograph, or a reproduction of a work in print or on a
+    slide: never what the frame looks for."""
+    return is_photograph(item) or is_reproduction(item) or is_grey_painting(item)
+
+
 def set_aside(item: Item, keys: list[str] | tuple[str, ...] = ()) -> bool:
-    """Left out of the catalogue and searches: photographs always, pages of
-    manuscripts unless ``keys`` ask for them."""
-    return is_photograph(item) or (is_manuscript(item) and not wants_manuscripts(keys))
+    """Left out of the catalogue and searches: photographs and reproductions
+    always, pages of manuscripts unless ``keys`` ask for them."""
+    return is_copy(item) or (is_manuscript(item) and not wants_manuscripts(keys))
 
 
 def term(key: str) -> Term | None:

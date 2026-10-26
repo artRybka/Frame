@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import random
+import re
 import secrets
 import threading
 from collections import OrderedDict
@@ -24,8 +25,10 @@ from .models import Item, ItemKind, PhotoInfo, PlaylistRules
 from .museums import MUSEUMS, Access, Discovery, Kind, Museum, available, client, museum
 from .repo import Library, matches, now_iso
 from .vocabulary import (
+    is_copy,
+    is_grey_painting,
     is_manuscript,
-    is_photograph,
+    is_painting,
     museum_kind,
     museum_queries,
     wants_manuscripts,
@@ -43,6 +46,22 @@ DRAW_SOURCES = ("aic", "cma", "met", "rijks", "europeana")
 #: Museum works seen in search results, kept in memory so that opening one
 #: needs no second request.
 REMOTE_MEMO = 500
+#: Sources whose paintings often come as black-and-white copies (album
+#: plates, old photographs): their results' thumbnails are looked at before
+#: they are shown. How many verdicts are remembered.
+GREY_PRONE = ("wmc", "europeana")
+SPREAD_MEMO = 20_000
+
+
+def small_thumb(item: Item) -> str:
+    """A small version of ``item``'s thumbnail, enough to judge its colour:
+    Commons' 120 px step, Europeana's 200 px preview."""
+    url = item.thumb_url
+    if item.source == "wmc" and "/thumb/" in url:
+        return re.sub(r"/\d+px-([^/]+)$", r"/120px-\1", url)
+    if item.source == "europeana":
+        return url.replace("size=w400", "size=w200")
+    return url
 
 
 def span(rules: PlaylistRules) -> tuple[int | None, int | None]:
@@ -99,6 +118,8 @@ class Importer:
         self.jobs: dict[str, Job] = {}
         self._remote: OrderedDict[str, Item] = OrderedDict()
         self._remote_lock = threading.Lock()
+        #: ``tint_spread`` of works looked at in search results, by id.
+        self._spreads: OrderedDict[str, float] = OrderedDict()
 
     def access(self) -> Access:
         """The owner's current choices, with the shared death-year cache."""
@@ -176,9 +197,45 @@ class Importer:
     ) -> tuple[int, list[Item]]:
         with self.http() as http:
             total, items = museum(source, http, self.access()).search(query, limit=limit, page=page)
-        items = [i for i in items if not is_photograph(i)]
+        items = self.without_grey([i for i in items if not is_copy(i)])
         self.remember(items)
         return total, items
+
+    def spread_of(self, item: Item) -> float | None:
+        """``item``'s tint spread, from the library, memory or a small
+        thumbnail; None when the thumbnail cannot be had."""
+        if item.tint_spread is not None:
+            return item.tint_spread
+        stored = self.library.get(item.id)
+        if stored is not None and stored.tint_spread is not None:
+            return stored.tint_spread
+        with self._remote_lock:
+            if item.id in self._spreads:
+                return self._spreads[item.id]
+        try:
+            with self.cache.sample(small_thumb(item)) as img:
+                spread = tint_spread(img)
+        except (httpx.HTTPError, OSError, ValueError) as err:
+            log.info("no thumbnail of %s to look at: %s", item.id, err)
+            return None
+        with self._remote_lock:
+            self._spreads[item.id] = spread
+            while len(self._spreads) > SPREAD_MEMO:
+                self._spreads.popitem(last=False)
+        return spread
+
+    def without_grey(self, items: list[Item]) -> list[Item]:
+        """``items`` without black-and-white copies of paintings, for the
+        sources that have many (:data:`GREY_PRONE`)."""
+        suspects = [i for i in items if i.source in GREY_PRONE and i.thumb_url and is_painting(i)]
+        if not suspects:
+            return items
+        with ThreadPoolExecutor(min(len(suspects), 8)) as pool:
+            found = pool.map(self.spread_of, suspects)
+            spreads = {i.id: spread for i, spread in zip(suspects, found, strict=True)}
+        return [
+            i for i in items if i.id not in spreads or not is_grey_painting(i, spread=spreads[i.id])
+        ]
 
     def import_one(self, source: str, source_id: str) -> Item | None:
         return self.save(f"{source}:{source_id}")
@@ -212,7 +269,7 @@ class Importer:
             [
                 i
                 for i in chain.from_iterable(zip_longest(*found))
-                if i is not None and not is_photograph(i)
+                if i is not None and not is_copy(i)
             ]
         )
         self.remember(mixed)
@@ -236,7 +293,7 @@ class Importer:
             page = 1
             while len(found) < limit:
                 total, items = source_museum.search(query, limit=size, page=page)
-                found += [i for i in items if not is_photograph(i)]
+                found += [i for i in items if not is_copy(i)]
                 if page * size >= total:
                     break
                 page += 1
@@ -422,7 +479,7 @@ class Importer:
                 drawn += 1
                 if self.library.has(item.id) or self.copy_of(item) or not before(item):
                     continue
-                if is_photograph(item) or (not manuscripts and is_manuscript(item)):
+                if is_copy(item) or (not manuscripts and is_manuscript(item)):
                     job.skipped += 1
                     continue
                 try:
@@ -431,7 +488,8 @@ class Importer:
                     log.warning("import of %s failed: %s", item.id, err)
                     job.failed += 1
                     continue
-                if not after(analysed):
+                # Black-and-white copies of paintings only show once analysed.
+                if is_grey_painting(analysed) or not after(analysed):
                     self.cache.remove(item)
                     job.skipped += 1
                     continue

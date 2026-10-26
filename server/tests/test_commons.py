@@ -151,3 +151,50 @@ def test_wikimedia_search_leaves_photographs_out() -> None:
         _, items = WikimediaCommons(http).search("sea")
     assert [i.title for i in items] == ["Work 1"]
     assert "hastemplate:Artwork" in sent[0].url.params["gsrsearch"]
+
+
+def test_wikimedia_leaves_printed_copies_of_paintings_out() -> None:
+    def page(n: int, categories: str) -> dict:
+        info = {
+            "url": f"https://upload/{n}.jpg",
+            "extmetadata": {
+                "ObjectName": {"value": f"Work {n}"},
+                "LicenseShortName": {"value": "Public domain"},
+                "Categories": {"value": categories},
+            },
+        }
+        return {"pageid": n, "title": f"File:{n}.jpg", "imageinfo": [info]}
+
+    pages = {
+        "1": page(1, "Paintings by Józef Chełmoński|Babie lato by Józef Chełmoński"),
+        "2": page(2, "Files from Polona|Paintings by Józef Chełmoński|PD-anon-expired"),
+        "3": page(3, "Glass slides in the Leuven University Libraries|PD-anon-70-EU"),
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"query": {"pages": pages}})
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http:
+        _, paintings = WikimediaCommons(http).search("Category:Paintings by Józef Chełmoński")
+        _, prints = WikimediaCommons(http).search("Category:Prints by Józef Chełmoński")
+    assert [i.title for i in paintings] == ["Work 1"]
+    assert paintings[0].artist == "Józef Chełmoński"
+    # Prints from a library are originals.
+    assert len(prints) == 3 and {i.classification for i in prints} == {"Print"}
+
+
+def test_small_thumbnails_to_judge_colour_by() -> None:
+    from frame_server.library.importer import small_thumb
+
+    base = "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b6/Wilki.jpg"
+    wmc = Item(id="wmc:1", source="wmc", source_id="1", thumb_url=f"{base}/500px-Wilki.jpg")
+    assert small_thumb(wmc) == f"{base}/120px-Wilki.jpg"
+    original = wmc.model_copy(update={"thumb_url": "https://upload.wikimedia.org/x/Small.jpg"})
+    assert small_thumb(original) == original.thumb_url
+    europeana = Item(
+        id="europeana:1",
+        source="europeana",
+        source_id="1",
+        thumb_url="https://api.europeana.eu/thumbnail/v2/url.json?uri=x&type=IMAGE&size=w400",
+    )
+    assert small_thumb(europeana).endswith("&size=w200")

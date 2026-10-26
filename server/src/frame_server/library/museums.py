@@ -435,6 +435,20 @@ class WikimediaCommons(Museum):
         r"uploaded with|files by user|images by user|quality images|valued images",
         re.IGNORECASE,
     )
+    #: Categories that mark a file as a copy of a painting from a library or
+    #: an archive: plates of albums, pages of books and magazines, slides and
+    #: postcards, mostly black and white. (Prints and drawings from the same
+    #: libraries are originals, so this only applies to paintings.)
+    printed_copy = re.compile(
+        r"files from polona|national library (?:in|of) warsaw|biblioteka narodowa|"
+        r"glass slides|lantern slides|postcards|pocztówk|scans? of books|"
+        r"internet archive book images|album reprodukcji|"
+        r"reproductions of paintings|tygodnik ilustrowany|kłosy|biesiada literacka|wędrowiec|"
+        r"gartenlaube",
+        re.IGNORECASE,
+    )
+    #: Category queries whose works are not paintings, and what they are.
+    category_kinds: ClassVar[dict[str, str]] = {"Drawings": "Drawing", "Prints": "Print"}
 
     def _params(self, **extra: Any) -> dict[str, Any]:
         return {
@@ -460,12 +474,17 @@ class WikimediaCommons(Museum):
         """Rendered wikitext in one language, without the hidden QuickStatements."""
         return commons_html(self._raw(info, key), title=title)
 
-    def _map(self, page: dict[str, Any], artist_hint: str = "") -> Item | None:
+    def _map(
+        self, page: dict[str, Any], artist_hint: str = "", classification: str = "Painting"
+    ) -> Item | None:
         infos = page.get("imageinfo") or []
         if not infos:
             return None
         info = infos[0]
-        if self.snapshot.search(self._meta(info, "Categories")):
+        categories = self._meta(info, "Categories")
+        if self.snapshot.search(categories):
+            return None
+        if classification == "Painting" and self.printed_copy.search(categories):
             return None
         licence = self._meta(info, "LicenseShortName")
         public = "public domain" in licence.casefold() or "cc0" in licence.casefold()
@@ -483,7 +502,7 @@ class WikimediaCommons(Museum):
             artist=artist,
             date_text=date_text[:40],
             year=commons_year(self._meta(info, "DateTimeOriginal")),
-            classification="Painting",
+            classification=classification,
             license=licence,
             credit=self._meta(info, "Credit")[:200],
             url=info.get("descriptionurl", ""),
@@ -496,11 +515,12 @@ class WikimediaCommons(Museum):
 
     def search(self, query: str, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
         artist_hint = ""
+        classification = "Painting"
         offset = (page - 1) * limit
         if query.startswith("Category:"):
-            artist_hint = re.sub(r"^Category:(Paintings|Works|Drawings|Prints) by ", "", query)
-            if artist_hint == query:
-                artist_hint = ""
+            if by := re.match(r"^Category:(Paintings|Works|Drawings|Prints) by (.+)", query):
+                artist_hint = by.group(2)
+                classification = self.category_kinds.get(by.group(1), classification)
             body = self._category_page(query, limit, offset)
         else:
             resp = self.http.get(
@@ -518,7 +538,7 @@ class WikimediaCommons(Museum):
             resp.raise_for_status()
             body = resp.json()
         pages = body.get("query", {}).get("pages", {})
-        items = [i for p in pages.values() if (i := self._map(p, artist_hint))]
+        items = [i for p in pages.values() if (i := self._map(p, artist_hint, classification))]
         # Commons gives no total; claim one more page while it says there is one.
         total = offset + len(pages) + (limit if "continue" in body else 0)
         return total, items
@@ -785,6 +805,11 @@ class Europeana(Museum):
         "drawing": "what:drawing",
         "poster": "what:poster",
     }
+    #: Types of photographs and copies of works: art history slides (KU
+    #: Leuven, Marburg), reproductions, postcards.
+    copies = re.compile(
+        r"\b(slides?|transparenc\w*|photograph(?:s|y)?|reproduc\w*|postcards?)\b", re.IGNORECASE
+    )
 
     def _death(self, d: dict[str, Any]) -> int | None:
         """When the work's last author died, if every author is known."""
@@ -817,6 +842,12 @@ class Europeana(Museum):
         preview = _first(d.get("edmPreview"))
         if not image or not preview or not d.get("id"):
             return None
+        kinds = [t for t in (d.get("dcTypeLangAware") or {}).get("en") or [] if "://" not in t]
+        # Types often come as vocabulary links only; their labels are among
+        # the record's concepts ("slides (photographs)").
+        concepts = (d.get("edmConceptPrefLabelLangAware") or {}).get("en") or []
+        if any(self.copies.search(str(k)) for k in [*kinds, *concepts]):
+            return None
         licence = self._licence(d)
         if not licence:
             return None
@@ -831,7 +862,6 @@ class Europeana(Museum):
             if "://" not in str(n)
         ] or [str(c) for c in d.get("dcCreator") or [] if "://" not in str(c)]
         year = _first(d.get("year"))
-        kinds = [t for t in (d.get("dcTypeLangAware") or {}).get("en") or [] if "://" not in t]
         record = str(d["id"])
         return self._item(
             record.strip("/").replace("/", "~"),

@@ -22,8 +22,8 @@ from ..library.vocabulary import (
     TERMS,
     artist_matches,
     fold,
+    is_copy,
     is_manuscript,
-    is_photograph,
     museum_kind,
     museum_queries,
     set_aside,
@@ -469,8 +469,8 @@ async def terms_in_museums(svc: Svc, q: str) -> MuseumHint:
 
 def _manuscripts_fit(item: Item, terms: list[str]) -> bool:
     """Pages of manuscripts only when asked for; asked for as the only
-    technique, nothing else. Photographs never."""
-    if is_photograph(item):
+    technique, nothing else. Photographs and reproductions never."""
+    if is_copy(item):
         return False
     if not wants_manuscripts(terms):
         return not is_manuscript(item)
