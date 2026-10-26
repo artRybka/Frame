@@ -210,7 +210,7 @@ def encode_image(img: Image.Image, fmt: Literal["png", "jpeg"], quality: int = 9
 # The colour a mat is composed with; paint_mat paints all but "edge" over it.
 _NOMINAL_MATS = {
     "white": (255, 255, 255),
-    "cream": (250, 242, 214),
+    "cream": (255, 248, 218),  # as mat._cream shows it in the app
     "grey": (150, 150, 150),
     "black": (0, 0, 0),
 }

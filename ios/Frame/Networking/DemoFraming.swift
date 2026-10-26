@@ -267,13 +267,13 @@ enum DemoFraming {
             if cw - fullW >= cw * share {
                 main = CGRect(x: 0, y: 0, width: fullW, height: ch)
                 col = CGRect(x: fullW + m, y: m, width: cw - fullW - 2 * m, height: ch - 2 * m)
-            } else {
-                let colW = ((cw - 3 * m) * share).rounded()
+            } else {  // in a mat window, as large as leaves the column 0.4 of the short side
                 let availH = ch - 2 * m
-                let sized = fitted(ratio, cw - 3 * m - colW, availH)
-                let x = ((cw - sized.width - m - colW) / 2).rounded(.down), y = m + ((availH - sized.height) / 2).rounded(.down)
-                main = CGRect(x: x, y: y, width: sized.width, height: sized.height)
-                col = CGRect(x: x + sized.width + m, y: y, width: colW, height: sized.height)
+                let sized = fitted(ratio, cw - 3 * m - (short * 0.4).rounded(), availH)
+                let colW = cw - 3 * m - sized.width
+                let y = m + ((availH - sized.height) / 2).rounded(.down)
+                main = CGRect(x: m, y: y, width: sized.width, height: sized.height)
+                col = CGRect(x: m + sized.width + m, y: y, width: colW, height: sized.height)
             }
             let winH = ((col.height - m) / 2).rounded(.down)
             rects = [
@@ -286,13 +286,12 @@ enum DemoFraming {
             if ch - fullH >= ch * share {
                 main = CGRect(x: 0, y: 0, width: cw, height: fullH)
                 row = CGRect(x: m, y: fullH + m, width: cw - 2 * m, height: ch - fullH - 2 * m)
-            } else {
-                let rowH = ((ch - 3 * m) * share).rounded()
-                let availH = ch - 3 * m - rowH
-                let sized = fitted(ratio, cw - 2 * m, availH)
-                let x = ((cw - sized.width) / 2).rounded(.down), y = m + ((availH - sized.height) / 2).rounded(.down)
-                main = CGRect(x: x, y: y, width: sized.width, height: sized.height)
-                row = CGRect(x: x, y: y + sized.height + m, width: sized.width, height: rowH)
+            } else {  // in a mat window, as large as leaves the row 0.2 of the short side
+                let sized = fitted(ratio, cw - 2 * m, ch - 3 * m - (short * 0.2).rounded())
+                let rowH = ch - 3 * m - sized.height
+                let x = ((cw - sized.width) / 2).rounded(.down)
+                main = CGRect(x: x, y: m, width: sized.width, height: sized.height)
+                row = CGRect(x: x, y: m + sized.height + m, width: sized.width, height: rowH)
             }
             let winW = ((row.width - m) / 2).rounded(.down)
             rects = [
@@ -310,7 +309,7 @@ enum DemoFraming {
     /// correction for the inks is left to the panel's image.
     static func matColor(_ name: String) -> UIColor {
         switch name {
-        case "cream": UIColor(red: 0.98, green: 0.96, blue: 0.89, alpha: 1)
+        case "cream": UIColor(red: 1, green: 0.973, blue: 0.855, alpha: 1)
         case "grey": UIColor(white: 0.68, alpha: 1)
         case "black": .black
         default: .white

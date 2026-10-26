@@ -131,7 +131,11 @@ def edge_color(img: Image.Image) -> tuple[int, int, int]:
 
 AUTO_CROP_TOLERANCE = 0.12  # aspect mismatch AUTO still fills
 DESCRIPTION_ROOM = 0.35  # canvas share beside the picture from which AUTO adds a description
-BESIDE_SHARE = 0.33  # DESCRIPTION: the close-up and the text get at least this share
+BESIDE_SHARE = 0.33  # DESCRIPTION: the picture spans the canvas when this share is left beside it
+# DESCRIPTION, the picture in a mat window: it takes all it can, the close-up
+# and the text keep at least this much of the canvas's short side.
+ROW_MIN = 0.2  # a row below the picture
+COLUMN_MIN = 0.4  # a column beside it: the text needs the width
 DETAIL_ZOOM = 3.0  # the close-up, if the source has the pixels
 DETAIL_MAX_UPSCALE = 1.6  # enlarge source pixels at most this much, unless...
 DETAIL_MIN_ENLARGEMENT = 1.8  # ...the close-up would be less than this times the picture
@@ -322,8 +326,9 @@ def _plan_description(
     The picture goes at the left with the rest stacked beside it, or on top
     with the rest side by side, whichever shows it larger. It spans the full
     height (or width) when that leaves the rest at least ``BESIDE_SHARE`` of
-    the canvas; otherwise it is made smaller and sits in a mat window, the
-    close-up and the text aligned with it. ``picture_crop`` moves and zooms
+    the canvas; otherwise it sits in a mat window, as large as the margins
+    and ``ROW_MIN`` (``COLUMN_MIN``) allow, and the close-up and the text,
+    aligned with it, get the rest. ``picture_crop`` moves and zooms
     the picture in its window; the window keeps the picture's shape.
     """
     options = [
@@ -362,10 +367,10 @@ def _beside(
             main = (0, 0, full_w, ch)
             col = (full_w + m, m, cw - full_w - 2 * m, ch - 2 * m)
         else:
-            col_w = round((cw - 3 * m) * BESIDE_SHARE)
             avail_h = ch - 2 * m
-            w, h = _fitted(iw / ih, cw - 3 * m - col_w, avail_h)
-            x, y = (cw - w - m - col_w) // 2, m + (avail_h - h) // 2
+            w, h = _fitted(iw / ih, cw - 3 * m - round(min(cw, ch) * COLUMN_MIN), avail_h)
+            col_w = cw - 3 * m - w  # all the rest
+            x, y = m, m + (avail_h - h) // 2
             main, col = (x, y, w, h), (x + w + m, y, col_w, h)
         cx, cy, colw, colh = col
         win_h = (colh - m) // 2
@@ -376,10 +381,9 @@ def _beside(
             main = (0, 0, cw, full_h)
             row = (m, full_h + m, cw - 2 * m, ch - full_h - 2 * m)
         else:
-            row_h = round((ch - 3 * m) * BESIDE_SHARE)
-            avail_h = ch - 3 * m - row_h
-            w, h = _fitted(iw / ih, cw - 2 * m, avail_h)
-            x, y = (cw - w) // 2, m + (avail_h - h) // 2
+            w, h = _fitted(iw / ih, cw - 2 * m, ch - 3 * m - round(min(cw, ch) * ROW_MIN))
+            row_h = ch - 3 * m - h  # all the rest
+            x, y = (cw - w) // 2, m
             main, row = (x, y, w, h), (x, y + h + m, w, row_h)
         rx, ry, roww, rowh = row
         win_w = (roww - m) // 2
