@@ -218,8 +218,24 @@ HostOpt = Annotated[str | None, typer.Option("--host", envvar="FRAME_DEVICE_HOST
 PinOpt = Annotated[str | None, typer.Option("--pin", envvar="FRAME_DEVICE_PIN")]
 
 
+def _app_panel_config(s: Settings) -> Settings:
+    """The panel's address, PIN and MAC as saved in the app win over
+    frame.env, as they do in the running server."""
+    from .library import Library
+    from .panel_config import PanelConfigStore
+
+    path = s.data_dir / "library.db"
+    if path.exists():
+        library = Library(path)
+        try:
+            PanelConfigStore(s, library)
+        finally:
+            library.close()
+    return s
+
+
 def _device_settings(host: str | None, pin: str | None) -> Settings:
-    s = _settings()
+    s = _app_panel_config(_settings())
     if host:
         s.device_host = host
     if pin:
@@ -240,16 +256,17 @@ def device_info(host: HostOpt = None, pin: PinOpt = None) -> None:
 
 @device_app.command("wake")
 def device_wake(
-    mac: Annotated[str | None, typer.Option(envvar="FRAME_DEVICE_MAC")] = None,
+    mac: Annotated[str | None, typer.Option()] = None,
     seconds: Annotated[int, typer.Option(help="Keep sending once a second this long")] = 0,
 ) -> None:
     """Send Wake-on-LAN (needs network standby on)."""
     from .device import wol
 
-    s = _settings()
+    s = _app_panel_config(_settings())
     mac = mac or s.device_mac
     if not mac:
         raise typer.BadParameter("MAC address required (--mac or FRAME_DEVICE_MAC)")
+    typer.echo(f"to {mac} at {s.device_host}")
     if seconds > 0:
         asyncio.run(wol.wake(mac, s.device_host, repeats=seconds, interval=1.0))
     else:

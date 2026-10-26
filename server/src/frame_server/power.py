@@ -293,7 +293,8 @@ class PowerManager:
         finally:
             burst.cancel()
         state = self.state
-        if woke and (state.pending_push or state.standby_off):
+        standby_off = state.standby_off or service.status.status.network_standby is False
+        if woke and (state.pending_push or standby_off):
             # Network standby back on, and whatever waited goes out.
             self._background = asyncio.create_task(self.rendezvous(datetime.now(UTC)))
         if woke and sleep_after and not state.pending_push:

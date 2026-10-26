@@ -131,7 +131,12 @@ możliwe przyczyny, od najbardziej prawdopodobnej:
    U nas router to UniFi Dream Machine Pro: nie ma w panelu stałych wpisów
    ARP (przez SSH da się je dodać, ale znikają po restarcie i aktualizacji),
    więc zalecana droga to drugi port LAN Synology RS1619xs+ w sieci
-   192.168.1.x (DHCP, brama domyślna zostaje na LAN 1).
+   ekranu (DHCP, brama domyślna zostaje na LAN 1).
+   **Wybrane 2026-10-26:** osobny SSID w sieci NAS-a, ekran ma adres
+   192.100.3.151, czyli jest w tej samej podsieci co serwer. Do sprawdzenia
+   w UniFi: SSID tylko 2,4 GHz, „Multicast and Broadcast Control” wyłączone,
+   MAC w aplikacji = MAC, który UniFi pokazuje przy ekranie (moduł 2,4 GHz
+   może mieć inny adres).
 2. **Network standby został wyłączony na noc i nie wrócił.** Na baterii
    w ciszy nocnej serwer wyłącza network standby (głęboki sen). Włączał go
    z powrotem tylko wtedy, gdy znalazł ekran w oknie porannej pobudki albo
@@ -173,6 +178,17 @@ przycisk), **nie odpowiada** (serwer nigdy go nie widział albo nie wie,
 dlaczego milczy). Śpiący ekran nie odpowiada na MDC, więc czuwanie i głęboki
 sen serwer wnioskuje z tego, co sam zrobił i co zobaczył przy ostatnim
 kontakcie.
+
+## Prawdziwa przyczyna (2026-10-26): serwer w ogóle nie wysyłał pakietów
+
+Ekran na baterii, Wi-Fi 2,4 GHz, ta sama podsieć co serwer: aplikacja WoL
+na iPhonie (LAN Broadcast, maska 255.255.255.0, port UDP 7) **budzi ekran**,
+a „Obudź ramkę” z serwera nie. Powód: uvicorn uruchamia serwer na pętli
+uvloop (instaluje ją `uvicorn[standard]`), a uvloop nie ma
+`loop.sock_sendto`, więc każda próba wysłania magic packetu kończyła się
+`NotImplementedError` jeszcze przed pierwszym pakietem. Testy tego nie
+łapały, bo działają na zwykłej pętli asyncio, a komenda `frame device wake`
+też. Poprawka: zwykłe `sendto` (datagram nie czeka) i test na uvloop.
 
 ## E13: plan testu na ekranie
 
