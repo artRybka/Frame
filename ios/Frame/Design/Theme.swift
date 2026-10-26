@@ -20,6 +20,14 @@ enum Theme {
     static let warn = Color(light: 0xB7832A, dark: 0xE2B45E)
     static let bad = Color(light: 0xB8432F, dark: 0xE58A6F)
 
+    /// The app icon's row of squares, and the sixth that closes the frame
+    /// in Discover's empty search; black turns cream in the dark, like the
+    /// dark icon, and the sixth the other way round.
+    static let iconSquares = [
+        Color(hex: 0xA84B37), Color(hex: 0xEEB453), Color(hex: 0x2559CC), Color(hex: 0x3F8F4E),
+        Color(light: 0x000000, dark: 0xEDE9DE), Color(light: 0xFFFFFF, dark: 0x000000),
+    ]
+
     static let corner: CGFloat = 14
     static let gutter: CGFloat = 20
 }

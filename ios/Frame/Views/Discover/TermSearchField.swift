@@ -8,6 +8,11 @@ struct TermSearchField: View {
     @Environment(AppModel.self) private var model
     @Binding var tokens: [SearchToken]
     var prompt = "Artysta, styl, temat, epoka albo słowo"
+    /// Museums and colours the "+" offers too (Discover's search).
+    var museums: [Museum] = []
+    var colors: [String] = []
+    /// Whether there are words typed in the field.
+    var typing: Binding<Bool> = .constant(false)
     /// Called when a chip comes from the museums (the catalogue has nothing
     /// for it yet).
     var pickedFromMuseums: () -> Void = {}
@@ -16,7 +21,7 @@ struct TermSearchField: View {
     @State private var hits: [TermHit] = []
     @State private var hint: MuseumHint?
     @State private var askingMuseums = false
-    @State private var picking = false
+    @State private var picking = LaunchRoute.screen == "search-picker"
     @FocusState private var focused: Bool
 
     private var trimmed: String { text.trimmingCharacters(in: .whitespaces) }
@@ -32,8 +37,9 @@ struct TermSearchField: View {
             }
         }
         .task(id: trimmed) { await lookUp() }
+        .onChange(of: trimmed.isEmpty, initial: true) { _, empty in typing.wrappedValue = !empty }
         .sheet(isPresented: $picking) {
-            TermPickerSheet(tokens: $tokens)
+            TermPickerSheet(tokens: $tokens, museums: museums, colors: colors)
         }
     }
 
@@ -46,7 +52,14 @@ struct TermSearchField: View {
                         tokens.removeAll { $0.id == token.id }
                     } label: {
                         HStack(spacing: 4) {
-                            Image(systemName: token.icon).font(.caption2.weight(.semibold))
+                            if token.kind == "color" {
+                                Circle()
+                                    .fill(ColorTag.color(token.key))
+                                    .frame(width: 10, height: 10)
+                                    .overlay(Circle().strokeBorder(Theme.paper.opacity(0.7), lineWidth: 1))
+                            } else {
+                                Image(systemName: token.icon).font(.caption2.weight(.semibold))
+                            }
                             Text(token.name).font(.subheadline.weight(.medium)).lineLimit(1)
                             Image(systemName: "xmark").font(.caption2.weight(.bold))
                         }
@@ -74,7 +87,9 @@ struct TermSearchField: View {
                     .foregroundStyle(Theme.accent)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Dodaj styl, temat, epokę albo technikę")
+            .accessibilityLabel(
+                museums.isEmpty ? "Dodaj styl, temat, epokę albo technikę" : "Dodaj muzeum, kolor, styl, temat, epokę albo technikę"
+            )
             if !text.isEmpty || !tokens.isEmpty {
                 Button {
                     if text.isEmpty { tokens = [] } else { text = "" }
@@ -213,11 +228,14 @@ struct TermSearchField: View {
     }
 }
 
-/// Styles, subjects, periods and techniques to tap, in sections; what is
-/// picked shows selected and a second tap takes it off.
+/// Styles, subjects, periods and techniques to tap, in sections (and
+/// museums and colours when given); what is picked shows selected and a
+/// second tap takes it off.
 struct TermBrowser: View {
     @Environment(AppModel.self) private var model
     @Binding var tokens: [SearchToken]
+    var museums: [Museum] = []
+    var colors: [String] = []
 
     private func terms(_ kind: String) -> [TermInfo] { model.vocabulary.filter { $0.kind == kind } }
 
@@ -231,8 +249,44 @@ struct TermBrowser: View {
         }
     }
 
+    private func picked(_ kind: String, _ key: String) -> Bool {
+        tokens.contains { $0.kind == kind && $0.key == key }
+    }
+
+    private func toggle(_ kind: String, _ key: String, _ name: String) {
+        if picked(kind, key) {
+            tokens.removeAll { $0.kind == kind && $0.key == key }
+        } else {
+            tokens.append(SearchToken(kind: kind, key: key, name: name))
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
+            if !museums.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    Eyebrow("Muzea")
+                    FlowLayout(spacing: 8) {
+                        ForEach(museums) { museum in
+                            Chip(title: museum.name, systemImage: "building.columns", selected: picked("museum", museum.key)) {
+                                toggle("museum", museum.key, museum.name)
+                            }
+                        }
+                    }
+                }
+            }
+            if !colors.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    Eyebrow("Kolory")
+                    FlowLayout(spacing: 8) {
+                        ForEach(colors, id: \.self) { tag in
+                            Chip(title: ColorTag.name(tag), swatch: ColorTag.color(tag), selected: picked("color", tag)) {
+                                toggle("color", tag, ColorTag.name(tag))
+                            }
+                        }
+                    }
+                }
+            }
             section("Style i kierunki", terms("style"))
             section("Tematy", terms("subject"))
             periods
@@ -292,16 +346,20 @@ struct TermBrowser: View {
 struct TermPickerSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Binding var tokens: [SearchToken]
+    var museums: [Museum] = []
+    var colors: [String] = []
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    Text("Wybierz dowolnie wiele. Te same rodzaje to alternatywy, różne muszą pasować razem: np. Impresjonizm + Morze + 1850–1900.")
+                    Text(museums.isEmpty
+                        ? "Wybierz dowolnie wiele. Te same rodzaje to alternatywy, różne muszą pasować razem: np. Impresjonizm + Morze + 1850–1900."
+                        : "Wybierz dowolnie wiele. Te same rodzaje to alternatywy, różne muszą pasować razem: np. dwa muzea + Impresjonizm + Morze + Błękit.")
                         .font(.footnote)
                         .foregroundStyle(Theme.inkSoft)
                         .fixedSize(horizontal: false, vertical: true)
-                    TermBrowser(tokens: $tokens)
+                    TermBrowser(tokens: $tokens, museums: museums, colors: colors)
                 }
                 .padding(.horizontal, Theme.gutter)
                 .padding(.bottom, 32)

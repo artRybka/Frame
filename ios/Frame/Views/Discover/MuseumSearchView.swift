@@ -1,16 +1,17 @@
 import SwiftUI
 
-/// Discover's search: words, artists, styles, subjects, periods, techniques
-/// and a museum as chips, over the catalogue (at once, with colours) and the
-/// museums (as they answer). With nothing asked yet it offers the museums to
-/// browse; styles, subjects, periods and techniques come from the field's "+".
+/// Discover's search: words, artists, styles, subjects, periods, techniques,
+/// colours and museums as chips, over the catalogue (at once) and the
+/// museums (as they answer). Museums, colours, styles, subjects, periods and
+/// techniques come from the field's "+"; with nothing asked yet the icon's
+/// squares play.
 struct MuseumSearchView: View {
     @Environment(AppModel.self) private var model
     @State private var museums: [Museum] = []
     /// What is asked for, as playlist rules (a playlist can be made from it).
     @State private var rules = PlaylistRules()
-    /// A museum's key, or "all".
-    @State private var source = "all"
+    /// Keys of the museums to ask; none means all of them.
+    @State private var sources: [String] = []
     @State private var catalogue: ItemPage?
     @State private var results: [RemoteItem] = []
     @State private var total = 0
@@ -20,20 +21,21 @@ struct MuseumSearchView: View {
     @State private var loadingMore = false
     @State private var adding: Set<String> = []
     @State private var editing: Playlist?
+    @State private var typing = false
 
-    /// The rules' chips, and the museum's last when one is picked.
+    /// The rules' chips, then the colours' and the museums'.
     private var tokens: Binding<[SearchToken]> {
         Binding(
             get: {
                 var tokens = rules.tokens(names: model.termNames)
-                if source != "all" {
-                    tokens.append(SearchToken(kind: "museum", key: source, name: museumName(source)))
-                }
+                tokens += rules.colors.map { SearchToken(kind: "color", key: $0, name: ColorTag.name($0)) }
+                tokens += sources.map { SearchToken(kind: "museum", key: $0, name: museumName($0)) }
                 return tokens
             },
             set: { tokens in
                 rules.setTokens(tokens)
-                if !tokens.contains(where: { $0.kind == "museum" }) { source = "all" }
+                rules.colors = tokens.filter { $0.kind == "color" }.map(\.key)
+                sources = tokens.filter { $0.kind == "museum" }.map(\.key)
             }
         )
     }
@@ -42,7 +44,7 @@ struct MuseumSearchView: View {
         museums.first { $0.key == key }?.name ?? Names.source(key)
     }
 
-    private var asked: Bool { !rules.isEmpty || source != "all" }
+    private var asked: Bool { !rules.isEmpty || !sources.isEmpty }
 
     /// Museum works the catalogue doesn't hold already.
     private var fromMuseums: [RemoteItem] {
@@ -52,12 +54,13 @@ struct MuseumSearchView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            TermSearchField(tokens: tokens)
+            TermSearchField(
+                tokens: tokens, museums: museums, colors: ColorTag.families + ColorTag.moods, typing: $typing
+            )
             if asked {
-                filters
                 resultsView
-            } else {
-                browse
+            } else if !typing {
+                idle
             }
         }
         .task {
@@ -67,13 +70,13 @@ struct MuseumSearchView: View {
                 rules.artists = ["Utagawa Hiroshige"]
             }
         }
-        .task(id: SearchKey(rules: rules, source: source)) { await search() }
+        .task(id: SearchKey(rules: rules, sources: sources)) { await search() }
         .onChange(of: model.artistSearch, initial: true) { _, artist in
             guard let artist else { return }
             var asked = PlaylistRules()
             asked.artists = [artist]
             rules = asked
-            source = "all"
+            sources = []
             // Later, so the tab and Discover see the request first.
             Task { model.artistSearch = nil }
         }
@@ -82,51 +85,25 @@ struct MuseumSearchView: View {
         }
     }
 
-    // MARK: Browsing
+    // MARK: Nothing asked yet
 
-    private var browse: some View {
-        VStack(alignment: .leading, spacing: 22) {
-            Text("Styl, temat, epokę albo technikę dodasz przyciskiem \(Image(systemName: "plus.circle.fill")) w polu wyszukiwania.")
+    private var idle: some View {
+        VStack(spacing: 4) {
+            Text("Muzea, kolory, style, tematy, epoki i techniki dodasz przyciskiem \(Image(systemName: "plus.circle.fill")) w polu wyszukiwania.")
                 .font(.footnote)
                 .foregroundStyle(Theme.inkSoft)
+                .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
-            if !museums.isEmpty {
-                VStack(alignment: .leading, spacing: 10) {
-                    Eyebrow("Muzea")
-                    FlowLayout(spacing: 8) {
-                        ForEach(museums) { museum in
-                            Chip(title: museum.name, systemImage: "building.columns") { source = museum.key }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // MARK: Filters and results
-
-    private var filters: some View {
-        HStack(spacing: 8) {
-            Menu {
-                Picker("Muzeum", selection: $source) {
-                    Text("Wszystkie muzea").tag("all")
-                    ForEach(museums) { Text($0.name).tag($0.key) }
-                }
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "building.columns").font(.caption.weight(.semibold))
-                    Text("Muzea").font(.subheadline.weight(.medium))
-                }
                 .padding(.horizontal, 12)
-                .padding(.vertical, 7)
-                .foregroundStyle(Theme.ink)
-                .background(Theme.card, in: Capsule())
-                .overlay(Capsule().strokeBorder(Theme.hairline))
-            }
-            .fixedSize()
-            ColorFilterRow(selected: $rules.colors, available: model.facets.colors.map(\.value))
+            // Room below the row for the squares to fall to the bottom.
+            SquaresAnimation()
+                .frame(maxWidth: .infinity)
+                .containerRelativeFrame(.vertical) { height, _ in height * 0.55 }
         }
+        .frame(maxWidth: .infinity)
     }
+
+    // MARK: Results
 
     private var resultsView: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -136,11 +113,6 @@ struct MuseumSearchView: View {
                     .foregroundStyle(Theme.ink)
                 Spacer()
                 if searching { ProgressView().controlSize(.small) }
-            }
-            if !rules.colors.isEmpty {
-                Text("Kolory są znane tylko w katalogu, więc wyniki z muzeów ich nie uwzględniają.")
-                    .font(.footnote)
-                    .foregroundStyle(Theme.inkSoft)
             }
             if !rules.isEmpty {
                 Button {
@@ -253,7 +225,7 @@ struct MuseumSearchView: View {
     /// What a search depends on, to start it again when it changes.
     private struct SearchKey: Hashable {
         let rules: PlaylistRules
-        let source: String
+        let sources: [String]
     }
 
     private func search() async {
@@ -268,7 +240,7 @@ struct MuseumSearchView: View {
         searching = true
         defer { searching = false }
         var query = LibraryQuery(rules: rules)
-        if source != "all" { query.sources = [source] }
+        query.sources = sources
         do {
             catalogue = try await model.backend.items(query)
         } catch is CancellationError {
@@ -281,14 +253,14 @@ struct MuseumSearchView: View {
         failed = []
         page = 1
         do {
-            let found = try await model.backend.searchMuseums(rules, source: source, page: 1)
+            let found = try await model.backend.searchMuseums(rules, sources: sources, page: 1)
             guard !Task.isCancelled else { return }
             results = found.items
             total = found.total
             failed = found.failed ?? []
         } catch is CancellationError {
         } catch {
-            if !Task.isCancelled { failed = [source] }
+            if !Task.isCancelled { failed = sources.isEmpty ? museums.map(\.key) : sources }
         }
     }
 
@@ -296,7 +268,7 @@ struct MuseumSearchView: View {
         loadingMore = true
         defer { loadingMore = false }
         do {
-            let found = try await model.backend.searchMuseums(rules, source: source, page: page + 1)
+            let found = try await model.backend.searchMuseums(rules, sources: sources, page: page + 1)
             results = results.adding(found.items)
             page += 1
             // Some sources only learn the total as they go; stop when a page is empty.

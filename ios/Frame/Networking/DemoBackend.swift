@@ -634,11 +634,9 @@ actor DemoBackend: FrameBackend {
         )
     }
 
-    func searchMuseums(_ rules: PlaylistRules, source: String, page: Int) async throws -> RemotePage {
+    func searchMuseums(_ rules: PlaylistRules, sources: [String], page: Int) async throws -> RemotePage {
         try await Task.sleep(for: .milliseconds(700))
-        var loose = rules
-        loose.colors = []
-        let found = items.filter { (source == "all" || $0.source == source) && Self.matches($0, loose) }
+        let found = items.filter { (sources.isEmpty || sources.contains($0.source)) && Self.matches($0, rules) }
         return RemotePage(total: page == 1 ? found.count : 0, items: page == 1 ? remote(found) : [])
     }
 
@@ -651,6 +649,7 @@ actor DemoBackend: FrameBackend {
             Museum(key: "wmc", name: "Wikimedia Commons"),
             Museum(key: "europeana", name: "Europeana"),
             Museum(key: "openverse", name: "Openverse"),
+            Museum(key: "wikiart", name: "WikiArt"),
         ]
     }
 
