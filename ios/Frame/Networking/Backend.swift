@@ -100,10 +100,12 @@ protocol FrameBackend: Sendable {
     /// Syncs an album playlist with its album now; returns the job id.
     func syncAlbum(playlistID: Int) async throws -> String
 
-    func sendPhoto(_ data: Data, title: String, preset: String, hold: HoldSpec) async throws
-        -> DisplayResponse
-    /// Adds a photo to the library without showing it (e.g. for a playlist).
+    /// Adds a photo to the library without showing it (e.g. for a playlist),
+    /// or with `upload.look`, a photo sent once to be shown or queued.
     func uploadPhoto(_ upload: PhotoUpload) async throws -> Item
+    /// A photo sent once, shown another way.
+    func setLook(itemID: String, _ look: Look) async throws -> Item
+    func deleteItem(id: String) async throws
     /// The panel's address, PIN and MAC as the server uses them.
     func panelConfig() async throws -> PanelConfig
     func savePanelConfig(_ update: PanelConfigUpdate) async throws -> PanelConfig

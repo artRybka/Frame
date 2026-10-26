@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-from ..imaging.layout import Crop
+from ..imaging.layout import Crop, Fit
 
 
 class ItemKind(StrEnum):
@@ -32,6 +32,16 @@ class PhotoInfo(BaseModel):
     #: iCloud: checksum of the full-size picture, to ask for a fresh link
     #: (Apple's links expire) when the original is needed.
     asset: str | None = None
+
+
+class Look(BaseModel):
+    """How a photo sent once from the camera roll ("Zdjęcie na ramkę") is
+    shown, in place of the settings' presentation for photos: over the
+    whole frame or in a passe-partout; the style is always automatic."""
+
+    fit: Literal[Fit.FILL, Fit.FIT] = Fit.FILL
+    mat: Literal["white", "cream", "grey", "black", "picture", "picture_dark"] = "white"
+    margin: float = Field(0.05, ge=0, le=0.3)
 
 
 class Framing(BaseModel):
@@ -97,6 +107,9 @@ class Item(BaseModel):
     show_count: int = 0
     photo: PhotoInfo | None = None
     framing: dict[str, Framing] = Field(default_factory=dict)  # by orientation
+    #: A photo sent once from the camera roll: shown with its own look, on
+    #: its own or from the queue, and never part of a list or a rotation.
+    look: Look | None = None
 
     @property
     def file_stem(self) -> str:

@@ -21,7 +21,7 @@ from .colors import analyse, tint_spread
 from .duplicates import dedupe, rank
 from .images import ImageCache
 from .lifespan import LifeDates
-from .models import Item, ItemKind, PhotoInfo, PlaylistRules
+from .models import Item, ItemKind, Look, PhotoInfo, PlaylistRules
 from .museums import MUSEUMS, Access, Discovery, Kind, Museum, available, client, museum
 from .repo import Library, matches, now_iso
 from .vocabulary import (
@@ -566,6 +566,7 @@ class Importer:
         artist: str = "",
         description: str = "",
         photo: PhotoInfo | None = None,
+        look: Look | None = None,
     ) -> Item:
         item = Item(
             id=f"upload:{secrets.token_hex(6)}",
@@ -578,6 +579,7 @@ class Importer:
             date_text=(photo.taken_at or "")[:10] if photo else "",
             added_at=now_iso(),
             photo=photo,
+            look=look,
         )
         width, height = self.cache.store(item, data)
         return self.add(item.model_copy(update={"width": width, "height": height}))

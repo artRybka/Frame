@@ -25,7 +25,7 @@ from ..imaging.layout import (
     load_image,
 )
 from ..imaging.pipeline import RenderSettings, encode_image, plan_for, render_original
-from ..library import Facets, Item, ItemKind, ItemSummary, Job, PhotoInfo, PlaylistRules
+from ..library import Facets, Item, ItemKind, ItemSummary, Job, Look, PhotoInfo, PlaylistRules
 from ..library.duplicates import work_key
 from ..library.importer import ALL
 from ..library.models import Framing
@@ -52,6 +52,9 @@ class ItemPatch(BaseModel):
     title: str | None = None
     artist: str | None = None
     description: str | None = None
+    #: Only for a photo sent once ("Zdjęcie na ramkę"): over the whole frame
+    #: or in a passe-partout.
+    look: Look | None = None
 
 
 class ShowRequest(BaseModel):
@@ -180,12 +183,22 @@ async def get_item(item_id: str, svc: Svc) -> Item:
 
 @router.patch("/library/items/{item_id}", response_model=Item)
 async def patch_item(item_id: str, patch: ItemPatch, svc: Svc) -> Item:
-    await _work(svc, item_id, save=True)
+    item = await _work(svc, item_id, save=True)
     changes = patch.model_dump(exclude_none=True)
+    if patch.look is not None:
+        if item.look is None:
+            raise HTTPException(422, "only a photo sent once has a look of its own")
+        changes["look"] = patch.look
     updated = svc.library.update(item_id, **changes)
     assert updated is not None
     if changes.keys() & {"favorite", "excluded"}:
         svc.player.item_changed(item_id)  # e.g. a new favourite joins Ulubione playing now
+    player, state = svc.player, svc.player.state
+    if "look" in changes and updated.look != item.look:
+        if state.current_item_id == item_id:
+            svc.background(player.restyle())  # on the frame now: shown the new way
+        elif state.requested[:1] == [item_id]:
+            svc.background(player.render_ahead())  # next: drawn again ahead
     return updated
 
 
@@ -458,6 +471,7 @@ def _save_framing(
 @router.post("/library/items/{item_id}/show", status_code=202)
 async def show_item(item_id: str, request: ShowRequest, svc: Svc) -> dict[str, Any]:
     item = await _work(svc, item_id, save=True)
+    svc.player.remember_sent(item)
     svc.background(svc.player.show(item, "app", hold_from(request.hold)))
     return {"accepted": True, "item_id": item.id}
 
@@ -467,6 +481,7 @@ async def queue_item(item_id: str, svc: Svc) -> dict[str, Any]:
     """The owner's "Dodaj do kolejki": the work is shown at the next change."""
     item = await _work(svc, item_id, save=True)
     svc.player.queue_next(item.id)
+    svc.player.remember_sent(item)
     svc.background(svc.player.get_ready())
     return {"accepted": True, "item_id": item.id}
 
@@ -482,14 +497,25 @@ async def upload(
     taken_at: Annotated[str | None, Form()] = None,
     latitude: Annotated[float | None, Form()] = None,
     longitude: Annotated[float | None, Form()] = None,
+    look: Annotated[str | None, Form()] = None,
 ) -> Item:
-    """Add a picture to the library (e.g. photos from the phone's camera roll)."""
+    """Add a picture to the library (e.g. photos from the phone's camera roll).
+
+    With ``look`` (Look JSON) a photo is sent once ("Zdjęcie na ramkę"): it
+    is shown or queued from the app with that look and stays out of every
+    list and rotation."""
     data = await file.read()
     photo = (
         PhotoInfo(taken_at=taken_at, latitude=latitude, longitude=longitude)
         if kind == ItemKind.PHOTO
         else None
     )
+    try:
+        single = Look.model_validate_json(look) if look else None
+    except ValidationError as err:
+        raise HTTPException(422, f"invalid look: {err}") from err
+    if single is not None and kind != ItemKind.PHOTO:
+        raise HTTPException(422, "only photos are sent once")
     return await run_in_threadpool(
         svc.importer.add_upload,
         data,
@@ -498,6 +524,7 @@ async def upload(
         artist=artist,
         description=description,
         photo=photo,
+        look=single,
     )
 
 

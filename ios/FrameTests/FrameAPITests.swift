@@ -646,6 +646,45 @@ final class FrameAPITests: XCTestCase {
         XCTAssertEqual(saved.itemIds, [item.id])
     }
 
+    func testDemoPhotoSentOnceHasItsOwnLook() async throws {
+        let demo = DemoBackend()
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let jpeg = UIGraphicsImageRenderer(size: CGSize(width: 300, height: 200), format: format)
+            .jpegData(withCompressionQuality: 0.8) { context in
+                UIColor.systemOrange.setFill()
+                context.fill(CGRect(x: 0, y: 0, width: 300, height: 200))
+            }
+        var photo = PhotoUpload(data: jpeg, title: "Zdjęcie z rolki")
+        var look = Look(FrameSettings.defaults.photo)
+        XCTAssertEqual(look.fit, "fill")
+        look.fit = "fit"
+        look.mat = "cream"
+        photo.look = look
+        let item = try await demo.uploadPhoto(photo)
+        XCTAssertEqual(item.look, look)
+        var query = LibraryQuery()
+        query.kinds = [.photo]
+        let photos = try await demo.items(query)
+        XCTAssertFalse(photos.items.contains { $0.id == item.id })  // never listed
+        let framed = try await demo.framing(itemID: item.id, orientation: "portrait")
+        XCTAssertEqual(framed.fit, "fit")
+
+        look.fit = "fill"
+        let changed = try await demo.setLook(itemID: item.id, look)
+        XCTAssertEqual(changed.look?.fit, "fill")
+        let filled = try await demo.framing(itemID: item.id, orientation: "portrait")
+        XCTAssertEqual(filled.fit, "fill")
+        try await demo.deleteItem(id: item.id)
+        let gone = try? await demo.item(id: item.id)
+        XCTAssertNil(gone)
+
+        var settings = FrameSettings.defaults
+        settings.photo = settings.photo.with(look)
+        XCTAssertEqual(settings.photo.preset, "auto")
+        XCTAssertFalse(settings.photo.label)
+    }
+
     func testDecodesAlbumPlaylists() throws {
         let json = """
         {"id": 7, "name": "Rodzina", "description": "", "kind": "album",
