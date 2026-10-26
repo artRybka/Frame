@@ -2,7 +2,9 @@
 on battery; only the night differs.
 
 By day the panel sleeps with network standby on, so Wake-on-LAN (2.4 GHz
-Wi-Fi) wakes it for a picture sent from the app or for a change. In quiet
+Wi-Fi) wakes it for a picture sent from the app or for a change. On battery
+the server puts it back into that light sleep once a picture has been
+downloaded and drawn, instead of leaving it awake on its own timer. In quiet
 hours on battery it sleeps with the Wi-Fi off, and its own alarm (MDC
 on-timer) wakes it for the morning change that ends them; on the charger
 pictures keep going out at once. Whatever could not reach the
@@ -40,6 +42,9 @@ RETRY_ARM = timedelta(minutes=10)
 # "Obudź ramkę": how long to keep sending magic packets and looking for the panel.
 WAKE_BURST_SECONDS = 15
 WAKE_LOOK = timedelta(seconds=30)
+# After the panel downloaded a picture: ~12 s to prepare it and ~31 s to
+# redraw (E2), with a margin, before it is powered off into light sleep.
+LIGHT_SLEEP_AFTER = 90.0
 
 
 class PowerState(BaseModel):
@@ -81,6 +86,7 @@ class PowerManager:
         self._last_probe: datetime | None = None
         self._last_arm: datetime | None = None
         self._background: asyncio.Task[bool] | None = None
+        self._light_sleep: asyncio.Task[None] | None = None
 
     # -- persisted state ------------------------------------------------------
 
@@ -206,6 +212,35 @@ class PowerManager:
         ):
             await self.rendezvous(now)
 
+    # -- light sleep after a picture ------------------------------------------
+
+    def cancel_light_sleep(self) -> None:
+        """Another picture is on its way: the panel must stay awake for it."""
+        if self._light_sleep and not self._light_sleep.done():
+            self._light_sleep.cancel()
+        self._light_sleep = None
+
+    def after_push(self, fetched: bool) -> None:
+        """On battery, back to light sleep once the picture is on the panel.
+        At night the deep sleep follows anyway; on the charger it stays on."""
+        self.cancel_light_sleep()
+        settings = self.service.player.settings
+        if not fetched or not self.service.status.on_battery:
+            return
+        if in_quiet_hours(datetime.now(UTC), settings):
+            return
+        self._light_sleep = asyncio.create_task(self._sleep_later(LIGHT_SLEEP_AFTER))
+
+    async def _sleep_later(self, delay: float) -> None:
+        await asyncio.sleep(delay)
+        try:
+            await self.service.panel.sleep()
+        except MdcError as err:
+            log.info("could not put the panel into light sleep: %s", err)
+            return
+        self.service.status.status.network_standby = True
+        log.info("panel in light sleep (network standby on)")
+
     async def wake_now(self) -> WakeResult:
         """The app's "Obudź ramkę": a burst of magic packets, then look for
         the panel, so the app can say whether it actually woke."""
@@ -221,6 +256,7 @@ class PowerManager:
             )
         if not service.settings.device_mac:
             return WakeResult(sent=False, woke=False, reason="no MAC address set")
+        self.cancel_light_sleep()
         burst = asyncio.create_task(service.panel.wake(seconds=WAKE_BURST_SECONDS))
         woke = False
         loop = asyncio.get_running_loop()

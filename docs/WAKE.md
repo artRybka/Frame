@@ -153,11 +153,13 @@ się, nie odpowiada, albo jest w głębokim śnie do godziny budzika (wtedy
 pomaga tylko przycisk). Po udanej pobudce serwer od razu włącza network
 standby i wysyła zaległy obraz.
 
-Kiedy serwer usypia ekran: **tylko w ciszy nocnej na baterii** (budzik na
-poranną zmianę, network standby wył., ekran wył.). W dzień i na ładowarce
-serwer nie wysyła polecenia uśpienia: ekran na baterii zasypia sam (E8:
-znika z sieci zaraz po odpięciu ładowarki), z włączonym network standby. Polecenie `0x11 00` wysyła
-też przycisk „Uśpij ramkę” w aplikacji (z włączonym network standby).
+Kiedy serwer usypia ekran (2026-10-26): **w ciszy nocnej na baterii**
+głęboki sen (budzik na poranną zmianę, network standby wył., ekran wył.),
+a **w dzień na baterii lekki sen po każdym obrazie**: 90 s po pobraniu
+(ok. 12 s przygotowania i 31 s odświeżania, E2) network standby wł. i ekran
+wył. Kolejny obraz w tym czasie odwołuje usypianie. Na ładowarce serwer nie
+usypia ekranu. Przycisk „Uśpij ramkę”
+w aplikacji daje ten sam lekki sen.
 
 ## E13: plan testu na ekranie
 

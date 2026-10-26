@@ -216,3 +216,55 @@ async def test_wake_from_the_app(tmp_path: Path, server_ssl: ssl.SSLContext) -> 
         assert not result.sent and not result.woke
     finally:
         await panel.stop()
+
+
+@pytest.mark.parametrize("charger", [False, True])
+async def test_light_sleep_after_a_picture(
+    tmp_path: Path, server_ssl: ssl.SSLContext, monkeypatch: pytest.MonkeyPatch, charger: bool
+) -> None:
+    """On battery the panel goes back to light sleep (network standby on)
+    once the picture is drawn; a new picture in between keeps it awake."""
+    import asyncio
+
+    from frame_server import power
+
+    def handler(command: int, data: bytes) -> tuple[bool, bytes]:
+        if command == CMD_STATUS:
+            return True, bytes([0x73, 0x00, 0x01, 0x01, 80, 0x02, 0x02 if charger else 0x00])
+        if command == CMD_NETWORK_STANDBY and not data:
+            return True, b"\x01"
+        if command in (0x0E, 0x10, 0x0B, 0x67):
+            return True, b"X"
+        return True, b""
+
+    panel = FakePanel(server_ssl, handler=handler)
+    await panel.start()
+    monkeypatch.setattr(power, "LIGHT_SLEEP_AFTER", 0.2)
+    monkeypatch.setattr(power, "in_quiet_hours", lambda now, settings: False)
+    try:
+        settings = Settings(
+            data_dir=tmp_path,
+            seed_library=False,
+            scheduler=False,
+            public_host="127.0.0.1",
+            device_host="127.0.0.1",
+            device_pin="123456",
+            device_port=panel.port,
+        )
+        service = FrameService(settings)
+        await service.status.refresh()
+
+        service.power.after_push(fetched=True)
+        service.power.cancel_light_sleep()  # the next picture is on its way
+        await asyncio.sleep(0.5)
+        assert (CMD_POWER, b"\x00") not in panel.received
+
+        service.power.after_push(fetched=True)
+        await asyncio.sleep(3)
+        if charger:
+            assert (CMD_POWER, b"\x00") not in panel.received
+        else:
+            assert (CMD_NETWORK_STANDBY, b"\x01") in panel.received
+            assert (CMD_POWER, b"\x00") in panel.received
+    finally:
+        await panel.stop()
