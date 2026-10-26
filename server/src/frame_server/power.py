@@ -4,7 +4,9 @@ on battery; only the night differs.
 By day the panel sleeps with network standby on, so Wake-on-LAN (2.4 GHz
 Wi-Fi) wakes it for a picture sent from the app or for a change. On battery
 the server puts it back into that light sleep once a picture has been
-downloaded and drawn, instead of leaving it awake on its own timer. In quiet
+downloaded and drawn, instead of leaving it awake on its own timer; on the
+charger too when it was asleep before (put to sleep from the app, or woken
+for the picture or for a status check). In quiet
 hours on battery it sleeps with the Wi-Fi off, and its own alarm (MDC
 on-timer) wakes it for the morning change that ends them; on the charger
 pictures keep going out at once. Whatever could not reach the
@@ -91,6 +93,9 @@ class PowerManager:
         self._last_arm: datetime | None = None
         self._background: asyncio.Task[bool] | None = None
         self._light_sleep: asyncio.Task[None] | None = None
+        # Woken from a sleep only for a picture or a look: back to sleep after,
+        # on the charger as well.
+        self._put_back = False
         service.status.asleep = self.asleep_state
 
     # -- persisted state ------------------------------------------------------
@@ -166,6 +171,8 @@ class PowerManager:
         """Catch the panel while it is awake: Wi-Fi back on for Wake-on-LAN,
         then whatever waited for it."""
         self._last_probe = now
+        if self.service.status.settling(now):
+            return False  # just put to sleep, and maybe still answering
         status = await self.service.status.refresh()
         if not status.reachable:
             return False
@@ -236,37 +243,58 @@ class PowerManager:
             self._light_sleep.cancel()
         self._light_sleep = None
 
+    def put_back_to_sleep(self) -> None:
+        """The panel was asleep before this picture: it goes back afterwards."""
+        self._put_back = True
+
     def after_push(self, fetched: bool) -> None:
-        """On battery, back to light sleep once the picture is on the panel.
-        At night the deep sleep follows anyway; on the charger it stays on."""
+        """Back to light sleep once the picture is on the panel: on battery,
+        and on the charger when it was asleep before. At night on battery
+        the deep sleep follows anyway."""
         self.cancel_light_sleep()
         if fetched:
-            self._sleep_if_on_battery(LIGHT_SLEEP_AFTER)
+            self._sleep_soon(LIGHT_SLEEP_AFTER, only_on_battery=not self._put_back)
 
-    def _sleep_if_on_battery(self, delay: float) -> None:
-        if not self.service.status.on_battery:
-            return
-        if in_quiet_hours(datetime.now(UTC), self.service.player.settings):
+    def _sleep_soon(self, delay: float, only_on_battery: bool) -> None:
+        now = datetime.now(UTC)
+        if self.service.status.on_battery and in_quiet_hours(now, self.service.player.settings):
             return
         self.cancel_light_sleep()
-        self._light_sleep = asyncio.create_task(self._sleep_later(delay))
+        self._light_sleep = asyncio.create_task(self._sleep_later(delay, only_on_battery))
 
-    async def _sleep_later(self, delay: float) -> None:
+    async def _sleep_later(self, delay: float, only_on_battery: bool = False) -> None:
         await asyncio.sleep(delay)
+        status = self.service.status
         try:
-            await self.service.panel.sleep()
+            async with self.service.panel.session() as mdc:
+                if only_on_battery:
+                    # The charger may have gone in or out since the last check
+                    # (a panel unplugged drops off the network at once).
+                    await status.read_battery(mdc)
+                    if not status.on_battery:
+                        return
+                await self.service.panel.power_off(mdc)
         except MdcError as err:
             log.info("could not put the panel into light sleep: %s", err)
             return
-        self.service.status.note_sleep(deep=False)
+        self._put_back = False
+        status.note_sleep(deep=False)
         log.info("panel in light sleep (network standby on)")
+
+    async def sleep_now(self) -> None:
+        """The app's "Uśpij ramkę": light sleep at once."""
+        self.cancel_light_sleep()
+        await self.service.panel.sleep()
+        self._put_back = False
+        self.service.status.note_sleep(deep=False)
+        log.info("panel put to sleep from the app (network standby on)")
 
     async def wake_now(self, sleep_after: bool = False) -> WakeResult:
         """The app's "Obudź ramkę": a burst of magic packets, then look for
         the panel, so the app can say whether it actually woke.
 
-        ``sleep_after`` ("Sprawdź stan"): woken only to be looked at, so on
-        battery it goes back to light sleep after a while."""
+        ``sleep_after`` ("Sprawdź stan"): woken only to be looked at, so it
+        goes back to light sleep after a while, on the charger as well."""
         service = self.service
         now = datetime.now(UTC)
         if self.deep_asleep(now):
@@ -287,11 +315,13 @@ class PowerManager:
         try:
             await asyncio.sleep(2)
             while not woke and loop.time() < deadline:
-                woke = bool((await service.status.refresh()).reachable)
+                woke = bool((await service.status.refresh(force=True)).reachable)
                 if not woke:
                     await asyncio.sleep(3)
         finally:
             burst.cancel()
+        if woke:
+            self._put_back = sleep_after  # "Obudź ramkę" means it is to stay awake
         state = self.state
         standby_off = state.standby_off or service.status.status.network_standby is False
         if woke and (state.pending_push or standby_off):
@@ -299,7 +329,7 @@ class PowerManager:
             self._background = asyncio.create_task(self.rendezvous(datetime.now(UTC)))
         if woke and sleep_after and not state.pending_push:
             # A waiting picture puts it back to sleep itself once drawn.
-            self._sleep_if_on_battery(CHECK_SLEEP_AFTER)
+            self._sleep_soon(CHECK_SLEEP_AFTER, only_on_battery=False)
         log.info("Wake-on-LAN from the app: panel %s", "woke" if woke else "did not answer")
         return WakeResult(
             sent=True,

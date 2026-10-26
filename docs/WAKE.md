@@ -162,9 +162,26 @@ Kiedy serwer usypia ekran (2026-10-26): **w ciszy nocnej na baterii**
 głęboki sen (budzik na poranną zmianę, network standby wył., ekran wył.),
 a **w dzień na baterii lekki sen po każdym obrazie**: 90 s po pobraniu
 (ok. 12 s przygotowania i 31 s odświeżania, E2) network standby wł. i ekran
-wył. Kolejny obraz w tym czasie odwołuje usypianie. Na ładowarce serwer nie
-usypia ekranu. Przycisk „Uśpij ramkę”
+wył. Kolejny obraz w tym czasie odwołuje usypianie. Przycisk „Uśpij ramkę”
 w aplikacji daje ten sam lekki sen.
+
+Poprawki z 2026-10-26 (po 0.12.0):
+- Na ładowarce serwer usypia ekran po obrazie tylko wtedy, gdy ekran spał
+  przed wysyłką (uśpiony z aplikacji albo obudzony dla tego obrazu). Ekran
+  obudzony przez „Sprawdź stan” wraca do lekkiego snu po 60 s także na
+  ładowarce. Ekran, który nie spał, na ładowarce zostaje włączony.
+- Przed usypianiem po obrazie serwer czyta baterię na nowo. Ekran odpięty od
+  ładowarki od razu znika z sieci, więc ostatni odczyt mógł jeszcze mówić
+  „zasilacz” i serwer zostawiał wtedy obudzony ekran na baterii.
+- Uśpiony przez MDC ekran odpowiada jeszcze przez ok. 2 minuty
+  (node-samsung-emdx). Przez 3 minuty po uśpieniu sprawdzanie stanu nie
+  łączy się z ekranem (sesja mogłaby go trzymać w gotowości) i pokazuje
+  „czuwanie”. Wcześniej pierwsze odświeżenie po „Uśpij ramkę” widziało
+  odpowiedź i pokazywało „Online”. Budzenie i wysyłka obrazu łączą się
+  normalnie.
+- Do sprawdzenia na urządzeniu: czy na ładowarce wyłączony przez MDC ekran
+  nadal odpowiada na MDC po tych 3 minutach. Jeśli tak, aplikacja pokaże
+  wtedy „Online”, bo ekran faktycznie odpowiada.
 
 „Sprawdź stan” w aplikacji (2026-10-26): gdy ekran nie odpowiada, aplikacja
 od razu próbuje go obudzić tak samo jak „Obudź ramkę”. Na baterii ekran

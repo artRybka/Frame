@@ -112,7 +112,7 @@ struct NowView: View {
                     .padding(.bottom, 40)
                     .animation(.easeInOut, value: model.displayProgress == nil)
                 }
-                .refreshable { await model.refreshAll() }
+                .refreshable { await Task { await model.refreshAll() }.value }
             }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
