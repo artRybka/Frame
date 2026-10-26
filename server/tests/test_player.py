@@ -649,6 +649,36 @@ async def test_liked_works_join_the_favourites_playing_now(service) -> None:
         assert favourites["item_count"] == 3
 
 
+async def test_favourites_shown_lately_stay_in_the_queue(service) -> None:
+    works = [_add(service, n, (40 * n, 40, 200), "Ala") for n in range(1, 7)]
+    lately = datetime.now(UTC).isoformat(timespec="seconds")
+    for item in works[:4]:
+        service.library.update(item.id, favorite=True, last_shown_at=lately)
+    playlist = service.library.save_playlist(
+        Playlist(name="Ulubione", rules=PlaylistRules(favorites_only=True))
+    )
+    player = service.player
+    settings = player.settings
+    settings.playlist_id = playlist.id
+    player.save_settings(settings)
+    shown = await player.next()
+    assert shown is not None
+    others = {i.id for i in works[:4]} - {shown.id}
+
+    new = works[4]
+    service.library.update(new.id, favorite=True)
+    player.playlist_changed(playlist.id)  # drawn again
+    upcoming = [i.id for i in player.upcoming(8)]
+    assert upcoming[0] == new.id  # not shown lately: first
+    assert set(upcoming[1:]) == others  # the rest of the playlist still follows
+
+    assert (await player.next()).id == new.id
+    found = works[5]  # e.g. a top-up: in the playlist, not in the queue
+    service.library.update(found.id, favorite=True)
+    assert player.upcoming(8)[0].id == found.id  # before the ones shown lately
+    assert (await player.next()).id == found.id
+
+
 def test_library_is_scored_again_once(service) -> None:
     from frame_server.library.colors import SCORE_VERSION
     from frame_server.player import SCORE_KEY
