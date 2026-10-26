@@ -275,6 +275,10 @@ struct TermBrowser: View {
                     }
                 }
             }
+            section("Style i kierunki", terms("style"))
+            section("Tematy", terms("subject"))
+            periods
+            section("Techniki", terms("technique"))
             if !colors.isEmpty {
                 VStack(alignment: .leading, spacing: 10) {
                     Eyebrow("Kolory")
@@ -287,10 +291,6 @@ struct TermBrowser: View {
                     }
                 }
             }
-            section("Style i kierunki", terms("style"))
-            section("Tematy", terms("subject"))
-            periods
-            section("Techniki", terms("technique"))
         }
         .task { await model.loadVocabulary() }
     }

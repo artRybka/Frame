@@ -7,6 +7,10 @@ struct DiscoverView: View {
     @State private var scope = Scope.initial
     @State private var path = NavigationPath()
 
+    /// The scrolled content's coordinate space, and the room under it.
+    static let content = "discover.content"
+    static let bottomPadding: CGFloat = 32
+
     enum Scope: String, CaseIterable {
         case suggestions = "Propozycje"
         case museums = "Szukaj"
@@ -32,7 +36,8 @@ struct DiscoverView: View {
                     }
                 }
                 .padding(.horizontal, Theme.gutter)
-                .padding(.bottom, 32)
+                .padding(.bottom, Self.bottomPadding)
+                .coordinateSpace(.named(Self.content))
             }
             .scrollDismissesKeyboard(.interactively)
             .refreshable {
