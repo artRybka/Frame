@@ -218,19 +218,27 @@ async def test_wake_from_the_app(tmp_path: Path, server_ssl: ssl.SSLContext) -> 
         await panel.stop()
 
 
-@pytest.mark.parametrize("charger", [False, True])
+@pytest.mark.parametrize(("charger", "was_asleep"), [(False, False), (True, False), (True, True)])
 async def test_light_sleep_after_a_picture(
-    tmp_path: Path, server_ssl: ssl.SSLContext, monkeypatch: pytest.MonkeyPatch, charger: bool
+    tmp_path: Path,
+    server_ssl: ssl.SSLContext,
+    monkeypatch: pytest.MonkeyPatch,
+    charger: bool,
+    was_asleep: bool,
 ) -> None:
     """On battery the panel goes back to light sleep (network standby on)
-    once the picture is drawn; a new picture in between keeps it awake."""
+    once the picture is drawn; on the charger only when it was asleep
+    before. A new picture in between keeps it awake."""
     import asyncio
 
     from frame_server import power
 
+    plugged = [True]  # the last status check saw it on the charger
+
     def handler(command: int, data: bytes) -> tuple[bool, bytes]:
         if command == CMD_STATUS:
-            return True, bytes([0x73, 0x00, 0x01, 0x01, 80, 0x02, 0x02 if charger else 0x00])
+            ac = plugged[0]
+            return True, bytes([0x73, 0x00, 0x01, 0x01, 80, 0x02, 0x02 if ac else 0x00])
         if command == CMD_NETWORK_STANDBY and not data:
             return True, b"\x01"
         if command in (0x0E, 0x10, 0x0B, 0x67):
@@ -253,6 +261,11 @@ async def test_light_sleep_after_a_picture(
         )
         service = FrameService(settings)
         await service.status.refresh()
+        assert not service.status.on_battery
+        # Unplugged since: the server learns it when the picture is drawn.
+        plugged[0] = charger
+        if was_asleep:
+            service.power.put_back_to_sleep()
 
         service.power.after_push(fetched=True)
         service.power.cancel_light_sleep()  # the next picture is on its way
@@ -261,11 +274,14 @@ async def test_light_sleep_after_a_picture(
 
         service.power.after_push(fetched=True)
         await asyncio.sleep(3)
-        if charger:
+        if charger and not was_asleep:
             assert (CMD_POWER, b"\x00") not in panel.received
+            assert service.status.status.power_state == "online"
         else:
             assert (CMD_NETWORK_STANDBY, b"\x01") in panel.received
             assert (CMD_POWER, b"\x00") in panel.received
+            assert service.status.status.power_state == "standby"
+            assert service.status.on_battery is not charger
     finally:
         await panel.stop()
 
@@ -300,17 +316,21 @@ async def test_power_state_for_the_network_tile(tmp_path: Path, server_ssl: ssl.
         assert (await service.status.refresh()).power_state == "online"
         await service.power._sleep_later(0)
         assert service.status.status.power_state == "standby"
+        # Still answering while it goes down: a look leaves it alone.
+        sent = len(panel.received)
+        assert (await service.status.refresh()).power_state == "standby"
+        assert len(panel.received) == sent
     finally:
         await panel.stop()
 
     # Asleep with network standby on: Wake-on-LAN should reach it.
-    status = await service.status.refresh()
+    status = await service.status.refresh(force=True)
     assert not status.reachable and status.power_state == "standby"
     # The night turned the Wi-Fi off and the panel has not been found since.
     state = service.power.state
     state.standby_off = True
     service.power._save(state)
-    assert (await service.status.refresh()).power_state == "deep_sleep"
+    assert (await service.status.refresh(force=True)).power_state == "deep_sleep"
 
     # A panel never seen answering: nothing to go by.
     service.status.forget()
@@ -322,8 +342,8 @@ async def test_power_state_for_the_network_tile(tmp_path: Path, server_ssl: ssl.
 async def test_status_check_wakes_and_lets_it_sleep_again(
     tmp_path: Path, server_ssl: ssl.SSLContext, monkeypatch: pytest.MonkeyPatch, charger: bool
 ) -> None:
-    """The "Sprawdź stan" button wakes the panel only to look at it: on battery it goes
-    back to light sleep afterwards; on the charger it stays on."""
+    """The "Sprawdź stan" button wakes the panel only to look at it: it goes
+    back to light sleep afterwards, on the charger as well."""
     import asyncio
 
     from frame_server import power
@@ -357,10 +377,69 @@ async def test_status_check_wakes_and_lets_it_sleep_again(
         assert result.woke
         assert service.status.status.power_state == "online"
         await asyncio.sleep(3)
-        if charger:
-            assert (CMD_POWER, b"\x00") not in panel.received
-        else:
-            assert (CMD_POWER, b"\x00") in panel.received
-            assert service.status.status.power_state == "standby"
+        assert (CMD_POWER, b"\x00") in panel.received
+        assert service.status.status.power_state == "standby"
+    finally:
+        await panel.stop()
+
+
+async def test_put_to_sleep_from_the_app(
+    tmp_path: Path, server_ssl: ssl.SSLContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ "Uśpij ramkę" on the charger: the panel shows as asleep at once, is
+    left alone while it goes down, and a picture sent to it later puts it
+    back to sleep once drawn."""
+    import asyncio
+
+    from frame_server import power
+
+    def handler(command: int, data: bytes) -> tuple[bool, bytes]:
+        if command == CMD_STATUS:
+            return True, bytes([0x73, 0x00, 0x01, 0x01, 80, 0x02, 0x02])
+        if command == CMD_NETWORK_STANDBY and not data:
+            return True, b"\x01"
+        if command in (0x0E, 0x10, 0x0B, 0x67):
+            return True, b"X"
+        return True, b""
+
+    panel = FakePanel(server_ssl, handler=handler)
+    await panel.start()
+    monkeypatch.setattr(power, "LIGHT_SLEEP_AFTER", 0.2)
+    monkeypatch.setattr(power, "in_quiet_hours", lambda now, settings: False)
+    try:
+        settings = Settings(
+            data_dir=tmp_path,
+            seed_library=False,
+            scheduler=False,
+            public_host="127.0.0.1",
+            device_host="127.0.0.1",
+            device_pin="123456",
+            device_port=panel.port,
+        )
+        service = FrameService(settings)
+        service.ensure_initial_content()
+        assert (await service.status.refresh()).power_state == "online"
+
+        await service.power.sleep_now()
+        assert (CMD_POWER, b"\x00") in panel.received
+        sent = len(panel.received)
+        status = await service.status.refresh()
+        assert status.power_state == "standby"
+        assert len(panel.received) == sent  # not asked while it goes down
+
+        # A picture: the panel takes it (the fake answers at once) ...
+        panel.received.clear()
+
+        async def fetched(file_id: str, timeout: float) -> bool:
+            return True
+
+        service.store.wait_for_fetch = fetched  # type: ignore[method-assign]
+        outcome = await service.push_current(wait=1)
+        assert outcome.fetched
+        assert service.status.status.power_state == "online"
+        # ... and goes back to sleep afterwards, though on the charger.
+        await asyncio.sleep(2)
+        assert (CMD_POWER, b"\x00") in panel.received
+        assert service.status.status.power_state == "standby"
     finally:
         await panel.stop()

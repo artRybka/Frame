@@ -50,7 +50,9 @@ struct FrameTabView: View {
                     }
                 }
             }
-            .refreshable { await refresh() }
+            // In a task of its own: SwiftUI cancels the refresh's task when the
+            // view changes under it ("Sprawdzam…"), and the requests with it.
+            .refreshable { await Task { await refresh() }.value }
             .onAppear { if draft == nil { draft = model.settings } }
             .onChange(of: model.settings) { old, new in
                 // Changes not saved yet stay; a new name comes in either way.

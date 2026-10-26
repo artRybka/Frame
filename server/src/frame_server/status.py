@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel
@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from .device import MdcError
 
 if TYPE_CHECKING:
+    from .device import MdcClient
     from .service import Panel
 
 log = logging.getLogger(__name__)
@@ -22,6 +23,11 @@ log = logging.getLogger(__name__)
 # (standby), asleep with the Wi-Fi off until its alarm or button
 # (deep_sleep), or not answering for no known reason (offline).
 PanelPower = Literal["online", "standby", "deep_sleep", "offline"]
+
+# Put to sleep over MDC, the panel still answers for a while (about two
+# minutes in node-samsung-emdx), and a session then may keep it awake: status
+# checks leave it alone for that long and report the sleep it is going into.
+SLEEP_SETTLE = timedelta(minutes=3)
 
 
 def _now() -> str:
@@ -65,6 +71,7 @@ class StatusMonitor:
         self.panel = panel
         self.status = DeviceStatus(configured=self._configured())
         self._static_known = False
+        self._slept_at: datetime | None = None  # the server last put it to sleep
         # Which sleep a panel that does not answer is in (see PowerManager).
         self.asleep: Callable[[DeviceStatus], PanelPower] | None = None
 
@@ -80,28 +87,33 @@ class StatusMonitor:
         )
         self.status = DeviceStatus(configured=self._configured(), **keep)
         self._static_known = False
+        self._slept_at = None
 
     @property
     def on_battery(self) -> bool:
         return self.status.power_source == "battery"
 
-    async def refresh(self) -> DeviceStatus:
+    @property
+    def sleeping(self) -> bool:
+        return self.status.power_state in ("standby", "deep_sleep")
+
+    def settling(self, now: datetime | None = None) -> bool:
+        """Just put to sleep: it may still answer, but is on its way down."""
+        if self._slept_at is None:
+            return False
+        return timedelta(0) <= (now or datetime.now(UTC)) - self._slept_at < SLEEP_SETTLE
+
+    async def refresh(self, force: bool = False) -> DeviceStatus:
+        """Ask the panel. Without ``force`` a panel the server has just put
+        to sleep is not asked (see ``SLEEP_SETTLE``); waking it forces."""
         status = self.status.model_copy(update={"configured": self._configured()})
-        if not status.configured:
+        if not status.configured or (not force and self.settling()):
             self.status = status
             return status
         status.checked_at = _now()
         try:
             async with self.panel.session() as mdc:
-                battery = await mdc.battery()
-                status.battery_level = battery.level
-                status.battery_raw = battery.raw.hex(" ")
-                status.charging = battery.raw[1] == 0x01 if len(battery.raw) > 1 else None
-                plugged = battery.external_power
-                if plugged is None:
-                    plugged = status.charging
-                if plugged is not None:
-                    status.power_source = "ac" if plugged else "battery"
+                await self._read_battery(mdc, status)
                 status.network_standby = await mdc.network_standby()
                 if not self._static_known:
                     status.firmware = await mdc.software_version()
@@ -113,6 +125,7 @@ class StatusMonitor:
             status.last_seen = status.checked_at
             status.error = None
             status.power_state = "online"
+            self._slept_at = None
         except MdcError as err:
             status.reachable = False
             status.error = str(err)
@@ -120,6 +133,22 @@ class StatusMonitor:
             log.info("panel status check failed: %s", err)
         self.status = status
         return status
+
+    @staticmethod
+    async def _read_battery(mdc: MdcClient, status: DeviceStatus) -> None:
+        battery = await mdc.battery()
+        status.battery_level = battery.level
+        status.battery_raw = battery.raw.hex(" ")
+        status.charging = battery.raw[1] == 0x01 if len(battery.raw) > 1 else None
+        plugged = battery.external_power
+        if plugged is None:
+            plugged = status.charging
+        if plugged is not None:
+            status.power_source = "ac" if plugged else "battery"
+
+    async def read_battery(self, mdc: MdcClient) -> None:
+        """Battery and charger within a session opened for something else."""
+        await self._read_battery(mdc, self.status)
 
     def note_push(self, fetched: bool) -> None:
         stamp = _now()
@@ -129,8 +158,10 @@ class StatusMonitor:
             self.status.reachable = True
             self.status.last_seen = stamp
             self.status.power_state = "online"
+            self._slept_at = None
 
     def note_sleep(self, deep: bool) -> None:
         """The server put the panel to sleep: light (network standby on) or deep."""
         self.status.network_standby = not deep
         self.status.power_state = "deep_sleep" if deep else "standby"
+        self._slept_at = datetime.now(UTC)

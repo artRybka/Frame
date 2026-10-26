@@ -86,7 +86,7 @@ final class AppModel {
             _ = try await backend.health()
             connection = .connected
         } catch {
-            connection = .failed(error.localizedDescription)
+            if !error.isCancellation { connection = .failed(error.localizedDescription) }
             return
         }
         let backend = self.backend
@@ -412,9 +412,17 @@ final class AppModel {
         await refreshPlayer()
     }
 
+    /// "Uśpij ramkę": the server notes the sleep, so the status from it
+    /// (not asking the panel, which may still answer for a while) shows it.
     func sleepFrame() async {
-        await perform { try await self.backend.sleep() }
+        do {
+            try await backend.sleep()
+        } catch {
+            show(error)
+            return
+        }
         toast = "Ramka uśpiona"
+        await refreshStatus(live: false)
     }
 
     private func perform(_ action: @escaping () async throws -> Void) async {
@@ -426,6 +434,16 @@ final class AppModel {
     }
 
     func show(_ error: Error) {
+        // A request cut short (a pull to refresh let go, a view gone) is no news.
+        guard !error.isCancellation else { return }
         toast = error.localizedDescription
+    }
+}
+
+extension Error {
+    /// URLSession says "anulowane" for a cancelled task: nothing went wrong.
+    var isCancellation: Bool {
+        if self is CancellationError { return true }
+        return (self as? URLError)?.code == .cancelled
     }
 }
