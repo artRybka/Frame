@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.17.0
+
+- Szukaj: wyniki zostają po powrocie z dzieła; dzieła z muzeów pojawiają
+  się, gdy każde muzeum odpowie (`/api/discover/search/stream`), a przy
+  kolorach każde muzeum jest przeglądane głębiej (do sześciu stron, 15 s).
+  Dziwna odpowiedź jednego muzeum nie psuje już całego wyszukiwania.
+  Kwadraciki na pustym ekranie są o połowę mniejsze, w środku wolnego
+  miejsca i z przerwą po każdej rundzie; Kolory są ostatnie w „+”.
+- Edytor inteligentnej playlisty działa jak Szukaj: jedno pole z
+  etykietkami (muzea, kolory, style, tematy, epoki, techniki pod „+”),
+  „Tylko ulubione” i „Pobierz pasujące dzieła z muzeów”; podgląd pokazuje
+  też to, co mają muzea.
+- „Zdjęcie na ramkę” od nowa: podgląd w proporcjach ramki, „Wypełnij” albo
+  „Passe-partout”, kadrowanie od razu na podglądzie, „Pokaż na ramce” obok
+  „Dodaj do kolejki”. Zdjęcie wysłane raz nie trafia do list ani
+  Propozycji; pokazane lub dodane do kolejki idzie na początek playlisty
+  „Historia przesłanych”, a niewysłane znika z serwera.
+- Pasek wysyłania bez licznika sekund i bez skoku na końcu; czasy etapów
+  są pamiętane po restarcie, a każde wysłanie zapisuje w logu czasy etapów.
+- Epoki po 1930 według zasady 70 lat od śmierci autora: międzywojnie,
+  1930–1945 i po 1945; style abstrakcja, konstruktywizm, De Stijl, Bauhaus;
+  motywy awangarda i „Polskie międzywojnie”.
+- Ramka → trybik („Konfiguracja”) → „Biblioteka na serwerze”: rozmiar
+  katalogu, oryginałów, obrazów ramki i bazy, wolne miejsce i limit
+  rozmiaru. Niższy limit przycina w tle (nigdy ulubionych, playlist,
+  kolejki, Propozycji, pokazanych ani własnych zdjęć), wyższy powiększa
+  katalog.
+
 ## 0.16.1
 
 - Kolejka Ulubionych (i innych playlist) nie kurczy się już do kilku świeżo
