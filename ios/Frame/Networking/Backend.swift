@@ -75,6 +75,11 @@ protocol FrameBackend: Sendable {
     /// The museums' works for a search's words, artists, terms, colours and
     /// years, from the museums of `sources` (every museum when empty).
     func searchMuseums(_ rules: PlaylistRules, sources: [String], page: Int) async throws -> RemotePage
+    /// The same, a page of one museum at a time as each answers (with
+    /// colours, several pages of each); each museum's `next` is the page to
+    /// ask it for more.
+    func museumAnswers(_ rules: PlaylistRules, sources: [String], page: Int) async throws
+        -> AsyncThrowingStream<MuseumAnswer, Error>
 
     func museums() async throws -> [Museum]
     func searchMuseum(source: String, query: String, page: Int) async throws -> RemotePage

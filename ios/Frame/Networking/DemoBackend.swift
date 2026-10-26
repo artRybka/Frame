@@ -634,6 +634,29 @@ actor DemoBackend: FrameBackend {
         return RemotePage(total: page == 1 ? found.count : 0, items: page == 1 ? remote(found) : [])
     }
 
+    /// The demo's works by museum, one museum after another.
+    func museumAnswers(_ rules: PlaylistRules, sources: [String], page: Int) async throws
+        -> AsyncThrowingStream<MuseumAnswer, Error>
+    {
+        let keys = sources.isEmpty ? try await museums().map(\.key) : sources
+        let found = page == 1 ? items.filter { Self.matches($0, rules) } : []
+        let answers = keys.map { key in
+            let mine = found.filter { $0.source == key }
+            return MuseumAnswer(source: key, total: mine.count, items: remote(mine))
+        }
+        return AsyncThrowingStream { continuation in
+            let answering = Task {
+                for answer in answers {
+                    try? await Task.sleep(for: .milliseconds(350))
+                    guard !Task.isCancelled else { break }
+                    continuation.yield(answer)
+                }
+                continuation.finish()
+            }
+            continuation.onTermination = { _ in answering.cancel() }
+        }
+    }
+
     func museums() async throws -> [Museum] {
         [
             Museum(key: "aic", name: "Art Institute of Chicago"),

@@ -301,6 +301,11 @@ class Importer:
                 log.warning("asking %s failed: %s", key, err)
                 failed.append(key)
                 continue
+            except Exception:
+                # One museum's odd answer must not cost the others' works.
+                log.exception("asking %s failed", key)
+                failed.append(key)
+                continue
             total += count
             found.append(items)
         mixed = dedupe(

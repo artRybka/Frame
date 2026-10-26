@@ -839,6 +839,18 @@ struct RemotePage: Codable, Sendable {
     var failed: [String]?
 }
 
+/// A page of one museum's works for Discover's search, a line of
+/// `GET /api/discover/search/stream`.
+struct MuseumAnswer: Codable, Sendable {
+    /// The museum's key ("all" when a server answers for every museum at once).
+    let source: String
+    let total: Int
+    let items: [RemoteItem]
+    var failed: [String]?
+    /// The page to ask the museum for more; nil when it has no more.
+    var next: Int?
+}
+
 /// A themed batch of museum works, `GET /api/library/packs`.
 struct LibraryPack: Codable, Hashable, Sendable, Identifiable {
     let key: String
