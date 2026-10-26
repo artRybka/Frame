@@ -95,7 +95,20 @@ def test_description_without_room_makes_the_picture_smaller(canvas) -> None:
         assert beside[1] == y and rest[1] + rest[3] == y + h
     else:  # a row below
         assert beside[0] == x and rest[0] + rest[2] == x + w
-    assert min(beside[2], beside[3]) > 0.2 * min(canvas)
+    assert min(beside[2], beside[3]) >= 0.2 * min(canvas)
+
+
+def test_description_gives_the_picture_priority() -> None:
+    canvas = (1440, 2560)
+    # A little wider than tall-and-narrow: across the frame, as close to its
+    # sides as to its top; the close-up and the text below get the rest.
+    plan = plan_layout((750, 1000), canvas, Fit.DESCRIPTION)
+    (x, y, w, _), (_, ry, _, rh) = (window.rect for window in plan.windows)
+    assert x == y and w == canvas[0] - 2 * x and ry + rh == canvas[1] - y
+    # Narrower (Monet's Rue Montorgueil): about as wide, a low row kept below.
+    plan = plan_layout((617, 1000), canvas, Fit.DESCRIPTION)
+    (x, y, _, _), (_, _, _, rh) = (window.rect for window in plan.windows)
+    assert x < 1.3 * y and 0.2 * canvas[0] <= rh < 0.12 * canvas[1]
 
 
 def test_fit_crop_takes_any_shape() -> None:

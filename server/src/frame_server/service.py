@@ -296,6 +296,7 @@ class FrameService:
             return PushOutcome(content, False, False, url, message)
         except BaseException as err:
             self.store.cancel_fetch(content.file_id)
+            self.store.note_failed(content.file_id, "error", str(err))
             progress.finish(Stage.FAILED, str(err))
             raise
         self.power.mark_pending(False)
@@ -307,6 +308,7 @@ class FrameService:
         if fetched:
             progress.advance(Stage.REFRESHING)
         elif wait:
+            self.store.note_failed(content.file_id, "timeout", message)
             progress.finish(Stage.FAILED, message)
         else:
             progress.finish(Stage.DONE, "sent, not waiting for the download")

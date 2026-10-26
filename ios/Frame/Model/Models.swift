@@ -287,6 +287,55 @@ struct PlayerView: Codable, Sendable {
     var busy: Bool
     var lastError: String?
     var progress: DisplayProgress?  // nil from older servers
+    var delivery: Delivery? = nil  // nil from older servers
+}
+
+/// Whether `current` reached the panel: the server knows which picture the
+/// panel downloaded last, and why a push did not get there.
+struct Delivery: Codable, Hashable, Sendable {
+    var state: String  // shown, sending, waiting, failed, unknown
+    /// What the panel shows instead of `current`.
+    var onFrame: NowShowing?
+    var shownAt: String?
+    var failedAt: String?
+    var failure: String?  // "timeout" or "error"
+    var message: String?
+    /// Waiting in deep sleep (Wi-Fi off): HH:MM of the panel's alarm.
+    var asleepUntil: String?
+
+    var isShown: Bool { state == "shown" || state == "unknown" }
+    var isWaiting: Bool { state == "waiting" }
+    var isFailed: Bool { state == "failed" }
+
+    /// "Teraz" over the picture that did not reach the frame.
+    var headline: String {
+        switch state {
+        case "sending": "W drodze na ramkę"
+        case "waiting": "Czeka na ramkę"
+        case "failed": "Nie dotarł na ramkę"
+        default: "Teraz na ramce"
+        }
+    }
+
+    /// Why it is not on the frame (yet).
+    var explanation: String {
+        let why: String
+        switch state {
+        case "waiting":
+            why = asleepUntil.map { "Ramka śpi do \($0), obraz trafi na nią po przebudzeniu." }
+                ?? "Ramka nie odpowiada, obraz trafi na nią, gdy się obudzi."
+        case "failed":
+            let when = When.schedule(failedAt).map { " (\($0))" } ?? ""
+            switch failure {
+            case "timeout": why = "Wysyłka\(when) nie udała się: ramka nie pobrała obrazu."
+            case "error": why = "Wysyłka\(when) nie udała się: błąd połączenia z ramką."
+            default: why = "Ramka nie pobrała jeszcze tego obrazu."
+            }
+        default:
+            why = " "
+        }
+        return why
+    }
 }
 
 /// A picture on its way to the frame (GET /api/progress): processing on the
@@ -360,6 +409,8 @@ struct DeviceStatus: Codable, Hashable, Sendable {
     var lastFetchAt: String?
     var pendingPush: Bool?
     var wakesAt: String?
+    /// "online" | "standby" | "deep_sleep" | "offline"; missing from servers before 0.12.
+    var powerState: String?
 }
 
 /// "Obudź ramkę": whether the magic packets went out and the panel answered.
@@ -501,12 +552,18 @@ struct FrameSettings: Codable, Hashable, Sendable {
     /// WikiArt as a source, only to test the panel; its works leave the
     /// library when switched off.
     var wikiart: Bool? = nil
+    /// The frame's name in the app; nil: the name the panel reports.
+    var name: String? = nil
 
     /// Changes whenever the way pictures are framed on the panel changes;
     /// used to refresh cached "on the frame" previews.
     var presentationKey: String {
         [orientation, String(rotation), art.key, photo.key].joined(separator: "|")
     }
+
+    /// Changes when the screen is turned; only then the server redraws the
+    /// picture on the frame. A new presentation waits for the next picture.
+    var screenKey: String { [orientation, String(rotation)].joined(separator: "|") }
 
     static let defaults = FrameSettings(
         playlistId: nil, changeTimes: ["07:00"], changeEveryDays: 1,
@@ -521,7 +578,7 @@ struct FrameSettings: Codable, Hashable, Sendable {
 extension FrameSettings {
     private enum CodingKeys: String, CodingKey {
         case playlistId, changeTimes, changeEveryDays, quietStart, shuffle, avoidRepeatDays
-        case orientation, rotation, art, photo, timezone, statusPollMinutes, privateUse, wikiart
+        case orientation, rotation, art, photo, timezone, statusPollMinutes, privateUse, wikiart, name
         case quietEnd  // older servers: decoded only
     }
 
@@ -543,6 +600,7 @@ extension FrameSettings {
         statusPollMinutes = try c.decode(Int.self, forKey: .statusPollMinutes)
         privateUse = try c.decodeIfPresent(Bool.self, forKey: .privateUse)
         wikiart = try c.decodeIfPresent(Bool.self, forKey: .wikiart)
+        name = try c.decodeIfPresent(String.self, forKey: .name)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -561,6 +619,7 @@ extension FrameSettings {
         try c.encode(statusPollMinutes, forKey: .statusPollMinutes)
         try c.encodeIfPresent(privateUse, forKey: .privateUse)
         try c.encodeIfPresent(wikiart, forKey: .wikiart)
+        try c.encodeIfPresent(name, forKey: .name)
     }
 
     /// When quiet hours end: the first change time after their start.

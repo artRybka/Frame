@@ -32,6 +32,8 @@ final class AppModel {
     var connection = Connection.unknown
     var toast: String?
     var working = false
+    /// "Sprawdź stan" found the frame asleep and is waking it.
+    var wakingForStatus = false
     /// The bar under the picture: set while a picture is on its way to the
     /// frame, and for a moment after it arrives.
     var displayProgress: DisplayProgress?
@@ -113,6 +115,26 @@ final class AppModel {
         } catch {
             show(error)
         }
+    }
+
+    /// "Sprawdź stan": a live check, and if the frame does not answer, an
+    /// attempt to wake it. Deep sleep has the Wi-Fi off: only the frame's
+    /// alarm or its button ends it, so no signal is sent then.
+    func checkStatus() async {
+        await refreshStatus(live: true)
+        guard let device = status?.device, device.configured, device.reachable == false else { return }
+        if device.powerState == "deep_sleep" {
+            toast = Self.deepSleepNote(until: device.wakesAt)
+            return
+        }
+        wakingForStatus = true
+        defer { wakingForStatus = false }
+        await wake(sleepAfter: true)
+    }
+
+    private static func deepSleepNote(until: String?) -> String {
+        let alarm = until.map { "budzik o \($0) lub przycisk" } ?? "tylko przycisk"
+        return "Ramka w głębokim śnie (Wi-Fi wyłączone), obudzi ją \(alarm)"
     }
 
     func refreshPlaylists() async {
@@ -286,16 +308,28 @@ final class AppModel {
     }
 
     func saveSettings(_ new: FrameSettings) async {
-        let reframed = settings?.presentationKey != new.presentationKey
+        let turned = settings?.screenKey != new.screenKey
+        let restyled = settings?.presentationKey != new.presentationKey
         do {
             settings = try await backend.saveSettings(new)
-            toast = "Zapisano ustawienia"
-            if reframed {
-                // The server redraws the current picture with the new framing.
+            toast = !turned && restyled ? "Zapisano. Nowy wygląd dostanie następny obraz" : "Zapisano ustawienia"
+            if turned {
+                // The server redraws the current picture for the turned screen.
                 await followPlayer()
             } else {
                 await refreshPlayer()
             }
+        } catch { show(error) }
+    }
+
+    /// The frame's name in the app; empty goes back to the panel's own.
+    func renameFrame(_ name: String) async {
+        guard var new = settings else { return }
+        let trimmed = String(name.split(whereSeparator: \.isWhitespace).joined(separator: " ").prefix(40))
+        new.name = trimmed.isEmpty ? nil : trimmed
+        do {
+            settings = try await backend.saveSettings(new)
+            toast = new.name.map { "Ramka nazywa się teraz „\($0)”" } ?? "Przywrócono nazwę z ekranu"
         } catch { show(error) }
     }
 
@@ -338,14 +372,15 @@ final class AppModel {
         }
     }
 
-    func wake() async {
+    /// `sleepAfter`: woken only to check on it (see `checkStatus`).
+    func wake(sleepAfter: Bool = false) async {
         toast = "Budzę ramkę…"
         do {
-            let result = try await backend.wake()
+            let result = try await backend.wake(sleepAfter: sleepAfter)
             if result.woke == true {
                 toast = "Ramka się obudziła"
             } else if let until = result.asleepUntil {
-                toast = "Ramka w głębokim śnie do \(until), obudzi ją tylko przycisk"
+                toast = Self.deepSleepNote(until: until)
             } else if !result.sent {
                 toast = "Brak adresu MAC ramki, ustaw go w Połączeniu z ekranem"
             } else {
@@ -355,6 +390,26 @@ final class AppModel {
         } catch {
             show(error)
         }
+    }
+
+    /// "Wyślij ponownie" on "Teraz": the picture that did not reach the frame.
+    func pushAgain() async {
+        working = true
+        defer { working = false }
+        trackProgress(expectingStart: true)
+        do {
+            let result = try await backend.pushAgain()
+            if result.fetched == true {
+                toast = "Ramka pobrała obraz"
+            } else if !result.pushed {
+                toast = "Ramka nie odpowiada, obraz trafi na nią, gdy się obudzi"
+            } else {
+                toast = "Ramka znowu nie pobrała obrazu"
+            }
+        } catch {
+            show(error)
+        }
+        await refreshPlayer()
     }
 
     func sleepFrame() async {

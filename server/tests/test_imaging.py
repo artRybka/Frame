@@ -183,6 +183,19 @@ def test_passthrough_mat_is_pure_ink() -> None:
     assert len(picture) > 50  # continuous tone: the panel dithers the picture
 
 
+def test_cream_mat_is_white_and_yellow() -> None:
+    settings = PRESETS["painting"].model_copy(deep=True)
+    settings.layout.mat = "cream"
+    settings.layout.margin = 0.05
+    board = render(_gradient(), settings).panel[:40].reshape(-1, 3)  # clear of the bevels
+    white, yellow = (
+        (board == SPECTRA6.device_u8()[SPECTRA6.index(n)]).all(axis=-1) for n in ("white", "yellow")
+    )
+    assert (white | yellow).all() and 0.25 < yellow.mean() < 0.35  # no specks of other inks
+    preview = render_original([_gradient()], settings)
+    assert preview.getpixel((5, 5)) == (255, 248, 218)  # the panel's cream beside its white
+
+
 def test_passthrough_is_jpeg() -> None:
     result = render(_gradient(), RenderSettings(strategy=Strategy.PASSTHROUGH))
     data, ext = result.encode()

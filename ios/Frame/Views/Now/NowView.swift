@@ -3,8 +3,10 @@ import SwiftUI
 
 /// Home: the picture on the frame, presented like an exhibit. The arrows
 /// browse what was and what will be on the frame without sending anything,
-/// and "Wróć do obrazu na ramce" jumps back to it; the picture is cropped
-/// right on it, and "Pokaż na ramce" sends the one browsed to with its crop.
+/// and "Wróć do obrazu na ramce" jumps back to it; a tap on the picture opens
+/// it on the crop screen, and "Pokaż na ramce" sends the one browsed to.
+/// A picture that did not reach the frame says so, with the one the frame
+/// still shows and a way to send it again.
 struct NowView: View {
     @Environment(AppModel.self) private var model
     @State private var showingSend = LaunchRoute.screen == "send"
@@ -13,14 +15,15 @@ struct NowView: View {
     @State private var browsed: Browsed?
     @State private var details: [String: Item] = [:]
     @State private var draft = FramingDraft()
-    /// Unsent crops of pictures browsed away from, by draft key.
-    @State private var drafts: [String: FramingDraft] = [:]
+    /// Crops saved here, by draft key: the preview of a picture browsed to
+    /// asks for them by name, as the one cached from before shows the old crop.
+    @State private var applied: [String: FramingCrops] = [:]
+    @State private var cropping = false
     @State private var sending = false
     @State private var routed = false
-    /// The hero picture last loaded, and the picture it was of: the crop
-    /// windows wait for it, so a half-loaded preview never shows.
+    /// The hero picture last loaded: cropping waits for it, so a half-loaded
+    /// preview never opens.
     @State private var loadedHero: ImageRef?
-    @State private var loadedFor: String?
 
     struct Browsed: Equatable {
         let summary: ItemSummary
@@ -31,6 +34,13 @@ struct NowView: View {
     private var item: Item? { current?.item }
     private var history: [ItemSummary] { model.player?.history ?? [] }  // newest first
     private var upcoming: [ItemSummary] { model.player?.upcoming ?? [] }
+
+    /// The picture on the frame, as the server has it, is not on the panel:
+    /// sent and never downloaded, waiting for it to wake, or on its way.
+    private var undelivered: Delivery? {
+        guard offset == 0, let delivery = model.player?.delivery, !delivery.isShown else { return nil }
+        return delivery
+    }
 
     private func summary(at offset: Int) -> ItemSummary? {
         if offset < 0, -offset <= history.count { return history[-offset - 1] }
@@ -74,6 +84,10 @@ struct NowView: View {
                                 .transition(.opacity.combined(with: .move(edge: .top)))
                         }
                         controls
+                        if let onFrame = undelivered?.onFrame {
+                            OnFrameNote(showing: onFrame)
+                                .transition(.opacity)
+                        }
                         if let selectedItem {
                             ArtworkInfo(item: selectedItem)
                                 .id(selectedItem.id)
@@ -121,6 +135,23 @@ struct NowView: View {
             .sheet(isPresented: $showingSend) {
                 SendSheet()
             }
+            .fullScreenCover(isPresented: $cropping) {
+                if let id = selectedID {
+                    CropScreen(
+                        itemID: id, preview: heroRef,
+                        aspectRatio: model.isPortrait ? 9.0 / 16.0 : 16.0 / 9.0,
+                        placeholder: selectedItem?.placeholderColor ?? browsed?.summary.placeholderColor ?? Theme.mat,
+                        onFrame: offset == 0,
+                        draft: $draft, save: saveCrop
+                    )
+                }
+            }
+            .onChange(of: canCrop) { _, can in
+                // CI screenshots: `-screen crop` opens the crop screen.
+                guard LaunchRoute.screen == "crop", !routed, can else { return }
+                routed = true
+                cropping = true
+            }
             .onChange(of: item?.id) { _, id in
                 // The picture sent has arrived: back to "on the frame now".
                 if browsed?.summary.id == id { browsed = nil }
@@ -143,13 +174,19 @@ struct NowView: View {
         if let id = selectedID, let trial = draft.trial, draft.key == draftKey {
             return .framePreview(id, framing: trial)  // the mat with the new window
         }
-        if offset != 0, let browsed { return .framePreview(browsed.summary.id) }
+        if offset != 0, let browsed { return .framePreview(browsed.summary.id, framing: applied[draftKey]) }
         if let current { return .path(current.previewUrl) }
         return nil
     }
 
     /// The server is still making the preview, or it is on its way.
     private var heroLoading: Bool { heroRef != nil && loadedHero != heroRef }
+
+    /// The crop of the picture shown is loaded, and so is its preview.
+    private var canCrop: Bool {
+        selectedID != nil && draft.key == draftKey && draft.view?.windows.isEmpty == false
+            && heroRef != nil && loadedHero == heroRef
+    }
 
     private var hero: some View {
         let aspect: CGFloat = model.isPortrait ? 9.0 / 16.0 : 16.0 / 9.0
@@ -159,19 +196,22 @@ struct NowView: View {
             FramedArtwork(
                 ref: heroRef, aspectRatio: aspect,
                 placeholder: selectedItem?.placeholderColor ?? browsed?.summary.placeholderColor ?? Theme.mat
-            ) {
-                if let id = selectedID, draft.key == draftKey, loadedFor == id {
-                    CropWindows(itemID: id, draft: $draft)
-                        .transition(.opacity)
-                }
-            }
+            )
             .environment(\.artImageLoaded) { ref in
                 guard ref == heroRef else { return }
-                withAnimation(.easeOut(duration: 0.3)) {
-                    loadedHero = ref
-                    loadedFor = selectedID
+                withAnimation(.easeOut(duration: 0.3)) { loadedHero = ref }
+            }
+            .overlay(alignment: .bottomTrailing) {
+                if canCrop, !sending {
+                    CornerBadge(systemImage: "crop").transition(.opacity)
                 }
             }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                if canCrop, !sending { cropping = true }
+            }
+            .accessibilityAddTraits(canCrop ? .isButton : [])
+            .accessibilityHint(Text(canCrop ? "Otwiera kadrowanie na całym ekranie" : ""))
             .id(selectedID ?? "")  // a fresh picture for each one browsed to
             .overlay {
                 if heroRef == nil, model.connection != .connected {
@@ -222,7 +262,7 @@ struct NowView: View {
             VStack(spacing: 3) {
                 Text(placeLine)
                     .font(.footnote.weight(.semibold))
-                    .foregroundStyle(offset == 0 ? Theme.ink : Theme.vermilion)
+                    .foregroundStyle(offset == 0 && undelivered == nil ? Theme.ink : Theme.vermilion)
                 Text(hintLine)
                     .font(.caption)
                     .foregroundStyle(Theme.inkSoft)
@@ -232,20 +272,17 @@ struct NowView: View {
             if offset != 0 {
                 backToNow
             }
-            if draft.key == draftKey, let id = selectedID, draft.view?.windows.isEmpty == false {
-                CropTools(itemID: id, draft: $draft).disabled(sending)
-            }
             Button {
-                Task { await send() }
+                Task { await primaryAction() }
             } label: {
                 HStack(spacing: 10) {
                     if sending { ProgressView().tint(Theme.paper) }
-                    Text(canSend || sending ? "Pokaż na ramce" : "Jest na ramce")
+                    Text(primaryTitle)
                 }
             }
             .buttonStyle(PrimaryButtonStyle())
-            .disabled(!canSend || sending)
-            .opacity(canSend || sending ? 1 : 0.45)
+            .disabled(!primaryEnabled || sending)
+            .opacity(primaryEnabled || sending ? 1 : 0.45)
             .frame(maxWidth: model.isPortrait ? 420 : .infinity)
             HStack(spacing: 8) {
                 Text(scheduleLine)
@@ -278,9 +315,37 @@ struct NowView: View {
         return offset != 0 || draft.change != nil && draft.key == draftKey
     }
 
+    /// Not on the panel and nothing else to send: send it again, or wake
+    /// the frame it waits for (not in deep sleep: Wake-on-LAN cannot reach it).
+    private var retry: Bool { !canSend && undelivered?.isFailed == true }
+    private var wakeUp: Bool { !canSend && undelivered?.isWaiting == true && undelivered?.asleepUntil == nil }
+
+    private var primaryEnabled: Bool { (canSend || retry || wakeUp) && !model.working }
+
+    private var primaryTitle: String {
+        if canSend || sending { return "Pokaż na ramce" }
+        if retry { return "Wyślij ponownie" }
+        if wakeUp { return "Obudź ramkę" }
+        if let undelivered { return undelivered.isWaiting ? "Czeka na ramkę" : "Wysyłam…" }
+        return "Jest na ramce"
+    }
+
+    private func primaryAction() async {
+        if canSend {
+            await send()
+        } else if retry {
+            await model.pushAgain()
+        } else if wakeUp {
+            await model.wake()
+            // Once awake, the waiting picture goes out on its own.
+            model.trackProgress(expectingStart: true)
+            await model.refreshPlayer()
+        }
+    }
+
     private var placeLine: String {
         switch offset {
-        case 0: "Teraz na ramce"
+        case 0: undelivered?.headline ?? "Teraz na ramce"
         case -1: "Poprzednio na ramce"
         case ..<0: "Wcześniej na ramce"
         case 1: "Następny w kolejce" + addedLine
@@ -294,12 +359,10 @@ struct NowView: View {
     }
 
     private var hintLine: String {
-        if draft.key == draftKey, draft.view?.windows.isEmpty == false {
-            return draft.changed
-                ? "Nowy kadr trafi na ramkę po „Pokaż na ramce”."
-                : "Przesuń obraz palcem albo rozsuń dwa palce, żeby go wykadrować."
-        }
-        return offset == 0 ? " " : "Na ramkę trafi po „Pokaż na ramce”."
+        let crop = canCrop ? "Dotknij obrazu, żeby go wykadrować." : nil
+        if let undelivered { return undelivered.explanation }
+        guard offset != 0 else { return crop ?? " " }
+        return ["Na ramkę trafi po „Pokaż na ramce”.", crop].compactMap { $0 }.joined(separator: " ")
     }
 
     private var scheduleLine: String {
@@ -330,15 +393,9 @@ struct NowView: View {
         if let loaded = try? await model.backend.item(id: id) { details[id] = loaded }
     }
 
-    /// The crop of the picture browsed to: an unsent one kept from before,
-    /// else as the server has it.
+    /// The crop of the picture browsed to, as the server has it.
     private func loadFraming() async {
         let key = draftKey
-        if draft.key != key, draft.changed, !draft.key.isEmpty { drafts[draft.key] = draft }
-        if let kept = drafts[key] {
-            draft = kept
-            return
-        }
         draft = FramingDraft(key: "")
         guard let id = selectedID else { return }
         let orientation = model.settings?.orientation ?? "landscape"
@@ -348,19 +405,76 @@ struct NowView: View {
         draft = loaded
     }
 
+    /// "Zapisz kadr" on the crop screen: the picture on the frame now is
+    /// redrawn with it there, one browsed to keeps it for when it is shown.
+    private func saveCrop() async -> Bool {
+        guard let id = selectedID, draft.key == draftKey, let change = draft.change else { return true }
+        let key = draft.key
+        let onFrame = offset == 0
+        do {
+            let saved = try await model.applyFraming(itemID: id, change)
+            if key == draft.key {
+                draft = FramingDraft(saved: saved, key: key)
+                applied[key] = draft.savedCrops
+            }
+        } catch {
+            model.show(error)
+            return false
+        }
+        if onFrame {
+            model.toast = "Nowy kadr — ramka odświeża obraz"
+            Task { await model.followPlayer() }
+        } else {
+            model.toast = "Zapisano kadr"
+        }
+        return true
+    }
+
     private func send() async {
         guard let id = selectedID else { return }
         sending = true
         defer { sending = false }
         let change = draft.key == draftKey ? draft.change : nil
         guard await model.present(itemID: id, offset: offset, framing: change) else { return }
-        drafts[draftKey] = nil
         await model.followPlayer()
         if browsed?.summary.id == model.player?.current?.item?.id { browsed = nil }
         if change != nil {
             draft = FramingDraft()
             await loadFraming()  // as saved now
         }
+    }
+}
+
+/// What the frame still shows while the picture above did not reach it.
+struct OnFrameNote: View {
+    let showing: NowShowing
+
+    var body: some View {
+        Card(padding: 14) {
+            HStack(spacing: 14) {
+                ArtImage(
+                    ref: .path(showing.previewUrl),
+                    placeholder: showing.item?.placeholderColor ?? Theme.mat,
+                    maxPixel: 300
+                )
+                .frame(width: 64, height: 64)
+                .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+                VStack(alignment: .leading, spacing: 3) {
+                    Eyebrow("Na ramce nadal")
+                    Text(showing.title.isEmpty ? "Bez tytułu" : showing.title)
+                        .font(.serif(17, weight: .semibold))
+                        .foregroundStyle(Theme.ink)
+                        .lineLimit(2)
+                    if let artist = showing.item?.artist, !artist.isEmpty {
+                        Text(artist)
+                            .font(.subheadline)
+                            .foregroundStyle(Theme.inkSoft)
+                            .lineLimit(1)
+                    }
+                }
+            }
+        }
+        .accessibilityElement(children: .combine)
     }
 }
 

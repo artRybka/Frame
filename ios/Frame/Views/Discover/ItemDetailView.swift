@@ -2,8 +2,8 @@ import SwiftUI
 
 /// One picture: original vs. how it will look on the e-paper, its story,
 /// palette, and actions (show now, queue next, favourite, add to playlist).
-/// On "Na ramce" the picture is cropped right on the preview, and showing
-/// it, queueing it or adding it to a playlist saves that crop first.
+/// Tapping the original opens it on the whole screen; tapping the preview on
+/// "Na ramce" opens it there to be cropped.
 struct ItemDetailView: View {
     @Environment(AppModel.self) private var model
     let itemID: String
@@ -14,10 +14,17 @@ struct ItemDetailView: View {
     /// Crops saved here: the preview asks for them by name, as the one
     /// cached from before shows the old crop.
     @State private var applied: FramingCrops?
-    /// The preview last loaded: the crop windows wait for the first one, so
-    /// a half-loaded preview never shows.
+    /// The preview last loaded: cropping waits for it, so a half-loaded
+    /// preview never opens.
     @State private var loadedPreview: ImageRef?
     @State private var saving = false
+    @State private var opened: Opened?
+
+    /// What a tap on the picture opened on the whole screen.
+    enum Opened: String, Identifiable {
+        case original, crop
+        var id: String { rawValue }
+    }
 
     enum ViewMode: String, CaseIterable {
         case original = "Oryginał"
@@ -66,6 +73,7 @@ struct ItemDetailView: View {
         .task(id: itemID) {
             do {
                 item = try await model.backend.item(id: itemID)
+                if LaunchRoute.screen == "original" { opened = .original }  // CI screenshots
             } catch {
                 model.show(error)
             }
@@ -109,8 +117,23 @@ struct ItemDetailView: View {
         draft = loaded
     }
 
-    /// Saves the crop edited on "Na ramce", if it was; false if that failed,
-    /// so nothing goes out with the old crop.
+    /// "Zapisz kadr" on the crop screen; the picture on the frame now is
+    /// redrawn with it there.
+    private func saveFromCropScreen() async -> Bool {
+        guard draft.key == draftKey, draft.change != nil else { return true }
+        let onFrame = model.player?.current?.item?.id == itemID
+        guard await saveCrop() else { return false }
+        if onFrame {
+            model.toast = "Nowy kadr — ramka odświeża obraz"
+            Task { await model.followPlayer() }
+        } else {
+            model.toast = "Zapisano kadr"
+        }
+        return true
+    }
+
+    /// Saves the crop edited, if it was; false if that failed, so nothing
+    /// goes out with the old crop.
     private func saveCrop() async -> Bool {
         guard draft.key == draftKey, let change = draft.change else { return true }
         saving = true
@@ -149,7 +172,14 @@ struct ItemDetailView: View {
                     ArtImage(ref: .image(item.id), placeholder: item.placeholderColor, maxPixel: 1800, contentMode: .fit)
                         .aspectRatio(CGFloat(aspect(item)), contentMode: .fit)
                         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .overlay(alignment: .bottomTrailing) {
+                            CornerBadge(systemImage: "arrow.up.left.and.arrow.down.right")
+                        }
                         .shadow(color: .black.opacity(0.22), radius: 16, y: 12)
+                        .contentShape(Rectangle())
+                        .onTapGesture { opened = .original }
+                        .accessibilityAddTraits(.isButton)
+                        .accessibilityHint(Text("Otwiera obraz na całym ekranie"))
                 } else {
                     framePreview(item)
                 }
@@ -162,76 +192,65 @@ struct ItemDetailView: View {
             .pickerStyle(.segmented)
             .frame(maxWidth: 260)
             if view == .frame {
-                VStack(spacing: 12) {
-                    if cropping {
-                        // One row of crop tools; on a narrow screen "Zapisz kadr"
-                        // goes under them.
-                        ViewThatFits(in: .horizontal) {
-                            HStack(spacing: 10) { cropTools(item) }
-                            VStack(spacing: 10) { cropTools(item) }
-                        }
-                        .disabled(saving)
-                    }
-                    if let frameHint {
-                        Text(frameHint)
-                            .font(.caption)
-                            .foregroundStyle(Theme.inkSoft)
-                            .multilineTextAlignment(.center)
-                            .transition(.opacity)
-                    }
-                }
-                .animation(.easeInOut(duration: 0.2), value: draft.changed)
+                Text(frameHint)
+                    .font(.caption)
+                    .foregroundStyle(Theme.inkSoft)
+                    .multilineTextAlignment(.center)
+                    .contentTransition(.opacity)
             }
         }
         .padding(.top, 8)
+        .fullScreenCover(item: $opened) { screen in
+            switch screen {
+            case .original:
+                OriginalViewer(item: item)
+            case .crop:
+                CropScreen(
+                    itemID: item.id, preview: previewRef,
+                    aspectRatio: model.isPortrait ? 9.0 / 16.0 : 16.0 / 9.0,
+                    placeholder: item.placeholderColor,
+                    onFrame: model.player?.current?.item?.id == item.id,
+                    draft: $draft, save: saveFromCropScreen
+                )
+            }
+        }
     }
 
-    /// The picture as the frame will show it, with its crop windows over it.
+    /// The picture as the frame will show it; a tap opens it on the crop
+    /// screen once its crop is loaded.
     private func framePreview(_ item: Item) -> some View {
         let ref = previewRef
         return FramedArtwork(
             ref: ref, aspectRatio: model.isPortrait ? 9.0 / 16.0 : 16.0 / 9.0,
             placeholder: item.placeholderColor, moulding: 7
-        ) {
-            if draft.key == draftKey, loadedPreview != nil {
-                CropWindows(itemID: item.id, draft: $draft)
-                    .transition(.opacity)
-            }
-        }
+        )
         .environment(\.artImageLoaded) { loaded in
             guard loaded == previewRef else { return }
             withAnimation(.easeOut(duration: 0.3)) { loadedPreview = loaded }
+        }
+        .overlay(alignment: .bottomTrailing) {
+            if cropping, loadedPreview == ref {
+                CornerBadge(systemImage: "crop").transition(.opacity)
+            }
         }
         .overlay {
             if loadedPreview != ref {
                 LoadingBadge(text: "Wczytuję podgląd…")
             }
         }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if cropping { opened = .crop }
+        }
+        .accessibilityAddTraits(cropping ? .isButton : [])
+        .accessibilityHint(Text(cropping ? "Otwiera kadrowanie na całym ekranie" : ""))
     }
 
-    @ViewBuilder
-    private func cropTools(_ item: Item) -> some View {
-        CropTools(itemID: item.id, draft: $draft)
-        if draft.changed {
-            Button {
-                Task {
-                    if await saveCrop() { model.toast = "Zapisano kadr" }
-                }
-            } label: {
-                Label("Zapisz kadr", systemImage: "checkmark").toolChip()
-            }
-            .buttonStyle(.plain)
-            .transition(.opacity)
-        }
-    }
-
-    /// One short line under the preview; none once the crop is edited, as
-    /// its buttons say the rest.
-    private var frameHint: String? {
-        guard cropping else {
-            return "Podgląd w oryginalnych kolorach. Kolory dopasowuje dopiero ekran."
-        }
-        return draft.changed ? nil : "Przesuń obraz palcem albo rozsuń dwa palce, żeby go wykadrować."
+    /// One short line under the preview.
+    private var frameHint: String {
+        cropping
+            ? "Dotknij podglądu, żeby wykadrować obraz."
+            : "Podgląd w oryginalnych kolorach. Kolory dopasowuje dopiero ekran."
     }
 
     private func aspect(_ item: Item) -> Double {
@@ -389,9 +408,9 @@ struct ItemDetailView: View {
                     Spacer()
                     Gauge(value: score) { EmptyView() }
                         .gaugeStyle(.accessoryLinearCapacity)
-                        .tint(score > 0.75 ? Theme.good : score > 0.6 ? Theme.warn : Theme.bad)
+                        .tint(score >= 0.72 ? Theme.good : score >= 0.45 ? Theme.warn : Theme.bad)
                         .frame(width: 120)
-                    Text(score > 0.75 ? "świetnie" : score > 0.6 ? "dobrze" : "słabiej")
+                    Text(score >= 0.72 ? "świetnie" : score >= 0.45 ? "dobrze" : "słabiej")
                         .font(.subheadline.weight(.medium))
                 }
                 .font(.subheadline)

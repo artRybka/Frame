@@ -91,6 +91,7 @@ actor DemoBackend: FrameBackend {
         currentID = queue.first
         if !queue.isEmpty { queue.removeFirst() }
         shared.current = settingsValue
+        shared.shown = settingsValue
     }
 
     private static func load() -> DemoFile {
@@ -182,7 +183,7 @@ actor DemoBackend: FrameBackend {
             configured: true, reachable: true, checkedAt: now, lastSeen: now, batteryLevel: 76,
             charging: false, powerSource: "battery", batteryRaw: nil, networkStandby: true,
             firmware: "S-RSEDWWC-1050.1", model: "EM32DX", serial: "DEMO0001", name: "Salon",
-            error: nil, lastPushAt: now, lastFetchAt: now
+            error: nil, lastPushAt: now, lastFetchAt: now, powerState: "online"
         )
         let server = ServerStatus(
             version: "demo", uptimeS: 3600, libraryCount: items.count,
@@ -198,7 +199,7 @@ actor DemoBackend: FrameBackend {
             NowShowing(
                 title: $0.title, description: "\($0.artist) — \($0.title)", source: $0.source,
                 created: ISO8601DateFormatter().string(from: .now.addingTimeInterval(-5400)),
-                previewUrl: "/demo/\($0.id)?\(settingsValue.presentationKey)|\(framingRevision)", item: $0
+                previewUrl: "/demo/\($0.id)?\(shared.shown.presentationKey)|\(framingRevision)", item: $0
             )
         }
         let next = settingsValue.changeTimes.compactMap { time -> Date? in
@@ -222,8 +223,10 @@ actor DemoBackend: FrameBackend {
 
     private var runElapsed: Double? { run.map { Date.now.timeIntervalSince($0.start) } }
 
+    /// A picture on its way to the frame: drawn with the settings as they are now.
     private func startRun(_ title: String) {
         run = (title: title, start: Date.now)
+        shared.shown = settingsValue
     }
 
     private func startRun(itemID: String?) {
@@ -501,9 +504,12 @@ actor DemoBackend: FrameBackend {
     func settings() async throws -> FrameSettings { settingsValue }
 
     func saveSettings(_ settings: FrameSettings) async throws -> FrameSettings {
-        if settings.presentationKey != settingsValue.presentationKey { startRun(itemID: currentID) }
+        // As the server: only a turned screen redraws the picture on the
+        // frame; a new presentation waits for the next one.
+        let turned = settings.screenKey != settingsValue.screenKey
         settingsValue = settings
         shared.current = settings
+        if turned { startRun(itemID: currentID) }
         return settings
     }
 
@@ -541,7 +547,7 @@ actor DemoBackend: FrameBackend {
             ),
             SuggestionRow(
                 key: "best", title: "Najlepiej na e-papierze",
-                subtitle: "Wyraziste barwy i kontrast, które ten ekran oddaje najlepiej",
+                subtitle: "Kolorowe dzieła: sześć farb ekranu oddaje je najpiękniej",
                 items: remote(Array(best.prefix(12)))
             ),
         ]
@@ -758,7 +764,8 @@ actor DemoBackend: FrameBackend {
         return panelValue
     }
 
-    func wake() async throws -> WakeResult { WakeResult(sent: true, woke: true) }
+    func wake(sleepAfter: Bool) async throws -> WakeResult { WakeResult(sent: true, woke: true) }
+    func pushAgain() async throws -> DisplayResponse { DisplayResponse(pushed: true, fetched: true) }
     func sleep() async throws {}
 
     // MARK: Images
@@ -773,7 +780,7 @@ actor DemoBackend: FrameBackend {
         case let .path(path):
             // "/demo/<id>?<presentation key>"; the key only makes the path change.
             let id = String(path.dropFirst("/demo/".count).prefix { $0 != "?" })
-            url = framed(id) ?? Self.bundled(id) ?? imageURLs[id]?.image
+            url = framed(id, shared.shown) ?? Self.bundled(id) ?? imageURLs[id]?.image
         case let .url(remote): url = idsByURL[remote].flatMap { Self.bundled($0) } ?? remote
         }
         return url.map { URLRequest(url: $0, timeoutInterval: 60) }
@@ -807,11 +814,18 @@ actor DemoBackend: FrameBackend {
 private final class FramingState: @unchecked Sendable {
     private let lock = NSLock()
     private var value = FrameSettings.defaults
+    private var shownValue = FrameSettings.defaults
     private var corrections: [String: [String: DemoFraming.Crops]] = [:]
 
     var current: FrameSettings {
         get { lock.withLock { value } }
         set { lock.withLock { value = newValue } }
+    }
+
+    /// The settings the picture on the frame was drawn with.
+    var shown: FrameSettings {
+        get { lock.withLock { shownValue } }
+        set { lock.withLock { shownValue = newValue } }
     }
 
     /// Item id -> orientation -> the user's crops.

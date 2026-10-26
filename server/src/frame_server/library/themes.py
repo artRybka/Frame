@@ -437,7 +437,7 @@ THEMES: list[Theme] = [
     Theme(
         "best",
         "Najlepiej na e-papierze",
-        "Obrazy, które najlepiej wychodzą na tym ekranie.",
+        "Kolorowe obrazy, które najlepiej wychodzą na tym ekranie.",
         COLOUR,
         min_suitability=0.72,
     ),

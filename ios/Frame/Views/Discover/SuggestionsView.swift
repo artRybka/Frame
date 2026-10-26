@@ -71,7 +71,7 @@ struct SuggestionsView: View {
         }
         .task { await load() }
         .onChange(of: rows.first?.items.first?.id) { _, first in
-            if LaunchRoute.screen == "detail", path.isEmpty, let first { path.append(first) }
+            if ["detail", "original"].contains(LaunchRoute.screen), path.isEmpty, let first { path.append(first) }
         }
     }
 

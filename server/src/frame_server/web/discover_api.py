@@ -239,7 +239,7 @@ async def suggestions(svc: Svc) -> list[SuggestionRow]:
             SuggestionRow(
                 key="best",
                 title="Najlepiej na e-papierze",
-                subtitle="Wyraziste barwy i kontrast, które ten ekran oddaje najlepiej",
+                subtitle="Kolorowe dzieła: sześć farb ekranu oddaje je najpiękniej",
                 theme="best",
                 items=remote_items(svc, best[:ROW_SIZE]),
             )

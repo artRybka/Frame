@@ -45,6 +45,26 @@ final class FrameAPITests: XCTestCase {
         XCTAssertNotNil(When.schedule(view.nextChangeAt))
     }
 
+    func testDecodesUndeliveredPicture() throws {
+        let json = """
+        {"state": "failed", "failure": "timeout", "failed_at": "2026-10-26T06:00:00+00:00",
+         "message": "panel did not download the image in time", "asleep_until": null,
+         "shown_at": "2026-10-25T18:00:02.120+00:00",
+         "on_frame": {"title": "Most w Argenteuil", "description": "", "source": "aic",
+                      "created": "2026-10-25T18:00:00+00:00", "preview_url": "/api/previews/OLD.png",
+                      "item": null}}
+        """
+        var delivery = try LiveBackend.decoder().decode(Delivery.self, from: Data(json.utf8))
+        XCTAssertTrue(delivery.isFailed)
+        XCTAssertFalse(delivery.isShown)
+        XCTAssertEqual(delivery.headline, "Nie dotarł na ramkę")
+        XCTAssertTrue(delivery.explanation.contains("ramka nie pobrała obrazu"))
+        XCTAssertEqual(delivery.onFrame?.previewUrl, "/api/previews/OLD.png")
+        delivery = Delivery(state: "waiting", asleepUntil: "07:00")
+        XCTAssertEqual(delivery.explanation, "Ramka śpi do 07:00, obraz trafi na nią po przebudzeniu.")
+        XCTAssertTrue(Delivery(state: "unknown").isShown)
+    }
+
     func testProgressPhasesAndLabels() {
         var progress = DisplayProgress(stage: "refreshing", phase: "displaying", active: true,
                                        title: "", fraction: 0.8, secondsLeft: 150)
@@ -354,18 +374,40 @@ final class FrameAPITests: XCTestCase {
         XCTAssertTrue(preview.lastPathComponent.hasPrefix("aic_24645-landscape-"))
     }
 
-    func testDemoPreviewFollowsPresentationSettings() async throws {
+    func testDemoPresentationWaitsForTheNextPicture() async throws {
         let demo = DemoBackend()
         let before = try await demo.player().current?.previewUrl
         var settings = try await demo.settings()
         settings.art.fit = "fill"
         _ = try await demo.saveSettings(settings)
-        let after = try await demo.player().current?.previewUrl
-        XCTAssertNotEqual(before, after)
+        // The picture on the frame stays as it was drawn.
+        let kept = try await demo.player().current?.previewUrl
+        XCTAssertEqual(before, kept)
         let current = try await demo.player().current
         let id = try XCTUnwrap(current?.item?.id)
         let framed = try XCTUnwrap(demo.request(for: .framePreview(id))?.url)
         XCTAssertTrue(framed.lastPathComponent.contains("-fill-"))
+        // Turning the screen redraws it, with the new presentation too.
+        settings.orientation = settings.orientation == "portrait" ? "landscape" : "portrait"
+        _ = try await demo.saveSettings(settings)
+        let after = try await demo.player().current?.previewUrl
+        XCTAssertNotEqual(before, after)
+    }
+
+    func testFrameNameRoundTrip() throws {
+        var settings = FrameSettings.defaults
+        var text = String(decoding: try LiveBackend.encoder().encode(settings), as: UTF8.self)
+        XCTAssertFalse(text.contains("\"name\""))
+        settings.name = "Salon"
+        let data = try LiveBackend.encoder().encode(settings)
+        text = String(decoding: data, as: UTF8.self)
+        XCTAssertTrue(text.contains("\"name\":\"Salon\""))
+        XCTAssertEqual(try LiveBackend.decoder().decode(FrameSettings.self, from: data).name, "Salon")
+        // A turned screen redraws the picture; a new presentation does not.
+        var restyled = settings
+        restyled.art.mat = "black"
+        XCTAssertEqual(restyled.screenKey, settings.screenKey)
+        XCTAssertNotEqual(restyled.presentationKey, settings.presentationKey)
     }
 
     func testDemoCropCorrections() async throws {

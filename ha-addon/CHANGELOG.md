@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.12.0
+
+- Tryb „Opis”: pierwszeństwo ma obraz. W okienku passe-partout zajmuje
+  tyle miejsca, ile pozwalają marginesy (karton po bokach taki jak u
+  góry), a detal i tekst dostają pod nim co najmniej 20% krótszego boku
+  (40% w kolumnie obok) zamiast stałej jednej trzeciej.
+- Kremowe passe-partout jest wyraźniej kremowe: 30% żółtej farby zamiast
+  10%; podgląd w aplikacji pokazuje je jak ekran.
+- „Sprawdź stan” budzi ramkę, gdy nie odpowiada (i nie śpi głęboko); na
+  baterii po minucie wraca do lekkiego snu
+  (`POST /api/device/wake?sleep_after=true`). Serwer podaje
+  `power_state` (online, czuwanie, głęboki sen, nie odpowiada), a kafelek
+  Sieć i nagłówek zakładki Ramka go pokazują.
+- Zakładka Ramka: wizualizacja w proporcjach ekranu (9:16 / 16:9) i
+  własna nazwa ramki w aplikacji (pole `name` w ustawieniach, puste wraca
+  do nazwy z ekranu).
+- Zmiana Prezentacji nie wysyła już obrazu ponownie: nowy wygląd dostaje
+  następny obraz na ramce; tylko obrót ekranu przerysowuje obecny.
+- Kadrowanie na całym ekranie: dotknięcie podglądu w „Teraz” albo w
+  „Na ramce” przy dziele otwiera ramkę tak dużą, jak się mieści, z
+  okienkami kadru, kształtem okienka, „Kadr automatyczny” i „Zapisz kadr”;
+  nic się tam nie przewija. Oryginał dzieła otwiera się na całym ekranie
+  z przybliżaniem palcami i podwójnym stuknięciem.
+- „Najlepiej na e-papierze” stawia na kolorowe dzieła: ocena waży
+  najbardziej barwność (0,5), potem kontrast, średnią jasność i pokrycie
+  gamy; obrazy bez własnego koloru (rysunki, ryciny, zdjęcia cz-b, sepia)
+  mają najwyżej 0,5. Biblioteka jest raz oceniana od nowa w tle po
+  starcie.
+- „Teraz” pokazuje stan faktyczny: serwer zapamiętuje, który obraz ekran
+  naprawdę pobrał (`delivery.json`), a `GET /api/player` zwraca
+  `delivery`. Obraz, który nie dotarł, ma „Nie dotarł na ramkę” albo
+  „Czeka na ramkę” z powodem, kartę „Na ramce nadal” z tym, co ekran
+  wyświetla, i przycisk „Wyślij ponownie” (`POST /api/device/push`) albo
+  „Obudź ramkę”.
+
 ## 0.11.1
 
 - Wake-on-LAN z serwera naprawdę wychodzi: uvicorn działa na uvloop, a

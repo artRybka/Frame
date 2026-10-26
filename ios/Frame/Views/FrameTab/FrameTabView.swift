@@ -6,6 +6,8 @@ struct FrameTabView: View {
     @Environment(AppModel.self) private var model
     @State private var draft: FrameSettings?
     @State private var refreshing = false
+    @State private var renaming = false
+    @State private var newName = ""
 
     private var device: DeviceStatus? { model.status?.device }
 
@@ -35,8 +37,13 @@ struct FrameTabView: View {
             .toolbar {
                 if let draft, draft != model.settings {
                     ToolbarItem(placement: .confirmationAction) {
-                        Button("Zapisz") { Task { await model.saveSettings(draft) } }
-                            .fontWeight(.semibold)
+                        Button("Zapisz") {
+                            Task {
+                                await model.saveSettings(draft)
+                                self.draft = model.settings  // as the server keeps it (e.g. times sorted)
+                            }
+                        }
+                        .fontWeight(.semibold)
                     }
                     ToolbarItem(placement: .cancellationAction) {
                         Button("Cofnij") { self.draft = model.settings }
@@ -45,9 +52,28 @@ struct FrameTabView: View {
             }
             .refreshable { await refresh() }
             .onAppear { if draft == nil { draft = model.settings } }
-            .onChange(of: model.settings) { _, new in draft = new }
+            .onChange(of: model.settings) { old, new in
+                // Changes not saved yet stay; a new name comes in either way.
+                if draft == nil || draft == old { draft = new } else { draft?.name = new?.name }
+            }
+            .alert("Nazwa ramki", isPresented: $renaming) {
+                TextField(panelName, text: $newName)
+                    .textInputAutocapitalization(.sentences)
+                Button("Zapisz") { Task { await model.renameFrame(newName) } }
+                if model.settings?.name != nil {
+                    Button("Nazwa z ekranu") { Task { await model.renameFrame("") } }
+                }
+                Button("Anuluj", role: .cancel) {}
+            } message: {
+                Text("Tak ramka będzie się nazywać w aplikacji.")
+            }
         }
     }
+
+    /// What the panel calls itself (set in Samsung's own app).
+    private var panelName: String { device?.name.flatMap { $0.isEmpty ? nil : $0 } ?? "Moja ramka" }
+
+    private var frameName: String { model.settings?.name ?? panelName }
 
     private var binding: Binding<FrameSettings> {
         Binding(
@@ -56,10 +82,16 @@ struct FrameTabView: View {
         )
     }
 
-    private func refresh() async {
+    /// `waking`: the "Sprawdź stan" button, which also tries to wake a
+    /// sleeping frame; pulling to refresh only looks.
+    private func refresh(waking: Bool = false) async {
         refreshing = true
         defer { refreshing = false }
-        await model.refreshStatus(live: true)
+        if waking {
+            await model.checkStatus()
+        } else {
+            await model.refreshStatus(live: true)
+        }
         await model.refreshAll()
     }
 
@@ -67,27 +99,32 @@ struct FrameTabView: View {
 
     private var deviceHero: some View {
         HStack(spacing: 18) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 3)
-                    .fill(Theme.moulding)
-                    .overlay(RoundedRectangle(cornerRadius: 3).strokeBorder(Theme.mouldingEdge, lineWidth: 0.5))
-                    .frame(width: 104, height: model.isPortrait ? 150 : 66)
-                Group {
-                    if let preview = model.player?.current?.previewUrl {
-                        ArtImage(ref: .path(preview), maxPixel: 400)
-                    } else {
-                        Rectangle().fill(Theme.matWhite)
+            // The screen's own proportions (2560 × 1440), as in "Teraz".
+            FramedArtwork(
+                ref: model.player?.current.map { ImageRef.path($0.previewUrl) },
+                aspectRatio: model.isPortrait ? 9.0 / 16.0 : 16.0 / 9.0,
+                placeholder: Theme.matWhite,
+                moulding: 4
+            )
+            .frame(width: model.isPortrait ? 108 : 150)
+            VStack(alignment: .leading, spacing: 4) {
+                Eyebrow(model.settings?.name != nil ? panelName : "Samsung \(device?.model ?? "EM32DX")")
+                Button {
+                    newName = model.settings?.name ?? ""
+                    renaming = true
+                } label: {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(frameName)
+                            .font(.serif(26, weight: .semibold))
+                            .foregroundStyle(Theme.ink)
+                            .multilineTextAlignment(.leading)
+                        Image(systemName: "pencil")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(Theme.inkSoft)
                     }
                 }
-                .frame(width: 96, height: model.isPortrait ? 142 : 58)
-                .clipped()
-            }
-            .shadow(color: .black.opacity(0.18), radius: 10, y: 6)
-            VStack(alignment: .leading, spacing: 4) {
-                Eyebrow(device?.model.map { "Samsung \($0)" } ?? "Samsung EM32DX")
-                Text(device?.name ?? "Moja ramka")
-                    .font(.serif(26, weight: .semibold))
-                    .foregroundStyle(Theme.ink)
+                .buttonStyle(.plain)
+                .accessibilityLabel("\(frameName), zmień nazwę")
                 Text(connectionText)
                     .font(.subheadline)
                     .foregroundStyle(connectionColor)
@@ -100,6 +137,13 @@ struct FrameTabView: View {
     private var connectionText: String {
         guard let device else { return "Brak danych" }
         if !device.configured { return "Podaj adres i PIN ekranu w „Połączenie z ekranem”" }
+        switch device.powerState {
+        case "online": return "Połączona · \(When.ago(device.lastSeen) ?? "teraz")"
+        case "standby": return "Śpi, czeka na sygnał budzenia"
+        case "deep_sleep": return "Głęboki sen, bez Wi-Fi"
+        case "offline": return "Nie odpowiada — poza siecią lub wyłączona"
+        default: break  // a server before 0.12
+        }
         switch device.reachable {
         case .some(true): return "Połączona · \(When.ago(device.lastSeen) ?? "teraz")"
         case .some(false): return "Nie odpowiada — śpi lub poza siecią"
@@ -108,10 +152,16 @@ struct FrameTabView: View {
     }
 
     private var connectionColor: Color {
+        switch device?.powerState {
+        case "online": return Theme.good
+        case "standby", "deep_sleep": return Theme.inkSoft
+        case "offline": return Theme.bad
+        default: break
+        }
         switch device?.reachable {
-        case .some(true): Theme.good
-        case .some(false): Theme.bad
-        case .none: Theme.inkSoft
+        case .some(true): return Theme.good
+        case .some(false): return Theme.bad
+        case .none: return Theme.inkSoft
         }
     }
 
@@ -146,20 +196,46 @@ struct FrameTabView: View {
                 }
             }
             StatusTile(title: "Sieć") {
+                let state = network
                 VStack(alignment: .leading, spacing: 6) {
-                    Image(systemName: device?.networkStandby == true ? "wifi" : "wifi.slash")
+                    Image(systemName: state.icon)
                         .font(.title2)
-                        .foregroundStyle(device?.networkStandby == true ? Theme.good : Theme.inkSoft)
-                    Text(device?.networkStandby == true ? "Czuwanie Wi-Fi" : "Głęboki sen")
+                        .foregroundStyle(state.color)
+                    Text(state.title)
                         .font(.headline)
                         .foregroundStyle(Theme.ink)
-                    Text(device?.firmware.map { "firmware \($0)" } ?? "firmware —")
+                    Text(state.note)
                         .font(.caption)
                         .foregroundStyle(Theme.inkSoft)
-                        .lineLimit(1)
+                        .lineLimit(2)
                 }
             }
         }
+    }
+
+    /// The Sieć tile: what the frame is doing, as far as the server can tell.
+    private var network: (icon: String, color: Color, title: String, note: String) {
+        guard let device, device.configured else {
+            return ("wifi", Theme.inkSoft, "—", "ekran nie jest ustawiony")
+        }
+        switch device.powerState {
+        case "online":
+            return ("wifi", Theme.good, "Online", "odpowiada · \(When.ago(device.lastSeen) ?? "teraz")")
+        case "standby":
+            return ("moon.zzz", Theme.accent, "Czuwanie", "śpi, Wi-Fi czeka na sygnał budzenia")
+        case "deep_sleep":
+            let note = device.wakesAt.map { "Wi-Fi wyłączone, budzik o \($0)" } ?? "Wi-Fi wyłączone, budzi przycisk"
+            return ("wifi.slash", Theme.inkSoft, "Głęboki sen", note)
+        case "offline":
+            return ("wifi.exclamationmark", Theme.bad, "Nie odpowiada", "poza siecią lub wyłączona")
+        default:
+            break
+        }
+        // A server before 0.12 only says whether network standby is on.
+        if device.reachable == nil { return ("wifi", Theme.inkSoft, "Nie sprawdzono", "—") }
+        return device.networkStandby == true
+            ? ("wifi", Theme.good, "Czuwanie Wi-Fi", "budzi go sygnał Wi-Fi")
+            : ("wifi.slash", Theme.inkSoft, "Głęboki sen", "Wi-Fi wyłączone")
     }
 
     private var powerText: String {
@@ -182,14 +258,20 @@ struct FrameTabView: View {
         }
     }
 
+    private var checkLabel: String {
+        if model.wakingForStatus { return "Budzę ramkę…" }
+        return refreshing ? "Sprawdzam…" : "Sprawdź stan"
+    }
+
     private var deviceActions: some View {
         HStack(spacing: 10) {
             Button {
-                Task { await refresh() }
+                Task { await refresh(waking: true) }
             } label: {
-                Label(refreshing ? "Sprawdzam…" : "Sprawdź stan", systemImage: "arrow.clockwise")
+                Label(checkLabel, systemImage: model.wakingForStatus ? "sun.max" : "arrow.clockwise")
             }
             .buttonStyle(SecondaryButtonStyle())
+            .disabled(refreshing)
             Menu {
                 Button("Obudź ramkę", systemImage: "sun.max") { Task { await model.wake() } }
                 Button("Uśpij ramkę", systemImage: "moon.zzz") { Task { await model.sleepFrame() } }
@@ -494,7 +576,7 @@ struct PresentationSection: View {
                         moulding: 5
                     )
                     .frame(maxWidth: portrait ? 190 : .infinity)
-                    Text("Tak będzie wyglądał obraz, który jest teraz na ramce. Zmiany trafią na ramkę po zapisaniu.")
+                    Text("Tak wyglądałby obraz, który jest teraz na ramce. Po zapisaniu ramka pokaże nowy wygląd od następnego obrazu.")
                         .font(.caption)
                         .foregroundStyle(Theme.inkSoft)
                         .multilineTextAlignment(.center)
@@ -697,7 +779,7 @@ struct MatSwatch: View {
 
     static func color(_ name: String) -> Color {
         switch name {
-        case "cream": Color(hex: 0xF6EFD9)
+        case "cream": Color(hex: 0xFBF3D3)  // the white swatch as mat._cream tints it
         case "grey": Color(hex: 0xAEADAA)
         case "black": Color(hex: 0x1F1E1C)
         case "picture": Color(hex: 0xE9DCCB)  // stands in for "a tint of the picture"
@@ -880,6 +962,11 @@ struct PanelSection: View {
                     : "Wartości z frame.env lub opcji add-onu. Zapisane tutaj będą miały pierwszeństwo.")
                     .font(.caption)
                     .foregroundStyle(Theme.inkSoft)
+                if let device = model.status?.device, let firmware = device.firmware {
+                    Text("Ekran \(device.model ?? "EM32DX") · firmware \(firmware)")
+                        .font(.caption)
+                        .foregroundStyle(Theme.inkSoft)
+                }
                 if config.fromApp {
                     Button("Przywróć wartości z serwera") {
                         Task {

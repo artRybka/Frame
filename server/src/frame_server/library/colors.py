@@ -30,6 +30,14 @@ MOODS = ("warm", "cool", "vivid", "muted", "monochrome", "dark", "light")
 #: OKLab chroma of the strongest tint that still reads as aged paper or a
 #: sepia print rather than as colour.
 PAPER_TINT = 0.07
+#: Tint spread (see ``tint_spread``) from no colour of its own to plainly
+#: several colours, for the suitability score.
+COLOUR_SPREAD = (0.01, 0.035)
+#: OKLab chroma of a picture's most colourful tenth that counts as fully colourful.
+COLOUR_CHROMA = 0.08
+#: Version of the suitability score; items scored by an older one are scored
+#: again (``Player.rescore``).
+SCORE_VERSION = 2
 
 
 def _sample(img: Image.Image, size: int = 64) -> np.ndarray:
@@ -85,10 +93,46 @@ def family(lab: np.ndarray) -> str:
     return "purple"
 
 
+def colourfulness(lab: np.ndarray, spread: float) -> float:
+    """0..1: how much colour of its own a picture has. Both its tint spread
+    (more than one hue, not sepia on old paper) and its chroma count: a
+    yellowed etching and a grey photo score 0, Van Gogh 1."""
+    low, high = COLOUR_SPREAD
+    hues = min(1.0, max(0.0, (spread - low) / (high - low)))
+    chroma = np.hypot(lab[:, 1], lab[:, 2])
+    strength = min(1.0, float(np.percentile(chroma, 90)) / COLOUR_CHROMA)
+    return float(np.sqrt(hues * strength))
+
+
+def suitability(
+    linear: np.ndarray, lab: np.ndarray, spread: float, palette: Palette = EM32DX
+) -> float:
+    """0..1: how good a picture looks on the panel. Its six inks make colour
+    shine: colourful works lead, drawings, etchings and B&W photos stay at
+    0.5 at most (they look fine, only plainer). Contrast and a mid-light
+    picture help, dark ones turn muddy; gamut coverage counts a little, as
+    gamut mapping handles colours beyond the inks well."""
+    light = lab[:, 0]
+    coverage = gamut_coverage(linear.reshape(1, -1, 3), palette)
+    contrast = min(1.0, float(light.std()) / 0.2)
+    brightness = 1.0 - min(1.0, abs(float(light.mean()) - 0.65) / 0.45)
+    colour = colourfulness(lab, spread)
+    return round(0.5 * colour + 0.2 * contrast + 0.2 * brightness + 0.1 * coverage, 3)
+
+
+def score(img: Image.Image, palette: Palette = EM32DX, spread: float | None = None) -> float:
+    """The suitability score alone, for pictures already analysed."""
+    linear = _sample(img)
+    if spread is None:
+        spread = tint_spread(img)
+    return suitability(linear, linear_to_oklab(linear), spread, palette)
+
+
 def analyse(
-    img: Image.Image, palette: Palette = EM32DX
+    img: Image.Image, palette: Palette = EM32DX, spread: float | None = None
 ) -> tuple[list[ColorSwatch], list[str], float]:
-    """Dominant colours, colour/mood tags and a 0..1 e-paper suitability score."""
+    """Dominant colours, colour/mood tags and a 0..1 e-paper suitability
+    score; ``spread`` is the picture's ``tint_spread`` if already known."""
     linear = _sample(img)
     lab = linear_to_oklab(linear)
     centres, weights = kmeans(lab, k=6)
@@ -138,11 +182,9 @@ def analyse(
     elif mean_light > 0.8:
         tags.append("light")
 
-    coverage = gamut_coverage(linear.reshape(1, -1, 3), palette)
-    contrast = min(1.0, float(light.std()) / 0.2)
-    brightness = 1.0 - min(1.0, abs(mean_light - 0.65) / 0.45)
-    score = 0.5 * coverage + 0.3 * contrast + 0.2 * brightness
-    return swatches, tags, round(score, 3)
+    if spread is None:
+        spread = tint_spread(img)
+    return swatches, tags, suitability(linear, lab, spread, palette)
 
 
 def tint_spread(img: Image.Image) -> float:

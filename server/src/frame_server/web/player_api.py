@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import time
-from typing import Annotated, Any
+from datetime import UTC, datetime
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
@@ -15,6 +16,7 @@ from ..progress import DisplayProgress
 from ..schedule import FrameSettings
 from ..service import FrameService
 from ..status import DeviceStatus
+from ..store import ContentInfo
 from .deps import require_token, service
 
 router = APIRouter(prefix="/api", dependencies=[Depends(require_token)], tags=["player"])
@@ -31,6 +33,23 @@ class NowShowing(BaseModel):
     item: Item | None
 
 
+class Delivery(BaseModel):
+    """Whether ``current`` is on the panel. ``shown``: it downloaded it;
+    ``sending``: on its way; ``waiting``: the panel is asleep or did not
+    answer, the picture goes out when it wakes; ``failed``: sent, but never
+    downloaded; ``unknown``: no panel, or no download seen yet."""
+
+    state: Literal["shown", "sending", "waiting", "failed", "unknown"]
+    #: What the panel shows instead, when not ``current``.
+    on_frame: NowShowing | None = None
+    shown_at: str | None = None
+    failed_at: str | None = None
+    failure: str | None = None  # "timeout" or "error"
+    message: str = ""
+    #: ``waiting`` in deep sleep (Wi-Fi off): HH:MM of the panel's alarm.
+    asleep_until: str | None = None
+
+
 class PlayerView(BaseModel):
     playlist: PlaylistSummary | None
     current: NowShowing | None
@@ -44,6 +63,7 @@ class PlayerView(BaseModel):
     busy: bool
     last_error: str | None
     progress: DisplayProgress
+    delivery: Delivery
 
 
 class HoldRequest(BaseModel):
@@ -64,21 +84,49 @@ class StatusView(BaseModel):
     server: ServerStatus
 
 
+def _now_showing(svc: FrameService, content: ContentInfo) -> NowShowing:
+    item_id = content.extra.get("item_id") if content.extra else None
+    return NowShowing(
+        title=content.title,
+        description=content.description,
+        source=content.source,
+        created=content.created,
+        preview_url=f"/api/previews/{content.file_id}.png",
+        item=svc.library.get(str(item_id)) if item_id else None,
+    )
+
+
+def _delivery(svc: FrameService, content: ContentInfo | None) -> Delivery:
+    record = svc.store.delivery()
+    shown = record.shown
+    if content is None or not svc.device_configured or shown is None:
+        return Delivery(state="unknown")
+    if shown.file_id == content.file_id:
+        return Delivery(state="shown", shown_at=record.shown_at)
+    on_frame = _now_showing(svc, shown)
+    common: dict[str, Any] = {"on_frame": on_frame, "shown_at": record.shown_at}
+    if svc.player.busy or svc.progress.active:
+        return Delivery(state="sending", **common)
+    if svc.power.state.pending_push:
+        asleep = svc.power.deep_asleep(datetime.now(UTC))
+        return Delivery(
+            state="waiting", asleep_until=svc.power.state.timer if asleep else None, **common
+        )
+    failed = record.failed_file_id == content.file_id
+    return Delivery(
+        state="failed",
+        failed_at=record.failed_at if failed else None,
+        failure=record.failure if failed else None,
+        message=record.message if failed else "",
+        **common,
+    )
+
+
 def _player_view(svc: FrameService) -> PlayerView:
     player = svc.player
     state, settings = player.state, player.settings
     content = svc.store.current()
-    current = None
-    if content is not None:
-        item_id = content.extra.get("item_id") if content.extra else None
-        current = NowShowing(
-            title=content.title,
-            description=content.description,
-            source=content.source,
-            created=content.created,
-            preview_url=f"/api/previews/{content.file_id}.png",
-            item=svc.library.get(str(item_id)) if item_id else None,
-        )
+    current = _now_showing(svc, content) if content is not None else None
     playlist = None
     if settings.playlist_id is not None:
         found = svc.library.playlist(settings.playlist_id)
@@ -96,6 +144,7 @@ def _player_view(svc: FrameService) -> PlayerView:
         busy=player.busy,
         last_error=state.last_error,
         progress=svc.progress.view(),
+        delivery=_delivery(svc, content),
     )
 
 
@@ -155,8 +204,11 @@ async def put_settings(settings: FrameSettings, svc: Svc) -> FrameSettings:
             svc.library.delete(item.id)
             svc.images.remove(item)
     if player.needs_restyle(old, saved):
-        # New framing should show up now, not at the next scheduled change.
+        # The screen was turned: the picture on it is redrawn to match.
         svc.background(player.restyle())
+    elif player.presentation_changed(old, saved):
+        # The picture on the frame stays; the next one is drawn the new way.
+        svc.background(player.render_ahead())
     return saved
 
 
