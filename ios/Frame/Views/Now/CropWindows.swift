@@ -8,8 +8,8 @@ extension Crop {
     }
 }
 
-/// The crop of the picture browsed to on "Teraz", as loaded and as edited.
-/// Nothing reaches the frame until "Pokaż na ramce".
+/// The crop of a picture, as loaded and as edited on the crop screen.
+/// Nothing is saved until "Zapisz kadr".
 struct FramingDraft: Equatable {
     var key = ""  // item, orientation and presentation it was loaded for
     var view: FramingView?
