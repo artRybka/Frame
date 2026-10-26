@@ -122,19 +122,25 @@ async def test_rotation_next_previous_and_history(service) -> None:
     assert b.id not in service.player.state.queue
 
 
-async def test_next_picture_is_rendered_ahead(service, monkeypatch) -> None:
-    from frame_server import service as service_module
+def _count_renders(service, monkeypatch) -> list[int]:
+    """Renders this service makes (not reused ones). Counted on its own
+    cache, so a render still running in a thread from an earlier test does
+    not count."""
+    renders: list[int] = []
+    get = service.rendered.get
+    monkeypatch.setattr(
+        service.rendered, "get", lambda key, make: get(key, lambda: renders.append(1) or make())
+    )
+    return renders
 
+
+async def test_next_picture_is_rendered_ahead(service, monkeypatch) -> None:
     for n in range(3):
         _add(service, n, (200, 40 * n, 40), "Ala")
     settings = service.player.settings
     settings.shuffle = False
     service.player.save_settings(settings)
-    renders = []
-    real = service_module.render
-    monkeypatch.setattr(
-        service_module, "render", lambda *a, **kw: renders.append(1) or real(*a, **kw)
-    )
+    renders = _count_renders(service, monkeypatch)
 
     await service.player.next()
     upcoming = service.player.state.queue[0]
@@ -540,8 +546,6 @@ def test_old_default_styles_become_automatic(service) -> None:
 
 
 async def test_work_added_to_the_queue_is_shown_next(service, monkeypatch) -> None:
-    from frame_server import service as service_module
-
     a, _, c, d = (_add(service, n, (200, 40 * n, 40), "Ala") for n in range(4))
     playlist = service.library.save_playlist(
         Playlist(name="Ala", rules=PlaylistRules(artists=["Ala"]))
@@ -559,11 +563,7 @@ async def test_work_added_to_the_queue_is_shown_next(service, monkeypatch) -> No
     assert [i.id for i in player.upcoming(3)][:2] == [outsider.id, c.id]
     assert player.state.queue.count(c.id) == 0  # not shown twice
 
-    renders = []
-    real = service_module.render
-    monkeypatch.setattr(
-        service_module, "render", lambda *a, **kw: renders.append(1) or real(*a, **kw)
-    )
+    renders = _count_renders(service, monkeypatch)
     await player.render_ahead()
     assert len(renders) == 1
     shown = await player.next()
@@ -647,6 +647,36 @@ async def test_liked_works_join_the_favourites_playing_now(service) -> None:
         assert [i["id"] for i in view["upcoming"]] == [e.id, upcoming[0], d.id]
         favourites = next(p for p in client.get("/api/playlists").json() if p["id"] == playlist.id)
         assert favourites["item_count"] == 3
+
+
+async def test_favourites_shown_lately_stay_in_the_queue(service) -> None:
+    works = [_add(service, n, (40 * n, 40, 200), "Ala") for n in range(1, 7)]
+    lately = datetime.now(UTC).isoformat(timespec="seconds")
+    for item in works[:4]:
+        service.library.update(item.id, favorite=True, last_shown_at=lately)
+    playlist = service.library.save_playlist(
+        Playlist(name="Ulubione", rules=PlaylistRules(favorites_only=True))
+    )
+    player = service.player
+    settings = player.settings
+    settings.playlist_id = playlist.id
+    player.save_settings(settings)
+    shown = await player.next()
+    assert shown is not None
+    others = {i.id for i in works[:4]} - {shown.id}
+
+    new = works[4]
+    service.library.update(new.id, favorite=True)
+    player.playlist_changed(playlist.id)  # drawn again
+    upcoming = [i.id for i in player.upcoming(8)]
+    assert upcoming[0] == new.id  # not shown lately: first
+    assert set(upcoming[1:]) == others  # the rest of the playlist still follows
+
+    assert (await player.next()).id == new.id
+    found = works[5]  # e.g. a top-up: in the playlist, not in the queue
+    service.library.update(found.id, favorite=True)
+    assert player.upcoming(8)[0].id == found.id  # before the ones shown lately
+    assert (await player.next()).id == found.id
 
 
 def test_library_is_scored_again_once(service) -> None:

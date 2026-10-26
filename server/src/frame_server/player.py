@@ -310,16 +310,33 @@ class Player:
         return [artist for artist, score in scores.most_common(TASTE_ARTISTS) if score > 0]
 
     def _refill(self, state: PlayerState, settings: FrameSettings) -> None:
-        items = self.candidates(settings)
-        pool = self.fresh(items, settings) or items
-        pool = [i for i in pool if i.id not in state.requested]  # shown first anyway
-        pool = [i for i in pool if i.id != state.current_item_id] or pool
+        """The whole rotation: pictures not shown lately first, then those
+        shown lately. (Only the first part would leave out most of a
+        playlist once a few new works join it.)"""
+        items = [i for i in self.candidates(settings) if i.id not in state.requested]
+        items = [i for i in items if i.id != state.current_item_id] or items
+        fresh = {i.id for i in self.fresh(items, settings)}
+        parts = [[i for i in items if i.id in fresh], [i for i in items if i.id not in fresh]]
         playlist = self.playlist(settings)
-        if playlist is not None and playlist.album is not None:
-            pool = album_order(pool, playlist.album.order)
-        elif settings.shuffle:
-            random.shuffle(pool)
-        state.queue = [i.id for i in pool]
+        for part in parts:
+            if playlist is not None and playlist.album is not None:
+                part[:] = album_order(part, playlist.album.order)
+            elif settings.shuffle:
+                random.shuffle(part)
+        state.queue = [i.id for part in parts for i in part]
+
+    def _catch_up(self, state: PlayerState, settings: FrameSettings) -> bool:
+        """Once the queue goes on to pictures shown lately, works found since
+        (e.g. by a top-up from museums) come first: the queue is drawn
+        again. Returns whether it was."""
+        head = self.library.get(state.queue[0]) if state.queue else None
+        if head is None or self.fresh([head], settings):
+            return False
+        queued = {*state.queue, *state.requested, state.current_item_id}
+        if all(i.id in queued for i in self.fresh(self.candidates(settings), settings)):
+            return False
+        self._refill(state, settings)
+        return True
 
     def _pop_next(self, state: PlayerState, settings: FrameSettings) -> Item | None:
         while state.requested:
@@ -327,6 +344,7 @@ class Player:
             if item is not None:  # asked for: shown even if left out of the rotation
                 return item
         spare = self.library.spare_copies()
+        self._catch_up(state, settings)
         for _ in range(2):
             while state.queue:
                 item = self.library.get(state.queue.pop(0))
@@ -339,6 +357,8 @@ class Player:
         state, settings = self.state, self.settings
         if not state.queue:
             self._refill(state, settings)
+            self._save_state(state)
+        elif self._catch_up(state, settings):
             self._save_state(state)
         items = (self.library.get(i) for i in [*state.requested, *state.queue][:limit])
         return [i for i in items if i is not None]
