@@ -122,19 +122,25 @@ async def test_rotation_next_previous_and_history(service) -> None:
     assert b.id not in service.player.state.queue
 
 
-async def test_next_picture_is_rendered_ahead(service, monkeypatch) -> None:
-    from frame_server import service as service_module
+def _count_renders(service, monkeypatch) -> list[int]:
+    """Renders this service makes (not reused ones). Counted on its own
+    cache, so a render still running in a thread from an earlier test does
+    not count."""
+    renders: list[int] = []
+    get = service.rendered.get
+    monkeypatch.setattr(
+        service.rendered, "get", lambda key, make: get(key, lambda: renders.append(1) or make())
+    )
+    return renders
 
+
+async def test_next_picture_is_rendered_ahead(service, monkeypatch) -> None:
     for n in range(3):
         _add(service, n, (200, 40 * n, 40), "Ala")
     settings = service.player.settings
     settings.shuffle = False
     service.player.save_settings(settings)
-    renders = []
-    real = service_module.render
-    monkeypatch.setattr(
-        service_module, "render", lambda *a, **kw: renders.append(1) or real(*a, **kw)
-    )
+    renders = _count_renders(service, monkeypatch)
 
     await service.player.next()
     upcoming = service.player.state.queue[0]
@@ -540,8 +546,6 @@ def test_old_default_styles_become_automatic(service) -> None:
 
 
 async def test_work_added_to_the_queue_is_shown_next(service, monkeypatch) -> None:
-    from frame_server import service as service_module
-
     a, _, c, d = (_add(service, n, (200, 40 * n, 40), "Ala") for n in range(4))
     playlist = service.library.save_playlist(
         Playlist(name="Ala", rules=PlaylistRules(artists=["Ala"]))
@@ -559,11 +563,7 @@ async def test_work_added_to_the_queue_is_shown_next(service, monkeypatch) -> No
     assert [i.id for i in player.upcoming(3)][:2] == [outsider.id, c.id]
     assert player.state.queue.count(c.id) == 0  # not shown twice
 
-    renders = []
-    real = service_module.render
-    monkeypatch.setattr(
-        service_module, "render", lambda *a, **kw: renders.append(1) or real(*a, **kw)
-    )
+    renders = _count_renders(service, monkeypatch)
     await player.render_ahead()
     assert len(renders) == 1
     shown = await player.next()
