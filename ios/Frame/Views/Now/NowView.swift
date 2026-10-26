@@ -5,6 +5,8 @@ import SwiftUI
 /// browse what was and what will be on the frame without sending anything,
 /// and "Wróć do obrazu na ramce" jumps back to it; the picture is cropped
 /// right on it, and "Pokaż na ramce" sends the one browsed to with its crop.
+/// A picture that did not reach the frame says so, with the one the frame
+/// still shows and a way to send it again.
 struct NowView: View {
     @Environment(AppModel.self) private var model
     @State private var showingSend = LaunchRoute.screen == "send"
@@ -31,6 +33,13 @@ struct NowView: View {
     private var item: Item? { current?.item }
     private var history: [ItemSummary] { model.player?.history ?? [] }  // newest first
     private var upcoming: [ItemSummary] { model.player?.upcoming ?? [] }
+
+    /// The picture on the frame, as the server has it, is not on the panel:
+    /// sent and never downloaded, waiting for it to wake, or on its way.
+    private var undelivered: Delivery? {
+        guard offset == 0, let delivery = model.player?.delivery, !delivery.isShown else { return nil }
+        return delivery
+    }
 
     private func summary(at offset: Int) -> ItemSummary? {
         if offset < 0, -offset <= history.count { return history[-offset - 1] }
@@ -74,6 +83,10 @@ struct NowView: View {
                                 .transition(.opacity.combined(with: .move(edge: .top)))
                         }
                         controls
+                        if let onFrame = undelivered?.onFrame {
+                            OnFrameNote(showing: onFrame)
+                                .transition(.opacity)
+                        }
                         if let selectedItem {
                             ArtworkInfo(item: selectedItem)
                                 .id(selectedItem.id)
@@ -222,7 +235,7 @@ struct NowView: View {
             VStack(spacing: 3) {
                 Text(placeLine)
                     .font(.footnote.weight(.semibold))
-                    .foregroundStyle(offset == 0 ? Theme.ink : Theme.vermilion)
+                    .foregroundStyle(offset == 0 && undelivered == nil ? Theme.ink : Theme.vermilion)
                 Text(hintLine)
                     .font(.caption)
                     .foregroundStyle(Theme.inkSoft)
@@ -236,16 +249,16 @@ struct NowView: View {
                 CropTools(itemID: id, draft: $draft).disabled(sending)
             }
             Button {
-                Task { await send() }
+                Task { await primaryAction() }
             } label: {
                 HStack(spacing: 10) {
                     if sending { ProgressView().tint(Theme.paper) }
-                    Text(canSend || sending ? "Pokaż na ramce" : "Jest na ramce")
+                    Text(primaryTitle)
                 }
             }
             .buttonStyle(PrimaryButtonStyle())
-            .disabled(!canSend || sending)
-            .opacity(canSend || sending ? 1 : 0.45)
+            .disabled(!primaryEnabled || sending)
+            .opacity(primaryEnabled || sending ? 1 : 0.45)
             .frame(maxWidth: model.isPortrait ? 420 : .infinity)
             HStack(spacing: 8) {
                 Text(scheduleLine)
@@ -278,9 +291,37 @@ struct NowView: View {
         return offset != 0 || draft.change != nil && draft.key == draftKey
     }
 
+    /// Not on the panel and nothing else to send: send it again, or wake
+    /// the frame it waits for (not in deep sleep: Wake-on-LAN cannot reach it).
+    private var retry: Bool { !canSend && undelivered?.isFailed == true }
+    private var wakeUp: Bool { !canSend && undelivered?.isWaiting == true && undelivered?.asleepUntil == nil }
+
+    private var primaryEnabled: Bool { (canSend || retry || wakeUp) && !model.working }
+
+    private var primaryTitle: String {
+        if canSend || sending { return "Pokaż na ramce" }
+        if retry { return "Wyślij ponownie" }
+        if wakeUp { return "Obudź ramkę" }
+        if let undelivered { return undelivered.isWaiting ? "Czeka na ramkę" : "Wysyłam…" }
+        return "Jest na ramce"
+    }
+
+    private func primaryAction() async {
+        if canSend {
+            await send()
+        } else if retry {
+            await model.pushAgain()
+        } else if wakeUp {
+            await model.wake()
+            // Once awake, the waiting picture goes out on its own.
+            model.trackProgress(expectingStart: true)
+            await model.refreshPlayer()
+        }
+    }
+
     private var placeLine: String {
         switch offset {
-        case 0: "Teraz na ramce"
+        case 0: undelivered?.headline ?? "Teraz na ramce"
         case -1: "Poprzednio na ramce"
         case ..<0: "Wcześniej na ramce"
         case 1: "Następny w kolejce" + addedLine
@@ -299,6 +340,7 @@ struct NowView: View {
                 ? "Nowy kadr trafi na ramkę po „Pokaż na ramce”."
                 : "Przesuń obraz palcem albo rozsuń dwa palce, żeby go wykadrować."
         }
+        if let undelivered { return undelivered.explanation }
         return offset == 0 ? " " : "Na ramkę trafi po „Pokaż na ramce”."
     }
 
@@ -361,6 +403,39 @@ struct NowView: View {
             draft = FramingDraft()
             await loadFraming()  // as saved now
         }
+    }
+}
+
+/// What the frame still shows while the picture above did not reach it.
+struct OnFrameNote: View {
+    let showing: NowShowing
+
+    var body: some View {
+        Card(padding: 14) {
+            HStack(spacing: 14) {
+                ArtImage(
+                    ref: .path(showing.previewUrl),
+                    placeholder: showing.item?.placeholderColor ?? Theme.mat,
+                    maxPixel: 300
+                )
+                .frame(width: 64, height: 64)
+                .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+                VStack(alignment: .leading, spacing: 3) {
+                    Eyebrow("Na ramce nadal")
+                    Text(showing.title.isEmpty ? "Bez tytułu" : showing.title)
+                        .font(.serif(17, weight: .semibold))
+                        .foregroundStyle(Theme.ink)
+                        .lineLimit(2)
+                    if let artist = showing.item?.artist, !artist.isEmpty {
+                        Text(artist)
+                            .font(.subheadline)
+                            .foregroundStyle(Theme.inkSoft)
+                            .lineLimit(1)
+                    }
+                }
+            }
+        }
+        .accessibilityElement(children: .combine)
     }
 }
 
