@@ -360,6 +360,8 @@ struct DeviceStatus: Codable, Hashable, Sendable {
     var lastFetchAt: String?
     var pendingPush: Bool?
     var wakesAt: String?
+    /// "online" | "standby" | "deep_sleep" | "offline"; missing from servers before 0.12.
+    var powerState: String?
 }
 
 /// "Obudź ramkę": whether the magic packets went out and the panel answered.

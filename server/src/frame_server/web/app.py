@@ -256,10 +256,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return await service.status.refresh()
 
     @app.post("/api/device/wake", dependencies=auth)
-    async def device_wake() -> WakeResult:
+    async def device_wake(sleep_after: bool = False) -> WakeResult:
+        """``sleep_after``: the app's "Sprawdź stan" found the panel asleep
+        and wakes it only to look at it."""
         if not service.device_configured:
             raise HTTPException(409, "panel not configured")
-        return await service.power.wake_now()
+        return await service.power.wake_now(sleep_after=sleep_after)
 
     @app.post("/api/device/sleep", dependencies=auth)
     async def device_sleep() -> dict[str, object]:
@@ -269,6 +271,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await service.panel.sleep()
         except MdcError as err:
             raise HTTPException(502, f"panel: {err}") from err
+        service.status.note_sleep(deep=False)
         return {"ok": True}
 
     @app.get("/api/debug/panel-requests", dependencies=auth)

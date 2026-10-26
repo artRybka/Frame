@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Literal
 
@@ -14,6 +15,13 @@ if TYPE_CHECKING:
     from .service import Panel
 
 log = logging.getLogger(__name__)
+
+
+# What the panel is doing, as far as the server can tell: answering MDC
+# (online), asleep with network standby on so Wake-on-LAN can reach it
+# (standby), asleep with the Wi-Fi off until its alarm or button
+# (deep_sleep), or not answering for no known reason (offline).
+PanelPower = Literal["online", "standby", "deep_sleep", "offline"]
 
 
 def _now() -> str:
@@ -32,6 +40,7 @@ class DeviceStatus(BaseModel):
     power_source: Literal["ac", "battery"] | None = None
     battery_raw: str | None = None
     network_standby: bool | None = None
+    power_state: PanelPower | None = None
     firmware: str | None = None
     model: str | None = None
     serial: str | None = None
@@ -49,6 +58,8 @@ class StatusMonitor:
         self.panel = panel
         self.status = DeviceStatus(configured=self._configured())
         self._static_known = False
+        # Which sleep a panel that does not answer is in (see PowerManager).
+        self.asleep: Callable[[DeviceStatus], PanelPower] | None = None
 
     def _configured(self) -> bool:
         s = self.panel.settings
@@ -94,9 +105,11 @@ class StatusMonitor:
             status.reachable = True
             status.last_seen = status.checked_at
             status.error = None
+            status.power_state = "online"
         except MdcError as err:
             status.reachable = False
             status.error = str(err)
+            status.power_state = self.asleep(status) if self.asleep else "offline"
             log.info("panel status check failed: %s", err)
         self.status = status
         return status
@@ -108,3 +121,9 @@ class StatusMonitor:
             self.status.last_fetch_at = stamp
             self.status.reachable = True
             self.status.last_seen = stamp
+            self.status.power_state = "online"
+
+    def note_sleep(self, deep: bool) -> None:
+        """The server put the panel to sleep: light (network standby on) or deep."""
+        self.status.network_standby = not deep
+        self.status.power_state = "deep_sleep" if deep else "standby"
