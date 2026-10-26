@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.15.1
+
+- Nowa ikona aplikacji z napisem „Frame”, z osobnym wariantem dla trybu
+  ciemnego. Serwer bez zmian.
+
 ## 0.15.0
 
 - Ramka: uśpiona ramka, która nie odpowiada, ale jest w sieci Wi-Fi
