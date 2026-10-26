@@ -13,6 +13,15 @@
 - Tryb „Detale” (dwa detale) usunięty: zapisane ustawienia z nim ładują
   się jako „Opis”, AUTO wybiera „Opis”, a z zapisanej pary detali zostaje
   bliższy jako detal opisu.
+- Budzenie ramki: po nocy na baterii serwer szuka ekranu co 2 min, aż
+  przywróci network standby (wcześniej przegapiony alarm albo przycisk
+  zostawiały go wyłączonym na cały dzień i Wake-on-LAN nie działał).
+  „Obudź ramkę” wysyła pakiety przez 15 s, szuka ekranu przez 30 s, a
+  aplikacja pokazuje, czy się obudził, nie odpowiada, czy śpi głęboko do
+  alarmu (`/api/device/wake` zwraca wynik).
+- Na baterii ekran przechodzi w lekki sen 90 s po pobraniu obrazu (z
+  network standby, więc WoL nadal działa); nowy obraz w tym czasie to
+  anuluje, na ładowarce bez zmian.
 - Aplikacja: w „Teraz” przycisk „Wróć do obrazu na ramce” po
   przeglądaniu strzałkami; w szczegółach dzieła „Pokaż na ramce” i „Dodaj
   do kolejki” w jednym rzędzie, serce i menu „⋯” u góry, narzędzia kadru
