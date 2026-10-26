@@ -278,7 +278,10 @@ async def item_preview(
                     _prune(path.parent, PREVIEW_CACHE_FILES)
 
                 await run_in_threadpool(build)
-    return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "max-age=3600"})
+    # Without ``settings`` the address stays the same when the presentation
+    # changes: the app must ask again rather than keep the old framing.
+    cache = "max-age=3600" if settings else "no-cache"
+    return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": cache})
 
 
 Box = tuple[float, float, float, float]  # x, y, w, h as fractions of the canvas

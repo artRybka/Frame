@@ -164,7 +164,7 @@ struct NowView: View {
             }
             .task(id: browsed?.summary.id) { await loadDetails() }
             .task(id: draftKey) { await loadFraming() }
-            .task(id: selectedID) { await prefetchNeighbours() }
+            .task(id: draftKey) { await prefetchNeighbours() }  // again with a new presentation
         }
     }
 
@@ -172,9 +172,13 @@ struct NowView: View {
 
     private var heroRef: ImageRef? {
         if let id = selectedID, let trial = draft.trial, draft.key == draftKey {
-            return .framePreview(id, framing: trial)  // the mat with the new window
+            return .framePreview(id, settings: model.settings, framing: trial)  // the mat with the new window
         }
-        if offset != 0, let browsed { return .framePreview(browsed.summary.id, framing: applied[draftKey]) }
+        // With the settings in the address, a new presentation redraws the
+        // pictures still to come instead of showing the ones cached before.
+        if offset != 0, let browsed {
+            return .framePreview(browsed.summary.id, settings: model.settings, framing: applied[draftKey])
+        }
         if let current { return .path(current.previewUrl) }
         return nil
     }
@@ -377,7 +381,7 @@ struct NowView: View {
     private func prefetchNeighbours() async {
         for target in [offset + 1, offset - 1] where target != 0 {
             guard let id = summary(at: target)?.id,
-                  let request = model.backend.request(for: .framePreview(id))
+                  let request = model.backend.request(for: .framePreview(id, settings: model.settings))
             else { continue }
             _ = try? await ImageLoader.shared.image(for: request, maxPixel: 1600)  // as FramedArtwork loads it
         }
