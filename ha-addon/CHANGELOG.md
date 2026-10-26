@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.13.0
+
+- Passe-partout „z obrazu” nazywa się teraz „Jasne”, a nowe „Ciemne”
+  (`picture_dark`) to głęboki, przygaszony karton w odcieniu obrazu z
+  białym rdzeniem fazy.
+- Ekran kadrowania: „Kadr automatyczny” stoi na stałe obok „Zapisz kadr”
+  (wygaszony, gdy nie ma czego przywracać), więc podgląd już się nie
+  zmniejsza w trakcie przeciągania. Podglądy ramki nie mają już ikonki
+  kadrowania.
+- Dotknięcie artysty przy dziele otwiera wyszukiwanie jego prac; zakładka
+  „Muzea” w Odkrywaj nazywa się „Szukaj”.
+- Menu „…” dzieła → „Zapisz w Zdjęciach”: obraz w największej dostępnej
+  rozdzielczości (plik z muzeum, a gdy się nie da, kopia z serwera).
+- „Uśpij ramkę” pokazuje faktyczny stan: przez 3 minuty po uśpieniu
+  serwer nie otwiera sesji MDC przy sprawdzaniu stanu i zgłasza czuwanie.
+  Po wysłaniu obrazu i po „Sprawdź stan” ramka wraca do snu także na
+  ładowarce, jeśli wcześniej spała; bateria jest czytana ponownie przed
+  decyzją.
+- Odświeżanie przeciągnięciem w dół nie pokazuje już dymka „anulowane”.
+
 ## 0.12.0
 
 - Tryb „Opis”: pierwszeństwo ma obraz. W okienku passe-partout zajmuje
