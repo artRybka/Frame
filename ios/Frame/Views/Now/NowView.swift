@@ -112,7 +112,7 @@ struct NowView: View {
                     .padding(.bottom, 40)
                     .animation(.easeInOut, value: model.displayProgress == nil)
                 }
-                .refreshable { await model.refreshAll() }
+                .refreshable { await Task { await model.refreshAll() }.value }
             }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -200,11 +200,6 @@ struct NowView: View {
             .environment(\.artImageLoaded) { ref in
                 guard ref == heroRef else { return }
                 withAnimation(.easeOut(duration: 0.3)) { loadedHero = ref }
-            }
-            .overlay(alignment: .bottomTrailing) {
-                if canCrop, !sending {
-                    CornerBadge(systemImage: "crop").transition(.opacity)
-                }
             }
             .contentShape(Rectangle())
             .onTapGesture {

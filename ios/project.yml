@@ -32,6 +32,8 @@ targets:
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
         NSLocalNetworkUsageDescription: Frame łączy się z serwerem ramki w Twojej sieci domowej.
+        # "Zapisz w Zdjęciach" on a work's screen: add-only, Frame never reads the library.
+        NSPhotoLibraryAddUsageDescription: Frame zapisuje wybrane dzieła w Twoich Zdjęciach.
         NSBonjourServices:
           - _frame._tcp
         NSAppTransportSecurity:

@@ -54,6 +54,15 @@ struct MuseumSearchView: View {
             }
         }
         .task(id: SearchKey(rules: rules, source: source)) { await search() }
+        .onChange(of: model.artistSearch, initial: true) { _, artist in
+            guard let artist else { return }
+            var asked = PlaylistRules()
+            asked.artists = [artist]
+            rules = asked
+            source = "all"
+            // Later, so the tab and Discover see the request first.
+            Task { model.artistSearch = nil }
+        }
         .sheet(item: $editing) { playlist in
             PlaylistEditorView(playlist: playlist)
         }

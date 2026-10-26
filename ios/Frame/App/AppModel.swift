@@ -37,6 +37,9 @@ final class AppModel {
     /// The bar under the picture: set while a picture is on its way to the
     /// frame, and for a moment after it arrives.
     var displayProgress: DisplayProgress?
+    /// An artist whose works Discover's search should show: set by tapping
+    /// the name on a work, taken (and cleared) by the search.
+    var artistSearch: String?
     private var progressTask: Task<Void, Never>?
 
     init() {
@@ -86,7 +89,7 @@ final class AppModel {
             _ = try await backend.health()
             connection = .connected
         } catch {
-            connection = .failed(error.localizedDescription)
+            if !error.isCancellation { connection = .failed(error.localizedDescription) }
             return
         }
         let backend = self.backend
@@ -412,9 +415,30 @@ final class AppModel {
         await refreshPlayer()
     }
 
+    /// "Zapisz w Zdjęciach" on a work's screen.
+    func saveToPhotos(_ item: Item) async {
+        toast = "Pobieram obraz…"
+        do {
+            try await PhotoSaver.save(item, backend: backend)
+            toast = "Zapisano w Zdjęciach"
+        } catch is CancellationError {
+            toast = nil
+        } catch {
+            show(error)
+        }
+    }
+
+    /// "Uśpij ramkę": the server notes the sleep, so the status from it
+    /// (not asking the panel, which may still answer for a while) shows it.
     func sleepFrame() async {
-        await perform { try await self.backend.sleep() }
+        do {
+            try await backend.sleep()
+        } catch {
+            show(error)
+            return
+        }
         toast = "Ramka uśpiona"
+        await refreshStatus(live: false)
     }
 
     private func perform(_ action: @escaping () async throws -> Void) async {
@@ -426,6 +450,16 @@ final class AppModel {
     }
 
     func show(_ error: Error) {
+        // A request cut short (a pull to refresh let go, a view gone) is no news.
+        guard !error.isCancellation else { return }
         toast = error.localizedDescription
+    }
+}
+
+extension Error {
+    /// URLSession says "anulowane" for a cancelled task: nothing went wrong.
+    var isCancellation: Bool {
+        if self is CancellationError { return true }
+        return (self as? URLError)?.code == .cancelled
     }
 }

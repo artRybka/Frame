@@ -51,6 +51,7 @@ class Panel:
         self.settings = settings
         self._lock = asyncio.Lock()
         self.on_wake: Callable[[], None] | None = None  # e.g. to show "waking" in the app
+        self.woke = False  # the last waking session had to wake it
 
     def client(self) -> MdcClient:
         host, pin = self.settings.require_device()
@@ -78,11 +79,13 @@ class Panel:
         """A session, waking the panel with Wake-on-LAN if it does not answer."""
         async with self._lock:
             client = self.client()
+            self.woke = False
             try:
                 await client.connect(attempts=2, retry_delay=5)
             except MdcConnectionError:
                 if not self.settings.device_mac:
                     raise
+                self.woke = True
                 if self.on_wake:
                     self.on_wake()
                 await self.wake(seconds=15)
@@ -101,9 +104,13 @@ class Panel:
 
     async def sleep(self) -> None:
         """Power off but keep network standby, so Wake-on-LAN still works."""
-        async with self._lock, self.client() as mdc:
-            await mdc.set_network_standby(True)
-            await mdc.set_power(False)
+        async with self.session() as mdc:
+            await self.power_off(mdc)
+
+    @staticmethod
+    async def power_off(mdc: MdcClient) -> None:
+        await mdc.set_network_standby(True)
+        await mdc.set_power(False)
 
 
 class FrameService:
@@ -286,6 +293,7 @@ class FrameService:
             return PushOutcome(content, False, False, url, message)
         if wait:
             self.store.expect_fetch(content.file_id)
+        asleep = self.status.sleeping
         try:
             await self.panel.set_content_url(url)
         except MdcConnectionError as err:
@@ -300,6 +308,8 @@ class FrameService:
             progress.finish(Stage.FAILED, str(err))
             raise
         self.power.mark_pending(False)
+        if asleep or self.panel.woke:
+            self.power.put_back_to_sleep()
         progress.advance(Stage.DOWNLOADING)
         fetched = await self.store.wait_for_fetch(content.file_id, wait) if wait else False
         self.status.note_push(fetched)

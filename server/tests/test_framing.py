@@ -134,8 +134,9 @@ def test_picture_tint_follows_the_main_hue() -> None:
     tint = picture_tint(blue, white, black)
     light, a, b = linear_to_oklab(tint)
     assert light > 0.85 and b < 0 and np.hypot(a, b) <= 0.025  # pale, blue, muted
-    dark = picture_tint(blue * 0.02, white, black)
-    assert linear_to_oklab(dark)[0] < 0.4  # a deep mat for a dark picture
+    assert linear_to_oklab(picture_tint(blue * 0.02, white, black))[0] > 0.85  # light stays light
+    light, a, b = linear_to_oklab(picture_tint(blue, white, black, dark=True))
+    assert light < 0.4 and b < 0 and np.hypot(a, b) > 0.015  # deep, blue, muted
     grey = picture_tint(np.full((10, 10, 3), 0.4, np.float32), white, black)
     assert np.hypot(*linear_to_oklab(grey)[1:]) < 0.013  # nearly colourless: an off-white
 
@@ -143,7 +144,7 @@ def test_picture_tint_follows_the_main_hue() -> None:
 def test_picture_mat_and_its_lettering() -> None:
     settings = PRESETS["painting"].model_copy(deep=True)
     settings.layout.fit = Fit.FIT
-    settings.layout.mat = "picture"
+    settings.layout.mat = "picture_dark"
     settings.caption = "Someone — Something"
     dark = render(Image.new("RGB", (800, 1000), (30, 20, 15)), settings)
     plan = plan_layout((800, 1000), CANVAS, Fit.FIT, margin=0.05, caption=True)
@@ -151,6 +152,9 @@ def test_picture_mat_and_its_lettering() -> None:
     white = SPECTRA6.device_u8()[SPECTRA6.white_index()]
     text = dark.panel[top : top + 40, right - 300 : right]
     assert np.any(np.all(text == white, axis=-1))  # white letters on a deep mat
+    x, y, w, h = plan.windows[0].rect
+    core = dark.panel[y + h + 1 : y + h + 4, x + 20 : x + w - 20]
+    assert np.all(core == white, axis=-1).mean() > 0.5  # a white core in the bevel
 
 
 def test_description_layout() -> None:

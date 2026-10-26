@@ -51,6 +51,9 @@ struct RootView: View {
             }
         }
         .animation(.easeInOut, value: model.displayProgress == nil)
+        .onChange(of: model.artistSearch) { _, artist in
+            if artist != nil { tab = .discover }
+        }
         .task { await model.refreshAll() }
     }
 }

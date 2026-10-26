@@ -16,6 +16,8 @@ actor DemoBackend: FrameBackend {
         var framing: [String: [String: DemoFraming.Crops]]?
         /// The "picture" mat the server picks for each work (#rrggbb, screen colours).
         var tints: [String: String]?
+        /// And the "picture_dark" one.
+        var darkTints: [String: String]?
     }
 
     private var items: [Item]
@@ -29,6 +31,7 @@ actor DemoBackend: FrameBackend {
     private var holdValue: Hold?
     private static let demoPanel = PanelConfig(host: "192.168.1.50", mac: nil, port: 1515, pinSet: true, fromApp: false)
     private var panelValue = DemoBackend.demoPanel
+    private var demoAsleep = false
     /// The picture "on its way" to the pretend frame, for the progress bar.
     private var run: (title: String, start: Date)?
     /// Demo stages: 14 s in all, where a real panel takes about a minute.
@@ -75,7 +78,8 @@ actor DemoBackend: FrameBackend {
             uniqueKeysWithValues: loaded.items.map {
                 ($0.id, DemoFraming.Art(
                     caption: DemoFraming.caption(for: $0), text: DemoFraming.textBlock(for: $0),
-                    isPhoto: $0.kind == .photo, tint: loaded.tints?[$0.id].flatMap(DemoFraming.color(hex:))
+                    isPhoto: $0.kind == .photo, tint: loaded.tints?[$0.id].flatMap(DemoFraming.color(hex:)),
+                    darkTint: loaded.darkTints?[$0.id].flatMap(DemoFraming.color(hex:))
                 ))
             }
         )
@@ -183,7 +187,7 @@ actor DemoBackend: FrameBackend {
             configured: true, reachable: true, checkedAt: now, lastSeen: now, batteryLevel: 76,
             charging: false, powerSource: "battery", batteryRaw: nil, networkStandby: true,
             firmware: "S-RSEDWWC-1050.1", model: "EM32DX", serial: "DEMO0001", name: "Salon",
-            error: nil, lastPushAt: now, lastFetchAt: now, powerState: "online"
+            error: nil, lastPushAt: now, lastFetchAt: now, powerState: demoAsleep ? "standby" : "online"
         )
         let server = ServerStatus(
             version: "demo", uptimeS: 3600, libraryCount: items.count,
@@ -764,9 +768,13 @@ actor DemoBackend: FrameBackend {
         return panelValue
     }
 
-    func wake(sleepAfter: Bool) async throws -> WakeResult { WakeResult(sent: true, woke: true) }
+    func wake(sleepAfter: Bool) async throws -> WakeResult {
+        demoAsleep = false
+        return WakeResult(sent: true, woke: true)
+    }
+
     func pushAgain() async throws -> DisplayResponse { DisplayResponse(pushed: true, fetched: true) }
-    func sleep() async throws {}
+    func sleep() async throws { demoAsleep = true }
 
     // MARK: Images
 

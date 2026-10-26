@@ -268,10 +268,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if not service.device_configured:
             raise HTTPException(409, "panel not configured")
         try:
-            await service.panel.sleep()
+            await service.power.sleep_now()
         except MdcError as err:
             raise HTTPException(502, f"panel: {err}") from err
-        service.status.note_sleep(deep=False)
         return {"ok": True}
 
     @app.get("/api/debug/panel-requests", dependencies=auth)

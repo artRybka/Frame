@@ -240,6 +240,23 @@ final class FrameAPITests: XCTestCase {
         XCTAssertNil(RemoteItem(item: item, inLibrary: false).thumbFallback)
     }
 
+    func testSavingToPhotosPrefersTheMuseumsImage() async throws {
+        let demo = DemoBackend()
+        let themes = try await demo.themes()
+        let page = try await demo.themePage(key: try XCTUnwrap(themes.first).key, page: 1)
+        var item = try XCTUnwrap(page.items.first).item
+        item.kind = .artwork
+        item.imageUrl = "https://images.metmuseum.org/CRDImages/ep/original/DT1567.jpg"
+        let sources = PhotoSaver.sources(for: item, backend: demo).map(\.url)
+        XCTAssertEqual(sources.first, URL(string: item.imageUrl))
+        XCTAssertEqual(sources.last, demo.request(for: .image(item.id))?.url)
+        item.kind = .photo  // an iCloud photo's address expires: the server's copy only
+        XCTAssertEqual(PhotoSaver.sources(for: item, backend: demo).count, 1)
+        item.artist = "Vincent van Gogh"
+        item.title = "Irysy / Irises"
+        XCTAssertEqual(PhotoSaver.fileName(for: item), "Vincent van Gogh – Irysy Irises")
+    }
+
     func testThemesBecomePlaylists() async throws {
         let demo = DemoBackend()
         let made = try await demo.themePlaylist(key: "sea", play: false)

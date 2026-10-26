@@ -1,7 +1,8 @@
 import SwiftUI
 
 /// One picture: original vs. how it will look on the e-paper, its story,
-/// palette, and actions (show now, queue next, favourite, add to playlist).
+/// palette, and actions (show now, queue next, favourite, add to playlist,
+/// save to Photos).
 /// Tapping the original opens it on the whole screen; tapping the preview on
 /// "Na ramce" opens it there to be cropped.
 struct ItemDetailView: View {
@@ -19,6 +20,7 @@ struct ItemDetailView: View {
     @State private var loadedPreview: ImageRef?
     @State private var saving = false
     @State private var opened: Opened?
+    @State private var savingPhoto = false
 
     /// What a tap on the picture opened on the whole screen.
     enum Opened: String, Identifiable {
@@ -228,11 +230,6 @@ struct ItemDetailView: View {
             guard loaded == previewRef else { return }
             withAnimation(.easeOut(duration: 0.3)) { loadedPreview = loaded }
         }
-        .overlay(alignment: .bottomTrailing) {
-            if cropping, loadedPreview == ref {
-                CornerBadge(systemImage: "crop").transition(.opacity)
-            }
-        }
         .overlay {
             if loadedPreview != ref {
                 LoadingBadge(text: "Wczytuję podgląd…")
@@ -266,7 +263,20 @@ struct ItemDetailView: View {
                 .foregroundStyle(Theme.ink)
                 .fixedSize(horizontal: false, vertical: true)
             if !item.artist.isEmpty {
-                Text(item.artist).font(.serif(19)).foregroundStyle(Theme.ink)
+                // Their other works, on Discover's search.
+                Button {
+                    model.artistSearch = item.artist
+                } label: {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(item.artist).font(.serif(19)).foregroundStyle(Theme.ink)
+                        Image(systemName: "magnifyingglass")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(Theme.inkSoft)
+                    }
+                    .multilineTextAlignment(.leading)
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint(Text("Szuka innych dzieł tego autora"))
             }
             if !item.artistBio.isEmpty {
                 Text(item.artistBio).font(.subheadline).foregroundStyle(Theme.inkSoft)
@@ -348,6 +358,14 @@ struct ItemDetailView: View {
             .accessibilityLabel(item.favorite ? "Usuń z ulubionych" : "Dodaj do ulubionych")
             Menu {
                 Button("Dodaj do playlisty", systemImage: "text.badge.plus") { showingPlaylists = true }
+                Button("Zapisz w Zdjęciach", systemImage: "square.and.arrow.down") {
+                    savingPhoto = true
+                    Task {
+                        await model.saveToPhotos(item)
+                        savingPhoto = false
+                    }
+                }
+                .disabled(savingPhoto)
                 Button(item.excluded ? "Pokazuj ponownie" : "Nie pokazuj na ramce", systemImage: "eye.slash") {
                     Task {
                         if let updated = try? await model.backend.setExcluded(id: item.id, !item.excluded) {
