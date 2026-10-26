@@ -200,6 +200,8 @@ def test_discover_endpoints(museums) -> None:
     app = create_app(service.settings)
     app.state.service = service
     discover_api._theme_rows.clear()
+    discover_api._day_fetch = (0.0, None)
+    discover_api._cards = (0.0, {})
     with TestClient(app) as client:
         themes = client.get("/api/themes").json()
         assert themes and {"key", "name", "description"} <= themes[0].keys()
