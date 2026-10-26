@@ -389,9 +389,9 @@ struct ItemDetailView: View {
                     Spacer()
                     Gauge(value: score) { EmptyView() }
                         .gaugeStyle(.accessoryLinearCapacity)
-                        .tint(score > 0.75 ? Theme.good : score > 0.6 ? Theme.warn : Theme.bad)
+                        .tint(score >= 0.72 ? Theme.good : score >= 0.45 ? Theme.warn : Theme.bad)
                         .frame(width: 120)
-                    Text(score > 0.75 ? "świetnie" : score > 0.6 ? "dobrze" : "słabiej")
+                    Text(score >= 0.72 ? "świetnie" : score >= 0.45 ? "dobrze" : "słabiej")
                         .font(.subheadline.weight(.medium))
                 }
                 .font(.subheadline)

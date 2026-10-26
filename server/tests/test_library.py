@@ -592,3 +592,31 @@ def test_auto_preset_by_kind_metadata_and_colour() -> None:
     assert auto_preset(item(spread=None, medium="Lithograph")) == "graphic"  # type: ignore[arg-type]
     # "Painting" is not a print, "sketch" is not Dutch "ets".
     assert auto_preset(item(classification="Paintings", medium="Oil sketch")) == "painting"
+
+
+def _etching(colours: list[tuple[int, int, int]]) -> Image.Image:
+    """Hatching in dark ink over bands of ``colours``: an etching on old
+    paper with one colour, a coloured print with several."""
+    import numpy as np
+
+    rng = np.random.default_rng(1)
+    pixels = np.zeros((240, 320, 3), dtype=np.uint8)
+    for i, colour in enumerate(colours):
+        pixels[:, i * 320 // len(colours) : (i + 1) * 320 // len(colours)] = colour
+    ink = (rng.random((240, 320)) < 0.35) | (np.arange(320)[None, :] % 7 == 0)
+    pixels[ink] = (45, 35, 30)
+    return Image.fromarray(pixels)
+
+
+def test_colourful_works_score_best_on_epaper() -> None:
+    from frame_server.library.colors import score
+
+    etching = score(_etching([(238, 226, 198)]))  # sepia ink on yellowed paper
+    grey = score(_etching([(225, 225, 225)]))
+    print_ = score(_etching([(220, 60, 50), (40, 90, 200), (240, 200, 40), (60, 160, 70)]))
+    # However crisp, pictures without colour of their own stay out of
+    # "Najlepiej na e-papierze" (0.72); a colourful one makes it.
+    assert etching <= 0.5 and grey <= 0.5
+    assert print_ >= 0.72
+    _, _, analysed = analyse(_etching([(238, 226, 198)]))
+    assert analysed == etching

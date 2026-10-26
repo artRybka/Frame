@@ -55,7 +55,7 @@
     "brown",
     "warm"
    ],
-   "suitability": 0.818,
+   "suitability": 0.897,
    "favorite": true,
    "excluded": false,
    "added_at": "2026-10-23T23:49:06+00:00",
@@ -118,7 +118,7 @@
     "brown",
     "warm"
    ],
-   "suitability": 0.858,
+   "suitability": 0.713,
    "favorite": false,
    "excluded": false,
    "added_at": "2026-10-23T23:49:07+00:00",
@@ -185,7 +185,7 @@
     "monochrome",
     "dark"
    ],
-   "suitability": 0.801,
+   "suitability": 0.717,
    "favorite": false,
    "excluded": false,
    "added_at": "2026-10-23T23:49:10+00:00",
@@ -269,7 +269,7 @@
     "gray",
     "monochrome"
    ],
-   "suitability": 0.829,
+   "suitability": 0.575,
    "favorite": false,
    "excluded": false,
    "added_at": "2026-10-23T23:48:59+00:00",
@@ -349,7 +349,7 @@
     "gray",
     "monochrome"
    ],
-   "suitability": 0.834,
+   "suitability": 0.685,
    "favorite": false,
    "excluded": false,
    "added_at": "2026-10-23T23:48:56+00:00",
@@ -433,7 +433,7 @@
     "muted",
     "cool"
    ],
-   "suitability": 0.67,
+   "suitability": 0.785,
    "favorite": false,
    "excluded": false,
    "added_at": "2026-10-23T23:48:58+00:00",
@@ -516,7 +516,7 @@
     "gray",
     "monochrome"
    ],
-   "suitability": 0.828,
+   "suitability": 0.764,
    "favorite": false,
    "excluded": false,
    "added_at": "2026-10-23T23:48:57+00:00",
@@ -594,7 +594,7 @@
     "gray",
     "monochrome"
    ],
-   "suitability": 0.74,
+   "suitability": 0.689,
    "favorite": true,
    "excluded": false,
    "added_at": "2026-10-23T23:48:58+00:00",
@@ -674,7 +674,7 @@
     "muted",
     "cool"
    ],
-   "suitability": 0.64,
+   "suitability": 0.746,
    "favorite": false,
    "excluded": false,
    "added_at": "2026-10-23T23:48:56+00:00",
@@ -766,7 +766,7 @@
     "gray",
     "monochrome"
    ],
-   "suitability": 0.781,
+   "suitability": 0.72,
    "favorite": false,
    "excluded": false,
    "added_at": "2026-10-23T23:49:13+00:00",
@@ -850,7 +850,7 @@
     "muted",
     "warm"
    ],
-   "suitability": 0.776,
+   "suitability": 0.802,
    "favorite": false,
    "excluded": false,
    "added_at": "2026-10-23T23:49:13+00:00",
@@ -937,7 +937,7 @@
     "gray",
     "monochrome"
    ],
-   "suitability": 0.869,
+   "suitability": 0.731,
    "favorite": false,
    "excluded": false,
    "added_at": "2026-10-23T23:49:05+00:00",
@@ -1024,7 +1024,7 @@
     "warm",
     "dark"
    ],
-   "suitability": 0.622,
+   "suitability": 0.732,
    "favorite": false,
    "excluded": false,
    "added_at": "2026-10-23T23:49:04+00:00",
@@ -1084,7 +1084,7 @@
     "warm",
     "light"
    ],
-   "suitability": 0.556,
+   "suitability": 0.226,
    "favorite": false,
    "excluded": false,
    "added_at": "2026-10-23T23:49:05+00:00",
@@ -1151,7 +1151,7 @@
     "warm",
     "dark"
    ],
-   "suitability": 0.697,
+   "suitability": 0.615,
    "favorite": true,
    "excluded": false,
    "added_at": "2026-10-23T23:49:08+00:00",
@@ -1221,7 +1221,7 @@
     "monochrome",
     "dark"
    ],
-   "suitability": 0.687,
+   "suitability": 0.487,
    "favorite": false,
    "excluded": false,
    "added_at": "2026-10-23T23:49:11+00:00",
@@ -1293,7 +1293,7 @@
     "monochrome",
     "dark"
    ],
-   "suitability": 0.685,
+   "suitability": 0.453,
    "favorite": false,
    "excluded": false,
    "added_at": "2026-10-23T23:49:12+00:00",
@@ -1360,7 +1360,7 @@
     "white",
     "warm"
    ],
-   "suitability": 0.773,
+   "suitability": 0.873,
    "favorite": false,
    "excluded": false,
    "added_at": "2026-10-23T23:48:47+00:00",
@@ -1426,7 +1426,7 @@
     "white",
     "warm"
    ],
-   "suitability": 0.796,
+   "suitability": 0.871,
    "favorite": false,
    "excluded": false,
    "added_at": "2026-10-23T23:48:47+00:00",
@@ -1492,7 +1492,7 @@
     "gray",
     "monochrome"
    ],
-   "suitability": 0.902,
+   "suitability": 0.821,
    "favorite": false,
    "excluded": false,
    "added_at": "2026-10-23T23:48:46+00:00",
@@ -1561,7 +1561,7 @@
     "muted",
     "warm"
    ],
-   "suitability": 0.704,
+   "suitability": 0.797,
    "favorite": false,
    "excluded": false,
    "added_at": "2026-10-23T23:48:46+00:00",
@@ -1636,7 +1636,7 @@
     "muted",
     "warm"
    ],
-   "suitability": 0.867,
+   "suitability": 0.809,
    "favorite": true,
    "excluded": false,
    "added_at": "2026-10-23T23:48:45+00:00",
@@ -1700,7 +1700,7 @@
     "gray",
     "monochrome"
    ],
-   "suitability": 0.914,
+   "suitability": 0.576,
    "favorite": false,
    "excluded": false,
    "added_at": "2026-10-23T23:48:45+00:00",
@@ -1764,7 +1764,7 @@
     "yellow",
     "warm"
    ],
-   "suitability": 0.94,
+   "suitability": 0.799,
    "favorite": false,
    "excluded": false,
    "added_at": "2026-10-23T23:48:54+00:00",
@@ -1829,7 +1829,7 @@
     "white",
     "warm"
    ],
-   "suitability": 0.741,
+   "suitability": 0.723,
    "favorite": false,
    "excluded": false,
    "added_at": "2026-10-23T23:48:55+00:00",
@@ -1914,7 +1914,7 @@
     "muted",
     "warm"
    ],
-   "suitability": 0.77,
+   "suitability": 0.724,
    "favorite": false,
    "excluded": false,
    "added_at": "2026-10-23T23:49:03+00:00",
@@ -1995,7 +1995,7 @@
     "muted",
     "cool"
    ],
-   "suitability": 0.712,
+   "suitability": 0.76,
    "favorite": false,
    "excluded": false,
    "added_at": "2026-10-23T23:49:03+00:00",
@@ -2074,7 +2074,7 @@
     "muted",
     "warm"
    ],
-   "suitability": 0.823,
+   "suitability": 0.807,
    "favorite": false,
    "excluded": false,
    "added_at": "2026-10-23T23:49:02+00:00",
@@ -2139,7 +2139,7 @@
     "white",
     "monochrome"
    ],
-   "suitability": 0.784,
+   "suitability": 0.518,
    "favorite": true,
    "excluded": false,
    "added_at": "2026-10-23T23:49:09+00:00",
@@ -2205,7 +2205,7 @@
     "white",
     "warm"
    ],
-   "suitability": 0.901,
+   "suitability": 0.914,
    "favorite": false,
    "excluded": false,
    "added_at": "2026-10-23T23:49:09+00:00",
@@ -2271,7 +2271,7 @@
     "muted",
     "warm"
    ],
-   "suitability": 0.829,
+   "suitability": 0.751,
    "favorite": false,
    "excluded": false,
    "added_at": "2026-10-23T23:48:50+00:00",
@@ -2337,7 +2337,7 @@
     "muted",
     "warm"
    ],
-   "suitability": 0.93,
+   "suitability": 0.838,
    "favorite": false,
    "excluded": false,
    "added_at": "2026-10-23T23:48:51+00:00",
@@ -2403,7 +2403,7 @@
     "muted",
     "warm"
    ],
-   "suitability": 0.806,
+   "suitability": 0.864,
    "favorite": false,
    "excluded": false,
    "added_at": "2026-10-23T23:48:49+00:00",
@@ -2469,7 +2469,7 @@
     "muted",
     "warm"
    ],
-   "suitability": 0.767,
+   "suitability": 0.792,
    "favorite": false,
    "excluded": false,
    "added_at": "2026-10-23T23:48:49+00:00",
@@ -2536,7 +2536,7 @@
     "muted",
     "warm"
    ],
-   "suitability": 0.764,
+   "suitability": 0.817,
    "favorite": false,
    "excluded": false,
    "added_at": "2026-10-23T23:48:50+00:00",
@@ -2602,7 +2602,7 @@
     "muted",
     "warm"
    ],
-   "suitability": 0.785,
+   "suitability": 0.748,
    "favorite": true,
    "excluded": false,
    "added_at": "2026-10-23T23:48:51+00:00",
@@ -2668,7 +2668,7 @@
     "muted",
     "warm"
    ],
-   "suitability": 0.886,
+   "suitability": 0.618,
    "favorite": false,
    "excluded": false,
    "added_at": "2026-10-23T23:48:52+00:00",
@@ -2734,7 +2734,7 @@
     "muted",
     "warm"
    ],
-   "suitability": 0.851,
+   "suitability": 0.873,
    "favorite": false,
    "excluded": false,
    "added_at": "2026-10-23T23:48:53+00:00",
@@ -2798,7 +2798,7 @@
     "gray",
     "monochrome"
    ],
-   "suitability": 0.886,
+   "suitability": 0.718,
    "favorite": false,
    "excluded": false,
    "added_at": "2026-10-23T23:48:53+00:00",
@@ -2879,7 +2879,7 @@
     "warm",
     "dark"
    ],
-   "suitability": 0.741,
+   "suitability": 0.712,
    "favorite": false,
    "excluded": false,
    "added_at": "2026-10-23T23:49:00+00:00",
@@ -2961,7 +2961,7 @@
     "gray",
     "warm"
    ],
-   "suitability": 0.776,
+   "suitability": 0.729,
    "favorite": false,
    "excluded": false,
    "added_at": "2026-10-23T23:49:01+00:00",
@@ -3049,7 +3049,7 @@
     "gray",
     "warm"
    ],
-   "suitability": 0.641,
+   "suitability": 0.809,
    "favorite": false,
    "excluded": false,
    "added_at": "2026-10-23T23:49:00+00:00",

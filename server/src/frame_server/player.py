@@ -21,7 +21,7 @@ from .imaging.grids import MAX_PHOTOS, MIN_PHOTOS
 from .imaging.layout import Fit
 from .imaging.text import TextBlock
 from .library import AlbumOrder, Item, ItemKind, Job, Playlist, PlaylistKind, PlaylistRules
-from .library.colors import tint_spread
+from .library.colors import SCORE_VERSION, score, tint_spread
 from .library.icloud import refetchable
 from .library.museums import MUSEUMS, Kind
 from .library.style import AUTO, auto_preset
@@ -50,13 +50,15 @@ RESET_KEY = "library_reset"
 #: Set once the catalogue's manuscripts are gone.
 #: Set once the catalogue has been cleared of what it leaves out now.
 SET_ASIDE_KEY = "set_aside_dropped"
+#: Version of the suitability score the library's pictures carry.
+SCORE_KEY = "suitability_version"
 #: A rotation with fewer pictures not shown lately asks museums for more,
 #: up to ``POOL_SIZE``; Suggestions remember at most ``POOL_MAX`` works.
 POOL_LOW = 8
 POOL_SIZE = 24
 POOL_MAX = 80
 #: Suggestions: least suitability for e-paper.
-SUGGESTION_SUITABILITY = 0.5
+SUGGESTION_SUITABILITY = 0.4
 #: Artists of the owner's taste asked for when topping up Suggestions.
 TASTE_ARTISTS = 6
 #: The catalogue grows by this many works at a time, at most every
@@ -68,6 +70,11 @@ CATALOGUE_KINDS: tuple[Kind, ...] = ("painting", "print", "drawing", "poster")
 CATALOGUE_SUITABILITY = 0.25
 # How long a due change may keep the panel from its night sleep.
 CHANGE_GRACE = timedelta(minutes=3)
+
+
+def _log_failure(task: asyncio.Task[object]) -> None:
+    if not task.cancelled() and task.exception() is not None:
+        log.error("background task failed", exc_info=task.exception())
 
 
 def utcnow() -> datetime:
@@ -780,6 +787,33 @@ class Player:
             ),
         )
 
+    def rescore(self) -> int:
+        """Once per ``SCORE_VERSION``: score the library's pictures again from
+        their thumbnails (add-on 0.12: colourful works first). Measured
+        before writing, written in one transaction; returns how many."""
+        if self.library.get_state(SCORE_KEY, 1) >= SCORE_VERSION:
+            return 0
+        images = self.service.images
+        scored: dict[str, tuple[float, float]] = {}
+        for item in self.library.query(include_excluded=True)[1]:
+            path = images.thumb_path(item)
+            if item.suitability is None or not path.is_file():
+                continue
+            try:
+                with Image.open(path) as img:
+                    spread = item.tint_spread
+                    if spread is None:
+                        spread = tint_spread(img)
+                    scored[item.id] = (score(img, self.service.palette, spread), spread)
+            except OSError:
+                log.warning("rescore: cannot read %s", path)
+        with self.library.batch():
+            for item_id, (value, spread) in scored.items():
+                self.library.update(item_id, suitability=value, tint_spread=spread)
+            self.library.set_state(SCORE_KEY, SCORE_VERSION)
+        log.info("rescore: %d pictures scored again", len(scored))
+        return len(scored)
+
     def reset_library(self) -> int:
         """Once, on the owner's wish for a clean start: delete the museum works
         imported before the catalogue, with their pictures, and forget them in
@@ -964,6 +998,9 @@ class Player:
     async def run(self, period: float = 30.0) -> None:
         grown: datetime | None = None
         ahead = False
+        # A minute or so on a NAS for a large library: alongside, not first.
+        rescoring = asyncio.create_task(run_in_threadpool(self.rescore))
+        rescoring.add_done_callback(_log_failure)
         while True:
             try:
                 await self.tick()
