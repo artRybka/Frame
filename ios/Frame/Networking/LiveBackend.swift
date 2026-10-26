@@ -292,7 +292,12 @@ struct LiveBackend: FrameBackend {
         try await send("/api/device/config", method: "DELETE")
     }
 
-    func wake() async throws { try await send("/api/device/wake", method: "POST") }
+    func wake() async throws -> WakeResult {
+        // The server sends magic packets for a while and then looks for the panel.
+        var req = request("/api/device/wake", method: "POST")
+        req.timeoutInterval = 90
+        return try await perform(req)
+    }
     func sleep() async throws { try await send("/api/device/sleep", method: "POST") }
 
     // MARK: Images

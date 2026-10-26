@@ -339,8 +339,22 @@ final class AppModel {
     }
 
     func wake() async {
-        await perform { try await self.backend.wake() }
-        toast = "Wysłano sygnał budzenia"
+        toast = "Budzę ramkę…"
+        do {
+            let result = try await backend.wake()
+            if result.woke == true {
+                toast = "Ramka się obudziła"
+            } else if let until = result.asleepUntil {
+                toast = "Ramka w głębokim śnie do \(until), obudzi ją tylko przycisk"
+            } else if !result.sent {
+                toast = "Brak adresu MAC ramki, ustaw go w Połączeniu z ekranem"
+            } else {
+                toast = "Ramka nie odpowiada na sygnał budzenia"
+            }
+            await refreshStatus(live: false)
+        } catch {
+            show(error)
+        }
     }
 
     func sleepFrame() async {

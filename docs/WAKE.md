@@ -112,6 +112,55 @@ Do sprawdzenia w E13: czy budzik budzi ekran przy wyłączonym network
 standby, jak długo ekran zostaje w sieci po pobudce, czy WoL na 2,4 GHz
 działa na baterii.
 
+## Diagnoza 2026-10-26: budzenie nie działa mimo Wi-Fi 2,4 GHz
+
+Ekran jest już w sieci 2,4 GHz, a „Obudź ramkę” nadal go nie budzi. Trzy
+możliwe przyczyny, od najbardziej prawdopodobnej:
+
+1. **Pakiet nie dociera z Synology.** Serwer (192.100.3.185) wysyła magic
+   packet trzy razy: na 255.255.255.255 (zostaje w sieci NAS-a), na
+   192.168.1.255 (broadcast skierowany: domowe routery zwykle go odrzucają)
+   i na 192.168.1.152 (unicast przez router). Unicast dociera tylko wtedy,
+   gdy router zna jeszcze adres MAC ekranu. Wpis ARP wygasa po kilku
+   minutach od zaśnięcia, a śpiący ekran może nie odpowiadać na zapytania
+   ARP. Wtedy router po cichu wyrzuca pakiet. Rozwiązania: stały wpis ARP
+   (powiązanie IP–MAC) dla 192.168.1.152 w routerze, funkcja WoL w samym
+   routerze, albo serwer z nogą w sieci 192.168.1.x (np. drugi port LAN
+   NAS-a; z `network_mode: host` broadcast na 192.168.1.255 wyjdzie wtedy
+   prosto do tej sieci, bez zmian w kodzie).
+   U nas router to UniFi Dream Machine Pro: nie ma w panelu stałych wpisów
+   ARP (przez SSH da się je dodać, ale znikają po restarcie i aktualizacji),
+   więc zalecana droga to drugi port LAN Synology RS1619xs+ w sieci
+   192.168.1.x (DHCP, brama domyślna zostaje na LAN 1).
+2. **Network standby został wyłączony na noc i nie wrócił.** Na baterii
+   w ciszy nocnej serwer wyłącza network standby (głęboki sen). Włączał go
+   z powrotem tylko wtedy, gdy znalazł ekran w oknie porannej pobudki albo
+   gdy czekał zaległy obraz. Jeśli budzik `0x25` nie zadziałał (E13 jeszcze
+   niezrobione) albo ekran obudzono przyciskiem w innej porze, network
+   standby zostawał wyłączony przez cały dzień i WoL nie miał szans.
+   **Poprawione:** po nocy (i zawsze, gdy sprawdzenie stanu znajdzie
+   network standby wyłączony) serwer co 2 minuty szuka ekranu, aż włączy
+   go z powrotem.
+3. **Ekran na baterii w ogóle nie słucha WoL**, także na 2,4 GHz (jeśli to
+   nie wersja EM32DX-A). To rozstrzyga test z Maca w tej samej sieci
+   (E13, krok 5): jeśli z Maca budzi, a z Synology nie, przyczyną jest
+   punkt 1.
+
+Do tego „Obudź ramkę” w aplikacji wysyłało tylko trzy pakiety w 0,4 s i od
+razu meldowało „wysłano”. Teraz serwer wysyła pakiety przez 15 s, przez
+30 s sprawdza, czy ekran odpowiada, i aplikacja pokazuje wynik: obudziła
+się, nie odpowiada, albo jest w głębokim śnie do godziny budzika (wtedy
+pomaga tylko przycisk). Po udanej pobudce serwer od razu włącza network
+standby i wysyła zaległy obraz.
+
+Kiedy serwer usypia ekran (2026-10-26): **w ciszy nocnej na baterii**
+głęboki sen (budzik na poranną zmianę, network standby wył., ekran wył.),
+a **w dzień na baterii lekki sen po każdym obrazie**: 90 s po pobraniu
+(ok. 12 s przygotowania i 31 s odświeżania, E2) network standby wł. i ekran
+wył. Kolejny obraz w tym czasie odwołuje usypianie. Na ładowarce serwer nie
+usypia ekranu. Przycisk „Uśpij ramkę”
+w aplikacji daje ten sam lekki sen.
+
 ## E13: plan testu na ekranie
 
 Potrzebny Mac w tej samej sieci co ekran (192.168.1.x) i gałąź z komendą

@@ -26,6 +26,7 @@ from ..imaging.layout import load_image
 from ..library.seed import seed_playlists
 from ..library.style import AUTO, preset_for_photo
 from ..player import hold_from
+from ..power import WakeResult
 from ..progress import DisplayProgress, Stage
 from ..service import FrameService, outcome_json
 from ..status import DeviceStatus
@@ -255,8 +256,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return await service.status.refresh()
 
     @app.post("/api/device/wake", dependencies=auth)
-    async def device_wake() -> dict[str, object]:
-        return {"sent": await service.panel.wake()}
+    async def device_wake() -> WakeResult:
+        if not service.device_configured:
+            raise HTTPException(409, "panel not configured")
+        return await service.power.wake_now()
 
     @app.post("/api/device/sleep", dependencies=auth)
     async def device_sleep() -> dict[str, object]:

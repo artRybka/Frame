@@ -103,7 +103,7 @@ protocol FrameBackend: Sendable {
     func savePanelConfig(_ update: PanelConfigUpdate) async throws -> PanelConfig
     /// Back to the values in frame.env or the add-on options.
     func resetPanelConfig() async throws -> PanelConfig
-    func wake() async throws
+    func wake() async throws -> WakeResult
     func sleep() async throws
 
     func request(for image: ImageRef) -> URLRequest?
