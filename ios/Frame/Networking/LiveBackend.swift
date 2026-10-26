@@ -82,6 +82,14 @@ struct LiveBackend: FrameBackend {
         try await send("/api/library/items/\(escape(id))", method: "PATCH", body: ["excluded": excluded])
     }
 
+    func setLook(itemID: String, _ look: Look) async throws -> Item {
+        try await send("/api/library/items/\(escape(itemID))", method: "PATCH", body: ["look": look])
+    }
+
+    func deleteItem(id: String) async throws {
+        try await send("/api/library/items/\(escape(id))", method: "DELETE")
+    }
+
     func show(itemID: String, hold: HoldSpec) async throws {
         try await send("/api/library/items/\(escape(itemID))/show", method: "POST", body: ["hold": hold.wireValue])
     }
@@ -263,19 +271,6 @@ struct LiveBackend: FrameBackend {
 
     // MARK: Device
 
-    func sendPhoto(_ data: Data, title: String, preset: String, hold: HoldSpec) async throws -> DisplayResponse {
-        var form = MultipartForm()
-        form.addField("preset", preset)
-        form.addField("title", title)
-        form.addField("hold", hold.wireValue)
-        form.addFile("file", filename: "photo.jpg", mimeType: "image/jpeg", data: data)
-        var req = request("/api/display", method: "POST")
-        req.setValue(form.contentType, forHTTPHeaderField: "Content-Type")
-        req.httpBody = form.body()
-        req.timeoutInterval = 240
-        return try await perform(req)
-    }
-
     func uploadPhoto(_ upload: PhotoUpload) async throws -> Item {
         var form = MultipartForm()
         form.addField("kind", "photo")
@@ -284,6 +279,9 @@ struct LiveBackend: FrameBackend {
         if let latitude = upload.latitude, let longitude = upload.longitude {
             form.addField("latitude", String(latitude))
             form.addField("longitude", String(longitude))
+        }
+        if let look = upload.look, let json = try? Self.encoder().encode(look) {
+            form.addField("look", String(decoding: json, as: UTF8.self))
         }
         form.addFile("file", filename: "photo.jpg", mimeType: "image/jpeg", data: upload.data)
         var req = request("/api/library/upload", method: "POST")

@@ -110,7 +110,7 @@ actor DemoBackend: FrameBackend {
     // MARK: Matching (mirrors server/src/frame_server/library/repo.py)
 
     private static func matches(_ item: Item, _ rules: PlaylistRules) -> Bool {
-        if item.excluded || rules.excludeIds.contains(item.id) { return false }
+        if item.excluded || item.look != nil || rules.excludeIds.contains(item.id) { return false }
         if rules.favoritesOnly && !item.favorite { return false }
         if !rules.kinds.isEmpty && !rules.kinds.contains(item.kind) { return false }
         if !rules.sources.isEmpty && !rules.sources.contains(item.source) { return false }
@@ -358,7 +358,7 @@ actor DemoBackend: FrameBackend {
         guard let item = items.first(where: { $0.id == itemID }),
               let size = DemoFraming.pixelSize(itemID)
         else { throw BackendError.notFound }
-        let pres = item.kind == .photo ? settingsValue.photo : settingsValue.art
+        let pres = item.look.map { settingsValue.photo.with($0) } ?? (item.kind == .photo ? settingsValue.photo : settingsValue.art)
         let custom = automatic ? nil : shared.crops[itemID]?[orientation]
         let canvas = DemoFraming.canvas(orientation)
         let plan = DemoFraming.plan(
@@ -732,7 +732,8 @@ actor DemoBackend: FrameBackend {
             description: "", imageUrl: "", thumbUrl: "", width: image.width, height: image.height,
             colors: [], colorTags: [], suitability: nil, favorite: false, excluded: false,
             addedAt: ISO8601DateFormatter().string(from: .now), lastShownAt: nil, showCount: 0,
-            photo: PhotoInfo(takenAt: upload.takenAt, latitude: upload.latitude, longitude: upload.longitude)
+            photo: PhotoInfo(takenAt: upload.takenAt, latitude: upload.latitude, longitude: upload.longitude),
+            look: upload.look
         )
         items.append(item)
         shared.uploads[id] = DemoFraming.Art(
@@ -742,10 +743,17 @@ actor DemoBackend: FrameBackend {
         return item
     }
 
-    func sendPhoto(_ data: Data, title: String, preset: String, hold: HoldSpec) async throws -> DisplayResponse {
-        startRun(title)
-        try await Task.sleep(for: .seconds(5))  // until the pretend panel has the picture
-        return DisplayResponse(pushed: true, fetched: true, message: nil)
+    func setLook(itemID: String, _ look: Look) async throws -> Item {
+        let item = try update(itemID) { $0.look = look }
+        if itemID == currentID { startRun(itemID: itemID) }
+        return item
+    }
+
+    func deleteItem(id: String) async throws {
+        items.removeAll { $0.id == id }
+        queue.removeAll { $0 == id }
+        queued.removeAll { $0 == id }
+        shared.uploads[id] = nil
     }
 
     func panelConfig() async throws -> PanelConfig { panelValue }

@@ -28,7 +28,7 @@ from .library.style import AUTO, auto_preset
 from .library.themes import SEARCHABLE, theme_of_the_day
 from .library.vocabulary import set_aside
 from .progress import Stage
-from .schedule import FrameSettings, in_quiet_hours, next_change
+from .schedule import FrameSettings, Presentation, in_quiet_hours, next_change
 
 if TYPE_CHECKING:
     from .service import FrameService
@@ -346,8 +346,18 @@ class Player:
     # -- boards of several photos (MULTI) ------------------------------------
 
     @staticmethod
-    def multi(item: Item, settings: FrameSettings) -> bool:
-        return item.kind == ItemKind.PHOTO and settings.photo.fit == Fit.MULTI
+    def presentation(item: Item, settings: FrameSettings) -> Presentation:
+        """How ``item`` is framed: the settings' for photos or for art, or
+        the look a photo sent once from the camera roll was given."""
+        if item.look is not None:
+            look = item.look
+            update = {"fit": look.fit, "mat": look.mat, "margin": look.margin}
+            return settings.photo.model_copy(update=update | {"preset": AUTO, "label": False})
+        return settings.photo if item.kind == ItemKind.PHOTO else settings.art
+
+    @classmethod
+    def multi(cls, item: Item, settings: FrameSettings) -> bool:
+        return item.kind == ItemKind.PHOTO and cls.presentation(item, settings).fit == Fit.MULTI
 
     def board(
         self,
@@ -399,7 +409,7 @@ class Player:
 
     def preset_for(self, item: Item, settings: FrameSettings) -> str:
         """The rendering preset ``item`` gets: the chosen one, or by the picture."""
-        pres = settings.photo if item.kind == ItemKind.PHOTO else settings.art
+        pres = self.presentation(item, settings)
         if pres.preset != AUTO:
             return pres.preset
         if item.tint_spread is None:
@@ -412,7 +422,7 @@ class Player:
         return auto_preset(item)
 
     def render_settings(self, item: Item, settings: FrameSettings) -> RenderSettings:
-        pres = settings.photo if item.kind == ItemKind.PHOTO else settings.art
+        pres = self.presentation(item, settings)
         preset = self.preset_for(item, settings)
         base = PRESETS.get(preset, PRESETS["painting"]).model_copy(deep=True)
         base.layout.fit = pres.fit

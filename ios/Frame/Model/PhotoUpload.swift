@@ -9,6 +9,8 @@ struct PhotoUpload: Sendable {
     var takenAt: String?  // ISO 8601, the camera's local time
     var latitude: Double?
     var longitude: Double?
+    /// Sent once ("Zdjęcie na ramkę"): shown with this look, outside the library's lists.
+    var look: Look?
 
     init(data: Data, title: String = "", takenAt: String? = nil, latitude: Double? = nil, longitude: Double? = nil) {
         self.data = data

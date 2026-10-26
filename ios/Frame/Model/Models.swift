@@ -54,6 +54,9 @@ struct Item: Codable, Identifiable, Hashable, Sendable {
     var lastShownAt: String?
     var showCount: Int
     var photo: PhotoInfo?
+    /// A photo sent once from the camera roll ("Zdjęcie na ramkę"): shown
+    /// with its own look, and never in a list or a rotation.
+    var look: Look? = nil
 
     var summary: ItemSummary {
         ItemSummary(
@@ -530,6 +533,37 @@ struct Presentation: Codable, Hashable, Sendable {
         multiCount = try c.decodeIfPresent(Int.self, forKey: .multiCount) ?? 4
         multiRandom = try c.decodeIfPresent(Bool.self, forKey: .multiRandom) ?? false
         multiGrid = try c.decodeIfPresent(String.self, forKey: .multiGrid) ?? "auto"
+    }
+}
+
+/// How a photo sent once ("Zdjęcie na ramkę") is shown, in place of the
+/// settings' presentation for photos; its style is always automatic.
+struct Look: Codable, Hashable, Sendable {
+    var fit = "fill"  // "fill" | "fit" (in a passe-partout)
+    var mat = "white"
+    var margin = 0.05
+
+    var key: String { "\(fit),\(mat),\(margin)" }
+
+    /// To start with: the settings' presentation for photos, or the whole
+    /// frame where that is several photos to a board.
+    init(_ photo: Presentation) {
+        fit = photo.fit == "fit" ? "fit" : "fill"
+        mat = photo.mat
+        margin = max(photo.margin, 0.05)
+    }
+}
+
+extension Presentation {
+    /// This presentation for photos as a photo sent once with `look` gets it.
+    func with(_ look: Look) -> Presentation {
+        var presentation = self
+        presentation.preset = "auto"
+        presentation.fit = look.fit
+        presentation.mat = look.mat
+        presentation.margin = look.margin
+        presentation.label = false
+        return presentation
     }
 }
 
