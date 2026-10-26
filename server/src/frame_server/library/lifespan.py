@@ -32,6 +32,27 @@ def free_in_eu(death_year: int, today: date | None = None) -> bool:
     return death_year + TERM_YEARS < (today or date.today()).year
 
 
+def last_free_year(today: date | None = None) -> int:
+    """The last death year whose works are free: 1955 in 2026."""
+    return (today or date.today()).year - TERM_YEARS - 1
+
+
+#: Life dates written into a name: "Kandinsky, Wassily (1866-1944)",
+#: "Oskar Schlemmer (04.09.1888 - 13.04.1943)".
+LIFE_IN_NAME = re.compile(
+    r"\(\s*(?:\d{1,2}\.\d{1,2}\.)?(\d{4})\s*[-–]\s*(?:\d{1,2}\.\d{1,2}\.)?(\d{4})\s*\)"
+)
+
+
+def death_in_name(name: str) -> int | None:
+    """The death year a name carries in brackets, if it has a plausible one."""
+    match = LIFE_IN_NAME.search(name)
+    if not match:
+        return None
+    born, died = int(match.group(1)), int(match.group(2))
+    return died if 0 < died - born < 110 else None
+
+
 def _year(text: str) -> int | None:
     match = re.match(r"^[+]?(-?\d{1,4})-", text)
     return int(match.group(1)) if match else None

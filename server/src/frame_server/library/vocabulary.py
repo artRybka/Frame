@@ -18,6 +18,7 @@ from functools import cache, cached_property, lru_cache
 from itertools import product
 from typing import Literal
 
+from .lifespan import last_free_year
 from .models import Item, ItemKind
 from .museums import Kind
 
@@ -104,6 +105,29 @@ TERMS: list[Term] = [
     _t("style:tonalism", "Tonalizm", "tonalism", "tonalist"),
     _t("style:hudson-river", "Szkoła znad rzeki Hudson", "hudson river school"),
     _t("style:young-poland", "Młoda Polska", "young poland", "młoda polska"),
+    _t(
+        "style:abstraction",
+        "Abstrakcja",
+        "abstraction",
+        "abstract art",
+        "abstract composition*",
+        "abstract painting*",
+        "non-objective",
+        "abstrakcj*",
+    ),
+    _t(
+        "style:constructivism",
+        "Konstruktywizm i suprematyzm",
+        "constructivism",
+        "constructivist*",
+        "suprematism",
+        "suprematist*",
+        "unism",
+        "unizm",
+        "konstruktywizm",
+    ),
+    _t("style:de-stijl", "De Stijl", "de stijl", "neoplasticism", "neo-plasticism"),
+    _t("style:bauhaus", "Bauhaus", "bauhaus"),
     _t("style:academic", "Akademizm", "academic art", "academicism", "academism"),
     _t("style:neoclassicism", "Klasycyzm", "neoclassicism", "neoclassical", "neo-classical"),
     _t("style:rococo", "Rokoko", "rococo"),
@@ -242,6 +266,12 @@ TERMS: list[Term] = [
     _p("period:1850-1900", "1850–1900", 1850, 1899),
     _p("period:belle-epoque", "Belle Époque", 1880, 1914),
     _p("period:1900-1930", "1900–1930", 1900, 1930),
+    # Later works are free in Poland 70 years after their author's death
+    # (lifespan.py), so the last period ends with this year's free deaths
+    # and grows by a year every January (once the server restarts).
+    _p("period:interwar", "Międzywojnie", 1918, 1939),
+    _p("period:1930-1945", "1930–1945", 1930, 1944),
+    _p("period:post-1945", f"1945–{last_free_year()}", 1945, last_free_year()),
     # Techniques
     _t(
         "technique:painting",
