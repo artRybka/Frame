@@ -254,6 +254,28 @@ def device_info(host: HostOpt = None, pin: PinOpt = None) -> None:
     typer.echo(status.model_dump_json(indent=2, exclude_none=True))
 
 
+@device_app.command("presence")
+def device_presence(host: HostOpt = None) -> None:
+    """Is the panel on the Wi-Fi (answers ARP)? Asked without MDC, so a
+    sleeping panel is not woken (experiment E15)."""
+    from .device import presence
+
+    s = _app_panel_config(_settings())
+    target = host or s.device_host
+    if not target:
+        raise typer.BadParameter("panel address required (--host or FRAME_DEVICE_HOST)")
+    answer = asyncio.run(presence.on_network(target))
+    try:
+        table = presence.neighbours()
+    except (AttributeError, OSError):  # not Linux
+        table = []
+    for entry in table:
+        if entry.ip == target:
+            typer.echo(f"neighbour {entry.ip} {entry.mac or '-'} state 0x{entry.state:02x}")
+    verdicts = {True: "on the network", False: "not on the network", None: "cannot tell"}
+    typer.echo(f"{target}: {verdicts[answer]}")
+
+
 @device_app.command("wake")
 def device_wake(
     mac: Annotated[str | None, typer.Option()] = None,
