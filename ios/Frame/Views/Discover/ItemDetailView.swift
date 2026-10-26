@@ -266,7 +266,20 @@ struct ItemDetailView: View {
                 .foregroundStyle(Theme.ink)
                 .fixedSize(horizontal: false, vertical: true)
             if !item.artist.isEmpty {
-                Text(item.artist).font(.serif(19)).foregroundStyle(Theme.ink)
+                // Their other works, on Discover's search.
+                Button {
+                    model.artistSearch = item.artist
+                } label: {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(item.artist).font(.serif(19)).foregroundStyle(Theme.ink)
+                        Image(systemName: "magnifyingglass")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(Theme.inkSoft)
+                    }
+                    .multilineTextAlignment(.leading)
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint(Text("Szuka innych dzieł tego autora"))
             }
             if !item.artistBio.isEmpty {
                 Text(item.artistBio).font(.subheadline).foregroundStyle(Theme.inkSoft)

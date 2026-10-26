@@ -1,14 +1,15 @@
 import SwiftUI
 
 /// Ideas for playlists and works the server picked (Propozycje), and one
-/// search over the catalogue and the museums (Muzea).
+/// search over the catalogue and the museums (Szukaj).
 struct DiscoverView: View {
+    @Environment(AppModel.self) private var model
     @State private var scope = Scope.initial
     @State private var path = NavigationPath()
 
     enum Scope: String, CaseIterable {
         case suggestions = "Propozycje"
-        case museums = "Muzea"
+        case museums = "Szukaj"
 
         /// Suggestions, unless CI screenshots ask for another screen.
         static var initial: Scope {
@@ -42,6 +43,12 @@ struct DiscoverView: View {
             .navigationDestination(for: ArtTheme.self) { theme in
                 ThemeView(theme: theme)
             }
+        }
+        // A tapped artist's name: back to the top, on the search.
+        .onChange(of: model.artistSearch, initial: true) { _, artist in
+            guard artist != nil else { return }
+            scope = .museums
+            path = NavigationPath()
         }
     }
 }

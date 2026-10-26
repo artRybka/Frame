@@ -37,6 +37,9 @@ final class AppModel {
     /// The bar under the picture: set while a picture is on its way to the
     /// frame, and for a moment after it arrives.
     var displayProgress: DisplayProgress?
+    /// An artist whose works Discover's search should show: set by tapping
+    /// the name on a work, taken (and cleared) by the search.
+    var artistSearch: String?
     private var progressTask: Task<Void, Never>?
 
     init() {
