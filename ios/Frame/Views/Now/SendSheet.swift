@@ -3,10 +3,12 @@ import SwiftUI
 import UIKit
 
 /// "Zdjęcie na ramkę": one photo from the camera roll, shown once. Picked,
-/// it goes to the server as a photo sent once; here it gets its look (over
-/// the whole frame or in a passe-partout) and its crop on the frame's
+/// it goes to the server as a photo sent once; here it gets its look
+/// ("Wypełnij" or "Passe-partout") and its crop, right on the frame's
 /// preview, then goes on the frame now or next in the queue, and into the
-/// playlist "Historia przesłanych". Its style is always automatic.
+/// playlist "Historia przesłanych". Its style is always automatic. Nothing
+/// scrolls, so a drag on the preview always moves the photo; another photo
+/// means "Anuluj" first.
 struct SendSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
@@ -22,7 +24,6 @@ struct SendSheet: View {
     /// cached from before shows the old crop.
     @State private var applied: FramingCrops?
     @State private var loadedPreview: ImageRef?
-    @State private var cropping = false
     @State private var sending = false
     /// Shown or queued: the photo stays on the server.
     @State private var sent = false
@@ -32,18 +33,18 @@ struct SendSheet: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    photoArea
-                    if item != nil, let look = Binding($look) {
-                        lookSection(look)
-                        holdSection
-                        actions
-                    }
+            VStack(alignment: .leading, spacing: 18) {
+                photoArea
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                if item != nil, let look = Binding($look) {
+                    lookSection(look)
+                    holdSection
+                    actions
                 }
-                .padding(Theme.gutter)
-                .animation(.easeInOut(duration: 0.2), value: look?.fit)
             }
+            .padding(.horizontal, Theme.gutter)
+            .padding(.vertical, 12)
+            .animation(.easeInOut(duration: 0.2), value: look?.fit)
             .background(Theme.paper)
             .navigationTitle("Zdjęcie na ramkę")
             .navigationBarTitleDisplayMode(.inline)
@@ -58,23 +59,14 @@ struct SendSheet: View {
             }
             .task(id: look) { await applyLook() }
             .task(id: draftKey) { await loadFraming() }
-            .fullScreenCover(isPresented: $cropping) {
-                if let item {
-                    CropScreen(
-                        itemID: item.id, preview: previewRef, aspectRatio: frameAspect,
-                        onFrame: model.player?.current?.item?.id == item.id,
-                        draft: $draft, save: saveCrop
-                    )
-                }
-            }
         }
         .presentationDetents([.large])
+        .interactiveDismissDisabled(item != nil)  // a drag on the preview crops; "Anuluj" closes
         .onAppear {
             if look == nil { look = Look(model.settings?.photo ?? FrameSettings.defaults.photo) }
         }
         .onDisappear {
-            // Closed without sending (the crop screen covering it is not closing).
-            if !sent, !cropping, let item { discard(item) }
+            if !sent, let item { discard(item) }  // closed without sending
         }
     }
 
@@ -85,28 +77,14 @@ struct SendSheet: View {
     @ViewBuilder
     private var photoArea: some View {
         if let item {
-            VStack(spacing: 12) {
+            VStack(spacing: 10) {
                 framePreview(item)
-                    .frame(maxHeight: 400)
-                    .frame(maxWidth: .infinity)
-                Text("Dotknij podglądu, żeby wykadrować zdjęcie.")
-                    .font(.caption)
-                    .foregroundStyle(Theme.inkSoft)
-                    .multilineTextAlignment(.center)
-                PhotosPicker(selection: $selection, matching: .images) {
-                    Label("Inne zdjęcie", systemImage: "photo.on.rectangle")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(Theme.accent)
-                }
-                .disabled(uploading || sending)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                cropTools
             }
-            .padding(.top, 4)
         } else if uploading {
             FramedArtwork(ref: nil, aspectRatio: frameAspect, moulding: 7)
                 .overlay { LoadingBadge(text: "Przygotowuję zdjęcie…") }
-                .frame(maxHeight: 400)
-                .frame(maxWidth: .infinity)
-                .padding(.top, 4)
         } else {
             PhotosPicker(selection: $selection, matching: .images) {
                 VStack(spacing: 12) {
@@ -126,29 +104,66 @@ struct SendSheet: View {
         }
     }
 
-    /// The photo as the frame will show it, in the frame's proportions; a
-    /// tap opens it on the crop screen once its crop is loaded.
+    /// The crop is loaded for the photo's look: its windows can be moved.
+    private var cropReady: Bool { draft.key == draftKey && draft.view?.windows.isEmpty == false }
+
+    /// The photo as the frame will show it, in the frame's proportions,
+    /// cropped right here: dragged and pinched in its window.
     private func framePreview(_ item: Item) -> some View {
         let ref = previewRef
-        let ready = draft.key == draftKey && draft.view?.windows.isEmpty == false
-        return FramedArtwork(ref: ref, aspectRatio: frameAspect, moulding: 7)
-            .environment(\.artImageLoaded) { loaded in
-                guard loaded == previewRef else { return }
-                withAnimation(.easeOut(duration: 0.3)) { loadedPreview = loaded }
+        return FramedArtwork(ref: ref, aspectRatio: frameAspect, moulding: 7) {
+            if cropReady, loadedPreview != nil, !sending {
+                CropWindows(itemID: item.id, draft: $draft)
+                    .transition(.opacity)
             }
-            .overlay {
-                if uploading {
-                    LoadingBadge(text: "Przygotowuję zdjęcie…")
-                } else if loadedPreview != ref {
-                    LoadingBadge(text: "Wczytuję podgląd…")
-                }
+        }
+        .environment(\.artImageLoaded) { loaded in
+            guard loaded == previewRef else { return }
+            withAnimation(.easeOut(duration: 0.3)) { loadedPreview = loaded }
+        }
+        .overlay {
+            if uploading {
+                LoadingBadge(text: "Przygotowuję zdjęcie…")
+            } else if loadedPreview != ref {
+                LoadingBadge(text: "Wczytuję podgląd…")
             }
-            .contentShape(Rectangle())
-            .onTapGesture {
-                if ready, !uploading { cropping = true }
+        }
+    }
+
+    /// Under the preview: the window's shape (passe-partout) and the way
+    /// back to the automatic crop. Always there, so the preview keeps its size.
+    private var cropTools: some View {
+        HStack(spacing: 8) {
+            if cropReady { CropTools(draft: $draft) }
+            Button {
+                Task { await automaticCrop() }
+            } label: {
+                Label("Kadr automatyczny", systemImage: "wand.and.stars").toolChip()
             }
-            .accessibilityAddTraits(ready ? .isButton : [])
-            .accessibilityHint(Text(ready ? "Otwiera kadrowanie na całym ekranie" : ""))
+            .buttonStyle(.plain)
+            .disabled(!cropReady || !draft.offAutomatic || sending)
+            .opacity(cropReady && draft.offAutomatic ? 1 : 0.45)
+        }
+        .frame(height: 34)
+    }
+
+    /// Back to the crop the server would choose; sending keeps it.
+    private func automaticCrop() async {
+        guard draft.custom else {
+            draft.crops = draft.saved  // the saved crop is the automatic one
+            draft.automatic = nil
+            return
+        }
+        guard let item, let view = draft.view else { return }
+        let key = draft.key
+        do {
+            let auto = try await model.backend.framing(itemID: item.id, orientation: view.orientation, automatic: true)
+            guard key == draft.key, auto.windows.count == draft.crops.count else { return }
+            draft.automatic = auto.windows.map(\.crop)
+            draft.crops = auto.windows.map(\.crop)
+        } catch {
+            model.show(error)
+        }
     }
 
     private func upload(_ picked: PhotosPickerItem) async {
@@ -167,6 +182,7 @@ struct SendSheet: View {
             if let previous = item { discard(previous) }
             draft = FramingDraft()
             applied = nil
+            loadedPreview = nil
             item = uploaded
             look = uploaded.look ?? look
         } catch {
@@ -202,9 +218,11 @@ struct SendSheet: View {
         return .framePreview(item.id, settings: previewSettings, framing: current ? draft.trial ?? applied : nil)
     }
 
-    /// The look chosen goes to the server, which frames the photo with it.
+    /// The look chosen goes to the server, which frames the photo with it;
+    /// the crop made for the look before is kept for coming back to it.
     private func applyLook() async {
         guard let item, let look, item.look != look else { return }
+        guard await saveCrop() else { return }
         do {
             let updated = try await model.backend.setLook(itemID: item.id, look)
             if self.item?.id == updated.id { self.item = updated }
@@ -226,7 +244,7 @@ struct SendSheet: View {
         draft = loaded
     }
 
-    /// "Zapisz kadr" on the crop screen.
+    /// The crop edited here, saved before sending or another look.
     private func saveCrop() async -> Bool {
         guard let item, draft.key == draftKey, let change = draft.change else { return true }
         let key = draft.key
@@ -248,8 +266,8 @@ struct SendSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             Eyebrow("Jak pokazać")
             Picker("Jak pokazać", selection: look.fit) {
-                Text("Na całą ramkę").tag("fill")
-                Text("Z passe-partout").tag("fit")
+                Text("Wypełnij").tag("fill")
+                Text("Passe-partout").tag("fit")
             }
             .pickerStyle(.segmented)
             if look.wrappedValue.fit == "fit" {
@@ -262,12 +280,6 @@ struct SendSheet: View {
                 }
                 .transition(.opacity)
             }
-            Text(look.wrappedValue.fit == "fit"
-                ? "Całe zdjęcie w okienku passe-partout. Dotknij podglądu, żeby zmienić kadr albo kształt okienka."
-                : "Zdjęcie na całym ekranie; to, co się nie mieści, zostaje przycięte.")
-                .font(.caption)
-                .foregroundStyle(Theme.inkSoft)
-                .fixedSize(horizontal: false, vertical: true)
         }
         .disabled(uploading || sending)
     }
