@@ -201,11 +201,6 @@ struct NowView: View {
                 guard ref == heroRef else { return }
                 withAnimation(.easeOut(duration: 0.3)) { loadedHero = ref }
             }
-            .overlay(alignment: .bottomTrailing) {
-                if canCrop, !sending {
-                    CornerBadge(systemImage: "crop").transition(.opacity)
-                }
-            }
             .contentShape(Rectangle())
             .onTapGesture {
                 if canCrop, !sending { cropping = true }

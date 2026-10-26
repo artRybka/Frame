@@ -2,9 +2,11 @@ import SwiftUI
 
 /// Cropping on a screen of its own, opened by tapping the frame's preview:
 /// the frame as large as it fits with the crop windows over it, and under it
-/// the window's shape, the automatic crop and "Zapisz kadr". Nothing here
-/// scrolls, so a drag always moves the picture.
+/// the window's shape, then "Kadr automatyczny" beside "Zapisz kadr". Nothing
+/// here scrolls, so a drag always moves the picture, and nothing comes or
+/// goes while cropping, so the picture keeps its size.
 struct CropScreen: View {
+    @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     let itemID: String
     /// The preview under the windows; it follows the draft, as a new window
@@ -52,28 +54,42 @@ struct CropScreen: View {
                     .font(.caption)
                     .foregroundStyle(Theme.inkSoft)
                     .multilineTextAlignment(.center)
+                    .lineLimit(2, reservesSpace: true)
                     .padding(.horizontal, Theme.gutter)
                     .contentTransition(.opacity)
                 if ready {
-                    CropTools(itemID: itemID, draft: $draft)
+                    CropTools(draft: $draft)
                 }
-                Button {
-                    Task { await saveAndClose() }
-                } label: {
-                    HStack(spacing: 10) {
-                        if saving { ProgressView().tint(Theme.paper) }
-                        Text("Zapisz kadr")
+                HStack(spacing: 10) {
+                    Button {
+                        Task { await automaticCrop() }
+                    } label: {
+                        Text("Kadr automatyczny")
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
                     }
+                    .buttonStyle(SecondaryButtonStyle())
+                    .disabled(!ready || !draft.offAutomatic || saving)
+                    .opacity(ready && draft.offAutomatic ? 1 : 0.45)
+                    Button {
+                        Task { await saveAndClose() }
+                    } label: {
+                        HStack(spacing: 10) {
+                            if saving { ProgressView().tint(Theme.paper) }
+                            Text("Zapisz kadr")
+                        }
+                    }
+                    .buttonStyle(PrimaryButtonStyle())
+                    .disabled(!draft.changed || saving)
+                    .opacity(draft.changed || saving ? 1 : 0.45)
                 }
-                .buttonStyle(PrimaryButtonStyle())
-                .disabled(!draft.changed || saving)
-                .opacity(draft.changed || saving ? 1 : 0.45)
                 .frame(maxWidth: 420)
                 .padding(.horizontal, Theme.gutter)
                 .padding(.bottom, 8)
             }
             .disabled(saving)
             .animation(.easeInOut(duration: 0.2), value: draft.changed)
+            .animation(.easeInOut(duration: 0.2), value: draft.offAutomatic)
             .background(Theme.paper)
             .navigationTitle("Kadr")
             .navigationBarTitleDisplayMode(.inline)
@@ -108,6 +124,25 @@ struct CropScreen: View {
         saving = true
         defer { saving = false }
         if await save() { dismiss() }
+    }
+
+    /// Back to the crop the server would choose; "Zapisz kadr" keeps it.
+    private func automaticCrop() async {
+        guard draft.custom else {
+            draft.crops = draft.saved  // the saved crop is the automatic one
+            draft.automatic = nil
+            return
+        }
+        guard let view = draft.view else { return }
+        let key = draft.key
+        do {
+            let auto = try await model.backend.framing(itemID: itemID, orientation: view.orientation, automatic: true)
+            guard key == draft.key, auto.windows.count == draft.crops.count else { return }
+            draft.automatic = auto.windows.map(\.crop)
+            draft.crops = auto.windows.map(\.crop)
+        } catch {
+            model.show(error)
+        }
     }
 
     private func cancel() {

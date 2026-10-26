@@ -79,44 +79,31 @@ enum FramingChange: Equatable {
     case reset(orientation: String)
 }
 
-/// Under the picture being cropped: the passe-partout window's shape and the
-/// way back to the automatic crop.
+/// Under the picture being cropped, in passe-partout: the window's shape.
 struct CropTools: View {
-    @Environment(AppModel.self) private var model
-    let itemID: String
     @Binding var draft: FramingDraft
 
     var body: some View {
-        HStack(spacing: 10) {
-            if draft.view?.fit == "fit" {
-                Menu {
-                    ForEach(windowShapes, id: \.title) { shape in
-                        Button {
-                            draft.crops[0].aspect = shape.aspect
-                            draft.crops[0].zoom = shape.aspect == nil ? DemoFraming.wholeCrop.zoom : 1
-                        } label: {
-                            if sameShape(draft.crops.first?.aspect, shape.aspect) {
-                                Label(shape.title, systemImage: "checkmark")
-                            } else {
-                                Text(shape.title)
-                            }
+        if draft.view?.fit == "fit" {
+            Menu {
+                ForEach(windowShapes, id: \.title) { shape in
+                    Button {
+                        draft.crops[0].aspect = shape.aspect
+                        draft.crops[0].zoom = shape.aspect == nil ? DemoFraming.wholeCrop.zoom : 1
+                    } label: {
+                        if sameShape(draft.crops.first?.aspect, shape.aspect) {
+                            Label(shape.title, systemImage: "checkmark")
+                        } else {
+                            Text(shape.title)
                         }
                     }
-                } label: {
-                    Label(
-                        "Kształt: " + (windowShapes.first { sameShape(draft.crops.first?.aspect, $0.aspect) }?.title ?? "własny"),
-                        systemImage: "aspectratio"
-                    )
-                    .toolChip()
                 }
-            }
-            if draft.custom && draft.automatic == nil || draft.crops != (draft.automatic ?? draft.saved) {
-                Button {
-                    Task { await automaticCrop() }
-                } label: {
-                    Label("Kadr automatyczny", systemImage: "sparkles").toolChip()
-                }
-                .buttonStyle(.plain)
+            } label: {
+                Label(
+                    "Kształt: " + (windowShapes.first { sameShape(draft.crops.first?.aspect, $0.aspect) }?.title ?? "własny"),
+                    systemImage: "aspectratio"
+                )
+                .toolChip()
             }
         }
     }
@@ -128,23 +115,13 @@ struct CropTools: View {
         default: false
         }
     }
+}
 
-    private func automaticCrop() async {
-        guard draft.custom else {
-            draft.crops = draft.saved  // the saved crop is the automatic one
-            draft.automatic = nil
-            return
-        }
-        guard let view = draft.view else { return }
-        let key = draft.key
-        do {
-            let auto = try await model.backend.framing(itemID: itemID, orientation: view.orientation, automatic: true)
-            guard key == draft.key, auto.windows.count == draft.crops.count else { return }
-            draft.automatic = auto.windows.map(\.crop)
-            draft.crops = auto.windows.map(\.crop)
-        } catch {
-            model.show(error)
-        }
+extension FramingDraft {
+    /// The crop differs from the automatic one, so "Kadr automatyczny" has
+    /// something to do.
+    var offAutomatic: Bool {
+        custom && automatic == nil || crops != (automatic ?? saved)
     }
 }
 
