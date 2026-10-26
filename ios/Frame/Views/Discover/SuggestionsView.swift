@@ -3,12 +3,16 @@ import SwiftUI
 /// What Discover opens with: ideas for playlists in groups, then rows of
 /// works the server picked for the frame, works like the ones the owner
 /// likes, the theme of the day and the best on e-paper.
+///
+/// The last ones loaded show at once (also after a launch) while fresh ones
+/// load, and only the cards and works on screen fetch their pictures.
 struct SuggestionsView: View {
     @Environment(AppModel.self) private var model
-    @State private var rows: [SuggestionRow] = []
-    @State private var themes: [ArtTheme] = []
     @State private var loading = false
     @Binding var path: NavigationPath
+
+    private var rows: [SuggestionRow] { model.suggestionRows ?? [] }
+    private var themes: [ArtTheme] { model.themes ?? [] }
 
     private struct ThemeGroup: Identifiable {
         let name: String
@@ -31,7 +35,7 @@ struct SuggestionsView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 28) {
+        LazyVStack(alignment: .leading, spacing: 28) {
             if rows.isEmpty && themes.isEmpty && !loading {
                 EmptyStateView(
                     title: "Propozycje są w drodze",
@@ -47,11 +51,13 @@ struct SuggestionsView: View {
                     // One row per group, so all groups and the rows of works
                     // below fit in a few screens.
                     ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(alignment: .top, spacing: 12) {
+                        LazyHStack(alignment: .top, spacing: 12) {
                             ForEach(group.themes) { theme in
                                 NavigationLink(value: theme) {
-                                    ThemeCard(theme: theme) { await makePlaylist(theme) }
-                                        .frame(width: 172)
+                                    ThemeCard(theme: theme) {
+                                        _ = await ThemeActions.makePlaylist(theme, play: false, model: model)
+                                    }
+                                    .frame(width: 172)
                                 }
                                 .buttonStyle(.plain)
                             }
@@ -69,29 +75,16 @@ struct SuggestionsView: View {
         .overlay(alignment: .top) {
             if loading && rows.isEmpty { ProgressView().padding(.top, 60) }
         }
-        .task { await load() }
+        .task {
+            loading = true
+            await model.refreshDiscover()
+            loading = false
+        }
         .onChange(of: rows.first?.items.first?.id) { _, first in
             if ["detail", "original"].contains(LaunchRoute.screen), path.isEmpty, let first { path.append(first) }
         }
     }
 
-    private func load() async {
-        loading = true
-        defer { loading = false }
-        do {
-            async let found = model.backend.suggestions()
-            async let all = model.backend.themes()
-            (rows, themes) = try await (found, all)
-        } catch is CancellationError {
-        } catch {
-            model.show(error)
-        }
-    }
-
-    private func makePlaylist(_ theme: ArtTheme) async {
-        await ThemeActions.makePlaylist(theme, play: false, model: model)
-        if let fresh = try? await model.backend.themes() { themes = fresh }
-    }
 }
 
 /// Making a playlist from a theme, from a card or the theme's page.
@@ -103,6 +96,8 @@ enum ThemeActions {
         do {
             let made = try await model.backend.themePlaylist(key: theme.key, play: play)
             await model.refreshPlaylists()
+            // The card says "Masz" from now on.
+            if let fresh = try? await model.backend.themes() { model.themes = fresh }
             if play {
                 model.toast = "Teraz prezentowane: \(made.playlist.name)"
                 await model.refreshPlayer()
@@ -138,13 +133,13 @@ struct ThemeCard: View {
                 Text(theme.name)
                     .font(.serif(15, weight: .semibold))
                     .foregroundStyle(Theme.ink)
-                    .lineLimit(2)
+                    .lineLimit(2, reservesSpace: true)
                     .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
                 Text(theme.description)
                     .font(.caption)
                     .foregroundStyle(Theme.inkSoft)
-                    .lineLimit(2)
+                    .lineLimit(2, reservesSpace: true)
                     .multilineTextAlignment(.leading)
                 Spacer(minLength: 4)
                 HStack {

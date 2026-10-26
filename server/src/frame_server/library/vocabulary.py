@@ -14,7 +14,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from dataclasses import dataclass
-from functools import cache, cached_property
+from functools import cache, cached_property, lru_cache
 from itertools import product
 from typing import Literal
 
@@ -300,7 +300,13 @@ _MANUSCRIPT = re.compile(
 
 
 def is_manuscript(item: Item) -> bool:
-    return bool(_MANUSCRIPT.search(" ".join((item.classification, item.title, item.medium))))
+    return _is_manuscript(item.classification, item.title, item.medium)
+
+
+# Asked of every work on every query of the catalogue: remembered by text.
+@lru_cache(maxsize=1 << 15)
+def _is_manuscript(classification: str, title: str, medium: str) -> bool:
+    return bool(_MANUSCRIPT.search(" ".join((classification, title, medium))))
 
 
 #: Photographs in the museums' collections, by department or process; the
@@ -316,9 +322,12 @@ _PHOTOGRAPH = re.compile(
 
 def is_photograph(item: Item) -> bool:
     """A museum's photograph (never the owner's own photos)."""
-    return item.kind == ItemKind.ARTWORK and bool(
-        _PHOTOGRAPH.search(" ".join((item.classification, item.medium)))
-    )
+    return item.kind == ItemKind.ARTWORK and _is_photograph(item.classification, item.medium)
+
+
+@lru_cache(maxsize=1 << 15)
+def _is_photograph(classification: str, medium: str) -> bool:
+    return bool(_PHOTOGRAPH.search(" ".join((classification, medium))))
 
 
 def set_aside(item: Item, keys: list[str] | tuple[str, ...] = ()) -> bool:
@@ -379,9 +388,15 @@ def grouped(keys: list[str]) -> dict[str, list[Term]]:
     return groups
 
 
+@lru_cache(maxsize=256)
+def _grouped(keys: tuple[str, ...]) -> dict[str, list[Term]]:
+    """``grouped`` for every work of a query: worked out once."""
+    return grouped(list(keys))
+
+
 def matches_terms(item: Item, keys: list[str]) -> bool:
     """Every kind of term in ``keys`` has one that fits ``item``."""
-    groups = grouped(keys)
+    groups = _grouped(tuple(keys))
     if not groups:
         return True
     text = _text(item)

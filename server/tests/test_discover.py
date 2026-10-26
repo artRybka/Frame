@@ -157,3 +157,55 @@ def test_theme_playlists_and_terms(museums) -> None:  # noqa: F811
         ).json()
         assert catalogue["total"] == 0
         assert len(client.get("/api/vocabulary").json()) == len(BY_KEY)
+
+
+def test_discover_does_not_wait_for_slow_work(museums, monkeypatch) -> None:  # noqa: F811
+    import threading
+    import time
+    from datetime import date
+
+    from frame_server.library.themes import Theme
+    from frame_server.web import discover_api
+
+    service = museums
+    library = service.library
+    day = date(2026, 10, 26)
+
+    # Theme cards: the old ones at once, new ones worked out behind.
+    old: dict[str, tuple[int, list[Item]]] = {"old": (1, [])}
+    discover_api._cards = (time.monotonic() - 2 * discover_api.CARDS_TTL, old)
+    assert discover_api._theme_cards(service) is old
+    for _ in range(100):
+        if discover_api._cards[1] is not old:
+            break
+        time.sleep(0.05)
+    assert set(discover_api._cards[1]) == {t.key for t in THEMES}
+
+    # The theme of the day from the catalogue when it has enough works.
+    blue = Theme("blue-test", "Błękity", "", GROUPS[0], colors=("blue",))
+    with library.batch():
+        for n in range(discover_api.DAY_ROW_MIN):
+            library.upsert(_work(100 + n, title=f"Blue {n}", color_tags=["blue"], pooled=True))
+    asked: list[str] = []
+    monkeypatch.setattr(discover_api, "browse_theme", lambda *a: asked.append("museum"))
+    discover_api._theme_rows.clear()
+    assert len(discover_api._day_row(service, blue, day)) == discover_api.DAY_ROW_MIN
+    assert not asked
+
+    # Else the museums, waited for only a moment; a slow answer is kept.
+    sea = Theme("sea-test", "Morze", "", GROUPS[0], artists=("Nobody",))
+    answered = threading.Event()
+
+    def slow(*args) -> tuple[list[Item], bool]:
+        answered.wait(5)
+        return [_work(1, title="Wave")], False
+
+    monkeypatch.setattr(discover_api, "browse_theme", slow)
+    monkeypatch.setattr(discover_api, "DAY_ROW_WAIT", 0.05)
+    discover_api._theme_rows.clear()
+    discover_api._day_fetch = (0.0, None)
+    assert discover_api._day_row(service, sea, day) == []
+    answered.set()
+    discover_api._day_fetch[1].join(5)
+    assert [i.title for i in discover_api._day_row(service, sea, day)] == ["Wave"]
+    discover_api._theme_rows.clear()
