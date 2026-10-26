@@ -299,6 +299,7 @@ struct LiveBackend: FrameBackend {
         req.timeoutInterval = 90
         return try await perform(req)
     }
+
     func pushAgain() async throws -> DisplayResponse {
         // The server waits up to two minutes for the panel's download.
         var req = request("/api/device/push", method: "POST", query: [URLQueryItem(name: "wait", value: "120")])
