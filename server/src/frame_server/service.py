@@ -24,7 +24,7 @@ from .library.museums import Access
 from .library.museums import client as museum_client
 from .panel_config import PanelConfigStore
 from .player import Player
-from .power import PowerManager
+from .power import WAKE_BURST_SECONDS, PowerManager
 from .progress import ProgressTracker, Stage
 from .rendered import RenderCache, Rendered, render_key
 from .status import StatusMonitor
@@ -90,9 +90,15 @@ class Panel:
                 self.woke = True
                 if self.on_wake:
                     self.on_wake()
-                await self.wake(seconds=15)
-                log.info("panel unreachable, sent Wake-on-LAN")
-                await client.connect(attempts=4, retry_delay=8)
+                # On battery the panel answers about a minute into the
+                # burst (E13): keep sending while looking for it.
+                log.info("panel unreachable, sending Wake-on-LAN")
+                burst = asyncio.create_task(self.wake(seconds=WAKE_BURST_SECONDS))
+                try:
+                    await asyncio.sleep(10)
+                    await client.connect(attempts=12, retry_delay=7)
+                finally:
+                    burst.cancel()
             try:
                 yield client
             finally:

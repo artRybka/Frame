@@ -264,6 +264,13 @@ Jak działa (`power.py`, `PowerManager.enter_deep` i `_economy_tick`):
   minut, żeby ekran obudzony budzikiem nie został włączony, gdy serwer nie
   odpowie.
 
+Pomiary z 27.10 (E13, Mac w podsieci ekranu, bateria, network standby wł.):
+WoL przez Wi-Fi budzi ekran, ale MDC odpowiada dopiero po ok. 60 s
+nadawania pakietu co sekundę. Serwer nadaje więc przez 90 s („Obudź ramkę”
+szuka ekranu 100 s, wysyłka obrazu łączy się w trakcie nadawania). Uśpiony
+przez MDC ekran znika z sieci po ok. 20 s, a obudzony przez WoL sam zasypia
+po ok. 3 min 10 s.
+
 ## E13: plan testu na ekranie
 
 Potrzebny Mac w tej samej sieci co ekran (192.168.1.x) i gałąź z komendą
