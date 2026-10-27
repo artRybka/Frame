@@ -154,28 +154,32 @@
    "height": 893,
    "colors": [
     {
-     "hex": "#17120d",
-     "weight": 0.306
+     "hex": "#18110d",
+     "weight": 0.307
     },
     {
      "hex": "#3d332b",
-     "weight": 0.182
+     "weight": 0.177
     },
     {
-     "hex": "#282019",
-     "weight": 0.162
+     "hex": "#272018",
+     "weight": 0.163
     },
     {
-     "hex": "#5d493f",
-     "weight": 0.138
+     "hex": "#5e493f",
+     "weight": 0.146
     },
     {
-     "hex": "#7f6a5c",
-     "weight": 0.121
+     "hex": "#823727",
+     "weight": 0.039
     },
     {
-     "hex": "#a29487",
-     "weight": 0.091
+     "hex": "#786741",
+     "weight": 0.025
+    },
+    {
+     "hex": "#ab734f",
+     "weight": 0.024
     }
    ],
    "color_tags": [
@@ -1120,28 +1124,28 @@
    "height": 806,
    "colors": [
     {
-     "hex": "#384126",
-     "weight": 0.29
+     "hex": "#333c24",
+     "weight": 0.571
     },
     {
-     "hex": "#2d3621",
-     "weight": 0.27
+     "hex": "#474d30",
+     "weight": 0.202
     },
     {
-     "hex": "#474c30",
-     "weight": 0.212
-    },
-    {
-     "hex": "#5f5f40",
-     "weight": 0.098
+     "hex": "#5f6040",
+     "weight": 0.1
     },
     {
      "hex": "#262619",
      "weight": 0.066
     },
     {
-     "hex": "#7c8572",
-     "weight": 0.063
+     "hex": "#815729",
+     "weight": 0.015
+    },
+    {
+     "hex": "#563326",
+     "weight": 0.015
     }
    ],
    "color_tags": [
@@ -1191,28 +1195,28 @@
    "height": 624,
    "colors": [
     {
-     "hex": "#2b1e18",
-     "weight": 0.284
+     "hex": "#251a15",
+     "weight": 0.469
     },
     {
      "hex": "#412d24",
      "weight": 0.19
     },
     {
-     "hex": "#1b1510",
-     "weight": 0.179
-    },
-    {
-     "hex": "#0c0b09",
-     "weight": 0.178
+     "hex": "#0b0a09",
+     "weight": 0.173
     },
     {
      "hex": "#624633",
-     "weight": 0.12
+     "weight": 0.119
     },
     {
-     "hex": "#81684b",
-     "weight": 0.05
+     "hex": "#4e2b23",
+     "weight": 0.211
+    },
+    {
+     "hex": "#8f7855",
+     "weight": 0.074
     }
    ],
    "color_tags": [
@@ -1263,28 +1267,28 @@
    "height": 624,
    "colors": [
     {
-     "hex": "#252522",
-     "weight": 0.327
-    },
-    {
-     "hex": "#332e24",
-     "weight": 0.327
+     "hex": "#2c2923",
+     "weight": 0.663
     },
     {
      "hex": "#463e30",
-     "weight": 0.182
+     "weight": 0.181
     },
     {
-     "hex": "#5e5945",
+     "hex": "#5f5945",
      "weight": 0.096
     },
     {
-     "hex": "#807c6b",
-     "weight": 0.044
+     "hex": "#817c6c",
+     "weight": 0.043
     },
     {
-     "hex": "#191816",
-     "weight": 0.025
+     "hex": "#624526",
+     "weight": 0.177
+    },
+    {
+     "hex": "#1e314a",
+     "weight": 0.008
     }
    ],
    "color_tags": [
@@ -2110,28 +2114,20 @@
    "height": 893,
    "colors": [
     {
-     "hex": "#d9d2c4",
-     "weight": 0.278
-    },
-    {
-     "hex": "#d2cabc",
-     "weight": 0.227
-    },
-    {
-     "hex": "#c5bdac",
-     "weight": 0.165
+     "hex": "#d2cabb",
+     "weight": 0.673
     },
     {
      "hex": "#b3ac9b",
-     "weight": 0.141
+     "weight": 0.142
     },
     {
-     "hex": "#9b9787",
-     "weight": 0.112
+     "hex": "#9a9686",
+     "weight": 0.11
     },
     {
-     "hex": "#6b6f5f",
-     "weight": 0.076
+     "hex": "#6a6f5f",
+     "weight": 0.075
     }
    ],
    "color_tags": [
@@ -2175,28 +2171,24 @@
    "height": 893,
    "colors": [
     {
-     "hex": "#d6c6b3",
-     "weight": 0.385
+     "hex": "#d3c3b0",
+     "weight": 0.509
     },
     {
-     "hex": "#8e4135",
-     "weight": 0.173
+     "hex": "#8e4134",
+     "weight": 0.172
     },
     {
      "hex": "#9c644d",
-     "weight": 0.158
-    },
-    {
-     "hex": "#ccbba7",
-     "weight": 0.123
+     "weight": 0.159
     },
     {
      "hex": "#5e463c",
-     "weight": 0.101
+     "weight": 0.1
     },
     {
-     "hex": "#b08b71",
-     "weight": 0.06
+     "hex": "#a3895e",
+     "weight": 0.028
     }
    ],
    "color_tags": [
@@ -2638,28 +2630,28 @@
    "height": 601,
    "colors": [
     {
-     "hex": "#6e675e",
+     "hex": "#baa98f",
      "weight": 0.195
-    },
-    {
-     "hex": "#bbaa90",
-     "weight": 0.191
     },
     {
      "hex": "#877c6d",
      "weight": 0.19
     },
     {
-     "hex": "#ddcbaf",
-     "weight": 0.188
+     "hex": "#ddccb0",
+     "weight": 0.189
     },
     {
-     "hex": "#a59680",
-     "weight": 0.16
+     "hex": "#6f685e",
+     "weight": 0.189
     },
     {
-     "hex": "#4f4e4c",
-     "weight": 0.076
+     "hex": "#bb8b6f",
+     "weight": 0.038
+    },
+    {
+     "hex": "#415868",
+     "weight": 0.022
     }
    ],
    "color_tags": [
@@ -2705,27 +2697,35 @@
    "colors": [
     {
      "hex": "#957b6c",
-     "weight": 0.241
+     "weight": 0.248
     },
     {
-     "hex": "#7c976e",
+     "hex": "#7c976f",
      "weight": 0.207
     },
     {
-     "hex": "#cac0b0",
-     "weight": 0.186
+     "hex": "#cbc0b0",
+     "weight": 0.188
     },
     {
-     "hex": "#aba093",
-     "weight": 0.143
+     "hex": "#aca193",
+     "weight": 0.14
     },
     {
-     "hex": "#6c6360",
-     "weight": 0.116
+     "hex": "#5a808f",
+     "weight": 0.031
     },
     {
-     "hex": "#4b4a48",
-     "weight": 0.107
+     "hex": "#3b5a76",
+     "weight": 0.023
+    },
+    {
+     "hex": "#b66450",
+     "weight": 0.018
+    },
+    {
+     "hex": "#c5b18a",
+     "weight": 0.013
     }
    ],
    "color_tags": [
@@ -2770,28 +2770,32 @@
    "height": 900,
    "colors": [
     {
-     "hex": "#8b8882",
-     "weight": 0.281
+     "hex": "#908e86",
+     "weight": 0.269
     },
     {
-     "hex": "#9aa097",
-     "weight": 0.219
+     "hex": "#a7a394",
+     "weight": 0.263
     },
     {
-     "hex": "#6a6661",
-     "weight": 0.2
+     "hex": "#7a7671",
+     "weight": 0.161
     },
     {
-     "hex": "#d5ccbf",
-     "weight": 0.118
+     "hex": "#605b57",
+     "weight": 0.121
     },
     {
-     "hex": "#b99f87",
-     "weight": 0.107
+     "hex": "#ba967b",
+     "weight": 0.114
     },
     {
-     "hex": "#373941",
-     "weight": 0.075
+     "hex": "#2f3f58",
+     "weight": 0.026
+    },
+    {
+     "hex": "#bd654c",
+     "weight": 0.013
     }
    ],
    "color_tags": [

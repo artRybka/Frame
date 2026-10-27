@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.21.0
+
+- Kolorystyka: barwy dominujące bez powtórek (podobne odcienie łączą się
+  w jedną, najwyżej cztery) i akcenty, czyli małe, żywe plamy koloru
+  (np. błękit, żółć i czerwień w „Mleczarce”). Akcenty trafiają też do
+  tagów kolorów w Szukaj. Analiza uwzględnia profile ICC skanów.
+- Karta dzieła pokazuje kolorystykę jako wyższy pasek jak w „Teraz”,
+  z udziałami pod szerszymi częściami; pasek w „Teraz” dokłada akcenty
+  po barwach dominujących.
+- Biblioteka przelicza kolory raz, w tle, po aktualizacji serwera.
+
 ## 0.20.0
 
 - Szukaj: każde dzieło raz także w katalogu (z kilku kopii tego samego

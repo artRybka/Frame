@@ -385,21 +385,22 @@ struct ItemDetailView: View {
     private func palette(_ item: Item) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Eyebrow("Kolorystyka")
-            HStack(spacing: 10) {
-                ForEach(Array(item.colors.prefix(6).enumerated()), id: \.offset) { _, swatch in
-                    VStack(spacing: 6) {
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(Color(hexString: swatch.hex) ?? Theme.mat)
-                            .frame(height: 52)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                    .strokeBorder(.black.opacity(0.08))
-                            )
-                        Text("\(Int(swatch.weight * 100))%")
-                            .font(.caption2.monospacedDigit())
-                            .foregroundStyle(Theme.inkSoft)
+            // Like the strip in "Teraz", taller, with the shares that fit.
+            VStack(spacing: 6) {
+                PaletteStrip(swatches: item.colors, height: 18, cornerRadius: 6)
+                GeometryReader { geo in
+                    let widths = PaletteStrip.widths(item.colors, in: geo.size.width)
+                    HStack(spacing: PaletteStrip.spacing) {
+                        ForEach(Array(item.colors.enumerated()), id: \.offset) { index, swatch in
+                            Text(widths[index] >= 30 ? "\(Int(swatch.weight * 100))%" : "")
+                                .font(.caption2.monospacedDigit())
+                                .foregroundStyle(Theme.inkSoft)
+                                .fixedSize()
+                                .frame(width: widths[index])
+                        }
                     }
                 }
+                .frame(height: 14)
             }
             if !item.colorTags.isEmpty {
                 FlowLayout(spacing: 6) {
