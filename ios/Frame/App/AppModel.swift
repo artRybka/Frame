@@ -466,7 +466,7 @@ final class AppModel {
 
     /// A work joined or left playlists (Ulubione and smart ones): their
     /// tiles and counts, and the queue in "Teraz", which the server updates.
-    private func libraryChanged() {
+    func libraryChanged() {
         libraryRevision += 1
         Task {
             await refreshPlaylists()

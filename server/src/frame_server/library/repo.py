@@ -297,7 +297,12 @@ class Library:
                 return matches(item.model_copy(update={"excluded": False}), rules)
             return matches(item, rules)
 
-        items = sort_items([i for i in self._all().values() if selected(i)], sort, seed)
+        items = [i for i in self._all().values() if selected(i)]
+        if not include_excluded:
+            # Copies the owner kept of one work: the best of those asked for
+            # stands for them.
+            items = self.works().once(items)
+        items = sort_items(items, sort, seed)
         end = None if limit is None else offset + limit
         return len(items), items[offset:end]
 
