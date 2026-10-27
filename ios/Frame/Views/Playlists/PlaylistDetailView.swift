@@ -173,7 +173,7 @@ struct PlaylistDetailView: View {
 
     private static func emptyMessage(_ playlist: PlaylistSummary) -> String {
         if playlist.isFavorites { return "Stuknij serduszko przy dziele, a trafi tutaj." }
-        switch playlist.kind {
+        return switch playlist.kind {
         case .manual: "Dodawaj dzieła w edycji playlisty albo przyciskiem „Dodaj do playlisty” w ich szczegółach."
         case .album: "Album jest pusty albo jeszcze się synchronizuje."
         case .smart: "Żadne dzieło nie spełnia reguł. Zmień je albo dodaj nowe obrazy z muzeów."
