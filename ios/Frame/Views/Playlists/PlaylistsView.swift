@@ -94,6 +94,9 @@ struct PlaylistsView: View {
                 if LaunchRoute.screen == "editor", editing == nil {
                     editing = Playlist(name: "Błękitne krajobrazy", rules: PlaylistRules(colors: ["blue"]))
                 }
+                if LaunchRoute.screen == "editor-new", editing == nil {
+                    editing = Playlist(name: "", rules: PlaylistRules())
+                }
             }
         }
     }

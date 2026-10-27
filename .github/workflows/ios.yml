@@ -83,6 +83,7 @@ jobs:
             capture playlists 12 "playlists-$appearance"
             capture playlist 12 "playlist-$appearance"
             capture editor 12 "editor-$appearance"
+            capture editor-new 12 "editor-new-$appearance"
             capture frame 10 "frame-$appearance"
             capture connection 10 "connection-$appearance"
             capture museums 8 "museums-$appearance"
