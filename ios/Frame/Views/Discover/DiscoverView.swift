@@ -6,6 +6,8 @@ struct DiscoverView: View {
     @Environment(AppModel.self) private var model
     @State private var scope = Scope.initial
     @State private var path = NavigationPath()
+    /// The results' end, pulled up for more.
+    @State private var endPull = EndPull()
 
     /// The scrolled content's coordinate space, and the room under it.
     static let content = "discover.content"
@@ -40,6 +42,8 @@ struct DiscoverView: View {
                 .coordinateSpace(.named(Self.content))
             }
             .scrollDismissesKeyboard(.interactively)
+            .readsEndPull(endPull)
+            .environment(endPull)
             .refreshable {
                 if scope == .suggestions { await model.refreshDiscover(force: true) }
             }
