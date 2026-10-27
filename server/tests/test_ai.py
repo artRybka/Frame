@@ -256,7 +256,7 @@ def test_the_app_sets_the_key_and_never_gets_it_back(tmp_path: Path) -> None:
     svc.claude.factory = FakeAnthropic
     with TestClient(app) as client:
         view = client.get("/api/ai").json()
-        assert view["key_set"] is False and view["keywords"]["done"] == 0
+        assert view["key_set"] is False and view["keywords_progress"]["done"] == 0
 
         assert client.put("/api/ai/key", json={"key": "sk-ant-wrong"}).status_code == 400
         assert client.get("/api/ai").json()["key_set"] is False

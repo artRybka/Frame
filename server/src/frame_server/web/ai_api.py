@@ -30,7 +30,8 @@ class AiView(BaseModel):
     monthly_limit_usd: float
     spent_usd: float  # this month
     spent_by_kind: dict[str, float]
-    keywords: Progress
+    keywords_progress: Progress
+    pl_text_progress: Progress | None = None  # filled once the Polish texts job is there
     error: str | None  # why the model is paused, if it is
 
 
@@ -60,7 +61,7 @@ def _view(svc: FrameService) -> AiView:
         monthly_limit_usd=config.monthly_limit_usd,
         spent_usd=round(sum(spent.values()), 4),
         spent_by_kind={k: round(v, 4) for k, v in spent.items()},
-        keywords=svc.ai.progress(KEYWORDS),
+        keywords_progress=svc.ai.progress(KEYWORDS),
         error=svc.ai.error,
     )
 
