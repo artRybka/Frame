@@ -1,4 +1,4 @@
-"""Clean up Wikimedia Commons metadata.
+"""Clean up Wikimedia Commons metadata (and repair what older versions stored).
 
 Commons ``extmetadata`` values are rendered wikitext. The Artwork template
 adds hidden QuickStatements spans (``title QS:P1476,pl:"..."``), multilingual
@@ -18,7 +18,10 @@ from collections.abc import Sequence
 from html.parser import HTMLParser
 from typing import TYPE_CHECKING
 
+from .markup import VECTOR, commons_rendition, drop_tags, extension, strip_markup
+
 if TYPE_CHECKING:
+    from .models import Item
     from .repo import Library
 
 PREFERRED_LANGS = ("pl", "en")
@@ -159,6 +162,7 @@ def commons_plain(
     """Repair a value that was already flattened to text."""
     if not text:
         return ""
+    text = drop_tags(text)
     if title and (qs := _qs_title(text, prefer)):
         return qs
     text = _QS_TAIL.sub("", text)
@@ -171,7 +175,9 @@ def commons_html(
     """Visible text of an ``extmetadata`` value, in one language, without QS."""
     if not value:
         return ""
-    if title and (qs := _qs_title(html.unescape(value), prefer)):
+    # Tags first: titles from Wikidata carry an edit icon (``<span class="…">``)
+    # inside the QS string, and its quotes would end the string early.
+    if title and (qs := _qs_title(html.unescape(drop_tags(value)), prefer)):
         return qs
     parser = _Visible()
     parser.feed(value)
@@ -196,12 +202,39 @@ def commons_year(text: str) -> int | None:
 
 
 # Bump when the cleaning rules change, so stored items are cleaned again.
-REPAIR_VERSION = 1
+# 2: markup left in titles of any source (Wikidata's edit icon), SVG links.
+REPAIR_VERSION = 2
 REPAIR_STATE_KEY = "commons_text_repair"
 
 
+def _repairs(item: Item) -> dict[str, object]:
+    fixes: dict[str, object] = {}
+    for key in ("title", "artist"):
+        value: str = getattr(item, key)
+        if "<" in value and (clean := strip_markup(value)) != value:
+            fixes[key] = clean
+    drawing = item.source in ("wmc", "openverse") and extension(item.image_url) in VECTOR
+    if drawing and (image_url := commons_rendition(item.image_url, 3840, item.width)):
+        fixes["image_url"] = image_url
+        fixes["thumb_url"] = commons_rendition(item.image_url, 500, item.width)
+    if item.source != "wmc":
+        return fixes
+    title = commons_plain(str(fixes.get("title", item.title)), title=True)
+    if title and title != item.title:
+        fixes["title"] = title
+    date_text = commons_plain(item.date_text)
+    if date_text != item.date_text:
+        fixes["date_text"] = date_text
+    description = commons_plain(item.description)
+    if description != item.description:
+        fixes["description"] = description
+    if item.year is None and (year := commons_year(item.date_text)):
+        fixes["year"] = year
+    return fixes
+
+
 def repair_library(library: Library) -> int:
-    """Clean Commons titles, dates and descriptions stored by older versions.
+    """Clean titles, dates, descriptions and links stored by older versions.
 
     Runs once per :data:`REPAIR_VERSION`; returns how many items changed.
     """
@@ -211,21 +244,7 @@ def repair_library(library: Library) -> int:
     _, items = library.query(include_excluded=True)
     with library.batch():
         for item in items:
-            if item.source != "wmc":
-                continue
-            fixes: dict[str, object] = {}
-            title = commons_plain(item.title, title=True)
-            if title and title != item.title:
-                fixes["title"] = title
-            date_text = commons_plain(item.date_text)
-            if date_text != item.date_text:
-                fixes["date_text"] = date_text
-            description = commons_plain(item.description)
-            if description != item.description:
-                fixes["description"] = description
-            if item.year is None and (year := commons_year(item.date_text)):
-                fixes["year"] = year
-            if fixes:
+            if fixes := _repairs(item):
                 library.update(item.id, **fixes)
                 changed += 1
         library.set_state(REPAIR_STATE_KEY, REPAIR_VERSION)

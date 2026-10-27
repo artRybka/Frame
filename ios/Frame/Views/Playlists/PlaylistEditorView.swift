@@ -1,19 +1,27 @@
 import PhotosUI
 import SwiftUI
 
-/// Create or edit a playlist. Smart playlists are built with Discover's
-/// search (chips, with museums, colours, styles, subjects and periods under
-/// "+") and show what the catalogue and the museums have for it; manual ones can take photos from
-/// the camera roll, uploaded to the library when the playlist is saved;
-/// album playlists mirror a shared iCloud album.
+/// Create or edit a playlist. Smart playlists are built like Discover's
+/// search: the field at once (museums, colours, styles, subjects and periods
+/// under "+"), the icon's squares at play until something is asked, then
+/// what the catalogue and the museums have for it as Szukaj shows it.
+/// Manual ones can take photos from the camera roll, uploaded to the library
+/// when the playlist is saved; album playlists mirror a shared iCloud album.
 struct PlaylistEditorView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     @State private var playlist: Playlist
     @State private var preview: RulesPreview?
-    /// What the museums have for the rules, as Discover's search shows it.
-    @State private var remote: RemotePage?
+    /// What the museums have for the rules, as each answers (as in Szukaj).
+    @State private var remote: [RemoteItem] = []
+    /// How many works the museums that answered have for the rules.
+    @State private var remoteTotal = 0
     @State private var askingMuseums = false
+    /// The rules the museums finished answering for.
+    @State private var remoteAsked = PlaylistRules()
+    @State private var typing = false
+    /// Where the squares start, from the top of the scrolled content.
+    @State private var squaresTop: CGFloat = 0
     @State private var saving = false
     @State private var museums: [Museum] = []
     @State private var picked: [PhotosPickerItem] = []
@@ -68,9 +76,7 @@ struct PlaylistEditorView: View {
 
                     switch playlist.kind {
                     case .smart:
-                        rules
-                        previewSection
-                        fetchSection
+                        search
                     case .manual:
                         cameraRoll
                     case .album:
@@ -78,10 +84,15 @@ struct PlaylistEditorView: View {
                     }
                 }
                 .padding(Theme.gutter)
+                .coordinateSpace(.named(Self.content))
             }
+            .scrollDismissesKeyboard(.interactively)
             .background(Theme.paper)
             .navigationTitle(playlist.id == nil ? "Nowa playlista" : "Edycja playlisty")
             .navigationBarTitleDisplayMode(.inline)
+            .navigationDestination(for: String.self) { id in
+                ItemDetailView(itemID: id)
+            }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Anuluj") { dismiss() }
@@ -114,25 +125,100 @@ struct PlaylistEditorView: View {
         }
     }
 
-    private var rules: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            VStack(alignment: .leading, spacing: 8) {
-                SectionHeader(title: "Czego szukasz", subtitle: "Jak w Odkrywaj → Szukaj")
-                TermSearchField(tokens: tokens, museums: museums, colors: ColorTag.families + ColorTag.moods) {
-                    // The catalogue has nothing for it yet: museums will.
-                    if fetchCount == 0, fetchBlocker == nil { fetchCount = 100 }
-                }
-                Text("Muzea, kolory, style, tematy, epoki i techniki dodasz przyciskiem \(Image(systemName: "plus.circle.fill")). Te same rodzaje to alternatywy, różne muszą pasować razem. Bez muzeów playlista bierze ze wszystkich.")
-                    .font(.footnote)
-                    .foregroundStyle(Theme.inkSoft)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+    /// The scrolled content's coordinate space.
+    private static let content = "playlist.editor.content"
 
-            Toggle(isOn: $playlist.rules.favoritesOnly) {
-                Label("Tylko ulubione", systemImage: "heart")
+    /// Nothing asked yet: no chips (exceptions and the hidden "favourites
+    /// only" of the seeded playlist count as asked).
+    private var asked: Bool { !playlist.rules.isEmpty }
+
+    /// Szukaj's field, then whether to fetch from the museums, a word on
+    /// "+", and the squares until something is asked, then the works.
+    private var search: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            TermSearchField(
+                tokens: tokens, museums: museums, colors: ColorTag.families + ColorTag.moods, typing: $typing
+            ) {
+                // The catalogue has nothing for it yet: museums will.
+                if fetchCount == 0, fetchBlocker == nil { fetchCount = 100 }
+            }
+            fetchRow
+            if !typing {
+                if asked {
+                    previewSection
+                } else {
+                    idle
+                }
             }
         }
-        .tint(Theme.accent)
+    }
+
+    private var idle: some View {
+        VStack(spacing: 4) {
+            Text("Muzea, style, tematy, epoki, techniki i kolory dodasz przyciskiem \(Image(systemName: "plus.circle.fill")) w polu wyszukiwania. Te same rodzaje to alternatywy, różne muszą pasować razem.")
+                .font(.footnote)
+                .foregroundStyle(Theme.inkSoft)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 12)
+            // Down to the bottom of the sheet, so the squares have room
+            // below their row (in the middle of the screen) to fall to.
+            SquaresAnimation()
+                .frame(maxWidth: .infinity)
+                .containerRelativeFrame(.vertical) { height, _ in
+                    max(200, height - squaresTop - Theme.gutter)
+                }
+                .onGeometryChange(for: CGFloat.self) { proxy in
+                    proxy.frame(in: .named(Self.content)).minY
+                } action: { squaresTop = $0 }
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    /// Fetching from the museums, right under the field: on, it says how
+    /// many works it brings after saving.
+    private var fetchRow: some View {
+        HStack(spacing: 12) {
+            Image(systemName: playlist.rules.favoritesOnly ? "heart" : "arrow.down.circle")
+                .font(.title3)
+                .foregroundStyle(fetchCount > 0 ? Theme.accent : Theme.inkSoft)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(playlist.rules.favoritesOnly ? "Tylko ulubione" : "Pobieraj pasujące z muzeów")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(Theme.ink)
+                if let fetchBlocker {
+                    Text(fetchBlocker).font(.caption).foregroundStyle(Theme.inkSoft)
+                } else if fetchCount > 0 {
+                    Menu {
+                        Picker("Ile dzieł", selection: $fetchCount) {
+                            ForEach([50, 100, 200, 300], id: \.self) { Text("do \($0) dzieł").tag($0) }
+                        }
+                    } label: {
+                        HStack(spacing: 3) {
+                            Text("do \(fetchCount) dzieł, w tle po zapisaniu")
+                            Image(systemName: "chevron.up.chevron.down").font(.caption2)
+                        }
+                        .font(.caption)
+                        .foregroundStyle(Theme.accent)
+                    }
+                } else {
+                    Text("Teraz tylko to, co jest już w katalogu")
+                        .font(.caption)
+                        .foregroundStyle(Theme.inkSoft)
+                }
+            }
+            Spacer(minLength: 8)
+            if fetchBlocker == nil {
+                Toggle("Pobieraj pasujące z muzeów", isOn: Binding(get: { fetchCount > 0 }, set: { fetchCount = $0 ? 100 : 0 }))
+                    .labelsHidden()
+                    .tint(Theme.accent)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(Theme.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Theme.hairline))
+        .animation(.snappy, value: fetchCount > 0)
     }
 
     /// The rules' chips, then the colours' and the museums' (the playlist's
@@ -298,23 +384,33 @@ struct PlaylistEditorView: View {
         }
     }
 
+    /// Museum works the catalogue doesn't hold: what fetching would bring.
+    private var fromMuseums: [RemoteItem] {
+        let shown = Set(preview?.items.map(\.id) ?? [])
+        return remote.filter { !$0.inLibrary && !shown.contains($0.id) }
+    }
+
+    /// The works as Szukaj shows them: the catalogue's, then the museums'.
     private var previewSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .firstTextBaseline) {
-                SectionHeader(title: "Podgląd")
+                Text(summary)
+                    .font(.serif(17, weight: .medium))
+                    .foregroundStyle(preview?.count == 0 && fromMuseums.isEmpty && !askingMuseums ? Theme.bad : Theme.ink)
+                    .contentTransition(.numericText())
                 Spacer()
-                if let preview {
-                    Text(Names.works(preview.count))
-                        .font(.headline)
-                        .foregroundStyle(preview.count == 0 ? Theme.bad : Theme.accent)
-                        .contentTransition(.numericText())
-                }
+                if preview == nil || askingMuseums { ProgressView().controlSize(.small) }
             }
-            if let items = preview?.items, !items.isEmpty {
-                Eyebrow("W katalogu")
-                strip(items.map { Thumb(id: $0.id, ref: .thumb($0.id), placeholder: $0.placeholderColor) })
+            if let preview, !preview.items.isEmpty {
+                Eyebrow("W katalogu · \(Names.works(preview.count))")
+                MasonryGrid(items: preview.items) { item in
+                    NavigationLink(value: item.id) {
+                        ArtCard(item: item)
+                    }
+                    .buttonStyle(.plain)
+                }
             } else if preview != nil {
-                Text("W bazie nic jeszcze nie pasuje. Włącz pobieranie z muzeów poniżej, a playlista zapełni się w tle.")
+                Text("W bazie nic jeszcze nie pasuje. Włącz pobieranie z muzeów, a playlista zapełni się w tle.")
                     .font(.subheadline)
                     .foregroundStyle(Theme.inkSoft)
                     .fixedSize(horizontal: false, vertical: true)
@@ -323,96 +419,50 @@ struct PlaylistEditorView: View {
         }
     }
 
-    /// The museums' works the catalogue doesn't hold yet: what fetching
-    /// would bring.
+    private var summary: String {
+        guard let preview else { return "Szukam…" }
+        return Names.works(preview.count + fromMuseums.count)
+    }
+
     @ViewBuilder
     private var museumPreview: some View {
-        let missing = remote?.items.filter { !$0.inLibrary } ?? []
-        if askingMuseums {
-            HStack(spacing: 8) {
-                ProgressView().controlSize(.small)
-                Text("Pytam muzea…").font(.footnote).foregroundStyle(Theme.inkSoft)
+        if fetchBlocker == nil, !fromMuseums.isEmpty || askingMuseums {
+            HStack {
+                Eyebrow("Z muzeów" + (remoteTotal > 0 ? " · \(Names.works(remoteTotal))" : ""), color: Theme.accent)
+                Spacer()
+                if askingMuseums {
+                    Text("doczytuję…").font(.caption).foregroundStyle(Theme.inkSoft)
+                }
             }
-        } else if let remote, fetchBlocker == nil {
-            if missing.isEmpty {
-                Text(remote.total == 0 ? "W muzeach nic więcej nie znaleziono." : "Muzea nie pokazały nic, czego nie ma już w bazie.")
+            if !fromMuseums.isEmpty, fetchCount == 0 {
+                Text("Takie dzieła trafią do playlisty, gdy włączysz pobieranie z muzeów.")
                     .font(.footnote)
                     .foregroundStyle(Theme.inkSoft)
-            } else {
-                Eyebrow("Z muzeów · \(Names.works(remote.total))", color: Theme.accent)
-                strip(missing.map { Thumb(id: $0.id, ref: $0.thumb, fallback: $0.thumbFallback, placeholder: $0.item.placeholderColor) })
-                if fetchCount == 0 {
-                    Text("Takie dzieła trafią do playlisty, gdy włączysz pobieranie z muzeów.")
-                        .font(.footnote)
-                        .foregroundStyle(Theme.inkSoft)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+                    .fixedSize(horizontal: false, vertical: true)
             }
-        }
-    }
-
-    private struct Thumb: Identifiable {
-        let id: String
-        let ref: ImageRef
-        var fallback: ImageRef?
-        let placeholder: Color
-    }
-
-    private func strip(_ pictures: [Thumb]) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 10) {
-                ForEach(pictures) { picture in
-                    ArtImage(ref: picture.ref, fallback: picture.fallback, placeholder: picture.placeholder, maxPixel: 300)
-                        .frame(width: 84, height: 84)
-                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            MasonryGrid(items: fromMuseums.map(\.item.summary)) { summary in
+                NavigationLink(value: summary.id) {
+                    ArtCard(item: summary, ref: fromMuseums.first { $0.id == summary.id }?.thumb)
                 }
+                .buttonStyle(.plain)
             }
+        } else if fetchBlocker == nil, preview != nil, remoteAsked == playlist.rules, remoteTotal == 0 {
+            Text("W muzeach nic więcej nie znaleziono.")
+                .font(.footnote)
+                .foregroundStyle(Theme.inkSoft)
         }
-        .scrollClipDisabled()
     }
 
     /// Why museums can't supply works for these rules, if they can't.
     private var fetchBlocker: String? {
         let rules = playlist.rules
-        if rules.favoritesOnly { return "Ulubionych nie da się pobrać z muzeów." }
+        if rules.favoritesOnly { return "Bierze dzieła z Ulubionych, z muzeów nie pobiera." }
         if !rules.kinds.isEmpty, !rules.kinds.contains(.artwork) { return "Z muzeów przychodzą tylko dzieła sztuki." }
         let museums: Set<String> = ["aic", "cma", "met", "rijks", "wmc", "europeana", "openverse", "wikiart"]
         if !rules.sources.isEmpty, museums.isDisjoint(with: rules.sources) {
             return "Reguły nie dopuszczają żadnego muzeum."
         }
         return nil
-    }
-
-    private var fetchSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Toggle(
-                isOn: Binding(get: { fetchCount > 0 }, set: { fetchCount = $0 ? 100 : 0 })
-            ) {
-                Label("Pobierz pasujące dzieła z muzeów", systemImage: "arrow.down.circle")
-            }
-            .tint(Theme.accent)
-            .disabled(fetchBlocker != nil)
-            if let fetchBlocker {
-                Text(fetchBlocker).font(.footnote).foregroundStyle(Theme.inkSoft)
-            } else if fetchCount > 0 {
-                Picker("Ile dzieł", selection: $fetchCount) {
-                    ForEach([50, 100, 200, 300], id: \.self) { Text("\($0)").tag($0) }
-                }
-                .pickerStyle(.segmented)
-                Text(fetchHint)
-                    .font(.footnote)
-                    .foregroundStyle(Theme.inkSoft)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-    }
-
-    private var fetchHint: String {
-        var text = "Po zapisaniu serwer poszuka w wybranych muzeach (bez wyboru we wszystkich) dzieł spełniających reguły i doda je do biblioteki w tle. Te, które już masz, są pomijane."
-        if !playlist.rules.colors.isEmpty {
-            text += " Kolorystykę widać dopiero po pobraniu miniatury, więc to potrwa dłużej."
-        }
-        return text
     }
 
     // MARK: Actions
@@ -462,19 +512,39 @@ struct PlaylistEditorView: View {
         withAnimation(.snappy) { preview = result }
     }
 
-    /// Asks the museums what Discover's search would show for the rules.
+    /// Asks the museums what Discover's search would show for the rules,
+    /// taking in each one's answer as it comes.
     private func askMuseums() async {
         guard playlist.kind == .smart, fetchBlocker == nil, !playlist.rules.isEmpty else {
-            remote = nil
+            remote = []
+            remoteTotal = 0
+            remoteAsked = PlaylistRules()
+            askingMuseums = false
             return
         }
-        try? await Task.sleep(for: .milliseconds(600))  // they answer slowly
+        try? await Task.sleep(for: .milliseconds(400))
         guard !Task.isCancelled else { return }
+        let rules = playlist.rules
+        remote = []
+        remoteTotal = 0
+        remoteAsked = PlaylistRules()
         askingMuseums = true
-        defer { askingMuseums = false }
-        let found = try? await model.backend.searchMuseums(playlist.rules, sources: museumKeys, page: 1)
+        var totals: [String: Int] = [:]
+        do {
+            let answers = try await model.backend.museumAnswers(rules, sources: museumKeys, page: 1)
+            for try await answer in answers {
+                guard !Task.isCancelled else { return }
+                totals[answer.source] = max(totals[answer.source] ?? 0, answer.total)
+                withAnimation(.snappy) {
+                    remote = remote.adding(answer.items)
+                    remoteTotal = totals.values.reduce(0, +)
+                }
+            }
+        } catch {}
+        // A newer search may have started meanwhile; it owns the spinner.
         guard !Task.isCancelled else { return }
-        withAnimation(.snappy) { remote = found }
+        remoteAsked = rules
+        askingMuseums = false
     }
 
     /// Reports the fetch once it ends; runs on after the editor closes.
