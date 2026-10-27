@@ -330,6 +330,9 @@ i do tabeli komend w [DEVICE_PROTOCOL.md](DEVICE_PROTOCOL.md).
   co 1 s. Seria 15 s jest za krótka. Na hoście z dwoma interfejsami
   255.255.255.255 wychodzi trasą domyślną, więc ważny jest broadcast
   skierowany na podsieć ekranu.
+- **WoL na baterii bywa zawodny:** w trzeciej próbie (E6, 23:3x) 4 minuty
+  nadawania nie obudziły ekranu. Aplikacja przy nieudanym budzeniu i przy
+  obrazie czekającym na ramkę podpowiada krótkie naciśnięcie przycisku.
 - Po pobudce ekran sam zasypia po ok. 3 min bezczynności, po `0x11 00`
   znika z sieci po ok. 20 s.
 - Następny krok: E6 (wpisy `schedule` / `start_time` w manifeście). Opis

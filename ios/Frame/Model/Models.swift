@@ -344,7 +344,7 @@ struct Delivery: Codable, Hashable, Sendable {
                 why = "Ramka śpi bez Wi-Fi, żeby oszczędzać baterię. \(button)"
             } else {
                 why = asleepUntil.map { "Ramka śpi do \($0), obraz trafi na nią po przebudzeniu." }
-                    ?? "Ramka nie odpowiada, obraz trafi na nią, gdy się obudzi."
+                    ?? "Ramka nie odpowiada, obraz trafi na nią, gdy się obudzi. \(button)"
             }
         case "failed":
             let when = When.schedule(failedAt).map { " (\($0))" } ?? ""

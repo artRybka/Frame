@@ -576,7 +576,7 @@ final class AppModel {
             } else if !result.sent {
                 toast = "Brak adresu MAC ramki, ustaw go w Połączeniu z ekranem"
             } else {
-                toast = "Ramka nie odpowiada na sygnał budzenia"
+                toast = "Ramka nie odpowiada na sygnał budzenia. Na baterii bywa zawodny: naciśnij krótko przycisk z tyłu ramki"
             }
             await refreshStatus(live: false)
         } catch {
