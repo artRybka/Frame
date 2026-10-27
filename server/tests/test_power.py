@@ -502,3 +502,222 @@ async def test_put_to_sleep_from_the_app(
         assert service.status.status.power_state == "standby"
     finally:
         await panel.stop()
+
+
+def test_economy_check_times() -> None:
+    from frame_server.schedule import check_times, next_check, quiet_hours
+
+    economy = FrameSettings(
+        change_times=["07:00", "19:00"], power_mode="economy", check_every_hours=4
+    )
+    assert check_times(economy) == [time(11, 0), time(15, 0)]
+    assert quiet_hours(economy) is None  # the panel sleeps deeply anyway
+    assert next_check(_at("2026-10-27T15:00"), economy) == _at("2026-10-28T11:00")
+    every3 = economy.model_copy(update={"check_every_hours": 3})
+    assert check_times(every3) == [time(10, 0), time(13, 0), time(16, 0)]
+    # One change a day: checks for twelve hours after it.
+    alone = FrameSettings(change_times=["08:00"], power_mode="economy", check_every_hours=6)
+    assert check_times(alone) == [time(14, 0)]
+    assert check_times(economy.model_copy(update={"check_every_hours": 0})) == []
+    assert check_times(economy.model_copy(update={"power_mode": "online"})) == []
+
+
+async def test_economy_deep_sleep_between_wakes(tmp_path: Path, server_ssl: ssl.SSLContext) -> None:
+    """Economy on battery: deep sleep until the next wake, a picture from the
+    app waits for it, a check with nothing to show goes straight back to
+    sleep, and a wake the panel misses moves to the next day."""
+
+    def handler(command: int, data: bytes) -> tuple[bool, bytes]:
+        if command == CMD_STATUS:
+            return True, bytes([0x73, 0x00, 0x01, 0x01, 80, 0x02, 0x00])  # battery
+        if command == CMD_NETWORK_STANDBY and not data:
+            return True, b"\x01"
+        if command in (0x0E, 0x10, 0x0B, 0x67):
+            return True, b"X"
+        return True, data[:4] if command == CMD_ON_TIMER else b""
+
+    panel = FakePanel(server_ssl, handler=handler)
+    await panel.start()
+    try:
+        settings = Settings(
+            data_dir=tmp_path,
+            seed_library=False,
+            scheduler=False,
+            public_host="127.0.0.1",
+            device_host="127.0.0.1",
+            device_pin="123456",
+            device_port=panel.port,
+        )
+        service = FrameService(settings)
+        service.ensure_initial_content()
+        player = service.player
+        player.save_settings(
+            FrameSettings(
+                change_times=["07:00", "19:00"],
+                power_mode="economy",
+                check_every_hours=4,
+                quiet_start=None,
+            )
+        )
+        state = player.state
+        state.next_change_at = _at("2026-10-27T19:00").isoformat()
+        player._save_state(state)
+        await service.status.refresh()
+        assert service.power.economy
+
+        # Awake at noon: alarm for the 15:00 check, Wi-Fi off, panel off.
+        await service.power.tick(_at("2026-10-27T12:00"))
+        assert (CMD_ON_TIMER, bytes([0x01, 0x02, 15, 0, 0x01])) in panel.received
+        assert (CMD_NETWORK_STANDBY, b"\x00") in panel.received
+        assert (CMD_POWER, b"\x00") in panel.received
+        assert service.power.deep_asleep(_at("2026-10-27T12:30"))
+        assert service.power.wakes_at(_at("2026-10-27T12:30")) == _at("2026-10-27T15:00")
+
+        # A picture from the app waits for that wake.
+        outcome = await service.push_current(wait=0)
+        assert not outcome.pushed
+        assert service.power.state.pending_push
+
+        pushed: list[bool] = []
+
+        async def fake_push(wait: float = 90.0) -> PushOutcome:
+            pushed.append(True)
+            service.power.mark_pending(False)
+            content = service.store.current()
+            assert content is not None
+            return PushOutcome(content, True, True, "url")
+
+        service.push_current = fake_push  # type: ignore[method-assign]
+        service.status._slept_at = None  # hours later, not settling any more
+        await service.power.tick(_at("2026-10-27T15:00:10"))
+        assert pushed == [True]
+        assert service.power.state.woke_for == _at("2026-10-27T15:00").isoformat()
+
+        # After the picture: deep sleep again, until the 19:00 change.
+        state = player.state
+        state.next_change_at = _at("2026-10-27T19:00").isoformat()  # postpone() uses the clock
+        player._save_state(state)
+        panel.received.clear()
+        assert await service.power.enter_deep(_at("2026-10-27T15:05"))
+        assert (CMD_ON_TIMER, bytes([0x01, 0x02, 19, 0, 0x01])) in panel.received
+
+        # The panel does not show up at 19:00: tomorrow, same time.
+        await panel.stop()
+        service.status._slept_at = None
+        await service.power.tick(_at("2026-10-27T19:20"))
+        power_state = service.power.state
+        assert power_state.missed_wake == _at("2026-10-27T19:00").isoformat()
+        assert power_state.wake_at == _at("2026-10-28T19:00").isoformat()
+    finally:
+        await panel.stop()
+
+
+async def test_economy_check_with_nothing_to_show(
+    tmp_path: Path, server_ssl: ssl.SSLContext
+) -> None:
+    """A check wake with nothing waiting sends the panel straight back to
+    sleep, without a picture; a change due now keeps it awake for it."""
+
+    def handler(command: int, data: bytes) -> tuple[bool, bytes]:
+        if command == CMD_STATUS:
+            return True, bytes([0x73, 0x00, 0x01, 0x01, 80, 0x02, 0x00])
+        if command == CMD_NETWORK_STANDBY and not data:
+            return True, b"\x00"
+        if command in (0x0E, 0x10, 0x0B, 0x67):
+            return True, b"X"
+        return True, data[:4] if command == CMD_ON_TIMER else b""
+
+    panel = FakePanel(server_ssl, handler=handler)
+    await panel.start()
+    try:
+        settings = Settings(
+            data_dir=tmp_path,
+            seed_library=False,
+            scheduler=False,
+            public_host="127.0.0.1",
+            device_host="127.0.0.1",
+            device_pin="123456",
+            device_port=panel.port,
+        )
+        service = FrameService(settings)
+        service.ensure_initial_content()
+        player = service.player
+        player.save_settings(
+            FrameSettings(
+                change_times=["07:00", "19:00"], power_mode="economy", check_every_hours=4
+            )
+        )
+        state = player.state
+        state.next_change_at = _at("2026-10-27T19:00").isoformat()
+        player._save_state(state)
+        await service.status.refresh()
+        power_state = service.power.state
+        power_state.standby_off = True
+        power_state.wake_at = _at("2026-10-27T11:00").isoformat()
+        service.power._save(power_state)
+
+        await service.power.tick(_at("2026-10-27T11:00:20"))
+        assert (CMD_NETWORK_STANDBY, b"\x01") in panel.received  # found
+        assert (CMD_ON_TIMER, bytes([0x01, 0x02, 15, 0, 0x01])) in panel.received
+        assert service.power.state.wake_at == _at("2026-10-27T15:00").isoformat()
+        assert service.power.deep_asleep(_at("2026-10-27T12:00"))
+
+        # The 19:00 change: found a minute early, it stays awake for the change.
+        panel.received.clear()
+        power_state = service.power.state
+        power_state.wake_at = _at("2026-10-27T19:00").isoformat()
+        service.power._save(power_state)
+        service.status._slept_at = None
+        await service.power.tick(_at("2026-10-27T18:59:30"))
+        assert (CMD_NETWORK_STANDBY, b"\x01") in panel.received
+        assert (CMD_POWER, b"\x00") not in panel.received
+        assert not service.power.deep_asleep(_at("2026-10-27T18:59:40"))
+    finally:
+        await panel.stop()
+
+
+async def test_refused_alarm_keeps_the_wifi_on(tmp_path: Path, server_ssl: ssl.SSLContext) -> None:
+    """Firmware 1130.7 NAKs every hh:mm write of 0x25: the panel could not
+    wake itself, so it never sleeps with the Wi-Fi off, at night or in the
+    economy mode (which then works as online)."""
+
+    def handler(command: int, data: bytes) -> tuple[bool, bytes]:
+        if command == CMD_STATUS:
+            return True, bytes([0x73, 0x00, 0x01, 0x01, 80, 0x02, 0x00])  # battery
+        if command == CMD_NETWORK_STANDBY and not data:
+            return True, b"\x01"
+        if command == CMD_ON_TIMER and len(data) > 1:
+            return False, b"\x01"  # NAK
+        if command in (0x0E, 0x10, 0x0B, 0x67):
+            return True, b"X"
+        return True, b"\x00" if command == CMD_ON_TIMER else b""
+
+    panel = FakePanel(server_ssl, handler=handler)
+    await panel.start()
+    try:
+        settings = Settings(
+            data_dir=tmp_path,
+            seed_library=False,
+            scheduler=False,
+            public_host="127.0.0.1",
+            device_host="127.0.0.1",
+            device_pin="123456",
+            device_port=panel.port,
+        )
+        service = FrameService(settings)
+        service.ensure_initial_content()
+        await service.status.refresh()
+
+        await service.power.tick(_at("2026-10-27T22:01"))
+        assert (CMD_NETWORK_STANDBY, b"\x00") not in panel.received
+        assert (CMD_POWER, b"\x00") in panel.received  # light sleep
+        assert not service.power.deep_asleep(_at("2026-10-27T23:00"))
+        assert service.status.status.alarm_refused
+        assert service.power.state.timer is None
+
+        service.player.save_settings(FrameSettings(power_mode="economy"))
+        assert not service.power.economy
+        assert not await service.power.enter_deep(_at("2026-10-28T12:00"))
+        assert (CMD_NETWORK_STANDBY, b"\x00") not in panel.received
+    finally:
+        await panel.stop()

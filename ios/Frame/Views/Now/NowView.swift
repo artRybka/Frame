@@ -262,24 +262,27 @@ struct NowView: View {
     /// not reach the frame says why and what can be done.
     private var controls: some View {
         VStack(spacing: 12) {
-            VStack(spacing: 3) {
-                if let placeLine {
-                    let place = Text(placeLine).fontWeight(.semibold).foregroundStyle(Theme.vermilion)
-                    let when = Text(nextChange.map { " · \($0)" } ?? "").foregroundStyle(Theme.inkSoft)
-                    Text("\(place)\(when)")
-                        .font(.footnote)
-                        .multilineTextAlignment(.center)
+            // Every minute: the countdown to the frame's next wake.
+            TimelineView(.everyMinute) { _ in
+                VStack(spacing: 3) {
+                    if let placeLine {
+                        let place = Text(placeLine).fontWeight(.semibold).foregroundStyle(Theme.vermilion)
+                        let when = Text(nextChange.map { " · \($0)" } ?? "").foregroundStyle(Theme.inkSoft)
+                        Text("\(place)\(when)")
+                            .font(.footnote)
+                            .multilineTextAlignment(.center)
+                    }
+                    if let undelivered {
+                        Text(undelivered.explanation)
+                            .font(.caption)
+                            .foregroundStyle(Theme.inkSoft)
+                            .multilineTextAlignment(.center)
+                    } else if offset == 0 {
+                        schedule
+                    }
                 }
-                if let undelivered {
-                    Text(undelivered.explanation)
-                        .font(.caption)
-                        .foregroundStyle(Theme.inkSoft)
-                        .multilineTextAlignment(.center)
-                } else if offset == 0 {
-                    schedule
-                }
+                .contentTransition(.opacity)
             }
-            .contentTransition(.opacity)
             if offset != 0 {
                 HStack(spacing: 12) {
                     backToNow
@@ -302,7 +305,7 @@ struct NowView: View {
                 }
                 .frame(maxWidth: model.isPortrait ? 420 : .infinity)
                 .transition(.opacity)
-            } else if undelivered != nil || primaryEnabled || sending {
+            } else if undelivered != nil && !asleep || primaryEnabled || sending {
                 Button {
                     Task { await primaryAction() }
                 } label: {
@@ -360,6 +363,8 @@ struct NowView: View {
     /// the frame it waits for (not in deep sleep: Wake-on-LAN cannot reach it).
     private var retry: Bool { !canSend && undelivered?.isFailed == true }
     private var wakeUp: Bool { !canSend && undelivered?.isWaiting == true && undelivered?.asleepUntil == nil }
+    /// Waiting for the frame's own alarm: no button can bring it sooner.
+    private var asleep: Bool { undelivered?.isWaiting == true && undelivered?.asleepUntil != nil }
 
     private var primaryEnabled: Bool { (canSend || retry || wakeUp) && !model.working }
 
@@ -395,8 +400,12 @@ struct NowView: View {
         }
     }
 
-    /// When the next one in the queue goes on the frame.
+    /// When the next one in the queue goes on the frame; for a picture
+    /// waiting for the frame's alarm, how long until it rings.
     private var nextChange: String? {
+        if offset == 0, let undelivered, undelivered.missedWakeAt == nil {
+            return When.countdown(undelivered.asleepUntilAt)
+        }
         guard offset == 1, let player = model.player else { return nil }
         if let hold = player.hold {
             return hold.forever ? "po odpięciu" : When.schedule(hold.until)
@@ -415,7 +424,12 @@ struct NowView: View {
             if hold.forever { return "Przypięty na stałe" }
             if let until = When.schedule(hold.until) { return "Przypięty do: \(until)" }
         }
-        if let next = When.schedule(player.nextChangeAt) { return "Następna zmiana: \(next)" }
+        if let next = When.schedule(player.nextChangeAt) {
+            // Economy: the frame sleeps until then, so how long it is matters.
+            let countdown = model.settings?.isEconomy == true && undelivered == nil
+                ? When.countdown(player.nextChangeAt).map { " · \($0)" } ?? "" : ""
+            return "Następna zmiana: \(next)\(countdown)"
+        }
         return " "
     }
 

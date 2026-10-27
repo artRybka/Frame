@@ -25,7 +25,7 @@ from .library.museums import Access
 from .library.museums import client as museum_client
 from .panel_config import PanelConfigStore
 from .player import Player
-from .power import PowerManager
+from .power import WAKE_BURST_SECONDS, PowerManager
 from .progress import ProgressTracker, Stage
 from .rendered import RenderCache, Rendered, render_key
 from .status import StatusMonitor
@@ -91,13 +91,32 @@ class Panel:
                 self.woke = True
                 if self.on_wake:
                     self.on_wake()
-                await self.wake(seconds=15)
-                log.info("panel unreachable, sent Wake-on-LAN")
-                await client.connect(attempts=4, retry_delay=8)
+                # On battery the panel answers one to three minutes into the
+                # burst (E13): keep sending until it does.
+                log.info("panel unreachable, sending Wake-on-LAN")
+                burst = asyncio.create_task(self.wake(seconds=WAKE_BURST_SECONDS))
+                try:
+                    await self._connect_until(client, WAKE_BURST_SECONDS + 10)
+                finally:
+                    burst.cancel()
             try:
                 yield client
             finally:
                 await client.close()
+
+    @staticmethod
+    async def _connect_until(client: MdcClient, seconds: float) -> None:
+        """Try to connect every few seconds until ``seconds`` have passed."""
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + seconds
+        while True:
+            await asyncio.sleep(5)
+            try:
+                await client.connect()
+                return
+            except MdcConnectionError:
+                if loop.time() >= deadline:
+                    raise
 
     @asynccontextmanager
     async def session(self) -> AsyncIterator[MdcClient]:

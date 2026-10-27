@@ -389,10 +389,11 @@ struct LiveBackend: FrameBackend {
     }
 
     func wake(sleepAfter: Bool) async throws -> WakeResult {
-        // The server sends magic packets for a while and then looks for the panel.
+        // The server sends magic packets for a while and then looks for the
+        // panel (on battery it answers one to three minutes in).
         let query = sleepAfter ? [URLQueryItem(name: "sleep_after", value: "true")] : []
         var req = request("/api/device/wake", method: "POST", query: query)
-        req.timeoutInterval = 90
+        req.timeoutInterval = 240
         return try await perform(req)
     }
 
