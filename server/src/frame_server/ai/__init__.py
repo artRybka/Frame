@@ -6,6 +6,7 @@ from .client import HAIKU, SONNET, AiUnavailable, Answer, Claude, KeyRejected, i
 from .config import AiConfig, AiConfigStore, AiConfigUpdate
 from .jobs import AiWorker, NoteJob, Progress, text_hash
 from .keywords import KeywordsJob
+from .pl_text import PlTextJob, PolishText
 
 __all__ = [
     "HAIKU",
@@ -20,6 +21,8 @@ __all__ = [
     "KeyRejected",
     "KeywordsJob",
     "NoteJob",
+    "PlTextJob",
+    "PolishText",
     "Progress",
     "image_block",
     "request",

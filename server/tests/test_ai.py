@@ -114,6 +114,7 @@ def fake(service: FrameService) -> FakeAnthropic:
 
     service.claude.factory = factory
     service.ai_config.set_key(GOOD_KEY)
+    service.ai_config.update(AiConfigUpdate(pl_text=False))  # tested in test_polish.py
     return factory(GOOD_KEY)
 
 

@@ -67,6 +67,33 @@ struct Item: Codable, Identifiable, Hashable, Sendable {
     }
 }
 
+/// A work's Polish title and texts, written on the server by the language
+/// model ("Polskie tytuły i opisy").
+struct PolishText: Codable, Hashable, Sendable {
+    var title: String
+    var frame: String
+    var full: String
+    var medium: String
+    var date: String
+    /// "Holender, 1853–1890".
+    var artistNote: String
+    /// "translation" of the museum's description, or a "note" written from
+    /// the picture and what is known about it.
+    var written: String
+    /// For a note: what it was written from ("obraz", "dane muzeum"...).
+    var sources: [String]
+
+    var isNote: Bool { written == "note" }
+}
+
+/// A work's Polish texts for its card.
+struct PolishView: Codable, Hashable, Sendable {
+    /// "ready"; "waiting" (being written, ask again); "none" (the model
+    /// could not); "off" (no key, switched off, or no museum work).
+    var status: String
+    var text: PolishText?
+}
+
 struct ItemSummary: Codable, Identifiable, Hashable, Sendable {
     let id: String
     var kind: ItemKind

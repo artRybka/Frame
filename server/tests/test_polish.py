@@ -1,13 +1,24 @@
+"""Polish titles and texts: nationalities, Wikidata, prompts, the job, the
+frame and the app's card."""
+
 from __future__ import annotations
 
-import httpx
+from pathlib import Path
+from typing import Any
 
-from frame_server.library import Item
-from frame_server.library.nationality import artist_note, fix_note, noun
-from frame_server.library.polish import (
+import httpx
+import pytest
+from conftest import jpeg_bytes
+from fastapi.testclient import TestClient
+from test_ai import GOOD_KEY, FakeAnthropic
+
+from frame_server.ai import AiConfigUpdate
+from frame_server.ai.client import HAIKU, SONNET, cost
+from frame_server.ai.pl_text import (
+    KIND,
     MAX_BODY,
-    NOTE_MODEL,
-    TRANSLATE_MODEL,
+    NOTE_USAGE,
+    TRANSLATION_USAGE,
     Context,
     PolishText,
     clean,
@@ -16,7 +27,14 @@ from frame_server.library.polish import (
     schema,
     written_for,
 )
+from frame_server.config import Settings
+from frame_server.imaging.layout import Fit
+from frame_server.library import Item, ItemKind
+from frame_server.library.nationality import artist_note, fix_note, noun
 from frame_server.library.wikidata import Facts, Wikidata, record_id
+from frame_server.player import caption_for, text_block_for
+from frame_server.service import FrameService
+from frame_server.web import create_app
 
 DESCRIPTION = (
     "In this late painting Turner shows a steamboat caught in a snowstorm, "
@@ -131,9 +149,9 @@ def test_translation_or_note_by_description() -> None:
     described = _item(description=f"<p>{DESCRIPTION}</p>")
     bare = _item(description="Gift of a friend, 1929")
     assert written_for(described) == "translation"
-    assert model_for(described) == TRANSLATE_MODEL
+    assert model_for(described) == HAIKU
     assert written_for(bare) == "note"
-    assert model_for(bare) == NOTE_MODEL
+    assert model_for(bare) == SONNET
     assert "sources" in schema("note")["required"]
     assert "sources" not in schema("translation")["properties"]
     text = request_text(described, Context(facts=Facts(qid="Q1", depicts_pl=("statek",))))
@@ -161,22 +179,22 @@ def test_clean_fixes_and_trims_answers() -> None:
         "artist_note": "brytyjski, 1775–1851",
         "sources": ["obraz"],
     }
-    text = clean(answer, item, Context())
+    text = clean(answer, item, None)
     assert text is not None
     assert text.title == "Burza śnieżna"
     assert len(text.frame) <= MAX_BODY and text.frame.endswith("obrazie.")
     assert text.full == "Akapit pierwszy dalej.\n\nAkapit drugi"
     assert text.artist_note == "Brytyjczyk, 1775–1851"
     assert text.sources == []  # a translation names no sources
-    assert PolishText.from_json(text.to_json()) == text
+    assert PolishText.model_validate(text.model_dump()) == text
 
-    wikidata = Context(facts=Facts(qid="Q1", title_pl="Śnieżyca", creator_gender="female"))
+    wikidata = Facts(qid="Q1", title_pl="Śnieżyca", creator_gender="female")
     text = clean(answer, item, wikidata)
     assert text is not None
     assert text.title == "Śnieżyca"
     assert text.artist_note == "Brytyjka, 1775–1851"
 
-    assert clean({**answer, "frame": ""}, item, Context()) is None
+    assert clean({**answer, "frame": ""}, item, None) is None
 
 
 def test_note_keeps_only_known_sources_and_models_note() -> None:
@@ -190,10 +208,175 @@ def test_note_keeps_only_known_sources_and_models_note() -> None:
         "artist_note": "włoski, 1615–1673",
         "sources": ["obraz", "plotki"],
     }
-    text = clean(answer, item, Context())
+    text = clean(answer, item, None)
     assert text is not None
     assert text.written == "note"
     assert text.sources == ["obraz"]
     assert text.full == "Malarz patrzy na widza."
     assert text.artist_note == "Włoch, 1615–1673"
     assert text.date == ""  # the museum gives no date: none is made up
+
+
+@pytest.fixture
+def fake(service: FrameService) -> FakeAnthropic:
+    """The service talks to a fake Anthropic, with a key and no Wikidata."""
+    clients: dict[str, FakeAnthropic] = {}
+    service.claude.factory = lambda key: clients.setdefault(key, FakeAnthropic(key))
+    service.ai_config.set_key(GOOD_KEY)
+    _offline(service)
+    return clients.setdefault(GOOD_KEY, FakeAnthropic(GOOD_KEY))
+
+
+PL_ANSWER = {
+    "title": "Burza śnieżna",
+    "frame": "Parowiec ginie w zamieci. Morze i niebo zlewają się w jeden wir.",
+    "full": "Pełne tłumaczenie opisu.",
+    "medium": "olej na płótnie",
+    "date": "1842",
+    "artist_note": "brytyjski, 1775–1851",
+}
+
+
+def _no_wikidata(request: httpx.Request) -> httpx.Response:
+    return httpx.Response(404)
+
+
+def _add(service: FrameService, item_id: str, **kw: Any) -> Item:
+    kw.setdefault("kind", ItemKind.ARTWORK)
+    kw.setdefault("title", "Snow Storm")
+    kw.setdefault("artist", "J. M. W. Turner")
+    kw.setdefault("artist_bio", "British, 1775–1851")
+    kw.setdefault("date_text", "1842")
+    kw.setdefault("medium", "Oil on canvas")
+    item = service.library.upsert(
+        Item(id=item_id, source=item_id.split(":")[0], source_id=item_id.split(":")[1], **kw)
+    )
+    path = service.images.thumb_path(item)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(jpeg_bytes((90, 120, 200), (640, 480)))
+    return item
+
+
+def _offline(service: FrameService) -> None:
+    service.pl_text._http = httpx.Client(transport=httpx.MockTransport(_no_wikidata))
+
+
+def test_a_description_is_translated_by_haiku_without_the_picture(
+    service: FrameService, fake: FakeAnthropic
+) -> None:
+    fake.answer = PL_ANSWER
+    item = _add(service, "met:1", description=DESCRIPTION)
+    note = service.ai.run_one(KIND, "met:1")
+
+    assert note is not None and note.model == HAIKU
+    params = fake.asked[0]
+    assert params["model"] == HAIKU
+    assert [c["type"] for c in params["messages"][0]["content"]] == ["text"]
+    assert "Opis muzeum:" in params["messages"][0]["content"][0]["text"]
+    text = service.pl_text.text(item)
+    assert text is not None
+    assert text.title == "Burza śnieżna"
+    assert text.artist_note == "Brytyjczyk, 1775–1851"  # from the bio, not the model
+
+    # Asked once: a fresh note is not asked again.
+    assert service.ai.run_one(KIND, "met:1") is not None
+    assert len(fake.asked) == 1
+    # Switched off: nothing in Polish.
+    service.ai_config.update(AiConfigUpdate(pl_text=False))
+    assert service.pl_text.text(item) is None
+
+
+def test_without_a_description_sonnet_writes_a_note_from_the_picture(
+    service: FrameService, fake: FakeAnthropic
+) -> None:
+    fake.answer = {**PL_ANSWER, "sources": ["obraz", "dane muzeum"]}
+    item = _add(service, "met:2", description="")
+    service.ai.run_one(KIND, "met:2")
+
+    params = fake.asked[0]
+    assert params["model"] == SONNET
+    content = params["messages"][0]["content"]
+    assert [c["type"] for c in content] == ["image", "text"]
+    assert "sources" in params["output_config"]["format"]["schema"]["required"]
+    text = service.pl_text.text(item)
+    assert text is not None and text.written == "note"
+    assert text.sources == ["obraz", "dane muzeum"]
+
+
+def test_photos_get_no_polish_texts(service: FrameService, fake: FakeAnthropic) -> None:
+    photo = _add(service, "icloud:1", kind=ItemKind.PHOTO)
+    assert not service.pl_text.wanted(photo)
+    assert service.ai.need_now("icloud:1", KIND).result(timeout=1) is None
+
+
+def test_the_estimate_counts_translations_and_notes(
+    service: FrameService, fake: FakeAnthropic
+) -> None:
+    _add(service, "met:1", description=DESCRIPTION)
+    _add(service, "met:2")
+    items, usd = service.ai.estimate(KIND)
+    assert items == 2
+    expected = cost(HAIKU, TRANSLATION_USAGE, True) + cost(SONNET, NOTE_USAGE, True)
+    assert abs(usd - expected) < 1e-9
+
+
+def test_the_frame_prints_the_polish_texts() -> None:
+    item = Item(
+        id="met:1",
+        source="met",
+        source_id="1",
+        title="Snow Storm",
+        artist="J. M. W. Turner",
+        date_text="1842",
+        medium="Oil on canvas",
+        description=DESCRIPTION,
+    )
+    polish = PolishText(
+        title="Burza śnieżna",
+        frame="Parowiec ginie w zamieci.",
+        full="",
+        medium="olej na płótnie",
+        date="1842",
+        artist_note="Brytyjczyk, 1775–1851",
+    )
+    block = text_block_for(item, polish)
+    assert block.title == "Burza śnieżna"
+    assert block.meta == ["J. M. W. Turner, Brytyjczyk, 1775–1851", "1842 · olej na płótnie"]
+    assert block.body == "Parowiec ginie w zamieci."
+    assert caption_for(item, polish) == "J. M. W. Turner — Burza śnieżna, 1842"
+    assert text_block_for(item).title == "Snow Storm"
+
+
+def test_the_player_uses_polish_texts_once_written(
+    service: FrameService, fake: FakeAnthropic
+) -> None:
+    fake.answer = PL_ANSWER
+    item = _add(service, "met:1", description=DESCRIPTION)
+    settings = service.player.settings
+    settings.art.fit = Fit.DESCRIPTION
+    assert service.player.render_settings(item, settings).text.title == "Snow Storm"
+    service.ai.run_one(KIND, "met:1")
+    assert service.player.render_settings(item, settings).text.title == "Burza śnieżna"
+
+
+def test_the_card_asks_for_polish_texts(tmp_path: Path) -> None:
+    app = create_app(
+        Settings(data_dir=tmp_path, seed_library=False, scheduler=False, public_host="127.0.0.1")
+    )
+    svc: FrameService = app.state.service
+    clients: dict[str, FakeAnthropic] = {}
+    svc.claude.factory = lambda key: clients.setdefault(key, FakeAnthropic(key))
+    _offline(svc)
+    with TestClient(app) as client:
+        _add(svc, "met:1", description=DESCRIPTION)
+        assert client.get("/api/library/items/met:1/polish").json() == {
+            "status": "off",
+            "text": None,
+        }
+        svc.ai_config.set_key(GOOD_KEY)
+        clients.setdefault(GOOD_KEY, FakeAnthropic(GOOD_KEY)).answer = PL_ANSWER
+        svc.ai.start()
+        view = client.get("/api/library/items/met:1/polish?wait=10").json()
+        assert view["status"] == "ready"
+        assert view["text"]["title"] == "Burza śnieżna"
+        assert client.get("/api/ai").json()["pl_text_progress"]["done"] == 1

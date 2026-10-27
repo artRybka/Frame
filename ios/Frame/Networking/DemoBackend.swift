@@ -320,6 +320,10 @@ actor DemoBackend: FrameBackend {
         return item
     }
 
+    func polish(itemID: String, wait: Int) async throws -> PolishView {
+        PolishView(status: "off", text: nil)  // no language model in the demo
+    }
+
     private func update(_ id: String, _ change: (inout Item) -> Void) throws -> Item {
         guard let index = items.firstIndex(where: { $0.id == id }) else { throw BackendError.notFound }
         change(&items[index])
