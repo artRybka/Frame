@@ -126,7 +126,7 @@ class FrameService:
         self.palette: Palette = self._initial_palette()
         self.library = Library(settings.data_dir / "library.db")
         if repaired := repair_library(self.library):
-            log.info("cleaned Wikimedia Commons text of %d items", repaired)
+            log.info("repaired stored text and links of %d items", repaired)
         # Before anything reads the panel's address: the app's values win.
         self.panel_config = PanelConfigStore(settings, self.library)
         self.images = ImageCache(settings.data_dir / "library", museum_client)
