@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 from fastapi.testclient import TestClient
 
 from frame_server.library import (
@@ -13,7 +15,15 @@ from frame_server.library import (
     PlaylistKind,
     PlaylistRules,
 )
-from frame_server.library.duplicates import Works, dedupe, same_work, title_key, work_key
+from frame_server.library.duplicates import (
+    Shown,
+    Works,
+    dedupe,
+    origin,
+    same_work,
+    title_key,
+    work_key,
+)
 from frame_server.library.museums import MUSEUMS, Museum
 from frame_server.web.library_api import remote_items
 
@@ -171,6 +181,8 @@ def test_searching_every_source_finds_each_work_once(service, monkeypatch) -> No
         ("aic:1", False),
     ]
     assert shown[0].work == "monet|haystacks"
+    # The catalogue shows its copy: the app leaves this one out there.
+    assert [r.twin for r in shown] == [None, None, "wmc:1"]
     # ...but the owner's copy over any.
     service.library.update("wmc:1", pooled=False)
     shown = remote_items(service, items)
@@ -214,3 +226,125 @@ def test_a_playlist_gets_a_work_once(service) -> None:
             f"/api/playlists/{playlist}/items", json={"item_ids": ["wmc:2", "aic:3"]}
         ).json()
     assert detail["item_ids"] == ["met:1", "aic:3"]
+
+
+def test_favorites_playlist_always_stays(service) -> None:
+    from frame_server.web import create_app
+
+    app = create_app(service.settings)
+    svc = app.state.service
+    with TestClient(app) as client:
+        playlists = client.get("/api/playlists").json()
+        favorites = [p for p in playlists if p["rules"]["favorites_only"]]
+        assert [p["name"] for p in favorites] == ["Ulubione"]
+        assert favorites[0]["item_count"] == 0  # there even with no hearts
+        fav_id = favorites[0]["id"]
+
+        assert client.delete(f"/api/playlists/{fav_id}").status_code == 409
+        # Renamed, it stays the hearts' smart playlist.
+        renamed = client.put(
+            f"/api/playlists/{fav_id}",
+            json={"name": "Serduszka", "kind": "manual", "rules": {"favorites_only": False}},
+        ).json()["playlist"]
+        assert renamed["name"] == "Serduszka"
+        assert renamed["kind"] == "smart" and renamed["rules"]["favorites_only"]
+
+        other = client.post("/api/playlists", json={"name": "Inna"}).json()["playlist"]["id"]
+        assert client.delete(f"/api/playlists/{other}").json() == {"deleted": True}
+
+    # A library that lost it (deleted before) gets it back on start.
+    svc.library.delete_playlist(fav_id)
+    with TestClient(create_app(service.settings)) as client:
+        names = [
+            p["name"] for p in client.get("/api/playlists").json() if p["rules"]["favorites_only"]
+        ]
+    assert names == ["Ulubione"]
+
+
+def test_aggregators_pass_on_several_collections() -> None:
+    """Openverse has the Met's record and a Commons file of one painting;
+    Europeana's Rijksmuseum records keep the museum's inventory number."""
+    met = _work("openverse", "a", url="https://www.metmuseum.org/art/collection/search/437881")
+    commons = _work(
+        "openverse",
+        "b",
+        title="Vincent van Gogh - Wheat Field with Cypresses - Google Art Project",
+        url="https://commons.wikimedia.org/w/index.php?curid=1",
+    )
+    assert origin(met) == "openverse:metmuseum.org" and same_work(met, commons)
+    # Two of one collection's works still aren't copies.
+    assert not same_work(commons, commons.model_copy(update={"id": "openverse:c"}))
+
+    rijks = _work(
+        "rijks",
+        200108369,
+        title="The Milkmaid",
+        artist="Johannes Vermeer",
+        url="https://www.rijksmuseum.nl/nl/collectie/object/SK-A-2344--42dd0e658c2979aec8e144d2357c55c0",
+    )
+    europeana = Item(
+        id="europeana:90402~SK_A_2344",
+        source="europeana",
+        source_id="90402~SK_A_2344",
+        title="Het melkmeisje",
+        url="https://www.europeana.eu/item/90402/SK_A_2344",
+    )
+    other = europeana.model_copy(update={"id": "europeana:90402~SK_A_1595"})
+    other = other.model_copy(update={"source_id": "90402~SK_A_1595"})
+    assert same_work(rijks, europeana) and not same_work(rijks, other)
+
+
+def test_shown_works_come_once_and_better_copies_replace_worse() -> None:
+    shown = Shown()
+    first = shown.take([_work("openverse", 1, year=1889), _work("openverse", 2, title="Irises")])
+    assert [(t.item.id, t.work, t.replaces) for t in first] == [
+        ("openverse:1", "gogh|wheat field cypresses", None),
+        ("openverse:2", "gogh|irises", None),
+    ]
+    # Other museums answer later: their copies take the place of worse ones.
+    later = shown.take(
+        [_work("wmc", 3), _work("met", 4, year=1889), _work("wmc", 5, title="Irises")]
+    )
+    assert [(t.item.id, t.replaces) for t in later] == [
+        ("wmc:3", "openverse:1"),
+        ("met:4", "wmc:3"),
+        ("wmc:5", "openverse:2"),
+    ]
+    # Copies no better than the one shown are left out.
+    assert shown.take([_work("aic", 6, year=1889), _work("met", 4)]) == []
+
+
+def test_streamed_search_shows_each_work_once(service, monkeypatch) -> None:
+    """Each museum answers on its own: a work comes once, a better copy
+    taking the place of a worse one, also on later pages."""
+    from frame_server.web import create_app
+
+    _sources(monkeypatch)
+    app = create_app(service.settings)
+
+    def shown(lines: list[dict], before: dict[str, dict] | None = None) -> dict[str, dict]:
+        works = dict(before or {})
+        for line in lines:
+            for remote in line["items"]:
+                assert remote["work"]
+                works.pop(remote["replaces"] or "", None)
+                assert remote["item"]["id"] not in works
+                works[remote["item"]["id"]] = remote
+        return works
+
+    params = {"q": "Monet", "limit": 1}
+    with TestClient(app) as client:
+        with client.stream("GET", "/api/discover/search/stream", params=params) as resp:
+            lines = [json.loads(line) for line in resp.iter_lines() if line]
+        first = shown(lines)
+        assert len({r["work"] for r in first.values()}) == len(first)
+        assert list(first) == ["aic:0"]  # the museum's Haystacks
+        works = first
+        for page, sources in ((2, ["openverse", "aic", "wmc"]), (3, ["wmc"])):
+            more = client.get(
+                "/api/discover/search/stream", params={**params, "page": page, "source": sources}
+            )
+            works = shown([json.loads(line) for line in more.text.splitlines() if line], works)
+        # Commons' Poplars in place of Openverse's, shown on the page before.
+        assert sorted(works) == ["aic:0", "aic:1", "wmc:2"]
+        assert works["wmc:2"]["replaces"] == "openverse:1"

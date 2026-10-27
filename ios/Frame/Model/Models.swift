@@ -209,6 +209,9 @@ struct Playlist: Codable, Hashable, Sendable {
     var album: AlbumSource?
     /// The Discover theme the playlist was made from.
     var theme: String?
+
+    /// "Ulubione", the owner's hearts: always there, never deleted.
+    var isFavorites: Bool { kind == .smart && rules.favoritesOnly }
 }
 
 struct PlaylistSummary: Codable, Identifiable, Hashable, Sendable {
@@ -222,6 +225,8 @@ struct PlaylistSummary: Codable, Identifiable, Hashable, Sendable {
     var album: AlbumSource?
     var albumSync: AlbumSync?
     var theme: String?
+
+    var isFavorites: Bool { kind == .smart && rules.favoritesOnly }
 }
 
 struct PlaylistDetail: Codable, Sendable {
@@ -704,6 +709,12 @@ struct RemoteItem: Codable, Hashable, Sendable, Identifiable {
     /// What copies of one work from several sources share (artist's surname
     /// and title); empty when the server can't tell.
     var work: String? = nil
+    /// The library's copy of the work, when this one is from a more
+    /// reliable source (the catalogue shows that copy already).
+    var twin: String? = nil
+    /// In a search's later answers: the worse copy, come before, that this
+    /// one takes the place of.
+    var replaces: String? = nil
     var id: String { item.id }
 
     /// The same work, maybe from another source (copies' years differ by
@@ -731,11 +742,16 @@ struct RemoteItem: Codable, Hashable, Sendable, Identifiable {
 
 extension Array where Element == RemoteItem {
     /// These and the works of the next page not here yet: the server leaves
-    /// copies out within a page, this across pages.
+    /// copies out within a page, this across pages. A better copy takes the
+    /// place of the one it `replaces`.
     func adding(_ more: [RemoteItem]) -> [RemoteItem] {
         var result = self
-        for candidate in more where !result.contains(where: { $0.isSameWork(as: candidate) }) {
-            result.append(candidate)
+        for candidate in more {
+            if let old = candidate.replaces, let index = result.firstIndex(where: { $0.id == old }) {
+                if !result.contains(where: { $0.id == candidate.id }) { result[index] = candidate }
+            } else if !result.contains(where: { $0.isSameWork(as: candidate) }) {
+                result.append(candidate)
+            }
         }
         return result
     }

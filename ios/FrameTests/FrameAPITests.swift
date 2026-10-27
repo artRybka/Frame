@@ -334,6 +334,10 @@ final class FrameAPITests: XCTestCase {
         XCTAssertEqual([met].adding([commons, met]).map(\.id), [met.id])
         XCTAssertEqual([met].adding([older]).map(\.id), [met.id, "wmc:1"])
         XCTAssertEqual([met].adding([other]).map(\.id), [met.id, "wmc:1"])
+        // A better copy, come later, takes the place of the one shown.
+        var better = met
+        better.replaces = "wmc:1"
+        XCTAssertEqual([commons].adding([better]).map(\.id), [met.id])
         let decoded = try LiveBackend.decoder().decode(
             RemoteItem.self, from: try LiveBackend.encoder().encode(met)
         )

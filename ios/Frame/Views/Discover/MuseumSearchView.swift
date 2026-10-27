@@ -4,7 +4,8 @@ import SwiftUI
 /// colours and museums as chips, over the catalogue (at once) and the
 /// museums (each as it answers). Museums, colours, styles, subjects, periods
 /// and techniques come from the field's "+"; with nothing asked yet the
-/// icon's squares play. Coming back from a work finds the results as they
+/// icon's squares play, and at the end of the results they ask the museums
+/// for more when pulled. Coming back from a work finds the results as they
 /// were.
 struct MuseumSearchView: View {
     @Environment(AppModel.self) private var model
@@ -65,10 +66,10 @@ struct MuseumSearchView: View {
     /// What the museums have for the search, as far as they said.
     private var total: Int { totals.values.reduce(0, +) }
 
-    /// Museum works the catalogue doesn't hold already.
+    /// Museum works the catalogue doesn't hold already, in any copy.
     private var fromMuseums: [RemoteItem] {
         let known = Set(catalogue?.items.map(\.id) ?? [])
-        return results.filter { !known.contains($0.id) }
+        return results.filter { !known.contains($0.id) && !known.contains($0.twin ?? "") }
     }
 
     var body: some View {
@@ -208,20 +209,9 @@ struct MuseumSearchView: View {
                 )
             }
             if !asking, !next.isEmpty {
-                Button {
+                PullForMore(loading: loadingMore) {
                     Task { await loadMore() }
-                } label: {
-                    HStack(spacing: 8) {
-                        if loadingMore { ProgressView().controlSize(.small) }
-                        Text("Więcej z muzeów")
-                    }
-                    .font(.subheadline.weight(.semibold))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                    .background(Theme.card, in: RoundedRectangle(cornerRadius: 12))
-                    .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.hairline))
                 }
-                .disabled(loadingMore)
             }
         }
     }

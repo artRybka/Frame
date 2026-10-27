@@ -5,13 +5,26 @@ import UIKit
 /// empty: one of a few games, picked at random, and a tap moves on to the
 /// next. The row stands in the middle of the screen; the view reaches down
 /// to the tab bar so there is room to fall to. Every round they rest a
-/// while in the row. With Reduce Motion they just stand in it.
+/// while in the row. With Reduce Motion they just stand in it. At the end of
+/// a list they play in a small box instead, the row near its bottom.
 struct SquaresAnimation: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var game = SquareGame.allCases.randomElement() ?? .wave
     @State private var start = Date.now
     /// The middle of the screen, from the view's top.
     @State private var middle: Double?
+    /// Whether the row stands in the middle of the screen (or of the box).
+    private let inScreenMiddle: Bool
+    /// Whether a tap moves on to the next game.
+    private let tapForNext: Bool
+
+    /// Room under the row of a box, for falling ones to fade out in.
+    static let fadeRoom = 30.0
+
+    init(inScreenMiddle: Bool = true, tapForNext: Bool = true) {
+        self.inScreenMiddle = inScreenMiddle
+        self.tapForNext = tapForNext
+    }
 
     var body: some View {
         TimelineView(.animation(paused: reduceMotion)) { context in
@@ -32,6 +45,7 @@ struct SquaresAnimation: View {
             game = games[((games.firstIndex(of: game) ?? 0) + 1) % games.count]
             start = .now
         }
+        .allowsHitTesting(tapForNext)
         .accessibilityHidden(true)
     }
 
@@ -45,14 +59,16 @@ struct SquaresAnimation: View {
     private func draw(_ squares: [PlayingSquare], in canvas: inout GraphicsContext, size: CGSize) {
         let side = SquareGame.side
         // The row's left edge, and the line the squares stand on: the row
-        // in the middle of the screen (of the view until that is known).
+        // in the middle of the screen (of the view until that is known), or
+        // in a box just above the room to fade out in.
         let left = (Double(size.width) - SquareGame.row.width) / 2
         let height = Double(size.height)
-        let base = min(height - side, max(5 * side, (middle ?? height / 2) + side / 2))
+        let row = inScreenMiddle ? (middle ?? height / 2) : height - Self.fadeRoom - side / 2
+        let base = min(height - side, max(5 * side, row + side / 2))
         for square in squares where square.alpha > 0 {
             var context = canvas
             // Falling ones fade out at the bottom.
-            context.opacity = square.alpha * min(1, max(0, (Double(size.height) - base - square.y) / 30))
+            context.opacity = square.alpha * min(1, max(0, (Double(size.height) - base - square.y) / Self.fadeRoom))
             // Scaled from the bottom edge, turned about the centre.
             context.translateBy(x: left + square.x + side / 2, y: base + square.y - side / 2 * square.sy)
             context.rotate(by: .degrees(square.rotation))

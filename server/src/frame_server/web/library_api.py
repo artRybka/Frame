@@ -67,6 +67,12 @@ class RemoteItem(BaseModel):
     #: What copies of one work from several sources share
     #: (``duplicates.work_key``), to leave out copies on later pages.
     work: str = ""
+    #: The library's copy of the work, when this item is a better one
+    #: (the catalogue shows that copy already).
+    twin: str | None = None
+    #: In a search's later answers: the worse copy, shown before, that this
+    #: one takes the place of.
+    replaces: str | None = None
 
 
 def remote_items(svc: FrameService, items: list[Item], copies: bool = True) -> list[RemoteItem]:
@@ -74,15 +80,19 @@ def remote_items(svc: FrameService, items: list[Item], copies: bool = True) -> l
     them. With ``copies`` (results from several sources) a work the library
     holds from another source comes as the library's copy, unless this one
     is from a more reliable source than a copy only the server added."""
-    found: dict[str, Item] = {}
+    found: dict[str, RemoteItem] = {}
     for item in items:
+        twin: str | None = None
         if copies and not svc.library.has(item.id):
-            item = svc.importer.copy_of(item) or item
-        found.setdefault(item.id, item)
-    return [
-        RemoteItem(item=i, in_library=svc.library.has(i.id), work=work_key(i))
-        for i in found.values()
-    ]
+            if copy := svc.importer.copy_of(item):
+                item = copy
+            elif other := svc.library.twin(item):
+                twin = other.id
+        held = svc.library.has(item.id)
+        found.setdefault(
+            item.id, RemoteItem(item=item, in_library=held, work=work_key(item), twin=twin)
+        )
+    return list(found.values())
 
 
 class RemotePage(BaseModel):

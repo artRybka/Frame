@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.19.0
+
+- Playlisty: ręczna playlista ma to samo wyszukiwanie co inteligentna;
+  przy każdym znalezionym dziele jest „+” (po dodaniu ptaszek), dzieła z
+  muzeów najpierw trafiają do biblioteki, a dodane widać w pasku
+  „W playliście”. W inteligentnej z włączonym pobieraniem z muzeów dzieła
+  z muzeów są pierwsze. „Zapisz” bez nazwy przewija do pola nazwy.
+- Ulubionych nie da się usunąć ani zmienić w inny rodzaj playlisty
+  (serwer odpowiada 409); biblioteka, która ich nie ma, dostaje je z
+  powrotem przy starcie. Bez „Zapisane dzieła” (powtarzały Ulubione i
+  playlisty).
+- „Teraz”: tytuł otwiera kartę dzieła; „Zapisz w Zdjęciach” jest ostatnie
+  w menu dzieła.
+- Szukaj: każde dzieło raz, także gdy muzea odpowiadają po kolei i na
+  dalszych stronach; lepsza kopia zastępuje gorszą (`replaces`).
+  Openverse i Europeana liczą się według kolekcji (np. rekord Met i plik z
+  Commons tego samego obrazu, Rijksmuseum po numerze inwentarza).
+- Szukaj: zamiast „Więcej z muzeów” na dole kwadraciki i „Przeciągnij po
+  więcej”; przeciągnięcie za koniec listy (albo stuknięcie) doczytuje
+  kolejne strony z muzeów.
+
 ## 0.18.0
 
 - Dzieła zapisane jako SVG (np. z Wikimedia Commons przez Openverse) mają

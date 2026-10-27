@@ -471,7 +471,11 @@ actor DemoBackend: FrameBackend {
         return detail(copy)
     }
 
-    func deletePlaylist(id: Int) async throws { playlistsByID[id] = nil }
+    func deletePlaylist(id: Int) async throws {
+        // As the server: "Ulubione" stays.
+        if playlistsByID[id]?.isFavorites == true { throw BackendError.http(status: 409, body: "Ulubione zostają zawsze") }
+        playlistsByID[id] = nil
+    }
 
     func addToPlaylist(id: Int, itemIDs: [String]) async throws -> PlaylistDetail {
         guard var playlist = playlistsByID[id] else { throw BackendError.notFound }

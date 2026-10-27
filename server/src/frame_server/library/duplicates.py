@@ -12,9 +12,11 @@ Openverse and WikiArt.
 from __future__ import annotations
 
 import re
+import threading
 from collections import defaultdict
 from collections.abc import Iterable
 from functools import lru_cache
+from typing import NamedTuple
 from urllib.parse import unquote
 
 from .models import Item, ItemKind
@@ -87,6 +89,15 @@ GENERIC = frozenset(
         "portret",
     }
 )
+#: Aggregators: their items come from many collections, two of which may
+#: hold copies of one work.
+AGGREGATORS = frozenset({"openverse", "europeana"})
+#: Europeana datasets that keep the museum's inventory number in the record
+#: id ("90402/SK_A_2344"): dataset -> the museum's key.
+EUROPEANA_SETS = {"90402": "rijks"}
+#: The Rijksmuseum's inventory number at the end of its page address
+#: (".../object/SK-A-2344--42dd…").
+RIJKS_NUMBER = re.compile(r"rijksmuseum\.nl/.*/([a-z]{1,4}-[a-z0-9_.-]+?)(?:--[0-9a-f]+)?$")
 #: Names that are no artist at all.
 NOBODY = frozenset({"unknown", "anonymous", "unidentified", "nieznany", "anonim", "artist"})
 
@@ -148,8 +159,34 @@ def _link(url: str) -> str:
     return re.sub(r"^https?://(www\.)?", "", link).rstrip("/")
 
 
+def _inventory(item: Item) -> str:
+    """The museum's inventory number, as a pseudo address, where the item
+    tells it: a Rijksmuseum page, a Europeana record of its dataset."""
+    if item.source == "europeana":
+        dataset, _, number = item.source_id.partition("~")
+        if museum := EUROPEANA_SETS.get(dataset):
+            return f"inventory:{museum}:{number.replace('_', '-').casefold()}"
+    elif match := RIJKS_NUMBER.search(_link(item.url)):
+        return f"inventory:rijks:{match.group(1).replace('_', '-')}"
+    return ""
+
+
 def _links(item: Item) -> set[str]:
-    return {link for url in (item.url, item.image_url) if (link := _link(url))}
+    links = {link for url in (item.url, item.image_url) if (link := _link(url))}
+    if inventory := _inventory(item):
+        links.add(inventory)
+    return links
+
+
+def origin(item: Item) -> str:
+    """The collection an item comes from: its source, or for an aggregator
+    the collection it passes on (Openverse: the site of its page; Europeana:
+    its dataset). One collection's works are never copies of each other."""
+    if item.source == "openverse":
+        return f"openverse:{_link(item.url).split('/', 1)[0]}"
+    if item.source == "europeana":
+        return f"europeana:{item.source_id.partition('~')[0]}"
+    return item.source
 
 
 def work_key(item: Item) -> str:
@@ -171,7 +208,7 @@ def same_work(a: Item, b: Item) -> bool:
     """``a`` and ``b`` are copies of one work from two sources."""
     if a.id == b.id:
         return True
-    if a.kind != ItemKind.ARTWORK or b.kind != ItemKind.ARTWORK or a.source == b.source:
+    if a.kind != ItemKind.ARTWORK or b.kind != ItemKind.ARTWORK or origin(a) == origin(b):
         return False
     if _links(a) & _links(b):
         return True
@@ -202,8 +239,8 @@ def preference(item: Item) -> tuple[bool, int]:
 
 
 class Works:
-    """Items grouped into works, each group with one copy per source at
-    most; a group's first item is its best copy."""
+    """Items grouped into works, each group with one copy per collection
+    (:func:`origin`) at most; a group's first item is its best copy."""
 
     def __init__(self, items: Iterable[Item] = ()) -> None:
         self.groups: list[list[Item]] = []
@@ -215,7 +252,7 @@ class Works:
 
     def group_of(self, item: Item) -> int | None:
         """The group holding ``item``, or the one it would join: with a copy
-        of it and no other item from its source."""
+        of it and no other item from its collection."""
         if item.id in self._group:
             return self._group[item.id]
         if item.kind != ItemKind.ARTWORK:
@@ -225,7 +262,7 @@ class Works:
             found.update(self._by_link.get(link, ()))
         for index in sorted(found):
             group = self.groups[index]
-            if all(i.source != item.source for i in group) and any(
+            if all(origin(i) != origin(item) for i in group) and any(
                 same_work(i, item) for i in group
             ):
                 return index
@@ -276,3 +313,42 @@ def dedupe(items: list[Item]) -> list[Item]:
             seen.add(index)
             result.append(works.groups[index][0])
     return result
+
+
+class Taken(NamedTuple):
+    item: Item
+    #: What copies of the work share: :func:`work_key` of the first copy
+    #: that has one.
+    work: str
+    #: The id of the worse copy shown before, which ``item`` replaces.
+    replaces: str | None
+
+
+class Shown:
+    """Works already shown, for answers that come one after another (a
+    search's museums as each answers, its later pages): each work once, and
+    a better copy in place of the one shown before it came. Safe to share
+    between threads."""
+
+    def __init__(self) -> None:
+        self._works = Works()
+        #: Group -> the copy shown.
+        self._shown: dict[int, Item] = {}
+        self._lock = threading.Lock()
+
+    def take(self, items: Iterable[Item]) -> list[Taken]:
+        """Of ``items``, the works not shown yet and better copies of those
+        shown; from now on they count as shown."""
+        taken: list[Taken] = []
+        with self._lock:
+            for item in items:
+                index = self._works.add(item)
+                shown = self._shown.get(index)
+                if shown is not None and (
+                    shown.id == item.id or preference(shown) <= preference(item)
+                ):
+                    continue
+                self._shown[index] = item
+                work = next((k for i in self._works.groups[index] if (k := work_key(i))), "")
+                taken.append(Taken(item, work, shown.id if shown is not None else None))
+        return taken
