@@ -74,6 +74,13 @@ struct LiveBackend: FrameBackend {
 
     func item(id: String) async throws -> Item { try await get("/api/library/items/\(escape(id))") }
 
+    func polish(itemID: String, wait: Int) async throws -> PolishView {
+        try await get(
+            "/api/library/items/\(escape(itemID))/polish",
+            query: [URLQueryItem(name: "wait", value: String(wait))]
+        )
+    }
+
     func setFavorite(id: String, _ favorite: Bool) async throws -> Item {
         try await send("/api/library/items/\(escape(id))", method: "PATCH", body: ["favorite": favorite])
     }
@@ -352,6 +359,24 @@ struct LiveBackend: FrameBackend {
 
     func resetLibraryLimit() async throws -> LibraryStorage {
         try await send("/api/library/storage", method: "DELETE")
+    }
+
+    func aiSettings() async throws -> AiSettings { try await get("/api/ai") }
+
+    func saveAiSettings(_ update: AiSettingsUpdate) async throws -> AiSettings {
+        try await send("/api/ai", method: "PUT", body: update)
+    }
+
+    func saveAiKey(_ key: String) async throws -> AiSettings {
+        try await send("/api/ai/key", method: "PUT", body: AiKeyUpdate(key: key))
+    }
+
+    func deleteAiKey() async throws -> AiSettings { try await send("/api/ai/key", method: "DELETE") }
+
+    func keywordsEstimate() async throws -> AiEstimate { try await get("/api/ai/keywords/estimate") }
+
+    func describeLibrary() async throws -> AiStarted {
+        try await send("/api/ai/keywords/describe-library", method: "POST")
     }
 
     func wake(sleepAfter: Bool) async throws -> WakeResult {

@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.22.0
+
+- Model językowy (Claude): nowa sekcja w Konfiguracji (Ramka → trybik)
+  z kluczem API Anthropic (serwer go sprawdza i pokazuje tylko końcówkę),
+  przełącznikami polskich opisów oraz słów kluczowych dzieł i zdjęć,
+  miesięcznym limitem (domyślnie 5 USD) z bieżącymi wydatkami, postępem
+  i „Opisz całą bibliotekę” z szacowanym kosztem przed startem. Klucz
+  można też podać w opcji dodatku `anthropic_api_key`.
+- Słowa kluczowe z modelu (Haiku) dla dzieł i zdjęć: co przedstawia
+  obraz, po polsku i angielsku, pora roku i dnia, nastrój. Znajdują je
+  Szukaj, inteligentne playlisty i wyszukiwanie w bibliotece.
+- Tryb Opis i podpis na ramce po polsku: tłumaczenie opisu z muzeum
+  (Haiku), a dla dzieł bez opisu notka z obrazu (Sonnet). Ramka czeka na
+  tekst najwyżej 25 s, a dla następnego obrazu prosi z wyprzedzeniem.
+- Karta dzieła po polsku: tytuł, notka o autorze, data, technika i tekst
+  z oznaczeniem „Tłumaczenie maszynowe” albo notki modelu oraz „Pokaż
+  oryginał”. Narodowość autora jako osoba („Holender, 1853–1890”), polskie
+  tytuły z Wikidata, gdy istnieją.
+
 ## 0.21.0
 
 - Kolorystyka: barwy dominujące bez powtórek (podobne odcienie łączą się

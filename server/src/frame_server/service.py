@@ -13,6 +13,7 @@ from pathlib import Path
 
 from PIL import Image
 
+from .ai import AiConfigStore, AiWorker, Claude, KeywordsJob, PlTextJob
 from .albums import Albums
 from .config import Settings
 from .device import MdcClient, MdcConnectionError, wol
@@ -145,6 +146,13 @@ class FrameService:
         self.player = Player(self)
         self.power = PowerManager(self)
         self.albums = Albums(self)
+        # The language model: keywords and Polish texts; idle without a key.
+        self.ai_config = AiConfigStore(settings, self.library)
+        self.claude = Claude(self.ai_config, self.library)
+        self.ai = AiWorker(self.library, self.images, self.claude, self.ai_config)
+        self.ai.register(KeywordsJob(self.library, self.images, self.ai_config))
+        self.pl_text = PlTextJob(self.library, self.images, self.ai_config)
+        self.ai.register(self.pl_text)
 
         self._tasks: set[asyncio.Task[object]] = set()
 

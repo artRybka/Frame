@@ -23,3 +23,6 @@ configuration:
   seed_library:
     name: Propozycje z muzeów
     description: Przy starcie dobierz dzieła z domeny publicznej z kolekcji muzeów do rotacji Propozycje, gdy jest ich za mało.
+  anthropic_api_key:
+    name: Klucz API Anthropic
+    description: Opcjonalny, do słów kluczowych i polskich opisów od Claude. Zwykle wpisywany w aplikacji (Ramka → trybik → Konfiguracja), który ma pierwszeństwo.
