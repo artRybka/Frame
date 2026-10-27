@@ -265,9 +265,10 @@ Jak działa (`power.py`, `PowerManager.enter_deep` i `_economy_tick`):
   odpowie.
 
 Pomiary z 27.10 (E13, Mac w podsieci ekranu, bateria, network standby wł.):
-WoL przez Wi-Fi budzi ekran, ale MDC odpowiada dopiero po ok. 60 s
-nadawania pakietu co sekundę. Serwer nadaje więc przez 90 s („Obudź ramkę”
-szuka ekranu 100 s, wysyłka obrazu łączy się w trakcie nadawania). Uśpiony
+WoL przez Wi-Fi budzi ekran, ale MDC odpowiada dopiero po 60 s do 2,5 min
+nadawania pakietu co sekundę. Serwer nadaje więc do 3 minut i przestaje,
+gdy ekran odpowie („Obudź ramkę” szuka ekranu 190 s, wysyłka obrazu łączy
+się co 5 s w trakcie nadawania). Uśpiony
 przez MDC ekran znika z sieci po ok. 20 s, a obudzony przez WoL sam zasypia
 po ok. 3 min 10 s.
 

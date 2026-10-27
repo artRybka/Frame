@@ -58,10 +58,10 @@ PROBE_IN_WINDOW = timedelta(seconds=15)
 PROBE_PENDING = timedelta(minutes=2)
 RETRY_ARM = timedelta(minutes=10)
 # "Obudź ramkę": how long to keep sending magic packets and looking for the panel.
-# On battery the panel answered about 60 s into a burst of one packet a
-# second (E13, 2026-10-27): keep sending for 90 s, look for it a bit longer.
-WAKE_BURST_SECONDS = 90
-WAKE_LOOK = timedelta(seconds=100)
+# On battery the panel answered 60 s to 2.5 min into a burst of one packet a
+# second (E13, 2026-10-27): keep sending for 3 minutes, look a bit longer.
+WAKE_BURST_SECONDS = 180
+WAKE_LOOK = timedelta(seconds=190)
 # After the panel downloaded a picture: ~12 s to prepare it and ~31 s to
 # redraw (E2), with a margin, before it is powered off into light sleep.
 LIGHT_SLEEP_AFTER = 90.0

@@ -90,19 +90,32 @@ class Panel:
                 self.woke = True
                 if self.on_wake:
                     self.on_wake()
-                # On battery the panel answers about a minute into the
-                # burst (E13): keep sending while looking for it.
+                # On battery the panel answers one to three minutes into the
+                # burst (E13): keep sending until it does.
                 log.info("panel unreachable, sending Wake-on-LAN")
                 burst = asyncio.create_task(self.wake(seconds=WAKE_BURST_SECONDS))
                 try:
-                    await asyncio.sleep(10)
-                    await client.connect(attempts=12, retry_delay=7)
+                    await self._connect_until(client, WAKE_BURST_SECONDS + 10)
                 finally:
                     burst.cancel()
             try:
                 yield client
             finally:
                 await client.close()
+
+    @staticmethod
+    async def _connect_until(client: MdcClient, seconds: float) -> None:
+        """Try to connect every few seconds until ``seconds`` have passed."""
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + seconds
+        while True:
+            await asyncio.sleep(5)
+            try:
+                await client.connect()
+                return
+            except MdcConnectionError:
+                if loop.time() >= deadline:
+                    raise
 
     @asynccontextmanager
     async def session(self) -> AsyncIterator[MdcClient]:
