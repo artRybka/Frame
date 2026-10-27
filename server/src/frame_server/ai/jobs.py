@@ -115,6 +115,11 @@ class NoteJob(ABC):
     def estimate_usd(self, items: int, batch: bool = True) -> float:
         return items * cost(self.model, self.typical, batch)
 
+    def estimate_items(self, items: list[Item], batch: bool = True) -> float:
+        """What asking about ``items`` costs; a job whose model depends on the
+        item counts each one."""
+        return self.estimate_usd(len(items), batch)
+
 
 class Progress(BaseModel):
     """One job's state, for the app."""
@@ -166,11 +171,11 @@ class AiWorker:
 
     def need_now(self, item_id: str, kind: str) -> Future[Note | None]:
         """The item's note, asked ahead of everything else if it has none
-        (None when the job is off or the item is gone). ``await
-        asyncio.wrap_future(...)`` it from async code."""
+        (None when the job is off, the item is gone or the job is not for
+        it). ``await asyncio.wrap_future(...)`` it from async code."""
         future: Future[Note | None] = Future()
         job, item = self.jobs.get(kind), self.library.get(item_id)
-        if job is None or item is None or not job.enabled():
+        if job is None or item is None or not job.enabled() or not job.in_library(item):
             future.set_result(None)
             return future
         note = self.library.note(item_id, kind)
@@ -351,7 +356,7 @@ class AiWorker:
         job = self.jobs[kind]
         in_batches = self._batched()
         items = [i for i in self._stale(job, job.in_library) if (kind, i.id) not in in_batches]
-        return len(items), job.estimate_usd(len(items))
+        return len(items), job.estimate_items(items)
 
     def describe_library(self, kind: str) -> int:
         """Start asking about every item of the library without a note;
@@ -432,7 +437,9 @@ class AiWorker:
             item = self.library.get(record["ids"].get(custom_id, ""))
             if item is None or message is None:  # gone, or failed: the background retries
                 continue
-            answer = self.claude.answer(job.kind, record["model"], message, batch=True)
+            # A job may ask different models: the answer says which one it was.
+            model = str(getattr(message, "model", "") or record["model"])
+            answer = self.claude.answer(job.kind, model, message, batch=True)
             if record["prompt_version"] == job.prompt_version:
                 self._keep(job, item, answer)
                 saved += 1

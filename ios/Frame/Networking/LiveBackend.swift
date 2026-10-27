@@ -74,6 +74,13 @@ struct LiveBackend: FrameBackend {
 
     func item(id: String) async throws -> Item { try await get("/api/library/items/\(escape(id))") }
 
+    func polish(itemID: String, wait: Int) async throws -> PolishView {
+        try await get(
+            "/api/library/items/\(escape(itemID))/polish",
+            query: [URLQueryItem(name: "wait", value: String(wait))]
+        )
+    }
+
     func setFavorite(id: String, _ favorite: Bool) async throws -> Item {
         try await send("/api/library/items/\(escape(id))", method: "PATCH", body: ["favorite": favorite])
     }

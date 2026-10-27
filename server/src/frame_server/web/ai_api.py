@@ -11,6 +11,7 @@ from starlette.concurrency import run_in_threadpool
 
 from ..ai import AiConfigUpdate, AiUnavailable, KeyRejected, Progress
 from ..ai.keywords import KIND as KEYWORDS
+from ..ai.pl_text import KIND as PL_TEXT
 from ..service import FrameService
 from .deps import require_token, service
 
@@ -31,7 +32,7 @@ class AiView(BaseModel):
     spent_usd: float  # this month
     spent_by_kind: dict[str, float]
     keywords_progress: Progress
-    pl_text_progress: Progress | None = None  # filled once the Polish texts job is there
+    pl_text_progress: Progress | None = None
     error: str | None  # why the model is paused, if it is
 
 
@@ -62,6 +63,7 @@ def _view(svc: FrameService) -> AiView:
         spent_usd=round(sum(spent.values()), 4),
         spent_by_kind={k: round(v, 4) for k, v in spent.items()},
         keywords_progress=svc.ai.progress(KEYWORDS),
+        pl_text_progress=svc.ai.progress(PL_TEXT),
         error=svc.ai.error,
     )
 
@@ -118,6 +120,23 @@ async def describe_library(svc: Svc) -> Started:
     """Keywords for the whole library through the Batch API (within 24 hours)."""
     try:
         items = await run_in_threadpool(svc.ai.describe_library, KEYWORDS)
+    except AiUnavailable as err:
+        raise HTTPException(409, str(err)) from err
+    return Started(items=items)
+
+
+@router.get("/pl-text/estimate", response_model=Estimate)
+async def pl_text_estimate(svc: Svc) -> Estimate:
+    """What Polish texts for the whole library would cost (Batch API)."""
+    items, usd = await run_in_threadpool(svc.ai.estimate, PL_TEXT)
+    return Estimate(items=items, usd=round(usd, 2))
+
+
+@router.post("/pl-text/describe-library", response_model=Started)
+async def pl_text_library(svc: Svc) -> Started:
+    """Polish texts for the whole library through the Batch API (within 24 hours)."""
+    try:
+        items = await run_in_threadpool(svc.ai.describe_library, PL_TEXT)
     except AiUnavailable as err:
         raise HTTPException(409, str(err)) from err
     return Started(items=items)

@@ -29,6 +29,9 @@ protocol FrameBackend: Sendable {
 
     func items(_ query: LibraryQuery) async throws -> ItemPage
     func item(id: String) async throws -> Item
+    /// The work's Polish title and texts, asked for now if it has none;
+    /// waits up to `wait` seconds for them.
+    func polish(itemID: String, wait: Int) async throws -> PolishView
     func setFavorite(id: String, _ favorite: Bool) async throws -> Item
     func setExcluded(id: String, _ excluded: Bool) async throws -> Item
     func show(itemID: String, hold: HoldSpec) async throws

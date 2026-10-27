@@ -8,6 +8,7 @@ import random
 import threading
 from collections import Counter
 from collections.abc import Awaitable, Callable
+from concurrent.futures import Future
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
@@ -21,7 +22,7 @@ from .imaging import PRESETS, RenderSettings
 from .imaging.grids import MAX_PHOTOS, MIN_PHOTOS
 from .imaging.layout import Fit
 from .imaging.text import TextBlock
-from .library import AlbumOrder, Item, ItemKind, Job, Playlist, PlaylistKind, PlaylistRules
+from .library import AlbumOrder, Item, ItemKind, Job, Note, Playlist, PlaylistKind, PlaylistRules
 from .library.colors import SCORE_VERSION, analyse, tint_spread
 from .library.icloud import refetchable
 from .library.museums import MUSEUMS, Kind
@@ -32,6 +33,7 @@ from .progress import Stage
 from .schedule import FrameSettings, Presentation, in_quiet_hours, next_change
 
 if TYPE_CHECKING:
+    from .ai import PolishText
     from .service import FrameService
 
 log = logging.getLogger(__name__)
@@ -44,6 +46,11 @@ HISTORY_MAX = 50
 PREFETCH = 8  # as many as "Następne" shows in the app
 #: When no picture can be shown (offline, nothing cached), try again after this.
 RETRY_AFTER = timedelta(minutes=15)
+#: How long a change waits for a work's Polish texts (a translation takes a
+#: few seconds, a note from the picture up to half a minute) before it shows
+#: the English ones; the next picture's are asked for while it waits its turn.
+POLISH_SHOW_SECONDS = 25.0
+POLISH_AHEAD_SECONDS = 180.0
 #: Works picked by the server for the default rotation (ids, oldest first).
 SUGGESTIONS_KEY = "suggestions"
 #: Set once the museum works imported before the catalogue are gone.
@@ -122,26 +129,49 @@ def hold_from(spec: str | int | None) -> Hold | None:
     return Hold(until=(utcnow() + timedelta(minutes=minutes)).isoformat(timespec="seconds"))
 
 
-def caption_for(item: Item) -> str:
+def caption_for(item: Item, polish: PolishText | None = None) -> str:
     if item.kind == ItemKind.PHOTO:
         parts = [item.date_text, item.photo.caption if item.photo else ""]
         return " · ".join(p for p in parts if p)
-    parts = [item.artist, item.title]
+    parts = [item.artist, polish.title if polish else item.title]
     text = " — ".join(p for p in parts if p)
-    return f"{text}, {item.date_text}" if item.date_text else text
+    date = (polish.date if polish else "") or item.date_text
+    return f"{text}, {date}" if date else text
 
 
-def text_block_for(item: Item) -> TextBlock:
-    """What the DESCRIPTION mode prints on the mat."""
+def text_block_for(item: Item, polish: PolishText | None = None) -> TextBlock:
+    """What the DESCRIPTION mode prints on the mat; with ``polish``, in Polish."""
     if item.kind == ItemKind.PHOTO:
         info = item.photo
         title = (info.caption if info and info.caption else "") or item.title
         when = item.date_text or (info.taken_at[:10] if info and info.taken_at else "")
         who = info.contributor if info and info.contributor else ""
         return TextBlock(title=title, meta=[m for m in (when, who) if m])
+    if polish is not None:
+        who = item.artist
+        if who and polish.artist_note:
+            who = f"{who}, {polish.artist_note}"
+        when, medium = polish.date or item.date_text, polish.medium or item.medium
+        detail = " · ".join(p for p in (when, medium) if p)
+        return TextBlock(
+            title=polish.title, meta=[m for m in (who, detail) if m], body=polish.frame
+        )
     detail = " · ".join(p for p in (item.date_text, item.medium) if p)
     body = item.description or ", ".join(p for p in (item.museum, item.credit) if p)
     return TextBlock(title=item.title, meta=[m for m in (item.artist, detail) if m], body=body)
+
+
+async def _settled(future: Future[Note | None], seconds: float, item_id: str) -> bool:
+    """Whether the Polish texts asked for came within ``seconds``."""
+    try:
+        await asyncio.wait_for(asyncio.shield(asyncio.wrap_future(future)), seconds)
+    except TimeoutError:
+        log.info("Polish texts of %s not ready after %.0f s", item_id, seconds)
+        return False
+    except Exception as err:  # the model is unavailable: English it is
+        log.info("Polish texts of %s failed: %s", item_id, err)
+        return False
+    return True
 
 
 def _when_taken(item: Item) -> str:
@@ -477,10 +507,38 @@ class Player:
             base.layout.detail = framing.detail
             base.layout.picture_crop = framing.picture
             base.layout.fit_crop = framing.fit
+        polish = self.polish(item, settings)
         if pres.fit in (Fit.DESCRIPTION, Fit.AUTO):  # AUTO may come out as DESCRIPTION
-            base.text = text_block_for(item)
-        base.caption = caption_for(item) if pres.label else None
+            base.text = text_block_for(item, polish)
+        base.caption = caption_for(item, polish) if pres.label else None
         return base
+
+    # -- Polish texts --------------------------------------------------------
+
+    def _wants_text(self, item: Item, settings: FrameSettings) -> bool:
+        pres = self.presentation(item, settings)
+        return pres.fit in (Fit.DESCRIPTION, Fit.AUTO) or pres.label
+
+    def polish(self, item: Item, settings: FrameSettings) -> PolishText | None:
+        """The work's Polish texts when they are on and written already."""
+        if not self._wants_text(item, settings):
+            return None
+        return self.service.pl_text.text(item)
+
+    def _ask_polish(self, item: Item, settings: FrameSettings) -> Future[Note | None] | None:
+        """Ask for the work's Polish texts first in line, if it has none yet."""
+        job = self.service.pl_text
+        if not job.enabled() or not job.applies(item) or not self._wants_text(item, settings):
+            return None
+        future = self.service.ai.need_now(item.id, job.kind)
+        return None if future.done() else future
+
+    async def wait_for_polish(self, item: Item, settings: FrameSettings, seconds: float) -> None:
+        """Wait up to ``seconds`` for the work's Polish texts; the English ones
+        are shown when they take longer (or fail). Never raises."""
+        future = self._ask_polish(item, settings)
+        if future is not None:
+            await _settled(future, seconds, item.id)
 
     async def show(self, item: Item, reason: str, hold: Hold | None = None) -> None:
         """Render ``item``, publish it and tell the panel. Never raises."""
@@ -492,6 +550,7 @@ class Player:
 
             async def work() -> None:
                 self.service.progress.begin(item.title)
+                await self.wait_for_polish(item, settings, POLISH_SHOW_SECONDS)
                 await self._publish(board, settings)
                 if state.current_item_id and state.current_item_id != item.id:
                     state.history = [*state.history, state.current_item_id][-HISTORY_MAX:]
@@ -539,6 +598,7 @@ class Player:
 
             async def work() -> None:
                 self.service.progress.begin(item.title)
+                await self.wait_for_polish(item, settings, POLISH_SHOW_SECONDS)
                 await self._publish(board, settings)
                 state.current_group = [i.id for i in board[1:]]
                 state.last_error = None
@@ -621,12 +681,19 @@ class Player:
         if not upcoming or self.multi(upcoming[0], settings):
             return
         item = upcoming[0]
+        if (future := self._ask_polish(item, settings)) is not None:
+            # Drawn again once its Polish texts are there.
+            self.service.background(self._render_when_ready(future, item.id))
         try:
             image = await self._originals([item], settings)
             render_settings = self.render_settings(item, settings)
             await run_in_threadpool(self.service.render_content, image, render_settings)
         except Exception as err:  # it is drawn again at its turn
             log.info("rendering %s ahead failed: %s", item.id, err)
+
+    async def _render_when_ready(self, future: Future[Note | None], item_id: str) -> None:
+        if await _settled(future, POLISH_AHEAD_SECONDS, item_id):
+            await self.render_ahead()
 
     async def _push(self, state: PlayerState) -> None:
         if not self.service.device_configured:
