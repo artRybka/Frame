@@ -42,6 +42,20 @@ def test_title_key_drops_what_sources_add() -> None:
     )
     assert title_key("Les Nymphéas, 1906", "Monet") == "nympheas"
     assert title_key("Vincent van Gogh") == "vincent gogh"  # nothing else to go by
+    # Commons file names: the artist as Commons calls him, where the work
+    # hangs, which scan.
+    vermeer = "Johannes Vermeer"
+    for name in (
+        "Jan Vermeer van Delft - The Glass of Wine - Google Art Project",
+        "Johannes Vermeer, The Glass of Wine, The Metropolitan Museum of Art",
+        "Johannes Vermeer - The Glass of Wine - WGA24652",
+        "Johannes Vermeer - The Glass of Wine - 406 - Mauritshuis",
+    ):
+        assert title_key(name, vermeer) == "glass wine", name
+    # Commas within a title stay.
+    assert title_key("Officer and Laughing Girl, after Vermeer", "Jacquemart") == (
+        "officer laughing girl after vermeer"
+    )
 
 
 def test_same_work_across_sources() -> None:
@@ -129,6 +143,15 @@ def test_library_hides_copies_the_server_added(tmp_path) -> None:
     # The owner keeps the Openverse copy: now that one is the work's copy.
     lib.update("openverse:1", pooled=False)
     assert lib.spare_copies() == {"met:2", "wmc:3", "aic:5"}
+    # Both copies kept by the owner: the catalogue lists the work once, in
+    # the copy from the more reliable source.
+    lib.update("met:2", pooled=False)
+    assert {i.id for i in lib.query()[1]} == {"met:2", "europeana:4"}
+    assert {i.id for i in lib.query(PlaylistRules(query="Wheat"))[1]} == {"met:2"}
+    # Only the Openverse copy is a favourite: that one stands for the work there.
+    lib.update("openverse:1", favorite=True)
+    assert [i.id for i in lib.query(PlaylistRules(favorites_only=True))[1]] == ["openverse:1"]
+    lib.update("met:2", pooled=True)
 
     manual = lib.save_playlist(
         Playlist(name="Mine", kind=PlaylistKind.MANUAL, item_ids=["openverse:1", "europeana:4"])
@@ -272,8 +295,26 @@ def test_aggregators_pass_on_several_collections() -> None:
         url="https://commons.wikimedia.org/w/index.php?curid=1",
     )
     assert origin(met) == "openverse:metmuseum.org" and same_work(met, commons)
-    # Two of one collection's works still aren't copies.
-    assert not same_work(commons, commons.model_copy(update={"id": "openverse:c"}))
+    # Two of one museum's works still aren't copies...
+    other = met.model_copy(
+        update={"id": "openverse:c", "url": "https://www.metmuseum.org/art/collection/search/9"}
+    )
+    assert not same_work(met, other)
+    # ...but two files on Commons may be, dated alike and of one shape.
+    scan = _work("wmc", 1, title="Johannes Vermeer - Het melkmeisje - Google Art Project")
+    scan = scan.model_copy(update={"artist": "Johannes Vermeer", "year": 1660})
+    rescan = scan.model_copy(
+        update={"id": "wmc:2", "title": "Johannes Vermeer - Het melkmeisje - rijksmuseum - 001"}
+    )
+    sized = {"width": 4000, "height": 4485}
+    assert same_work(scan.model_copy(update=sized), rescan.model_copy(update=sized))
+    assert not same_work(scan, rescan)  # shapes unknown
+    assert not same_work(
+        scan.model_copy(update=sized), rescan.model_copy(update={**sized, "year": None})
+    )
+    assert not same_work(
+        scan.model_copy(update=sized), rescan.model_copy(update={"width": 4485, "height": 3000})
+    )
 
     rijks = _work(
         "rijks",
