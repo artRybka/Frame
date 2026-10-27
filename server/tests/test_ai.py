@@ -14,7 +14,7 @@ from conftest import jpeg_bytes
 from fastapi.testclient import TestClient
 
 from frame_server.ai import AiConfigUpdate, AiUnavailable
-from frame_server.ai.client import BATCH_DISCOUNT, HAIKU
+from frame_server.ai.client import BATCH_DISCOUNT, HAIKU, cost
 from frame_server.ai.keywords import KIND, words_and_terms
 from frame_server.config import Settings
 from frame_server.library import Item, ItemKind, PhotoInfo, PlaylistRules
@@ -290,3 +290,9 @@ def test_frame_env_key_is_the_fallback(tmp_path: Path) -> None:
         view = client.get("/api/ai").json()
         assert view["key_set"] is True and view["key_from_app"] is False
         assert view["key_tail"] == "wxyz"
+
+
+def test_a_dated_model_id_costs_as_its_model() -> None:
+    usage = SimpleNamespace(input_tokens=1_000_000, output_tokens=0)
+    assert cost(f"{HAIKU}-20261015", usage) == pytest.approx(0.10)
+    assert cost("claude-unknown", usage) == pytest.approx(2.00)

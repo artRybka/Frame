@@ -71,8 +71,17 @@ class Answer:
     model: str
 
 
+def _price(model: str) -> Price:
+    """The model's price; a dated id ("claude-haiku-5-5-2026…") counts as its
+    model, an unknown model as the dearest."""
+    for known, price in PRICES.items():
+        if model == known or model.startswith(f"{known}-"):
+            return price
+    return PRICES[SONNET]
+
+
 def cost(model: str, usage: Any, batch: bool = False) -> float:
-    price = PRICES.get(model, PRICES[SONNET])  # an unknown model: count it dear
+    price = _price(model)
     usd = (
         (usage.input_tokens or 0) * price.input
         + (getattr(usage, "cache_creation_input_tokens", 0) or 0) * price.cache_write
