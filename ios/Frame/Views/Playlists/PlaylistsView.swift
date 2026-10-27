@@ -5,6 +5,8 @@ struct PlaylistsView: View {
     @Environment(AppModel.self) private var model
     @State private var editing: Playlist?
     @State private var path = NavigationPath()
+    /// The playlist whose deletion waits for a yes.
+    @State private var deleting: PlaylistSummary?
 
     private var active: PlaylistSummary? {
         guard let id = model.settings?.playlistId else { return nil }
@@ -28,6 +30,7 @@ struct PlaylistsView: View {
                                 PlaylistCard(playlist: playlist, isActive: playlist.id == active?.id)
                             }
                             .buttonStyle(.plain)
+                            .contextMenu { menu(playlist) }
                         }
                         Button {
                             editing = Playlist(name: "")
@@ -61,6 +64,16 @@ struct PlaylistsView: View {
             .sheet(item: $editing) { playlist in
                 PlaylistEditorView(playlist: playlist)
             }
+            .confirmationDialog(
+                "Usunąć playlistę „\(deleting?.name ?? "")”?",
+                isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
+                titleVisibility: .visible,
+                presenting: deleting
+            ) { playlist in
+                Button("Usuń", role: .destructive) {
+                    Task { await delete(playlist) }
+                }
+            }
             .refreshable { await model.refreshPlaylists() }
             .task { if model.playlists.isEmpty { await model.refreshPlaylists() } }
             .onChange(of: model.playlists.first?.id) { _, first in
@@ -76,6 +89,32 @@ struct PlaylistsView: View {
                 }
             }
         }
+    }
+}
+
+extension PlaylistsView {
+    /// Held on a cover: present it on the frame, or delete it ("Ulubione" stays).
+    @ViewBuilder
+    private func menu(_ playlist: PlaylistSummary) -> some View {
+        if playlist.id != active?.id {
+            Button("Prezentuj na ramce", systemImage: "photo.artframe") {
+                Task { await model.play(playlist) }
+            }
+            .disabled(playlist.itemCount == 0)
+        }
+        if !playlist.isFavorites {
+            Button("Usuń playlistę", systemImage: "trash", role: .destructive) { deleting = playlist }
+        }
+    }
+
+    private func delete(_ playlist: PlaylistSummary) async {
+        do {
+            try await model.backend.deletePlaylist(id: playlist.id)
+            model.toast = "Usunięto „\(playlist.name)”"
+        } catch {
+            model.show(error)
+        }
+        await model.refreshPlaylists()
     }
 }
 

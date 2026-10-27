@@ -31,12 +31,12 @@ struct PlaylistEditorView: View {
     @State private var typing = false
     /// Where the squares start, from the top of the scrolled content.
     @State private var squaresTop: CGFloat = 0
-    @State private var saving = false
+    /// "Zapisz" was tapped on a smart playlist with nothing searched.
+    @State private var rulesMissing = false
     @State private var museums: [Museum] = []
     @State private var picked: [PhotosPickerItem] = []
     @State private var photos: [PickedPhoto] = []
     @State private var loadingPhotos = false
-    @State private var uploaded = 0
     /// Also fetch this many matching museum works into the library (0: no).
     @State private var fetchCount: Int
     @State private var album: AlbumSource
@@ -69,7 +69,7 @@ struct PlaylistEditorView: View {
 
     /// With no name "Zapisz" still works: it takes you to the name.
     private var canSave: Bool {
-        !saving && (playlist.kind != .album || !album.url.trimmingCharacters(in: .whitespaces).isEmpty)
+        playlist.kind != .album || !album.url.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
     private var hasName: Bool { !playlist.name.trimmingCharacters(in: .whitespaces).isEmpty }
@@ -130,13 +130,19 @@ struct PlaylistEditorView: View {
                     }
                     ToolbarItem(placement: .confirmationAction) {
                         Button("Zapisz") {
-                            if hasName {
-                                Task { await save() }
-                            } else {
+                            if !hasName {
                                 // Up to the name, with the keyboard out.
                                 nameMissing = true
                                 withAnimation(.snappy) { scroller.scrollTo(Self.nameID, anchor: .top) }
                                 nameFocused = true
+                            } else if playlist.kind == .smart, playlist.rules.isEmpty {
+                                // With no rules it would be the whole catalogue.
+                                withAnimation(.snappy) {
+                                    rulesMissing = true
+                                    scroller.scrollTo(Self.nameID, anchor: .top)
+                                }
+                            } else {
+                                save()
                             }
                         }
                         .disabled(!canSave)
@@ -154,7 +160,6 @@ struct PlaylistEditorView: View {
             .task(id: playlist.kind == .album ? nil : searched.wrappedValue) { await askMuseums() }
             .task(id: picked) { await loadPhotos() }
             .task(id: playlist.kind == .album ? album.url : "") { await checkAlbum() }
-            .interactiveDismissDisabled(saving)
         }
     }
 
@@ -202,6 +207,15 @@ struct PlaylistEditorView: View {
                 if playlist.kind == .smart, fetchCount == 0, fetchBlocker == nil { fetchCount = 100 }
             }
             if playlist.kind == .smart {
+                if rulesMissing, playlist.rules.isEmpty {
+                    Label(
+                        "Wyszukaj coś albo wybierz z \(Image(systemName: "plus.circle.fill")): bez tego playlista objęłaby cały katalog.",
+                        systemImage: "exclamationmark.circle"
+                    )
+                    .font(.footnote.weight(.medium))
+                    .foregroundStyle(Theme.bad)
+                    .fixedSize(horizontal: false, vertical: true)
+                }
                 fetchRow
             }
             if !typing {
@@ -331,15 +345,12 @@ struct PlaylistEditorView: View {
                 Label(photos.isEmpty ? "Dodaj zdjęcia z rolki" : "Zmień wybór zdjęć", systemImage: "photo.on.rectangle.angled")
             }
             .buttonStyle(SecondaryButtonStyle())
-            .disabled(saving)
             if loadingPhotos {
                 ProgressView("Wczytywanie zdjęć…")
                     .frame(maxWidth: .infinity)
             }
             if !photos.isEmpty {
-                Text(saving
-                     ? "Wysyłanie: \(uploaded) z \(uploaded + photos.count)…"
-                     : "\(Names.photos(photos.count)) trafi do biblioteki i do tej playlisty po zapisaniu.")
+                Text("\(Names.photos(photos.count)) trafi do biblioteki i do tej playlisty po zapisaniu.")
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(Theme.accent)
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 4), spacing: 6) {
@@ -755,42 +766,48 @@ struct PlaylistEditorView: View {
         photos = loaded
     }
 
-    private func save() async {
-        saving = true
-        uploaded = 0
-        defer { saving = false }
+    /// Closes the editor at once; photos, the playlist and what follows are
+    /// sent in the background, reported in toasts.
+    private func save() {
+        var playlist = playlist
+        if !photos.isEmpty { playlist.kind = .manual }
+        if playlist.kind == .album {
+            var album = album
+            album.url = album.url.trimmingCharacters(in: .whitespacesAndNewlines)
+            playlist.album = album
+        } else {
+            playlist.album = nil
+        }
+        let uploads = photos.map(\.upload)
+        let fetch = playlist.kind == .smart && fetchBlocker == nil ? fetchCount : 0
+        Task { [model] in await Self.store(playlist, uploads: uploads, fetch: fetch, model: model) }
+        dismiss()
+    }
+
+    @MainActor
+    private static func store(_ playlist: Playlist, uploads: [PhotoUpload], fetch: Int, model: AppModel) async {
+        var playlist = playlist
+        let name = playlist.name
         do {
-            // Photos first, one by one; each uploaded one leaves the list, so
-            // a retry after an error does not add it twice.
-            if !photos.isEmpty { playlist.kind = .manual }
-            while let photo = photos.first {
-                let item = try await model.backend.uploadPhoto(photo.upload)
+            if !uploads.isEmpty { model.toast = "„\(name)”: wysyłam \(Names.photos(uploads.count))…" }
+            for upload in uploads {
+                let item = try await model.backend.uploadPhoto(upload)
                 playlist.itemIds.append(item.id)
-                photos.removeFirst()
-                uploaded += 1
-            }
-            picked = []
-            if playlist.kind == .album {
-                album.url = album.url.trimmingCharacters(in: .whitespacesAndNewlines)
-                playlist.album = album
-            } else {
-                playlist.album = nil
             }
             let saved = try await model.backend.savePlaylist(playlist)
-            await model.refreshPlaylists()
-            model.toast = "Zapisano „\(playlist.name)”"
+            model.toast = "Zapisano „\(name)”"
+            model.libraryChanged()
             if saved.playlist.kind == .album, saved.playlist.albumSync == nil {
                 // A new album (or a new link): its first sync is running.
                 let jobID = try await model.backend.syncAlbum(playlistID: saved.playlist.id)
-                model.toast = "Zapisano „\(playlist.name)”, pobieram miniatury zdjęć"
-                Task { [model, name = playlist.name] in await Self.followSync(jobID, name: name, model: model) }
+                model.toast = "Zapisano „\(name)”, pobieram miniatury zdjęć"
+                await followSync(jobID, name: name, model: model)
             }
-            if playlist.kind == .smart, fetchCount > 0, fetchBlocker == nil {
-                let jobID = try await model.backend.fillLibrary(rules: playlist.rules, count: fetchCount)
-                model.toast = "Zapisano „\(playlist.name)”, pobieram do \(fetchCount) dzieł w tle"
-                Task { [model, name = playlist.name] in await Self.followFill(jobID, name: name, model: model) }
+            if saved.playlist.kind == .smart, fetch > 0 {
+                let jobID = try await model.backend.fillLibrary(rules: playlist.rules, count: fetch)
+                model.toast = "Zapisano „\(name)”, pobieram do \(fetch) dzieł w tle"
+                await followFill(jobID, name: name, model: model)
             }
-            dismiss()
         } catch {
             model.show(error)
         }

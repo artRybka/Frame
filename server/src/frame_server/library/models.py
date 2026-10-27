@@ -161,6 +161,24 @@ class PlaylistRules(BaseModel):
     #: Works the owner removed from this smart playlist although they match.
     exclude_ids: list[str] = Field(default_factory=list)
 
+    def is_empty(self) -> bool:
+        """No filter at all: the whole catalogue (exceptions don't count)."""
+        return not (
+            self.query.strip()
+            or self.artists
+            or self.styles
+            or self.subjects
+            or self.terms
+            or self.colors
+            or self.kinds
+            or self.sources
+            or self.year_from is not None
+            or self.year_to is not None
+            or self.favorites_only
+            or self.kept_only
+            or self.min_suitability is not None
+        )
+
 
 class PlaylistKind(StrEnum):
     SMART = "smart"

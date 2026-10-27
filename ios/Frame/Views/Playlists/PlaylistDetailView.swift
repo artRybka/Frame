@@ -21,6 +21,13 @@ struct PlaylistDetailView: View {
                     header(detail.playlist)
                     if !detail.items.isEmpty {
                         MasonryGrid(items: detail.items) { item in card(item) }
+                        if detail.playlist.kind == .smart, detail.playlist.itemCount > detail.items.count {
+                            // The server lists a part of a very large playlist.
+                            Text("Widać \(Names.works(detail.items.count)) z \(detail.playlist.itemCount).")
+                                .font(.footnote)
+                                .foregroundStyle(Theme.inkSoft)
+                                .frame(maxWidth: .infinity)
+                        }
                     } else {
                         EmptyStateView(
                             title: "Pusta playlista",
@@ -59,7 +66,7 @@ struct PlaylistDetailView: View {
                                 restoreRemoved()
                             }
                         }
-                        if detail?.playlist.isFavorites == false {
+                        if detail?.playlist.isFavorites != true {
                             // "Ulubione" is always there, even with no hearts.
                             Button("Usuń playlistę", systemImage: "trash", role: .destructive) { confirmDelete = true }
                         }
