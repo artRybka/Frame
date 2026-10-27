@@ -674,3 +674,50 @@ async def test_economy_check_with_nothing_to_show(
         assert not service.power.deep_asleep(_at("2026-10-27T18:59:40"))
     finally:
         await panel.stop()
+
+
+async def test_refused_alarm_keeps_the_wifi_on(tmp_path: Path, server_ssl: ssl.SSLContext) -> None:
+    """Firmware 1130.7 NAKs every hh:mm write of 0x25: the panel could not
+    wake itself, so it never sleeps with the Wi-Fi off, at night or in the
+    economy mode (which then works as online)."""
+
+    def handler(command: int, data: bytes) -> tuple[bool, bytes]:
+        if command == CMD_STATUS:
+            return True, bytes([0x73, 0x00, 0x01, 0x01, 80, 0x02, 0x00])  # battery
+        if command == CMD_NETWORK_STANDBY and not data:
+            return True, b"\x01"
+        if command == CMD_ON_TIMER and len(data) > 1:
+            return False, b"\x01"  # NAK
+        if command in (0x0E, 0x10, 0x0B, 0x67):
+            return True, b"X"
+        return True, b"\x00" if command == CMD_ON_TIMER else b""
+
+    panel = FakePanel(server_ssl, handler=handler)
+    await panel.start()
+    try:
+        settings = Settings(
+            data_dir=tmp_path,
+            seed_library=False,
+            scheduler=False,
+            public_host="127.0.0.1",
+            device_host="127.0.0.1",
+            device_pin="123456",
+            device_port=panel.port,
+        )
+        service = FrameService(settings)
+        service.ensure_initial_content()
+        await service.status.refresh()
+
+        await service.power.tick(_at("2026-10-27T22:01"))
+        assert (CMD_NETWORK_STANDBY, b"\x00") not in panel.received
+        assert (CMD_POWER, b"\x00") in panel.received  # light sleep
+        assert not service.power.deep_asleep(_at("2026-10-27T23:00"))
+        assert service.status.status.alarm_refused
+        assert service.power.state.timer is None
+
+        service.player.save_settings(FrameSettings(power_mode="economy"))
+        assert not service.power.economy
+        assert not await service.power.enter_deep(_at("2026-10-28T12:00"))
+        assert (CMD_NETWORK_STANDBY, b"\x00") not in panel.received
+    finally:
+        await panel.stop()

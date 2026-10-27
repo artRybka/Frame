@@ -230,9 +230,15 @@ Co pozwala ekran (EMDX 224B, firmware 1130.7):
 - Bateria: samsung-epaper-calendar zmierzył 1,5–2% na godzinę w uśpieniu
   z network standby (ok. 4%/h obudzony). Samsung podaje do ok. 200 dni przy
   jednej zmianie dziennie. Własny pomiar do zrobienia.
-- Budzik `0x25` na naszym egzemplarzu jeszcze niepotwierdzony (E13);
-  samsung-epaper-calendar pisze, że ekran odrzuca komendy timerów `A4–AE`
-  (`0x25` tam nie sprawdzano).
+- **Budzika nie da się ustawić przez MDC (E13, 2026-10-27, firmware
+  1130.7).** Każdy zapis `0x25` w formacie `[en, repeat, hh, mm, 01]` (także
+  w innych długościach i z AM/PM) kończy się NAK `01`. `0x25` przyjmuje
+  tylko jeden bajt `00–05` i tyle samo zwraca przy odczycie, bez godziny.
+  Serwer więc nigdy nie ustawił budzika, także dla ciszy nocnej. Szukamy
+  innej drogi (ustawienia aplikacji Samsung E-Paper). Do tego czasu serwer
+  po odmowie (`alarm_refused`) nie wyłącza Wi-Fi: ani w nocy, ani w trybie
+  Oszczędnym, który działa wtedy jak Online, a aplikacja to mówi. Próbuje
+  ponownie raz na dobę.
 
 Jak działa (`power.py`, `PowerManager.enter_deep` i `_economy_tick`):
 

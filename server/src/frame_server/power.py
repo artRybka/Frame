@@ -33,8 +33,8 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel
 
-from .device import MdcError
-from .device.mdc import ON_TIMER_REPEAT
+from .device import MdcConnectionError, MdcError
+from .device.mdc import ON_TIMER_REPEAT, MdcClient
 from .schedule import (
     FrameSettings,
     in_quiet_hours,
@@ -69,6 +69,9 @@ CHECK_SLEEP_AFTER = 60.0
 # Economy: a wake closer than this is not worth a deep sleep, and a change
 # due within it keeps a woken panel awake for it.
 WAKE_MARGIN = timedelta(minutes=2)
+# The panel refused the alarm (firmware 1130.7 NAKs every hh:mm write of
+# 0x25): no deep sleep, and another try only after this long.
+ALARM_RETRY = timedelta(days=1)
 
 
 class PowerState(BaseModel):
@@ -84,6 +87,9 @@ class PowerState(BaseModel):
     wake_at: str | None = None
     woke_for: str | None = None
     missed_wake: str | None = None
+    # When the panel last refused the alarm (NAK): it cannot wake itself, so
+    # it never sleeps with the Wi-Fi off.
+    alarm_refused: str | None = None
 
 
 class WakeResult(BaseModel):
@@ -132,12 +138,38 @@ class PowerManager:
         self.service.library.set_state(POWER_KEY, state.model_dump(mode="json"))
         self.service.status.status.pending_push = state.pending_push
         self.service.status.status.wakes_at = state.timer
+        self.service.status.status.alarm_refused = state.alarm_refused is not None
 
     @property
     def economy(self) -> bool:
-        """ "Oszczędny" on battery: the Wi-Fi is off between the alarm's wakes."""
+        """Economy ("Oszczędny") on battery: the Wi-Fi is off between the
+        alarm's wakes. Not while the panel refuses the alarm: then it works
+        as online."""
         economy = self.service.player.settings.power_mode == "economy"
-        return economy and self.service.status.on_battery
+        return economy and self.service.status.on_battery and self.alarm_works()
+
+    def alarm_works(self) -> bool:
+        refused = self.state.alarm_refused
+        return refused is None or datetime.now(UTC) - datetime.fromisoformat(refused) >= ALARM_RETRY
+
+    async def _set_alarm(self, mdc: MdcClient, wake: time) -> bool:
+        """The panel's own alarm, daily at ``wake``; False when it refuses."""
+        try:
+            await mdc.set_on_timer(wake.hour, wake.minute, ON_TIMER_REPEAT["daily"])
+        except MdcConnectionError:
+            raise
+        except MdcError as err:
+            state = self.state
+            state.alarm_refused = datetime.now(UTC).isoformat(timespec="seconds")
+            state.timer = None
+            self._save(state)
+            log.warning("the panel refused the alarm (%s): no sleep with the Wi-Fi off", err)
+            return False
+        state = self.state
+        if state.alarm_refused is not None:
+            state.alarm_refused = None
+            self._save(state)
+        return True
 
     def mark_pending(self, pending: bool) -> None:
         state = self.state
@@ -156,6 +188,7 @@ class PowerManager:
             self.service.status.on_battery
             and in_quiet_hours(now, settings)
             and state.night_of == night_key(now, settings)
+            and state.standby_off  # the Wi-Fi did go off (the alarm was taken)
         )
 
     def wakes_at(self, now: datetime) -> datetime | None:
@@ -211,7 +244,8 @@ class PowerManager:
         """Set the panel's alarm to the morning change, every day."""
         wake = alarm_time(settings)
         async with self.service.panel.session() as mdc:
-            await mdc.set_on_timer(wake.hour, wake.minute, ON_TIMER_REPEAT["daily"])
+            if not await self._set_alarm(mdc, wake):
+                return
         state = self.state
         state.timer = wake.strftime("%H:%M")
         self._save(state)
@@ -225,7 +259,12 @@ class PowerManager:
         wake = alarm_time(settings)
         try:
             async with self.service.panel.waking_session() as mdc:
-                await mdc.set_on_timer(wake.hour, wake.minute, ON_TIMER_REPEAT["daily"])
+                if not await self._set_alarm(mdc, wake):
+                    # It could not wake itself in the morning: light sleep,
+                    # Wake-on-LAN keeps working through the night.
+                    await self.service.panel.power_off(mdc)
+                    self.service.status.note_sleep(deep=False)
+                    return
                 await mdc.set_network_standby(False)
                 await mdc.set_power(False)
         except MdcError as err:
@@ -248,9 +287,8 @@ class PowerManager:
         try:
             async with self.service.panel.waking_session() as mdc:
                 await status.read_battery(mdc)
-                if not status.on_battery:
+                if not status.on_battery or not await self._set_alarm(mdc, local.time()):
                     return False
-                await mdc.set_on_timer(local.hour, local.minute, ON_TIMER_REPEAT["daily"])
                 await mdc.set_network_standby(False)
                 await mdc.set_power(False)
         except MdcError as err:
@@ -338,7 +376,8 @@ class PowerManager:
             return
 
         want = alarm_time(settings).strftime("%H:%M")
-        if state.timer != want and self._due(self._last_arm, now, RETRY_ARM):
+        retry = self._due(self._last_arm, now, RETRY_ARM) and self.alarm_works()
+        if state.timer != want and retry:
             self._last_arm = now
             try:
                 await self.arm(settings)
@@ -509,6 +548,7 @@ class PowerManager:
     async def run(self, period: float = 5.0) -> None:
         self.service.status.status.pending_push = self.state.pending_push
         self.service.status.status.wakes_at = self.state.timer
+        self.service.status.status.alarm_refused = self.state.alarm_refused is not None
         while True:
             try:
                 await self.tick()

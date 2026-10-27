@@ -425,6 +425,9 @@ struct DeviceStatus: Codable, Hashable, Sendable {
     var lastFetchAt: String?
     var pendingPush: Bool?
     var wakesAt: String?
+    /// The frame refused its alarm: it cannot wake itself, so it never
+    /// sleeps with the Wi-Fi off (the economy mode works as online).
+    var alarmRefused: Bool?
     /// "online" | "standby" | "deep_sleep" | "offline"; missing from servers before 0.12.
     var powerState: String?
     /// Not answering, yet still on the Wi-Fi (answers ARP): asleep, not gone.

@@ -493,11 +493,17 @@ struct ScheduleSection: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
-            Text(settings.isEconomy
-                ? "Ramka śpi bez Wi-Fi między pobudkami. Wysłane dzieło pojawi się przy najbliższej."
-                : "Wysłane dzieło pojawia się po około minucie.")
-                .font(.caption)
-                .foregroundStyle(Theme.inkSoft)
+            if settings.isEconomy, model.status?.device.alarmRefused == true {
+                Text("Ramka nie przyjmuje budzika, więc na razie działa jak Online.")
+                    .font(.caption)
+                    .foregroundStyle(Theme.warn)
+            } else {
+                Text(settings.isEconomy
+                    ? "Ramka śpi bez Wi-Fi między pobudkami. Wysłane dzieło pojawi się przy najbliższej."
+                    : "Wysłane dzieło pojawia się po około minucie.")
+                    .font(.caption)
+                    .foregroundStyle(Theme.inkSoft)
+            }
         }
     }
 
