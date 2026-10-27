@@ -249,7 +249,9 @@ def test_favorites_playlist_always_stays(service) -> None:
         assert renamed["name"] == "Serduszka"
         assert renamed["kind"] == "smart" and renamed["rules"]["favorites_only"]
 
-        other = client.post("/api/playlists", json={"name": "Inna"}).json()["playlist"]["id"]
+        other = client.post(
+            "/api/playlists", json={"name": "Inna", "rules": {"colors": ["blue"]}}
+        ).json()["playlist"]["id"]
         assert client.delete(f"/api/playlists/{other}").json() == {"deleted": True}
 
     # A library that lost it (deleted before) gets it back on start.
@@ -348,3 +350,26 @@ def test_streamed_search_shows_each_work_once(service, monkeypatch) -> None:
         # Commons' Poplars in place of Openverse's, shown on the page before.
         assert sorted(works) == ["aic:0", "aic:1", "wmc:2"]
         assert works["wmc:2"]["replaces"] == "openverse:1"
+
+
+def test_a_smart_playlist_needs_a_rule(service) -> None:
+    from frame_server.library import Playlist
+    from frame_server.web import create_app
+    from frame_server.web.playlists_api import DETAIL_LIMIT
+
+    app = create_app(service.settings)
+    svc = app.state.service
+    with TestClient(app) as client:
+        assert client.post("/api/playlists", json={"name": "Wszystko"}).status_code == 422
+        # A manual one may start empty.
+        manual = client.post("/api/playlists", json={"name": "Moja", "kind": "manual"})
+        assert manual.status_code == 200
+
+        # One saved before: its detail lists a part, and it can be deleted.
+        for n in range(DETAIL_LIMIT + 5):
+            svc.library.upsert(_work("met", n, title=f"Work {n}"))
+        everything = svc.library.save_playlist(Playlist(name="Wszystko")).id
+        detail = client.get(f"/api/playlists/{everything}").json()
+        assert len(detail["items"]) == DETAIL_LIMIT
+        assert detail["playlist"]["item_count"] == DETAIL_LIMIT + 5
+        assert client.delete(f"/api/playlists/{everything}").json() == {"deleted": True}

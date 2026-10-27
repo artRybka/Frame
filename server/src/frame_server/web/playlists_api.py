@@ -56,9 +56,16 @@ def _playlist(svc: FrameService, playlist_id: int) -> Playlist:
     return playlist
 
 
+#: A smart playlist's detail lists this many works at most (its count is all).
+DETAIL_LIMIT = 400
+
+
 def _checked(playlist: Playlist) -> Playlist:
     """An album playlist needs a shared album's link; its photos come from
-    the album, not from the request."""
+    the album, not from the request. A smart playlist needs some rule: with
+    none it would be the whole catalogue."""
+    if playlist.kind == PlaylistKind.SMART and playlist.rules.is_empty():
+        raise HTTPException(422, "a smart playlist needs at least one rule")
     if playlist.kind != PlaylistKind.ALBUM:
         return playlist.model_copy(update={"album": None})
     if playlist.album is None:
@@ -79,6 +86,8 @@ def _only_favorites(svc: FrameService, playlist: Playlist) -> bool:
 
 def _detail(svc: FrameService, playlist: Playlist) -> PlaylistDetail:
     items = svc.library.playlist_items(playlist, sort="artist")
+    if playlist.kind == PlaylistKind.SMART:
+        items = items[:DETAIL_LIMIT]  # e.g. one made before empty rules were refused
     return PlaylistDetail(
         playlist=svc.library.playlist_summary(playlist),
         item_ids=playlist.item_ids,
