@@ -6,9 +6,10 @@ import UIKit
 /// it goes to the server as a photo sent once; here it gets its look
 /// ("Wypełnij" or "Passe-partout") and its crop, right on the frame's
 /// preview, then goes on the frame now or next in the queue, and into the
-/// playlist "Historia przesłanych". Its style is always automatic. Nothing
-/// scrolls, so a drag on the preview always moves the photo; another photo
-/// means "Anuluj" first.
+/// playlist "Historia przesłanych". Its style is always automatic. Before
+/// the photo the sheet already looks the same: an empty frame to tap and the
+/// options, its look going up with the photo. Nothing scrolls, so a drag on
+/// the preview always moves the photo; another photo means "Anuluj" first.
 struct SendSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
@@ -36,7 +37,7 @@ struct SendSheet: View {
             VStack(alignment: .leading, spacing: 18) {
                 photoArea
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                if item != nil, let look = Binding($look) {
+                if let look = Binding($look) {  // before a photo too: the look goes up with it
                     lookSection(look)
                     holdSection
                     actions
@@ -74,34 +75,42 @@ struct SendSheet: View {
 
     private var frameAspect: CGFloat { model.isPortrait ? 9.0 / 16.0 : 16.0 / 9.0 }
 
-    @ViewBuilder
+    /// The frame and the crop's tools; before a photo, the frame's screen
+    /// is the way to the camera roll, so the sheet keeps its layout.
     private var photoArea: some View {
-        if let item {
-            VStack(spacing: 10) {
-                framePreview(item)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                cropTools
+        VStack(spacing: 10) {
+            Group {
+                if let item { framePreview(item) } else { emptyFrame }
             }
-        } else if uploading {
-            FramedArtwork(ref: nil, aspectRatio: frameAspect, moulding: 7)
-                .overlay { LoadingBadge(text: "Przygotowuję zdjęcie…") }
-        } else {
-            PhotosPicker(selection: $selection, matching: .images) {
-                VStack(spacing: 12) {
-                    Image(systemName: "photo.on.rectangle.angled")
-                        .font(.system(size: 40, weight: .light))
-                    Text("Wybierz zdjęcie z rolki")
-                        .font(.serif(18, weight: .medium))
-                }
-                .foregroundStyle(Theme.inkSoft)
-                .frame(maxWidth: .infinity, minHeight: 220)
-                .background(
-                    RoundedRectangle(cornerRadius: Theme.corner)
-                        .strokeBorder(Theme.hairline, style: StrokeStyle(lineWidth: 1.5, dash: [6, 5]))
-                )
-            }
-            .buttonStyle(.plain)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            cropTools
         }
+    }
+
+    /// The frame with nothing on it yet: a tap on its screen picks the photo.
+    private var emptyFrame: some View {
+        PhotosPicker(selection: $selection, matching: .images) {
+            FramedArtwork(ref: nil, aspectRatio: frameAspect, moulding: 7) {
+                if !uploading {
+                    VStack(spacing: 12) {
+                        Image(systemName: "photo.on.rectangle.angled")
+                            .font(.system(size: 40, weight: .light))
+                        Text("Wybierz zdjęcie z rolki")
+                            .font(.serif(18, weight: .medium))
+                            .multilineTextAlignment(.center)
+                    }
+                    .foregroundStyle(Theme.inkSoft)
+                    .padding(16)
+                }
+            }
+            .overlay {
+                if uploading { LoadingBadge(text: "Przygotowuję zdjęcie…") }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(uploading)
+        .accessibilityLabel("Wybierz zdjęcie z rolki")
     }
 
     /// The crop is loaded for the photo's look: its windows can be moved.
