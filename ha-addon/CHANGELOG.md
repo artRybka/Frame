@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.20.0
+
+- Szukaj: każde dzieło raz także w katalogu (z kilku kopii tego samego
+  dzieła widać najlepszą) i wśród plików z Wikimedia Commons, gdzie wiele
+  obrazów ma kilka skanów; pliki jednej kolekcji porównują się po tytule,
+  autorze, roku i proporcjach. Nazwy plików z Commons tracą dopiski typu
+  „Jan Vermeer van Delft”, „WGA24652” czy nazwę muzeum.
+- Szukaj: przeciągnięcie za koniec wyników naprawdę doczytuje kolejne
+  strony z muzeów (wcześniej działało tylko stuknięcie w kwadraciki).
+- Playlisty: „Zapisz” od razu zamyka edytor, a wysyłanie zdjęć, zapis,
+  synchronizacja albumu i pobieranie z muzeów idą w tle z komunikatami.
+- Inteligentna playlista bez żadnej reguły (cały katalog) nie da się
+  zapisać: edytor mówi, czego brakuje, serwer odpowiada 422. Karta
+  inteligentnej playlisty pokazuje najwyżej 400 dzieł, więc zapisana
+  wcześniej taka playlista znowu się otwiera i można ją usunąć.
+- Przytrzymanie okładki playlisty: „Prezentuj na ramce” i „Usuń
+  playlistę”. „Usuń” w menu karty jest też, zanim karta się wczyta.
+
 ## 0.19.0
 
 - Playlisty: ręczna playlista ma to samo wyszukiwanie co inteligentna;
