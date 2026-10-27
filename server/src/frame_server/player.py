@@ -9,7 +9,7 @@ import threading
 from collections import Counter
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import httpx
 from PIL import Image
@@ -22,7 +22,7 @@ from .imaging.grids import MAX_PHOTOS, MIN_PHOTOS
 from .imaging.layout import Fit
 from .imaging.text import TextBlock
 from .library import AlbumOrder, Item, ItemKind, Job, Playlist, PlaylistKind, PlaylistRules
-from .library.colors import SCORE_VERSION, score, tint_spread
+from .library.colors import SCORE_VERSION, analyse, tint_spread
 from .library.icloud import refetchable
 from .library.museums import MUSEUMS, Kind
 from .library.style import AUTO, auto_preset
@@ -54,7 +54,7 @@ SET_ASIDE_KEY = "set_aside_dropped"
 #: Bump when ``set_aside`` leaves out more, so the catalogue is cleaned again
 #: (1: photographs and manuscripts, 2: reproductions and B&W copies).
 SET_ASIDE_VERSION = 2
-#: Version of the suitability score the library's pictures carry.
+#: Version of the colour analysis and score the library's pictures carry.
 SCORE_KEY = "suitability_version"
 #: The playlist the photos sent once gather in, newest first.
 SENT_KEY = "sent_photos_playlist"
@@ -866,31 +866,37 @@ class Player:
         )
 
     def rescore(self) -> int:
-        """Once per ``SCORE_VERSION``: score the library's pictures again from
-        their thumbnails (add-on 0.12: colourful works first). Measured
-        before writing, written in one transaction; returns how many."""
+        """Once per ``SCORE_VERSION``: analyse the library's pictures again
+        from their thumbnails (add-on 0.12: colourful works first; 0.21:
+        colour accents). Measured before writing, written in one
+        transaction; returns how many."""
         if self.library.get_state(SCORE_KEY, 1) >= SCORE_VERSION:
             return 0
         images = self.service.images
-        scored: dict[str, tuple[float, float]] = {}
+        analysed: dict[str, dict[str, Any]] = {}
         for item in self.library.query(include_excluded=True)[1]:
             path = images.thumb_path(item)
-            if item.suitability is None or not path.is_file():
+            if (item.suitability is None and not item.colors) or not path.is_file():
                 continue
             try:
                 with Image.open(path) as img:
                     spread = item.tint_spread
                     if spread is None:
                         spread = tint_spread(img)
-                    scored[item.id] = (score(img, self.service.palette, spread), spread)
+                    colors, tags, value = analyse(img, self.service.palette, spread)
             except OSError:
                 log.warning("rescore: cannot read %s", path)
+                continue
+            changes: dict[str, Any] = {"colors": colors, "color_tags": tags, "tint_spread": spread}
+            if item.suitability is not None:
+                changes["suitability"] = value
+            analysed[item.id] = changes
         with self.library.batch():
-            for item_id, (value, spread) in scored.items():
-                self.library.update(item_id, suitability=value, tint_spread=spread)
+            for item_id, changes in analysed.items():
+                self.library.update(item_id, **changes)
             self.library.set_state(SCORE_KEY, SCORE_VERSION)
-        log.info("rescore: %d pictures scored again", len(scored))
-        return len(scored)
+        log.info("rescore: %d pictures analysed again", len(analysed))
+        return len(analysed)
 
     def reset_library(self) -> int:
         """Once, on the owner's wish for a clean start: delete the museum works

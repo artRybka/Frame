@@ -18,7 +18,10 @@ class ItemKind(StrEnum):
 
 class ColorSwatch(BaseModel):
     hex: str
-    weight: float
+    weight: float  # share of the picture
+    #: A small, vivid colour (the Milkmaid's blue apron) listed after the
+    #: dominant ones; its weight counts only the pixels that look like it.
+    accent: bool = False
 
 
 class PhotoInfo(BaseModel):

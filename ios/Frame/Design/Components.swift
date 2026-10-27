@@ -368,24 +368,38 @@ struct Card<Content: View>: View {
     }
 }
 
-/// Proportional strip of the picture's dominant colours.
+/// Proportional strip of the picture's colours: the dominant ones, then its
+/// accents (small, vivid areas), each by its share of the picture.
 struct PaletteStrip: View {
     let swatches: [ColorSwatch]
     var height: CGFloat = 10
+    /// Rounded ends by default.
+    var cornerRadius: CGFloat? = nil
+
+    static let spacing: CGFloat = 2
+
+    /// Each part's width in a strip `width` wide: its share, at least 4 points.
+    static func widths(_ swatches: [ColorSwatch], in width: CGFloat) -> [CGFloat] {
+        let room = max(width - spacing * CGFloat(max(swatches.count - 1, 0)), 0)
+        let total = max(swatches.reduce(0) { $0 + $1.weight }, 0.001)
+        let widths = swatches.map { max(4, room * $0.weight / total) }
+        let scale = min(1, room / max(widths.reduce(0, +), 0.001))
+        return widths.map { $0 * scale }
+    }
 
     var body: some View {
         GeometryReader { geo in
-            let total = max(swatches.reduce(0) { $0 + $1.weight }, 0.001)
-            HStack(spacing: 2) {
-                ForEach(Array(swatches.enumerated()), id: \.offset) { _, swatch in
+            let widths = Self.widths(swatches, in: geo.size.width)
+            HStack(spacing: Self.spacing) {
+                ForEach(Array(swatches.enumerated()), id: \.offset) { index, swatch in
                     Rectangle()
                         .fill(Color(hexString: swatch.hex) ?? Theme.mat)
-                        .frame(width: max(4, geo.size.width * swatch.weight / total - 2))
+                        .frame(width: widths[index])
                 }
             }
         }
         .frame(height: height)
-        .clipShape(Capsule())
+        .clipShape(RoundedRectangle(cornerRadius: cornerRadius ?? height / 2, style: .continuous))
     }
 }
 
