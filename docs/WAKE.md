@@ -319,6 +319,23 @@ done | tee wake.log
 Wyniki trafiają do tabeli w [EXPERIMENTS.md](EXPERIMENTS.md) (wiersz E13)
 i do tabeli komend w [DEVICE_PROTOCOL.md](DEVICE_PROTOCOL.md).
 
+## Wynik E13 (2026-10-27)
+
+- **Budzik `0x25` nie działa** na firmware 1130.7: przyjmuje tylko jeden bajt
+  `00`–`05`, a zapis z godziną kończy się NAK. Aplikacja Samsung E-Paper też
+  nie ma godziny pobudki. Część polityki „w ciszy nocnej” oparta na budziku
+  w tej formie nie zadziała.
+- **WoL na baterii działa** przy network standby wł. i Wi-Fi 2,4 GHz, ale
+  potrzebuje długiej serii: ekran wstał po ok. 60 s i ok. 145 s nadawania
+  co 1 s. Seria 15 s jest za krótka. Na hoście z dwoma interfejsami
+  255.255.255.255 wychodzi trasą domyślną, więc ważny jest broadcast
+  skierowany na podsieć ekranu.
+- Po pobudce ekran sam zasypia po ok. 3 min bezczynności, po `0x11 00`
+  znika z sieci po ok. 20 s.
+- Następny krok: E6 (wpisy `schedule` / `start_time` w manifeście). Opis
+  aplikacji Samsunga mówi o pokazie slajdów z harmonogramem zmienianym
+  „o wyznaczonej godzinie”, więc ekran może sam planować pobudki z manifestu.
+
 ## Źródła
 
 - [Instrukcja EM32DX / EM32DX-A / EM13DX (PDF)](https://media.displaynd.de/media/65/77/76/1775570009/Samsung-EM32DX-A-Benutzerhandbuch.pdf?ts=1775570009): Wi-Fi 2,4 GHz do zdalnego budzenia, Power and Energy Saving, tryb Auto.
