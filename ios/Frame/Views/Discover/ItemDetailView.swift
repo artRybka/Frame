@@ -26,6 +26,10 @@ struct ItemDetailView: View {
     @State private var polish: PolishText?
     @State private var polishWaiting = false
     @State private var showOriginal = false
+    /// What the model saw in the picture (keywords), once it has looked.
+    @State private var seen: [String] = []
+    /// The item the server was asked about, out of turn, as the card opened.
+    @State private var described: String?
 
     /// What a tap on the picture opened on the whole screen.
     enum Opened: String, Identifiable {
@@ -76,8 +80,12 @@ struct ItemDetailView: View {
                 model.show(error)
                 return
             }
+            // Keywords and Polish texts ahead of the background queue.
+            _ = try? await model.backend.describe(itemID: itemID, wait: 0)
+            described = itemID
             await loadPolish()
         }
+        .task(id: described) { await loadSeen() }
         .task(id: view == .frame ? draftKey : "") { await loadFraming() }
         .sheet(isPresented: $showingPlaylists) {
             if let item { AddToPlaylistSheet(item: item, beforeAdding: saveCrop) }
@@ -183,6 +191,19 @@ struct ItemDetailView: View {
             if !polishWaiting { break }
         }
         polishWaiting = false
+    }
+
+    /// Waits for the keywords asked for as the card opened.
+    private func loadSeen() async {
+        seen = []
+        guard let id = described, id == itemID else { return }
+        for attempt in 0..<3 {
+            guard let view = try? await model.backend.describe(itemID: id, wait: attempt == 0 ? 20 : 30),
+                  !Task.isCancelled
+            else { return }
+            seen = view.words
+            if view.status != "waiting" { return }
+        }
     }
 
     /// "O dziele": the museum's description, its Polish translation or a
@@ -498,6 +519,7 @@ struct ItemDetailView: View {
 
     private func facts(_ item: Item) -> some View {
         Card {
+            fact(item.kind == .artwork ? "Na obrazie" : "Na zdjęciu", seen.joined(separator: ", "))
             fact("Technika", nonEmpty(shownPolish?.medium) ?? item.medium)
             fact("Rodzaj", item.classification)
             fact("Pochodzenie", item.culture)

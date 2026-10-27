@@ -80,6 +80,9 @@ class DeviceStatus(BaseModel):
     # A picture waits for the panel to wake (alarm or button), see power.py.
     pending_push: bool = False
     wakes_at: str | None = None  # HH:MM of the panel's own alarm
+    # The panel refused its alarm (MDC 0x25): no deep sleep, so neither the
+    # economy mode nor the night's deep sleep can work.
+    alarm_refused: bool = False
 
 
 def _readable(text: str) -> str | None:

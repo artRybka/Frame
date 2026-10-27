@@ -62,6 +62,39 @@ final class FrameAPITests: XCTestCase {
         delivery = Delivery(state: "waiting", asleepUntil: "07:00")
         XCTAssertEqual(delivery.explanation, "Ramka śpi do 07:00, obraz trafi na nią po przebudzeniu.")
         XCTAssertTrue(Delivery(state: "unknown").isShown)
+
+        // Economy: when the frame's alarm brings it, and a wake it missed.
+        let wake = ISO8601DateFormatter().string(from: Date.now.addingTimeInterval(3 * 3600 + 600))
+        delivery = Delivery(state: "waiting", asleepUntil: "19:00", asleepUntilAt: wake)
+        XCTAssertTrue(delivery.headline.hasPrefix("Pojawi się "))
+        XCTAssertTrue(delivery.explanation.contains("przycisk"))
+        delivery.missedWakeAt = wake
+        XCTAssertTrue(delivery.headline.hasPrefix("Ramka nie obudziła się o "))
+        XCTAssertTrue(delivery.explanation.hasPrefix("Spróbuje znowu "))
+    }
+
+    func testEconomySettingsAndCountdown() throws {
+        var settings = FrameSettings.defaults
+        settings.changeTimes = ["07:00", "19:00"]
+        XCTAssertEqual(settings.checkMinutes, [])
+        settings.powerMode = "economy"
+        settings.checkEveryHours = 4
+        XCTAssertEqual(settings.checkMinutes, [11 * 60, 15 * 60])
+        settings.changeTimes = ["08:00"]
+        settings.checkEveryHours = 6
+        XCTAssertEqual(settings.checkMinutes, [14 * 60])
+        let json = try LiveBackend.encoder().encode(settings)
+        XCTAssertTrue(String(decoding: json, as: UTF8.self).contains("\"power_mode\":\"economy\""))
+        let decoded = try LiveBackend.decoder().decode(FrameSettings.self, from: json)
+        XCTAssertTrue(decoded.isEconomy)
+
+        let now = Date.now
+        let iso = { (seconds: TimeInterval) in ISO8601DateFormatter().string(from: now.addingTimeInterval(seconds)) }
+        XCTAssertEqual(When.countdown(iso(6 * 3600 + 12 * 60), from: now), "za 6 h 12 min")
+        XCTAssertEqual(When.countdown(iso(12 * 60), from: now), "za 12 min")
+        XCTAssertEqual(When.countdown(iso(30), from: now), "za chwilę")
+        XCTAssertEqual(Names.wakes(2), "pobudki")
+        XCTAssertEqual(Names.wakes(5), "pobudek")
     }
 
     func testProgressPhasesAndLabels() {

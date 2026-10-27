@@ -32,6 +32,10 @@ protocol FrameBackend: Sendable {
     /// The work's Polish title and texts, asked for now if it has none;
     /// waits up to `wait` seconds for them.
     func polish(itemID: String, wait: Int) async throws -> PolishView
+    /// The card opened: the server asks the model about this item ahead of
+    /// everything else (keywords, Polish texts); waits up to `wait` seconds
+    /// for the keywords.
+    func describe(itemID: String, wait: Int) async throws -> SeenView
     func setFavorite(id: String, _ favorite: Bool) async throws -> Item
     func setExcluded(id: String, _ excluded: Bool) async throws -> Item
     func show(itemID: String, hold: HoldSpec) async throws

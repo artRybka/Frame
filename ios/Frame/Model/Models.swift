@@ -94,6 +94,14 @@ struct PolishView: Codable, Hashable, Sendable {
     var text: PolishText?
 }
 
+/// What the model saw in a work or photo, for its card.
+struct SeenView: Codable, Hashable, Sendable {
+    /// As in PolishView.
+    var status: String
+    /// Polish words: things, places, the mood.
+    var words: [String]
+}
+
 struct ItemSummary: Codable, Identifiable, Hashable, Sendable {
     let id: String
     var kind: ItemKind
@@ -335,8 +343,12 @@ struct Delivery: Codable, Hashable, Sendable {
     var failedAt: String?
     var failure: String?  // "timeout" or "error"
     var message: String?
-    /// Waiting in deep sleep (Wi-Fi off): HH:MM of the panel's alarm.
+    /// Waiting in deep sleep (Wi-Fi off): HH:MM of the panel's alarm, and
+    /// the moment it rings (servers before the economy mode: nil).
     var asleepUntil: String?
+    var asleepUntilAt: String?
+    /// Economy mode: a wake the frame did not show up for.
+    var missedWakeAt: String?
 
     var isShown: Bool { state == "shown" || state == "unknown" }
     var isWaiting: Bool { state == "waiting" }
@@ -345,10 +357,13 @@ struct Delivery: Codable, Hashable, Sendable {
     /// "Teraz" over the picture that did not reach the frame.
     var headline: String {
         switch state {
-        case "sending": "W drodze na ramkę"
-        case "waiting": "Czeka na ramkę"
-        case "failed": "Nie dotarł na ramkę"
-        default: "Teraz na ramce"
+        case "sending": return "W drodze na ramkę"
+        case "waiting":
+            if let missed = When.clock(missedWakeAt) { return "Ramka nie obudziła się o \(missed)" }
+            if let wake = When.at(asleepUntilAt) { return "Pojawi się \(wake)" }
+            return "Czeka na ramkę"
+        case "failed": return "Nie dotarł na ramkę"
+        default: return "Teraz na ramce"
         }
     }
 
@@ -357,8 +372,15 @@ struct Delivery: Codable, Hashable, Sendable {
         let why: String
         switch state {
         case "waiting":
-            why = asleepUntil.map { "Ramka śpi do \($0), obraz trafi na nią po przebudzeniu." }
-                ?? "Ramka nie odpowiada, obraz trafi na nią, gdy się obudzi."
+            let button = "Wcześniej: naciśnij krótko przycisk z tyłu ramki."
+            if missedWakeAt != nil, let wake = When.at(asleepUntilAt) {
+                why = "Spróbuje znowu \(wake). \(button)"
+            } else if asleepUntilAt != nil {
+                why = "Ramka śpi bez Wi-Fi, żeby oszczędzać baterię. \(button)"
+            } else {
+                why = asleepUntil.map { "Ramka śpi do \($0), obraz trafi na nią po przebudzeniu." }
+                    ?? "Ramka nie odpowiada, obraz trafi na nią, gdy się obudzi."
+            }
         case "failed":
             let when = When.schedule(failedAt).map { " (\($0))" } ?? ""
             switch failure {
@@ -438,6 +460,9 @@ struct DeviceStatus: Codable, Hashable, Sendable {
     var lastFetchAt: String?
     var pendingPush: Bool?
     var wakesAt: String?
+    /// The frame refused its alarm: it cannot wake itself, so it never
+    /// sleeps with the Wi-Fi off (the economy mode works as online).
+    var alarmRefused: Bool?
     /// "online" | "standby" | "deep_sleep" | "offline"; missing from servers before 0.12.
     var powerState: String?
     /// Not answering, yet still on the Wi-Fi (answers ARP): asleep, not gone.
@@ -704,6 +729,14 @@ struct FrameSettings: Codable, Hashable, Sendable {
     var wikiart: Bool? = nil
     /// The frame's name in the app; nil: the name the panel reports.
     var name: String? = nil
+    /// "online" or "economy" ("Oszczędny": on battery the frame sleeps with
+    /// the Wi-Fi off between its own wakes); nil: a server before it.
+    var powerMode: String? = nil
+    /// Economy: also wake every so many hours between the changes, to show
+    /// what was sent from the app; 0: only at the changes.
+    var checkEveryHours: Int? = nil
+
+    var isEconomy: Bool { powerMode == "economy" }
 
     /// Changes whenever the way pictures are framed on the panel changes;
     /// used to refresh cached "on the frame" previews.
@@ -721,7 +754,7 @@ struct FrameSettings: Codable, Hashable, Sendable {
         orientation: "landscape", rotation: 90,
         art: Presentation(preset: "auto", fit: "auto", margin: 0.05, label: false),
         photo: Presentation(preset: "auto", fit: "fill", margin: 0, label: false),
-        timezone: "Europe/Warsaw", statusPollMinutes: 15
+        timezone: "Europe/Warsaw", statusPollMinutes: 15, powerMode: "online", checkEveryHours: 0
     )
 }
 
@@ -729,6 +762,7 @@ extension FrameSettings {
     private enum CodingKeys: String, CodingKey {
         case playlistId, changeTimes, changeEveryDays, quietStart, shuffle, avoidRepeatDays
         case orientation, rotation, art, photo, timezone, statusPollMinutes, privateUse, wikiart, name
+        case powerMode, checkEveryHours
         case quietEnd  // older servers: decoded only
     }
 
@@ -751,6 +785,8 @@ extension FrameSettings {
         privateUse = try c.decodeIfPresent(Bool.self, forKey: .privateUse)
         wikiart = try c.decodeIfPresent(Bool.self, forKey: .wikiart)
         name = try c.decodeIfPresent(String.self, forKey: .name)
+        powerMode = try c.decodeIfPresent(String.self, forKey: .powerMode)
+        checkEveryHours = try c.decodeIfPresent(Int.self, forKey: .checkEveryHours)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -770,6 +806,29 @@ extension FrameSettings {
         try c.encodeIfPresent(privateUse, forKey: .privateUse)
         try c.encodeIfPresent(wikiart, forKey: .wikiart)
         try c.encodeIfPresent(name, forKey: .name)
+        try c.encodeIfPresent(powerMode, forKey: .powerMode)
+        try c.encodeIfPresent(checkEveryHours, forKey: .checkEveryHours)
+    }
+
+    /// Economy: the short wakes between the changes, every `checkEveryHours`
+    /// from the day's first change until its last one (with one change a
+    /// day: for 12 hours after it), as minutes after midnight. As the server
+    /// counts them (`schedule.check_times`).
+    var checkMinutes: [Int] {
+        guard isEconomy, let every = checkEveryHours, every > 0 else { return [] }
+        let changes = changeMinutes
+        guard let first = changes.first, let lastChange = changes.last else { return [] }
+        let last = lastChange == first ? first + 12 * 60 : lastChange
+        return stride(from: first + every * 60, to: last, by: every * 60)
+            .filter { $0 < 24 * 60 && !changes.contains($0) }
+    }
+
+    /// The change times as minutes after midnight, sorted.
+    var changeMinutes: [Int] {
+        changeTimes.compactMap { t -> Int? in
+            let parts = t.split(separator: ":").compactMap { Int($0) }
+            return parts.count == 2 ? parts[0] * 60 + parts[1] : nil
+        }.sorted()
     }
 
     /// When quiet hours end: the first change time after their start.

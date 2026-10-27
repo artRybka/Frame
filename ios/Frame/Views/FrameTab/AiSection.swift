@@ -12,7 +12,7 @@ struct AiSection: View {
     @State private var estimating = false
     @State private var estimate: AiEstimate?
 
-    private static let limits: [Double] = [1, 2, 5, 10, 20, 50]
+    private static let limits: [Double] = [1, 2, 5, 10, 20, 50, 100, 150, 200]
 
     private var limitOptions: [Double] {
         Set(Self.limits + [settings.monthlyLimitUsd]).sorted()
@@ -205,7 +205,7 @@ struct AiSection: View {
         }
         .fontWeight(.semibold)
         .disabled(!settings.keySet || !keywordsOn || estimating || settings.keywordsProgress.preparing)
-        Text("W tle serwer opisuje Twoje zdjęcia i dzieła z ulubionych, playlist i ekranu. Ten przycisk dokłada cały katalog Odkrywaj, taniej, w pakietach.")
+        Text("Otwarte dzieło lub zdjęcie serwer opisuje od razu, poza kolejnością. W tle opisuje Twoje zdjęcia i dzieła z ulubionych, playlist i ekranu. Ten przycisk dokłada cały katalog Odkrywaj, taniej, w pakietach.")
             .font(.caption)
             .foregroundStyle(Theme.inkSoft)
     }

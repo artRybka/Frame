@@ -14,6 +14,14 @@ panel waits as a pending push and goes out as soon as the panel shows up
 again: after the alarm or a press of its button. The same goes for network
 standby: the night turns it off, and until the panel is found again (alarm or
 button) Wake-on-LAN cannot reach it, so the server keeps looking for it.
+
+The economy mode ("Oszczędny") makes every sleep on battery a deep one: after
+each picture the alarm is set to the next wake (the next change, or a check
+between changes), the Wi-Fi goes off and the panel with it. When it wakes,
+the server sends what waited for it, or a check with nothing to show sends
+it straight back to sleep; a change due then goes out the usual way. The
+panel never asks for pictures itself (E7), so a wake only works while the
+server is up. On the charger the economy mode works like the online one.
 """
 
 from __future__ import annotations
@@ -25,9 +33,16 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel
 
-from .device import MdcError
-from .device.mdc import ON_TIMER_REPEAT
-from .schedule import FrameSettings, in_quiet_hours, morning_change, quiet_hours
+from .device import MdcConnectionError, MdcError
+from .device.mdc import ON_TIMER_REPEAT, MdcClient
+from .schedule import (
+    FrameSettings,
+    in_quiet_hours,
+    morning_change,
+    next_change,
+    next_check,
+    quiet_hours,
+)
 from .status import DeviceStatus, PanelPower
 
 if TYPE_CHECKING:
@@ -43,14 +58,22 @@ PROBE_IN_WINDOW = timedelta(seconds=15)
 PROBE_PENDING = timedelta(minutes=2)
 RETRY_ARM = timedelta(minutes=10)
 # "Obudź ramkę": how long to keep sending magic packets and looking for the panel.
-WAKE_BURST_SECONDS = 15
-WAKE_LOOK = timedelta(seconds=30)
+# On battery the panel answered 60 s to 2.5 min into a burst of one packet a
+# second (E13, 2026-10-27): keep sending for 3 minutes, look a bit longer.
+WAKE_BURST_SECONDS = 180
+WAKE_LOOK = timedelta(seconds=190)
 # After the panel downloaded a picture: ~12 s to prepare it and ~31 s to
 # redraw (E2), with a margin, before it is powered off into light sleep.
 LIGHT_SLEEP_AFTER = 90.0
 # "Sprawdź stan" woke the panel on battery only to look at it: back to light
 # sleep after a while, unless something is sent to it first.
 CHECK_SLEEP_AFTER = 60.0
+# Economy: a wake closer than this is not worth a deep sleep, and a change
+# due within it keeps a woken panel awake for it.
+WAKE_MARGIN = timedelta(minutes=2)
+# The panel refused the alarm (firmware 1130.7 NAKs every hh:mm write of
+# 0x25): no deep sleep, and another try only after this long.
+ALARM_RETRY = timedelta(days=1)
 
 
 class PowerState(BaseModel):
@@ -61,12 +84,21 @@ class PowerState(BaseModel):
     # Network standby is off (the night turned it off, or a status check found
     # it off): Wake-on-LAN cannot work until the panel is found and it is back on.
     standby_off: bool = False
+    # Economy mode: when the panel's alarm wakes it next (ISO), the wake it
+    # was found for, and a wake it did not show up for.
+    wake_at: str | None = None
+    woke_for: str | None = None
+    missed_wake: str | None = None
+    # When the panel last refused the alarm (NAK): it cannot wake itself, so
+    # it never sleeps with the Wi-Fi off.
+    alarm_refused: str | None = None
 
 
 class WakeResult(BaseModel):
     sent: bool  # magic packets went out
     woke: bool  # the panel answered MDC afterwards
     asleep_until: str | None = None  # deep sleep: Wake-on-LAN cannot reach it
+    asleep_until_at: str | None = None  # the same as a moment (ISO)
     reason: str | None = None
 
 
@@ -108,6 +140,38 @@ class PowerManager:
         self.service.library.set_state(POWER_KEY, state.model_dump(mode="json"))
         self.service.status.status.pending_push = state.pending_push
         self.service.status.status.wakes_at = state.timer
+        self.service.status.status.alarm_refused = state.alarm_refused is not None
+
+    @property
+    def economy(self) -> bool:
+        """Economy ("Oszczędny") on battery: the Wi-Fi is off between the
+        alarm's wakes. Not while the panel refuses the alarm: then it works
+        as online."""
+        economy = self.service.player.settings.power_mode == "economy"
+        return economy and self.service.status.on_battery and self.alarm_works()
+
+    def alarm_works(self) -> bool:
+        refused = self.state.alarm_refused
+        return refused is None or datetime.now(UTC) - datetime.fromisoformat(refused) >= ALARM_RETRY
+
+    async def _set_alarm(self, mdc: MdcClient, wake: time) -> bool:
+        """The panel's own alarm, daily at ``wake``; False when it refuses."""
+        try:
+            await mdc.set_on_timer(wake.hour, wake.minute, ON_TIMER_REPEAT["daily"])
+        except MdcConnectionError:
+            raise
+        except MdcError as err:
+            state = self.state
+            state.alarm_refused = datetime.now(UTC).isoformat(timespec="seconds")
+            state.timer = None
+            self._save(state)
+            log.warning("the panel refused the alarm (%s): no sleep with the Wi-Fi off", err)
+            return False
+        state = self.state
+        if state.alarm_refused is not None:
+            state.alarm_refused = None
+            self._save(state)
+        return True
 
     def mark_pending(self, pending: bool) -> None:
         state = self.state
@@ -116,13 +180,55 @@ class PowerManager:
             self._save(state)
 
     def deep_asleep(self, now: datetime) -> bool:
-        """In quiet hours on battery the Wi-Fi is off: nothing reaches the panel."""
+        """In quiet hours on battery, or in the economy mode between wakes,
+        the Wi-Fi is off: nothing reaches the panel."""
         settings = self.service.player.settings
+        state = self.state
+        if self.economy and state.standby_off and state.wake_at is not None:
+            return True
         return (
             self.service.status.on_battery
             and in_quiet_hours(now, settings)
-            and self.state.night_of == night_key(now, settings)
+            and state.night_of == night_key(now, settings)
+            and state.standby_off  # the Wi-Fi did go off (the alarm was taken)
         )
+
+    def wakes_at(self, now: datetime) -> datetime | None:
+        """When the panel in deep sleep wakes next: the economy wake, or the
+        next ring of the night's alarm."""
+        if not self.deep_asleep(now):
+            return None
+        state = self.state
+        if self.economy and state.wake_at:
+            return datetime.fromisoformat(state.wake_at)
+        if state.timer is None:
+            return None
+        tz = self.service.player.settings.tz()
+        local = now.astimezone(tz)
+        hh, mm = (int(part) for part in state.timer.split(":"))
+        ring = datetime.combine(local.date(), time(hh, mm), tzinfo=tz)
+        return ring if ring > local else ring + timedelta(days=1)
+
+    def next_wake(self, now: datetime) -> datetime:
+        """Economy: the next change, or a check between changes when sooner;
+        under a hold for good still the next change time, so the panel is
+        refreshed now and then."""
+        settings = self.service.player.settings
+        player = self.service.player.state
+        soon = now + WAKE_MARGIN
+        candidates: list[datetime] = []
+        hold = player.hold
+        if hold is not None and hold.active(now):
+            if hold.until is not None:
+                candidates.append(datetime.fromisoformat(hold.until))
+        elif player.next_change_at is not None:
+            due = datetime.fromisoformat(player.next_change_at)
+            candidates.append(due if due > soon else next_change(soon, settings))
+        check = next_check(soon, settings)
+        if check is not None:
+            candidates.append(check)
+        candidates = [c for c in candidates if c > soon]
+        return min(candidates) if candidates else next_change(soon, settings)
 
     def asleep_state(self, status: DeviceStatus) -> PanelPower:
         """Which sleep a panel that does not answer is most likely in."""
@@ -140,7 +246,8 @@ class PowerManager:
         """Set the panel's alarm to the morning change, every day."""
         wake = alarm_time(settings)
         async with self.service.panel.session() as mdc:
-            await mdc.set_on_timer(wake.hour, wake.minute, ON_TIMER_REPEAT["daily"])
+            if not await self._set_alarm(mdc, wake):
+                return
         state = self.state
         state.timer = wake.strftime("%H:%M")
         self._save(state)
@@ -154,7 +261,12 @@ class PowerManager:
         wake = alarm_time(settings)
         try:
             async with self.service.panel.waking_session() as mdc:
-                await mdc.set_on_timer(wake.hour, wake.minute, ON_TIMER_REPEAT["daily"])
+                if not await self._set_alarm(mdc, wake):
+                    # It could not wake itself in the morning: light sleep,
+                    # Wake-on-LAN keeps working through the night.
+                    await self.service.panel.power_off(mdc)
+                    self.service.status.note_sleep(deep=False)
+                    return
                 await mdc.set_network_standby(False)
                 await mdc.set_power(False)
         except MdcError as err:
@@ -167,6 +279,46 @@ class PowerManager:
         self.service.status.note_sleep(deep=True)
         log.info("panel in deep sleep until %s", state.timer)
 
+    async def enter_deep(self, now: datetime) -> bool:
+        """Economy: alarm for the next wake, Wi-Fi off, panel off. Nothing
+        happens when the panel turns out to be on the charger."""
+        self._last_arm = now
+        status = self.service.status
+        wake = self.next_wake(now)
+        local = wake.astimezone(self.service.player.settings.tz())
+        try:
+            async with self.service.panel.waking_session() as mdc:
+                await status.read_battery(mdc)
+                if not status.on_battery or not await self._set_alarm(mdc, local.time()):
+                    return False
+                await mdc.set_network_standby(False)
+                await mdc.set_power(False)
+        except MdcError as err:
+            log.warning("could not put the panel into deep sleep: %s", err)
+            return False
+        self.cancel_light_sleep()
+        self._put_back = False
+        state = self.state
+        state.timer = local.strftime("%H:%M")
+        state.wake_at = wake.isoformat(timespec="seconds")
+        state.standby_off = True
+        self._save(state)
+        status.note_sleep(deep=True)
+        log.info("economy: panel in deep sleep until %s", state.wake_at)
+        return True
+
+    def _change_due(self, now: datetime) -> bool:
+        """A change is being shown or comes within moments: a woken panel
+        stays awake for it, and goes back to sleep after the picture."""
+        player = self.service.player
+        if player.busy:
+            return True
+        state = player.state
+        if state.hold is not None and state.hold.active(now):
+            return False
+        due = state.next_change_at
+        return due is not None and datetime.fromisoformat(due) - now < WAKE_MARGIN
+
     async def rendezvous(self, now: datetime) -> bool:
         """Catch the panel while it is awake: Wi-Fi back on for Wake-on-LAN,
         then whatever waited for it."""
@@ -178,6 +330,9 @@ class PowerManager:
             return False
         state = self.state
         state.woke_on = now.astimezone(self.service.player.settings.tz()).date().isoformat()
+        if state.wake_at is not None:
+            state.woke_for = state.wake_at
+            state.missed_wake = None
         self._save(state)
         try:
             async with self.service.panel.session() as mdc:
@@ -194,6 +349,9 @@ class PowerManager:
             if outcome.fetched:
                 # It waited for the panel: let it stay until the next change.
                 self.service.player.postpone()
+        elif self.economy and not self._change_due(now):
+            # A check with nothing to show: straight back to sleep, no redraw.
+            await self.enter_deep(now)
         return True
 
     async def tick(self, now: datetime | None = None) -> None:
@@ -203,6 +361,13 @@ class PowerManager:
         now = now or datetime.now(UTC)
         settings = service.player.settings
         state = self.state
+        if self.economy:
+            await self._economy_tick(now)
+            return
+        if state.wake_at is not None and not state.standby_off:
+            # Back from the economy mode (or on the charger): its wakes are over.
+            state.wake_at = state.woke_for = state.missed_wake = None
+            self._save(state)
         if in_quiet_hours(now, settings):
             # On battery only; a change at the very start of quiet hours
             # goes out first.
@@ -213,7 +378,8 @@ class PowerManager:
             return
 
         want = alarm_time(settings).strftime("%H:%M")
-        if state.timer != want and self._due(self._last_arm, now, RETRY_ARM):
+        retry = self._due(self._last_arm, now, RETRY_ARM) and self.alarm_works()
+        if state.timer != want and retry:
             self._last_arm = now
             try:
                 await self.arm(settings)
@@ -234,6 +400,33 @@ class PowerManager:
             self._last_probe, now, PROBE_PENDING
         ):
             await self.rendezvous(now)
+
+    async def _economy_tick(self, now: datetime) -> None:
+        service = self.service
+        state = self.state
+        if not state.standby_off:
+            # Awake or in light sleep: just switched to the economy mode,
+            # unplugged, or woken and nothing put it back. Deep sleep, unless
+            # a picture is on its way.
+            light_sleep = self._light_sleep is not None and not self._light_sleep.done()
+            busy = service.progress.active or light_sleep or self._change_due(now)
+            if not busy and self._due(self._last_arm, now, RETRY_ARM):
+                await self.enter_deep(now)
+            return
+        if state.wake_at is not None and state.woke_for != state.wake_at:
+            wake = datetime.fromisoformat(state.wake_at)
+            if wake - timedelta(minutes=1) <= now < wake + WAKE_WINDOW:
+                if self._due(self._last_probe, now, PROBE_IN_WINDOW):
+                    await self.rendezvous(now)
+                return
+            if now >= wake + WAKE_WINDOW:
+                # Not found: the alarm rings daily, so the same time tomorrow.
+                state.missed_wake = state.wake_at
+                state.wake_at = (wake + timedelta(days=1)).isoformat(timespec="seconds")
+                self._save(state)
+                log.warning("economy: the panel did not wake at %s", state.missed_wake)
+        if self._due(self._last_probe, now, PROBE_PENDING):
+            await self.rendezvous(now)  # the button may have woken it
 
     # -- light sleep after a picture ------------------------------------------
 
@@ -265,6 +458,9 @@ class PowerManager:
     async def _sleep_later(self, delay: float, only_on_battery: bool = False) -> None:
         await asyncio.sleep(delay)
         status = self.service.status
+        economy = self.service.player.settings.power_mode == "economy"
+        if economy and await self.enter_deep(datetime.now(UTC)):
+            return  # on the charger: as in the online mode
         try:
             async with self.service.panel.session() as mdc:
                 if only_on_battery:
@@ -282,8 +478,11 @@ class PowerManager:
         log.info("panel in light sleep (network standby on)")
 
     async def sleep_now(self) -> None:
-        """The app's "Uśpij ramkę": light sleep at once."""
+        """The app's "Uśpij ramkę": light sleep at once (economy on battery:
+        deep, until the next wake)."""
         self.cancel_light_sleep()
+        if self.economy and await self.enter_deep(datetime.now(UTC)):
+            return
         await self.service.panel.sleep()
         self._put_back = False
         self.service.status.note_sleep(deep=False)
@@ -299,10 +498,12 @@ class PowerManager:
         now = datetime.now(UTC)
         if self.deep_asleep(now):
             state = self.state
+            until = self.wakes_at(now)
             return WakeResult(
                 sent=False,
                 woke=False,
                 asleep_until=state.timer,
+                asleep_until_at=until.isoformat(timespec="seconds") if until else None,
                 reason="deep sleep (Wi-Fi off) until the alarm, only the button wakes it",
             )
         if not service.settings.device_mac:
@@ -349,6 +550,7 @@ class PowerManager:
     async def run(self, period: float = 5.0) -> None:
         self.service.status.status.pending_push = self.state.pending_push
         self.service.status.status.wakes_at = self.state.timer
+        self.service.status.status.alarm_refused = self.state.alarm_refused is not None
         while True:
             try:
                 await self.tick()

@@ -297,3 +297,25 @@ def test_a_dated_model_id_costs_as_its_model() -> None:
     usage = SimpleNamespace(input_tokens=1_000_000, output_tokens=0)
     assert cost(f"{HAIKU}-20261015", usage) == pytest.approx(0.10)
     assert cost("claude-unknown", usage) == pytest.approx(2.00)
+
+
+def test_opening_a_card_asks_out_of_turn(tmp_path: Path) -> None:
+    app = create_app(
+        Settings(data_dir=tmp_path, seed_library=False, scheduler=False, public_host="127.0.0.1")
+    )
+    svc: FrameService = app.state.service
+    svc.claude.factory = FakeAnthropic
+    with TestClient(app) as client:
+        _add(svc, "icloud:1", kind=ItemKind.PHOTO, photo=PhotoInfo(caption="Port"))
+        url = "/api/library/items/icloud:1/describe"
+        assert client.post(url).json() == {"status": "off", "words": []}
+
+        svc.ai_config.set_key(GOOD_KEY)
+        svc.ai.start()
+        try:
+            view = client.post(f"{url}?wait=10").json()
+        finally:
+            svc.ai.stop()
+        assert view == {"status": "ready", "words": ["żaglowiec", "port", "rybacy", "spokój"]}
+        item = svc.library.get("icloud:1")
+        assert item is not None and "subject:sea" in item.terms

@@ -48,6 +48,14 @@ class FrameSettings(BaseModel):
     # Quiet hours run from here until the next change time (the morning one):
     # the panel sleeps with the Wi-Fi off and wakes itself for that change.
     quiet_start: str | None = "22:00"
+    # "online": by day on battery the panel sleeps with network standby on,
+    # so a picture from the app goes out at once. "economy" ("Oszczędny"):
+    # on battery it sleeps with the Wi-Fi off after every change and its own
+    # alarm wakes it for the next change (quiet hours do not apply), and
+    # also every ``check_every_hours`` between the day's first and last
+    # change, to show what was sent from the app (0: only at the changes).
+    power_mode: Literal["online", "economy"] = "online"
+    check_every_hours: Literal[0, 2, 3, 4, 6] = 0
     shuffle: bool = True
     avoid_repeat_days: int = Field(14, ge=0, le=365)
     orientation: Orientation = Orientation.LANDSCAPE
@@ -150,7 +158,10 @@ def change_times(settings: FrameSettings) -> list[time]:
 
 
 def quiet_hours(settings: FrameSettings) -> tuple[time, time] | None:
-    """From ``quiet_start`` until the first change time after it."""
+    """From ``quiet_start`` until the first change time after it. None in
+    the economy mode: the panel sleeps deeply between all its wakes."""
+    if settings.power_mode == "economy":
+        return None
     start = _parse(settings.quiet_start)
     if start is None:
         return None
@@ -192,3 +203,44 @@ def next_change(after: datetime, settings: FrameSettings) -> datetime:
                 return slot
         day += timedelta(days=settings.change_every_days)
     raise AssertionError("no change time found")  # pragma: no cover
+
+
+# With a single change a day the checks go on this long after it.
+CHECK_SPAN_ALONE = timedelta(hours=12)
+
+
+def check_times(settings: FrameSettings) -> list[time]:
+    """Economy mode: the short wakes between the changes, every
+    ``check_every_hours`` from the day's first change until its last one
+    (with one change a day: for ``CHECK_SPAN_ALONE`` after it)."""
+    if settings.power_mode != "economy" or not settings.check_every_hours:
+        return []
+    times = change_times(settings)
+    first = datetime.combine(datetime(2000, 1, 1), times[0])
+    last = datetime.combine(datetime(2000, 1, 1), times[-1])
+    if last == first:
+        last = first + CHECK_SPAN_ALONE
+    step = timedelta(hours=settings.check_every_hours)
+    checks = []
+    slot = first + step
+    while slot < last:
+        if slot.date() == first.date() and slot.time() not in times:
+            checks.append(slot.time())
+        slot += step
+    return checks
+
+
+def next_check(after: datetime, settings: FrameSettings) -> datetime | None:
+    """The next economy check strictly after ``after``, any day."""
+    checks = check_times(settings)
+    if not checks:
+        return None
+    tz = settings.tz()
+    local = after.astimezone(tz)
+    for days in range(2):
+        day = local.date() + timedelta(days=days)
+        for moment in checks:
+            slot = datetime.combine(day, moment, tzinfo=tz)
+            if slot > local:
+                return slot
+    raise AssertionError("no check time found")  # pragma: no cover
