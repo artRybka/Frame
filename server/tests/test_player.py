@@ -13,6 +13,7 @@ from pydantic import ValidationError
 from frame_server.imaging.layout import Orientation
 from frame_server.library import Item, ItemKind, Playlist, PlaylistRules
 from frame_server.player import RETRY_AFTER, Hold, hold_from
+from frame_server.rendered import RenderCache
 from frame_server.schedule import (
     FrameSettings,
     in_quiet_hours,
@@ -563,6 +564,9 @@ async def test_work_added_to_the_queue_is_shown_next(service, monkeypatch) -> No
     assert [i.id for i in player.upcoming(3)][:2] == [outsider.id, c.id]
     assert player.state.queue.count(c.id) == 0  # not shown twice
 
+    # Whatever was drawn ahead before the picks (c, if the works' added_at
+    # straddle a second) is forgotten, so each render below is a new one.
+    service.rendered = RenderCache()
     renders = _count_renders(service, monkeypatch)
     await player.render_ahead()
     assert len(renders) == 1
