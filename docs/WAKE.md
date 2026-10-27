@@ -335,9 +335,20 @@ i do tabeli komend w [DEVICE_PROTOCOL.md](DEVICE_PROTOCOL.md).
   obrazie czekającym na ramkę podpowiada krótkie naciśnięcie przycisku.
 - Po pobudce ekran sam zasypia po ok. 3 min bezczynności, po `0x11 00`
   znika z sieci po ok. 20 s.
-- Następny krok: E6 (wpisy `schedule` / `start_time` w manifeście). Opis
-  aplikacji Samsunga mówi o pokazie slajdów z harmonogramem zmienianym
-  „o wyznaczonej godzinie”, więc ekran może sam planować pobudki z manifestu.
+- E6: wpisy `schedule` / `start_time` w manifeście ekran pobiera z góry
+  i po pobudce sam wybiera obowiązujący wpis, ale **nie budzi się** o jego
+  godzinie.
+- Dokument Samsunga „E-Paper Setup & Web API's Guide” opisuje tryb
+  **Custom** (Custom App URL w aplikacji Samsung E-Paper, aplikacja Tizen
+  hostowana np. przez nasz serwer) z API `webapis.epaper`:
+  `setScheduleWakeupTime({year, month, day, hour, minute, second})` (do
+  604800 s naprzód, zwraca id), `getScheduleWakeupTime(id)`,
+  `cancelScheduleWakeupTime(id)`, `goToSleep()`, `setAutoSleepTime("30MIN")`,
+  `setNetworkStandby("ON")`, `isScheduledPlayBootReason()`. Aplikacja musi
+  mieć w `config.xml` metadane
+  `http://samsung.com/tv/metadata/application/epaper.support` = `true`
+  i `sssp_config.xml` z polem `size`. Wymagane uprawnienia nie są znane;
+  sprawdzi to osobny test aplikacji Custom.
 
 ## Źródła
 
