@@ -428,6 +428,10 @@ struct ScheduleSection: View {
                     }
                 }
                 Divider()
+                if settings.powerMode != nil {  // a server before the economy mode has none
+                    powerModePicker
+                    Divider()
+                }
                 row("Zmiana") {
                     Picker("Zmiana", selection: $settings.changeEveryDays) {
                         ForEach(everyDays, id: \.0) { days, label in Text(label).tag(days) }
@@ -437,6 +441,10 @@ struct ScheduleSection: View {
                 Divider()
                 changeTimesEditor
                 Divider()
+                if settings.isEconomy {
+                    checksPicker
+                    Divider()
+                }
                 if let album = playingAlbum?.album {
                     row("Kolejność") {
                         Text(album.order.title).foregroundStyle(Theme.inkSoft)
@@ -447,22 +455,98 @@ struct ScheduleSection: View {
                 } else {
                     Toggle("Losowa kolejność", isOn: $settings.shuffle)
                 }
-                Divider()
-                Toggle("Cisza nocna", isOn: quietEnabled)
-                if settings.quietStart != nil {
-                    HStack {
-                        DatePicker("Od", selection: time(\.quietStart, fallback: "22:00"), displayedComponents: .hourAndMinute)
-                        Spacer()
-                        Text("do \(settings.quietEnd ?? "—")").foregroundStyle(Theme.inkSoft)
-                    }
-                    .font(.subheadline)
-                    Text("Cisza trwa do najbliższej zmiany obrazu. Na baterii ramka śpi wtedy z wyłączonym Wi-Fi i budzi się sama na tę zmianę, a zdjęcia wysłane w nocy pojawią się rano. Przy zasilaczu trafiają na ramkę od razu.")
-                        .font(.caption)
-                        .foregroundStyle(Theme.inkSoft)
+                // Economy: the frame sleeps from the day's last change to its
+                // first anyway, so quiet hours would only confuse.
+                if !settings.isEconomy {
+                    Divider()
+                    quietHours
                 }
             }
             .tint(Theme.accent)
         }
+    }
+
+    @ViewBuilder private var quietHours: some View {
+        Toggle("Cisza nocna", isOn: quietEnabled)
+        if settings.quietStart != nil {
+            HStack {
+                DatePicker("Od", selection: time(\.quietStart, fallback: "22:00"), displayedComponents: .hourAndMinute)
+                Spacer()
+                Text("do \(settings.quietEnd ?? "—")").foregroundStyle(Theme.inkSoft)
+            }
+            .font(.subheadline)
+            Text("Cisza trwa do najbliższej zmiany obrazu. Na baterii ramka śpi wtedy z wyłączonym Wi-Fi i budzi się sama na tę zmianę, a zdjęcia wysłane w nocy pojawią się rano. Przy zasilaczu trafiają na ramkę od razu.")
+                .font(.caption)
+                .foregroundStyle(Theme.inkSoft)
+        }
+    }
+
+    /// Online: the frame listens on the Wi-Fi while asleep. Economy: on
+    /// battery it sleeps with the Wi-Fi off and wakes itself by its clock
+    /// (on the charger it works as online).
+    private var powerModePicker: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Tryb pracy").foregroundStyle(Theme.ink)
+            Picker("Tryb pracy", selection: powerMode) {
+                Text("Online").tag("online")
+                Text("Oszczędny").tag("economy")
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            Text(settings.isEconomy
+                ? "Ramka śpi bez Wi-Fi między pobudkami. Wysłane dzieło pojawi się przy najbliższej."
+                : "Wysłane dzieło pojawia się po około minucie.")
+                .font(.caption)
+                .foregroundStyle(Theme.inkSoft)
+        }
+    }
+
+    private var powerMode: Binding<String> {
+        Binding(
+            get: { settings.powerMode ?? "online" },
+            set: { mode in
+                settings.powerMode = mode
+                if settings.checkEveryHours == nil { settings.checkEveryHours = 0 }
+            }
+        )
+    }
+
+    private let checkOptions: [(Int, String)] = [
+        (0, "Nie sprawdzaj"), (2, "2 godziny"), (3, "3 godziny"), (4, "4 godziny"), (6, "6 godzin"),
+    ]
+
+    /// Economy: short wakes between the changes, only for what was sent from the app.
+    private var checksPicker: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            row("Sprawdzaj też co") {
+                Picker("Sprawdzaj też co", selection: checkEvery) {
+                    ForEach(checkOptions, id: \.0) { hours, label in Text(label).tag(hours) }
+                }
+                .labelsHidden()
+            }
+            WakeStrip(changes: settings.changeMinutes, checks: settings.checkMinutes)
+            Text(wakeNote)
+                .font(.caption)
+                .foregroundStyle(Theme.inkSoft)
+        }
+    }
+
+    private var checkEvery: Binding<Int> {
+        Binding(get: { settings.checkEveryHours ?? 0 }, set: { settings.checkEveryHours = $0 })
+    }
+
+    private var wakeNote: String {
+        let checks = settings.checkMinutes.count
+        let count = settings.changeMinutes.count + checks
+        let wakes = "\(count) \(Names.wakes(count)) dziennie."
+        guard checks > 0 else {
+            // About a minute and a half of Wi-Fi a wake: joining, the picture, back to sleep.
+            return "\(wakes) Wi-Fi włączone łącznie ok. \(max(1, (count * 3 + 1) / 2)) min na dobę."
+        }
+        let span = settings.changeMinutes.count > 1
+            ? "Tylko między pierwszą a ostatnią zmianą dnia, w nocy ramka śpi."
+            : "Przez 12 godzin po zmianie, w nocy ramka śpi."
+        return "\(span) Obraz zmienia się, gdy wysłałeś coś z aplikacji. \(wakes)"
     }
 
     private func row<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
@@ -476,7 +560,7 @@ struct ScheduleSection: View {
     /// The times of day the picture changes at: one or more, sorted.
     private var changeTimesEditor: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(settings.changeTimes.count > 1 ? "Godziny zmiany" : "Godzina zmiany").foregroundStyle(Theme.ink)
+            Text(changeTimesTitle).foregroundStyle(Theme.ink)
             ForEach(settings.changeTimes.indices, id: \.self) { index in
                 HStack {
                     DatePicker(
@@ -505,6 +589,11 @@ struct ScheduleSection: View {
                 .font(.subheadline)
             }
         }
+    }
+
+    private var changeTimesTitle: String {
+        if settings.isEconomy { return "Pobudki i zmiany" }
+        return settings.changeTimes.count > 1 ? "Godziny zmiany" : "Godzina zmiany"
     }
 
     private func changeTime(at index: Int) -> Binding<Date> {
@@ -1293,6 +1382,74 @@ private struct AddressField: View {
                 .keyboardType(.URL)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
+        }
+    }
+}
+
+/// A day from midnight to midnight with the economy mode's wakes on it: the
+/// changes and the checks between them; the rest is deep sleep.
+struct WakeStrip: View {
+    let changes: [Int]  // minutes after midnight
+    let checks: [Int]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Theme.accent.opacity(0.18)).frame(height: 8)
+                    ForEach(checks, id: \.self) { minutes in
+                        RoundedRectangle(cornerRadius: 1.5)
+                            .fill(Theme.vermilion)
+                            .frame(width: 3, height: 20)
+                            .offset(x: x(minutes, geo.size.width) - 1.5)
+                    }
+                    ForEach(changes, id: \.self) { minutes in
+                        RoundedRectangle(cornerRadius: 3)
+                            .fill(Theme.accent)
+                            .frame(width: 9, height: 14)
+                            .offset(x: x(minutes, geo.size.width) - 4.5)
+                    }
+                }
+                .frame(height: 20)
+            }
+            .frame(height: 20)
+            GeometryReader { geo in
+                ForEach(labels, id: \.self) { minutes in
+                    Text(Self.label(minutes))
+                        .font(.caption2)
+                        .monospacedDigit()
+                        .foregroundStyle(Theme.inkSoft)
+                        .fixedSize()
+                        .position(x: min(max(x(minutes, geo.size.width), 8), geo.size.width - 8), y: 6)
+                }
+            }
+            .frame(height: 12)
+            HStack(spacing: 12) {
+                legend(Theme.accent, checks.isEmpty ? "pobudka i zmiana" : "zmiana")
+                if !checks.isEmpty { legend(Theme.vermilion, "sprawdzenie") }
+                legend(Theme.accent.opacity(0.18), "głęboki sen")
+            }
+            .font(.caption2)
+            .foregroundStyle(Theme.inkSoft)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Pobudki: " + (changes + checks).sorted().map(Self.label).joined(separator: ", "))
+    }
+
+    private var labels: [Int] { Array(Set([0, 24 * 60] + changes + checks)).sorted() }
+
+    private func x(_ minutes: Int, _ width: CGFloat) -> CGFloat {
+        width * CGFloat(minutes) / CGFloat(24 * 60)
+    }
+
+    private static func label(_ minutes: Int) -> String {
+        minutes % 60 == 0 ? "\(minutes / 60)" : String(format: "%d:%02d", minutes / 60, minutes % 60)
+    }
+
+    private func legend(_ color: Color, _ text: String) -> some View {
+        HStack(spacing: 4) {
+            RoundedRectangle(cornerRadius: 2).fill(color).frame(width: 9, height: 9)
+            Text(text)
         }
     }
 }

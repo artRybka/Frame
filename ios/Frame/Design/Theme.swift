@@ -179,6 +179,13 @@ enum Names {
         return tens != 1 && (2 ... 4).contains(ones) ? "zmiany" : "zmian"
     }
 
+    /// "pobudka", "pobudki" or "pobudek" after `count`.
+    static func wakes(_ count: Int) -> String {
+        if count == 1 { return "pobudka" }
+        let tens = count % 100 / 10, ones = count % 10
+        return tens != 1 && (2 ... 4).contains(ones) ? "pobudki" : "pobudek"
+    }
+
     static func source(_ key: String) -> String {
         switch key {
         case "aic": "Art Institute of Chicago"
@@ -271,6 +278,33 @@ enum When {
         if calendar.isDateInTomorrow(date) { return "jutro, \(time)" }
         let day = date.formatted(.dateTime.weekday(.wide).locale(Locale(identifier: "pl_PL")))
         return "\(day), \(time)"
+    }
+
+    /// "dziś o 19:00", "jutro o 07:00", "w piątek o 07:00".
+    static func at(_ iso: String?) -> String? {
+        guard let date = date(iso), let time = clock(iso) else { return nil }
+        let calendar = Calendar.current
+        if calendar.isDateInToday(date) { return "dziś o \(time)" }
+        if calendar.isDateInTomorrow(date) { return "jutro o \(time)" }
+        var day = date.formatted(.dateTime.weekday(.wide).locale(Locale(identifier: "pl_PL")))
+        if day.hasSuffix("a") { day = String(day.dropLast()) + "ę" }  // środę, sobotę, niedzielę
+        return "\(day.hasPrefix("wt") ? "we" : "w") \(day) o \(time)"
+    }
+
+    /// "19:00".
+    static func clock(_ iso: String?) -> String? {
+        date(iso)?.formatted(.dateTime.hour().minute().locale(Locale(identifier: "pl_PL")))
+    }
+
+    /// "za 6 h 12 min", "za 12 min", "za chwilę", "za 2 dni".
+    static func countdown(_ iso: String?, from now: Date = .now) -> String? {
+        guard let date = date(iso) else { return nil }
+        let minutes = Int((date.timeIntervalSince(now) / 60).rounded(.up))
+        if minutes <= 1 { return "za chwilę" }
+        let hours = minutes / 60, rest = minutes % 60
+        if hours >= 48 { return "za \(hours / 24) dni" }
+        if hours == 0 { return "za \(rest) min" }
+        return rest == 0 ? "za \(hours) h" : "za \(hours) h \(rest) min"
     }
 
     /// "5 min temu", "wczoraj".

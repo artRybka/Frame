@@ -207,6 +207,57 @@ uvloop (instaluje ją `uvicorn[standard]`), a uvloop nie ma
 łapały, bo działają na zwykłej pętli asyncio, a komenda `frame device wake`
 też. Poprawka: zwykłe `sendto` (datagram nie czeka) i test na uvloop.
 
+## Tryb Oszczędny
+
+2026-10-27, prośba Mateusza: tryb pracy wybierany w Ramka → Harmonogram,
+„Online” (jak dotąd) albo „Oszczędny” (`power_mode: economy`). Cel: dużo
+dłuższa praca na baterii przy np. dwóch zmianach dziennie.
+
+Co pozwala ekran (EMDX 224B, firmware 1130.7):
+
+- **Ekran sam nie pyta serwera o nowe obrazy.** Fabryczne oprogramowanie
+  pobiera `content.json` tylko na polecenie MDC `0xC7` (E7; projekt
+  [samsung-epaper-calendar](https://github.com/Here-Be-Dragons/samsung-epaper-calendar)
+  przez 3 h nie widział żadnego zapytania). „Pobieranie przez ramkę” to więc
+  budzik `0x25`, a po pobudce serwer zauważa ekran i wysyła obraz. Serwer
+  musi działać o godzinie pobudki.
+- **Jeden budzik naraz** (godzina i minuta, raz albo codziennie). Serwer
+  ustawia go przy każdym usypianiu na następną pobudkę, z powtarzaniem
+  codziennym: gdy pobudka się nie uda, ekran wstanie następnego dnia o tej
+  samej porze.
+- **W głębokim śnie WoL nie działa** (network standby wył.). Wcześniej
+  pomaga tylko przycisk na ramce; serwer szuka ekranu co 2 minuty.
+- Bateria: samsung-epaper-calendar zmierzył 1,5–2% na godzinę w uśpieniu
+  z network standby (ok. 4%/h obudzony). Samsung podaje do ok. 200 dni przy
+  jednej zmianie dziennie. Własny pomiar do zrobienia.
+- Budzik `0x25` na naszym egzemplarzu jeszcze niepotwierdzony (E13);
+  samsung-epaper-calendar pisze, że ekran odrzuca komendy timerów `A4–AE`
+  (`0x25` tam nie sprawdzano).
+
+Jak działa (`power.py`, `PowerManager.enter_deep` i `_economy_tick`):
+
+- **Pobudki** = godziny zmiany, a z „Sprawdzaj też co” (2, 3, 4 albo 6 h)
+  także krótkie pobudki między pierwszą a ostatnią zmianą dnia (przy jednej
+  zmianie: przez 12 h po niej), `schedule.check_times`. W nocy nic nie budzi
+  ekranu, dlatego w tym trybie nie ma ciszy nocnej.
+- **Po każdym obrazie** (90 s na pobranie i odświeżenie) serwer czyta
+  baterię, ustawia budzik na najbliższą pobudkę, wyłącza network standby
+  i ekran. Na ładowarce nic z tego: działa jak „Online”.
+- **Obraz z aplikacji** w czasie snu czeka jako zaległy (`pending_push`),
+  a „Teraz” pokazuje „Pojawi się dziś o 19:00 · za 6 h 12 min”
+  (`Delivery.asleep_until_at`).
+- **Pobudka:** od minuty przed jej godziną przez 15 minut serwer co 15 s
+  szuka ekranu. Gdy go znajdzie, wysyła zaległy obraz; zmiana z playlisty
+  wypadająca w tej chwili idzie zwykłą drogą; pobudka bez niczego do pokazania
+  od razu usypia ekran, bez odświeżania.
+- **Pobudka nieudana** (ekran się nie zgłosił w 15 minut): serwer zapisuje
+  ją (`missed_wake_at`), „Teraz” mówi „Ramka nie obudziła się o 19:00”
+  i czeka na tę samą godzinę następnego dnia (budzik codzienny), a w
+  międzyczasie co 2 minuty sprawdza, czy ktoś nie nacisnął przycisku.
+- Zalecenie: w aplikacji Samsung E-Paper ustawić „Sleep After” na kilka
+  minut, żeby ekran obudzony budzikiem nie został włączony, gdy serwer nie
+  odpowie.
+
 ## E13: plan testu na ekranie
 
 Potrzebny Mac w tej samej sieci co ekran (192.168.1.x) i gałąź z komendą
