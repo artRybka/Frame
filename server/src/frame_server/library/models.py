@@ -94,6 +94,11 @@ class Item(BaseModel):
     height: int | None = None
     colors: list[ColorSwatch] = Field(default_factory=list)
     color_tags: list[str] = Field(default_factory=list)
+    #: What a language model sees in the picture (ai.keywords): words in
+    #: English and Polish searched with the rest of the text, and the
+    #: vocabulary's subjects (``"subject:sea"``) it found.
+    keywords: list[str] = Field(default_factory=list)
+    terms: list[str] = Field(default_factory=list)
     suitability: float | None = None
     # colors.tint_spread: ~0 when the picture has no colour of its own.
     tint_spread: float | None = None
@@ -256,3 +261,17 @@ class Facets(BaseModel):
     colors: list[FacetValue]
     sources: list[FacetValue]
     kinds: list[FacetValue]
+
+
+class Note(BaseModel):
+    """What a language model wrote about one item (ai): its keywords, a
+    Polish description... One per item and kind, kept until the item, its
+    source text (``source_hash``) or the prompt (``prompt_version``) change."""
+
+    item_id: str
+    kind: str  # "keywords", "pl_text"
+    model: str
+    prompt_version: str
+    source_hash: str = ""
+    data: dict[str, Any] = Field(default_factory=dict)
+    created_at: str = ""

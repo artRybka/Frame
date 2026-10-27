@@ -25,6 +25,7 @@ from .models import (
     Facets,
     FacetValue,
     Item,
+    Note,
     Playlist,
     PlaylistKind,
     PlaylistRules,
@@ -49,7 +50,33 @@ CREATE TABLE IF NOT EXISTS history (
     shown_at TEXT NOT NULL,
     reason TEXT NOT NULL DEFAULT ''
 );
+CREATE TABLE IF NOT EXISTS ai_notes (
+    item_id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    model TEXT NOT NULL,
+    prompt_version TEXT NOT NULL,
+    source_hash TEXT NOT NULL,
+    data TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (item_id, kind)
+);
 """
+
+
+_NOTE_COLUMNS = "item_id, kind, model, prompt_version, source_hash, data, created_at"
+
+
+def _note(row: tuple[Any, ...]) -> Note:
+    item_id, kind, model, version, source_hash, data, created_at = row
+    return Note(
+        item_id=item_id,
+        kind=kind,
+        model=model,
+        prompt_version=version,
+        source_hash=source_hash,
+        data=json.loads(data),
+        created_at=created_at,
+    )
 
 
 def now_iso() -> str:
@@ -98,6 +125,7 @@ def matches(item: Item, rules: PlaylistRules) -> bool:
                 item.description,
                 *item.styles,
                 *item.subjects,
+                *item.keywords,
             ]
         ).casefold()
         if not all(word in haystack for word in rules.query.casefold().split()):
@@ -193,6 +221,9 @@ class Library:
     def count(self) -> int:
         return len(self._all())
 
+    def all_items(self) -> list[Item]:
+        return list(self._all().values())
+
     def get(self, item_id: str) -> Item | None:
         return self._all().get(item_id)
 
@@ -212,6 +243,8 @@ class Library:
                         "last_shown_at": existing.last_shown_at,
                         "show_count": existing.show_count,
                         "framing": existing.framing,
+                        "keywords": existing.keywords,
+                        "terms": existing.terms,
                     }
                 )
             elif not item.added_at:
@@ -249,6 +282,7 @@ class Library:
                 return False
             with self._db() as db:
                 db.execute("DELETE FROM items WHERE id = ?", (item_id,))
+                db.execute("DELETE FROM ai_notes WHERE item_id = ?", (item_id,))
             del self._all()[item_id]
             self._works = None
             return True
@@ -417,6 +451,53 @@ class Library:
     def delete_state(self, key: str) -> None:
         with self._db() as db:
             db.execute("DELETE FROM kv WHERE key = ?", (key,))
+
+    # -- notes from a language model (ai) -----------------------------------
+
+    def note(self, item_id: str, kind: str) -> Note | None:
+        with self._db() as db:
+            row = db.execute(
+                f"SELECT {_NOTE_COLUMNS} FROM ai_notes WHERE item_id = ? AND kind = ?",
+                (item_id, kind),
+            ).fetchone()
+        return None if row is None else _note(row)
+
+    def notes(self, kind: str) -> dict[str, Note]:
+        """Every note of one kind, by item."""
+        with self._db() as db:
+            rows = db.execute(
+                f"SELECT {_NOTE_COLUMNS} FROM ai_notes WHERE kind = ?", (kind,)
+            ).fetchall()
+        return {row[0]: _note(row) for row in rows}
+
+    def save_note(self, note: Note) -> Note:
+        if not note.created_at:
+            note = note.model_copy(update={"created_at": now_iso()})
+        with self._db() as db:
+            db.execute(
+                f"INSERT OR REPLACE INTO ai_notes ({_NOTE_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    note.item_id,
+                    note.kind,
+                    note.model,
+                    note.prompt_version,
+                    note.source_hash,
+                    json.dumps(note.data, ensure_ascii=False),
+                    note.created_at,
+                ),
+            )
+        return note
+
+    def delete_notes(self, kind: str, item_id: str | None = None) -> int:
+        """Forget notes of one kind (of one item, or all of them)."""
+        with self._db() as db:
+            if item_id is None:
+                cur = db.execute("DELETE FROM ai_notes WHERE kind = ?", (kind,))
+            else:
+                cur = db.execute(
+                    "DELETE FROM ai_notes WHERE kind = ? AND item_id = ?", (kind, item_id)
+                )
+        return cur.rowcount
 
     # -- history ------------------------------------------------------------
 
