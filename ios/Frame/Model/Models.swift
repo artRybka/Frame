@@ -94,6 +94,14 @@ struct PolishView: Codable, Hashable, Sendable {
     var text: PolishText?
 }
 
+/// What the model saw in a work or photo, for its card.
+struct SeenView: Codable, Hashable, Sendable {
+    /// As in PolishView.
+    var status: String
+    /// Polish words: things, places, the mood.
+    var words: [String]
+}
+
 struct ItemSummary: Codable, Identifiable, Hashable, Sendable {
     let id: String
     var kind: ItemKind

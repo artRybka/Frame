@@ -81,6 +81,15 @@ struct LiveBackend: FrameBackend {
         )
     }
 
+    func describe(itemID: String, wait: Int) async throws -> SeenView {
+        var req = request(
+            "/api/library/items/\(escape(itemID))/describe", method: "POST",
+            query: [URLQueryItem(name: "wait", value: String(wait))]
+        )
+        req.timeoutInterval = TimeInterval(wait + 30)
+        return try await perform(req)
+    }
+
     func setFavorite(id: String, _ favorite: Bool) async throws -> Item {
         try await send("/api/library/items/\(escape(id))", method: "PATCH", body: ["favorite": favorite])
     }

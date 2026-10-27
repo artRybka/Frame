@@ -139,6 +139,12 @@ def words_and_terms(data: dict[str, Any]) -> tuple[list[str], list[str]]:
     return list(dict.fromkeys(words)), terms
 
 
+def polish_words(data: dict[str, Any]) -> list[str]:
+    """What the card shows: the Polish tags and the mood."""
+    words = _clean(data.get("tags_pl"), MAX_TAGS) + _clean(data.get("mood_pl"), MAX_MOOD)
+    return list(dict.fromkeys(words))
+
+
 class KeywordsJob(NoteJob):
     kind = KIND
     model = HAIKU
