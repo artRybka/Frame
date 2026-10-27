@@ -95,7 +95,7 @@ Cel: potwierdzić protokół na Twoim egzemplarzu i poznać zachowanie ekranu.
 
 ### Etap 2 — Serwer (add-on Home Assistant / kontener na Synology)
 
-- [x] 2.1 Model danych (SQLite): `Item` (dzieło / zdjęcie / własna praca, metadane, licencja, paleta, tagi kolorów, ocena dla e-papieru), playlisty, ustawienia i stan odtwarzacza, historia; cache podglądów. *(`User` w 2.7.)*
+- [x] 2.1 Model danych (SQLite): `Item` (dzieło / zdjęcie / własna praca, metadane, licencja, paleta: do 4 barw dominujących i do 4 akcentów, czyli małych, żywych plam koloru, tagi kolorów, ocena dla e-papieru), playlisty, ustawienia i stan odtwarzacza, historia; cache podglądów. *(`User` w 2.7.)*
 - [x] 2.2 Biblioteka: upload własnych prac z opisem, import z muzeów (Art Institute of Chicago, Cleveland, The Met, Rijksmuseum, Wikimedia Commons), biblioteka startowa i domyślne playlisty przy pierwszym uruchomieniu, ocena „przydatności dla e-papieru”. *(Do zrobienia: Polona i muzea narodowe — MNW ma tylko wewnętrzne API strony, NGA tylko zrzuty CSV bez wyszukiwania, Europeana zwraca dużo słabych skanów (przeźrocza, pocztówki), więc na razie bez nich. Sztuka polska jest na razie tylko z Wikimedia Commons, bo AIC, Cleveland i The Met jej prawie nie mają; Commons ogranicza zapytania z serwerowni, z sieci domowej działa.)* Źródła według priorytetów:
   - wielkie muzea: The Met, Art Institute of Chicago, Rijksmuseum, Cleveland Museum of Art;
   - sztuka polska: Polona (grafiki, plakaty, ilustracje), muzea narodowe (do sprawdzenia, czy mają API i licencje);
