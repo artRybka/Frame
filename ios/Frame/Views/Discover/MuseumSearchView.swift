@@ -65,10 +65,10 @@ struct MuseumSearchView: View {
     /// What the museums have for the search, as far as they said.
     private var total: Int { totals.values.reduce(0, +) }
 
-    /// Museum works the catalogue doesn't hold already.
+    /// Museum works the catalogue doesn't hold already, in any copy.
     private var fromMuseums: [RemoteItem] {
         let known = Set(catalogue?.items.map(\.id) ?? [])
-        return results.filter { !known.contains($0.id) }
+        return results.filter { !known.contains($0.id) && !known.contains($0.twin ?? "") }
     }
 
     var body: some View {

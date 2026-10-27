@@ -485,10 +485,14 @@ struct PlaylistEditorView: View {
         }
     }
 
-    /// Museum works the catalogue doesn't hold: what fetching would bring.
+    /// Museum works the catalogue doesn't hold, in any copy: what fetching
+    /// would bring.
     private var fromMuseums: [RemoteItem] {
         let shown = Set(preview?.items.map(\.id) ?? [])
-        return remote.filter { (!$0.inLibrary || playlist.itemIds.contains($0.id)) && !shown.contains($0.id) }
+        return remote.filter {
+            (!$0.inLibrary || playlist.itemIds.contains($0.id))
+                && !shown.contains($0.id) && !shown.contains($0.twin ?? "")
+        }
     }
 
     /// The works as Szukaj shows them: the catalogue's, then the museums';
