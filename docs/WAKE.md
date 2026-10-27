@@ -234,8 +234,11 @@ Co pozwala ekran (EMDX 224B, firmware 1130.7):
   1130.7).** Każdy zapis `0x25` w formacie `[en, repeat, hh, mm, 01]` (także
   w innych długościach i z AM/PM) kończy się NAK `01`. `0x25` przyjmuje
   tylko jeden bajt `00–05` i tyle samo zwraca przy odczycie, bez godziny.
-  Serwer więc nigdy nie ustawił budzika, także dla ciszy nocnej. Szukamy
-  innej drogi (ustawienia aplikacji Samsung E-Paper). Do tego czasu serwer
+  Serwer więc nigdy nie ustawił budzika, także dla ciszy nocnej. Aplikacja
+  Samsung E-Paper też nie ma pobudki według zegara (tylko tryb uśpienia,
+  „Sleep After” 20 min i „uśpij po aktualizacji treści”). **Ramka nie umie
+  więc obudzić się sama**; na baterii budzi ją tylko WoL albo przycisk.
+  Przełącznik „Tryb pracy” jest w aplikacji ukryty (kod zostaje). Serwer
   po odmowie (`alarm_refused`) nie wyłącza Wi-Fi: ani w nocy, ani w trybie
   Oszczędnym, który działa wtedy jak Online, a aplikacja to mówi. Próbuje
   ponownie raz na dobę.
