@@ -354,6 +354,24 @@ struct LiveBackend: FrameBackend {
         try await send("/api/library/storage", method: "DELETE")
     }
 
+    func aiSettings() async throws -> AiSettings { try await get("/api/ai") }
+
+    func saveAiSettings(_ update: AiSettingsUpdate) async throws -> AiSettings {
+        try await send("/api/ai", method: "PUT", body: update)
+    }
+
+    func saveAiKey(_ key: String) async throws -> AiSettings {
+        try await send("/api/ai/key", method: "PUT", body: AiKeyUpdate(key: key))
+    }
+
+    func deleteAiKey() async throws -> AiSettings { try await send("/api/ai/key", method: "DELETE") }
+
+    func keywordsEstimate() async throws -> AiEstimate { try await get("/api/ai/keywords/estimate") }
+
+    func describeLibrary() async throws -> AiStarted {
+        try await send("/api/ai/keywords/describe-library", method: "POST")
+    }
+
     func wake(sleepAfter: Bool) async throws -> WakeResult {
         // The server sends magic packets for a while and then looks for the panel.
         let query = sleepAfter ? [URLQueryItem(name: "sleep_after", value: "true")] : []
