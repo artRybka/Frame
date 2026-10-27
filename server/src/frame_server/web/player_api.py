@@ -46,8 +46,12 @@ class Delivery(BaseModel):
     failed_at: str | None = None
     failure: str | None = None  # "timeout" or "error"
     message: str = ""
-    #: ``waiting`` in deep sleep (Wi-Fi off): HH:MM of the panel's alarm.
+    #: ``waiting`` in deep sleep (Wi-Fi off): HH:MM of the panel's alarm,
+    #: and the moment (ISO) it rings.
     asleep_until: str | None = None
+    asleep_until_at: str | None = None
+    #: Economy mode: a wake (ISO) the panel did not show up for.
+    missed_wake_at: str | None = None
 
 
 class PlayerView(BaseModel):
@@ -107,10 +111,15 @@ def _delivery(svc: FrameService, content: ContentInfo | None) -> Delivery:
     common: dict[str, Any] = {"on_frame": on_frame, "shown_at": record.shown_at}
     if svc.player.busy or svc.progress.active:
         return Delivery(state="sending", **common)
-    if svc.power.state.pending_push:
-        asleep = svc.power.deep_asleep(datetime.now(UTC))
+    power = svc.power.state
+    if power.pending_push:
+        until = svc.power.wakes_at(datetime.now(UTC))
         return Delivery(
-            state="waiting", asleep_until=svc.power.state.timer if asleep else None, **common
+            state="waiting",
+            asleep_until=power.timer if until else None,
+            asleep_until_at=until.isoformat(timespec="seconds") if until else None,
+            missed_wake_at=power.missed_wake,
+            **common,
         )
     failed = record.failed_file_id == content.file_id
     return Delivery(
