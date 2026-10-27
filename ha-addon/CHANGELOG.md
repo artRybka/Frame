@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.23.0
+
+- Otwarta karta dzieła lub zdjęcia prosi model o słowa kluczowe i polskie
+  teksty od razu, poza kolejnością w tle; karta pokazuje „Na obrazie”
+  albo „Na zdjęciu”, gdy model już popatrzył. Miesięczny limit modelu
+  do wyboru aż do 200 USD.
+- Budzenie ramki na baterii: serwer wysyła Wake-on-LAN do 3 minut i
+  przestaje, gdy ramka odpowie (na baterii budzi się po 1–2,5 min).
+- Ramka (firmware 1130.7) odrzuca budzik 0x25, więc serwer nie wyłącza jej
+  Wi-Fi w nocy: cisza nocna to lekki sen, zdjęcia wysłane w nocy trafiają
+  na ramkę od razu, a stan nie pokazuje już fałszywego „Głęboki sen”.
+- Tryb „Oszczędny” jest gotowy, ale ukryty, dopóki ramka nie umie obudzić
+  się sama.
+
 ## 0.22.0
 
 - Model językowy (Claude): nowa sekcja w Konfiguracji (Ramka → trybik)
