@@ -23,6 +23,7 @@ import httpx
 
 from .commons import commons_html, commons_year
 from .lifespan import EUROPEANA_AGENT, WIKIDATA_ENTITY, LifeDates, death_in_name, free_in_eu
+from .markup import VECTOR, WEB_IMAGES, commons_rendition, extension, strip_markup
 from .models import Item, ItemKind
 
 USER_AGENT = "Frame/0.2 (home e-paper art frame; +https://github.com/artRybka/Frame)"
@@ -127,6 +128,9 @@ class Museum(ABC):
             yield from items
 
     def _item(self, source_id: str, **fields: Any) -> Item:
+        for key in ("title", "artist"):
+            if key in fields:
+                fields[key] = strip_markup(fields[key])
         return Item(
             id=f"{self.key}:{source_id}",
             kind=ItemKind.ARTWORK,
@@ -494,6 +498,13 @@ class WikimediaCommons(Museum):
         title = self._text(info, "ObjectName", title=True) or re.sub(
             r"^File:|\.[a-zA-Z]+$", "", page.get("title", "")
         )
+        image_url = str(info.get("url", ""))
+        if (ext := extension(image_url)) and ext not in WEB_IMAGES:
+            # SVG drawings, TIFF, PDF and DjVu scans: Commons' rendered copy.
+            rendition = commons_rendition(image_url, 3840, info.get("width"))
+            if not rendition and ext in VECTOR:
+                return None
+            image_url = rendition or image_url
         date_text = self._text(info, "DateTimeOriginal")
         artist = artist_hint or self._meta(info, "Artist").split("\n")[0]
         return self._item(
@@ -507,8 +518,8 @@ class WikimediaCommons(Museum):
             credit=self._meta(info, "Credit")[:200],
             url=info.get("descriptionurl", ""),
             description=self._text(info, "ImageDescription")[:2000],
-            image_url=info.get("url", ""),
-            thumb_url=info.get("thumburl") or info.get("url", ""),
+            image_url=image_url,
+            thumb_url=info.get("thumburl") or image_url,
             width=info.get("width"),
             height=info.get("height"),
         )
@@ -1004,6 +1015,16 @@ class Openverse(Museum):
             return None
         version = str(d.get("license_version") or "")
         licence = {"cc0": "CC0", "pdm": "Public Domain Mark"}.get(code) or f"CC {code.upper()}"
+        image_url, thumb_url = str(d["url"]), str(d.get("thumbnail") or d["url"])
+        kind = str(d.get("filetype") or extension(image_url)).casefold()
+        if kind in VECTOR:
+            # Neither the app nor Openverse's thumbnailer reads these; Commons
+            # renders its own as PNG, others are left out.
+            original, width = image_url, d.get("width")
+            image_url = commons_rendition(original, 3840, width)
+            thumb_url = commons_rendition(original, 500, width)
+            if not image_url:
+                return None
         attribution = str(d.get("attribution") or "").split(". To view", 1)[0]
         tags = [
             t["name"] for t in d.get("tags") or [] if t.get("name") and t.get("accuracy") is None
@@ -1017,8 +1038,8 @@ class Openverse(Museum):
             credit=attribution[:300],
             license=f"{licence} {version}".strip(),
             url=str(d.get("foreign_landing_url") or ""),
-            image_url=str(d["url"]),
-            thumb_url=str(d.get("thumbnail") or d["url"]),
+            image_url=image_url,
+            thumb_url=thumb_url,
             width=d.get("width"),
             height=d.get("height"),
         )
