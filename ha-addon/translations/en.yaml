@@ -23,3 +23,6 @@ configuration:
   seed_library:
     name: Suggestions from museums
     description: On start, fetch public-domain works from museum collections for the Suggestions rotation when it runs low.
+  anthropic_api_key:
+    name: Anthropic API key
+    description: Optional, for keywords and Polish texts from Claude. Usually entered in the app (Frame → gear → Konfiguracja), which wins over this one.

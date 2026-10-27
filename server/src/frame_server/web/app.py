@@ -33,6 +33,7 @@ from ..service import FrameService, outcome_json
 from ..status import DeviceStatus
 from ..store import PanelRequest
 from . import (
+    ai_api,
     calibration_api,
     device_api,
     discover_api,
@@ -96,6 +97,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 asyncio.create_task(poll_status(service)),
                 asyncio.create_task(sync_albums_periodically(service)),
             ]
+            service.ai.start()
         seed_playlists(service.importer)
         service.albums.migrate()  # once: the album of older settings becomes a playlist
         service.player.reset_library()  # once: a clean start for the catalogue
@@ -109,6 +111,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         yield
         for task in tasks:
             task.cancel()
+        service.ai.stop()
         service.library.close()
 
     app = FastAPI(title="Frame", version=__version__, lifespan=lifespan)
@@ -121,6 +124,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         calibration_api.router,
         device_api.router,
         storage_api.router,
+        ai_api.router,
     )
     for router in routers:
         app.include_router(router)
