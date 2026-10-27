@@ -467,6 +467,62 @@ struct LibraryStorageUpdate: Encodable, Sendable {
     var limitMb: Int
 }
 
+/// Claude (Anthropic's API) working for the library: keywords for what
+/// pictures show and Polish texts. The key itself never comes back.
+struct AiSettings: Codable, Hashable, Sendable {
+    struct Progress: Codable, Hashable, Sendable {
+        /// Items with an up-to-date answer.
+        var done: Int
+        /// Items the server will still ask about in the background.
+        var waiting: Int
+        /// Refused or unreadable answers, not asked again.
+        var refused: Int
+        /// Questions in batches ("Opisz bibliotekę") not yet answered.
+        var batchItems: Int
+        var batchDone: Int
+        var preparing: Bool
+    }
+
+    var keySet: Bool
+    /// The key's last characters, to tell which one is saved.
+    var keyTail: String?
+    /// Saved in the app, not taken from frame.env or the add-on options.
+    var keyFromApp: Bool
+    var plText: Bool
+    var keywordsArtworks: Bool
+    var keywordsPhotos: Bool
+    var monthlyLimitUsd: Double
+    /// This month.
+    var spentUsd: Double
+    var keywordsProgress: Progress
+    /// Nil until the server writes Polish texts.
+    var plTextProgress: Progress?
+    /// Why the server paused asking, if it did.
+    var error: String?
+}
+
+/// Only what is set changes.
+struct AiSettingsUpdate: Encodable, Sendable {
+    var plText: Bool?
+    var keywordsArtworks: Bool?
+    var keywordsPhotos: Bool?
+    var monthlyLimitUsd: Double?
+}
+
+struct AiKeyUpdate: Encodable, Sendable {
+    var key: String
+}
+
+/// What "Opisz bibliotekę" would ask about, and about what it costs.
+struct AiEstimate: Codable, Hashable, Sendable {
+    var items: Int
+    var usd: Double
+}
+
+struct AiStarted: Codable, Hashable, Sendable {
+    var items: Int
+}
+
 struct PanelConfigUpdate: Encodable, Sendable {
     var host: String?
     /// Left out keeps the PIN on the server, "" removes it.

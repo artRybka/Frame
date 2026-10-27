@@ -32,6 +32,12 @@ actor DemoBackend: FrameBackend {
     private static let demoPanel = PanelConfig(host: "192.168.1.50", mac: nil, port: 1515, pinSet: true, fromApp: false)
     private var panelValue = DemoBackend.demoPanel
     private var libraryLimitMb: Int?
+    private var aiValue = AiSettings(
+        keySet: false, keyTail: nil, keyFromApp: false, plText: true, keywordsArtworks: true,
+        keywordsPhotos: true, monthlyLimitUsd: 5, spentUsd: 0,
+        keywordsProgress: .init(done: 0, waiting: 0, refused: 0, batchItems: 0, batchDone: 0, preparing: false),
+        plTextProgress: nil, error: nil
+    )
     private var demoAsleep = false
     /// The picture "on its way" to the pretend frame, for the progress bar.
     private var run: (title: String, start: Date)?
@@ -819,6 +825,38 @@ actor DemoBackend: FrameBackend {
     func resetLibraryLimit() async throws -> LibraryStorage {
         libraryLimitMb = nil
         return try await libraryStorage()
+    }
+
+    func aiSettings() async throws -> AiSettings { aiValue }
+
+    func saveAiSettings(_ update: AiSettingsUpdate) async throws -> AiSettings {
+        if let value = update.plText { aiValue.plText = value }
+        if let value = update.keywordsArtworks { aiValue.keywordsArtworks = value }
+        if let value = update.keywordsPhotos { aiValue.keywordsPhotos = value }
+        if let value = update.monthlyLimitUsd { aiValue.monthlyLimitUsd = value }
+        return aiValue
+    }
+
+    func saveAiKey(_ key: String) async throws -> AiSettings {
+        aiValue.keySet = true
+        aiValue.keyTail = String(key.trimmingCharacters(in: .whitespaces).suffix(4))
+        aiValue.keyFromApp = true
+        aiValue.keywordsProgress = .init(done: 12, waiting: 34, refused: 0, batchItems: 0, batchDone: 0, preparing: false)
+        return aiValue
+    }
+
+    func deleteAiKey() async throws -> AiSettings {
+        aiValue.keySet = false
+        aiValue.keyTail = nil
+        aiValue.keyFromApp = false
+        return aiValue
+    }
+
+    func keywordsEstimate() async throws -> AiEstimate { AiEstimate(items: 1840, usd: 0.32) }
+
+    func describeLibrary() async throws -> AiStarted {
+        aiValue.keywordsProgress.preparing = true
+        return AiStarted(items: 1840)
     }
 
     func wake(sleepAfter: Bool) async throws -> WakeResult {

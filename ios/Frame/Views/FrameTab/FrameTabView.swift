@@ -965,8 +965,8 @@ struct SourcesSection: View {
 }
 
 /// Behind the gear in "Ramka": how the server reaches the panel, how the
-/// app reaches the server and how much disk the library may take; set once,
-/// rarely touched again.
+/// app reaches the server, how much disk the library may take and the
+/// language model's key; set once, rarely touched again.
 struct ConnectionSettingsView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
@@ -982,6 +982,9 @@ struct ConnectionSettingsView: View {
                     if let storage = model.libraryStorage {
                         LibrarySizeSection(storage: storage)
                     }
+                    if let ai = model.aiSettings {
+                        AiSection(settings: ai)
+                    }
                 }
                 .padding(.horizontal, Theme.gutter)
                 .padding(.top, 8)
@@ -990,6 +993,7 @@ struct ConnectionSettingsView: View {
             .background(Theme.paper)
             .scrollDismissesKeyboard(.interactively)
             .task { await model.loadLibraryStorage() }
+            .task { await model.loadAiSettings() }
             .navigationTitle("Konfiguracja")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
