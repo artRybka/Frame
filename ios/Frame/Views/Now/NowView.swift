@@ -566,11 +566,17 @@ struct ArtworkInfo: View {
                 }
                 .accessibilityLabel("Ulubione")
             }
-            Text(item.title.isEmpty ? "Bez tytułu" : item.title)
-                .font(.serif(28, weight: .semibold))
-                .foregroundStyle(Theme.ink)
-                .lineLimit(3)
-                .minimumScaleFactor(0.75)
+            // The title opens the work's card, like "Szczegóły" below.
+            NavigationLink(value: item.id) {
+                Text(item.title.isEmpty ? "Bez tytułu" : item.title)
+                    .font(.serif(28, weight: .semibold))
+                    .foregroundStyle(Theme.ink)
+                    .lineLimit(3)
+                    .minimumScaleFactor(0.75)
+                    .multilineTextAlignment(.leading)
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint(Text("Otwiera kartę dzieła"))
             if item.kind == .photo {
                 PhotoFacts(item: item)
             } else {
