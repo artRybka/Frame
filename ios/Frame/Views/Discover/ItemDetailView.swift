@@ -355,14 +355,6 @@ struct ItemDetailView: View {
             .accessibilityLabel(item.favorite ? "Usuń z ulubionych" : "Dodaj do ulubionych")
             Menu {
                 Button("Dodaj do playlisty", systemImage: "text.badge.plus") { showingPlaylists = true }
-                Button("Zapisz w Zdjęciach", systemImage: "square.and.arrow.down") {
-                    savingPhoto = true
-                    Task {
-                        await model.saveToPhotos(item)
-                        savingPhoto = false
-                    }
-                }
-                .disabled(savingPhoto)
                 Button(item.excluded ? "Pokazuj ponownie" : "Nie pokazuj na ramce", systemImage: "eye.slash") {
                     Task {
                         if let updated = await model.setExcluded(item.id, !item.excluded) {
@@ -374,6 +366,15 @@ struct ItemDetailView: View {
                     Divider()
                     Link(destination: url) { Label("Otwórz w muzeum", systemImage: "safari") }
                 }
+                // Last, under the museum link.
+                Button("Zapisz w Zdjęciach", systemImage: "square.and.arrow.down") {
+                    savingPhoto = true
+                    Task {
+                        await model.saveToPhotos(item)
+                        savingPhoto = false
+                    }
+                }
+                .disabled(savingPhoto)
             } label: {
                 Image(systemName: "ellipsis.circle").foregroundStyle(Theme.ink)
             }
