@@ -428,7 +428,9 @@ struct ScheduleSection: View {
                     }
                 }
                 Divider()
-                if settings.powerMode != nil {  // a server before the economy mode has none
+                // The economy mode needs the frame's own alarm, which firmware
+                // 1130.7 refuses (E13): only offered to switch back from it.
+                if settings.isEconomy {
                     powerModePicker
                     Divider()
                 }
@@ -475,7 +477,9 @@ struct ScheduleSection: View {
                 Text("do \(settings.quietEnd ?? "—")").foregroundStyle(Theme.inkSoft)
             }
             .font(.subheadline)
-            Text("Cisza trwa do najbliższej zmiany obrazu. Na baterii ramka śpi wtedy z wyłączonym Wi-Fi i budzi się sama na tę zmianę, a zdjęcia wysłane w nocy pojawią się rano. Przy zasilaczu trafiają na ramkę od razu.")
+            Text(model.status?.device.alarmRefused == true
+                ? "Cisza trwa do najbliższej zmiany obrazu. Ramka nie przyjmuje budzika, więc w nocy śpi z Wi-Fi gotowym do budzenia, a zdjęcia wysłane w nocy trafiają na nią od razu."
+                : "Cisza trwa do najbliższej zmiany obrazu. Na baterii ramka śpi wtedy z wyłączonym Wi-Fi i budzi się sama na tę zmianę, a zdjęcia wysłane w nocy pojawią się rano. Przy zasilaczu trafiają na ramkę od razu.")
                 .font(.caption)
                 .foregroundStyle(Theme.inkSoft)
         }
