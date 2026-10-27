@@ -7,7 +7,7 @@ import asyncio
 import logging
 import threading
 import time
-from collections import Counter
+from collections import Counter, OrderedDict
 from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass
 from datetime import date
@@ -20,6 +20,7 @@ from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 
 from ..library import Item, Job, Playlist, PlaylistKind, PlaylistRules, PlaylistSummary
+from ..library.duplicates import Shown
 from ..library.importer import ALL, span
 from ..library.museums import Discovery, Kind
 from ..library.themes import GROUPS, THEMES, Theme, browse_theme, theme, theme_of_the_day
@@ -507,6 +508,27 @@ def museum_text(rules: PlaylistRules, page: int) -> str:
 COLOR_PAGE = 24
 COLOR_PAGES = 6
 COLOR_SECONDS = 15.0
+#: Searches whose shown works later pages remember.
+SHOWN_SEARCHES = 16
+
+#: Works a recent search showed, by what it asked: each museum answers on
+#: its own, and a work shown from one is left out of the others' answers
+#: and later pages (or replaced, when a better copy comes).
+_shown: OrderedDict[str, Shown] = OrderedDict()
+_shown_lock = threading.Lock()
+
+
+def shown_in(rules: PlaylistRules, page: int) -> Shown:
+    """What the search for ``rules`` showed: nothing yet on its first page."""
+    key = rules.model_dump_json()
+    with _shown_lock:
+        found = _shown.get(key) if page > 1 else None
+        if found is None:
+            found = _shown[key] = Shown()
+        _shown.move_to_end(key)
+        while len(_shown) > SHOWN_SEARCHES:
+            _shown.popitem(last=False)
+        return found
 
 
 class MuseumAnswer(RemotePage):
@@ -666,10 +688,12 @@ async def stream_museums(
 ) -> StreamingResponse:
     """Like ``/discover/search``, as the museums answer: a
     :class:`MuseumAnswer` per museum page (JSON lines), with colours several
-    pages of each museum."""
+    pages of each museum. A work comes once, from whichever museum answers
+    first, unless a more reliable one brings it later (``replaces``)."""
     search = museum_search(svc, q, artist, term, color, year_from, year_to, source, limit)
     keys = [] if search.empty else search.keys or svc.importer.sources()
     copies = len(search.keys) != 1
+    shown = shown_in(search.rules, page)
 
     loop = asyncio.get_running_loop()
     answers: asyncio.Queue[MuseumAnswer | None] = asyncio.Queue()
@@ -682,10 +706,13 @@ async def stream_museums(
             for total, items, failed, next_ in search.pages(svc, [key], page):
                 if gone.is_set():
                     return
-                found = remote_items(svc, items, copies)
-                answer = MuseumAnswer(
-                    source=key, total=total, items=found, failed=failed, next=next_
-                )
+                found = {r.item.id: r for r in remote_items(svc, items, copies)}
+                taken = shown.take(r.item for r in found.values())
+                new = [
+                    found[t.item.id].model_copy(update={"work": t.work, "replaces": t.replaces})
+                    for t in taken
+                ]
+                answer = MuseumAnswer(source=key, total=total, items=new, failed=failed, next=next_)
                 loop.call_soon_threadsafe(answers.put_nowait, answer)
         except Exception:
             log.exception("searching %s failed", key)
