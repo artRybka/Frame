@@ -35,7 +35,6 @@ final class FrameAPITests: XCTestCase {
         XCTAssertEqual(view.progress?.stage, "downloading")
         XCTAssertEqual(view.progress?.phaseIndex, 1)
         XCTAssertEqual(view.progress?.secondsLeft, 47)
-        XCTAssertEqual(view.progress?.timeLeftLabel, "ok. 47 s")
         XCTAssertEqual(view.playlist?.itemCount, 21)
         XCTAssertEqual(view.playlist?.rules.query, "woodblock")
         XCTAssertEqual(view.current?.previewUrl, "/api/previews/ABC.png")
@@ -69,10 +68,8 @@ final class FrameAPITests: XCTestCase {
         var progress = DisplayProgress(stage: "refreshing", phase: "displaying", active: true,
                                        title: "", fraction: 0.8, secondsLeft: 150)
         XCTAssertEqual(progress.phaseIndex, 2)
-        XCTAssertEqual(progress.timeLeftLabel, "ok. 3 min")
         progress = DisplayProgress(stage: "done", active: false, title: "", fraction: 1)
         XCTAssertEqual(progress.phaseIndex, DisplayProgress.phases.count)
-        XCTAssertNil(progress.timeLeftLabel)
         XCTAssertEqual(progress.stageLabel, "Obraz jest na ramce")
     }
 
@@ -646,6 +643,45 @@ final class FrameAPITests: XCTestCase {
         XCTAssertEqual(saved.itemIds, [item.id])
     }
 
+    func testDemoPhotoSentOnceHasItsOwnLook() async throws {
+        let demo = DemoBackend()
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let jpeg = UIGraphicsImageRenderer(size: CGSize(width: 300, height: 200), format: format)
+            .jpegData(withCompressionQuality: 0.8) { context in
+                UIColor.systemOrange.setFill()
+                context.fill(CGRect(x: 0, y: 0, width: 300, height: 200))
+            }
+        var photo = PhotoUpload(data: jpeg, title: "Zdjęcie z rolki")
+        var look = Look(FrameSettings.defaults.photo)
+        XCTAssertEqual(look.fit, "fill")
+        look.fit = "fit"
+        look.mat = "cream"
+        photo.look = look
+        let item = try await demo.uploadPhoto(photo)
+        XCTAssertEqual(item.look, look)
+        var query = LibraryQuery()
+        query.kinds = [.photo]
+        let photos = try await demo.items(query)
+        XCTAssertFalse(photos.items.contains { $0.id == item.id })  // never listed
+        let framed = try await demo.framing(itemID: item.id, orientation: "portrait")
+        XCTAssertEqual(framed.fit, "fit")
+
+        look.fit = "fill"
+        let changed = try await demo.setLook(itemID: item.id, look)
+        XCTAssertEqual(changed.look?.fit, "fill")
+        let filled = try await demo.framing(itemID: item.id, orientation: "portrait")
+        XCTAssertEqual(filled.fit, "fill")
+        try await demo.deleteItem(id: item.id)
+        let gone = try? await demo.item(id: item.id)
+        XCTAssertNil(gone)
+
+        var settings = FrameSettings.defaults
+        settings.photo = settings.photo.with(look)
+        XCTAssertEqual(settings.photo.preset, "auto")
+        XCTAssertFalse(settings.photo.label)
+    }
+
     func testDecodesAlbumPlaylists() throws {
         let json = """
         {"id": 7, "name": "Rodzina", "description": "", "kind": "album",
@@ -685,6 +721,26 @@ final class FrameAPITests: XCTestCase {
         let job = try await demo.syncAlbum(playlistID: saved.playlist.id)
         let status = try await demo.job(id: job)
         XCTAssertTrue(status.finished)
+    }
+
+    func testDecodesMuseumAnswerLines() throws {
+        let line = #"{"source":"aic","total":120,"items":[],"failed":[],"next":4}"#
+        let answer = try LiveBackend.decoder().decode(MuseumAnswer.self, from: Data(line.utf8))
+        XCTAssertEqual(answer.source, "aic")
+        XCTAssertEqual(answer.next, 4)
+        let last = try LiveBackend.decoder().decode(
+            MuseumAnswer.self, from: Data(#"{"source":"cma","total":3,"items":[],"next":null}"#.utf8)
+        )
+        XCTAssertNil(last.next)
+    }
+
+    func testDemoMuseumsAnswerOneByOne() async throws {
+        let demo = DemoBackend()
+        var sources: [String] = []
+        for try await answer in try await demo.museumAnswers(PlaylistRules(), sources: ["aic", "met"], page: 1) {
+            sources.append(answer.source)
+        }
+        XCTAssertEqual(sources, ["aic", "met"])
     }
 
     func testDescriptionKeepsWholeSentences() {

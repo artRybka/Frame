@@ -82,6 +82,14 @@ struct LiveBackend: FrameBackend {
         try await send("/api/library/items/\(escape(id))", method: "PATCH", body: ["excluded": excluded])
     }
 
+    func setLook(itemID: String, _ look: Look) async throws -> Item {
+        try await send("/api/library/items/\(escape(itemID))", method: "PATCH", body: ["look": look])
+    }
+
+    func deleteItem(id: String) async throws {
+        try await send("/api/library/items/\(escape(id))", method: "DELETE")
+    }
+
     func show(itemID: String, hold: HoldSpec) async throws {
         try await send("/api/library/items/\(escape(itemID))/show", method: "POST", body: ["hold": hold.wireValue])
     }
@@ -182,6 +190,49 @@ struct LiveBackend: FrameBackend {
     }
 
     func searchMuseums(_ rules: PlaylistRules, sources: [String], page: Int) async throws -> RemotePage {
+        try await get("/api/discover/search", query: museumQuery(rules, sources: sources, page: page))
+    }
+
+    func museumAnswers(_ rules: PlaylistRules, sources: [String], page: Int) async throws
+        -> AsyncThrowingStream<MuseumAnswer, Error>
+    {
+        let query = museumQuery(rules, sources: sources, page: page)
+        let (bytes, response) = try await stream(request("/api/discover/search/stream", query: query))
+        guard let http = response as? HTTPURLResponse else { throw BackendError.invalidResponse }
+        if http.statusCode == 404 {
+            // A server from before the stream: every museum's works at once.
+            bytes.task.cancel()
+            let found = try await searchMuseums(rules, sources: sources, page: page)
+            let answer = MuseumAnswer(
+                source: sources.count == 1 ? sources[0] : "all", total: found.total, items: found.items,
+                failed: found.failed, next: found.items.isEmpty ? nil : page + 1
+            )
+            return AsyncThrowingStream { continuation in
+                continuation.yield(answer)
+                continuation.finish()
+            }
+        }
+        guard (200 ..< 300).contains(http.statusCode) else {
+            bytes.task.cancel()
+            throw BackendError.http(status: http.statusCode, body: "")
+        }
+        return AsyncThrowingStream { continuation in
+            let reading = Task {
+                do {
+                    let decoder = Self.decoder()
+                    for try await line in bytes.lines where !line.isEmpty {
+                        continuation.yield(try decoder.decode(MuseumAnswer.self, from: Data(line.utf8)))
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in reading.cancel() }
+        }
+    }
+
+    private func museumQuery(_ rules: PlaylistRules, sources: [String], page: Int) -> [URLQueryItem] {
         var query = [
             URLQueryItem(name: "q", value: rules.query),
             URLQueryItem(name: "page", value: String(page)),
@@ -192,7 +243,7 @@ struct LiveBackend: FrameBackend {
         query += rules.colors.map { URLQueryItem(name: "color", value: $0) }
         if let from = rules.yearFrom { query.append(URLQueryItem(name: "year_from", value: String(from))) }
         if let to = rules.yearTo { query.append(URLQueryItem(name: "year_to", value: String(to))) }
-        return try await get("/api/discover/search", query: query)
+        return query
     }
 
     // MARK: Museums
@@ -263,19 +314,6 @@ struct LiveBackend: FrameBackend {
 
     // MARK: Device
 
-    func sendPhoto(_ data: Data, title: String, preset: String, hold: HoldSpec) async throws -> DisplayResponse {
-        var form = MultipartForm()
-        form.addField("preset", preset)
-        form.addField("title", title)
-        form.addField("hold", hold.wireValue)
-        form.addFile("file", filename: "photo.jpg", mimeType: "image/jpeg", data: data)
-        var req = request("/api/display", method: "POST")
-        req.setValue(form.contentType, forHTTPHeaderField: "Content-Type")
-        req.httpBody = form.body()
-        req.timeoutInterval = 240
-        return try await perform(req)
-    }
-
     func uploadPhoto(_ upload: PhotoUpload) async throws -> Item {
         var form = MultipartForm()
         form.addField("kind", "photo")
@@ -284,6 +322,9 @@ struct LiveBackend: FrameBackend {
         if let latitude = upload.latitude, let longitude = upload.longitude {
             form.addField("latitude", String(latitude))
             form.addField("longitude", String(longitude))
+        }
+        if let look = upload.look, let json = try? Self.encoder().encode(look) {
+            form.addField("look", String(decoding: json, as: UTF8.self))
         }
         form.addFile("file", filename: "photo.jpg", mimeType: "image/jpeg", data: upload.data)
         var req = request("/api/library/upload", method: "POST")
@@ -301,6 +342,16 @@ struct LiveBackend: FrameBackend {
 
     func resetPanelConfig() async throws -> PanelConfig {
         try await send("/api/device/config", method: "DELETE")
+    }
+
+    func libraryStorage() async throws -> LibraryStorage { try await get("/api/library/storage") }
+
+    func saveLibraryLimit(mb: Int) async throws -> LibraryStorage {
+        try await send("/api/library/storage", method: "PUT", body: LibraryStorageUpdate(limitMb: mb))
+    }
+
+    func resetLibraryLimit() async throws -> LibraryStorage {
+        try await send("/api/library/storage", method: "DELETE")
     }
 
     func wake(sleepAfter: Bool) async throws -> WakeResult {
@@ -428,6 +479,16 @@ struct LiveBackend: FrameBackend {
                   let moved = route.rebased(req)
             else { throw error }
             return try await URLSession.shared.data(for: moved)
+        }
+    }
+
+    /// Like `load`, for a response read as it comes.
+    private func stream(_ req: URLRequest) async throws -> (URLSession.AsyncBytes, URLResponse) {
+        do {
+            return try await URLSession.shared.bytes(for: req)
+        } catch let error as URLError where route.hasRemote && ServerRoute.unreachable(error) {
+            guard await route.resolve() != nil, let moved = route.rebased(req) else { throw error }
+            return try await URLSession.shared.bytes(for: moved)
         }
     }
 }

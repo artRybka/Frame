@@ -28,11 +28,13 @@ from .power import PowerManager
 from .progress import ProgressTracker, Stage
 from .rendered import RenderCache, Rendered, render_key
 from .status import StatusMonitor
+from .storage import StorageStore
 from .store import ContentInfo, ContentStore
 
 log = logging.getLogger(__name__)
 
 PREVIEW_MAX = 1280
+PROGRESS_KEY = "progress_expected"
 
 
 @dataclass
@@ -128,6 +130,8 @@ class FrameService:
         # Before anything reads the panel's address: the app's values win.
         self.panel_config = PanelConfigStore(settings, self.library)
         self.images = ImageCache(settings.data_dir / "library", museum_client)
+        # Before the player trims or grows the catalogue: the app's limit wins.
+        self.storage = StorageStore(settings, self.library, self.images, self.store)
         self.importer = Importer(
             self.library,
             self.images,
@@ -135,6 +139,9 @@ class FrameService:
             access=self._access,
         )
         self.status = StatusMonitor(self.panel, self.library)
+        self.progress.restore(self.library.get_state(PROGRESS_KEY, {}))
+        self.progress.on_learn = lambda learned: self.library.set_state(PROGRESS_KEY, learned)
+        self.progress.likely_asleep = lambda: self.status.sleeping
         self.player = Player(self)
         self.power = PowerManager(self)
         self.albums = Albums(self)

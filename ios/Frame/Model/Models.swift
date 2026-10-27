@@ -54,6 +54,9 @@ struct Item: Codable, Identifiable, Hashable, Sendable {
     var lastShownAt: String?
     var showCount: Int
     var photo: PhotoInfo?
+    /// A photo sent once from the camera roll ("Zdjęcie na ramkę"): shown
+    /// with its own look, and never in a list or a rotation.
+    var look: Look? = nil
 
     var summary: ItemSummary {
         ItemSummary(
@@ -382,12 +385,6 @@ struct DisplayProgress: Codable, Hashable, Sendable {
         default: ""
         }
     }
-
-    var timeLeftLabel: String? {
-        guard active, let left = secondsLeft, left > 1 else { return nil }
-        if left < 90 { return "ok. \(left) s" }
-        return "ok. \((left + 30) / 60) min"
-    }
 }
 
 struct DeviceStatus: Codable, Hashable, Sendable {
@@ -432,6 +429,37 @@ struct PanelConfig: Codable, Hashable, Sendable {
     var pinSet: Bool
     /// Saved in the app; otherwise taken from frame.env or the add-on options.
     var fromApp: Bool
+}
+
+/// How much disk the library takes on the server and how much it may take
+/// (Ramka → trybik → Konfiguracja). Sizes in bytes; limits in MB, as the
+/// server counts them (1 MB = 1 MiB).
+struct LibraryStorage: Codable, Hashable, Sendable {
+    struct Usage: Codable, Hashable, Sendable {
+        /// Thumbnails of the catalogue browsed in the app.
+        var catalogueBytes: Int64
+        /// Display-size originals: museum cache, uploads and photos.
+        var originalsBytes: Int64
+        /// Pictures prepared for the panel and their previews.
+        var panelBytes: Int64
+        var databaseBytes: Int64
+        var totalBytes: Int64
+        var freeBytes: Int64?
+        var measuredAt: Double
+    }
+
+    var usage: Usage
+    /// Catalogue and originals together; the server splits it between them.
+    var limitMb: Int
+    /// From frame.env or the add-on options.
+    var defaultMb: Int
+    var catalogueMb: Int
+    var imageCacheMb: Int
+    var fromApp: Bool
+}
+
+struct LibraryStorageUpdate: Encodable, Sendable {
+    var limitMb: Int
 }
 
 struct PanelConfigUpdate: Encodable, Sendable {
@@ -530,6 +558,37 @@ struct Presentation: Codable, Hashable, Sendable {
         multiCount = try c.decodeIfPresent(Int.self, forKey: .multiCount) ?? 4
         multiRandom = try c.decodeIfPresent(Bool.self, forKey: .multiRandom) ?? false
         multiGrid = try c.decodeIfPresent(String.self, forKey: .multiGrid) ?? "auto"
+    }
+}
+
+/// How a photo sent once ("Zdjęcie na ramkę") is shown, in place of the
+/// settings' presentation for photos; its style is always automatic.
+struct Look: Codable, Hashable, Sendable {
+    var fit = "fill"  // "fill" | "fit" (in a passe-partout)
+    var mat = "white"
+    var margin = 0.05
+
+    var key: String { "\(fit),\(mat),\(margin)" }
+
+    /// To start with: the settings' presentation for photos, or the whole
+    /// frame where that is several photos to a board.
+    init(_ photo: Presentation) {
+        fit = photo.fit == "fit" ? "fit" : "fill"
+        mat = photo.mat
+        margin = max(photo.margin, 0.05)
+    }
+}
+
+extension Presentation {
+    /// This presentation for photos as a photo sent once with `look` gets it.
+    func with(_ look: Look) -> Presentation {
+        var presentation = self
+        presentation.preset = "auto"
+        presentation.fit = look.fit
+        presentation.mat = look.mat
+        presentation.margin = look.margin
+        presentation.label = false
+        return presentation
     }
 }
 
@@ -837,6 +896,18 @@ struct RemotePage: Codable, Sendable {
     let items: [RemoteItem]
     /// Museums that did not answer a search of all of them.
     var failed: [String]?
+}
+
+/// A page of one museum's works for Discover's search, a line of
+/// `GET /api/discover/search/stream`.
+struct MuseumAnswer: Codable, Sendable {
+    /// The museum's key ("all" when a server answers for every museum at once).
+    let source: String
+    let total: Int
+    let items: [RemoteItem]
+    var failed: [String]?
+    /// The page to ask the museum for more; nil when it has no more.
+    var next: Int?
 }
 
 /// A themed batch of museum works, `GET /api/library/packs`.

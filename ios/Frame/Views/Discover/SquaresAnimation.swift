@@ -1,13 +1,17 @@
 import SwiftUI
+import UIKit
 
 /// The app icon's colour squares at play, while Discover's search is still
 /// empty: one of a few games, picked at random, and a tap moves on to the
-/// next. The row stands near the top; the rest of the view is room for
-/// them to fall to. With Reduce Motion they just stand in their row.
+/// next. The row stands in the middle of the screen; the view reaches down
+/// to the tab bar so there is room to fall to. Every round they rest a
+/// while in the row. With Reduce Motion they just stand in it.
 struct SquaresAnimation: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var game = SquareGame.allCases.randomElement() ?? .wave
     @State private var start = Date.now
+    /// The middle of the screen, from the view's top.
+    @State private var middle: Double?
 
     var body: some View {
         TimelineView(.animation(paused: reduceMotion)) { context in
@@ -16,6 +20,11 @@ struct SquaresAnimation: View {
                 let squares = reduceMotion ? SquareGame.row : game.squares(at: time)
                 draw(squares, in: &canvas, size: size)
             }
+        }
+        .onGeometryChange(for: Double.self) { proxy in
+            Double(proxy.frame(in: .global).minY)
+        } action: { top in
+            middle = Self.screenHeight.map { $0 / 2 - top }
         }
         .contentShape(Rectangle())
         .onTapGesture {
@@ -26,11 +35,20 @@ struct SquaresAnimation: View {
         .accessibilityHidden(true)
     }
 
+    /// The height of the window the app shows in.
+    private static var screenHeight: Double? {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        let scene = scenes.first { $0.activationState == .foregroundActive } ?? scenes.first
+        return (scene?.keyWindow ?? scene?.windows.first).map { Double($0.bounds.height) }
+    }
+
     private func draw(_ squares: [PlayingSquare], in canvas: inout GraphicsContext, size: CGSize) {
         let side = SquareGame.side
-        // The row's left edge, and the line the squares stand on.
+        // The row's left edge, and the line the squares stand on: the row
+        // in the middle of the screen (of the view until that is known).
         let left = (Double(size.width) - SquareGame.row.width) / 2
-        let base: Double = game == .frame ? 150 : 130
+        let height = Double(size.height)
+        let base = min(height - side, max(5 * side, (middle ?? height / 2) + side / 2))
         for square in squares where square.alpha > 0 {
             var context = canvas
             // Falling ones fade out at the bottom.
@@ -64,7 +82,8 @@ struct PlayingSquare {
     var alpha: Double = 1
 }
 
-/// The games, each a function of time in seconds that loops.
+/// The games, each a function of time in seconds that loops, with a rest in
+/// the row once a round.
 enum SquareGame: CaseIterable {
     /// They hop one after another; each time round one does a flip.
     case wave
@@ -76,19 +95,36 @@ enum SquareGame: CaseIterable {
     /// They stack into two columns and a sixth square closes the frame.
     case frame
 
-    static let side = 22.0
-    static let gap = 10.0
+    static let side = 11.0
+    static let gap = 5.0
     static let step = side + gap
     static let indices = Array(0 ..< 5)
 
     static var row: [PlayingSquare] { indices.map { PlayingSquare(index: $0, x: Double($0) * step) } }
 
-    func squares(at time: Double) -> [PlayingSquare] {
+    /// How long the squares stand still in their row, once a round.
+    static let rest = 2.0
+
+    /// A round of play, and when in it they all stand in their row, which is
+    /// where the rest goes.
+    private var rhythm: (play: Double, still: Double) {
         switch self {
-        case .wave: Self.wave(time)
-        case .leapfrog: Self.leapfrog(time)
-        case .drop: Self.drop(time)
-        case .frame: Self.frame(time)
+        case .wave: (2 * 2.6, 2 * 2.6)
+        case .leapfrog: (5, 5)  // after five leaps they are back in order
+        case .drop: (5.6, 2.0)  // all landed, before they cheer
+        case .frame: (6, 6)
+        }
+    }
+
+    func squares(at time: Double) -> [PlayingSquare] {
+        let (play, still) = rhythm
+        let k = floor(time / (play + Self.rest)), u = time - k * (play + Self.rest)
+        let t = k * play + (u < still ? u : max(still, u - Self.rest))
+        switch self {
+        case .wave: return Self.wave(t)
+        case .leapfrog: return Self.leapfrog(t)
+        case .drop: return Self.drop(t)
+        case .frame: return Self.frame(t)
         }
     }
 

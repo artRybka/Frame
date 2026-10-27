@@ -9,7 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from frame_server.library import Item
-from frame_server.library.lifespan import LifeDates, free_in_eu
+from frame_server.library.lifespan import LifeDates, death_in_name, free_in_eu, last_free_year
 from frame_server.library.museums import (
     Access,
     Discovery,
@@ -56,6 +56,15 @@ def test_eu_rule_counts_seventy_full_years() -> None:
     assert free_in_eu(1955, date(2026, 1, 1))
     assert not free_in_eu(1956, date(2026, 12, 31))
     assert free_in_eu(1956, date(2027, 1, 1))
+
+
+def test_last_free_year_and_dates_in_names() -> None:
+    assert last_free_year(date(2026, 10, 26)) == 1955
+    assert free_in_eu(last_free_year(date(2031, 1, 1)), date(2031, 1, 1))
+    assert death_in_name("Kandinsky, Wassily (1866-1944) (Künstler/Hersteller)") == 1944
+    assert death_in_name("Oskar Schlemmer (04.09.1888 - 13.04.1943)") == 1943
+    assert death_in_name("Mondrian, Piet (Künstler/in)") is None
+    assert death_in_name("Atelier (1650-1890)") is None  # not a lifetime
 
 
 def test_death_years_by_uri_and_exact_name_and_cached() -> None:
@@ -124,6 +133,29 @@ def test_europeana_takes_works_free_in_the_eu() -> None:
     with _europeana(records, []) as http:
         licensed = Europeana(http, access=Access(private_use=True)).search("x")[1]
     assert [i.license for i in licensed] == ["Public Domain Mark 1.0", "CC BY-SA 4.0"]
+
+
+def test_europeana_takes_free_works_whatever_their_photo_licence() -> None:
+    """A CC licence on the photograph of a painting free in the EU, or life
+    dates only in the creator's name, still let the work in."""
+    by_sa = "http://creativecommons.org/licenses/by-sa/4.0/"
+    records = [
+        _europeana_record(by_sa, [MATISSE], id="/1/matisse"),
+        _europeana_record(
+            by_sa, ["Kandinsky, Wassily (1866-1944) (Künstler/Hersteller)"], id="/1/kandinsky"
+        ),
+        _europeana_record(by_sa, ["Matisse, Henri (Künstler/in)"], id="/1/by-name"),
+        _europeana_record(by_sa, [WARHOL], id="/1/warhol"),
+    ]
+    access = Access(life=LifeDates("key"), europeana_key="key")
+    with _europeana(records, []) as http:
+        items = Europeana(http, access=access).search("x")[1]
+    assert [(i.id, i.license) for i in items] == [
+        ("europeana:1~matisse", "Domena publiczna w UE (twórca zm. 1954)"),
+        ("europeana:1~kandinsky", "Domena publiczna w UE (twórca zm. 1944)"),
+        ("europeana:1~by-name", "Domena publiczna w UE (twórca zm. 1954)"),
+    ]
+    assert items[1].artist == "Wassily Kandinsky"
 
 
 def test_europeana_leaves_slides_and_reproductions_out() -> None:
@@ -365,3 +397,70 @@ def test_wikiart_switch_lists_it_and_switching_off_removes_its_works(service) ->
         client.put("/api/settings", json=settings)
         assert not svc.library.has("wikiart:wa1") and svc.library.has("aic:1")
         assert client.get("/api/museums/wikiart/search", params={"q": "x"}).status_code == 404
+
+
+def test_colours_look_deeper_and_the_stream_answers_museum_by_museum(service, monkeypatch) -> None:
+    import json
+
+    from PIL import Image
+
+    from frame_server.library.museums import MUSEUMS
+    from frame_server.web import create_app, discover_api
+
+    pages: list[tuple[str, int]] = []
+
+    def answering(key: str, base: type[Openverse] | type[Europeana], red_from: int) -> type:
+        class Answering(base):  # type: ignore[valid-type, misc]
+            def search(self, query, limit=20, page=1):
+                pages.append((key, page))
+                tint = "red" if page >= red_from else "blue"
+                items = [
+                    self._item(
+                        f"{key}-{page}-{n}",
+                        title=f"{key} {page} {n}",
+                        image_url=f"https://x/{key}/{tint}.jpg",
+                        thumb_url=f"https://x/{key}/{tint}.jpg",
+                    )
+                    for n in range(limit)
+                ]
+                return 1000, items
+
+        return Answering
+
+    # Openverse's red works only start on its third page; Europeana has none.
+    monkeypatch.setitem(MUSEUMS, "openverse", answering("openverse", Openverse, 3))
+    monkeypatch.setitem(MUSEUMS, "europeana", answering("europeana", Europeana, 99))
+    app = create_app(service.settings)
+    svc = app.state.service
+    tints = {"red": (200, 30, 30), "blue": (30, 60, 210)}
+    monkeypatch.setattr(
+        svc.importer.cache,
+        "sample",
+        lambda url: Image.new("RGB", (32, 32), tints[url.rsplit("/", 1)[1].split(".")[0]]),
+    )
+    params = {"q": "sea", "source": ["openverse", "europeana"], "color": ["red"], "limit": 8}
+    with TestClient(app) as client:
+        with client.stream("GET", "/api/discover/search/stream", params=params) as resp:
+            assert resp.headers["content-type"].startswith("application/x-ndjson")
+            lines = [json.loads(line) for line in resp.iter_lines() if line]
+        by_source: dict[str, list[dict]] = {}
+        for line in lines:
+            by_source.setdefault(line["source"], []).append(line)
+        # A line per page looked at; Openverse stops once enough fit.
+        openverse = by_source["openverse"]
+        assert [len(a["items"]) for a in openverse] == [0, 0, 24]
+        assert openverse[-1]["next"] == 4 and openverse[-1]["total"] == 1000
+        europeana = by_source["europeana"]
+        assert len(europeana) == discover_api.COLOR_PAGES
+        assert all(not a["items"] for a in europeana)
+        assert europeana[-1]["next"] == discover_api.COLOR_PAGES + 1
+
+        # More from where the last page stopped.
+        pages.clear()
+        more = client.get(
+            "/api/discover/search", params={**params, "source": "openverse", "page": 4}
+        ).json()
+        assert pages == [("openverse", 4)] and len(more["items"]) == 24 and more["next"] == 5
+
+        # Nothing asked of every museum: an empty stream.
+        assert client.get("/api/discover/search/stream").text == ""

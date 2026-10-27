@@ -289,7 +289,7 @@ class Library:
         # Photographs and pages of manuscripts the server picked only when
         # asked for (photographs never).
         def selected(item: Item) -> bool:
-            if item.id in spare:
+            if item.id in spare or item.look is not None:  # photos sent once: never listed
                 return False
             if not include_excluded and item.pooled and set_aside(item, rules.terms):
                 return False

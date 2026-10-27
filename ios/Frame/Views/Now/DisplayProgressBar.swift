@@ -19,12 +19,6 @@ struct DisplayProgressBar: View {
                     .lineLimit(1)
                     .contentTransition(.opacity)
                 Spacer(minLength: 8)
-                if let left = progress.timeLeftLabel {
-                    Text(left)
-                        .font(.caption)
-                        .monospacedDigit()
-                        .foregroundStyle(Theme.inkSoft)
-                }
             }
             bar
             if !compact {
@@ -67,7 +61,8 @@ struct DisplayProgressBar: View {
             }
         }
         .frame(height: 6)
-        // The server is asked once a second: glide from one answer to the next.
+        // The server is asked once a second, on the beat: glide from one
+        // answer to the next in that second, so the bar never stops between.
         .animation(.linear(duration: 1), value: progress.fraction)
     }
 
@@ -95,12 +90,12 @@ struct DisplayProgressBar: View {
         DisplayProgressBar(
             progress: DisplayProgress(
                 stage: "downloading", phase: "loading", active: true, title: "Fala",
-                fraction: 0.38, secondsLeft: 47
+                fraction: 0.38
             )
         )
         DisplayProgressBar(
             progress: DisplayProgress(stage: "refreshing", phase: "displaying", active: true,
-                                      title: "Fala", fraction: 0.7, secondsLeft: 20),
+                                      title: "Fala", fraction: 0.7),
             compact: true
         )
         DisplayProgressBar(progress: DisplayProgress(stage: "done", active: false, title: "Fala", fraction: 1))

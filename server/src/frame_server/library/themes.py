@@ -101,6 +101,28 @@ POLISH_LANDSCAPE = (
     "Kazimierz Stabrowski",
     "Leon Wyczółkowski",
 )
+#: Painters who died in or before 1955: free in Poland since 2026 at the
+#: latest, though American museums keep their later works closed.
+AVANT_GARDE = (
+    "Kandinsky",
+    "Mondrian",
+    "Paul Klee",
+    "Malevich",
+    "Fernand Léger",
+    "Robert Delaunay",
+    "Jawlensky",
+    "Oskar Schlemmer",
+    "van Doesburg",
+)
+POLISH_INTERWAR = (
+    "Władysław Strzemiński",
+    "Stanisław Ignacy Witkiewicz",
+    "Leon Chwistek",
+    "Tytus Czyżewski",
+    "Tadeusz Makowski",
+    "Mojżesz Kisling",
+    "Roman Kramsztyk",
+)
 
 
 STYLES = "Kierunki i style"
@@ -248,6 +270,15 @@ THEMES: list[Theme] = [
             "Kirchner",
             "Kandinsky",
         ),
+    ),
+    Theme(
+        "avant-garde",
+        "Awangarda i abstrakcja",
+        "Kandinsky, Mondrian, Klee, Malewicz, Léger, Delaunay, także ich późne prace.",
+        STYLES,
+        artists=AVANT_GARDE,
+        # Europeana first: its later works are free by the EU rule.
+        queries=tuple((s, a) for a in AVANT_GARDE for s in ("europeana", "aic", "cma")),
     ),
     # Prints and posters
     Theme(
@@ -425,6 +456,17 @@ THEMES: list[Theme] = [
         POLISH,
         artists=POLISH_LANDSCAPE,
         queries=_commons(POLISH_LANDSCAPE),
+    ),
+    Theme(
+        "polish-interwar",
+        "Polskie międzywojnie",
+        "Strzemiński, Witkacy, Chwistek, Czyżewski, Makowski, Kisling.",
+        POLISH,
+        artists=POLISH_INTERWAR,
+        queries=(
+            *_commons(POLISH_INTERWAR),
+            *(("europeana", a) for a in POLISH_INTERWAR),
+        ),
     ),
     # Colour and mood: browsed in the catalogue, where colours are known
     Theme(

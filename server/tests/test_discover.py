@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from test_pools import _wait, museums  # noqa: F401  (fixture)
 
 from frame_server.library import Item, ItemKind, PlaylistRules
+from frame_server.library.lifespan import last_free_year
 from frame_server.library.repo import matches
 from frame_server.library.themes import GROUPS, THEMES, theme_of_the_day
 from frame_server.library.vocabulary import (
@@ -296,3 +297,19 @@ def test_theme_pages_pass_over_searches_that_find_nothing() -> None:
     # Polish painters are looked for on Commons, where they are.
     assert all(source == "wmc" for source, _ in theme("young-poland").searches())
     assert all(source == "wmc" for source, _ in theme("polish-landscape").searches())
+
+
+def test_periods_reach_the_last_year_free_in_the_eu() -> None:
+    late = term("period:post-1945")
+    assert late is not None and late.year_to == last_free_year()
+    assert late.name == f"1945–{last_free_year()}"
+    composition = _work(1, title="Composition", year=1950)
+    assert matches(composition, PlaylistRules(terms=["period:post-1945"]))
+    assert matches(_work(2, title="Unism", year=1934), PlaylistRules(terms=["period:interwar"]))
+    assert not matches(composition, PlaylistRules(terms=["period:1930-1945"]))
+    # Later styles, and their museum words.
+    assert matches(
+        _work(3, title="Suprematist composition", year=1916),
+        PlaylistRules(terms=["style:constructivism"]),
+    )
+    assert "style:abstraction" in [t.key for t in suggest("abstrak")]

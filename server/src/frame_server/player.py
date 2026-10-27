@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import random
+import threading
 from collections import Counter
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
@@ -28,7 +29,7 @@ from .library.style import AUTO, auto_preset
 from .library.themes import SEARCHABLE, theme_of_the_day
 from .library.vocabulary import set_aside
 from .progress import Stage
-from .schedule import FrameSettings, in_quiet_hours, next_change
+from .schedule import FrameSettings, Presentation, in_quiet_hours, next_change
 
 if TYPE_CHECKING:
     from .service import FrameService
@@ -55,6 +56,9 @@ SET_ASIDE_KEY = "set_aside_dropped"
 SET_ASIDE_VERSION = 2
 #: Version of the suitability score the library's pictures carry.
 SCORE_KEY = "suitability_version"
+#: The playlist the photos sent once gather in, newest first.
+SENT_KEY = "sent_photos_playlist"
+SENT_NAME = "Historia przesłanych"
 #: A rotation with fewer pictures not shown lately asks museums for more,
 #: up to ``POOL_SIZE``; Suggestions remember at most ``POOL_MAX`` works.
 POOL_LOW = 8
@@ -162,6 +166,7 @@ class Player:
         self.service = service
         self.library = service.library
         self._lock = asyncio.Lock()
+        self._trimming = threading.Lock()  # after a change and after a new limit at once
         self.busy = False
         self._migrate_auto_style()
 
@@ -251,6 +256,20 @@ class Player:
         state.requested = [item_id, *(i for i in state.requested if i != item_id)]
         state.queue = [i for i in state.queue if i != item_id]
         self._save_state(state)
+
+    def remember_sent(self, item: Item) -> None:
+        """A photo sent once, shown or queued, goes first in "Historia
+        przesłanych"; the playlist is made when first needed, and again if
+        the owner deleted it."""
+        if item.look is None:
+            return
+        playlist_id = self.library.get_state(SENT_KEY, None)
+        playlist = self.library.playlist(playlist_id) if playlist_id is not None else None
+        if playlist is None:
+            playlist = Playlist(name=SENT_NAME, kind=PlaylistKind.MANUAL)
+        ids = [item.id, *(i for i in playlist.item_ids if i != item.id)]
+        saved = self.library.save_playlist(playlist.model_copy(update={"item_ids": ids}))
+        self.library.set_state(SENT_KEY, saved.id)
 
     def dequeue(self, item_id: str) -> None:
         """Take back a pick added with ``queue_next``."""
@@ -366,8 +385,18 @@ class Player:
     # -- boards of several photos (MULTI) ------------------------------------
 
     @staticmethod
-    def multi(item: Item, settings: FrameSettings) -> bool:
-        return item.kind == ItemKind.PHOTO and settings.photo.fit == Fit.MULTI
+    def presentation(item: Item, settings: FrameSettings) -> Presentation:
+        """How ``item`` is framed: the settings' for photos or for art, or
+        the look a photo sent once from the camera roll was given."""
+        if item.look is not None:
+            look = item.look
+            update = {"fit": look.fit, "mat": look.mat, "margin": look.margin}
+            return settings.photo.model_copy(update=update | {"preset": AUTO, "label": False})
+        return settings.photo if item.kind == ItemKind.PHOTO else settings.art
+
+    @classmethod
+    def multi(cls, item: Item, settings: FrameSettings) -> bool:
+        return item.kind == ItemKind.PHOTO and cls.presentation(item, settings).fit == Fit.MULTI
 
     def board(
         self,
@@ -419,7 +448,7 @@ class Player:
 
     def preset_for(self, item: Item, settings: FrameSettings) -> str:
         """The rendering preset ``item`` gets: the chosen one, or by the picture."""
-        pres = settings.photo if item.kind == ItemKind.PHOTO else settings.art
+        pres = self.presentation(item, settings)
         if pres.preset != AUTO:
             return pres.preset
         if item.tint_spread is None:
@@ -432,7 +461,7 @@ class Player:
         return auto_preset(item)
 
     def render_settings(self, item: Item, settings: FrameSettings) -> RenderSettings:
-        pres = settings.photo if item.kind == ItemKind.PHOTO else settings.art
+        pres = self.presentation(item, settings)
         preset = self.preset_for(item, settings)
         base = PRESETS.get(preset, PRESETS["painting"]).model_copy(deep=True)
         base.layout.fit = pres.fit
@@ -799,16 +828,16 @@ class Player:
             and i.id not in protected
         ]
         spare.sort(key=lambda i: (i.suitability or 0.0, i.added_at))
-        removed = 0
+        gone: list[Item] = []
         for item in spare:
             if total <= limit:
                 break
             path = images.thumb_path(item)
             total -= path.stat().st_size if path.is_file() else 0
-            self.library.delete(item.id)
-            images.remove(item)
-            removed += 1
-        return removed
+            gone.append(item)
+        # A lowered limit can drop thousands at once: one transaction.
+        self._forget(gone)
+        return len(gone)
 
     def grow_catalogue(self) -> Job | None:
         """Add a batch of museum works to the catalogue while its thumbnails
@@ -960,6 +989,10 @@ class Player:
         """Delete the least recently used museum originals over the size
         limit (the current picture and the next ones stay) and thumbnails
         of works browsed but not kept."""
+        with self._trimming:
+            return self._trim_cache()
+
+    def _trim_cache(self) -> int:
         state = self.state
         soon = {state.current_item_id, *state.current_group, *state.requested}
         soon |= set(state.queue[:PREFETCH])
@@ -968,10 +1001,12 @@ class Player:
             i for i in items if i.id in soon or (i.source not in MUSEUMS and not refetchable(i))
         ]
         limit = self.service.settings.image_cache_mb * 1024 * 1024
-        self.drop_spare_copies()
-        self.trim_catalogue()
-        self.service.images.prune_thumbs(self.library.query(include_excluded=True)[1])
-        return self.service.images.prune(limit, keep)
+        gone = self.drop_spare_copies() + self.trim_catalogue()
+        gone += self.service.images.prune_thumbs(self.library.query(include_excluded=True)[1])
+        pruned = self.service.images.prune(limit, keep)
+        if gone or pruned:
+            self.service.storage.forget()
+        return pruned
 
     async def previous(self) -> Item | None:
         state = self.state

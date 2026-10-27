@@ -21,7 +21,7 @@ from .colors import analyse, tint_spread
 from .duplicates import dedupe, rank
 from .images import ImageCache
 from .lifespan import LifeDates
-from .models import Item, ItemKind, PhotoInfo, PlaylistRules
+from .models import Item, ItemKind, Look, PhotoInfo, PlaylistRules
 from .museums import MUSEUMS, Access, Discovery, Kind, Museum, available, client, museum
 from .repo import Library, matches, now_iso
 from .vocabulary import (
@@ -72,6 +72,15 @@ def span(rules: PlaylistRules) -> tuple[int | None, int | None]:
     if rules.year_to is not None:
         end = rules.year_to if end is None else min(end, rules.year_to)
     return start, end
+
+
+def fill_queries(rules: PlaylistRules) -> list[str]:
+    """What Discover's search asks the museums for ``rules``, one text per
+    artist: the words, the artist and the first style or subject."""
+    topics = museum_queries(rules.terms)[:1]
+    words = rules.query.strip()
+    texts = [" ".join(w for w in (words, artist, *topics) if w) for artist in rules.artists or [""]]
+    return [t for t in dict.fromkeys(texts) if t]
 
 
 def _search_stream(source: Museum, query: str) -> Iterator[Item]:
@@ -301,6 +310,11 @@ class Importer:
                 log.warning("asking %s failed: %s", key, err)
                 failed.append(key)
                 continue
+            except Exception:
+                # One museum's odd answer must not cost the others' works.
+                log.exception("asking %s failed", key)
+                failed.append(key)
+                continue
             total += count
             found.append(items)
         mixed = dedupe(
@@ -411,8 +425,11 @@ class Importer:
         with self.http() as http:
             museums = [museum(s, http, self.access()) for s in sources]
             if rules.artists or rules.query:
-                # Named artists or words: the museums' own search finds them.
-                queries = rules.artists or [rules.query]
+                # Named artists or words: the museums' own search finds them,
+                # asked first as Discover's search asks (with the words and a
+                # style or subject), then by the artist or words alone.
+                alone = rules.artists or [rules.query]
+                queries = list(dict.fromkeys([*fill_queries(rules), *alone]))
                 streams = [_search_stream(m, q) for q in queries for m in museums]
             else:
                 texts = [*rules.styles, *rules.subjects, *museum_queries(rules.terms)] or [""]
@@ -549,6 +566,7 @@ class Importer:
         artist: str = "",
         description: str = "",
         photo: PhotoInfo | None = None,
+        look: Look | None = None,
     ) -> Item:
         item = Item(
             id=f"upload:{secrets.token_hex(6)}",
@@ -561,6 +579,7 @@ class Importer:
             date_text=(photo.taken_at or "")[:10] if photo else "",
             added_at=now_iso(),
             photo=photo,
+            look=look,
         )
         width, height = self.cache.store(item, data)
         return self.add(item.model_copy(update={"width": width, "height": height}))

@@ -2,9 +2,10 @@ import SwiftUI
 
 /// Discover's search: words, artists, styles, subjects, periods, techniques,
 /// colours and museums as chips, over the catalogue (at once) and the
-/// museums (as they answer). Museums, colours, styles, subjects, periods and
-/// techniques come from the field's "+"; with nothing asked yet the icon's
-/// squares play.
+/// museums (each as it answers). Museums, colours, styles, subjects, periods
+/// and techniques come from the field's "+"; with nothing asked yet the
+/// icon's squares play. Coming back from a work finds the results as they
+/// were.
 struct MuseumSearchView: View {
     @Environment(AppModel.self) private var model
     @State private var museums: [Museum] = []
@@ -14,14 +15,27 @@ struct MuseumSearchView: View {
     @State private var sources: [String] = []
     @State private var catalogue: ItemPage?
     @State private var results: [RemoteItem] = []
-    @State private var total = 0
+    /// How many works each museum has for the search.
+    @State private var totals: [String: Int] = [:]
+    /// The page to ask each museum for more; museums with no more are left out.
+    @State private var next: [String: Int] = [:]
     @State private var failed: [String] = []
-    @State private var page = 1
+    /// The catalogue is being asked.
     @State private var searching = false
+    /// The museums are still answering.
+    @State private var asking = false
     @State private var loadingMore = false
+    /// What the results are for, so that coming back from a work doesn't
+    /// search again; the search goes on while a work is open.
+    @State private var searched: SearchKey?
+    @State private var loader: Task<Void, Never>?
     @State private var adding: Set<String> = []
     @State private var editing: Playlist?
+    /// Whether the playlist made from the search fetches the museums' works.
+    @State private var fetchForPlaylist = false
     @State private var typing = false
+    /// Where the squares start, from the top of Discover's content.
+    @State private var squaresTop: CGFloat = 0
 
     /// The rules' chips, then the colours' and the museums'.
     private var tokens: Binding<[SearchToken]> {
@@ -45,6 +59,11 @@ struct MuseumSearchView: View {
     }
 
     private var asked: Bool { !rules.isEmpty || !sources.isEmpty }
+
+    private var searchKey: SearchKey { SearchKey(rules: rules, sources: sources) }
+
+    /// What the museums have for the search, as far as they said.
+    private var total: Int { totals.values.reduce(0, +) }
 
     /// Museum works the catalogue doesn't hold already.
     private var fromMuseums: [RemoteItem] {
@@ -70,7 +89,16 @@ struct MuseumSearchView: View {
                 rules.artists = ["Utagawa Hiroshige"]
             }
         }
-        .task(id: SearchKey(rules: rules, sources: sources)) { await search() }
+        .task(id: searchKey) {
+            let key = searchKey
+            guard key != searched else { return }
+            try? await Task.sleep(for: .milliseconds(150))
+            guard !Task.isCancelled else { return }
+            searched = key
+            loader?.cancel()
+            // Not tied to this view's task: it goes on while a work is open.
+            loader = Task { await search(key) }
+        }
         .onChange(of: model.artistSearch, initial: true) { _, artist in
             guard let artist else { return }
             var asked = PlaylistRules()
@@ -81,7 +109,7 @@ struct MuseumSearchView: View {
             Task { model.artistSearch = nil }
         }
         .sheet(item: $editing) { playlist in
-            PlaylistEditorView(playlist: playlist)
+            PlaylistEditorView(playlist: playlist, fetchFromMuseums: fetchForPlaylist)
         }
     }
 
@@ -89,16 +117,22 @@ struct MuseumSearchView: View {
 
     private var idle: some View {
         VStack(spacing: 4) {
-            Text("Muzea, kolory, style, tematy, epoki i techniki dodasz przyciskiem \(Image(systemName: "plus.circle.fill")) w polu wyszukiwania.")
+            Text("Muzea, style, tematy, epoki, techniki i kolory dodasz przyciskiem \(Image(systemName: "plus.circle.fill")) w polu wyszukiwania.")
                 .font(.footnote)
                 .foregroundStyle(Theme.inkSoft)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 12)
-            // Room below the row for the squares to fall to the bottom.
+            // Down to the tab bar, so the squares have room below their row
+            // (in the middle of the screen) to fall to the bottom.
             SquaresAnimation()
                 .frame(maxWidth: .infinity)
-                .containerRelativeFrame(.vertical) { height, _ in height * 0.55 }
+                .containerRelativeFrame(.vertical) { height, _ in
+                    max(200, height - squaresTop - DiscoverView.bottomPadding)
+                }
+                .onGeometryChange(for: CGFloat.self) { proxy in
+                    proxy.frame(in: .named(DiscoverView.content)).minY
+                } action: { squaresTop = $0 }
         }
         .frame(maxWidth: .infinity)
     }
@@ -112,13 +146,20 @@ struct MuseumSearchView: View {
                     .font(.serif(17, weight: .medium))
                     .foregroundStyle(Theme.ink)
                 Spacer()
-                if searching { ProgressView().controlSize(.small) }
+                if searching || asking { ProgressView().controlSize(.small) }
             }
-            if !rules.isEmpty {
+            if asked {
                 Button {
+                    // The same search, museums included; what they show
+                    // comes along when fetching is on.
+                    var playlistRules = rules
+                    playlistRules.sources = sources
+                    let name = rules.suggestedName(names: model.termNames)
                     editing = Playlist(
-                        name: rules.suggestedName(names: model.termNames), kind: .smart, rules: rules
+                        name: name.isEmpty ? sources.map(museumName).joined(separator: " · ") : name,
+                        kind: .smart, rules: playlistRules
                     )
+                    fetchForPlaylist = !fromMuseums.isEmpty
                 } label: {
                     Label("Utwórz playlistę z tego wyszukiwania", systemImage: "text.badge.plus")
                 }
@@ -134,11 +175,11 @@ struct MuseumSearchView: View {
                     .contextMenu { QueueButton(itemID: item.id) }
                 }
             }
-            if !fromMuseums.isEmpty || searching {
+            if !fromMuseums.isEmpty || asking {
                 HStack {
                     Eyebrow("Z muzeów" + (total > 0 ? " · \(Names.works(total))" : ""))
                     Spacer()
-                    if searching {
+                    if asking {
                         Text("doczytuję…").font(.caption).foregroundStyle(Theme.inkSoft)
                     }
                 }
@@ -159,14 +200,14 @@ struct MuseumSearchView: View {
                     addButton(remote)
                 }
             }
-            if !searching, catalogue?.items.isEmpty ?? true, fromMuseums.isEmpty {
+            if !searching, !asking, catalogue?.items.isEmpty ?? true, fromMuseums.isEmpty {
                 EmptyStateView(
                     title: "Nic tu nie ma",
                     message: "Usuń któryś z chipów albo poszukaj innymi słowami.",
                     systemImage: "magnifyingglass"
                 )
             }
-            if !searching, results.count < total, !results.isEmpty {
+            if !asking, !next.isEmpty {
                 Button {
                     Task { await loadMore() }
                 } label: {
@@ -187,8 +228,8 @@ struct MuseumSearchView: View {
 
     private var summary: String {
         let inCatalogue = catalogue?.total ?? 0
-        if searching && inCatalogue == 0 { return "Szukam…" }
-        return Names.works(inCatalogue + fromMuseums.count) + (results.count < total ? "+" : "")
+        if (searching || asking) && inCatalogue == 0 && fromMuseums.isEmpty { return "Szukam…" }
+        return Names.works(inCatalogue + fromMuseums.count) + (next.isEmpty ? "" : "+")
     }
 
     @ViewBuilder
@@ -228,53 +269,69 @@ struct MuseumSearchView: View {
         let sources: [String]
     }
 
-    private func search() async {
-        guard asked else {
-            catalogue = nil
-            results = []
-            total = 0
-            return
-        }
-        try? await Task.sleep(for: .milliseconds(150))
-        guard !Task.isCancelled else { return }
-        searching = true
-        defer { searching = false }
-        var query = LibraryQuery(rules: rules)
-        query.sources = sources
-        do {
-            catalogue = try await model.backend.items(query)
-        } catch is CancellationError {
-            return
-        } catch {
-            model.show(error)
-        }
+    @MainActor
+    private func search(_ key: SearchKey) async {
         results = []
-        total = 0
+        totals = [:]
+        next = [:]
         failed = []
-        page = 1
+        guard !key.rules.isEmpty || !key.sources.isEmpty else {
+            catalogue = nil
+            searching = false
+            asking = false
+            return
+        }
+        searching = true
+        asking = true
+        async let museumsAnswered: Void = listen(key, sources: key.sources, page: 1)
+        var query = LibraryQuery(rules: key.rules)
+        query.sources = key.sources
         do {
-            let found = try await model.backend.searchMuseums(rules, sources: sources, page: 1)
-            guard !Task.isCancelled else { return }
-            results = found.items
-            total = found.total
-            failed = found.failed ?? []
-        } catch is CancellationError {
+            let found = try await model.backend.items(query)
+            if !Task.isCancelled { catalogue = found }
         } catch {
-            if !Task.isCancelled { failed = sources.isEmpty ? museums.map(\.key) : sources }
+            if !Task.isCancelled, !error.isCancellation { model.show(error) }
+        }
+        if !Task.isCancelled { searching = false }
+        await museumsAnswered
+        if !Task.isCancelled { asking = false }
+    }
+
+    /// Takes in the museums' answers as each comes.
+    @MainActor
+    private func listen(_ key: SearchKey, sources: [String], page: Int) async {
+        do {
+            let answers = try await model.backend.museumAnswers(key.rules, sources: sources, page: page)
+            for try await answer in answers {
+                guard !Task.isCancelled, key == searched else { return }
+                results = results.adding(answer.items)
+                totals[answer.source] = max(totals[answer.source] ?? 0, answer.total)
+                next[answer.source] = answer.next
+                failed += (answer.failed ?? []).filter { !failed.contains($0) }
+            }
+        } catch {
+            guard !Task.isCancelled, !error.isCancellation, key == searched else { return }
+            if page > 1 {
+                model.show(error)
+            } else {
+                let silent = (sources.isEmpty ? museums.map(\.key) : sources).filter { totals[$0] == nil }
+                failed += silent.filter { !failed.contains($0) }
+            }
         }
     }
 
+    /// The next page of each museum that has more.
+    @MainActor
     private func loadMore() async {
+        guard let key = searched else { return }
         loadingMore = true
         defer { loadingMore = false }
-        do {
-            let found = try await model.backend.searchMuseums(rules, sources: sources, page: page + 1)
-            results = results.adding(found.items)
-            page += 1
-            // Some sources only learn the total as they go; stop when a page is empty.
-            total = found.items.isEmpty ? results.count : max(found.total, results.count)
-        } catch {
-            model.show(error)
+        // Museums looked through for colours stop at different pages.
+        let byPage = Dictionary(grouping: next.keys.sorted()) { next[$0] ?? 1 }
+        await withTaskGroup(of: Void.self) { group in
+            for (page, keys) in byPage {
+                group.addTask { @MainActor in await listen(key, sources: keys, page: page) }
+            }
         }
     }
 

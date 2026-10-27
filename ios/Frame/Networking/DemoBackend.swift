@@ -31,6 +31,7 @@ actor DemoBackend: FrameBackend {
     private var holdValue: Hold?
     private static let demoPanel = PanelConfig(host: "192.168.1.50", mac: nil, port: 1515, pinSet: true, fromApp: false)
     private var panelValue = DemoBackend.demoPanel
+    private var libraryLimitMb: Int?
     private var demoAsleep = false
     /// The picture "on its way" to the pretend frame, for the progress bar.
     private var run: (title: String, start: Date)?
@@ -110,7 +111,7 @@ actor DemoBackend: FrameBackend {
     // MARK: Matching (mirrors server/src/frame_server/library/repo.py)
 
     private static func matches(_ item: Item, _ rules: PlaylistRules) -> Bool {
-        if item.excluded || rules.excludeIds.contains(item.id) { return false }
+        if item.excluded || item.look != nil || rules.excludeIds.contains(item.id) { return false }
         if rules.favoritesOnly && !item.favorite { return false }
         if !rules.kinds.isEmpty && !rules.kinds.contains(item.kind) { return false }
         if !rules.sources.isEmpty && !rules.sources.contains(item.source) { return false }
@@ -358,7 +359,7 @@ actor DemoBackend: FrameBackend {
         guard let item = items.first(where: { $0.id == itemID }),
               let size = DemoFraming.pixelSize(itemID)
         else { throw BackendError.notFound }
-        let pres = item.kind == .photo ? settingsValue.photo : settingsValue.art
+        let pres = item.look.map { settingsValue.photo.with($0) } ?? (item.kind == .photo ? settingsValue.photo : settingsValue.art)
         let custom = automatic ? nil : shared.crops[itemID]?[orientation]
         let canvas = DemoFraming.canvas(orientation)
         let plan = DemoFraming.plan(
@@ -634,6 +635,29 @@ actor DemoBackend: FrameBackend {
         return RemotePage(total: page == 1 ? found.count : 0, items: page == 1 ? remote(found) : [])
     }
 
+    /// The demo's works by museum, one museum after another.
+    func museumAnswers(_ rules: PlaylistRules, sources: [String], page: Int) async throws
+        -> AsyncThrowingStream<MuseumAnswer, Error>
+    {
+        let keys = sources.isEmpty ? try await museums().map(\.key) : sources
+        let found = page == 1 ? items.filter { Self.matches($0, rules) } : []
+        let answers = keys.map { key in
+            let mine = found.filter { $0.source == key }
+            return MuseumAnswer(source: key, total: mine.count, items: remote(mine))
+        }
+        return AsyncThrowingStream { continuation in
+            let answering = Task {
+                for answer in answers {
+                    try? await Task.sleep(for: .milliseconds(350))
+                    guard !Task.isCancelled else { break }
+                    continuation.yield(answer)
+                }
+                continuation.finish()
+            }
+            continuation.onTermination = { _ in answering.cancel() }
+        }
+    }
+
     func museums() async throws -> [Museum] {
         [
             Museum(key: "aic", name: "Art Institute of Chicago"),
@@ -732,7 +756,8 @@ actor DemoBackend: FrameBackend {
             description: "", imageUrl: "", thumbUrl: "", width: image.width, height: image.height,
             colors: [], colorTags: [], suitability: nil, favorite: false, excluded: false,
             addedAt: ISO8601DateFormatter().string(from: .now), lastShownAt: nil, showCount: 0,
-            photo: PhotoInfo(takenAt: upload.takenAt, latitude: upload.latitude, longitude: upload.longitude)
+            photo: PhotoInfo(takenAt: upload.takenAt, latitude: upload.latitude, longitude: upload.longitude),
+            look: upload.look
         )
         items.append(item)
         shared.uploads[id] = DemoFraming.Art(
@@ -742,10 +767,17 @@ actor DemoBackend: FrameBackend {
         return item
     }
 
-    func sendPhoto(_ data: Data, title: String, preset: String, hold: HoldSpec) async throws -> DisplayResponse {
-        startRun(title)
-        try await Task.sleep(for: .seconds(5))  // until the pretend panel has the picture
-        return DisplayResponse(pushed: true, fetched: true, message: nil)
+    func setLook(itemID: String, _ look: Look) async throws -> Item {
+        let item = try update(itemID) { $0.look = look }
+        if itemID == currentID { startRun(itemID: itemID) }
+        return item
+    }
+
+    func deleteItem(id: String) async throws {
+        items.removeAll { $0.id == id }
+        queue.removeAll { $0 == id }
+        queued.removeAll { $0 == id }
+        shared.uploads[id] = nil
     }
 
     func panelConfig() async throws -> PanelConfig { panelValue }
@@ -759,6 +791,30 @@ actor DemoBackend: FrameBackend {
     func resetPanelConfig() async throws -> PanelConfig {
         panelValue = Self.demoPanel
         return panelValue
+    }
+
+    func libraryStorage() async throws -> LibraryStorage {
+        let mb: Int64 = 1024 * 1024
+        let limit = libraryLimitMb ?? 1500
+        let usage = LibraryStorage.Usage(
+            catalogueBytes: 742 * mb, originalsBytes: 318 * mb, panelBytes: 14 * mb, databaseBytes: 9 * mb,
+            totalBytes: 1083 * mb, freeBytes: 1_200_000 * mb, measuredAt: Date().timeIntervalSince1970
+        )
+        let catalogue = limit * 2 / 3
+        return LibraryStorage(
+            usage: usage, limitMb: limit, defaultMb: 1500, catalogueMb: catalogue,
+            imageCacheMb: limit - catalogue, fromApp: libraryLimitMb != nil
+        )
+    }
+
+    func saveLibraryLimit(mb: Int) async throws -> LibraryStorage {
+        libraryLimitMb = mb
+        return try await libraryStorage()
+    }
+
+    func resetLibraryLimit() async throws -> LibraryStorage {
+        libraryLimitMb = nil
+        return try await libraryStorage()
     }
 
     func wake(sleepAfter: Bool) async throws -> WakeResult {

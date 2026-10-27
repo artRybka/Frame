@@ -75,6 +75,11 @@ protocol FrameBackend: Sendable {
     /// The museums' works for a search's words, artists, terms, colours and
     /// years, from the museums of `sources` (every museum when empty).
     func searchMuseums(_ rules: PlaylistRules, sources: [String], page: Int) async throws -> RemotePage
+    /// The same, a page of one museum at a time as each answers (with
+    /// colours, several pages of each); each museum's `next` is the page to
+    /// ask it for more.
+    func museumAnswers(_ rules: PlaylistRules, sources: [String], page: Int) async throws
+        -> AsyncThrowingStream<MuseumAnswer, Error>
 
     func museums() async throws -> [Museum]
     func searchMuseum(source: String, query: String, page: Int) async throws -> RemotePage
@@ -95,15 +100,22 @@ protocol FrameBackend: Sendable {
     /// Syncs an album playlist with its album now; returns the job id.
     func syncAlbum(playlistID: Int) async throws -> String
 
-    func sendPhoto(_ data: Data, title: String, preset: String, hold: HoldSpec) async throws
-        -> DisplayResponse
-    /// Adds a photo to the library without showing it (e.g. for a playlist).
+    /// Adds a photo to the library without showing it (e.g. for a playlist),
+    /// or with `upload.look`, a photo sent once to be shown or queued.
     func uploadPhoto(_ upload: PhotoUpload) async throws -> Item
+    /// A photo sent once, shown another way.
+    func setLook(itemID: String, _ look: Look) async throws -> Item
+    func deleteItem(id: String) async throws
     /// The panel's address, PIN and MAC as the server uses them.
     func panelConfig() async throws -> PanelConfig
     func savePanelConfig(_ update: PanelConfigUpdate) async throws -> PanelConfig
     /// Back to the values in frame.env or the add-on options.
     func resetPanelConfig() async throws -> PanelConfig
+    /// How much disk the library takes on the server, and its limit.
+    func libraryStorage() async throws -> LibraryStorage
+    func saveLibraryLimit(mb: Int) async throws -> LibraryStorage
+    /// Back to the limits in frame.env or the add-on options.
+    func resetLibraryLimit() async throws -> LibraryStorage
     /// `sleepAfter`: woken only to check its state, so on battery it goes back to light sleep.
     func wake(sleepAfter: Bool) async throws -> WakeResult
     /// The current picture to the panel again; waits until it is downloaded.

@@ -22,7 +22,7 @@ from urllib.parse import unquote
 import httpx
 
 from .commons import commons_html, commons_year
-from .lifespan import EUROPEANA_AGENT, WIKIDATA_ENTITY, LifeDates, free_in_eu
+from .lifespan import EUROPEANA_AGENT, WIKIDATA_ENTITY, LifeDates, death_in_name, free_in_eu
 from .models import Item, ItemKind
 
 USER_AGENT = "Frame/0.2 (home e-paper art frame; +https://github.com/artRybka/Frame)"
@@ -653,6 +653,8 @@ class Rijksmuseum(Museum):
             for agent in part.get("carried_out_by") or []
         ]
         timespan = production.get("timespan") or {}
+        if isinstance(timespan, list):  # some records give several spans
+            timespan = timespan[0] if timespan else {}
         year_match = re.match(r"(\d{4})", timespan.get("begin_of_the_begin", ""))
         classes = d.get("classified_as") or []
         return self._item(
@@ -762,11 +764,17 @@ def _first(values: Any) -> str:
 
 def _person(name: str) -> str:
     """ "Matisse, Henri (1869-1954)" -> "Henri Matisse"."""
-    name = re.sub(r"\s*\([^)]*\)\s*$", "", name).strip()
+    name = re.sub(r"(?:\s*\([^)]*\))+\s*$", "", name).strip()
     last, comma, first = name.partition(",")
     if comma and first.strip() and "," not in first and not re.search(r"\d", name):
         return f"{first.strip()} {last.strip()}"
     return name
+
+
+def _bare(name: str) -> str:
+    """A name without the roles and dates in brackets: "Mondrian, Piet
+    (Künstler/in)" -> "Mondrian, Piet"."""
+    return re.sub(r"\s*\([^)]*\)", "", name).strip()
 
 
 #: Creative Commons licence URLs: "creativecommons.org/licenses/by-sa/4.0/".
@@ -818,8 +826,13 @@ class Europeana(Museum):
             return None
         creators = [str(c) for c in d.get("dcCreator") or []]
         refs = [c for c in creators if EUROPEANA_AGENT.match(c) or WIKIDATA_ENTITY.match(c)]
-        refs = refs or [c for c in creators if not c.startswith("http")][:1]
-        years = [life.death_year(self.http, ref) for ref in refs]
+        if not refs:
+            names = [c for c in creators if not c.startswith("http")][:1]
+            # "Kandinsky, Wassily (1866-1944) (Künstler/Hersteller)"
+            if names and (died := death_in_name(names[0])) is not None:
+                return died
+            refs = [_bare(n) for n in names]
+        years = [life.death_year(self.http, ref) for ref in refs if ref]
         if not years or any(y is None for y in years):
             return None
         return max(y for y in years if y is not None)
@@ -830,8 +843,10 @@ class Europeana(Museum):
         for mark, label in PUBLIC_MARKS.items():
             if mark in rights:
                 return label
-        if cc := CC_LICENCE.search(rights):
-            return cc_name(*cc.groups()) if self.private_use else ""
+        if (cc := CC_LICENCE.search(rights)) and self.private_use:
+            return cc_name(*cc.groups())
+        # A licence on the photograph of a free work does not make the
+        # work less free: Kandinsky's paintings often come as CC BY-SA.
         died = self._death(d)
         if died is not None and free_in_eu(died):
             return f"Domena publiczna w UE (twórca zm. {died})"

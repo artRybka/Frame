@@ -32,6 +32,9 @@ final class AppModel {
     var settings: FrameSettings?
     /// How the server reaches the panel; nil before it is loaded or on an older server.
     var panelConfig: PanelConfig?
+    /// The library's size on the server; loaded when Konfiguracja opens
+    /// (measuring is slow on a NAS), nil on an older server.
+    var libraryStorage: LibraryStorage?
     var playlists: [PlaylistSummary] = []
     /// Goes up when a work is liked, unliked, left out or brought back:
     /// views listing a playlist's works load them again.
@@ -112,6 +115,7 @@ final class AppModel {
         displayProgress = nil
         settings = nil
         panelConfig = nil
+        libraryStorage = nil
         playlists = []
         facets = .empty
         vocabulary = []
@@ -321,6 +325,8 @@ final class AppModel {
         let started = Date.now
         var seenActive = false
         var first: DisplayProgress?  // with `expectingStart`, maybe the run before
+        let clock = ContinuousClock()
+        var beat = clock.now  // a steady second, whatever a request takes: the bar glides
         while !Task.isCancelled, Date.now.timeIntervalSince(started) < 300 {
             guard let value = try? await backend.progress() else { break }  // older server
             if Task.isCancelled { return }
@@ -335,7 +341,8 @@ final class AppModel {
                 if seenActive { await finishProgress(value) }
                 break
             }
-            try? await Task.sleep(for: .seconds(1))
+            beat = max(beat + .seconds(1), clock.now)
+            try? await Task.sleep(until: beat, clock: clock)
         }
         if !Task.isCancelled {
             displayProgress = nil
@@ -513,6 +520,31 @@ final class AppModel {
             return
         }
         await checkPanel(saved: "Przywrócono ustawienia z serwera")
+    }
+
+    func loadLibraryStorage() async {
+        libraryStorage = try? await backend.libraryStorage()
+    }
+
+    /// A new limit for the library; the frame.env value resets to it. A
+    /// lower one is trimmed on the server in the background, measured anew
+    /// a little later.
+    func setLibraryLimit(mb: Int) async {
+        guard let old = libraryStorage, mb != old.limitMb else { return }
+        do {
+            if mb == old.defaultMb {
+                libraryStorage = try await backend.resetLibraryLimit()
+            } else {
+                libraryStorage = try await backend.saveLibraryLimit(mb: mb)
+            }
+        } catch {
+            show(error)
+            return
+        }
+        toast = "Biblioteka może zająć do \(ByteSize.mb(mb))"
+        guard mb < old.limitMb else { return }
+        try? await Task.sleep(for: .seconds(8))
+        await loadLibraryStorage()
     }
 
     private func checkPanel(saved: String) async {

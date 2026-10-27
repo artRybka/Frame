@@ -39,6 +39,7 @@ from . import (
     library_api,
     player_api,
     playlists_api,
+    storage_api,
 )
 from .deps import require_token
 
@@ -119,6 +120,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         player_api.router,
         calibration_api.router,
         device_api.router,
+        storage_api.router,
     )
     for router in routers:
         app.include_router(router)
