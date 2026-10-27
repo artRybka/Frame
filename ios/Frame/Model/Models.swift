@@ -209,6 +209,9 @@ struct Playlist: Codable, Hashable, Sendable {
     var album: AlbumSource?
     /// The Discover theme the playlist was made from.
     var theme: String?
+
+    /// "Ulubione", the owner's hearts: always there, never deleted.
+    var isFavorites: Bool { kind == .smart && rules.favoritesOnly }
 }
 
 struct PlaylistSummary: Codable, Identifiable, Hashable, Sendable {
@@ -222,6 +225,8 @@ struct PlaylistSummary: Codable, Identifiable, Hashable, Sendable {
     var album: AlbumSource?
     var albumSync: AlbumSync?
     var theme: String?
+
+    var isFavorites: Bool { kind == .smart && rules.favoritesOnly }
 }
 
 struct PlaylistDetail: Codable, Sendable {

@@ -19,7 +19,7 @@ struct RootView: View {
         static var initial: Tab {
             switch LaunchRoute.screen {
             case "discover", "detail", "original", "museums", "search", "search-picker": .discover
-            case "playlists", "playlist", "editor", "editor-new": .playlists
+            case "playlists", "playlist", "editor", "editor-new", "editor-manual": .playlists
             case "frame", "connection": .frame
             default: .now
             }

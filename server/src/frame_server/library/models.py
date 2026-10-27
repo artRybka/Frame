@@ -207,6 +207,11 @@ class Playlist(BaseModel):
     created_at: str = ""
     updated_at: str = ""
 
+    @property
+    def is_favorites(self) -> bool:
+        """The owner's hearts: "Ulubione", which is always there."""
+        return self.kind == PlaylistKind.SMART and self.rules.favorites_only
+
 
 class PlaylistSummary(BaseModel):
     id: int

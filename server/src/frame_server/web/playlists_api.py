@@ -70,6 +70,13 @@ def _checked(playlist: Playlist) -> Playlist:
     return playlist
 
 
+def _only_favorites(svc: FrameService, playlist: Playlist) -> bool:
+    """Whether this is the one "Ulubione" playlist, which always stays."""
+    return playlist.is_favorites and not any(
+        p.is_favorites for p in svc.library.playlists() if p.id != playlist.id
+    )
+
+
 def _detail(svc: FrameService, playlist: Playlist) -> PlaylistDetail:
     items = svc.library.playlist_items(playlist, sort="artist")
     return PlaylistDetail(
@@ -123,6 +130,12 @@ def get_playlist(playlist_id: int, svc: Svc) -> PlaylistDetail:
 def update_playlist(playlist_id: int, playlist: Playlist, svc: Svc) -> PlaylistDetail:
     existing = _playlist(svc, playlist_id)
     playlist = _checked(playlist)
+    if _only_favorites(svc, existing):
+        # It may be renamed and narrowed, but stays the hearts' playlist.
+        rules = playlist.rules.model_copy(update={"favorites_only": True})
+        playlist = playlist.model_copy(
+            update={"kind": PlaylistKind.SMART, "rules": rules, "album": None}
+        )
     update: dict[str, Any] = {"id": playlist_id, "created_at": existing.created_at}
     relinked = False
     if playlist.album is not None:
@@ -141,7 +154,8 @@ def update_playlist(playlist_id: int, playlist: Playlist, svc: Svc) -> PlaylistD
 
 @router.delete("/playlists/{playlist_id}")
 def delete_playlist(playlist_id: int, svc: Svc) -> dict[str, bool]:
-    _playlist(svc, playlist_id)
+    if _only_favorites(svc, _playlist(svc, playlist_id)):
+        raise HTTPException(409, "Ulubione zostają zawsze")
     settings = svc.player.settings
     if settings.playlist_id == playlist_id:
         settings.playlist_id = None
@@ -210,7 +224,8 @@ def last_sync(playlist_id: int, svc: Svc) -> AlbumSync | None:
 
 @router.post("/playlists/{playlist_id}/play", status_code=202)
 async def play(playlist_id: int, svc: Svc) -> dict[str, Any]:
-    _playlist(svc, playlist_id)
+    if _only_favorites(svc, _playlist(svc, playlist_id)):
+        raise HTTPException(409, "Ulubione zostają zawsze")
     settings = svc.player.settings
     settings.playlist_id = playlist_id
     svc.player.save_settings(settings)

@@ -4,14 +4,23 @@ import SwiftUI
 /// Create or edit a playlist. Smart playlists are built like Discover's
 /// search: the field at once (museums, colours, styles, subjects and periods
 /// under "+"), the icon's squares at play until something is asked, then
-/// what the catalogue and the museums have for it as Szukaj shows it.
+/// what the catalogue and the museums have for it as Szukaj shows it (with
+/// fetching on, the museums' works first: they are what it brings).
 /// Manual ones can take photos from the camera roll, uploaded to the library
-/// when the playlist is saved; album playlists mirror a shared iCloud album.
+/// when the playlist is saved, and works found with the same search, each
+/// added with its "+"; album playlists mirror a shared iCloud album.
 struct PlaylistEditorView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     @State private var playlist: Playlist
     @State private var preview: RulesPreview?
+    /// What a manual playlist's works are looked for with.
+    @State private var manualSearch = PlaylistRules()
+    /// Museum works being saved to the library to join a manual playlist.
+    @State private var adding: Set<String> = []
+    @FocusState private var nameFocused: Bool
+    /// "Zapisz" was tapped with no name.
+    @State private var nameMissing = false
     /// What the museums have for the rules, as each answers (as in Szukaj).
     @State private var remote: [RemoteItem] = []
     /// How many works the museums that answered have for the rules.
@@ -35,6 +44,8 @@ struct PlaylistEditorView: View {
     @State private var checkingAlbum = false
     /// An album playlist being edited stays one (its photos are the album's).
     private let wasAlbum: Bool
+    /// So does "Ulubione", the hearts' playlist.
+    private let wasFavorites: Bool
 
     /// `fetchFromMuseums` starts with fetching on, e.g. for a playlist made
     /// from a search that showed museum works.
@@ -53,59 +64,94 @@ struct PlaylistEditorView: View {
         _fetchCount = State(initialValue: fetchFromMuseums ? 100 : 0)
         _album = State(initialValue: playlist.album ?? AlbumSource(url: ""))
         wasAlbum = playlist.id != nil && playlist.kind == .album
+        wasFavorites = playlist.id != nil && playlist.isFavorites
     }
 
+    /// With no name "Zapisz" still works: it takes you to the name.
     private var canSave: Bool {
-        !playlist.name.trimmingCharacters(in: .whitespaces).isEmpty && !saving
-            && (playlist.kind != .album || !album.url.trimmingCharacters(in: .whitespaces).isEmpty)
+        !saving && (playlist.kind != .album || !album.url.trimmingCharacters(in: .whitespaces).isEmpty)
     }
+
+    private var hasName: Bool { !playlist.name.trimmingCharacters(in: .whitespaces).isEmpty }
+
+    /// What the works below are looked for with: a smart playlist's rules,
+    /// or a manual one's search.
+    private var searched: Binding<PlaylistRules> {
+        playlist.kind == .manual ? $manualSearch : $playlist.rules
+    }
+
+    /// Whether the museums are asked too: always for a manual playlist's
+    /// search, for a smart one when its rules let them supply works.
+    private var asksMuseums: Bool { playlist.kind == .manual || fetchBlocker == nil }
+
+    /// Museum works go first: a smart playlist fetching them.
+    private var museumsFirst: Bool { playlist.kind == .smart && fetchCount > 0 && fetchBlocker == nil }
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 26) {
-                    nameFields
-                    if !wasAlbum {
-                        Picker("Rodzaj", selection: $playlist.kind) {
-                            Text("Inteligentna").tag(PlaylistKind.smart)
-                            Text("Ręczna").tag(PlaylistKind.manual)
-                            Text("Album iCloud").tag(PlaylistKind.album)
+            ScrollViewReader { scroller in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 26) {
+                        nameFields
+                            .id(Self.nameID)
+                        if !wasAlbum, !wasFavorites {
+                            Picker("Rodzaj", selection: $playlist.kind) {
+                                Text("Inteligentna").tag(PlaylistKind.smart)
+                                Text("Ręczna").tag(PlaylistKind.manual)
+                                Text("Album iCloud").tag(PlaylistKind.album)
+                            }
+                            .pickerStyle(.segmented)
                         }
-                        .pickerStyle(.segmented)
-                    }
 
-                    switch playlist.kind {
-                    case .smart:
-                        search
-                    case .manual:
-                        cameraRoll
-                    case .album:
-                        albumSection
+                        switch playlist.kind {
+                        case .smart:
+                            search
+                        case .manual:
+                            cameraRoll
+                            chosen
+                            search
+                        case .album:
+                            albumSection
+                        }
+                    }
+                    .padding(Theme.gutter)
+                    .coordinateSpace(.named(Self.content))
+                }
+                .scrollDismissesKeyboard(.interactively)
+                .background(Theme.paper)
+                .navigationTitle(playlist.id == nil ? "Nowa playlista" : "Edycja playlisty")
+                .navigationBarTitleDisplayMode(.inline)
+                .navigationDestination(for: String.self) { id in
+                    ItemDetailView(itemID: id)
+                }
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Anuluj") { dismiss() }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Zapisz") {
+                            if hasName {
+                                Task { await save() }
+                            } else {
+                                // Up to the name, with the keyboard out.
+                                nameMissing = true
+                                withAnimation(.snappy) { scroller.scrollTo(Self.nameID, anchor: .top) }
+                                nameFocused = true
+                            }
+                        }
+                        .disabled(!canSave)
                     }
                 }
-                .padding(Theme.gutter)
-                .coordinateSpace(.named(Self.content))
             }
-            .scrollDismissesKeyboard(.interactively)
-            .background(Theme.paper)
-            .navigationTitle(playlist.id == nil ? "Nowa playlista" : "Edycja playlisty")
-            .navigationBarTitleDisplayMode(.inline)
-            .navigationDestination(for: String.self) { id in
-                ItemDetailView(itemID: id)
-            }
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Anuluj") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Zapisz") { Task { await save() } }
-                        .disabled(!canSave)
+            .task {
+                await model.loadVocabulary()
+                if LaunchRoute.screen == "editor-manual", manualSearch.isEmpty {  // CI screenshots
+                    manualSearch.artists = ["Utagawa Hiroshige"]
                 }
             }
-            .task { await model.loadVocabulary() }
             .task { if museums.isEmpty { museums = (try? await model.backend.museums()) ?? [] } }
-            .task(id: playlist.rules) { await refreshPreview() }
-            .task(id: playlist.kind == .smart ? playlist.rules : nil) { await askMuseums() }
+            .task(id: searched.wrappedValue) { await refreshPreview() }
+            .task(id: playlist.kind == .album ? nil : searched.wrappedValue) { await askMuseums() }
             .task(id: picked) { await loadPhotos() }
             .task(id: playlist.kind == .album ? album.url : "") { await checkAlbum() }
             .interactiveDismissDisabled(saving)
@@ -116,8 +162,16 @@ struct PlaylistEditorView: View {
 
     private var nameFields: some View {
         VStack(alignment: .leading, spacing: 12) {
-            TextField("Nazwa", text: $playlist.name)
-                .font(.serif(26, weight: .semibold))
+            TextField(
+                "Nazwa", text: $playlist.name,
+                prompt: nameMissing ? Text("Podaj nazwę playlisty").foregroundStyle(Theme.bad) : nil
+            )
+            .font(.serif(26, weight: .semibold))
+            .focused($nameFocused)
+            .submitLabel(.done)
+            .onChange(of: playlist.name) { _, name in
+                if !name.trimmingCharacters(in: .whitespaces).isEmpty { nameMissing = false }
+            }
             TextField("Opis (opcjonalnie)", text: $playlist.description, axis: .vertical)
                 .font(.serif(17))
                 .foregroundStyle(Theme.inkSoft)
@@ -127,22 +181,29 @@ struct PlaylistEditorView: View {
 
     /// The scrolled content's coordinate space.
     private static let content = "playlist.editor.content"
+    /// The name fields, to scroll up to.
+    private static let nameID = "playlist.editor.name"
 
     /// Nothing asked yet: no chips (exceptions and the hidden "favourites
     /// only" of the seeded playlist count as asked).
-    private var asked: Bool { !playlist.rules.isEmpty }
+    private var asked: Bool { !searched.wrappedValue.isEmpty }
 
-    /// Szukaj's field, then whether to fetch from the museums, a word on
-    /// "+", and the squares until something is asked, then the works.
+    /// Szukaj's field, then (smart) whether to fetch from the museums, a
+    /// word on "+", and the squares until something is asked, then the works.
     private var search: some View {
         VStack(alignment: .leading, spacing: 14) {
+            if playlist.kind == .manual {
+                Eyebrow("Dzieła z katalogu i muzeów")
+            }
             TermSearchField(
                 tokens: tokens, museums: museums, colors: ColorTag.families + ColorTag.moods, typing: $typing
             ) {
                 // The catalogue has nothing for it yet: museums will.
-                if fetchCount == 0, fetchBlocker == nil { fetchCount = 100 }
+                if playlist.kind == .smart, fetchCount == 0, fetchBlocker == nil { fetchCount = 100 }
             }
-            fetchRow
+            if playlist.kind == .smart {
+                fetchRow
+            }
             if !typing {
                 if asked {
                     previewSection
@@ -155,7 +216,13 @@ struct PlaylistEditorView: View {
 
     private var idle: some View {
         VStack(spacing: 4) {
-            Text("Muzea, style, tematy, epoki, techniki i kolory dodasz przyciskiem \(Image(systemName: "plus.circle.fill")) w polu wyszukiwania. Te same rodzaje to alternatywy, różne muszą pasować razem.")
+            Group {
+                if playlist.kind == .manual {
+                    Text("Znajdź dzieła jak w Szukaj i dodaj każde przyciskiem \(Image(systemName: "plus")) przy nim. Muzea, style, tematy, epoki i kolory dodasz przyciskiem \(Image(systemName: "plus.circle.fill")) w polu wyszukiwania.")
+                } else {
+                    Text("Muzea, style, tematy, epoki, techniki i kolory dodasz przyciskiem \(Image(systemName: "plus.circle.fill")) w polu wyszukiwania. Te same rodzaje to alternatywy, różne muszą pasować razem.")
+                }
+            }
                 .font(.footnote)
                 .foregroundStyle(Theme.inkSoft)
                 .multilineTextAlignment(.center)
@@ -224,29 +291,30 @@ struct PlaylistEditorView: View {
     /// The rules' chips, then the colours' and the museums' (the playlist's
     /// `sources`; other sources, such as the owner's photos, stay as they are).
     private var tokens: Binding<[SearchToken]> {
-        Binding(
+        let rules = searched
+        return Binding(
             get: {
                 let keys = Set(museums.map(\.key))
-                return playlist.rules.tokens(names: model.termNames)
-                    + playlist.rules.colors.map { SearchToken(kind: "color", key: $0, name: ColorTag.name($0)) }
-                    + playlist.rules.sources.filter { keys.contains($0) }.map {
+                return rules.wrappedValue.tokens(names: model.termNames)
+                    + rules.wrappedValue.colors.map { SearchToken(kind: "color", key: $0, name: ColorTag.name($0)) }
+                    + rules.wrappedValue.sources.filter { keys.contains($0) }.map {
                         SearchToken(kind: "museum", key: $0, name: museumName($0))
                     }
             },
             set: { tokens in
                 let keys = Set(museums.map(\.key))
-                playlist.rules.setTokens(tokens)
-                playlist.rules.colors = tokens.filter { $0.kind == "color" }.map(\.key)
-                playlist.rules.sources = playlist.rules.sources.filter { !keys.contains($0) }
+                rules.wrappedValue.setTokens(tokens)
+                rules.wrappedValue.colors = tokens.filter { $0.kind == "color" }.map(\.key)
+                rules.wrappedValue.sources = rules.wrappedValue.sources.filter { !keys.contains($0) }
                     + tokens.filter { $0.kind == "museum" }.map(\.key)
             }
         )
     }
 
-    /// The rules' museums, to ask (none: all of them).
+    /// The searched museums, to ask (none: all of them).
     private var museumKeys: [String] {
         let keys = Set(museums.map(\.key))
-        return playlist.rules.sources.filter { keys.contains($0) }
+        return searched.wrappedValue.sources.filter { keys.contains($0) }
     }
 
     private func museumName(_ key: String) -> String {
@@ -255,7 +323,7 @@ struct PlaylistEditorView: View {
 
     private var cameraRoll: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Dodaj zdjęcia z rolki aparatu albo dzieła z ich szczegółów („Dodaj do playlisty”).")
+            Text("Dodaj zdjęcia z rolki aparatu albo znajdź dzieła poniżej i dodaj je plusem.")
                 .font(.subheadline)
                 .foregroundStyle(Theme.inkSoft)
                 .fixedSize(horizontal: false, vertical: true)
@@ -282,6 +350,39 @@ struct PlaylistEditorView: View {
                             .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                     }
                 }
+            }
+        }
+    }
+
+    /// The works a manual playlist holds; a tap on one takes it out.
+    @ViewBuilder
+    private var chosen: some View {
+        if !playlist.itemIds.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                Eyebrow("W playliście · \(playlist.itemIds.count)")
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(spacing: 8) {
+                        ForEach(playlist.itemIds, id: \.self) { id in
+                            Button {
+                                withAnimation(.snappy) { playlist.itemIds.removeAll { $0 == id } }
+                            } label: {
+                                ArtImage(ref: .thumb(id), maxPixel: 240)
+                                    .frame(width: 72, height: 72)
+                                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                                    .overlay(alignment: .topTrailing) {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .font(.body)
+                                            .symbolRenderingMode(.palette)
+                                            .foregroundStyle(.white, .black.opacity(0.45))
+                                            .padding(3)
+                                    }
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Usuń z playlisty")
+                        }
+                    }
+                }
+                .frame(height: 72)
             }
         }
     }
@@ -387,10 +488,11 @@ struct PlaylistEditorView: View {
     /// Museum works the catalogue doesn't hold: what fetching would bring.
     private var fromMuseums: [RemoteItem] {
         let shown = Set(preview?.items.map(\.id) ?? [])
-        return remote.filter { !$0.inLibrary && !shown.contains($0.id) }
+        return remote.filter { (!$0.inLibrary || playlist.itemIds.contains($0.id)) && !shown.contains($0.id) }
     }
 
-    /// The works as Szukaj shows them: the catalogue's, then the museums'.
+    /// The works as Szukaj shows them: the catalogue's, then the museums';
+    /// the museums' first when the playlist fetches them.
     private var previewSection: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .firstTextBaseline) {
@@ -401,22 +503,71 @@ struct PlaylistEditorView: View {
                 Spacer()
                 if preview == nil || askingMuseums { ProgressView().controlSize(.small) }
             }
-            if let preview, !preview.items.isEmpty {
-                Eyebrow("W katalogu · \(Names.works(preview.count))")
-                MasonryGrid(items: preview.items) { item in
-                    NavigationLink(value: item.id) {
-                        ArtCard(item: item)
-                    }
-                    .buttonStyle(.plain)
-                }
-            } else if preview != nil {
-                Text("W bazie nic jeszcze nie pasuje. Włącz pobieranie z muzeów, a playlista zapełni się w tle.")
-                    .font(.subheadline)
-                    .foregroundStyle(Theme.inkSoft)
-                    .fixedSize(horizontal: false, vertical: true)
+            if museumsFirst {
+                museumPreview
+                cataloguePreview
+            } else {
+                cataloguePreview
+                museumPreview
             }
-            museumPreview
         }
+    }
+
+    @ViewBuilder
+    private var cataloguePreview: some View {
+        if let preview, !preview.items.isEmpty {
+            Eyebrow("W katalogu · \(Names.works(preview.count))")
+            MasonryGrid(items: preview.items) { item in
+                card(item)
+            }
+        } else if preview != nil, !museumsFirst {
+            Text(playlist.kind == .manual
+                 ? "W katalogu nic nie pasuje."
+                 : "W bazie nic jeszcze nie pasuje. Włącz pobieranie z muzeów, a playlista zapełni się w tle.")
+                .font(.subheadline)
+                .foregroundStyle(Theme.inkSoft)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// A found work; in a manual playlist with its "+" (a tick once added).
+    @ViewBuilder
+    private func card(_ item: ItemSummary, remote: RemoteItem? = nil) -> some View {
+        let link = NavigationLink(value: item.id) {
+            ArtCard(item: item, ref: remote?.thumb)
+        }
+        .buttonStyle(.plain)
+        if playlist.kind == .manual {
+            link.overlay(alignment: .topLeading) { addButton(item.id, remote: remote) }
+        } else {
+            link
+        }
+    }
+
+    private func addButton(_ id: String, remote: RemoteItem?) -> some View {
+        let added = playlist.itemIds.contains(id)
+        return Button {
+            Task { await toggle(id, remote: remote) }
+        } label: {
+            ZStack {
+                if adding.contains(id) {
+                    ProgressView().controlSize(.small).tint(.white)
+                } else {
+                    Image(systemName: added ? "checkmark" : "plus")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(.white)
+                }
+            }
+            .frame(width: 32, height: 32)
+            .background(added ? Theme.accent : .black.opacity(0.45), in: Circle())
+            .overlay(Circle().strokeBorder(.white.opacity(0.8), lineWidth: 1.5))
+            .padding(6)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(adding.contains(id))
+        .accessibilityLabel(added ? "Usuń z playlisty" : "Dodaj do playlisty")
+        .sensoryFeedback(.selection, trigger: added)
     }
 
     private var summary: String {
@@ -426,7 +577,7 @@ struct PlaylistEditorView: View {
 
     @ViewBuilder
     private var museumPreview: some View {
-        if fetchBlocker == nil, !fromMuseums.isEmpty || askingMuseums {
+        if asksMuseums, !fromMuseums.isEmpty || askingMuseums {
             HStack {
                 Eyebrow("Z muzeów" + (remoteTotal > 0 ? " · \(Names.works(remoteTotal))" : ""), color: Theme.accent)
                 Spacer()
@@ -434,19 +585,18 @@ struct PlaylistEditorView: View {
                     Text("doczytuję…").font(.caption).foregroundStyle(Theme.inkSoft)
                 }
             }
-            if !fromMuseums.isEmpty, fetchCount == 0 {
-                Text("Takie dzieła trafią do playlisty, gdy włączysz pobieranie z muzeów.")
+            if playlist.kind == .smart, !fromMuseums.isEmpty {
+                Text(fetchCount == 0
+                     ? "Takie dzieła trafią do playlisty, gdy włączysz pobieranie z muzeów."
+                     : "Takie dzieła trafią do playlisty w tle po zapisaniu.")
                     .font(.footnote)
                     .foregroundStyle(Theme.inkSoft)
                     .fixedSize(horizontal: false, vertical: true)
             }
             MasonryGrid(items: fromMuseums.map(\.item.summary)) { summary in
-                NavigationLink(value: summary.id) {
-                    ArtCard(item: summary, ref: fromMuseums.first { $0.id == summary.id }?.thumb)
-                }
-                .buttonStyle(.plain)
+                card(summary, remote: fromMuseums.first { $0.id == summary.id })
             }
-        } else if fetchBlocker == nil, preview != nil, remoteAsked == playlist.rules, remoteTotal == 0 {
+        } else if asksMuseums, preview != nil, remoteAsked == searched.wrappedValue, remoteTotal == 0 {
             Text("W muzeach nic więcej nie znaleziono.")
                 .font(.footnote)
                 .foregroundStyle(Theme.inkSoft)
@@ -508,14 +658,14 @@ struct PlaylistEditorView: View {
     private func refreshPreview() async {
         try? await Task.sleep(for: .milliseconds(250))
         guard !Task.isCancelled else { return }
-        let result = try? await model.backend.previewRules(playlist.rules)
+        let result = try? await model.backend.previewRules(searched.wrappedValue)
         withAnimation(.snappy) { preview = result }
     }
 
     /// Asks the museums what Discover's search would show for the rules,
     /// taking in each one's answer as it comes.
     private func askMuseums() async {
-        guard playlist.kind == .smart, fetchBlocker == nil, !playlist.rules.isEmpty else {
+        guard playlist.kind != .album, asksMuseums, !searched.wrappedValue.isEmpty else {
             remote = []
             remoteTotal = 0
             remoteAsked = PlaylistRules()
@@ -524,7 +674,7 @@ struct PlaylistEditorView: View {
         }
         try? await Task.sleep(for: .milliseconds(400))
         guard !Task.isCancelled else { return }
-        let rules = playlist.rules
+        let rules = searched.wrappedValue
         remote = []
         remoteTotal = 0
         remoteAsked = PlaylistRules()
@@ -545,6 +695,29 @@ struct PlaylistEditorView: View {
         guard !Task.isCancelled else { return }
         remoteAsked = rules
         askingMuseums = false
+    }
+
+    /// Adds a found work to the manual playlist, or takes it out again; a
+    /// museum's work is saved to the library first.
+    private func toggle(_ id: String, remote: RemoteItem?) async {
+        if playlist.itemIds.contains(id) {
+            withAnimation(.snappy) { playlist.itemIds.removeAll { $0 == id } }
+            return
+        }
+        guard let remote, !remote.inLibrary else {
+            withAnimation(.snappy) { playlist.itemIds.append(id) }
+            return
+        }
+        adding.insert(id)
+        defer { adding.remove(id) }
+        do {
+            let item = try await model.backend.importArtwork(source: remote.item.source, sourceID: remote.item.sourceId)
+            if !playlist.itemIds.contains(item.id) {
+                withAnimation(.snappy) { playlist.itemIds.append(item.id) }
+            }
+        } catch {
+            model.show(error)
+        }
     }
 
     /// Reports the fetch once it ends; runs on after the editor closes.

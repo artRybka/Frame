@@ -12,8 +12,16 @@ import httpx
 
 from .importer import Importer, Job
 from .models import Playlist, PlaylistKind, PlaylistRules
+from .repo import Library
 
 log = logging.getLogger(__name__)
+
+#: The owner's hearts; always there (see ensure_favorites).
+FAVORITES = Playlist(
+    name="Ulubione",
+    description="Twoje serduszka.",
+    rules=PlaylistRules(favorites_only=True),
+)
 
 #: (museum, query, how many works)
 Query = tuple[str, str, int]
@@ -247,20 +255,23 @@ DEFAULT_PLAYLISTS: list[Playlist] = [
         description="Ochra, czerwień i złoto.",
         rules=PlaylistRules(colors=["warm"]),
     ),
-    Playlist(
-        name="Ulubione",
-        description="Twoje serduszka.",
-        rules=PlaylistRules(favorites_only=True),
-    ),
+    FAVORITES,
 ]
 
 
 def seed_playlists(importer: Importer) -> None:
     library = importer.library
-    if library.playlists():
-        return
-    for playlist in DEFAULT_PLAYLISTS:
-        library.save_playlist(playlist.model_copy(update={"kind": PlaylistKind.SMART}))
+    if not library.playlists():
+        for playlist in DEFAULT_PLAYLISTS:
+            library.save_playlist(playlist.model_copy(update={"kind": PlaylistKind.SMART}))
+    ensure_favorites(library)
+
+
+def ensure_favorites(library: Library) -> None:
+    """ "Ulubione" is always there, even with no hearts yet: brings it back
+    when a library has none (e.g. deleted before it couldn't be)."""
+    if not any(p.is_favorites for p in library.playlists()):
+        library.save_playlist(FAVORITES.model_copy())
 
 
 def import_queries(importer: Importer, queries: list[Query], job: Job) -> None:

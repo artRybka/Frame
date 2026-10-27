@@ -214,3 +214,36 @@ def test_a_playlist_gets_a_work_once(service) -> None:
             f"/api/playlists/{playlist}/items", json={"item_ids": ["wmc:2", "aic:3"]}
         ).json()
     assert detail["item_ids"] == ["met:1", "aic:3"]
+
+
+def test_favorites_playlist_always_stays(service) -> None:
+    from frame_server.web import create_app
+
+    app = create_app(service.settings)
+    svc = app.state.service
+    with TestClient(app) as client:
+        playlists = client.get("/api/playlists").json()
+        favorites = [p for p in playlists if p["rules"]["favorites_only"]]
+        assert [p["name"] for p in favorites] == ["Ulubione"]
+        assert favorites[0]["item_count"] == 0  # there even with no hearts
+        fav_id = favorites[0]["id"]
+
+        assert client.delete(f"/api/playlists/{fav_id}").status_code == 409
+        # Renamed, it stays the hearts' smart playlist.
+        renamed = client.put(
+            f"/api/playlists/{fav_id}",
+            json={"name": "Serduszka", "kind": "manual", "rules": {"favorites_only": False}},
+        ).json()["playlist"]
+        assert renamed["name"] == "Serduszka"
+        assert renamed["kind"] == "smart" and renamed["rules"]["favorites_only"]
+
+        other = client.post("/api/playlists", json={"name": "Inna"}).json()["playlist"]["id"]
+        assert client.delete(f"/api/playlists/{other}").json() == {"deleted": True}
+
+    # A library that lost it (deleted before) gets it back on start.
+    svc.library.delete_playlist(fav_id)
+    with TestClient(create_app(service.settings)) as client:
+        names = [
+            p["name"] for p in client.get("/api/playlists").json() if p["rules"]["favorites_only"]
+        ]
+    assert names == ["Ulubione"]

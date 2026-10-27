@@ -97,6 +97,9 @@ struct PlaylistsView: View {
                 if LaunchRoute.screen == "editor-new", editing == nil {
                     editing = Playlist(name: "", rules: PlaylistRules())
                 }
+                if LaunchRoute.screen == "editor-manual", editing == nil {
+                    editing = Playlist(name: "Na ścianę", kind: .manual)
+                }
             }
         }
     }
