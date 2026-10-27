@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.18.0
+
+- Dzieła zapisane jako SVG (np. z Wikimedia Commons przez Openverse) mają
+  znowu podgląd: serwer bierze gotowe obrazki PNG/JPEG z Commons, a SVG
+  spoza Commons pomija. Pliki TIFF/PDF/DjVu z Commons tak samo.
+- Tytuły i autorzy bez resztek HTML (np. „<span class=” w tytułach z
+  Commons); zapisane już dzieła są poprawiane raz przy starcie.
+- „Zdjęcie na ramkę” zaczyna od pustej ramki w jej proporcjach z napisem
+  „Wybierz zdjęcie z rolki” i od razu pokazuje opcje; wybrany wcześniej
+  wygląd idzie razem ze zdjęciem.
+- Nowa inteligentna playlista jak Szukaj: od razu pole wyszukiwania,
+  przełącznik pobierania z muzeów pod nim, kwadraciki do czasu
+  wyszukania i podgląd dzieł w kafelkach; bez „Tylko ulubione”.
+
 ## 0.17.0
 
 - Szukaj: wyniki zostają po powrocie z dzieła; dzieła z muzeów pojawiają
