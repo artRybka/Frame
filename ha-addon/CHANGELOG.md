@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.26.0
+
+- „Teraz”: gdy ramka śpi bez Wi-Fi (głęboki sen), karta „Ramka śpi” pokazuje,
+  o której się obudzi, z odliczaniem, i że wcześniej obudzi ją krótkie
+  naciśnięcie przycisku; status ramki ma `wake_at`.
+- Aplikacja Frame na ramce aktualizuje się sama: gdy pyta z inną wersją niż
+  wgrana paczka, `/panel/next` odpowiada `reboot` (raz na wersję), aplikacja
+  restartuje ramkę (`rebootDevice`), launcher instaluje nową paczkę, a serwer
+  po minucie uruchamia ją przez MDC. Paczka wgrana na obudzoną ramkę idzie
+  na nią od razu.
+- Wi-Fi ramki w aplikacji iOS: kafelek „Sieć” pokazuje kreski sygnału, SSID
+  i pasmo, a Konfiguracja → „Połączenie z ekranem” sieć, adres i siłę
+  sygnału, z ostrzeżeniem „Obca sieć”, gdy ramka weszła do innej sieci albo
+  ma inny adres. Aplikacja ramki zgłasza odczyt przy każdym starcie
+  i pobudce (zdarzenie `wifi` w `/panel/report`). Pełne dane wymagają paczki
+  1.2.0 z uprawnieniem `network.public` (`pack.sh 1.2.0 --upload`).
+
 ## 0.25.2
 
 - Aplikacja Frame na ramce: `sssp_config.xml` podaje `<webtype>tizen</webtype>`,
