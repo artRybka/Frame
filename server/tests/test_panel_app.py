@@ -243,11 +243,6 @@ async def test_switch_the_panel_to_the_app_and_back(
         assert service.app.active and service.app.state.previous_source == 0
         assert service.status.status.panel_app
 
-        # A new package for an awake app: restarted so the launcher installs it.
-        panel.received.clear()
-        assert await service.app.install()
-        assert panel.received == [(CMD_CONTENT_DOWNLOAD, b"\x81\x01")]
-
         await service.app.switch(False)
         assert panel.received[-1] == (CMD_CONTENT_DOWNLOAD, b"\x81\x00")
         assert not service.app.active
@@ -328,5 +323,28 @@ async def test_a_silent_app_is_started_after_its_alarm(
         assert panel.received == [(CMD_CONTENT_DOWNLOAD, b"\x81\x01")]
         await service.power.tick(_at("2026-10-28T19:16"))
         assert service.app.state.missed_wake == _at("2026-10-28T19:00").isoformat()
+    finally:
+        await panel.stop()
+
+
+async def test_a_new_package_is_installed_by_a_reboot(
+    tmp_path: Path, server_ssl: ssl.SSLContext
+) -> None:
+    panel = FakePanel(server_ssl)
+    await panel.start()
+    try:
+        service = _service(tmp_path, panel.port)
+        app = service.app
+        app.store_package(b"PK\x03\x04signed", "1.1.0")
+        now = _at("2026-10-28T21:00")
+        hello = AppHello(reason="poll", build="1.0.0", charging=True)
+        assert app.answer(hello, now=now).action == "reboot"
+        # Installed, not started: the server starts it a minute later.
+        await service.power.tick(now + timedelta(seconds=70))
+        assert panel.received == [(CMD_CONTENT_DOWNLOAD, b"\x81\x01")]
+        # Once per version: a package that does not install reboots no more.
+        assert app.answer(hello, now=now + timedelta(minutes=2)).action == "stay"
+        new = AppHello(reason="start", build="1.1.0", charging=True)
+        assert app.answer(new, now=now + timedelta(minutes=3)).action == "stay"
     finally:
         await panel.stop()
