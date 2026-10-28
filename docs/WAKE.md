@@ -199,12 +199,20 @@ ten sam obraz 2560×1440 co w trybie Mobile (nasz dither albo passthrough).
   odświeżanie (szaro-brązowy ekran) i budzik przepadł. Usypiać ≥45–60 s po
   ostatniej zmianie ekranu.
 - **Pełny sen** (standby OFF) na ładowarce i na baterii: budzik zawsze budzi
-  (zimny start). Gdy launcher po zimnym starcie sprawdzi `sssp_config.xml`
-  i wersja jest **ta sama**, aplikacji nie uruchamia (4 z 6 pobudek); gdy nie
-  sprawdza albo wersja jest nowa, uruchamia. Obejście, które działało 6 z 6:
+  (zimny start), ale **launcher sam aplikacji nie uruchamia** (tylko 2 z 9
+  zimnych startów). Także przy czystej instalacji przez launcher, bez
+  Developer mode i z `<webtype>tizen</webtype>`: przy tej samej wersji
+  launcher pobiera `sssp_config.xml` i stoi, przy 404 też. **Potrzebne:**
   serwer po planowanej pobudce czeka na raport aplikacji i po ok. 60 s ciszy
-  wysyła MDC `0xC7 81 01` (start w ok. 10 s). Aplikacja po starcie przywraca
-  `setNetworkStandby("ON")`.
+  wysyła MDC `0xC7 81 01` (start w ok. 10 s, 8 z 8). Aplikacja po starcie
+  przywraca `setNetworkStandby("ON")`.
+- **Z network standby wył. WoL nie budzi ramki**, tylko budzik albo przycisk.
+- Instalacja przez launcher działa bez Developer mode (certyfikat Partner
+  z DUID wystarcza); `isCustomAppDownloaded()` zawsze `false`.
+  `sssp_config.xml`: `<widget><ver>1.7.1</ver><size>…</size><widgetname>WakeProbe</widgetname><webtype>tizen</webtype></widget>`.
+- Po wyłączeniu i włączeniu ramka potrafi połączyć się z inną zapamiętaną
+  siecią Wi-Fi (raz „Rocky IoT”, 192.168.3.151): wtedy serwer jej nie widzi.
+  Aplikacja powinna raportować SSID i IP.
 - Launcher sprawdza wersję także przy części wywołań `goToSleep()`; przy
   niezgodności przeinstalowuje i uruchamia aplikację (ekran instalacji).
   Serwer ma podawać tę wersję, która jest zainstalowana.
