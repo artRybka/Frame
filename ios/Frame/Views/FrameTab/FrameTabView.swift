@@ -255,7 +255,7 @@ struct FrameTabView: View {
             let note = device.onNetwork == true ? "śpi, ale jest w sieci Wi-Fi" : "śpi, Wi-Fi czeka na sygnał budzenia"
             return ("moon.zzz", Theme.accent, "Czuwanie", note)
         case "deep_sleep":
-            let note = device.wakesAt.map { "Wi-Fi wyłączone, budzik o \($0)" } ?? "Wi-Fi wyłączone, budzi przycisk"
+            let note = device.wakesAt.map { "budzik o \($0), wcześniej przycisk na ramce" } ?? "Wi-Fi wyłączone, budzi przycisk"
             return ("wifi.slash", Theme.inkSoft, "Głęboki sen", note)
         case "offline":
             if device.onNetwork == false {

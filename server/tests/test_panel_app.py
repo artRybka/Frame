@@ -94,6 +94,7 @@ def test_online_sleeps_until_the_change_and_deeply_at_night(tmp_path: Path) -> N
     status = service.status.status
     assert status.panel_app and status.battery_level == 80 and status.power_source == "battery"
     assert status.wakes_at == "19:00"
+    assert status.wake_at == _at("2026-10-28T19:00").isoformat()
     assert app.asleep() and not app.deep_asleep()
 
     # After the evening change: up again when quiet hours start, to turn the

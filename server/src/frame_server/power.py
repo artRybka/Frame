@@ -159,6 +159,8 @@ class PowerManager:
         else:
             status.wakes_at = state.timer
             status.alarm_refused = state.alarm_refused is not None
+        wake_at = self.wakes_at(datetime.now(UTC))
+        status.wake_at = wake_at.isoformat(timespec="seconds") if wake_at else None
 
     @property
     def economy(self) -> bool:
