@@ -463,6 +463,24 @@ class PanelApp:
             return
         log.info("panel app silent after its alarm: started it over MDC")
 
+    async def install(self) -> bool:
+        """A new package was uploaded: an awake panel running the app is
+        made to install it now. MDC 0xC7 81 01 restarts the app through the
+        launcher, which installs what sssp_config.xml offers when the version
+        differs (UNTESTED that a restart checks it; it does on a cold boot
+        and as the panel goes to sleep, E16). A sleeping panel installs it
+        at its next wake."""
+        if not self.active or self.asleep():
+            return False
+        try:
+            async with self.service.panel.session() as mdc:
+                await mdc.set_content_source(CONTENT_SOURCE_CUSTOM)
+        except MdcError as err:
+            log.info("could not restart the panel app for its new package: %s", err)
+            return False
+        log.info("panel app restarted to install its new package")
+        return True
+
     # -- switching the panel over ---------------------------------------------
 
     def app_url(self) -> str:

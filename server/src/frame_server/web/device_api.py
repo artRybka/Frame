@@ -57,7 +57,9 @@ async def put_app_package(version: str, request: Request, svc: Svc) -> PackageIn
     data = await request.body()
     if not data.startswith(b"PK"):
         raise HTTPException(400, "not a .wgt package (zip)")
-    return svc.app.store_package(data, version)
+    info = svc.app.store_package(data, version)
+    await svc.app.install()  # awake: now; asleep: at its next wake
+    return info
 
 
 @router.post("/app/switch", response_model=AppView)

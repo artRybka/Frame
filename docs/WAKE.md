@@ -407,6 +407,19 @@ komunikat), dopiero wtedy ustawia network standby i budzik i zasypia. Gdy
 przez długie pobieranie do pobudki zostały mniej niż 2 minuty, pyta serwer
 od nowa zamiast zasypiać.
 
+**Instalacja i aktualizacje aplikacji.** Pierwsza instalacja: Konfiguracja →
+Aplikacja ramki → „Przełącz na aplikację Frame” (serwer wysyła `0xC7 82
+<adres>/panel/app` i `0xC7 81 01`, launcher od razu instaluje). Logika
+(`app.js`) przychodzi z serwera przy każdym starcie, więc zwykłe zmiany nie
+wymagają nowej paczki. Nowa paczka tylko przy zmianie `config.xml` albo
+`index.html`: `scripts/panel-app/pack.sh WERSJA --upload <token>` na Macu
+(podpis tylko tam) podbija wersję w `sssp_config.xml`. Gdy aplikacja akurat
+nie śpi, serwer od razu wysyła `0xC7 81 01`, żeby launcher ją zainstalował
+(**niesprawdzone**, czy restart sprawdza wersję); uśpiona instaluje ją przy
+najbliższej pobudce (launcher sprawdza wersję przy zimnym starcie i przy
+usypianiu, E16). Restart przez `webapis.systemcontrol.rebootDevice()` z
+aplikacji też niesprawdzony, więc go nie używamy.
+
 **Wysyłka z aplikacji iOS** w trybie aplikacji: bez `0xC7`. Aplikacja
 obudzona (ładowarka) pobiera obraz przy najbliższym pytaniu; uśpiona z Wi-Fi
 dostaje serię WoL (do 3 min) i pyta po wznowieniu; w głębokim śnie albo gdy

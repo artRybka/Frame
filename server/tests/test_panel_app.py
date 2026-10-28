@@ -243,6 +243,11 @@ async def test_switch_the_panel_to_the_app_and_back(
         assert service.app.active and service.app.state.previous_source == 0
         assert service.status.status.panel_app
 
+        # A new package for an awake app: restarted so the launcher installs it.
+        panel.received.clear()
+        assert await service.app.install()
+        assert panel.received == [(CMD_CONTENT_DOWNLOAD, b"\x81\x01")]
+
         await service.app.switch(False)
         assert panel.received[-1] == (CMD_CONTENT_DOWNLOAD, b"\x81\x00")
         assert not service.app.active
