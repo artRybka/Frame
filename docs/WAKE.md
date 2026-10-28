@@ -172,11 +172,21 @@ firmware 1130.7, ramka na baterii, network standby wł.
 1. **Obraz 1:1: z HTML nie.** Strona ma `screen` 1920×1080 i
    `devicePixelRatio` 1 (`tizen.systeminfo` DISPLAY też 1920×1080, a
    capability `screen.height` = 1440), panel ma 2560×1440, więc obraz ze strony
-   jest skalowany ×4/3 i nasz dithering się rozjedzie. Do sprawdzenia przy
-   ekranie: `webapis.unipicture` (create/load/show/setDisplayRect, wyświetlanie
-   zdjęć poza warstwą WWW), `webapis.epavplay` i ewentualne ustawienie
-   rozdzielczości aplikacji. Strona odświeża ekran sama, bez
-   `screenRefreshNow()`.
+   jest skalowany ×4/3 i nasz dithering się rozjedzie. Strona odświeża ekran
+   sama, bez `screenRefreshNow()`.
+   `webapis.unipicture` (2.92) **nie działa**: `create()` → stan `INIT`,
+   `setScalerType("MAIN"|"SUB")` ok, `setGeometry` zna `"FIT_SCREEN"` i
+   `"ZOOM"`, `rotate` zna `"0"/"90"/"180"/"270"`, `setSlideShowEffect`
+   `"WIPE"/"SPIRAL"/"CHECKER"/"LINEAR"/"RANDOM"`. `load(ścieżka)` (też
+   `file://`) zwraca bez błędu, ale stan zostaje `INIT`, a `show()`,
+   `setDisplayRect()` i `useSWDecoder()` dają `PICTURE_ERROR_INVALID_STATE`.
+   `loadAsync()` po `create()` **wywraca aplikację** (restart co ok. 30 s),
+   z adresem `http://` także (pliku nawet nie pobiera). Pozostaje
+   `webapis.epavplay` (odtwarzacz e-papieru, `open(url)`, `setDisplayRect`,
+   `setDisplayMethod`) i ustawienie rozdzielczości aplikacji; do sprawdzenia
+   przy ekranie. Lokalny zapis pliku działa: `tizen.download.start(new
+   tizen.DownloadRequest(url, "downloads", nazwa), {oncompleted})` →
+   `/opt/usr/home/owner/content/Downloads/<nazwa>` (przywilej `download`).
 2. **Sieć po pobudce:** z płytkiego snu XHR działa od pierwszego taktu po
    wznowieniu; po pełnym śnie raporty startu doszły ok. 20 s po powrocie
    pingu. Ponawiać zapytania.
@@ -222,9 +232,14 @@ firmware 1130.7, ramka na baterii, network standby wł.
   ramki jest dziwna, zegar mimo to pokazuje CET), `getDST()` mode `OFF`,
   `getSystemTimeSyncTimeout()` `30SEC`; on/off timer `NotSupportedError`.
 - `remotepower`: wszystko `NotSupportedError`.
-- `network`: `getActiveConnectionType()` `1` (Wi-Fi); reszta wymaga
-  przywileju sieciowego (`SecurityError`). `tizen.systeminfo` WIFI_NETWORK
-  daje SSID, siłę sygnału (0,87) i IP.
+- `network`: `getActiveConnectionType()` `1` (Wi-Fi); z przywilejem
+  `http://developer.samsung.com/privilege/network.public` także `getIp()`,
+  `getMac()`, `getWiFiSignalStrengthLevel()` (3). `tizen.systeminfo`
+  WIFI_NETWORK daje SSID, siłę sygnału (0,87) i IP.
+- `0xC7 81 01` przy już wybranym Custom tylko uruchamia aplikację od nowa (też
+  zawieszoną), nowej wersji nie pobiera, nawet po zmianie adresu `0xC7 82`.
+  Launcher pobiera paczkę, gdy aplikacji nie ma, albo sam przy okazji
+  (zasypianie, start), co kilkanaście minut.
 - `tizen.systeminfo.getCapability("http://tizen.org/feature/screen.width")`
   = 1920, `screen.height` = 1440.
 - Bez przywilejów: `avinfo` (jasność itp.), `widgetdata`, `drminfo`, `was`.
