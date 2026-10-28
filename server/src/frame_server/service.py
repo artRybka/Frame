@@ -23,7 +23,7 @@ from .library import ImageCache, Importer, Library
 from .library.commons import repair_library
 from .library.museums import Access
 from .library.museums import client as museum_client
-from .panel_app import POLL, PanelApp, app_jpeg
+from .panel_app import POLL, PanelApp
 from .panel_config import PanelConfigStore
 from .player import Player
 from .power import WAKE_BURST_SECONDS, PowerManager
@@ -256,13 +256,11 @@ class FrameService:
             if img.format not in ("PNG", "JPEG"):
                 image, ext = encode_image(img.convert("RGB"), "png"), "png"
             preview = img.convert("RGB")
-            app_image = app_jpeg(preview)
             preview.thumbnail((PREVIEW_MAX, PREVIEW_MAX))
             return self.store.publish(
                 image,
                 ext,
                 preview_png=encode_image(preview, "png"),
-                app_jpeg=app_image,
                 title=title,
                 description=description,
                 source=source,
@@ -275,7 +273,6 @@ class FrameService:
             done.data,
             done.ext,
             preview_png=done.preview_png,
-            app_jpeg=done.app_jpeg,
             title=title,
             description=description,
             source=source,
@@ -311,9 +308,7 @@ class FrameService:
             data, ext = result.encode(fmt)  # type: ignore[arg-type]
             preview = result.original_image()  # the app shows the picture, not the dither
             preview.thumbnail((PREVIEW_MAX, PREVIEW_MAX))
-            # The Frame app's page: in its own colours too, the panel dithers it.
-            app_image = app_jpeg(result.original_panel_image())
-            return Rendered(data, ext, encode_image(preview, "png"), app_image)
+            return Rendered(data, ext, encode_image(preview, "png"))
 
         return self.rendered.get(key, make)
 
@@ -424,7 +419,6 @@ class FrameService:
             encode_image(img, "png"),
             "png",
             preview_png=encode_image(img.resize((1280, 720)), "png"),
-            app_jpeg=app_jpeg(img),
             title="Frame",
             description="Placeholder shown until the first image is sent.",
             source="frame",
