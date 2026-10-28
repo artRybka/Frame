@@ -182,7 +182,9 @@ starcie i po każdym wznowieniu (przerwa w takcie 15 s dłuższa niż 45 s)
 
 - `sleep`: narysuj `image` (jeśli inny niż na ekranie), odczekaj 45 s na
   odświeżenie e-papieru, ustaw `setNetworkStandby(standby)` (tylko gdy inny),
-  `setScheduleWakeupTime` na `wake_ms` (czas lokalny ramki; ten sam moment
+  `setScheduleWakeupTime` na `wake_ms` (przeliczone na czas lokalny ramki
+  jej własnym zegarem JS, więc strefa ramki, np. „Africa/Casablanca” z
+  `getNTP`, nie przesuwa pobudki w czasie letnim; ten sam moment
   nie jest ustawiany drugi raz, bo budzików nie da się odwołać), zgłoś
   `sleep`, `goToSleep()`;
 - `stay` (ładowarka albo „Obudź ramkę”): narysuj i zapytaj znowu za
@@ -204,7 +206,9 @@ przeładowuje się (najwyżej raz na 10 minut).
   początek ciszy nocnej, żeby wyłączyć Wi-Fi na noc. Najwyżej tydzień naprzód;
 - network standby: `OFF` w trybie Oszczędnym i w ciszy nocnej, `ON` w dzień
   w trybie Online (WoL dostarcza wtedy zdjęcia z telefonu od razu);
-- ładowarka (`charging` z aplikacji albo bateria z MDC): `stay`;
+- ładowarka (bateria z MDC `0x1B 73`, czytana przed odpowiedzią, gdy
+  ostatni odczyt ma ponad 10 minut; `tizen.systeminfo` na ramce zawodzi,
+  a po pobudce nie odpowiada wcale): `stay`;
 - obraz zaległy (`pending_push`) idzie przy pobudce i zostaje do następnej
   zmiany, jak dotąd.
 
@@ -234,7 +238,7 @@ Gdy ramka działa w aplikacji, w Harmonogramie wraca przełącznik „Tryb pracy
 
 **Do sprawdzenia na ramce:** czy obraz 2560×1440 wychodzi 1:1 (aplikacja
 zgłasza w `/panel/next` rozmiar strony `screen` i w `shown` rozmiar obrazu),
-czy `tizen.systeminfo` podaje baterię, czy logika ładuje się z serwera
+czy logika ładuje się z serwera
 (`code` w raportach inny niż `local`), czy budzik budzi przy network standby
 `OFF`, czy WoL wznawia aplikację w trybie Custom, jak aplikacja zachowuje się
 na ładowarce (czy „Sleep After” jej nie usypia).

@@ -168,7 +168,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return FileResponse(path)
 
     @app.get("/panel/next")
-    def panel_next(
+    async def panel_next(
         reason: str = "start",
         build: str | None = None,
         code: str | None = None,
@@ -186,7 +186,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             battery=battery,
             charging=charging,
         )
-        return service.app.answer(hello)
+        return await service.app.ask(hello)
 
     @app.post("/panel/report")
     async def panel_report(request: Request) -> dict[str, object]:

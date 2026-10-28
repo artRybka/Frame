@@ -53,6 +53,10 @@ MAX_AHEAD = timedelta(days=7) - timedelta(hours=1)
 MISSED_AFTER = timedelta(minutes=15)
 # "Obudź ramkę" keeps the woken app awake (asking every ``POLL``) this long.
 KEEP_AWAKE = timedelta(minutes=10)
+# While the app is awake the server reads the battery over MDC (Tizen's
+# systeminfo fails on the panel) at most this often.
+BATTERY_EVERY = timedelta(minutes=10)
+BATTERY_TIMEOUT = 10.0
 # The source the panel had before Custom when it was never read (Samsung
 # MDC: 00 = MagicInfo, which the Mobile mode most likely is).
 MOBILE_SOURCE = 0x00
@@ -204,6 +208,21 @@ class PanelApp:
         return AppView(active=state.active, package=self.package(), state=state)
 
     # -- the app's questions --------------------------------------------------
+
+    async def ask(self, hello: AppHello) -> NextAnswer:
+        """``answer``, with the battery and charger read over MDC first when
+        the last read is old (Tizen's systeminfo fails on the panel): on the
+        charger the app stays awake."""
+        status = self.service.status
+        checked = status.status.checked_at
+        now = datetime.now(UTC)
+        stale = checked is None or now - datetime.fromisoformat(checked) >= BATTERY_EVERY
+        if stale and hello.charging is None and self.service.device_configured:
+            try:
+                await asyncio.wait_for(status.refresh(force=True), BATTERY_TIMEOUT)
+            except (TimeoutError, MdcError) as err:
+                log.info("no battery reading for the app: %s", err)
+        return self.answer(hello)
 
     def answer(self, hello: AppHello, now: datetime | None = None) -> NextAnswer:
         """What the app shows and does next; it asked, so it is awake."""

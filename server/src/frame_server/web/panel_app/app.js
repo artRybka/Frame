@@ -87,36 +87,16 @@
     x.send();
   }
 
-  // The panel's battery, when Tizen tells (it may never call back).
-  function battery(done) {
-    var answered = false;
-    function once(level, charging) {
-      if (answered) return;
-      answered = true;
-      done(level, charging);
-    }
-    setTimeout(function () { once(null, null); }, 2000);
-    try {
-      tizen.systeminfo.getPropertyValue("BATTERY", function (b) {
-        once(Math.round(b.level * 100), b.isCharging);
-      }, function () { once(null, null); });
-    } catch (e) {
-      once(null, null);
-    }
-  }
-
+  // No battery here: tizen.systeminfo fails on the panel (and after a wake
+  // never calls back); the server reads it over MDC.
   function ask(reason) {
     if (busy) return;
     busy = true;
     clearTimeout(timer);
-    battery(function (level, charging) {
-      var q = "reason=" + reason + "&build=" + encodeURIComponent(BUILD) +
-        "&code=" + encodeURIComponent(CODE) +
-        "&screen=" + window.innerWidth + "x" + window.innerHeight + "@" + (window.devicePixelRatio || 1);
-      if (level !== null) q += "&battery=" + level;
-      if (charging !== null) q += "&charging=" + charging;
-      attempt(q, 1);
-    });
+    var q = "reason=" + reason + "&build=" + encodeURIComponent(BUILD) +
+      "&code=" + encodeURIComponent(CODE) +
+      "&screen=" + window.innerWidth + "x" + window.innerHeight + "@" + (window.devicePixelRatio || 1);
+    attempt(q, 1);
   }
 
   function attempt(q, n) {
