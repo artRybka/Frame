@@ -25,6 +25,8 @@ python3 -c 'import base64,sys; open(sys.argv[1],"wb").write(base64.b64decode("iV
 "$tizen" package -t wgt -s frame -- "$build" >/dev/null
 mkdir -p "$out"
 cp "$build/WakeProbe.wgt" "$out/"
+# Loaded at run time from the server, so it changes without re-signing.
+cp "$src/remote.js" "$out/"
 size=$(wc -c < "$out/WakeProbe.wgt" | tr -d ' ')
 cat > "$out/sssp_config.xml" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>

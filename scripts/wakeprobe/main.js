@@ -1,11 +1,15 @@
 // WakeProbe: reports what webapis.epaper can do, sets a wake-up and sleeps.
-// The plan (seconds until wake-up, delay before sleep) comes from the Mac server.
+// The plan comes from the Mac server and is fetched again after every wake-up:
+// {"wake_in_s": 180, "sleep_after_s": 30, "network_standby": "OFF", "refresh": false}
+// An empty plan ({}) leaves the panel alone.
 var SERVER = "http://192.100.3.87:3000";
 var BUILD = "__BUILD__";
 var lines = [];
+var lastTick = Date.now();
+var cycle = 0;
 
 function show(text) {
-  lines.push(text);
+  lines.push(new Date().toTimeString().slice(0, 8) + " " + text);
   if (lines.length > 14) lines.shift();
   var el = document.getElementById("log");
   if (el) el.textContent = lines.join("\n");
@@ -17,11 +21,11 @@ function post(kind, data, done) {
     var x = new XMLHttpRequest();
     x.open("POST", SERVER + "/report", true);
     x.setRequestHeader("Content-Type", "text/plain");
-    x.onloadend = function () { if (done) done(); };
+    x.onloadend = function () { if (done) done(x.status); };
     x.send(body);
   } catch (e) {
     new Image().src = SERVER + "/beacon?k=" + encodeURIComponent(kind) + "&e=" + encodeURIComponent(String(e));
-    if (done) done();
+    if (done) done(0);
   }
 }
 
@@ -39,42 +43,73 @@ function call(name, fn) {
   }
 }
 
+function members(obj) {
+  var names = [];
+  for (var k in obj) names.push(k);
+  return names;
+}
+
 window.onerror = function (msg, src, line, col, e) {
   post("onerror", { msg: String(msg), src: src, line: line, col: col, error: err(e) });
 };
 
+// Every lifecycle event we can think of, to learn which one fires after a wake-up.
+["visibilitychange", "pageshow", "pagehide", "focus", "blur", "online", "offline", "resume", "pause", "freeze"].forEach(function (name) {
+  var target = (name === "visibilitychange" || name === "resume" || name === "pause" || name === "freeze") ? document : window;
+  target.addEventListener(name, function () {
+    post("event", { name: name, visibility: document.visibilityState, online: navigator.onLine, since_tick_s: Math.round((Date.now() - lastTick) / 1000) });
+  });
+});
+
 function probe() {
   var r = {
     href: location.href,
-    ua: navigator.userAgent,
     tz_offset_min: new Date().getTimezoneOffset(),
     has_webapis: typeof webapis !== "undefined",
-    has_tizen: typeof tizen !== "undefined"
+    has_tizen: typeof tizen !== "undefined",
+    online: navigator.onLine
   };
-  if (r.has_webapis) {
-    r.webapis_keys = Object.keys(webapis);
-    r.has_epaper = !!webapis.epaper;
-    if (webapis.epaper) {
-      var ep = webapis.epaper;
-      var names = [];
-      for (var k in ep) names.push(k);
-      r.epaper_members = names;
-      r.getVersion = call("getVersion", function () { return ep.getVersion(); });
-      r.isScheduledPlayBootReason = call("isScheduledPlayBootReason", function () { return ep.isScheduledPlayBootReason(); });
-      r.getAutoSleepTime = call("getAutoSleepTime", function () { return ep.getAutoSleepTime(); });
-      r.getNetworkStandby = call("getNetworkStandby", function () { return ep.getNetworkStandby(); });
-      r.getBatteryWarningIconDisplay = call("getBatteryWarningIconDisplay", function () { return ep.getBatteryWarningIconDisplay(); });
-      r.getScreenRefreshTime = call("getScreenRefreshTime", function () { return ep.getScreenRefreshTime(); });
-    }
-    if (webapis.productinfo) {
-      r.duid = call("getDuid", function () { return webapis.productinfo.getDuid(); });
-      r.firmware = call("getFirmware", function () { return webapis.productinfo.getFirmware(); });
-    }
+  if (r.has_webapis && webapis.epaper) {
+    var ep = webapis.epaper;
+    r.getVersion = call("getVersion", function () { return ep.getVersion(); });
+    r.isScheduledPlayBootReason = call("isScheduledPlayBootReason", function () { return ep.isScheduledPlayBootReason(); });
+    r.getAutoSleepTime = call("getAutoSleepTime", function () { return ep.getAutoSleepTime(); });
+    r.getNetworkStandby = call("getNetworkStandby", function () { return ep.getNetworkStandby(); });
   }
-  if (r.has_tizen) {
-    r.tizen_app = call("app", function () { return tizen.application.getCurrentApplication().appInfo.id; });
+  if (r.has_webapis && webapis.systemcontrol) {
+    var sc = webapis.systemcontrol;
+    r.systemcontrol_members = members(sc);
+    r.getSerialNumber = call("getSerialNumber", function () { return sc.getSerialNumber(); });
+    r.getCustomAppInfo = call("getCustomAppInfo", function () { return sc.getCustomAppInfo(); });
+    r.getButtonLock = call("getButtonLock", function () { return sc.getButtonLock(); });
+    r.getOnScreenMenuOrientation = call("getOnScreenMenuOrientation", function () { return sc.getOnScreenMenuOrientation(); });
+    r.isCustomAppDownloaded = call("isCustomAppDownloaded", function () { return sc.isCustomAppDownloaded(); });
   }
+  if (r.has_webapis && webapis.timer) {
+    var tm = webapis.timer;
+    r.timer_members = members(tm);
+    r.getCurrentTime = call("getCurrentTime", function () { return tm.getCurrentTime(); });
+    r.getNTP = call("getNTP", function () { return tm.getNTP(); });
+    r.getDST = call("getDST", function () { return tm.getDST(); });
+  }
+  if (r.has_webapis && webapis.remotepower) r.remotepower_members = members(webapis.remotepower);
+  if (r.has_webapis && webapis.systeminfo) r.webapis_systeminfo_members = members(webapis.systeminfo);
   return r;
+}
+
+// tizen.systeminfo may never call back (seen after a wake-up), so give up after 3 s.
+function battery(done) {
+  var finished = false;
+  function finish(r) { if (!finished) { finished = true; done(r); } }
+  setTimeout(function () { finish({ ok: false, error: "timeout" }); }, 3000);
+  if (typeof tizen === "undefined" || !tizen.systeminfo) { finish({ ok: false, error: "no tizen.systeminfo" }); return; }
+  try {
+    tizen.systeminfo.getPropertyValue("BATTERY", function (b) {
+      finish({ ok: true, level: b.level, isCharging: b.isCharging });
+    }, function (e) { finish({ ok: false, error: err(e) }); });
+  } catch (e) {
+    finish({ ok: false, error: err(e) });
+  }
 }
 
 function wakeupTime(d) {
@@ -84,90 +119,82 @@ function wakeupTime(d) {
   };
 }
 
-var lastTick = Date.now();
-var cycle = 0;
-var currentPlan = null;
-var timerIds = [];
-
-// The panel resumes the app after a wake-up instead of reloading it: a gap in
-// the heartbeat means we were asleep, so report and start the next cycle.
-function heartbeat() {
-  var now = Date.now();
-  var gap = Math.round((now - lastTick) / 1000);
-  lastTick = now;
-  if (gap > 45) {
-    var ep = webapis.epaper;
-    var info = {
-      gap_s: gap,
-      isScheduledPlayBootReason: call("isScheduledPlayBootReason", function () { return ep.isScheduledPlayBootReason(); }),
-      visibility: document.visibilityState
-    };
-    show("resumed after " + gap + " s");
-    post("resume", info, function () {
-      if (currentPlan && cycle < (currentPlan.cycles || 1)) run(currentPlan);
-    });
-  }
-}
-
-document.addEventListener("visibilitychange", function () {
-  post("visibility", { state: document.visibilityState, hidden: document.hidden });
-});
-
 function run(plan) {
+  var ep = webapis.epaper;
   cycle += 1;
-  currentPlan = plan;
-  var ep = (typeof webapis !== "undefined") ? webapis.epaper : null;
   var r = { plan: plan, cycle: cycle };
-  if (!ep) {
-    post("plan", r);
-    show("no webapis.epaper");
-    return;
-  }
-  if (plan.network_standby) r.setNetworkStandby = call("setNetworkStandby", function () { return ep.setNetworkStandby(plan.network_standby); });
+  if (plan.restore_standby) r.restoreNetworkStandby = call("setNetworkStandby", function () { return ep.setNetworkStandby(plan.restore_standby); });
   if (plan.auto_sleep) r.setAutoSleepTime = call("setAutoSleepTime", function () { return ep.setAutoSleepTime(plan.auto_sleep); });
   if (plan.wake_in_s) {
     var at = new Date(Date.now() + plan.wake_in_s * 1000);
     r.wake_at = wakeupTime(at);
-    if (timerIds.length) {
-      var old = timerIds.pop();
-      r.cancelScheduleWakeupTime = call("cancelScheduleWakeupTime", function () { return ep.cancelScheduleWakeupTime(old); });
-    }
     r.setScheduleWakeupTime = call("setScheduleWakeupTime", function () { return ep.setScheduleWakeupTime(r.wake_at); });
-    if (r.setScheduleWakeupTime.ok) {
-      var id = r.setScheduleWakeupTime.value;
-      timerIds.push(id);
-      r.getScheduleWakeupTime = call("getScheduleWakeupTime", function () { return ep.getScheduleWakeupTime(id); });
-    }
   }
   if (plan.refresh) r.screenRefreshNow = call("screenRefreshNow", function () { return ep.screenRefreshNow(); });
-  show("wake: " + JSON.stringify(r.setScheduleWakeupTime || null));
+  show("cycle " + cycle + " wake " + JSON.stringify(r.wake_at || null));
   post("plan", r, function () {
     if (!plan.sleep_after_s) return;
     setTimeout(function () {
-      lastTick = Date.now();
-      post("sleep", { at: new Date().toString() }, function () {
-        var s = call("goToSleep", function () { return ep.goToSleep(); });
-        post("sleep-result", s);
+      var s = {};
+      if (plan.network_standby) {
+        s.setNetworkStandby = call("setNetworkStandby", function () { return ep.setNetworkStandby(plan.network_standby); });
+        s.getNetworkStandby = call("getNetworkStandby", function () { return ep.getNetworkStandby(); });
+      }
+      show("sleep");
+      post("sleep", s, function () {
+        lastTick = Date.now();
+        var g = call("goToSleep", function () { return ep.goToSleep(); });
+        post("sleep-result", g);
       });
     }, plan.sleep_after_s * 1000);
   });
 }
 
+function fetchPlan(why) {
+  var x = new XMLHttpRequest();
+  x.open("GET", SERVER + "/plan?why=" + why + "&t=" + Date.now(), true);
+  x.onload = function () {
+    var plan = {};
+    try { plan = JSON.parse(x.responseText); } catch (e) { post("plan-parse", err(e)); }
+    run(plan);
+  };
+  x.onerror = function () {
+    show("plan fetch failed (" + why + ")");
+    post("plan-fetch-failed", { why: why, online: navigator.onLine });
+  };
+  x.send();
+}
+
+// The panel resumes the app after a wake-up instead of reloading it: a gap in
+// the heartbeat means we were asleep.
+function heartbeat() {
+  var now = Date.now();
+  var gap = Math.round((now - lastTick) / 1000);
+  lastTick = now;
+  if (gap > 45) {
+    var info = {
+      gap_s: gap,
+      online: navigator.onLine,
+      isScheduledPlayBootReason: call("isScheduledPlayBootReason", function () { return webapis.epaper.isScheduledPlayBootReason(); }),
+      getNetworkStandby: call("getNetworkStandby", function () { return webapis.epaper.getNetworkStandby(); }),
+      visibility: document.visibilityState
+    };
+    show("resumed after " + gap + " s");
+    post("resume-early", { gap_s: gap, online: navigator.onLine });
+    battery(function (b) {
+      info.battery = b;
+      post("resume", info, function () { fetchPlan("resume"); });
+    });
+  }
+}
+
 function start() {
   document.getElementById("stamp").textContent = BUILD + " " + new Date().toLocaleString();
   var info = probe();
-  show("boot reason: " + JSON.stringify(info.isScheduledPlayBootReason || null));
-  show("version: " + JSON.stringify(info.getVersion || null));
-  post("boot", info, function () {
-    var x = new XMLHttpRequest();
-    x.open("GET", SERVER + "/plan?t=" + Date.now(), true);
-    x.onload = function () {
-      var plan = {};
-      try { plan = JSON.parse(x.responseText); } catch (e) { post("plan-parse", err(e)); }
-      run(plan);
-    };
-    x.onerror = function () { show("plan fetch failed"); };
-    x.send();
+  show("boot reason " + JSON.stringify(info.isScheduledPlayBootReason || null));
+  battery(function (b) {
+    info.battery = b;
+    post("boot", info, function () { fetchPlan("boot"); });
   });
 }
 

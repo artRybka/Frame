@@ -116,9 +116,9 @@ firmware 1130.7, ramka na baterii, network standby wł.
 |---|---|
 | `setScheduleWakeupTime({year, month, day, hour, minute, second})` | czas lokalny ramki (JS `Date`, strefa CET), zwraca liczbowy id (173, 175, …) |
 | `getScheduleWakeupTime(id)` | ten sam obiekt `{day, hour, minute, month, second, year}` |
-| `cancelScheduleWakeupTime(id)` | **zawsze** `UnknownError` (kod 9999), 3 z 3 prób, także dla budzika jeszcze nieodpalonego |
-| `goToSleep()` | usypia ramkę; JS działa jeszcze 20–100 s, potem ramka znika z sieci |
-| `isScheduledPlayBootReason()` | liczba: `0` po zwykłym starcie, `1` po pobudce z budzika |
+| `cancelScheduleWakeupTime(id)` | działa dla budzika ustawionego w tym samym okresie czuwania (potem `getScheduleWakeupTime(id)` → `UnknownError` 9999); dla id sprzed ostatniej pobudki zawsze `UnknownError` 9999 |
+| `goToSleep()` | usypia ramkę; JS działa jeszcze 20–130 s, potem ramka znika z sieci |
+| `isScheduledPlayBootReason()` | liczba: `0` po zwykłym starcie, `1` po pobudce z budzika; wartość „lepka”: zostaje `1` także po pobudce przez WoL i przy starcie aplikacji z sdb |
 | `getAutoSleepTime()` | liczba minut (`20` przy „Sleep After” 00:20), nie napis z dokumentacji |
 | `getNetworkStandby()` | `"ON"` |
 | `getScreenRefreshTime()` | `{"hour": "3", "minute": "0"}` (napisy) |
@@ -144,31 +144,90 @@ firmware 1130.7, ramka na baterii, network standby wł.
   Aplikacja musi więc znosić pobudki „nie w porę”: zapytać serwer i od razu
   zasnąć.
 
-**Pytania do aplikacji ramki (stan po E16):**
+**Sen płytki i pełny (testy nocne 2026-10-28, WakeProbe 1.3.x):**
 
-1. Obraz 2560×1440 narysowany przez stronę: czy idzie 1:1 bez ponownego
-   ditheringu i czy odświeżenie startuje samo po zmianie strony? *Nie
-   sprawdzone.* Wiadomo tylko, że strona z tekstem pojawiła się zaraz po
-   starcie aplikacji, bez wywołania `screenRefreshNow()`.
-2. Sieć po pobudce: XHR z pierwszego taktu po wznowieniu (do 15 s po
-   pobudce) doszedł do Maca w tej samej sekundzie, w której ramka znów
-   odpowiadała na ping. Osobnego czekania nie było potrzeba; na wszelki
-   wypadek ponawiać zapytanie kilka razy.
-3. Wznowienie: `visibilitychange` **nie** przychodzi po pobudce (jedyne
-   zdarzenie to `hidden` przy reinstalacji o 00:56:31), stan po pobudce to
-   `visible`. Działa przerwa w liczniku `setInterval`. Inne zdarzenia
-   (`tizen.power`, `webapis`) niesprawdzone.
-4. Bateria w aplikacji: niesprawdzone (kandydat:
-   `tizen.systeminfo.getPropertyValue("BATTERY")`). Przez MDC `0x1B 73`
-   działa także w trybie Custom.
-5. MDC w trybie Custom działa (sesje 00:09–00:43, zanim aplikacja ruszyła).
-   Przy działającej aplikacji, WoL i `0xC7 53 80` (content.json) w trybie
-   Custom niesprawdzone; nie wiadomo, czy to ostatnie przełącza tryb
-   z powrotem.
-6. Lekka paczka, która ładuje JS z serwera (żeby zmiany nie wymagały
-   ponownego podpisu): niesprawdzone. Aplikacja ma `access origin="*"` i
-   luźne CSP, a XHR do serwera po `http` działa, więc `<script src="http://…">`
-   albo `content src` na adres serwera to pierwsze do sprawdzenia.
+- **Płytki sen** (`goToSleep()` przy network standby ON): aplikacja jest
+  wznawiana. Pobudki z budzika 0–29 s przed czasem (01:39:00 dla 01:39:29).
+  **WoL budzi natychmiast**: pierwsza seria postawiła ramkę po 2 s (w trybie
+  Mobile z sieci potrzeba było 60–145 s).
+- Budzik, który przypada, zanim ramka naprawdę zaśnie (JS działa jeszcze do
+  ok. 130 s po `goToSleep()`), **przepada**: ramka zasypia i już się nie
+  budzi. Budzik ustawiać co najmniej 3 min po `goToSleep()`.
+- **Pełny sen** (`setNetworkStandby("OFF")`, potem `goToSleep()`): budzik
+  budzi ramkę 3 razy na 3 (11–18 s przed czasem), Wi-Fi wraca po kilku
+  sekundach. To jednak **zimny start**: aplikacja nie jest wznawiana, tylko
+  startuje od nowa (`pageshow`, `focus`). Uruchomiła się sama tylko raz na
+  trzy; w pozostałych launcher pobrał `sssp_config.xml` ok. 45 s po pobudce
+  i aplikacji nie uruchomił (obserwowane przez 2–7 min). Wtedy MDC odpowiada,
+  a `0xC7 81 01` uruchamia aplikację w ok. 10 s. Możliwe, że to skutek
+  instalacji przez sdb w Developer mode (`isCustomAppDownloaded()` = `false`),
+  do sprawdzenia przy czystej instalacji przez launcher.
+- Network standby ustawiony przez aplikację zostaje po pobudce (`OFF`), więc
+  po pełnym śnie aplikacja albo serwer (`0xB5 01`) musi go przywrócić.
+- Bateria: od 92% (00:09) do 70% (02:18) przy ciągłych testach (ramka
+  obudzona większość czasu, wiele odświeżeń ekranu).
+
+**Pytania do aplikacji ramki (odpowiedzi):**
+
+1. **Obraz 1:1: z HTML nie.** Strona ma `screen` 1920×1080 i
+   `devicePixelRatio` 1 (`tizen.systeminfo` DISPLAY też 1920×1080, a
+   capability `screen.height` = 1440), panel ma 2560×1440, więc obraz ze strony
+   jest skalowany ×4/3 i nasz dithering się rozjedzie. Do sprawdzenia przy
+   ekranie: `webapis.unipicture` (create/load/show/setDisplayRect, wyświetlanie
+   zdjęć poza warstwą WWW), `webapis.epavplay` i ewentualne ustawienie
+   rozdzielczości aplikacji. Strona odświeża ekran sama, bez
+   `screenRefreshNow()`.
+2. **Sieć po pobudce:** z płytkiego snu XHR działa od pierwszego taktu po
+   wznowieniu; po pełnym śnie raporty startu doszły ok. 20 s po powrocie
+   pingu. Ponawiać zapytania.
+3. **Wznowienie:** po pobudce z płytkiego snu nie przychodzi żadne zdarzenie
+   (`visibilitychange`, `focus`, `pageshow`, `online` milczą); przy zasypianiu
+   przychodzą `blur` i `visibilitychange` → `hidden` tylko wtedy, gdy launcher
+   przeinstalowuje aplikację. Wznowienie wykrywać przerwą w `setInterval`.
+4. **Bateria w aplikacji:** `webapis.deviced.getBatteryCapacity()` → `75`
+   (zgodne z MDC `0x1B 73`), `getBatteryPowerSource()` → `"NO_CHARGER"`; są też
+   `addBatteryCapacityListener` i `addChargingStatusListener`.
+   `tizen.systeminfo.getPropertyValue("BATTERY")` zwraca błąd DBus, a po
+   pobudce bywa, że nie odpowiada wcale (zawsze z limitem czasu).
+5. **MDC i WoL w trybie Custom:** MDC działa przy działającej aplikacji, po
+   płytkim i po pełnym śnie; WoL budzi z płytkiego snu w 2 s. `0xC7 81 01`
+   uruchamia zainstalowaną aplikację (pobiera paczkę tylko przy nowej
+   wersji). `0xC7 53 80` (content.json) w trybie Custom niesprawdzone.
+6. **Kod z serwera: działa.** `<script src="http://<serwer>/remote.js">`
+   w podpisanym `index.html` ładuje się przy każdym starcie i ma pełny dostęp
+   do `webapis`. Podpisana powłoka może być stała, a logika na serwerze
+   (WakeProbe 1.3 ma tak zdalną konsolę JS).
+
+**Inne moduły (odczyty z aplikacji, 2026-10-28):**
+
+- `epaper`: diody `setLEDStateOn` (`LED_GREEN`, `LED_RED`, `LED_BLUE`),
+  `setLEDStateBlink` (`LED_250MS`, `LED_500MS`, `LED_1000MS`) i `setLEDStateOff`
+  przyjmują wywołania bez błędu (efektu nikt nie widział, w nocy).
+  `setBatteryWarningIconDisplay("OFF"/"ON")`, `setAutoSleepTime("30MIN")` →
+  `getAutoSleepTime()` = 30 i `setScreenRefreshTime({hour, minute})` działają;
+  `resetAutoSleepTime()` nie zmienia wartości.
+- `deviced`: bateria (wyżej).
+- `productinfo`: `getRealModel()` `EM32DX`, `getModel()` `EMDX`,
+  `getModelCode()` `24_ROSEE_LFD`, `getFirmware()`, `getDuid()`,
+  `getLocalSet()` `EU`, `isDisplayRotatorSupported()` `true`.
+- `systemcontrol` 1.5: `getSerialNumber()`, `getCustomAppInfo()` →
+  `{connectionTimeout: "300SEC", downloadServerAddress: "<url>/app/"}`,
+  `getButtonLock()` `OFF`, `getOnScreenMenuOrientation()` `LANDSCAPE`,
+  `isCustomAppDownloaded()` `false`; są też `setCustomAppInfo`,
+  `rebootDevice`, `captureScreen` (bez odpowiedzi w 30 s), `updateFirmware`,
+  `setButtonLock`. Nieobsługiwane (`NotSupportedError`): lamp schedule,
+  panel mute, safety lock, IR lock, auto power on, MagicInfo.
+- `timer`: `getCurrentTime()` (czas lokalny), `getNTP()` →
+  `{use: "OFF", timeZone: "Africa/Casablanca"}` (strefa w ustawieniach
+  ramki jest dziwna, zegar mimo to pokazuje CET), `getDST()` mode `OFF`,
+  `getSystemTimeSyncTimeout()` `30SEC`; on/off timer `NotSupportedError`.
+- `remotepower`: wszystko `NotSupportedError`.
+- `network`: `getActiveConnectionType()` `1` (Wi-Fi); reszta wymaga
+  przywileju sieciowego (`SecurityError`). `tizen.systeminfo` WIFI_NETWORK
+  daje SSID, siłę sygnału (0,87) i IP.
+- `tizen.systeminfo.getCapability("http://tizen.org/feature/screen.width")`
+  = 1920, `screen.height` = 1440.
+- Bez przywilejów: `avinfo` (jasność itp.), `widgetdata`, `drminfo`, `was`.
 
 ## Aplikacja Frame na ramce (2026-10-28)
 
