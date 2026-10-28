@@ -10,7 +10,8 @@
 - Konfiguracja → Aplikacja ramki: stan aplikacji na ramce i „Przełącz na
   aplikację Frame” (albo powrót do zwykłego trybu). Paczkę aplikacji
   podpisuje i wgrywa na serwer `scripts/panel-app/pack.sh` z Maca.
-- Poziom baterii odczytywany przez MDC.
+- Serwer czyta baterię ramki przez MDC przy prośbie o obraz, więc ramka na
+  ładowarce dostaje polecenie, by nie zasypiała.
 - Gdy Wake-on-LAN nie obudzi ramki, aplikacja podpowiada naciśnięcie
   przycisku na ramce (na baterii budzenie przez sieć bywa zawodne).
 
