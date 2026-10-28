@@ -328,8 +328,11 @@ przeładowuje się (najwyżej raz na 10 minut).
   zmiany, jak dotąd.
 
 **Po pełnym śnie** (Wi-Fi wył.) ramka startuje na zimno i launcher nie zawsze
-uruchamia aplikację (E16; z Developer mode wł. nie uruchamia jej nigdy, z
-wył. cały cykl przeszedł sam). Gdy aplikacja nie zapyta w 60 s od budzika, serwer
+uruchamia aplikację (E16): gdy sprawdzi wersję na serwerze i znajdzie tę samą,
+zatrzymuje się; gdy nie sprawdza albo znajdzie nowszą, aplikacja startuje
+(Developer mode nie ma tu znaczenia). Dlatego `0xC7 81 01` z serwera jest
+głównym sposobem, nie zapasowym (5 na 5 startów w 10 s). Gdy aplikacja nie
+zapyta w 60 s od budzika, serwer
 uruchamia ją przez MDC `0xC7 81 01`, potem co 2 minuty, aż do uznania pobudki
 za nieudaną (15 minut). Network standby ustawia aplikacja przed każdym snem.
 

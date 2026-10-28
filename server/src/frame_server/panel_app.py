@@ -61,10 +61,11 @@ MISSED_AFTER = timedelta(minutes=15)
 # JS keeps running up to ~130 s after goToSleep(), and an alarm due before
 # the panel is really down is lost (E16): never sleep for less than this.
 MIN_SLEEP = timedelta(minutes=5)
-# After a sleep with the Wi-Fi off the panel boots cold; with Developer mode
-# off the launcher starts the app by itself (E16, on: it does not), else
-# MDC 0xC7 81 01 starts it. Tried this long after the alarm, then every
-# ``KICK_EVERY`` until the wake is missed.
+# After a sleep with the Wi-Fi off the panel boots cold, and the launcher
+# does not start the app when it finds the same version on the server (E16):
+# MDC 0xC7 81 01 does (5 of 5 within 10 s), so this is the usual way, not a
+# fallback. Tried this long after the alarm, then every ``KICK_EVERY`` until
+# the wake is missed.
 KICK_AFTER = timedelta(seconds=60)
 KICK_EVERY = timedelta(minutes=2)
 # "Obudź ramkę" keeps the woken app awake (asking every ``POLL``) this long.
