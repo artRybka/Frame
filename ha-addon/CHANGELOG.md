@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.25.1
+
+- Aplikacja Frame na ramce dostaje obraz passthrough jako JPEG q95 4:4:4
+  (`/panel/app-images/`, ok. 1 MB zamiast 3–4 MB PNG); obraz z ditheringiem
+  zostaje w PNG. Aplikacja pobiera cały plik (XHR, jako data URL, bo `blob:`
+  nie działa z `file://`) i podmienia obraz dopiero po pobraniu; pasek
+  postępu w aplikacji iOS śledzi pobieranie.
+- Ramka zasypia najwcześniej 60 s po ostatnim odświeżeniu ekranu (uśpienie
+  w trakcie odświeżania zostawiało szary ekran i gubiło budzik). Po budziku
+  serwer uruchamia milczącą aplikację po 60 s (było 90 s) i zapisuje w logu,
+  gdy ramka ma inną wersję aplikacji niż serwer.
+- Po starcie lub obudzeniu aplikacja włącza z powrotem czuwanie sieci,
+  jeśli ostatni sen je wyłączył, żeby Wake-on-LAN znów docierał.
+- Nie trzeba nowej paczki: logika aplikacji ładuje się z serwera.
+- Dokumentacja E16: wieczorne zasady dla aplikacji ramki.
+
 ## 0.25.0
 
 - Aplikacja Frame na ramce pokazuje obraz 1:1: paczka ma

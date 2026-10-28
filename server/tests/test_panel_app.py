@@ -4,6 +4,7 @@ pictures and sets its own alarm (docs/WAKE.md, E16)."""
 from __future__ import annotations
 
 import asyncio
+import io
 import ssl
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -13,10 +14,13 @@ import pytest
 import trustme
 from fake_panel import FakePanel
 from fastapi.testclient import TestClient
+from PIL import Image, JpegImagePlugin
 
 from frame_server.config import Settings
 from frame_server.device.mdc import CMD_CONTENT_DOWNLOAD
+from frame_server.imaging.pipeline import encode_image
 from frame_server.panel_app import AppHello
+from frame_server.progress import Stage
 from frame_server.schedule import FrameSettings
 from frame_server.service import FrameService
 from frame_server.store import PanelRequest
@@ -82,6 +86,7 @@ def test_online_sleeps_until_the_change_and_deeply_at_night(tmp_path: Path) -> N
     content = service.store.current()
     assert content is not None
     assert answer.action == "sleep"
+    # The welcome card is black on white, a dithered picture: the PNG.
     assert answer.image == f"http://127.0.0.1:8099/panel/images/{content.file_name}"
     assert answer.wake_at == _at("2026-10-28T19:00").isoformat()
     assert answer.wake_ms == int(_at("2026-10-28T19:00").timestamp() * 1000)
@@ -180,6 +185,33 @@ async def test_push_to_an_awake_app(tmp_path: Path) -> None:
     assert not service.power.state.pending_push
     assert _player_view(service).delivery.state == "shown"
 
+    # The bar shows the download until the app has the picture on its page.
+    file_id = outcome.content.file_id
+    service.app.report("progress", {"file_id": file_id, "loaded": 300_000, "total": 1_000_000})
+    assert service.progress.view().stage == Stage.DOWNLOADING
+    service.app.report("shown", {"file_id": file_id})
+    await asyncio.sleep(0.05)
+    assert service.progress.view().stage == Stage.REFRESHING
+
+
+def test_full_colour_pictures_go_as_jpeg_dithered_ones_as_png(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    store, app = service.store, service.app
+    gradient = Image.linear_gradient("L").resize((2560, 1440)).convert("RGB")
+    store.publish(encode_image(gradient, "png"), "png", title="Passthrough")
+    content = store.current()
+    assert content is not None
+    assert app.image_path(content) == f"/panel/app-images/{content.file_id}.jpg"
+    with Image.open(store.app_image_path(content.file_id)) as img:
+        assert img.size == (2560, 1440) and img.format == "JPEG"
+        assert JpegImagePlugin.get_sampling(img) == 0  # 4:4:4
+
+    inks = gradient.quantize(6)
+    store.publish(encode_image(inks.convert("RGB"), "png"), "png", title="Dithered")
+    content = store.current()
+    assert content is not None
+    assert app.image_path(content) == f"/panel/images/{content.file_name}"
+
 
 @pytest.fixture(scope="module")
 def server_ssl() -> ssl.SSLContext:
@@ -241,9 +273,15 @@ def test_panel_routes(tmp_path: Path) -> None:
         answer = client.get("/panel/next", params={"reason": "start", "charging": "true"})
         assert answer.headers["access-control-allow-origin"] == "*"
         assert answer.json()["action"] == "stay"
-        # The same picture as in the Mobile source, at the panel's size.
+        # The picture of the Mobile source at the panel's size; full colour as JPEG.
+        gradient = Image.linear_gradient("L").resize((2560, 1440)).convert("RGB")
+        svc.store.publish(encode_image(gradient, "png"), "png", title="Passthrough")
+        answer = client.get("/panel/next", params={"reason": "poll", "charging": "true"})
         image = client.get(answer.json()["image"].removeprefix("http://127.0.0.1:8099"))
-        assert image.status_code == 200 and image.content[:4] == b"\x89PNG"
+        assert image.status_code == 200
+        with Image.open(io.BytesIO(image.content)) as img:
+            assert img.size == (2560, 1440) and img.format == "JPEG"
+        assert client.get("/panel/app-images/nothing.jpg").status_code == 404
         assert svc.app.active
         assert client.post("/panel/report", content='{"event": "shown"}').status_code == 200
         assert client.get("/api/device/app").json()["active"]

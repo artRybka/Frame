@@ -183,6 +183,34 @@ Z tym wpisem strona ma 2560×1440 (`innerWidth`, `screen`, `visualViewport`,
 `img.onload` dalej trzeba wymusić zmianą stylu. Serwer może więc wysyłać
 ten sam obraz 2560×1440 co w trybie Mobile (nasz dither albo passthrough).
 
+**Zasady dla aplikacji ramki (wieczór 2026-10-28, Developer mode wył.):**
+
+- Czasy: po jednej zmianie strony (podmiana `src` obrazu już pobranego
+  i zdekodowanego) ekran zaczyna mrugać po ok. 10 s i mruga ok. 29 s, czyli
+  ok. 40 s razem. Do paska postępu w iOS.
+- Pobieranie: Wi-Fi przy ramce słabe (poziom 2, 2,4 GHz, kanał 6), XHR
+  60–215 KB/s; `<img>` nałożony na odświeżanie jest 4–10× wolniejszy.
+  Najpierw pełne pobranie przez XHR (postęp z `onprogress`), potem
+  `FileReader.readAsDataURL` → `img.decode()` → jedna podmiana. Adresy `blob:`
+  z pochodzenia `file://` nie działają (błąd obrazka). JPEG q95 4:4:4
+  (ok. 1 MB) zamiast PNG 3–4 MB.
+- Nie przełączać `visibility`: ekran potrafi zostać w stanie ukrytym.
+- **Nie usypiać w trakcie odświeżania:** `goToSleep()` 14 s po zmianie przerwał
+  odświeżanie (szaro-brązowy ekran) i budzik przepadł. Usypiać ≥45–60 s po
+  ostatniej zmianie ekranu.
+- **Pełny sen** (standby OFF) na ładowarce i na baterii: budzik zawsze budzi
+  (zimny start). Gdy launcher po zimnym starcie sprawdzi `sssp_config.xml`
+  i wersja jest **ta sama**, aplikacji nie uruchamia (4 z 6 pobudek); gdy nie
+  sprawdza albo wersja jest nowa, uruchamia. Obejście, które działało 6 z 6:
+  serwer po planowanej pobudce czeka na raport aplikacji i po ok. 60 s ciszy
+  wysyła MDC `0xC7 81 01` (start w ok. 10 s). Aplikacja po starcie przywraca
+  `setNetworkStandby("ON")`.
+- Launcher sprawdza wersję także przy części wywołań `goToSleep()`; przy
+  niezgodności przeinstalowuje i uruchamia aplikację (ekran instalacji).
+  Serwer ma podawać tę wersję, która jest zainstalowana.
+- Ramka nie ma czujników (akcelerometr, żyroskop, światło: brak), tylko
+  mikrofon. Wi-Fi do odczytu: poziom sygnału, SSID, IP, częstotliwość.
+
 **Wyświetlanie obrazu (rano 2026-10-28, przy ramce):**
 
 - Wbudowanego odtwarzacza (Mobile, 1:1) nie da się łączyć z aplikacją:
@@ -328,7 +356,11 @@ przeładowuje się (najwyżej raz na 10 minut).
   zmiany, jak dotąd.
 
 **Po pełnym śnie** (Wi-Fi wył.) ramka startuje na zimno i launcher nie zawsze
-uruchamia aplikację (E16). Gdy aplikacja nie zapyta w 90 s od budzika, serwer
+uruchamia aplikację (E16): gdy sprawdzi wersję na serwerze i znajdzie tę samą,
+zatrzymuje się; gdy nie sprawdza albo znajdzie nowszą, aplikacja startuje
+(Developer mode nie ma tu znaczenia). Dlatego `0xC7 81 01` z serwera jest
+głównym sposobem, nie zapasowym (5 na 5 startów w 10 s). Gdy aplikacja nie
+zapyta w 60 s od budzika, serwer
 uruchamia ją przez MDC `0xC7 81 01`, potem co 2 minuty, aż do uznania pobudki
 za nieudaną (15 minut). Network standby ustawia aplikacja przed każdym snem.
 
@@ -344,6 +376,28 @@ przyjdzie nowa (`pack.sh`; launcher pobiera ją po zimnym starcie). Wcześniej
 był miękki. E-papier nie odświeża się sam po wczytaniu obrazka, a
 `screenRefreshNow()` rzuca błąd: aplikacja po `onload` zmienia `opacity` na
 0,99 i po 300 ms z powrotem na 1.
+
+**Pobieranie i pasek postępu (pomiary wieczorem 2026-10-28).** Wi-Fi ramki
+jest słabe (sygnał 2/5, 2,4 GHz, 60–215 KB/s), a `<img>` pobierany w trakcie
+odświeżania szedł 4–10× wolniej. Dlatego pełnokolorowy obraz (passthrough)
+idzie do aplikacji jako JPEG q95 (`/panel/app-images/<id>.jpg`, ok. 1 MB
+zamiast 3–4 MB PNG, różnicy nie widać); obraz z naszym ditheringiem (najwyżej
+16 kolorów) zostaje bezstratnym PNG. Aplikacja pobiera cały plik przez XHR,
+co 2 s zgłasza postęp (`/panel/report`, `progress`), a dopiero potem podmienia
+obraz na stronie i zgłasza `shown`. Pasek w aplikacji iOS liczy z tego czas
+pobierania, a odświeżanie (ok. 10 s przygotowania + ok. 30 s zmiany ekranu)
+zaczyna od `shown`. Zmiana stylu o jeden piksel niezawodnie wymusza
+odświeżenie; ukrycie i pokazanie na 1,5 s raz złapało pusty (biały) ekran.
+Launcher po cichu instaluje każdą paczkę wskazaną w `sssp_config.xml` (sprawdza
+wersję przy usypianiu, potem przeinstalowuje i przerysowuje ekran), więc
+serwer musi zawsze podawać tę zainstalowaną; inną wersję zgłasza w logu.
+
+**Kolejność przed snem.** `goToSleep()` nie czeka na trwające odświeżanie:
+sen w jego trakcie zostawił pół narysowany szary ekran i zgubił budzik (E16).
+Aplikacja pokazuje obraz, czeka 60 s od ostatniej zmiany ekranu (obraz albo
+komunikat), dopiero wtedy ustawia network standby i budzik i zasypia. Gdy
+przez długie pobieranie do pobudki zostały mniej niż 2 minuty, pyta serwer
+od nowa zamiast zasypiać.
 
 **Wysyłka z aplikacji iOS** w trybie aplikacji: bez `0xC7`. Aplikacja
 obudzona (ładowarka) pobiera obraz przy najbliższym pytaniu; uśpiona z Wi-Fi

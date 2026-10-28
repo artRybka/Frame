@@ -65,6 +65,8 @@ LEARN_RATE = 0.5
 # "render" says nothing about drawing one.
 MIN_RENDER = 1.0
 MAX_FRACTION = 0.99
+# The download's pace is trusted from this share on.
+MIN_DOWNLOADED = 0.05
 
 
 def _stamp(moment: datetime) -> str:
@@ -102,6 +104,7 @@ class ProgressTracker:
         self._stage_start = 0.0
         self._end: float | None = None
         self._shown = 0.0  # the bar never goes back
+        self._downloaded = 0.0  # the share the panel app said it has
 
     @property
     def active(self) -> bool:
@@ -134,6 +137,13 @@ class ProgressTracker:
         self._start = self._stage_start = now
         self._end = None
         self._shown = 0.0
+        self._downloaded = 0.0
+
+    def note_download(self, fraction: float) -> None:
+        """The panel app's word on its download (the Mobile source says
+        nothing): the time left is reckoned from its pace."""
+        if self._stage == Stage.DOWNLOADING:
+            self._downloaded = min(max(fraction, self._downloaded), 1.0)
 
     def advance(self, stage: Stage) -> None:
         """Move on to ``stage``; ignored when no picture is on its way."""
@@ -199,7 +209,10 @@ class ProgressTracker:
         # A stage that runs late has nothing left, not less than nothing: the
         # bar slows down (the refresh is still ahead) without stopping, and
         # one that ends on time hands over to the next without a jump.
-        left = max(self._expected(self._stage) - (now - self._stage_start), 0.0)
+        spent = now - self._stage_start
+        left = max(self._expected(self._stage) - spent, 0.0)
+        if self._stage == Stage.DOWNLOADING and self._downloaded >= MIN_DOWNLOADED:
+            left = spent * (1 - self._downloaded) / self._downloaded
         later = self._planned[self._planned.index(self._stage) + 1 :]
         return left + sum(self._expected(s) for s in later)
 

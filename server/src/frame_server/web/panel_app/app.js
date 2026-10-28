@@ -14,13 +14,20 @@
   var CODE = window.FRAME_CODE || "local";
   var HEARTBEAT_MS = 15000;
   var ASLEEP_GAP_MS = 45000;
-  // The e-paper redraws in about 30 s (E2): sleep only after that.
-  var SETTLE_MS = 45000;
+  // After a change of the screen the panel prepares ~10 s and redraws ~30 s.
+  // goToSleep() does not wait for it: a sleep mid-refresh left a half-drawn
+  // grey screen and lost the alarm (E16). Sleep this long after the last one.
+  var SETTLE_MS = 60000;
+  // An alarm this close by the time the app may sleep: ask again instead.
+  var MIN_AHEAD_MS = 2 * 60000;
   var ATTEMPTS = 4;
   var ATTEMPT_DELAY_MS = 5000;
   // "wait" answers in a row before giving up on the server for now.
   var MAX_WAITS = 30;
   var RELOAD_EVERY_MS = 10 * 60000;
+  // The panel's Wi-Fi is weak (60-215 KB/s, E16): a picture may take minutes.
+  var DOWNLOAD_TIMEOUT_MS = 5 * 60000;
+  var PROGRESS_EVERY_MS = 2000;
 
   var ep = (typeof webapis !== "undefined" && webapis.epaper) ? webapis.epaper : null;
   var shown = null;
@@ -28,6 +35,7 @@
   var waits = 0;
   var timer = null;
   var last = Date.now();
+  var drawnAt = 0;  // the last change of the screen
 
   function saved(key, value) {
     try {
@@ -50,7 +58,9 @@
 
   function note(text) {
     var el = document.getElementById("note");
-    if (el) el.textContent = text || "";
+    if (!el || el.textContent === (text || "")) return;
+    el.textContent = text || "";
+    drawnAt = Date.now();
   }
 
   function report(event, data, done) {
@@ -100,10 +110,22 @@
     return q;
   }
 
+  // Up again after a sleep with the Wi-Fi off: back on in standby, so that
+  // Wake-on-LAN reaches the panel should it fall asleep on its own (E16).
+  function wifiBack() {
+    if (!ep) return;
+    var now = call(function () { return ep.getNetworkStandby(); });
+    if (now.ok && now.value === "OFF") {
+      var r = call(function () { return ep.setNetworkStandby("ON"); });
+      report("standby", { restored: r });
+    }
+  }
+
   function ask(reason) {
     if (busy) return;
     busy = true;
     clearTimeout(timer);
+    if (reason !== "poll" && reason !== "retry") wifiBack();
     var q = "reason=" + reason + "&build=" + encodeURIComponent(BUILD) +
       "&code=" + encodeURIComponent(CODE) +
       "&screen=" + window.innerWidth + "x" + window.innerHeight + "@" + (window.devicePixelRatio || 1) +
@@ -144,7 +166,7 @@
         return;
       }
     }
-    draw(answer, function (changed) {
+    draw(answer, function () {
       if (answer.action === "wait" || answer.action === "stay") {
         waits = answer.action === "wait" ? waits + 1 : 0;
         if (waits > MAX_WAITS) {
@@ -160,41 +182,95 @@
       waits = 0;
       timer = setTimeout(function () {
         sleep(answer.wake_ms, answer.standby, "plan");
-      }, changed ? SETTLE_MS : 2000);
+      }, 2000);
     });
+  }
+
+  // The whole picture is downloaded before it goes on the page: an <img>
+  // loading while the e-paper refreshes was 4-10x slower (E16). The server
+  // hears how far it is, for the progress bar in the iOS app.
+  function download(src, fileId, ok, fail) {
+    var x = new XMLHttpRequest();
+    var told = 0;
+    x.open("GET", src, true);
+    x.responseType = "blob";
+    x.timeout = DOWNLOAD_TIMEOUT_MS;
+    x.onprogress = function (e) {
+      var now = Date.now();
+      if (!e.lengthComputable || now - told < PROGRESS_EVERY_MS) return;
+      told = now;
+      report("progress", { file_id: fileId, loaded: e.loaded, total: e.total });
+    };
+    x.onload = function () {
+      if (x.status !== 200) return fail("HTTP " + x.status);
+      ok(x.response);
+    };
+    x.onerror = function () { fail("network"); };
+    x.ontimeout = function () { fail("timeout"); };
+    x.send();
   }
 
   function draw(answer, done) {
     if (!answer.image || answer.file_id === shown) return done(false);
-    var img = new Image();
-    img.onload = function () {
-      // With base_screen_resolution "always" the page is 2560x1440 and the
-      // panel's picture is shown pixel for pixel (E16). A package without
-      // it has a 1920x1080 page: the picture is scaled down to fit.
-      var w = window.innerWidth, h = window.innerHeight;
-      var exact = img.naturalWidth === w && img.naturalHeight === h;
-      var el = document.getElementById("picture");
-      el.style.cssText = "position:fixed;left:0;top:0;width:" + w + "px;height:" + h + "px;display:block" +
-        (exact ? ";image-rendering:pixelated" : "");
-      el.src = img.src;
-      nudge(el);
-      note("");
-      shown = answer.file_id;
-      report("shown", { file_id: answer.file_id, width: img.naturalWidth, height: img.naturalHeight });
-      done(true);
-    };
-    img.onerror = function () {
-      report("error", { message: "image did not load", image: answer.image });
+    var started = Date.now();
+    download(answer.image, answer.file_id, function (blob) {
+      // blob: URLs do not load from the app's file:// origin (E16): the
+      // picture goes on the page as a data URL, decoded first and set once.
+      var reader = new FileReader();
+      reader.onload = function () {
+        var src = reader.result;
+        var img = new Image();
+        var put = function () {
+          // With base_screen_resolution "always" the page is 2560x1440 and
+          // the panel's picture is shown pixel for pixel (E16). A package
+          // without it has a 1920x1080 page: the picture is scaled to fit.
+          var w = window.innerWidth, h = window.innerHeight;
+          var exact = img.naturalWidth === w && img.naturalHeight === h;
+          var el = document.getElementById("picture");
+          el.style.cssText = "position:fixed;left:0;top:0;width:" + w + "px;height:" + h + "px;display:block" +
+            (exact ? ";image-rendering:pixelated" : "");
+          el.src = src;
+          nudge(el);
+          note("");
+          shown = answer.file_id;
+          report("shown", {
+            file_id: answer.file_id, width: img.naturalWidth, height: img.naturalHeight,
+            bytes: blob.size, download_ms: Date.now() - started
+          });
+          done(true);
+        };
+        var failed = function () {
+          report("error", { message: "image did not decode", image: answer.image });
+          done(false);
+        };
+        img.src = src;
+        if (img.decode) {
+          img.decode().then(put, failed);
+        } else {
+          img.onload = put;
+          img.onerror = failed;
+        }
+      };
+      reader.onerror = function () {
+        report("error", { message: "image could not be read", image: answer.image });
+        done(false);
+      };
+      reader.readAsDataURL(blob);
+    }, function (why) {
+      report("error", { message: "image did not load: " + why, image: answer.image });
       done(false);
-    };
-    img.src = answer.image;
+    });
   }
 
   // The e-paper does not redraw for a new picture alone (E16, the first one
   // stayed white): a small change of style makes it.
   function nudge(el) {
     el.style.opacity = "0.99";
-    setTimeout(function () { el.style.opacity = "1"; }, 300);
+    drawnAt = Date.now();
+    setTimeout(function () {
+      el.style.opacity = "1";
+      drawnAt = Date.now();
+    }, 300);
   }
 
   // The panel's alarm, in its local time. Alarms add up and cannot be
@@ -217,7 +293,18 @@
     return result;
   }
 
+  // Show, let the refresh finish, set the alarm, sleep: in this order.
   function sleep(wakeMs, standby, why) {
+    var settle = drawnAt + SETTLE_MS - Date.now();
+    if (settle > 0) {
+      clearTimeout(timer);
+      timer = setTimeout(function () { sleep(wakeMs, standby, why); }, settle);
+      return;
+    }
+    if (wakeMs && wakeMs - Date.now() < MIN_AHEAD_MS) {
+      ask("late");  // a long download: the next change is (almost) here
+      return;
+    }
     var r = { why: why, wake: wakeMs ? new Date(wakeMs).toString() : null };
     if (ep) {
       if (standby) {

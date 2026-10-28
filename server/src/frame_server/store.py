@@ -79,7 +79,9 @@ class ContentStore:
         self.root = data_dir
         self.images = data_dir / "images"
         self.previews = data_dir / "previews"
-        for d in (self.root, self.images, self.previews):
+        # The Frame app's JPEG copies of full-colour pictures (panel_app.py).
+        self.app_images = data_dir / "app-images"
+        for d in (self.root, self.images, self.previews, self.app_images):
             d.mkdir(parents=True, exist_ok=True)
         self._current_file = data_dir / "current.json"
         self._log_file = data_dir / "panel-requests.jsonl"
@@ -139,10 +141,20 @@ class ContentStore:
                 continue
             old.unlink(missing_ok=True)
             (self.previews / f"{old.stem}.png").unlink(missing_ok=True)
+            (self.app_images / f"{old.stem}.jpg").unlink(missing_ok=True)
 
     def image_path(self, name: str) -> Path | None:
         path = self.images / Path(name).name
         return path if path.is_file() else None
+
+    def app_image_path(self, file_id: str) -> Path:
+        """Where the Frame app's copy of ``file_id`` is (or goes)."""
+        return self.app_images / f"{Path(file_id).name}.jpg"
+
+    def panel_file(self, file_id: str) -> Path | None:
+        """The panel image of ``file_id``, whatever its extension."""
+        found = sorted(own_files(self.images, f"{Path(file_id).name}.*"))
+        return found[0] if found else None
 
     def preview_path(self, file_id: str) -> Path | None:
         path = self.previews / f"{Path(file_id).name}.png"
@@ -236,7 +248,8 @@ class ContentStore:
         self.recent_requests.append(req)
         with self._log_file.open("a") as fh:
             fh.write(json.dumps(asdict(req)) + "\n")
-        if req.path.startswith("/panel/images/") and req.status == 200:
+        picture = req.path.startswith(("/panel/images/", "/panel/app-images/"))
+        if picture and req.status == 200:
             file_id = Path(req.path).stem
             self.note_downloaded(file_id, at=req.time)
             waiter = self._fetch_waiters.get(file_id)

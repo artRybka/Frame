@@ -397,7 +397,7 @@ class FrameService:
         if fetched:
             power.mark_pending(False)
             progress.advance(Stage.DOWNLOADING)
-            progress.advance(Stage.REFRESHING)
+            app.follow(file_id)  # refreshing once the app has it all
             return PushOutcome(content, pushed=True, fetched=True, content_url=url)
         power.mark_pending(True)
         wake = app.wakes_at()
