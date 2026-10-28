@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Frame</title>
+<script type="text/javascript" src="$WEBAPIS/webapis/webapis.js"></script>
+<script type="text/javascript" src="config.js"></script>
+<style>
+  html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #fff; }
+  #picture { position: absolute; left: 0; top: 0; width: 100%; height: 100%;
+             object-fit: contain; image-rendering: pixelated; display: none; }
+  #note { position: absolute; left: 80px; bottom: 60px; font: 36px sans-serif; color: #000; }
+</style>
+</head>
+<body>
+<img id="picture" alt="">
+<div id="note"></div>
+<script type="text/javascript">
+// The app's logic comes from the server at every start, so most changes need
+// no newly signed package; the copy in the package runs when the server
+// cannot be reached (it reloads once the server answers again).
+(function () {
+  var started = false;
+  function local() {
+    if (started) return;
+    started = true;
+    var s = document.createElement("script");
+    s.src = "app.js";
+    document.body.appendChild(s);
+  }
+  var remote = document.createElement("script");
+  remote.src = window.FRAME_SERVER + "/panel/app/app.js?t=" + Date.now();
+  remote.onload = function () { started = true; };
+  remote.onerror = local;
+  document.body.appendChild(remote);
+  setTimeout(local, 20000);
+})();
+</script>
+</body>
+</html>

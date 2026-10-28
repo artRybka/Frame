@@ -170,6 +170,75 @@ firmware 1130.7, ramka na baterii, network standby wł.
    luźne CSP, a XHR do serwera po `http` działa, więc `<script src="http://…">`
    albo `content src` na adres serwera to pierwsze do sprawdzenia.
 
+## Aplikacja Frame na ramce (2026-10-28)
+
+Na podstawie E16. Ramka w trybie Custom uruchamia naszą aplikację, która sama
+pyta serwer o obraz i sama ustawia budzik. Mateusz zdecydował 2026-10-28, że
+Frame korzysta z trybu Custom.
+
+**Pętla aplikacji** (`server/src/frame_server/web/panel_app/app.js`): przy
+starcie i po każdym wznowieniu (przerwa w takcie 15 s dłuższa niż 45 s)
+`GET /panel/next`, do 4 prób co 5 s. Odpowiedź:
+
+- `sleep`: narysuj `image` (jeśli inny niż na ekranie), odczekaj 45 s na
+  odświeżenie e-papieru, ustaw `setNetworkStandby(standby)` (tylko gdy inny),
+  `setScheduleWakeupTime` na `wake_ms` (czas lokalny ramki; ten sam moment
+  nie jest ustawiany drugi raz, bo budzików nie da się odwołać), zgłoś
+  `sleep`, `goToSleep()`;
+- `stay` (ładowarka albo „Obudź ramkę”): narysuj i zapytaj znowu za
+  `wait_s` (20 s);
+- `wait` (zmiana właśnie się przygotowuje, np. ramka obudziła się kilka sekund
+  przed godziną zmiany): zapytaj znowu za 15 s, najwyżej 20 razy.
+
+Bez serwera aplikacja śpi i próbuje znowu za 15, 30, 60… minut (najwyżej
+6 h), a przy pierwszym starcie pisze na ekranie, z jakim serwerem nie może się
+połączyć. Logikę ładuje z serwera (`/panel/app/app.js`) przy każdym starcie,
+z kopią w paczce na wypadek braku sieci, więc zmiany w logice nie wymagają
+nowego podpisu. Gdy serwer ma inną wersję logiki (`code`), aplikacja
+przeładowuje się (najwyżej raz na 10 minut).
+
+**Co odpowiada serwer** (`server/src/frame_server/panel_app.py`):
+
+- pobudka: najbliższa zmiana (z uwzględnieniem przypięcia), w trybie
+  Oszczędnym także „Sprawdzaj też co”; w trybie Online na baterii także
+  początek ciszy nocnej, żeby wyłączyć Wi-Fi na noc. Najwyżej tydzień naprzód;
+- network standby: `OFF` w trybie Oszczędnym i w ciszy nocnej, `ON` w dzień
+  w trybie Online (WoL dostarcza wtedy zdjęcia z telefonu od razu);
+- ładowarka (`charging` z aplikacji albo bateria z MDC): `stay`;
+- obraz zaległy (`pending_push`) idzie przy pobudce i zostaje do następnej
+  zmiany, jak dotąd.
+
+**Wysyłka z aplikacji iOS** w trybie aplikacji: bez `0xC7`. Aplikacja
+obudzona (ładowarka) pobiera obraz przy najbliższym pytaniu; uśpiona z Wi-Fi
+dostaje serię WoL (do 3 min) i pyta po wznowieniu; w głębokim śnie albo gdy
+WoL zawiedzie obraz czeka do pobudki, a „Teraz” pokazuje jej godzinę. Gdy
+budzik ramki dzwoni w ciągu 3 minut (zmiana z harmonogramu), serwer nie
+budzi jej przez WoL, tylko czeka.
+
+**Instalacja (raz, na Macu z profilem `frame`):**
+
+1. Serwer z tą zmianą na Synology (Projekt → frame → Kompiluj).
+2. `scripts/panel-app/pack.sh 1.0.0 --upload <token API>`: buduje, podpisuje
+   i wysyła paczkę na serwer (`PUT /api/device/app/package`), adres serwera
+   domyślnie `http://192.100.3.185:8099` (`--server` zmienia). Ten adres
+   trafia do paczki (`config.js`).
+3. W aplikacji: Konfiguracja → Aplikacja ramki → „Przełącz na aplikację
+   Frame”. Serwer zapamiętuje dotychczasowe źródło (`0xC7 81`), ustawia
+   `0xC7 82 http://192.100.3.185:8099/panel/app` i `0xC7 81 01`; ramka od
+   razu instaluje paczkę. „Wróć do zwykłego trybu” ustawia poprzednie źródło
+   i wysyła obraz przez `0xC7 53 80`. Pobranie `content.json` przez ramkę
+   też oznacza dla serwera, że aplikacja już nie działa.
+
+Gdy ramka działa w aplikacji, w Harmonogramie wraca przełącznik „Tryb pracy”
+(Online / Oszczędny), a ostrzeżenie o odrzuconym budziku znika.
+
+**Do sprawdzenia na ramce:** czy obraz 2560×1440 wychodzi 1:1 (aplikacja
+zgłasza w `/panel/next` rozmiar strony `screen` i w `shown` rozmiar obrazu),
+czy `tizen.systeminfo` podaje baterię, czy logika ładuje się z serwera
+(`code` w raportach inny niż `local`), czy budzik budzi przy network standby
+`OFF`, czy WoL wznawia aplikację w trybie Custom, jak aplikacja zachowuje się
+na ładowarce (czy „Sleep After” jej nie usypia).
+
 ## Polityka zasilania (wdrożona, `server/src/frame_server/power.py`)
 
 2026-10-25: ekran był połączony z siecią 5 GHz, co najpewniej tłumaczy wynik

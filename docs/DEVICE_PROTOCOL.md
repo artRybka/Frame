@@ -99,6 +99,20 @@ Uwagi:
 - Do URL dodajemy `?v=<file_id>`, żeby każda wysyłka miała inny adres. Serwer ignoruje ten parametr.
 - Ekran raportuje postęp pobierania zapytaniami `POST /content-transfer-progress` na **główny** adres serwera (nie pod `/panel/`). Zaobserwowane 2026-10-24 przy błędnym `image_url`: kilka raportów w ciągu minuty, obrazu nie pobrał. Treść raportu nie jest jeszcze znana; serwer zapisuje ją w logu (`panel progress report: …`) i odpowiada 200.
 
+## Aplikacja Frame (tryb Custom)
+
+Gdy ramka działa w naszej aplikacji (E16, [WAKE.md](WAKE.md#aplikacja-frame-na-ramce-2026-10-28)),
+nie dostaje poleceń `0xC7 53 80`, tylko sama pyta serwer (bez autoryzacji,
+z nagłówkiem CORS, bo strona aplikacji ma pochodzenie `file://`):
+
+| Zapytanie | Kiedy | Odpowiedź |
+|---|---|---|
+| `GET /panel/app/sssp_config.xml`, `GET /panel/app/Frame.wgt` | launcher przy przełączeniu na Custom i czasem przy usypianiu | wersja i rozmiar paczki, paczka podpisana na Macu |
+| `GET /panel/app/app.js` | przy każdym starcie aplikacji | logika aplikacji z `window.FRAME_CODE` (wersja) |
+| `GET /panel/next?reason=start\|resume\|wake\|poll\|retry&build=&code=&screen=&battery=&charging=` | start, wznowienie po śnie, co 20 s przy ładowarce | `action` (`sleep` / `stay` / `wait`), `image`, `file_id`, `wake_at`, `wake_ms`, `standby` (`ON`/`OFF`), `wait_s`, `code` |
+| `GET /panel/images/<plik>` | gdy obraz się zmienił | obraz jak dla manifestu; pobranie oznacza dostarczenie |
+| `POST /panel/report` (`text/plain`, JSON z `event`) | `shown`, `sleep` (budzik, standby), `error` | `{}` |
+
 ## Tizen / VXT
 
 - **Custom App** (E16): własna aplikacja webowa Tizen instalowana przez SSSP URL Launcher (`sssp_config.xml` + `.wgt`), z API `webapis.epaper` (budzik `setScheduleWakeupTime`, `goToSleep`, LED). Działa tylko z paczką podpisaną certyfikatem Samsunga (poziom Partner, DUID ramki). Szczegóły, sygnatury i zachowanie w [WAKE.md](WAKE.md#aplikacja-custom-budzik-działa-e16-2026-10-28).

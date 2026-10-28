@@ -8,7 +8,7 @@ import logging
 from collections.abc import AsyncIterator, Callable, Coroutine
 from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from PIL import Image
@@ -22,6 +22,7 @@ from .library import ImageCache, Importer, Library
 from .library.commons import repair_library
 from .library.museums import Access
 from .library.museums import client as museum_client
+from .panel_app import POLL, PanelApp
 from .panel_config import PanelConfigStore
 from .player import Player
 from .power import WAKE_BURST_SECONDS, PowerManager
@@ -34,6 +35,8 @@ from .store import ContentInfo, ContentStore
 log = logging.getLogger(__name__)
 
 PREVIEW_MAX = 1280
+# The Frame app's alarm rings this close to a push: it will ask by itself.
+WAKE_SOON = timedelta(minutes=3)
 PROGRESS_KEY = "progress_expected"
 
 
@@ -161,6 +164,7 @@ class FrameService:
         self.progress.restore(self.library.get_state(PROGRESS_KEY, {}))
         self.progress.on_learn = lambda learned: self.library.set_state(PROGRESS_KEY, learned)
         self.progress.likely_asleep = lambda: self.status.sleeping
+        self.app = PanelApp(self)
         self.player = Player(self)
         self.power = PowerManager(self)
         self.albums = Albums(self)
@@ -310,6 +314,8 @@ class FrameService:
         if not progress.active:
             progress.begin(content.title, render=False)
         progress.advance(Stage.SENDING)
+        if self.app.active:
+            return await self._push_to_app(content, url, wait)
         if self.power.deep_asleep(datetime.now(UTC)):
             # Wi-Fi off until the alarm: the picture goes out when it rings.
             self.power.mark_pending(True)
@@ -349,6 +355,50 @@ class FrameService:
         else:
             progress.finish(Stage.DONE, "sent, not waiting for the download")
         return PushOutcome(content, pushed=True, fetched=fetched, content_url=url, message=message)
+
+    async def _push_to_app(self, content: ContentInfo, url: str, wait: float) -> PushOutcome:
+        """The Frame app asks for its pictures: awake (on the charger) it
+        does within seconds; asleep with the Wi-Fi on, Wake-on-LAN makes it
+        ask, unless its alarm rings for this very change; in deep sleep the
+        picture waits for the alarm."""
+        app, power, progress = self.app, self.power, self.progress
+        file_id = content.file_id
+        now = datetime.now(UTC)
+        wake = app.wakes_at()
+        ringing = wake is not None and abs(wake - now) < WAKE_SOON
+        self.store.expect_fetch(file_id)
+        burst: asyncio.Task[bool] | None = None
+        if not app.asleep():
+            timeout = max(wait, POLL.total_seconds() + 30)
+        elif ringing:
+            assert wake is not None
+            timeout = max(wait, (wake - now).total_seconds() + 120)
+        elif not app.deep_asleep() and self.settings.device_mac:
+            progress.advance(Stage.WAKING)
+            burst = asyncio.create_task(self.panel.wake(seconds=WAKE_BURST_SECONDS))
+            timeout = WAKE_BURST_SECONDS + 60
+        else:
+            timeout = 0
+        try:
+            fetched = await self.store.wait_for_fetch(file_id, timeout) if timeout else False
+        finally:
+            self.store.cancel_fetch(file_id)
+            if burst is not None:
+                burst.cancel()
+        self.status.note_push(fetched)
+        if fetched:
+            power.mark_pending(False)
+            progress.advance(Stage.DOWNLOADING)
+            progress.advance(Stage.REFRESHING)
+            return PushOutcome(content, pushed=True, fetched=True, content_url=url)
+        power.mark_pending(True)
+        wake = app.wakes_at()
+        when = wake.astimezone(self.player.settings.tz()).strftime("%H:%M") if wake else None
+        message = (
+            f"the frame asks for it at {when}" if when else "the frame asks for it when it wakes"
+        )
+        progress.finish(Stage.WAITING, message)
+        return PushOutcome(content, pushed=False, fetched=False, content_url=url, message=message)
 
     def ensure_initial_content(self) -> None:
         """Publish a placeholder so the panel's URL never 404s on a fresh install."""

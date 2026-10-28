@@ -344,6 +344,16 @@ struct LiveBackend: FrameBackend {
         try await send("/api/device/config", method: "DELETE")
     }
 
+    func panelApp() async throws -> PanelAppView { try await get("/api/device/app") }
+
+    func switchPanelApp(on: Bool) async throws -> PanelAppView {
+        // A sleeping panel is woken first (one to three minutes on battery).
+        let query = [URLQueryItem(name: "on", value: on ? "true" : "false")]
+        var req = request("/api/device/app/switch", method: "POST", query: query)
+        req.timeoutInterval = 240
+        return try await perform(req)
+    }
+
     func libraryStorage() async throws -> LibraryStorage { try await get("/api/library/storage") }
 
     func saveLibraryLimit(mb: Int) async throws -> LibraryStorage {

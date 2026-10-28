@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import threading
 from collections.abc import AsyncIterator
@@ -26,6 +27,7 @@ from ..imaging import PRESETS, RenderSettings, Strategy
 from ..imaging.layout import load_image
 from ..library.seed import seed_playlists
 from ..library.style import AUTO, preset_for_photo
+from ..panel_app import CODE_VERSION, WIDGET, AppHello, NextAnswer, app_code
 from ..player import hold_from
 from ..power import WakeResult
 from ..progress import DisplayProgress, Stage
@@ -128,6 +130,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.middleware("http")
     async def log_panel_requests(request: Request, call_next):
         response = await call_next(request)
+        if request.url.path.startswith("/panel/"):
+            # The Frame app's page is a file:// origin.
+            response.headers["Access-Control-Allow-Origin"] = "*"
+        if request.url.path == "/panel/content.json" and response.status_code == 200:
+            service.app.left()  # the panel's own launcher, not our app
         if request.url.path.startswith("/panel/") or request.url.path == PROGRESS_PATH:
             entry = PanelRequest(
                 time=datetime.now(UTC).isoformat(timespec="milliseconds"),
@@ -159,6 +166,59 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if path is None:
             raise HTTPException(404)
         return FileResponse(path)
+
+    @app.get("/panel/next")
+    def panel_next(
+        reason: str = "start",
+        build: str | None = None,
+        code: str | None = None,
+        screen: str | None = None,
+        battery: int | None = None,
+        charging: bool | None = None,
+    ) -> NextAnswer:
+        """The Frame app, at every start and wake: what to show, and when to
+        wake next."""
+        hello = AppHello(
+            reason=reason,
+            build=build,
+            code=code,
+            screen=screen,
+            battery=battery,
+            charging=charging,
+        )
+        return service.app.answer(hello)
+
+    @app.post("/panel/report")
+    async def panel_report(request: Request) -> dict[str, object]:
+        body = (await request.body())[:4000].decode("utf-8", "replace")
+        try:
+            data = json.loads(body)
+        except ValueError:
+            data = {"text": body}
+        if not isinstance(data, dict):
+            data = {"value": data}
+        service.app.report(str(data.pop("event", "")), data)
+        return {}
+
+    @app.get("/panel/app/sssp_config.xml")
+    def panel_app_config() -> Response:
+        xml = service.app.sssp_config()
+        if xml is None:
+            raise HTTPException(404, "no app package uploaded")
+        return Response(xml, media_type="application/xml")
+
+    @app.get(f"/panel/app/{WIDGET}.wgt")
+    def panel_app_package() -> FileResponse:
+        if service.app.package() is None:
+            raise HTTPException(404, "no app package uploaded")
+        return FileResponse(service.app.package_path(), media_type="application/widget")
+
+    @app.get("/panel/app/app.js")
+    def panel_app_code() -> Response:
+        """The app's logic, loaded by the signed package at every start."""
+        body = f'window.FRAME_CODE = "{CODE_VERSION}";\n'.encode() + app_code()
+        headers = {"Cache-Control": "no-store"}
+        return Response(body, media_type="application/javascript", headers=headers)
 
     @app.post(PROGRESS_PATH)
     async def panel_progress(request: Request) -> dict[str, object]:

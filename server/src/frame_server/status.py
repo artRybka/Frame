@@ -83,6 +83,9 @@ class DeviceStatus(BaseModel):
     # The panel refused its alarm (MDC 0x25): no deep sleep, so neither the
     # economy mode nor the night's deep sleep can work.
     alarm_refused: bool = False
+    # The panel runs the Frame app (Samsung "Custom" source, panel_app.py):
+    # it wakes and sleeps by itself and asks the server for its pictures.
+    panel_app: bool = False
 
 
 def _readable(text: str) -> str | None:
@@ -216,6 +219,24 @@ class StatusMonitor:
             self.status.last_seen = stamp
             self.status.power_state = "online"
             self._slept_at = None
+        self._remember()
+
+    def note_app(self, now: datetime, battery: int | None, charging: bool | None) -> None:
+        """The Frame app asked for its picture: the panel is awake, and the
+        app may know its battery better than the last MDC read."""
+        stamp = now.isoformat(timespec="seconds")
+        status = self.status
+        status.reachable = True
+        status.last_seen = stamp
+        status.power_state = "online"
+        status.on_network = True
+        status.error = None
+        if battery is not None:
+            status.battery_level = battery
+        if charging is not None:
+            status.charging = charging
+            status.power_source = "ac" if charging else "battery"
+        self._slept_at = None
         self._remember()
 
     def note_sleep(self, deep: bool) -> None:
