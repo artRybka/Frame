@@ -127,6 +127,33 @@ def test_analyse_blue_picture() -> None:
     assert swatches[0].hex.startswith("#") and 0 <= score <= 1
 
 
+def test_analyse_finds_small_vivid_accents() -> None:
+    # A Vermeer-like interior: a pale wall, brown table and dark corners,
+    # with a blue apron, a yellow bodice and a red skirt of a few percent.
+    rng = np.random.default_rng(3)
+    pixels = np.empty((240, 240, 3), np.uint8)
+    pixels[:] = (200, 196, 176)
+    pixels[120:] = (76, 62, 46)
+    pixels[200:, :80] = (30, 28, 26)
+    pixels[60:110, 100:130] = (26, 60, 120)  # apron
+    pixels[30:60, 100:130] = (180, 150, 80)  # bodice
+    pixels[110:150, 100:130] = (120, 32, 28)  # skirt
+    noise = rng.integers(-6, 7, pixels.shape)
+    img = Image.fromarray(np.clip(pixels.astype(int) + noise, 0, 255).astype(np.uint8))
+    swatches, tags, _ = analyse(img)
+    dominant = [s for s in swatches if not s.accent]
+    accents = [s for s in swatches if s.accent]
+    assert 1 <= len(dominant) <= 4 and swatches[: len(dominant)] == dominant  # dominant first
+    assert dominant[0].weight >= 0.3
+    assert len(accents) == 3 and all(0.01 <= s.weight <= 0.04 for s in accents)
+    assert {"blue", "yellow", "red"} <= set(tags)  # accents count for colour tags
+
+
+def test_monochrome_pictures_have_no_accents() -> None:
+    swatches, _, _ = analyse(_etching([(238, 226, 198)]))
+    assert swatches and not any(s.accent for s in swatches)
+
+
 def _client(routes: dict[str, dict], sent: list[httpx.Request] | None = None) -> httpx.Client:
     def handler(request: httpx.Request) -> httpx.Response:
         if sent is not None:

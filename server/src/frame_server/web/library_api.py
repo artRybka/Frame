@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 import httpx
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
@@ -13,6 +13,10 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, ValidationError
 from starlette.concurrency import run_in_threadpool
 
+from ..ai import PolishText
+from ..ai.keywords import KIND as KEYWORDS
+from ..ai.keywords import polish_words
+from ..ai.pl_text import KIND as PL_TEXT
 from ..fsutil import own_files
 from ..imaging.layout import (
     WHOLE,
@@ -189,6 +193,82 @@ def facets(svc: Svc) -> Facets:
 @router.get("/library/items/{item_id}", response_model=Item)
 async def get_item(item_id: str, svc: Svc) -> Item:
     return await _work(svc, item_id)
+
+
+class PolishView(BaseModel):
+    """A work's Polish texts for its card. ``status``: "ready"; "waiting"
+    (being written, ask again); "none" (the model could not); "off" (no key,
+    switched off, or no museum work)."""
+
+    status: Literal["ready", "waiting", "none", "off"]
+    text: PolishText | None = None
+
+
+@router.get("/library/items/{item_id}/polish", response_model=PolishView)
+async def item_polish(
+    item_id: str, svc: Svc, wait: Annotated[float, Query(ge=0, le=60)] = 0
+) -> PolishView:
+    """The work's Polish title and texts, asked for now if it has none;
+    ``wait``: seconds to wait for them."""
+    job = svc.pl_text
+    item = await _work(svc, item_id)
+    if not job.enabled() or not job.applies(item):
+        return PolishView(status="off")
+    if (text := job.text(item)) is not None:
+        return PolishView(status="ready", text=text)
+    if svc.library.get(item_id) is None:  # a museum work only looked at: pooled
+        item = await run_in_threadpool(svc.importer.add, item.model_copy(update={"pooled": True}))
+    future = svc.ai.need_now(item_id, PL_TEXT)
+    if wait:
+        try:
+            await asyncio.wait_for(asyncio.shield(asyncio.wrap_future(future)), wait)
+        except TimeoutError:
+            pass
+        except Exception:  # the model is unavailable: the card stays in English
+            return PolishView(status="none")
+    if (text := job.text(item)) is not None:
+        return PolishView(status="ready", text=text)
+    done = future.done() or job.fresh(item, svc.library.note(item_id, PL_TEXT))
+    return PolishView(status="none" if done else "waiting")
+
+
+class SeenView(BaseModel):
+    """What the model saw in the picture, for the card; ``status`` as in
+    PolishView."""
+
+    status: Literal["ready", "waiting", "none", "off"]
+    words: list[str] = Field(default_factory=list)  # Polish: things, places, mood
+
+
+@router.post("/library/items/{item_id}/describe", response_model=SeenView)
+async def describe_item(
+    item_id: str, svc: Svc, wait: Annotated[float, Query(ge=0, le=60)] = 0
+) -> SeenView:
+    """The card opened: the model's jobs for this work or photo (keywords,
+    Polish texts) go ahead of everything else. ``wait``: seconds to wait for
+    the keywords; the Polish texts come from ``/polish``."""
+    item = await _work(svc, item_id)
+    jobs = [job for job in svc.ai.jobs.values() if job.enabled() and job.in_library(item)]
+    if not jobs:
+        return SeenView(status="off")
+    if svc.library.get(item_id) is None:  # a museum work only looked at: pooled
+        item = await run_in_threadpool(svc.importer.add, item.model_copy(update={"pooled": True}))
+    futures = {job.kind: svc.ai.need_now(item_id, job.kind) for job in jobs}
+    future = futures.get(KEYWORDS)
+    if future is None:
+        return SeenView(status="off")
+    if wait:
+        try:
+            await asyncio.wait_for(asyncio.shield(asyncio.wrap_future(future)), wait)
+        except TimeoutError:
+            pass
+        except Exception:  # the model is unavailable
+            return SeenView(status="none")
+    note = svc.library.note(item_id, KEYWORDS)
+    if note is not None and svc.ai.jobs[KEYWORDS].fresh(item, note):
+        words = polish_words(note.data)
+        return SeenView(status="ready" if words else "none", words=words)
+    return SeenView(status="none" if future.done() else "waiting")
 
 
 @router.patch("/library/items/{item_id}", response_model=Item)

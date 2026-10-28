@@ -1,5 +1,63 @@
 # Changelog
 
+## 0.24.0
+
+- Tryb „Oszczędny” działa przez aplikację Frame na ramce (aplikacja
+  Custom podpisana certyfikatem Samsung): ramka sama budzi się o swoim
+  czasie, pobiera następny obraz z serwera (`/panel/next`), melduje się
+  (`/panel/report`) i znów zasypia. Wybór trybu w Harmonogramie pojawia
+  się, gdy ramka działa w tej aplikacji.
+- Konfiguracja → Aplikacja ramki: stan aplikacji na ramce i „Przełącz na
+  aplikację Frame” (albo powrót do zwykłego trybu). Paczkę aplikacji
+  podpisuje i wgrywa na serwer `scripts/panel-app/pack.sh` z Maca.
+- Poziom baterii odczytywany przez MDC.
+- Gdy Wake-on-LAN nie obudzi ramki, aplikacja podpowiada naciśnięcie
+  przycisku na ramce (na baterii budzenie przez sieć bywa zawodne).
+
+## 0.23.0
+
+- Otwarta karta dzieła lub zdjęcia prosi model o słowa kluczowe i polskie
+  teksty od razu, poza kolejnością w tle; karta pokazuje „Na obrazie”
+  albo „Na zdjęciu”, gdy model już popatrzył. Miesięczny limit modelu
+  do wyboru aż do 200 USD.
+- Budzenie ramki na baterii: serwer wysyła Wake-on-LAN do 3 minut i
+  przestaje, gdy ramka odpowie (na baterii budzi się po 1–2,5 min).
+- Ramka (firmware 1130.7) odrzuca budzik 0x25, więc serwer nie wyłącza jej
+  Wi-Fi w nocy: cisza nocna to lekki sen, zdjęcia wysłane w nocy trafiają
+  na ramkę od razu, a stan nie pokazuje już fałszywego „Głęboki sen”.
+- Tryb „Oszczędny” jest gotowy, ale ukryty, dopóki ramka nie umie obudzić
+  się sama.
+
+## 0.22.0
+
+- Model językowy (Claude): nowa sekcja w Konfiguracji (Ramka → trybik)
+  z kluczem API Anthropic (serwer go sprawdza i pokazuje tylko końcówkę),
+  przełącznikami polskich opisów oraz słów kluczowych dzieł i zdjęć,
+  miesięcznym limitem (domyślnie 5 USD) z bieżącymi wydatkami, postępem
+  i „Opisz całą bibliotekę” z szacowanym kosztem przed startem. Klucz
+  można też podać w opcji dodatku `anthropic_api_key`.
+- Słowa kluczowe z modelu (Haiku) dla dzieł i zdjęć: co przedstawia
+  obraz, po polsku i angielsku, pora roku i dnia, nastrój. Znajdują je
+  Szukaj, inteligentne playlisty i wyszukiwanie w bibliotece.
+- Tryb Opis i podpis na ramce po polsku: tłumaczenie opisu z muzeum
+  (Haiku), a dla dzieł bez opisu notka z obrazu (Sonnet). Ramka czeka na
+  tekst najwyżej 25 s, a dla następnego obrazu prosi z wyprzedzeniem.
+- Karta dzieła po polsku: tytuł, notka o autorze, data, technika i tekst
+  z oznaczeniem „Tłumaczenie maszynowe” albo notki modelu oraz „Pokaż
+  oryginał”. Narodowość autora jako osoba („Holender, 1853–1890”), polskie
+  tytuły z Wikidata, gdy istnieją.
+
+## 0.21.0
+
+- Kolorystyka: barwy dominujące bez powtórek (podobne odcienie łączą się
+  w jedną, najwyżej cztery) i akcenty, czyli małe, żywe plamy koloru
+  (np. błękit, żółć i czerwień w „Mleczarce”). Akcenty trafiają też do
+  tagów kolorów w Szukaj. Analiza uwzględnia profile ICC skanów.
+- Karta dzieła pokazuje kolorystykę jako wyższy pasek jak w „Teraz”,
+  z udziałami pod szerszymi częściami; pasek w „Teraz” dokłada akcenty
+  po barwach dominujących.
+- Biblioteka przelicza kolory raz, w tle, po aktualizacji serwera.
+
 ## 0.20.0
 
 - Szukaj: każde dzieło raz także w katalogu (z kilku kopii tego samego

@@ -38,6 +38,9 @@ final class AppModel {
     /// The library's size on the server; loaded when Konfiguracja opens
     /// (measuring is slow on a NAS), nil on an older server.
     var libraryStorage: LibraryStorage?
+    /// Claude's settings, spending and progress; loaded when Konfiguracja
+    /// opens, nil on an older server.
+    var aiSettings: AiSettings?
     var playlists: [PlaylistSummary] = []
     /// Goes up when a work is liked, unliked, left out or brought back:
     /// views listing a playlist's works load them again.
@@ -120,6 +123,7 @@ final class AppModel {
         panelConfig = nil
         panelApp = nil
         libraryStorage = nil
+        aiSettings = nil
         playlists = []
         facets = .empty
         vocabulary = []
@@ -568,6 +572,67 @@ final class AppModel {
             show(error)
         }
         await refreshStatus(live: false)
+    }
+
+    func loadAiSettings() async {
+        aiSettings = try? await backend.aiSettings()
+    }
+
+    func saveAiSettings(_ update: AiSettingsUpdate) async {
+        do {
+            aiSettings = try await backend.saveAiSettings(update)
+        } catch {
+            show(error)
+        }
+    }
+
+    /// True when the server checked the key with Anthropic and kept it.
+    func saveAiKey(_ key: String) async -> Bool {
+        do {
+            aiSettings = try await backend.saveAiKey(key)
+        } catch BackendError.http(400, _) {
+            toast = "Anthropic nie przyjął klucza. Sprawdź, czy skopiowano go w całości."
+            return false
+        } catch BackendError.http(502, _) {
+            toast = "Anthropic teraz nie odpowiada. Spróbuj za chwilę."
+            return false
+        } catch {
+            show(error)
+            return false
+        }
+        toast = "Klucz zapisany"
+        return true
+    }
+
+    func deleteAiKey() async {
+        do {
+            aiSettings = try await backend.deleteAiKey()
+        } catch {
+            show(error)
+            return
+        }
+        toast = "Usunięto klucz"
+    }
+
+    func keywordsEstimate() async -> AiEstimate? {
+        do {
+            return try await backend.keywordsEstimate()
+        } catch {
+            show(error)
+            return nil
+        }
+    }
+
+    func describeLibrary() async {
+        do {
+            let started = try await backend.describeLibrary()
+            toast = started.items == 0
+                ? "Cała biblioteka ma już słowa kluczowe"
+                : "Opisuję \(Names.pictures(started.items)), potrwa do doby"
+        } catch {
+            show(error)
+        }
+        await loadAiSettings()
     }
 
     private func checkPanel(saved: String) async {

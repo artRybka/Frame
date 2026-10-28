@@ -453,6 +453,7 @@ def _text(item: Item) -> str:
             item.description,
             *item.styles,
             *item.subjects,
+            *item.keywords,
         )
     )
 
@@ -466,6 +467,8 @@ def term_matches(found: Term, item: Item, text: str | None = None) -> bool:
         if found.year_from is not None and item.year < found.year_from:
             return False
         return found.year_to is None or item.year <= found.year_to
+    if found.key in item.terms:
+        return True
     pattern = found.pattern
     return pattern is not None and bool(pattern.search(text if text is not None else _text(item)))
 

@@ -21,6 +21,15 @@ struct ItemDetailView: View {
     @State private var saving = false
     @State private var opened: Opened?
     @State private var savingPhoto = false
+    /// Polish title and texts, once the server has them ("Polskie tytuły i
+    /// opisy" in the settings); the museum's own while they are written.
+    @State private var polish: PolishText?
+    @State private var polishWaiting = false
+    @State private var showOriginal = false
+    /// What the model saw in the picture (keywords), once it has looked.
+    @State private var seen: [String] = []
+    /// The item the server was asked about, out of turn, as the card opened.
+    @State private var described: String?
 
     /// What a tap on the picture opened on the whole screen.
     enum Opened: String, Identifiable {
@@ -41,16 +50,7 @@ struct ItemDetailView: View {
                     titleBlock(item)
                     actions(item)
                     if !item.colors.isEmpty { palette(item) }
-                    if !item.description.isEmpty {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Eyebrow("O dziele")
-                            Text(item.description)
-                                .font(.serif(17))
-                                .lineSpacing(5)
-                                .foregroundStyle(Theme.ink.opacity(0.9))
-                                .textSelection(.enabled)
-                        }
-                    }
+                    about(item)
                     facts(item)
                     if !(item.styles + item.subjects).isEmpty {
                         VStack(alignment: .leading, spacing: 10) {
@@ -78,8 +78,14 @@ struct ItemDetailView: View {
                 if LaunchRoute.screen == "original" { opened = .original }  // CI screenshots
             } catch {
                 model.show(error)
+                return
             }
+            // Keywords and Polish texts ahead of the background queue.
+            _ = try? await model.backend.describe(itemID: itemID, wait: 0)
+            described = itemID
+            await loadPolish()
         }
+        .task(id: described) { await loadSeen() }
         .task(id: view == .frame ? draftKey : "") { await loadFraming() }
         .sheet(isPresented: $showingPlaylists) {
             if let item { AddToPlaylistSheet(item: item, beforeAdding: saveCrop) }
@@ -163,6 +169,94 @@ struct ItemDetailView: View {
             return
         }
         await model.show(itemID: itemID, hold: hold)
+    }
+
+    // MARK: Polish
+
+    /// The Polish texts shown, unless the museum's own are asked for.
+    private var shownPolish: PolishText? { showOriginal ? nil : polish }
+
+    /// Asks the server for the work's Polish texts; one being written now
+    /// (a few seconds, half a minute for a note from the picture) is waited
+    /// for a few times. Without a key or with the switch off: nothing.
+    private func loadPolish() async {
+        polish = nil
+        showOriginal = false
+        for attempt in 0..<4 {
+            guard let view = try? await model.backend.polish(itemID: itemID, wait: attempt == 0 ? 20 : 30),
+                  !Task.isCancelled
+            else { break }
+            polish = view.text
+            polishWaiting = view.status == "waiting"
+            if !polishWaiting { break }
+        }
+        polishWaiting = false
+    }
+
+    /// Waits for the keywords asked for as the card opened.
+    private func loadSeen() async {
+        seen = []
+        guard let id = described, id == itemID else { return }
+        for attempt in 0..<3 {
+            guard let view = try? await model.backend.describe(itemID: id, wait: attempt == 0 ? 20 : 30),
+                  !Task.isCancelled
+            else { return }
+            seen = view.words
+            if view.status != "waiting" { return }
+        }
+    }
+
+    /// "O dziele": the museum's description, its Polish translation or a
+    /// note written by the model, with where the text comes from.
+    @ViewBuilder
+    private func about(_ item: Item) -> some View {
+        let text = shownPolish?.full ?? item.description
+        if !text.isEmpty || polish != nil || polishWaiting {
+            VStack(alignment: .leading, spacing: 10) {
+                Eyebrow("O dziele")
+                if !text.isEmpty {
+                    Text(text)
+                        .font(.serif(17))
+                        .lineSpacing(5)
+                        .foregroundStyle(Theme.ink.opacity(0.9))
+                        .textSelection(.enabled)
+                } else if showOriginal {
+                    Text("Muzeum nie podaje opisu.")
+                        .font(.subheadline)
+                        .foregroundStyle(Theme.inkSoft)
+                }
+                if polishWaiting {
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text("Piszę po polsku…")
+                    }
+                    .font(.footnote)
+                    .foregroundStyle(Theme.inkSoft)
+                }
+                if let polish { polishOrigin(polish) }
+            }
+        }
+    }
+
+    private func polishOrigin(_ polish: PolishText) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            Image(systemName: "sparkles").foregroundStyle(Theme.inkSoft)
+            Text(polish.isNote ? noteOrigin(polish) : "Tłumaczenie maszynowe")
+                .foregroundStyle(Theme.inkSoft)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 8)
+            Button(showOriginal ? "Pokaż po polsku" : "Pokaż oryginał") {
+                withAnimation(.easeInOut) { showOriginal.toggle() }
+            }
+            .font(.footnote.weight(.semibold))
+        }
+        .font(.footnote)
+    }
+
+    private func noteOrigin(_ polish: PolishText) -> String {
+        polish.sources.isEmpty
+            ? "Notka napisana przez model"
+            : "Notka napisana przez model na podstawie: \(polish.sources.joined(separator: ", "))"
     }
 
     // MARK: Sections
@@ -255,7 +349,7 @@ struct ItemDetailView: View {
     private func titleBlock(_ item: Item) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Eyebrow(Names.source(item.source), color: Theme.vermilion)
-            Text(item.title.isEmpty ? "Bez tytułu" : item.title)
+            Text(title(item))
                 .font(.serif(30, weight: .semibold))
                 .foregroundStyle(Theme.ink)
                 .fixedSize(horizontal: false, vertical: true)
@@ -275,13 +369,24 @@ struct ItemDetailView: View {
                 .buttonStyle(.plain)
                 .accessibilityHint(Text("Szuka innych dzieł tego autora"))
             }
-            if !item.artistBio.isEmpty {
-                Text(item.artistBio).font(.subheadline).foregroundStyle(Theme.inkSoft)
+            let bio = nonEmpty(shownPolish?.artistNote) ?? item.artistBio
+            if !bio.isEmpty {
+                Text(bio).font(.subheadline).foregroundStyle(Theme.inkSoft)
             }
-            if !item.dateText.isEmpty {
-                Text(item.dateText).font(.subheadline).foregroundStyle(Theme.inkSoft)
+            let date = nonEmpty(shownPolish?.date) ?? item.dateText
+            if !date.isEmpty {
+                Text(date).font(.subheadline).foregroundStyle(Theme.inkSoft)
             }
         }
+    }
+
+    private func title(_ item: Item) -> String {
+        nonEmpty(shownPolish?.title) ?? (item.title.isEmpty ? "Bez tytułu" : item.title)
+    }
+
+    private func nonEmpty(_ text: String?) -> String? {
+        guard let text, !text.isEmpty else { return nil }
+        return text
     }
 
     /// The two ways onto the frame, side by side: now, or next. Keeping it
@@ -385,21 +490,22 @@ struct ItemDetailView: View {
     private func palette(_ item: Item) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Eyebrow("Kolorystyka")
-            HStack(spacing: 10) {
-                ForEach(Array(item.colors.prefix(6).enumerated()), id: \.offset) { _, swatch in
-                    VStack(spacing: 6) {
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(Color(hexString: swatch.hex) ?? Theme.mat)
-                            .frame(height: 52)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                    .strokeBorder(.black.opacity(0.08))
-                            )
-                        Text("\(Int(swatch.weight * 100))%")
-                            .font(.caption2.monospacedDigit())
-                            .foregroundStyle(Theme.inkSoft)
+            // Like the strip in "Teraz", taller, with the shares that fit.
+            VStack(spacing: 6) {
+                PaletteStrip(swatches: item.colors, height: 18, cornerRadius: 6)
+                GeometryReader { geo in
+                    let widths = PaletteStrip.widths(item.colors, in: geo.size.width)
+                    HStack(spacing: PaletteStrip.spacing) {
+                        ForEach(Array(item.colors.enumerated()), id: \.offset) { index, swatch in
+                            Text(widths[index] >= 30 ? "\(Int(swatch.weight * 100))%" : "")
+                                .font(.caption2.monospacedDigit())
+                                .foregroundStyle(Theme.inkSoft)
+                                .fixedSize()
+                                .frame(width: widths[index])
+                        }
                     }
                 }
+                .frame(height: 14)
             }
             if !item.colorTags.isEmpty {
                 FlowLayout(spacing: 6) {
@@ -413,7 +519,8 @@ struct ItemDetailView: View {
 
     private func facts(_ item: Item) -> some View {
         Card {
-            fact("Technika", item.medium)
+            fact(item.kind == .artwork ? "Na obrazie" : "Na zdjęciu", seen.joined(separator: ", "))
+            fact("Technika", nonEmpty(shownPolish?.medium) ?? item.medium)
             fact("Rodzaj", item.classification)
             fact("Pochodzenie", item.culture)
             fact("Kolekcja", item.museum)

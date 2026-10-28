@@ -54,6 +54,9 @@ class Settings(BaseSettings):
     # Openverse app credentials; without them 200 anonymous requests a day.
     openverse_client_id: str | None = None
     openverse_client_secret: str | None = None
+    # Claude (Anthropic API) for keywords and Polish texts; a key saved in
+    # the app wins over this one.
+    anthropic_api_key: str | None = None
 
     @field_validator("public_host")
     @classmethod

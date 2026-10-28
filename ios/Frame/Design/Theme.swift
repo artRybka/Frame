@@ -247,6 +247,15 @@ enum Names {
         return "\(count) zdjęć"
     }
 
+    /// "1 obraz", "3 obrazy", "12 obrazów": works and photos together.
+    static func pictures(_ count: Int) -> String {
+        let mod10 = count % 10
+        let mod100 = count % 100
+        if count == 1 { return "1 obraz" }
+        if (2 ... 4).contains(mod10) && !(12 ... 14).contains(mod100) { return "\(count) obrazy" }
+        return "\(count) obrazów"
+    }
+
     /// "1 dzieło", "3 dzieła", "12 dzieł".
     static func works(_ count: Int) -> String {
         let mod10 = count % 10

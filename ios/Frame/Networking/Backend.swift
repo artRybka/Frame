@@ -29,6 +29,13 @@ protocol FrameBackend: Sendable {
 
     func items(_ query: LibraryQuery) async throws -> ItemPage
     func item(id: String) async throws -> Item
+    /// The work's Polish title and texts, asked for now if it has none;
+    /// waits up to `wait` seconds for them.
+    func polish(itemID: String, wait: Int) async throws -> PolishView
+    /// The card opened: the server asks the model about this item ahead of
+    /// everything else (keywords, Polish texts); waits up to `wait` seconds
+    /// for the keywords.
+    func describe(itemID: String, wait: Int) async throws -> SeenView
     func setFavorite(id: String, _ favorite: Bool) async throws -> Item
     func setExcluded(id: String, _ excluded: Bool) async throws -> Item
     func show(itemID: String, hold: HoldSpec) async throws
@@ -119,6 +126,15 @@ protocol FrameBackend: Sendable {
     func saveLibraryLimit(mb: Int) async throws -> LibraryStorage
     /// Back to the limits in frame.env or the add-on options.
     func resetLibraryLimit() async throws -> LibraryStorage
+    /// Claude's settings, spending and progress.
+    func aiSettings() async throws -> AiSettings
+    func saveAiSettings(_ update: AiSettingsUpdate) async throws -> AiSettings
+    /// The server checks the key with Anthropic before keeping it.
+    func saveAiKey(_ key: String) async throws -> AiSettings
+    func deleteAiKey() async throws -> AiSettings
+    func keywordsEstimate() async throws -> AiEstimate
+    /// Keywords for the whole library through Anthropic's batches (within a day).
+    func describeLibrary() async throws -> AiStarted
     /// `sleepAfter`: woken only to check its state, so on battery it goes back to light sleep.
     func wake(sleepAfter: Bool) async throws -> WakeResult
     /// The current picture to the panel again; waits until it is downloaded.

@@ -148,6 +148,26 @@ final class FrameAPITests: XCTestCase {
         XCTAssertTrue(config.fromApp)
     }
 
+    func testAiSettingsFromServerAndPartialUpdates() throws {
+        let json = #"""
+        {"key_set": true, "key_tail": "abcd", "key_from_app": true, "pl_text": true,
+         "keywords_artworks": true, "keywords_photos": false, "monthly_limit_usd": 5.0,
+         "spent_usd": 0.42, "spent_by_kind": {"keywords": 0.42},
+         "keywords_progress": {"done": 120, "waiting": 34, "refused": 1, "batch_items": 0,
+                               "batch_done": 0, "preparing": false},
+         "pl_text_progress": null, "error": null}
+        """#
+        let settings = try LiveBackend.decoder().decode(AiSettings.self, from: Data(json.utf8))
+        XCTAssertEqual(settings.keyTail, "abcd")
+        XCTAssertFalse(settings.keywordsPhotos)
+        XCTAssertEqual(settings.keywordsProgress.done, 120)
+        XCTAssertNil(settings.plTextProgress)
+
+        let data = try LiveBackend.encoder().encode(AiSettingsUpdate(keywordsPhotos: false))
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(object as? [String: Bool], ["keywords_photos": false])  // the rest stays
+    }
+
     func testEncodesSettingsInSnakeCase() throws {
         var settings = FrameSettings.defaults
         settings.playlistId = 4
