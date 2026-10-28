@@ -230,7 +230,7 @@ class PanelApp:
         return (
             '<?xml version="1.0" encoding="UTF-8"?>\n'
             f"<widget>\n<ver>{info.version}</ver>\n<size>{info.size}</size>\n"
-            f"<widgetname>{WIDGET}</widgetname>\n</widget>\n"
+            f"<widgetname>{WIDGET}</widgetname>\n<webtype>tizen</webtype>\n</widget>\n"
         )
 
     def view(self) -> AppView:

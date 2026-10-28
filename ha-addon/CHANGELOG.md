@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.25.2
+
+- Aplikacja Frame na ramce: `sssp_config.xml` podaje `<webtype>tizen</webtype>`,
+  jak oczekuje launcher Samsunga.
+- Dokumentacja E16: końcowe wyniki testu aplikacji Custom. Po pełnym śnie
+  launcher prawie nigdy sam nie uruchamia aplikacji (2 z 9), więc „kopnięcie”
+  serwera MDC `0xC7 81 01` ok. 60 s po pobudce jest konieczne (8 z 8); przy
+  wyłączonym czuwaniu sieci WoL nie budzi ramki; instalacja przez launcher
+  działa bez Developer mode; po wyłączeniu zasilania ramka może wejść do innej
+  zapamiętanej sieci Wi-Fi.
+
 ## 0.25.1
 
 - Aplikacja Frame na ramce dostaje obraz passthrough jako JPEG q95 4:4:4
