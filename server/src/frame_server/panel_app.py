@@ -1,6 +1,7 @@
 """The frame's own app (Samsung "Custom" content source, docs/WAKE.md E16).
 
-With the app the panel asks for its pictures instead of being sent them. On
+The panel always runs it: pictures are never pushed over MDC (the "Mobile"
+source's content.json) any more. The panel asks for its pictures. On
 every start and every wake it asks ``/panel/next`` what to show, how long to
 sleep and whether to keep the Wi-Fi on; it draws the picture, sets its own
 alarm (``webapis.epaper.setScheduleWakeupTime``) and goes to sleep. That
@@ -16,19 +17,26 @@ With ``base_screen_resolution`` "always" in its config.xml the app's page is
 2560x1440, so it gets the very picture the Mobile source shows (passthrough
 or our dither, whatever the settings render) and shows it 1:1.
 
-The package has to be signed with the Samsung certificate made for this
-panel, which lives on Mateusz's Mac: the server never builds it, it only
-serves what ``scripts/panel-app/pack.sh`` uploaded. The app's logic
-(``app.js``) comes from the server at every start, so most changes need no
-new package.
+The server builds and signs the package itself (panel_package.py) with the
+Samsung certificates made for this panel, uploaded once to its data
+directory. A new package is built whenever its files (config.xml,
+index.html) or the server's address change; the app then reboots the panel
+so the launcher installs it. The app's logic (``app.js``) comes from the
+server at every start, so most changes need no new package.
+
+When the panel does not run the app (a fresh panel, or one that fell back to
+another source and fetched content.json) the server points its launcher at
+the app and starts it over MDC (``0xC7 82 <url>``, ``0xC7 81 01``).
 """
 
 from __future__ import annotations
 
 import asyncio
+import base64
 import hashlib
 import json
 import logging
+import re
 from datetime import UTC, datetime, time, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
@@ -39,6 +47,7 @@ from pydantic import BaseModel
 
 from .device import MdcError
 from .device.mdc import CONTENT_SOURCE_CUSTOM
+from .panel_package import CertificateInfo, Certificates, sign_package
 from .progress import Stage
 from .schedule import in_quiet_hours, quiet_hours
 
@@ -74,9 +83,22 @@ KEEP_AWAKE = timedelta(minutes=10)
 # systeminfo fails on the panel) at most this often.
 BATTERY_EVERY = timedelta(minutes=10)
 BATTERY_TIMEOUT = 10.0
-# The source the panel had before Custom when it was never read (Samsung
-# MDC: 00 = MagicInfo, which the Mobile mode most likely is).
-MOBILE_SOURCE = 0x00
+# The panel does not run the app: point its launcher at it and start it this
+# often while it is not asking (a panel asleep simply does not answer).
+NUDGE_EVERY = timedelta(minutes=5)
+# Awake, told to ask again within a minute, and silent this long: the app
+# hung or quit, and 0xC7 81 01 restarts it. A few tries, then the panel is
+# most likely asleep (unplugged: it sleeps at once, E8).
+SILENT_AFTER = timedelta(minutes=3)
+SILENT_KICKS = 3
+# Server-built packages count from here, above the ones signed by hand (1.x).
+FIRST_BUILD = (2, 0, 0)
+# Warn in the iOS app this long before the certificates expire.
+CERTIFICATES_WARN = timedelta(days=60)
+# The panel needs an icon; any small PNG will do (1x1 white).
+ICON = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNgYGAAAAAEAAH2FzhVAAAAAElFTkSuQmCC"
+)
 # A full-colour (passthrough) picture goes to the app as a JPEG (4:4:4): ~1 MB
 # instead of 3-4 MB of PNG over the panel's weak Wi-Fi (60-215 KB/s), and
 # the loss does not show (E16). A dithered one, a handful of inks, stays the
@@ -98,8 +120,8 @@ class AppState(BaseModel):
     wake_at: str | None = None  # when its alarm wakes it (ISO)
     standby: bool = True  # network standby through that sleep
     missed_wake: str | None = None  # an alarm it did not show up for
-    previous_source: int | None = None  # the launcher's source before Custom
     reboot_for: str | None = None  # the package version it last rebooted to install
+    installed_at: str | None = None  # the server last started it over MDC (ISO)
 
 
 class AppHello(BaseModel):
@@ -134,7 +156,8 @@ class NextAnswer(BaseModel):
 class PackageInfo(BaseModel):
     version: str
     size: int
-    uploaded_at: str
+    uploaded_at: str  # when it was built
+    source: str | None = None  # fingerprint of what it was built from
 
 
 class AppView(BaseModel):
@@ -143,6 +166,9 @@ class AppView(BaseModel):
     active: bool
     package: PackageInfo | None
     state: AppState
+    certificates: list[CertificateInfo] = []
+    # The earliest expiry, when within ``CERTIFICATES_WARN`` (or past).
+    certificates_expire_at: str | None = None
 
 
 APP_DIR = Path(__file__).parent / "web" / "panel_app"
@@ -163,6 +189,9 @@ class PanelApp:
         self.awake_until: datetime | None = None
         self.sleep_requested = False
         self._kicked: datetime | None = None
+        self._nudged: datetime | None = None
+        self._silent_kicks = 0
+        self.certificates = Certificates(self.dir / "certs")
         self._images: dict[str, str] = {}  # file_id -> the path the app gets
         self._shown: dict[str, asyncio.Event] = {}
         self._waiting: set[asyncio.Task[None]] = set()
@@ -209,9 +238,74 @@ class PanelApp:
     def package_path(self) -> Path:
         return self.dir / f"{WIDGET}.wgt"
 
-    def store_package(self, data: bytes, version: str) -> PackageInfo:
-        """A package signed on the Mac; the panel installs it the next time
-        it looks (switching to Custom, or now and then as it goes to sleep)."""
+    def package_files(self, version: str) -> dict[str, bytes]:
+        """What goes into the package: the page, the fallback copy of the
+        logic, config.xml with ``version`` and where the server is."""
+        config = (APP_DIR / "config.xml").read_text()
+        config = re.sub(r'version="[^"]*" viewmodes', f'version="{version}" viewmodes', config)
+        where = (
+            f'window.FRAME_SERVER = "{self.service.settings.base_url()}";\n'
+            f'window.FRAME_BUILD = "{version}";\n'
+        )
+        return {
+            "app.js": app_code(),
+            "config.js": where.encode(),
+            "config.xml": config.encode(),
+            "icon.png": ICON,
+            "index.html": (APP_DIR / "index.html").read_bytes(),
+        }
+
+    def source(self) -> str:
+        """What a package depends on: a change means a new one. Not app.js,
+        which the app loads from the server anyway."""
+        digest = hashlib.sha256()
+        for part in (
+            (APP_DIR / "config.xml").read_bytes(),
+            (APP_DIR / "index.html").read_bytes(),
+            self.service.settings.base_url().encode(),
+        ):
+            digest.update(hashlib.sha256(part).digest())
+        return digest.hexdigest()[:12]
+
+    def ensure_package(self) -> PackageInfo | None:
+        """The package for the current files and address, built and signed
+        here when it is missing or out of date (and the certificates are
+        there); a new version makes the app reboot the panel to install it."""
+        current = self.package()
+        source = self.source()
+        if (current is not None and current.source == source) or not self.certificates.present():
+            return current
+        version = _next_version(current.version if current else None)
+        try:
+            data = sign_package(self.package_files(version), self.certificates)
+        except (OSError, ValueError) as err:
+            log.warning("could not build the frame's app: %s", err)
+            return current
+        return self.store_package(data, version, source)
+
+    def store_certificates(self, author: bytes, distributor: bytes, password: bytes) -> AppView:
+        """The Samsung certificates (once, and again when renewed): kept in
+        the data directory, and a package built with them at once."""
+        self.certificates.save(author, distributor, password)
+        current = self.package()
+        if current is not None and current.source is not None:
+            # Signed with other certificates: build again.
+            current.source = None
+            (self.dir / "package.json").write_text(current.model_dump_json())
+        self.ensure_package()
+        self.service.power.publish_status()
+        return self.view()
+
+    def certificates_warning(self, now: datetime) -> str | None:
+        """When the certificates expire, if that is soon (or past)."""
+        expires = self.certificates.expires_at()
+        if expires is None or expires - now > CERTIFICATES_WARN:
+            return None
+        return expires.isoformat(timespec="seconds")
+
+    def store_package(self, data: bytes, version: str, source: str | None = None) -> PackageInfo:
+        """A signed package; the app reboots the panel to install it at its
+        next question (``answer``)."""
         self.dir.mkdir(parents=True, exist_ok=True)
         tmp = self.dir / f"{WIDGET}.wgt.part"
         tmp.write_bytes(data)
@@ -220,6 +314,7 @@ class PanelApp:
             version=version,
             size=len(data),
             uploaded_at=datetime.now(UTC).isoformat(timespec="seconds"),
+            source=source,
         )
         (self.dir / "package.json").write_text(info.model_dump_json())
         log.info("panel app package %s (%d bytes) stored", version, len(data))
@@ -237,7 +332,13 @@ class PanelApp:
 
     def view(self) -> AppView:
         state = self.state
-        return AppView(active=state.active, package=self.package(), state=state)
+        return AppView(
+            active=state.active,
+            package=self.package(),
+            state=state,
+            certificates=self.certificates.info(),
+            certificates_expire_at=self.certificates_warning(datetime.now(UTC)),
+        )
 
     # -- the app's questions --------------------------------------------------
 
@@ -245,6 +346,7 @@ class PanelApp:
         """``answer``, with the battery and charger read over MDC first when
         the last read is old (Tizen's systeminfo fails on the panel): on the
         charger the app stays awake."""
+        self.ensure_package()  # the files or the address changed: a new one
         status = self.service.status
         checked = status.status.checked_at
         now = datetime.now(UTC)
@@ -347,6 +449,7 @@ class PanelApp:
         state.asleep = False
         state.missed_wake = None
         self._save(state)
+        self._silent_kicks = 0
         self.service.status.note_app(now, hello.battery, hello.charging)
         self.contact.set()
         self.contact = asyncio.Event()
@@ -459,11 +562,27 @@ class PanelApp:
         self.sleep_requested = True
 
     async def tick(self, now: datetime) -> None:
-        """After the app's alarm: start the app over MDC when it does not
-        ask (a cold boot after a sleep with the Wi-Fi off), and note a wake
-        it never showed up for."""
+        """Keep the app running: install and start it when the panel does
+        not run it, restart it when it went silent while awake, start it
+        after its alarm when it does not ask (a cold boot after a sleep with
+        the Wi-Fi off), and note a wake it never showed up for."""
         state = self.state
-        if not (state.active and state.asleep and state.wake_at):
+        if not state.active:
+            if self._nudged is None or now - self._nudged >= NUDGE_EVERY:
+                self._nudged = now
+                await self._nudge()
+            return
+        if not state.asleep:
+            seen = datetime.fromisoformat(state.seen_at) if state.seen_at else None
+            silent = seen is not None and now - seen >= SILENT_AFTER
+            due = self._kicked is None or now - self._kicked >= KICK_EVERY
+            if silent and due and self._silent_kicks < SILENT_KICKS:
+                self._kicked = now
+                self._silent_kicks += 1
+                log.info("the frame's app has been silent since %s", state.seen_at)
+                await self._kick()
+            return
+        if not state.wake_at:
             return
         wake = datetime.fromisoformat(state.wake_at)
         due = wake + KICK_AFTER <= now < wake + MISSED_AFTER
@@ -477,50 +596,70 @@ class PanelApp:
             log.warning("panel app did not wake at %s", state.wake_at)
 
     async def _kick(self) -> None:
+        """Start the app (or restart a hung one): the launcher's source is
+        Custom already, and selecting it again starts it."""
         try:
             async with self.service.panel.session() as mdc:
                 await mdc.set_content_source(CONTENT_SOURCE_CUSTOM)
         except MdcError as err:
-            log.info("could not start the panel app after its alarm: %s", err)
+            log.info("could not start the frame's app: %s", err)
             return
-        log.info("panel app silent after its alarm: started it over MDC")
+        log.info("the frame's app was silent: started it over MDC")
 
-    # -- switching the panel over ---------------------------------------------
+    async def _nudge(self) -> None:
+        """The panel does not run the app: install and start it, if the
+        panel answers (asleep it does not, and is left alone)."""
+        if self.ensure_package() is None:
+            return
+        try:
+            await self.install(waking=False)
+        except MdcError as err:
+            log.info("could not start the frame's app: %s", err)
+
+    # -- getting the app onto the panel -----------------------------------------
 
     def app_url(self) -> str:
         return f"{self.service.settings.base_url()}/panel/app"
 
-    async def switch(self, on: bool) -> AppState:
-        """Point the panel's launcher at our app (it installs it at once) or
-        back to the source it had before."""
-        if on and self.package() is None:
-            raise MdcError("no app package uploaded yet")
+    async def install(self, waking: bool = True) -> AppState:
+        """Point the panel's launcher at the app and select it: it installs
+        the package (when the version differs) and starts the app at once.
+        ``waking``: Wake-on-LAN when the panel does not answer."""
+        if self.ensure_package() is None:
+            raise MdcError("no app package: upload the Samsung certificates first")
+        panel = self.service.panel
+        async with panel.waking_session() if waking else panel.session() as mdc:
+            await mdc.set_custom_app_url(self.app_url())
+            await mdc.set_content_source(CONTENT_SOURCE_CUSTOM)
         state = self.state
-        async with self.service.panel.waking_session() as mdc:
-            if on:
-                current = await mdc.content_source()
-                if current != CONTENT_SOURCE_CUSTOM:
-                    state.previous_source = current
-                await mdc.set_custom_app_url(self.app_url())
-                await mdc.set_content_source(CONTENT_SOURCE_CUSTOM)
-            else:
-                source = state.previous_source
-                await mdc.set_content_source(MOBILE_SOURCE if source is None else source)
-        state.active = on
         state.asleep = False
+        state.installed_at = datetime.now(UTC).isoformat(timespec="seconds")
         self._save(state)
-        log.info("panel content source: %s", "Frame app" if on else "back to the previous one")
+        log.info("the panel's launcher points at the frame's app: started it")
         return state
 
     def left(self) -> None:
-        """The panel fetched content.json: it is not running our app."""
+        """The panel fetched content.json: its launcher is on another source
+        (Mobile), not the app. The next tick starts the app again."""
         state = self.state
+        self._nudged = None
         if state.active:
             state.active = False
             state.asleep = False
             self._save(state)
             self.service.status.forget_wifi()
-            log.info("the panel left the Frame app (it fetched content.json)")
+            log.warning("the panel left the frame's app (it fetched content.json)")
+
+
+def _next_version(previous: str | None) -> str:
+    """The next server-built version: x.y.z with z one up, from 2.0.0."""
+    try:
+        parts = tuple(int(p) for p in (previous or "").split("."))
+    except ValueError:
+        parts = ()
+    if len(parts) != 3 or parts < FIRST_BUILD:
+        return ".".join(map(str, FIRST_BUILD))
+    return f"{parts[0]}.{parts[1]}.{parts[2] + 1}"
 
 
 def _s(delta: timedelta) -> int:

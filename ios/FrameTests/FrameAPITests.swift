@@ -100,20 +100,28 @@ final class FrameAPITests: XCTestCase {
     func testPanelAppDecodes() throws {
         let json = """
         {"active": true,
-         "package": {"version": "1.0.0", "size": 24576, "uploaded_at": "2026-10-28T09:00:00+00:00"},
-         "state": {"active": true, "seen_at": "2026-10-28T09:05:00+00:00", "build": "1.0.0",
+         "package": {"version": "2.0.0", "size": 24576, "uploaded_at": "2026-10-28T09:00:00+00:00",
+                     "source": "0123456789ab"},
+         "state": {"active": true, "seen_at": "2026-10-28T09:05:00+00:00", "build": "2.0.0",
                    "code": "abc", "screen": "2560x1440@1", "asleep": true,
                    "wake_at": "2026-10-28T19:00:00+01:00", "standby": false,
-                   "missed_wake": null, "previous_source": 0}}
+                   "missed_wake": null, "installed_at": null},
+         "certificates": [{"role": "author", "subject": "CN=Frame", "expires_at": "2027-10-27T23:59:59+00:00"},
+                          {"role": "distributor", "subject": "CN=Samsung", "expires_at": "2027-10-27T23:59:59+00:00"}],
+         "certificates_expire_at": "2027-10-27T23:59:59+00:00"}
         """
         let app = try LiveBackend.decoder().decode(PanelAppView.self, from: Data(json.utf8))
         XCTAssertTrue(app.active)
         XCTAssertEqual(app.package?.size, 24576)
         XCTAssertEqual(app.state.standby, false)
+        XCTAssertEqual(app.certificates?.map(\.role), ["author", "distributor"])
+        XCTAssertNotNil(app.certificatesExpireAt)
         let status = try LiveBackend.decoder().decode(
-            DeviceStatus.self, from: Data(#"{"configured": true, "panel_app": true}"#.utf8)
+            DeviceStatus.self,
+            from: Data(#"{"configured": true, "panel_app": true, "certificates_expire_at": "2027-10-27T23:59:59+00:00"}"#.utf8)
         )
         XCTAssertEqual(status.panelApp, true)
+        XCTAssertEqual(status.certificatesExpireAt, "2027-10-27T23:59:59+00:00")
     }
 
     func testPanelWifiDecodesAndExplainsAWrongNetwork() throws {

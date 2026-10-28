@@ -20,6 +20,7 @@ struct FrameTabView: View {
                 VStack(alignment: .leading, spacing: 28) {
                     deviceHero
                     statusGrid
+                    appNotice
                     deviceActions
                     if draft != nil {
                         ScheduleSection(settings: binding)
@@ -192,6 +193,27 @@ struct FrameTabView: View {
         case .some(true): return Theme.good
         case .some(false): return Theme.bad
         case .none: return Theme.inkSoft
+        }
+    }
+
+    /// The Frame app on the panel is how pictures reach it: say so when it
+    /// does not run yet, or when its certificates are about to expire.
+    @ViewBuilder private var appNotice: some View {
+        if let device, device.configured {
+            if let expires = device.certificatesExpireAt {
+                NoticeRow(
+                    icon: "exclamationmark.shield",
+                    color: Theme.warn,
+                    text: certificatesText(expires)
+                )
+            }
+            if device.panelApp == false {
+                NoticeRow(
+                    icon: "app.badge",
+                    color: Theme.inkSoft,
+                    text: "Ramka nie uruchomiła jeszcze aplikacji Frame. Serwer sam ją uruchomi, gdy ramka się obudzi; możesz też zrobić to pod trybikiem, w sekcji Aplikacja ramki."
+                )
+            }
         }
     }
 
@@ -443,13 +465,8 @@ struct ScheduleSection: View {
                     }
                 }
                 Divider()
-                // The economy mode needs the frame's own alarm: the Frame app
-                // has one, MDC's is refused on firmware 1130.7 (E13). Without
-                // the app it is only offered to switch back from it.
-                if settings.isEconomy || model.status?.device.panelApp == true {
-                    powerModePicker
-                    Divider()
-                }
+                powerModePicker
+                Divider()
                 row("Zmiana") {
                     Picker("Zmiana", selection: $settings.changeEveryDays) {
                         ForEach(everyDays, id: \.0) { days, label in Text(label).tag(days) }
@@ -493,9 +510,7 @@ struct ScheduleSection: View {
                 Text("do \(settings.quietEnd ?? "—")").foregroundStyle(Theme.inkSoft)
             }
             .font(.subheadline)
-            Text(model.status?.device.alarmRefused == true
-                ? "Cisza trwa do najbliższej zmiany obrazu. Ramka nie przyjmuje budzika, więc w nocy śpi z Wi-Fi gotowym do budzenia, a zdjęcia wysłane w nocy trafiają na nią od razu."
-                : "Cisza trwa do najbliższej zmiany obrazu. Na baterii ramka śpi wtedy z wyłączonym Wi-Fi i budzi się sama na tę zmianę, a zdjęcia wysłane w nocy pojawią się rano. Przy zasilaczu trafiają na ramkę od razu.")
+            Text("Cisza trwa do najbliższej zmiany obrazu. Na baterii ramka śpi wtedy z wyłączonym Wi-Fi i budzi się sama na tę zmianę, a zdjęcia wysłane w nocy pojawią się rano. Przy zasilaczu trafiają na ramkę od razu.")
                 .font(.caption)
                 .foregroundStyle(Theme.inkSoft)
         }
@@ -513,17 +528,11 @@ struct ScheduleSection: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
-            if settings.isEconomy, model.status?.device.alarmRefused == true {
-                Text("Ramka nie przyjmuje budzika, więc na razie działa jak Online.")
-                    .font(.caption)
-                    .foregroundStyle(Theme.warn)
-            } else {
-                Text(settings.isEconomy
-                    ? "Ramka śpi bez Wi-Fi między pobudkami. Wysłane dzieło pojawi się przy najbliższej."
-                    : "Wysłane dzieło pojawia się po około minucie.")
-                    .font(.caption)
-                    .foregroundStyle(Theme.inkSoft)
-            }
+            Text(settings.isEconomy
+                ? "Ramka śpi bez Wi-Fi między pobudkami. Wysłane dzieło pojawi się przy najbliższej."
+                : "Wysłane dzieło pojawia się po około minucie.")
+                .font(.caption)
+                .foregroundStyle(Theme.inkSoft)
         }
     }
 
@@ -1130,7 +1139,7 @@ struct ConnectionSettingsView: View {
                     if let panel = model.panelConfig {
                         PanelSection(config: panel)
                     }
-                    if let app = model.panelApp, app.active || app.package != nil {
+                    if let app = model.panelApp {
                         PanelAppSection(app: app)
                     }
                     ServerSection()
@@ -1278,49 +1287,95 @@ struct PanelSection: View {
     }
 }
 
-/// The Frame app on the panel: switching the frame's content source to it
-/// (it installs at once) or back to the Samsung one.
+/// "Certyfikaty aplikacji ramki wygasają 27 października 2027…".
+func certificatesText(_ expires: String) -> String {
+    let date = When.date(expires)
+    let day = date?.formatted(.dateTime.day().month(.wide).year().locale(Locale(identifier: "pl_PL"))) ?? expires
+    if let date, date < .now {
+        return "Certyfikaty aplikacji ramki wygasły \(day). Odnów je w Certificate Managerze Tizen Studio i wgraj ponownie na serwer, inaczej ramka nie przyjmie nowej wersji aplikacji."
+    }
+    return "Certyfikaty aplikacji ramki wygasają \(day). Odnów je w Certificate Managerze Tizen Studio i wgraj ponownie na serwer."
+}
+
+/// A one-line note under the status tiles.
+struct NoticeRow: View {
+    let icon: String
+    let color: Color
+    let text: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: icon).foregroundStyle(color)
+            Text(text).font(.caption).foregroundStyle(Theme.ink)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// The Frame app on the panel, the only way pictures reach the frame: the
+/// package the server built and signed, what the frame runs, the
+/// certificates, and a button that starts it again.
 struct PanelAppSection: View {
     @Environment(AppModel.self) private var model
     let app: PanelAppView
-    @State private var switching = false
+    @State private var installing = false
+
+    private var certificatesUntil: String? {
+        let dates = (app.certificates ?? []).compactMap { When.date($0.expiresAt) }
+        return dates.min()?.formatted(.dateTime.day().month(.wide).year().locale(Locale(identifier: "pl_PL")))
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             SectionHeader(title: "Aplikacja ramki", subtitle: "Ramka sama się budzi i pobiera obrazy")
             Card {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(app.active ? "Ramka działa w aplikacji Frame" : "Ramka działa w zwykłym trybie Samsunga")
+                    Text(app.active ? "Ramka działa w aplikacji Frame" : "Ramka nie uruchomiła jeszcze aplikacji")
                         .foregroundStyle(Theme.ink)
                     if app.active, let seen = When.ago(app.state.seenAt) {
                         Text("Ostatnio pytała o obraz \(seen)")
                             .font(.caption)
                             .foregroundStyle(Theme.inkSoft)
+                    } else if !app.active {
+                        Text("Serwer uruchamia ją sam, gdy ramka nie śpi.")
+                            .font(.caption)
+                            .foregroundStyle(Theme.inkSoft)
                     }
                 }
-                Text("Z aplikacją ramka ma własny budzik: działa tryb Oszczędny, a zmiany obrazu nie zależą od budzenia przez sieć.")
-                    .font(.caption)
-                    .foregroundStyle(Theme.inkSoft)
                 Divider()
-                Button {
-                    Task {
-                        switching = true
-                        await model.switchPanelApp(!app.active)
-                        switching = false
-                    }
-                } label: {
-                    HStack {
-                        Text(app.active ? "Wróć do zwykłego trybu" : "Przełącz na aplikację Frame")
-                        if switching { ProgressView() }
-                    }
-                }
-                .fontWeight(.semibold)
-                .disabled(switching || (!app.active && app.package == nil))
                 if let package = app.package {
-                    Text("Aplikacja \(package.version) na serwerze\(app.state.build.map { ", na ramce \($0)" } ?? "").")
+                    Text("Wersja \(package.version) zbudowana na serwerze\(app.state.build.map { ", na ramce \($0)" } ?? "").")
+                        .font(.caption)
+                        .foregroundStyle(Theme.inkSoft)
+                } else {
+                    Text("Na serwerze nie ma jeszcze certyfikatów Samsunga, więc nie zbuduje aplikacji. Wgraj je raz z Maca: scripts/panel-app/upload-certs.sh.")
+                        .font(.caption)
+                        .foregroundStyle(Theme.warn)
+                }
+                if let expires = app.certificatesExpireAt {
+                    Text(certificatesText(expires))
+                        .font(.caption)
+                        .foregroundStyle(Theme.warn)
+                } else if let until = certificatesUntil {
+                    Text("Certyfikaty ważne do \(until).")
                         .font(.caption)
                         .foregroundStyle(Theme.inkSoft)
                 }
+                Divider()
+                Button {
+                    Task {
+                        installing = true
+                        await model.installPanelApp()
+                        installing = false
+                    }
+                } label: {
+                    HStack {
+                        Text(app.active ? "Uruchom aplikację ponownie" : "Uruchom aplikację na ramce")
+                        if installing { ProgressView() }
+                    }
+                }
+                .fontWeight(.semibold)
+                .disabled(installing || app.package == nil)
             }
         }
     }

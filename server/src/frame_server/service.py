@@ -16,7 +16,7 @@ from PIL import Image
 from .ai import AiConfigStore, AiWorker, Claude, KeywordsJob, PlTextJob
 from .albums import Albums
 from .config import Settings
-from .device import MdcClient, MdcConnectionError, wol
+from .device import MdcClient, MdcConnectionError, MdcError, wol
 from .imaging import Palette, RenderSettings, get_palette, render, render_multi
 from .imaging.pipeline import encode_image
 from .library import ImageCache, Importer, Library
@@ -26,7 +26,7 @@ from .library.museums import client as museum_client
 from .panel_app import POLL, PanelApp
 from .panel_config import PanelConfigStore
 from .player import Player
-from .power import WAKE_BURST_SECONDS, PowerManager
+from .power import INSTALL_LOOK, WAKE_BURST_SECONDS, PowerManager
 from .progress import ProgressTracker, Stage
 from .rendered import RenderCache, Rendered, render_key
 from .status import StatusMonitor
@@ -75,10 +75,6 @@ class Panel:
         else:
             await wol.wake(self.settings.device_mac, self.settings.device_host)
         return True
-
-    async def set_content_url(self, url: str) -> None:
-        async with self.waking_session() as mdc:
-            await mdc.content_download(url)
 
     @asynccontextmanager
     async def waking_session(self) -> AsyncIterator[MdcClient]:
@@ -229,10 +225,6 @@ class FrameService:
         task.add_done_callback(self._tasks.discard)
         return task
 
-    def content_url(self, file_id: str) -> str:
-        # The query only changes the URL per push; the server ignores it.
-        return f"{self.settings.base_url()}/panel/content.json?v={file_id}"
-
     def prepare(
         self,
         image: bytes | list[bytes],
@@ -313,82 +305,43 @@ class FrameService:
         return self.rendered.get(key, make)
 
     async def push_current(self, wait: float = 90.0) -> PushOutcome:
+        """The frame's app asks for its pictures (panel_app.py): awake (on the
+        charger) it does within seconds; asleep with the Wi-Fi on, Wake-on-LAN
+        makes it ask, unless its alarm rings for this very change; in deep
+        sleep the picture waits for the alarm. A panel that does not run the
+        app gets it installed and started first."""
         content = self.store.current()
         if content is None:
             raise RuntimeError("nothing published yet")
-        url = self.content_url(content.file_id)
-        progress = self.progress
-        self.power.cancel_light_sleep()
+        url = f"{self.settings.base_url()}{self.app.image_path(content)}"
+        app, power, progress = self.app, self.power, self.progress
         if not progress.active:
             progress.begin(content.title, render=False)
         progress.advance(Stage.SENDING)
-        if self.app.active:
-            return await self._push_to_app(content, url, wait)
-        if self.power.deep_asleep(datetime.now(UTC)):
-            # Wi-Fi off until the alarm: the picture goes out when it rings.
-            self.power.mark_pending(True)
-            wakes = self.power.state.timer or "the end of quiet hours"
-            message = f"panel asleep until {wakes}, the picture will follow"
-            progress.finish(Stage.WAITING, message)
-            return PushOutcome(content, False, False, url, message)
-        if wait:
-            self.store.expect_fetch(content.file_id)
-        asleep = self.status.sleeping
-        try:
-            await self.panel.set_content_url(url)
-        except MdcConnectionError as err:
-            self.store.cancel_fetch(content.file_id)
-            self.power.mark_pending(True)
-            message = f"panel unreachable ({err}), the picture waits for it to wake"
-            progress.finish(Stage.WAITING, message)
-            return PushOutcome(content, False, False, url, message)
-        except BaseException as err:
-            self.store.cancel_fetch(content.file_id)
-            self.store.note_failed(content.file_id, "error", str(err))
-            progress.finish(Stage.FAILED, str(err))
-            raise
-        self.power.mark_pending(False)
-        if asleep or self.panel.woke:
-            self.power.put_back_to_sleep()
-        progress.advance(Stage.DOWNLOADING)
-        fetched = await self.store.wait_for_fetch(content.file_id, wait) if wait else False
-        self.status.note_push(fetched)
-        self.power.after_push(fetched)
-        message = "" if fetched or not wait else "panel did not download the image in time"
-        if fetched:
-            progress.advance(Stage.REFRESHING)
-        elif wait:
-            self.store.note_failed(content.file_id, "timeout", message)
-            progress.finish(Stage.FAILED, message)
-        else:
-            progress.finish(Stage.DONE, "sent, not waiting for the download")
-        return PushOutcome(content, pushed=True, fetched=fetched, content_url=url, message=message)
-
-    async def _push_to_app(self, content: ContentInfo, url: str, wait: float) -> PushOutcome:
-        """The Frame app asks for its pictures: awake (on the charger) it
-        does within seconds; asleep with the Wi-Fi on, Wake-on-LAN makes it
-        ask, unless its alarm rings for this very change; in deep sleep the
-        picture waits for the alarm."""
-        app, power, progress = self.app, self.power, self.progress
         file_id = content.file_id
         now = datetime.now(UTC)
         wake = app.wakes_at()
         ringing = wake is not None and abs(wake - now) < WAKE_SOON
         self.store.expect_fetch(file_id)
         burst: asyncio.Task[bool] | None = None
-        if not app.asleep():
-            timeout = max(wait, POLL.total_seconds() + 30)
-        elif ringing:
-            assert wake is not None
-            timeout = max(wait, (wake - now).total_seconds() + 120)
-        elif not app.deep_asleep() and self.settings.device_mac:
-            progress.advance(Stage.WAKING)
-            burst = asyncio.create_task(self.panel.wake(seconds=WAKE_BURST_SECONDS))
-            timeout = WAKE_BURST_SECONDS + 60
-        else:
-            timeout = 0
+        timeout = 0.0
         try:
+            if not app.active:
+                await app.install()  # wakes the panel if need be
+                timeout = max(wait, INSTALL_LOOK.total_seconds())
+            elif not app.asleep():
+                timeout = max(wait, POLL.total_seconds() + 30)
+            elif ringing:
+                assert wake is not None
+                timeout = max(wait, (wake - now).total_seconds() + 120)
+            elif not app.deep_asleep() and self.settings.device_mac:
+                progress.advance(Stage.WAKING)
+                burst = asyncio.create_task(self.panel.wake(seconds=WAKE_BURST_SECONDS))
+                timeout = WAKE_BURST_SECONDS + 60
             fetched = await self.store.wait_for_fetch(file_id, timeout) if timeout else False
+        except MdcError as err:
+            log.info("could not start the frame's app for a picture: %s", err)
+            fetched = False
         finally:
             self.store.cancel_fetch(file_id)
             if burst is not None:

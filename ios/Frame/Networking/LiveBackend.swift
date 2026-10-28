@@ -362,10 +362,9 @@ struct LiveBackend: FrameBackend {
 
     func panelApp() async throws -> PanelAppView { try await get("/api/device/app") }
 
-    func switchPanelApp(on: Bool) async throws -> PanelAppView {
+    func installPanelApp() async throws -> PanelAppView {
         // A sleeping panel is woken first (one to three minutes on battery).
-        let query = [URLQueryItem(name: "on", value: on ? "true" : "false")]
-        var req = request("/api/device/app/switch", method: "POST", query: query)
+        var req = request("/api/device/app/install", method: "POST")
         req.timeoutInterval = 240
         return try await perform(req)
     }

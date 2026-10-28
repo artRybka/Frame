@@ -462,20 +462,19 @@ struct DeviceStatus: Codable, Hashable, Sendable {
     var wakesAt: String?
     /// The same alarm as a moment, for "Teraz" (missing before 0.26).
     var wakeAt: String?
-    /// The frame refused its alarm: it cannot wake itself, so it never
-    /// sleeps with the Wi-Fi off (the economy mode works as online).
-    var alarmRefused: Bool?
     /// "online" | "standby" | "deep_sleep" | "offline"; missing from servers before 0.12.
     var powerState: String?
     /// Not answering, yet still on the Wi-Fi (answers ARP): asleep, not gone.
     /// Nil when not asked or when the server cannot tell; missing before 0.15.
     var onNetwork: Bool?
     /// The frame runs the Frame app: it asks for its pictures and wakes by
-    /// its own alarm, so the economy mode works.
+    /// its own alarm. False: not seen asking yet, the server is starting it.
     var panelApp: Bool?
-    /// Its Wi-Fi as the Frame app last read it; nil in the Mobile mode (no
-    /// app) and from servers before 0.26.
+    /// Its Wi-Fi as the Frame app last read it; nil before the app reported
+    /// it and from servers before 0.26.
     var wifi: PanelWifi?
+    /// The Samsung certificates the app is signed with expire soon (or did).
+    var certificatesExpireAt: String?
 }
 
 /// The frame's Wi-Fi, read by the Frame app on the panel at every wake.
@@ -525,18 +524,30 @@ struct PanelWifi: Codable, Hashable, Sendable {
     }
 }
 
-/// The Frame app on the panel (Samsung "Custom" content source).
+/// The Frame app on the panel (Samsung "Custom" content source): the only
+/// way pictures reach the frame.
 struct PanelAppView: Codable, Hashable, Sendable {
     var active: Bool
     var package: PanelAppPackage?
     var state: PanelAppState
+    /// The Samsung certificates on the server; missing before 0.27.
+    var certificates: [PanelCertificate]?
+    /// Set when they expire within two months (or already have).
+    var certificatesExpireAt: String?
 }
 
-/// The signed package the server holds for the panel.
+/// The package the server built and signed for the panel.
 struct PanelAppPackage: Codable, Hashable, Sendable {
     var version: String
     var size: Int
     var uploadedAt: String
+}
+
+/// One of the two Samsung certificates (author, distributor).
+struct PanelCertificate: Codable, Hashable, Sendable {
+    var role: String
+    var subject: String
+    var expiresAt: String
 }
 
 struct PanelAppState: Codable, Hashable, Sendable {
@@ -547,6 +558,7 @@ struct PanelAppState: Codable, Hashable, Sendable {
     var wakeAt: String?
     var standby: Bool?
     var missedWake: String?
+    var installedAt: String?
 }
 
 /// "Obudź ramkę": whether the magic packets went out and the panel answered.

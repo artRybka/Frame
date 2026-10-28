@@ -1,14 +1,14 @@
 """The panel's address, PIN and MAC, set in the app (Ramka → Ekran), and
-the Frame app it can run instead of being sent pictures (panel_app.py)."""
+the frame's app it runs (panel_app.py)."""
 
 from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
 from ..device import MdcError
-from ..panel_app import AppView, PackageInfo
+from ..panel_app import AppView
 from ..panel_config import PanelConfigUpdate, PanelConfigView
 from ..service import FrameService
 from .deps import require_token, service
@@ -51,25 +51,32 @@ def get_app(svc: Svc) -> AppView:
     return svc.app.view()
 
 
-@router.put("/app/package", response_model=PackageInfo)
-async def put_app_package(version: str, request: Request, svc: Svc) -> PackageInfo:
-    """The package signed on the Mac (``scripts/panel-app/pack.sh --upload``)."""
-    data = await request.body()
-    if not data.startswith(b"PK"):
-        raise HTTPException(400, "not a .wgt package (zip)")
-    # The app reboots the panel to install it at its next question.
-    return svc.app.store_package(data, version)
+@router.put("/app/certificates", response_model=AppView)
+async def put_certificates(
+    author: Annotated[UploadFile, File()],
+    distributor: Annotated[UploadFile, File()],
+    password: Annotated[str, Form()],
+    svc: Svc,
+) -> AppView:
+    """The Samsung certificates the frame's app is signed with (author.p12,
+    distributor.p12 and their password, ``scripts/panel-app/upload-certs.sh``):
+    kept in the data directory only; the server builds the package with them."""
+    try:
+        return svc.app.store_certificates(
+            await author.read(), await distributor.read(), password.encode()
+        )
+    except ValueError as err:
+        raise HTTPException(400, f"certificates: {err}") from err
 
 
-@router.post("/app/switch", response_model=AppView)
-async def switch_app(on: bool, svc: Svc) -> AppView:
-    """The panel's launcher to the Frame app (installs it at once) or back."""
+@router.post("/app/install", response_model=AppView)
+async def install_app(svc: Svc) -> AppView:
+    """Point the panel's launcher at the frame's app and start it (installs
+    it when the panel has another version)."""
     if not svc.device_configured:
         raise HTTPException(409, "panel not configured")
     try:
-        await svc.app.switch(on)
+        await svc.app.install()
     except MdcError as err:
         raise HTTPException(502, f"panel: {err}") from err
-    if not on:
-        svc.background(svc.push_current())  # its pictures come by MDC again
     return svc.app.view()

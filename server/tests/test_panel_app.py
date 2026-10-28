@@ -7,6 +7,7 @@ import asyncio
 import io
 import json
 import ssl
+import zipfile
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -29,6 +30,32 @@ from frame_server.store import PanelRequest
 from frame_server.web.player_api import _player_view
 
 WARSAW = ZoneInfo("Europe/Warsaw")
+PASSWORD = "secret"
+
+
+def _p12(name: str, days: int = 365) -> bytes:
+    """A self-signed RSA key and certificate as a .p12, like the Samsung ones."""
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from cryptography.hazmat.primitives.serialization import pkcs12
+    from cryptography.x509.oid import NameOID
+
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    subject = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, name)])
+    now = datetime.now(UTC)
+    cert = (
+        x509.CertificateBuilder()
+        .subject_name(subject)
+        .issuer_name(subject)
+        .public_key(key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now - timedelta(days=1))
+        .not_valid_after(now + timedelta(days=days))
+        .sign(key, hashes.SHA256())
+    )
+    encryption = serialization.BestAvailableEncryption(PASSWORD.encode())
+    return pkcs12.serialize_key_and_certificates(name.encode(), key, cert, None, encryption)
 
 
 def _at(text: str) -> datetime:
@@ -126,8 +153,6 @@ def test_economy_wakes_for_checks_with_the_wifi_off(tmp_path: Path) -> None:
     assert answer.action == "sleep"
     assert answer.standby == "OFF"
     assert answer.wake_at == _at("2026-10-28T15:00").isoformat()
-    assert service.power.economy  # the app's alarm works, unlike MDC's
-    assert not service.status.status.alarm_refused
 
 
 def test_charger_stays_awake_and_a_change_is_waited_for(tmp_path: Path) -> None:
@@ -139,7 +164,6 @@ def test_charger_stays_awake_and_a_change_is_waited_for(tmp_path: Path) -> None:
     assert not service.app.asleep()
 
     # "Uśpij ramkę": it sleeps at its next question, even on the charger.
-    service.power.cancel_light_sleep()
     service.app.request_sleep()
     assert service.app.answer(AppHello(charging=True), now=now).action == "sleep"
 
@@ -224,30 +248,61 @@ def server_ssl() -> ssl.SSLContext:
     return ctx
 
 
-async def test_switch_the_panel_to_the_app_and_back(
+async def test_the_server_installs_and_starts_the_app(
     tmp_path: Path, server_ssl: ssl.SSLContext
 ) -> None:
-    def handler(command: int, data: bytes) -> tuple[bool, bytes]:
-        if command == CMD_CONTENT_DOWNLOAD and data == b"\x81":
-            return True, b"\x81\x00"  # Mobile
-        return True, data
-
-    panel = FakePanel(server_ssl, handler=handler)
+    panel = FakePanel(server_ssl)
     await panel.start()
     try:
         service = _service(tmp_path, panel.port)
-        with pytest.raises(Exception, match="no app package"):
-            await service.app.switch(True)
-        service.app.store_package(b"PK\x03\x04signed", "1.0.0")
-        await service.app.switch(True)
-        assert (CMD_CONTENT_DOWNLOAD, b"\x82http://127.0.0.1:8099/panel/app") in panel.received
-        assert panel.received[-1] == (CMD_CONTENT_DOWNLOAD, b"\x81\x01")
-        assert service.app.active and service.app.state.previous_source == 0
-        assert service.status.status.panel_app
+        with pytest.raises(Exception, match="certificates"):
+            await service.app.install()
+        service.app.store_package(b"PK\x03\x04signed", "2.0.0")
+        await service.app.install()
+        assert panel.received == [
+            (CMD_CONTENT_DOWNLOAD, b"\x82http://127.0.0.1:8099/panel/app"),
+            (CMD_CONTENT_DOWNLOAD, b"\x81\x01"),
+        ]
+        assert not service.app.active  # until it asks
+        service.app.answer(AppHello(reason="start", build="2.0.0", charging=True))
+        assert service.app.active and service.status.status.panel_app
+    finally:
+        await panel.stop()
 
-        await service.app.switch(False)
-        assert panel.received[-1] == (CMD_CONTENT_DOWNLOAD, b"\x81\x00")
-        assert not service.app.active
+
+async def test_the_server_starts_the_app_when_the_panel_does_not_run_it(
+    tmp_path: Path, server_ssl: ssl.SSLContext
+) -> None:
+    panel = FakePanel(server_ssl)
+    await panel.start()
+    try:
+        service = _service(tmp_path, panel.port)
+        app = service.app
+        now = _at("2026-10-28T21:00")
+        await service.power.tick(now)
+        assert panel.received == []  # no package to install
+        app.store_package(b"PK\x03\x04signed", "2.0.0")
+        await service.power.tick(now + timedelta(seconds=5))
+        assert panel.received == []  # not again so soon
+        await service.power.tick(now + timedelta(minutes=5))
+        assert panel.received[-1] == (CMD_CONTENT_DOWNLOAD, b"\x81\x01")
+
+        # It runs, on the charger, asking every 20 s ... then falls silent:
+        # restarted a few times, then left alone (most likely unplugged).
+        panel.received.clear()
+        app.answer(AppHello(reason="start", build="2.0.0", charging=True), now=now)
+        await service.power.tick(now + timedelta(minutes=2))
+        assert panel.received == []
+        for minutes in (4, 5, 7, 9, 11, 13):
+            await service.power.tick(now + timedelta(minutes=minutes))
+        assert panel.received == [(CMD_CONTENT_DOWNLOAD, b"\x81\x01")] * 3
+
+        # The panel fell back to Mobile and fetched content.json: started again.
+        panel.received.clear()
+        app.left()
+        assert not app.active
+        await service.power.tick(now + timedelta(minutes=14))
+        assert panel.received[-1] == (CMD_CONTENT_DOWNLOAD, b"\x81\x01")
     finally:
         await panel.stop()
 
@@ -260,17 +315,24 @@ def test_panel_routes(tmp_path: Path) -> None:
     svc = app.state.service
     with TestClient(app) as client:
         assert client.get("/panel/app/sssp_config.xml").status_code == 404
+        author, distributor = _p12("Author"), _p12("Distributor")
+        files = {"author": ("author.p12", author), "distributor": ("distributor.p12", distributor)}
+        wrong = client.put("/api/device/app/certificates", files=files, data={"password": "no"})
+        assert wrong.status_code == 400
         put = client.put(
-            "/api/device/app/package",
-            params={"version": "1.0.0"},
-            content=b"PK\x03\x04signed",
+            "/api/device/app/certificates", files=files, data={"password": PASSWORD + "\n"}
         )
         assert put.status_code == 200, put.text
+        assert [c["role"] for c in put.json()["certificates"]] == ["author", "distributor"]
+        assert put.json()["package"]["version"] == "2.0.0"
         config = client.get("/panel/app/sssp_config.xml").text
-        assert "<ver>1.0.0</ver>" in config and "<size>10</size>" in config
-        assert "<widgetname>Frame</widgetname>" in config
+        assert "<ver>2.0.0</ver>" in config and "<widgetname>Frame</widgetname>" in config
         assert "<webtype>tizen</webtype>" in config
-        assert client.get("/panel/app/Frame.wgt").content == b"PK\x03\x04signed"
+        wgt = client.get("/panel/app/Frame.wgt").content
+        assert f"<size>{len(wgt)}</size>" in config
+        with zipfile.ZipFile(io.BytesIO(wgt)) as z:
+            assert 'version="2.0.0"' in z.read("config.xml").decode()
+            assert b"http://127.0.0.1:8099" in z.read("config.js")
         code = client.get("/panel/app/app.js")
         assert code.text.startswith("window.FRAME_CODE = ")
 
@@ -290,7 +352,8 @@ def test_panel_routes(tmp_path: Path) -> None:
         assert client.post("/panel/report", content='{"event": "shown"}').status_code == 200
         assert client.get("/api/device/app").json()["active"]
 
-        # Back in the Mobile source the panel fetches content.json again.
+        # Fallen back to the Mobile source the panel fetches content.json:
+        # it still gets the picture, and the server starts the app again.
         assert client.get("/panel/content.json").status_code == 200
         assert not svc.app.active
 
@@ -337,16 +400,16 @@ async def test_a_new_package_is_installed_by_a_reboot(
     try:
         service = _service(tmp_path, panel.port)
         app = service.app
-        app.store_package(b"PK\x03\x04signed", "1.1.0")
+        app.store_package(b"PK\x03\x04signed", "2.0.1")
         now = _at("2026-10-28T21:00")
-        hello = AppHello(reason="poll", build="1.0.0", charging=True)
+        hello = AppHello(reason="poll", build="2.0.0", charging=True)
         assert app.answer(hello, now=now).action == "reboot"
         # Installed, not started: the server starts it a minute later.
         await service.power.tick(now + timedelta(seconds=70))
         assert panel.received == [(CMD_CONTENT_DOWNLOAD, b"\x81\x01")]
         # Once per version: a package that does not install reboots no more.
         assert app.answer(hello, now=now + timedelta(minutes=2)).action == "stay"
-        new = AppHello(reason="start", build="1.1.0", charging=True)
+        new = AppHello(reason="start", build="2.0.1", charging=True)
         assert app.answer(new, now=now + timedelta(minutes=3)).action == "stay"
     finally:
         await panel.stop()
@@ -392,3 +455,46 @@ def test_wifi_report_shows_in_the_status_until_the_panel_leaves_the_app(tmp_path
         assert client.get("/api/device/status").json()["wifi"]["wrong_network"]
         assert client.get("/panel/content.json").status_code == 200
         assert client.get("/api/device/status").json()["wifi"] is None
+
+
+def test_the_package_is_built_here_and_the_certificates_watched(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from frame_server import panel_app
+    from frame_server.panel_app import _next_version
+
+    assert _next_version(None) == "2.0.0"
+    assert _next_version("1.2.0") == "2.0.0"  # signed by hand on the Mac
+    assert _next_version("2.0.7") == "2.0.8"
+    assert _next_version("odd") == "2.0.0"
+
+    service = _service(tmp_path)
+    app = service.app
+    assert app.ensure_package() is None  # no certificates yet
+    view = app.store_certificates(_p12("Author", days=400), _p12("Distributor", days=30), b"secret")
+    assert view.package is not None and view.package.version == "2.0.0"
+    stored = tmp_path / "panel-app" / "certs"
+    names = sorted(p.name for p in stored.iterdir())
+    assert names == [".password", "author.p12", "distributor.p12"]
+    assert all(p.stat().st_mode & 0o077 == 0 for p in stored.iterdir())
+    # The distributor certificate expires within 60 days: the app warns.
+    assert view.certificates_expire_at is not None
+    assert service.status.status.certificates_expire_at == view.certificates_expire_at
+
+    with zipfile.ZipFile(app.package_path()) as z:
+        names = z.namelist()
+        assert names[-2:] == ["author-signature.xml", "signature1.xml"]
+        author = z.read("author-signature.xml").decode()
+        assert "#role-author" in author and 'URI="config.xml"' in author
+        assert 'URI="author-signature.xml"' in z.read("signature1.xml").decode()
+
+    # Nothing changed: the same package. A new page: a new version.
+    assert app.ensure_package() == app.package()
+    index = tmp_path / "index.html"
+    index.write_text("<html>new</html>")
+    original = panel_app.APP_DIR
+    monkeypatch.setattr(panel_app, "APP_DIR", tmp_path)
+    for name in ("config.xml", "app.js"):
+        (tmp_path / name).write_bytes((original / name).read_bytes())
+    rebuilt = app.ensure_package()
+    assert rebuilt is not None and rebuilt.version == "2.0.1"

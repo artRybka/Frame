@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import time
-from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends
@@ -111,14 +110,14 @@ def _delivery(svc: FrameService, content: ContentInfo | None) -> Delivery:
     common: dict[str, Any] = {"on_frame": on_frame, "shown_at": record.shown_at}
     if svc.player.busy or svc.progress.active:
         return Delivery(state="sending", **common)
-    power = svc.power.state
-    if power.pending_push:
-        until = svc.power.wakes_at(datetime.now(UTC))
+    if svc.power.state.pending_push:
+        until = svc.app.wakes_at()
+        tz = svc.player.settings.tz()
         return Delivery(
             state="waiting",
-            asleep_until=power.timer if until else None,
+            asleep_until=until.astimezone(tz).strftime("%H:%M") if until else None,
             asleep_until_at=until.isoformat(timespec="seconds") if until else None,
-            missed_wake_at=power.missed_wake,
+            missed_wake_at=svc.app.state.missed_wake,
             **common,
         )
     failed = record.failed_file_id == content.file_id

@@ -432,18 +432,38 @@ komunikat), dopiero wtedy ustawia network standby i budzik i zasypia. Gdy
 przez długie pobieranie do pobudki zostały mniej niż 2 minuty, pyta serwer
 od nowa zamiast zasypiać.
 
-**Instalacja i aktualizacje aplikacji.** Pierwsza instalacja: Konfiguracja →
-Aplikacja ramki → „Przełącz na aplikację Frame” (serwer wysyła `0xC7 82
-<adres>/panel/app` i `0xC7 81 01`, launcher od razu instaluje). Logika
-(`app.js`) przychodzi z serwera przy każdym starcie, więc zwykłe zmiany nie
-wymagają nowej paczki. Nowa paczka tylko przy zmianie `config.xml` albo
-`index.html`: `scripts/panel-app/pack.sh WERSJA --upload <token>` na Macu
-(podpis tylko tam) i dalej samo: serwer podaje nową `<ver>` w
-`sssp_config.xml`, a gdy aplikacja zapyta z inną wersją, odpowiada `reboot`.
-Aplikacja woła `webapis.systemcontrol.rebootDevice()`, launcher po restarcie
-instaluje nową wersję, ale jej nie uruchamia, więc serwer po 60 s ciszy
-wysyła `0xC7 81 01` (sprawdzone 2026-10-28 21:00). Restart najwyżej raz na
-wersję, żeby paczka, która się nie instaluje, nie restartowała ramki w kółko.
+**Instalacja i aktualizacje aplikacji.** Od 0.27.0 serwer sam buduje
+i podpisuje paczkę (`server/src/frame_server/panel_package.py`, ten sam podpis
+W3C co `scripts/wakeprobe/sign_wgt.py`, wynik bajt w bajt identyczny)
+certyfikatami Samsunga wgranymi raz do katalogu danych (`panel-app/certs/`,
+pliki z prawami 600; nigdy w repozytorium ani w logu). Nowa wersja (2.0.0,
+2.0.1, …) powstaje przy starcie serwera albo przy pytaniu aplikacji, gdy
+zmieni się `config.xml`, `index.html` albo adres serwera (trafia do
+`config.js`). Logika (`app.js`) przychodzi z serwera przy każdym starcie, więc
+zwykłe zmiany nie wymagają nowej paczki. Gdy aplikacja zapyta z inną wersją,
+serwer odpowiada `reboot`: aplikacja woła
+`webapis.systemcontrol.rebootDevice()`, launcher po restarcie instaluje nową
+wersję, ale jej nie uruchamia, więc serwer po 60 s ciszy wysyła `0xC7 81 01`
+(sprawdzone 2026-10-28 21:00). Restart najwyżej raz na wersję, żeby paczka,
+która się nie instaluje, nie restartowała ramki w kółko. Certyfikaty są ważne
+do 2027-10-27; 60 dni wcześniej aplikacja iOS pokazuje ostrzeżenie w zakładce
+Ramka i w Konfiguracji → Aplikacja ramki.
+
+**Tylko aplikacja, bez trybu Mobile (od 0.27.0, decyzja Mateusza
+2026-10-28).** Serwer nie wysyła już obrazów przez `0xC7 53 80`
+(`content.json`) i nie usypia ramki przez MDC (budzik `0x25`, cisza nocna,
+lekki sen po obrazie): robi to aplikacja. Gdy ramka nie uruchamia aplikacji
+(pierwsze uruchomienie, albo pobrała `content.json`, czyli wróciła do Mobile),
+serwer co 5 minut, gdy ramka odpowiada, wysyła `0xC7 82 <adres>/panel/app`
+i `0xC7 81 01`; tak samo przed wysłaniem obrazu i przy „Obudź ramkę”
+(wtedy z Wake-on-LAN). Gdy obudzona aplikacja milczy dłużej niż 3 minuty
+(zawiesiła się), serwer trzy razy co 2 minuty uruchamia ją od nowa
+`0xC7 81 01`, potem uznaje, że ramka śpi (odłączona od ładowarki usypia od
+razu, E8). `/panel/content.json` zostaje, żeby ramka, która wróciła do
+Mobile, pokazała bieżący obraz, zanim serwer znów uruchomi aplikację.
+W Konfiguracji → Aplikacja ramki zamiast przełącznika jest stan aplikacji,
+wersje, ważność certyfikatów i „Uruchom aplikację ponownie”
+(`POST /api/device/app/install`).
 
 **Wysyłka z aplikacji iOS** w trybie aplikacji: bez `0xC7`. Aplikacja
 obudzona (ładowarka) pobiera obraz przy najbliższym pytaniu; uśpiona z Wi-Fi
@@ -452,29 +472,27 @@ WoL zawiedzie obraz czeka do pobudki, a „Teraz” pokazuje jej godzinę. Gdy
 budzik ramki dzwoni w ciągu 3 minut (zmiana z harmonogramu), serwer nie
 budzi jej przez WoL, tylko czeka.
 
-**Instalacja (raz, na Macu z profilem `frame`):**
+**Certyfikaty na serwer (raz, i ponownie po odnowieniu):**
 
-1. Serwer z tą zmianą na Synology (Projekt → frame → Kompiluj).
-2. `scripts/panel-app/pack.sh 1.0.0 --upload <token API>`: buduje, podpisuje
-   i wysyła paczkę na serwer (`PUT /api/device/app/package`), adres serwera
-   domyślnie `http://192.100.3.185:8099` (`--server` zmienia). Ten adres
-   trafia do paczki (`config.js`).
-3. W aplikacji: Konfiguracja → Aplikacja ramki → „Przełącz na aplikację
-   Frame”. Serwer zapamiętuje dotychczasowe źródło (`0xC7 81`), ustawia
-   `0xC7 82 http://192.100.3.185:8099/panel/app` i `0xC7 81 01`; ramka od
-   razu instaluje paczkę. „Wróć do zwykłego trybu” ustawia poprzednie źródło
-   i wysyła obraz przez `0xC7 53 80`. Pobranie `content.json` przez ramkę
-   też oznacza dla serwera, że aplikacja już nie działa.
-
-Gdy ramka działa w aplikacji, w Harmonogramie wraca przełącznik „Tryb pracy”
-(Online / Oszczędny), a ostrzeżenie o odrzuconym budziku znika.
+1. Serwer 0.27.0+ na Synology (Projekt → frame → Kompiluj).
+2. Na Macu, w katalogu repozytorium:
+   `scripts/panel-app/upload-certs.sh <token API>`. Skrypt bierze
+   `author.p12`, `distributor.p12` i `.password` z `~/SamsungCertificate/frame`
+   (`--dir` zmienia), wysyła je na `http://192.100.3.185:8099` (`--server`
+   zmienia, `PUT /api/device/app/certificates`) i wypisuje ich ważność oraz
+   wersję zbudowanej paczki. Serwer sprawdza hasło przed zapisaniem.
+3. Od tej chwili Mac nie jest potrzebny: serwer uruchamia aplikację na
+   ramce, gdy ta się obudzi.
 
 **Do sprawdzenia na ramce:** sposób na obraz 1:1 (wyżej), czy logika ładuje się z serwera
 (`code` w raportach inny niż `local`), czy budzik budzi przy network standby
 `OFF`, czy WoL wznawia aplikację w trybie Custom, jak aplikacja zachowuje się
 na ładowarce (czy „Sleep After” jej nie usypia).
 
-## Polityka zasilania (wdrożona, `server/src/frame_server/power.py`)
+## Polityka zasilania przez MDC (tryb Mobile, usunięta w 0.27.0)
+
+Historia: tak serwer usypiał i budził ramkę w trybie Mobile. Od 0.27.0 robi to
+aplikacja ramki (wyżej), a `power.py` tylko odpowiada na jej pytania.
 
 2026-10-25: ekran był połączony z siecią 5 GHz, co najpewniej tłumaczy wynik
 E8. Zakładamy przejście na 2,4 GHz. Mateusz ustalił zasadę:
@@ -608,6 +626,9 @@ uvloop (instaluje ją `uvicorn[standard]`), a uvloop nie ma
 też. Poprawka: zwykłe `sendto` (datagram nie czeka) i test na uvloop.
 
 ## Tryb Oszczędny
+
+Od 0.27.0 działa przez aplikację ramki (jej budzik), a nie przez MDC `0x25`;
+opis niżej to historia wersji przez MDC.
 
 2026-10-27, prośba Mateusza: tryb pracy wybierany w Ramka → Harmonogram,
 „Online” (jak dotąd) albo „Oszczędny” (`power_mode: economy`). Cel: dużo

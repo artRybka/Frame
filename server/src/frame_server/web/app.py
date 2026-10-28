@@ -100,6 +100,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 asyncio.create_task(sync_albums_periodically(service)),
             ]
             service.ai.start()
+        service.app.ensure_package()  # built and signed here (panel_package.py)
         seed_playlists(service.importer)
         service.albums.migrate()  # once: the album of older settings becomes a playlist
         service.player.reset_library()  # once: a clean start for the catalogue
@@ -138,7 +139,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             # The Frame app's page is a file:// origin.
             response.headers["Access-Control-Allow-Origin"] = "*"
         if request.url.path == "/panel/content.json" and response.status_code == 200:
-            service.app.left()  # the panel's own launcher, not our app
+            service.app.left()  # another source (Mobile): the app is started again
         if request.url.path.startswith("/panel/") or request.url.path == PROGRESS_PATH:
             entry = PanelRequest(
                 time=datetime.now(UTC).isoformat(timespec="milliseconds"),
@@ -159,6 +160,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/panel/content.json")
     def panel_manifest() -> Response:
+        """The Mobile source's manifest. The frame runs our app; this only
+        keeps a panel that fell back to Mobile showing the current picture
+        until the server has started the app again."""
         manifest = service.store.manifest(settings.base_url())
         if manifest is None:
             raise HTTPException(404)

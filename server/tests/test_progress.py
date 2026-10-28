@@ -186,29 +186,40 @@ def test_waiting_and_failing_keep_their_reason() -> None:
 async def test_unreachable_panel_leaves_the_picture_waiting(service) -> None:
     service.settings.device_host, service.settings.device_pin = "127.0.0.1", "1"
 
-    async def unreachable(url: str) -> None:
+    async def unreachable(waking: bool = True) -> None:
         raise MdcConnectionError("no route")
 
-    service.panel.set_content_url = unreachable  # type: ignore[method-assign]
+    service.app.install = unreachable  # type: ignore[method-assign]
     outcome = await service.push_current(wait=1)
     assert not outcome.pushed
     view = service.progress.view()
-    assert view.stage == Stage.WAITING and "unreachable" in (view.message or "")
+    assert view.stage == Stage.WAITING and "when it wakes" in (view.message or "")
+    assert service.power.state.pending_push
 
 
 async def test_fetched_picture_is_refreshing(service) -> None:
+    import asyncio
+
+    from frame_server.panel_app import AppHello
+
     service.settings.device_host, service.settings.device_pin = "127.0.0.1", "1"
+    service.app.answer(AppHello(charging=True))  # awake on the charger
     stages: list[Stage] = []
 
-    async def panel_fetches(url: str) -> None:
+    async def app_fetches() -> None:
+        await asyncio.sleep(0.1)
         stages.append(service.progress.view().stage)
         content = service.store.current()
         service.store._fetch_waiters[content.file_id].set()
 
-    service.panel.set_content_url = panel_fetches  # type: ignore[method-assign]
+    fetch = asyncio.create_task(app_fetches())
     outcome = await service.push_current(wait=5)
+    await fetch
     assert outcome.fetched
     assert stages == [Stage.SENDING]
+    assert service.progress.view().stage == Stage.DOWNLOADING
+    service.app.report("shown", {"file_id": outcome.content.file_id})
+    await asyncio.sleep(0.05)
     assert service.progress.view().stage == Stage.REFRESHING
 
 
