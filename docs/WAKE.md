@@ -167,6 +167,23 @@ firmware 1130.7, ramka na baterii, network standby wł.
 - Bateria: od 92% (00:09) do 70% (02:18) przy ciągłych testach (ramka
   obudzona większość czasu, wiele odświeżeń ekranu).
 
+**Wyświetlanie obrazu (rano 2026-10-28, przy ramce):**
+
+- Wbudowanego odtwarzacza (Mobile, 1:1) nie da się łączyć z aplikacją:
+  po wysyłce `0xC7 53 80` w trybie Custom na ekranie została strona
+  aplikacji; `hide()` nie przerysowuje ekranu; po `exit()` launcher
+  uruchamia aplikację ponownie w ok. 10 s, także po przełączeniu `0xC7 81`
+  na `02` (Mobile). Wartości `0xC7 81`: `01` Custom, `02` Mobile, `00` czarny
+  ekran. `avplay`/`epavplay` odrzucają PNG (`PLAYER_ERROR_NOT_SUPPORTED_FILE`).
+- **Działa obraz rysowany przez aplikację:** JPEG 1920×1080 w `<img>` na
+  cały ekran; ramka powiększa go do 2560×1440 i sama ditheruje (wygląd jak
+  passthrough). Tekst czytelny od ok. 16 px, linie 2–4 px czyste, 1 px
+  miękkie. Mateusz: „nie jest źle, ale na drobnych liniach 1px widać brak
+  ostrości”.
+- E-papier **nie** odświeża się sam po doczytaniu obrazka: po `img.onload`
+  trzeba zmienić styl (np. `opacity` 0.99 i z powrotem 1 po 300 ms).
+  `screenRefreshNow()` rzuca `UnknownError`.
+
 **Pytania do aplikacji ramki (odpowiedzi):**
 
 1. **Obraz 1:1: z HTML nie.** Strona ma `screen` 1920×1080 i
@@ -201,8 +218,13 @@ firmware 1130.7, ramka na baterii, network standby wł.
    pobudce bywa, że nie odpowiada wcale (zawsze z limitem czasu).
 5. **MDC i WoL w trybie Custom:** MDC działa przy działającej aplikacji, po
    płytkim i po pełnym śnie; WoL budzi z płytkiego snu w 2 s. `0xC7 81 01`
-   uruchamia zainstalowaną aplikację (pobiera paczkę tylko przy nowej
-   wersji). `0xC7 53 80` (content.json) w trybie Custom niesprawdzone.
+   uruchamia zainstalowaną aplikację. **`0xC7 53 80` (content.json) działa
+   w trybie Custom** (02:38): ramka pobiera manifest i obraz, raportuje
+   `Successful`, tryb zostaje Custom (`C7 81` → `01`), aplikacja działa dalej
+   (widoczna, z fokusem, bez zdarzeń), a `goToSleep()` potem usypia ramkę.
+   Czy na ekranie zostaje obraz 1:1, czy strona aplikacji: do sprawdzenia
+   okiem (to podstawa wariantu hybrydowego: aplikacja budzi i usypia, obraz
+   idzie przez MDC).
 6. **Kod z serwera: działa.** `<script src="http://<serwer>/remote.js">`
    w podpisanym `index.html` ładuje się przy każdym starcie i ma pełny dostęp
    do `webapis`. Podpisana powłoka może być stała, a logika na serwerze

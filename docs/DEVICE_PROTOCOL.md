@@ -47,7 +47,7 @@ wysyłamy komend szybciej niż co ~0,3 s.
 | `0xA7` | – | zegar: dzień, godzina 1–12, minuta, miesiąc, rok (2 bajty), `01` = AM (np. `19 0c 00 0a 07 ea 01` = 25.10.2026 00:00) | odczytane (E1) |
 | `0xB5` | `00`/`01` | network standby (nasłuch Wi-Fi w uśpieniu, potrzebny do WoL) | potwierdzone |
 | `0xC7` | `53 80 len url` | **content download**: ekran pobiera manifest z `url` | potwierdzone |
-| `0xC7` | `81` + bajt | źródło treści (launcher): `01` = Custom (aplikacja Tizen z URL); wartość dla Mobile do odczytania. **Zapis `81 01` od razu wyzwala pobranie i instalację aplikacji** | E16 |
+| `0xC7` | `81` + bajt | źródło treści (launcher): `01` = Custom (aplikacja Tizen z URL), `02` = Mobile, `00` = czarny ekran. **Zapis `81 01` od razu wyzwala pobranie i instalację aplikacji** | E16 |
 | `0xC7` | `82` + URL (ASCII) | adres aplikacji Custom (odczyt `C7 82` → `82 <url>`); sama zmiana adresu nie wyzwala instalacji | E16 |
 
 Wake-on-LAN: standardowy magic packet (UDP :9 i :7). Wysyłamy na 255.255.255.255,

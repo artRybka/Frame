@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.24.1
+
+- Aplikacja Frame na ramce pokazuje obraz bez rozjechanego ditheringu:
+  serwer podaje jej pełnokolorowy JPEG 1920×1080 (`/panel/app-images/`),
+  a ramka sama powiększa go do 2560×1440 i dituje, jak w trybie
+  passthrough. Drobne linie 1 px są trochę miękkie, 2–4 px czyste.
+- Po wczytaniu obrazu aplikacja szturcha styl strony, żeby e-papier się
+  odświeżył. Logika aplikacji ładuje się z serwera, więc paczki na ramce
+  nie trzeba podpisywać od nowa.
+- Dokumentacja E16: wyniki z ramki (odtwarzacz 1:1 nie łączy się
+  z aplikacją, `0xC7 81` `02` = Mobile, `00` = czarny ekran).
+
 ## 0.24.0
 
 - Tryb „Oszczędny” działa przez aplikację Frame na ramce (aplikacja
