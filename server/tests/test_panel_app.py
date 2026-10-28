@@ -248,3 +248,37 @@ def test_panel_routes(tmp_path: Path) -> None:
         # Back in the Mobile source the panel fetches content.json again.
         assert client.get("/panel/content.json").status_code == 200
         assert not svc.app.active
+
+
+def test_never_sleeps_for_less_than_five_minutes(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    service.player.save_settings(
+        FrameSettings(change_times=["07:00", "19:00"], quiet_start="22:00")
+    )
+    _next_change(service, _at("2026-10-29T07:00"))
+    # Quiet hours start in 4 minutes: an alarm that close could be lost.
+    answer = service.app.answer(BATTERY, now=_at("2026-10-28T21:56"))
+    assert answer.action == "wait" and answer.wait_s == 60
+    assert not service.app.asleep()
+
+
+async def test_a_silent_app_is_started_after_its_alarm(
+    tmp_path: Path, server_ssl: ssl.SSLContext
+) -> None:
+    panel = FakePanel(server_ssl)
+    await panel.start()
+    try:
+        service = _service(tmp_path, panel.port)
+        service.player.save_settings(
+            FrameSettings(change_times=["07:00", "19:00"], power_mode="economy", quiet_start=None)
+        )
+        _next_change(service, _at("2026-10-28T19:00"))
+        service.app.answer(BATTERY, now=_at("2026-10-28T12:00"))  # Wi-Fi off until 19:00
+        await service.power.tick(_at("2026-10-28T19:00:30"))
+        assert panel.received == []  # still booting
+        await service.power.tick(_at("2026-10-28T19:01:40"))
+        assert panel.received == [(CMD_CONTENT_DOWNLOAD, b"\x81\x01")]
+        await service.power.tick(_at("2026-10-28T19:16"))
+        assert service.app.state.missed_wake == _at("2026-10-28T19:00").isoformat()
+    finally:
+        await panel.stop()

@@ -390,7 +390,7 @@ class PowerManager:
         settings = service.player.settings
         state = self.state
         if service.app.active:
-            service.app.tick(now)  # the app keeps its own alarm and sleep
+            await service.app.tick(now)  # the app keeps its own alarm and sleep
             return
         if self.economy:
             await self._economy_tick(now)

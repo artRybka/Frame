@@ -265,11 +265,24 @@ przeładowuje się (najwyżej raz na 10 minut).
   początek ciszy nocnej, żeby wyłączyć Wi-Fi na noc. Najwyżej tydzień naprzód;
 - network standby: `OFF` w trybie Oszczędnym i w ciszy nocnej, `ON` w dzień
   w trybie Online (WoL dostarcza wtedy zdjęcia z telefonu od razu);
-- ładowarka (bateria z MDC `0x1B 73`, czytana przed odpowiedzią, gdy
-  ostatni odczyt ma ponad 10 minut; `tizen.systeminfo` na ramce zawodzi,
-  a po pobudce nie odpowiada wcale): `stay`;
+- ładowarka (`webapis.deviced.getBatteryPowerSource()` inny niż
+  `NO_CHARGER`; bez niego bateria z MDC `0x1B 73`, czytana przed odpowiedzią,
+  gdy ostatni odczyt ma ponad 10 minut): `stay`;
+- pobudka bliżej niż za 5 minut: `wait` aż do niej (budzik ustawiony, zanim
+  ramka naprawdę zaśnie, przepada, E16);
 - obraz zaległy (`pending_push`) idzie przy pobudce i zostaje do następnej
   zmiany, jak dotąd.
+
+**Po pełnym śnie** (Wi-Fi wył.) ramka startuje na zimno i launcher nie zawsze
+uruchamia aplikację (E16). Gdy aplikacja nie zapyta w 90 s od budzika, serwer
+uruchamia ją przez MDC `0xC7 81 01`, potem co 2 minuty, aż do uznania pobudki
+za nieudaną (15 minut). Network standby ustawia aplikacja przed każdym snem.
+
+**Blokada: obraz nie jest 1:1.** Strona aplikacji ma 1920×1080, a panel
+2560×1440, więc `<img>` jest skalowany ×4/3 i nasz dithering się rozjeżdża.
+Do sprawdzenia: `webapis.unipicture`, `webapis.epavplay`, ustawienie
+rozdzielczości aplikacji. Do tego czasu tryb aplikacji pokazuje obrazy
+gorzej niż tryb Mobile.
 
 **Wysyłka z aplikacji iOS** w trybie aplikacji: bez `0xC7`. Aplikacja
 obudzona (ładowarka) pobiera obraz przy najbliższym pytaniu; uśpiona z Wi-Fi
@@ -295,9 +308,7 @@ budzi jej przez WoL, tylko czeka.
 Gdy ramka działa w aplikacji, w Harmonogramie wraca przełącznik „Tryb pracy”
 (Online / Oszczędny), a ostrzeżenie o odrzuconym budziku znika.
 
-**Do sprawdzenia na ramce:** czy obraz 2560×1440 wychodzi 1:1 (aplikacja
-zgłasza w `/panel/next` rozmiar strony `screen` i w `shown` rozmiar obrazu),
-czy logika ładuje się z serwera
+**Do sprawdzenia na ramce:** sposób na obraz 1:1 (wyżej), czy logika ładuje się z serwera
 (`code` w raportach inny niż `local`), czy budzik budzi przy network standby
 `OFF`, czy WoL wznawia aplikację w trybie Custom, jak aplikacja zachowuje się
 na ładowarce (czy „Sleep After” jej nie usypia).
