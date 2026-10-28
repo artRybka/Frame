@@ -35,7 +35,9 @@ def _service(tmp_path: Path) -> FrameService:
         device_host="127.0.0.1",
         device_pin="123456",
     )
-    return FrameService(settings)
+    service = FrameService(settings)
+    service.app.store_package(b"PK\x03\x04signed", "2.0.0")  # the app can be started
+    return service
 
 
 def test_delivery_follows_the_panel_downloads(tmp_path: Path) -> None:

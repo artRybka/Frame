@@ -349,6 +349,12 @@ struct Delivery: Codable, Hashable, Sendable {
     var asleepUntilAt: String?
     /// Economy mode: a wake the frame did not show up for.
     var missedWakeAt: String?
+    /// Waiting with the Wi-Fi off (economy, quiet hours); false: asleep with
+    /// the Wi-Fi on and Wake-on-LAN did not reach it (missing before 0.27).
+    var deepSleep: Bool?
+    /// The frame does not run the Frame app and the server cannot build it:
+    /// the Samsung certificates are missing on the server.
+    var noApp: Bool?
 
     var isShown: Bool { state == "shown" || state == "unknown" }
     var isWaiting: Bool { state == "waiting" }
@@ -359,6 +365,7 @@ struct Delivery: Codable, Hashable, Sendable {
         switch state {
         case "sending": return "W drodze na ramkę"
         case "waiting":
+            if noApp == true { return "Ramka nie ma aplikacji Frame" }
             if let missed = When.clock(missedWakeAt) { return "Ramka nie obudziła się o \(missed)" }
             if let wake = When.at(asleepUntilAt) { return "Pojawi się \(wake)" }
             return "Czeka na ramkę"
@@ -367,14 +374,20 @@ struct Delivery: Codable, Hashable, Sendable {
         }
     }
 
+    static let noCertificates = "Na serwerze brakuje certyfikatów Samsunga, więc nie zbuduje aplikacji dla ramki. Skopiuj raz author.p12, distributor.p12 i password.txt do folderu data/panel-app/certs serwera (np. File Station)."
+
     /// Why it is not on the frame (yet).
     var explanation: String {
         let why: String
         switch state {
         case "waiting":
             let button = "Wcześniej: naciśnij krótko przycisk z tyłu ramki."
-            if missedWakeAt != nil, let wake = When.at(asleepUntilAt) {
+            if noApp == true {
+                why = Self.noCertificates
+            } else if missedWakeAt != nil, let wake = When.at(asleepUntilAt) {
                 why = "Spróbuje znowu \(wake). \(button)"
+            } else if asleepUntilAt != nil, deepSleep == false {
+                why = "Ramka śpi i nie odpowiedziała na sygnał budzenia. Pobierze obraz przy najbliższej pobudce. \(button)"
             } else if asleepUntilAt != nil {
                 why = "Ramka śpi bez Wi-Fi, żeby oszczędzać baterię. \(button)"
             } else {
@@ -567,6 +580,8 @@ struct WakeResult: Codable, Hashable, Sendable {
     var woke: Bool?  // missing from servers before 0.11
     var asleepUntil: String?
     var reason: String?
+    /// "no_certificates" | "no_mac": why nothing could be tried (0.27+).
+    var problem: String?
 }
 
 /// How the server reaches the panel (Ramka → Ekran); the PIN is never sent back.

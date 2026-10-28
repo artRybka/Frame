@@ -189,6 +189,15 @@ async def test_unreachable_panel_leaves_the_picture_waiting(service) -> None:
     async def unreachable(waking: bool = True) -> None:
         raise MdcConnectionError("no route")
 
+    # No Samsung certificates: no app to start, and the app says so.
+    outcome = await service.push_current(wait=1)
+    assert not outcome.pushed and "certificates" in outcome.message
+    from frame_server.web.player_api import _delivery
+
+    delivery = _delivery(service, service.store.current())
+    assert delivery.state == "waiting" and delivery.no_app
+
+    service.app.store_package(b"PK\x03\x04signed", "2.0.0")
     service.app.install = unreachable  # type: ignore[method-assign]
     outcome = await service.push_current(wait=1)
     assert not outcome.pushed

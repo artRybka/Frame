@@ -16,7 +16,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel
 
@@ -52,6 +52,9 @@ class WakeResult(BaseModel):
     asleep_until: str | None = None  # deep sleep: Wake-on-LAN cannot reach it
     asleep_until_at: str | None = None  # the same as a moment (ISO)
     reason: str | None = None
+    # Why nothing could be tried: no Samsung certificates on the server (so
+    # no app to start), or no MAC address for Wake-on-LAN.
+    problem: Literal["no_certificates", "no_mac"] | None = None
 
 
 class PowerManager:
@@ -172,6 +175,13 @@ class PowerManager:
         if not app.active:
             # The panel is not running the app (never was, or fell back to
             # another source): start it, waking the panel if need be.
+            if app.ensure_package() is None:
+                return WakeResult(
+                    sent=False,
+                    woke=False,
+                    problem="no_certificates",
+                    reason="no Samsung certificates on the server: no app to start",
+                )
             try:
                 await app.install()
             except MdcError as err:
@@ -185,7 +195,7 @@ class PowerManager:
         if not app.asleep():
             return WakeResult(sent=False, woke=True)
         if not service.settings.device_mac:
-            return WakeResult(sent=False, woke=False, reason="no MAC address set")
+            return WakeResult(sent=False, woke=False, problem="no_mac", reason="no MAC address set")
         burst = asyncio.create_task(service.panel.wake(seconds=WAKE_BURST_SECONDS))
         try:
             woke = await app.wait_for_contact(WAKE_LOOK.total_seconds())

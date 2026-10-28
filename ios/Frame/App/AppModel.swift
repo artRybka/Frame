@@ -657,6 +657,8 @@ final class AppModel {
             let result = try await backend.wake(sleepAfter: sleepAfter)
             if result.woke == true {
                 toast = "Ramka się obudziła"
+            } else if result.problem == "no_certificates" {
+                toast = Delivery.noCertificates
             } else if let until = result.asleepUntil {
                 toast = Self.deepSleepNote(until: until)
             } else if !result.sent {

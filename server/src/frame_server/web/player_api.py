@@ -51,6 +51,12 @@ class Delivery(BaseModel):
     asleep_until_at: str | None = None
     #: Economy mode: a wake (ISO) the panel did not show up for.
     missed_wake_at: str | None = None
+    #: ``waiting`` with the Wi-Fi off (economy, quiet hours): only the alarm
+    #: or the button wakes it. False: asleep with the Wi-Fi on (online).
+    deep_sleep: bool = False
+    #: ``waiting`` for good: the panel does not run the app and the server
+    #: cannot build it (no Samsung certificates).
+    no_app: bool = False
 
 
 class PlayerView(BaseModel):
@@ -102,10 +108,16 @@ def _now_showing(svc: FrameService, content: ContentInfo) -> NowShowing:
 def _delivery(svc: FrameService, content: ContentInfo | None) -> Delivery:
     record = svc.store.delivery()
     shown = record.shown
-    if content is None or not svc.device_configured or shown is None:
+    if content is None or not svc.device_configured:
         return Delivery(state="unknown")
-    if shown.file_id == content.file_id:
+    if shown is not None and shown.file_id == content.file_id:
         return Delivery(state="shown", shown_at=record.shown_at)
+    if not svc.app.active and svc.app.package() is None:
+        # No app to start: nothing reaches the frame until the certificates do.
+        on_frame = _now_showing(svc, shown) if shown is not None else None
+        return Delivery(state="waiting", on_frame=on_frame, no_app=True)
+    if shown is None:
+        return Delivery(state="unknown")
     on_frame = _now_showing(svc, shown)
     common: dict[str, Any] = {"on_frame": on_frame, "shown_at": record.shown_at}
     if svc.player.busy or svc.progress.active:
@@ -118,6 +130,7 @@ def _delivery(svc: FrameService, content: ContentInfo | None) -> Delivery:
             asleep_until=until.astimezone(tz).strftime("%H:%M") if until else None,
             asleep_until_at=until.isoformat(timespec="seconds") if until else None,
             missed_wake_at=svc.app.state.missed_wake,
+            deep_sleep=svc.app.deep_asleep(),
             **common,
         )
     failed = record.failed_file_id == content.file_id

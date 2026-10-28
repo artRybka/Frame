@@ -39,6 +39,9 @@ PREVIEW_MAX = 1280
 # The Frame app's alarm rings this close to a push: it will ask by itself.
 WAKE_SOON = timedelta(minutes=3)
 PROGRESS_KEY = "progress_expected"
+NO_CERTIFICATES = (
+    "no app for the frame: copy the Samsung certificates to data/panel-app/certs on the server"
+)
 
 
 @dataclass
@@ -325,6 +328,15 @@ class FrameService:
         self.store.expect_fetch(file_id)
         burst: asyncio.Task[bool] | None = None
         timeout = 0.0
+        if not app.active and app.ensure_package() is None:
+            # Nothing to install: the Samsung certificates are not here yet.
+            self.store.cancel_fetch(file_id)
+            power.mark_pending(True)
+            message = NO_CERTIFICATES
+            progress.finish(Stage.WAITING, message)
+            return PushOutcome(
+                content, pushed=False, fetched=False, content_url=url, message=message
+            )
         try:
             if not app.active:
                 await app.install()  # wakes the panel if need be
