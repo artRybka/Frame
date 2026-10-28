@@ -177,6 +177,12 @@ class RenderResult:
         tone mapping or dither, which only the panel gets. What the app shows."""
         return Image.fromarray(self.original)
 
+    def original_panel_image(self) -> Image.Image:
+        """``original_image`` turned like the panel image (portrait frames
+        are rotated into the panel's landscape framebuffer)."""
+        layout = self.settings.layout
+        return Image.fromarray(to_panel(self.original, layout.orientation, layout.rotation))
+
     def preview_image(self, adapted: bool = True) -> Image.Image:
         """Simulated look of the panel.
 

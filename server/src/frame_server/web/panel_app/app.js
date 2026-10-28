@@ -168,9 +168,12 @@
     if (!answer.image || answer.file_id === shown) return done(false);
     var img = new Image();
     img.onload = function () {
+      // The page is 1920x1080 and the panel scales and dithers it itself
+      // (E16); the picture is a full-colour copy of that size.
       var el = document.getElementById("picture");
+      el.style.cssText = "position:fixed;left:0;top:0;width:1920px;height:1080px;display:block";
       el.src = img.src;
-      el.style.display = "block";
+      nudge(el);
       note("");
       shown = answer.file_id;
       report("shown", { file_id: answer.file_id, width: img.naturalWidth, height: img.naturalHeight });
@@ -181,6 +184,13 @@
       done(false);
     };
     img.src = answer.image;
+  }
+
+  // The e-paper does not redraw for a new picture alone (E16, the first one
+  // stayed white): a small change of style makes it.
+  function nudge(el) {
+    el.style.opacity = "0.99";
+    setTimeout(function () { el.style.opacity = "1"; }, 300);
   }
 
   // The panel's alarm, in its local time. Alarms add up and cannot be
