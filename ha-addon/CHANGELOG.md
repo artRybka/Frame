@@ -10,8 +10,13 @@
 - Konfiguracja → Aplikacja ramki: stan aplikacji na ramce i „Przełącz na
   aplikację Frame” (albo powrót do zwykłego trybu). Paczkę aplikacji
   podpisuje i wgrywa na serwer `scripts/panel-app/pack.sh` z Maca.
-- Serwer czyta baterię ramki przez MDC przy prośbie o obraz, więc ramka na
-  ładowarce dostaje polecenie, by nie zasypiała.
+- Aplikacja czyta baterię i ładowarkę z systemu ramki (zapasowo serwer przez
+  MDC), więc ramka na ładowarce nie zasypia. Ramka śpi co najmniej 5 min,
+  a gdy po pobudce nie poprosi o obraz w 90 s, serwer uruchamia aplikację
+  przez MDC.
+- Uwaga: strona aplikacji ma 1920×1080, więc obraz jest powiększany ×4/3,
+  a nie 1:1. Do codziennego użytku lepiej zostać przy zwykłym trybie, dopóki
+  to nie jest rozwiązane.
 - Gdy Wake-on-LAN nie obudzi ramki, aplikacja podpowiada naciśnięcie
   przycisku na ramce (na baterii budzenie przez sieć bywa zawodne).
 
