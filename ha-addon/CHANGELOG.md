@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.27.0
+
+- Ramka działa wyłącznie przez aplikację Frame (źródło Custom): serwer nie
+  wysyła już obrazów przez `content.json` (tryb Mobile, MDC `0xC7 53 80`) ani
+  nie usypia ramki przez MDC (budzik `0x25`, cisza nocna, lekki sen); budzi
+  i usypia ją aplikacja.
+- Serwer sam buduje i podpisuje paczkę aplikacji (`panel_package.py`, nowa
+  zależność `cryptography`), wersje 2.0.x. Certyfikaty Samsung wgrywa się raz:
+  przez File Station do `data/panel-app/certs` (`author.p12`,
+  `distributor.p12`, `password.txt`) albo `scripts/panel-app/upload-certs.sh
+  --server <adres>`. `pack.sh` i `PUT /api/device/app/package` usunięte.
+- Ramka bez aplikacji albo wskazująca inny serwer jest kierowana z powrotem
+  przez MDC (`0xC7 82 <adres>`, potem `81 01`) co 5 minut, przed wysyłką
+  obrazu i przy „Obudź ramkę”; milcząca aplikacja jest uruchamiana ponownie
+  do trzech razy.
+- Ostrzeżenie 60 dni przed wygaśnięciem certyfikatów (27.10.2027), w zakładce
+  Ramka i w Konfiguracji → Aplikacja ramki, która ma teraz „Uruchom aplikację
+  ponownie”. Wybór trybu Online/Oszczędny znów widoczny.
+- „Teraz”: karta „Ramka śpi” krótsza (tylko podpowiedź o przycisku), pobudka
+  ramki jako „Pobudka ramki” pod „Następna zmiana”; zmiana trybu w czasie snu
+  ramki pokazuje, że zadziała przy następnej pobudce (`mode_pending`).
+- Kafelek „Sieć” z ikoną Wi-Fi zamiast kresek.
+- Adresy domowej sieci, MAC i DUID ramki zastąpione w testach, demo,
+  dokumentacji i skryptach przykładowymi.
+
 ## 0.26.0
 
 - „Teraz”: gdy ramka śpi bez Wi-Fi (głęboki sen), karta „Ramka śpi” pokazuje,
