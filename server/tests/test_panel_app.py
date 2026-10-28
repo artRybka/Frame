@@ -4,6 +4,7 @@ pictures and sets its own alarm (docs/WAKE.md, E16)."""
 from __future__ import annotations
 
 import asyncio
+import io
 import ssl
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -13,6 +14,7 @@ import pytest
 import trustme
 from fake_panel import FakePanel
 from fastapi.testclient import TestClient
+from PIL import Image
 
 from frame_server.config import Settings
 from frame_server.device.mdc import CMD_CONTENT_DOWNLOAD
@@ -59,7 +61,7 @@ def _fetch(service: FrameService) -> None:
             time=datetime.now(UTC).isoformat(),
             client="192.100.3.151",
             method="GET",
-            path=f"/panel/images/{content.file_name}",
+            path=f"/panel/app-images/{content.file_id}.jpg",
             status=200,
             user_agent="",
             headers={},
@@ -82,7 +84,7 @@ def test_online_sleeps_until_the_change_and_deeply_at_night(tmp_path: Path) -> N
     content = service.store.current()
     assert content is not None
     assert answer.action == "sleep"
-    assert answer.image == f"http://127.0.0.1:8099/panel/images/{content.file_name}"
+    assert answer.image == f"http://127.0.0.1:8099/panel/app-images/{content.file_id}.jpg"
     assert answer.wake_at == _at("2026-10-28T19:00").isoformat()
     assert answer.wake_ms == int(_at("2026-10-28T19:00").timestamp() * 1000)
     assert answer.standby == "ON"  # Wake-on-LAN still reaches it by day
@@ -235,6 +237,16 @@ def test_panel_routes(tmp_path: Path) -> None:
         assert "<ver>1.0.0</ver>" in config and "<size>10</size>" in config
         assert "<widgetname>Frame</widgetname>" in config
         assert client.get("/panel/app/Frame.wgt").content == b"PK\x03\x04signed"
+        # The page is 1920x1080: the picture comes in its own colours at that size.
+        content = svc.store.current()
+        picture = client.get(f"/panel/app-images/{content.file_id}.jpg")
+        assert picture.status_code == 200
+        with Image.open(io.BytesIO(picture.content)) as img:
+            assert img.size == (1920, 1080) and img.format == "JPEG"
+        # One published without its copy (older servers) gets one made.
+        svc.store.app_image_path(content.file_id).unlink()
+        assert client.get(f"/panel/app-images/{content.file_id}.jpg").status_code == 200
+        assert client.get("/panel/app-images/nothing.jpg").status_code == 404
         code = client.get("/panel/app/app.js")
         assert code.text.startswith("window.FRAME_CODE = ")
 

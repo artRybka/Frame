@@ -204,6 +204,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         service.app.report(str(data.pop("event", "")), data)
         return {}
 
+    @app.get("/panel/app-images/{name}")
+    def panel_app_image(name: str) -> FileResponse:
+        """The Frame app's full-colour 1920x1080 copy of a picture."""
+        path = service.app.picture(name.removesuffix(".jpg"))
+        if path is None:
+            raise HTTPException(404)
+        return FileResponse(path, media_type="image/jpeg")
+
     @app.get("/panel/app/sssp_config.xml")
     def panel_app_config() -> Response:
         xml = service.app.sssp_config()

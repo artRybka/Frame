@@ -18,7 +18,7 @@
     return out;
   }
 
-  var seen = 0;
+  var seen = -1;  // the first poll only records the current id: never replay after a restart
   function deliver(id, value) { post("cmd-result", { id: id, value: safe(value) }); }
   function poll() {
     var x = new XMLHttpRequest();
@@ -26,7 +26,9 @@
     x.onload = function () {
       var c = null;
       try { c = JSON.parse(x.responseText); } catch (e) { c = null; }
-      if (c && c.id > seen) {
+      if (c && seen < 0) {
+        seen = c.id;
+      } else if (c && c.id > seen) {
         seen = c.id;
         var id = c.id;
         var done = function (value) { deliver(id, value); };

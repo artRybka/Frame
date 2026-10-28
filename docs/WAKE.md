@@ -167,16 +167,43 @@ firmware 1130.7, ramka na baterii, network standby wł.
 - Bateria: od 92% (00:09) do 70% (02:18) przy ciągłych testach (ramka
   obudzona większość czasu, wiele odświeżeń ekranu).
 
+**Wyświetlanie obrazu (rano 2026-10-28, przy ramce):**
+
+- Wbudowanego odtwarzacza (Mobile, 1:1) nie da się łączyć z aplikacją:
+  po wysyłce `0xC7 53 80` w trybie Custom na ekranie została strona
+  aplikacji; `hide()` nie przerysowuje ekranu; po `exit()` launcher
+  uruchamia aplikację ponownie w ok. 10 s, także po przełączeniu `0xC7 81`
+  na `02` (Mobile). Wartości `0xC7 81`: `01` Custom, `02` Mobile, `00` czarny
+  ekran. `avplay`/`epavplay` odrzucają PNG (`PLAYER_ERROR_NOT_SUPPORTED_FILE`).
+- **Działa obraz rysowany przez aplikację:** JPEG 1920×1080 w `<img>` na
+  cały ekran; ramka powiększa go do 2560×1440 i sama ditheruje (wygląd jak
+  passthrough). Tekst czytelny od ok. 16 px, linie 2–4 px czyste, 1 px
+  miękkie. Mateusz: „nie jest źle, ale na drobnych liniach 1px widać brak
+  ostrości”.
+- E-papier **nie** odświeża się sam po doczytaniu obrazka: po `img.onload`
+  trzeba zmienić styl (np. `opacity` 0.99 i z powrotem 1 po 300 ms).
+  `screenRefreshNow()` rzuca `UnknownError`.
+
 **Pytania do aplikacji ramki (odpowiedzi):**
 
 1. **Obraz 1:1: z HTML nie.** Strona ma `screen` 1920×1080 i
    `devicePixelRatio` 1 (`tizen.systeminfo` DISPLAY też 1920×1080, a
    capability `screen.height` = 1440), panel ma 2560×1440, więc obraz ze strony
-   jest skalowany ×4/3 i nasz dithering się rozjedzie. Do sprawdzenia przy
-   ekranie: `webapis.unipicture` (create/load/show/setDisplayRect, wyświetlanie
-   zdjęć poza warstwą WWW), `webapis.epavplay` i ewentualne ustawienie
-   rozdzielczości aplikacji. Strona odświeża ekran sama, bez
-   `screenRefreshNow()`.
+   jest skalowany ×4/3 i nasz dithering się rozjedzie. Strona odświeża ekran
+   sama, bez `screenRefreshNow()`.
+   `webapis.unipicture` (2.92) **nie działa**: `create()` → stan `INIT`,
+   `setScalerType("MAIN"|"SUB")` ok, `setGeometry` zna `"FIT_SCREEN"` i
+   `"ZOOM"`, `rotate` zna `"0"/"90"/"180"/"270"`, `setSlideShowEffect`
+   `"WIPE"/"SPIRAL"/"CHECKER"/"LINEAR"/"RANDOM"`. `load(ścieżka)` (też
+   `file://`) zwraca bez błędu, ale stan zostaje `INIT`, a `show()`,
+   `setDisplayRect()` i `useSWDecoder()` dają `PICTURE_ERROR_INVALID_STATE`.
+   `loadAsync()` po `create()` **wywraca aplikację** (restart co ok. 30 s),
+   z adresem `http://` także (pliku nawet nie pobiera). Pozostaje
+   `webapis.epavplay` (odtwarzacz e-papieru, `open(url)`, `setDisplayRect`,
+   `setDisplayMethod`) i ustawienie rozdzielczości aplikacji; do sprawdzenia
+   przy ekranie. Lokalny zapis pliku działa: `tizen.download.start(new
+   tizen.DownloadRequest(url, "downloads", nazwa), {oncompleted})` →
+   `/opt/usr/home/owner/content/Downloads/<nazwa>` (przywilej `download`).
 2. **Sieć po pobudce:** z płytkiego snu XHR działa od pierwszego taktu po
    wznowieniu; po pełnym śnie raporty startu doszły ok. 20 s po powrocie
    pingu. Ponawiać zapytania.
@@ -191,8 +218,13 @@ firmware 1130.7, ramka na baterii, network standby wł.
    pobudce bywa, że nie odpowiada wcale (zawsze z limitem czasu).
 5. **MDC i WoL w trybie Custom:** MDC działa przy działającej aplikacji, po
    płytkim i po pełnym śnie; WoL budzi z płytkiego snu w 2 s. `0xC7 81 01`
-   uruchamia zainstalowaną aplikację (pobiera paczkę tylko przy nowej
-   wersji). `0xC7 53 80` (content.json) w trybie Custom niesprawdzone.
+   uruchamia zainstalowaną aplikację. **`0xC7 53 80` (content.json) działa
+   w trybie Custom** (02:38): ramka pobiera manifest i obraz, raportuje
+   `Successful`, tryb zostaje Custom (`C7 81` → `01`), aplikacja działa dalej
+   (widoczna, z fokusem, bez zdarzeń), a `goToSleep()` potem usypia ramkę.
+   Czy na ekranie zostaje obraz 1:1, czy strona aplikacji: do sprawdzenia
+   okiem (to podstawa wariantu hybrydowego: aplikacja budzi i usypia, obraz
+   idzie przez MDC).
 6. **Kod z serwera: działa.** `<script src="http://<serwer>/remote.js">`
    w podpisanym `index.html` ładuje się przy każdym starcie i ma pełny dostęp
    do `webapis`. Podpisana powłoka może być stała, a logika na serwerze
@@ -222,9 +254,14 @@ firmware 1130.7, ramka na baterii, network standby wł.
   ramki jest dziwna, zegar mimo to pokazuje CET), `getDST()` mode `OFF`,
   `getSystemTimeSyncTimeout()` `30SEC`; on/off timer `NotSupportedError`.
 - `remotepower`: wszystko `NotSupportedError`.
-- `network`: `getActiveConnectionType()` `1` (Wi-Fi); reszta wymaga
-  przywileju sieciowego (`SecurityError`). `tizen.systeminfo` WIFI_NETWORK
-  daje SSID, siłę sygnału (0,87) i IP.
+- `network`: `getActiveConnectionType()` `1` (Wi-Fi); z przywilejem
+  `http://developer.samsung.com/privilege/network.public` także `getIp()`,
+  `getMac()`, `getWiFiSignalStrengthLevel()` (3). `tizen.systeminfo`
+  WIFI_NETWORK daje SSID, siłę sygnału (0,87) i IP.
+- `0xC7 81 01` przy już wybranym Custom tylko uruchamia aplikację od nowa (też
+  zawieszoną), nowej wersji nie pobiera, nawet po zmianie adresu `0xC7 82`.
+  Launcher pobiera paczkę, gdy aplikacji nie ma, albo sam przy okazji
+  (zasypianie, start), co kilkanaście minut.
 - `tizen.systeminfo.getCapability("http://tizen.org/feature/screen.width")`
   = 1920, `screen.height` = 1440.
 - Bez przywilejów: `avinfo` (jasność itp.), `widgetdata`, `drminfo`, `was`.
@@ -278,11 +315,19 @@ uruchamia aplikację (E16). Gdy aplikacja nie zapyta w 90 s od budzika, serwer
 uruchamia ją przez MDC `0xC7 81 01`, potem co 2 minuty, aż do uznania pobudki
 za nieudaną (15 minut). Network standby ustawia aplikacja przed każdym snem.
 
-**Blokada: obraz nie jest 1:1.** Strona aplikacji ma 1920×1080, a panel
-2560×1440, więc `<img>` jest skalowany ×4/3 i nasz dithering się rozjeżdża.
-Do sprawdzenia: `webapis.unipicture`, `webapis.epavplay`, ustawienie
-rozdzielczości aplikacji. Do tego czasu tryb aplikacji pokazuje obrazy
-gorzej niż tryb Mobile.
+**Obraz w aplikacji: pełny kolor 1920×1080.** Strona aplikacji ma 1920×1080,
+a panel 2560×1440, więc `<img>` jest skalowany ×4/3 i nasz dithering by się
+rozjechał. `webapis.unipicture` nie działa, a obrazu z odtwarzacza (`0xC7 53 80`)
+nie da się łączyć z aplikacją: strona zawsze go przykrywa (testy 2026-10-28
+rano). Dlatego `/panel/next` podaje `/panel/app-images/<id>.jpg`: oprawiony
+obraz w jego własnych kolorach (bez mapowania tonów i ditheringu),
+obrócony jak obraz dla panelu i zmniejszony do 1920×1080. Ramka sama go
+powiększa i dituje, jak w trybie passthrough. Mateusz: „nie jest źle, ale na
+drobnych liniach 1px widać brak ostrości”; tekst od ok. 16 px czytelny,
+linie 2–4 px czyste. Serwer zapisuje tę kopię przy publikacji (`app-images/`),
+a dla starszych obrazów robi ją z obrazu dla panelu. E-papier nie odświeża
+się sam po wczytaniu obrazka, a `screenRefreshNow()` rzuca błąd: aplikacja po
+`onload` zmienia `opacity` na 0,99 i po 300 ms z powrotem na 1.
 
 **Wysyłka z aplikacji iOS** w trybie aplikacji: bez `0xC7`. Aplikacja
 obudzona (ładowarka) pobiera obraz przy najbliższym pytaniu; uśpiona z Wi-Fi

@@ -12,6 +12,11 @@ The alarms cannot be cancelled and the launcher sometimes reinstalls and
 restarts the app as it goes to sleep, so the app keeps no plan of its own:
 whenever it wakes, for whatever reason, it asks again.
 
+The app's page is 1920x1080 and the panel scales it to its 2560x1440, so a
+dither of ours would be smeared (E16): the app gets the framed picture in its
+own colours as a 1920x1080 JPEG and the panel dithers it itself, which looks
+like the passthrough mode (1-px lines a little soft, 2-px and up clean).
+
 The package has to be signed with the Samsung certificate made for this
 panel, which lives on Mateusz's Mac: the server never builds it, it only
 serves what ``scripts/panel-app/pack.sh`` uploaded. The app's logic
@@ -23,6 +28,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import io
 import json
 import logging
 from datetime import UTC, datetime, time, timedelta
@@ -30,6 +36,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 from zoneinfo import ZoneInfo
 
+from PIL import Image, ImageOps
 from pydantic import BaseModel
 
 from .device import MdcError
@@ -42,6 +49,8 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 APP_KEY = "panel_app"
+# The app's page (E16): its pictures are drawn at this size.
+APP_SIZE = (1920, 1080)
 WIDGET = "Frame"
 # On the charger the app stays awake and asks this often.
 POLL = timedelta(seconds=20)
@@ -212,6 +221,20 @@ class PanelApp:
             f"<widgetname>{WIDGET}</widgetname>\n</widget>\n"
         )
 
+    def picture(self, file_id: str) -> Path | None:
+        """The app's copy of a published picture; one published before the
+        app had its own (or a raw upload) is made from the panel image."""
+        store = self.service.store
+        path = store.app_image_path(file_id)
+        if path.is_file():
+            return path
+        source = store.panel_file(file_id)
+        if source is None:
+            return None
+        with Image.open(source) as img:
+            path.write_bytes(app_jpeg(img))
+        return path
+
     def view(self) -> AppView:
         state = self.state
         return AppView(active=state.active, package=self.package(), state=state)
@@ -248,7 +271,7 @@ class PanelApp:
         if content is not None:
             common |= {
                 "file_id": content.file_id,
-                "image": f"{service.settings.base_url()}/panel/images/{content.file_name}",
+                "image": f"{service.settings.base_url()}/panel/app-images/{content.file_id}.jpg",
                 "title": content.title,
             }
         if power.change_due(now):
@@ -407,6 +430,20 @@ class PanelApp:
             state.asleep = False
             self._save(state)
             log.info("the panel left the Frame app (it fetched content.json)")
+
+
+def app_jpeg(img: Image.Image) -> bytes:
+    """A picture for the app's page: 1920x1080, full colour (the panel
+    scales and dithers it), padded with white when the shape differs."""
+    rgb = img.convert("RGB")
+    fitted = (
+        rgb.resize(APP_SIZE, Image.Resampling.LANCZOS)
+        if abs(rgb.width * APP_SIZE[1] - rgb.height * APP_SIZE[0]) <= rgb.height
+        else ImageOps.pad(rgb, APP_SIZE, Image.Resampling.LANCZOS, color="white")
+    )
+    out = io.BytesIO()
+    fitted.save(out, "JPEG", quality=92)
+    return out.getvalue()
 
 
 def _s(delta: timedelta) -> int:
