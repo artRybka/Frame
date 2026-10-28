@@ -28,6 +28,9 @@
   // The panel's Wi-Fi is weak (60-215 KB/s, E16): a picture may take minutes.
   var DOWNLOAD_TIMEOUT_MS = 5 * 60000;
   var PROGRESS_EVERY_MS = 2000;
+  // The Wi-Fi is read at every start and wake, and on the charger this often.
+  var WIFI_EVERY_MS = 5 * 60000;
+  var WIFI_TIMEOUT_MS = 10000;
 
   var ep = (typeof webapis !== "undefined" && webapis.epaper) ? webapis.epaper : null;
   var shown = null;
@@ -36,6 +39,7 @@
   var timer = null;
   var last = Date.now();
   var drawnAt = 0;  // the last change of the screen
+  var wifiAt = 0;
 
   function saved(key, value) {
     try {
@@ -121,11 +125,53 @@
     }
   }
 
+  // The panel's Wi-Fi for the iOS app (signal, network, address): from
+  // webapis.network, which needs the privilege network.public (package
+  // 1.2.0+), else from tizen.systeminfo (signal 0-1, no frequency).
+  function wifi() {
+    wifiAt = Date.now();
+    var data = {};
+    var n = (typeof webapis !== "undefined" && webapis.network) ? webapis.network : null;
+    if (n) {
+      var level = call(function () { return n.getWiFiSignalStrengthLevel(); });
+      if (level.ok && level.value !== null) {
+        data.via = "webapis";
+        data.level = Number(level.value);
+        data.ssid = call(function () { return n.getWiFiSsid(); }).value;
+        data.ip = call(function () { return n.getIp(); }).value;
+        data.frequency = call(function () { return n.getWiFiFrequency(); }).value;
+        report("wifi", data);
+        return;
+      }
+      data.webapis_error = level.error;
+    }
+    var sent = false;
+    var send = function (more) {
+      if (sent) return;
+      sent = true;
+      for (var k in more) data[k] = more[k];
+      report("wifi", data);
+    };
+    var info = (typeof tizen !== "undefined" && tizen.systeminfo) ? tizen.systeminfo : null;
+    if (!info) return send({});
+    var r = call(function () {
+      info.getPropertyValue("WIFI_NETWORK", function (w) {
+        send({ via: "systeminfo", signal: w.signalStrength, ssid: w.ssid, ip: w.ipAddress, status: w.status });
+      }, function (e) {
+        send({ error: String(e && e.message ? e.message : e) });
+      });
+    });
+    if (!r.ok) return send({ error: r.error });
+    // After a wake systeminfo may never call back (E16).
+    setTimeout(function () { send({ error: "no answer" }); }, WIFI_TIMEOUT_MS);
+  }
+
   function ask(reason) {
     if (busy) return;
     busy = true;
     clearTimeout(timer);
     if (reason !== "poll" && reason !== "retry") wifiBack();
+    if ((reason !== "poll" && reason !== "retry") || Date.now() - wifiAt > WIFI_EVERY_MS) wifi();
     var q = "reason=" + reason + "&build=" + encodeURIComponent(BUILD) +
       "&code=" + encodeURIComponent(CODE) +
       "&screen=" + window.innerWidth + "x" + window.innerHeight + "@" + (window.devicePixelRatio || 1) +

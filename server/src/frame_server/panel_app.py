@@ -364,6 +364,8 @@ class PanelApp:
             loaded, total = data.get("loaded"), data.get("total")
             if isinstance(loaded, int | float) and isinstance(total, int | float) and total > 0:
                 self.service.progress.note_download(loaded / total)
+        elif event == "wifi":
+            self.service.status.note_wifi(data)
         elif event == "shown":
             shown = self._shown.pop(str(data.get("file_id", "")), None)
             if shown is not None:
@@ -517,6 +519,7 @@ class PanelApp:
             state.active = False
             state.asleep = False
             self._save(state)
+            self.service.status.forget_wifi()
             log.info("the panel left the Frame app (it fetched content.json)")
 
 
