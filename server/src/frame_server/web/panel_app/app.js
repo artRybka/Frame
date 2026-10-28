@@ -14,8 +14,12 @@
   var CODE = window.FRAME_CODE || "local";
   var HEARTBEAT_MS = 15000;
   var ASLEEP_GAP_MS = 45000;
-  // The e-paper redraws in about 30 s (E2): sleep only after that.
-  var SETTLE_MS = 45000;
+  // After a change of the screen the panel prepares ~10 s and redraws ~30 s.
+  // goToSleep() does not wait for it: a sleep mid-refresh left a half-drawn
+  // grey screen and lost the alarm (E16). Sleep this long after the last one.
+  var SETTLE_MS = 60000;
+  // An alarm this close by the time the app may sleep: ask again instead.
+  var MIN_AHEAD_MS = 2 * 60000;
   var ATTEMPTS = 4;
   var ATTEMPT_DELAY_MS = 5000;
   // "wait" answers in a row before giving up on the server for now.
@@ -32,6 +36,7 @@
   var timer = null;
   var last = Date.now();
   var onPage = null;  // the object URL of the picture on the page
+  var drawnAt = 0;  // the last change of the screen
 
   function saved(key, value) {
     try {
@@ -54,7 +59,9 @@
 
   function note(text) {
     var el = document.getElementById("note");
-    if (el) el.textContent = text || "";
+    if (!el || el.textContent === (text || "")) return;
+    el.textContent = text || "";
+    drawnAt = Date.now();
   }
 
   function report(event, data, done) {
@@ -148,7 +155,7 @@
         return;
       }
     }
-    draw(answer, function (changed) {
+    draw(answer, function () {
       if (answer.action === "wait" || answer.action === "stay") {
         waits = answer.action === "wait" ? waits + 1 : 0;
         if (waits > MAX_WAITS) {
@@ -164,7 +171,7 @@
       waits = 0;
       timer = setTimeout(function () {
         sleep(answer.wake_ms, answer.standby, "plan");
-      }, changed ? SETTLE_MS : 2000);
+      }, 2000);
     });
   }
 
@@ -235,7 +242,11 @@
   // stayed white): a small change of style makes it.
   function nudge(el) {
     el.style.opacity = "0.99";
-    setTimeout(function () { el.style.opacity = "1"; }, 300);
+    drawnAt = Date.now();
+    setTimeout(function () {
+      el.style.opacity = "1";
+      drawnAt = Date.now();
+    }, 300);
   }
 
   // The panel's alarm, in its local time. Alarms add up and cannot be
@@ -258,7 +269,18 @@
     return result;
   }
 
+  // Show, let the refresh finish, set the alarm, sleep: in this order.
   function sleep(wakeMs, standby, why) {
+    var settle = drawnAt + SETTLE_MS - Date.now();
+    if (settle > 0) {
+      clearTimeout(timer);
+      timer = setTimeout(function () { sleep(wakeMs, standby, why); }, settle);
+      return;
+    }
+    if (wakeMs && wakeMs - Date.now() < MIN_AHEAD_MS) {
+      ask("late");  // a long download: the next change is (almost) here
+      return;
+    }
     var r = { why: why, wake: wakeMs ? new Date(wakeMs).toString() : null };
     if (ep) {
       if (standby) {

@@ -328,7 +328,8 @@ przeładowuje się (najwyżej raz na 10 minut).
   zmiany, jak dotąd.
 
 **Po pełnym śnie** (Wi-Fi wył.) ramka startuje na zimno i launcher nie zawsze
-uruchamia aplikację (E16). Gdy aplikacja nie zapyta w 90 s od budzika, serwer
+uruchamia aplikację (E16; z Developer mode wł. nie uruchamia jej nigdy, z
+wył. cały cykl przeszedł sam). Gdy aplikacja nie zapyta w 60 s od budzika, serwer
 uruchamia ją przez MDC `0xC7 81 01`, potem co 2 minuty, aż do uznania pobudki
 za nieudaną (15 minut). Network standby ustawia aplikacja przed każdym snem.
 
@@ -356,8 +357,16 @@ obraz na stronie i zgłasza `shown`. Pasek w aplikacji iOS liczy z tego czas
 pobierania, a odświeżanie (ok. 10 s przygotowania + ok. 30 s zmiany ekranu)
 zaczyna od `shown`. Zmiana stylu o jeden piksel niezawodnie wymusza
 odświeżenie; ukrycie i pokazanie na 1,5 s raz złapało pusty (biały) ekran.
-Launcher po cichu instaluje każdą paczkę wskazaną w `sssp_config.xml`, więc
-serwer musi zawsze podawać aktualną.
+Launcher po cichu instaluje każdą paczkę wskazaną w `sssp_config.xml` (sprawdza
+wersję przy usypianiu, potem przeinstalowuje i przerysowuje ekran), więc
+serwer musi zawsze podawać tę zainstalowaną; inną wersję zgłasza w logu.
+
+**Kolejność przed snem.** `goToSleep()` nie czeka na trwające odświeżanie:
+sen w jego trakcie zostawił pół narysowany szary ekran i zgubił budzik (E16).
+Aplikacja pokazuje obraz, czeka 60 s od ostatniej zmiany ekranu (obraz albo
+komunikat), dopiero wtedy ustawia network standby i budzik i zasypia. Gdy
+przez długie pobieranie do pobudki zostały mniej niż 2 minuty, pyta serwer
+od nowa zamiast zasypiać.
 
 **Wysyłka z aplikacji iOS** w trybie aplikacji: bez `0xC7`. Aplikacja
 obudzona (ładowarka) pobiera obraz przy najbliższym pytaniu; uśpiona z Wi-Fi

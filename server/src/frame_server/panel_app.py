@@ -61,10 +61,11 @@ MISSED_AFTER = timedelta(minutes=15)
 # JS keeps running up to ~130 s after goToSleep(), and an alarm due before
 # the panel is really down is lost (E16): never sleep for less than this.
 MIN_SLEEP = timedelta(minutes=5)
-# After a sleep with the Wi-Fi off the panel boots cold and the launcher
-# does not always start the app (E16): MDC 0xC7 81 01 starts it. Tried this
-# long after the alarm, then every ``KICK_EVERY`` until the wake is missed.
-KICK_AFTER = timedelta(seconds=90)
+# After a sleep with the Wi-Fi off the panel boots cold; with Developer mode
+# off the launcher starts the app by itself (E16, on: it does not), else
+# MDC 0xC7 81 01 starts it. Tried this long after the alarm, then every
+# ``KICK_EVERY`` until the wake is missed.
+KICK_AFTER = timedelta(seconds=60)
 KICK_EVERY = timedelta(minutes=2)
 # "Obudź ramkę" keeps the woken app awake (asking every ``POLL``) this long.
 KEEP_AWAKE = timedelta(minutes=10)
@@ -310,6 +311,15 @@ class PanelApp:
             log.info("the panel runs the Frame app (%s)", hello.build)
         state.active = True
         state.seen_at = now.isoformat(timespec="seconds")
+        package = self.package()
+        if hello.build and package is not None and hello.build != package.version:
+            # The launcher checks the version as the panel goes to sleep and
+            # installs (and redraws) whatever sssp_config.xml offers (E16).
+            log.warning(
+                "the panel runs Frame app %s but the server offers %s: it will reinstall",
+                hello.build,
+                package.version,
+            )
         state.build = hello.build or state.build
         state.code = hello.code or state.code
         state.screen = hello.screen or state.screen
