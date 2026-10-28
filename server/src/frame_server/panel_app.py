@@ -34,14 +34,17 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 from zoneinfo import ZoneInfo
 
+from PIL import Image
 from pydantic import BaseModel
 
 from .device import MdcError
 from .device.mdc import CONTENT_SOURCE_CUSTOM
+from .progress import Stage
 from .schedule import in_quiet_hours, quiet_hours
 
 if TYPE_CHECKING:
     from .service import FrameService
+    from .store import ContentInfo
 
 log = logging.getLogger(__name__)
 
@@ -72,6 +75,15 @@ BATTERY_TIMEOUT = 10.0
 # The source the panel had before Custom when it was never read (Samsung
 # MDC: 00 = MagicInfo, which the Mobile mode most likely is).
 MOBILE_SOURCE = 0x00
+# A full-colour (passthrough) picture goes to the app as a JPEG: about 1 MB
+# instead of 3-4 MB of PNG over the panel's weak Wi-Fi (60-215 KB/s), and
+# the loss does not show (E16). A dithered one, a handful of inks, stays the
+# lossless PNG.
+JPEG_QUALITY = 95
+DITHERED_COLOURS = 16
+# The app reports when it has downloaded a picture and put it on the page;
+# after a push the progress bar waits for that this long at most.
+SHOWN_WAIT = 300.0
 
 
 class AppState(BaseModel):
@@ -147,6 +159,9 @@ class PanelApp:
         self.awake_until: datetime | None = None
         self.sleep_requested = False
         self._kicked: datetime | None = None
+        self._images: dict[str, str] = {}  # file_id -> the path the app gets
+        self._shown: dict[str, asyncio.Event] = {}
+        self._waiting: set[asyncio.Task[None]] = set()
 
     # -- persisted state ------------------------------------------------------
 
@@ -252,7 +267,7 @@ class PanelApp:
         if content is not None:
             common |= {
                 "file_id": content.file_id,
-                "image": f"{service.settings.base_url()}/panel/images/{content.file_name}",
+                "image": f"{service.settings.base_url()}{self.image_path(content)}",
                 "title": content.title,
             }
         if power.change_due(now):
@@ -314,6 +329,67 @@ class PanelApp:
             log.info("panel app %s: %s", event, text)
         if event == "sleep":
             self.service.status.note_sleep(deep=not self.state.standby)
+        elif event == "progress":
+            loaded, total = data.get("loaded"), data.get("total")
+            if isinstance(loaded, int | float) and isinstance(total, int | float) and total > 0:
+                self.service.progress.note_download(loaded / total)
+        elif event == "shown":
+            shown = self._shown.pop(str(data.get("file_id", "")), None)
+            if shown is not None:
+                shown.set()
+
+    # -- pictures -------------------------------------------------------------
+
+    def image_path(self, content: ContentInfo) -> str:
+        """What the app downloads for ``content``: the Mobile source's picture,
+        as a JPEG when it is full colour."""
+        path = self._images.get(content.file_id)
+        if path is None:
+            jpeg = self.picture(content.file_id)
+            path = (
+                f"/panel/app-images/{content.file_id}.jpg"
+                if jpeg is not None
+                else f"/panel/images/{content.file_name}"
+            )
+            self._images = {content.file_id: path}  # only the current one
+        return path
+
+    def picture(self, file_id: str) -> Path | None:
+        """The JPEG copy of a full-colour picture (made once); None for a
+        dithered one or an unknown ``file_id``."""
+        store = self.service.store
+        path = store.app_image_path(file_id)
+        if path.is_file():
+            return path
+        source = store.panel_file(file_id)
+        if source is None:
+            return None
+        try:
+            with Image.open(source) as img:
+                if img.mode == "P" or img.getcolors(DITHERED_COLOURS) is not None:
+                    return None
+                img.convert("RGB").save(path, "JPEG", quality=JPEG_QUALITY)
+        except OSError as err:  # the panel gets it as it is
+            log.warning("no JPEG of %s for the panel app: %s", source.name, err)
+            return None
+        return path
+
+    def follow(self, file_id: str) -> None:
+        """A push reached the app: the bar moves on to the refresh once the
+        app has the whole picture on its page (or after ``SHOWN_WAIT``)."""
+        shown = self._shown[file_id] = asyncio.Event()
+
+        async def wait() -> None:
+            try:
+                await asyncio.wait_for(shown.wait(), SHOWN_WAIT)
+            except TimeoutError:
+                log.info("the panel app did not report %s shown", file_id)
+            self._shown.pop(file_id, None)
+            self.service.progress.advance(Stage.REFRESHING)
+
+        task = asyncio.create_task(wait())
+        self._waiting.add(task)
+        task.add_done_callback(self._waiting.discard)
 
     def next_wake(self, now: datetime) -> datetime:
         """The next change (or check, in the economy mode); on battery in the

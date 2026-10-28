@@ -21,6 +21,9 @@
   // "wait" answers in a row before giving up on the server for now.
   var MAX_WAITS = 30;
   var RELOAD_EVERY_MS = 10 * 60000;
+  // The panel's Wi-Fi is weak (60-215 KB/s, E16): a picture may take minutes.
+  var DOWNLOAD_TIMEOUT_MS = 5 * 60000;
+  var PROGRESS_EVERY_MS = 2000;
 
   var ep = (typeof webapis !== "undefined" && webapis.epaper) ? webapis.epaper : null;
   var shown = null;
@@ -28,6 +31,7 @@
   var waits = 0;
   var timer = null;
   var last = Date.now();
+  var onPage = null;  // the object URL of the picture on the page
 
   function saved(key, value) {
     try {
@@ -164,30 +168,67 @@
     });
   }
 
+  // The whole picture is downloaded before it goes on the page: an <img>
+  // loading while the e-paper refreshes was 4-10x slower (E16). The server
+  // hears how far it is, for the progress bar in the iOS app.
+  function download(src, fileId, ok, fail) {
+    var x = new XMLHttpRequest();
+    var told = 0;
+    x.open("GET", src, true);
+    x.responseType = "blob";
+    x.timeout = DOWNLOAD_TIMEOUT_MS;
+    x.onprogress = function (e) {
+      var now = Date.now();
+      if (!e.lengthComputable || now - told < PROGRESS_EVERY_MS) return;
+      told = now;
+      report("progress", { file_id: fileId, loaded: e.loaded, total: e.total });
+    };
+    x.onload = function () {
+      if (x.status !== 200) return fail("HTTP " + x.status);
+      ok(x.response);
+    };
+    x.onerror = function () { fail("network"); };
+    x.ontimeout = function () { fail("timeout"); };
+    x.send();
+  }
+
   function draw(answer, done) {
     if (!answer.image || answer.file_id === shown) return done(false);
-    var img = new Image();
-    img.onload = function () {
-      // With base_screen_resolution "always" the page is 2560x1440 and the
-      // panel's picture is shown pixel for pixel (E16). A package without
-      // it has a 1920x1080 page: the picture is scaled down to fit.
-      var w = window.innerWidth, h = window.innerHeight;
-      var exact = img.naturalWidth === w && img.naturalHeight === h;
-      var el = document.getElementById("picture");
-      el.style.cssText = "position:fixed;left:0;top:0;width:" + w + "px;height:" + h + "px;display:block" +
-        (exact ? ";image-rendering:pixelated" : "");
-      el.src = img.src;
-      nudge(el);
-      note("");
-      shown = answer.file_id;
-      report("shown", { file_id: answer.file_id, width: img.naturalWidth, height: img.naturalHeight });
-      done(true);
-    };
-    img.onerror = function () {
-      report("error", { message: "image did not load", image: answer.image });
+    var started = Date.now();
+    download(answer.image, answer.file_id, function (blob) {
+      var src = URL.createObjectURL(blob);
+      var img = new Image();
+      img.onload = function () {
+        // With base_screen_resolution "always" the page is 2560x1440 and
+        // the panel's picture is shown pixel for pixel (E16). A package
+        // without it has a 1920x1080 page: the picture is scaled to fit.
+        var w = window.innerWidth, h = window.innerHeight;
+        var exact = img.naturalWidth === w && img.naturalHeight === h;
+        var el = document.getElementById("picture");
+        el.style.cssText = "position:fixed;left:0;top:0;width:" + w + "px;height:" + h + "px;display:block" +
+          (exact ? ";image-rendering:pixelated" : "");
+        el.src = src;
+        nudge(el);
+        if (onPage) URL.revokeObjectURL(onPage);
+        onPage = src;
+        note("");
+        shown = answer.file_id;
+        report("shown", {
+          file_id: answer.file_id, width: img.naturalWidth, height: img.naturalHeight,
+          bytes: blob.size, download_ms: Date.now() - started
+        });
+        done(true);
+      };
+      img.onerror = function () {
+        URL.revokeObjectURL(src);
+        report("error", { message: "image did not decode", image: answer.image });
+        done(false);
+      };
+      img.src = src;
+    }, function (why) {
+      report("error", { message: "image did not load: " + why, image: answer.image });
       done(false);
-    };
-    img.src = answer.image;
+    });
   }
 
   // The e-paper does not redraw for a new picture alone (E16, the first one

@@ -345,6 +345,20 @@ był miękki. E-papier nie odświeża się sam po wczytaniu obrazka, a
 `screenRefreshNow()` rzuca błąd: aplikacja po `onload` zmienia `opacity` na
 0,99 i po 300 ms z powrotem na 1.
 
+**Pobieranie i pasek postępu (pomiary wieczorem 2026-10-28).** Wi-Fi ramki
+jest słabe (sygnał 2/5, 2,4 GHz, 60–215 KB/s), a `<img>` pobierany w trakcie
+odświeżania szedł 4–10× wolniej. Dlatego pełnokolorowy obraz (passthrough)
+idzie do aplikacji jako JPEG q95 (`/panel/app-images/<id>.jpg`, ok. 1 MB
+zamiast 3–4 MB PNG, różnicy nie widać); obraz z naszym ditheringiem (najwyżej
+16 kolorów) zostaje bezstratnym PNG. Aplikacja pobiera cały plik przez XHR,
+co 2 s zgłasza postęp (`/panel/report`, `progress`), a dopiero potem podmienia
+obraz na stronie i zgłasza `shown`. Pasek w aplikacji iOS liczy z tego czas
+pobierania, a odświeżanie (ok. 10 s przygotowania + ok. 30 s zmiany ekranu)
+zaczyna od `shown`. Zmiana stylu o jeden piksel niezawodnie wymusza
+odświeżenie; ukrycie i pokazanie na 1,5 s raz złapało pusty (biały) ekran.
+Launcher po cichu instaluje każdą paczkę wskazaną w `sssp_config.xml`, więc
+serwer musi zawsze podawać aktualną.
+
 **Wysyłka z aplikacji iOS** w trybie aplikacji: bez `0xC7`. Aplikacja
 obudzona (ładowarka) pobiera obraz przy najbliższym pytaniu; uśpiona z Wi-Fi
 dostaje serię WoL (do 3 min) i pyta po wznowieniu; w głębokim śnie albo gdy

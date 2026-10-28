@@ -55,6 +55,20 @@ def test_a_picture_goes_through_the_three_phases() -> None:
     assert view.finished_at is not None and view.title == "Zachód słońca"
 
 
+def test_the_panel_apps_download_sets_the_pace() -> None:
+    clock = Clock()
+    tracker = ProgressTracker(clock)
+    tracker.begin("Widok Delft", render=False)
+    tracker.note_download(0.5)  # not downloading yet: ignored
+    tracker.advance(Stage.DOWNLOADING)
+    clock.now += 10
+    tracker.note_download(0.25)  # a quarter in 10 s: 30 s to go
+    refresh = DEFAULT_SECONDS[Stage.REFRESHING]
+    assert tracker.view().seconds_left == round(30 + refresh)
+    tracker.note_download(0.2)  # never back
+    assert tracker.view().seconds_left == round(30 + refresh)
+
+
 def test_the_bar_never_goes_back_and_never_ends_early() -> None:
     clock = Clock()
     tracker = ProgressTracker(clock)
