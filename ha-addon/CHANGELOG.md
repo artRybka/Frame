@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.24.0
+
+- Tryb „Oszczędny” działa przez aplikację Frame na ramce (aplikacja
+  Custom podpisana certyfikatem Samsung): ramka sama budzi się o swoim
+  czasie, pobiera następny obraz z serwera (`/panel/next`), melduje się
+  (`/panel/report`) i znów zasypia. Wybór trybu w Harmonogramie pojawia
+  się, gdy ramka działa w tej aplikacji.
+- Konfiguracja → Aplikacja ramki: stan aplikacji na ramce i „Przełącz na
+  aplikację Frame” (albo powrót do zwykłego trybu). Paczkę aplikacji
+  podpisuje i wgrywa na serwer `scripts/panel-app/pack.sh` z Maca.
+- Aplikacja czyta baterię i ładowarkę z systemu ramki (zapasowo serwer przez
+  MDC), więc ramka na ładowarce nie zasypia. Ramka śpi co najmniej 5 min,
+  a gdy po pobudce nie poprosi o obraz w 90 s, serwer uruchamia aplikację
+  przez MDC.
+- Uwaga: strona aplikacji ma 1920×1080, więc obraz jest powiększany ×4/3,
+  a nie 1:1. Do codziennego użytku lepiej zostać przy zwykłym trybie, dopóki
+  to nie jest rozwiązane.
+- Gdy Wake-on-LAN nie obudzi ramki, aplikacja podpowiada naciśnięcie
+  przycisku na ramce (na baterii budzenie przez sieć bywa zawodne).
+
 ## 0.23.0
 
 - Otwarta karta dzieła lub zdjęcia prosi model o słowa kluczowe i polskie

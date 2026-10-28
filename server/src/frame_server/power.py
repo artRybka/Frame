@@ -22,6 +22,11 @@ the server sends what waited for it, or a check with nothing to show sends
 it straight back to sleep; a change due then goes out the usual way. The
 panel never asks for pictures itself (E7), so a wake only works while the
 server is up. On the charger the economy mode works like the online one.
+
+All that is MDC's way, and on firmware 1130.7 the panel refuses the alarm.
+When the panel runs the Frame app (panel_app.py) the app sets its own alarm
+and goes to sleep by itself: the power manager then only answers its
+questions, and both modes work through that.
 """
 
 from __future__ import annotations
@@ -138,16 +143,31 @@ class PowerManager:
 
     def _save(self, state: PowerState) -> None:
         self.service.library.set_state(POWER_KEY, state.model_dump(mode="json"))
-        self.service.status.status.pending_push = state.pending_push
-        self.service.status.status.wakes_at = state.timer
-        self.service.status.status.alarm_refused = state.alarm_refused is not None
+        self.publish_status()
+
+    def publish_status(self) -> None:
+        """What the app's status shows of the power state."""
+        state, app = self.state, self.service.app
+        status = self.service.status.status
+        status.pending_push = state.pending_push
+        status.panel_app = app.active
+        if app.active:
+            wake = app.wakes_at()
+            tz = self.service.player.settings.tz()
+            status.wakes_at = wake.astimezone(tz).strftime("%H:%M") if wake else None
+            status.alarm_refused = False  # the app has an alarm of its own
+        else:
+            status.wakes_at = state.timer
+            status.alarm_refused = state.alarm_refused is not None
 
     @property
     def economy(self) -> bool:
         """Economy ("Oszczędny") on battery: the Wi-Fi is off between the
         alarm's wakes. Not while the panel refuses the alarm: then it works
-        as online."""
+        as online. With the Frame app the app decides (see panel_app.py)."""
         economy = self.service.player.settings.power_mode == "economy"
+        if self.service.app.active:
+            return economy
         return economy and self.service.status.on_battery and self.alarm_works()
 
     def alarm_works(self) -> bool:
@@ -184,6 +204,8 @@ class PowerManager:
         the Wi-Fi is off: nothing reaches the panel."""
         settings = self.service.player.settings
         state = self.state
+        if self.service.app.active:
+            return self.service.app.deep_asleep()
         if self.economy and state.standby_off and state.wake_at is not None:
             return True
         return (
@@ -195,7 +217,10 @@ class PowerManager:
 
     def wakes_at(self, now: datetime) -> datetime | None:
         """When the panel in deep sleep wakes next: the economy wake, or the
-        next ring of the night's alarm."""
+        next ring of the night's alarm. With the Frame app: its alarm, in
+        any sleep."""
+        if self.service.app.active:
+            return self.service.app.wakes_at()
         if not self.deep_asleep(now):
             return None
         state = self.state
@@ -232,6 +257,9 @@ class PowerManager:
 
     def asleep_state(self, status: DeviceStatus) -> PanelPower:
         """Which sleep a panel that does not answer is most likely in."""
+        app = self.service.app
+        if app.asleep():
+            return "deep_sleep" if app.deep_asleep() else "standby"
         if self.deep_asleep(datetime.now(UTC)) or self.state.standby_off:
             return "deep_sleep"  # Wi-Fi off: only its alarm or the button wakes it
         if status.network_standby is True:
@@ -307,7 +335,7 @@ class PowerManager:
         log.info("economy: panel in deep sleep until %s", state.wake_at)
         return True
 
-    def _change_due(self, now: datetime) -> bool:
+    def change_due(self, now: datetime) -> bool:
         """A change is being shown or comes within moments: a woken panel
         stays awake for it, and goes back to sleep after the picture."""
         player = self.service.player
@@ -349,7 +377,7 @@ class PowerManager:
             if outcome.fetched:
                 # It waited for the panel: let it stay until the next change.
                 self.service.player.postpone()
-        elif self.economy and not self._change_due(now):
+        elif self.economy and not self.change_due(now):
             # A check with nothing to show: straight back to sleep, no redraw.
             await self.enter_deep(now)
         return True
@@ -361,6 +389,9 @@ class PowerManager:
         now = now or datetime.now(UTC)
         settings = service.player.settings
         state = self.state
+        if service.app.active:
+            await service.app.tick(now)  # the app keeps its own alarm and sleep
+            return
         if self.economy:
             await self._economy_tick(now)
             return
@@ -409,7 +440,7 @@ class PowerManager:
             # unplugged, or woken and nothing put it back. Deep sleep, unless
             # a picture is on its way.
             light_sleep = self._light_sleep is not None and not self._light_sleep.done()
-            busy = service.progress.active or light_sleep or self._change_due(now)
+            busy = service.progress.active or light_sleep or self.change_due(now)
             if not busy and self._due(self._last_arm, now, RETRY_ARM):
                 await self.enter_deep(now)
             return
@@ -479,8 +510,11 @@ class PowerManager:
 
     async def sleep_now(self) -> None:
         """The app's "Uśpij ramkę": light sleep at once (economy on battery:
-        deep, until the next wake)."""
+        deep, until the next wake). The Frame app sleeps at its next question."""
         self.cancel_light_sleep()
+        if self.service.app.active:
+            self.service.app.request_sleep()
+            return
         if self.economy and await self.enter_deep(datetime.now(UTC)):
             return
         await self.service.panel.sleep()
@@ -496,6 +530,8 @@ class PowerManager:
         goes back to light sleep after a while, on the charger as well."""
         service = self.service
         now = datetime.now(UTC)
+        if service.app.active and not self.deep_asleep(now):
+            return await self._wake_app(now, sleep_after)
         if self.deep_asleep(now):
             state = self.state
             until = self.wakes_at(now)
@@ -538,6 +574,28 @@ class PowerManager:
             reason=None if woke else "no answer: the packets may not reach it (see docs/WAKE.md)",
         )
 
+    async def _wake_app(self, now: datetime, sleep_after: bool) -> WakeResult:
+        """The Frame app: awake already (it asks every few seconds on the
+        charger), or Wake-on-LAN until it asks again."""
+        service, app = self.service, self.service.app
+        if not sleep_after:
+            app.keep_awake(now)
+        if not app.asleep():
+            return WakeResult(sent=False, woke=True)
+        if not service.settings.device_mac:
+            return WakeResult(sent=False, woke=False, reason="no MAC address set")
+        burst = asyncio.create_task(service.panel.wake(seconds=WAKE_BURST_SECONDS))
+        try:
+            woke = await app.wait_for_contact(WAKE_LOOK.total_seconds())
+        finally:
+            burst.cancel()
+        log.info("Wake-on-LAN for the Frame app: %s", "it asked" if woke else "no answer")
+        return WakeResult(
+            sent=True,
+            woke=woke,
+            reason=None if woke else "no answer: the packets may not reach it (see docs/WAKE.md)",
+        )
+
     def _in_wake_window(self, now: datetime, settings: FrameSettings, today: date) -> bool:
         wake = alarm_time(settings)
         start = datetime.combine(today, wake, tzinfo=settings.tz())
@@ -548,9 +606,7 @@ class PowerManager:
         return last is None or now - last >= every
 
     async def run(self, period: float = 5.0) -> None:
-        self.service.status.status.pending_push = self.state.pending_push
-        self.service.status.status.wakes_at = self.state.timer
-        self.service.status.status.alarm_refused = self.state.alarm_refused is not None
+        self.publish_status()
         while True:
             try:
                 await self.tick()

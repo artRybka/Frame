@@ -39,6 +39,7 @@ actor DemoBackend: FrameBackend {
         plTextProgress: nil, error: nil
     )
     private var demoAsleep = false
+    private var demoPanelApp = false
     /// The picture "on its way" to the pretend frame, for the progress bar.
     private var run: (title: String, start: Date)?
     /// Demo stages: 14 s in all, where a real panel takes about a minute.
@@ -194,7 +195,8 @@ actor DemoBackend: FrameBackend {
             configured: true, reachable: true, checkedAt: now, lastSeen: now, batteryLevel: 76,
             charging: false, powerSource: "battery", batteryRaw: nil, networkStandby: true,
             firmware: "S-RSEDWWC-1050.1", model: "EM32DX", serial: "DEMO0001", name: "Salon",
-            error: nil, lastPushAt: now, lastFetchAt: now, powerState: demoAsleep ? "standby" : "online"
+            error: nil, lastPushAt: now, lastFetchAt: now, powerState: demoAsleep ? "standby" : "online",
+            panelApp: demoPanelApp
         )
         let server = ServerStatus(
             version: "demo", uptimeS: 3600, libraryCount: items.count,
@@ -809,6 +811,19 @@ actor DemoBackend: FrameBackend {
     func resetPanelConfig() async throws -> PanelConfig {
         panelValue = Self.demoPanel
         return panelValue
+    }
+
+    func panelApp() async throws -> PanelAppView {
+        PanelAppView(
+            active: demoPanelApp,
+            package: PanelAppPackage(version: "1.0.0", size: 24_576, uploadedAt: "2026-10-28T09:00:00+00:00"),
+            state: PanelAppState(active: demoPanelApp)
+        )
+    }
+
+    func switchPanelApp(on: Bool) async throws -> PanelAppView {
+        demoPanelApp = on
+        return try await panelApp()
     }
 
     func libraryStorage() async throws -> LibraryStorage {

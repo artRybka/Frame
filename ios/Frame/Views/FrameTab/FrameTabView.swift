@@ -428,9 +428,10 @@ struct ScheduleSection: View {
                     }
                 }
                 Divider()
-                // The economy mode needs the frame's own alarm, which firmware
-                // 1130.7 refuses (E13): only offered to switch back from it.
-                if settings.isEconomy {
+                // The economy mode needs the frame's own alarm: the Frame app
+                // has one, MDC's is refused on firmware 1130.7 (E13). Without
+                // the app it is only offered to switch back from it.
+                if settings.isEconomy || model.status?.device.panelApp == true {
                     powerModePicker
                     Divider()
                 }
@@ -1077,6 +1078,9 @@ struct ConnectionSettingsView: View {
                     if let panel = model.panelConfig {
                         PanelSection(config: panel)
                     }
+                    if let app = model.panelApp, app.active || app.package != nil {
+                        PanelAppSection(app: app)
+                    }
                     ServerSection()
                     if let storage = model.libraryStorage {
                         LibrarySizeSection(storage: storage)
@@ -1092,6 +1096,7 @@ struct ConnectionSettingsView: View {
             .background(Theme.paper)
             .scrollDismissesKeyboard(.interactively)
             .task { await model.loadLibraryStorage() }
+            .task { await model.loadPanelApp() }
             .task { await model.loadAiSettings() }
             .navigationTitle("Konfiguracja")
             .navigationBarTitleDisplayMode(.inline)
@@ -1214,6 +1219,54 @@ struct PanelSection: View {
             port: config.port
         )
         await model.savePanelConfig(update)
+    }
+}
+
+/// The Frame app on the panel: switching the frame's content source to it
+/// (it installs at once) or back to the Samsung one.
+struct PanelAppSection: View {
+    @Environment(AppModel.self) private var model
+    let app: PanelAppView
+    @State private var switching = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            SectionHeader(title: "Aplikacja ramki", subtitle: "Ramka sama się budzi i pobiera obrazy")
+            Card {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(app.active ? "Ramka działa w aplikacji Frame" : "Ramka działa w zwykłym trybie Samsunga")
+                        .foregroundStyle(Theme.ink)
+                    if app.active, let seen = When.ago(app.state.seenAt) {
+                        Text("Ostatnio pytała o obraz \(seen)")
+                            .font(.caption)
+                            .foregroundStyle(Theme.inkSoft)
+                    }
+                }
+                Text("Z aplikacją ramka ma własny budzik: działa tryb Oszczędny, a zmiany obrazu nie zależą od budzenia przez sieć.")
+                    .font(.caption)
+                    .foregroundStyle(Theme.inkSoft)
+                Divider()
+                Button {
+                    Task {
+                        switching = true
+                        await model.switchPanelApp(!app.active)
+                        switching = false
+                    }
+                } label: {
+                    HStack {
+                        Text(app.active ? "Wróć do zwykłego trybu" : "Przełącz na aplikację Frame")
+                        if switching { ProgressView() }
+                    }
+                }
+                .fontWeight(.semibold)
+                .disabled(switching || (!app.active && app.package == nil))
+                if let package = app.package {
+                    Text("Aplikacja \(package.version) na serwerze\(app.state.build.map { ", na ramce \($0)" } ?? "").")
+                        .font(.caption)
+                        .foregroundStyle(Theme.inkSoft)
+                }
+            }
+        }
     }
 }
 

@@ -51,6 +51,11 @@ CMD_NETWORK_STANDBY = 0xB5
 CMD_CONTENT_DOWNLOAD = 0xC7
 
 SUB_BATTERY = 0x73
+# 0xC7 sub-commands of the content launcher (E16): where content comes from
+# (01 = Custom, our own Tizen app; Mobile probably 00) and the Custom app's URL.
+SUB_CONTENT_SOURCE = 0x81
+SUB_CUSTOM_URL = 0x82
+CONTENT_SOURCE_CUSTOM = 0x01
 
 # MDC 0x25 repeat codes (taylorRichie/node-samsung-emdx, docs/MDC-COMMANDS.md).
 ON_TIMER_REPEAT = {"once": 0x01, "daily": 0x02, "mon-fri": 0x03, "mon-sat": 0x04, "sat-sun": 0x05}
@@ -384,6 +389,30 @@ class MdcClient:
         # Trailing 01 as sent by node-samsung-emdx; its meaning is unknown.
         data = bytes([0x01 if enabled else 0x00, repeat, hour, minute, 0x01])
         await self.command(CMD_ON_TIMER, data)
+
+    async def content_source(self) -> int:
+        """The launcher's content source (``CONTENT_SOURCE_CUSTOM``: our app)."""
+        reply = await self.command(CMD_CONTENT_DOWNLOAD, bytes([SUB_CONTENT_SOURCE]))
+        payload = reply.payload
+        if len(payload) < 2 or payload[0] != SUB_CONTENT_SOURCE:
+            raise MdcError(f"unexpected content source reply: {payload.hex(' ')}")
+        return payload[1]
+
+    async def set_content_source(self, source: int) -> None:
+        """Switching to Custom downloads and installs the app at once (E16)."""
+        await self.command(CMD_CONTENT_DOWNLOAD, bytes([SUB_CONTENT_SOURCE, source]))
+
+    async def custom_app_url(self) -> str:
+        reply = await self.command(CMD_CONTENT_DOWNLOAD, bytes([SUB_CUSTOM_URL]))
+        return reply.payload[1:].decode("ascii", "replace")
+
+    async def set_custom_app_url(self, url: str) -> None:
+        """Where the Custom launcher finds ``sssp_config.xml`` and the package
+        (no length byte, unlike ``content_download``)."""
+        encoded = url.encode("ascii")
+        if len(encoded) > MAX_URL_LENGTH:
+            raise MdcError(f"app URL longer than {MAX_URL_LENGTH} characters")
+        await self.command(CMD_CONTENT_DOWNLOAD, bytes([SUB_CUSTOM_URL]) + encoded)
 
     async def content_download(self, url: str) -> None:
         """Point the panel at a content manifest (content.json) to fetch."""

@@ -379,7 +379,7 @@ struct Delivery: Codable, Hashable, Sendable {
                 why = "Ramka śpi bez Wi-Fi, żeby oszczędzać baterię. \(button)"
             } else {
                 why = asleepUntil.map { "Ramka śpi do \($0), obraz trafi na nią po przebudzeniu." }
-                    ?? "Ramka nie odpowiada, obraz trafi na nią, gdy się obudzi."
+                    ?? "Ramka nie odpowiada, obraz trafi na nią, gdy się obudzi. \(button)"
             }
         case "failed":
             let when = When.schedule(failedAt).map { " (\($0))" } ?? ""
@@ -468,6 +468,33 @@ struct DeviceStatus: Codable, Hashable, Sendable {
     /// Not answering, yet still on the Wi-Fi (answers ARP): asleep, not gone.
     /// Nil when not asked or when the server cannot tell; missing before 0.15.
     var onNetwork: Bool?
+    /// The frame runs the Frame app: it asks for its pictures and wakes by
+    /// its own alarm, so the economy mode works.
+    var panelApp: Bool?
+}
+
+/// The Frame app on the panel (Samsung "Custom" content source).
+struct PanelAppView: Codable, Hashable, Sendable {
+    var active: Bool
+    var package: PanelAppPackage?
+    var state: PanelAppState
+}
+
+/// The signed package the server holds for the panel.
+struct PanelAppPackage: Codable, Hashable, Sendable {
+    var version: String
+    var size: Int
+    var uploadedAt: String
+}
+
+struct PanelAppState: Codable, Hashable, Sendable {
+    var active: Bool
+    var seenAt: String?
+    var build: String?
+    var asleep: Bool?
+    var wakeAt: String?
+    var standby: Bool?
+    var missedWake: String?
 }
 
 /// "Obudź ramkę": whether the magic packets went out and the panel answered.

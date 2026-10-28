@@ -32,6 +32,9 @@ final class AppModel {
     var settings: FrameSettings?
     /// How the server reaches the panel; nil before it is loaded or on an older server.
     var panelConfig: PanelConfig?
+    /// The Frame app on the panel; loaded when Konfiguracja opens, nil on
+    /// an older server.
+    var panelApp: PanelAppView?
     /// The library's size on the server; loaded when Konfiguracja opens
     /// (measuring is slow on a NAS), nil on an older server.
     var libraryStorage: LibraryStorage?
@@ -118,6 +121,7 @@ final class AppModel {
         displayProgress = nil
         settings = nil
         panelConfig = nil
+        panelApp = nil
         libraryStorage = nil
         aiSettings = nil
         playlists = []
@@ -551,6 +555,25 @@ final class AppModel {
         await loadLibraryStorage()
     }
 
+    func loadPanelApp() async {
+        panelApp = try? await backend.panelApp()
+    }
+
+    /// The panel's launcher to the Frame app (it installs it at once) or
+    /// back to the Samsung source; a sleeping frame is woken first.
+    func switchPanelApp(_ on: Bool) async {
+        toast = on ? "Przełączam ramkę na aplikację Frame…" : "Przełączam ramkę na zwykły tryb…"
+        do {
+            panelApp = try await backend.switchPanelApp(on: on)
+            toast = on
+                ? "Ramka instaluje aplikację Frame, za chwilę sama poprosi o obraz"
+                : "Ramka wróciła do zwykłego trybu"
+        } catch {
+            show(error)
+        }
+        await refreshStatus(live: false)
+    }
+
     func loadAiSettings() async {
         aiSettings = try? await backend.aiSettings()
     }
@@ -641,7 +664,7 @@ final class AppModel {
             } else if !result.sent {
                 toast = "Brak adresu MAC ramki, ustaw go w Połączeniu z ekranem"
             } else {
-                toast = "Ramka nie odpowiada na sygnał budzenia"
+                toast = "Ramka nie odpowiada na sygnał budzenia. Na baterii bywa zawodny: naciśnij krótko przycisk z tyłu ramki"
             }
             await refreshStatus(live: false)
         } catch {
