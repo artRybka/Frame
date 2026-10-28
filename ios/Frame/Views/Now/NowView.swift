@@ -88,6 +88,11 @@ struct NowView: View {
                             OnFrameNote(showing: onFrame)
                                 .transition(.opacity)
                         }
+                        if offset == 0, undelivered == nil, let device = model.status?.device,
+                           device.powerState == "deep_sleep" {
+                            FrameAsleepNote(wakeAt: device.wakeAt, wakesAt: device.wakesAt)
+                                .transition(.opacity)
+                        }
                         if let selectedItem {
                             ArtworkInfo(item: selectedItem)
                                 .id(selectedItem.id)
@@ -533,6 +538,47 @@ struct OnFrameNote: View {
             }
         }
         .accessibilityElement(children: .combine)
+    }
+}
+
+/// The frame sleeps with its Wi-Fi off: nothing sent reaches it before its
+/// alarm, unless its button wakes it.
+struct FrameAsleepNote: View {
+    let wakeAt: String?
+    let wakesAt: String?  // HH:MM, from servers before the full moment
+
+    var body: some View {
+        Card(padding: 14) {
+            HStack(alignment: .top, spacing: 14) {
+                Image(systemName: "moon.zzz")
+                    .font(.title2)
+                    .foregroundStyle(Theme.accent)
+                    .frame(width: 32)
+                VStack(alignment: .leading, spacing: 4) {
+                    Eyebrow("Ramka śpi")
+                    TimelineView(.everyMinute) { context in
+                        Text(wake(now: context.date))
+                            .font(.serif(17, weight: .semibold))
+                            .foregroundStyle(Theme.ink)
+                    }
+                    Text("Żeby zmienić obraz wcześniej, naciśnij krótko przycisk na ramce.")
+                        .font(.subheadline)
+                        .foregroundStyle(Theme.inkSoft)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private func wake(now: Date) -> String {
+        if let at = When.at(wakeAt) {
+            let countdown = When.countdown(wakeAt, from: now).map { " · \($0)" } ?? ""
+            return "Obudzi się \(at)\(countdown)"
+        }
+        if let wakesAt { return "Śpi do \(wakesAt)" }
+        return "Śpi bez Wi-Fi, obudzi ją przycisk"
     }
 }
 

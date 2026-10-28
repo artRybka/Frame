@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import io
+import json
 import ssl
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -23,6 +24,7 @@ from frame_server.panel_app import AppHello
 from frame_server.progress import Stage
 from frame_server.schedule import FrameSettings
 from frame_server.service import FrameService
+from frame_server.status import wifi_reading
 from frame_server.store import PanelRequest
 from frame_server.web.player_api import _player_view
 
@@ -94,6 +96,7 @@ def test_online_sleeps_until_the_change_and_deeply_at_night(tmp_path: Path) -> N
     status = service.status.status
     assert status.panel_app and status.battery_level == 80 and status.power_source == "battery"
     assert status.wakes_at == "19:00"
+    assert status.wake_at == _at("2026-10-28T19:00").isoformat()
     assert app.asleep() and not app.deep_asleep()
 
     # After the evening change: up again when quiet hours start, to turn the
@@ -324,3 +327,68 @@ async def test_a_silent_app_is_started_after_its_alarm(
         assert service.app.state.missed_wake == _at("2026-10-28T19:00").isoformat()
     finally:
         await panel.stop()
+
+
+async def test_a_new_package_is_installed_by_a_reboot(
+    tmp_path: Path, server_ssl: ssl.SSLContext
+) -> None:
+    panel = FakePanel(server_ssl)
+    await panel.start()
+    try:
+        service = _service(tmp_path, panel.port)
+        app = service.app
+        app.store_package(b"PK\x03\x04signed", "1.1.0")
+        now = _at("2026-10-28T21:00")
+        hello = AppHello(reason="poll", build="1.0.0", charging=True)
+        assert app.answer(hello, now=now).action == "reboot"
+        # Installed, not started: the server starts it a minute later.
+        await service.power.tick(now + timedelta(seconds=70))
+        assert panel.received == [(CMD_CONTENT_DOWNLOAD, b"\x81\x01")]
+        # Once per version: a package that does not install reboots no more.
+        assert app.answer(hello, now=now + timedelta(minutes=2)).action == "stay"
+        new = AppHello(reason="start", build="1.1.0", charging=True)
+        assert app.answer(new, now=now + timedelta(minutes=3)).action == "stay"
+    finally:
+        await panel.stop()
+
+
+def test_wifi_reading_learns_the_home_network_and_warns_off_it() -> None:
+    now = datetime(2026, 10, 28, 20, 0, tzinfo=UTC)
+    host = "192.100.3.151"
+    home = wifi_reading(
+        {"level": 3, "ssid": "IoT_Synology", "ip": host, "frequency": 2437}, host, None, now
+    )
+    assert home is not None
+    assert home.signal == pytest.approx(0.6) and home.level == 3 and home.frequency == 2437
+    assert home.home_ssid == "IoT_Synology" and not home.wrong_network
+    # After a power cut it joined the neighbour's SSID (E16).
+    away = wifi_reading(
+        {"signal": 0.8, "ssid": "Rocky IoT", "ip": "192.168.3.151"}, host, home, now
+    )
+    assert away is not None and away.wrong_network
+    assert away.home_ssid == "IoT_Synology" and away.expected_ip == host
+    # Another SSID at the right address: reachable, so that is home now.
+    other = wifi_reading({"signal": 0.5, "ssid": "Guest", "ip": host}, host, home, now)
+    assert other is not None and other.wrong_network is False and other.home_ssid == "Guest"
+    # Nothing read (no API, systeminfo silent): the last reading stays.
+    assert wifi_reading({"error": "no answer"}, host, home, now) is None
+    # A host name cannot be compared with the address.
+    named = wifi_reading({"level": 9, "ssid": "X", "ip": "10.0.0.2"}, "frame.local", None, now)
+    assert named is not None and named.signal == 1.0 and not named.wrong_network
+
+
+def test_wifi_report_shows_in_the_status_until_the_panel_leaves_the_app(tmp_path: Path) -> None:
+    from frame_server.web import create_app
+
+    service = _service(tmp_path)
+    app = create_app(service.settings)
+    with TestClient(app) as client:
+        client.get("/panel/next", params={"reason": "start", "charging": "true"})
+        report = {"event": "wifi", "via": "webapis", "level": 2, "ssid": "IoT", "ip": "127.0.0.1"}
+        client.post("/panel/report", content=json.dumps(report))
+        wifi = client.get("/api/device/status").json()["wifi"]
+        assert wifi["ssid"] == "IoT" and wifi["level"] == 2 and not wifi["wrong_network"]
+        client.post("/panel/report", content='{"event": "wifi", "ip": "10.1.1.1", "signal": 0.4}')
+        assert client.get("/api/device/status").json()["wifi"]["wrong_network"]
+        assert client.get("/panel/content.json").status_code == 200
+        assert client.get("/api/device/status").json()["wifi"] is None

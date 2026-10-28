@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import logging
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
@@ -47,6 +48,7 @@ REMEMBERED = {
     "name",
     "last_push_at",
     "last_fetch_at",
+    "wifi",
 }
 
 
@@ -80,12 +82,88 @@ class DeviceStatus(BaseModel):
     # A picture waits for the panel to wake (alarm or button), see power.py.
     pending_push: bool = False
     wakes_at: str | None = None  # HH:MM of the panel's own alarm
+    wake_at: str | None = None  # the same alarm in full, for a countdown
     # The panel refused its alarm (MDC 0x25): no deep sleep, so neither the
     # economy mode nor the night's deep sleep can work.
     alarm_refused: bool = False
     # The panel runs the Frame app (Samsung "Custom" source, panel_app.py):
     # it wakes and sleeps by itself and asks the server for its pictures.
     panel_app: bool = False
+    # Its Wi-Fi, read by the Frame app (None in the Mobile source).
+    wifi: PanelWifi | None = None
+
+
+class PanelWifi(BaseModel):
+    """The panel's Wi-Fi as the Frame app last read it: ``webapis.network``
+    (privilege network.public, package 1.2.0+) or ``tizen.systeminfo``. The
+    Mobile source tells nothing of it."""
+
+    read_at: str
+    signal: float | None = None  # 0-1
+    level: int | None = None  # 0-5 bars (webapis.network)
+    ssid: str | None = None
+    ip: str | None = None
+    frequency: int | None = None  # MHz: 24xx is 2.4 GHz
+    # Where the server looks for the panel (its MDC address), and the SSID
+    # the panel was last on at that address.
+    expected_ip: str | None = None
+    home_ssid: str | None = None
+    # On another network: the server reaches it neither over MDC nor with
+    # Wake-on-LAN. After a power cut it once joined a neighbouring SSID (E16).
+    wrong_network: bool = False
+
+
+WIFI_LEVELS = 5
+
+
+def wifi_reading(
+    data: dict[str, object], host: str | None, before: PanelWifi | None, now: datetime
+) -> PanelWifi | None:
+    """What the app reported; None when it could read nothing."""
+
+    def text(key: str) -> str | None:
+        value = data.get(key)
+        return value.strip() or None if isinstance(value, str) else None
+
+    def number(key: str) -> float | None:
+        value = data.get(key)
+        if isinstance(value, bool) or not isinstance(value, int | float | str):
+            return None
+        try:
+            return float(value)
+        except ValueError:
+            return None
+
+    level = number("level")
+    signal = number("signal")
+    if signal is None and level is not None:
+        signal = level / WIFI_LEVELS
+    ssid, ip = text("ssid"), text("ip")
+    if signal is None and ssid is None and ip is None:
+        return None
+    frequency = number("frequency")
+    try:
+        expected = str(ipaddress.ip_address(host)) if host else None
+    except ValueError:  # a host name: the address cannot be compared
+        expected = None
+    home = before.home_ssid if before else None
+    at_home = expected is not None and ip == expected
+    if at_home and ssid:
+        home = ssid
+    wrong = (expected is not None and ip is not None and ip != expected) or (
+        ssid is not None and home is not None and ssid != home
+    )
+    return PanelWifi(
+        read_at=now.isoformat(timespec="seconds"),
+        signal=None if signal is None else min(1.0, max(0.0, signal)),
+        level=None if level is None else int(level),
+        ssid=ssid,
+        ip=ip,
+        frequency=None if frequency is None else int(frequency),
+        expected_ip=expected,
+        home_ssid=home,
+        wrong_network=wrong,
+    )
 
 
 def _readable(text: str) -> str | None:
@@ -238,6 +316,29 @@ class StatusMonitor:
             status.power_source = "ac" if charging else "battery"
         self._slept_at = None
         self._remember()
+
+    def note_wifi(self, data: dict[str, object], now: datetime | None = None) -> None:
+        """The Frame app read the panel's Wi-Fi."""
+        before = self.status.wifi
+        wifi = wifi_reading(data, self.panel.settings.device_host, before, now or datetime.now(UTC))
+        if wifi is None:
+            return
+        if wifi.wrong_network and not (before and before.wrong_network):
+            log.warning(
+                "the panel is on another network: %s at %s (expected %s at %s)",
+                wifi.ssid,
+                wifi.ip,
+                wifi.home_ssid,
+                wifi.expected_ip,
+            )
+        self.status.wifi = wifi
+        self._remember()
+
+    def forget_wifi(self) -> None:
+        """Back in the Mobile source: nothing reads the Wi-Fi any more."""
+        if self.status.wifi is not None:
+            self.status.wifi = None
+            self._remember()
 
     def note_sleep(self, deep: bool) -> None:
         """The server put the panel to sleep: light (network standby on) or deep."""

@@ -99,6 +99,7 @@ class AppState(BaseModel):
     standby: bool = True  # network standby through that sleep
     missed_wake: str | None = None  # an alarm it did not show up for
     previous_source: int | None = None  # the launcher's source before Custom
+    reboot_for: str | None = None  # the package version it last rebooted to install
 
 
 class AppHello(BaseModel):
@@ -116,9 +117,10 @@ class NextAnswer(BaseModel):
     """What the app does next. ``sleep``: draw ``image``, set the alarm to
     ``wake_ms`` and sleep with network standby ``standby``; ``stay``: draw
     and ask again in ``wait_s`` (on the charger); ``wait``: a change is
-    being prepared, ask again in ``wait_s``."""
+    being prepared, ask again in ``wait_s``; ``reboot``: restart the panel,
+    so the launcher installs the package the server now offers."""
 
-    action: Literal["sleep", "stay", "wait"]
+    action: Literal["sleep", "stay", "wait", "reboot"]
     file_id: str | None = None
     image: str | None = None
     title: str = ""
@@ -272,6 +274,10 @@ class PanelApp:
                 "image": f"{service.settings.base_url()}{self.image_path(content)}",
                 "title": content.title,
             }
+        package = self.package()
+        newer = package is not None and hello.build and hello.build != package.version
+        if newer and package is not None and self.state.reboot_for != package.version:
+            return self._reboot(package.version, now, common)
         if power.change_due(now):
             return self._awake(NextAnswer(action="wait", wait_s=_s(RETRY), **common))
         awake = self.awake_until is not None and now < self.awake_until
@@ -298,6 +304,20 @@ class PanelApp:
             standby="ON" if standby else "OFF",
             **common,
         )
+
+    def _reboot(self, version: str, now: datetime, common: dict[str, object]) -> NextAnswer:
+        """A newer package is on the server: the app reboots the panel
+        (``webapis.systemcontrol.rebootDevice``), the launcher installs it
+        at the cold boot but does not start it, so ``tick`` does over MDC
+        (E16, tested 2026-10-28). Once per version, so a package that does
+        not install cannot keep the panel rebooting."""
+        state = self.state
+        state.reboot_for = version
+        state.asleep = True
+        state.wake_at = now.isoformat(timespec="seconds")  # back in a minute
+        self._save(state)
+        log.info("panel app %s reboots to install %s", state.build, version)
+        return NextAnswer(action="reboot", **common)
 
     def _awake(self, answer: NextAnswer) -> NextAnswer:
         state = self.state
@@ -344,6 +364,8 @@ class PanelApp:
             loaded, total = data.get("loaded"), data.get("total")
             if isinstance(loaded, int | float) and isinstance(total, int | float) and total > 0:
                 self.service.progress.note_download(loaded / total)
+        elif event == "wifi":
+            self.service.status.note_wifi(data)
         elif event == "shown":
             shown = self._shown.pop(str(data.get("file_id", "")), None)
             if shown is not None:
@@ -497,6 +519,7 @@ class PanelApp:
             state.active = False
             state.asleep = False
             self._save(state)
+            self.service.status.forget_wifi()
             log.info("the panel left the Frame app (it fetched content.json)")
 
 

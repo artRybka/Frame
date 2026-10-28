@@ -210,6 +210,10 @@ ten sam obraz 2560×1440 co w trybie Mobile (nasz dither albo passthrough).
 - Instalacja przez launcher działa bez Developer mode (certyfikat Partner
   z DUID wystarcza); `isCustomAppDownloaded()` zawsze `false`.
   `sssp_config.xml`: `<widget><ver>1.7.1</ver><size>…</size><widgetname>WakeProbe</widgetname><webtype>tizen</webtype></widget>`.
+- Aktualizacja bez klikania (sprawdzone 21:00): serwer podnosi `<ver>`
+  w `sssp_config.xml` i wystawia nową paczkę, aplikacja woła
+  `webapis.systemcontrol.rebootDevice()`, po restarcie launcher instaluje nową
+  wersję (ale jej nie uruchamia), serwer wysyła `0xC7 81 01`.
 - Po wyłączeniu i włączeniu ramka potrafi połączyć się z inną zapamiętaną
   siecią Wi-Fi (raz „Rocky IoT”, 192.168.3.151): wtedy serwer jej nie widzi.
   Aplikacja powinna raportować SSID i IP.
@@ -363,6 +367,21 @@ przeładowuje się (najwyżej raz na 10 minut).
 - obraz zaległy (`pending_push`) idzie przy pobudce i zostaje do następnej
   zmiany, jak dotąd.
 
+**Wi-Fi ramki** (2026-10-28, prośba Mateusza): przy każdym starcie i pobudce
+(na ładowarce co 5 minut) aplikacja zgłasza `/panel/report` `wifi`: z
+`webapis.network` poziom sygnału 0–5, SSID, adres IP i częstotliwość (MHz;
+wymaga uprawnienia `http://developer.samsung.com/privilege/network.public`,
+paczka 1.2.0+), a w starszej paczce z `tizen.systeminfo` `WIFI_NETWORK`
+(sygnał 0–1, SSID, adres; po pobudce bywa bez odpowiedzi, więc czeka 10 s).
+Serwer trzyma ostatni odczyt w stanie ramki (`DeviceStatus.wifi`), a aplikacja
+iOS pokazuje kreski sygnału i sieć w kafelku „Sieć” oraz w Konfiguracji nad
+adresem ekranu. **Obca sieć:** serwer zapamiętuje SSID, z którym ramka ma
+adres z konfiguracji (adres MDC); inny adres albo inny SSID to
+`wrong_network` z ostrzeżeniem w logu i w aplikacji (po odcięciu zasilania
+ramka raz weszła do sąsiedniego „Rocky IoT”, 192.168.3.151, i serwer jej nie
+widział). W trybie Mobile (bez aplikacji) nikt tego nie czyta, więc po
+powrocie do Mobile odczyt znika.
+
 **Po pełnym śnie** (Wi-Fi wył.) ramka startuje na zimno i launcher nie zawsze
 uruchamia aplikację (E16): gdy sprawdzi wersję na serwerze i znajdzie tę samą,
 zatrzymuje się; gdy nie sprawdza albo znajdzie nowszą, aplikacja startuje
@@ -406,6 +425,19 @@ Aplikacja pokazuje obraz, czeka 60 s od ostatniej zmiany ekranu (obraz albo
 komunikat), dopiero wtedy ustawia network standby i budzik i zasypia. Gdy
 przez długie pobieranie do pobudki zostały mniej niż 2 minuty, pyta serwer
 od nowa zamiast zasypiać.
+
+**Instalacja i aktualizacje aplikacji.** Pierwsza instalacja: Konfiguracja →
+Aplikacja ramki → „Przełącz na aplikację Frame” (serwer wysyła `0xC7 82
+<adres>/panel/app` i `0xC7 81 01`, launcher od razu instaluje). Logika
+(`app.js`) przychodzi z serwera przy każdym starcie, więc zwykłe zmiany nie
+wymagają nowej paczki. Nowa paczka tylko przy zmianie `config.xml` albo
+`index.html`: `scripts/panel-app/pack.sh WERSJA --upload <token>` na Macu
+(podpis tylko tam) i dalej samo: serwer podaje nową `<ver>` w
+`sssp_config.xml`, a gdy aplikacja zapyta z inną wersją, odpowiada `reboot`.
+Aplikacja woła `webapis.systemcontrol.rebootDevice()`, launcher po restarcie
+instaluje nową wersję, ale jej nie uruchamia, więc serwer po 60 s ciszy
+wysyła `0xC7 81 01` (sprawdzone 2026-10-28 21:00). Restart najwyżej raz na
+wersję, żeby paczka, która się nie instaluje, nie restartowała ramki w kółko.
 
 **Wysyłka z aplikacji iOS** w trybie aplikacji: bez `0xC7`. Aplikacja
 obudzona (ładowarka) pobiera obraz przy najbliższym pytaniu; uśpiona z Wi-Fi

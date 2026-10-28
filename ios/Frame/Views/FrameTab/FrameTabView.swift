@@ -228,7 +228,7 @@ struct FrameTabView: View {
             StatusTile(title: "Sieć") {
                 let state = network
                 VStack(alignment: .leading, spacing: 6) {
-                    Image(systemName: state.icon)
+                    Image(systemName: state.icon, variableValue: state.bars)
                         .font(.title2)
                         .foregroundStyle(state.color)
                     Text(state.title)
@@ -243,8 +243,23 @@ struct FrameTabView: View {
         }
     }
 
-    /// The Sieć tile: what the frame is doing, as far as the server can tell.
-    private var network: (icon: String, color: Color, title: String, note: String) {
+    /// The Sieć tile: what the frame is doing, as far as the server can tell,
+    /// with the signal's bars when the Frame app reads the Wi-Fi.
+    private var network: (icon: String, color: Color, title: String, note: String, bars: Double?) {
+        let (icon, color, title, note) = networkState
+        let wifi = device?.wifi
+        if wifi?.wrongNetwork == true {
+            let note = wifi?.ssid.map { "połączona z \($0)" } ?? "inny adres niż zwykle"
+            return ("wifi.exclamationmark", Theme.bad, "Obca sieć", note, nil)
+        }
+        guard device?.powerState == "online", let wifi, let signal = wifi.signal else {
+            return (icon, color, title, note, nil)
+        }
+        let place = [wifi.ssid, wifi.band].compactMap { $0 }.joined(separator: " · ")
+        return (icon, signal < 0.35 ? Theme.warn : color, title, place.isEmpty ? note : place, signal)
+    }
+
+    private var networkState: (icon: String, color: Color, title: String, note: String) {
         guard let device, device.configured else {
             return ("wifi", Theme.inkSoft, "—", "ekran nie jest ustawiony")
         }
@@ -255,7 +270,7 @@ struct FrameTabView: View {
             let note = device.onNetwork == true ? "śpi, ale jest w sieci Wi-Fi" : "śpi, Wi-Fi czeka na sygnał budzenia"
             return ("moon.zzz", Theme.accent, "Czuwanie", note)
         case "deep_sleep":
-            let note = device.wakesAt.map { "Wi-Fi wyłączone, budzik o \($0)" } ?? "Wi-Fi wyłączone, budzi przycisk"
+            let note = device.wakesAt.map { "budzik o \($0), wcześniej przycisk na ramce" } ?? "Wi-Fi wyłączone, budzi przycisk"
             return ("wifi.slash", Theme.inkSoft, "Głęboki sen", note)
         case "offline":
             if device.onNetwork == false {
@@ -1064,6 +1079,43 @@ struct SourcesSection: View {
     }
 }
 
+/// The frame's Wi-Fi as the Frame app on the panel last read it: the
+/// signal's bars, the network, its address and band, and a warning when it
+/// is not where the server looks for it.
+struct PanelWifiRow: View {
+    let wifi: PanelWifi
+
+    private var wrong: Bool { wifi.wrongNetwork == true }
+
+    private var details: String {
+        [wifi.strength, wifi.ip, wifi.band, When.ago(wifi.readAt)].compactMap { $0 }.joined(separator: " · ")
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: wrong ? "wifi.exclamationmark" : "wifi", variableValue: wrong ? nil : wifi.signal)
+                .font(.title2)
+                .foregroundStyle(wrong ? Theme.bad : (wifi.signal ?? 1) < 0.35 ? Theme.warn : Theme.good)
+                .frame(width: 32)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(wifi.ssid.map { "Wi-Fi ramki: \($0)" } ?? "Wi-Fi ramki")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Theme.ink)
+                Text(details)
+                    .font(.caption)
+                    .foregroundStyle(Theme.inkSoft)
+                if let warning = wifi.warning {
+                    Text(warning)
+                        .font(.caption)
+                        .foregroundStyle(Theme.bad)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
 /// Behind the gear in "Ramka": how the server reaches the panel, how the
 /// app reaches the server, how much disk the library may take and the
 /// language model's key; set once, rarely touched again.
@@ -1130,6 +1182,10 @@ struct PanelSection: View {
         VStack(alignment: .leading, spacing: 16) {
             SectionHeader(title: "Połączenie z ekranem", subtitle: "Gdzie serwer szuka ramki w sieci")
             Card {
+                if let wifi = model.status?.device.wifi {
+                    PanelWifiRow(wifi: wifi)
+                    Divider()
+                }
                 field("Adres IP ekranu", error: hostValue == nil ? "To nie wygląda na adres IP" : nil) {
                     TextField("np. 192.168.1.152", text: $host)
                         .keyboardType(.numbersAndPunctuation)
