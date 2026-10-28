@@ -168,10 +168,14 @@
     if (!answer.image || answer.file_id === shown) return done(false);
     var img = new Image();
     img.onload = function () {
-      // The page is 1920x1080 and the panel scales and dithers it itself
-      // (E16); the picture is a full-colour copy of that size.
+      // With base_screen_resolution "always" the page is 2560x1440 and the
+      // panel's picture is shown pixel for pixel (E16). A package without
+      // it has a 1920x1080 page: the picture is scaled down to fit.
+      var w = window.innerWidth, h = window.innerHeight;
+      var exact = img.naturalWidth === w && img.naturalHeight === h;
       var el = document.getElementById("picture");
-      el.style.cssText = "position:fixed;left:0;top:0;width:1920px;height:1080px;display:block";
+      el.style.cssText = "position:fixed;left:0;top:0;width:" + w + "px;height:" + h + "px;display:block" +
+        (exact ? ";image-rendering:pixelated" : "");
       el.src = img.src;
       nudge(el);
       note("");

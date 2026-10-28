@@ -167,6 +167,22 @@ firmware 1130.7, ramka na baterii, network standby wł.
 - Bateria: od 92% (00:09) do 70% (02:18) przy ciągłych testach (ramka
   obudzona większość czasu, wiele odświeżeń ekranu).
 
+**Obraz 1:1 z aplikacji: rozwiązane (wieczór 2026-10-28).** W `config.xml`:
+
+```xml
+<tizen:metadata key="http://tizen.org/metadata/app_ui_type/base_screen_resolution" value="always"/>
+```
+
+Z tym wpisem strona ma 2560×1440 (`innerWidth`, `screen`, `visualViewport`,
+`devicePixelRatio` 1), a PNG 2560×1440 w `<img>` 2560×1440
+(`image-rendering: pixelated`) jest pokazywany piksel w piksel: szachownica
+1 px wygląda jak równa szarość, paski 1 px w sześciu farbach są ostre
+(zdjęcie Mateusza). Wpis podpatrzony w metadanych VXT Playera
+(`tizen.application.getAppMetaData("PbHvnmrROv.VXPlayer")`); wartość
+`extensive` z dokumentacji Samsunga nic nie zmienia. Odświeżenie po
+`img.onload` dalej trzeba wymusić zmianą stylu. Serwer może więc wysyłać
+ten sam obraz 2560×1440 co w trybie Mobile (nasz dither albo passthrough).
+
 **Wyświetlanie obrazu (rano 2026-10-28, przy ramce):**
 
 - Wbudowanego odtwarzacza (Mobile, 1:1) nie da się łączyć z aplikacją:
@@ -186,7 +202,8 @@ firmware 1130.7, ramka na baterii, network standby wł.
 
 **Pytania do aplikacji ramki (odpowiedzi):**
 
-1. **Obraz 1:1: z HTML nie.** Strona ma `screen` 1920×1080 i
+1. **Obraz 1:1: tak, z `base_screen_resolution` = `always`** (wyżej). Bez
+   tego wpisu strona ma `screen` 1920×1080 i
    `devicePixelRatio` 1 (`tizen.systeminfo` DISPLAY też 1920×1080, a
    capability `screen.height` = 1440), panel ma 2560×1440, więc obraz ze strony
    jest skalowany ×4/3 i nasz dithering się rozjedzie. Strona odświeża ekran
@@ -315,19 +332,18 @@ uruchamia aplikację (E16). Gdy aplikacja nie zapyta w 90 s od budzika, serwer
 uruchamia ją przez MDC `0xC7 81 01`, potem co 2 minuty, aż do uznania pobudki
 za nieudaną (15 minut). Network standby ustawia aplikacja przed każdym snem.
 
-**Obraz w aplikacji: pełny kolor 1920×1080.** Strona aplikacji ma 1920×1080,
-a panel 2560×1440, więc `<img>` jest skalowany ×4/3 i nasz dithering by się
-rozjechał. `webapis.unipicture` nie działa, a obrazu z odtwarzacza (`0xC7 53 80`)
-nie da się łączyć z aplikacją: strona zawsze go przykrywa (testy 2026-10-28
-rano). Dlatego `/panel/next` podaje `/panel/app-images/<id>.jpg`: oprawiony
-obraz w jego własnych kolorach (bez mapowania tonów i ditheringu),
-obrócony jak obraz dla panelu i zmniejszony do 1920×1080. Ramka sama go
-powiększa i dituje, jak w trybie passthrough. Mateusz: „nie jest źle, ale na
-drobnych liniach 1px widać brak ostrości”; tekst od ok. 16 px czytelny,
-linie 2–4 px czyste. Serwer zapisuje tę kopię przy publikacji (`app-images/`),
-a dla starszych obrazów robi ją z obrazu dla panelu. E-papier nie odświeża
-się sam po wczytaniu obrazka, a `screenRefreshNow()` rzuca błąd: aplikacja po
-`onload` zmienia `opacity` na 0,99 i po 300 ms z powrotem na 1.
+**Obraz w aplikacji: 1:1, ten sam co w trybie Mobile.** Paczka ma w
+`config.xml` `base_screen_resolution` = `always`, więc strona ma 2560×1440
+(wieczór 2026-10-28). `/panel/next` podaje ten sam obraz `/panel/images/…`,
+który ramka pobiera w trybie Mobile (passthrough z kalibracją, więc ramka
+dituje go sama, albo nasz dither, zależnie od ustawień), a aplikacja pokazuje
+go w `<img>` 2560×1440 z `image-rendering: pixelated`. Starsza paczka (strona
+1920×1080) dostaje ten sam obraz pomniejszony do strony, dopóki z Maca nie
+przyjdzie nowa (`pack.sh`; launcher pobiera ją po zimnym starcie). Wcześniej
+(add-on 0.24.1) serwer podawał osobną kopię 1920×1080 w pełnym kolorze; 1 px
+był miękki. E-papier nie odświeża się sam po wczytaniu obrazka, a
+`screenRefreshNow()` rzuca błąd: aplikacja po `onload` zmienia `opacity` na
+0,99 i po 300 ms z powrotem na 1.
 
 **Wysyłka z aplikacji iOS** w trybie aplikacji: bez `0xC7`. Aplikacja
 obudzona (ładowarka) pobiera obraz przy najbliższym pytaniu; uśpiona z Wi-Fi

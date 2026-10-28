@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.25.0
+
+- Aplikacja Frame na ramce pokazuje obraz 1:1: paczka ma
+  `base_screen_resolution` = `always`, więc strona ma 2560×1440,
+  a `/panel/next` podaje ten sam obraz z `/panel/images/` co tryb Mobile
+  (domyślnie passthrough, ramka dituje sama). Osobna kopia 1920×1080
+  (`/panel/app-images/`) znika.
+- Wymaga nowej paczki z Maca (`scripts/panel-app/pack.sh 1.1.0 --upload
+  <token>`) i zimnego startu ramki; stara paczka do tego czasu zmniejsza
+  obraz do swojej strony 1920×1080.
+- Dokumentacja E16: wieczorne wyniki z `base_screen_resolution`.
+
 ## 0.24.1
 
 - Aplikacja Frame na ramce pokazuje obraz bez rozjechanego ditheringu:

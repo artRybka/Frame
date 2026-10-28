@@ -23,7 +23,6 @@ class Rendered:
     data: bytes  # what the panel gets
     ext: str
     preview_png: bytes  # what the app shows
-    app_jpeg: bytes = b""  # what the Frame app on the panel shows (panel_app.py)
 
 
 def render_key(images: Sequence[bytes], *parts: str) -> str:
