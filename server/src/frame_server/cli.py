@@ -199,7 +199,7 @@ async def _push_embedded(
         await asyncio.sleep(0.05)
 
     try:
-        typer.echo(f"telling panel to fetch {service.content_url(content.file_id)}")
+        typer.echo("waiting for the frame's app to fetch it")
         outcome = await service.push_current(wait=wait)
         typer.echo("panel downloaded the image" if outcome.fetched else outcome.message)
         for req in service.store.recent_requests:
@@ -355,15 +355,6 @@ def device_standby(
             typer.echo(f"network standby: {await mdc.network_standby()}")
 
     asyncio.run(run())
-
-
-@device_app.command("set-url")
-def device_set_url(url: str, host: HostOpt = None, pin: PinOpt = None) -> None:
-    """Point the panel at a content.json URL (no local server involved)."""
-    from .service import Panel
-
-    asyncio.run(Panel(_device_settings(host, pin)).set_content_url(url))
-    typer.echo("content URL sent")
 
 
 @device_app.command("raw")

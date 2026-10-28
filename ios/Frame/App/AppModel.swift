@@ -485,8 +485,12 @@ final class AppModel {
     func saveSettings(_ new: FrameSettings) async {
         let turned = settings?.screenKey != new.screenKey
         let restyled = settings?.presentationKey != new.presentationKey
+        let remoded = settings?.powerMode != new.powerMode
         do {
             settings = try await backend.saveSettings(new)
+            // A sleeping frame takes a new power mode on only when it wakes:
+            // the status says so (DeviceStatus.modePending).
+            if remoded { await refreshStatus(live: false) }
             toast = !turned && restyled ? "Zapisano. Nowy wygląd dostanie następny obraz" : "Zapisano ustawienia"
             if turned {
                 // The server redraws the current picture for the turned screen.
@@ -559,15 +563,13 @@ final class AppModel {
         panelApp = try? await backend.panelApp()
     }
 
-    /// The panel's launcher to the Frame app (it installs it at once) or
-    /// back to the Samsung source; a sleeping frame is woken first.
-    func switchPanelApp(_ on: Bool) async {
-        toast = on ? "Przełączam ramkę na aplikację Frame…" : "Przełączam ramkę na zwykły tryb…"
+    /// Points the panel's launcher at the Frame app and starts it (installs
+    /// it when the frame has another version); a sleeping frame is woken first.
+    func installPanelApp() async {
+        toast = "Uruchamiam aplikację Frame na ramce…"
         do {
-            panelApp = try await backend.switchPanelApp(on: on)
-            toast = on
-                ? "Ramka instaluje aplikację Frame, za chwilę sama poprosi o obraz"
-                : "Ramka wróciła do zwykłego trybu"
+            panelApp = try await backend.installPanelApp()
+            toast = "Ramka uruchamia aplikację Frame, za chwilę sama poprosi o obraz"
         } catch {
             show(error)
         }
@@ -659,6 +661,8 @@ final class AppModel {
             let result = try await backend.wake(sleepAfter: sleepAfter)
             if result.woke == true {
                 toast = "Ramka się obudziła"
+            } else if result.problem == "no_certificates" {
+                toast = Delivery.noCertificates
             } else if let until = result.asleepUntil {
                 toast = Self.deepSleepNote(until: until)
             } else if !result.sent {

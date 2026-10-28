@@ -19,6 +19,7 @@ dependencies = [
     "opencv-python-headless>=5.0.0.93",
     "pillow-heif>=0.18",
     "anthropic>=2.3.0",
+    "cryptography>=44",
 ]
 
 [project.scripts]

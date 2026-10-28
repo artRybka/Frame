@@ -44,15 +44,15 @@ def _done() -> bytes:
 
 def test_parse_a_dump() -> None:
     data = (
-        _neigh("192.100.3.151", "28:07:08:ed:0a:f6", NUD_REACHABLE)
-        + _neigh("192.100.3.9", None, NUD_FAILED)
+        _neigh("192.0.2.20", "00:00:5e:00:53:01", NUD_REACHABLE)
+        + _neigh("192.0.2.9", None, NUD_FAILED)
         + _neigh("::", None, NUD_STALE, family=socket.AF_INET6)
     )
     entries, done = parse_neighbours(data)
     assert not done
     assert entries == [
-        Neighbour("192.100.3.151", "28:07:08:ed:0a:f6", NUD_REACHABLE, 3),
-        Neighbour("192.100.3.9", None, NUD_FAILED, 3),
+        Neighbour("192.0.2.20", "00:00:5e:00:53:01", NUD_REACHABLE, 3),
+        Neighbour("192.0.2.9", None, NUD_FAILED, 3),
     ]
     assert parse_neighbours(_done()) == ([], True)
 

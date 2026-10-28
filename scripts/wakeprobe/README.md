@@ -25,3 +25,6 @@ wykonuje kod na ramce, póki aplikacja nie śpi.
    (albo MDC `0xC7 82 <url>`, a potem `0xC7 81 01`, co od razu instaluje).
    W Developer mode da się też `tizen install -n WakeProbe.wgt -s <ip>:26101`
    i `tizen run -p FrmWake001.WakeProbe -s <ip>:26101`.
+
+Bez Tizen Studio: `python3 scripts/wakeprobe/sign_wgt.py <katalog> WakeProbe.wgt`
+(certyfikaty z `~/SamsungCertificate/frame`, hasło w `.password`, chmod 600).

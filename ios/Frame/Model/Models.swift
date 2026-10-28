@@ -349,6 +349,12 @@ struct Delivery: Codable, Hashable, Sendable {
     var asleepUntilAt: String?
     /// Economy mode: a wake the frame did not show up for.
     var missedWakeAt: String?
+    /// Waiting with the Wi-Fi off (economy, quiet hours); false: asleep with
+    /// the Wi-Fi on and Wake-on-LAN did not reach it (missing before 0.27).
+    var deepSleep: Bool?
+    /// The frame does not run the Frame app and the server cannot build it:
+    /// the Samsung certificates are missing on the server.
+    var noApp: Bool?
 
     var isShown: Bool { state == "shown" || state == "unknown" }
     var isWaiting: Bool { state == "waiting" }
@@ -359,6 +365,7 @@ struct Delivery: Codable, Hashable, Sendable {
         switch state {
         case "sending": return "W drodze na ramkę"
         case "waiting":
+            if noApp == true { return "Ramka nie ma aplikacji Frame" }
             if let missed = When.clock(missedWakeAt) { return "Ramka nie obudziła się o \(missed)" }
             if let wake = When.at(asleepUntilAt) { return "Pojawi się \(wake)" }
             return "Czeka na ramkę"
@@ -367,14 +374,20 @@ struct Delivery: Codable, Hashable, Sendable {
         }
     }
 
+    static let noCertificates = "Na serwerze brakuje certyfikatów Samsunga, więc nie zbuduje aplikacji dla ramki. Skopiuj raz author.p12, distributor.p12 i password.txt do folderu data/panel-app/certs serwera (np. File Station)."
+
     /// Why it is not on the frame (yet).
     var explanation: String {
         let why: String
         switch state {
         case "waiting":
             let button = "Wcześniej: naciśnij krótko przycisk z tyłu ramki."
-            if missedWakeAt != nil, let wake = When.at(asleepUntilAt) {
+            if noApp == true {
+                why = Self.noCertificates
+            } else if missedWakeAt != nil, let wake = When.at(asleepUntilAt) {
                 why = "Spróbuje znowu \(wake). \(button)"
+            } else if asleepUntilAt != nil, deepSleep == false {
+                why = "Ramka śpi i nie odpowiedziała na sygnał budzenia. Pobierze obraz przy najbliższej pobudce. \(button)"
             } else if asleepUntilAt != nil {
                 why = "Ramka śpi bez Wi-Fi, żeby oszczędzać baterię. \(button)"
             } else {
@@ -462,20 +475,22 @@ struct DeviceStatus: Codable, Hashable, Sendable {
     var wakesAt: String?
     /// The same alarm as a moment, for "Teraz" (missing before 0.26).
     var wakeAt: String?
-    /// The frame refused its alarm: it cannot wake itself, so it never
-    /// sleeps with the Wi-Fi off (the economy mode works as online).
-    var alarmRefused: Bool?
     /// "online" | "standby" | "deep_sleep" | "offline"; missing from servers before 0.12.
     var powerState: String?
     /// Not answering, yet still on the Wi-Fi (answers ARP): asleep, not gone.
     /// Nil when not asked or when the server cannot tell; missing before 0.15.
     var onNetwork: Bool?
     /// The frame runs the Frame app: it asks for its pictures and wakes by
-    /// its own alarm, so the economy mode works.
+    /// its own alarm. False: not seen asking yet, the server is starting it.
     var panelApp: Bool?
-    /// Its Wi-Fi as the Frame app last read it; nil in the Mobile mode (no
-    /// app) and from servers before 0.26.
+    /// Its Wi-Fi as the Frame app last read it; nil before the app reported
+    /// it and from servers before 0.26.
     var wifi: PanelWifi?
+    /// The Samsung certificates the app is signed with expire soon (or did).
+    var certificatesExpireAt: String?
+    /// The power mode ("online", "economy") set while the frame sleeps: it
+    /// takes it on at its next wake. Nil when nothing waits.
+    var modePending: String?
 }
 
 /// The frame's Wi-Fi, read by the Frame app on the panel at every wake.
@@ -525,18 +540,30 @@ struct PanelWifi: Codable, Hashable, Sendable {
     }
 }
 
-/// The Frame app on the panel (Samsung "Custom" content source).
+/// The Frame app on the panel (Samsung "Custom" content source): the only
+/// way pictures reach the frame.
 struct PanelAppView: Codable, Hashable, Sendable {
     var active: Bool
     var package: PanelAppPackage?
     var state: PanelAppState
+    /// The Samsung certificates on the server; missing before 0.27.
+    var certificates: [PanelCertificate]?
+    /// Set when they expire within two months (or already have).
+    var certificatesExpireAt: String?
 }
 
-/// The signed package the server holds for the panel.
+/// The package the server built and signed for the panel.
 struct PanelAppPackage: Codable, Hashable, Sendable {
     var version: String
     var size: Int
     var uploadedAt: String
+}
+
+/// One of the two Samsung certificates (author, distributor).
+struct PanelCertificate: Codable, Hashable, Sendable {
+    var role: String
+    var subject: String
+    var expiresAt: String
 }
 
 struct PanelAppState: Codable, Hashable, Sendable {
@@ -547,6 +574,7 @@ struct PanelAppState: Codable, Hashable, Sendable {
     var wakeAt: String?
     var standby: Bool?
     var missedWake: String?
+    var installedAt: String?
 }
 
 /// "Obudź ramkę": whether the magic packets went out and the panel answered.
@@ -555,6 +583,8 @@ struct WakeResult: Codable, Hashable, Sendable {
     var woke: Bool?  // missing from servers before 0.11
     var asleepUntil: String?
     var reason: String?
+    /// "no_certificates" | "no_mac": why nothing could be tried (0.27+).
+    var problem: String?
 }
 
 /// How the server reaches the panel (Ramka → Ekran); the PIN is never sent back.
@@ -675,7 +705,7 @@ struct PanelConfigUpdate: Encodable, Sendable {
 
 /// The same checks the server makes, to point at a typo before saving.
 enum PanelAddress {
-    /// A bare address: "http://192.168.1.152/" becomes 192.168.1.152; nil if it cannot be one.
+    /// A bare address: "http://203.0.113.152/" becomes 203.0.113.152; nil if it cannot be one.
     static func host(_ text: String) -> String? {
         var host = text.trimmingCharacters(in: .whitespaces)
         if let scheme = host.range(of: "://") { host = String(host[scheme.upperBound...]) }

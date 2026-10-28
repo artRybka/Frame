@@ -81,22 +81,24 @@ class DeviceStatus(BaseModel):
     last_fetch_at: str | None = None
     # A picture waits for the panel to wake (alarm or button), see power.py.
     pending_push: bool = False
-    wakes_at: str | None = None  # HH:MM of the panel's own alarm
+    wakes_at: str | None = None  # HH:MM of the app's alarm
     wake_at: str | None = None  # the same alarm in full, for a countdown
-    # The panel refused its alarm (MDC 0x25): no deep sleep, so neither the
-    # economy mode nor the night's deep sleep can work.
-    alarm_refused: bool = False
-    # The panel runs the Frame app (Samsung "Custom" source, panel_app.py):
+    # The panel runs the frame's app (Samsung "Custom" source, panel_app.py):
     # it wakes and sleeps by itself and asks the server for its pictures.
+    # False: not (yet) seen asking; the server is starting it over MDC.
     panel_app: bool = False
-    # Its Wi-Fi, read by the Frame app (None in the Mobile source).
+    # Its Wi-Fi, read by the frame's app.
     wifi: PanelWifi | None = None
+    # The Samsung certificates the app is signed with expire soon (ISO).
+    certificates_expire_at: str | None = None
+    # The power mode set in the app while the frame sleeps: it takes it on at
+    # its next wake ("online" or "economy"); None when nothing waits.
+    mode_pending: str | None = None
 
 
 class PanelWifi(BaseModel):
     """The panel's Wi-Fi as the Frame app last read it: ``webapis.network``
-    (privilege network.public, package 1.2.0+) or ``tizen.systeminfo``. The
-    Mobile source tells nothing of it."""
+    (privilege network.public, package 1.2.0+) or ``tizen.systeminfo``."""
 
     read_at: str
     signal: float | None = None  # 0-1
@@ -335,7 +337,7 @@ class StatusMonitor:
         self._remember()
 
     def forget_wifi(self) -> None:
-        """Back in the Mobile source: nothing reads the Wi-Fi any more."""
+        """The panel left the app: nothing reads the Wi-Fi until it is back."""
         if self.status.wifi is not None:
             self.status.wifi = None
             self._remember()

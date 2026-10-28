@@ -39,7 +39,6 @@ actor DemoBackend: FrameBackend {
         plTextProgress: nil, error: nil
     )
     private var demoAsleep = false
-    private var demoPanelApp = false
     /// The picture "on its way" to the pretend frame, for the progress bar.
     private var run: (title: String, start: Date)?
     /// Demo stages: 14 s in all, where a real panel takes about a minute.
@@ -196,11 +195,11 @@ actor DemoBackend: FrameBackend {
             charging: false, powerSource: "battery", batteryRaw: nil, networkStandby: true,
             firmware: "S-RSEDWWC-1050.1", model: "EM32DX", serial: "DEMO0001", name: "Salon",
             error: nil, lastPushAt: now, lastFetchAt: now, powerState: demoAsleep ? "standby" : "online",
-            panelApp: demoPanelApp,
-            wifi: demoPanelApp ? PanelWifi(
-                readAt: now, signal: 0.6, level: 3, ssid: "IoT_Synology", ip: "192.100.3.151",
-                frequency: 2437, expectedIp: "192.100.3.151", homeSsid: "IoT_Synology", wrongNetwork: false
-            ) : nil
+            panelApp: true,
+            wifi: PanelWifi(
+                readAt: now, signal: 0.6, level: 3, ssid: "Frame_IoT", ip: "192.0.2.20",
+                frequency: 2437, expectedIp: "192.0.2.20", homeSsid: "Frame_IoT", wrongNetwork: false
+            )
         )
         let server = ServerStatus(
             version: "demo", uptimeS: 3600, libraryCount: items.count,
@@ -818,16 +817,20 @@ actor DemoBackend: FrameBackend {
     }
 
     func panelApp() async throws -> PanelAppView {
-        PanelAppView(
-            active: demoPanelApp,
-            package: PanelAppPackage(version: "1.0.0", size: 24_576, uploadedAt: "2026-10-28T09:00:00+00:00"),
-            state: PanelAppState(active: demoPanelApp)
+        let now = ISO8601DateFormatter().string(from: .now)
+        return PanelAppView(
+            active: true,
+            package: PanelAppPackage(version: "2.0.0", size: 24_576, uploadedAt: "2026-10-28T21:00:00+00:00"),
+            state: PanelAppState(active: true, seenAt: now, build: "2.0.0"),
+            certificates: [
+                PanelCertificate(role: "author", subject: "CN=Frame", expiresAt: "2027-10-27T23:59:59+00:00"),
+                PanelCertificate(role: "distributor", subject: "CN=Samsung", expiresAt: "2027-10-27T23:59:59+00:00"),
+            ]
         )
     }
 
-    func switchPanelApp(on: Bool) async throws -> PanelAppView {
-        demoPanelApp = on
-        return try await panelApp()
+    func installPanelApp() async throws -> PanelAppView {
+        try await panelApp()
     }
 
     func libraryStorage() async throws -> LibraryStorage {

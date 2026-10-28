@@ -16,7 +16,7 @@ def _download(store: ContentStore, file_name: str, time: str = "2026-10-26T07:00
     store.log_request(
         PanelRequest(
             time=time,
-            client="192.168.3.20",
+            client="198.51.100.20",
             method="GET",
             path=f"/panel/images/{file_name}",
             status=200,
@@ -35,7 +35,9 @@ def _service(tmp_path: Path) -> FrameService:
         device_host="127.0.0.1",
         device_pin="123456",
     )
-    return FrameService(settings)
+    service = FrameService(settings)
+    service.app.store_package(b"PK\x03\x04signed", "2.0.0")  # the app can be started
+    return service
 
 
 def test_delivery_follows_the_panel_downloads(tmp_path: Path) -> None:

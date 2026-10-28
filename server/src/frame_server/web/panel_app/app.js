@@ -19,7 +19,9 @@
   // grey screen and lost the alarm (E16). Sleep this long after the last one.
   var SETTLE_MS = 60000;
   // An alarm this close by the time the app may sleep: ask again instead.
-  var MIN_AHEAD_MS = 2 * 60000;
+  // JS runs up to ~130 s after goToSleep() and an alarm due before the
+  // panel is really down is lost (E16), so keep a margin of 4 minutes.
+  var MIN_AHEAD_MS = 4 * 60000;
   var ATTEMPTS = 4;
   var ATTEMPT_DELAY_MS = 5000;
   // "wait" answers in a row before giving up on the server for now.

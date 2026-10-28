@@ -2,7 +2,7 @@
 // The plan comes from the Mac server and is fetched again after every wake-up:
 // {"wake_in_s": 180, "sleep_after_s": 30, "network_standby": "OFF", "refresh": false}
 // An empty plan ({}) leaves the panel alone.
-var SERVER = "http://192.100.3.87:3000";
+var SERVER = "http://192.0.2.30:3000";
 var BUILD = "__BUILD__";
 var lines = [];
 var lastTick = Date.now();

@@ -358,8 +358,8 @@ async def test_push_without_panel_reports_an_error(service) -> None:
 def test_public_host_accepts_a_url() -> None:
     from frame_server.config import Settings
 
-    for value in ("192.100.3.185", "http://192.100.3.185", "http://192.100.3.185:8099/"):
-        assert Settings(public_host=value).base_url() == "http://192.100.3.185:8099"
+    for value in ("192.0.2.10", "http://192.0.2.10", "http://192.0.2.10:8099/"):
+        assert Settings(public_host=value).base_url() == "http://192.0.2.10:8099"
 
 
 def test_panel_progress_report_is_accepted(service) -> None:
