@@ -183,6 +183,34 @@ Z tym wpisem strona ma 2560×1440 (`innerWidth`, `screen`, `visualViewport`,
 `img.onload` dalej trzeba wymusić zmianą stylu. Serwer może więc wysyłać
 ten sam obraz 2560×1440 co w trybie Mobile (nasz dither albo passthrough).
 
+**Zasady dla aplikacji ramki (wieczór 2026-10-28, Developer mode wył.):**
+
+- Czasy: po jednej zmianie strony (podmiana `src` obrazu już pobranego
+  i zdekodowanego) ekran zaczyna mrugać po ok. 10 s i mruga ok. 29 s, czyli
+  ok. 40 s razem. Do paska postępu w iOS.
+- Pobieranie: Wi-Fi przy ramce słabe (poziom 2, 2,4 GHz, kanał 6), XHR
+  60–215 KB/s; `<img>` nałożony na odświeżanie jest 4–10× wolniejszy.
+  Najpierw pełne pobranie przez XHR (postęp z `onprogress`), potem
+  `FileReader.readAsDataURL` → `img.decode()` → jedna podmiana. Adresy `blob:`
+  z pochodzenia `file://` nie działają (błąd obrazka). JPEG q95 4:4:4
+  (ok. 1 MB) zamiast PNG 3–4 MB.
+- Nie przełączać `visibility`: ekran potrafi zostać w stanie ukrytym.
+- **Nie usypiać w trakcie odświeżania:** `goToSleep()` 14 s po zmianie przerwał
+  odświeżanie (szaro-brązowy ekran) i budzik przepadł. Usypiać ≥45–60 s po
+  ostatniej zmianie ekranu.
+- **Pełny sen** (standby OFF) na ładowarce i na baterii: budzik zawsze budzi
+  (zimny start). Gdy launcher po zimnym starcie sprawdzi `sssp_config.xml`
+  i wersja jest **ta sama**, aplikacji nie uruchamia (4 z 6 pobudek); gdy nie
+  sprawdza albo wersja jest nowa, uruchamia. Obejście, które działało 6 z 6:
+  serwer po planowanej pobudce czeka na raport aplikacji i po ok. 60 s ciszy
+  wysyła MDC `0xC7 81 01` (start w ok. 10 s). Aplikacja po starcie przywraca
+  `setNetworkStandby("ON")`.
+- Launcher sprawdza wersję także przy części wywołań `goToSleep()`; przy
+  niezgodności przeinstalowuje i uruchamia aplikację (ekran instalacji).
+  Serwer ma podawać tę wersję, która jest zainstalowana.
+- Ramka nie ma czujników (akcelerometr, żyroskop, światło: brak), tylko
+  mikrofon. Wi-Fi do odczytu: poziom sygnału, SSID, IP, częstotliwość.
+
 **Wyświetlanie obrazu (rano 2026-10-28, przy ramce):**
 
 - Wbudowanego odtwarzacza (Mobile, 1:1) nie da się łączyć z aplikacją:
