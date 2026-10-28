@@ -14,7 +14,7 @@ import pytest
 import trustme
 from fake_panel import FakePanel
 from fastapi.testclient import TestClient
-from PIL import Image
+from PIL import Image, JpegImagePlugin
 
 from frame_server.config import Settings
 from frame_server.device.mdc import CMD_CONTENT_DOWNLOAD
@@ -204,6 +204,7 @@ def test_full_colour_pictures_go_as_jpeg_dithered_ones_as_png(tmp_path: Path) ->
     assert app.image_path(content) == f"/panel/app-images/{content.file_id}.jpg"
     with Image.open(store.app_image_path(content.file_id)) as img:
         assert img.size == (2560, 1440) and img.format == "JPEG"
+        assert JpegImagePlugin.get_sampling(img) == 0  # 4:4:4
 
     inks = gradient.quantize(6)
     store.publish(encode_image(inks.convert("RGB"), "png"), "png", title="Dithered")

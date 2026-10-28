@@ -77,7 +77,7 @@ BATTERY_TIMEOUT = 10.0
 # The source the panel had before Custom when it was never read (Samsung
 # MDC: 00 = MagicInfo, which the Mobile mode most likely is).
 MOBILE_SOURCE = 0x00
-# A full-colour (passthrough) picture goes to the app as a JPEG: about 1 MB
+# A full-colour (passthrough) picture goes to the app as a JPEG (4:4:4): ~1 MB
 # instead of 3-4 MB of PNG over the panel's weak Wi-Fi (60-215 KB/s), and
 # the loss does not show (E16). A dithered one, a handful of inks, stays the
 # lossless PNG.
@@ -379,7 +379,7 @@ class PanelApp:
             with Image.open(source) as img:
                 if img.mode == "P" or img.getcolors(DITHERED_COLOURS) is not None:
                     return None
-                img.convert("RGB").save(path, "JPEG", quality=JPEG_QUALITY)
+                img.convert("RGB").save(path, "JPEG", quality=JPEG_QUALITY, subsampling=0)
         except OSError as err:  # the panel gets it as it is
             log.warning("no JPEG of %s for the panel app: %s", source.name, err)
             return None

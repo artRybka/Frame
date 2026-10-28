@@ -35,7 +35,6 @@
   var waits = 0;
   var timer = null;
   var last = Date.now();
-  var onPage = null;  // the object URL of the picture on the page
   var drawnAt = 0;  // the last change of the screen
 
   function saved(key, value) {
@@ -111,10 +110,22 @@
     return q;
   }
 
+  // Up again after a sleep with the Wi-Fi off: back on in standby, so that
+  // Wake-on-LAN reaches the panel should it fall asleep on its own (E16).
+  function wifiBack() {
+    if (!ep) return;
+    var now = call(function () { return ep.getNetworkStandby(); });
+    if (now.ok && now.value === "OFF") {
+      var r = call(function () { return ep.setNetworkStandby("ON"); });
+      report("standby", { restored: r });
+    }
+  }
+
   function ask(reason) {
     if (busy) return;
     busy = true;
     clearTimeout(timer);
+    if (reason !== "poll" && reason !== "retry") wifiBack();
     var q = "reason=" + reason + "&build=" + encodeURIComponent(BUILD) +
       "&code=" + encodeURIComponent(CODE) +
       "&screen=" + window.innerWidth + "x" + window.innerHeight + "@" + (window.devicePixelRatio || 1) +
@@ -203,35 +214,48 @@
     if (!answer.image || answer.file_id === shown) return done(false);
     var started = Date.now();
     download(answer.image, answer.file_id, function (blob) {
-      var src = URL.createObjectURL(blob);
-      var img = new Image();
-      img.onload = function () {
-        // With base_screen_resolution "always" the page is 2560x1440 and
-        // the panel's picture is shown pixel for pixel (E16). A package
-        // without it has a 1920x1080 page: the picture is scaled to fit.
-        var w = window.innerWidth, h = window.innerHeight;
-        var exact = img.naturalWidth === w && img.naturalHeight === h;
-        var el = document.getElementById("picture");
-        el.style.cssText = "position:fixed;left:0;top:0;width:" + w + "px;height:" + h + "px;display:block" +
-          (exact ? ";image-rendering:pixelated" : "");
-        el.src = src;
-        nudge(el);
-        if (onPage) URL.revokeObjectURL(onPage);
-        onPage = src;
-        note("");
-        shown = answer.file_id;
-        report("shown", {
-          file_id: answer.file_id, width: img.naturalWidth, height: img.naturalHeight,
-          bytes: blob.size, download_ms: Date.now() - started
-        });
-        done(true);
+      // blob: URLs do not load from the app's file:// origin (E16): the
+      // picture goes on the page as a data URL, decoded first and set once.
+      var reader = new FileReader();
+      reader.onload = function () {
+        var src = reader.result;
+        var img = new Image();
+        var put = function () {
+          // With base_screen_resolution "always" the page is 2560x1440 and
+          // the panel's picture is shown pixel for pixel (E16). A package
+          // without it has a 1920x1080 page: the picture is scaled to fit.
+          var w = window.innerWidth, h = window.innerHeight;
+          var exact = img.naturalWidth === w && img.naturalHeight === h;
+          var el = document.getElementById("picture");
+          el.style.cssText = "position:fixed;left:0;top:0;width:" + w + "px;height:" + h + "px;display:block" +
+            (exact ? ";image-rendering:pixelated" : "");
+          el.src = src;
+          nudge(el);
+          note("");
+          shown = answer.file_id;
+          report("shown", {
+            file_id: answer.file_id, width: img.naturalWidth, height: img.naturalHeight,
+            bytes: blob.size, download_ms: Date.now() - started
+          });
+          done(true);
+        };
+        var failed = function () {
+          report("error", { message: "image did not decode", image: answer.image });
+          done(false);
+        };
+        img.src = src;
+        if (img.decode) {
+          img.decode().then(put, failed);
+        } else {
+          img.onload = put;
+          img.onerror = failed;
+        }
       };
-      img.onerror = function () {
-        URL.revokeObjectURL(src);
-        report("error", { message: "image did not decode", image: answer.image });
+      reader.onerror = function () {
+        report("error", { message: "image could not be read", image: answer.image });
         done(false);
       };
-      img.src = src;
+      reader.readAsDataURL(blob);
     }, function (why) {
       report("error", { message: "image did not load: " + why, image: answer.image });
       done(false);
