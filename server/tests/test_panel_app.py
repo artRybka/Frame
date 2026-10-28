@@ -266,6 +266,7 @@ def test_panel_routes(tmp_path: Path) -> None:
         config = client.get("/panel/app/sssp_config.xml").text
         assert "<ver>1.0.0</ver>" in config and "<size>10</size>" in config
         assert "<widgetname>Frame</widgetname>" in config
+        assert "<webtype>tizen</webtype>" in config
         assert client.get("/panel/app/Frame.wgt").content == b"PK\x03\x04signed"
         code = client.get("/panel/app/app.js")
         assert code.text.startswith("window.FRAME_CODE = ")
