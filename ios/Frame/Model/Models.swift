@@ -471,6 +471,56 @@ struct DeviceStatus: Codable, Hashable, Sendable {
     /// The frame runs the Frame app: it asks for its pictures and wakes by
     /// its own alarm, so the economy mode works.
     var panelApp: Bool?
+    /// Its Wi-Fi as the Frame app last read it; nil in the Mobile mode (no
+    /// app) and from servers before 0.26.
+    var wifi: PanelWifi?
+}
+
+/// The frame's Wi-Fi, read by the Frame app on the panel at every wake.
+struct PanelWifi: Codable, Hashable, Sendable {
+    var readAt: String
+    /// 0–1; from `level` (0–5) when the panel gives bars.
+    var signal: Double?
+    var level: Int?
+    var ssid: String?
+    var ip: String?
+    /// MHz: 2437 is 2.4 GHz (channel 6).
+    var frequency: Int?
+    /// Where the server looks for the frame, and the network it was last
+    /// on at that address.
+    var expectedIp: String?
+    var homeSsid: String?
+    /// On another network: the server reaches it neither over MDC nor with
+    /// Wake-on-LAN.
+    var wrongNetwork: Bool?
+
+    var band: String? {
+        switch frequency ?? 0 {
+        case 2400..<2500: "2,4 GHz"
+        case 4900..<5925: "5 GHz"
+        case 5925..<7200: "6 GHz"
+        default: nil
+        }
+    }
+
+    var strength: String? {
+        guard let signal else { return nil }
+        let word = signal < 0.35 ? "słaby" : signal < 0.65 ? "średni" : "dobry"
+        if let level { return "sygnał \(word) (\(level)/5)" }
+        return "sygnał \(word) (\(Int((signal * 100).rounded())) %)"
+    }
+
+    /// Why it is on the wrong network, in a sentence; nil when it is not.
+    var warning: String? {
+        guard wrongNetwork == true else { return nil }
+        if let ssid, let homeSsid, ssid != homeSsid {
+            return "Ramka połączyła się z siecią \(ssid) zamiast \(homeSsid): serwer jej nie obudzi ani nie wyśle obrazu. Wybierz \(homeSsid) w ustawieniach Wi-Fi ekranu."
+        }
+        if let ip, let expectedIp {
+            return "Ramka ma adres \(ip), a serwer szuka jej pod \(expectedIp). Popraw adres poniżej albo przywróć stały adres w routerze."
+        }
+        return "Ramka jest w innej sieci niż zwykle."
+    }
 }
 
 /// The Frame app on the panel (Samsung "Custom" content source).

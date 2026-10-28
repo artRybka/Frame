@@ -196,7 +196,11 @@ actor DemoBackend: FrameBackend {
             charging: false, powerSource: "battery", batteryRaw: nil, networkStandby: true,
             firmware: "S-RSEDWWC-1050.1", model: "EM32DX", serial: "DEMO0001", name: "Salon",
             error: nil, lastPushAt: now, lastFetchAt: now, powerState: demoAsleep ? "standby" : "online",
-            panelApp: demoPanelApp
+            panelApp: demoPanelApp,
+            wifi: demoPanelApp ? PanelWifi(
+                readAt: now, signal: 0.6, level: 3, ssid: "IoT_Synology", ip: "192.100.3.151",
+                frequency: 2437, expectedIp: "192.100.3.151", homeSsid: "IoT_Synology", wrongNetwork: false
+            ) : nil
         )
         let server = ServerStatus(
             version: "demo", uptimeS: 3600, libraryCount: items.count,

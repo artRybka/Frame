@@ -363,6 +363,21 @@ przeładowuje się (najwyżej raz na 10 minut).
 - obraz zaległy (`pending_push`) idzie przy pobudce i zostaje do następnej
   zmiany, jak dotąd.
 
+**Wi-Fi ramki** (2026-10-28, prośba Mateusza): przy każdym starcie i pobudce
+(na ładowarce co 5 minut) aplikacja zgłasza `/panel/report` `wifi`: z
+`webapis.network` poziom sygnału 0–5, SSID, adres IP i częstotliwość (MHz;
+wymaga uprawnienia `http://developer.samsung.com/privilege/network.public`,
+paczka 1.2.0+), a w starszej paczce z `tizen.systeminfo` `WIFI_NETWORK`
+(sygnał 0–1, SSID, adres; po pobudce bywa bez odpowiedzi, więc czeka 10 s).
+Serwer trzyma ostatni odczyt w stanie ramki (`DeviceStatus.wifi`), a aplikacja
+iOS pokazuje kreski sygnału i sieć w kafelku „Sieć” oraz w Konfiguracji nad
+adresem ekranu. **Obca sieć:** serwer zapamiętuje SSID, z którym ramka ma
+adres z konfiguracji (adres MDC); inny adres albo inny SSID to
+`wrong_network` z ostrzeżeniem w logu i w aplikacji (po odcięciu zasilania
+ramka raz weszła do sąsiedniego „Rocky IoT”, 192.168.3.151, i serwer jej nie
+widział). W trybie Mobile (bez aplikacji) nikt tego nie czyta, więc po
+powrocie do Mobile odczyt znika.
+
 **Po pełnym śnie** (Wi-Fi wył.) ramka startuje na zimno i launcher nie zawsze
 uruchamia aplikację (E16): gdy sprawdzi wersję na serwerze i znajdzie tę samą,
 zatrzymuje się; gdy nie sprawdza albo znajdzie nowszą, aplikacja startuje

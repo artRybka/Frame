@@ -116,6 +116,23 @@ final class FrameAPITests: XCTestCase {
         XCTAssertEqual(status.panelApp, true)
     }
 
+    func testPanelWifiDecodesAndExplainsAWrongNetwork() throws {
+        let json = """
+        {"configured": true, "panel_app": true, "wifi": {"read_at": "2026-10-28T20:00:00+00:00",
+         "signal": 0.6, "level": 3, "ssid": "Rocky IoT", "ip": "192.168.3.151", "frequency": 2437,
+         "expected_ip": "192.100.3.151", "home_ssid": "IoT_Synology", "wrong_network": true}}
+        """
+        let status = try LiveBackend.decoder().decode(DeviceStatus.self, from: Data(json.utf8))
+        let wifi = try XCTUnwrap(status.wifi)
+        XCTAssertEqual(wifi.band, "2,4 GHz")
+        XCTAssertEqual(wifi.strength, "sygnał średni (3/5)")
+        XCTAssertTrue(wifi.warning?.contains("Rocky IoT zamiast IoT_Synology") == true)
+        let home = PanelWifi(readAt: "2026-10-28T20:00:00+00:00", signal: 0.2, ssid: "IoT_Synology")
+        XCTAssertNil(home.warning)
+        XCTAssertEqual(home.strength, "sygnał słaby (20 %)")
+        XCTAssertNil(home.band)
+    }
+
     func testProgressPhasesAndLabels() {
         var progress = DisplayProgress(stage: "refreshing", phase: "displaying", active: true,
                                        title: "", fraction: 0.8, secondsLeft: 150)
