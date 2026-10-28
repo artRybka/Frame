@@ -19,7 +19,7 @@
   var ATTEMPTS = 4;
   var ATTEMPT_DELAY_MS = 5000;
   // "wait" answers in a row before giving up on the server for now.
-  var MAX_WAITS = 20;
+  var MAX_WAITS = 30;
   var RELOAD_EVERY_MS = 10 * 60000;
 
   var ep = (typeof webapis !== "undefined" && webapis.epaper) ? webapis.epaper : null;
@@ -87,15 +87,27 @@
     x.send();
   }
 
-  // No battery here: tizen.systeminfo fails on the panel (and after a wake
-  // never calls back); the server reads it over MDC.
+  // The battery from webapis.deviced (tizen.systeminfo fails on the panel,
+  // and after a wake may never call back); without it the server reads MDC.
+  function battery() {
+    var d = (typeof webapis !== "undefined" && webapis.deviced) ? webapis.deviced : null;
+    if (!d) return "";
+    var level = call(function () { return d.getBatteryCapacity(); });
+    var source = call(function () { return d.getBatteryPowerSource(); });
+    var q = "";
+    if (level.ok && level.value !== null) q += "&battery=" + Number(level.value);
+    if (source.ok && source.value) q += "&charging=" + (source.value !== "NO_CHARGER");
+    return q;
+  }
+
   function ask(reason) {
     if (busy) return;
     busy = true;
     clearTimeout(timer);
     var q = "reason=" + reason + "&build=" + encodeURIComponent(BUILD) +
       "&code=" + encodeURIComponent(CODE) +
-      "&screen=" + window.innerWidth + "x" + window.innerHeight + "@" + (window.devicePixelRatio || 1);
+      "&screen=" + window.innerWidth + "x" + window.innerHeight + "@" + (window.devicePixelRatio || 1) +
+      battery();
     attempt(q, 1);
   }
 

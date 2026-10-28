@@ -51,6 +51,14 @@ RETRY = timedelta(seconds=15)
 MAX_AHEAD = timedelta(days=7) - timedelta(hours=1)
 # No word from the app this long after its alarm: the wake was missed.
 MISSED_AFTER = timedelta(minutes=15)
+# JS keeps running up to ~130 s after goToSleep(), and an alarm due before
+# the panel is really down is lost (E16): never sleep for less than this.
+MIN_SLEEP = timedelta(minutes=5)
+# After a sleep with the Wi-Fi off the panel boots cold and the launcher
+# does not always start the app (E16): MDC 0xC7 81 01 starts it. Tried this
+# long after the alarm, then every ``KICK_EVERY`` until the wake is missed.
+KICK_AFTER = timedelta(seconds=90)
+KICK_EVERY = timedelta(minutes=2)
 # "Obudź ramkę" keeps the woken app awake (asking every ``POLL``) this long.
 KEEP_AWAKE = timedelta(minutes=10)
 # While the app is awake the server reads the battery over MDC (Tizen's
@@ -134,6 +142,7 @@ class PanelApp:
         self.contact = asyncio.Event()  # set at every question of the app
         self.awake_until: datetime | None = None
         self.sleep_requested = False
+        self._kicked: datetime | None = None
 
     # -- persisted state ------------------------------------------------------
 
@@ -248,9 +257,13 @@ class PanelApp:
         charger = service.status.status.power_source == "ac"
         if not self.sleep_requested and (awake or charger):
             return self._awake(NextAnswer(action="stay", wait_s=_s(POLL), **common))
+        wake = self.next_wake(now)
+        if wake - now < MIN_SLEEP:
+            # Too close to sleep for: stay up for it.
+            wait = min(60, max(_s(RETRY), int((wake - now).total_seconds())))
+            return self._awake(NextAnswer(action="wait", wait_s=wait, **common))
         self.sleep_requested = False
         self.awake_until = None
-        wake = self.next_wake(now)
         standby = not self._deep(now)
         state = self.state
         state.asleep = True
@@ -332,17 +345,32 @@ class PanelApp:
         self.awake_until = None
         self.sleep_requested = True
 
-    def tick(self, now: datetime) -> None:
-        """An alarm the app did not show up for (the next falls the same way
-        a day later at the latest: the panel keeps its older alarms too)."""
+    async def tick(self, now: datetime) -> None:
+        """After the app's alarm: start the app over MDC when it does not
+        ask (a cold boot after a sleep with the Wi-Fi off), and note a wake
+        it never showed up for."""
         state = self.state
         if not (state.active and state.asleep and state.wake_at):
             return
         wake = datetime.fromisoformat(state.wake_at)
+        due = wake + KICK_AFTER <= now < wake + MISSED_AFTER
+        if due and (self._kicked is None or now - self._kicked >= KICK_EVERY):
+            self._kicked = now
+            await self._kick()
+            return
         if now >= wake + MISSED_AFTER and state.missed_wake != state.wake_at:
             state.missed_wake = state.wake_at
             self._save(state)
             log.warning("panel app did not wake at %s", state.wake_at)
+
+    async def _kick(self) -> None:
+        try:
+            async with self.service.panel.session() as mdc:
+                await mdc.set_content_source(CONTENT_SOURCE_CUSTOM)
+        except MdcError as err:
+            log.info("could not start the panel app after its alarm: %s", err)
+            return
+        log.info("panel app silent after its alarm: started it over MDC")
 
     # -- switching the panel over ---------------------------------------------
 
