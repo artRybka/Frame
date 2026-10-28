@@ -100,6 +100,11 @@ def _fetch(service: FrameService) -> None:
     )
 
 
+# The server points the launcher at the app and starts it.
+START = [
+    (CMD_CONTENT_DOWNLOAD, b"\x82http://127.0.0.1:8099/panel/app"),
+    (CMD_CONTENT_DOWNLOAD, b"\x81\x01"),
+]
 BATTERY = AppHello(reason="wake", build="1.0.0", battery=80, charging=False)
 
 
@@ -288,14 +293,17 @@ async def test_the_server_starts_the_app_when_the_panel_does_not_run_it(
         assert panel.received[-1] == (CMD_CONTENT_DOWNLOAD, b"\x81\x01")
 
         # It runs, on the charger, asking every 20 s ... then falls silent:
-        # restarted a few times, then left alone (most likely unplugged).
+        # restarted a few times, then only now and then (most likely unplugged).
         panel.received.clear()
         app.answer(AppHello(reason="start", build="2.0.0", charging=True), now=now)
         await service.power.tick(now + timedelta(minutes=2))
         assert panel.received == []
-        for minutes in (4, 5, 7, 9, 11, 13):
+        for minutes in (4, 5, 7, 9):
             await service.power.tick(now + timedelta(minutes=minutes))
-        assert panel.received == [(CMD_CONTENT_DOWNLOAD, b"\x81\x01")] * 3
+        assert panel.received == START * 3
+        for minutes in (10, 11, 13):
+            await service.power.tick(now + timedelta(minutes=minutes))
+        assert panel.received == START * 4
 
         # The panel fell back to Mobile and fetched content.json: started again.
         panel.received.clear()
@@ -385,8 +393,13 @@ async def test_a_silent_app_is_started_after_its_alarm(
         await service.power.tick(_at("2026-10-28T19:00:30"))
         assert panel.received == []  # still booting
         await service.power.tick(_at("2026-10-28T19:01:40"))
-        assert panel.received == [(CMD_CONTENT_DOWNLOAD, b"\x81\x01")]
+        assert panel.received == START
         await service.power.tick(_at("2026-10-28T19:16"))
+        assert service.app.state.missed_wake == _at("2026-10-28T19:00").isoformat()
+        # Not heard of since: pointed at the app and started every 5 minutes.
+        service.app.store_package(b"PK\x03\x04signed", "2.0.0")
+        await service.power.tick(_at("2026-10-28T19:21"))
+        assert panel.received == START * 2
         assert service.app.state.missed_wake == _at("2026-10-28T19:00").isoformat()
     finally:
         await panel.stop()
@@ -406,7 +419,7 @@ async def test_a_new_package_is_installed_by_a_reboot(
         assert app.answer(hello, now=now).action == "reboot"
         # Installed, not started: the server starts it a minute later.
         await service.power.tick(now + timedelta(seconds=70))
-        assert panel.received == [(CMD_CONTENT_DOWNLOAD, b"\x81\x01")]
+        assert panel.received == START
         # Once per version: a package that does not install reboots no more.
         assert app.answer(hello, now=now + timedelta(minutes=2)).action == "stay"
         new = AppHello(reason="start", build="2.0.1", charging=True)
@@ -498,3 +511,18 @@ def test_the_package_is_built_here_and_the_certificates_watched(
         (tmp_path / name).write_bytes((original / name).read_bytes())
     rebuilt = app.ensure_package()
     assert rebuilt is not None and rebuilt.version == "2.0.1"
+
+
+def test_certificates_copied_in_by_hand_are_picked_up(tmp_path: Path) -> None:
+    """Dropped into data/panel-app/certs (File Station), the password in a
+    file with a name that does not hide: the next question builds the app."""
+    service = _service(tmp_path)
+    certs = tmp_path / "panel-app" / "certs"
+    certs.mkdir(parents=True)
+    (certs / "author.p12").write_bytes(_p12("Author"))
+    (certs / "distributor.p12").write_bytes(_p12("Distributor"))
+    (certs / "password.txt").write_text(PASSWORD + "\n")
+    asyncio.run(service.app.ask(AppHello(reason="start", build="1.2.0", charging=True)))
+    package = service.app.package()
+    assert package is not None and package.version == "2.0.0"
+    assert [c.role for c in service.app.view().certificates] == ["author", "distributor"]

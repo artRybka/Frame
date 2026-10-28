@@ -472,17 +472,29 @@ WoL zawiedzie obraz czeka do pobudki, a „Teraz” pokazuje jej godzinę. Gdy
 budzik ramki dzwoni w ciągu 3 minut (zmiana z harmonogramu), serwer nie
 budzi jej przez WoL, tylko czeka.
 
-**Certyfikaty na serwer (raz, i ponownie po odnowieniu):**
+**Certyfikaty na serwer (raz, i ponownie po odnowieniu).** Leżą tylko na
+Macu (`~/SamsungCertificate/frame`), a do repozytorium trafić nie mogą, więc
+raz trzeba je przenieść na NAS. Dwa sposoby, oba równie dobre:
 
-1. Serwer 0.27.0+ na Synology (Projekt → frame → Kompiluj).
-2. Na Macu, w katalogu repozytorium:
-   `scripts/panel-app/upload-certs.sh <token API>`. Skrypt bierze
-   `author.p12`, `distributor.p12` i `.password` z `~/SamsungCertificate/frame`
-   (`--dir` zmienia), wysyła je na `http://192.100.3.185:8099` (`--server`
-   zmienia, `PUT /api/device/app/certificates`) i wypisuje ich ważność oraz
-   wersję zbudowanej paczki. Serwer sprawdza hasło przed zapisaniem.
-3. Od tej chwili Mac nie jest potrzebny: serwer uruchamia aplikację na
-   ramce, gdy ta się obudzi.
+- **Bez terminala (File Station albo Finder):** w folderze projektu `frame`
+  na Synology wejść do `data`, utworzyć `panel-app/certs` i skopiować tam
+  `author.p12` i `distributor.p12`, a hasło zapisać w pliku `password.txt`
+  (albo skopiować ukryty `.password`; w Finderze pokazuje go Cmd+Shift+.).
+  Serwer sam je zauważy przy najbliższym pytaniu aplikacji ramki albo przy
+  próbie uruchomienia jej (co 5 minut), zbuduje i podpisze paczkę.
+- **Jedną komendą na Macu:** `scripts/panel-app/upload-certs.sh <token API>`
+  (bierze pliki z `~/SamsungCertificate/frame`, `--dir` zmienia; wysyła na
+  `http://192.100.3.185:8099`, `--server` zmienia;
+  `PUT /api/device/app/certificates`). Serwer najpierw sprawdza hasło, potem
+  zapisuje i od razu buduje paczkę; skrypt wypisuje ważność certyfikatów.
+
+Potem Mac nie jest potrzebny. Adres w paczce (`config.js`), w
+`sssp_config.xml` i ten wysyłany ramce w `0xC7 82` biorą się z
+`FRAME_PUBLIC_HOST` i portu serwera (`http://192.100.3.185:8099/panel/app`).
+Ramka, która wciąż wskazuje na serwer testowy na Macu, wraca na NAS sama:
+serwer co 5 minut (gdy ramka odpowiada) ustawia jej `0xC7 82` na swój adres
+i `0xC7 81 01`, dopóki aplikacja z NAS nie zapyta; to samo robi każde
+„kopnięcie” po budziku i przy zawieszonej aplikacji.
 
 **Do sprawdzenia na ramce:** sposób na obraz 1:1 (wyżej), czy logika ładuje się z serwera
 (`code` w raportach inny niż `local`), czy budzik budzi przy network standby

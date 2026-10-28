@@ -33,6 +33,9 @@ log = logging.getLogger(__name__)
 DS = "http://www.w3.org/2000/09/xmldsig#"
 ROLES = ("author", "distributor")
 PASSWORD = ".password"
+# The same, for files copied in by hand (File Station, Finder): a name that
+# does not hide.
+PASSWORD_VISIBLE = "password.txt"
 SIGNATURES = ("author-signature.xml", "signature1.xml")
 
 
@@ -66,8 +69,14 @@ class Certificates:
         self._info: tuple[tuple[float, ...], list[CertificateInfo]] | None = None
 
     def present(self) -> bool:
-        files = [*(f"{role}.p12" for role in ROLES), PASSWORD]
-        return all((self.dir / name).is_file() for name in files)
+        p12 = all((self.dir / f"{role}.p12").is_file() for role in ROLES)
+        return p12 and self._password_path() is not None
+
+    def _password_path(self) -> Path | None:
+        for name in (PASSWORD, PASSWORD_VISIBLE):
+            if (self.dir / name).is_file():
+                return self.dir / name
+        return None
 
     def save(self, author: bytes, distributor: bytes, password: bytes) -> list[CertificateInfo]:
         """Check that the password opens both, then keep them."""
@@ -83,7 +92,10 @@ class Certificates:
         return infos
 
     def identity(self, role: str) -> Identity:
-        password = (self.dir / PASSWORD).read_bytes().strip()
+        path = self._password_path()
+        if path is None:
+            raise OSError(f"no {PASSWORD} or {PASSWORD_VISIBLE} in {self.dir}")
+        password = path.read_bytes().strip()
         return load_identity((self.dir / f"{role}.p12").read_bytes(), password)
 
     def info(self) -> list[CertificateInfo]:
@@ -91,7 +103,10 @@ class Certificates:
         Read again only when the files change (the status asks often)."""
         if not self.present():
             return []
-        files = [*(self.dir / f"{role}.p12" for role in ROLES), self.dir / PASSWORD]
+        password = self._password_path()
+        if password is None:
+            return []
+        files = [*(self.dir / f"{role}.p12" for role in ROLES), password]
         try:
             stamp = tuple(path.stat().st_mtime for path in files)
             if self._info is None or self._info[0] != stamp:

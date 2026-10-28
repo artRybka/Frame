@@ -1348,7 +1348,7 @@ struct PanelAppSection: View {
                         .font(.caption)
                         .foregroundStyle(Theme.inkSoft)
                 } else {
-                    Text("Na serwerze nie ma jeszcze certyfikatów Samsunga, więc nie zbuduje aplikacji. Wgraj je raz z Maca: scripts/panel-app/upload-certs.sh.")
+                    Text("Na serwerze nie ma jeszcze certyfikatów Samsunga, więc nie zbuduje aplikacji. Skopiuj raz author.p12, distributor.p12 i password.txt do folderu data/panel-app/certs serwera (np. File Station) albo uruchom scripts/panel-app/upload-certs.sh na Macu.")
                         .font(.caption)
                         .foregroundStyle(Theme.warn)
                 }

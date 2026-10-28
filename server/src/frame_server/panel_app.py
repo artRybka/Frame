@@ -287,6 +287,13 @@ class PanelApp:
         """The Samsung certificates (once, and again when renewed): kept in
         the data directory, and a package built with them at once."""
         self.certificates.save(author, distributor, password)
+        state = self.state
+        if state.active:
+            # Whatever ran so far, the next tick points the panel at the app
+            # built with these and starts it; the app is back at its question.
+            state.active = False
+            self._save(state)
+        self._nudged = None
         current = self.package()
         if current is not None and current.source is not None:
             # Signed with other certificates: build again.
@@ -562,19 +569,33 @@ class PanelApp:
         self.sleep_requested = True
 
     async def tick(self, now: datetime) -> None:
-        """Keep the app running: install and start it when the panel does
-        not run it, restart it when it went silent while awake, start it
-        after its alarm when it does not ask (a cold boot after a sleep with
-        the Wi-Fi off), and note a wake it never showed up for."""
+        """Keep the app running: start it after its alarm when it does not
+        ask (a cold boot after a sleep with the Wi-Fi off), restart it when it
+        went silent while awake, note a wake it never showed up for, and
+        point the panel at it again when it is not running or has not been
+        heard of for long."""
         state = self.state
-        if not state.active:
+        seen = datetime.fromisoformat(state.seen_at) if state.seen_at else None
+        silent = seen is None or now - seen >= SILENT_AFTER
+        wake = datetime.fromisoformat(state.wake_at) if state.wake_at else None
+        missed = state.asleep and wake is not None and now >= wake + MISSED_AFTER
+        if state.active and missed and state.missed_wake != state.wake_at:
+            state.missed_wake = state.wake_at
+            self._save(state)
+            log.warning("panel app did not wake at %s", state.wake_at)
+        lost = (
+            not state.active
+            or missed
+            or (not state.asleep and silent and self._silent_kicks >= SILENT_KICKS)
+        )
+        if lost:
+            # Whatever the launcher points at (another source, another
+            # server's app): ours, started, whenever the panel answers.
             if self._nudged is None or now - self._nudged >= NUDGE_EVERY:
                 self._nudged = now
                 await self._nudge()
             return
         if not state.asleep:
-            seen = datetime.fromisoformat(state.seen_at) if state.seen_at else None
-            silent = seen is not None and now - seen >= SILENT_AFTER
             due = self._kicked is None or now - self._kicked >= KICK_EVERY
             if silent and due and self._silent_kicks < SILENT_KICKS:
                 self._kicked = now
@@ -582,24 +603,18 @@ class PanelApp:
                 log.info("the frame's app has been silent since %s", state.seen_at)
                 await self._kick()
             return
-        if not state.wake_at:
-            return
-        wake = datetime.fromisoformat(state.wake_at)
-        due = wake + KICK_AFTER <= now < wake + MISSED_AFTER
-        if due and (self._kicked is None or now - self._kicked >= KICK_EVERY):
+        after_alarm = wake is not None and wake + KICK_AFTER <= now
+        if after_alarm and (self._kicked is None or now - self._kicked >= KICK_EVERY):
             self._kicked = now
             await self._kick()
-            return
-        if now >= wake + MISSED_AFTER and state.missed_wake != state.wake_at:
-            state.missed_wake = state.wake_at
-            self._save(state)
-            log.warning("panel app did not wake at %s", state.wake_at)
 
     async def _kick(self) -> None:
-        """Start the app (or restart a hung one): the launcher's source is
-        Custom already, and selecting it again starts it."""
+        """Start the app (or restart a hung one): selecting the Custom source
+        again starts it. The launcher's address is set again first, so a
+        panel left pointing elsewhere (a test server) comes back to ours."""
         try:
             async with self.service.panel.session() as mdc:
+                await mdc.set_custom_app_url(self.app_url())
                 await mdc.set_content_source(CONTENT_SOURCE_CUSTOM)
         except MdcError as err:
             log.info("could not start the frame's app: %s", err)
