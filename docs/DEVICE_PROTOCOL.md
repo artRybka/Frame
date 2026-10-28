@@ -47,6 +47,8 @@ wysyłamy komend szybciej niż co ~0,3 s.
 | `0xA7` | – | zegar: dzień, godzina 1–12, minuta, miesiąc, rok (2 bajty), `01` = AM (np. `19 0c 00 0a 07 ea 01` = 25.10.2026 00:00) | odczytane (E1) |
 | `0xB5` | `00`/`01` | network standby (nasłuch Wi-Fi w uśpieniu, potrzebny do WoL) | potwierdzone |
 | `0xC7` | `53 80 len url` | **content download**: ekran pobiera manifest z `url` | potwierdzone |
+| `0xC7` | `81` + bajt | źródło treści (launcher): `01` = Custom (aplikacja Tizen z URL); wartość dla Mobile do odczytania. **Zapis `81 01` od razu wyzwala pobranie i instalację aplikacji** | E16 |
+| `0xC7` | `82` + URL (ASCII) | adres aplikacji Custom (odczyt `C7 82` → `82 <url>`); sama zmiana adresu nie wyzwala instalacji | E16 |
 
 Wake-on-LAN: standardowy magic packet (UDP :9 i :7). Wysyłamy na 255.255.255.255,
 na broadcast podsieci /24 i unicastem na adres ekranu. Działa tylko przy włączonym
@@ -97,9 +99,10 @@ Uwagi:
 - Do URL dodajemy `?v=<file_id>`, żeby każda wysyłka miała inny adres. Serwer ignoruje ten parametr.
 - Ekran raportuje postęp pobierania zapytaniami `POST /content-transfer-progress` na **główny** adres serwera (nie pod `/panel/`). Zaobserwowane 2026-10-24 przy błędnym `image_url`: kilka raportów w ciągu minuty, obrazu nie pobrał. Treść raportu nie jest jeszcze znana; serwer zapisuje ją w logu (`panel progress report: …`) i odpowiada 200.
 
-## Tizen / VXT (na później)
+## Tizen / VXT
 
-- **Custom App URL** w aplikacji Samsung E-Paper pozwala uruchomić własną aplikację webową Tizen. Pozwoliłoby to sterować budzeniem (`setScheduleWakeupTime`), usypianiem i diodami LED (Epaper API, Tizen 8.0). Ograniczenie: API wymaga przywileju **Partner** (`http://developer.samsung.com/privilege/systemcontrol`), więc może być niedostępne bez certyfikatu partnerskiego.
+- **Custom App** (E16): własna aplikacja webowa Tizen instalowana przez SSSP URL Launcher (`sssp_config.xml` + `.wgt`), z API `webapis.epaper` (budzik `setScheduleWakeupTime`, `goToSleep`, LED). Działa tylko z paczką podpisaną certyfikatem Samsunga (poziom Partner, DUID ramki). Szczegóły, sygnatury i zachowanie w [WAKE.md](WAKE.md#aplikacja-custom-budzik-działa-e16-2026-10-28).
+- Developer mode (w aplikacji Samsung E-Paper, IP komputera, restart) otwiera sdb na `:26101` (`sdb shell 0 getduid`, `tizen install`, `tizen run`). Odczyty `capability`: Tizen 8.0, profil `tv`, `can_launch: tv-samsung`, armv7.
 - **Samsung VXT** to chmurowy CMS Samsunga. Nie korzystamy z niego.
 
 ## Źródła

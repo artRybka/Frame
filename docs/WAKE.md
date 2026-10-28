@@ -61,7 +61,7 @@ na ekranie (E13).
 | B | **Wi-Fi 2,4 GHz + network standby + WoL** | średnia (jeśli to EM32DX-A, Samsung to wspiera) | gorsza | tak | Magic packet z NAS (inna podsieć) nie dotrze broadcastem. Potrzebny nadawca w 192.168.1.x (router, HA, Mac) albo unicast przez router ze stałym wpisem ARP. |
 | C | **Przycisk + serwer czekający na ekran** | wysoka | bez wpływu | tak, ręcznie | Uzupełnienie A: krótkie naciśnięcie budzi ekran, serwer to widzi i od razu wysyła zaległy obraz. |
 | D | **Playlista w manifeście / tryb Auto** | nieznana (E6) | dobra | nie | Kilka obrazów naraz, ekran zmienia je sam, bez sieci. Uzupełnienie A przy rzadkich pobudkach. |
-| E | Własna aplikacja Tizen (`setScheduleWakeupTime`) | niska (przywilej Partner) | dobra | nie | Daje to samo co A. |
+| E | Własna aplikacja Tizen (`setScheduleWakeupTime`) | **potwierdzona (E16)**, wymaga certyfikatu Samsunga Partner z DUID ramki | dobra | nie | Jedyny działający budzik na 1130.7, patrz [niżej](#aplikacja-custom-budzik-działa-e16-2026-10-28). |
 | F | Stałe zasilanie (USB-C albo przejściówka PoE) | pewna | nie dotyczy | tak | Rezygnacja z baterii, kabel do ramki. |
 
 **Rekomendacja:** A jako podstawa polityki zasilania (2.6 w planie), C dla
@@ -73,6 +73,102 @@ w sieci 5 GHz, przeniesienie go na 2,4 GHz może przywrócić WoL. Polityka:
   (np. 07:00), wyłącza network standby i usypia ekran. Zmiany z aplikacji
   czekają w kolejce do pobudki, a aplikacja pokazuje „zmieni się o 07:00
   albo po naciśnięciu przycisku na ramce”.
+
+## Aplikacja Custom: budzik działa (E16, 2026-10-28)
+
+Własna aplikacja Tizen w trybie **Custom** sama budzi ramkę na baterii.
+Sprawdzone aplikacją testową WakeProbe ([scripts/wakeprobe](../scripts/wakeprobe/)),
+firmware 1130.7, ramka na baterii, network standby wł.
+
+**Instalacja (tryb Custom = SSSP URL Launcher):**
+
+- W aplikacji Samsung E-Paper: Content source → Custom, adres aplikacji
+  (np. `http://192.100.3.87:3000/app`), Time Out (sekundy, ustawiliśmy 300),
+  przełącznik Developer mode. To samo da się ustawić przez MDC: `0xC7` z
+  podkomendą `0x82` + URL (ASCII) i `0x81 01` (tryb Custom). **Zapis
+  `0x81 01` od razu wyzwala instalację**; sama zmiana URL nie.
+- Zwykła strona nie wystarczy. Ramka pobiera `<url>/sssp_config.xml`
+  (`<widget><ver>…</ver><size>bajty wgt</size><widgetname>WakeProbe</widgetname></widget>`),
+  a zaraz potem `<url>/<widgetname>.wgt`. Zapytania bez User-Agenta.
+- Paczka musi być podpisana **certyfikatem Samsunga**. Podpis własny
+  (W3C widget signing z własnym CA), sam podpis autora i paczka bez podpisu
+  kończą się czarnym ekranem bez żadnego ruchu z aplikacji. Instalacja przez
+  sdb pokazuje przyczynę: `install failed[118, -12], reason: Check
+  certificate error : :Invalid certificate chain with certificate in
+  signature.`
+- Działa certyfikat z Tizen Studio 6.1 + Samsung Certificate Extension:
+  Certificate Manager → Samsung → TV, poziom **Partner** (był do wyboru na
+  zwykłym koncie Samsung), DUID ramki `RLCDMLZKZTZ5O` (z `sdb shell 0
+  getduid`; `webapis.productinfo.getDuid()` zwraca inny, `HQTFRZQO3L36X`).
+  Profil `frame` jest na Macu Mateusza (`~/SamsungCertificate/frame`),
+  pakowanie: `tizen package -t wgt -s frame -- <katalog>`. Certyfikat
+  pasuje tylko do tej ramki.
+- `config.xml`: przywilej `http://developer.samsung.com/privilege/systemcontrol`,
+  metadane `http://samsung.com/tv/metadata/application/epaper.support` =
+  `true`, profil `tv-samsung`. Skrypt `$WEBAPIS/webapis/webapis.js`.
+- Developer mode (w aplikacji Samsunga: IP komputera + restart ramki)
+  otwiera sdb na `:26101`: `sdb connect`, `tizen install`, `tizen run`.
+  Do pracy na co dzień niepotrzebny.
+
+**API (`webapis.epaper.getVersion()` = `"1.0"`), sprawdzone wywołania:**
+
+| Wywołanie | Wynik |
+|---|---|
+| `setScheduleWakeupTime({year, month, day, hour, minute, second})` | czas lokalny ramki (JS `Date`, strefa CET), zwraca liczbowy id (173, 175, …) |
+| `getScheduleWakeupTime(id)` | ten sam obiekt `{day, hour, minute, month, second, year}` |
+| `cancelScheduleWakeupTime(id)` | **zawsze** `UnknownError` (kod 9999), 3 z 3 prób, także dla budzika jeszcze nieodpalonego |
+| `goToSleep()` | usypia ramkę; JS działa jeszcze 20–100 s, potem ramka znika z sieci |
+| `isScheduledPlayBootReason()` | liczba: `0` po zwykłym starcie, `1` po pobudce z budzika |
+| `getAutoSleepTime()` | liczba minut (`20` przy „Sleep After” 00:20), nie napis z dokumentacji |
+| `getNetworkStandby()` | `"ON"` |
+| `getScreenRefreshTime()` | `{"hour": "3", "minute": "0"}` (napisy) |
+| `getBatteryWarningIconDisplay()` | `"ON"` |
+
+**Zachowanie:**
+
+- Pobudki w ciągu kilku sekund od zadanej godziny: 00:49:01 (budzik
+  00:49:11), 00:56:00 (00:56:02), ok. 00:59:05 (00:59:00), 01:02:01
+  (01:02:09). Ramka wraca do sieci sama, bez przycisku i bez WoL.
+- Po pobudce aplikacja jest **wznawiana**, a nie uruchamiana od nowa: timery
+  JS stoją w czasie snu, `document.visibilityState` jest `visible`. Aplikacja
+  musi sama wykryć wznowienie (np. przerwa w liczniku) i wtedy zapytać
+  serwer, co pokazać.
+- Ekran pokazuje to, co narysuje strona (biała strona z tekstem pojawiła się
+  zaraz po starcie). Aplikacja może więc wyświetlać obraz sama.
+- Przy usypianiu launcher czasem pobiera `sssp_config.xml` i paczkę
+  ponownie, instaluje ją i uruchamia aplikację od nowa zamiast zasnąć
+  (00:45:41 i 00:56:31; przy 00:49:00, 00:53:32 i 00:59:39 nie). Aplikacja
+  musi to znosić: po starcie zawsze pyta serwer o stan i ustawia budzik od nowa.
+- Budziki się sumują, a `cancelScheduleWakeupTime` nie działa: budzik
+  ustawiony przed ponownym startem aplikacji nadal obudził ramkę (00:59).
+  Aplikacja musi więc znosić pobudki „nie w porę”: zapytać serwer i od razu
+  zasnąć.
+
+**Pytania do aplikacji ramki (stan po E16):**
+
+1. Obraz 2560×1440 narysowany przez stronę: czy idzie 1:1 bez ponownego
+   ditheringu i czy odświeżenie startuje samo po zmianie strony? *Nie
+   sprawdzone.* Wiadomo tylko, że strona z tekstem pojawiła się zaraz po
+   starcie aplikacji, bez wywołania `screenRefreshNow()`.
+2. Sieć po pobudce: XHR z pierwszego taktu po wznowieniu (do 15 s po
+   pobudce) doszedł do Maca w tej samej sekundzie, w której ramka znów
+   odpowiadała na ping. Osobnego czekania nie było potrzeba; na wszelki
+   wypadek ponawiać zapytanie kilka razy.
+3. Wznowienie: `visibilitychange` **nie** przychodzi po pobudce (jedyne
+   zdarzenie to `hidden` przy reinstalacji o 00:56:31), stan po pobudce to
+   `visible`. Działa przerwa w liczniku `setInterval`. Inne zdarzenia
+   (`tizen.power`, `webapis`) niesprawdzone.
+4. Bateria w aplikacji: niesprawdzone (kandydat:
+   `tizen.systeminfo.getPropertyValue("BATTERY")`). Przez MDC `0x1B 73`
+   działa także w trybie Custom.
+5. MDC w trybie Custom działa (sesje 00:09–00:43, zanim aplikacja ruszyła).
+   Przy działającej aplikacji, WoL i `0xC7 53 80` (content.json) w trybie
+   Custom niesprawdzone; nie wiadomo, czy to ostatnie przełącza tryb
+   z powrotem.
+6. Lekka paczka, która ładuje JS z serwera (żeby zmiany nie wymagały
+   ponownego podpisu): niesprawdzone. Aplikacja ma `access origin="*"` i
+   luźne CSP, a XHR do serwera po `http` działa, więc `<script src="http://…">`
+   albo `content src` na adres serwera to pierwsze do sprawdzenia.
 
 ## Polityka zasilania (wdrożona, `server/src/frame_server/power.py`)
 
