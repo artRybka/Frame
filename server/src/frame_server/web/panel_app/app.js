@@ -166,6 +166,7 @@
         return;
       }
     }
+    if (answer.action === "reboot") return reboot();
     draw(answer, function () {
       if (answer.action === "wait" || answer.action === "stay") {
         waits = answer.action === "wait" ? waits + 1 : 0;
@@ -291,6 +292,19 @@
       saved("alarms", armed);
     }
     return result;
+  }
+
+  // A newer package is on the server: the launcher installs it as the panel
+  // boots (and does not start it; the server does over MDC, E16).
+  function reboot() {
+    var sc = (typeof webapis !== "undefined" && webapis.systemcontrol) ? webapis.systemcontrol : null;
+    report("reboot", {}, function () {
+      var r = sc ? call(function () { return sc.rebootDevice(); }) : { ok: false, error: "no systemcontrol" };
+      if (!r.ok) {
+        report("error", { message: "rebootDevice failed", detail: r.error });
+        timer = setTimeout(function () { ask("retry"); }, 60000);
+      }
+    });
   }
 
   // Show, let the refresh finish, set the alarm, sleep: in this order.

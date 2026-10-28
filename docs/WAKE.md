@@ -210,6 +210,10 @@ ten sam obraz 2560×1440 co w trybie Mobile (nasz dither albo passthrough).
 - Instalacja przez launcher działa bez Developer mode (certyfikat Partner
   z DUID wystarcza); `isCustomAppDownloaded()` zawsze `false`.
   `sssp_config.xml`: `<widget><ver>1.7.1</ver><size>…</size><widgetname>WakeProbe</widgetname><webtype>tizen</webtype></widget>`.
+- Aktualizacja bez klikania (sprawdzone 21:00): serwer podnosi `<ver>`
+  w `sssp_config.xml` i wystawia nową paczkę, aplikacja woła
+  `webapis.systemcontrol.rebootDevice()`, po restarcie launcher instaluje nową
+  wersję (ale jej nie uruchamia), serwer wysyła `0xC7 81 01`.
 - Po wyłączeniu i włączeniu ramka potrafi połączyć się z inną zapamiętaną
   siecią Wi-Fi (raz „Rocky IoT”, 192.168.3.151): wtedy serwer jej nie widzi.
   Aplikacja powinna raportować SSID i IP.
@@ -406,6 +410,19 @@ Aplikacja pokazuje obraz, czeka 60 s od ostatniej zmiany ekranu (obraz albo
 komunikat), dopiero wtedy ustawia network standby i budzik i zasypia. Gdy
 przez długie pobieranie do pobudki zostały mniej niż 2 minuty, pyta serwer
 od nowa zamiast zasypiać.
+
+**Instalacja i aktualizacje aplikacji.** Pierwsza instalacja: Konfiguracja →
+Aplikacja ramki → „Przełącz na aplikację Frame” (serwer wysyła `0xC7 82
+<adres>/panel/app` i `0xC7 81 01`, launcher od razu instaluje). Logika
+(`app.js`) przychodzi z serwera przy każdym starcie, więc zwykłe zmiany nie
+wymagają nowej paczki. Nowa paczka tylko przy zmianie `config.xml` albo
+`index.html`: `scripts/panel-app/pack.sh WERSJA --upload <token>` na Macu
+(podpis tylko tam) i dalej samo: serwer podaje nową `<ver>` w
+`sssp_config.xml`, a gdy aplikacja zapyta z inną wersją, odpowiada `reboot`.
+Aplikacja woła `webapis.systemcontrol.rebootDevice()`, launcher po restarcie
+instaluje nową wersję, ale jej nie uruchamia, więc serwer po 60 s ciszy
+wysyła `0xC7 81 01` (sprawdzone 2026-10-28 21:00). Restart najwyżej raz na
+wersję, żeby paczka, która się nie instaluje, nie restartowała ramki w kółko.
 
 **Wysyłka z aplikacji iOS** w trybie aplikacji: bez `0xC7`. Aplikacja
 obudzona (ładowarka) pobiera obraz przy najbliższym pytaniu; uśpiona z Wi-Fi

@@ -460,6 +460,8 @@ struct DeviceStatus: Codable, Hashable, Sendable {
     var lastFetchAt: String?
     var pendingPush: Bool?
     var wakesAt: String?
+    /// The same alarm as a moment, for "Teraz" (missing before 0.26).
+    var wakeAt: String?
     /// The frame refused its alarm: it cannot wake itself, so it never
     /// sleeps with the Wi-Fi off (the economy mode works as online).
     var alarmRefused: Bool?

@@ -94,6 +94,7 @@ def test_online_sleeps_until_the_change_and_deeply_at_night(tmp_path: Path) -> N
     status = service.status.status
     assert status.panel_app and status.battery_level == 80 and status.power_source == "battery"
     assert status.wakes_at == "19:00"
+    assert status.wake_at == _at("2026-10-28T19:00").isoformat()
     assert app.asleep() and not app.deep_asleep()
 
     # After the evening change: up again when quiet hours start, to turn the
@@ -322,5 +323,28 @@ async def test_a_silent_app_is_started_after_its_alarm(
         assert panel.received == [(CMD_CONTENT_DOWNLOAD, b"\x81\x01")]
         await service.power.tick(_at("2026-10-28T19:16"))
         assert service.app.state.missed_wake == _at("2026-10-28T19:00").isoformat()
+    finally:
+        await panel.stop()
+
+
+async def test_a_new_package_is_installed_by_a_reboot(
+    tmp_path: Path, server_ssl: ssl.SSLContext
+) -> None:
+    panel = FakePanel(server_ssl)
+    await panel.start()
+    try:
+        service = _service(tmp_path, panel.port)
+        app = service.app
+        app.store_package(b"PK\x03\x04signed", "1.1.0")
+        now = _at("2026-10-28T21:00")
+        hello = AppHello(reason="poll", build="1.0.0", charging=True)
+        assert app.answer(hello, now=now).action == "reboot"
+        # Installed, not started: the server starts it a minute later.
+        await service.power.tick(now + timedelta(seconds=70))
+        assert panel.received == [(CMD_CONTENT_DOWNLOAD, b"\x81\x01")]
+        # Once per version: a package that does not install reboots no more.
+        assert app.answer(hello, now=now + timedelta(minutes=2)).action == "stay"
+        new = AppHello(reason="start", build="1.1.0", charging=True)
+        assert app.answer(new, now=now + timedelta(minutes=3)).action == "stay"
     finally:
         await panel.stop()
