@@ -47,7 +47,7 @@ class PanelConfigUpdate(BaseModel):
 
 
 def clean_host(value: str | None) -> str | None:
-    """A bare address: "http://192.168.1.152/" is taken as 192.168.1.152."""
+    """A bare address: "http://203.0.113.152/" is taken as 203.0.113.152."""
     host = (value or "").strip().split("://", 1)[-1].split("/", 1)[0]
     if not host:
         return None

@@ -91,6 +91,9 @@ class DeviceStatus(BaseModel):
     wifi: PanelWifi | None = None
     # The Samsung certificates the app is signed with expire soon (ISO).
     certificates_expire_at: str | None = None
+    # The power mode set in the app while the frame sleeps: it takes it on at
+    # its next wake ("online" or "economy"); None when nothing waits.
+    mode_pending: str | None = None
 
 
 class PanelWifi(BaseModel):

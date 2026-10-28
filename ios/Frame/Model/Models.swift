@@ -488,6 +488,9 @@ struct DeviceStatus: Codable, Hashable, Sendable {
     var wifi: PanelWifi?
     /// The Samsung certificates the app is signed with expire soon (or did).
     var certificatesExpireAt: String?
+    /// The power mode ("online", "economy") set while the frame sleeps: it
+    /// takes it on at its next wake. Nil when nothing waits.
+    var modePending: String?
 }
 
 /// The frame's Wi-Fi, read by the Frame app on the panel at every wake.
@@ -702,7 +705,7 @@ struct PanelConfigUpdate: Encodable, Sendable {
 
 /// The same checks the server makes, to point at a typo before saving.
 enum PanelAddress {
-    /// A bare address: "http://192.168.1.152/" becomes 192.168.1.152; nil if it cannot be one.
+    /// A bare address: "http://203.0.113.152/" becomes 203.0.113.152; nil if it cannot be one.
     static func host(_ text: String) -> String? {
         var host = text.trimmingCharacters(in: .whitespaces)
         if let scheme = host.range(of: "://") { host = String(host[scheme.upperBound...]) }

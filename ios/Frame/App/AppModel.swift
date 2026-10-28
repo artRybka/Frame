@@ -485,8 +485,12 @@ final class AppModel {
     func saveSettings(_ new: FrameSettings) async {
         let turned = settings?.screenKey != new.screenKey
         let restyled = settings?.presentationKey != new.presentationKey
+        let remoded = settings?.powerMode != new.powerMode
         do {
             settings = try await backend.saveSettings(new)
+            // A sleeping frame takes a new power mode on only when it wakes:
+            // the status says so (DeviceStatus.modePending).
+            if remoded { await refreshStatus(live: false) }
             toast = !turned && restyled ? "Zapisano. Nowy wygląd dostanie następny obraz" : "Zapisano ustawienia"
             if turned {
                 // The server redraws the current picture for the turned screen.

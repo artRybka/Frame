@@ -200,6 +200,9 @@ struct FrameTabView: View {
     /// does not run yet, or when its certificates are about to expire.
     @ViewBuilder private var appNotice: some View {
         if let device, device.configured {
+            if let pending = modePendingText(device) {
+                NoticeRow(icon: "clock.arrow.circlepath", color: Theme.accent, text: pending)
+            }
             if let expires = device.certificatesExpireAt {
                 NoticeRow(
                     icon: "exclamationmark.shield",
@@ -250,7 +253,7 @@ struct FrameTabView: View {
             StatusTile(title: "Sieć") {
                 let state = network
                 VStack(alignment: .leading, spacing: 6) {
-                    Image(systemName: state.icon, variableValue: state.bars)
+                    Image(systemName: state.icon)
                         .font(.title2)
                         .foregroundStyle(state.color)
                     Text(state.title)
@@ -265,20 +268,23 @@ struct FrameTabView: View {
         }
     }
 
-    /// The Sieć tile: what the frame is doing, as far as the server can tell,
-    /// with the signal's bars when the Frame app reads the Wi-Fi.
-    private var network: (icon: String, color: Color, title: String, note: String, bars: Double?) {
+    /// The Sieć tile: what the frame is doing, as far as the server can tell
+    /// (the title: Online, Czuwanie, Głęboki sen...), with the network and
+    /// how strong its signal is when the Frame app reads the Wi-Fi. A plain
+    /// Wi-Fi icon, yellow for a weak signal.
+    private var network: (icon: String, color: Color, title: String, note: String) {
         let (icon, color, title, note) = networkState
         let wifi = device?.wifi
         if wifi?.wrongNetwork == true {
             let note = wifi?.ssid.map { "połączona z \($0)" } ?? "inny adres niż zwykle"
-            return ("wifi.exclamationmark", Theme.bad, "Obca sieć", note, nil)
+            return ("wifi.exclamationmark", Theme.bad, "Obca sieć", note)
         }
         guard device?.powerState == "online", let wifi, let signal = wifi.signal else {
-            return (icon, color, title, note, nil)
+            return (icon, color, title, note)
         }
-        let place = [wifi.ssid, wifi.band].compactMap { $0 }.joined(separator: " · ")
-        return (icon, signal < 0.35 ? Theme.warn : color, title, place.isEmpty ? note : place, signal)
+        let word = signal < 0.35 ? "słaby" : signal < 0.65 ? "średni" : "dobry"
+        let place = [wifi.ssid, "sygnał \(word)"].compactMap { $0 }.joined(separator: " · ")
+        return (icon, signal < 0.35 ? Theme.warn : color, title, place)
     }
 
     private var networkState: (icon: String, color: Color, title: String, note: String) {
@@ -533,6 +539,11 @@ struct ScheduleSection: View {
                 : "Wysłane dzieło pojawia się po około minucie.")
                 .font(.caption)
                 .foregroundStyle(Theme.inkSoft)
+            // After "Zapisz": the sleeping frame switches only when it wakes.
+            if let device = model.status?.device, device.modePending == settings.powerMode,
+               let pending = modePendingText(device) {
+                NoticeRow(icon: "clock.arrow.circlepath", color: Theme.accent, text: pending)
+            }
         }
     }
 
@@ -1088,8 +1099,8 @@ struct SourcesSection: View {
     }
 }
 
-/// The frame's Wi-Fi as the Frame app on the panel last read it: the
-/// signal's bars, the network, its address and band, and a warning when it
+/// The frame's Wi-Fi as the Frame app on the panel last read it: how strong
+/// the signal is, the network, its address and band, and a warning when it
 /// is not where the server looks for it.
 struct PanelWifiRow: View {
     let wifi: PanelWifi
@@ -1102,7 +1113,7 @@ struct PanelWifiRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            Image(systemName: wrong ? "wifi.exclamationmark" : "wifi", variableValue: wrong ? nil : wifi.signal)
+            Image(systemName: wrong ? "wifi.exclamationmark" : "wifi")
                 .font(.title2)
                 .foregroundStyle(wrong ? Theme.bad : (wifi.signal ?? 1) < 0.35 ? Theme.warn : Theme.good)
                 .frame(width: 32)
@@ -1196,7 +1207,7 @@ struct PanelSection: View {
                     Divider()
                 }
                 field("Adres IP ekranu", error: hostValue == nil ? "To nie wygląda na adres IP" : nil) {
-                    TextField("np. 192.168.1.152", text: $host)
+                    TextField("np. 203.0.113.152", text: $host)
                         .keyboardType(.numbersAndPunctuation)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
@@ -1288,6 +1299,16 @@ struct PanelSection: View {
 }
 
 /// "Certyfikaty aplikacji ramki wygasają 27 października 2027…".
+/// A power mode changed while the frame sleeps: it takes it on only when it
+/// wakes (in deep sleep nothing reaches it), so the app says when.
+func modePendingText(_ device: DeviceStatus) -> String? {
+    guard let mode = device.modePending else { return nil }
+    let name = mode == "economy" ? "Oszczędny" : "Online"
+    let when = When.at(device.wakeAt).map { " (\($0))" } ?? ""
+    let asleep = device.powerState == "deep_sleep" ? " Teraz śpi bez Wi-Fi i zmiana do niej nie dotrze." : ""
+    return "Ramka przejdzie w tryb \(name) przy najbliższej pobudce\(when) albo po naciśnięciu guzika na ramce.\(asleep)"
+}
+
 func certificatesText(_ expires: String) -> String {
     let date = When.date(expires)
     let day = date?.formatted(.dateTime.day().month(.wide).year().locale(Locale(identifier: "pl_PL"))) ?? expires

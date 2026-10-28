@@ -122,6 +122,7 @@ class AppState(BaseModel):
     missed_wake: str | None = None  # an alarm it did not show up for
     reboot_for: str | None = None  # the package version it last rebooted to install
     installed_at: str | None = None  # the server last started it over MDC (ISO)
+    mode: str | None = None  # the power mode it went to sleep in
 
 
 class AppHello(BaseModel):
@@ -225,6 +226,16 @@ class PanelApp:
         """Asleep with the Wi-Fi off: only its alarm or the button wakes it."""
         state = self.state
         return state.active and state.asleep and not state.standby
+
+    def mode_pending(self) -> str | None:
+        """The power mode was changed while the app sleeps: it switches to
+        it (returned) at its alarm or the button, not before; out of the
+        economy mode's deep sleep nothing reaches it sooner."""
+        state = self.state
+        mode = self.service.player.settings.power_mode
+        if not (state.active and state.asleep) or state.mode in (None, mode):
+            return None
+        return mode
 
     # -- the package ----------------------------------------------------------
 
@@ -405,6 +416,7 @@ class PanelApp:
         state.asleep = True
         state.wake_at = wake.isoformat(timespec="seconds")
         state.standby = standby
+        state.mode = self.service.player.settings.power_mode
         self._save(state)
         return NextAnswer(
             action="sleep",

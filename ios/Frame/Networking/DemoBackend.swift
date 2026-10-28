@@ -197,8 +197,8 @@ actor DemoBackend: FrameBackend {
             error: nil, lastPushAt: now, lastFetchAt: now, powerState: demoAsleep ? "standby" : "online",
             panelApp: true,
             wifi: PanelWifi(
-                readAt: now, signal: 0.6, level: 3, ssid: "IoT_Synology", ip: "192.100.3.151",
-                frequency: 2437, expectedIp: "192.100.3.151", homeSsid: "IoT_Synology", wrongNetwork: false
+                readAt: now, signal: 0.6, level: 3, ssid: "Frame_IoT", ip: "192.0.2.20",
+                frequency: 2437, expectedIp: "192.0.2.20", homeSsid: "Frame_IoT", wrongNetwork: false
             )
         )
         let server = ServerStatus(

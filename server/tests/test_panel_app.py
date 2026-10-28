@@ -90,7 +90,7 @@ def _fetch(service: FrameService) -> None:
     service.store.log_request(
         PanelRequest(
             time=datetime.now(UTC).isoformat(),
-            client="192.100.3.151",
+            client="192.0.2.20",
             method="GET",
             path=f"/panel/images/{content.file_name}",
             status=200,
@@ -430,19 +430,19 @@ async def test_a_new_package_is_installed_by_a_reboot(
 
 def test_wifi_reading_learns_the_home_network_and_warns_off_it() -> None:
     now = datetime(2026, 10, 28, 20, 0, tzinfo=UTC)
-    host = "192.100.3.151"
+    host = "192.0.2.20"
     home = wifi_reading(
-        {"level": 3, "ssid": "IoT_Synology", "ip": host, "frequency": 2437}, host, None, now
+        {"level": 3, "ssid": "Frame_IoT", "ip": host, "frequency": 2437}, host, None, now
     )
     assert home is not None
     assert home.signal == pytest.approx(0.6) and home.level == 3 and home.frequency == 2437
-    assert home.home_ssid == "IoT_Synology" and not home.wrong_network
+    assert home.home_ssid == "Frame_IoT" and not home.wrong_network
     # After a power cut it joined the neighbour's SSID (E16).
     away = wifi_reading(
-        {"signal": 0.8, "ssid": "Rocky IoT", "ip": "192.168.3.151"}, host, home, now
+        {"signal": 0.8, "ssid": "Sasiad IoT", "ip": "198.51.100.20"}, host, home, now
     )
     assert away is not None and away.wrong_network
-    assert away.home_ssid == "IoT_Synology" and away.expected_ip == host
+    assert away.home_ssid == "Frame_IoT" and away.expected_ip == host
     # Another SSID at the right address: reachable, so that is home now.
     other = wifi_reading({"signal": 0.5, "ssid": "Guest", "ip": host}, host, home, now)
     assert other is not None and other.wrong_network is False and other.home_ssid == "Guest"

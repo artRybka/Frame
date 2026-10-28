@@ -118,24 +118,29 @@ final class FrameAPITests: XCTestCase {
         XCTAssertNotNil(app.certificatesExpireAt)
         let status = try LiveBackend.decoder().decode(
             DeviceStatus.self,
-            from: Data(#"{"configured": true, "panel_app": true, "certificates_expire_at": "2027-10-27T23:59:59+00:00"}"#.utf8)
+            from: Data(#"{"configured": true, "panel_app": true, "certificates_expire_at": "2027-10-27T23:59:59+00:00", "mode_pending": "online", "power_state": "deep_sleep"}"#.utf8)
         )
         XCTAssertEqual(status.panelApp, true)
         XCTAssertEqual(status.certificatesExpireAt, "2027-10-27T23:59:59+00:00")
+        XCTAssertEqual(status.modePending, "online")
+        XCTAssertEqual(
+            modePendingText(status),
+            "Ramka przejdzie w tryb Online przy najbliższej pobudce albo po naciśnięciu guzika na ramce. Teraz śpi bez Wi-Fi i zmiana do niej nie dotrze."
+        )
     }
 
     func testPanelWifiDecodesAndExplainsAWrongNetwork() throws {
         let json = """
         {"configured": true, "panel_app": true, "wifi": {"read_at": "2026-10-28T20:00:00+00:00",
-         "signal": 0.6, "level": 3, "ssid": "Rocky IoT", "ip": "192.168.3.151", "frequency": 2437,
-         "expected_ip": "192.100.3.151", "home_ssid": "IoT_Synology", "wrong_network": true}}
+         "signal": 0.6, "level": 3, "ssid": "Sasiad IoT", "ip": "198.51.100.20", "frequency": 2437,
+         "expected_ip": "192.0.2.20", "home_ssid": "Frame_IoT", "wrong_network": true}}
         """
         let status = try LiveBackend.decoder().decode(DeviceStatus.self, from: Data(json.utf8))
         let wifi = try XCTUnwrap(status.wifi)
         XCTAssertEqual(wifi.band, "2,4 GHz")
         XCTAssertEqual(wifi.strength, "sygnał średni (3/5)")
-        XCTAssertTrue(wifi.warning?.contains("Rocky IoT zamiast IoT_Synology") == true)
-        let home = PanelWifi(readAt: "2026-10-28T20:00:00+00:00", signal: 0.2, ssid: "IoT_Synology")
+        XCTAssertTrue(wifi.warning?.contains("Sasiad IoT zamiast Frame_IoT") == true)
+        let home = PanelWifi(readAt: "2026-10-28T20:00:00+00:00", signal: 0.2, ssid: "Frame_IoT")
         XCTAssertNil(home.warning)
         XCTAssertEqual(home.strength, "sygnał słaby (20 %)")
         XCTAssertNil(home.band)
@@ -151,15 +156,15 @@ final class FrameAPITests: XCTestCase {
     }
 
     func testPanelAddressChecks() {
-        XCTAssertEqual(PanelAddress.host(" http://192.168.1.152/ "), "192.168.1.152")
-        XCTAssertNil(PanelAddress.host("192.168.1.152; rm"))
+        XCTAssertEqual(PanelAddress.host(" http://203.0.113.152/ "), "203.0.113.152")
+        XCTAssertNil(PanelAddress.host("203.0.113.152; rm"))
         XCTAssertEqual(PanelAddress.mac("a4-30-7a-01-02-ff"), "A4:30:7A:01:02:FF")
         XCTAssertEqual(PanelAddress.mac(""), "")
         XCTAssertNil(PanelAddress.mac("A4:30:7A:01:02"))
     }
 
     func testPanelConfigUpdateKeepsPinUnlessTyped() throws {
-        let update = PanelConfigUpdate(host: "192.168.1.152", pin: nil, mac: nil, port: 1515)
+        let update = PanelConfigUpdate(host: "203.0.113.152", pin: nil, mac: nil, port: 1515)
         let json = try XCTUnwrap(
             JSONSerialization.jsonObject(with: LiveBackend.encoder().encode(update)) as? [String: Any]
         )
@@ -167,7 +172,7 @@ final class FrameAPITests: XCTestCase {
         XCTAssertTrue(json["mac"] is NSNull)  // sent as null: no Wake-on-LAN
         let config = try LiveBackend.decoder().decode(
             PanelConfig.self,
-            from: Data(#"{"host": "192.168.1.152", "mac": null, "port": 1515, "pin_set": true, "from_app": true}"#.utf8)
+            from: Data(#"{"host": "203.0.113.152", "mac": null, "port": 1515, "pin_set": true, "from_app": true}"#.utf8)
         )
         XCTAssertTrue(config.pinSet)
         XCTAssertTrue(config.fromApp)
@@ -287,14 +292,14 @@ final class FrameAPITests: XCTestCase {
     }
 
     func testRequestsFollowTheServerAddressInUse() throws {
-        let home = try XCTUnwrap(URL(string: "http://192.100.3.185:8099"))
+        let home = try XCTUnwrap(URL(string: "http://192.0.2.10:8099"))
         let remote = try XCTUnwrap(URL(string: "http://nas.tail0.ts.net:8099/"))
         XCTAssertFalse(ServerRoute(home: home, remote: home).hasRemote)
         XCTAssertEqual(ServerRoute(home: home, active: .remote).active, .home)
 
         let atHome = ServerRoute(home: home, remote: remote)
         let built = LiveBackend(route: atHome, token: "secret").request("/api/items", query: [URLQueryItem(name: "q", value: "a b")])
-        XCTAssertEqual(built.url?.absoluteString, "http://192.100.3.185:8099/api/items?q=a%20b")
+        XCTAssertEqual(built.url?.absoluteString, "http://192.0.2.10:8099/api/items?q=a%20b")
         XCTAssertNil(atHome.rebased(built))
 
         let away = ServerRoute(home: home, remote: remote, active: .remote)

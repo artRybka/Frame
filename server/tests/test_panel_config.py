@@ -24,11 +24,11 @@ def _settings(tmp_path: Path, **kw: object) -> Settings:
 
 
 def test_cleaning() -> None:
-    assert clean_host(" http://192.168.1.152/ ") == "192.168.1.152"
+    assert clean_host(" http://203.0.113.152/ ") == "203.0.113.152"
     assert clean_host("frame.local") == "frame.local"
     assert clean_host("") is None
     with pytest.raises(ValueError):
-        clean_host("192.168.1.152; rm")
+        clean_host("203.0.113.152; rm")
     assert clean_mac("a4-30-7a-01-02-ff") == "A4:30:7A:01:02:FF"
     assert clean_mac("a430.7a01.02ff") == "A4:30:7A:01:02:FF"
     assert clean_mac(" ") is None
@@ -52,27 +52,27 @@ def test_app_values_win_and_survive_restart(tmp_path: Path) -> None:
 
         saved = client.put(
             "/api/device/config",
-            json={"host": "192.168.1.152", "pin": "123456", "mac": "a4307a0102ff"},
+            json={"host": "203.0.113.152", "pin": "123456", "mac": "a4307a0102ff"},
         )
         assert saved.status_code == 200, saved.text
         assert saved.json()["mac"] == "A4:30:7A:01:02:FF"
         assert saved.json()["from_app"] is True
         svc: FrameService = app.state.service
-        assert (svc.settings.device_host, svc.settings.device_pin) == ("192.168.1.152", "123456")
+        assert (svc.settings.device_host, svc.settings.device_pin) == ("203.0.113.152", "123456")
         assert svc.status.status.configured
 
         # No PIN in the request keeps the one saved.
-        client.put("/api/device/config", json={"host": "192.168.1.152", "mac": None})
+        client.put("/api/device/config", json={"host": "203.0.113.152", "mac": None})
         assert svc.settings.device_pin == "123456"
         assert svc.settings.device_mac is None
 
-        bad = client.put("/api/device/config", json={"host": "192.168.1.152", "mac": "nope"})
+        bad = client.put("/api/device/config", json={"host": "203.0.113.152", "mac": "nope"})
         assert bad.status_code == 400
-        assert svc.settings.device_host == "192.168.1.152"
+        assert svc.settings.device_host == "203.0.113.152"
 
     # A restart with the same frame.env keeps what the app saved.
     restarted = FrameService(_settings(tmp_path, **env))
-    assert restarted.settings.device_host == "192.168.1.152"
+    assert restarted.settings.device_host == "203.0.113.152"
     assert restarted.settings.device_pin == "123456"
     assert restarted.panel_config.view().from_app
 
@@ -80,7 +80,7 @@ def test_app_values_win_and_survive_restart(tmp_path: Path) -> None:
 def test_reset_goes_back_to_frame_env(tmp_path: Path) -> None:
     app = create_app(_settings(tmp_path, device_host="192.168.1.50", device_pin="000000"))
     with TestClient(app) as client:
-        client.put("/api/device/config", json={"host": "192.168.1.152", "pin": "1234"})
+        client.put("/api/device/config", json={"host": "203.0.113.152", "pin": "1234"})
         view = client.delete("/api/device/config").json()
         assert (view["host"], view["from_app"]) == ("192.168.1.50", False)
         assert app.state.service.settings.device_pin == "000000"
@@ -90,10 +90,10 @@ def test_configured_from_the_app_alone(tmp_path: Path) -> None:
     app = create_app(_settings(tmp_path))
     with TestClient(app) as client:
         assert not client.get("/api/status").json()["device"]["configured"]
-        client.put("/api/device/config", json={"host": "192.168.1.152", "pin": "0000"})
+        client.put("/api/device/config", json={"host": "203.0.113.152", "pin": "0000"})
         assert client.get("/api/status").json()["device"]["configured"]
         # Removing the PIN leaves the panel unconfigured again.
-        client.put("/api/device/config", json={"host": "192.168.1.152", "pin": ""})
+        client.put("/api/device/config", json={"host": "203.0.113.152", "pin": ""})
         assert not client.get("/api/status").json()["device"]["configured"]
 
 
@@ -102,13 +102,13 @@ def test_cli_uses_the_apps_panel_config(tmp_path: Path) -> None:
     from frame_server.library import Library
     from frame_server.panel_config import PanelConfigStore, PanelConfigUpdate
 
-    settings = Settings(data_dir=tmp_path, device_host="192.168.1.152", device_mac=None)
+    settings = Settings(data_dir=tmp_path, device_host="203.0.113.152", device_mac=None)
     library = Library(tmp_path / "library.db")
     PanelConfigStore(settings, library).save(
-        PanelConfigUpdate(host="192.100.3.151", pin="1234", mac="aa-bb-cc-dd-ee-ff")
+        PanelConfigUpdate(host="192.0.2.20", pin="1234", mac="aa-bb-cc-dd-ee-ff")
     )
     library.close()
 
-    fresh = _app_panel_config(Settings(data_dir=tmp_path, device_host="192.168.1.152"))
-    assert fresh.device_host == "192.100.3.151"
+    fresh = _app_panel_config(Settings(data_dir=tmp_path, device_host="203.0.113.152"))
+    assert fresh.device_host == "192.0.2.20"
     assert fresh.device_mac == "AA:BB:CC:DD:EE:FF"

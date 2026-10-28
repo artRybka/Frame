@@ -16,7 +16,7 @@ def _download(store: ContentStore, file_name: str, time: str = "2026-10-26T07:00
     store.log_request(
         PanelRequest(
             time=time,
-            client="192.168.3.20",
+            client="198.51.100.20",
             method="GET",
             path=f"/panel/images/{file_name}",
             status=200,

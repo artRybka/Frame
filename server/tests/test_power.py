@@ -245,3 +245,28 @@ def test_put_to_sleep_from_the_app(tmp_path: Path) -> None:
     assert answer.action == "sleep" and service.app.asleep()
     # Only once: the next wake on the charger stays up again.
     assert service.app.answer(charger).action == "stay"
+
+
+def test_mode_changed_while_asleep(tmp_path: Path) -> None:
+    """Oszczędny → Online while the frame sleeps with the Wi-Fi off: nothing
+    reaches it, so the app says the change waits for its alarm or the button,
+    until the frame asks again."""
+    service = FrameService(_settings(tmp_path, _closed_port()))
+    service.ensure_initial_content()
+    _asleep(service, deep=True)
+    status = service.status.status
+    assert status.mode_pending is None
+    online = service.player.settings.model_copy(update={"power_mode": "online"})
+    service.player.save_settings(online)
+    service.power.publish_status()
+    assert status.mode_pending == "online"
+    # Back to the economy mode before it woke: nothing waits.
+    service.player.save_settings(online.model_copy(update={"power_mode": "economy"}))
+    service.power.publish_status()
+    assert status.mode_pending is None
+    service.player.save_settings(online)
+    service.power.publish_status()
+    assert status.mode_pending == "online"
+    # It wakes and asks: it is in the online mode now.
+    service.app.answer(AppHello(reason="wake", build="2.0.0", charging=True))
+    assert status.mode_pending is None

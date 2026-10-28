@@ -83,6 +83,7 @@ class PowerManager:
         status.wakes_at = wake.astimezone(tz).strftime("%H:%M") if wake else None
         status.wake_at = wake.isoformat(timespec="seconds") if wake else None
         status.certificates_expire_at = app.certificates_warning(datetime.now(UTC))
+        status.mode_pending = app.mode_pending()
 
     def mark_pending(self, pending: bool) -> None:
         state = self.state

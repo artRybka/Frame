@@ -58,7 +58,7 @@ na ekranie (E13).
 | | Rozwiązanie | Wykonalność | Bateria | Zmiana na żądanie | Uwagi |
 |---|---|---|---|---|---|
 | A | **Budzik `0x25` + spotkanie z serwerem** | wysoka (działa u innych na EM32DX) | najlepsza (network standby wył.) | nie, do najbliższej pobudki albo przycisku | Główna propozycja. Działa także między podsieciami, bo to serwer łączy się z ekranem przez MDC (TCP). |
-| B | **Wi-Fi 2,4 GHz + network standby + WoL** | średnia (jeśli to EM32DX-A, Samsung to wspiera) | gorsza | tak | Magic packet z NAS (inna podsieć) nie dotrze broadcastem. Potrzebny nadawca w 192.168.1.x (router, HA, Mac) albo unicast przez router ze stałym wpisem ARP. |
+| B | **Wi-Fi 2,4 GHz + network standby + WoL** | średnia (jeśli to EM32DX-A, Samsung to wspiera) | gorsza | tak | Magic packet z NAS (inna podsieć) nie dotrze broadcastem. Potrzebny nadawca w 203.0.113.x (router, HA, Mac) albo unicast przez router ze stałym wpisem ARP. |
 | C | **Przycisk + serwer czekający na ekran** | wysoka | bez wpływu | tak, ręcznie | Uzupełnienie A: krótkie naciśnięcie budzi ekran, serwer to widzi i od razu wysyła zaległy obraz. |
 | D | **Playlista w manifeście / tryb Auto** | nieznana (E6) | dobra | nie | Kilka obrazów naraz, ekran zmienia je sam, bez sieci. Uzupełnienie A przy rzadkich pobudkach. |
 | E | Własna aplikacja Tizen (`setScheduleWakeupTime`) | **potwierdzona (E16)**, wymaga certyfikatu Samsunga Partner z DUID ramki | dobra | nie | Jedyny działający budzik na 1130.7, patrz [niżej](#aplikacja-custom-budzik-działa-e16-2026-10-28). |
@@ -83,7 +83,7 @@ firmware 1130.7, ramka na baterii, network standby wł.
 **Instalacja (tryb Custom = SSSP URL Launcher):**
 
 - W aplikacji Samsung E-Paper: Content source → Custom, adres aplikacji
-  (np. `http://192.100.3.87:3000/app`), Time Out (sekundy, ustawiliśmy 300),
+  (np. `http://192.0.2.30:3000/app`), Time Out (sekundy, ustawiliśmy 300),
   przełącznik Developer mode. To samo da się ustawić przez MDC: `0xC7` z
   podkomendą `0x82` + URL (ASCII) i `0x81 01` (tryb Custom). **Zapis
   `0x81 01` od razu wyzwala instalację**; sama zmiana URL nie.
@@ -98,7 +98,7 @@ firmware 1130.7, ramka na baterii, network standby wł.
   signature.`
 - Działa certyfikat z Tizen Studio 6.1 + Samsung Certificate Extension:
   Certificate Manager → Samsung → TV, poziom **Partner** (był do wyboru na
-  zwykłym koncie Samsung), DUID ramki `RLCDMLZKZTZ5O` (z `sdb shell 0
+  zwykłym koncie Samsung), DUID ramki `<DUID ramki>` (z `sdb shell 0
   getduid`; `webapis.productinfo.getDuid()` zwraca inny, `HQTFRZQO3L36X`).
   Profil `frame` jest na Macu Mateusza (`~/SamsungCertificate/frame`),
   pakowanie: `tizen package -t wgt -s frame -- <katalog>`. Certyfikat
@@ -221,7 +221,7 @@ ten sam obraz 2560×1440 co w trybie Mobile (nasz dither albo passthrough).
   budować aplikację. Certyfikaty i hasło tylko lokalnie, nigdy w repozytorium.
   **Certyfikaty ważne do 2027-10-27:** odnowić w Certificate Managerze.
 - Po wyłączeniu i włączeniu ramka potrafi połączyć się z inną zapamiętaną
-  siecią Wi-Fi (raz „Rocky IoT”, 192.168.3.151): wtedy serwer jej nie widzi.
+  siecią Wi-Fi (raz „Sasiad IoT”, 198.51.100.20): wtedy serwer jej nie widzi.
   Aplikacja powinna raportować SSID i IP.
 - Launcher sprawdza wersję także przy części wywołań `goToSleep()`; przy
   niezgodności przeinstalowuje i uruchamia aplikację (ekran instalacji).
@@ -365,6 +365,11 @@ przeładowuje się (najwyżej raz na 10 minut).
   początek ciszy nocnej, żeby wyłączyć Wi-Fi na noc. Najwyżej tydzień naprzód;
 - network standby: `OFF` w trybie Oszczędnym i w ciszy nocnej, `ON` w dzień
   w trybie Online (WoL dostarcza wtedy zdjęcia z telefonu od razu);
+- zmiana trybu pracy w aplikacji, gdy ramka śpi, obowiązuje od jej
+  następnego pytania (budzik albo guzik): z Oszczędnego głębokiego snu nic
+  jej wcześniej nie obudzi. Serwer zapamiętuje tryb, w którym zasnęła, i do
+  pobudki podaje w statusie `mode_pending` (aplikacja iOS pokazuje to
+  w Harmonogramie, w „Ramce” i w „Teraz”);
 - ładowarka (`webapis.deviced.getBatteryPowerSource()` inny niż
   `NO_CHARGER`; bez niego bateria z MDC `0x1B 73`, czytana przed odpowiedzią,
   gdy ostatni odczyt ma ponad 10 minut): `stay`;
@@ -384,7 +389,7 @@ iOS pokazuje kreski sygnału i sieć w kafelku „Sieć” oraz w Konfiguracji n
 adresem ekranu. **Obca sieć:** serwer zapamiętuje SSID, z którym ramka ma
 adres z konfiguracji (adres MDC); inny adres albo inny SSID to
 `wrong_network` z ostrzeżeniem w logu i w aplikacji (po odcięciu zasilania
-ramka raz weszła do sąsiedniego „Rocky IoT”, 192.168.3.151, i serwer jej nie
+ramka raz weszła do sąsiedniego „Sasiad IoT”, 198.51.100.20, i serwer jej nie
 widział). W trybie Mobile (bez aplikacji) nikt tego nie czyta, więc po
 powrocie do Mobile odczyt znika.
 
@@ -482,15 +487,16 @@ raz trzeba je przenieść na NAS. Dwa sposoby, oba równie dobre:
   (albo skopiować ukryty `.password`; w Finderze pokazuje go Cmd+Shift+.).
   Serwer sam je zauważy przy najbliższym pytaniu aplikacji ramki albo przy
   próbie uruchomienia jej (co 5 minut), zbuduje i podpisze paczkę.
-- **Jedną komendą na Macu:** `scripts/panel-app/upload-certs.sh <token API>`
-  (bierze pliki z `~/SamsungCertificate/frame`, `--dir` zmienia; wysyła na
-  `http://192.100.3.185:8099`, `--server` zmienia;
-  `PUT /api/device/app/certificates`). Serwer najpierw sprawdza hasło, potem
+- **Jedną komendą na Macu:** `scripts/panel-app/upload-certs.sh <token API>
+  --server http://<adres NAS>:8099` (albo zmienna `FRAME_SERVER`; adresu nie
+  ma w repozytorium). Bierze pliki z `~/SamsungCertificate/frame` (`--dir`
+  zmienia) i wysyła `PUT /api/device/app/certificates`. Serwer najpierw sprawdza hasło, potem
   zapisuje i od razu buduje paczkę; skrypt wypisuje ważność certyfikatów.
 
 Potem Mac nie jest potrzebny. Adres w paczce (`config.js`), w
 `sssp_config.xml` i ten wysyłany ramce w `0xC7 82` biorą się z
-`FRAME_PUBLIC_HOST` i portu serwera (`http://192.100.3.185:8099/panel/app`).
+`FRAME_PUBLIC_HOST` i portu serwera (`http://<FRAME_PUBLIC_HOST>:8099/panel/app`,
+ustawione w `frame.env` na NAS, poza repozytorium).
 Ramka, która wciąż wskazuje na serwer testowy na Macu, wraca na NAS sama:
 serwer co 5 minut (gdy ramka odpowiada) ustawia jej `0xC7 82` na swój adres
 i `0xC7 81 01`, dopóki aplikacja z NAS nie zapyta; to samo robi każde
@@ -532,11 +538,11 @@ E8. Zakładamy przejście na 2,4 GHz. Mateusz ustalił zasadę:
   razu także w ciszy nocnej. Zmiana wypadająca dokładnie na początek ciszy
   idzie na ekran, zanim ten zaśnie.
 
-Uwaga sieciowa: serwer na Synology (192.100.3.185) jest w innej podsieci niż
-ekran. Broadcast stamtąd do 192.168.1.x nie dotrze, dociera tylko kopia
+Uwaga sieciowa: serwer na Synology (192.0.2.10) jest w innej podsieci niż
+ekran. Broadcast stamtąd do 203.0.113.x nie dotrze, dociera tylko kopia
 unicast przez router, a router musi znać adres MAC ekranu (wpis ARP). Jeśli
 po przejściu na 2,4 GHz WoL działa z Maca, a z Synology nie, potrzebny jest
-stały wpis ARP (albo rezerwacja DHCP z ARP) w routerze dla 192.168.1.152.
+stały wpis ARP (albo rezerwacja DHCP z ARP) w routerze dla 203.0.113.152.
 
 Do sprawdzenia w E13: czy budzik budzi ekran przy wyłączonym network
 standby, jak długo ekran zostaje w sieci po pobudce, czy WoL na 2,4 GHz
@@ -547,23 +553,23 @@ działa na baterii.
 Ekran jest już w sieci 2,4 GHz, a „Obudź ramkę” nadal go nie budzi. Trzy
 możliwe przyczyny, od najbardziej prawdopodobnej:
 
-1. **Pakiet nie dociera z Synology.** Serwer (192.100.3.185) wysyła magic
+1. **Pakiet nie dociera z Synology.** Serwer (192.0.2.10) wysyła magic
    packet trzy razy: na 255.255.255.255 (zostaje w sieci NAS-a), na
-   192.168.1.255 (broadcast skierowany: domowe routery zwykle go odrzucają)
-   i na 192.168.1.152 (unicast przez router). Unicast dociera tylko wtedy,
+   203.0.113.255 (broadcast skierowany: domowe routery zwykle go odrzucają)
+   i na 203.0.113.152 (unicast przez router). Unicast dociera tylko wtedy,
    gdy router zna jeszcze adres MAC ekranu. Wpis ARP wygasa po kilku
    minutach od zaśnięcia, a śpiący ekran może nie odpowiadać na zapytania
    ARP. Wtedy router po cichu wyrzuca pakiet. Rozwiązania: stały wpis ARP
-   (powiązanie IP–MAC) dla 192.168.1.152 w routerze, funkcja WoL w samym
-   routerze, albo serwer z nogą w sieci 192.168.1.x (np. drugi port LAN
-   NAS-a; z `network_mode: host` broadcast na 192.168.1.255 wyjdzie wtedy
+   (powiązanie IP–MAC) dla 203.0.113.152 w routerze, funkcja WoL w samym
+   routerze, albo serwer z nogą w sieci 203.0.113.x (np. drugi port LAN
+   NAS-a; z `network_mode: host` broadcast na 203.0.113.255 wyjdzie wtedy
    prosto do tej sieci, bez zmian w kodzie).
    U nas router to UniFi Dream Machine Pro: nie ma w panelu stałych wpisów
    ARP (przez SSH da się je dodać, ale znikają po restarcie i aktualizacji),
    więc zalecana droga to drugi port LAN Synology RS1619xs+ w sieci
    ekranu (DHCP, brama domyślna zostaje na LAN 1).
    **Wybrane 2026-10-26:** osobny SSID w sieci NAS-a, ekran ma adres
-   192.100.3.151, czyli jest w tej samej podsieci co serwer. Do sprawdzenia
+   192.0.2.20, czyli jest w tej samej podsieci co serwer. Do sprawdzenia
    w UniFi: SSID tylko 2,4 GHz, „Multicast and Broadcast Control” wyłączone,
    MAC w aplikacji = MAC, który UniFi pokazuje przy ekranie (moduł 2,4 GHz
    może mieć inny adres).
@@ -710,14 +716,14 @@ po ok. 3 min 10 s.
 
 ## E13: plan testu na ekranie
 
-Potrzebny Mac w tej samej sieci co ekran (192.168.1.x) i gałąź z komendą
+Potrzebny Mac w tej samej sieci co ekran (203.0.113.x) i gałąź z komendą
 `frame device timer`. Każdy krok zapisuje godziny i obserwacje.
 
 W osobnym oknie terminala dziennik dostępności ekranu (co 5 s):
 
 ```bash
 while true; do
-  if ping -c1 -t1 192.168.1.152 >/dev/null 2>&1; then s=UP; else s=down; fi
+  if ping -c1 -t1 203.0.113.152 >/dev/null 2>&1; then s=UP; else s=down; fi
   echo "$(date +%T) $s"; sleep 5
 done | tee wake.log
 ```

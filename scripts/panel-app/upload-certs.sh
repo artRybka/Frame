@@ -3,7 +3,10 @@
 # server, once (and again when they are renewed). The server keeps them in
 # its data directory only and builds and signs the app itself (docs/WAKE.md).
 #
-#   scripts/panel-app/upload-certs.sh [TOKEN] [--server URL] [--dir DIR]
+#   scripts/panel-app/upload-certs.sh [TOKEN] --server URL [--dir DIR]
+#
+# URL is the server's address (e.g. http://<NAS address>:8099), or set
+# FRAME_SERVER instead of --server; it is never written into this script.
 #
 # DIR (default ~/SamsungCertificate/frame) holds the profile from Tizen
 # Studio's Certificate Manager, author.p12 and distributor.p12, and a
@@ -12,7 +15,7 @@
 set -euo pipefail
 
 token=""
-server=${FRAME_SERVER:-http://192.100.3.185:8099}
+server=${FRAME_SERVER:-}
 dir=$HOME/SamsungCertificate/frame
 while [ $# -gt 0 ]; do
   case $1 in
@@ -22,6 +25,11 @@ while [ $# -gt 0 ]; do
     *) token=$1; shift ;;
   esac
 done
+if [ -z "$server" ]; then
+  echo "usage: $0 [TOKEN] --server http://<server address>:8099 [--dir DIR]" >&2
+  echo "(or set FRAME_SERVER)" >&2
+  exit 2
+fi
 server=${server%/}
 
 for file in author.p12 distributor.p12 .password; do

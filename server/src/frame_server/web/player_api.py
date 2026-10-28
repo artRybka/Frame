@@ -218,6 +218,7 @@ async def put_settings(settings: FrameSettings, svc: Svc) -> FrameSettings:
     player = svc.player
     old = player.settings
     saved = player.save_settings(settings)
+    svc.power.publish_status()  # a mode the sleeping frame takes on later
     if old.wikiart and not saved.wikiart:
         # WikiArt was only for tests: its copies go with the switch.
         _, tests = svc.library.query(PlaylistRules(sources=["wikiart"]), include_excluded=True)
