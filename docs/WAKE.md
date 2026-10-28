@@ -214,6 +214,12 @@ ten sam obraz 2560×1440 co w trybie Mobile (nasz dither albo passthrough).
   w `sssp_config.xml` i wystawia nową paczkę, aplikacja woła
   `webapis.systemcontrol.rebootDevice()`, po restarcie launcher instaluje nową
   wersję (ale jej nie uruchamia), serwer wysyła `0xC7 81 01`.
+- Podpis bez Tizen Studio: `scripts/wakeprobe/sign_wgt.py` podpisuje
+  katalog aplikacji certyfikatami Samsunga z profilu (`author.p12`,
+  `distributor.p12`, hasło w pliku `.password`); paczki 1.7.3 i 1.7.4 tak
+  podpisane launcher zainstalował i uruchomił. Serwer na NAS może więc sam
+  budować aplikację. Certyfikaty i hasło tylko lokalnie, nigdy w repozytorium.
+  **Certyfikaty ważne do 2027-10-27:** odnowić w Certificate Managerze.
 - Po wyłączeniu i włączeniu ramka potrafi połączyć się z inną zapamiętaną
   siecią Wi-Fi (raz „Rocky IoT”, 192.168.3.151): wtedy serwer jej nie widzi.
   Aplikacja powinna raportować SSID i IP.
