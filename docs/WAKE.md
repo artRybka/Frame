@@ -592,6 +592,16 @@ przez aplikację (`goToSleep`) z czuwaniem sieci trzyma Wi-Fi i WoL go budzi
   a serwer od razu prowadzi pasek postępu (pobieranie, potem odświeżanie).
   Aplikacja iOS, dopóki obraz czeka, co 8 s odświeża „Teraz” i stan ramki,
   więc „Czeka na ramkę” znika sam, a pasek pokazuje wysyłkę.
+- **Obudzona ramka bez działającej aplikacji (2026-10-29, 0.34.0).** Po
+  przycisku ramka była w sieci (UniFi ją widział, MDC odpowiadało), ale
+  launcher nie uruchomił aplikacji. Wysyłka obrazu wysyłała wtedy tylko WoL
+  i czekała na pobranie, więc „Budzę ramkę” trwało bez końca. Teraz wysyłka
+  idzie jak „Obudź ramkę”: WoL plus co 15 s sprawdzenie MDC, a gdy ramka
+  odpowiada, a aplikacja przez 30 s nie pyta, serwer ją uruchamia
+  (`0xC7 81 01`). Tak samo każde sprawdzenie stanu, które zastanie ramkę
+  przytomną, a aplikację uśpioną albo milczącą, ją uruchamia (nie w trakcie
+  jej pytania, nie przez 5 minut po uśpieniu, nie wokół budzików). Ramka
+  śpiąca w sieci z czekającym obrazem jest też szukana co minutę.
 - **Zapasowe budziki na zasilaczu (pomysł Mateusza, tylko w trybie Online).**
   Na zasilaczu aplikacja przy każdym pytaniu dostaje w `stay` dwa najbliższe
   pełne półgodzinne budziki co najmniej 5 minut naprzód (`wake_ms`,

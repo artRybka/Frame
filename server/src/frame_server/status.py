@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import ipaddress
 import logging
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Literal
 
@@ -209,8 +209,10 @@ class StatusMonitor:
         self._slept_at: datetime | None = None  # the server last put it to sleep
         # Which sleep a panel that does not answer is in (see PowerManager).
         self.asleep: Callable[[DeviceStatus], PanelPower] | None = None
-        # Told when a panel that does not answer is not on the Wi-Fi either.
+        # Told when a panel that does not answer is not on the Wi-Fi either,
+        # and when it answers (its app may not be running).
         self.off_network: Callable[[], None] | None = None
+        self.answered: Callable[[], Awaitable[None]] | None = None
 
     def _configured(self) -> bool:
         s = self.panel.settings
@@ -280,6 +282,8 @@ class StatusMonitor:
         if status.on_network is False and self.off_network:
             self.off_network()  # it publishes what it changed into this status
         self._remember()
+        if status.reachable and self.answered:
+            await self.answered()
         return status
 
     async def look_for_panel(self, err: MdcError | None) -> bool | None:
