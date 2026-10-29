@@ -448,6 +448,7 @@ class PanelApp:
         the last read is old (Tizen's systeminfo fails on the panel): on the
         charger the app stays awake."""
         self.ensure_package()  # the files or the address changed: a new one
+        self.heard_at = datetime.now(UTC)  # asking: not started anew by a look
         status = self.service.status
         checked = status.status.checked_at
         now = datetime.now(UTC)
@@ -909,24 +910,34 @@ class PanelApp:
 
     def _button_look_due(self, now: datetime) -> bool:
         """Asleep with the Wi-Fi off (a rest, the economy mode, quiet hours,
-        unplugged), settled, no alarm about to ring or ringing (at a check
-        with nothing new the panel is left alone), and not looked for a
-        while: time to see whether the button woke it."""
+        unplugged), or in the network with a picture waiting for it,
+        settled, no alarm about to ring or ringing (at a check with nothing
+        new the panel is left alone), and not looked for a while: time to
+        see whether the button woke it."""
         state = self.state
-        if not state.asleep or state.standby:
+        waiting = self.service.power.state.pending_push
+        if not state.asleep or (state.standby and not waiting):
             return False
-        since = state.rested_at or state.slept_at
-        if since is not None and now - datetime.fromisoformat(since) < REST_SETTLE:
-            # Still going down, or restarted by the launcher as it does.
-            return False
-        if any(
-            datetime.fromisoformat(a) - STRAY_BEFORE
-            <= now
-            <= datetime.fromisoformat(a) + STRAY_AFTER
-            for a in [*state.stray, *state.wakes]
-        ):
+        if _settling(state, now) or _near_alarm(state, now):
             return False
         return self._looked is None or now - self._looked >= BUTTON_LOOK_EVERY
+
+    async def panel_up(self, now: datetime) -> None:
+        """The panel answered MDC (a status look): it is up. An app asleep as
+        far as the server knows, or silent, is not running then (after the
+        button's cold boot the launcher seldom starts it, E16): started. Not
+        while it asks (it was heard just now), goes down after being told
+        to sleep, or around an alarm, and not again too soon."""
+        state = self.state
+        heard = self.heard_at
+        if not state.active or (heard is not None and now - heard < HEARD_EVERY):
+            return
+        if _settling(state, now) or _near_alarm(state, now):
+            return
+        if self._kicked is not None and now - self._kicked < KICK_EVERY:
+            return
+        self._kicked = now
+        await self._kick(why="did not run although the panel is up")
 
     async def _fell_asleep(self, now: datetime) -> None:
         """Not told to sleep, silent, and the panel does not answer MDC: it
@@ -1077,6 +1088,21 @@ def _next_version(previous: str | None) -> str:
 def _alarms(state: AppState) -> list[datetime]:
     wakes = state.wakes or ([state.wake_at] if state.wake_at else [])
     return [datetime.fromisoformat(w) for w in wakes]
+
+
+def _settling(state: AppState, now: datetime) -> bool:
+    """Just told to sleep: still going down, or restarted by the launcher as
+    it does."""
+    since = state.rested_at or state.slept_at
+    return since is not None and now - datetime.fromisoformat(since) < REST_SETTLE
+
+
+def _near_alarm(state: AppState, now: datetime) -> bool:
+    """An alarm about to ring or just rung (set now or before a rest)."""
+    return any(
+        datetime.fromisoformat(a) - STRAY_BEFORE <= now <= datetime.fromisoformat(a) + STRAY_AFTER
+        for a in [*state.stray, *state.wakes]
+    )
 
 
 def _ms(moment: datetime) -> int:

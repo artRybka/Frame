@@ -311,8 +311,9 @@ class FrameService:
     async def push_current(self, wait: float = 90.0) -> PushOutcome:
         """The frame's app asks for its pictures (panel_app.py): awake (on the
         charger) it does within seconds; asleep with the Wi-Fi on, Wake-on-LAN
-        makes it ask, unless its alarm rings for this very change; in deep
-        sleep the picture waits for the alarm. A panel that does not run the
+        makes it ask, unless its alarm rings for this very change, and a
+        panel up with its app not running gets the app started over MDC; in
+        deep sleep the picture waits for the alarm or the button. A panel that does not run the
         app gets it installed and started first."""
         content = self.store.current()
         if content is None:
@@ -327,7 +328,6 @@ class FrameService:
         wake = app.wakes_at()
         ringing = wake is not None and abs(wake - now) < WAKE_SOON
         self.store.expect_fetch(file_id)
-        burst: asyncio.Task[bool] | None = None
         timeout = 0.0
         if not app.active and app.ensure_package() is None:
             # Nothing to install: the Samsung certificates are not here yet.
@@ -347,18 +347,22 @@ class FrameService:
             elif ringing:
                 assert wake is not None
                 timeout = max(wait, (wake - now).total_seconds() + 120)
-            elif not app.deep_asleep() and self.settings.device_mac:
-                progress.advance(Stage.WAKING)
-                burst = asyncio.create_task(self.panel.wake(seconds=WAKE_BURST_SECONDS))
-                timeout = WAKE_BURST_SECONDS + 60
+            elif not app.deep_asleep():
+                # Wake-on-LAN until the app asks; a panel that is up (the
+                # button) with its app not running gets the app started over
+                # MDC (the launcher seldom does after a cold boot). Without a
+                # MAC address only a panel up already.
+                mac = bool(self.settings.device_mac)
+                if mac or await app.panel_answers():
+                    progress.advance(Stage.WAKING)
+                    woke, _ = await power.reach(wol=mac)
+                    timeout = wait if woke else 0.0
             fetched = await self.store.wait_for_fetch(file_id, timeout) if timeout else False
         except MdcError as err:
             log.info("could not start the frame's app for a picture: %s", err)
             fetched = False
         finally:
             self.store.cancel_fetch(file_id)
-            if burst is not None:
-                burst.cancel()
         self.status.note_push(fetched)
         if fetched:
             power.mark_pending(False)

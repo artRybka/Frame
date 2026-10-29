@@ -266,6 +266,69 @@ async def test_wake_starts_a_hung_app(
         await panel.stop()
 
 
+async def test_a_picture_starts_the_app_of_a_panel_up(
+    tmp_path: Path, server_ssl: ssl.SSLContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """2026-10-29, 0.34.0: woken by the button, the panel was on the Wi-Fi
+    and answered MDC, but its app did not run (the launcher seldom starts it
+    after a cold boot). A picture sent kept "Budzę ramkę" with magic packets
+    for nothing. Now it starts the app over MDC, and a status look that
+    finds the panel up does too."""
+    monkeypatch.setattr(power, "WAKE_LOOK", timedelta(seconds=3))
+    monkeypatch.setattr(power, "WAKE_STEP", timedelta(seconds=0.2))
+    monkeypatch.setattr(power, "APP_GRACE", timedelta(seconds=0.5))
+    panel = FakePanel(server_ssl, handler=_handler)
+    await panel.start()
+    try:
+        service = FrameService(_settings(tmp_path, panel.port))
+        app = service.app
+        app.store_package(b"PK\x03\x04signed", "2.0.0")
+        service.ensure_initial_content()
+        _asleep(service, deep=False)
+        sent: list[int] = []
+
+        async def wake(seconds: int = 0) -> bool:
+            sent.append(seconds)
+            return True
+
+        monkeypatch.setattr(service.panel, "wake", wake)
+        task = asyncio.create_task(service.push_current(wait=5))
+        for _ in range(40):
+            await asyncio.sleep(0.1)
+            if (CMD_CONTENT_DOWNLOAD, b"\x81\x01") in panel.received:
+                break
+        assert panel.received[-1] == (CMD_CONTENT_DOWNLOAD, b"\x81\x01")
+        # Started, the app asks and downloads the picture.
+        app.answer(AppHello(reason="start", build="2.0.0", charging=False))
+        content = service.store.current()
+        assert content is not None
+        service.store._fetch_waiters[content.file_id].set()
+        outcome = await task
+        assert outcome.fetched and not service.power.state.pending_push
+
+        # Asleep again a while later, the panel answers a status look: the
+        # app is started.
+        _asleep(service, deep=False)
+        state = app.state
+        state.slept_at = (datetime.now(UTC) - timedelta(minutes=10)).isoformat()
+        state.wakes, state.wake_at = [], None
+        app._save(state)
+        app.heard_at = datetime.now(UTC) - timedelta(minutes=10)
+        app._kicked = None
+        panel.received.clear()
+        await service.status.refresh(force=True)
+        assert panel.received[-1] == (CMD_CONTENT_DOWNLOAD, b"\x81\x01")
+        # Not while it asks: the battery read before its answer leaves it be.
+        panel.received.clear()
+        app._kicked = None
+        service.status.status.checked_at = None  # the battery is read first
+        await app.ask(AppHello(reason="resume", build="2.0.0"))
+        assert panel.received  # read it was
+        assert (CMD_CONTENT_DOWNLOAD, b"\x81\x01") not in panel.received
+    finally:
+        await panel.stop()
+
+
 async def test_restart_from_the_app(
     tmp_path: Path, server_ssl: ssl.SSLContext, monkeypatch: pytest.MonkeyPatch
 ) -> None:

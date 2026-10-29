@@ -83,6 +83,7 @@ class PowerManager:
         self.service = service
         service.status.asleep = self.asleep_state
         service.status.off_network = self._off_network
+        service.status.answered = self._answered
         self._tasks: set[asyncio.Task[None]] = set()
 
     # -- persisted state ------------------------------------------------------
@@ -115,6 +116,10 @@ class PowerManager:
     def _off_network(self) -> None:
         """A look found the panel off the Wi-Fi."""
         self.service.app.lost_wifi(datetime.now(UTC))
+
+    async def _answered(self) -> None:
+        """A look found the panel up: its app is started if it does not run."""
+        await self.service.app.panel_up(datetime.now(UTC))
 
     def mark_pending(self, pending: bool) -> None:
         state = self.state
@@ -236,7 +241,7 @@ class PowerManager:
             return WakeResult(sent=False, woke=True)
         if not service.settings.device_mac:
             return WakeResult(sent=False, woke=False, problem="no_mac", reason="no MAC address set")
-        woke, started = await self._reach()
+        woke, started = await self.reach()
         log.info("Wake-on-LAN for the frame's app: %s", "it asked" if woke else "no answer")
         return WakeResult(
             sent=True,
@@ -259,7 +264,7 @@ class PowerManager:
         app.request_restart()
         awake = app.awake()
         mac = service.settings.device_mac
-        woke, started = await self._reach(wol=bool(mac) and not awake)
+        woke, started = await self.reach(wol=bool(mac) and not awake)
         if not woke:
             app.restart_requested = False  # not at some later question out of the blue
         log.info("restart of the frame: %s", "the app reboots it" if woke else "no answer")
@@ -270,7 +275,7 @@ class PowerManager:
             reason=None if woke else "no answer from the frame's app",
         )
 
-    async def _reach(self, wol: bool = True) -> tuple[bool, bool]:
+    async def reach(self, wol: bool = True) -> tuple[bool, bool]:
         """Wake-on-LAN (``wol``) until the app asks; once the panel answers
         MDC and its app still does not ask, the app is started over MDC.
         Whether it asked, and whether it had to be started."""
