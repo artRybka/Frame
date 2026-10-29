@@ -442,8 +442,14 @@ go w `<img>` 2560×1440 z `image-rendering: pixelated`. Starsza paczka (strona
 przyjdzie nowa (`pack.sh`; launcher pobiera ją po zimnym starcie). Wcześniej
 (add-on 0.24.1) serwer podawał osobną kopię 1920×1080 w pełnym kolorze; 1 px
 był miękki. E-papier nie odświeża się sam po wczytaniu obrazka, a
-`screenRefreshNow()` rzuca błąd: aplikacja po `onload` zmienia `opacity` na
-0,99 i po 300 ms z powrotem na 1.
+`screenRefreshNow()` rzuca błąd: do 0.27.0 aplikacja po `onload` zmieniała
+`opacity` na 0,99 i po 300 ms z powrotem na 1. Od 2026-10-29 aplikacja
+wstawia na stronę gotowy, zdekodowany `<img>` w miejsce starego, jedną
+zmianą strony i bez szturchania stylu. W 0.27.0 obraz po wysyłce mrugał
+drugi raz po kilkudziesięciu sekundach; podejrzenie: druga zmiana strony
+(powrót `opacity` na 1) w trakcie przygotowania odświeżenia dawała drugie
+odświeżenie tego samego obrazu. *(Do sprawdzenia na ramce: jedno mrugnięcie
+i obraz na pewno się pojawia.)*
 
 **Pobieranie i pasek postępu (pomiary wieczorem 2026-10-28).** Wi-Fi ramki
 jest słabe (sygnał 2/5, 2,4 GHz, 60–215 KB/s), a `<img>` pobierany w trakcie
