@@ -139,6 +139,20 @@ def _years(bio: str, gender: Gender | None) -> str:
     return ""
 
 
+def life_years(bio: str, gender: Gender | None = None) -> str:
+    """Just the life years of a museum's bio: "Dutch, Zundert 1853–1890
+    Auvers-sur-Oise" → "1853–1890"; "" when it gives none."""
+    return _years(bio, gender)
+
+
+def note_years(note: str) -> str:
+    """The life years of a note, without the nationality before them:
+    "Holender, 1853–1890" → "1853–1890"; "Japończyk" → ""."""
+    head, comma, tail = note.partition(",")
+    years = tail if comma else head
+    return years.strip() if re.search(r"\d", years) else ""
+
+
 def artist_note(bio: str, gender: Gender | None = None) -> str | None:
     """The note after the author's name: "Dutch, Zundert 1853–1890
     Auvers-sur-Oise" → "Holender, 1853–1890".

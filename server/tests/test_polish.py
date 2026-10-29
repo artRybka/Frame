@@ -31,7 +31,13 @@ from frame_server.ai.pl_text import (
 from frame_server.config import Settings
 from frame_server.imaging.layout import Fit
 from frame_server.library import Item, ItemKind
-from frame_server.library.nationality import artist_note, fix_note, noun
+from frame_server.library.nationality import (
+    artist_note,
+    fix_note,
+    life_years,
+    note_years,
+    noun,
+)
 from frame_server.library.wikidata import Facts, Wikidata, record_id
 from frame_server.player import caption_for, text_block_for
 from frame_server.service import FrameService
@@ -63,6 +69,10 @@ def test_nationality_is_a_person_in_the_authors_gender() -> None:
     assert artist_note("Dutch, active 1650–1680", "female") == "Holenderka, czynna 1650–1680"
     assert artist_note("Japanese") == "Japończyk"
     assert artist_note("born Russia, 1866–1944") is None
+    assert life_years("Dutch, Zundert 1853–1890 Auvers-sur-Oise") == "1853–1890"
+    assert note_years("Holenderka, czynna 1650–1680") == "czynna 1650–1680"
+    assert note_years("ok. 1525–1569") == "ok. 1525–1569"
+    assert note_years("Japończyk") == ""
 
 
 def test_a_models_adjective_becomes_a_noun() -> None:
@@ -389,10 +399,40 @@ def test_the_frame_prints_the_polish_texts() -> None:
     )
     block = text_block_for(item, polish)
     assert block.title == "Burza śnieżna"
-    assert block.meta == ["J. M. W. Turner, Brytyjczyk, 1775–1851", "1842 · olej na płótnie"]
+    assert block.meta == ["J. M. W. Turner", "1842 · olej na płótnie"]
     assert block.body == "Parowiec ginie w zamieci."
     assert caption_for(item, polish) == "J. M. W. Turner — Burza śnieżna, 1842"
     assert text_block_for(item).title == "Snow Storm"
+
+
+def test_the_frame_shows_life_years_only_without_a_date() -> None:
+    item = Item(
+        id="met:2",
+        source="met",
+        source_id="2",
+        title="A Lady",
+        artist="Judith Leyster",
+        artist_bio="Dutch, Haarlem 1609–1660 Heemstede",
+        medium="Oil on wood",
+    )
+    polish = PolishText(
+        title="Dama",
+        frame="Kobieta w czepku.",
+        full="",
+        medium="olej na desce",
+        artist_note="Holenderka, 1609–1660",
+    )
+    assert text_block_for(item, polish).meta == ["Judith Leyster", "1609–1660 · olej na desce"]
+    assert text_block_for(item).meta == ["Judith Leyster", "1609–1660 · Oil on wood"]
+    # The museum's estimate wins over the life years.
+    dated = item.model_copy(update={"date_text": "ca. 1635"})
+    estimate = polish.model_copy(update={"date": "ok. 1635"})
+    assert text_block_for(dated, estimate).meta == ["Judith Leyster", "ok. 1635 · olej na desce"]
+    assert text_block_for(dated).meta == ["Judith Leyster", "ca. 1635 · Oil on wood"]
+    # No years anywhere: the medium alone.
+    bare = item.model_copy(update={"artist_bio": "Dutch"})
+    plain = polish.model_copy(update={"artist_note": "Holenderka"})
+    assert text_block_for(bare, plain).meta == ["Judith Leyster", "olej na desce"]
 
 
 def test_the_player_uses_polish_texts_once_written(
