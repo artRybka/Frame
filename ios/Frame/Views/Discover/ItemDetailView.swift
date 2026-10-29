@@ -30,6 +30,14 @@ struct ItemDetailView: View {
     @State private var seen: [String] = []
     /// The item the server was asked about, out of turn, as the card opened.
     @State private var described: String?
+    /// "Pokaż na ramce" until the picture reached the frame (as on "Teraz").
+    @State private var sending = false
+    /// How the last sending ended, for a moment on the button.
+    @State private var sent: Sent?
+    @State private var taps = 0
+    @State private var queueTaps = 0
+
+    enum Sent { case done, failed }
 
     /// What a tap on the picture opened on the whole screen.
     enum Opened: String, Identifiable {
@@ -160,15 +168,23 @@ struct ItemDetailView: View {
     }
 
     private func show(_ hold: HoldSpec) async {
+        taps += 1
+        sent = nil
+        sending = true
+        defer { sending = false }
         let cropped = draft.key == draftKey && draft.change != nil
-        guard await saveCrop() else { return }
+        guard await saveCrop() else {
+            sent = .failed
+            return
+        }
         if cropped, hold == .untilNextChange, model.player?.current?.item?.id == itemID {
             // Already on the frame: the server redraws it with the new crop.
             model.toast = "Nowy kadr — ramka odświeża obraz"
             await model.followPlayer()
+            sent = model.player?.lastError?.isEmpty ?? true ? .done : .failed
             return
         }
-        await model.show(itemID: itemID, hold: hold)
+        sent = await model.show(itemID: itemID, hold: hold) ? .done : .failed
     }
 
     // MARK: Polish
@@ -402,24 +418,50 @@ struct ItemDetailView: View {
         .labelStyle(ActionLabelStyle())
     }
 
-    /// "Pokaż na ramce": until the next change on a tap, longer from its menu.
+    /// "Pokaż na ramce": until the next change on a tap, longer when held.
+    /// It gives way under the finger, a spinner while the picture is on its
+    /// way and a tick once it went out.
     private var showButton: some View {
-        Menu {
+        Button {
+            Task { await show(.untilNextChange) }
+        } label: {
+            Label {
+                Text(sending ? "Wysyłam…" : sent == .done ? "Wysłano" : "Pokaż na ramce")
+            } icon: {
+                if sending {
+                    ProgressView().tint(Theme.paper)
+                } else {
+                    Image(systemName: sent == .done ? "checkmark" : "photo.artframe")
+                        .contentTransition(.symbolEffect(.replace))
+                }
+            }
+        }
+        .buttonStyle(ActionButtonStyle(prominent: true))
+        .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .contextMenu {
             ForEach(HoldSpec.allCases) { spec in
                 Button(spec.label) {
                     Task { await show(spec) }
                 }
             }
-        } label: {
-            Label("Pokaż na ramce", systemImage: "photo.artframe")
-                .foregroundStyle(Theme.paper)  // dark text on the lighter dark-mode accent
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-                .background(Theme.accent, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        } primaryAction: {
-            Task { await show(.untilNextChange) }
         }
-        .disabled(saving)
+        .disabled(saving || sending)
+        .animation(.easeInOut(duration: 0.2), value: sending)
+        .animation(.easeInOut(duration: 0.2), value: sent)
+        .sensoryFeedback(.impact(weight: .medium), trigger: taps)
+        .sensoryFeedback(trigger: sent) { _, outcome in
+            switch outcome {
+            case .done: return .success
+            case .failed: return .error
+            case nil: return nil
+            }
+        }
+        .task(id: sent) {
+            // The tick for a moment, then the button as it was.
+            guard sent == .done else { return }
+            try? await Task.sleep(for: .seconds(2.5))
+            sent = nil
+        }
     }
 
     /// "Dodaj do kolejki": shown at the next change; once it is first in
@@ -427,6 +469,7 @@ struct ItemDetailView: View {
     private func queueButton(_ item: Item) -> some View {
         let next = model.player?.queued?.first == item.id
         return Button {
+            queueTaps += 1
             Task {
                 guard await saveCrop() else { return }
                 await model.queueNext(itemID: item.id)
@@ -437,14 +480,11 @@ struct ItemDetailView: View {
                 systemImage: next ? "checkmark" : QueueButton.symbol
             )
             .contentTransition(.symbolEffect(.replace))
-            .foregroundStyle(Theme.ink)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
-            .background(Theme.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Theme.hairline))
         }
-        .buttonStyle(PressableStyle())
-        .disabled(next || saving)
+        .buttonStyle(ActionButtonStyle())
+        .disabled(next || saving || sending)
+        .sensoryFeedback(.impact(weight: .light), trigger: queueTaps)
+        .sensoryFeedback(.success, trigger: next) { _, now in now }
     }
 
     /// Favourite and the rest of the picture's options, top right.
