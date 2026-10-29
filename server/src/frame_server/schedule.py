@@ -27,7 +27,13 @@ class Presentation(BaseModel):
     # and the grid's letter (grids.GRIDS) or automatic by the photos' shapes.
     multi_count: int = Field(4, ge=MIN_PHOTOS, le=MAX_PHOTOS)
     multi_random: bool = False
-    multi_grid: Literal["auto", "A", "B", "C"] = "auto"
+    multi_grid: Literal["auto", "A", "B"] = "auto"
+
+    @field_validator("multi_grid", mode="before")
+    @classmethod
+    def _known_grid(cls, value: Any) -> Any:
+        """A grid since dropped ("C") is automatic again."""
+        return value if value in ("A", "B") else "auto"
 
     @field_validator("preset", mode="before")
     @classmethod

@@ -26,7 +26,7 @@ def _overlap(a: tuple[int, int, int, int], b: tuple[int, int, int, int]) -> bool
 def test_every_grid_fits_the_canvas_without_overlaps(canvas: tuple[int, int]) -> None:
     assert sorted(GRIDS) == list(range(MIN_PHOTOS, MAX_PHOTOS + 1))
     for count, grids in GRIDS.items():
-        assert [g.id for g in grids] == ["A", "B", "C"][: len(grids)]
+        assert [g.id for g in grids] == ["A", "B"]
         for grid in grids:
             rects = grid_rects(grid, canvas, 0.07)
             assert len(rects) == count
@@ -34,6 +34,12 @@ def test_every_grid_fits_the_canvas_without_overlaps(canvas: tuple[int, int]) ->
                 assert x > 0 and y > 0 and x + w < canvas[0] and y + h < canvas[1]
                 assert min(w, h) > 150
             assert not any(_overlap(a, b) for a, b in combinations(rects, 2)), grid.key
+            # The windows fill the area inside the margin, gaps aside.
+            inner = grid_rects(GRIDS[2][0], canvas, 0.07)
+            left, top = min(r[0] for r in inner), min(r[1] for r in inner)
+            assert min(r[0] for r in rects) == left and min(r[1] for r in rects) == top
+            assert max(r[0] + r[2] for r in rects) == max(r[0] + r[2] for r in inner)
+            assert max(r[1] + r[3] for r in rects) == max(r[1] + r[3] for r in inner)
 
 
 def test_portrait_canvas_transposes_the_grid() -> None:
@@ -49,9 +55,9 @@ def test_automatic_grid_matches_shapes() -> None:
     grid, rects, order = choose(portraits, LANDSCAPE, 0.07, seed="x")
     assert grid.name == "Tryptyk"
     assert sorted(order) == [0, 1, 2]
-    # One portrait among landscapes lands in the tall window.
-    shapes = [4 / 3, 3 / 4, 4 / 3]
-    grid, rects, order = choose(shapes, LANDSCAPE, 0.07, pinned="C")
+    # The portrait one of two lands in the tall window.
+    shapes = [4 / 3, 3 / 4]
+    grid, rects, order = choose(shapes, LANDSCAPE, 0.07, pinned="B")
     tall = next(i for i, r in enumerate(rects) if r[3] > r[2])
     assert order[tall] == 1
 
@@ -89,6 +95,7 @@ def test_photos_keep_their_own_fits() -> None:
     old = FrameSettings.model_validate({"art": {"fit": "auto"}, "photo": {"label": True}})
     assert old.art.fit == Fit.FIT and not old.photo.label
     assert FrameSettings.model_validate({"rotation": 270}).rotation == 90
+    assert Presentation(multi_grid="C").multi_grid == "auto"  # dropped grids
     with pytest.raises(ValueError):
         Presentation(multi_count=9)
 

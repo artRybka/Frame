@@ -1131,7 +1131,8 @@ struct FitOption: View {
                     Rectangle().fill(mat)
                     miniature
                 }
-                .frame(height: 44)
+                .aspectRatio(1, contentMode: .fit)  // square: the same for portrait and landscape frames
+                .frame(height: 52)
                 .whiteFrame(3, corner: 1)
                 Text(title)
                     .font(.caption2.weight(.medium))
@@ -1139,6 +1140,7 @@ struct FitOption: View {
                     .minimumScaleFactor(0.8)
                     .foregroundStyle(Theme.ink)
             }
+            .frame(maxWidth: .infinity)
             .padding(6)
             .background(selected ? Theme.accent.opacity(0.1) : .clear, in: RoundedRectangle(cornerRadius: 10))
             .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(selected ? Theme.accent : Theme.hairline, lineWidth: selected ? 2 : 1))
@@ -1155,7 +1157,7 @@ struct FitOption: View {
             Rectangle().fill(art)
         case "description":
             HStack(spacing: 4) {
-                Rectangle().fill(art).frame(width: 16)
+                Rectangle().fill(art).frame(width: 14)
                 VStack(alignment: .leading, spacing: 2) {
                     Rectangle().fill(art.opacity(0.7))
                     Spacer(minLength: 2)
@@ -1176,12 +1178,11 @@ struct FitOption: View {
                     Rectangle().fill(art.opacity(0.8))
                     Rectangle().fill(art.opacity(0.8))
                 }
-                .frame(width: 14)
+                .frame(width: 12)
             }
-            .padding(.vertical, 6)
-            .padding(.horizontal, 10)
+            .padding(8)
         default:
-            Rectangle().fill(art).padding(.vertical, 6).padding(.horizontal, 18)
+            Rectangle().fill(art).padding(10)
         }
     }
 }
