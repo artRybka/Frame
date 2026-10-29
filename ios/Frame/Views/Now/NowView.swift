@@ -28,8 +28,8 @@ struct NowView: View {
     @State private var loadedHero: ImageRef?
     /// What the panel shows, kept while a new picture is on its way.
     @State private var frameShows: NowShowing?
-    /// The picture on its way, for the swap: loaded, and in the panel's inks.
-    @State private var swapImage: (url: String, image: UIImage, inks: InkGrid)?
+    /// The picture on its way, cut for the swap, by its preview's address.
+    @State private var swapPlan: (url: String, plan: SwapPlan)?
     /// The bar's fraction when the panel began its redraw.
     @State private var redrawFrom: Double?
 
@@ -256,12 +256,12 @@ struct NowView: View {
     /// old one never shows again for a moment.
     private var swapOverlay: FrameSwap? {
         guard offset == 0, let current else { return nil }
-        let loaded = swapImage?.url == current.previewUrl ? swapImage : nil
+        let plan = swapPlan?.url == current.previewUrl ? swapPlan?.plan : nil
         if let progress = redrawProgress, current.previewUrl != heroShowing?.previewUrl {
-            return FrameSwap(image: loaded?.image, inks: loaded?.inks, progress: progress)
+            return FrameSwap(plan: plan, progress: progress)
         }
-        if !inFlight, let loaded, loadedHero != heroRef {
-            return FrameSwap(image: loaded.image, inks: loaded.inks, progress: 1)
+        if !inFlight, let plan, loadedHero != heroRef {
+            return FrameSwap(plan: plan, progress: 1)
         }
         return nil
     }
@@ -597,15 +597,18 @@ struct NowView: View {
     }
 
     /// The picture on its way, ahead of the redraw: as the hero loads it,
-    /// and cut into squares of ink.
+    /// and cut for the swap.
     private func loadSwap() async {
-        guard inFlight, let url = current?.previewUrl, swapImage?.url != url,
+        guard inFlight, let url = current?.previewUrl, swapPlan?.url != url,
               let request = model.backend.request(for: .path(url)),
               let image = try? await ImageLoader.shared.image(for: request, maxPixel: 1600, priority: .high),
-              !Task.isCancelled, let inks = InkGrid(image: image, portrait: model.isPortrait)
+              !Task.isCancelled,
+              let plan = SwapPlan(image: image, portrait: model.isPortrait, style: Self.swapStyle)
         else { return }
-        swapImage = (url, image, inks)
+        swapPlan = (url, plan)
     }
+
+    static let swapStyle = SwapStyle.raster
 
     private func loadDetails() async {
         guard let id = browsed?.summary.id, details[id] == nil else { return }
