@@ -881,6 +881,38 @@ struct FrameSettings: Codable, Hashable, Sendable {
 }
 
 extension FrameSettings {
+    /// These settings, an edit of `base`, made on `current` instead: what
+    /// the edit did not touch follows `current`. A draft opened before a
+    /// playlist was presented elsewhere must not bring the old one back.
+    func rebased(from base: FrameSettings, onto current: FrameSettings) -> FrameSettings {
+        var out = self
+        func follow<T: Equatable>(_ field: WritableKeyPath<FrameSettings, T>) {
+            if self[keyPath: field] == base[keyPath: field] { out[keyPath: field] = current[keyPath: field] }
+        }
+        follow(\.playlistId)
+        follow(\.changeTimes)
+        follow(\.changeEveryDays)
+        follow(\.quietStart)
+        follow(\.shuffle)
+        follow(\.avoidRepeatDays)
+        follow(\.orientation)
+        follow(\.rotation)
+        follow(\.art)
+        follow(\.photo)
+        follow(\.timezone)
+        follow(\.statusPollMinutes)
+        follow(\.privateUse)
+        follow(\.wikiart)
+        follow(\.name)
+        follow(\.powerMode)
+        follow(\.checkEveryHours)
+        follow(\.checkQuietStart)
+        follow(\.checkQuietEnd)
+        return out
+    }
+}
+
+extension FrameSettings {
     private enum CodingKeys: String, CodingKey {
         case playlistId, changeTimes, changeEveryDays, quietStart, shuffle, avoidRepeatDays
         case orientation, rotation, art, photo, timezone, statusPollMinutes, privateUse, wikiart, name

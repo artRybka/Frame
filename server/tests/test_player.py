@@ -588,6 +588,26 @@ async def test_work_added_to_the_queue_is_shown_next(service, monkeypatch) -> No
     assert player.upcoming(1)[0].id == a.id
 
 
+async def test_presenting_a_playlist_shows_it_before_the_picks(service) -> None:
+    ala = [_add(service, n, (200, 40 * n, 40), "Ala") for n in range(3)]
+    photo = _add(service, 9, (40, 40, 200), "Ola")  # e.g. sent once, waiting its turn
+    playlist = service.library.save_playlist(
+        Playlist(name="Ala", rules=PlaylistRules(artists=["Ala"]))
+    )
+    player = service.player
+    player.queue_next(photo.id)
+
+    # "Prezentuj na ramce": the playlist's own first picture, now.
+    settings = player.settings
+    settings.playlist_id = playlist.id
+    player.save_settings(settings)
+    shown = await player.next("playlist", picks=False)
+    assert shown is not None and shown.id in {i.id for i in ala}
+    # The pick still comes at the next change.
+    assert player.state.requested == [photo.id]
+    assert (await player.next()).id == photo.id
+
+
 async def test_queued_work_waits_while_its_original_is_unavailable(service) -> None:
     cached = _artwork(service, 1, cached=True)
     missing = _artwork(service, 2, cached=False)

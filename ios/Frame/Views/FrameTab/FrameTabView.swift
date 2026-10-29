@@ -6,6 +6,9 @@ import SwiftUI
 struct FrameTabView: View {
     @Environment(AppModel.self) private var model
     @State private var draft: FrameSettings?
+    /// The settings `draft` was taken from: what changes elsewhere meanwhile
+    /// (a playlist presented, the frame renamed) comes into it.
+    @State private var base: FrameSettings?
     @State private var refreshing = false
     @State private var lastLook: Date?
     @State private var renaming = false
@@ -47,14 +50,19 @@ struct FrameTabView: View {
                     ToolbarItem(placement: .confirmationAction) {
                         Button("Zapisz") {
                             Task {
-                                await model.saveSettings(draft)
-                                self.draft = model.settings  // as the server keeps it (e.g. times sorted)
+                                await model.saveSettings(edited(draft))
+                                // As the server keeps it (e.g. times sorted).
+                                self.draft = model.settings
+                                base = model.settings
                             }
                         }
                         .fontWeight(.semibold)
                     }
                     ToolbarItem(placement: .cancellationAction) {
-                        Button("Cofnij") { self.draft = model.settings }
+                        Button("Cofnij") {
+                            self.draft = model.settings
+                            base = model.settings
+                        }
                     }
                 }
             }
@@ -63,13 +71,10 @@ struct FrameTabView: View {
             .sheet(isPresented: $showingConnection) { ConnectionSettingsView() }
             .refreshable { await Task { await refresh() }.value }
             .onAppear {
-                if draft == nil { draft = model.settings }
+                follow(model.settings)
                 look()
             }
-            .onChange(of: model.settings) { old, new in
-                // Changes not saved yet stay; a new name comes in either way.
-                if draft == nil || draft == old { draft = new } else { draft?.name = new?.name }
-            }
+            .onChange(of: model.settings) { _, new in follow(new) }
             .alert("Nazwa ramki", isPresented: $renaming) {
                 TextField(panelName, text: $newName)
                     .textInputAutocapitalization(.sentences)
@@ -88,6 +93,24 @@ struct FrameTabView: View {
     private var panelName: String { device?.name.flatMap { $0.isEmpty ? nil : $0 } ?? "Moja ramka" }
 
     private var frameName: String { model.settings?.name ?? panelName }
+
+    /// The draft on the settings as they are now. Changes not saved yet
+    /// stay; the rest follows (e.g. the playlist presented from Playlists).
+    private func follow(_ settings: FrameSettings?) {
+        guard let settings, settings != base else { return }
+        if let draft, let base {
+            self.draft = draft.rebased(from: base, onto: settings)
+        } else {
+            draft = settings
+        }
+        base = settings
+    }
+
+    /// `draft`'s own changes, made on the settings as the app has them now.
+    private func edited(_ draft: FrameSettings) -> FrameSettings {
+        guard let base, let current = model.settings else { return draft }
+        return draft.rebased(from: base, onto: current)
+    }
 
     private var binding: Binding<FrameSettings> {
         Binding(
