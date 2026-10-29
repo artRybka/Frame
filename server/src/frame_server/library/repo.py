@@ -38,6 +38,9 @@ WORK_FIELDS = frozenset(
     {"kind", "source", "title", "artist", "year", "width", "height", "url", "image_url", "pooled"}
 )
 
+#: The playlist "Historia przesłanych" (see ``Player.remember_sent``).
+SENT_KEY = "sent_photos_playlist"
+
 SortKey = Literal["recent", "title", "artist", "year", "random", "suitability", "shown"]
 
 SCHEMA = """
@@ -451,6 +454,13 @@ class Library:
     def delete_state(self, key: str) -> None:
         with self._db() as db:
             db.execute("DELETE FROM kv WHERE key = ?", (key,))
+
+    def sent_photo_ids(self) -> set[str]:
+        """Photos sent once that were shown or queued: those in "Historia
+        przesłanych"."""
+        playlist_id = self.get_state(SENT_KEY, None)
+        playlist = self.playlist(playlist_id) if playlist_id is not None else None
+        return set(playlist.item_ids) if playlist is not None else set()
 
     # -- notes from a language model (ai) -----------------------------------
 

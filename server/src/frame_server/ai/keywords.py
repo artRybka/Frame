@@ -151,7 +151,11 @@ class KeywordsJob(NoteJob):
     prompt_version = PROMPT_VERSION
 
     def _switched_on(self, item: Item) -> bool:
-        if item.look is not None or item.excluded:  # sent once, or taken out
+        if item.excluded:
+            return False
+        # Sent once: only after it was shown or queued, not while the owner
+        # is still choosing (a photo closed unsent is deleted).
+        if item.look is not None and item.id not in self.library.sent_photo_ids():
             return False
         config = self.config.config
         return config.keywords_photos if is_photo(item) else config.keywords_artworks

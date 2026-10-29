@@ -577,7 +577,7 @@ def _save_framing(
 @router.post("/library/items/{item_id}/show", status_code=202)
 async def show_item(item_id: str, request: ShowRequest, svc: Svc) -> dict[str, Any]:
     item = await _work(svc, item_id, save=True)
-    svc.player.remember_sent(item)
+    _remember_sent(svc, item)
     svc.background(svc.player.show(item, "app", hold_from(request.hold)))
     return {"accepted": True, "item_id": item.id}
 
@@ -587,9 +587,17 @@ async def queue_item(item_id: str, svc: Svc) -> dict[str, Any]:
     """The owner's "Dodaj do kolejki": the work is shown at the next change."""
     item = await _work(svc, item_id, save=True)
     svc.player.queue_next(item.id)
-    svc.player.remember_sent(item)
+    _remember_sent(svc, item)
     svc.background(svc.player.get_ready())
     return {"accepted": True, "item_id": item.id}
+
+
+def _remember_sent(svc: FrameService, item: Item) -> None:
+    """A photo sent once joins "Historia przesłanych" and gets its keywords
+    ahead of the background."""
+    svc.player.remember_sent(item)
+    if item.look is not None:
+        svc.ai.need_now(item.id, KEYWORDS)
 
 
 @router.post("/library/upload", response_model=Item)
