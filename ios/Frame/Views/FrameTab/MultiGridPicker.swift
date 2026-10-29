@@ -117,7 +117,7 @@ struct MultiSettings: View {
     }
 }
 
-/// Miniature of a grid on the frame; "Auto" shows the grid's shapes faded.
+/// Miniature of a grid on the frame, square for either orientation.
 private struct GridOption: View {
     let title: String
     let grid: MultiGrid?
@@ -134,8 +134,14 @@ private struct GridOption: View {
                     Canvas { context, size in
                         context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(mat))
                         guard let grid else { return }
-                        for rect in grid.rects(in: size, margin: max(margin, 0.07)) {
-                            context.fill(Path(rect), with: .color(Theme.accent.opacity(0.75)))
+                        // Laid out on the frame's own shape, then drawn into the square.
+                        let frame = portrait ? CGSize(width: 9, height: 16) : CGSize(width: 16, height: 9)
+                        for rect in grid.rects(in: frame, margin: max(margin, 0.07)) {
+                            let square = CGRect(
+                                x: rect.minX / frame.width * size.width, y: rect.minY / frame.height * size.height,
+                                width: rect.width / frame.width * size.width, height: rect.height / frame.height * size.height
+                            )
+                            context.fill(Path(square), with: .color(Theme.accent.opacity(0.75)))
                         }
                     }
                     if grid == nil {
@@ -144,8 +150,8 @@ private struct GridOption: View {
                             .foregroundStyle(Theme.accent.opacity(0.75))
                     }
                 }
-                .aspectRatio(portrait ? 9.0 / 16.0 : 16.0 / 9.0, contentMode: .fit)
-                .frame(height: portrait ? 64 : 44)
+                .aspectRatio(1, contentMode: .fit)  // square, as the framing icons
+                .frame(height: 52)
                 .whiteFrame(3, corner: 1)
                 Text(title)
                     .font(.caption2.weight(.medium))

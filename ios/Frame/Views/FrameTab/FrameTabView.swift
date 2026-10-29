@@ -1046,12 +1046,6 @@ struct PresentationSection: View {
                             }
                         }
                     }
-                    if let explanation = FitOption.explanation(presentation.fit.wrappedValue, photo: target == .photo) {
-                        Text(explanation)
-                            .font(.caption)
-                            .foregroundStyle(Theme.inkSoft)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
                 }
                 if isMulti {
                     Divider()
@@ -1060,13 +1054,7 @@ struct PresentationSection: View {
                 Divider()
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Passe-partout").foregroundStyle(Theme.ink)
-                    // Six swatches: one row where they fit, else two rows of three.
-                    ViewThatFits(in: .horizontal) {
-                        HStack(spacing: 10) { matSwatches }
-                        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 10) {
-                            matSwatches
-                        }
-                    }
+                    HStack(spacing: 0) { matSwatches }
                 }
                 if presentation.fit.wrappedValue != "fill" {
                     Divider()
@@ -1107,22 +1095,6 @@ struct FitOption: View {
     static let photoModes: [(fit: String, title: String)] = [
         ("fit", "Passe-partout"), ("fill", "Wypełnij"), ("multi", "Multi"),
     ]
-
-    static func explanation(_ fit: String, photo: Bool = false) -> String? {
-        if photo {
-            switch fit {
-            case "fit": return "Całe zdjęcie w okienku passe-partout. Kadr i proporcje okienka zmienisz w „Teraz”."
-            case "multi", "fill": return nil
-            default: return "Wybierz jeden z trybów dla zdjęć."
-            }
-        }
-        return switch fit {
-        case "fill": nil
-        case "description": "Obraz, obok jego detal w okienku passe-partout i krótki opis nadrukowany na passe-partout: tytuł, autor, data i kilka zdań o obrazie. Gdy proporcje obrazu są bliskie ramce, obraz jest mniejszy, żeby zmieściły się detal i opis. Kadr obrazu i detalu poprawisz w „Teraz”."
-        case "fit": "Cały obraz w okienku passe-partout. Kadr i proporcje okienka zmienisz w „Teraz”."
-        default: "Wybierz jeden z trybów."
-        }
-    }
 
     var body: some View {
         Button(action: action) {
@@ -1233,20 +1205,23 @@ struct MatSwatch: View {
             VStack(spacing: 6) {
                 RoundedRectangle(cornerRadius: 6)
                     .fill(fill)
-                    .frame(width: 44, height: 32)
+                    .frame(width: 40, height: 30)
                     .overlay(
                         // The window cut at 45°: a light inner edge.
                         RoundedRectangle(cornerRadius: 2)
                             .strokeBorder(.white.opacity(name == "white" ? 0 : 0.8), lineWidth: 1.5)
-                            .padding(9)
+                            .padding(8)
                     )
                     .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Theme.inkSoft.opacity(0.35), lineWidth: 0.75))
                     .padding(3)
                     .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(selected ? Theme.accent : .clear, lineWidth: 2))
                 Text(Self.title(name))
                     .font(.caption2.weight(.medium))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
                     .foregroundStyle(selected ? Theme.ink : Theme.inkSoft)
             }
+            .frame(maxWidth: .infinity)  // six in one row
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Passe-partout \(Self.title(name).lowercased())")
@@ -1260,13 +1235,13 @@ struct ScreenSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            SectionHeader(title: "Ekran")
+            SectionHeader(title: "Orientacja")
             Card {
                 HStack(spacing: 8) {
-                    OrientationOption(title: "Pozioma", portrait: false, selected: settings.orientation == "landscape") {
+                    OrientationPill(title: "Pozioma", portrait: false, selected: settings.orientation == "landscape") {
                         settings.orientation = "landscape"
                     }
-                    OrientationOption(title: "Pionowa", portrait: true, selected: settings.orientation == "portrait") {
+                    OrientationPill(title: "Pionowa", portrait: true, selected: settings.orientation == "portrait") {
                         settings.orientation = "portrait"
                         settings.rotation = 90
                     }
@@ -1276,8 +1251,9 @@ struct ScreenSection: View {
     }
 }
 
-/// A frame hanging one way or the other, to pick.
-private struct OrientationOption: View {
+/// A frame hanging one way or the other, to pick: a pill like the
+/// schedule's, led by a small frame of that shape.
+private struct OrientationPill: View {
     let title: String
     let portrait: Bool
     let selected: Bool
@@ -1285,22 +1261,23 @@ private struct OrientationOption: View {
 
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 8) {
-                Rectangle()
-                    .fill(Theme.accent.opacity(0.75))
-                    .aspectRatio(portrait ? 9.0 / 16.0 : 16.0 / 9.0, contentMode: .fit)
-                    .whiteFrame(3, corner: 1)
-                    .frame(height: 56)
+            HStack(spacing: 8) {
+                RoundedRectangle(cornerRadius: 1.5)
+                    .strokeBorder(lineWidth: 1.75)
+                    .frame(width: portrait ? 11 : 18, height: portrait ? 18 : 11)
+                    .frame(width: 18, height: 18)
                 Text(title)
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(Theme.ink)
+                    .font(.subheadline.weight(.medium))
+                    .lineLimit(1)
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 10)
-            .background(selected ? Theme.accent.opacity(0.1) : .clear, in: RoundedRectangle(cornerRadius: 10))
-            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(selected ? Theme.accent : Theme.hairline, lineWidth: selected ? 2 : 1))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 9)
+            .foregroundStyle(selected ? Theme.accent : Theme.ink)
+            .background(selected ? Theme.accent.opacity(0.17) : Theme.mat, in: Capsule())
         }
         .buttonStyle(.plain)
+        .sensoryFeedback(.selection, trigger: selected)
         .accessibilityLabel(title)
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
