@@ -685,9 +685,13 @@ Co pozwala ekran (EMDX 224B, firmware 1130.7):
 Jak działa (`power.py`, `PowerManager.enter_deep` i `_economy_tick`):
 
 - **Pobudki** = godziny zmiany, a z „Sprawdzaj też co” (2, 3, 4 albo 6 h)
-  także krótkie pobudki między pierwszą a ostatnią zmianą dnia (przy jednej
-  zmianie: przez 12 h po niej), `schedule.check_times`. W nocy nic nie budzi
-  ekranu, dlatego w tym trybie nie ma ciszy nocnej.
+  także krótkie pobudki co tyle godzin po każdej zmianie aż do następnej,
+  przez całą dobę, `schedule.check_times`. Nie ma ich tylko w ciszy nocnej
+  trybu Oszczędnego (`check_quiet_start`–`check_quiet_end`, domyślnie
+  22:00–07:00, od 0.27.1); zmiany budzą ekran także wtedy. Przykład: zmiany
+  00:50 i 03:50, co 4 h → sprawdzenia 7:50, 11:50, 15:50, 19:50 (23:50 wypada
+  w ciszy). Cisza nocna trybu Online (`quiet_start`, do najbliższej zmiany)
+  w tym trybie nie działa.
 - **Po każdym obrazie** (90 s na pobranie i odświeżenie) serwer czyta
   baterię, ustawia budzik na najbliższą pobudkę, wyłącza network standby
   i ekran. Na ładowarce nic z tego: działa jak „Online”.

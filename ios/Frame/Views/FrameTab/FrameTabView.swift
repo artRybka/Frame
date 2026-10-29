@@ -496,8 +496,7 @@ struct ScheduleSection: View {
                 } else {
                     Toggle("Losowa kolejność", isOn: $settings.shuffle)
                 }
-                // Economy: the frame sleeps from the day's last change to its
-                // first anyway, so quiet hours would only confuse.
+                // Economy has its own quiet hours, for the checks (above).
                 if !settings.isEconomy {
                     Divider()
                     quietHours
@@ -570,11 +569,41 @@ struct ScheduleSection: View {
                 }
                 .labelsHidden()
             }
-            WakeStrip(changes: settings.changeMinutes, checks: settings.checkMinutes)
+            if (settings.checkEveryHours ?? 0) > 0, settings.checkQuietEnd != nil {
+                checkQuietHours
+            }
+            WakeStrip(
+                changes: settings.changeMinutes,
+                checks: settings.checkMinutes,
+                quiet: (settings.checkEveryHours ?? 0) > 0 ? settings.checkQuiet : nil
+            )
             Text(wakeNote)
                 .font(.caption)
                 .foregroundStyle(Theme.inkSoft)
         }
+    }
+
+    /// Economy: the night without checks, from–to; the changes still wake the frame.
+    @ViewBuilder private var checkQuietHours: some View {
+        Toggle("Cisza nocna", isOn: checkQuietEnabled)
+        if settings.checkQuietStart != nil {
+            HStack {
+                DatePicker("Od", selection: time(\.checkQuietStart, fallback: "22:00"), displayedComponents: .hourAndMinute)
+                Spacer()
+                DatePicker("do", selection: time(\.checkQuietEnd, fallback: "07:00"), displayedComponents: .hourAndMinute)
+            }
+            .font(.subheadline)
+            Text("W tym czasie ramka nie sprawdza, budzi się tylko na zmiany.")
+                .font(.caption)
+                .foregroundStyle(Theme.inkSoft)
+        }
+    }
+
+    private var checkQuietEnabled: Binding<Bool> {
+        Binding(
+            get: { settings.checkQuietStart != nil },
+            set: { on in settings.checkQuietStart = on ? "22:00" : nil }
+        )
     }
 
     private var checkEvery: Binding<Int> {
@@ -582,17 +611,21 @@ struct ScheduleSection: View {
     }
 
     private var wakeNote: String {
+        let changes = settings.changeMinutes.count
         let checks = settings.checkMinutes.count
-        let count = settings.changeMinutes.count + checks
-        let wakes = "\(count) \(Names.wakes(count)) dziennie."
+        let count = changes + checks
+        // About a minute and a half of Wi-Fi for a change (joining, the
+        // picture, back to sleep), half a minute for a check with nothing to show.
+        let minutes = max(1, Int((Double(changes) * 1.5 + Double(checks) * 0.5).rounded()))
+        let summary = "\(count) \(Names.wakes(count)) dziennie, Wi-Fi łącznie ok. \(minutes) min na dobę."
+        guard let every = settings.checkEveryHours, every > 0 else { return summary }
         guard checks > 0 else {
-            // About a minute and a half of Wi-Fi a wake: joining, the picture, back to sleep.
-            return "\(wakes) Wi-Fi włączone łącznie ok. \(max(1, (count * 3 + 1) / 2)) min na dobę."
+            return "Przy tych godzinach zmian i ciszy nocnej nie wypada żadne sprawdzenie. "
+                + "Wybierz krótszy odstęp albo skróć ciszę nocną. \(summary)"
         }
-        let span = settings.changeMinutes.count > 1
-            ? "Tylko między pierwszą a ostatnią zmianą dnia, w nocy ramka śpi."
-            : "Przez 12 godzin po zmianie, w nocy ramka śpi."
-        return "\(span) Obraz zmienia się, gdy wysłałeś coś z aplikacji. \(wakes)"
+        let quiet = settings.checkQuiet != nil ? ", poza ciszą nocną" : ""
+        return "Co \(every) \(Names.hours(every)) po każdej zmianie\(quiet). "
+            + "Obraz zmienia się tylko, gdy wysłałeś coś z aplikacji. \(summary)"
     }
 
     private func row<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
@@ -1586,16 +1619,24 @@ private struct AddressField: View {
 }
 
 /// A day from midnight to midnight with the economy mode's wakes on it: the
-/// changes and the checks between them; the rest is deep sleep.
+/// changes, the checks between them and the quiet hours without checks; the
+/// rest is deep sleep.
 struct WakeStrip: View {
     let changes: [Int]  // minutes after midnight
     let checks: [Int]
+    var quiet: (start: Int, end: Int)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     Capsule().fill(Theme.accent.opacity(0.18)).frame(height: 8)
+                    ForEach(quietSpans, id: \.0) { start, end in
+                        Stripes()
+                            .frame(width: x(end - start, geo.size.width), height: 8)
+                            .clipShape(Capsule())
+                            .offset(x: x(start, geo.size.width))
+                    }
                     ForEach(checks, id: \.self) { minutes in
                         RoundedRectangle(cornerRadius: 1.5)
                             .fill(Theme.vermilion)
@@ -1613,20 +1654,26 @@ struct WakeStrip: View {
             }
             .frame(height: 20)
             GeometryReader { geo in
-                ForEach(labels, id: \.self) { minutes in
-                    Text(Self.label(minutes))
+                ForEach(labels(geo.size.width), id: \.minutes) { label in
+                    Text(Self.label(label.minutes))
                         .font(.caption2)
                         .monospacedDigit()
                         .foregroundStyle(Theme.inkSoft)
                         .fixedSize()
-                        .position(x: min(max(x(minutes, geo.size.width), 8), geo.size.width - 8), y: 6)
+                        .position(x: label.x, y: 6)
                 }
             }
             .frame(height: 12)
-            HStack(spacing: 12) {
-                legend(Theme.accent, checks.isEmpty ? "pobudka i zmiana" : "zmiana")
-                if !checks.isEmpty { legend(Theme.vermilion, "sprawdzenie") }
-                legend(Theme.accent.opacity(0.18), "głęboki sen")
+            // One line when it fits, else the wakes and the sleep in two.
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 12) {
+                    wakeLegend
+                    sleepLegend
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 12) { wakeLegend }
+                    HStack(spacing: 12) { sleepLegend }
+                }
             }
             .font(.caption2)
             .foregroundStyle(Theme.inkSoft)
@@ -1635,7 +1682,41 @@ struct WakeStrip: View {
         .accessibilityLabel("Pobudki: " + (changes + checks).sorted().map(Self.label).joined(separator: ", "))
     }
 
-    private var labels: [Int] { Array(Set([0, 24 * 60] + changes + checks)).sorted() }
+    /// The hours under the strip, centred under their marks and kept inside
+    /// it: the changes first, then the checks, then 0 and 24; a label that
+    /// would touch one already placed is left out.
+    private func labels(_ width: CGFloat) -> [(minutes: Int, x: CGFloat)] {
+        var placed: [(minutes: Int, x: CGFloat, half: CGFloat)] = []
+        for minutes in changes + checks + [0, 24 * 60] where !placed.contains(where: { $0.minutes == minutes }) {
+            // caption2 with monospaced digits: about 6.2 pt a character
+            let half = (CGFloat(Self.label(minutes).count) * 6.2 + 2) / 2
+            let x = min(max(x(minutes, width), half), width - half)
+            guard !placed.contains(where: { abs($0.x - x) < $0.half + half + 4 }) else { continue }
+            placed.append((minutes, x, half))
+        }
+        return placed.map { ($0.minutes, $0.x) }
+    }
+
+    @ViewBuilder private var wakeLegend: some View {
+        legend(Theme.accent, checks.isEmpty ? "pobudka i zmiana" : "zmiana")
+        if !checks.isEmpty { legend(Theme.vermilion, "sprawdzenie") }
+    }
+
+    @ViewBuilder private var sleepLegend: some View {
+        if quiet != nil {
+            HStack(spacing: 4) {
+                Stripes().frame(width: 9, height: 9).clipShape(RoundedRectangle(cornerRadius: 2))
+                Text("cisza nocna")
+            }
+        }
+        legend(Theme.accent.opacity(0.18), "głęboki sen")
+    }
+
+    /// The quiet hours as spans within the day (two when they cross midnight).
+    private var quietSpans: [(Int, Int)] {
+        guard let quiet else { return [] }
+        return quiet.start < quiet.end ? [(quiet.start, quiet.end)] : [(quiet.start, 24 * 60), (0, quiet.end)]
+    }
 
     private func x(_ minutes: Int, _ width: CGFloat) -> CGFloat {
         width * CGFloat(minutes) / CGFloat(24 * 60)
@@ -1649,6 +1730,20 @@ struct WakeStrip: View {
         HStack(spacing: 4) {
             RoundedRectangle(cornerRadius: 2).fill(color).frame(width: 9, height: 9)
             Text(text)
+        }
+    }
+}
+
+/// Thin diagonal lines: the quiet hours on the wake strip.
+struct Stripes: View {
+    var body: some View {
+        Canvas { context, size in
+            var lines = Path()
+            for x in stride(from: -size.height, to: size.width, by: 4) {
+                lines.move(to: CGPoint(x: x, y: size.height))
+                lines.addLine(to: CGPoint(x: x + size.height, y: 0))
+            }
+            context.stroke(lines, with: .color(Theme.ink.opacity(0.35)), lineWidth: 1.2)
         }
     }
 }
