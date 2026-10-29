@@ -20,20 +20,26 @@ struct FrameTabView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 28) {
-                    deviceHero
-                    statusGrid
-                    appNotice
-                    deviceActions
-                    if draft != nil {
-                        ScheduleSection(settings: binding)
-                        PresentationSection(settings: binding)
-                        ScreenSection(settings: binding)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 28) {
+                        deviceHero
+                        statusGrid
+                        appNotice
+                        deviceActions
+                        if draft != nil {
+                            ScheduleSection(settings: binding).id("schedule")
+                            PresentationSection(settings: binding)
+                            ScreenSection(settings: binding)
+                        }
                     }
+                    .padding(.horizontal, Theme.gutter)
+                    .padding(.bottom, 40)
                 }
-                .padding(.horizontal, Theme.gutter)
-                .padding(.bottom, 40)
+                .onChange(of: draft != nil, initial: true) { _, ready in
+                    // CI screenshots
+                    if ready, LaunchRoute.screen.hasPrefix("schedule") { proxy.scrollTo("schedule", anchor: .top) }
+                }
             }
             .background(Theme.paper)
             .navigationTitle("Ramka")
@@ -101,9 +107,28 @@ struct FrameTabView: View {
         if let draft, let base {
             self.draft = draft.rebased(from: base, onto: settings)
         } else {
-            draft = settings
+            draft = Self.screenshotDraft(settings)
         }
         base = settings
+    }
+
+    /// CI screenshots: the schedule with a few times and the quiet hours on.
+    private static func screenshotDraft(_ settings: FrameSettings) -> FrameSettings {
+        var settings = settings
+        switch LaunchRoute.screen {
+        case "schedule":
+            settings.changeTimes = ["07:00", "13:00", "19:30"]
+            settings.quietStart = "22:00"
+        case "schedule-economy":
+            settings.powerMode = "economy"
+            settings.changeTimes = ["07:00", "19:00"]
+            settings.checkEveryHours = 4
+            settings.checkQuietStart = "22:00"
+            settings.checkQuietEnd = "07:00"
+        default:
+            break
+        }
+        return settings
     }
 
     /// `draft`'s own changes, made on the settings as the app has them now.
@@ -549,31 +574,14 @@ struct ScheduleSection: View {
     private let everyDays: [(Int, String)] = [(1, "codziennie"), (2, "co 2 dni"), (3, "co 3 dni")]
     private let maxTimes = 12
 
-    private var artPlaylists: [PlaylistSummary] { model.playlists.filter { $0.kind != .album } }
     private var albums: [PlaylistSummary] { model.playlists.filter { $0.kind == .album } }
     private var playingAlbum: PlaylistSummary? { albums.first { $0.id == settings.playlistId } }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            SectionHeader(title: "Harmonogram", subtitle: "Co i jak często pokazuje ramka")
+            SectionHeader(title: "Harmonogram")
 
             Card {
-                row("Playlista") {
-                    Picker("Playlista", selection: $settings.playlistId) {
-                        Text("Propozycje").tag(Int?.none)
-                        if !artPlaylists.isEmpty {
-                            Section("Sztuka") {
-                                ForEach(artPlaylists) { Text($0.name).tag(Int?.some($0.id)) }
-                            }
-                        }
-                        if !albums.isEmpty {
-                            Section("Albumy iCloud") {
-                                ForEach(albums) { Label($0.name, systemImage: "icloud").tag(Int?.some($0.id)) }
-                            }
-                        }
-                    }
-                }
-                Divider()
                 powerModePicker
                 Divider()
                 row("Zmiana") {
@@ -589,19 +597,11 @@ struct ScheduleSection: View {
                     checksPicker
                     Divider()
                 }
-                if let album = playingAlbum?.album {
-                    row("Kolejność") {
-                        Text(album.order.title).foregroundStyle(Theme.inkSoft)
-                    }
-                    Text("Album ma własną kolejność zdjęć; zmienisz ją w jego playliście.")
-                        .font(.caption)
-                        .foregroundStyle(Theme.inkSoft)
+                pills
+                if settings.isEconomy {
+                    checkQuietHours
+                    wakeStrip
                 } else {
-                    Toggle("Losowa kolejność", isOn: $settings.shuffle)
-                }
-                // Economy has its own quiet hours, for the checks (above).
-                if !settings.isEconomy {
-                    Divider()
                     quietHours
                 }
             }
@@ -609,16 +609,44 @@ struct ScheduleSection: View {
         }
     }
 
+    /// Shuffle and quiet hours side by side; the quiet hours' times are in a
+    /// row under them.
+    private var pills: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                if let album = playingAlbum?.album {
+                    TogglePill(title: album.order.title, systemImage: "photo.stack", isOn: .constant(false))
+                        .disabled(true)
+                } else {
+                    TogglePill(title: "Losowa kolejność", systemImage: "shuffle", isOn: $settings.shuffle)
+                }
+                if settings.isEconomy {
+                    // Economy has its own quiet hours, for the checks only.
+                    TogglePill(title: "Cisza nocna", systemImage: "moon.stars", isOn: checkQuietEnabled)
+                        .disabled(!hasChecks || settings.checkQuietEnd == nil)
+                } else {
+                    TogglePill(title: "Cisza nocna", systemImage: "moon.stars", isOn: quietEnabled)
+                }
+            }
+            if playingAlbum?.album != nil {
+                Text("Album ma własną kolejność zdjęć; zmienisz ją w jego playliście.")
+                    .font(.caption)
+                    .foregroundStyle(Theme.inkSoft)
+            }
+        }
+    }
+
     @ViewBuilder private var quietHours: some View {
-        Toggle("Cisza nocna", isOn: quietEnabled)
         if settings.quietStart != nil {
-            HStack {
+            HStack(spacing: 8) {
+                Text("Cisza nocna od").foregroundStyle(Theme.inkSoft)
                 DatePicker("Od", selection: time(\.quietStart, fallback: "22:00"), displayedComponents: .hourAndMinute)
-                Spacer()
+                    .labelsHidden()
                 Text("do \(settings.quietEnd ?? "—")").foregroundStyle(Theme.inkSoft)
+                Spacer(minLength: 0)
             }
             .font(.subheadline)
-            Text("Cisza trwa do najbliższej zmiany obrazu. Na baterii ramka śpi wtedy z wyłączonym Wi-Fi i budzi się sama na tę zmianę, a zdjęcia wysłane w nocy pojawią się rano. Przy zasilaczu trafiają na ramkę od razu.")
+            Text("Trwa do najbliższej zmiany. Na baterii ramka śpi wtedy bez Wi-Fi, a zdjęcia wysłane w nocy pokaże rano.")
                 .font(.caption)
                 .foregroundStyle(Theme.inkSoft)
         }
@@ -636,11 +664,6 @@ struct ScheduleSection: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
-            Text(settings.isEconomy
-                ? "Ramka śpi bez Wi-Fi między pobudkami. Wysłane dzieło pojawi się przy najbliższej."
-                : "Wysłane dzieło pojawia się po około minucie.")
-                .font(.caption)
-                .foregroundStyle(Theme.inkSoft)
             // After "Zapisz": the sleeping frame switches only when it wakes.
             if let device = model.status?.device, device.modePending == settings.powerMode,
                let pending = modePendingText(device) {
@@ -660,25 +683,28 @@ struct ScheduleSection: View {
     }
 
     private let checkOptions: [(Int, String)] = [
-        (0, "Nie sprawdzaj"), (1, "godzinę"), (2, "2 godziny"), (3, "3 godziny"), (4, "4 godziny"), (6, "6 godzin"),
+        (0, "wyłączone"), (1, "co godzinę"), (2, "co 2 godziny"), (3, "co 3 godziny"), (4, "co 4 godziny"),
+        (6, "co 6 godzin"),
     ]
+
+    private var hasChecks: Bool { (settings.checkEveryHours ?? 0) > 0 }
 
     /// Economy: short wakes between the changes, only for what was sent from the app.
     private var checksPicker: some View {
+        row("Sprawdzenia") {
+            Picker("Sprawdzenia", selection: checkEvery) {
+                ForEach(checkOptions, id: \.0) { hours, label in Text(label).tag(hours) }
+            }
+            .labelsHidden()
+        }
+    }
+
+    private var wakeStrip: some View {
         VStack(alignment: .leading, spacing: 8) {
-            row("Sprawdzaj też co") {
-                Picker("Sprawdzaj też co", selection: checkEvery) {
-                    ForEach(checkOptions, id: \.0) { hours, label in Text(label).tag(hours) }
-                }
-                .labelsHidden()
-            }
-            if (settings.checkEveryHours ?? 0) > 0, settings.checkQuietEnd != nil {
-                checkQuietHours
-            }
             WakeStrip(
                 changes: settings.changeMinutes,
                 checks: settings.checkMinutes,
-                quiet: (settings.checkEveryHours ?? 0) > 0 ? settings.checkQuiet : nil
+                quiet: hasChecks ? settings.checkQuiet : nil
             )
             Text(wakeNote)
                 .font(.caption)
@@ -688,23 +714,31 @@ struct ScheduleSection: View {
 
     /// Economy: the night without checks, from–to; the changes still wake the frame.
     @ViewBuilder private var checkQuietHours: some View {
-        Toggle("Cisza nocna", isOn: checkQuietEnabled)
-        if settings.checkQuietStart != nil {
-            HStack {
-                DatePicker("Od", selection: time(\.checkQuietStart, fallback: "22:00"), displayedComponents: .hourAndMinute)
-                Spacer()
-                DatePicker("do", selection: time(\.checkQuietEnd, fallback: "07:00"), displayedComponents: .hourAndMinute)
+        if hasChecks, settings.checkQuietEnd != nil, settings.checkQuietStart != nil {
+            // Two times in a row: "Od" alone when 12-hour times leave no room.
+            ViewThatFits(in: .horizontal) {
+                checkQuietRow("Cisza nocna od")
+                checkQuietRow("Od")
             }
             .font(.subheadline)
-            Text("W tym czasie ramka nie sprawdza, budzi się tylko na zmiany.")
-                .font(.caption)
-                .foregroundStyle(Theme.inkSoft)
+        }
+    }
+
+    private func checkQuietRow(_ label: String) -> some View {
+        HStack(spacing: 8) {
+            Text(label).foregroundStyle(Theme.inkSoft).fixedSize()
+            DatePicker("Od", selection: time(\.checkQuietStart, fallback: "22:00"), displayedComponents: .hourAndMinute)
+                .labelsHidden()
+            Text("do").foregroundStyle(Theme.inkSoft).fixedSize()
+            DatePicker("do", selection: time(\.checkQuietEnd, fallback: "07:00"), displayedComponents: .hourAndMinute)
+                .labelsHidden()
+            Spacer(minLength: 0)
         }
     }
 
     private var checkQuietEnabled: Binding<Bool> {
         Binding(
-            get: { settings.checkQuietStart != nil },
+            get: { hasChecks && settings.checkQuietStart != nil },
             set: { on in settings.checkQuietStart = on ? "22:00" : nil }
         )
     }
@@ -740,38 +774,40 @@ struct ScheduleSection: View {
         }
     }
 
-    /// The times of day the picture changes at: one or more, sorted.
+    /// The times of day the picture changes at, side by side: tapping one
+    /// opens a wheel to change it, with "Usuń godzinę" under it.
     private var changeTimesEditor: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(changeTimesTitle).foregroundStyle(Theme.ink)
-            ForEach(settings.changeTimes.indices, id: \.self) { index in
-                HStack {
-                    DatePicker(
-                        "Godzina \(index + 1)", selection: changeTime(at: index), displayedComponents: .hourAndMinute
-                    )
-                    .labelsHidden()
-                    Spacer()
-                    if settings.changeTimes.count > 1 {
-                        Button(role: .destructive) {
-                            settings.changeTimes.remove(at: index)
-                        } label: {
-                            Image(systemName: "minus.circle.fill")
-                        }
-                        .buttonStyle(.borderless)
-                        .accessibilityLabel("Usuń godzinę \(settings.changeTimes[index])")
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text(changeTimesTitle).foregroundStyle(Theme.ink)
+                Spacer()
+                if settings.changeTimes.count < maxTimes {
+                    Button {
+                        settings.changeTimes = Self.sorted(
+                            settings.changeTimes + [Self.nextFreeTime(after: settings.changeTimes)]
+                        )
+                    } label: {
+                        Image(systemName: "plus.circle").font(.title3)
                     }
+                    .buttonStyle(.borderless)
+                    .accessibilityLabel("Dodaj godzinę")
                 }
             }
-            if settings.changeTimes.count < maxTimes {
-                Button {
-                    settings.changeTimes = Self.sorted(settings.changeTimes + [Self.nextFreeTime(after: settings.changeTimes)])
-                } label: {
-                    Label("Dodaj godzinę", systemImage: "plus.circle")
+            FlowLayout(spacing: 8) {
+                ForEach(settings.changeTimes.indices, id: \.self) { index in
+                    ChangeTimeChip(
+                        label: settings.changeTimes[index],
+                        time: changeTime(at: index),
+                        remove: settings.changeTimes.count > 1 ? { removeTime(at: index) } : nil
+                    )
                 }
-                .buttonStyle(.borderless)
-                .font(.subheadline)
             }
         }
+    }
+
+    private func removeTime(at index: Int) {
+        guard settings.changeTimes.count > 1, settings.changeTimes.indices.contains(index) else { return }
+        settings.changeTimes.remove(at: index)
     }
 
     private var changeTimesTitle: String {
@@ -838,6 +874,86 @@ struct ScheduleSection: View {
                 settings[keyPath: key] = String(format: "%02d:%02d", comps.hour ?? 0, comps.minute ?? 0)
             }
         )
+    }
+}
+
+/// An on/off switch as a capsule with an icon: accent when on.
+struct TogglePill: View {
+    let title: String
+    let systemImage: String
+    @Binding var isOn: Bool
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        Button { isOn.toggle() } label: {
+            HStack(spacing: 6) {
+                Image(systemName: systemImage).font(.subheadline.weight(.semibold))
+                Text(title)
+                    .font(.subheadline.weight(.medium))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 9)
+            .foregroundStyle(isOn ? Theme.accent : Theme.ink)
+            .background(isOn ? Theme.accent.opacity(0.17) : Theme.mat, in: Capsule())
+            .opacity(isEnabled ? 1 : 0.42)
+        }
+        .buttonStyle(.plain)
+        .sensoryFeedback(.selection, trigger: isOn)
+        .accessibilityValue(isOn ? "włączona" : "wyłączona")
+        .accessibilityAddTraits(isOn ? .isSelected : [])
+    }
+}
+
+/// One change time; tapping it opens a wheel, and "Usuń godzinę" when
+/// there is more than one.
+struct ChangeTimeChip: View {
+    let label: String
+    @Binding var time: Date
+    var remove: (() -> Void)?
+    @State private var editing = false
+
+    var body: some View {
+        Button { editing = true } label: {
+            Text(label)
+                .monospacedDigit()
+                .padding(.horizontal, 13)
+                .padding(.vertical, 8)
+                .foregroundStyle(Theme.ink)
+                .background(Theme.mat, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .strokeBorder(Theme.accent, lineWidth: editing ? 2 : 0)
+                )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Godzina \(label)")
+        .popover(isPresented: $editing) {
+            VStack(spacing: 0) {
+                DatePicker("Godzina", selection: $time, displayedComponents: .hourAndMinute)
+                    .datePickerStyle(.wheel)
+                    .labelsHidden()
+                    .frame(width: 260)
+                if let remove {
+                    Divider()
+                    Button(role: .destructive) {
+                        editing = false
+                        remove()
+                    } label: {
+                        Label("Usuń godzinę", systemImage: "trash")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 12)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Theme.vermilion)
+                }
+            }
+            .presentationCompactAdaptation(.popover)
+        }
     }
 }
 

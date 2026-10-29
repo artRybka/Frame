@@ -70,6 +70,8 @@ jobs:
             capture editor-new 12 "editor-new-$appearance"
             capture editor-manual 12 "editor-manual-$appearance"
             capture frame 10 "frame-$appearance"
+            capture schedule 10 "schedule-$appearance"
+            capture schedule-economy 10 "schedule-economy-$appearance"
             capture connection 10 "connection-$appearance"
             capture museums 8 "museums-$appearance"
             capture search 8 "search-$appearance"
