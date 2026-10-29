@@ -46,7 +46,11 @@ def client() -> httpx.Client:
     )
 
 
-Kind = Literal["any", "painting", "print", "drawing", "poster"]
+#: What to draw: pictures (the frame's own) and, only when asked for,
+#: photographs, sculpture and decorative arts (ceramics, textiles, glass…).
+Kind = Literal[
+    "any", "painting", "print", "drawing", "poster", "photograph", "sculpture", "decorative"
+]
 
 
 @dataclass(frozen=True)
@@ -198,7 +202,19 @@ class ArtInstituteChicago(Museum):
         "painting": "Painting",
         "print": "Print",
         "drawing": "Drawing and Watercolor",
+        "photograph": "Photograph",
+        "sculpture": "Sculpture",
     }
+    decorative_types = (
+        "Ceramics",
+        "Vessel",
+        "Glass",
+        "Metalwork",
+        "Textile",
+        "Furniture",
+        "Costume and Accessories",
+        "Jewelry",
+    )
 
     @staticmethod
     def _text(query: str, fields: tuple[str, ...]) -> dict[str, Any]:
@@ -224,6 +240,8 @@ class ArtInstituteChicago(Museum):
             must.append(self._text("poster", ("classification_titles", "term_titles")))
         elif spec.kind in self.artwork_types:
             must.append({"match": {"artwork_type_title": self.artwork_types[spec.kind]}})
+        elif spec.kind == "decorative":
+            must.append({"terms": {"artwork_type_title.keyword": list(self.decorative_types)}})
         if spec.year_from is not None:
             filters.append({"range": {"date_start": {"gte": spec.year_from}}})
         if spec.year_to is not None:
@@ -309,6 +327,9 @@ class ClevelandMuseum(Museum):
         "painting": "Painting",
         "print": "Print",
         "drawing": "Drawing",
+        "photograph": "Photograph",
+        "sculpture": "Sculpture",
+        "decorative": "Ceramic",  # one type per request
     }
 
     def search(self, query: str, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
@@ -383,12 +404,22 @@ class MetropolitanMuseum(Museum):
     def search(self, query: str, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
         return self._search({"q": query}, limit, page)
 
-    # Departments: European Paintings; Drawings and Prints.
-    departments: ClassVar[dict[str, int]] = {"painting": 11, "print": 9, "drawing": 9, "poster": 9}
+    # Departments: European Paintings; Drawings and Prints; Photographs;
+    # European Sculpture and Decorative Arts.
+    departments: ClassVar[dict[str, int]] = {
+        "painting": 11,
+        "print": 9,
+        "drawing": 9,
+        "poster": 9,
+        "photograph": 19,
+        "sculpture": 12,
+        "decorative": 12,
+    }
 
     def discover(self, spec: Discovery, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
-        words = [spec.style.strip(), "poster" if spec.kind == "poster" else ""]
-        params: dict[str, Any] = {"q": " ".join(w for w in words if w) or "*"}
+        # Posters share a department with prints, sculpture with crafts.
+        word = spec.kind if spec.kind in ("poster", "sculpture") else ""
+        params: dict[str, Any] = {"q": " ".join(w for w in (spec.style.strip(), word) if w) or "*"}
         if spec.kind in self.departments:
             params["departmentId"] = self.departments[spec.kind]
         if spec.year_from is not None or spec.year_to is not None:
@@ -715,8 +746,8 @@ class Rijksmuseum(Museum):
         return list(range(first, last + 1, 10))
 
     def discover(self, spec: Discovery, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
-        if spec.style.strip():
-            return 0, []  # no field for styles or movements
+        if spec.style.strip() or spec.kind == "decorative":
+            return 0, []  # no field for styles or movements, no one type of crafts
         decade = self._decades(spec)[0]
         total, ids = self._ids(self._discovery_params(spec, decade), (page - 1) * limit, limit)
         return total, self._objects(ids)
@@ -724,7 +755,7 @@ class Rijksmuseum(Museum):
     def random_draw(self, spec: Discovery, rng: random.Random) -> Iterator[Item]:
         """Decades in random order (the API has no date ranges), then the
         first results of each, shuffled."""
-        if spec.style.strip():
+        if spec.style.strip() or spec.kind == "decorative":
             return
         decades = self._decades(spec)
         rng.shuffle(decades)
@@ -956,6 +987,10 @@ class Europeana(Museum):
         return self._get(query, [self.whats["any"]], limit, page)
 
     def discover(self, spec: Discovery, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
+        if spec.kind not in self.whats:
+            # Its photographs are mostly records of places and events, its
+            # "sculpture" mostly shoes and jewellery.
+            return 0, []
         qf = [self.whats[spec.kind]]
         if spec.year_from is not None or spec.year_to is not None:
             low = "*" if spec.year_from is None else spec.year_from
@@ -1096,6 +1131,8 @@ class Openverse(Museum):
     def discover(self, spec: Discovery, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
         if spec.year_from is not None or spec.year_to is not None:
             return 0, []  # no dates to filter by
+        if spec.kind not in self.categories:
+            return 0, []  # its photographs are Flickr's, not museums'
         params = {"category": self.categories[spec.kind]}
         words = [spec.style.strip(), "poster" if spec.kind == "poster" else ""]
         if text := " ".join(w for w in words if w):

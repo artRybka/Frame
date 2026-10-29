@@ -29,8 +29,16 @@ TECHNIQUE_KINDS: dict[str, Kind] = {
     "technique:print": "print",
     "technique:drawing": "drawing",
     "technique:poster": "poster",
+    "technique:photography": "photograph",
+    "technique:sculpture": "sculpture",
+    "technique:decorative": "decorative",
 }
 MANUSCRIPTS = "technique:manuscripts"
+PHOTOGRAPHY = "technique:photography"
+SCULPTURE = "technique:sculpture"
+DECORATIVE = "technique:decorative"
+#: Works that are not pictures: shown only when one of these is asked for.
+OBJECT_CATEGORIES = (MANUSCRIPTS, PHOTOGRAPHY, SCULPTURE, DECORATIVE)
 
 
 @dataclass(frozen=True)
@@ -314,6 +322,19 @@ TERMS: list[Term] = [
     ),
     _t("technique:poster", "Plakaty", "poster*", "affiche*", "plakat*"),
     _t(MANUSCRIPTS, "Rękopisy i miniatury", "manuscript*"),
+    _t(PHOTOGRAPHY, "Fotografia", "photograph*", "fotografi*"),
+    _t(SCULPTURE, "Rzeźba", "sculpture*", "rzeźb*", "statue*"),
+    _t(
+        DECORATIVE,
+        "Ceramika i rzemiosło",
+        "ceramic*",
+        "ceramik*",
+        "porcelain",
+        "porcelan*",
+        "textile*",
+        "tkanin*",
+        "rzemiosło",
+    ),
 ]
 
 BY_KEY = {term.key: term for term in TERMS}
@@ -418,15 +439,76 @@ def _is_painting(classification: str, medium: str) -> bool:
 
 
 def is_copy(item: Item) -> bool:
-    """A museum's photograph, or a reproduction of a work in print or on a
-    slide: never what the frame looks for."""
-    return is_photograph(item) or is_reproduction(item) or is_grey_painting(item)
+    """A reproduction of a work in print or on a slide, or a photograph
+    Openverse has from Flickr: never what the frame looks for."""
+    return (
+        (is_photograph(item) and item.source == "openverse")
+        or is_reproduction(item)
+        or is_grey_painting(item)
+    )
+
+
+#: Museums' types of sculpture and of decorative arts; a type that names a
+#: picture technique comes first ("Miniature Painting").
+_SCULPTURE = re.compile(
+    r"\b(sculptures?|statues?|statuettes?|busts?|reliefs?|figur\w*|netsuke|beeld\w*|rzeźb\w*)\b",
+    re.IGNORECASE,
+)
+_DECORATIVE = re.compile(
+    r"\b(ceramics?|porcelain|stoneware|earthenware|pottery|faience|vessels?|vases?|bowls?|"
+    r"dish(?:es)?|cups?|pots?|ewers?|jars?|jugs?|pitchers?|platters?|saucers?|aquamanile|"
+    r"textiles?|tapestr\w*|embroider\w*|lace|velvet|costumes?|dress\w*|\w*wear|accessor\w*|"
+    r"fans?|furniture|metalwork|"
+    r"silver|glass|jewel\w*|enamels?|lacquer|jade|arms|armou?r|coins?|medals?|amulets?|"
+    r"glyptic|tools|funerary|ritual|miscellaneous|ceramik\w*|porcelan\w*|tkanin\w*|rzemiosło)\b",
+    re.IGNORECASE,
+)
+
+
+def object_category(item: Item) -> str | None:
+    """Which of :data:`OBJECT_CATEGORIES` a museum work belongs to; None for
+    a picture (a painting, print, drawing or poster, or a work its museum
+    says nothing about)."""
+    if item.kind != ItemKind.ARTWORK:
+        return None
+    return _object_category(item.classification, item.title, item.medium)
+
+
+@lru_cache(maxsize=1 << 15)
+def _object_category(classification: str, title: str, medium: str) -> str | None:
+    if _is_manuscript(classification, title, medium):
+        return MANUSCRIPTS
+    if _is_photograph(classification, medium):
+        return PHOTOGRAPHY
+    if _object_technique(classification, ""):
+        return None
+    if _SCULPTURE.search(classification):
+        return SCULPTURE
+    if _DECORATIVE.search(classification):
+        return DECORATIVE
+    return None
 
 
 def set_aside(item: Item, keys: list[str] | tuple[str, ...] = ()) -> bool:
-    """Left out of the catalogue and searches: photographs and reproductions
-    always, pages of manuscripts unless ``keys`` ask for them."""
-    return is_copy(item) or (is_manuscript(item) and not wants_manuscripts(keys))
+    """Left out of the catalogue and searches: copies always; manuscripts,
+    photographs, sculpture and decorative arts unless ``keys`` ask for them."""
+    if is_copy(item):
+        return True
+    category = object_category(item)
+    return category is not None and category not in keys
+
+
+def category_fits(item: Item, keys: list[str] | tuple[str, ...]) -> bool:
+    """A work of a museum's search for ``keys``: of a category asked for, or
+    a picture while nothing but such categories is asked for as technique
+    (rzeźba alone: no paintings)."""
+    if set_aside(item, keys):
+        return False
+    if object_category(item) is not None:
+        return True
+    asked = [k for k in keys if k in OBJECT_CATEGORIES]
+    techniques = [k for k in keys if k.startswith("technique:")]
+    return not asked or len(techniques) > len(asked)
 
 
 def term(key: str) -> Term | None:
@@ -490,8 +572,8 @@ def _object_technique(classification: str, medium: str) -> bool:
 
 
 def term_matches(found: Term, item: Item, text: str | None = None) -> bool:
-    if found.key == MANUSCRIPTS:
-        return is_manuscript(item)
+    if found.key in OBJECT_CATEGORIES:
+        return object_category(item) == found.key
     if found.kind == "technique":
         return _technique_matches(found, item)
     if found.year_from is not None or found.year_to is not None:

@@ -32,7 +32,7 @@ from .models import (
     PlaylistRules,
     PlaylistSummary,
 )
-from .vocabulary import artist_matches, matches_terms, set_aside
+from .vocabulary import artist_matches, matches_terms, object_category, set_aside
 
 #: Item fields that tell copies of a work apart or choose between them.
 WORK_FIELDS = frozenset(
@@ -91,8 +91,27 @@ def _fold(values: Iterable[str]) -> set[str]:
     return {v.casefold() for v in values if v}
 
 
+def _searches(rules: PlaylistRules) -> bool:
+    """Rules that look for works (not just "the favourites" or "everything")."""
+    return bool(
+        rules.query.strip()
+        or rules.artists
+        or rules.styles
+        or rules.subjects
+        or rules.terms
+        or rules.colors
+        or rules.year_from is not None
+        or rules.year_to is not None
+    )
+
+
 def matches(item: Item, rules: PlaylistRules) -> bool:
     if item.excluded or item.id in rules.exclude_ids:
+        return False
+    # Photographs, sculpture, crafts and manuscripts are found only when
+    # asked for, even those the owner kept: Monet's bust is no Monet.
+    category = object_category(item)
+    if category is not None and category not in rules.terms and _searches(rules):
         return False
     if rules.favorites_only and not item.favorite:
         return False
