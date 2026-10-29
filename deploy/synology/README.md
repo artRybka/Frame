@@ -20,15 +20,25 @@ Uwagi:
 - Obraz `ghcr.io/artrybka/frame` publikuje GitHub Actions po każdym scaleniu
   do `main` (`.github/workflows/publish.yml`). Pakiet jest publiczny, więc NAS
   pobiera go bez logowania.
-- Aktualizacja: *Container Manager → Projekt → frame → Akcja → Kompiluj*.
-  Dzięki `pull_policy: always` w `docker-compose.yml` kompilacja sama pobiera
-  nowy `latest`, nie trzeba wcześniej usuwać ani aktualizować obrazu.
-  Odpowiednik z wiersza poleceń: `docker compose up -d`.
-- Projekt utworzony ze starszej wersji pliku (bez `pull_policy`) trzeba raz
-  poprawić: *Projekt → frame → Akcja → Zatrzymaj*, potem w zakładce
-  *Konfiguracja YAML* kliknij *Edytuj*, dopisz pod linią `image:`
-  wiersz `pull_policy: always` (z tym samym wcięciem), zapisz i kliknij
-  *Kompiluj*. Można też podmienić plik w folderze projektu przez File Station.
+- Aktualizacja z aplikacji: *Ramka → trybik → Konfiguracja → Serwer ramki →
+  Aktualizuj serwer*. Robi to kontener `frame-updater` z tego samego pliku
+  (sekcja `updater`): co 6 godzin (i po *Sprawdź*) pobiera nowy obraz,
+  a na prośbę aplikacji tworzy kontener `frame` na nowo z tymi samymi
+  ustawieniami. Jeśli nowy nie wystartuje, wraca poprzedni. Na koniec
+  podmienia też sam siebie.
+- Pomocnik ma dostęp do Dockera (`/var/run/docker.sock`), ale nie ma sieci
+  (`network_mode: none`) ani portu: obraz pobiera sam Docker, a polecenie
+  dostaje tylko od serwera Frame (plik w `data/update`, zlecany przez API
+  z tokenem). Zmienia wyłącznie kontener `frame`.
+- *Kompiluj* (*Container Manager → Projekt → frame → Akcja → Kompiluj*)
+  potrzebne jest już tylko po zmianie `docker-compose.yml` lub `frame.env`.
+  Dzięki `pull_policy: always` sama pobiera nowy `latest`. Odpowiednik
+  z wiersza poleceń: `docker compose up -d`.
+- Projekt utworzony ze starszej wersji pliku (bez sekcji `updater`) trzeba
+  raz poprawić: *Projekt → frame → Akcja → Zatrzymaj*, potem w zakładce
+  *Konfiguracja YAML* kliknij *Edytuj*, wklej cały aktualny
+  `docker-compose.yml`, zapisz i kliknij *Kompiluj*. W kontenerach projektu
+  pojawi się `frame-updater`, a w aplikacji przycisk *Aktualizuj serwer*.
 
 ## Dostęp spoza domu (Tailscale)
 

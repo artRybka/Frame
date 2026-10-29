@@ -30,7 +30,7 @@ from fastapi import (
 from fastapi.responses import FileResponse
 from starlette.concurrency import run_in_threadpool
 
-from .. import __version__
+from .. import build_version
 from ..config import Settings
 from ..device import MdcError
 from ..imaging import PRESETS, RenderSettings, Strategy
@@ -53,6 +53,7 @@ from . import (
     player_api,
     playlists_api,
     storage_api,
+    update_api,
 )
 from .deps import require_token
 
@@ -127,7 +128,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         service.ai.stop()
         service.library.close()
 
-    app = FastAPI(title="Frame", version=__version__, lifespan=lifespan)
+    app = FastAPI(title="Frame", version=build_version(), lifespan=lifespan)
     app.state.service = service
     routers = (
         library_api.router,
@@ -138,6 +139,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         device_api.router,
         storage_api.router,
         ai_api.router,
+        update_api.router,
     )
     for router in routers:
         app.include_router(router)
@@ -256,7 +258,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/api/health")
     def health() -> dict[str, object]:
-        return {"ok": True, "version": __version__, "palette": service.palette.name}
+        return {"ok": True, "version": build_version(), "palette": service.palette.name}
 
     @app.get("/api/now", dependencies=auth)
     def now() -> dict[str, object]:

@@ -39,6 +39,9 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Bundle server code into the build context
         run: scripts/bundle-addon.sh dist/frame
+      - name: Release version
+        id: meta
+        run: echo "version=$(sed -n 's/^version: *"\{0,1\}\([^"]*\)"\{0,1\}$/\1/p' ha-addon/config.yaml)" >> "$GITHUB_OUTPUT"
       - id: build
         uses: docker/build-push-action@v6
         with:
@@ -47,9 +50,12 @@ jobs:
           outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
           cache-from: type=gha,scope=publish-${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=publish-${{ matrix.arch }}
+          # `frame updater` on Synology shows these to the app.
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.licenses=MIT
+            org.opencontainers.image.version=${{ steps.meta.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
       - name: Export digest
         env:
           DIGEST: ${{ steps.build.outputs.digest }}
@@ -82,7 +88,7 @@ jobs:
         run: |
           tags=(-t "$IMAGE:sha-$GITHUB_SHA")
           if [ "$GITHUB_REF" = refs/heads/main ]; then
-            version=$(grep -m1 '^version' server/pyproject.toml | cut -d'"' -f2)
+            version=$(sed -n 's/^version: *"\{0,1\}\([^"]*\)"\{0,1\}$/\1/p' ha-addon/config.yaml)
             tags+=(-t "$IMAGE:latest" -t "$IMAGE:$version")
           fi
           cd "$RUNNER_TEMP/digests"

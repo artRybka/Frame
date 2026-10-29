@@ -81,6 +81,26 @@ def serve(
     uvicorn.run(create_app(settings), host=settings.bind, port=settings.port)
 
 
+@app.command()
+def updater(
+    container: Annotated[str, typer.Option(help="The server's container")] = "frame",
+    folder: Annotated[Path, typer.Option(help="Shared with the server: its data/update")] = Path(
+        "/data/update"
+    ),
+    replace: Annotated[
+        str | None, typer.Option(help="Recreate this container (the updater's own) and exit")
+    ] = None,
+) -> None:
+    """Update the server's container when the app asks (Synology, see
+    deploy/synology). Needs the Docker socket."""
+    from . import updater as helper
+
+    if replace:
+        helper.replace(helper.Docker.connect(), replace)
+    else:
+        helper.run(folder, container)
+
+
 @app.command("render")
 def render_cmd(
     image: Annotated[Path, typer.Argument(exists=True, dir_okay=False)],
