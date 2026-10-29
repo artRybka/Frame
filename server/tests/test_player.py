@@ -453,6 +453,31 @@ def test_cache_drops_least_recently_used_museum_originals(service) -> None:
     assert images.has_image(own)  # an upload cannot be downloaded again
 
 
+def test_cache_keeps_favourites_and_playlists_longest(service) -> None:
+    import os
+
+    liked, listed, other, newer = (_artwork(service, n, cached=True) for n in (1, 2, 3, 4))
+    service.library.update(liked.id, favorite=True)
+    service.library.save_playlist(Playlist(name="Mine", item_ids=[listed.id]))
+    own = _add(service, 5, (200, 40, 40), "Ala")
+    images = service.images
+    for age, item in ((4000, liked), (3000, listed), (2000, other), (1000, newer), (0, own)):
+        stamp = datetime.now(UTC).timestamp() - age
+        os.utime(images.image_path(item), (stamp, stamp))
+
+    # Room for two museum originals: the upload does not count.
+    sizes = {i.id: images.image_path(i).stat().st_size for i in (liked, listed, other, newer)}
+    room = sizes[liked.id] + sizes[listed.id]
+    assert images.prune(room, [], own=[own], last=[liked, listed]) == 2
+    assert images.has_image(liked) and images.has_image(listed) and images.has_image(own)
+    assert not images.has_image(other) and not images.has_image(newer)
+
+    service.settings.image_cache_mb = 0
+    service.player.trim_cache()  # nothing fits: Favourites go too, the oldest first
+    assert not images.has_image(liked) and not images.has_image(listed)
+    assert images.has_image(own)
+
+
 def test_museum_works_join_the_library_only_when_kept(service, monkeypatch) -> None:
     from frame_server.library.museums import MUSEUMS, Museum
     from frame_server.web import create_app

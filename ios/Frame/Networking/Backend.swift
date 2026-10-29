@@ -121,11 +121,10 @@ protocol FrameBackend: Sendable {
     /// The Frame app on the panel, and switching the panel to it or back.
     func panelApp() async throws -> PanelAppView
     func installPanelApp() async throws -> PanelAppView
-    /// How much disk the library takes on the server, and its limit.
+    /// How much disk the library takes on the server, and its limits.
     func libraryStorage() async throws -> LibraryStorage
-    func saveLibraryLimit(mb: Int) async throws -> LibraryStorage
-    /// Back to the limits in frame.env or the add-on options.
-    func resetLibraryLimit() async throws -> LibraryStorage
+    /// A limit equal to its default goes back to frame.env or the add-on options.
+    func saveLibraryLimits(_ update: LibraryStorageUpdate) async throws -> LibraryStorage
     /// Claude's settings, spending and progress.
     func aiSettings() async throws -> AiSettings
     func saveAiSettings(_ update: AiSettingsUpdate) async throws -> AiSettings

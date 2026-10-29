@@ -25,8 +25,8 @@ from .imaging.layout import Fit
 from .imaging.text import TextBlock
 from .library import AlbumOrder, Item, ItemKind, Job, Note, Playlist, PlaylistKind, PlaylistRules
 from .library.colors import SCORE_VERSION, analyse, tint_spread
-from .library.icloud import refetchable
-from .library.museums import MUSEUMS, Kind
+from .library.icloud import only_copy
+from .library.museums import Kind
 from .library.style import AUTO, auto_preset
 from .library.themes import SEARCHABLE, theme_of_the_day
 from .library.vocabulary import set_aside
@@ -1099,13 +1099,14 @@ class Player:
         soon = {state.current_item_id, *state.current_group, *state.requested}
         soon |= set(state.queue[:PREFETCH])
         _, items = self.library.query(include_excluded=True)
-        keep = [
-            i for i in items if i.id in soon or (i.source not in MUSEUMS and not refetchable(i))
-        ]
+        keep = [i for i in items if i.id in soon]
+        own = [i for i in items if only_copy(i)]
+        kept = {i for p in self.library.playlists() for i in p.item_ids}
+        last = [i for i in items if i.favorite or i.id in kept]
         limit = self.service.settings.image_cache_mb * 1024 * 1024
         gone = self.drop_spare_copies() + self.trim_catalogue()
         gone += self.service.images.prune_thumbs(self.library.query(include_excluded=True)[1])
-        pruned = self.service.images.prune(limit, keep)
+        pruned = self.service.images.prune(limit, keep, own=own, last=last)
         if gone or pruned:
             self.service.storage.forget()
         return pruned

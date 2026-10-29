@@ -538,23 +538,29 @@ final class AppModel {
         libraryStorage = try? await backend.libraryStorage()
     }
 
-    /// A new limit for the library; the frame.env value resets to it. A
-    /// lower one is trimmed on the server in the background, measured anew
-    /// a little later.
-    func setLibraryLimit(mb: Int) async {
-        guard let old = libraryStorage, mb != old.limitMb else { return }
+    /// A new limit for the catalogue's thumbnails or the originals; the
+    /// frame.env value resets to it. A lower one is trimmed on the server in
+    /// the background, measured anew a little later.
+    func setLibraryLimit(catalogueMb: Int? = nil, originalsMb: Int? = nil) async {
+        guard let old = libraryStorage else { return }
+        let catalogue = catalogueMb.flatMap { $0 == old.catalogueMb ? nil : $0 }
+        let originals = originalsMb.flatMap { $0 == old.originalsMb ? nil : $0 }
+        guard catalogue != nil || originals != nil else { return }
         do {
-            if mb == old.defaultMb {
-                libraryStorage = try await backend.resetLibraryLimit()
-            } else {
-                libraryStorage = try await backend.saveLibraryLimit(mb: mb)
-            }
+            libraryStorage = try await backend.saveLibraryLimits(
+                LibraryStorageUpdate(catalogueMb: catalogue, originalsMb: originals)
+            )
         } catch {
             show(error)
             return
         }
-        toast = "Biblioteka może zająć do \(ByteSize.mb(mb))"
-        guard mb < old.limitMb else { return }
+        if let originals {
+            toast = "Oryginały mogą zająć do \(ByteSize.mb(originals))"
+        } else if let catalogue {
+            toast = "Katalog może zająć do \(ByteSize.mb(catalogue))"
+        }
+        let lower = (catalogue ?? .max) < old.catalogueMb || (originals ?? .max) < old.originalsMb
+        guard lower else { return }
         try? await Task.sleep(for: .seconds(8))
         await loadLibraryStorage()
     }
