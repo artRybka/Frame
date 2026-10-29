@@ -16,12 +16,14 @@ RUN apt-get update \
 #    add-on on the HA box, CI image builds) -> install that copy;
 #  * otherwise (add-on installed from the GitHub repository) -> pip install
 #    straight from git at FRAME_REF.
+# The add-on version goes to /etc/frame-release: the version the server reports.
 COPY . /addon
 RUN if [ -d /addon/server ]; then \
         pip install /addon/server; \
     else \
         pip install "frame-server @ git+https://github.com/artRybka/Frame@${FRAME_REF}#subdirectory=server"; \
     fi \
+    && sed -n 's/^version: *"\{0,1\}\([^"]*\)"\{0,1\}$/\1/p' /addon/config.yaml > /etc/frame-release \
     && rm -rf /addon \
     && python -c "from frame_server.imaging.interest import detect_faces, _face_detector; assert _face_detector()"
 

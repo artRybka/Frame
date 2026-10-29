@@ -129,6 +129,12 @@ protocol FrameBackend: Sendable {
     func libraryStorage() async throws -> LibraryStorage
     /// A limit equal to its default goes back to frame.env or the add-on options.
     func saveLibraryLimits(_ update: LibraryStorageUpdate) async throws -> LibraryStorage
+    /// The newest server image next to the running one (Synology).
+    func serverUpdate() async throws -> ServerUpdate
+    /// The helper looks for a new image now.
+    func checkServerUpdate() async throws -> ServerUpdate
+    /// The helper replaces the server's container: about a minute without a server.
+    func updateServer() async throws -> ServerUpdate
     /// Claude's settings, spending and progress.
     func aiSettings() async throws -> AiSettings
     func saveAiSettings(_ update: AiSettingsUpdate) async throws -> AiSettings

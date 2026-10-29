@@ -684,6 +684,38 @@ struct LibraryStorage: Codable, Hashable, Sendable {
     var originalsFromApp: Bool
 }
 
+/// Updating the server from the app: only where the `frame updater` helper
+/// runs next to it (Synology, deploy/synology/docker-compose.yml).
+struct ServerUpdate: Codable, Hashable, Sendable {
+    struct LastUpdate: Codable, Hashable, Sendable {
+        var at: String
+        var fromVersion: String?
+        var toVersion: String?
+        var ok: Bool
+        var error: String?
+    }
+
+    /// The running server.
+    var version: String
+    /// A Home Assistant add-on: HA updates it.
+    var addon: Bool
+    /// The helper answers; without it the app explains the one-time setup.
+    var updater: Bool
+    /// idle, checking, updating or failed.
+    var state: String
+    var updateAvailable: Bool
+    var latestVersion: String?
+    var latestRevision: String?
+    var checkedAt: String?
+    var error: String?
+    var lastUpdate: LastUpdate?
+    /// Asked for ("check" or "update"), not picked up by the helper yet.
+    var pending: String?
+
+    /// The helper is on it.
+    var busy: Bool { pending != nil || state == "checking" || state == "updating" }
+}
+
 /// One limit or both; the default value goes back to frame.env.
 struct LibraryStorageUpdate: Encodable, Sendable {
     var catalogueMb: Int?

@@ -32,6 +32,8 @@ actor DemoBackend: FrameBackend {
     private static let demoPanel = PanelConfig(host: "192.168.1.50", mac: nil, port: 1515, pinSet: true, fromApp: false)
     private var panelValue = DemoBackend.demoPanel
     private var catalogueLimitMb: Int?
+    /// "Aktualizuj serwer" in demo: the newer version is installed at once.
+    private var demoServerVersion = "0.35.0"
     private var originalsLimitMb: Int?
     private var aiValue = AiSettings(
         keySet: false, keyTail: nil, keyFromApp: false, plText: true, keywordsArtworks: true,
@@ -892,6 +894,22 @@ actor DemoBackend: FrameBackend {
         if let mb = update.catalogueMb { catalogueLimitMb = mb == 1000 ? nil : mb }
         if let mb = update.originalsMb { originalsLimitMb = mb == 3000 ? nil : mb }
         return try await libraryStorage()
+    }
+
+    func serverUpdate() async throws -> ServerUpdate {
+        let latest = "0.36.0"
+        return ServerUpdate(
+            version: demoServerVersion, addon: false, updater: true, state: "idle",
+            updateAvailable: demoServerVersion != latest, latestVersion: latest, latestRevision: nil,
+            checkedAt: ISO8601DateFormatter().string(from: .now), error: nil, lastUpdate: nil, pending: nil
+        )
+    }
+
+    func checkServerUpdate() async throws -> ServerUpdate { try await serverUpdate() }
+
+    func updateServer() async throws -> ServerUpdate {
+        demoServerVersion = "0.36.0"
+        return try await serverUpdate()
     }
 
     func aiSettings() async throws -> AiSettings { aiValue }
