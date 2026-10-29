@@ -28,6 +28,7 @@ from .library.colors import SCORE_VERSION, analyse, tint_spread
 from .library.icloud import refetchable
 from .library.images import Unavailable
 from .library.museums import MUSEUMS, Kind
+from .library.repo import SENT_KEY
 from .library.style import AUTO, auto_preset
 from .library.themes import SEARCHABLE, theme_of_the_day
 from .library.vocabulary import set_aside
@@ -66,7 +67,6 @@ SET_ASIDE_VERSION = 2
 #: Version of the colour analysis and score the library's pictures carry.
 SCORE_KEY = "suitability_version"
 #: The playlist the photos sent once gather in, newest first.
-SENT_KEY = "sent_photos_playlist"
 SENT_NAME = "Historia przesłanych"
 #: A rotation with fewer pictures not shown lately asks museums for more,
 #: up to ``POOL_SIZE``; Suggestions remember at most ``POOL_MAX`` works.
