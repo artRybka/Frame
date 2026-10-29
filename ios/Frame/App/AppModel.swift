@@ -59,6 +59,8 @@ final class AppModel {
     /// An artist whose works Discover's search should show: set by tapping
     /// the name on a work, taken (and cleared) by the search.
     var artistSearch: String?
+    /// Bumped to open Discover on Propozycje (from Playlisty).
+    var suggestionsOpened = 0
     /// Discover's rows and themes as last loaded (also by the previous
     /// launch): shown at once while fresh ones load.
     var suggestionRows: [SuggestionRow]?
@@ -429,10 +431,19 @@ final class AppModel {
         } catch { show(error) }
     }
 
-    func show(itemID: String, hold: HoldSpec) async {
-        await perform { try await self.backend.show(itemID: itemID, hold: hold) }
+    /// Sends the work to the frame and follows it there; false if that
+    /// failed (the error is on the toast).
+    @discardableResult
+    func show(itemID: String, hold: HoldSpec) async -> Bool {
+        do {
+            try await backend.show(itemID: itemID, hold: hold)
+        } catch {
+            show(error)
+            return false
+        }
         toast = "Wysyłam na ramkę…"
         await followPlayer()
+        return player?.lastError?.isEmpty ?? true
     }
 
     /// Whether the work was added with "Dodaj do kolejki" and waits its turn.
@@ -474,10 +485,34 @@ final class AppModel {
     }
 
     func play(_ playlist: PlaylistSummary) async {
-        await perform { try await self.backend.play(playlistID: playlist.id) }
+        do {
+            try await backend.play(playlistID: playlist.id)
+        } catch {
+            show(error)
+            return
+        }
         settings?.playlistId = playlist.id
         toast = "Teraz prezentowane: \(playlist.name)"
         await followPlayer()
+    }
+
+    /// "Propozycje" in Playlisty: back to the rotation from Discover.
+    func playSuggestions() async {
+        do {
+            try await backend.playSuggestions()
+        } catch {
+            show(error)
+            return
+        }
+        settings?.playlistId = nil
+        toast = "Teraz prezentowane: Propozycje"
+        await followPlayer()
+    }
+
+    /// The works next in Propozycje, for its cover in Playlisty.
+    var suggestionCover: [RemoteItem] {
+        let rows = suggestionRows ?? []
+        return Array((rows.first { $0.key == "for-you" } ?? rows.first)?.items.prefix(4) ?? [])
     }
 
     func setFavorite(_ id: String, _ favorite: Bool) async -> Item? {
@@ -808,14 +843,6 @@ final class AppModel {
                 : "Ramka wyłączy się za chwilę. Włączysz ją przyciskiem na ramce"
         }
         await refreshStatus(live: false)
-    }
-
-    private func perform(_ action: @escaping () async throws -> Void) async {
-        do {
-            try await action()
-        } catch {
-            show(error)
-        }
     }
 
     func show(_ error: Error) {

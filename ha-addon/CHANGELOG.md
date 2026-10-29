@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.34.0
+
+- Szukaj → „+”: sekcje w kolejności Technika, Epoka, Styl, Kolorystyka,
+  Akcenty, Tematy, Muzea i nowa „Moje”: dzieła z serduszkiem
+  (`mine:favorites`) albo z dowolnej innej playlisty (`mine:playlists`);
+  z nimi muzea nie są pytane.
+- Fotografia, Rzeźba oraz Ceramika i rzemiosło jako osobne techniki: muzea
+  pytane o nie wprost, a bez ich wybrania wyszukiwanie i inteligentne
+  playlisty pokazują tylko obrazy, rysunki, grafiki i plakaty.
+- „Pokaż na ramce” i „Dodaj do kolejki” na karcie dzieła reagują na
+  dotknięcie (wciśnięcie, wibracja, „Wysyłam…”, potem „Wysłano”), opcje
+  pod przytrzymaniem; wskaźnik i wibracja także w motywach i przy
+  „Prezentuj na ramce”. Nieudana wysyłka nie pokazuje już dymka sukcesu.
+- Szerokie dzieła (od 2:1) zajmują w siatce cały wiersz, a panoramy nie
+  wychodzą poza swoją kartę.
+
+## 0.33.0
+
+- Ramka → Harmonogram (Online i Oszczędny) uporządkowany: bez podtytułu
+  i wiersza „Playlista” (playlistę wybiera „Prezentuj”), godziny zmian obok
+  siebie jako żetony z (+), dotknięcie godziny otwiera kółko z „Usuń
+  godzinę”; „Losowo” i „Cisza nocna” jako dwie pigułki w jednym wierszu
+  (godziny ciszy pod nimi, też w zapisie 12-godzinnym w jednej linii),
+  „Sprawdzenia” (wyłączone / co N godzin).
+- Playlisty: pierwszy kafelek „Propozycje” (okładka z czterech kolejnych dzieł
+  rotacji) przywraca Propozycje na ramce (`POST /api/suggestions/play`) albo
+  otwiera Odkrywaj.
+- Filtr techniki patrzy na rodzaj i materiał dzieła według muzeum, a nie na
+  cały opis i słowa kluczowe (rysunek Moneta nie jest już „Obrazem”).
+- Europeana: wyszukiwanie obejmuje tylko obrazy, rysunki, grafiki i plakaty
+  (bez uprzęży, medali, znaczków czy zdjęć budynków) i pomija fotografie
+  botaniczne OpenUp!.
+
 ## 0.32.1
 
 - „Sprawdź stan” budzi śpiącą w sieci ramkę jednym naciśnięciem: gdy serwer

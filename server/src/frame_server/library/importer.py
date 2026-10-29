@@ -27,11 +27,10 @@ from .repo import Library, matches, now_iso
 from .vocabulary import (
     is_copy,
     is_grey_painting,
-    is_manuscript,
     is_painting,
     museum_kind,
     museum_queries,
-    wants_manuscripts,
+    set_aside,
     years,
 )
 
@@ -452,7 +451,7 @@ class Importer:
                 before=lambda item: matches(item, cheap),
                 after=lambda item: matches(item, rules),
                 pooled=pooled,
-                manuscripts=wants_manuscripts(rules.terms),
+                terms=rules.terms,
             )
 
     def collect(
@@ -512,11 +511,12 @@ class Importer:
         before: Callable[[Item], bool],
         after: Callable[[Item], bool],
         pooled: bool = False,
-        manuscripts: bool = False,
+        terms: list[str] | None = None,
     ) -> None:
         """Take turns between ``streams`` until ``count`` new works pass
         ``before`` (on museum data) and ``after`` (once analysed); pages of
-        manuscripts only with ``manuscripts``."""
+        manuscripts, photographs, sculpture and decorative arts only when
+        ``terms`` ask for them."""
         job.total = count
         drawn = 0
         while streams and job.done < count and drawn < max(count * 20, 200):
@@ -535,7 +535,7 @@ class Importer:
                 drawn += 1
                 if self.library.has(item.id) or self.copy_of(item) or not before(item):
                     continue
-                if is_copy(item) or (not manuscripts and is_manuscript(item)):
+                if set_aside(item, terms or []):
                     job.skipped += 1
                     continue
                 try:

@@ -25,16 +25,15 @@ from ..library.importer import ALL, span
 from ..library.museums import Discovery, Kind
 from ..library.themes import GROUPS, THEMES, Theme, browse_theme, theme, theme_of_the_day
 from ..library.vocabulary import (
+    TECHNIQUE_KINDS,
     TERMS,
     artist_matches,
+    category_fits,
     fold,
-    is_copy,
-    is_manuscript,
     museum_kind,
     museum_queries,
     set_aside,
     suggest,
-    wants_manuscripts,
 )
 from ..player import POOL_SIZE
 from ..service import FrameService
@@ -318,6 +317,18 @@ async def suggestions(svc: Svc) -> list[SuggestionRow]:
     return await run_in_threadpool(_suggestion_rows, svc)
 
 
+@router.post("/suggestions/play", status_code=202)
+async def play_suggestions(svc: Svc) -> dict[str, bool]:
+    """Puts Propozycje on the frame: the rotation without a playlist
+    ("Propozycje" in Playlisty)."""
+    settings = svc.player.settings
+    settings.playlist_id = None
+    svc.player.save_settings(settings)
+    svc.player.set_hold(None)
+    svc.background(svc.player.next("playlist", picks=False))  # its own first picture
+    return {"accepted": True}
+
+
 def _theme_list(svc: FrameService) -> list[ThemeCard]:
     cards = _theme_cards(svc)
     playlists = svc.library.playlists()
@@ -466,17 +477,6 @@ async def terms_in_museums(svc: Svc, q: str) -> MuseumHint:
 # -- searching the museums --------------------------------------------------------
 
 
-def _manuscripts_fit(item: Item, terms: list[str]) -> bool:
-    """Pages of manuscripts only when asked for; asked for as the only
-    technique, nothing else. Photographs and reproductions never."""
-    if is_copy(item):
-        return False
-    if not wants_manuscripts(terms):
-        return not is_manuscript(item)
-    techniques = [t for t in terms if t.startswith("technique:")]
-    return is_manuscript(item) or len(techniques) > 1
-
-
 def rules_from(
     q: str = "",
     artists: list[str] | None = None,
@@ -552,7 +552,9 @@ class MuseumSearch:
     @property
     def empty(self) -> bool:
         """Nothing asked: chosen museums show what they have, all of them
-        nothing."""
+        nothing; the owner's own works (favourites, playlists) none."""
+        if self.rules.asks_mine():
+            return True
         start, end = self.spec.year_from, self.spec.year_to
         return (
             not self.keys
@@ -590,7 +592,7 @@ class MuseumSearch:
             found = [
                 i
                 for i in importer.in_colors(items, colors)
-                if self.spec.fits(i) and _manuscripts_fit(i, rules.terms)
+                if self.spec.fits(i) and category_fits(i, rules.terms)
             ]
             fitting += len(found)
             # Totals of several artists' searches don't add up page by page.
@@ -753,5 +755,6 @@ async def browse(
     that way, interleaved (``limit`` from each)."""
     spec = Discovery(year_from=year_from, year_to=year_to, style=style, kind=kind)
     total, items, failed = await run_in_threadpool(svc.importer.discover_all, spec, limit, page)
-    items = [i for i in items if spec.fits(i) and not set_aside(i)]
+    asked = [key for key, value in TECHNIQUE_KINDS.items() if value == kind]
+    items = [i for i in items if spec.fits(i) and not set_aside(i, asked)]
     return RemotePage(total=total, items=remote_items(svc, items), failed=failed)

@@ -269,6 +269,8 @@ struct ThemeView: View {
     @State private var failed = false
     @State private var playlistID: Int?
     @State private var busy = false
+    /// "Pokaż na ramce" on its way: a spinner on it.
+    @State private var playing = false
 
     /// Pages that found nothing are followed by themselves, this many at most.
     private static let emptyPagesInARow = 6
@@ -334,9 +336,18 @@ struct ThemeView: View {
             Button {
                 Task { await make(play: true) }
             } label: {
-                Label("Pokaż na ramce", systemImage: "photo.artframe")
+                Label {
+                    Text("Pokaż na ramce")
+                } icon: {
+                    if playing {
+                        ProgressView().tint(Theme.paper)
+                    } else {
+                        Image(systemName: "photo.artframe")
+                    }
+                }
             }
             .buttonStyle(PrimaryButtonStyle())
+            .sensoryFeedback(.impact(weight: .medium), trigger: playing) { _, now in now }
             if playlistID == nil {
                 Button {
                     Task { await make(play: false) }
@@ -356,7 +367,11 @@ struct ThemeView: View {
 
     private func make(play: Bool) async {
         busy = true
-        defer { busy = false }
+        playing = play
+        defer {
+            busy = false
+            playing = false
+        }
         if let id = await ThemeActions.makePlaylist(theme, play: play, model: model) { playlistID = id }
     }
 

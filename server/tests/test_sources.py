@@ -127,6 +127,8 @@ def test_europeana_takes_works_free_in_the_eu() -> None:
     assert params["wskey"] == "key" and params.get_list("qf") == [
         "TYPE:IMAGE",
         "contentTier:(2 OR 3 OR 4)",
+        '-PROVIDER:"OpenUp!"',  # botany: roses named "Claude Monet"
+        "what:(painting OR drawing OR print OR poster)",  # no medals or stamps
     ]
 
     # Free licences only for private use; without death years only marked works.
@@ -189,7 +191,7 @@ def test_europeana_discovery_and_fetch() -> None:
     assert item is not None and item.license == "CC0 1.0"
     discover, fetch = sent[0].url.params, sent[1].url.params
     assert discover["query"] == "cubism"
-    assert discover.get_list("qf")[2:] == ["what:painting", "YEAR:[* TO 1955]"]
+    assert discover.get_list("qf")[3:] == ["what:painting", "YEAR:[* TO 1955]"]
     assert fetch["query"] == 'europeana_id:"/2048047/Clasate_e91c"'
 
     # Browsing with nothing asked: openly licensed images only.
@@ -323,6 +325,12 @@ def test_one_source_alone_shows_what_it_has(service, monkeypatch) -> None:
         assert [r["item"]["id"] for r in found["items"]] == ["openverse:w1"]
         assert asked == [Discovery()]
         assert client.get("/api/discover/search").json()["total"] == 0  # all: nothing asked
+        # The owner's own works: no museum has them, not even a chosen one.
+        mine = {"source": "openverse", "term": "mine:favorites"}
+        assert client.get("/api/discover/search", params=mine).json()["total"] == 0
+        assert len(asked) == 1
+        fill = {"rules": {"terms": ["mine:playlists"]}, "count": 10}
+        assert client.post("/api/library/fill", json=fill).status_code == 422
 
 
 def test_search_asks_the_chosen_museums_and_judges_colours(service, monkeypatch) -> None:

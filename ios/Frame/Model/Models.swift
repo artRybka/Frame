@@ -175,6 +175,10 @@ struct PlaylistRules: Codable, Hashable, Sendable {
             && kinds.isEmpty && sources.isEmpty && yearFrom == nil && yearTo == nil
             && !favoritesOnly && minSuitability == nil
     }
+
+    /// Only the owner's own works ("Moje"): favourites or those on
+    /// playlists, which no museum can bring.
+    var asksMine: Bool { terms.contains { MineTerm.named($0) != nil } }
 }
 
 extension PlaylistRules {
@@ -1186,9 +1190,24 @@ struct MuseumHint: Codable, Sendable {
 }
 
 /// One chip of a search or of a smart playlist's rules.
+/// The owner's own works, "Moje" under the search field's "+": terms the
+/// server knows although they are not in its vocabulary (no museum has them).
+struct MineTerm: Sendable, Identifiable {
+    let key: String
+    let name: String
+    let icon: String
+    var id: String { key }
+
+    static let favorites = MineTerm(key: "mine:favorites", name: "Ulubione", icon: "heart")
+    static let playlists = MineTerm(key: "mine:playlists", name: "Playlisty", icon: "rectangle.stack")
+    static let all = [favorites, playlists]
+
+    static func named(_ key: String) -> MineTerm? { all.first { $0.key == key } }
+}
+
 struct SearchToken: Hashable, Sendable, Identifiable {
-    /// artist | word | style | subject | period | technique | museum | color
-    /// (the last two in Discover's search only), or for rules of
+    /// artist | word | style | subject | period | technique | mine | museum
+    /// | color (the last two in Discover's search only), or for rules of
     /// older playlists: legacy-style | legacy-subject (museum facet values).
     let kind: String
     let key: String
@@ -1202,6 +1221,7 @@ struct SearchToken: Hashable, Sendable, Identifiable {
         case "subject", "legacy-subject": "Temat"
         case "period": "Epoka"
         case "technique": "Technika"
+        case "mine": "Moje"
         case "museum": "Muzeum"
         case "color": "Kolor"
         default: "Słowo"
@@ -1215,6 +1235,7 @@ struct SearchToken: Hashable, Sendable, Identifiable {
         case "subject", "legacy-subject": "tag"
         case "period": "calendar"
         case "technique": "scribble.variable"
+        case "mine": MineTerm.named(key)?.icon ?? "person.crop.circle"
         case "museum": "building.columns"
         case "color": "circle.fill"
         default: "text.magnifyingglass"
@@ -1229,7 +1250,8 @@ extension PlaylistRules {
         var tokens = artists.map { SearchToken(kind: "artist", key: $0, name: $0) }
         tokens += terms.map { key in
             let kind = key.hasPrefix("years:") ? "period" : String(key.prefix { $0 != ":" })
-            return SearchToken(kind: kind, key: key, name: names[key] ?? Self.yearsName(key) ?? key)
+            let name = names[key] ?? MineTerm.named(key)?.name ?? Self.yearsName(key) ?? key
+            return SearchToken(kind: kind, key: key, name: name)
         }
         tokens += styles.map { SearchToken(kind: "legacy-style", key: $0, name: $0) }
         tokens += subjects.map { SearchToken(kind: "legacy-subject", key: $0, name: $0) }
@@ -1242,7 +1264,7 @@ extension PlaylistRules {
     /// Puts chips back into the rules.
     mutating func setTokens(_ tokens: [SearchToken]) {
         artists = tokens.filter { $0.kind == "artist" }.map(\.key)
-        terms = tokens.filter { ["style", "subject", "period", "technique"].contains($0.kind) }.map(\.key)
+        terms = tokens.filter { ["style", "subject", "period", "technique", "mine"].contains($0.kind) }.map(\.key)
         styles = tokens.filter { $0.kind == "legacy-style" }.map(\.key)
         subjects = tokens.filter { $0.kind == "legacy-subject" }.map(\.key)
         query = tokens.filter { $0.kind == "word" }.map(\.key).joined(separator: " ")

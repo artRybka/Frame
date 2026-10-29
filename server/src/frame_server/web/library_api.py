@@ -787,6 +787,8 @@ def fill(request: FillRequest, svc: Svc) -> dict[str, Any]:
     rules = request.rules
     if rules.favorites_only:
         raise HTTPException(422, "favourites can't be fetched from museums")
+    if rules.asks_mine():
+        raise HTTPException(422, "the owner's own works can't be fetched from museums")
     if rules.kinds and ItemKind.ARTWORK not in rules.kinds:
         raise HTTPException(422, "only artworks come from museums")
     if rules.sources and not any(s in svc.importer.sources() for s in rules.sources):

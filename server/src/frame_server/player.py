@@ -876,7 +876,12 @@ class Player:
             return importer.start_job("pool", suggest)
         rules = playlist.rules
         museum_works = not rules.kinds or ItemKind.ARTWORK in rules.kinds
-        if playlist.kind != PlaylistKind.SMART or rules.favorites_only or not museum_works:
+        if (
+            playlist.kind != PlaylistKind.SMART
+            or rules.favorites_only
+            or rules.asks_mine()
+            or not museum_works
+        ):
             return None
         have = len(self.fresh(self.library.playlist_items(playlist), settings))
         if have >= POOL_LOW:

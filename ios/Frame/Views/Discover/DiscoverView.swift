@@ -58,5 +58,9 @@ struct DiscoverView: View {
             scope = .museums
             path = NavigationPath()
         }
+        .onChange(of: model.suggestionsOpened) {
+            scope = .suggestions
+            path = NavigationPath()
+        }
     }
 }

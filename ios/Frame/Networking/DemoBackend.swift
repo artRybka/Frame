@@ -118,9 +118,16 @@ actor DemoBackend: FrameBackend {
 
     // MARK: Matching (mirrors server/src/frame_server/library/repo.py)
 
-    private static func matches(_ item: Item, _ rules: PlaylistRules) -> Bool {
+    /// `listed`: the works on the playlists, for "Moje: Playlisty".
+    private static func matches(_ item: Item, _ rules: PlaylistRules, listed: Set<String> = []) -> Bool {
         if item.excluded || item.look != nil || rules.excludeIds.contains(item.id) { return false }
         if rules.favoritesOnly && !item.favorite { return false }
+        let mine = rules.terms.filter { MineTerm.named($0) != nil }
+        if !mine.isEmpty,
+           !(mine.contains(MineTerm.favorites.key) && item.favorite),
+           !(mine.contains(MineTerm.playlists.key) && listed.contains(item.id)) {
+            return false
+        }
         if !rules.kinds.isEmpty && !rules.kinds.contains(item.kind) { return false }
         if !rules.sources.isEmpty && !rules.sources.contains(item.source) { return false }
         if !rules.artists.isEmpty && !DemoDiscover.artistMatches(item.artist, rules.artists) { return false }
@@ -160,7 +167,18 @@ actor DemoBackend: FrameBackend {
                 .filter { !playlist.rules.excludeIds.contains($0) }
                 .compactMap { id in items.first { $0.id == id } }
         }
-        return Self.sorted(items.filter { Self.matches($0, playlist.rules) }, by: "suitability")
+        let listed = listed(for: playlist.rules)
+        return Self.sorted(items.filter { Self.matches($0, playlist.rules, listed: listed) }, by: "suitability")
+    }
+
+    /// The works on the playlists but "Ulubione", when `rules` ask for them
+    /// (smart playlists asking for them too left out).
+    private func listed(for rules: PlaylistRules) -> Set<String> {
+        guard rules.terms.contains(MineTerm.playlists.key) else { return [] }
+        let others = playlistsByID.values.filter { playlist in
+            !playlist.isFavorites && !(playlist.kind == .smart && playlist.rules.terms.contains(MineTerm.playlists.key))
+        }
+        return Set(others.flatMap { items(for: $0).map(\.id) })
     }
 
     private func summary(_ playlist: Playlist) -> PlaylistSummary {
@@ -318,7 +336,8 @@ actor DemoBackend: FrameBackend {
             yearFrom: query.yearFrom,
             yearTo: query.yearTo, favoritesOnly: query.favoritesOnly
         )
-        let list = Self.sorted(items.filter { Self.matches($0, rules) }, by: query.sort)
+        let listed = listed(for: rules)
+        let list = Self.sorted(items.filter { Self.matches($0, rules, listed: listed) }, by: query.sort)
         let page = list.dropFirst(query.offset).prefix(query.limit)
         return ItemPage(total: list.count, items: page.map(\.summary))
     }
@@ -538,6 +557,12 @@ actor DemoBackend: FrameBackend {
         guard let playlist = playlistsByID[playlistID] else { throw BackendError.notFound }
         settingsValue.playlistId = playlistID
         queue = items(for: playlist).map(\.id).shuffled()
+        try await next()
+    }
+
+    func playSuggestions() async throws {
+        settingsValue.playlistId = nil
+        queue = items.map(\.id).shuffled()
         try await next()
     }
 
