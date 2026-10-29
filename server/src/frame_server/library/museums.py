@@ -951,7 +951,9 @@ class Europeana(Museum):
         return int(body.get("totalResults") or 0), items
 
     def search(self, query: str, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
-        return self._get(query, [], limit, page)
+        # Works of art only: free text alone finds medals, stamps, horse
+        # collars and photos of buildings, and buries the paintings.
+        return self._get(query, [self.whats["any"]], limit, page)
 
     def discover(self, spec: Discovery, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
         qf = [self.whats[spec.kind]]

@@ -128,6 +128,7 @@ def test_europeana_takes_works_free_in_the_eu() -> None:
         "TYPE:IMAGE",
         "contentTier:(2 OR 3 OR 4)",
         '-PROVIDER:"OpenUp!"',  # botany: roses named "Claude Monet"
+        "what:(painting OR drawing OR print OR poster)",  # no medals or stamps
     ]
 
     # Free licences only for private use; without death years only marked works.
