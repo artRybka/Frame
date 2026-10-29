@@ -103,8 +103,22 @@ extension FramedArtwork where Inner == EmptyView {
     }
 }
 
+private struct ArtCardAspectsKey: EnvironmentKey {
+    static let defaultValue: ClosedRange<Double> = 0.45...2.2
+}
+
+extension EnvironmentValues {
+    /// The proportions an `ArtCard` shows; a work outside them is cropped
+    /// from the middle.
+    var artCardAspects: ClosedRange<Double> {
+        get { self[ArtCardAspectsKey.self] }
+        set { self[ArtCardAspectsKey.self] = newValue }
+    }
+}
+
 /// Grid tile: the picture, title and artist.
 struct ArtCard: View {
+    @Environment(\.artCardAspects) private var aspects
     let item: ItemSummary
     var showsCaption = true
     /// Where the picture comes from; the server's thumbnail by default.
@@ -112,14 +126,20 @@ struct ArtCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            ArtImage(
-                ref: ref ?? .thumb(item.id),
-                fallback: ref.flatMap { $0 == .thumb(item.id) ? nil : ImageRef.thumb(item.id) },
-                placeholder: item.placeholderColor,
-                maxPixel: 700
-            )
-                .aspectRatio(max(0.45, min(item.aspectRatio, 2.2)), contentMode: .fit)
+            // The box keeps the card's proportions; the picture fills it and
+            // is cropped, so a panorama can't spill over the next column.
+            Color.clear
+                .aspectRatio(aspects.clamp(item.aspectRatio), contentMode: .fit)
+                .overlay {
+                    ArtImage(
+                        ref: ref ?? .thumb(item.id),
+                        fallback: ref.flatMap { $0 == .thumb(item.id) ? nil : ImageRef.thumb(item.id) },
+                        placeholder: item.placeholderColor,
+                        maxPixel: 700
+                    )
+                }
                 .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                 .overlay(alignment: .topTrailing) {
                     if item.favorite {
                         Image(systemName: "heart.fill")
@@ -161,35 +181,99 @@ struct QueueButton: View {
     static let symbol = "text.line.first.and.arrowtriangle.forward"
 }
 
-/// Two-column waterfall layout using the pictures' aspect ratios.
+/// Two-column waterfall layout using the pictures' aspect ratios. A work
+/// wider than `wide` takes the whole row, once the columns above it end
+/// about level.
 struct MasonryGrid<Content: View>: View {
     let items: [ItemSummary]
     var columns = 2
     var spacing: CGFloat = 16
     @ViewBuilder let content: (ItemSummary) -> Content
 
-    private var distributed: [[ItemSummary]] {
+    /// From this width / height on a work spans the columns.
+    static var wide: Double { 2.0 }
+    /// A spanning work is shown whole up to this; wider ones are cropped.
+    static var panorama: Double { 4.5 }
+    /// Columns this much apart (in column widths) count as level.
+    private static var level: Double { 0.3 }
+    /// A wide work waits for level columns behind at most this many cards.
+    private static var maxDeferred: Int { 3 }
+
+    private enum Block: Identifiable {
+        case columns([[ItemSummary]])
+        case row(ItemSummary)
+
+        var id: String {
+            switch self {
+            case .columns(let buckets): return "columns-" + (buckets.first?.first?.id ?? "")
+            case .row(let item): return item.id
+            }
+        }
+    }
+
+    private var blocks: [Block] {
+        var blocks: [Block] = []
         var buckets = Array(repeating: [ItemSummary](), count: columns)
         var heights = Array(repeating: 0.0, count: columns)
+        var waiting: [ItemSummary] = []
+        var deferred = 0
+        let columnAspects = 0.45...Self.wide
+
+        func isLevel() -> Bool { (heights.max() ?? 0) - (heights.min() ?? 0) <= Self.level }
+        func flush() {
+            if buckets.contains(where: { !$0.isEmpty }) { blocks.append(.columns(buckets)) }
+            blocks += waiting.map(Block.row)
+            buckets = Array(repeating: [], count: columns)
+            heights = Array(repeating: 0, count: columns)
+            waiting = []
+            deferred = 0
+        }
+
         for item in items {
+            if columns > 1, item.aspectRatio >= Self.wide {
+                waiting.append(item)
+                if isLevel() { flush() }
+                continue
+            }
             let target = heights.indices.min { heights[$0] < heights[$1] } ?? 0
             buckets[target].append(item)
-            heights[target] += 1 / max(0.45, min(item.aspectRatio, 2.2)) + 0.28
+            heights[target] += 1 / columnAspects.clamp(item.aspectRatio) + 0.28
+            if !waiting.isEmpty {
+                deferred += 1
+                if isLevel() || deferred >= Self.maxDeferred { flush() }
+            }
         }
-        return buckets
+        flush()
+        return blocks
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: spacing) {
-            ForEach(Array(distributed.enumerated()), id: \.offset) { _, column in
-                LazyVStack(spacing: spacing + 6) {
-                    ForEach(column) { item in
-                        content(item)
+        LazyVStack(alignment: .leading, spacing: spacing + 6) {
+            ForEach(blocks) { block in
+                switch block {
+                case .columns(let buckets):
+                    HStack(alignment: .top, spacing: spacing) {
+                        ForEach(Array(buckets.enumerated()), id: \.offset) { _, column in
+                            LazyVStack(spacing: spacing + 6) {
+                                ForEach(column) { item in
+                                    content(item)
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .top)
+                        }
                     }
+                    .environment(\.artCardAspects, 0.45...Self.wide)
+                case .row(let item):
+                    content(item)
+                        .environment(\.artCardAspects, Self.wide...Self.panorama)
                 }
             }
         }
     }
+}
+
+private extension ClosedRange where Bound == Double {
+    func clamp(_ value: Double) -> Double { Swift.min(Swift.max(value, lowerBound), upperBound) }
 }
 
 struct Chip: View {
