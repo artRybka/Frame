@@ -19,7 +19,7 @@ from frame_server.ai import AiConfigUpdate, AiUnavailable
 from frame_server.ai.client import BATCH_DISCOUNT, HAIKU, cost
 from frame_server.ai.keywords import KIND, words_and_terms
 from frame_server.config import Settings
-from frame_server.library import Item, ItemKind, PhotoInfo, PlaylistRules
+from frame_server.library import Item, ItemKind, Look, PhotoInfo, PlaylistRules
 from frame_server.service import FrameService
 from frame_server.web import create_app
 
@@ -215,6 +215,49 @@ def test_the_background_asks_about_the_owners_items(
     service.ai_config.update(AiConfigUpdate(keywords_photos=False))
     _add(service, "icloud:2", kind=ItemKind.PHOTO)
     assert service.ai.sweep() == 0
+
+
+def test_a_photo_sent_once_gets_keywords_once_shown_or_queued(
+    service: FrameService, fake: FakeAnthropic
+) -> None:
+    sent = _add(service, "own:1", kind=ItemKind.PHOTO, look=Look())
+    # Still being chosen in "Zdjęcie na ramkę": not asked about yet.
+    assert service.ai.progress(KIND).waiting == 0
+    assert service.ai.sweep() == 0
+    assert service.ai.need_now(sent.id, KIND).result(timeout=1) is None
+
+    service.player.remember_sent(sent)  # shown or queued: in "Historia przesłanych"
+    assert service.library.sent_photo_ids() == {sent.id}
+    assert service.ai.estimate(KIND)[0] == 1
+    assert service.ai.sweep() == 1
+    service.ai._do(service.ai._queue.get())
+    item = service.library.get(sent.id)
+    assert item is not None and "subject:sea" in item.terms and "żaglowiec" in item.keywords
+    assert service.library.query(PlaylistRules(kinds=[ItemKind.PHOTO]))[0] == 0  # never listed
+
+
+def test_queueing_a_photo_sent_once_asks_for_its_keywords_now(tmp_path: Path) -> None:
+    app = create_app(
+        Settings(data_dir=tmp_path, seed_library=False, scheduler=False, public_host="127.0.0.1")
+    )
+    svc: FrameService = app.state.service
+    svc.claude.factory = FakeAnthropic
+    svc.ai_config.set_key(GOOD_KEY)
+    svc.ai_config.update(AiConfigUpdate(pl_text=False))
+    with TestClient(app) as client:
+        sent = _add(svc, "own:1", kind=ItemKind.PHOTO, look=Look())
+        svc.ai.start()
+        try:
+            assert client.post(f"/api/library/items/{sent.id}/queue").status_code == 202
+            deadline = time.monotonic() + 10
+            while svc.library.note(sent.id, KIND) is None and time.monotonic() < deadline:
+                time.sleep(0.02)
+        finally:
+            svc.ai.stop()
+        item = svc.library.get(sent.id)
+        assert item is not None and "subject:sea" in item.terms
+        view = client.post(f"/api/library/items/{sent.id}/describe").json()
+        assert view["status"] == "ready" and "żaglowiec" in view["words"]
 
 
 def test_the_whole_library_through_a_batch(service: FrameService, fake: FakeAnthropic) -> None:

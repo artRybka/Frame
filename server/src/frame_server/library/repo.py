@@ -19,6 +19,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 
+from .colors import has_colours
 from .duplicates import Works, dedupe
 from .models import (
     AlbumSync,
@@ -37,6 +38,9 @@ from .vocabulary import artist_matches, matches_terms, set_aside
 WORK_FIELDS = frozenset(
     {"kind", "source", "title", "artist", "year", "width", "height", "url", "image_url", "pooled"}
 )
+
+#: The playlist "Historia przesłanych" (see ``Player.remember_sent``).
+SENT_KEY = "sent_photos_playlist"
 
 SortKey = Literal["recent", "title", "artist", "year", "random", "suitability", "shown"]
 
@@ -104,7 +108,7 @@ def matches(item: Item, rules: PlaylistRules) -> bool:
         return False
     if rules.subjects and not _fold(item.subjects) & _fold(rules.subjects):
         return False
-    if rules.colors and not set(item.color_tags) & set(rules.colors):
+    if rules.colors and not has_colours(item.color_tags, rules.colors):
         return False
     if rules.terms and not matches_terms(item, rules.terms):
         return False
@@ -451,6 +455,13 @@ class Library:
     def delete_state(self, key: str) -> None:
         with self._db() as db:
             db.execute("DELETE FROM kv WHERE key = ?", (key,))
+
+    def sent_photo_ids(self) -> set[str]:
+        """Photos sent once that were shown or queued: those in "Historia
+        przesłanych"."""
+        playlist_id = self.get_state(SENT_KEY, None)
+        playlist = self.playlist(playlist_id) if playlist_id is not None else None
+        return set(playlist.item_ids) if playlist is not None else set()
 
     # -- notes from a language model (ai) -----------------------------------
 

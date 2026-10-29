@@ -142,3 +142,71 @@ def test_what_the_owner_looks_at_has_places_of_its_own() -> None:
 
         threading.Thread(target=card).start()
         assert done.wait(1)  # without waiting for the thumbnail
+
+
+def _europeana(n: int) -> Item:
+    return Item(
+        id=f"europeana:2021672~work_{n}",
+        source="europeana",
+        source_id=f"2021672~work_{n}",
+        title=f"Work {n}",
+        image_url=f"https://www.mauritshuis.nl/media/{n}_repro.jpg",
+        thumb_url=f"https://api.europeana.eu/thumbnail/v2/url.json?uri=x{n}&size=w400",
+    )
+
+
+def test_refused_original_comes_through_the_mirror(tmp_path: Path) -> None:
+    from frame_server.library.museums import europeana_mirrors
+
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url.host)
+        if request.url.host == "www.mauritshuis.nl":  # Cloudflare's "verify you are human"
+            return httpx.Response(403, html="<title>Attention Required!</title>")
+        return httpx.Response(200, content=_jpeg())
+
+    cache = ImageCache(tmp_path, lambda: httpx.Client(transport=httpx.MockTransport(handler)))
+    cache.mirrors["europeana"] = europeana_mirrors
+    assert cache.ensure_image(_europeana(1)).is_file()
+    assert seen == ["www.mauritshuis.nl", "proxy.europeana.eu"]
+
+
+def test_original_refused_everywhere_is_unavailable_for_a_while(tmp_path: Path) -> None:
+    from frame_server.library.images import FAILED_FOR, Unavailable
+
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request.url.host)
+        if "thumbnail" in str(request.url):
+            return httpx.Response(200, content=_jpeg())
+        return httpx.Response(200, html="<p>Verify that you are a human</p>")  # not a picture
+
+    cache = ImageCache(tmp_path, lambda: httpx.Client(transport=httpx.MockTransport(handler)))
+    now = [1000.0]
+    cache.clock = lambda: now[0]
+    item = _europeana(2)
+    with pytest.raises(Unavailable):
+        cache.ensure_image(item)
+    assert cache.unavailable(item)
+    calls.clear()
+    with pytest.raises(Unavailable):
+        cache.ensure_image(item)  # not asked again
+    assert calls == []
+    # The app still gets something to show: the thumbnail.
+    path, original = cache.picture(item)
+    assert path == cache.thumb_path(item) and not original
+    now[0] += FAILED_FOR + 1
+    assert not cache.unavailable(item)
+
+
+def test_host_down_is_not_remembered(tmp_path: Path) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(503)
+
+    cache = ImageCache(tmp_path, lambda: httpx.Client(transport=httpx.MockTransport(handler)))
+    cache.sleep = lambda _: None
+    with pytest.raises(httpx.HTTPStatusError):
+        cache.ensure_image(_item(5))
+    assert not cache.unavailable(_item(5))

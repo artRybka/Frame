@@ -1,6 +1,9 @@
 name: publish
 
 # Multi-arch server image for running outside Home Assistant OS (e.g. Synology).
+# Each arch builds on a native runner (arm64 under QEMU took 5-10 min) and is
+# pushed by digest; the merge job tags the multi-arch list. A manual run on any
+# other branch only tags sha-<commit>, so it never replaces :latest.
 on:
   push:
     branches: [main]
@@ -11,12 +14,23 @@ permissions:
   contents: read
   packages: write
 
+env:
+  IMAGE: ghcr.io/artrybka/frame
+
 jobs:
-  image:
-    runs-on: ubuntu-latest
+  build:
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            platform: linux/arm64
+            runner: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
-      - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
@@ -25,18 +39,55 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Bundle server code into the build context
         run: scripts/bundle-addon.sh dist/frame
-      - name: Image version
-        id: meta
-        run: echo "version=$(grep -m1 '^version' server/pyproject.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
-      - uses: docker/build-push-action@v6
+      - id: build
+        uses: docker/build-push-action@v6
         with:
           context: dist/frame
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: |
-            ghcr.io/artrybka/frame:latest
-            ghcr.io/artrybka/frame:${{ steps.meta.outputs.version }}
-            ghcr.io/artrybka/frame:sha-${{ github.sha }}
+          platforms: ${{ matrix.platform }}
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=publish-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=publish-${{ matrix.arch }}
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.licenses=MIT
+      - name: Export digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/digests"
+          touch "$RUNNER_TEMP/digests/${DIGEST#sha256:}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ matrix.arch }}
+          path: ${{ runner.temp }}/digests/*
+          retention-days: 1
+
+  image:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: digest-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/digests
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Tag the multi-arch image
+        run: |
+          tags=(-t "$IMAGE:sha-$GITHUB_SHA")
+          if [ "$GITHUB_REF" = refs/heads/main ]; then
+            version=$(grep -m1 '^version' server/pyproject.toml | cut -d'"' -f2)
+            tags+=(-t "$IMAGE:latest" -t "$IMAGE:$version")
+          fi
+          cd "$RUNNER_TEMP/digests"
+          docker buildx imagetools create "${tags[@]}" \
+            --annotation "index:org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" \
+            --annotation "index:org.opencontainers.image.licenses=MIT" \
+            $(printf "$IMAGE@sha256:%s " *)
+          docker buildx imagetools inspect "$IMAGE:sha-$GITHUB_SHA"

@@ -268,9 +268,10 @@ def test_mat_colour_bevel_and_caption_ink() -> None:
     assert np.all(panel[20, 20] == black)  # the mat is pure black ink
     plan = plan_layout((800, 1000), CANVAS, Fit.FIT, margin=0.1, caption=True)
     x, y, w, h = plan.windows[0].rect
-    # The bevels are cut in the board's colour: no white core around the window.
+    # A dark grey core around the window: not white, but not the board's black.
     for bevel in (panel[y + h + 3, x + 20 : x + w - 20], panel[y - 4, x + 20 : x + w - 20]):
         assert np.all(bevel == white, axis=-1).mean() < 0.2
+        assert (~np.all(bevel == black, axis=-1)).mean() > 0.2
     right, top, _ = plan.caption_at
     text = panel[top : top + 40, right - 400 : right]
     assert np.any(np.all(text == white, axis=-1))  # white letters on black

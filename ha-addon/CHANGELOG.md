@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.29.0
+
+- Czarne passe-partout: fazowanie ma ciemnoszary rdzeń ze światłem i cieniem,
+  więc cięcie widać na ramce (`mat.BLACK_CORE`, także w trybie demo).
+- „Prezentuj na ramce” od razu pokazuje pierwsze dzieło playlisty, a nie
+  czekające w kolejce (np. przesłane zdjęcie); kolejka przychodzi przy
+  następnej zmianie. Zapis zakładki Ramka (np. nowe passe-partout) nie
+  przywraca już poprzedniej playlisty.
+- „Teraz”: podczas wysyłki widać, co ramka jeszcze ma, a w czasie
+  przerysowania stary obraz przechodzi w nowy kwadrat po kwadracie w sześciu
+  tuszach Spectra 6, w rytm paska postępu. Ikony „Teraz” i „Pomiń” obok
+  „Pokaż na ramce”; „Pomiń” cofa wybór z kolejki albo przesuwa dzieło na
+  koniec rundy (`POST /api/player/skip/{id}`).
+- Brakujące podglądy: oryginały odrzucane programom (Mauritshuis, Belvedere,
+  Dropbox) idą przez proxy Europeany; gdy i to zawiedzie, `/image` i
+  `/preview` podają miniaturę, a odtwarzacz pomija takie dzieło. Wyniki
+  z hostów odrzucających nawet proxy są pomijane. Podgląd czeka do 20 s na
+  polskie teksty; opis muzeum po niderlandzku, niemiecku, francusku, włosku
+  czy hiszpańsku liczy się jako nieprzetłumaczony.
+- Zdjęcia przesłane przez „Zdjęcie na ramkę” dostają słowa kluczowe z modelu
+  (od razu przy pokazaniu lub dodaniu do kolejki, wcześniejsze w tle).
+- Playlisty kolorów: kolor liczy się, gdy pokrywa co najmniej 15 % obrazu;
+  mniejsze barwy to akcenty (`accent:<rodzina>`, nowy rząd „Akcenty”).
+  Ciepłe/zimne według powierzchni. „W odcieniach błękitu” obejmuje turkus.
+  `SCORE_VERSION` 4: biblioteka przelicza się raz w tle.
+- Tryb Opis: na ramce samo nazwisko autora (bez narodowości i lat życia),
+  pod spodem data · technika; bez daty powstania lata życia autora.
+- CI szybciej: obrazy arm64 na natywnych maszynach z cache warstw, bez
+  podwójnych przebiegów dla PR, zrzuty ekranów iOS tylko na żądanie
+  (`ios-screenshots.yml`).
+
 ## 0.28.0
 
 - Najpierw to, na co patrzysz: podgląd w „Teraz”, oryginał na karcie i

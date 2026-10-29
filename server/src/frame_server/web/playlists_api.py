@@ -239,5 +239,5 @@ async def play(playlist_id: int, svc: Svc) -> dict[str, Any]:
     settings.playlist_id = playlist_id
     svc.player.save_settings(settings)
     svc.player.set_hold(None)
-    svc.background(svc.player.next("playlist"))
+    svc.background(svc.player.next("playlist", picks=False))  # its own first picture
     return {"accepted": True}

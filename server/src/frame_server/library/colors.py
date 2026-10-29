@@ -37,8 +37,30 @@ COLOUR_SPREAD = (0.01, 0.035)
 #: OKLab chroma of a picture's most colourful tenth that counts as fully colourful.
 COLOUR_CHROMA = 0.08
 #: Version of the colour analysis and suitability score; items analysed by
-#: an older one are analysed again (``Player.rescore``). 3: accents, ICC.
-SCORE_VERSION = 3
+#: an older one are analysed again (``Player.rescore``). 3: accents, ICC;
+#: 4: colour tags by area, accents tagged apart.
+SCORE_VERSION = 4
+
+#: A pixel counts towards a colour family from this OKLab chroma on, or
+#: this chroma / lightness for light ones: a greyish-blue sky does, a beige
+#: wall or the greys of a picture don't.
+TINTED = 0.02
+TINTED_LIGHT = 0.04
+#: Least share of the picture a colour family covers to be part of its
+#: colouring (tag ``"blue"``: "W odcieniach błękitu"); less is an accent at most.
+COLOURING = 0.15
+#: Tags of colours that are only accents of a picture (``"accent:blue"``),
+#: never with the colour's own tag.
+ACCENT_TAG = "accent:"
+NEUTRALS = ("black", "gray", "white")
+WARM_FAMILIES = ("red", "orange", "yellow", "brown", "pink")
+COOL_FAMILIES = ("green", "teal", "blue", "purple")
+#: A warm (cool) picture: its warm (cool) tones cover this much of it, the
+#: other side at most half as much, and of those tones at least ``TONE_VIVID``
+#: of the picture is a real colour (chroma ``VIVID_CHROMA``), no warm grey.
+TONE_AREA = 0.4
+TONE_VIVID = 0.1
+VIVID_CHROMA = 0.05
 
 #: Dominant colours closer than this (``_distance``) read as one.
 MERGE = 0.06
@@ -171,32 +193,70 @@ def analyse(
     """Dominant colours then accents, colour/mood tags and a 0..1 e-paper
     suitability score; ``spread`` is the picture's ``tint_spread`` if
     already known."""
+    if spread is None:
+        spread = tint_spread(img)
     linear = _sample(img)
     lab = linear_to_oklab(linear)
+    fine = linear_to_oklab(_sample(img, 128))
     centres, weights = kmeans(lab, k=6)
     dominant = dominant_colours(centres, weights)
-    accents = accent_colours(linear_to_oklab(_sample(img, 128)), dominant)
+    accents = accent_colours(fine, dominant)
     swatches = [_swatch(c, w) for c, w in dominant]
     swatches += [_swatch(c, w, accent=True) for c, w, _ in accents]
+    return (
+        swatches,
+        colour_tags(fine, spread, dominant, accents),
+        suitability(linear, lab, spread, palette),
+    )
 
-    families: dict[str, float] = {}
-    accents_named: set[str] = set()
-    for centre, weight in zip(centres, weights, strict=True):
-        name = family(centre)
-        families[name] = families.get(name, 0.0) + float(weight)
-        # A small but strongly coloured area (the blue in a Hokusai wave)
-        # is what people remember a picture by.
-        if weight >= 0.05 and float(np.hypot(centre[1], centre[2])) >= 0.06:
-            accents_named.add(name)
-    accents_named |= {name for _, _, name in accents}
-    tags = [n for n in COLOR_FAMILIES if families.get(n, 0.0) >= 0.12 or n in accents_named]
 
+def pixel_families(lab: np.ndarray, spread: float) -> np.ndarray:
+    """Each pixel's colour family, as ``family`` names them but with a lower
+    bar for colour (a pale blue sky is blue, not grey); a picture with no
+    colour of its own (``spread``: ink on yellowed paper) is all neutrals."""
     light = lab[:, 0]
     chroma = np.hypot(lab[:, 1], lab[:, 2])
-    hue = np.degrees(np.arctan2(lab[:, 2], lab[:, 1])) % 360
-    coloured = chroma > 0.04
-    warm = float(chroma[coloured & ((hue < 110) | (hue > 330))].sum())
-    cool = float(chroma[coloured & (hue >= 150) & (hue <= 300)].sum())
+    hue = _hue(lab)
+    names = np.where(light > 0.82, "white", np.where(light < 0.3, "black", "gray")).astype("<U6")
+    if spread < COLOUR_SPREAD[0]:
+        return names
+    tinted = chroma >= np.maximum(TINTED, TINTED_LIGHT * light)
+    sectors = (
+        ("red", (hue >= 330) | (hue < 45)),
+        ("pink", ((hue >= 330) | (hue < 15)) & (light > 0.65)),
+        ("orange", (hue >= 45) & (hue < 80)),
+        ("yellow", (hue >= 80) & (hue < 120)),
+        ("green", (hue >= 120) & (hue < 175)),
+        ("teal", (hue >= 175) & (hue < 230)),
+        ("blue", (hue >= 230) & (hue < 290)),
+        ("purple", (hue >= 290) & (hue < 330)),
+        ("brown", (hue >= 15) & (hue < 110) & (chroma < 0.13) & (light < 0.6)),
+    )
+    for name, sector in sectors:
+        names[tinted & sector] = name
+    return names
+
+
+def colour_tags(
+    lab: np.ndarray,
+    spread: float,
+    dominant: list[tuple[np.ndarray, float]],
+    accents: list[tuple[np.ndarray, float, str]],
+) -> list[str]:
+    """Colour and mood tags. A colour family is a tag when it covers
+    ``COLOURING`` of the picture: a Madonna's blue robe in a gold altarpiece
+    is not "in shades of blue". Smaller colours the palette shows (accents,
+    small dominant ones) are ``ACCENT_TAG`` tags; warm and cool go by area
+    too, so one vivid red robe does not make a grey sky warm."""
+    names = pixel_families(lab, spread)
+    share = {n: float((names == n).mean()) for n in COLOR_FAMILIES}
+    tags = [n for n in COLOR_FAMILIES if share[n] >= COLOURING]
+    shown = {name for _, _, name in accents} | {family(c) for c, _ in dominant}
+    tags += [
+        ACCENT_TAG + n for n in COLOR_FAMILIES if n in shown and n not in tags and n not in NEUTRALS
+    ]
+
+    chroma = np.hypot(lab[:, 1], lab[:, 2])
     mean_chroma = float(chroma.mean())
     if mean_chroma < 0.03:
         tags.append("monochrome")
@@ -204,19 +264,31 @@ def analyse(
         tags.append("vivid")
     elif mean_chroma < 0.05:
         tags.append("muted")
-    if warm > 1.5 * cool and mean_chroma >= 0.03:
-        tags.append("warm")
-    elif cool > 1.5 * warm and mean_chroma >= 0.03:
-        tags.append("cool")
-    mean_light = float(light.mean())
+    warm, cool = (sum(share[n] for n in side) for side in (WARM_FAMILIES, COOL_FAMILIES))
+    vivid = chroma >= VIVID_CHROMA
+    for mood, side, other, families in (
+        ("warm", warm, cool, WARM_FAMILIES),
+        ("cool", cool, warm, COOL_FAMILIES),
+    ):
+        if (
+            side >= TONE_AREA
+            and other <= side / 2
+            and float((vivid & np.isin(names, families)).mean()) >= TONE_VIVID
+        ):
+            tags.append(mood)
+    mean_light = float(lab[:, 0].mean())
     if mean_light < 0.45:
         tags.append("dark")
     elif mean_light > 0.8:
         tags.append("light")
+    return tags
 
-    if spread is None:
-        spread = tint_spread(img)
-    return swatches, tags, suitability(linear, lab, spread, palette)
+
+def has_colours(tags: list[str], wanted: list[str]) -> bool:
+    """Whether a picture with ``tags`` has any of the ``wanted`` colours,
+    accents and moods. A colour and its accent exclude each other: "red
+    accents" are pictures where red is only an accent."""
+    return bool(set(tags) & set(wanted))
 
 
 def _swatch(lab: np.ndarray, weight: float, accent: bool = False) -> ColorSwatch:

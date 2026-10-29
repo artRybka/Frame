@@ -255,7 +255,13 @@ final class AppModel {
     }
 
     func refreshPlayer() async {
-        if let value = try? await backend.player() { player = value }
+        guard let value = try? await backend.player() else { return }
+        player = value
+        // The playlist may have changed without the app's settings (a theme
+        // presented from Discover): a draft saved later must not undo it.
+        if let settings, settings.playlistId != value.playlist?.id {
+            self.settings?.playlistId = value.playlist?.id
+        }
     }
 
     func refreshStatus(live: Bool) async {
@@ -439,6 +445,18 @@ final class AppModel {
             player = try await backend.dequeue(itemID: itemID)
             toast = "Usunięto z kolejki"
         } catch { show(error) }
+    }
+
+    /// "Pomiń" on a picture waiting in the queue; false if it failed.
+    func skip(_ summary: ItemSummary) async -> Bool {
+        do {
+            player = try await backend.skip(itemID: summary.id)
+            toast = "Pominięto „\(summary.shownTitle)”"
+            return true
+        } catch {
+            show(error)
+            return false
+        }
     }
 
     func play(_ playlist: PlaylistSummary) async {

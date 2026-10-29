@@ -372,6 +372,17 @@ actor DemoBackend: FrameBackend {
         return try await player()
     }
 
+    func skip(itemID: String) async throws -> PlayerView {
+        if queued.contains(itemID) {
+            queued.removeAll { $0 == itemID }
+            queue.removeAll { $0 == itemID }
+        } else if queue.contains(itemID) {
+            queue.removeAll { $0 == itemID }
+            queue.append(itemID)  // after the rest of the round
+        }
+        return try await player()
+    }
+
     // MARK: Framing
 
     func framing(itemID: String, orientation: String, automatic: Bool) async throws -> FramingView {

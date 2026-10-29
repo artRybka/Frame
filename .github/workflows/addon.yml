@@ -1,26 +1,29 @@
 name: addon
 
+# Branch pushes only: a PR from a branch here shows these same checks, and on
+# main publish.yml builds the same image. Each arch builds on a native runner
+# (aarch64 under QEMU took up to 12 min) with its layers cached between runs.
 on:
   push:
-    paths: ["ha-addon/**", "server/**", "scripts/bundle-addon.sh", ".github/workflows/addon.yml"]
-  pull_request:
+    branches-ignore: [main]
     paths: ["ha-addon/**", "server/**", "scripts/bundle-addon.sh", ".github/workflows/addon.yml"]
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     strategy:
       matrix:
         include:
           - arch: amd64
             platform: linux/amd64
+            runner: ubuntu-latest
             base: amd64/python:3.13-slim-bookworm
           - arch: aarch64
             platform: linux/arm64
+            runner: ubuntu-24.04-arm
             base: arm64v8/python:3.13-slim-bookworm
     steps:
       - uses: actions/checkout@v4
-      - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - name: Bundle add-on with this commit's server code
         run: scripts/bundle-addon.sh dist/frame
@@ -32,8 +35,10 @@ jobs:
           build-args: BUILD_FROM=${{ matrix.base }}
           tags: frame-addon:${{ matrix.arch }}
           load: true
+          cache-from: type=gha,scope=addon-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=addon-${{ matrix.arch }}
       - name: Smoke test (CLI starts, numba kernel compiles)
         run: >
-          docker run --rm --platform ${{ matrix.platform }} frame-addon:${{ matrix.arch }}
+          docker run --rm frame-addon:${{ matrix.arch }}
           sh -c "frame --help >/dev/null && frame testchart ramps /tmp/r.png
           && frame render /tmp/r.png /tmp/out.png --preset photo"

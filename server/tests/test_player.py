@@ -588,6 +588,45 @@ async def test_work_added_to_the_queue_is_shown_next(service, monkeypatch) -> No
     assert player.upcoming(1)[0].id == a.id
 
 
+async def test_presenting_a_playlist_shows_it_before_the_picks(service) -> None:
+    ala = [_add(service, n, (200, 40 * n, 40), "Ala") for n in range(3)]
+    photo = _add(service, 9, (40, 40, 200), "Ola")  # e.g. sent once, waiting its turn
+    playlist = service.library.save_playlist(
+        Playlist(name="Ala", rules=PlaylistRules(artists=["Ala"]))
+    )
+    player = service.player
+    player.queue_next(photo.id)
+
+    # "Prezentuj na ramce": the playlist's own first picture, now.
+    settings = player.settings
+    settings.playlist_id = playlist.id
+    player.save_settings(settings)
+    shown = await player.next("playlist", picks=False)
+    assert shown is not None and shown.id in {i.id for i in ala}
+    # The pick still comes at the next change.
+    assert player.state.requested == [photo.id]
+    assert (await player.next()).id == photo.id
+
+
+async def test_skipped_work_waits_for_the_rest_of_the_round(service) -> None:
+    for n in range(1, 5):
+        _add(service, n, (40 * n, 40, 200), "Ala")
+    player = service.player
+    await player.next()
+    ahead = [i.id for i in player.upcoming(8)]
+    assert len(ahead) == 3
+
+    player.skip(ahead[0])
+    assert [i.id for i in player.upcoming(8)] == [*ahead[1:], ahead[0]]
+    assert (await player.next()).id == ahead[1]
+
+    # A pick of the owner's is taken back.
+    player.queue_next(ahead[0])
+    player.skip(ahead[0])
+    assert player.state.requested == []
+    player.skip("nope:1")  # not queued: nothing happens
+
+
 async def test_queued_work_waits_while_its_original_is_unavailable(service) -> None:
     cached = _artwork(service, 1, cached=True)
     missing = _artwork(service, 2, cached=False)
@@ -598,6 +637,28 @@ async def test_queued_work_waits_while_its_original_is_unavailable(service) -> N
     shown = await player.next()
     assert shown is not None and shown.id == cached.id  # took its turn
     assert player.state.requested == [missing.id]  # still first in line
+
+
+async def test_work_whose_original_is_refused_leaves_the_queue(service) -> None:
+    cached = _artwork(service, 1, cached=True)
+    refused = _artwork(service, 2, cached=False)
+
+    def forbid(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(403, html="<title>Verify that you are a human</title>")
+
+    service.images.http = lambda: httpx.Client(transport=httpx.MockTransport(forbid))
+    player = service.player
+    player.queue_next(refused.id)
+
+    shown = await player.next()
+    assert shown is not None and shown.id == cached.id
+    assert refused.id not in player.state.requested
+    assert service.images.unavailable(refused)
+    state = player.state
+    state.queue.insert(0, refused.id)  # drawn again with the rotation
+    player._save_state(state)
+    await player.prefetch()
+    assert refused.id not in player.state.queue
 
 
 async def test_a_change_is_busy_from_the_download_on(service) -> None:
@@ -629,7 +690,7 @@ def test_api_adds_a_work_to_the_queue(service) -> None:
 
     app = create_app(service.settings)
     svc = app.state.service
-    _, b = (_add(svc, n, (40 * n, 40, 200), "Ala") for n in range(1, 3))
+    a, b = (_add(svc, n, (40 * n, 40, 200), "Ala") for n in range(1, 3))
 
     with TestClient(app) as client:
         assert client.post(f"/api/library/items/{b.id}/queue").status_code == 202
@@ -640,6 +701,9 @@ def test_api_adds_a_work_to_the_queue(service) -> None:
 
         view = client.delete(f"/api/player/queue/{b.id}").json()
         assert view["queued"] == []
+        assert view["upcoming"][0]["id"] == a.id
+        view = client.post(f"/api/player/skip/{a.id}").json()
+        assert view["upcoming"][-1]["id"] == a.id
         assert client.post("/api/player/next").status_code == 202
 
 
@@ -728,3 +792,24 @@ def test_library_is_scored_again_once(service) -> None:
     assert library.get_state(SCORE_KEY) == SCORE_VERSION
     library.update(work.id, suitability=0.95)
     assert service.player.rescore() == 0  # only once
+
+
+def test_app_gets_the_thumbnail_when_the_original_is_refused(service) -> None:
+    from frame_server.web import create_app
+
+    app = create_app(service.settings)
+    svc = app.state.service
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("-small.jpg"):
+            return httpx.Response(200, content=jpeg_bytes((120, 60, 40)))
+        return httpx.Response(403, html="<title>Attention Required!</title>")
+
+    with TestClient(app) as client:
+        item = _artwork(svc, 7, cached=False)
+        svc.images.http = lambda: httpx.Client(transport=httpx.MockTransport(answer))
+        image = client.get(f"/api/library/items/{item.id}/image")
+        assert image.status_code == 200 and image.headers["cache-control"] == "no-store"
+        preview = client.get(f"/api/library/items/{item.id}/preview")
+        assert preview.status_code == 200 and preview.headers["cache-control"] == "no-store"
+        assert not list((svc.images.thumbs.parent / "previews").glob(f"{item.file_stem}-*"))

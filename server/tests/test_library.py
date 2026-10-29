@@ -9,7 +9,7 @@ from PIL import Image
 
 from frame_server.imaging.color import linear_to_oklab, u8_to_linear
 from frame_server.library import Item, ItemKind, Library, Playlist, PlaylistKind, PlaylistRules
-from frame_server.library.colors import analyse, family
+from frame_server.library.colors import analyse, family, has_colours
 from frame_server.library.museums import (
     MUSEUMS,
     ArtInstituteChicago,
@@ -146,7 +146,31 @@ def test_analyse_finds_small_vivid_accents() -> None:
     assert 1 <= len(dominant) <= 4 and swatches[: len(dominant)] == dominant  # dominant first
     assert dominant[0].weight >= 0.3
     assert len(accents) == 3 and all(0.01 <= s.weight <= 0.04 for s in accents)
-    assert {"blue", "yellow", "red"} <= set(tags)  # accents count for colour tags
+    # Accents are tagged apart: the picture is not "in shades of blue".
+    assert {"accent:blue", "accent:yellow", "accent:red"} <= set(tags)
+    assert not {"blue", "yellow", "red"} & set(tags)
+
+
+def test_colour_tags_go_by_area() -> None:
+    # A gold altarpiece with a blue robe on a fifth of it is blue; with a
+    # robe of a few percent it is warm, with a blue accent.
+    def altarpiece(robe_rows: int) -> Image.Image:
+        pixels = np.empty((200, 200, 3), np.uint8)
+        pixels[:] = (190, 140, 60)
+        pixels[100 : 100 + robe_rows, 60:140] = (40, 70, 170)
+        return Image.fromarray(pixels)
+
+    _, wide, _ = analyse(altarpiece(100))
+    _, narrow, _ = analyse(altarpiece(10))
+    assert "blue" in wide and "accent:blue" not in wide
+    assert "blue" not in narrow and "accent:blue" in narrow and "warm" in narrow
+    assert has_colours(narrow, ["accent:blue"]) and not has_colours(narrow, ["blue"])
+    assert not has_colours(wide, ["accent:blue"])  # blue, not a blue accent
+
+
+def test_yellowed_paper_is_not_warm() -> None:
+    _, tags, _ = analyse(_etching([(238, 226, 198)]))
+    assert "warm" not in tags and not any(t.startswith("accent:") for t in tags)
 
 
 def test_monochrome_pictures_have_no_accents() -> None:
@@ -682,3 +706,19 @@ def test_colourful_works_score_best_on_epaper() -> None:
     assert print_ >= 0.72
     _, _, analysed = analyse(_etching([(238, 226, 198)]))
     assert analysed == etching
+
+
+def test_starter_blues_take_turquoise_once(tmp_path) -> None:
+    from frame_server.library.seed import _turquoise_blues
+
+    lib = Library(tmp_path / "lib.db")
+    blues = lib.save_playlist(
+        Playlist(name="W odcieniach błękitu", rules=PlaylistRules(colors=["blue"]))
+    )
+    own = lib.save_playlist(Playlist(name="Moje błękity", rules=PlaylistRules(colors=["blue"])))
+    _turquoise_blues(lib)
+    assert lib.playlist(blues.id).rules.colors == ["blue", "teal"]  # type: ignore[arg-type,union-attr]
+    assert lib.playlist(own.id).rules.colors == ["blue"]  # type: ignore[arg-type,union-attr]
+    lib.save_playlist(blues.model_copy())  # the owner set it back
+    _turquoise_blues(lib)
+    assert lib.playlist(blues.id).rules.colors == ["blue"]  # type: ignore[arg-type,union-attr]

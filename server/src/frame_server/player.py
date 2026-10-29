@@ -26,7 +26,10 @@ from .imaging.text import TextBlock
 from .library import AlbumOrder, Item, ItemKind, Job, Note, Playlist, PlaylistKind, PlaylistRules
 from .library.colors import SCORE_VERSION, analyse, tint_spread
 from .library.icloud import refetchable
+from .library.images import Unavailable
 from .library.museums import MUSEUMS, Kind
+from .library.nationality import life_years, note_years
+from .library.repo import SENT_KEY
 from .library.style import AUTO, auto_preset
 from .library.themes import SEARCHABLE, theme_of_the_day
 from .library.vocabulary import set_aside
@@ -65,7 +68,6 @@ SET_ASIDE_VERSION = 2
 #: Version of the colour analysis and score the library's pictures carry.
 SCORE_KEY = "suitability_version"
 #: The playlist the photos sent once gather in, newest first.
-SENT_KEY = "sent_photos_playlist"
 SENT_NAME = "Historia przesłanych"
 #: A rotation with fewer pictures not shown lately asks museums for more,
 #: up to ``POOL_SIZE``; Suggestions remember at most ``POOL_MAX`` works.
@@ -148,16 +150,16 @@ def text_block_for(item: Item, polish: PolishText | None = None) -> TextBlock:
         when = item.date_text or (info.taken_at[:10] if info and info.taken_at else "")
         who = info.contributor if info and info.contributor else ""
         return TextBlock(title=title, meta=[m for m in (when, who) if m])
+    # The author alone, then date · medium; a work the museum gives no date
+    # for (not even "ca. 1660") shows its author's life years instead.
+    life = life_years(item.artist_bio) if item.artist_bio else ""
     if polish is not None:
-        who = item.artist
-        if who and polish.artist_note:
-            who = f"{who}, {polish.artist_note}"
-        when, medium = polish.date or item.date_text, polish.medium or item.medium
-        detail = " · ".join(p for p in (when, medium) if p)
+        when = polish.date or item.date_text or note_years(polish.artist_note) or life
+        detail = " · ".join(p for p in (when, polish.medium or item.medium) if p)
         return TextBlock(
-            title=polish.title, meta=[m for m in (who, detail) if m], body=polish.frame
+            title=polish.title, meta=[m for m in (item.artist, detail) if m], body=polish.frame
         )
-    detail = " · ".join(p for p in (item.date_text, item.medium) if p)
+    detail = " · ".join(p for p in (item.date_text or life, item.medium) if p)
     body = item.description or ", ".join(p for p in (item.museum, item.credit) if p)
     return TextBlock(title=item.title, meta=[m for m in (item.artist, detail) if m], body=body)
 
@@ -323,6 +325,19 @@ class Player:
             state.requested = [i for i in state.requested if i != item_id]
             self._save_state(state)
 
+    def skip(self, item_id: str) -> None:
+        """The owner skips ("Pomiń") a picture waiting its turn: a pick
+        added with ``queue_next`` is taken back, one of the rotation goes to
+        the end of it, so it comes back only after the rest of the round."""
+        state = self.state
+        if item_id in state.requested:
+            state.requested = [i for i in state.requested if i != item_id]
+        elif item_id in state.queue:
+            state.queue = [*(i for i in state.queue if i != item_id), item_id]
+        else:
+            return
+        self._save_state(state)
+
     def reschedule(self) -> None:
         state = self.state
         base = datetime.fromisoformat(state.last_change_at) if state.last_change_at else utcnow()
@@ -402,20 +417,32 @@ class Player:
         self._refill(state, settings)
         return True
 
-    def _pop_next(self, state: PlayerState, settings: FrameSettings) -> Item | None:
-        while state.requested:
+    def _pop_next(
+        self, state: PlayerState, settings: FrameSettings, picks: bool = True
+    ) -> Item | None:
+        while picks and state.requested:
             item = self.library.get(state.requested.pop(0))
             if item is not None:  # asked for: shown even if left out of the rotation
                 return item
         spare = self.library.spare_copies()
+        unavailable = self.service.images.unavailable
         self._catch_up(state, settings)
         for _ in range(2):
             while state.queue:
                 item = self.library.get(state.queue.pop(0))
-                if item is not None and not item.excluded and item.id not in spare:
-                    return item
+                if item is None or item.excluded or item.id in spare or unavailable(item):
+                    continue
+                return item
             self._refill(state, settings)
         return None
+
+    def _drop(self, item_id: str) -> None:
+        """Out of the line: its original cannot be had."""
+        state = self.state
+        if item_id in state.queue or item_id in state.requested:
+            state.queue = [i for i in state.queue if i != item_id]
+            state.requested = [i for i in state.requested if i != item_id]
+            self._save_state(state)
 
     def upcoming(self, limit: int = 8) -> list[Item]:
         state, settings = self.state, self.settings
@@ -744,10 +771,13 @@ class Player:
             self._save_state(state)
             self.service.progress.finish(Stage.FAILED, str(err))
 
-    async def next(self, reason: str = "manual") -> Item | None:
+    async def next(self, reason: str = "manual", *, picks: bool = True) -> Item | None:
+        """The next picture on the frame. ``picks=False`` ("Prezentuj na
+        ramce" on a playlist): the rotation's own next one, the owner's
+        picks wait for the change after it."""
         with self._working():  # busy from the start: the original may take a while
             state, settings = self.state, self.settings
-            item = await self._pop_ready(state, settings)
+            item = await self._pop_ready(state, settings, picks)
             if item is None and state.last_error:
                 state.next_change_at = (utcnow() + RETRY_AFTER).isoformat(timespec="seconds")
             self._save_state(state)
@@ -757,13 +787,15 @@ class Player:
             await self.get_ready()
         return item
 
-    async def _pop_ready(self, state: PlayerState, settings: FrameSettings) -> Item | None:
+    async def _pop_ready(
+        self, state: PlayerState, settings: FrameSettings, picks: bool = True
+    ) -> Item | None:
         """The next picture whose original is at hand. One that cannot be
         downloaded now (no internet, museum down) goes to the back of the
         queue and the first one already cached takes its turn; the owner's
         pick stays first in line."""
-        asked = set(state.requested)
-        item = self._pop_next(state, settings)
+        asked = set(state.requested) if picks else set()
+        item = self._pop_next(state, settings, picks)
         if item is None:
             return None
         images = self.service.images
@@ -774,18 +806,23 @@ class Player:
         try:
             await run_in_threadpool(images.ensure_image, item, True)
             return item
+        except Unavailable as err:  # never coming: out of the line
+            log.warning("%s; dropped from the queue", err)
+            state.last_error = f"{item.title or item.id}: oryginał niedostępny"
+            if downloading:
+                progress.finish(Stage.IDLE)
         except (httpx.HTTPError, OSError, ValueError) as err:
             log.warning("original of %s unavailable: %s", item.id, err)
             state.last_error = f"{item.title or item.id}: {err}"
             if downloading:
                 progress.finish(Stage.IDLE)
-        if item.id in asked:
-            state.requested.insert(0, item.id)
-        else:
-            state.queue.append(item.id)
+            if item.id in asked:
+                state.requested.insert(0, item.id)
+            else:
+                state.queue.append(item.id)
         if not state.queue:
             self._refill(state, settings)
-        for line in (state.requested, state.queue):
+        for line in (state.requested, state.queue) if picks else (state.queue,):
             for item_id in line:
                 cached = self.library.get(item_id)
                 if cached is not None and images.has_image(cached):
@@ -809,6 +846,9 @@ class Player:
                 continue
             try:
                 await run_in_threadpool(images.ensure_image, item)
+            except Unavailable as err:
+                log.warning("%s; dropped from the queue", err)
+                self._drop(item.id)
             except (httpx.HTTPError, OSError, ValueError) as err:
                 log.info("prefetch of %s failed: %s", item.id, err)
         try:

@@ -35,6 +35,15 @@ XcodeGen (`project.yml`); the `.xcodeproj` and `Info.plist` are generated and
 git-ignored. iOS 17+, SwiftUI, `@Observable`. CI builds and tests on macOS
 (`.github/workflows/ios.yml`): it is the only compile check when working
 from Linux.
+Screenshots are not part of CI: when a branch changes the look, dispatch
+`ios-screenshots.yml` on that branch (`workflow_dispatch`, ref = branch) and
+take the `screenshots` artifact.
+
+## CI
+
+Workflows run on branch pushes only (no `pull_request` trigger; a PR shows
+the push checks). On `main` only `testflight` and `publish` (plus `server`)
+run. `publish` on a non-main branch tags only `sha-<commit>`, never `latest`.
 
 ## Deployment
 

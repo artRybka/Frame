@@ -17,7 +17,7 @@ import httpx
 from PIL import Image
 
 from ..imaging.palette import Palette
-from .colors import analyse, tint_spread
+from .colors import analyse, has_colours, tint_spread
 from .duplicates import dedupe, rank
 from .images import ImageCache
 from .lifespan import LifeDates
@@ -262,14 +262,15 @@ class Importer:
         return tags
 
     def in_colors(self, items: list[Item], colors: list[str]) -> list[Item]:
-        """``items`` with any of ``colors`` (colour or mood tags), judged
-        from their thumbnails; museums don't know colours."""
+        """``items`` with any of ``colors`` (colour, accent or mood tags),
+        judged from their thumbnails; museums don't know colours."""
         if not colors or not items:
             return items
         with ThreadPoolExecutor(min(len(items), 16)) as pool:
             found = list(pool.map(self.color_tags_of, items))
-        wanted = set(colors)
-        return [i for i, tags in zip(items, found, strict=True) if tags and wanted & set(tags)]
+        return [
+            i for i, tags in zip(items, found, strict=True) if tags and has_colours(tags, colors)
+        ]
 
     def without_grey(self, items: list[Item]) -> list[Item]:
         """``items`` without black-and-white copies of paintings, for the

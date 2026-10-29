@@ -81,6 +81,8 @@ jest rodzaju żeńskiego, topola też)."""
 TRANSLATE_SYSTEM = f"""{_RULES}
 - "full": wierne, pełne tłumaczenie opisu muzeum na polski, do aplikacji. Nie skracaj i nie \
 dopisuj niczego. Nigdy nie przepisuj opisu w oryginalnym języku.
+- Opis muzeum bywa po angielsku, niderlandzku, niemiecku, francusku czy włosku: każdy \
+tłumaczysz na polski. Wszystkie pola odpowiedzi są po polsku.
 - Nie dodawaj faktów, których nie ma w danych."""
 
 NOTE_SYSTEM = f"""{_RULES}
@@ -210,24 +212,46 @@ def frame_text(text: str) -> str:
     return " ".join(chosen)
 
 
-#: Words that give an English text away; Polish has none of them.
-_ENGLISH = frozenset(
+#: Words that give a text in another language away (English, Dutch,
+#: German, French, Italian, Spanish); Polish has none of them. Particles of
+#: names ("van", "de", "di") are left out: Polish texts name painters.
+_FOREIGN = frozenset(
     {
-        "the", "and", "of", "is", "were", "with", "this", "that", "which",
-        "his", "her", "its", "from", "are", "has", "have",
+        "the", "and", "of", "is", "was", "were", "with", "this", "that", "which",
+        "his", "her", "its", "from", "are", "has", "have", "in", "an", "it",
+        "het", "een", "en", "op", "met", "zijn", "voor", "niet", "wordt", "aan",
+        "bij", "uit", "naar", "dat", "deze", "ook", "staat", "werd",
+        "der", "die", "das", "und", "ist", "mit", "den", "dem", "ein", "eine",
+        "auf", "für", "sich", "nicht", "wird", "wurde", "auch", "einem", "einer",
+        "le", "la", "les", "et", "des", "du", "une", "est", "dans", "avec",
+        "pour", "sur", "qui", "par", "au", "aux", "ne", "il", "elle",
+        "che", "con", "per", "del", "sono", "nel", "gli", "un", "una", "uno",
+        "el", "los", "las", "y", "por", "que", "es", "se",
+    }
+)  # fmt: skip
+#: Short Polish words found in nearly every Polish sentence.
+_POLISH = frozenset(
+    {
+        "się", "jest", "są", "był", "była", "było", "były", "na", "nie", "że",
+        "przez", "oraz", "jego", "jej", "ich", "który", "która", "które",
+        "którego", "której", "którym", "do", "od", "po", "jak", "ze", "we", "w",
+        "z", "dla", "przy", "pod", "nad", "tym", "tego", "także", "też", "tylko",
+        "gdzie", "jako",
     }
 )  # fmt: skip
 _WORD = re.compile(r"[^\W\d_]+")
 
 
 def untranslated(text: str) -> bool:
-    """Whether ``text`` is English rather than Polish: a model sometimes
-    copies the museum's description instead of translating it."""
+    """Whether ``text`` is in another language rather than Polish: a model
+    sometimes copies the museum's description (English, Dutch, German...)
+    instead of translating it."""
     words = [w.lower() for w in _WORD.findall(text)]
     if len(words) < 12:
         return False
-    english = sum(w in _ENGLISH for w in words)
-    return english / len(words) > 0.06
+    foreign = sum(w in _FOREIGN for w in words)
+    polish = sum(w in _POLISH for w in words)
+    return foreign >= 3 and foreign > polish
 
 
 def clean(data: dict[str, Any], item: Item, facts: Facts | None) -> PolishText | None:

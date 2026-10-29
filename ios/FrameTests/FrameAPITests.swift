@@ -73,6 +73,21 @@ final class FrameAPITests: XCTestCase {
         XCTAssertTrue(delivery.explanation.hasPrefix("Spróbuje znowu "))
     }
 
+    func testDraftKeepsAPlaylistPresentedMeanwhile() {
+        var base = FrameSettings.defaults
+        base.playlistId = 1  // Vermeer
+        var draft = base
+        draft.art.mat = "picture_dark"  // edited on the Frame tab
+        var current = base
+        current.playlistId = 2  // Van Gogh, presented from Playlists
+        let saved = draft.rebased(from: base, onto: current)
+        XCTAssertEqual(saved.playlistId, 2)
+        XCTAssertEqual(saved.art.mat, "picture_dark")
+        // A playlist picked in the draft itself wins.
+        draft.playlistId = nil
+        XCTAssertNil(draft.rebased(from: base, onto: current).playlistId)
+    }
+
     func testEconomySettingsAndCountdown() throws {
         var settings = FrameSettings.defaults
         settings.changeTimes = ["07:00", "19:00"]
