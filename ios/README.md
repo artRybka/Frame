@@ -34,9 +34,10 @@ Przełącznik jest w zakładce *Ramka → trybik → Serwer ramki*.
 
 ## Zrzuty ekranów
 
-Workflow `ios` w GitHub Actions uruchamia aplikację w trybie demo na
-symulatorze i zapisuje zrzuty każdego ekranu (jasny i ciemny motyw) jako
-artefakt `screenshots`. Lokalnie: argumenty uruchomienia `-demo YES -screen
+Workflow `ios-screenshots` w GitHub Actions uruchamia aplikację w trybie demo
+na symulatorze i zapisuje zrzuty każdego ekranu (jasny i ciemny motyw albo
+jeden z nich) jako artefakt `screenshots`. Trwa ok. 20 min, więc działa tylko
+na żądanie: Actions → ios-screenshots → Run workflow na wybranej gałęzi. Lokalnie: argumenty uruchomienia `-demo YES -screen
 discover` (dostępne: `now`, `discover`, `detail`, `museums`, `playlists`,
 `playlist`, `editor`, `frame`, `send`).
 
