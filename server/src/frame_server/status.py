@@ -49,7 +49,19 @@ REMEMBERED = {
     "last_push_at",
     "last_fetch_at",
     "wifi",
+    "battery_per_day",
+    "battery_days",
 }
+
+# How fast the battery runs down, measured rather than guessed: a reading at
+# most every half hour while on battery, over the last three days; a rate
+# once they span half a day and the level fell by a few points. Network
+# standby (the online mode) and deep sleep (economy) differ a lot.
+BATTERY_LOG_KEY = "battery_log"
+BATTERY_SAMPLE_EVERY = timedelta(minutes=30)
+BATTERY_WINDOW = timedelta(days=3)
+BATTERY_MIN_SPAN = timedelta(hours=12)
+BATTERY_MIN_DROP = 3
 
 
 def _now() -> str:
@@ -67,6 +79,10 @@ class DeviceStatus(BaseModel):
     charging: bool | None = None
     power_source: Literal["ac", "battery"] | None = None
     battery_raw: str | None = None
+    # Measured on battery (see ``BATTERY_LOG_KEY``): percent a day, and the
+    # days left at that rate. None on the charger or until measured.
+    battery_per_day: float | None = None
+    battery_days: float | None = None
     network_standby: bool | None = None
     power_state: PanelPower | None = None
     # Not answering MDC, but on the Wi-Fi (answers ARP): asleep, not gone.
@@ -94,6 +110,10 @@ class DeviceStatus(BaseModel):
     # The power mode set in the app while the frame sleeps: it takes it on at
     # its next wake ("online" or "economy"); None when nothing waits.
     mode_pending: str | None = None
+    # "Głęboki sen" chosen in the app until this moment (ISO), or the frame
+    # switched off from the app: no alarm, only the button wakes it.
+    rest_until: str | None = None
+    switched_off: bool = False
 
 
 class PanelWifi(BaseModel):
@@ -241,6 +261,7 @@ class StatusMonitor:
             status.reachable = True
             status.last_seen = status.checked_at
             status.error = None
+            self._track_battery(status, datetime.now(UTC))
             status.power_state = "online"
             status.on_network = True
             self._slept_at = None
@@ -316,8 +337,40 @@ class StatusMonitor:
         if charging is not None:
             status.charging = charging
             status.power_source = "ac" if charging else "battery"
+        self._track_battery(status, now)
         self._slept_at = None
         self._remember()
+
+    def _track_battery(self, status: DeviceStatus, now: datetime) -> None:
+        """Note the level on battery and work out how fast it falls."""
+        level = status.battery_level
+        if self.library is None or level is None:
+            return
+        if status.power_source != "battery" or status.charging:
+            status.battery_per_day = status.battery_days = None
+            if self.library.get_state(BATTERY_LOG_KEY):
+                self.library.set_state(BATTERY_LOG_KEY, [])
+            return
+        samples = [
+            (datetime.fromisoformat(at), int(was))
+            for at, was in self.library.get_state(BATTERY_LOG_KEY, [])
+        ]
+        if samples and level > samples[-1][1] + 2:
+            samples = []  # charged in between
+        if not samples or now - samples[-1][0] >= BATTERY_SAMPLE_EVERY:
+            samples.append((now, level))
+        samples = [s for s in samples if now - s[0] <= BATTERY_WINDOW] or samples[-1:]
+        self.library.set_state(
+            BATTERY_LOG_KEY, [[at.isoformat(timespec="seconds"), was] for at, was in samples]
+        )
+        first_at, first = samples[0]
+        span, drop = now - first_at, first - level
+        if span < BATTERY_MIN_SPAN or drop < BATTERY_MIN_DROP:
+            status.battery_per_day = status.battery_days = None
+            return
+        per_day = drop / (span / timedelta(days=1))
+        status.battery_per_day = round(per_day, 1)
+        status.battery_days = round(level / per_day, 1)
 
     def note_wifi(self, data: dict[str, object], now: datetime | None = None) -> None:
         """The Frame app read the panel's Wi-Fi."""

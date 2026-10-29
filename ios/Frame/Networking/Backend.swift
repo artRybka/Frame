@@ -141,6 +141,9 @@ protocol FrameBackend: Sendable {
     /// The current picture to the panel again; waits until it is downloaded.
     func pushAgain() async throws -> DisplayResponse
     func sleep() async throws
+    /// "Głęboki sen" for `hours` (1–72) with the Wi-Fi off, or with `hours`
+    /// nil "Wyłącz ramkę": no alarm, only the button wakes it.
+    func rest(hours: Int?) async throws -> RestResult
 
     func request(for image: ImageRef) -> URLRequest?
 }

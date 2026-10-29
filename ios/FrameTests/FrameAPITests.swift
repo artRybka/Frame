@@ -168,6 +168,27 @@ final class FrameAPITests: XCTestCase {
         XCTAssertNil(home.warning)
         XCTAssertEqual(home.strength, "sygnał słaby (20 %)")
         XCTAssertNil(home.band)
+        // The Wi-Fi icon's arcs: the panel's 0-5 bars, or the signal.
+        XCTAssertEqual(wifi.arcs, 2)
+        XCTAssertEqual(home.arcs, 1)
+        XCTAssertEqual([0, 1, 2, 3, 4, 5].map { PanelWifi(readAt: "", level: $0).arcs }, [0, 1, 2, 2, 3, 3])
+        XCTAssertEqual(PanelWifi(readAt: "", signal: 0.87).arcs, 3)
+        XCTAssertNil(PanelWifi(readAt: "").arcs)
+    }
+
+    func testRestDecodes() throws {
+        let status = try LiveBackend.decoder().decode(
+            DeviceStatus.self,
+            from: Data(#"{"configured": true, "battery_per_day": 9.2, "battery_days": 8.7, "rest_until": "2026-10-31T12:00:00+00:00", "switched_off": false}"#.utf8)
+        )
+        XCTAssertEqual(status.batteryDays, 8.7)
+        XCTAssertEqual(status.restUntil, "2026-10-31T12:00:00+00:00")
+        XCTAssertEqual(status.switchedOff, false)
+        let rest = try LiveBackend.decoder().decode(
+            RestResult.self, from: Data(#"{"ok": true, "until": null, "applies": "at_wake"}"#.utf8)
+        )
+        XCTAssertNil(rest.until)
+        XCTAssertEqual(rest.applies, "at_wake")
     }
 
     func testProgressPhasesAndLabels() {

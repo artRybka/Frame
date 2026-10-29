@@ -14,6 +14,10 @@ struct FrameTabView: View {
     @State private var renaming = false
     @State private var newName = ""
     @State private var showingConnection = LaunchRoute.screen == "connection"
+    /// "Sprawdź stan" found the frame asleep in the network: pressed again,
+    /// it wakes it.
+    @State private var wakeArmed = false
+    @State private var confirmingOff = false
 
     private var device: DeviceStatus? { model.status?.device }
 
@@ -74,6 +78,7 @@ struct FrameTabView: View {
                 follow(model.settings)
                 look()
             }
+            .onDisappear { wakeArmed = false }
             .onChange(of: model.settings) { _, new in follow(new) }
             .alert("Nazwa ramki", isPresented: $renaming) {
                 TextField(panelName, text: $newName)
@@ -119,14 +124,16 @@ struct FrameTabView: View {
         )
     }
 
-    /// `waking`: the "Sprawdź stan" button, which also tries to wake a
-    /// sleeping frame; pulling to refresh only looks.
-    private func refresh(waking: Bool = false) async {
+    /// `checking`: the "Sprawdź stan" button, which also wakes a frame
+    /// asleep in the network when pressed a second time; pulling to refresh
+    /// only looks.
+    private func refresh(checking: Bool = false) async {
         refreshing = true
         lastLook = .now
         defer { refreshing = false }
-        if waking {
-            await model.checkStatus()
+        if checking {
+            let wake = wakeArmed
+            wakeArmed = await model.checkStatus(wake: wake)
         } else {
             await model.refreshStatus(live: true)
         }
@@ -193,7 +200,8 @@ struct FrameTabView: View {
         case "online": return "Połączona · \(When.ago(device.lastSeen) ?? "teraz")"
         case "standby":
             return device.onNetwork == true ? "Śpi w sieci, czeka na sygnał budzenia" : "Śpi, czeka na sygnał budzenia"
-        case "deep_sleep": return "Głęboki sen, bez Wi-Fi"
+        case "deep_sleep":
+            return device.switchedOff == true ? "Wyłączona, włączysz ją przyciskiem" : "Głęboki sen, bez Wi-Fi"
         case "offline":
             return device.onNetwork == false ? "Nie ma jej w sieci Wi-Fi" : "Nie odpowiada — śpi lub poza siecią"
         default: break  // a server before 0.12
@@ -246,7 +254,7 @@ struct FrameTabView: View {
     private var statusGrid: some View {
         LazyVGrid(columns: [GridItem(.flexible(), spacing: 14), GridItem(.flexible(), spacing: 14)], spacing: 14) {
             StatusTile(title: "Bateria") {
-                BatteryRing(level: device?.batteryLevel, charging: device?.charging == true)
+                BatteryRing(level: device?.batteryLevel, charging: device?.charging == true, note: batteryNote)
             }
             StatusTile(title: "Zasilanie") {
                 VStack(alignment: .leading, spacing: 6) {
@@ -265,10 +273,10 @@ struct FrameTabView: View {
                     Image(systemName: "clock.arrow.2.circlepath")
                         .font(.title2)
                         .foregroundStyle(Theme.accent)
-                    Text(When.schedule(model.player?.nextChangeAt) ?? "—")
+                    Text(picture.when)
                         .font(.headline)
                         .foregroundStyle(Theme.ink)
-                    Text(device?.pendingPush == true ? "obraz czeka na pobudkę ramki" : "następna zmiana")
+                    Text(picture.note)
                         .font(.caption)
                         .foregroundStyle(Theme.inkSoft)
                 }
@@ -276,9 +284,14 @@ struct FrameTabView: View {
             StatusTile(title: "Sieć") {
                 let state = network
                 VStack(alignment: .leading, spacing: 6) {
-                    Image(systemName: state.icon)
-                        .font(.title2)
-                        .foregroundStyle(state.color)
+                    if let arcs = state.arcs {
+                        WifiStrengthIcon(arcs: arcs, color: state.color)
+                            .accessibilityLabel(device?.wifi?.strength ?? "Wi-Fi")
+                    } else {
+                        Image(systemName: state.icon)
+                            .font(.title2)
+                            .foregroundStyle(state.color)
+                    }
                     Text(state.title)
                         .font(.headline)
                         .foregroundStyle(Theme.ink)
@@ -292,22 +305,20 @@ struct FrameTabView: View {
     }
 
     /// The Sieć tile: what the frame is doing, as far as the server can tell
-    /// (the title: Online, Czuwanie, Głęboki sen...), with the network and
-    /// how strong its signal is when the Frame app reads the Wi-Fi. A plain
-    /// Wi-Fi icon, yellow for a weak signal.
-    private var network: (icon: String, color: Color, title: String, note: String) {
+    /// (the title: Online, Czuwanie, Głęboki sen...), with the network when
+    /// the Frame app reads the Wi-Fi. Online, the Wi-Fi icon's arcs show how
+    /// strong the signal is, yellow when weak.
+    private var network: (icon: String, color: Color, title: String, note: String, arcs: Int?) {
         let (icon, color, title, note) = networkState
         let wifi = device?.wifi
         if wifi?.wrongNetwork == true {
             let note = wifi?.ssid.map { "połączona z \($0)" } ?? "inny adres niż zwykle"
-            return ("wifi.exclamationmark", Theme.bad, "Obca sieć", note)
+            return ("wifi.exclamationmark", Theme.bad, "Obca sieć", note, nil)
         }
-        guard device?.powerState == "online", let wifi, let signal = wifi.signal else {
-            return (icon, color, title, note)
+        guard device?.powerState == "online", let wifi, let arcs = wifi.arcs else {
+            return (icon, color, title, note, nil)
         }
-        let word = signal < 0.35 ? "słaby" : signal < 0.65 ? "średni" : "dobry"
-        let place = [wifi.ssid, "sygnał \(word)"].compactMap { $0 }.joined(separator: " · ")
-        return (icon, signal < 0.35 ? Theme.warn : color, title, place)
+        return (icon, arcs <= 1 ? Theme.warn : color, title, wifi.ssid ?? note, arcs)
     }
 
     private var networkState: (icon: String, color: Color, title: String, note: String) {
@@ -318,10 +329,13 @@ struct FrameTabView: View {
         case "online":
             return ("wifi", Theme.good, "Online", "odpowiada · \(When.ago(device.lastSeen) ?? "teraz")")
         case "standby":
-            let note = device.onNetwork == true ? "śpi, ale jest w sieci Wi-Fi" : "śpi, Wi-Fi czeka na sygnał budzenia"
+            let note = device.wifi?.ssid.map { "\($0) · wysyłka ją budzi" } ?? "w sieci, wysyłka ją budzi"
             return ("moon.zzz", Theme.accent, "Czuwanie", note)
         case "deep_sleep":
-            let note = device.wakesAt.map { "budzik o \($0), wcześniej przycisk na ramce" } ?? "Wi-Fi wyłączone, budzi przycisk"
+            if device.switchedOff == true {
+                return ("power", Theme.inkSoft, "Wyłączona", "włączysz ją przyciskiem na ramce")
+            }
+            let note = When.at(device.wakeAt).map { "budzik \($0), wcześniej przycisk" } ?? "Wi-Fi wyłączone, budzi przycisk"
             return ("wifi.slash", Theme.inkSoft, "Głęboki sen", note)
         case "offline":
             if device.onNetwork == false {
@@ -329,13 +343,37 @@ struct FrameTabView: View {
             }
             return ("wifi.exclamationmark", Theme.bad, "Nie odpowiada", "śpi lub poza siecią")
         default:
-            break
+            return ("wifi", Theme.inkSoft, "Nie sprawdzono", "—")
         }
-        // A server before 0.12 only says whether network standby is on.
-        if device.reachable == nil { return ("wifi", Theme.inkSoft, "Nie sprawdzono", "—") }
-        return device.networkStandby == true
-            ? ("wifi", Theme.good, "Czuwanie Wi-Fi", "budzi go sygnał Wi-Fi")
-            : ("wifi.slash", Theme.inkSoft, "Głęboki sen", "Wi-Fi wyłączone")
+    }
+
+    /// The Obraz tile: when the picture changes next. In a rest
+    /// ("Głęboki sen", "Wyłącz ramkę") nothing changes until it ends.
+    private var picture: (when: String, note: String) {
+        if device?.switchedOff == true {
+            return ("—", device?.pendingPush == true ? "czeka, aż włączysz ramkę" : "ramka wyłączona")
+        }
+        if let until = When.schedule(device?.restUntil) {
+            return (until, "koniec głębokiego snu")
+        }
+        let next = When.schedule(model.player?.nextChangeAt) ?? "—"
+        guard device?.pendingPush == true else { return (next, "następna zmiana") }
+        return (next, When.at(device?.wakeAt).map { "obraz pojawi się \($0)" } ?? "obraz czeka na pobudkę ramki")
+    }
+
+    /// Under the battery level: how long it lasts at the rate measured on
+    /// battery, nothing to say on the charger.
+    private var batteryNote: String {
+        if device?.charging == true { return "ładuje się" }
+        switch device?.powerSource {
+        case "ac": return "na zasilaczu"
+        case "battery":
+            guard let days = device?.batteryDays else { return "mierzę zużycie" }
+            if days > 60 { return "ok. \(Int(days / 30)) mies." }
+            if days >= 2 { return "ok. \(Int(days)) dni" }
+            return "ok. \(max(1, Int(days * 24))) godz."
+        default: return ""
+        }
     }
 
     private var powerIcon: String {
@@ -358,35 +396,52 @@ struct FrameTabView: View {
         }
     }
 
-    /// What the power source changes: the schedule is the same either way,
-    /// only quiet hours on battery are spent in deep sleep.
+    /// What the power source and the mode change: on the charger the frame
+    /// never sleeps; on battery it sleeps in the network (Online, a work
+    /// sent wakes it) or without the Wi-Fi until its alarm (Oszczędny).
     private var powerNote: String {
         if device?.charging == true { return "bateria się ładuje" }
-        let quiet = model.settings?.quietStart != nil
         switch device?.powerSource {
-        case "ac": return quiet ? "zdjęcia trafiają od razu, także w nocy" : "zdjęcia trafiają od razu"
-        case "battery": return quiet ? "w ciszy nocnej śpi bez Wi-Fi" : "zmiany według harmonogramu"
+        case "ac": return "nie śpi, zmiany od razu"
+        case "battery":
+            if model.settings?.isEconomy == true { return "śpi bez Wi-Fi do pobudki" }
+            return model.settings?.quietStart != nil ? "śpi w sieci, noc bez Wi-Fi" : "śpi w sieci, wysyłka ją budzi"
         default: return "zmiany według harmonogramu"
         }
     }
 
     private var checkLabel: String {
         if model.wakingForStatus { return "Budzę ramkę…" }
-        return refreshing ? "Sprawdzam…" : "Sprawdź stan"
+        if refreshing { return "Sprawdzam…" }
+        return wakeArmed ? "Obudź i sprawdź" : "Sprawdź stan"
     }
+
+    /// "Głęboki sen" lengths: up to three days.
+    private static let restChoices: [(hours: Int, label: String)] = [
+        (6, "6 godzin"), (12, "12 godzin"), (24, "1 dzień"), (48, "2 dni"), (72, "3 dni"),
+    ]
 
     private var deviceActions: some View {
         HStack(spacing: 10) {
             Button {
-                Task { await refresh(waking: true) }
+                Task { await refresh(checking: true) }
             } label: {
-                Label(checkLabel, systemImage: model.wakingForStatus ? "sun.max" : "arrow.clockwise")
+                Label(checkLabel, systemImage: model.wakingForStatus || wakeArmed ? "sun.max" : "arrow.clockwise")
             }
             .buttonStyle(SecondaryButtonStyle())
             .disabled(refreshing)
             Menu {
                 Button("Obudź ramkę", systemImage: "sun.max") { Task { await model.wake() } }
                 Button("Uśpij ramkę", systemImage: "moon.zzz") { Task { await model.sleepFrame() } }
+                Menu {
+                    ForEach(Self.restChoices, id: \.hours) { choice in
+                        Button(choice.label) { Task { await model.restFrame(hours: choice.hours) } }
+                    }
+                } label: {
+                    Label("Głęboki sen", systemImage: "moon.stars")
+                }
+                Divider()
+                Button("Wyłącz ramkę", systemImage: "power", role: .destructive) { confirmingOff = true }
             } label: {
                 Label("Zasilanie", systemImage: "power")
                     .font(.headline)
@@ -395,6 +450,12 @@ struct FrameTabView: View {
                     .padding(.vertical, 15)
                     .background(Theme.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Theme.hairline))
+            }
+            .alert("Wyłączyć ramkę?", isPresented: $confirmingOff) {
+                Button("Wyłącz", role: .destructive) { Task { await model.restFrame(hours: nil) } }
+                Button("Anuluj", role: .cancel) {}
+            } message: {
+                Text("Ramka zaśnie bez Wi-Fi i bez budzika: obraz zostanie, ale nie zmieni się, a z aplikacji nie da się jej obudzić. Włączysz ją dopiero przyciskiem z tyłu ramki.")
             }
         }
     }
@@ -420,6 +481,8 @@ struct StatusTile<Content: View>: View {
 struct BatteryRing: View {
     let level: Int?
     let charging: Bool
+    /// Under the level: how long it lasts, "na zasilaczu"...
+    let note: String
 
     private var fraction: Double { Double(level ?? 0) / 100 }
     private var color: Color {
@@ -447,16 +510,37 @@ struct BatteryRing: View {
                     .font(.serif(28, weight: .semibold))
                     .monospacedDigit()
                     .foregroundStyle(Theme.ink)
-                Text(estimate).font(.caption).foregroundStyle(Theme.inkSoft)
+                Text(note).font(.caption).foregroundStyle(Theme.inkSoft)
             }
         }
     }
+}
 
-    /// Rough: ~200 days at one change a day on a full battery (Samsung's figure).
-    private var estimate: String {
-        guard let level, !charging else { return charging ? "ładuje się" : "" }
-        let days = Int(Double(level) / 100 * 200)
-        return days > 60 ? "ok. \(days / 30) mies." : "ok. \(days) dni"
+/// The Wi-Fi icon with as many arcs lit as the signal is strong (0–3) and
+/// the rest faint, as on the iPhone; the size of a `.title2` symbol.
+struct WifiStrengthIcon: View {
+    let arcs: Int
+    let color: Color
+
+    private static let radii: [CGFloat] = [7, 12.5, 18]
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(color)
+                .frame(width: 5.4, height: 5.4)
+                .position(x: 15, y: 21)
+            ForEach(Self.radii.indices, id: \.self) { index in
+                // From up-left to up-right: a Circle's trim starts at three
+                // o'clock and runs clockwise.
+                Circle()
+                    .trim(from: 0.625, to: 0.875)
+                    .stroke(index < arcs ? color : Theme.hairline, style: StrokeStyle(lineWidth: 3.4, lineCap: .round))
+                    .frame(width: Self.radii[index] * 2, height: Self.radii[index] * 2)
+                    .position(x: 15, y: 21)
+            }
+        }
+        .frame(width: 30, height: 24)
     }
 }
 
@@ -1165,15 +1249,22 @@ struct PanelWifiRow: View {
     private var wrong: Bool { wifi.wrongNetwork == true }
 
     private var details: String {
-        [wifi.strength, wifi.ip, wifi.band, When.ago(wifi.readAt)].compactMap { $0 }.joined(separator: " · ")
+        [wifi.ip, wifi.band, When.ago(wifi.readAt)].compactMap { $0 }.joined(separator: " · ")
     }
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            Image(systemName: wrong ? "wifi.exclamationmark" : "wifi")
-                .font(.title2)
-                .foregroundStyle(wrong ? Theme.bad : (wifi.signal ?? 1) < 0.35 ? Theme.warn : Theme.good)
-                .frame(width: 32)
+            Group {
+                if !wrong, let arcs = wifi.arcs {
+                    WifiStrengthIcon(arcs: arcs, color: arcs <= 1 ? Theme.warn : Theme.good)
+                        .accessibilityLabel(wifi.strength ?? "Wi-Fi")
+                } else {
+                    Image(systemName: wrong ? "wifi.exclamationmark" : "wifi")
+                        .font(.title2)
+                        .foregroundStyle(wrong ? Theme.bad : Theme.good)
+                }
+            }
+            .frame(width: 32)
             VStack(alignment: .leading, spacing: 3) {
                 Text(wifi.ssid.map { "Wi-Fi ramki: \($0)" } ?? "Wi-Fi ramki")
                     .font(.subheadline.weight(.semibold))
