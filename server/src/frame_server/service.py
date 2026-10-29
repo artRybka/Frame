@@ -21,7 +21,7 @@ from .imaging import Palette, RenderSettings, get_palette, render, render_multi
 from .imaging.pipeline import encode_image
 from .library import ImageCache, Importer, Library
 from .library.commons import repair_library
-from .library.museums import Access
+from .library.museums import Access, europeana_mirrors
 from .library.museums import client as museum_client
 from .panel_app import POLL, PanelApp
 from .panel_config import PanelConfigStore
@@ -152,6 +152,7 @@ class FrameService:
         # Before anything reads the panel's address: the app's values win.
         self.panel_config = PanelConfigStore(settings, self.library)
         self.images = ImageCache(settings.data_dir / "library", museum_client)
+        self.images.mirrors["europeana"] = europeana_mirrors
         # Before the player trims or grows the catalogue: the app's limit wins.
         self.storage = StorageStore(settings, self.library, self.images, self.store)
         self.importer = Importer(

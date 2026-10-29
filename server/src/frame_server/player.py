@@ -26,6 +26,7 @@ from .imaging.text import TextBlock
 from .library import AlbumOrder, Item, ItemKind, Job, Note, Playlist, PlaylistKind, PlaylistRules
 from .library.colors import SCORE_VERSION, analyse, tint_spread
 from .library.icloud import refetchable
+from .library.images import Unavailable
 from .library.museums import MUSEUMS, Kind
 from .library.style import AUTO, auto_preset
 from .library.themes import SEARCHABLE, theme_of_the_day
@@ -423,14 +424,24 @@ class Player:
             if item is not None:  # asked for: shown even if left out of the rotation
                 return item
         spare = self.library.spare_copies()
+        unavailable = self.service.images.unavailable
         self._catch_up(state, settings)
         for _ in range(2):
             while state.queue:
                 item = self.library.get(state.queue.pop(0))
-                if item is not None and not item.excluded and item.id not in spare:
-                    return item
+                if item is None or item.excluded or item.id in spare or unavailable(item):
+                    continue
+                return item
             self._refill(state, settings)
         return None
+
+    def _drop(self, item_id: str) -> None:
+        """Out of the line: its original cannot be had."""
+        state = self.state
+        if item_id in state.queue or item_id in state.requested:
+            state.queue = [i for i in state.queue if i != item_id]
+            state.requested = [i for i in state.requested if i != item_id]
+            self._save_state(state)
 
     def upcoming(self, limit: int = 8) -> list[Item]:
         state, settings = self.state, self.settings
@@ -794,15 +805,20 @@ class Player:
         try:
             await run_in_threadpool(images.ensure_image, item, True)
             return item
+        except Unavailable as err:  # never coming: out of the line
+            log.warning("%s; dropped from the queue", err)
+            state.last_error = f"{item.title or item.id}: oryginał niedostępny"
+            if downloading:
+                progress.finish(Stage.IDLE)
         except (httpx.HTTPError, OSError, ValueError) as err:
             log.warning("original of %s unavailable: %s", item.id, err)
             state.last_error = f"{item.title or item.id}: {err}"
             if downloading:
                 progress.finish(Stage.IDLE)
-        if item.id in asked:
-            state.requested.insert(0, item.id)
-        else:
-            state.queue.append(item.id)
+            if item.id in asked:
+                state.requested.insert(0, item.id)
+            else:
+                state.queue.append(item.id)
         if not state.queue:
             self._refill(state, settings)
         for line in (state.requested, state.queue) if picks else (state.queue,):
@@ -829,6 +845,9 @@ class Player:
                 continue
             try:
                 await run_in_threadpool(images.ensure_image, item)
+            except Unavailable as err:
+                log.warning("%s; dropped from the queue", err)
+                self._drop(item.id)
             except (httpx.HTTPError, OSError, ValueError) as err:
                 log.info("prefetch of %s failed: %s", item.id, err)
         try:

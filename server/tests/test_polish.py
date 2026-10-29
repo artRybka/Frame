@@ -218,6 +218,33 @@ def test_an_english_copy_is_no_translation() -> None:
     assert clean({**answer, "frame": english}, item, None) is None
 
 
+def test_a_copy_in_any_language_is_no_translation() -> None:
+    dutch = (
+        "Een dienstmaagd staat achter een tafel en schenkt melk uit een melkkan in een "
+        "kookpot. Op de tafel staat een mand met brood en een stenen kruik."
+    )
+    german = (
+        "Die Malerei zeigt eine junge Frau, die in einem Zimmer steht und einen Brief liest. "
+        "Das Licht fällt durch das Fenster auf ihr Gesicht."
+    )
+    french = (
+        "Une jeune femme est assise dans un intérieur et lit une lettre près de la fenêtre "
+        "ouverte, avec la lumière du jour sur son visage."
+    )
+    polish = (
+        "Służąca stoi za stołem i nalewa mleko z dzbanka do garnka. Na stole leży kosz z "
+        "chlebem, a obok stoi kamionkowy dzban; w głębi widać okno Pietera de Hoocha."
+    )
+    for text in (dutch, german, french):
+        assert untranslated(text), text
+    assert not untranslated(polish)
+
+    item = _item(title="Het melkmeisje", description=dutch)
+    answer = {"title": "Mleczarka", "frame": polish, "full": dutch}
+    text = clean(answer, item, None)
+    assert text is not None and text.full == polish
+
+
 def test_note_keeps_only_known_sources_and_models_note() -> None:
     item = _item(title="Rosa", artist="Salvator Rosa", medium="Oil on canvas")
     answer = {

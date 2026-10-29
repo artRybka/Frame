@@ -639,6 +639,28 @@ async def test_queued_work_waits_while_its_original_is_unavailable(service) -> N
     assert player.state.requested == [missing.id]  # still first in line
 
 
+async def test_work_whose_original_is_refused_leaves_the_queue(service) -> None:
+    cached = _artwork(service, 1, cached=True)
+    refused = _artwork(service, 2, cached=False)
+
+    def forbid(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(403, html="<title>Verify that you are a human</title>")
+
+    service.images.http = lambda: httpx.Client(transport=httpx.MockTransport(forbid))
+    player = service.player
+    player.queue_next(refused.id)
+
+    shown = await player.next()
+    assert shown is not None and shown.id == cached.id
+    assert refused.id not in player.state.requested
+    assert service.images.unavailable(refused)
+    state = player.state
+    state.queue.insert(0, refused.id)  # drawn again with the rotation
+    player._save_state(state)
+    await player.prefetch()
+    assert refused.id not in player.state.queue
+
+
 async def test_a_change_is_busy_from_the_download_on(service) -> None:
     item = _artwork(service, 1, cached=False)
     started, release = threading.Event(), threading.Event()
@@ -770,3 +792,24 @@ def test_library_is_scored_again_once(service) -> None:
     assert library.get_state(SCORE_KEY) == SCORE_VERSION
     library.update(work.id, suitability=0.95)
     assert service.player.rescore() == 0  # only once
+
+
+def test_app_gets_the_thumbnail_when_the_original_is_refused(service) -> None:
+    from frame_server.web import create_app
+
+    app = create_app(service.settings)
+    svc = app.state.service
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("-small.jpg"):
+            return httpx.Response(200, content=jpeg_bytes((120, 60, 40)))
+        return httpx.Response(403, html="<title>Attention Required!</title>")
+
+    with TestClient(app) as client:
+        item = _artwork(svc, 7, cached=False)
+        svc.images.http = lambda: httpx.Client(transport=httpx.MockTransport(answer))
+        image = client.get(f"/api/library/items/{item.id}/image")
+        assert image.status_code == 200 and image.headers["cache-control"] == "no-store"
+        preview = client.get(f"/api/library/items/{item.id}/preview")
+        assert preview.status_code == 200 and preview.headers["cache-control"] == "no-store"
+        assert not list((svc.images.thumbs.parent / "previews").glob(f"{item.file_stem}-*"))
