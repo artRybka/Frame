@@ -50,6 +50,7 @@ from PIL import ExifTags, Image
 
 from .importer import Importer, Job
 from .models import Item, ItemKind, PhotoInfo
+from .museums import MUSEUMS
 
 log = logging.getLogger(__name__)
 
@@ -525,6 +526,13 @@ def sync_album(importer: Importer, url: str, job: Job | None = None) -> AlbumLis
 def refetchable(item: Item) -> bool:
     """Whether the original of an album photo can be downloaded again."""
     return bool(item.source == "icloud" and item.url and item.photo and item.photo.asset)
+
+
+def only_copy(item: Item) -> bool:
+    """Whether the server holds the only copy of the item's original (an
+    upload, a photo it cannot download again): never trimmed, and outside
+    the originals' limit."""
+    return item.source not in MUSEUMS and not refetchable(item)
 
 
 def fetch_original(importer: Importer, item: Item) -> bytes:

@@ -221,19 +221,34 @@ class ImageCache:
         self.ensure_thumb(item)
         return img.size
 
-    def prune(self, limit_bytes: int, keep: Iterable[Item]) -> int:
-        """Delete the least recently used originals until all of them fit in
-        ``limit_bytes``; returns how many went. Originals of ``keep`` stay:
-        pictures about to be shown and those that cannot be downloaded again."""
-        sizes = {p: p.stat().st_size for p in own_files(self.images, "*.jpg")}
-        total = sum(sizes.values())
+    def prune(
+        self,
+        limit_bytes: int,
+        keep: Iterable[Item],
+        own: Iterable[Item] = (),
+        last: Iterable[Item] = (),
+    ) -> int:
+        """Delete the least recently used originals until they fit in
+        ``limit_bytes``, those of ``last`` (Favourites, playlists) only after
+        all the others; returns how many went. Originals of ``keep``
+        (pictures about to be shown) stay; those of ``own`` (only copies)
+        stay and do not count."""
+        outside = {self.image_path(i) for i in own}
+        files: dict[Path, os.stat_result] = {}
+        for path in own_files(self.images, "*.jpg"):
+            if path not in outside:
+                with contextlib.suppress(FileNotFoundError):
+                    files[path] = path.stat()
+        total = sum(st.st_size for st in files.values())
         kept = {self.image_path(i) for i in keep}
+        late = {self.image_path(i) for i in last}
+        order = sorted(files.keys() - kept, key=lambda p: (p in late, files[p].st_mtime))
         removed = 0
-        for path in sorted(sizes.keys() - kept, key=lambda p: p.stat().st_mtime):
+        for path in order:
             if total <= limit_bytes:
                 break
             path.unlink(missing_ok=True)
-            total -= sizes[path]
+            total -= files[path].st_size
             removed += 1
         return removed
 

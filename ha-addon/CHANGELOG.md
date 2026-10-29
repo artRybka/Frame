@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.30.0
+
+- Osobny limit oryginałów dzieł: Konfiguracja ma dwa wybory, „Katalog
+  (miniatury)” i „Oryginały dzieł” (domyślnie 3 GB, około 2000 dzieł,
+  zamiast 500 MB dzielonych 2:1). Przesłane zdjęcia i prace mają własny
+  wiersz, nie liczą się do limitu i nigdy nie są usuwane. Przy przycinaniu
+  oryginały z Ulubionych i playlist idą na samym końcu. Dawny jeden limit
+  ustawiony w aplikacji przelicza się raz. Uwaga: `FRAME_IMAGE_CACHE_MB=500`
+  w frame.env nadal ustawia domyślnie 500 MB.
+
 ## 0.29.0
 
 - Czarne passe-partout: fazowanie ma ciemnoszary rdzeń ze światłem i cieniem,
