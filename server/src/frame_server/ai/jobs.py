@@ -2,11 +2,13 @@
 
 A :class:`NoteJob` says, for one kind of note (``"keywords"``,
 ``"pl_text"``), which items want one, what to ask and what to do with the
-answer. The :class:`AiWorker` asks one question at a time on its own thread:
+answer. The :class:`AiWorker` asks on two threads of its own:
 
-- ``need_now(item_id, kind)``: an item the frame or the app needs now, first
-  in line; the result is a future;
-- in the background, items a job wants and that have no up-to-date note;
+- ``need_now(item_id, kind)``: an item the frame or the app needs now, on a
+  thread that does nothing else, so it never waits for the background; the
+  result is a future;
+- in the background, one at a time: items a job wants and that have no
+  up-to-date note;
 - ``describe_library(kind)``: the whole library through the Batch API (half
   price, answers within 24 hours), in chunks of :data:`BATCH_SIZE`.
 
@@ -17,6 +19,7 @@ kept too, so it is not asked again and again.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import itertools
 import logging
@@ -24,6 +27,7 @@ import queue
 import threading
 import time
 from abc import ABC, abstractmethod
+from collections.abc import Iterator
 from concurrent.futures import Future
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
@@ -151,17 +155,19 @@ class AiWorker:
         self.config = config
         self.jobs: dict[str, NoteJob] = {}
         self.error: str | None = None
-        self._queue: queue.PriorityQueue[_Task] = queue.PriorityQueue()
+        self._queue: queue.PriorityQueue[_Task] = queue.PriorityQueue()  # background
+        self._now: queue.Queue[_Task] = queue.Queue()
         self._seq = itertools.count()
         self._pending: set[tuple[str, str]] = set()
         self._skipped: set[tuple[str, str]] = set()  # thumbnail failed: not this run
         self._preparing: set[str] = set()
+        self._asked: dict[tuple[str, str], tuple[threading.Lock, int]] = {}
         self._paused_until = 0.0
         self._next_sweep = 0.0
         self._next_poll = 0.0
         self._lock = threading.Lock()
         self._stop = threading.Event()
-        self._thread: threading.Thread | None = None
+        self._threads: list[threading.Thread] = []
 
     def register(self, job: NoteJob) -> NoteJob:
         self.jobs[job.kind] = job
@@ -182,19 +188,37 @@ class AiWorker:
         if job.fresh(item, note):
             future.set_result(note)
             return future
-        self._queue.put(_Task(NOW, next(self._seq), kind, item_id, future))
+        self._now.put(_Task(NOW, next(self._seq), kind, item_id, future))
         return future
 
     def run_one(self, kind: str, item_id: str) -> Note | None:
         """Ask about one item now, on the caller's thread."""
-        job, item = self.jobs[kind], self.library.get(item_id)
-        if item is None or not job.enabled():
-            return None
-        note = self.library.note(item_id, kind)
-        if job.fresh(item, note):
-            return note
-        params = job.params(item)
-        return self._keep(job, item, self.claude.ask(kind, params))
+        with self._asking(kind, item_id):  # the other thread may be asking already
+            job, item = self.jobs[kind], self.library.get(item_id)
+            if item is None or not job.enabled():
+                return None
+            note = self.library.note(item_id, kind)
+            if job.fresh(item, note):
+                return note
+            params = job.params(item)
+            return self._keep(job, item, self.claude.ask(kind, params))
+
+    @contextlib.contextmanager
+    def _asking(self, kind: str, item_id: str) -> Iterator[None]:
+        key = (kind, item_id)
+        with self._lock:
+            lock, users = self._asked.get(key, (threading.Lock(), 0))
+            self._asked[key] = (lock, users + 1)
+        try:
+            with lock:
+                yield
+        finally:
+            with self._lock:
+                lock, users = self._asked[key]
+                if users > 1:
+                    self._asked[key] = (lock, users - 1)
+                else:
+                    del self._asked[key]
 
     def _keep(self, job: NoteJob, item: Item, answer: Answer) -> Note:
         if answer.data is not None:
@@ -218,9 +242,13 @@ class AiWorker:
     # -- the thread --------------------------------------------------------
 
     def start(self) -> None:
-        if self._thread is None:
-            self._thread = threading.Thread(target=self._run, name="ai-worker", daemon=True)
-            self._thread.start()
+        if not self._threads:
+            self._threads = [
+                threading.Thread(target=self._run, name="ai-worker", daemon=True),
+                threading.Thread(target=self._run_now, name="ai-now", daemon=True),
+            ]
+            for thread in self._threads:
+                thread.start()
 
     def stop(self) -> None:
         self._stop.set()
@@ -239,6 +267,16 @@ class AiWorker:
                 task = self._queue.get(timeout=5.0)
             except queue.Empty:
                 self.tick()
+                continue
+            self._do(task)
+
+    def _run_now(self) -> None:
+        """What the frame or the app waits for: one question at a time, but
+        never behind a background one or a batch being put together."""
+        while not self._stop.is_set():
+            try:
+                task = self._now.get(timeout=5.0)
+            except queue.Empty:
                 continue
             self._do(task)
 

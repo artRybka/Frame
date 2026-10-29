@@ -115,6 +115,11 @@ struct ItemSummary: Codable, Identifiable, Hashable, Sendable {
     var height: Int?
     var favorite: Bool
     var suitability: Double?
+    /// The Polish title, in "Teraz" once the work has one.
+    var titlePl: String?
+
+    /// The title "Teraz" shows: Polish when there is one.
+    var shownTitle: String { titlePl ?? title }
 
     /// Width / height, defaulting to landscape when unknown.
     var aspectRatio: Double {
@@ -315,6 +320,8 @@ struct NowShowing: Codable, Hashable, Sendable {
     var created: String
     var previewUrl: String
     var item: Item?
+    /// The work's Polish title and texts, once written; nil from older servers.
+    var polish: PolishText?
 }
 
 struct PlayerView: Codable, Sendable {

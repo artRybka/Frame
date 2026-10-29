@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Annotated, Any, Literal
 
 import httpx
+from anyio import CapacityLimiter, to_thread
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, ValidationError
@@ -126,6 +127,15 @@ class ImportSearchRequest(BaseModel):
     limit: int = Field(24, ge=1, le=500)
 
 
+#: Threads for pictures, apart from the server's own pool that the app's
+#: quick requests ("Teraz", the queue, settings) and the player share: a
+#: grid's burst of thumbnails, each waiting for a museum, must not hold them
+#: up. What the owner looks at (a card's original, a preview) has threads of
+#: its own, so it never waits for a grid either.
+THUMB_THREADS = CapacityLimiter(16)
+SHOWN_THREADS = CapacityLimiter(8)
+
+
 def _item(svc: FrameService, item_id: str) -> Item:
     item = svc.library.get(item_id)
     if item is None:
@@ -133,13 +143,15 @@ def _item(svc: FrameService, item_id: str) -> Item:
     return item
 
 
-async def _work(svc: FrameService, item_id: str, save: bool = False) -> Item:
+async def _work(
+    svc: FrameService, item_id: str, save: bool = False, threads: CapacityLimiter | None = None
+) -> Item:
     """A library item or any museum work (``<museum>:<id>``). Museum works
     are added to the library with ``save``: when the owner shows, crops,
-    likes or otherwise keeps one."""
+    likes or otherwise keeps one. ``threads``: where a museum is asked."""
     lookup = svc.importer.save if save else svc.importer.resolve
     try:
-        item = await run_in_threadpool(lookup, item_id)
+        item = await to_thread.run_sync(lookup, item_id, limiter=threads)
     except httpx.HTTPError as err:
         raise HTTPException(502, f"{item_id}: {err}") from err
     if item is None:
@@ -302,9 +314,9 @@ def delete_item(item_id: str, svc: Svc) -> dict[str, bool]:
 
 @router.get("/library/items/{item_id}/thumb")
 async def item_thumb(item_id: str, svc: Svc) -> FileResponse:
-    item = await _work(svc, item_id)
+    item = await _work(svc, item_id, threads=THUMB_THREADS)
     try:
-        path = await run_in_threadpool(svc.images.ensure_thumb, item)
+        path = await to_thread.run_sync(svc.images.ensure_thumb, item, limiter=THUMB_THREADS)
     except (httpx.HTTPError, OSError) as err:
         raise HTTPException(502, f"thumbnail unavailable: {err}") from err
     return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "max-age=86400"})
@@ -312,9 +324,10 @@ async def item_thumb(item_id: str, svc: Svc) -> FileResponse:
 
 @router.get("/library/items/{item_id}/image")
 async def item_image(item_id: str, svc: Svc) -> FileResponse:
-    item = await _work(svc, item_id)
+    """The original as the card shows it: before any download in the background."""
+    item = await _work(svc, item_id, threads=SHOWN_THREADS)
     try:
-        path = await run_in_threadpool(svc.images.ensure_image, item)
+        path = await to_thread.run_sync(svc.images.ensure_image, item, True, limiter=SHOWN_THREADS)
     except (httpx.HTTPError, OSError) as err:
         raise HTTPException(502, f"image unavailable: {err}") from err
     return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "max-age=86400"})
@@ -344,7 +357,7 @@ async def item_preview(
     ``framing`` (Framing JSON) likewise tries crops before they are saved:
     the ones it gives replace the saved ones for that orientation.
     """
-    item = await _work(svc, item_id)
+    item = await _work(svc, item_id, threads=SHOWN_THREADS)
     frame_settings = svc.player.settings
     try:
         if settings:
@@ -369,7 +382,10 @@ async def item_preview(
         async with _preview_locks.setdefault(path.name, asyncio.Lock()):
             if not path.is_file():
                 sources = [
-                    await run_in_threadpool(svc.images.ensure_image, shown) for shown in board
+                    await to_thread.run_sync(
+                        svc.images.ensure_image, shown, True, limiter=SHOWN_THREADS
+                    )
+                    for shown in board
                 ]
 
                 def build() -> None:
@@ -382,7 +398,7 @@ async def item_preview(
                     path.write_bytes(encode_image(img, "jpeg", quality=90))
                     _prune(path.parent, PREVIEW_CACHE_FILES)
 
-                await run_in_threadpool(build)
+                await to_thread.run_sync(build, limiter=SHOWN_THREADS)
     # Without ``settings`` the address stays the same when the presentation
     # changes: the app must ask again rather than keep the old framing.
     cache = "max-age=3600" if settings else "no-cache"

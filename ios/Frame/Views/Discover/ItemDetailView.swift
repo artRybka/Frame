@@ -265,7 +265,10 @@ struct ItemDetailView: View {
         VStack(spacing: 12) {
             Group {
                 if view == .original {
-                    ArtImage(ref: .image(item.id), placeholder: item.placeholderColor, maxPixel: 1800, contentMode: .fit)
+                    ArtImage(
+                        ref: .image(item.id), fallback: .thumb(item.id), placeholder: item.placeholderColor,
+                        maxPixel: 1800, contentMode: .fit, priority: .high
+                    )
                         .aspectRatio(CGFloat(aspect(item)), contentMode: .fit)
                         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                         .shadow(color: .black.opacity(0.22), radius: 16, y: 12)

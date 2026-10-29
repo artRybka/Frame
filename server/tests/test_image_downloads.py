@@ -11,7 +11,7 @@ import httpx
 import pytest
 from PIL import Image
 
-from frame_server.library.images import ImageCache
+from frame_server.library.images import HostGate, ImageCache
 from frame_server.library.models import Item
 
 
@@ -108,3 +108,37 @@ def test_parallel_downloads_per_host_are_limited(tmp_path: Path, host: str, limi
         t.join()
     assert peak == limit
     assert len(list(cache.thumbs.glob("*.jpg"))) == 10
+
+
+def test_what_the_owner_looks_at_goes_first() -> None:
+    gate = HostGate(limit=1)
+    order: list[str] = []
+
+    def download(name: str, urgent: bool) -> None:
+        with gate.turn(urgent):
+            order.append(name)
+
+    with gate.turn():  # a thumbnail on its way
+        waiting = [
+            threading.Thread(target=download, args=("thumbnail", False)),
+            threading.Thread(target=download, args=("card", True)),
+        ]
+        for t in waiting:
+            t.start()
+            time.sleep(0.05)  # in line in this order
+    for t in waiting:
+        t.join()
+    assert order == ["card", "thumbnail"]
+
+
+def test_what_the_owner_looks_at_has_places_of_its_own() -> None:
+    gate = HostGate(limit=1, extra=1)
+    with gate.turn():
+        done = threading.Event()
+
+        def card() -> None:
+            with gate.turn(urgent=True):
+                done.set()
+
+        threading.Thread(target=card).start()
+        assert done.wait(1)  # without waiting for the thumbnail

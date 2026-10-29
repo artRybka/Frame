@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from .. import __version__
+from ..ai import PolishText
 from ..library import Item, ItemSummary, PlaylistRules, PlaylistSummary
 from ..player import Hold, hold_from
 from ..progress import DisplayProgress
@@ -30,6 +31,8 @@ class NowShowing(BaseModel):
     created: str
     preview_url: str
     item: Item | None
+    #: The work's Polish title and texts, when they are on and written.
+    polish: PolishText | None = None
 
 
 class Delivery(BaseModel):
@@ -95,14 +98,24 @@ class StatusView(BaseModel):
 
 def _now_showing(svc: FrameService, content: ContentInfo) -> NowShowing:
     item_id = content.extra.get("item_id") if content.extra else None
+    item = svc.library.get(str(item_id)) if item_id else None
     return NowShowing(
         title=content.title,
         description=content.description,
         source=content.source,
         created=content.created,
         preview_url=f"/api/previews/{content.file_id}.png",
-        item=svc.library.get(str(item_id)) if item_id else None,
+        item=item,
+        polish=svc.pl_text.text(item) if item else None,
     )
+
+
+def _summary(svc: FrameService, item: Item) -> ItemSummary:
+    """For "Teraz": with the work's Polish title, once it has one."""
+    summary = ItemSummary.of(item)
+    if (text := svc.pl_text.text(item)) is not None:
+        summary.title_pl = text.title
+    return summary
 
 
 def _delivery(svc: FrameService, content: ContentInfo | None) -> Delivery:
@@ -156,9 +169,9 @@ def _player_view(svc: FrameService) -> PlayerView:
     return PlayerView(
         playlist=playlist,
         current=current,
-        upcoming=[ItemSummary.of(i) for i in player.upcoming(8)],
+        upcoming=[_summary(svc, i) for i in player.upcoming(8)],
         queued=state.requested,
-        history=[ItemSummary.of(i) for i in history if i is not None],
+        history=[_summary(svc, i) for i in history if i is not None],
         hold=state.hold,
         last_change_at=state.last_change_at,
         next_change_at=state.next_change_at,

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import threading
+import time
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -319,3 +321,32 @@ def test_opening_a_card_asks_out_of_turn(tmp_path: Path) -> None:
         assert view == {"status": "ready", "words": ["żaglowiec", "port", "rybacy", "spokój"]}
         item = svc.library.get("icloud:1")
         assert item is not None and "subject:sea" in item.terms
+
+
+def test_what_the_app_needs_now_never_waits_for_the_background(
+    service: FrameService, fake: FakeAnthropic
+) -> None:
+    _add(service, "met:1", title="Fishing boats")
+    _add(service, "met:2", title="Harbour")
+    release = threading.Event()
+    calls = 0
+    create = fake.messages.create
+
+    def slow_first(**params: Any) -> SimpleNamespace:
+        nonlocal calls
+        calls += 1
+        if calls == 1:  # the background's question takes its time
+            release.wait(10)
+        return create(**params)
+
+    fake.messages.create = slow_first
+    assert service.ai.sweep() == 2
+    service.ai.start()
+    try:
+        while calls == 0:
+            time.sleep(0.01)
+        note = service.ai.need_now("met:2", KIND).result(timeout=5)
+        assert note is not None and note.item_id == "met:2"
+    finally:
+        release.set()
+        service.ai.stop()

@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import random
 import threading
 from collections import Counter
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterator
 from concurrent.futures import Future
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
@@ -197,8 +198,22 @@ class Player:
         self.library = service.library
         self._lock = asyncio.Lock()
         self._trimming = threading.Lock()  # after a change and after a new limit at once
-        self.busy = False
+        self._changes = 0  # under way: from the download of the original to the push
         self._migrate_auto_style()
+
+    @property
+    def busy(self) -> bool:
+        """A change is under way, the original's download included: the app
+        follows it from the start, "Teraz" catches up once it is done."""
+        return self._changes > 0
+
+    @contextlib.contextmanager
+    def _working(self) -> Iterator[None]:
+        self._changes += 1
+        try:
+            yield
+        finally:
+            self._changes -= 1
 
     def _migrate_auto_style(self) -> None:
         """Once (add-on 0.4): the old default styles become automatic; a
@@ -549,7 +564,7 @@ class Player:
             board = self.board(item, state, settings)
 
             async def work() -> None:
-                self.service.progress.begin(item.title)
+                self.service.progress.begin(item.title, keep=True)  # begun at the download
                 await self.wait_for_polish(item, settings, POLISH_SHOW_SECONDS)
                 await self._publish(board, settings)
                 if state.current_item_id and state.current_item_id != item.id:
@@ -645,11 +660,14 @@ class Player:
         else:
             await self.next("resume")
 
-    async def _originals(self, board: list[Item], settings: FrameSettings) -> bytes | list[bytes]:
-        """The picture's original (MULTI: the board's), downloaded if need be."""
+    async def _originals(
+        self, board: list[Item], settings: FrameSettings, urgent: bool = True
+    ) -> bytes | list[bytes]:
+        """The picture's original (MULTI: the board's), downloaded if need be;
+        ``urgent`` (a change): before the downloads of the background."""
         images = []
         for shown in board:
-            path = await run_in_threadpool(self.service.images.ensure_image, shown)
+            path = await run_in_threadpool(self.service.images.ensure_image, shown, urgent)
             images.append(await run_in_threadpool(path.read_bytes))
         return images if self.multi(board[0], settings) else images[0]
 
@@ -685,7 +703,7 @@ class Player:
             # Drawn again once its Polish texts are there.
             self.service.background(self._render_when_ready(future, item.id))
         try:
-            image = await self._originals([item], settings)
+            image = await self._originals([item], settings, urgent=False)
             render_settings = self.render_settings(item, settings)
             await run_in_threadpool(self.service.render_content, image, render_settings)
         except Exception as err:  # it is drawn again at its turn
@@ -707,7 +725,12 @@ class Player:
     async def _guarded(
         self, label: str, state: PlayerState, work: Callable[[], Awaitable[None]]
     ) -> None:
-        self.busy = True
+        with self._working():
+            await self._work_logged(label, state, work)
+
+    async def _work_logged(
+        self, label: str, state: PlayerState, work: Callable[[], Awaitable[None]]
+    ) -> None:
         try:
             await work()
         except (MdcError, OSError, ValueError, RuntimeError) as err:
@@ -720,17 +743,17 @@ class Player:
             state.last_error = str(err)
             self._save_state(state)
             self.service.progress.finish(Stage.FAILED, str(err))
-        finally:
-            self.busy = False
 
     async def next(self, reason: str = "manual") -> Item | None:
-        state, settings = self.state, self.settings
-        item = await self._pop_ready(state, settings)
-        if item is None and state.last_error:
-            state.next_change_at = (utcnow() + RETRY_AFTER).isoformat(timespec="seconds")
-        self._save_state(state)
+        with self._working():  # busy from the start: the original may take a while
+            state, settings = self.state, self.settings
+            item = await self._pop_ready(state, settings)
+            if item is None and state.last_error:
+                state.next_change_at = (utcnow() + RETRY_AFTER).isoformat(timespec="seconds")
+            self._save_state(state)
+            if item is not None:
+                await self.show(item, reason)
         if item is not None:
-            await self.show(item, reason)
             await self.get_ready()
         return item
 
@@ -744,12 +767,18 @@ class Player:
         if item is None:
             return None
         images = self.service.images
+        progress = self.service.progress
+        downloading = not images.has_image(item)
+        if downloading:
+            progress.begin(item.title)  # the app's bar from the download on
         try:
-            await run_in_threadpool(images.ensure_image, item)
+            await run_in_threadpool(images.ensure_image, item, True)
             return item
         except (httpx.HTTPError, OSError, ValueError) as err:
             log.warning("original of %s unavailable: %s", item.id, err)
             state.last_error = f"{item.title or item.id}: {err}"
+            if downloading:
+                progress.finish(Stage.IDLE)
         if item.id in asked:
             state.requested.insert(0, item.id)
         else:
