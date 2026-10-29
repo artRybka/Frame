@@ -43,7 +43,6 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 SETTINGS_KEY = "settings"
-AUTO_STYLE_KEY = "auto_style_migrated"
 STATE_KEY = "player"
 HISTORY_MAX = 50
 #: Next pictures whose originals are downloaded ahead of their turn.
@@ -201,7 +200,6 @@ class Player:
         self._lock = asyncio.Lock()
         self._trimming = threading.Lock()  # after a change and after a new limit at once
         self._changes = 0  # under way: from the download of the original to the push
-        self._migrate_auto_style()
 
     @property
     def busy(self) -> bool:
@@ -216,20 +214,6 @@ class Player:
             yield
         finally:
             self._changes -= 1
-
-    def _migrate_auto_style(self) -> None:
-        """Once (add-on 0.4): the old default styles become automatic; a
-        style picked by hand stays."""
-        if self.library.get_state(AUTO_STYLE_KEY):
-            return
-        raw = self.library.get_state(SETTINGS_KEY)
-        if raw:
-            for key, old_default in (("art", "painting"), ("photo", "photo")):
-                pres = raw.get(key)
-                if isinstance(pres, dict) and pres.get("preset") == old_default:
-                    pres["preset"] = AUTO
-            self.library.set_state(SETTINGS_KEY, raw)
-        self.library.set_state(AUTO_STYLE_KEY, True)
 
     # -- persisted settings and state --------------------------------------
 
@@ -519,10 +503,7 @@ class Player:
     # -- showing -------------------------------------------------------------
 
     def preset_for(self, item: Item, settings: FrameSettings) -> str:
-        """The rendering preset ``item`` gets: the chosen one, or by the picture."""
-        pres = self.presentation(item, settings)
-        if pres.preset != AUTO:
-            return pres.preset
+        """The rendering preset ``item`` gets: always chosen by the picture."""
         if item.tint_spread is None:
             # Pictures added before automatic styles: measure the thumbnail once.
             thumb = self.service.images.thumb_path(item)
@@ -550,7 +531,7 @@ class Player:
             base.layout.picture_crop = framing.picture
             base.layout.fit_crop = framing.fit
         polish = self.polish(item, settings)
-        if pres.fit in (Fit.DESCRIPTION, Fit.AUTO):  # AUTO may come out as DESCRIPTION
+        if pres.fit == Fit.DESCRIPTION:
             base.text = text_block_for(item, polish)
         base.caption = caption_for(item, polish) if pres.label else None
         return base
@@ -559,7 +540,7 @@ class Player:
 
     def _wants_text(self, item: Item, settings: FrameSettings) -> bool:
         pres = self.presentation(item, settings)
-        return pres.fit in (Fit.DESCRIPTION, Fit.AUTO) or pres.label
+        return pres.fit == Fit.DESCRIPTION or pres.label
 
     def polish(self, item: Item, settings: FrameSettings) -> PolishText | None:
         """The work's Polish texts when they are on and written already."""

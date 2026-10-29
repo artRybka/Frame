@@ -84,7 +84,10 @@ def test_photos_keep_their_own_fits() -> None:
     old = FrameSettings.model_validate({"photo": {"preset": "photo", "fit": "auto"}})
     assert old.photo.fit == Fit.FILL
     art = FrameSettings.model_validate({"art": {"fit": "multi"}})
-    assert art.art.fit == Fit.AUTO
+    assert art.art.fit == Fit.FIT
+    # Automatic framing is no longer offered; photos have no caption.
+    old = FrameSettings.model_validate({"art": {"fit": "auto"}, "photo": {"label": True}})
+    assert old.art.fit == Fit.FIT and not old.photo.label
     with pytest.raises(ValueError):
         Presentation(multi_count=9)
 

@@ -543,9 +543,6 @@ def test_auto_style_follows_the_picture(service) -> None:
     assert player.preset_for(colour, settings) == "graphic"
     assert player.preset_for(grey, settings) == "bw"
     assert player.render_settings(grey, settings).inks == PRESETS["bw"].inks
-    # Picked by hand: kept.
-    settings.art.preset = "painting"
-    assert player.preset_for(colour, settings) == "painting"
     # Pictures from before automatic styles are measured on first use.
     old = service.library.update(grey.id, tint_spread=None)
     assert old is not None and old.tint_spread is None
@@ -553,23 +550,17 @@ def test_auto_style_follows_the_picture(service) -> None:
     assert service.library.get(grey.id).tint_spread is not None
 
 
-def test_old_default_styles_become_automatic(service) -> None:
-    from frame_server.player import AUTO_STYLE_KEY, SETTINGS_KEY, Player
+def test_styles_are_always_automatic(service) -> None:
+    from frame_server.player import SETTINGS_KEY, Player
 
-    library = service.library
     raw = FrameSettings().model_dump(mode="json")
-    raw["art"]["preset"] = "painting"  # the old default
-    raw["photo"]["preset"] = "bw"  # picked by hand
-    library.set_state(SETTINGS_KEY, raw)
-    library.set_state(AUTO_STYLE_KEY, None)
-    player = Player(service)
-    assert player.settings.art.preset == "auto"
-    assert player.settings.photo.preset == "bw"
-    # Only once: choosing "painting" by hand later sticks.
-    settings = player.settings
-    settings.art.preset = "painting"
-    player.save_settings(settings)
-    assert Player(service).settings.art.preset == "painting"
+    raw["art"]["preset"] = "painting"  # picked by hand in older settings
+    raw["photo"]["preset"] = "bw"
+    service.library.set_state(SETTINGS_KEY, raw)
+    settings = Player(service).settings
+    assert settings.art.preset == "auto" and settings.photo.preset == "auto"
+    settings.art.preset = "painting"  # type: ignore[assignment]
+    assert settings.art.preset == "auto"
 
 
 async def test_work_added_to_the_queue_is_shown_next(service, monkeypatch) -> None:

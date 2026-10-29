@@ -858,15 +858,15 @@ struct PresentationSection: View {
         target == .art ? $settings.art : $settings.photo
     }
 
-    /// Off: one style picked by hand, starting from the usual one for the target.
-    private var autoStyle: Binding<Bool> {
+    private var isMulti: Bool { target == .photo && presentation.fit.wrappedValue == "multi" }
+
+    /// The passe-partout's width in millimetres on the panel, in 5 mm steps.
+    private var marginMillimetres: Binding<Double> {
         Binding(
-            get: { presentation.preset.wrappedValue == "auto" },
-            set: { presentation.preset.wrappedValue = $0 ? "auto" : (target == .photo ? "photo" : "painting") }
+            get: { (Panel.millimetres(presentation.margin.wrappedValue) / 5).rounded() * 5 },
+            set: { presentation.margin.wrappedValue = Panel.margin(mm: $0) }
         )
     }
-
-    private var isMulti: Bool { target == .photo && presentation.fit.wrappedValue == "multi" }
 
     private var matSwatches: some View {
         ForEach(MatSwatch.names, id: \.self) { name in
@@ -884,30 +884,19 @@ struct PresentationSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            SectionHeader(title: "Prezentacja", subtitle: "Jak obraz wygląda na ramce")
+            SectionHeader(title: "Prezentacja")
             Picker("Dla", selection: $target) {
                 ForEach(Target.allCases, id: \.self) { Text($0.rawValue).tag($0) }
             }
             .pickerStyle(.segmented)
-            Text(target == .art
-                ? "Dla playlist z dziełami z muzeów i własnymi pracami oraz dla Propozycji."
-                : "Dla albumów iCloud i zdjęć z rolki aparatu.")
-                .font(.caption)
-                .foregroundStyle(Theme.inkSoft)
             if let item = previewItem {
                 let portrait = settings.orientation == "portrait"
-                VStack(spacing: 10) {
-                    FramedArtwork(
-                        ref: .framePreview(item.id, settings: previewed ?? settings),
-                        aspectRatio: portrait ? 9.0 / 16.0 : 16.0 / 9.0,
-                        moulding: 5
-                    )
-                    .frame(maxWidth: portrait ? 190 : .infinity)
-                    Text("Tak wyglądałby obraz, który jest teraz na ramce. Po zapisaniu ramka pokaże nowy wygląd od następnego obrazu.")
-                        .font(.caption)
-                        .foregroundStyle(Theme.inkSoft)
-                        .multilineTextAlignment(.center)
-                }
+                FramedArtwork(
+                    ref: .framePreview(item.id, settings: previewed ?? settings),
+                    aspectRatio: portrait ? 9.0 / 16.0 : 16.0 / 9.0,
+                    moulding: 5
+                )
+                .frame(maxWidth: portrait ? 190 : .infinity)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 6)
                 .task(id: settings) {
@@ -926,18 +915,20 @@ struct PresentationSection: View {
                             ) {
                                 presentation.fit.wrappedValue = mode.fit
                                 if mode.fit == "fit", presentation.margin.wrappedValue == 0 {
-                                    presentation.margin.wrappedValue = 0.05
+                                    presentation.margin.wrappedValue = Panel.margin(mm: 20)
                                 }
-                                if mode.fit == "multi", presentation.margin.wrappedValue < 0.05 {
-                                    presentation.margin.wrappedValue = 0.07
+                                if mode.fit == "multi", presentation.margin.wrappedValue < Panel.margin(mm: 20) {
+                                    presentation.margin.wrappedValue = Panel.margin(mm: 30)
                                 }
                             }
                         }
                     }
-                    Text(FitOption.explanation(presentation.fit.wrappedValue, photo: target == .photo))
-                        .font(.caption)
-                        .foregroundStyle(Theme.inkSoft)
-                        .fixedSize(horizontal: false, vertical: true)
+                    if let explanation = FitOption.explanation(presentation.fit.wrappedValue, photo: target == .photo) {
+                        Text(explanation)
+                            .font(.caption)
+                            .foregroundStyle(Theme.inkSoft)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
                 if isMulti {
                     Divider()
@@ -960,37 +951,17 @@ struct PresentationSection: View {
                         HStack {
                             Text("Szerokość passe-partout")
                             Spacer()
-                            Text("\(Int((presentation.margin.wrappedValue * 100).rounded())) %")
+                            Text("\(Int(Panel.millimetres(presentation.margin.wrappedValue).rounded())) mm")
                                 .monospacedDigit()
                                 .foregroundStyle(Theme.inkSoft)
                         }
-                        Slider(value: presentation.margin, in: 0 ... 0.2, step: 0.01)
+                        Slider(value: marginMillimetres, in: 0 ... 80, step: 5)
                     }
                 }
-                if !isMulti {
+                if target == .art {
                     Divider()
                     Toggle("Podpis na ramce", isOn: presentation.label)
-                    Text(target == .art ? "Np. „Claude Monet — Lilie wodne, 1906”, drukiem na passe-partout; przy wypełnieniu na wąskim pasku u dołu."
-                                        : "Data i podpis zdjęcia na passe-partout albo na pasku u dołu.")
-                        .font(.caption)
-                        .foregroundStyle(Theme.inkSoft)
                 }
-                Divider()
-                Toggle("Styl obrazu automatycznie", isOn: autoStyle)
-                if !autoStyle.wrappedValue {
-                    HStack {
-                        Text("Styl obrazu")
-                        Spacer()
-                        Picker("Styl obrazu", selection: presentation.preset) {
-                            ForEach(Names.manualPresets, id: \.self) { Text(Names.preset($0)).tag($0) }
-                        }
-                        .labelsHidden()
-                    }
-                }
-                Text(Names.presetExplanation(presentation.preset.wrappedValue, photo: target == .photo))
-                    .font(.caption)
-                    .foregroundStyle(Theme.inkSoft)
-                    .fixedSize(horizontal: false, vertical: true)
             }
             .tint(Theme.accent)
         }
@@ -1007,7 +978,6 @@ struct FitOption: View {
 
     static let modes: [(fit: String, title: String)] = [
         ("fit", "Passe-partout"), ("fill", "Wypełnij"), ("description", "Opis"),
-        ("auto", "Auto"),
     ]
 
     /// Photos have their own framings (server: schedule.PHOTO_FITS).
@@ -1015,20 +985,19 @@ struct FitOption: View {
         ("fit", "Passe-partout"), ("fill", "Wypełnij"), ("multi", "Multi"),
     ]
 
-    static func explanation(_ fit: String, photo: Bool = false) -> String {
+    static func explanation(_ fit: String, photo: Bool = false) -> String? {
         if photo {
             switch fit {
             case "fit": return "Całe zdjęcie w okienku passe-partout. Kadr i proporcje okienka zmienisz w „Teraz”."
-            case "multi": return "Kilka zdjęć na jednej planszy, każde w swoim okienku passe-partout, przycięte do niego automatycznie."
-            case "fill": break
+            case "multi", "fill": return nil
             default: return "Wybierz jeden z trybów dla zdjęć."
             }
         }
         return switch fit {
-        case "fill": "Cały ekran; kadr sam ustawia się na tym, co najciekawsze (twarze, szczegóły). Poprawisz go w „Teraz”."
+        case "fill": nil
         case "description": "Obraz, obok jego detal w okienku passe-partout i krótki opis nadrukowany na passe-partout: tytuł, autor, data i kilka zdań o obrazie. Gdy proporcje obrazu są bliskie ramce, obraz jest mniejszy, żeby zmieściły się detal i opis. Kadr obrazu i detalu poprawisz w „Teraz”."
-        case "auto": "Wypełnienie, gdy proporcje pasują; passe-partout, gdy trochę się różnią; opis z detalem, gdy bardzo."
-        default: "Cały obraz w okienku passe-partout. Kadr i proporcje okienka zmienisz w „Teraz”."
+        case "fit": "Cały obraz w okienku passe-partout. Kadr i proporcje okienka zmienisz w „Teraz”."
+        default: "Wybierz jeden z trybów."
         }
     }
 
@@ -1077,8 +1046,6 @@ struct FitOption: View {
                 .padding(.vertical, 5)
                 .padding(.trailing, 5)
             }
-        case "auto":
-            Rectangle().fill(art).padding(.horizontal, 6)
         case "multi":
             HStack(spacing: 4) {
                 Rectangle().fill(art)

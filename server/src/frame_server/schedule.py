@@ -15,8 +15,10 @@ from .imaging.layout import Fit, Orientation
 class Presentation(BaseModel):
     model_config = ConfigDict(validate_assignment=True)
 
-    preset: str = "auto"  # library.style.AUTO: chosen per picture; else an imaging.PRESETS key
-    fit: Fit = Fit.AUTO  # fill, passe-partout or description, by the picture's proportions
+    # library.style.AUTO: chosen per picture. Always automatic now; a style
+    # picked by hand in older settings reads as automatic too.
+    preset: Literal["auto"] = "auto"
+    fit: Fit = Fit.FIT
     # picture, picture_dark: a light or a dark board in the picture's hue
     mat: Literal["white", "cream", "grey", "black", "picture", "picture_dark"] = "white"
     margin: float = Field(0.05, ge=0, le=0.3)
@@ -26,6 +28,11 @@ class Presentation(BaseModel):
     multi_count: int = Field(4, ge=MIN_PHOTOS, le=MAX_PHOTOS)
     multi_random: bool = False
     multi_grid: Literal["auto", "A", "B", "C"] = "auto"
+
+    @field_validator("preset", mode="before")
+    @classmethod
+    def _automatic(cls, value: Any) -> str:
+        return "auto"
 
 
 MAX_CHANGE_TIMES = 12
@@ -132,11 +139,14 @@ class FrameSettings(BaseModel):
 
     @model_validator(mode="after")
     def _own_fits(self) -> FrameSettings:
-        """Older settings: photos framed as pictures fill the screen."""
-        if self.photo.fit not in PHOTO_FITS:
-            self.photo = self.photo.model_copy(update={"fit": Fit.FILL})
-        if self.art.fit == Fit.MULTI:
-            self.art = self.art.model_copy(update={"fit": Fit.AUTO})
+        """Older settings: photos framed as pictures fill the screen, and
+        have no caption; pictures framed automatically (no longer offered)
+        or as photos get a passe-partout."""
+        if self.photo.fit not in PHOTO_FITS or self.photo.label:
+            fit = self.photo.fit if self.photo.fit in PHOTO_FITS else Fit.FILL
+            self.photo = self.photo.model_copy(update={"fit": fit, "label": False})
+        if self.art.fit in (Fit.AUTO, Fit.MULTI):
+            self.art = self.art.model_copy(update={"fit": Fit.FIT})
         return self
 
     def tz(self) -> ZoneInfo:

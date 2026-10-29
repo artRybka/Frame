@@ -114,12 +114,6 @@ struct MultiSettings: View {
                         }
                     }
                 }
-                Text(presentation.multiGrid == "auto"
-                     ? "Siatka dobierana do zdjęć: pionowe trafiają do pionowych okienek, poziome do poziomych."
-                     : "Zawsze ta siatka; każde zdjęcie przycinane do swojego okienka.")
-                    .font(.caption)
-                    .foregroundStyle(Theme.inkSoft)
-                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }
