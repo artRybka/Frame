@@ -209,6 +209,14 @@ async def dequeue(item_id: str, svc: Svc) -> PlayerView:
     return _player_view(svc)
 
 
+@router.post("/player/skip/{item_id}", response_model=PlayerView)
+async def skip(item_id: str, svc: Svc) -> PlayerView:
+    """The picture waiting in the queue ("Pomiń") is not shown this round."""
+    svc.player.skip(item_id)
+    svc.background(svc.player.render_ahead())
+    return _player_view(svc)
+
+
 @router.post("/player/hold", response_model=PlayerView)
 def hold(request: HoldRequest, svc: Svc) -> PlayerView:
     svc.player.set_hold(hold_from(request.hold))

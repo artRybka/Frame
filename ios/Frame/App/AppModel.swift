@@ -447,6 +447,18 @@ final class AppModel {
         } catch { show(error) }
     }
 
+    /// "Pomiń" on a picture waiting in the queue; false if it failed.
+    func skip(_ summary: ItemSummary) async -> Bool {
+        do {
+            player = try await backend.skip(itemID: summary.id)
+            toast = "Pominięto „\(summary.shownTitle)”"
+            return true
+        } catch {
+            show(error)
+            return false
+        }
+    }
+
     func play(_ playlist: PlaylistSummary) async {
         await perform { try await self.backend.play(playlistID: playlist.id) }
         settings?.playlistId = playlist.id

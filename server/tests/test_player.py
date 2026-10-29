@@ -608,6 +608,25 @@ async def test_presenting_a_playlist_shows_it_before_the_picks(service) -> None:
     assert (await player.next()).id == photo.id
 
 
+async def test_skipped_work_waits_for_the_rest_of_the_round(service) -> None:
+    for n in range(1, 5):
+        _add(service, n, (40 * n, 40, 200), "Ala")
+    player = service.player
+    await player.next()
+    ahead = [i.id for i in player.upcoming(8)]
+    assert len(ahead) == 3
+
+    player.skip(ahead[0])
+    assert [i.id for i in player.upcoming(8)] == [*ahead[1:], ahead[0]]
+    assert (await player.next()).id == ahead[1]
+
+    # A pick of the owner's is taken back.
+    player.queue_next(ahead[0])
+    player.skip(ahead[0])
+    assert player.state.requested == []
+    player.skip("nope:1")  # not queued: nothing happens
+
+
 async def test_queued_work_waits_while_its_original_is_unavailable(service) -> None:
     cached = _artwork(service, 1, cached=True)
     missing = _artwork(service, 2, cached=False)
@@ -649,7 +668,7 @@ def test_api_adds_a_work_to_the_queue(service) -> None:
 
     app = create_app(service.settings)
     svc = app.state.service
-    _, b = (_add(svc, n, (40 * n, 40, 200), "Ala") for n in range(1, 3))
+    a, b = (_add(svc, n, (40 * n, 40, 200), "Ala") for n in range(1, 3))
 
     with TestClient(app) as client:
         assert client.post(f"/api/library/items/{b.id}/queue").status_code == 202
@@ -660,6 +679,9 @@ def test_api_adds_a_work_to_the_queue(service) -> None:
 
         view = client.delete(f"/api/player/queue/{b.id}").json()
         assert view["queued"] == []
+        assert view["upcoming"][0]["id"] == a.id
+        view = client.post(f"/api/player/skip/{a.id}").json()
+        assert view["upcoming"][-1]["id"] == a.id
         assert client.post("/api/player/next").status_code == 202
 
 
