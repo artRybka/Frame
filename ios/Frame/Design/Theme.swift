@@ -99,9 +99,20 @@ enum ColorTag {
         "gray", "white",
     ]
     static let moods = ["warm", "cool", "vivid", "muted", "monochrome", "dark", "light"]
+    /// Tags of colours that are only an accent of a picture ("accent:red");
+    /// a picture has either a colour's own tag or its accent tag.
+    static let accentPrefix = "accent:"
+    static let accentFamilies = [
+        "red", "orange", "yellow", "green", "teal", "blue", "purple", "pink", "brown",
+    ]
+
+    static func accent(_ family: String) -> String { accentPrefix + family }
 
     static func name(_ tag: String) -> String {
-        switch tag {
+        if tag.hasPrefix(accentPrefix) {
+            return "Akcent: " + name(String(tag.dropFirst(accentPrefix.count))).lowercased()
+        }
+        return switch tag {
         case "red": "Czerwień"
         case "orange": "Pomarańcz"
         case "yellow": "Żółć"
@@ -126,7 +137,10 @@ enum ColorTag {
     }
 
     static func color(_ tag: String) -> Color {
-        switch tag {
+        if tag.hasPrefix(accentPrefix) {
+            return color(String(tag.dropFirst(accentPrefix.count)))
+        }
+        return switch tag {
         case "red": Color(hex: 0xB8432F)
         case "orange": Color(hex: 0xD9822B)
         case "yellow": Color(hex: 0xE3C04A)

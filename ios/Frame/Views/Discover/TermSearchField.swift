@@ -290,6 +290,19 @@ struct TermBrowser: View {
                         }
                     }
                 }
+                // Colours that are only a small part of a picture: "Akcent:
+                // czerwień" finds those, "Czerwień" above the red pictures.
+                VStack(alignment: .leading, spacing: 10) {
+                    Eyebrow("Akcenty")
+                    FlowLayout(spacing: 8) {
+                        ForEach(ColorTag.accentFamilies, id: \.self) { family in
+                            let tag = ColorTag.accent(family)
+                            Chip(title: ColorTag.name(family), swatch: ColorTag.color(family), selected: picked("color", tag)) {
+                                toggle("color", tag, ColorTag.name(tag))
+                            }
+                        }
+                    }
+                }
             }
         }
         .task { await model.loadVocabulary() }

@@ -474,7 +474,7 @@ THEMES: list[Theme] = [
         "W odcieniach błękitu",
         "Niebo, woda i indygo.",
         COLOUR,
-        colors=("blue",),
+        colors=("blue", "teal"),
     ),
     Theme(
         "warm",
