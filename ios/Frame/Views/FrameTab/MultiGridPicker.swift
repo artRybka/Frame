@@ -153,6 +153,7 @@ private struct GridOption: View {
                 .aspectRatio(1, contentMode: .fit)  // square, as the framing icons
                 .frame(height: 52)
                 .whiteFrame(3, corner: 1)
+                .selectionRing(selected)
                 Text(title)
                     .font(.caption2.weight(.medium))
                     .lineLimit(1)
@@ -160,9 +161,8 @@ private struct GridOption: View {
                     .foregroundStyle(Theme.ink)
             }
             .frame(maxWidth: .infinity)
-            .padding(6)
-            .background(selected ? Theme.accent.opacity(0.1) : .clear, in: RoundedRectangle(cornerRadius: 10))
-            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(selected ? Theme.accent : Theme.hairline, lineWidth: selected ? 2 : 1))
+            .padding(.vertical, 6)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(title)

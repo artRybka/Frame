@@ -1106,6 +1106,7 @@ struct FitOption: View {
                 .aspectRatio(1, contentMode: .fit)  // square: the same for portrait and landscape frames
                 .frame(height: 52)
                 .whiteFrame(3, corner: 1)
+                .selectionRing(selected)
                 Text(title)
                     .font(.caption2.weight(.medium))
                     .lineLimit(1)
@@ -1113,9 +1114,8 @@ struct FitOption: View {
                     .foregroundStyle(Theme.ink)
             }
             .frame(maxWidth: .infinity)
-            .padding(6)
-            .background(selected ? Theme.accent.opacity(0.1) : .clear, in: RoundedRectangle(cornerRadius: 10))
-            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(selected ? Theme.accent : Theme.hairline, lineWidth: selected ? 2 : 1))
+            .padding(.vertical, 6)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(title)
@@ -1156,6 +1156,17 @@ struct FitOption: View {
         default:
             Rectangle().fill(art).padding(10)
         }
+    }
+}
+
+extension View {
+    /// The chosen miniature: an accent outline a little off its frame, no tile around it.
+    func selectionRing(_ selected: Bool) -> some View {
+        overlay(
+            RoundedRectangle(cornerRadius: 3)
+                .strokeBorder(selected ? Theme.accent : .clear, lineWidth: 2)
+                .padding(-5)
+        )
     }
 }
 
