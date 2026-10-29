@@ -552,7 +552,9 @@ class MuseumSearch:
     @property
     def empty(self) -> bool:
         """Nothing asked: chosen museums show what they have, all of them
-        nothing."""
+        nothing; the owner's own works (favourites, playlists) none."""
+        if self.rules.asks_mine():
+            return True
         start, end = self.spec.year_from, self.spec.year_to
         return (
             not self.keys

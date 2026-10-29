@@ -82,7 +82,11 @@ struct PlaylistEditorView: View {
 
     /// Whether the museums are asked too: always for a manual playlist's
     /// search, for a smart one when its rules let them supply works.
-    private var asksMuseums: Bool { playlist.kind == .manual || fetchBlocker == nil }
+    private var asksMuseums: Bool {
+        // Favourites and playlists are the owner's: no museum has them.
+        guard !searched.wrappedValue.asksMine else { return false }
+        return playlist.kind == .manual || fetchBlocker == nil
+    }
 
     /// Museum works go first: a smart playlist fetching them.
     private var museumsFirst: Bool { playlist.kind == .smart && fetchCount > 0 && fetchBlocker == nil }
@@ -232,9 +236,9 @@ struct PlaylistEditorView: View {
         VStack(spacing: 4) {
             Group {
                 if playlist.kind == .manual {
-                    Text("Znajdź dzieła jak w Szukaj i dodaj każde przyciskiem \(Image(systemName: "plus")) przy nim. Muzea, style, tematy, epoki i kolory dodasz przyciskiem \(Image(systemName: "plus.circle.fill")) w polu wyszukiwania.")
+                    Text("Znajdź dzieła jak w Szukaj i dodaj każde przyciskiem \(Image(systemName: "plus")) przy nim. Techniki, epoki, style, kolory, tematy i muzea dodasz przyciskiem \(Image(systemName: "plus.circle.fill")) w polu wyszukiwania.")
                 } else {
-                    Text("Muzea, style, tematy, epoki, techniki i kolory dodasz przyciskiem \(Image(systemName: "plus.circle.fill")) w polu wyszukiwania. Te same rodzaje to alternatywy, różne muszą pasować razem.")
+                    Text("Techniki, epoki, style, kolory, tematy, muzea i swoje Ulubione dodasz przyciskiem \(Image(systemName: "plus.circle.fill")) w polu wyszukiwania. Te same rodzaje to alternatywy, różne muszą pasować razem.")
                 }
             }
                 .font(.footnote)
@@ -622,6 +626,7 @@ struct PlaylistEditorView: View {
     private var fetchBlocker: String? {
         let rules = playlist.rules
         if rules.favoritesOnly { return "Bierze dzieła z Ulubionych, z muzeów nie pobiera." }
+        if rules.asksMine { return "Ulubione i playlisty to Twoje dzieła, z muzeów nie pobiera." }
         if !rules.kinds.isEmpty, !rules.kinds.contains(.artwork) { return "Z muzeów przychodzą tylko dzieła sztuki." }
         let museums: Set<String> = ["aic", "cma", "met", "rijks", "wmc", "europeana", "openverse", "wikiart"]
         if !rules.sources.isEmpty, museums.isDisjoint(with: rules.sources) {

@@ -13,7 +13,7 @@ import sqlite3
 import threading
 import weakref
 from collections import Counter
-from collections.abc import Iterable, Iterator
+from collections.abc import Collection, Iterable, Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
@@ -22,6 +22,9 @@ from typing import Any, Literal
 from .colors import has_colours
 from .duplicates import Works, dedupe
 from .models import (
+    MINE,
+    MINE_FAVORITES,
+    MINE_PLAYLISTS,
     AlbumSync,
     Facets,
     FacetValue,
@@ -98,14 +101,23 @@ def _searches(rules: PlaylistRules) -> bool:
         or rules.artists
         or rules.styles
         or rules.subjects
-        or rules.terms
+        or any(t not in MINE for t in rules.terms)
         or rules.colors
         or rules.year_from is not None
         or rules.year_to is not None
     )
 
 
-def matches(item: Item, rules: PlaylistRules) -> bool:
+def _is_mine(item: Item, mine: list[str], listed: Collection[str]) -> bool:
+    """``item`` is one of the owner's works ``mine`` asks for (either)."""
+    return (MINE_FAVORITES in mine and item.favorite) or (
+        MINE_PLAYLISTS in mine and item.id in listed
+    )
+
+
+def matches(item: Item, rules: PlaylistRules, listed: Collection[str] = ()) -> bool:
+    """Whether ``item`` fits ``rules``; ``listed`` are the works on the
+    owner's playlists, for ``mine:playlists``."""
     if item.excluded or item.id in rules.exclude_ids:
         return False
     # Photographs, sculpture, crafts and manuscripts are found only when
@@ -114,6 +126,9 @@ def matches(item: Item, rules: PlaylistRules) -> bool:
     if category is not None and category not in rules.terms and _searches(rules):
         return False
     if rules.favorites_only and not item.favorite:
+        return False
+    mine = [t for t in rules.terms if t in MINE]
+    if mine and not _is_mine(item, mine, listed):
         return False
     if rules.kept_only and item.pooled and not item.favorite:
         return False
@@ -342,6 +357,7 @@ class Library:
         rules = rules or PlaylistRules()
         # Spare copies of a work stay out, unless a source is asked for.
         spare = set() if include_excluded or rules.sources else self.spare_copies()
+        listed = self.listed() if MINE_PLAYLISTS in rules.terms else set()
 
         # Photographs and pages of manuscripts the server picked only when
         # asked for (photographs never).
@@ -351,8 +367,8 @@ class Library:
             if not include_excluded and item.pooled and set_aside(item, rules.terms):
                 return False
             if include_excluded and item.excluded:
-                return matches(item.model_copy(update={"excluded": False}), rules)
-            return matches(item, rules)
+                return matches(item.model_copy(update={"excluded": False}), rules, listed)
+            return matches(item, rules, listed)
 
         items = [i for i in self._all().values() if selected(i)]
         if not include_excluded:
@@ -417,6 +433,17 @@ class Library:
         with self._db() as db:
             cur = db.execute("DELETE FROM playlists WHERE id = ?", (playlist_id,))
         return cur.rowcount > 0
+
+    def listed(self) -> set[str]:
+        """The works on the owner's playlists but "Ulubione" (which has its
+        own term), smart ones that ask for these themselves left out."""
+        ids: set[str] = set()
+        for playlist in self.playlists():
+            smart = playlist.kind == PlaylistKind.SMART
+            if playlist.is_favorites or (smart and MINE_PLAYLISTS in playlist.rules.terms):
+                continue
+            ids.update(i.id for i in self.playlist_items(playlist))
+        return ids
 
     def playlist_items(self, playlist: Playlist, sort: SortKey = "recent") -> list[Item]:
         if playlist.kind != PlaylistKind.SMART:

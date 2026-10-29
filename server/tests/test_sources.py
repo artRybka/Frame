@@ -325,6 +325,12 @@ def test_one_source_alone_shows_what_it_has(service, monkeypatch) -> None:
         assert [r["item"]["id"] for r in found["items"]] == ["openverse:w1"]
         assert asked == [Discovery()]
         assert client.get("/api/discover/search").json()["total"] == 0  # all: nothing asked
+        # The owner's own works: no museum has them, not even a chosen one.
+        mine = {"source": "openverse", "term": "mine:favorites"}
+        assert client.get("/api/discover/search", params=mine).json()["total"] == 0
+        assert len(asked) == 1
+        fill = {"rules": {"terms": ["mine:playlists"]}, "count": 10}
+        assert client.post("/api/library/fill", json=fill).status_code == 422
 
 
 def test_search_asks_the_chosen_museums_and_judges_colours(service, monkeypatch) -> None:

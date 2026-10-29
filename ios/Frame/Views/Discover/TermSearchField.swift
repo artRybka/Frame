@@ -88,7 +88,9 @@ struct TermSearchField: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel(
-                museums.isEmpty ? "Dodaj styl, temat, epokę albo technikę" : "Dodaj muzeum, kolor, styl, temat, epokę albo technikę"
+                museums.isEmpty
+                    ? "Dodaj technikę, epokę, styl, temat albo swoje dzieła"
+                    : "Dodaj technikę, epokę, styl, kolor, temat, muzeum albo swoje dzieła"
             )
             if !text.isEmpty || !tokens.isEmpty {
                 Button {
@@ -228,9 +230,9 @@ struct TermSearchField: View {
     }
 }
 
-/// Styles, subjects, periods and techniques to tap, in sections (and
-/// museums and colours when given); what is picked shows selected and a
-/// second tap takes it off.
+/// Techniques, periods, styles, (colours and accents,) subjects, (museums)
+/// and the owner's own works to tap, in sections; what is picked shows
+/// selected and a second tap takes it off.
 struct TermBrowser: View {
     @Environment(AppModel.self) private var model
     @Binding var tokens: [SearchToken]
@@ -263,22 +265,9 @@ struct TermBrowser: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
-            if !museums.isEmpty {
-                VStack(alignment: .leading, spacing: 10) {
-                    Eyebrow("Muzea")
-                    FlowLayout(spacing: 8) {
-                        ForEach(museums) { museum in
-                            Chip(title: museum.name, systemImage: "building.columns", selected: picked("museum", museum.key)) {
-                                toggle("museum", museum.key, museum.name)
-                            }
-                        }
-                    }
-                }
-            }
-            section("Style i kierunki", terms("style"))
-            section("Tematy", terms("subject"))
-            periods
             section("Techniki", terms("technique"))
+            periods
+            section("Style i kierunki", terms("style"))
             if !colors.isEmpty {
                 VStack(alignment: .leading, spacing: 10) {
                     Eyebrow("Kolory")
@@ -300,6 +289,30 @@ struct TermBrowser: View {
                             Chip(title: ColorTag.name(family), swatch: ColorTag.color(family), selected: picked("color", tag)) {
                                 toggle("color", tag, ColorTag.name(tag))
                             }
+                        }
+                    }
+                }
+            }
+            section("Tematy", terms("subject"))
+            if !museums.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    Eyebrow("Muzea")
+                    FlowLayout(spacing: 8) {
+                        ForEach(museums) { museum in
+                            Chip(title: museum.name, systemImage: "building.columns", selected: picked("museum", museum.key)) {
+                                toggle("museum", museum.key, museum.name)
+                            }
+                        }
+                    }
+                }
+            }
+            // The owner's own works: with a heart, or on any other playlist.
+            VStack(alignment: .leading, spacing: 10) {
+                Eyebrow("Moje")
+                FlowLayout(spacing: 8) {
+                    ForEach(MineTerm.all) { mine in
+                        Chip(title: mine.name, systemImage: mine.icon, selected: picked("mine", mine.key)) {
+                            toggle("mine", mine.key, mine.name)
                         }
                     }
                 }
@@ -361,6 +374,8 @@ struct TermPickerSheet: View {
     @Binding var tokens: [SearchToken]
     var museums: [Museum] = []
     var colors: [String] = []
+    /// Half the screen; all of it for CI's screenshot of every section.
+    @State private var detent: PresentationDetent = LaunchRoute.screen == "search-picker" ? .large : .medium
 
     var body: some View {
         NavigationStack {
@@ -386,6 +401,6 @@ struct TermPickerSheet: View {
                 }
             }
         }
-        .presentationDetents([.medium, .large])
+        .presentationDetents([.medium, .large], selection: $detent)
     }
 }
