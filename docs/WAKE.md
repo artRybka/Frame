@@ -592,6 +592,18 @@ przez aplikację (`goToSleep`) z czuwaniem sieci trzyma Wi-Fi i WoL go budzi
   a serwer od razu prowadzi pasek postępu (pobieranie, potem odświeżanie).
   Aplikacja iOS, dopóki obraz czeka, co 8 s odświeża „Teraz” i stan ramki,
   więc „Czeka na ramkę” znika sam, a pasek pokazuje wysyłkę.
+- **Zapasowe budziki na zasilaczu (pomysł Mateusza, tylko w trybie Online).**
+  Na zasilaczu aplikacja przy każdym pytaniu dostaje w `stay` dwa najbliższe
+  pełne półgodzinne budziki co najmniej 5 minut naprzód (`wake_ms`,
+  `wakes_ms`) i ustawia każdy raz. Po odpięciu ramka sama wstaje przy
+  najbliższym (najpóźniej po ~35 minutach), serwer po minucie uruchamia
+  aplikację przez MDC (dla ramki z `wifi_lost` każdy budzik się liczy), a ta
+  zasypia już zwyczajnie, w sieci, więc WoL znów działa. Serwer pamięta te
+  budziki (`spare`), więc kafelki i „Teraz” podają godzinę pobudki. Budzików
+  nie da się odwołać: pozostałe zadzwonią jeszcze raz w lekkim śnie (jedna
+  krótka pobudka więcej). W trybie Oszczędnym zapasowych budzików nie ma, bo
+  sen bez Wi-Fi jest tam celem. *(Do sprawdzenia na ramce: czy budzik
+  dzwoniący na zasilaczu niczego nie psuje i czy budzi ramkę po odpięciu.)*
 
 **„Uruchom ponownie” (2026-10-29).** W menu „Zasilanie”: `POST
 /api/device/restart`. Aplikacja przy najbliższym pytaniu dostaje `reboot`

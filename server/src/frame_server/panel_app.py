@@ -133,6 +133,17 @@ CERTIFICATES_WARN = timedelta(days=60)
 ICON = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNgYGAAAAAEAAH2FzhVAAAAAElFTkSuQmCC"
 )
+# Unplugged, the panel sleeps at once without the Wi-Fi and without a word to
+# the app (E8, 2026-10-29): nothing but the button would wake it. So on the
+# charger the app keeps spare alarms (in the online mode: in the economy one
+# sleeping without the Wi-Fi is the point) at every half hour (at least
+# ``SPARE_LEAD`` ahead, an alarm due as the panel goes down being lost, E16):
+# unplugged, the next one wakes it, the server starts the app, and from then
+# on it sleeps the usual way. Alarms cannot be cancelled: the ones left ring
+# once more after the app went back to sleep, which costs a wake each.
+SPARE_EVERY = timedelta(minutes=30)
+SPARE_LEAD = timedelta(minutes=5)
+SPARE_ALARMS = 2
 # A full-colour (passthrough) picture goes to the app as a JPEG (4:4:4): ~1 MB
 # instead of 3-4 MB of PNG over the panel's weak Wi-Fi (60-215 KB/s), and
 # the loss does not show (E16). A dithered one, a handful of inks, stays the
@@ -172,6 +183,8 @@ class AppState(BaseModel):
     rested_at: str | None = None  # put to sleep for it (None: not yet)
     # Alarms set before the rest, still to ring (they cannot be cancelled).
     stray: list[str] = []
+    # Spare alarms set on the charger (ISO), for a frame unplugged.
+    spare: list[str] = []
 
 
 class AppHello(BaseModel):
@@ -494,7 +507,12 @@ class PanelApp:
         awake = self.awake_until is not None and now < self.awake_until
         charger = service.status.status.power_source == "ac"
         if not self.sleep_requested and (awake or charger):
-            return self._awake(NextAnswer(action="stay", wait_s=_s(POLL), **common))
+            answer = NextAnswer(action="stay", wait_s=_s(POLL), **common)
+            if charger and service.player.settings.power_mode == "online":
+                spare = self._spare(now)
+                answer.wake_ms = _ms(spare[0])
+                answer.wakes_ms = [_ms(a) for a in spare[1:]]
+            return self._awake(answer)
         wake = self.next_wake(now)
         if wake - now < MIN_SLEEP:
             # Too close to sleep for: stay up for it.
@@ -855,7 +873,7 @@ class PanelApp:
                 self._silent_kicks += 1
                 log.info("the frame's app has been silent since %s", state.seen_at)
                 if not await self._kick():
-                    await self._fell_asleep()
+                    await self._fell_asleep(now)
             return
         if self._button_look_due(now):
             # Up although nothing rang: the button. Started, the app asks (a
@@ -885,7 +903,9 @@ class PanelApp:
         power = self.service.power
         new = content is not None and content.file_id != state.shown
         news = new or power.state.pending_push or power.change_due(now)
-        return wake if news or self.mode_pending() is not None or self.rest_pending() else None
+        if news or self.mode_pending() is not None or self.rest_pending() or state.wifi_lost:
+            return wake  # asleep without the Wi-Fi by itself: back to the usual sleep
+        return None
 
     def _button_look_due(self, now: datetime) -> bool:
         """Asleep with the Wi-Fi off (a rest, the economy mode, quiet hours,
@@ -908,7 +928,7 @@ class PanelApp:
             return False
         return self._looked is None or now - self._looked >= BUTTON_LOOK_EVERY
 
-    async def _fell_asleep(self) -> None:
+    async def _fell_asleep(self, now: datetime) -> None:
         """Not told to sleep, silent, and the panel does not answer MDC: it
         went to sleep by itself, with no alarm of ours. Most likely it was
         unplugged: the panel sleeps at once then and leaves the Wi-Fi,
@@ -926,8 +946,8 @@ class PanelApp:
         state.asleep = True
         state.standby = wifi
         state.wifi_lost = not wifi
-        state.wake_at = None
-        state.wakes = []
+        state.wakes = self._spare_left(state, now)
+        state.wake_at = state.wakes[0] if state.wakes else None
         state.slept_at = None  # down already: the panel did not answer
         self._save(state)
         status.note_fell_asleep(on_network, unplugged=unplugged, wifi=wifi)
@@ -935,6 +955,26 @@ class PanelApp:
             "the frame's app fell silent and the panel does not answer: asleep by itself, %s",
             "in the network" if wifi else "without the Wi-Fi (only the button wakes it)",
         )
+
+    def _spare(self, now: datetime) -> list[datetime]:
+        """The spare alarms the app on the charger keeps set (it sets each
+        only once): the next ``SPARE_ALARMS`` half hours at least
+        ``SPARE_LEAD`` ahead. Noted as set, the future ones only."""
+        step = SPARE_EVERY.total_seconds()
+        first = (now + SPARE_LEAD).timestamp() // step * step + step
+        alarms = [datetime.fromtimestamp(first + i * step, UTC) for i in range(SPARE_ALARMS)]
+        state = self.state
+        kept = {a for a in state.spare if datetime.fromisoformat(a) > now}
+        spare = sorted(kept | {a.isoformat(timespec="seconds") for a in alarms})
+        if spare != state.spare:
+            state.spare = spare
+            self._save(state)
+        return alarms
+
+    @staticmethod
+    def _spare_left(state: AppState, now: datetime) -> list[str]:
+        """The spare alarms still to ring: what wakes a frame unplugged."""
+        return [a for a in state.spare if datetime.fromisoformat(a) > now]
 
     def lost_wifi(self, now: datetime) -> bool:
         """A look found the panel off the Wi-Fi (no ARP answer): an app taken
@@ -945,8 +985,8 @@ class PanelApp:
         if not state.active or self.awake(now) or (state.asleep and not state.standby):
             return False
         if not state.asleep:
-            state.wake_at = None
-            state.wakes = []
+            state.wakes = self._spare_left(state, now)
+            state.wake_at = state.wakes[0] if state.wakes else None
         state.asleep = True
         state.standby = False
         state.wifi_lost = True

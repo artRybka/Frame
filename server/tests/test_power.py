@@ -197,7 +197,8 @@ async def test_a_panel_asleep_by_itself(
     await service.power.tick(now + timedelta(minutes=2))
     assert not app.asleep()
     await service.power.tick(now + timedelta(minutes=4))
-    assert app.asleep() and app.wakes_at() is None
+    # The spare alarms the app keeps on the charger (online mode) wake it.
+    assert app.asleep() and app.wakes_at(now + timedelta(minutes=4)) == _at("2026-10-29T10:30")
     wifi = power_state == "standby"
     assert app.deep_asleep() is not wifi and app.state.wifi_lost is not wifi
     status = service.status.status

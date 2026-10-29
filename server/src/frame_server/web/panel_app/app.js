@@ -247,6 +247,9 @@
       }
     }
     if (answer.action === "reboot") return reboot();
+    // On the charger: spare alarms, so that unplugged (it sleeps at once,
+    // without the Wi-Fi) the frame wakes by itself (panel_app.py).
+    if (answer.action === "stay" && ep && answer.wake_ms) spare([answer.wake_ms].concat(answer.wakes_ms || []));
     draw(answer, function () {
       if (answer.action === "wait" || answer.action === "stay") {
         waits = answer.action === "wait" ? waits + 1 : 0;
@@ -370,6 +373,15 @@
       saved("alarms", armed);
     }
     return result;
+  }
+
+  function spare(times) {
+    var set = [];
+    times.forEach(function (ms) {
+      var a = arm(ms);
+      if (a.value !== "already set") set.push(a.ok ? new Date(ms).toTimeString().slice(0, 5) : a.error);
+    });
+    if (set.length) report("alarm", { spare: set });
   }
 
   // A newer package is on the server: the launcher installs it as the panel
