@@ -619,7 +619,7 @@ struct ScheduleSection: View {
                     TogglePill(title: album.order.title, systemImage: "photo.stack", isOn: .constant(false))
                         .disabled(true)
                 } else {
-                    TogglePill(title: "Losowa kolejność", systemImage: "shuffle", isOn: $settings.shuffle)
+                    TogglePill(title: "Losowo", systemImage: "shuffle", isOn: $settings.shuffle)
                 }
                 if settings.isEconomy {
                     // Economy has its own quiet hours, for the checks only.
