@@ -716,16 +716,24 @@ struct ScheduleSection: View {
     /// Economy: the night without checks, from–to; the changes still wake the frame.
     @ViewBuilder private var checkQuietHours: some View {
         if hasChecks, settings.checkQuietEnd != nil, settings.checkQuietStart != nil {
-            HStack(spacing: 8) {
-                Text("Cisza nocna od").foregroundStyle(Theme.inkSoft)
-                DatePicker("Od", selection: time(\.checkQuietStart, fallback: "22:00"), displayedComponents: .hourAndMinute)
-                    .labelsHidden()
-                Text("do").foregroundStyle(Theme.inkSoft)
-                DatePicker("do", selection: time(\.checkQuietEnd, fallback: "07:00"), displayedComponents: .hourAndMinute)
-                    .labelsHidden()
-                Spacer(minLength: 0)
+            // Two times in a row: "Od" alone when 12-hour times leave no room.
+            ViewThatFits(in: .horizontal) {
+                checkQuietRow("Cisza nocna od")
+                checkQuietRow("Od")
             }
             .font(.subheadline)
+        }
+    }
+
+    private func checkQuietRow(_ label: String) -> some View {
+        HStack(spacing: 8) {
+            Text(label).foregroundStyle(Theme.inkSoft).fixedSize()
+            DatePicker("Od", selection: time(\.checkQuietStart, fallback: "22:00"), displayedComponents: .hourAndMinute)
+                .labelsHidden()
+            Text("do").foregroundStyle(Theme.inkSoft).fixedSize()
+            DatePicker("do", selection: time(\.checkQuietEnd, fallback: "07:00"), displayedComponents: .hourAndMinute)
+                .labelsHidden()
+            Spacer(minLength: 0)
         }
     }
 
