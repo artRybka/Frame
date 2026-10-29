@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.32.0
+
+- Ramka, która zasnęła sama (np. po odłączeniu zasilacza), nie jest już brana
+  za obudzoną: obudzona jest tylko aplikacja, która odezwała się w ciągu 90 s.
+  „Obudź ramkę” i wysyłka obrazu budzą milczącą ramkę WoL zamiast od razu
+  meldować „Ramka się obudziła”; gdy ramka odpowiada przez MDC, a aplikacja
+  milczy, serwer uruchamia ją `0xC7 81 01`. Milcząca ramka bez MDC to sen
+  w sieci, odczyt „zasilacz” zmienia się na „bateria”.
+- Menu „Zasilanie”: „Uruchom ponownie” (`POST /api/device/restart`):
+  aplikacja przy najbliższym pytaniu restartuje ramkę (`rebootDevice`),
+  śpiącą w sieci serwer najpierw budzi, po starcie uruchamia aplikację przez
+  MDC. Paczka aplikacji ramki bez zmian.
+
 ## 0.31.0
 
 - Zakładka Ramka: siłę sygnału pokazują łuki ikonki Wi-Fi (żółte przy słabym

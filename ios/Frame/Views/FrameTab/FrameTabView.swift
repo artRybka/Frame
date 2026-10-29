@@ -440,6 +440,9 @@ struct FrameTabView: View {
                 } label: {
                     Label("Głęboki sen", systemImage: "moon.stars")
                 }
+                Button("Uruchom ponownie", systemImage: "arrow.clockwise.circle") {
+                    Task { await model.restartFrame() }
+                }
                 Divider()
                 Button("Wyłącz ramkę", systemImage: "power", role: .destructive) { confirmingOff = true }
             } label: {

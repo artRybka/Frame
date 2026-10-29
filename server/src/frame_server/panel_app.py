@@ -55,7 +55,7 @@ from zoneinfo import ZoneInfo
 from PIL import Image
 from pydantic import BaseModel
 
-from .device import MdcError
+from .device import MdcConnectionError, MdcError
 from .device.mdc import CONTENT_SOURCE_CUSTOM
 from .panel_package import CertificateInfo, Certificates, sign_package
 from .progress import Stage
@@ -119,6 +119,11 @@ NUDGE_EVERY = timedelta(minutes=5)
 # most likely asleep (unplugged: it sleeps at once, E8).
 SILENT_AFTER = timedelta(minutes=3)
 SILENT_KICKS = 3
+# Awake, the app is heard from at least this often: a question every 20 s on
+# the charger, a minute at most while it waits, progress reports during a
+# long download. Silent longer it may well be asleep after all (unplugged,
+# the panel sleeps at once, E8), so "Obudź ramkę" and a picture wake it.
+HEARD_EVERY = timedelta(seconds=90)
 # Server-built packages count from here, above the ones signed by hand (1.x).
 FIRST_BUILD = (2, 0, 0)
 # Warn in the iOS app this long before the certificates expire.
@@ -228,8 +233,11 @@ class PanelApp:
         self.service = service
         self.dir: Path = service.settings.data_dir / "panel-app"
         self.contact = asyncio.Event()  # set at every question of the app
+        self.contacts = 0  # questions so far, to wait for the next one
+        self.heard_at: datetime | None = None  # the last question or report
         self.awake_until: datetime | None = None
         self.sleep_requested = False
+        self.restart_requested = False
         self._kicked: datetime | None = None
         self._nudged: datetime | None = None
         self._looked: datetime | None = None  # for the button in a rest
@@ -257,6 +265,15 @@ class PanelApp:
     def asleep(self) -> bool:
         state = self.state
         return state.active and state.asleep
+
+    def awake(self, now: datetime | None = None) -> bool:
+        """Running and heard from lately: it asks again within seconds. Not
+        told to sleep but silent longer than ``HEARD_EVERY`` does not count."""
+        state = self.state
+        if not state.active or state.asleep:
+            return False
+        heard = self.heard_at or (datetime.fromisoformat(state.seen_at) if state.seen_at else None)
+        return heard is not None and (now or datetime.now(UTC)) - heard < HEARD_EVERY
 
     def wakes_at(self, now: datetime | None = None) -> datetime | None:
         """When the sleeping app's alarm wakes it next (the last one once
@@ -442,6 +459,9 @@ class PanelApp:
             }
         if self._resting(now):
             return self._rest(now, common)
+        if self.restart_requested:
+            self.restart_requested = False
+            return self._reboot(None, now, common)
         package = self.package()
         newer = package is not None and hello.build and hello.build != package.version
         if newer and package is not None and self.state.reboot_for != package.version:
@@ -571,20 +591,25 @@ class PanelApp:
             alarms.append(check if check is not None and check < change else change)
         return [a for a in alarms if a - now <= MAX_AHEAD]
 
-    def _reboot(self, version: str, now: datetime, common: dict[str, object]) -> NextAnswer:
-        """A newer package is on the server: the app reboots the panel
-        (``webapis.systemcontrol.rebootDevice``), the launcher installs it
-        at the cold boot but does not start it, so ``tick`` does over MDC
+    def _reboot(self, version: str | None, now: datetime, common: dict[str, object]) -> NextAnswer:
+        """The app reboots the panel (``webapis.systemcontrol.rebootDevice``):
+        for a newer package (``version``), which the launcher installs at the
+        cold boot, or for "Uruchom ponownie" from the iOS app (None). The
+        launcher does not start the app after it, so ``tick`` does over MDC
         (E16, tested 2026-10-28). Once per version, so a package that does
         not install cannot keep the panel rebooting."""
         state = self.state
-        state.reboot_for = version
+        if version is not None:
+            state.reboot_for = version
         state.asleep = True
         state.wake_at = now.isoformat(timespec="seconds")  # back in a minute
         state.wakes = []
         state.shown = None  # the boot and the install draw over it
         self._save(state)
-        log.info("panel app %s reboots to install %s", state.build, version)
+        if version is None:
+            log.info("panel app %s reboots the panel, as asked from the app", state.build)
+        else:
+            log.info("panel app %s reboots to install %s", state.build, version)
         return NextAnswer(action="reboot", **common)
 
     def _awake(self, answer: NextAnswer) -> NextAnswer:
@@ -618,13 +643,17 @@ class PanelApp:
         state.missed_wake = None
         self._save(state)
         self._silent_kicks = 0
+        self.heard_at = now
         self.service.status.note_app(now, hello.battery, hello.charging)
+        self.contacts += 1
         self.contact.set()
         self.contact = asyncio.Event()
 
     def report(self, event: str, data: dict[str, object]) -> None:
         """What the app did: drew a picture, set its alarm, fell asleep, failed."""
         text = json.dumps(data, ensure_ascii=False)[:600]
+        if event != "sleep":
+            self.heard_at = datetime.now(UTC)
         if event == "error":
             log.warning("panel app: %s", text)
         else:
@@ -718,16 +747,36 @@ class PanelApp:
         settings = self.service.player.settings
         return settings.power_mode == "economy" or in_quiet_hours(now, settings)
 
-    async def wait_for_contact(self, timeout: float) -> bool:
+    async def wait_for_contact(self, timeout: float, since: int | None = None) -> bool:
+        """Whether the app asks within ``timeout``; with ``since`` (a count
+        of ``contacts``) a question already asked after it counts too."""
+        if since is not None and self.contacts > since:
+            return True
         try:
             await asyncio.wait_for(self.contact.wait(), timeout)
         except TimeoutError:
             return False
         return True
 
+    async def panel_answers(self) -> bool:
+        """Whether the panel is up: it accepts an MDC session (asleep it
+        does not)."""
+        try:
+            async with self.service.panel.session():
+                return True
+        except MdcConnectionError:
+            return False
+        except MdcError:
+            return True  # it answered, and something else went wrong
+
     def keep_awake(self, now: datetime) -> None:
         self.end_rest("woken from the app")
         self.awake_until = now + KEEP_AWAKE
+        self.sleep_requested = False
+
+    def request_restart(self) -> None:
+        """ "Uruchom ponownie": the app reboots the panel at its next question."""
+        self.restart_requested = True
         self.sleep_requested = False
 
     def request_sleep(self) -> None:
@@ -744,6 +793,8 @@ class PanelApp:
         heard of for long."""
         state = self.state
         seen = datetime.fromisoformat(state.seen_at) if state.seen_at else None
+        if self.heard_at is not None and (seen is None or self.heard_at > seen):
+            seen = self.heard_at  # a long download: it reports, not asks
         silent = seen is None or now - seen >= SILENT_AFTER
         if self.wakes_at(now) != self._next_alarm:
             # An alarm rang and the panel went back to sleep: show the next.
@@ -775,7 +826,8 @@ class PanelApp:
                 self._kicked = now
                 self._silent_kicks += 1
                 log.info("the frame's app has been silent since %s", state.seen_at)
-                await self._kick()
+                if not await self._kick():
+                    self._fell_asleep()
             return
         if self._button_look_due(now):
             # Up although nothing rang: the button. Started, the app asks and
@@ -824,11 +876,30 @@ class PanelApp:
             return False
         return self._looked is None or now - self._looked >= BUTTON_LOOK_EVERY
 
-    async def _kick(self, quiet: bool = False) -> None:
+    def _fell_asleep(self) -> None:
+        """Not told to sleep, silent, and the panel does not answer MDC: it
+        went to sleep by itself, most likely unplugged (the panel sleeps at
+        once then, E8; on the charger the app never sleeps). Taken as asleep
+        with the Wi-Fi on (the app keeps network standby on while awake),
+        with no alarm of ours: a picture and "Obudź ramkę" send Wake-on-LAN
+        again instead of waiting for an app that does not ask."""
+        state = self.state
+        state.asleep = True
+        state.standby = True
+        state.wake_at = None
+        state.wakes = []
+        self._save(state)
+        status = self.service.status
+        if status.status.power_source == "ac":
+            status.note_unplugged()
+        log.warning("the frame's app fell silent and the panel does not answer: asleep by itself")
+
+    async def _kick(self, quiet: bool = False, why: str = "was silent") -> bool:
         """Start the app (or restart a hung one): selecting the Custom source
         again starts it. The launcher's address is set again first, so a
         panel left pointing elsewhere (a test server) comes back to ours.
-        ``quiet``: only looking whether the panel is up (a rest)."""
+        ``quiet``: only looking whether the panel is up (a rest). Whether the
+        panel answered."""
         try:
             async with self.service.panel.session() as mdc:
                 await mdc.set_custom_app_url(self.app_url())
@@ -836,10 +907,13 @@ class PanelApp:
         except MdcError as err:
             if not quiet:
                 log.info("could not start the frame's app: %s", err)
-            return
-        log.info(
-            "the frame's app %s: started it over MDC", "woke resting" if quiet else "was silent"
-        )
+            return not isinstance(err, MdcConnectionError)
+        log.info("the frame's app %s: started it over MDC", "woke resting" if quiet else why)
+        return True
+
+    async def start(self, why: str) -> bool:
+        """Start (or restart) the app over MDC, if the panel answers."""
+        return await self._kick(why=why)
 
     async def _nudge(self) -> None:
         """The panel does not run the app: install and start it, if the

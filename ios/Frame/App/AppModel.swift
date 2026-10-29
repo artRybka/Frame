@@ -694,7 +694,9 @@ final class AppModel {
         do {
             let result = try await backend.wake(sleepAfter: sleepAfter)
             if result.woke == true {
-                toast = "Ramka się obudziła"
+                toast = result.started == true
+                    ? "Ramka się obudziła, aplikacja na niej wystartowała od nowa"
+                    : "Ramka się obudziła"
             } else if result.problem == "no_certificates" {
                 toast = Delivery.noCertificates
             } else if result.asleepUntil != nil {
@@ -758,6 +760,28 @@ final class AppModel {
             ? "Ramka zaśnie za kilka sekund. Na zasilaczu obudzi się na najbliższą zmianę i znów nie będzie spać"
             : "Ramka zaśnie za kilka sekund"
         await refreshStatus(live: false)
+    }
+
+    /// "Uruchom ponownie": the frame reboots and shows its picture again.
+    func restartFrame() async {
+        toast = "Uruchamiam ramkę ponownie…"
+        do {
+            let result = try await backend.restart()
+            if result.woke == true {
+                toast = "Ramka uruchamia się ponownie. Za 2–3 minuty znów pokaże obraz"
+            } else if result.problem == "no_certificates" {
+                toast = Delivery.noCertificates
+            } else if result.asleepUntil != nil {
+                toast = Self.deepSleepNote(result.asleepUntilAt ?? status?.device.wakeAt)
+            } else if !result.sent, status?.device.switchedOff == true {
+                toast = Self.deepSleepNote(nil, off: true)
+            } else {
+                toast = "Ramka nie odpowiada. Naciśnij krótko przycisk z tyłu ramki i spróbuj jeszcze raz"
+            }
+            await refreshStatus(live: false)
+        } catch {
+            show(error)
+        }
     }
 
     /// "Głęboki sen" for `hours`, or "Wyłącz ramkę" (`hours` nil).
