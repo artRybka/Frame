@@ -27,6 +27,7 @@ from .library import AlbumOrder, Item, ItemKind, Job, Note, Playlist, PlaylistKi
 from .library.colors import SCORE_VERSION, analyse, tint_spread
 from .library.icloud import refetchable
 from .library.museums import MUSEUMS, Kind
+from .library.nationality import life_years, note_years
 from .library.style import AUTO, auto_preset
 from .library.themes import SEARCHABLE, theme_of_the_day
 from .library.vocabulary import set_aside
@@ -148,16 +149,16 @@ def text_block_for(item: Item, polish: PolishText | None = None) -> TextBlock:
         when = item.date_text or (info.taken_at[:10] if info and info.taken_at else "")
         who = info.contributor if info and info.contributor else ""
         return TextBlock(title=title, meta=[m for m in (when, who) if m])
+    # The author alone, then date · medium; a work the museum gives no date
+    # for (not even "ca. 1660") shows its author's life years instead.
+    life = life_years(item.artist_bio) if item.artist_bio else ""
     if polish is not None:
-        who = item.artist
-        if who and polish.artist_note:
-            who = f"{who}, {polish.artist_note}"
-        when, medium = polish.date or item.date_text, polish.medium or item.medium
-        detail = " · ".join(p for p in (when, medium) if p)
+        when = polish.date or item.date_text or note_years(polish.artist_note) or life
+        detail = " · ".join(p for p in (when, polish.medium or item.medium) if p)
         return TextBlock(
-            title=polish.title, meta=[m for m in (who, detail) if m], body=polish.frame
+            title=polish.title, meta=[m for m in (item.artist, detail) if m], body=polish.frame
         )
-    detail = " · ".join(p for p in (item.date_text, item.medium) if p)
+    detail = " · ".join(p for p in (item.date_text or life, item.medium) if p)
     body = item.description or ", ".join(p for p in (item.museum, item.credit) if p)
     return TextBlock(title=item.title, meta=[m for m in (item.artist, detail) if m], body=body)
 
