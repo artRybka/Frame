@@ -6,7 +6,9 @@ import SwiftUI
 /// and "Teraz" jumps back to the one on it; a tap on the picture opens
 /// it on the crop screen, and "Pokaż na ramce" sends the one browsed to.
 /// A picture that did not reach the frame says so, with the one the frame
-/// still shows and a way to send it again.
+/// still shows and a way to send it again. While a picture goes to the
+/// frame, "Teraz" shows only what the frame shows, and the e-paper's redraw
+/// as the old picture going over to the new one.
 struct NowView: View {
     @Environment(AppModel.self) private var model
     @State private var showingSend = LaunchRoute.screen == "send"
@@ -24,6 +26,12 @@ struct NowView: View {
     /// The hero picture last loaded: cropping waits for it, so a half-loaded
     /// preview never opens.
     @State private var loadedHero: ImageRef?
+    /// What the panel shows, kept while a new picture is on its way.
+    @State private var frameShows: NowShowing?
+    /// The picture on its way, for the swap: loaded, and in the panel's inks.
+    @State private var swapImage: (url: String, image: UIImage, inks: InkGrid)?
+    /// The bar's fraction when the panel began its redraw.
+    @State private var redrawFrom: Double?
 
     struct Browsed: Equatable {
         let summary: ItemSummary
@@ -65,6 +73,44 @@ struct NowView: View {
         offset == 0 ? item : browsed.flatMap { details[$0.summary.id] }
     }
 
+    // MARK: A picture on its way
+
+    /// A picture is on its way to the frame (or the request just went):
+    /// no arrows and no buttons, only what the frame shows.
+    private var inFlight: Bool {
+        if let progress = model.displayProgress { return progress.active }
+        return sending
+    }
+
+    private var redrawing: Bool {
+        model.displayProgress.map { $0.active && $0.stage == "refreshing" } ?? false
+    }
+
+    /// How far the panel's redraw is, 0…1, from when it began.
+    private var redrawProgress: Double? {
+        guard redrawing, let fraction = model.displayProgress?.fraction else { return nil }
+        let from = min(redrawFrom ?? fraction, 0.99)
+        return min(max((fraction - from) / (1 - from), 0), 1)
+    }
+
+    /// The picture "Teraz" shows as on the frame: while one is on its way,
+    /// the one the panel still has.
+    private var heroShowing: NowShowing? {
+        inFlight ? frameShows ?? current : current
+    }
+
+    /// What the panel shows, as far as the server knows; nil while a
+    /// picture is on its way and the server no longer says.
+    private var panelShows: NowShowing? {
+        if let onFrame = model.player?.delivery?.onFrame { return onFrame }
+        return inFlight ? nil : current
+    }
+
+    /// The picture whose texts and colours are shown below.
+    private var shownItem: Item? {
+        offset == 0 ? heroShowing?.item : selectedItem
+    }
+
     private var draftKey: String {
         guard let selectedID else { return "" }
         return [selectedID, model.settings?.presentationKey ?? ""].joined(separator: "|")
@@ -73,7 +119,7 @@ struct NowView: View {
     var body: some View {
         NavigationStack(path: $path) {
             ZStack {
-                AmbientBackground(swatches: selectedItem?.colors ?? browsed?.summary.colors ?? [])
+                AmbientBackground(swatches: shownItem?.colors ?? browsed?.summary.colors ?? [])
                 ScrollView {
                     VStack(alignment: .leading, spacing: 22) {
                         hero
@@ -83,8 +129,10 @@ struct NowView: View {
                                 .frame(maxWidth: .infinity)
                                 .transition(.opacity.combined(with: .move(edge: .top)))
                         }
-                        controls
-                        if let onFrame = undelivered?.onFrame {
+                        if !inFlight {
+                            controls
+                        }
+                        if !inFlight, let onFrame = undelivered?.onFrame {
                             OnFrameNote(showing: onFrame)
                                 .transition(.opacity)
                         }
@@ -96,10 +144,10 @@ struct NowView: View {
                         if offset == 0, let device = model.status?.device, let pending = modePendingText(device) {
                             NoticeRow(icon: "clock.arrow.circlepath", color: Theme.accent, text: pending)
                         }
-                        if let selectedItem {
-                            ArtworkInfo(item: selectedItem, polish: offset == 0 ? current?.polish : nil)
-                                .id(selectedItem.id)
-                        } else if offset == 0, let current {
+                        if let shownItem {
+                            ArtworkInfo(item: shownItem, polish: offset == 0 ? heroShowing?.polish : nil)
+                                .id(shownItem.id)
+                        } else if offset == 0, let current = heroShowing {
                             Card {
                                 Text(current.title.isEmpty ? "Bez tytułu" : current.title)
                                     .font(.serif(26, weight: .semibold))
@@ -164,6 +212,17 @@ struct NowView: View {
                 // The picture sent has arrived: back to "on the frame now".
                 if browsed?.summary.id == id { browsed = nil }
             }
+            .onChange(of: inFlight) { _, flying in
+                // Only the picture on the frame while another is on its way.
+                if flying { withAnimation(.easeInOut(duration: 0.25)) { browsed = nil } }
+            }
+            .onChange(of: panelShows?.previewUrl, initial: true) {
+                if let panelShows { frameShows = panelShows }
+            }
+            .onChange(of: redrawing, initial: true) { _, now in
+                redrawFrom = now ? model.displayProgress?.fraction : nil
+            }
+            .task(id: inFlight ? current?.previewUrl : nil) { await loadSwap() }
             .onChange(of: upcoming.first?.id, initial: true) { _, first in
                 // CI screenshots: `-screen browse` starts at the next picture.
                 guard LaunchRoute.screen == "browse", !routed, let first else { return }
@@ -188,7 +247,22 @@ struct NowView: View {
         if offset != 0, let browsed {
             return .framePreview(browsed.summary.id, settings: model.settings, framing: applied[draftKey])
         }
-        if let current { return .path(current.previewUrl) }
+        if let showing = heroShowing { return .path(showing.previewUrl) }
+        return nil
+    }
+
+    /// The new picture laid over the old one while the panel redraws; once
+    /// it is done, whole until the hero itself has the new picture, so the
+    /// old one never shows again for a moment.
+    private var swapOverlay: FrameSwap? {
+        guard offset == 0, let current else { return nil }
+        let loaded = swapImage?.url == current.previewUrl ? swapImage : nil
+        if let progress = redrawProgress, current.previewUrl != heroShowing?.previewUrl {
+            return FrameSwap(image: loaded?.image, inks: loaded?.inks, progress: progress)
+        }
+        if !inFlight, let loaded, loadedHero != heroRef {
+            return FrameSwap(image: loaded.image, inks: loaded.inks, progress: 1)
+        }
         return nil
     }
 
@@ -199,7 +273,7 @@ struct NowView: View {
     /// The crop of the picture shown is loaded, and so is its preview.
     private var canCrop: Bool {
         selectedID != nil && draft.key == draftKey && draft.view?.windows.isEmpty == false
-            && heroRef != nil && loadedHero == heroRef
+            && heroRef != nil && loadedHero == heroRef && !inFlight
     }
 
     private var hero: some View {
@@ -209,8 +283,13 @@ struct NowView: View {
             Spacer(minLength: 2)
             FramedArtwork(
                 ref: heroRef, aspectRatio: aspect,
-                placeholder: selectedItem?.placeholderColor ?? browsed?.summary.placeholderColor ?? Theme.mat
-            )
+                placeholder: shownItem?.placeholderColor ?? browsed?.summary.placeholderColor ?? Theme.mat
+            ) {
+                if let swapOverlay {
+                    // The bar is asked once a second: glide between answers.
+                    swapOverlay.animation(.linear(duration: 1), value: swapOverlay.progress)
+                }
+            }
             .environment(\.artImageLoaded) { ref in
                 guard ref == heroRef else { return }
                 withAnimation(.easeOut(duration: 0.3)) { loadedHero = ref }
@@ -221,7 +300,10 @@ struct NowView: View {
             }
             .accessibilityAddTraits(canCrop ? .isButton : [])
             .accessibilityHint(Text(canCrop ? "Otwiera kadrowanie na całym ekranie" : ""))
-            .id(selectedID ?? "")  // a fresh picture for each one browsed to
+            .accessibilityValue(Text(redrawing ? "Ramka zmienia obraz" : ""))
+            // A fresh picture for each one browsed to; the one on the frame
+            // keeps its view, so the swap ends without a blink.
+            .id(offset == 0 ? "now" : selectedID ?? "")
             .overlay {
                 if heroRef == nil, model.connection != .connected {
                     ProgressView()
@@ -259,8 +341,9 @@ struct NowView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(PressableStyle())
-        .disabled(!enabled || sending)
-        .opacity(enabled ? 1 : 0.2)
+        .disabled(!enabled || inFlight)
+        .opacity(inFlight ? 0 : enabled ? 1 : 0.2)
+        .animation(.easeInOut(duration: 0.3), value: inFlight)
         .accessibilityLabel(direction < 0 ? "Poprzedni" : "Następny")
     }
 
@@ -294,8 +377,11 @@ struct NowView: View {
                 .contentTransition(.opacity)
             }
             if offset != 0 {
-                HStack(spacing: 12) {
+                HStack(spacing: canSkip ? 10 : 12) {
                     backToNow
+                    if canSkip {
+                        skipButton
+                    }
                     Button {
                         Task { await primaryAction() }
                     } label: {
@@ -309,10 +395,11 @@ struct NowView: View {
                             }
                         }
                     }
-                    .buttonStyle(ActionButtonStyle(prominent: true))
+                    .buttonStyle(ActionButtonStyle(prominent: true, fillsHeight: canSkip))
                     .disabled(!primaryEnabled || sending)
                     .opacity(primaryEnabled || sending ? 1 : 0.45)
                 }
+                .fixedSize(horizontal: false, vertical: true)  // the narrow buttons as tall as the wide one
                 .frame(maxWidth: model.isPortrait ? 420 : .infinity)
                 .transition(.opacity)
             } else if undelivered != nil && !asleep || primaryEnabled || sending {
@@ -363,10 +450,40 @@ struct NowView: View {
         } label: {
             Label("Teraz", systemImage: offset > 0 ? "arrow.uturn.left" : "arrow.uturn.right")
         }
-        .buttonStyle(ActionButtonStyle(wide: false))
+        .buttonStyle(ActionButtonStyle(wide: false, stacked: canSkip))
         .disabled(sending)
         .accessibilityLabel("Wróć do obrazu na ramce")
         .transition(.opacity)
+    }
+
+    /// A picture waiting in the queue can be skipped, unless it is the
+    /// only one (it would come straight back).
+    private var canSkip: Bool {
+        guard offset > 0, let id = browsed?.summary.id else { return false }
+        return model.isQueued(id) || upcoming.count > 1
+    }
+
+    /// "Pomiń": the picture browsed to leaves the queue for this round; the
+    /// one after it takes its place here.
+    private var skipButton: some View {
+        Button {
+            Task { await skip() }
+        } label: {
+            Label("Pomiń", systemImage: "forward.end")
+        }
+        .buttonStyle(ActionButtonStyle(wide: false, stacked: true))
+        .disabled(sending)
+        .accessibilityLabel("Pomiń ten obraz w kolejce")
+        .transition(.opacity)
+    }
+
+    private func skip() async {
+        guard let browsed else { return }
+        let place = offset
+        guard await model.skip(browsed.summary) else { return }
+        withAnimation(.easeInOut(duration: 0.25)) {
+            self.browsed = summary(at: place).map { Browsed(summary: $0, offset: place) }
+        }
     }
 
     private var canSend: Bool {
@@ -478,6 +595,17 @@ struct NowView: View {
             // As FramedArtwork loads it.
             _ = try? await ImageLoader.shared.image(for: request, maxPixel: 1600, priority: .high)
         }
+    }
+
+    /// The picture on its way, ahead of the redraw: as the hero loads it,
+    /// and cut into squares of ink.
+    private func loadSwap() async {
+        guard inFlight, let url = current?.previewUrl, swapImage?.url != url,
+              let request = model.backend.request(for: .path(url)),
+              let image = try? await ImageLoader.shared.image(for: request, maxPixel: 1600, priority: .high),
+              !Task.isCancelled, let inks = InkGrid(image: image, portrait: model.isPortrait)
+        else { return }
+        swapImage = (url, image, inks)
     }
 
     private func loadDetails() async {

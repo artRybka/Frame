@@ -118,6 +118,10 @@ struct LiveBackend: FrameBackend {
         try await send("/api/player/queue/\(escape(itemID))", method: "DELETE")
     }
 
+    func skip(itemID: String) async throws -> PlayerView {
+        try await send("/api/player/skip/\(escape(itemID))", method: "POST")
+    }
+
     func facets() async throws -> Facets { try await get("/api/library/facets") }
 
     func framing(itemID: String, orientation: String, automatic: Bool) async throws -> FramingView {

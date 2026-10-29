@@ -323,6 +323,19 @@ class Player:
             state.requested = [i for i in state.requested if i != item_id]
             self._save_state(state)
 
+    def skip(self, item_id: str) -> None:
+        """The owner skips ("Pomiń") a picture waiting its turn: a pick
+        added with ``queue_next`` is taken back, one of the rotation goes to
+        the end of it, so it comes back only after the rest of the round."""
+        state = self.state
+        if item_id in state.requested:
+            state.requested = [i for i in state.requested if i != item_id]
+        elif item_id in state.queue:
+            state.queue = [*(i for i in state.queue if i != item_id), item_id]
+        else:
+            return
+        self._save_state(state)
+
     def reschedule(self) -> None:
         state = self.state
         base = datetime.fromisoformat(state.last_change_at) if state.last_change_at else utcnow()
