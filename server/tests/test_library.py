@@ -10,6 +10,7 @@ from PIL import Image
 from frame_server.imaging.color import linear_to_oklab, u8_to_linear
 from frame_server.library import Item, ItemKind, Library, Playlist, PlaylistKind, PlaylistRules
 from frame_server.library.colors import analyse, family, has_colours
+from frame_server.library.models import MINE_FAVORITES, MINE_PLAYLISTS
 from frame_server.library.museums import (
     MUSEUMS,
     ArtInstituteChicago,
@@ -102,6 +103,29 @@ def test_playlists_and_state(tmp_path) -> None:
     lib.record_shown("test:1", "test")
     assert lib.history()[0]["item_id"] == "test:1"
     assert lib.get("test:1").show_count == 1  # type: ignore[union-attr]
+
+
+def test_mine_finds_favourites_and_works_on_playlists(tmp_path) -> None:
+    lib = Library(tmp_path / "lib.db")
+    for n in range(6):
+        lib.upsert(_item(n, artist="A" if n < 3 else "B", favorite=n in (0, 4)))
+    lib.save_playlist(Playlist(name="Ulubione", rules=PlaylistRules(favorites_only=True)))
+    lib.save_playlist(Playlist(name="Picks", kind=PlaylistKind.MANUAL, item_ids=["test:1"]))
+    lib.save_playlist(Playlist(name="B late", rules=PlaylistRules(artists=["B"], query="5")))
+    # Asks for playlisted works itself: not one of the playlists it looks in.
+    lib.save_playlist(Playlist(name="Mine", rules=PlaylistRules(terms=[MINE_PLAYLISTS])))
+
+    def ids(*terms: str, **kw) -> set[str]:
+        return {i.id for i in lib.query(PlaylistRules(terms=list(terms), **kw))[1]}
+
+    assert ids(MINE_FAVORITES) == {"test:0", "test:4"}
+    # Not "Ulubione" (it has its own term): the manual and the smart one.
+    assert ids(MINE_PLAYLISTS) == {"test:1", "test:5"}
+    # Either of them, and with other rules both.
+    assert ids(MINE_FAVORITES, MINE_PLAYLISTS) == {"test:0", "test:1", "test:4", "test:5"}
+    assert ids(MINE_FAVORITES, MINE_PLAYLISTS, artists=["A"]) == {"test:0", "test:1"}
+    assert PlaylistRules(terms=[MINE_FAVORITES]).asks_mine()
+    assert not PlaylistRules(terms=["style:impressionism"]).asks_mine()
 
 
 def _lab(rgb: tuple[int, int, int]) -> np.ndarray:

@@ -13,12 +13,14 @@ from frame_server.library.themes import GROUPS, THEMES, theme_of_the_day
 from frame_server.library.vocabulary import (
     BY_KEY,
     artist_matches,
+    category_fits,
     is_copy,
     is_grey_painting,
     is_manuscript,
     is_photograph,
     is_reproduction,
     museum_queries,
+    object_category,
     set_aside,
     suggest,
     term,
@@ -129,6 +131,45 @@ def test_photographs_are_told_apart() -> None:
     assert not is_photograph(own)  # the owner's photos are never set aside
     page = _work(5, title="Leaf from a Psalter")
     assert set_aside(page) and not set_aside(page, ["technique:manuscripts"])
+
+
+def test_sculpture_photographs_and_crafts_only_when_asked_for() -> None:
+    bust = _work(1, title="Claude Monet", classification="Sculpture", medium="bronze")
+    vase = _work(2, title="Vase", classification="Ceramics", medium="Hard-paste porcelain")
+    photo = _work(3, title="Venice", classification="Photograph", medium="Gelatin silver print")
+    lilies = _work(4, title="Water Lilies", classification="Painting", medium="Oil on canvas")
+    # A portrait miniature is watercolour on ivory: a picture.
+    miniature = _work(5, classification="Portrait Miniature", medium="watercolor on ivory")
+    assert [object_category(w) for w in (bust, vase, photo, lilies, miniature)] == [
+        "technique:sculpture",
+        "technique:decorative",
+        "technique:photography",
+        None,
+        None,
+    ]
+    for work in (bust, vase, photo):
+        assert set_aside(work) and not set_aside(work, [object_category(work) or ""])
+    monet = PlaylistRules(artists=["Claude Monet"], query="")
+    for work in (bust, vase, photo, lilies):
+        work.artist = "Claude Monet"
+    assert [matches(w, monet) for w in (bust, vase, photo, lilies)] == [False] * 3 + [True]
+    # The library as a whole and the favourites keep what the owner kept.
+    bust.favorite = True
+    assert matches(bust, PlaylistRules()) and matches(bust, PlaylistRules(favorites_only=True))
+    sculpture = PlaylistRules(artists=["Claude Monet"], terms=["technique:sculpture"])
+    assert matches(bust, sculpture) and not matches(lilies, sculpture)
+    either = ["technique:sculpture", "technique:painting"]
+    assert matches(bust, PlaylistRules(terms=either)) and matches(
+        lilies, PlaylistRules(terms=either)
+    )
+    # Museums' answers: a category alone brings no paintings.
+    assert category_fits(bust, ["technique:sculpture"])
+    assert not category_fits(lilies, ["technique:sculpture"])
+    assert category_fits(lilies, either) and not category_fits(vase, either)
+    assert category_fits(lilies, []) and not category_fits(bust, [])
+    # Openverse's photographs are Flickr's: never.
+    flickr = Item(id="openverse:1", source="openverse", source_id="1", classification="photograph")
+    assert set_aside(flickr, ["technique:photography"])
 
 
 def test_reproductions_are_told_apart() -> None:

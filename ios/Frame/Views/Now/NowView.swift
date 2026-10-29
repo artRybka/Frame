@@ -407,6 +407,7 @@ struct NowView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.top, -12)  // the caption close under the frame
+        .sensoryFeedback(.impact(weight: .medium), trigger: sending) { _, now in now }
     }
 
     /// When the frame changes next, or how long the picture is pinned.

@@ -148,6 +148,14 @@ class ItemSummary(BaseModel):
         return cls(**item.model_dump(include=set(cls.model_fields)))
 
 
+#: Terms for the owner's own works ("Moje" in the app's "+"): those with a
+#: heart, and those on any other playlist. Not in the vocabulary: museums
+#: have none of them.
+MINE_FAVORITES = "mine:favorites"
+MINE_PLAYLISTS = "mine:playlists"
+MINE = (MINE_FAVORITES, MINE_PLAYLISTS)
+
+
 class PlaylistRules(BaseModel):
     """Smart playlist filter. Empty lists mean "any"; lists are OR-ed
     internally, the different fields AND-ed together."""
@@ -188,6 +196,11 @@ class PlaylistRules(BaseModel):
             or self.kept_only
             or self.min_suitability is not None
         )
+
+    def asks_mine(self) -> bool:
+        """Only the owner's own works: favourites or those on playlists,
+        which no museum can bring."""
+        return any(t in MINE for t in self.terms)
 
 
 class PlaylistKind(StrEnum):

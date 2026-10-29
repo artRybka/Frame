@@ -10,6 +10,8 @@ struct PlaylistDetailView: View {
     /// Tapping a work takes it out of the playlist instead of opening it.
     @State private var removingItems = false
     @State private var syncing = false
+    /// "Prezentuj na ramce" asked, until the playlist plays.
+    @State private var starting = false
 
     private var isActive: Bool { model.settings?.playlistId == playlistID }
     private var isAlbum: Bool { detail?.playlist.kind == .album }
@@ -160,12 +162,25 @@ struct PlaylistDetailView: View {
                     .background(Theme.vermilion.opacity(0.1), in: RoundedRectangle(cornerRadius: 14))
             } else {
                 Button {
-                    Task { await model.play(playlist) }
+                    Task {
+                        starting = true
+                        defer { starting = false }
+                        await model.play(playlist)
+                    }
                 } label: {
-                    Label("Prezentuj na ramce", systemImage: "photo.artframe")
+                    Label {
+                        Text("Prezentuj na ramce")
+                    } icon: {
+                        if starting {
+                            ProgressView().tint(Theme.paper)
+                        } else {
+                            Image(systemName: "photo.artframe")
+                        }
+                    }
                 }
                 .buttonStyle(PrimaryButtonStyle())
-                .disabled(playlist.itemCount == 0)
+                .disabled(playlist.itemCount == 0 || starting)
+                .sensoryFeedback(.impact(weight: .medium), trigger: starting) { _, now in now }
             }
         }
     }

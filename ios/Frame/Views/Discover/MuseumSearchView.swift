@@ -118,7 +118,7 @@ struct MuseumSearchView: View {
 
     private var idle: some View {
         VStack(spacing: 4) {
-            Text("Muzea, style, tematy, epoki, techniki i kolory dodasz przyciskiem \(Image(systemName: "plus.circle.fill")) w polu wyszukiwania.")
+            Text("Techniki, epoki, style, kolory, tematy, muzea i swoje Ulubione dodasz przyciskiem \(Image(systemName: "plus.circle.fill")) w polu wyszukiwania.")
                 .font(.footnote)
                 .foregroundStyle(Theme.inkSoft)
                 .multilineTextAlignment(.center)
@@ -290,6 +290,8 @@ struct MuseumSearchView: View {
     /// Takes in the museums' answers as each comes.
     @MainActor
     private func listen(_ key: SearchKey, sources: [String], page: Int) async {
+        // Favourites and playlists are the owner's: no museum has them.
+        guard !key.rules.asksMine else { return }
         do {
             let answers = try await model.backend.museumAnswers(key.rules, sources: sources, page: page)
             for try await answer in answers {
