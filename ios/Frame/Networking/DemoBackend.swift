@@ -94,6 +94,7 @@ actor DemoBackend: FrameBackend {
         autoCrops = loaded.framing ?? [:]
         // Start out playing the first playlist, like a fresh server does.
         settingsValue.playlistId = 1
+        settingsValue.art.fit = "description"  // shows off the work's text and detail
         if let fit = LaunchRoute.fit { settingsValue.art.fit = fit }
         if let mat = LaunchRoute.mat { settingsValue.art.mat = mat }
         let first = byID[1].map { playlist in
