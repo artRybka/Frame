@@ -698,8 +698,8 @@ final class AppModel {
             } else if result.problem == "no_certificates" {
                 toast = Delivery.noCertificates
             } else if result.asleepUntil != nil {
-                toast = Self.deepSleepNote(result.asleepUntilAt ?? status?.device?.wakeAt)
-            } else if !result.sent, result.problem == nil, status?.device?.switchedOff == true {
+                toast = Self.deepSleepNote(result.asleepUntilAt ?? status?.device.wakeAt)
+            } else if !result.sent, result.problem == nil, status?.device.switchedOff == true {
                 toast = Self.deepSleepNote(nil, off: true)
             } else if !result.sent {
                 toast = "Brak adresu MAC ramki, ustaw go w Połączeniu z ekranem"
@@ -754,7 +754,7 @@ final class AppModel {
             show(error)
             return
         }
-        toast = status?.device?.powerSource == "ac"
+        toast = status?.device.powerSource == "ac"
             ? "Ramka zaśnie za kilka sekund. Na zasilaczu obudzi się na najbliższą zmianę i znów nie będzie spać"
             : "Ramka zaśnie za kilka sekund"
         await refreshStatus(live: false)
