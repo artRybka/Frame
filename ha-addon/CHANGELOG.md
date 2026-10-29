@@ -25,6 +25,8 @@
   mniejsze barwy to akcenty (`accent:<rodzina>`, nowy rząd „Akcenty”).
   Ciepłe/zimne według powierzchni. „W odcieniach błękitu” obejmuje turkus.
   `SCORE_VERSION` 4: biblioteka przelicza się raz w tle.
+- Tryb Opis: na ramce samo nazwisko autora (bez narodowości i lat życia),
+  pod spodem data · technika; bez daty powstania lata życia autora.
 
 ## 0.28.0
 
