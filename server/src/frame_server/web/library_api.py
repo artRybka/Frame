@@ -10,7 +10,7 @@ from typing import Annotated, Any, Literal
 import httpx
 from anyio import CapacityLimiter, to_thread
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field, ValidationError
 from starlette.concurrency import run_in_threadpool
 
@@ -327,14 +327,21 @@ async def item_image(item_id: str, svc: Svc) -> FileResponse:
     """The original as the card shows it: before any download in the background."""
     item = await _work(svc, item_id, threads=SHOWN_THREADS)
     try:
-        path = await to_thread.run_sync(svc.images.ensure_image, item, True, limiter=SHOWN_THREADS)
+        path, original = await to_thread.run_sync(
+            svc.images.picture, item, True, limiter=SHOWN_THREADS
+        )
     except (httpx.HTTPError, OSError) as err:
         raise HTTPException(502, f"image unavailable: {err}") from err
-    return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "max-age=86400"})
+    # Without the original, its thumbnail: asked for again next time.
+    cache = "max-age=86400" if original else "no-store"
+    return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": cache})
 
 
 _preview_locks: dict[str, asyncio.Lock] = {}
 PREVIEW_CACHE_FILES = 200
+#: How long a preview waits for the work's Polish texts (asked first in line).
+PREVIEW_POLISH_SECONDS = 20.0
+NO_STORE = {"Cache-Control": "no-store"}
 PREVIEW_KIND = "fast"  # part of the cache key: earlier previews went through the whole render
 
 
@@ -348,7 +355,7 @@ def _prune(directory: Path, keep: int) -> None:
 @router.get("/library/items/{item_id}/preview")
 async def item_preview(
     item_id: str, svc: Svc, settings: str | None = None, framing: str | None = None
-) -> FileResponse:
+) -> Response:
     """The picture framed as on the panel (crop, mat, lettering), in its own
     colours: the correction for the inks is left to the panel's image.
 
@@ -370,6 +377,9 @@ async def item_preview(
             item = item.model_copy(update={"framing": {**item.framing, orientation: tried}})
     except ValidationError as err:
         raise HTTPException(422, f"invalid preview: {err}") from err
+    # The texts on the mat in Polish, as the frame will show them: an
+    # English preview would stay in the app's cache after they come.
+    await svc.player.wait_for_polish(item, frame_settings, PREVIEW_POLISH_SECONDS)
     render_settings = svc.player.render_settings(item, frame_settings)
     board = svc.player.preview_board(item, frame_settings)  # MULTI: with the photos beside it
     ids = ",".join(i.id for i in board)
@@ -381,24 +391,32 @@ async def item_preview(
     if not path.is_file():
         async with _preview_locks.setdefault(path.name, asyncio.Lock()):
             if not path.is_file():
-                sources = [
-                    await to_thread.run_sync(
-                        svc.images.ensure_image, shown, True, limiter=SHOWN_THREADS
-                    )
-                    for shown in board
-                ]
+                try:
+                    pictures = [
+                        await to_thread.run_sync(
+                            svc.images.picture, shown, True, limiter=SHOWN_THREADS
+                        )
+                        for shown in board
+                    ]
+                except (httpx.HTTPError, OSError) as err:
+                    raise HTTPException(502, f"image unavailable: {err}") from err
+                sources = [p for p, _ in pictures]
 
-                def build() -> None:
+                def build() -> bytes:
                     multi = svc.player.multi(item, frame_settings)
                     img = render_original(
                         sources, render_settings, svc.palette, multi=multi, seed=ids
                     )
                     img.thumbnail((1280, 1280))
-                    path.parent.mkdir(parents=True, exist_ok=True)
-                    path.write_bytes(encode_image(img, "jpeg", quality=90))
-                    _prune(path.parent, PREVIEW_CACHE_FILES)
+                    return encode_image(img, "jpeg", quality=90)
 
-                await to_thread.run_sync(build, limiter=SHOWN_THREADS)
+                data = await to_thread.run_sync(build, limiter=SHOWN_THREADS)
+                if not all(original for _, original in pictures):
+                    # Drawn from a thumbnail: not kept, the original may come.
+                    return Response(data, media_type="image/jpeg", headers=NO_STORE)
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(data)
+                _prune(path.parent, PREVIEW_CACHE_FILES)
     # Without ``settings`` the address stays the same when the presentation
     # changes: the app must ask again rather than keep the old framing.
     cache = "max-age=3600" if settings else "no-cache"

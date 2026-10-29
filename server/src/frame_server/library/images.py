@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import logging
 import os
 import threading
 import time
@@ -16,6 +17,8 @@ from PIL import Image
 from ..fsutil import own_files
 from ..imaging.layout import load_image
 from .models import Item
+
+log = logging.getLogger(__name__)
 
 THUMB_MAX = 640
 IMAGE_MAX = 2560
@@ -32,6 +35,15 @@ URGENT_EXTRA = 2
 #: Answers worth another try (throttled or briefly down), and how many tries.
 RETRY_STATUS = {408, 429, 500, 502, 503, 504}
 ATTEMPTS = 3
+#: How long an original that could not be downloaded is not asked for
+#: again: every preview and every turn in the queue would wait for it.
+FAILED_FOR = 1800.0
+
+
+class Unavailable(OSError):
+    """The original cannot be had from anywhere: the host refuses programs
+    (a "verify you are human" page), the file is gone, or it was tried
+    lately and failed."""
 
 
 def _save_jpeg(img: Image.Image, path: Path, max_side: int, quality: int) -> None:
@@ -50,6 +62,15 @@ def _retry_after(resp: httpx.Response, attempt: int) -> float:
     return min(max(wait, 0.5), 8.0)
 
 
+def _refused(err: Exception) -> bool:
+    """Whether another try would get the same: the host answered, but not
+    with the picture (gone, forbidden, a web page instead of an image)."""
+    if isinstance(err, httpx.HTTPStatusError):
+        status = err.response.status_code
+        return 400 <= status < 500 and status not in RETRY_STATUS
+    return not isinstance(err, httpx.HTTPError)  # read, but not as a picture
+
+
 class ImageCache:
     def __init__(self, root: Path, http: Callable[[], httpx.Client]) -> None:
         self.thumbs = root / "thumbs"
@@ -59,6 +80,12 @@ class ImageCache:
         self.http = http
         #: Sources whose originals need more than a plain download (by source).
         self.fetchers: dict[str, Callable[[Item], bytes]] = {}
+        #: Other addresses of an original, tried when its own fails (by
+        #: source): an aggregator's copy of a museum's file.
+        self.mirrors: dict[str, Callable[[Item], list[str]]] = {}
+        #: When an original last failed to download (by item id).
+        self._failed: dict[str, float] = {}
+        self.clock: Callable[[], float] = time.monotonic
         self._locks: dict[str, threading.Lock] = {}
         self._gates: dict[str, HostGate] = {}
         self._guard = threading.Lock()
@@ -123,24 +150,68 @@ class ImageCache:
     def has_image(self, item: Item) -> bool:
         return self.image_path(item).is_file()
 
+    def unavailable(self, item: Item) -> bool:
+        """Whether the original failed to download lately (and is not here)."""
+        failed = self._failed.get(item.id)
+        if failed is None or self.has_image(item):
+            return False
+        if self.clock() - failed > FAILED_FOR:
+            self._failed.pop(item.id, None)
+            return False
+        return True
+
     def ensure_image(self, item: Item, urgent: bool = False) -> Path:
         """The display-size original, downloaded if need be; ``urgent``: the
-        owner or a change waits for it, it goes before background downloads."""
+        owner or a change waits for it, it goes before background downloads.
+
+        When the original's own address fails, its mirrors are tried. When
+        every address refuses for good, ``Unavailable`` is raised and, for a
+        while, raised again at once; a host that is only down or busy raises
+        its own error and is asked again next time."""
         path = self.image_path(item)
         if path.is_file():
             with contextlib.suppress(OSError):
                 os.utime(path)  # recently used: pruned last
             return path
+        if self.unavailable(item):
+            raise Unavailable(f"original of {item.id} unavailable (failed lately)")
         with self._lock(f"i:{item.id}"):
             if not path.is_file():
-                fetch = self.fetchers.get(item.source)
-                img = (
-                    load_image(fetch(item))
-                    if fetch is not None
-                    else self._download(item.image_url or item.thumb_url, urgent)
-                )
+                img = self._original(item, urgent)
+                self._failed.pop(item.id, None)
                 _save_jpeg(img, path, IMAGE_MAX, 92)
         return path
+
+    def _original(self, item: Item, urgent: bool) -> Image.Image:
+        fetch = self.fetchers.get(item.source)
+        if fetch is not None:
+            return load_image(fetch(item))
+        mirrors = self.mirrors.get(item.source)
+        urls = [item.image_url or item.thumb_url, *(mirrors(item) if mirrors else [])]
+        refused = True
+        for n, url in enumerate(urls, 1):
+            try:
+                # Not an image (a "verify you are human" page): load_image raises.
+                return self._download(url, urgent)
+            except (httpx.HTTPError, OSError) as err:
+                refused = refused and _refused(err)
+                if n < len(urls):
+                    log.info("original of %s from %s failed: %s; next address", item.id, url, err)
+                    continue
+                if not refused:
+                    raise
+                self._failed[item.id] = self.clock()
+                raise Unavailable(f"original of {item.id} unavailable: {err}") from err
+        raise AssertionError("unreachable")
+
+    def picture(self, item: Item, urgent: bool = False) -> tuple[Path, bool]:
+        """The original, or its thumbnail when the original cannot be had
+        (blurred, but better than nothing for the app to show); the flag
+        tells whether it is the original."""
+        try:
+            return self.ensure_image(item, urgent), True
+        except (httpx.HTTPError, OSError):
+            return self.ensure_thumb(item, urgent), False
 
     def store(self, item: Item, data: bytes) -> tuple[int, int]:
         """Keep an uploaded original; returns its size after EXIF rotation."""

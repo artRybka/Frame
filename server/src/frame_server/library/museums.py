@@ -17,7 +17,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Any, ClassVar, Literal
-from urllib.parse import unquote
+from urllib.parse import quote, unquote, urlsplit
 
 import httpx
 
@@ -800,6 +800,23 @@ def cc_name(code: str, version: str) -> str:
     return f"CC {code.upper()} {version}"
 
 
+#: Hosts of Europeana's providers that answer programs with a "verify you
+#: are human" page, Europeana's own media proxy included: their works'
+#: originals can never be had (2026-10: the Belvedere's collection, files
+#: on Dropbox: Orsay, Alte Pinakothek, Nationalmuseum).
+EUROPEANA_UNREACHABLE = frozenset({"sammlung.belvedere.at", "www.dropbox.com", "dropbox.com"})
+
+
+def europeana_mirrors(item: Item) -> list[str]:
+    """Europeana's media proxy for the original: Europeana's servers fetch
+    the provider's file, which some providers (the Mauritshuis, behind
+    Cloudflare) refuse to send to programs like this one."""
+    if item.source != "europeana" or not item.image_url:
+        return []
+    record = item.source_id.replace("~", "/")
+    return [f"https://proxy.europeana.eu/{record}?view={quote(item.image_url, safe='')}"]
+
+
 class Europeana(Museum):
     """Europe's cultural heritage portal, Polish collections included.
 
@@ -867,6 +884,8 @@ class Europeana(Museum):
         image = _first(d.get("edmIsShownBy"))
         preview = _first(d.get("edmPreview"))
         if not image or not preview or not d.get("id"):
+            return None
+        if (urlsplit(image).hostname or "") in EUROPEANA_UNREACHABLE:
             return None
         kinds = [t for t in (d.get("dcTypeLangAware") or {}).get("en") or [] if "://" not in t]
         # Types often come as vocabulary links only; their labels are among
