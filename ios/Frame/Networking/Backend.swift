@@ -63,6 +63,8 @@ protocol FrameBackend: Sendable {
     func removeFromPlaylist(id: Int, itemID: String) async throws -> PlaylistDetail
     func previewRules(_ rules: PlaylistRules) async throws -> RulesPreview
     func play(playlistID: Int) async throws
+    /// Propozycje on the frame: the rotation without a playlist.
+    func playSuggestions() async throws
 
     func settings() async throws -> FrameSettings
     func saveSettings(_ settings: FrameSettings) async throws -> FrameSettings

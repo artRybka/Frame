@@ -318,6 +318,18 @@ async def suggestions(svc: Svc) -> list[SuggestionRow]:
     return await run_in_threadpool(_suggestion_rows, svc)
 
 
+@router.post("/suggestions/play", status_code=202)
+async def play_suggestions(svc: Svc) -> dict[str, bool]:
+    """Puts Propozycje on the frame: the rotation without a playlist
+    ("Propozycje" in Playlisty)."""
+    settings = svc.player.settings
+    settings.playlist_id = None
+    svc.player.save_settings(settings)
+    svc.player.set_hold(None)
+    svc.background(svc.player.next("playlist", picks=False))  # its own first picture
+    return {"accepted": True}
+
+
 def _theme_list(svc: FrameService) -> list[ThemeCard]:
     cards = _theme_cards(svc)
     playlists = svc.library.playlists()
