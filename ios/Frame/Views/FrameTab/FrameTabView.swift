@@ -20,21 +20,27 @@ struct FrameTabView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 28) {
-                    deviceHero
-                    statusGrid
-                    appNotice
-                    deviceActions
-                    if draft != nil {
-                        ScheduleSection(settings: binding)
-                        PresentationSection(settings: binding)
-                        ScreenSection(settings: binding)
-                        SourcesSection(settings: binding)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 28) {
+                        deviceHero
+                        statusGrid
+                        appNotice
+                        deviceActions
+                        if draft != nil {
+                            ScheduleSection(settings: binding).id("schedule")
+                            PresentationSection(settings: binding)
+                            ScreenSection(settings: binding)
+                            SourcesSection(settings: binding)
+                        }
                     }
+                    .padding(.horizontal, Theme.gutter)
+                    .padding(.bottom, 40)
                 }
-                .padding(.horizontal, Theme.gutter)
-                .padding(.bottom, 40)
+                .onChange(of: draft != nil, initial: true) { _, ready in
+                    // CI screenshots
+                    if ready, LaunchRoute.screen.hasPrefix("schedule") { proxy.scrollTo("schedule", anchor: .top) }
+                }
             }
             .background(Theme.paper)
             .navigationTitle("Ramka")
@@ -102,9 +108,28 @@ struct FrameTabView: View {
         if let draft, let base {
             self.draft = draft.rebased(from: base, onto: settings)
         } else {
-            draft = settings
+            draft = Self.screenshotDraft(settings)
         }
         base = settings
+    }
+
+    /// CI screenshots: the schedule with a few times and the quiet hours on.
+    private static func screenshotDraft(_ settings: FrameSettings) -> FrameSettings {
+        var settings = settings
+        switch LaunchRoute.screen {
+        case "schedule":
+            settings.changeTimes = ["07:00", "13:00", "19:30"]
+            settings.quietStart = "22:00"
+        case "schedule-economy":
+            settings.powerMode = "economy"
+            settings.changeTimes = ["07:00", "19:00"]
+            settings.checkEveryHours = 4
+            settings.checkQuietStart = "22:00"
+            settings.checkQuietEnd = "07:00"
+        default:
+            break
+        }
+        return settings
     }
 
     /// `draft`'s own changes, made on the settings as the app has them now.
