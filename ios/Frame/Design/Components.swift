@@ -314,22 +314,15 @@ struct SecondaryButtonStyle: ButtonStyle {
 }
 
 /// Icon and title on one line, shrinking a little before it would wrap,
-/// for two actions sharing a row; stacked, the icon over a small title, for
-/// a narrow one of three.
+/// for two actions sharing a row; only the icon for a narrow one of three.
 struct ActionLabelStyle: LabelStyle {
-    var stacked = false
+    var iconOnly = false
 
     @ViewBuilder
     func makeBody(configuration: Configuration) -> some View {
-        if stacked {
-            VStack(spacing: 4) {
-                configuration.icon
-                    .font(.body.weight(.semibold))
-                configuration.title
-                    .font(.caption.weight(.semibold))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-            }
+        if iconOnly {
+            configuration.icon
+                .font(.subheadline.weight(.semibold))  // as tall as a title beside it
         } else {
             HStack(spacing: 7) {
                 configuration.icon
@@ -344,25 +337,22 @@ struct ActionLabelStyle: LabelStyle {
 
 /// One of two actions sharing a row, like "Pokaż na ramce" and "Dodaj do
 /// kolejki": filled when prominent, else on a card; a narrow one is as wide
-/// as its label. Stacked, it is a narrow one of three ("Teraz", "Pomiń"),
-/// as tall as the row.
+/// as its label. With only its icon, it is a narrow one of three ("Teraz",
+/// "Pomiń").
 struct ActionButtonStyle: ButtonStyle {
     var prominent = false
     var wide = true
-    var stacked = false
-    /// As tall as its row (with stacked ones beside it).
-    var fillsHeight = false
+    var iconOnly = false
 
     func makeBody(configuration: Configuration) -> some View {
         let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
         return configuration.label
-            .labelStyle(ActionLabelStyle(stacked: stacked))
+            .labelStyle(ActionLabelStyle(iconOnly: iconOnly))
             .foregroundStyle(prominent ? Theme.paper : Theme.ink)  // dark text on the lighter dark-mode accent
             .frame(maxWidth: wide ? .infinity : nil)
-            .frame(width: stacked ? 72 : nil)
-            .frame(maxHeight: stacked || fillsHeight ? .infinity : nil)
-            .padding(.horizontal, wide || stacked ? 0 : 18)
-            .padding(.vertical, stacked ? 8 : 14)
+            .frame(width: iconOnly ? 54 : nil)
+            .padding(.horizontal, wide || iconOnly ? 0 : 18)
+            .padding(.vertical, 14)
             .background(prominent ? Theme.accent : Theme.card, in: shape)
             .overlay(shape.strokeBorder(prominent ? Color.clear : Theme.hairline))
             .scaleEffect(configuration.isPressed ? 0.97 : 1)

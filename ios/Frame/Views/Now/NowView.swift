@@ -377,7 +377,7 @@ struct NowView: View {
                 .contentTransition(.opacity)
             }
             if offset != 0 {
-                HStack(spacing: canSkip ? 10 : 12) {
+                HStack(spacing: 12) {
                     backToNow
                     if canSkip {
                         skipButton
@@ -395,11 +395,10 @@ struct NowView: View {
                             }
                         }
                     }
-                    .buttonStyle(ActionButtonStyle(prominent: true, fillsHeight: canSkip))
+                    .buttonStyle(ActionButtonStyle(prominent: true))
                     .disabled(!primaryEnabled || sending)
                     .opacity(primaryEnabled || sending ? 1 : 0.45)
                 }
-                .fixedSize(horizontal: false, vertical: true)  // the narrow buttons as tall as the wide one
                 .frame(maxWidth: model.isPortrait ? 420 : .infinity)
                 .transition(.opacity)
             } else if undelivered != nil && !asleep || primaryEnabled || sending {
@@ -450,7 +449,7 @@ struct NowView: View {
         } label: {
             Label("Teraz", systemImage: offset > 0 ? "arrow.uturn.left" : "arrow.uturn.right")
         }
-        .buttonStyle(ActionButtonStyle(wide: false, stacked: canSkip))
+        .buttonStyle(ActionButtonStyle(wide: false, iconOnly: canSkip))
         .disabled(sending)
         .accessibilityLabel("Wróć do obrazu na ramce")
         .transition(.opacity)
@@ -471,7 +470,7 @@ struct NowView: View {
         } label: {
             Label("Pomiń", systemImage: "forward.end")
         }
-        .buttonStyle(ActionButtonStyle(wide: false, stacked: true))
+        .buttonStyle(ActionButtonStyle(wide: false, iconOnly: true))
         .disabled(sending)
         .accessibilityLabel("Pomiń ten obraz w kolejce")
         .transition(.opacity)
