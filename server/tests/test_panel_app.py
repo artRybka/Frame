@@ -432,32 +432,32 @@ async def test_a_check_with_nothing_new_leaves_the_panel_asleep(
         answer = app.answer(hello, now=_at("2026-10-28T12:00"))
         # The Wi-Fi off: every check up to the change, set at once.
         assert answer.standby == "OFF"
-        assert answer.wake_at == _at("2026-10-28T13:00").isoformat()
+        assert answer.wake_at == _at("2026-10-28T14:00").isoformat()
         assert answer.wakes_ms == [
-            _ms("2026-10-28T15:00"),
-            _ms("2026-10-28T17:00"),
+            _ms("2026-10-28T16:00"),
+            _ms("2026-10-28T18:00"),
             _ms("2026-10-28T19:00"),
         ]
 
-        # Nothing new at 13:00: the app is not started, the cold-booted panel
+        # Nothing new at 14:00: the app is not started, the cold-booted panel
         # goes back to sleep by itself and no wake is missed.
-        await service.power.tick(_at("2026-10-28T13:01:10"))
-        await service.power.tick(_at("2026-10-28T13:20"))
+        await service.power.tick(_at("2026-10-28T14:01:10"))
+        await service.power.tick(_at("2026-10-28T14:20"))
         assert panel.received == []
         assert app.state.missed_wake is None
-        assert app.wakes_at(_at("2026-10-28T13:20")) == _at("2026-10-28T15:00")
+        assert app.wakes_at(_at("2026-10-28T14:20")) == _at("2026-10-28T16:00")
 
         # A new picture while it sleeps: started at the next check.
         service.store.publish(b"png", "png", title="Słoneczniki")
-        await service.power.tick(_at("2026-10-28T15:01:10"))
+        await service.power.tick(_at("2026-10-28T16:01:10"))
         assert panel.received == START
         new = service.store.current()
         assert new is not None
         app.report("shown", {"file_id": new.file_id})
         assert app.state.shown == new.file_id
 
-        # Shown: 17:00 is left alone, the last alarm (19:00) never is.
-        await service.power.tick(_at("2026-10-28T17:01:10"))
+        # Shown: 18:00 is left alone, the last alarm (19:00) never is.
+        await service.power.tick(_at("2026-10-28T18:01:10"))
         assert panel.received == START
         await service.power.tick(_at("2026-10-28T19:01:10"))
         assert panel.received == START * 2
@@ -474,6 +474,24 @@ def test_the_app_says_what_it_shows(tmp_path: Path) -> None:
     assert app.state.shown == "abc"
     app.answer(AppHello(shown="", charging=True))  # nothing on the screen
     assert app.state.shown is None
+
+
+def test_hourly_checks_are_set_up_to_the_next_change_outside_quiet_hours(
+    tmp_path: Path,
+) -> None:
+    service = _service(tmp_path)
+    service.player.save_settings(
+        FrameSettings(change_times=["07:00", "19:00"], power_mode="economy", check_every_hours=1)
+    )
+    app = service.app
+    # By day: every full hour up to the 19:00 change.
+    _next_change(service, _at("2026-10-28T19:00"))
+    alarms = app.alarms(_at("2026-10-28T08:30"), _at("2026-10-28T09:00"))
+    assert alarms == [_at(f"2026-10-28T{h:02d}:00") for h in range(9, 20)]
+    # In the evening: 20:00 and 21:00, then quiet hours until the 07:00 change.
+    _next_change(service, _at("2026-10-29T07:00"))
+    alarms = app.alarms(_at("2026-10-28T19:30"), _at("2026-10-28T20:00"))
+    assert alarms == [_at("2026-10-28T20:00"), _at("2026-10-28T21:00"), _at("2026-10-29T07:00")]
 
 
 async def test_a_new_package_is_installed_by_a_reboot(

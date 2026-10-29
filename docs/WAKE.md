@@ -411,7 +411,8 @@ aplikacji, obraz został bez mrugnięcia. Teraz:
 
 - przed snem z wył. Wi-Fi aplikacja ustawia naraz budziki na wszystkie
   sprawdzenia aż do następnej zmiany (`wakes_ms` w odpowiedzi `/panel/next`,
-  najwyżej 12; budziki się sumują, a te już ustawione aplikacja pamięta
+  najwyżej 12, przy „co godzinę” resztę ustawi po ostatnim z nich; budziki
+  się sumują, a te już ustawione aplikacja pamięta
   i nie ustawia drugi raz) i skraca automatyczne uśpienie do 5 minut
   (`setAutoSleepTime("5MIN")`; poprzednią wartość przywraca przy starcie);
 - przy budziku serwer uruchamia aplikację przez MDC tylko wtedy, gdy jest
