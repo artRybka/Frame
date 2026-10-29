@@ -57,6 +57,9 @@ class Delivery(BaseModel):
     #: ``waiting`` with the Wi-Fi off (economy, quiet hours): only the alarm
     #: or the button wakes it. False: asleep with the Wi-Fi on (online).
     deep_sleep: bool = False
+    #: ``waiting`` with the Wi-Fi gone off by itself (unplugged, the panel
+    #: sleeps at once without it): the button wakes it.
+    wifi_lost: bool = False
     #: ``waiting`` for good: the panel does not run the app and the server
     #: cannot build it (no Samsung certificates).
     no_app: bool = False
@@ -144,6 +147,7 @@ def _delivery(svc: FrameService, content: ContentInfo | None) -> Delivery:
             asleep_until_at=until.isoformat(timespec="seconds") if until else None,
             missed_wake_at=svc.app.state.missed_wake,
             deep_sleep=svc.app.deep_asleep(),
+            wifi_lost=svc.app.deep_asleep() and svc.app.state.wifi_lost,
             **common,
         )
     failed = record.failed_file_id == content.file_id

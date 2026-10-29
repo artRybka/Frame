@@ -506,9 +506,12 @@ struct NowView: View {
     /// Not on the panel and nothing else to send: send it again, or wake
     /// the frame it waits for (not in deep sleep: Wake-on-LAN cannot reach it).
     private var retry: Bool { !canSend && undelivered?.isFailed == true }
-    private var wakeUp: Bool { !canSend && undelivered?.isWaiting == true && undelivered?.asleepUntil == nil }
-    /// Waiting for the frame's own alarm: no button can bring it sooner.
-    private var asleep: Bool { undelivered?.isWaiting == true && undelivered?.asleepUntil != nil }
+    private var wakeUp: Bool { !canSend && undelivered?.isWaiting == true && !asleep }
+    /// Waiting for the frame's own alarm or its button (asleep without the
+    /// Wi-Fi): no signal from the app can bring it sooner.
+    private var asleep: Bool {
+        undelivered?.isWaiting == true && (undelivered?.asleepUntil != nil || undelivered?.deepSleep == true)
+    }
 
     private var primaryEnabled: Bool { (canSend || retry || wakeUp) && !model.working }
 

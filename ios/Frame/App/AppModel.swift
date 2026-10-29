@@ -288,7 +288,7 @@ final class AppModel {
         }
         guard let device = status?.device, device.configured, device.powerState != "online" else { return }
         if device.powerState == "deep_sleep" {
-            toast = Self.deepSleepNote(device.wakeAt, off: device.switchedOff == true)
+            toast = Self.deepSleepNote(device.wakeAt, off: device.switchedOff == true, lost: device.wifiLost == true)
             return
         }
         if device.powerState == nil, device.reachable != false { return }  // a server before 0.12
@@ -301,9 +301,13 @@ final class AppModel {
         await wake(sleepAfter: true)
     }
 
-    /// `until`: the alarm (ISO).
-    private static func deepSleepNote(_ until: String?, off: Bool = false) -> String {
+    /// `until`: the alarm (ISO); `lost`: the Wi-Fi went off by itself (unplugged).
+    private static func deepSleepNote(_ until: String?, off: Bool = false, lost: Bool = false) -> String {
         if off { return "Ramka jest wyłączona. Włączysz ją przyciskiem na ramce" }
+        if lost {
+            let alarm = When.at(until).map { ", sama obudzi się \($0)" } ?? ""
+            return "Ramka śpi bez Wi-Fi (tak zasypia po odpięciu zasilacza). Obudzi ją krótkie naciśnięcie przycisku z tyłu\(alarm)"
+        }
         let alarm = When.at(until).map { "budzik \($0) lub przycisk" } ?? "tylko przycisk"
         return "Ramka w głębokim śnie (Wi-Fi wyłączone), obudzi ją \(alarm)"
     }
@@ -324,6 +328,19 @@ final class AppModel {
     /// Polish names of the vocabulary's terms by key.
     var termNames: [String: String] {
         Dictionary(vocabulary.map { ($0.key, $0.name) }, uniquingKeysWith: { first, _ in first })
+    }
+
+    /// While a picture waits for the frame ("Czeka na ramkę"), look now and
+    /// then whether it woke (the button, its alarm): the server sends the
+    /// picture as soon as the frame's app asks, and the bar follows it.
+    func followWaiting() async {
+        while !Task.isCancelled, player?.delivery?.isWaiting == true {
+            try? await Task.sleep(for: .seconds(8))
+            if Task.isCancelled { return }
+            await refreshPlayer()
+            if let value = try? await backend.status(refresh: false) { status = value }
+            if player?.progress?.active == true { trackProgress() }
+        }
     }
 
     /// After an action the server renders and pushes in the background;
@@ -738,8 +755,12 @@ final class AppModel {
                     : "Ramka się obudziła"
             } else if result.problem == "no_certificates" {
                 toast = Delivery.noCertificates
-            } else if result.asleepUntil != nil {
-                toast = Self.deepSleepNote(result.asleepUntilAt ?? status?.device.wakeAt)
+            } else if result.asleepUntil != nil || result.deepSleep == true {
+                toast = Self.deepSleepNote(
+                    result.asleepUntilAt ?? status?.device.wakeAt,
+                    off: status?.device.switchedOff == true,
+                    lost: result.wifiLost == true
+                )
             } else if !result.sent, result.problem == nil, status?.device.switchedOff == true {
                 toast = Self.deepSleepNote(nil, off: true)
             } else if !result.sent {
@@ -810,8 +831,12 @@ final class AppModel {
                 toast = "Ramka uruchamia się ponownie. Za 2–3 minuty znów pokaże obraz"
             } else if result.problem == "no_certificates" {
                 toast = Delivery.noCertificates
-            } else if result.asleepUntil != nil {
-                toast = Self.deepSleepNote(result.asleepUntilAt ?? status?.device.wakeAt)
+            } else if result.asleepUntil != nil || result.deepSleep == true {
+                toast = Self.deepSleepNote(
+                    result.asleepUntilAt ?? status?.device.wakeAt,
+                    off: status?.device.switchedOff == true,
+                    lost: result.wifiLost == true
+                )
             } else if !result.sent, status?.device.switchedOff == true {
                 toast = Self.deepSleepNote(nil, off: true)
             } else {
