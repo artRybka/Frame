@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.36.0
+
+- Ramka odpięta od zasilacza zasypia od razu i bez Wi-Fi: serwer nie bierze
+  jej już za śpiącą w sieci (w sieci tylko, gdy odpowiada na ARP), kafelki
+  i komunikaty mówią „Śpi bez Wi-Fi, obudzi ją przycisk”, bez „Obudź ramkę”
+  dla obrazu czekającego na przycisk. W takim śnie serwer co minutę szuka
+  ramki przez MDC i po naciśnięciu przycisku sam uruchamia aplikację.
+- „Teraz” odświeża się samo co 8 s, gdy obraz czeka na ramkę; pasek postępu
+  rusza od pobierania przez obudzoną aplikację.
+- Tryb Online na zasilaczu: aplikacja ramki trzyma zapasowe budziki na dwa
+  najbliższe pełne pół godziny (np. 14:00 i 14:30), więc ramka odpięta od zasilacza budzi
+  się sama, a serwer ją uruchamia i odsyła do zwykłego snu w sieci. Kafelki
+  i „Teraz” mówią, kiedy się obudzi. Nie dotyczy trybu Oszczędnego.
+- Aktualizacja serwera z aplikacji (Synology): Konfiguracja → Serwer ramki
+  pokazuje wersję serwera, „Sprawdź aktualizacje” i „Aktualizuj serwer”.
+  Robi to nowy kontener `frame-updater` (ten sam obraz, gniazdo Dockera,
+  bez sieci): co 6 h pobiera nowy obraz, na prośbę tworzy `frame` na nowo
+  z tymi samymi ustawieniami i wraca do poprzedniego, gdy nowy nie wstanie.
+  Wymaga jednorazowo nowego `deploy/synology/docker-compose.yml`.
+- Serwer podaje wersję dodatku (`/etc/frame-release` z budowy obrazu);
+  obraz ghcr ma etykiety wersji i rewizji oraz tag z wersją dodatku.
+
 ## 0.35.0
 
 - Prezentacja uporządkowana: dzieła sztuki bez kadru „Auto” (zapisany
