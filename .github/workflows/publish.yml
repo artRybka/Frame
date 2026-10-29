@@ -41,7 +41,8 @@ jobs:
         run: scripts/bundle-addon.sh dist/frame
       - name: Release version
         id: meta
-        run: echo "version=$(sed -n 's/^version: *"\{0,1\}\([^"]*\)"\{0,1\}$/\1/p' ha-addon/config.yaml)" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "version=$(sed -n 's/^version: *"\{0,1\}\([^"]*\)"\{0,1\}$/\1/p' ha-addon/config.yaml)" >> "$GITHUB_OUTPUT"
       - id: build
         uses: docker/build-push-action@v6
         with:
