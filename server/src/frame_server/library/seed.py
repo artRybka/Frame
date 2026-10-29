@@ -23,6 +23,10 @@ FAVORITES = Playlist(
     rules=PlaylistRules(favorites_only=True),
 )
 
+#: "W odcieniach błękitu": a sea and a sky are often turquoise.
+BLUES = ["blue", "teal"]
+BLUES_KEY = "blues_with_teal"
+
 #: (museum, query, how many works)
 Query = tuple[str, str, int]
 
@@ -248,7 +252,7 @@ DEFAULT_PLAYLISTS: list[Playlist] = [
     Playlist(
         name="W odcieniach błękitu",
         description="Niebo, woda i indygo.",
-        rules=PlaylistRules(colors=["blue"]),
+        rules=PlaylistRules(colors=BLUES),
     ),
     Playlist(
         name="Ciepłe barwy",
@@ -265,6 +269,20 @@ def seed_playlists(importer: Importer) -> None:
         for playlist in DEFAULT_PLAYLISTS:
             library.save_playlist(playlist.model_copy(update={"kind": PlaylistKind.SMART}))
     ensure_favorites(library)
+    _turquoise_blues(library)
+
+
+def _turquoise_blues(library: Library) -> None:
+    """Once (add-on 0.29): the starter "W odcieniach błękitu" takes
+    turquoise seas and skies too, now that a colour must cover a good part
+    of a picture rather than be an accent of it."""
+    if library.get_state(BLUES_KEY, False):
+        return
+    for playlist in library.playlists():
+        if playlist.rules.colors == ["blue"] and playlist.name == "W odcieniach błękitu":
+            rules = playlist.rules.model_copy(update={"colors": BLUES})
+            library.save_playlist(playlist.model_copy(update={"rules": rules}))
+    library.set_state(BLUES_KEY, True)
 
 
 def ensure_favorites(library: Library) -> None:

@@ -19,6 +19,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 
+from .colors import has_colours
 from .duplicates import Works, dedupe
 from .models import (
     AlbumSync,
@@ -104,7 +105,7 @@ def matches(item: Item, rules: PlaylistRules) -> bool:
         return False
     if rules.subjects and not _fold(item.subjects) & _fold(rules.subjects):
         return False
-    if rules.colors and not set(item.color_tags) & set(rules.colors):
+    if rules.colors and not has_colours(item.color_tags, rules.colors):
         return False
     if rules.terms and not matches_terms(item, rules.terms):
         return False
