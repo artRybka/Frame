@@ -3,7 +3,9 @@
 A grid is drawn for the landscape canvas on a coarse C×R lattice over the
 area inside the outer mat margin; each cell is ``(col, row, cols, rows)``
 and is inset by half the gap on every side, so windows sit one gap apart.
-A portrait canvas uses the same grids transposed.
+A portrait canvas uses the same grids transposed. Every grid fills the
+whole area inside the margin: photos are cropped to their windows rather
+than leaving bare mat.
 
 "Automatic" picks, for the photos at hand, the grid whose windows' shapes
 match the photos' shapes best: portrait photos go to tall windows,
@@ -46,23 +48,21 @@ def _g(gid: str, name: str, cols: int, rows: int, *cells: tuple[float, ...]) -> 
 
 GRIDS: dict[int, tuple[Grid, ...]] = {
     2: (
-        _g("A", "Para pionów", 6, 1, (1, 0, 2, 1), (3, 0, 2, 1)),
-        _g("B", "Duży i mały", 12, 12, (0, 0, 8, 12), (8, 3, 4, 6)),
+        _g("A", "Para", 2, 1, (0, 0, 1, 1), (1, 0, 1, 1)),
+        _g("B", "Duży i mały", 12, 1, (0, 0, 8, 1), (8, 0, 4, 1)),
     ),
     3: (
         _g("A", "Tryptyk", 3, 1, (0, 0, 1, 1), (1, 0, 1, 1), (2, 0, 1, 1)),
         _g("B", "Jeden i dwa", 3, 2, (0, 0, 2, 2), (2, 0, 1, 1), (2, 1, 1, 1)),
-        _g("C", "Pion i dwa poziomy", 12, 12, (0, 0, 4, 12), (4, 0, 8, 6), (4, 6, 8, 6)),
     ),
     4: (
-        _g("A", "Siatka 2×2", 8, 2, (1, 0, 3, 1), (4, 0, 3, 1), (1, 1, 3, 1), (4, 1, 3, 1)),
-        _g("B", "Rząd pionów", 4, 12, (0, 2, 1, 8), (1, 2, 1, 8), (2, 2, 1, 8), (3, 2, 1, 8)),
-        _g("C", "Duży i trzy", 12, 12, (0, 0, 9, 12), (9, 0, 3, 4), (9, 4, 3, 4), (9, 8, 3, 4)),
+        _g("A", "Siatka 2×2", 2, 2, (0, 0, 1, 1), (1, 0, 1, 1), (0, 1, 1, 1), (1, 1, 1, 1)),
+        _g("B", "Duży i trzy", 12, 12, (0, 0, 9, 12), (9, 0, 3, 4), (9, 4, 3, 4), (9, 8, 3, 4)),
     ),
     5: (
         _g(
-            "A", "Środek i cztery rogi", 4, 2,
-            (1, 0, 2, 2), (0, 0, 1, 1), (0, 1, 1, 1), (3, 0, 1, 1), (3, 1, 1, 1),
+            "A", "Duży i cztery", 4, 2,
+            (0, 0, 2, 2), (2, 0, 1, 1), (3, 0, 1, 1), (2, 1, 1, 1), (3, 1, 1, 1),
         ),
         _g(
             "B", "Pion i cztery", 12, 12,
@@ -75,20 +75,20 @@ GRIDS: dict[int, tuple[Grid, ...]] = {
             (0, 0, 1, 1), (1, 0, 1, 1), (2, 0, 1, 1), (0, 1, 1, 1), (1, 1, 1, 1), (2, 1, 1, 1),
         ),
         _g(
-            "B", "Duży i pięć", 16, 12,
-            (2, 0, 8, 8), (10, 0, 4, 4), (10, 4, 4, 4), (2, 8, 4, 4), (6, 8, 4, 4), (10, 8, 4, 4),
+            "B", "Duży i pięć", 3, 3,
+            (0, 0, 2, 2), (2, 0, 1, 1), (2, 1, 1, 1), (0, 2, 1, 1), (1, 2, 1, 1), (2, 2, 1, 1),
         ),
     ),
     7: (
         _g(
-            "A", "Środek i boki", 4, 3,
-            (1, 0, 2, 3), (0, 0, 1, 1), (0, 1, 1, 1), (0, 2, 1, 1),
-            (3, 0, 1, 1), (3, 1, 1, 1), (3, 2, 1, 1),
+            "A", "Duży i sześć", 4, 3,
+            (0, 0, 2, 3), (2, 0, 1, 1), (3, 0, 1, 1), (2, 1, 1, 1),
+            (3, 1, 1, 1), (2, 2, 1, 1), (3, 2, 1, 1),
         ),
         _g(
-            "B", "Cztery nad trzema", 8, 2,
-            (0, 0, 2, 1), (2, 0, 2, 1), (4, 0, 2, 1), (6, 0, 2, 1),
-            (1, 1, 2, 1), (3, 1, 2, 1), (5, 1, 2, 1),
+            "B", "Cztery nad trzema", 4, 2,
+            (0, 0, 1, 1), (1, 0, 1, 1), (2, 0, 1, 1), (3, 0, 1, 1),
+            (0, 1, 2, 1), (2, 1, 1, 1), (3, 1, 1, 1),
         ),
     ),
     8: (
@@ -100,7 +100,7 @@ GRIDS: dict[int, tuple[Grid, ...]] = {
         _g(
             "B", "Duży i siedem", 48, 12,
             (0, 0, 24, 7), (24, 0, 12, 3.5), (36, 0, 12, 3.5), (24, 3.5, 12, 3.5),
-            (36, 3.5, 12, 3.5), (0, 7, 16, 5), (16, 7, 16, 5), (32, 7, 16, 5),
+            (36, 3.5, 12, 3.5), (0, 7, 24, 5), (24, 7, 12, 5), (36, 7, 12, 5),
         ),
     ),
 }  # fmt: skip
