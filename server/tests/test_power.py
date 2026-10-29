@@ -222,26 +222,26 @@ def test_economy_check_times() -> None:
     economy = FrameSettings(
         change_times=["07:00", "19:00"], power_mode="economy", check_every_hours=4
     )
-    # From each change until the next, round the clock, but not from 22:00
-    # to 07:00 (23:00 and 3:00 fall there).
+    # On the clock from midnight, but not from 22:00 to 07:00.
     assert economy.check_quiet_start == "22:00" and economy.check_quiet_end == "07:00"
-    assert check_times(economy) == [time(11, 0), time(15, 0)]
+    assert check_times(economy) == [time(8, 0), time(12, 0), time(16, 0), time(20, 0)]
     assert quiet_hours(economy) is None  # the panel sleeps deeply anyway
-    assert next_check(_at("2026-10-27T15:00"), economy) == _at("2026-10-28T11:00")
+    assert next_check(_at("2026-10-27T20:00"), economy) == _at("2026-10-28T08:00")
     every3 = economy.model_copy(update={"check_every_hours": 3})
-    assert check_times(every3) == [time(10, 0), time(13, 0), time(16, 0)]
+    assert check_times(every3) == [time(9, 0), time(12, 0), time(15, 0), time(18, 0), time(21, 0)]
     no_quiet = economy.model_copy(update={"check_quiet_start": None})
-    assert check_times(no_quiet) == [time(3, 0), time(11, 0), time(15, 0), time(23, 0)]
-    assert next_check(_at("2026-10-27T19:00"), no_quiet) == _at("2026-10-27T23:00")
-    # One change a day: until the same time the next day.
-    alone = FrameSettings(change_times=["00:50"], power_mode="economy", check_every_hours=4)
-    assert check_times(alone) == [time(8, 50), time(12, 50), time(16, 50), time(20, 50)]
-    # Changes closer together than the step: the checks start after the later one.
+    assert check_times(no_quiet) == [time(h, 0) for h in (0, 4, 8, 12, 16, 20)]
+    assert next_check(_at("2026-10-27T20:00"), no_quiet) == _at("2026-10-28T00:00")
+    # Not at a change time; every hour.
+    hourly = economy.model_copy(update={"check_every_hours": 1})
+    assert time(7, 0) not in check_times(hourly) and time(19, 0) not in check_times(hourly)
+    assert len(check_times(hourly)) == 13  # 8:00 … 21:00 without 19:00
+    # The changes do not move the checks.
     close = economy.model_copy(update={"change_times": ["00:50", "03:50"]})
-    assert check_times(close) == [time(7, 50), time(11, 50), time(15, 50), time(19, 50)]
+    assert check_times(close) == check_times(economy)
     # Quiet hours inside the day.
-    nap = no_quiet.model_copy(update={"check_quiet_start": "13:00", "check_quiet_end": "16:00"})
-    assert check_times(nap) == [time(3, 0), time(11, 0), time(23, 0)]
+    nap = no_quiet.model_copy(update={"check_quiet_start": "11:00", "check_quiet_end": "17:00"})
+    assert check_times(nap) == [time(h, 0) for h in (0, 4, 8, 20)]
     assert check_times(economy.model_copy(update={"check_every_hours": 0})) == []
     assert check_times(economy.model_copy(update={"power_mode": "online"})) == []
 

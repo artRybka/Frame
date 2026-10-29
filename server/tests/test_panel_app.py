@@ -157,7 +157,7 @@ def test_economy_wakes_for_checks_with_the_wifi_off(tmp_path: Path) -> None:
     answer = service.app.answer(BATTERY, now=_at("2026-10-28T12:00"))
     assert answer.action == "sleep"
     assert answer.standby == "OFF"
-    assert answer.wake_at == _at("2026-10-28T15:00").isoformat()
+    assert answer.wake_at == _at("2026-10-28T16:00").isoformat()
 
 
 def test_charger_stays_awake_and_a_change_is_waited_for(tmp_path: Path) -> None:

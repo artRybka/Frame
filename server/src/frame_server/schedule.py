@@ -52,10 +52,10 @@ class FrameSettings(BaseModel):
     # so a picture from the app goes out at once. "economy" ("Oszczędny"):
     # on battery it sleeps with the Wi-Fi off after every change and its own
     # alarm wakes it for the next change (quiet hours do not apply), and
-    # also every ``check_every_hours`` after each change until the next
-    # one, to show what was sent from the app (0: only at the changes).
+    # also every ``check_every_hours`` on the clock (0:00, 4:00, 8:00, …),
+    # to show what was sent from the app (0: only at the changes).
     power_mode: Literal["online", "economy"] = "online"
-    check_every_hours: Literal[0, 2, 3, 4, 6] = 0
+    check_every_hours: Literal[0, 1, 2, 3, 4, 6] = 0
     # Economy: no checks from ``check_quiet_start`` until ``check_quiet_end``
     # (the changes still wake the panel); None: checks all night too.
     check_quiet_start: str | None = "22:00"
@@ -223,19 +223,14 @@ def check_quiet_hours(settings: FrameSettings) -> tuple[time, time] | None:
 
 def check_times(settings: FrameSettings) -> list[time]:
     """Economy mode: the short wakes between the changes, every
-    ``check_every_hours`` after each change until the next one, round the
-    clock but outside ``check_quiet_hours``, sorted."""
+    ``check_every_hours`` from midnight (0:00, 4:00, 8:00, …), but not at a
+    change time nor in ``check_quiet_hours``."""
     if settings.power_mode != "economy" or not settings.check_every_hours:
         return []
-    day = 24 * 60
-    changes = [t.hour * 60 + t.minute for t in change_times(settings)]
-    step = settings.check_every_hours * 60
-    slots: set[int] = set()
-    for change, following in zip(changes, [*changes[1:], changes[0] + day], strict=True):
-        slots.update(m % day for m in range(change + step, following, step))
-    checks = [time(m // 60, m % 60) for m in sorted(slots - set(changes))]
+    changes = change_times(settings)
     quiet = check_quiet_hours(settings)
-    return [t for t in checks if quiet is None or not _between(t, *quiet)]
+    slots = (time(hour, 0) for hour in range(0, 24, settings.check_every_hours))
+    return [t for t in slots if t not in changes and (quiet is None or not _between(t, *quiet))]
 
 
 def next_check(after: datetime, settings: FrameSettings) -> datetime | None:

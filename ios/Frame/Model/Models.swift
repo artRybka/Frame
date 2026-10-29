@@ -932,21 +932,14 @@ extension FrameSettings {
     }
 
     /// Economy: the short wakes between the changes, every `checkEveryHours`
-    /// after each change until the next one, round the clock but outside
-    /// `checkQuiet`, as minutes after midnight, sorted. As the server
-    /// counts them (`schedule.check_times`).
+    /// from midnight (0:00, 4:00, 8:00, …), but not at a change time nor in
+    /// `checkQuiet`, as minutes after midnight. As the server counts them
+    /// (`schedule.check_times`).
     var checkMinutes: [Int] {
         guard isEconomy, let every = checkEveryHours, every > 0 else { return [] }
-        let day = 24 * 60
-        let changes = changeMinutes
-        guard let first = changes.first else { return [] }
-        var slots = Set<Int>()
-        for (change, following) in zip(changes, changes.dropFirst() + [first + day]) {
-            for minutes in stride(from: change + every * 60, to: following, by: every * 60) {
-                slots.insert(minutes % day)
-            }
-        }
-        return slots.subtracting(changes).filter { !inCheckQuiet($0) }.sorted()
+        let changes = Set(changeMinutes)
+        return stride(from: 0, to: 24 * 60, by: every * 60)
+            .filter { !changes.contains($0) && !inCheckQuiet($0) }
     }
 
     /// Economy: when there are no checks, in minutes after midnight (`end`

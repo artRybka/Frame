@@ -557,7 +557,7 @@ struct ScheduleSection: View {
     }
 
     private let checkOptions: [(Int, String)] = [
-        (0, "Nie sprawdzaj"), (2, "2 godziny"), (3, "3 godziny"), (4, "4 godziny"), (6, "6 godzin"),
+        (0, "Nie sprawdzaj"), (1, "godzinę"), (2, "2 godziny"), (3, "3 godziny"), (4, "4 godziny"), (6, "6 godzin"),
     ]
 
     /// Economy: short wakes between the changes, only for what was sent from the app.
@@ -620,11 +620,12 @@ struct ScheduleSection: View {
         let summary = "\(count) \(Names.wakes(count)) dziennie, Wi-Fi łącznie ok. \(minutes) min na dobę."
         guard let every = settings.checkEveryHours, every > 0 else { return summary }
         guard checks > 0 else {
-            return "Przy tych godzinach zmian i ciszy nocnej nie wypada żadne sprawdzenie. "
+            return "Przy tej ciszy nocnej nie wypada żadne sprawdzenie. "
                 + "Wybierz krótszy odstęp albo skróć ciszę nocną. \(summary)"
         }
+        let often = every == 1 ? "co godzinę" : "co \(every) \(Names.hours(every))"
         let quiet = settings.checkQuiet != nil ? ", poza ciszą nocną" : ""
-        return "Co \(every) \(Names.hours(every)) po każdej zmianie\(quiet). "
+        return "Sprawdza \(often) o pełnych godzinach doby\(quiet). "
             + "Obraz zmienia się tylko, gdy wysłałeś coś z aplikacji. \(summary)"
     }
 
