@@ -14,9 +14,6 @@ struct FrameTabView: View {
     @State private var renaming = false
     @State private var newName = ""
     @State private var showingConnection = LaunchRoute.screen == "connection"
-    /// "Sprawdź stan" found the frame asleep in the network: pressed again,
-    /// it wakes it.
-    @State private var wakeArmed = false
     @State private var confirmingOff = false
 
     private var device: DeviceStatus? { model.status?.device }
@@ -78,7 +75,6 @@ struct FrameTabView: View {
                 follow(model.settings)
                 look()
             }
-            .onDisappear { wakeArmed = false }
             .onChange(of: model.settings) { _, new in follow(new) }
             .alert("Nazwa ramki", isPresented: $renaming) {
                 TextField(panelName, text: $newName)
@@ -125,15 +121,13 @@ struct FrameTabView: View {
     }
 
     /// `checking`: the "Sprawdź stan" button, which also wakes a frame
-    /// asleep in the network when pressed a second time; pulling to refresh
-    /// only looks.
+    /// asleep in the network; pulling to refresh only looks.
     private func refresh(checking: Bool = false) async {
         refreshing = true
         lastLook = .now
         defer { refreshing = false }
         if checking {
-            let wake = wakeArmed
-            wakeArmed = await model.checkStatus(wake: wake)
+            await model.checkStatus()
         } else {
             await model.refreshStatus(live: true)
         }
@@ -413,7 +407,7 @@ struct FrameTabView: View {
     private var checkLabel: String {
         if model.wakingForStatus { return "Budzę ramkę…" }
         if refreshing { return "Sprawdzam…" }
-        return wakeArmed ? "Obudź i sprawdź" : "Sprawdź stan"
+        return "Sprawdź stan"
     }
 
     /// "Głęboki sen" lengths: up to three days.
@@ -426,7 +420,7 @@ struct FrameTabView: View {
             Button {
                 Task { await refresh(checking: true) }
             } label: {
-                Label(checkLabel, systemImage: model.wakingForStatus || wakeArmed ? "sun.max" : "arrow.clockwise")
+                Label(checkLabel, systemImage: model.wakingForStatus ? "sun.max" : "arrow.clockwise")
             }
             .buttonStyle(SecondaryButtonStyle())
             .disabled(refreshing)

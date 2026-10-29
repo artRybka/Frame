@@ -272,27 +272,31 @@ final class AppModel {
         }
     }
 
-    /// "Sprawdź stan": a live check. A frame asleep in the network is woken
-    /// only when `wake` (the button pressed again): waking costs battery.
-    /// Deep sleep has the Wi-Fi off: only the frame's alarm or its button
-    /// ends it, so no signal is sent then. True: asleep in the network and
-    /// left asleep, so the next press wakes it.
-    @discardableResult
-    func checkStatus(wake: Bool) async -> Bool {
-        await refreshStatus(live: true)
-        guard let device = status?.device, device.configured, device.reachable == false else { return false }
+    /// "Sprawdź stan". A frame the server knows to be asleep in the network
+    /// is woken at once, only to be looked at (it goes back to sleep); when
+    /// the server is not sure (it last saw the frame awake, or never), it
+    /// asks the frame first and wakes it if it does not answer. Deep sleep
+    /// has the Wi-Fi off: only the frame's alarm or its button ends it, so
+    /// no signal is sent then, the app says when it wakes instead.
+    func checkStatus() async {
+        await refreshStatus(live: false)  // what the server knows, the frame not asked
+        let known = status?.device.powerState
+        if known != "standby", known != "deep_sleep" {
+            await refreshStatus(live: true)
+        }
+        guard let device = status?.device, device.configured, device.powerState != "online" else { return }
         if device.powerState == "deep_sleep" {
             toast = Self.deepSleepNote(device.wakeAt, off: device.switchedOff == true)
-            return false
+            return
         }
-        guard wake else {
-            toast = "Ramka śpi w sieci. Naciśnij jeszcze raz, żeby ją obudzić (kosztuje trochę baterii)"
-            return true
+        if device.powerState == nil, device.reachable != false { return }  // a server before 0.12
+        if device.onNetwork == false {
+            toast = "Ramki nie ma w sieci Wi-Fi, sygnał budzenia do niej nie dotrze"
+            return
         }
         wakingForStatus = true
         defer { wakingForStatus = false }
-        await self.wake(sleepAfter: true)
-        return false
+        await wake(sleepAfter: true)
     }
 
     /// `until`: the alarm (ISO).

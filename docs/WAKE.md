@@ -734,6 +734,16 @@ dlaczego milczy). Śpiący ekran nie odpowiada na MDC, więc czuwanie i głębok
 sen serwer wnioskuje z tego, co sam zrobił i co zobaczył przy ostatnim
 kontakcie.
 
+Od 2026-10-29 (po krótkim epizodzie z budzeniem dopiero za drugim
+naciśnięciem w 0.31.0) „Sprawdź stan” budzi jednym naciśnięciem. Gdy serwer
+wie, że ramka śpi w sieci (aplikacja ramki zgłosiła sen ze standby wł.),
+aplikacja od razu wysyła `POST /api/device/wake?sleep_after=true`. Gdy nie
+jest pewien (ostatnio widział ramkę obudzoną albo nigdy), najpierw ją
+sprawdza (MDC, potem ARP) i budzi, jeśli nie odpowiada. W głębokim śnie
+i po „Wyłącz ramkę” niczego nie wysyła, tylko mówi, kiedy zadzwoni budzik
+i że budzi przycisk. Ramki, której według serwera nie ma w sieci Wi-Fi, też
+nie budzi. Przeciągnięcie w dół i wejście w zakładkę dalej tylko patrzą.
+
 ## Prawdziwa przyczyna (2026-10-26): serwer w ogóle nie wysyłał pakietów
 
 Ekran na baterii, Wi-Fi 2,4 GHz, ta sama podsieć co serwer: aplikacja WoL
