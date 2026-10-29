@@ -563,7 +563,7 @@ ostatni odczyt baterii zostawał przy tym „100 %, ładuje się”. Od 0.32:
   „kopnięcie” po 3 minutach ciszy), to ramka śpiąca sama z siebie: stan
   `asleep` bez budzika, a odczyt „zasilacz” zmienia się na „bateria” (na
   zasilaczu aplikacja nie śpi). Odczyt z MDC przy następnej pobudce to
-  poprawia. Od 0.35 serwer pyta przy tym ARP, czy ramka jest w sieci (niżej).
+  poprawia. Od 0.36 serwer pyta przy tym ARP, czy ramka jest w sieci (niżej).
 
 **Po odpięciu zasilacza ramka śpi bez Wi-Fi (2026-10-29, zgłoszenie
 Mateusza, 0.34.0).** Po odpięciu kabla kafelki pokazywały „Czuwanie ·
@@ -576,7 +576,7 @@ teraz NAS z tej samej podsieci nie dostawał odpowiedzi ARP. Sen zlecony
 przez aplikację (`goToSleep`) z czuwaniem sieci trzyma Wi-Fi i WoL go budzi
 (2026-10-26). Sprzeczność brała się z tego, że serwer uznawał taką ramkę za
 śpiącą „w sieci” (`standby`), a brak odpowiedzi ARP pokazywał tylko jako
-`on_network: false`. Od 0.35:
+`on_network: false`. Od 0.36:
 
 - Ramka, która zasnęła sama, jest „w sieci” tylko wtedy, gdy odpowiada na
   ARP. Bez odpowiedzi (albo gdy nie da się tego sprawdzić, a była na

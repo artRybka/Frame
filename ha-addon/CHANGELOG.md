@@ -7,11 +7,14 @@
   i komunikaty mówią „Śpi bez Wi-Fi, obudzi ją przycisk”, bez „Obudź ramkę”
   dla obrazu czekającego na przycisk. W takim śnie serwer co minutę szuka
   ramki przez MDC i po naciśnięciu przycisku sam uruchamia aplikację.
+- Koniec ciągłego „Budzę ramkę”: wysyłka i „Sprawdź stan” uruchamiają przez
+  MDC aplikację na ramce, która odpowiada, ale nie ma jej uruchomionej.
 - „Teraz” odświeża się samo co 8 s, gdy obraz czeka na ramkę; pasek postępu
   rusza od pobierania przez obudzoną aplikację.
 - Tryb Online na zasilaczu: aplikacja ramki trzyma zapasowe budziki na dwa
-  najbliższe pełne pół godziny (np. 14:00 i 14:30), więc ramka odpięta od zasilacza budzi
-  się sama, a serwer ją uruchamia i odsyła do zwykłego snu w sieci. Kafelki
+  najbliższe pełne pół godziny (np. 14:00 i 14:30), więc ramka odpięta od
+  zasilacza budzi się sama, a serwer ją uruchamia i odsyła do zwykłego snu
+  w sieci. Kafelki
   i „Teraz” mówią, kiedy się obudzi. Nie dotyczy trybu Oszczędnego.
 - Aktualizacja serwera z aplikacji (Synology): Konfiguracja → Serwer ramki
   pokazuje wersję serwera, „Sprawdź aktualizacje” i „Aktualizuj serwer”.
