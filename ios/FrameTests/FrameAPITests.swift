@@ -79,14 +79,23 @@ final class FrameAPITests: XCTestCase {
         XCTAssertEqual(settings.checkMinutes, [])
         settings.powerMode = "economy"
         settings.checkEveryHours = 4
-        XCTAssertEqual(settings.checkMinutes, [11 * 60, 15 * 60])
-        settings.changeTimes = ["08:00"]
-        settings.checkEveryHours = 6
-        XCTAssertEqual(settings.checkMinutes, [14 * 60])
+        // On the clock from midnight, but not at a change nor from 22:00 to 07:00.
+        XCTAssertEqual(settings.checkMinutes, [8 * 60, 12 * 60, 16 * 60, 20 * 60])
+        settings.checkQuietStart = nil
+        XCTAssertEqual(settings.checkMinutes, [0, 4 * 60, 8 * 60, 12 * 60, 16 * 60, 20 * 60])
+        settings.checkEveryHours = 1
+        XCTAssertFalse(settings.checkMinutes.contains(7 * 60))
+        XCTAssertEqual(settings.checkMinutes.count, 22)
+        settings.checkQuietStart = "22:00"
+        settings.changeTimes = ["00:50", "03:50"]
+        settings.checkEveryHours = 4
+        XCTAssertEqual(settings.checkMinutes, [8 * 60, 12 * 60, 16 * 60, 20 * 60])
         let json = try LiveBackend.encoder().encode(settings)
         XCTAssertTrue(String(decoding: json, as: UTF8.self).contains("\"power_mode\":\"economy\""))
         let decoded = try LiveBackend.decoder().decode(FrameSettings.self, from: json)
         XCTAssertTrue(decoded.isEconomy)
+        XCTAssertEqual(decoded.checkQuietStart, "22:00")
+        XCTAssertEqual(decoded.checkQuietEnd, "07:00")
 
         let now = Date.now
         let iso = { (seconds: TimeInterval) in ISO8601DateFormatter().string(from: now.addingTimeInterval(seconds)) }

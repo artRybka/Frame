@@ -52,10 +52,14 @@ class FrameSettings(BaseModel):
     # so a picture from the app goes out at once. "economy" ("Oszczędny"):
     # on battery it sleeps with the Wi-Fi off after every change and its own
     # alarm wakes it for the next change (quiet hours do not apply), and
-    # also every ``check_every_hours`` between the day's first and last
-    # change, to show what was sent from the app (0: only at the changes).
+    # also every ``check_every_hours`` on the clock (0:00, 4:00, 8:00, …),
+    # to show what was sent from the app (0: only at the changes).
     power_mode: Literal["online", "economy"] = "online"
-    check_every_hours: Literal[0, 2, 3, 4, 6] = 0
+    check_every_hours: Literal[0, 1, 2, 3, 4, 6] = 0
+    # Economy: no checks from ``check_quiet_start`` until ``check_quiet_end``
+    # (the changes still wake the panel); None: checks all night too.
+    check_quiet_start: str | None = "22:00"
+    check_quiet_end: str = "07:00"
     shuffle: bool = True
     avoid_repeat_days: int = Field(14, ge=0, le=365)
     orientation: Orientation = Orientation.LANDSCAPE
@@ -109,10 +113,15 @@ class FrameSettings(BaseModel):
             raise ValueError(f"at most {MAX_CHANGE_TIMES} change times")
         return [t.strftime("%H:%M") for t in times]
 
-    @field_validator("quiet_start")
+    @field_validator("quiet_start", "check_quiet_start")
     @classmethod
     def _valid_start(cls, value: str | None) -> str | None:
         return _hhmm(value).strftime("%H:%M") if value else None
+
+    @field_validator("check_quiet_end")
+    @classmethod
+    def _valid_end(cls, value: str) -> str:
+        return _hhmm(value).strftime("%H:%M")
 
     @field_validator("name", mode="before")
     @classmethod
@@ -205,29 +214,23 @@ def next_change(after: datetime, settings: FrameSettings) -> datetime:
     raise AssertionError("no change time found")  # pragma: no cover
 
 
-# With a single change a day the checks go on this long after it.
-CHECK_SPAN_ALONE = timedelta(hours=12)
+def check_quiet_hours(settings: FrameSettings) -> tuple[time, time] | None:
+    """Economy mode: when there are no checks, ``(start, end)``."""
+    start = _parse(settings.check_quiet_start)
+    end = _hhmm(settings.check_quiet_end)
+    return None if start is None or start == end else (start, end)
 
 
 def check_times(settings: FrameSettings) -> list[time]:
     """Economy mode: the short wakes between the changes, every
-    ``check_every_hours`` from the day's first change until its last one
-    (with one change a day: for ``CHECK_SPAN_ALONE`` after it)."""
+    ``check_every_hours`` from midnight (0:00, 4:00, 8:00, …), but not at a
+    change time nor in ``check_quiet_hours``."""
     if settings.power_mode != "economy" or not settings.check_every_hours:
         return []
-    times = change_times(settings)
-    first = datetime.combine(datetime(2000, 1, 1), times[0])
-    last = datetime.combine(datetime(2000, 1, 1), times[-1])
-    if last == first:
-        last = first + CHECK_SPAN_ALONE
-    step = timedelta(hours=settings.check_every_hours)
-    checks = []
-    slot = first + step
-    while slot < last:
-        if slot.date() == first.date() and slot.time() not in times:
-            checks.append(slot.time())
-        slot += step
-    return checks
+    changes = change_times(settings)
+    quiet = check_quiet_hours(settings)
+    slots = (time(hour, 0) for hour in range(0, 24, settings.check_every_hours))
+    return [t for t in slots if t not in changes and (quiet is None or not _between(t, *quiet))]
 
 
 def next_check(after: datetime, settings: FrameSettings) -> datetime | None:

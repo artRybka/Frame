@@ -179,6 +179,13 @@ enum Names {
         return tens != 1 && (2 ... 4).contains(ones) ? "zmiany" : "zmian"
     }
 
+    /// "godzina", "godziny" or "godzin" after `count`.
+    static func hours(_ count: Int) -> String {
+        if count == 1 { return "godzina" }
+        let tens = count % 100 / 10, ones = count % 10
+        return tens != 1 && (2 ... 4).contains(ones) ? "godziny" : "godzin"
+    }
+
     /// "pobudka", "pobudki" or "pobudek" after `count`.
     static func wakes(_ count: Int) -> String {
         if count == 1 { return "pobudka" }
