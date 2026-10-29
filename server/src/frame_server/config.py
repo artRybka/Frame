@@ -37,9 +37,10 @@ class Settings(BaseSettings):
     api_token: str | None = None
 
     data_dir: Path = Path("data")
-    # Downloaded museum originals are a cache: least recently used ones go
-    # beyond this size (uploads and photos are always kept).
-    image_cache_mb: int = 500
+    # Originals the server can download again (museums, shared albums) are a
+    # cache: least recently used ones go beyond this size, those in Favourites
+    # and playlists last. Uploads are always kept and not counted.
+    image_cache_mb: int = 3000
     # The catalogue browsed in the app: museum works with thumbnails and
     # colours, grown in the background up to this many MB of thumbnails
     # (0: only what Suggestions and playlists need).

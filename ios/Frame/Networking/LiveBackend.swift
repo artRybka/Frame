@@ -375,12 +375,8 @@ struct LiveBackend: FrameBackend {
 
     func libraryStorage() async throws -> LibraryStorage { try await get("/api/library/storage") }
 
-    func saveLibraryLimit(mb: Int) async throws -> LibraryStorage {
-        try await send("/api/library/storage", method: "PUT", body: LibraryStorageUpdate(limitMb: mb))
-    }
-
-    func resetLibraryLimit() async throws -> LibraryStorage {
-        try await send("/api/library/storage", method: "DELETE")
+    func saveLibraryLimits(_ update: LibraryStorageUpdate) async throws -> LibraryStorage {
+        try await send("/api/library/storage", method: "PUT", body: update)
     }
 
     func aiSettings() async throws -> AiSettings { try await get("/api/ai") }

@@ -1,5 +1,5 @@
-"""How much disk the library takes and its limit, set in the app
-(Ramka → trybik → Połączenie)."""
+"""How much disk the library takes and its limits for the catalogue and the
+originals, set in the app (Ramka → trybik → Konfiguracja)."""
 
 from __future__ import annotations
 

@@ -611,8 +611,11 @@ struct LibraryStorage: Codable, Hashable, Sendable {
     struct Usage: Codable, Hashable, Sendable {
         /// Thumbnails of the catalogue browsed in the app.
         var catalogueBytes: Int64
-        /// Display-size originals: museum cache, uploads and photos.
+        /// Display-size originals the server can download again: museum
+        /// works and shared-album photos.
         var originalsBytes: Int64
+        /// Uploads and photos it cannot: always kept, outside the limits.
+        var ownBytes: Int64
         /// Pictures prepared for the panel and their previews.
         var panelBytes: Int64
         var databaseBytes: Int64
@@ -622,17 +625,19 @@ struct LibraryStorage: Codable, Hashable, Sendable {
     }
 
     var usage: Usage
-    /// Catalogue and originals together; the server splits it between them.
-    var limitMb: Int
-    /// From frame.env or the add-on options.
-    var defaultMb: Int
     var catalogueMb: Int
-    var imageCacheMb: Int
-    var fromApp: Bool
+    /// From frame.env or the add-on options.
+    var catalogueDefaultMb: Int
+    var catalogueFromApp: Bool
+    var originalsMb: Int
+    var originalsDefaultMb: Int
+    var originalsFromApp: Bool
 }
 
+/// One limit or both; the default value goes back to frame.env.
 struct LibraryStorageUpdate: Encodable, Sendable {
-    var limitMb: Int
+    var catalogueMb: Int?
+    var originalsMb: Int?
 }
 
 /// Claude (Anthropic's API) working for the library: keywords for what
