@@ -846,6 +846,9 @@ class Europeana(Museum):
     copies = re.compile(
         r"\b(slides?|transparenc\w*|photograph(?:s|y)?|reproduc\w*|postcards?)\b", re.IGNORECASE
     )
+    #: Aggregators of natural history, not art: OpenUp! brings botanical
+    #: photos with names like "Rosa 'Claude Monet'", found by artist.
+    not_art = ('-PROVIDER:"OpenUp!"',)
 
     def _death(self, d: dict[str, Any]) -> int | None:
         """When the work's last author died, if every author is known."""
@@ -933,6 +936,7 @@ class Europeana(Museum):
             ("qf", "TYPE:IMAGE"),
             # Tier 1 is anything from 0.1 megapixel: thumbnails, not pictures.
             ("qf", "contentTier:(2 OR 3 OR 4)"),
+            *(("qf", q) for q in self.not_art),
             *(("qf", q) for q in qf),
             ("media", "true"),
             ("thumbnail", "true"),
@@ -947,7 +951,9 @@ class Europeana(Museum):
         return int(body.get("totalResults") or 0), items
 
     def search(self, query: str, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
-        return self._get(query, [], limit, page)
+        # Works of art only: free text alone finds medals, stamps, horse
+        # collars and photos of buildings, and buries the paintings.
+        return self._get(query, [self.whats["any"]], limit, page)
 
     def discover(self, spec: Discovery, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
         qf = [self.whats[spec.kind]]
