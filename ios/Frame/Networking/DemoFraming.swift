@@ -354,7 +354,7 @@ enum DemoFraming {
                     UIImage(cgImage: part).draw(in: window.rect)
                 }
             }
-            drawBevels(layout, board: board, whiteCore: pres.mat == "picture_dark", in: context.cgContext)
+            drawBevels(layout, board: board, mat: pres.mat, in: context.cgContext)
             if let at = layout.captionAt {
                 drawCaption(art.caption, in: at, canvas: size, white: white)
             }
@@ -371,14 +371,25 @@ enum DemoFraming {
         return output
     }
 
-    /// 45° bevels cut in the board's colour (or a white core), a little
-    /// lighter at the bottom and right, darker at the top and left, and the
-    /// mat's shadow on the picture under its top and left edges.
-    private static func drawBevels(_ plan: Plan, board: UIColor, whiteCore: Bool, in context: CGContext) {
+    /// 45° bevels cut in the board's colour (a white core on the deep board,
+    /// a dark grey one on the black), a little lighter at the bottom and
+    /// right, darker at the top and left, and the mat's shadow on the
+    /// picture under its top and left edges.
+    private static func drawBevels(_ plan: Plan, board: UIColor, mat: String, in context: CGContext) {
         let short = min(plan.canvas.width, plan.canvas.height)
         let b = max(2, (short * 0.006).rounded()), shadow = max(2, (short * 0.006).rounded())
-        let core = whiteCore ? UIColor.white : board
-        let lit = whiteCore ? core : toward(core, 1, 0.2), shaded = toward(core, 0, whiteCore ? 0.18 : 0.15)
+        let lit: UIColor, shaded: UIColor
+        switch mat {
+        case "picture_dark":
+            lit = .white
+            shaded = toward(.white, 0, 0.18)
+        case "black":  // mat.BLACK_CORE
+            lit = toward(board, 1, 0.34)
+            shaded = toward(board, 1, 0.22)
+        default:
+            lit = toward(board, 1, 0.2)
+            shaded = toward(board, 0, 0.15)
+        }
         for window in plan.windows {
             let r = window.rect
             let open = (

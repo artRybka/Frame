@@ -11,7 +11,8 @@ along its top and left edges.
 framer would: the hue that carries the most colour (area times saturation),
 made light and muted; nearly colourless pictures get a warm or cool
 off-white. "picture_dark" ("Ciemne") is the same hue on a deep, muted
-board with a white core: its bevels are white, lit and shaded.
+board with a white core: its bevels are white, lit and shaded. "black" has a
+dark grey core, so the cut still shows on the panel.
 """
 
 from __future__ import annotations
@@ -30,6 +31,9 @@ PICTURE_MATS = ("picture", "picture_dark")  # tinted by the picture
 HUE_BINS = 36
 TINT_LIGHT = (0.9, 0.024, 0.3)  # light mat: lightness (black 0, white 1), max chroma, share
 TINT_DARK = (0.24, 0.035, 0.5)  # dark mat: deep and muted
+# The black board's core, lit and shaded: how far toward white (cube-root
+# lightness). The board's own black would leave the cut all but invisible.
+BLACK_CORE = (0.34, 0.22)
 NEUTRAL_CHROMA = 0.02  # pictures below this mean chroma count as colourless
 BEVEL = 0.006  # bevel width, fraction of the canvas's short side
 SHADOW = 0.006  # shadow on the picture, same unit
@@ -233,6 +237,8 @@ def paint_mat(
     board = target[mask].mean(axis=0) if mat == "edge" else base
     if mat == "picture_dark":  # a white core
         core_lit, core_shaded = white, _toward(white, black, 0.18)
+    elif mat == "black":  # a dark grey core
+        core_lit, core_shaded = (_toward(board, white, amount) for amount in BLACK_CORE)
     else:
         core_lit = _toward(board, white, 0.2)
         core_shaded = _toward(board, black, 0.15)
