@@ -29,8 +29,8 @@ struct FrameTabView: View {
                         deviceActions
                         if draft != nil {
                             ScheduleSection(settings: binding).id("schedule")
-                            PresentationSection(settings: binding)
-                            ScreenSection(settings: binding)
+                            PresentationSection(settings: binding).id("presentation")
+                            ScreenSection(settings: binding).id("orientation")
                         }
                     }
                     .padding(.horizontal, Theme.gutter)
@@ -38,7 +38,11 @@ struct FrameTabView: View {
                 }
                 .onChange(of: draft != nil, initial: true) { _, ready in
                     // CI screenshots
-                    if ready, LaunchRoute.screen.hasPrefix("schedule") { proxy.scrollTo("schedule", anchor: .top) }
+                    guard ready else { return }
+                    let screen = LaunchRoute.screen
+                    if screen.hasPrefix("schedule") { proxy.scrollTo("schedule", anchor: .top) }
+                    if screen.hasPrefix("presentation") { proxy.scrollTo("presentation", anchor: .top) }
+                    if screen == "orientation" { proxy.scrollTo("orientation", anchor: .top) }
                 }
             }
             .background(Theme.paper)
@@ -112,7 +116,7 @@ struct FrameTabView: View {
         base = settings
     }
 
-    /// CI screenshots: the schedule with a few times and the quiet hours on.
+    /// CI screenshots: the schedule with a few times and the quiet hours on, or photos three to a board.
     private static func screenshotDraft(_ settings: FrameSettings) -> FrameSettings {
         var settings = settings
         switch LaunchRoute.screen {
@@ -125,6 +129,10 @@ struct FrameTabView: View {
             settings.checkEveryHours = 4
             settings.checkQuietStart = "22:00"
             settings.checkQuietEnd = "07:00"
+        case "presentation-photo":
+            settings.photo.fit = "multi"
+            settings.photo.multiCount = 3
+            settings.photo.margin = Panel.margin(mm: 30)
         default:
             break
         }
@@ -960,7 +968,7 @@ struct ChangeTimeChip: View {
 struct PresentationSection: View {
     @Environment(AppModel.self) private var model
     @Binding var settings: FrameSettings
-    @State private var target = Target.art
+    @State private var target = LaunchRoute.screen == "presentation-photo" ? Target.photo : .art
     /// `settings` after a short pause, so a slider drag renders once.
     @State private var previewed: FrameSettings?
 
