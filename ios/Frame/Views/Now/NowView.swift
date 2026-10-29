@@ -377,27 +377,12 @@ struct NowView: View {
                 .contentTransition(.opacity)
             }
             if offset != 0 {
-                HStack(spacing: 12) {
-                    backToNow
-                    if canSkip {
-                        skipButton
-                    }
-                    Button {
-                        Task { await primaryAction() }
-                    } label: {
-                        Label {
-                            Text("Pokaż na ramce")
-                        } icon: {
-                            if sending {
-                                ProgressView().tint(Theme.paper)
-                            } else {
-                                Image(systemName: "photo.artframe")
-                            }
-                        }
-                    }
-                    .buttonStyle(ActionButtonStyle(prominent: true))
-                    .disabled(!primaryEnabled || sending)
-                    .opacity(primaryEnabled || sending ? 1 : 0.45)
+                // With "Pomiń" too: titles where the row has room, else
+                // "Pomiń" and then "Teraz" lose theirs.
+                ViewThatFits(in: .horizontal) {
+                    buttonRow(titles: 2)
+                    buttonRow(titles: 1)
+                    buttonRow(titles: 0)
                 }
                 .frame(maxWidth: model.isPortrait ? 420 : .infinity)
                 .transition(.opacity)
@@ -442,14 +427,41 @@ struct NowView: View {
         .foregroundStyle(Theme.inkSoft)
     }
 
+    /// "Teraz", "Pomiń" (for a picture in the queue) and "Pokaż na ramce";
+    /// `titles` of the first two keep their title, the rest only the icon.
+    private func buttonRow(titles: Int) -> some View {
+        HStack(spacing: 12) {
+            backToNow(iconOnly: titles < 1)
+            if canSkip {
+                skipButton(iconOnly: titles < 2)
+            }
+            Button {
+                Task { await primaryAction() }
+            } label: {
+                Label {
+                    Text("Pokaż na ramce")
+                } icon: {
+                    if sending {
+                        ProgressView().tint(Theme.paper)
+                    } else {
+                        Image(systemName: "photo.artframe")
+                    }
+                }
+            }
+            .buttonStyle(ActionButtonStyle(prominent: true))
+            .disabled(!primaryEnabled || sending)
+            .opacity(primaryEnabled || sending ? 1 : 0.45)
+        }
+    }
+
     /// Back to the picture on the frame from wherever the arrows went.
-    private var backToNow: some View {
+    private func backToNow(iconOnly: Bool) -> some View {
         Button {
             withAnimation(.easeInOut(duration: 0.25)) { browsed = nil }
         } label: {
             Label("Teraz", systemImage: offset > 0 ? "arrow.uturn.left" : "arrow.uturn.right")
         }
-        .buttonStyle(ActionButtonStyle(wide: false, iconOnly: canSkip))
+        .buttonStyle(ActionButtonStyle(wide: false, iconOnly: iconOnly))
         .disabled(sending)
         .accessibilityLabel("Wróć do obrazu na ramce")
         .transition(.opacity)
@@ -464,13 +476,13 @@ struct NowView: View {
 
     /// "Pomiń": the picture browsed to leaves the queue for this round; the
     /// one after it takes its place here.
-    private var skipButton: some View {
+    private func skipButton(iconOnly: Bool) -> some View {
         Button {
             Task { await skip() }
         } label: {
             Label("Pomiń", systemImage: "forward.end")
         }
-        .buttonStyle(ActionButtonStyle(wide: false, iconOnly: true))
+        .buttonStyle(ActionButtonStyle(wide: false, iconOnly: iconOnly))
         .disabled(sending)
         .accessibilityLabel("Pomiń ten obraz w kolejce")
         .transition(.opacity)
