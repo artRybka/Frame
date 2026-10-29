@@ -27,6 +27,9 @@
   `SCORE_VERSION` 4: biblioteka przelicza się raz w tle.
 - Tryb Opis: na ramce samo nazwisko autora (bez narodowości i lat życia),
   pod spodem data · technika; bez daty powstania lata życia autora.
+- CI szybciej: obrazy arm64 na natywnych maszynach z cache warstw, bez
+  podwójnych przebiegów dla PR, zrzuty ekranów iOS tylko na żądanie
+  (`ios-screenshots.yml`).
 
 ## 0.28.0
 
