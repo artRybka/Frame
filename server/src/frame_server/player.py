@@ -402,8 +402,10 @@ class Player:
         self._refill(state, settings)
         return True
 
-    def _pop_next(self, state: PlayerState, settings: FrameSettings) -> Item | None:
-        while state.requested:
+    def _pop_next(
+        self, state: PlayerState, settings: FrameSettings, picks: bool = True
+    ) -> Item | None:
+        while picks and state.requested:
             item = self.library.get(state.requested.pop(0))
             if item is not None:  # asked for: shown even if left out of the rotation
                 return item
@@ -744,10 +746,13 @@ class Player:
             self._save_state(state)
             self.service.progress.finish(Stage.FAILED, str(err))
 
-    async def next(self, reason: str = "manual") -> Item | None:
+    async def next(self, reason: str = "manual", *, picks: bool = True) -> Item | None:
+        """The next picture on the frame. ``picks=False`` ("Prezentuj na
+        ramce" on a playlist): the rotation's own next one, the owner's
+        picks wait for the change after it."""
         with self._working():  # busy from the start: the original may take a while
             state, settings = self.state, self.settings
-            item = await self._pop_ready(state, settings)
+            item = await self._pop_ready(state, settings, picks)
             if item is None and state.last_error:
                 state.next_change_at = (utcnow() + RETRY_AFTER).isoformat(timespec="seconds")
             self._save_state(state)
@@ -757,13 +762,15 @@ class Player:
             await self.get_ready()
         return item
 
-    async def _pop_ready(self, state: PlayerState, settings: FrameSettings) -> Item | None:
+    async def _pop_ready(
+        self, state: PlayerState, settings: FrameSettings, picks: bool = True
+    ) -> Item | None:
         """The next picture whose original is at hand. One that cannot be
         downloaded now (no internet, museum down) goes to the back of the
         queue and the first one already cached takes its turn; the owner's
         pick stays first in line."""
-        asked = set(state.requested)
-        item = self._pop_next(state, settings)
+        asked = set(state.requested) if picks else set()
+        item = self._pop_next(state, settings, picks)
         if item is None:
             return None
         images = self.service.images
@@ -785,7 +792,7 @@ class Player:
             state.queue.append(item.id)
         if not state.queue:
             self._refill(state, settings)
-        for line in (state.requested, state.queue):
+        for line in (state.requested, state.queue) if picks else (state.queue,):
             for item_id in line:
                 cached = self.library.get(item_id)
                 if cached is not None and images.has_image(cached):

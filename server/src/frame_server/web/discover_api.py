@@ -393,7 +393,7 @@ async def theme_playlist(key: str, request: ThemePlaylistRequest, svc: Svc) -> T
         settings.playlist_id = playlist.id
         svc.player.save_settings(settings)
         svc.player.set_hold(None)
-        svc.background(svc.player.next("playlist"))
+        svc.background(svc.player.next("playlist", picks=False))  # its own first picture
     return ThemePlaylist(playlist=svc.library.playlist_summary(playlist), job_id=job_id)
 
 

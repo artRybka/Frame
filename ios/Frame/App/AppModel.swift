@@ -255,7 +255,13 @@ final class AppModel {
     }
 
     func refreshPlayer() async {
-        if let value = try? await backend.player() { player = value }
+        guard let value = try? await backend.player() else { return }
+        player = value
+        // The playlist may have changed without the app's settings (a theme
+        // presented from Discover): a draft saved later must not undo it.
+        if let settings, settings.playlistId != value.playlist?.id {
+            self.settings?.playlistId = value.playlist?.id
+        }
     }
 
     func refreshStatus(live: Bool) async {
