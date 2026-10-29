@@ -138,7 +138,7 @@ struct NowView: View {
                         }
                         if offset == 0, undelivered == nil, let device = model.status?.device,
                            device.powerState == "deep_sleep" {
-                            FrameAsleepNote()
+                            FrameAsleepNote(off: device.switchedOff == true)
                                 .transition(.opacity)
                         }
                         if offset == 0, let device = model.status?.device, let pending = modePendingText(device) {
@@ -716,16 +716,19 @@ struct OnFrameNote: View {
 /// alarm, unless its button wakes it. When the alarm rings is in the lines
 /// above ("Następna zmiana", "Pobudka ramki").
 struct FrameAsleepNote: View {
+    /// Switched off from the app ("Wyłącz ramkę"): no alarm, only the button.
+    var off = false
+
     var body: some View {
         Card(padding: 14) {
             HStack(alignment: .top, spacing: 14) {
-                Image(systemName: "moon.zzz")
+                Image(systemName: off ? "power" : "moon.zzz")
                     .font(.title2)
                     .foregroundStyle(Theme.accent)
                     .frame(width: 32)
                 VStack(alignment: .leading, spacing: 4) {
-                    Eyebrow("Ramka śpi")
-                    Text("Aby zmienić obraz wcześniej, naciśnij guzik na ramce")
+                    Eyebrow(off ? "Ramka wyłączona" : "Ramka śpi")
+                    Text(off ? "Włączysz ją guzikiem na ramce" : "Aby zmienić obraz wcześniej, naciśnij guzik na ramce")
                         .font(.serif(17, weight: .semibold))
                         .foregroundStyle(Theme.ink)
                         .fixedSize(horizontal: false, vertical: true)

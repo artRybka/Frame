@@ -415,6 +415,12 @@ struct LiveBackend: FrameBackend {
 
     func sleep() async throws { try await send("/api/device/sleep", method: "POST") }
 
+    func rest(hours: Int?) async throws -> RestResult {
+        let query = hours.map { [URLQueryItem(name: "hours", value: String($0))] }
+            ?? [URLQueryItem(name: "off", value: "true")]
+        return try await perform(request("/api/device/sleep", method: "POST", query: query))
+    }
+
     // MARK: Images
 
     func request(for image: ImageRef) -> URLRequest? {

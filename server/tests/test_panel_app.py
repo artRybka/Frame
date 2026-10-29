@@ -615,3 +615,139 @@ def test_certificates_copied_in_by_hand_are_picked_up(tmp_path: Path) -> None:
     package = service.app.package()
     assert package is not None and package.version == "2.0.0"
     assert [c.role for c in service.app.view().certificates] == ["author", "distributor"]
+
+
+def test_deep_sleep_for_hours_ends_at_its_time_or_with_the_button(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    service.player.save_settings(
+        FrameSettings(
+            change_times=["07:00", "19:00"],
+            power_mode="economy",
+            check_every_hours=4,
+            quiet_start=None,
+        )
+    )
+    app = service.app
+    _next_change(service, _at("2026-10-28T19:00"))
+    # Economy: alarms at 16:00 and 19:00 set; woken at 16:00, the 19:00 one
+    # stays set on the panel.
+    app.answer(BATTERY, now=_at("2026-10-28T12:00"))
+    app.answer(BATTERY, now=_at("2026-10-28T16:01"))
+    assert app.state.wakes[-1] == _at("2026-10-28T19:00").isoformat()
+
+    # "Głęboki sen" for two days, asked while it is awake.
+    app.request_rest(_at("2026-10-28T16:02"), _at("2026-10-30T16:02"))
+    assert app.rest_pending()
+    answer = app.answer(BATTERY, now=_at("2026-10-28T16:02:20"))
+    assert answer.action == "sleep" and answer.standby == "OFF"
+    assert answer.wake_ms == int(_at("2026-10-30T16:02").timestamp() * 1000)
+    assert answer.wakes_ms == []
+    assert app.deep_asleep() and not app.rest_pending()
+    service.power.publish_status()
+    status = service.status.status
+    assert status.rest_until == _at("2026-10-30T16:02").isoformat() and not status.switched_off
+    assert app.wakes_at() == _at("2026-10-30T16:02")
+
+    # The 19:00 alarm set before still rings (alarms cannot be cancelled):
+    # back to sleep, and no changes meanwhile.
+    _next_change(service, _at("2026-10-28T19:00"))
+    answer = app.answer(BATTERY, now=_at("2026-10-28T19:01:30"))
+    assert answer.action == "sleep" and answer.standby == "OFF"
+    assert answer.wake_ms == int(_at("2026-10-30T16:02").timestamp() * 1000)
+
+    # The button the next day: the rest is over, the schedule is back.
+    _next_change(service, _at("2026-10-29T19:00"))
+    answer = app.answer(BATTERY, now=_at("2026-10-29T10:00"))
+    assert app.state.rest_until is None
+    assert answer.wake_at == _at("2026-10-29T12:00").isoformat()  # the next check
+
+    # A rest that runs out: at its alarm it is over by itself.
+    app.request_rest(_at("2026-10-29T10:00"), _at("2026-10-29T14:00"))
+    app.answer(BATTERY, now=_at("2026-10-29T10:00:30"))
+    answer = app.answer(BATTERY, now=_at("2026-10-29T13:59:50"))
+    assert app.state.rest_until is None
+    assert answer.wake_at == _at("2026-10-29T16:00").isoformat()
+
+
+def test_switched_off_sleeps_without_an_alarm_even_on_the_charger(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    app = service.app
+    now = _at("2026-10-28T12:00")
+    _next_change(service, _at("2026-10-28T19:00"))
+    app.answer(AppHello(charging=True), now=now)
+    app.request_rest(now, None)
+    answer = app.answer(AppHello(charging=True), now=now + timedelta(seconds=20))
+    assert answer.action == "sleep" and answer.standby == "OFF"
+    assert answer.wake_ms is None and answer.wake_at is None
+    assert app.deep_asleep() and app.wakes_at() is None
+    service.power.publish_status()
+    assert service.status.status.switched_off
+
+    # The launcher restarts the app as it goes to sleep: still off.
+    answer = app.answer(AppHello(charging=True), now=now + timedelta(minutes=1))
+    assert answer.action == "sleep" and answer.wake_ms is None
+    # The button hours later: on again, and on the charger it stays awake.
+    answer = app.answer(AppHello(charging=True), now=now + timedelta(hours=5))
+    assert answer.action == "stay" and not app.state.off
+    # "Obudź ramkę" / "Uśpij ramkę" also end a rest asked for.
+    app.request_rest(now, None)
+    app.request_sleep()
+    assert not app.state.off
+
+
+def test_rest_api_limits_the_hours(tmp_path: Path) -> None:
+    from frame_server.web import create_app
+
+    service = _service(tmp_path)
+    app = create_app(service.settings)
+    with TestClient(app) as client:
+        assert client.post("/api/device/sleep", params={"hours": 73}).status_code == 422
+        reply = client.post("/api/device/sleep", params={"hours": 24})
+        assert reply.status_code == 200, reply.text
+        assert reply.json()["until"] is not None and reply.json()["applies"] == "soon"
+        reply = client.post("/api/device/sleep", params={"off": "true"})
+        assert reply.json()["until"] is None
+        assert app.state.service.app.state.off
+
+
+async def test_a_resting_panel_is_looked_for_now_and_then(
+    tmp_path: Path, server_ssl: ssl.SSLContext
+) -> None:
+    panel = FakePanel(server_ssl)
+    await panel.start()
+    try:
+        service = _service(tmp_path, panel.port)
+        app = service.app
+        now = _at("2026-10-28T12:00")
+        _next_change(service, _at("2026-10-28T19:00"))
+        app.answer(BATTERY, now=now)
+        app.request_rest(now, None)
+        app.answer(BATTERY, now=now + timedelta(seconds=10))
+        await service.power.tick(now + timedelta(minutes=2))
+        assert panel.received == []  # just put to sleep
+        # Answering MDC although nothing rang: the button. The app is started.
+        await service.power.tick(now + timedelta(minutes=6))
+        assert panel.received == START
+        await service.power.tick(now + timedelta(minutes=7))
+        assert panel.received == START  # not again so soon
+    finally:
+        await panel.stop()
+
+
+def test_battery_rate_is_measured_on_battery(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    status = service.status
+    start = _at("2026-10-28T08:00")
+    for hours, level in [(0, 90), (0.2, 90), (6, 88)]:
+        status.note_app(start + timedelta(hours=hours), level, False)
+    assert status.status.battery_per_day is None  # not half a day yet
+    status.note_app(start + timedelta(hours=13), 85, False)
+    assert status.status.battery_per_day == 9.2
+    status.note_app(start + timedelta(hours=24), 81, False)
+    assert status.status.battery_per_day == 9.0
+    assert status.status.battery_days == 9.0
+    # Recharged: measured anew.
+    status.note_app(start + timedelta(hours=25), 81, True)
+    assert status.status.battery_per_day is None and status.status.battery_days is None
+    status.note_app(start + timedelta(hours=30), 100, False)
+    assert status.status.battery_days is None

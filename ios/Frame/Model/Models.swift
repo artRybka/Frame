@@ -498,6 +498,24 @@ struct DeviceStatus: Codable, Hashable, Sendable {
     /// The power mode ("online", "economy") set while the frame sleeps: it
     /// takes it on at its next wake. Nil when nothing waits.
     var modePending: String?
+    /// How fast the battery runs down, measured on battery: percent a day
+    /// and the days left at that rate. Nil on the charger, until measured
+    /// and from servers before 0.31.
+    var batteryPerDay: Double?
+    var batteryDays: Double?
+    /// "Głęboki sen" chosen in the app: the Wi-Fi off and no changes until
+    /// this moment; `switchedOff`: "Wyłącz ramkę", no alarm at all. Only the
+    /// button on the frame ends either sooner.
+    var restUntil: String?
+    var switchedOff: Bool?
+}
+
+/// "Głęboki sen" / "Wyłącz ramkę": until when (nil: switched off), and
+/// whether the frame takes it now ("soon") or, asleep without the Wi-Fi
+/// already, at its next wake ("at_wake").
+struct RestResult: Codable, Hashable, Sendable {
+    var until: String?
+    var applies: String
 }
 
 /// The frame's Wi-Fi, read by the Frame app on the panel at every wake.
@@ -525,6 +543,14 @@ struct PanelWifi: Codable, Hashable, Sendable {
         case 5925..<7200: "6 GHz"
         default: nil
         }
+    }
+
+    /// How many arcs of the Wi-Fi icon are lit (0–3), as on the iPhone:
+    /// the panel's 0–5 bars, 1 for one, 2 for two or three, 3 for more.
+    var arcs: Int? {
+        if let level { return level <= 0 ? 0 : level == 1 ? 1 : level <= 3 ? 2 : 3 }
+        guard let signal else { return nil }
+        return signal < 0.1 ? 0 : signal < 0.3 ? 1 : signal < 0.7 ? 2 : 3
     }
 
     var strength: String? {
@@ -589,6 +615,8 @@ struct WakeResult: Codable, Hashable, Sendable {
     var sent: Bool
     var woke: Bool?  // missing from servers before 0.11
     var asleepUntil: String?
+    /// The same alarm as a moment (ISO).
+    var asleepUntilAt: String?
     var reason: String?
     /// "no_certificates" | "no_mac": why nothing could be tried (0.27+).
     var problem: String?

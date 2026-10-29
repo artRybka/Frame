@@ -513,6 +513,39 @@ WoL zawiedzie obraz czeka do pobudki, a „Teraz” pokazuje jej godzinę. Gdy
 budzik ramki dzwoni w ciągu 3 minut (zmiana z harmonogramu), serwer nie
 budzi jej przez WoL, tylko czeka.
 
+**„Głęboki sen” i „Wyłącz ramkę” (2026-10-29, prośba Mateusza).** W menu
+„Zasilanie” w zakładce Ramka: głęboki sen na 6 h, 12 h, 1, 2 albo 3 dni
+(najwyżej 3 dni, `REST_MAX`) i wyłączenie ramki (z ostrzeżeniem).
+`POST /api/device/sleep?hours=N` albo `?off=true`. Przy najbliższym pytaniu
+aplikacja dostaje `sleep` z czuwaniem sieci `OFF`: przy głębokim śnie jeden
+budzik na jego koniec, przy wyłączeniu żadnego. Zmiany z harmonogramu w tym
+czasie czekają, także na ładowarce. Ramka uśpiona w sieci (Online) dostaje
+serię WoL, żeby zasnęła od razu; śpiąca bez Wi-Fi bierze to przy najbliższej
+pobudce (serwer uruchamia wtedy aplikację, także przy sprawdzeniu bez nowego
+obrazu). Prawdziwego wyłączenia (ramka gaśnie do białego ekranu) nie znamy
+ani przez MDC (`0x11 00` to tylko uśpienie), ani w `webapis`, więc
+„Wyłącz ramkę” to sen bez Wi-Fi i bez budzika: obraz zostaje, budzi tylko
+przycisk.
+
+Budzików nie da się odwołać, więc te ustawione przed snem nadal dzwonią
+(`stray` w stanie aplikacji). Pytanie ±2/12 minut wokół takiego budzika albo
+do 5 minut po uśpieniu (launcher potrafi uruchomić aplikację przy
+zasypianiu) kładzie ramkę z powrotem spać; każde inne to przycisk i kończy
+sen. Po przycisku launcher zwykle nie uruchamia aplikacji (zimny start),
+dlatego w czasie takiego snu serwer co 2 minuty próbuje MDC: ramka bez Wi-Fi
+nie odpowiada, obudzona przyciskiem odpowiada i serwer uruchamia aplikację
+(`0xC7 81 01`). Na każdy sen bez Wi-Fi aplikacja skraca „Sleep After” do
+5 minut, żeby ramka obudzona budzikiem, dla którego serwer jej nie uruchamia,
+szybko zasnęła z powrotem. *(Do sprawdzenia na ramce: przycisk w czasie
+głębokiego snu i po wyłączeniu.)*
+
+**Zużycie baterii** liczy serwer z odczytów na baterii (`battery_log`, co
+najmniej co 30 minut, ostatnie 3 dni): po pół doby i spadku o 3 punkty
+podaje procent na dobę i dni do końca (`battery_per_day`, `battery_days`).
+Na zasilaczu pomiar zaczyna się od nowa. Kafelek Bateria pokazuje to
+zamiast stałych „200 dni na pełnej baterii” (liczba Samsunga dla głębokiego
+snu, w Online z czuwaniem sieci zupełnie nietrafiona).
+
 **Certyfikaty na serwer (raz, i ponownie po odnowieniu).** Leżą tylko na
 Macu (`~/SamsungCertificate/frame`), a do repozytorium trafić nie mogą, więc
 raz trzeba je przenieść na NAS. Dwa sposoby, oba równie dobre:

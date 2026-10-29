@@ -412,8 +412,11 @@
           var a = arm(ms);
           return a.ok ? new Date(ms).toTimeString().slice(0, 5) : a.error;
         });
-        r.autoSleep = shortAutoSleep();
       }
+      // An alarm the server does not start the app for (a check with
+      // nothing new, one set before a rest) boots the panel cold: it goes
+      // back to sleep by itself, sooner than after its usual 20 minutes.
+      if (standby === "OFF") r.autoSleep = shortAutoSleep();
     }
     report("sleep", r, function () {
       last = Date.now();

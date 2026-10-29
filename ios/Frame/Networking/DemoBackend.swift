@@ -200,7 +200,8 @@ actor DemoBackend: FrameBackend {
             wifi: PanelWifi(
                 readAt: now, signal: 0.6, level: 3, ssid: "Frame_IoT", ip: "192.0.2.20",
                 frequency: 2437, expectedIp: "192.0.2.20", homeSsid: "Frame_IoT", wrongNetwork: false
-            )
+            ),
+            batteryPerDay: 8.4, batteryDays: 9.0
         )
         let server = ServerStatus(
             version: "demo", uptimeS: 3600, libraryCount: items.count,
@@ -906,6 +907,12 @@ actor DemoBackend: FrameBackend {
 
     func pushAgain() async throws -> DisplayResponse { DisplayResponse(pushed: true, fetched: true) }
     func sleep() async throws { demoAsleep = true }
+
+    func rest(hours: Int?) async throws -> RestResult {
+        demoAsleep = true
+        let until = hours.map { ISO8601DateFormatter().string(from: .now.addingTimeInterval(Double($0) * 3600)) }
+        return RestResult(until: until, applies: "soon")
+    }
 
     // MARK: Images
 

@@ -272,23 +272,33 @@ final class AppModel {
         }
     }
 
-    /// "Sprawdź stan": a live check, and if the frame does not answer, an
-    /// attempt to wake it. Deep sleep has the Wi-Fi off: only the frame's
-    /// alarm or its button ends it, so no signal is sent then.
-    func checkStatus() async {
+    /// "Sprawdź stan": a live check. A frame asleep in the network is woken
+    /// only when `wake` (the button pressed again): waking costs battery.
+    /// Deep sleep has the Wi-Fi off: only the frame's alarm or its button
+    /// ends it, so no signal is sent then. True: asleep in the network and
+    /// left asleep, so the next press wakes it.
+    @discardableResult
+    func checkStatus(wake: Bool) async -> Bool {
         await refreshStatus(live: true)
-        guard let device = status?.device, device.configured, device.reachable == false else { return }
+        guard let device = status?.device, device.configured, device.reachable == false else { return false }
         if device.powerState == "deep_sleep" {
-            toast = Self.deepSleepNote(until: device.wakesAt)
-            return
+            toast = Self.deepSleepNote(device.wakeAt, off: device.switchedOff == true)
+            return false
+        }
+        guard wake else {
+            toast = "Ramka śpi w sieci. Naciśnij jeszcze raz, żeby ją obudzić (kosztuje trochę baterii)"
+            return true
         }
         wakingForStatus = true
         defer { wakingForStatus = false }
-        await wake(sleepAfter: true)
+        await self.wake(sleepAfter: true)
+        return false
     }
 
-    private static func deepSleepNote(until: String?) -> String {
-        let alarm = until.map { "budzik o \($0) lub przycisk" } ?? "tylko przycisk"
+    /// `until`: the alarm (ISO).
+    private static func deepSleepNote(_ until: String?, off: Bool = false) -> String {
+        if off { return "Ramka jest wyłączona. Włączysz ją przyciskiem na ramce" }
+        let alarm = When.at(until).map { "budzik \($0) lub przycisk" } ?? "tylko przycisk"
         return "Ramka w głębokim śnie (Wi-Fi wyłączone), obudzi ją \(alarm)"
     }
 
@@ -687,8 +697,10 @@ final class AppModel {
                 toast = "Ramka się obudziła"
             } else if result.problem == "no_certificates" {
                 toast = Delivery.noCertificates
-            } else if let until = result.asleepUntil {
-                toast = Self.deepSleepNote(until: until)
+            } else if result.asleepUntil != nil {
+                toast = Self.deepSleepNote(result.asleepUntilAt ?? status?.device.wakeAt)
+            } else if !result.sent, result.problem == nil, status?.device.switchedOff == true {
+                toast = Self.deepSleepNote(nil, off: true)
             } else if !result.sent {
                 toast = "Brak adresu MAC ramki, ustaw go w Połączeniu z ekranem"
             } else {
@@ -733,8 +745,8 @@ final class AppModel {
         }
     }
 
-    /// "Uśpij ramkę": the server notes the sleep, so the status from it
-    /// (not asking the panel, which may still answer for a while) shows it.
+    /// "Uśpij ramkę": the app on the frame sleeps at its next question
+    /// (within seconds when awake); on the charger only until its next wake.
     func sleepFrame() async {
         do {
             try await backend.sleep()
@@ -742,7 +754,31 @@ final class AppModel {
             show(error)
             return
         }
-        toast = "Ramka uśpiona"
+        toast = status?.device.powerSource == "ac"
+            ? "Ramka zaśnie za kilka sekund. Na zasilaczu obudzi się na najbliższą zmianę i znów nie będzie spać"
+            : "Ramka zaśnie za kilka sekund"
+        await refreshStatus(live: false)
+    }
+
+    /// "Głęboki sen" for `hours`, or "Wyłącz ramkę" (`hours` nil).
+    func restFrame(hours: Int?) async {
+        let result: RestResult
+        do {
+            result = try await backend.rest(hours: hours)
+        } catch {
+            show(error)
+            return
+        }
+        let later = result.applies == "at_wake"
+        if let at = When.at(result.until) {
+            toast = later
+                ? "Ramka śpi teraz bez Wi-Fi. Przy najbliższej pobudce zaśnie głęboko do \(at)"
+                : "Ramka zaśnie bez Wi-Fi do \(at). Wcześniej obudzi ją tylko przycisk"
+        } else {
+            toast = later
+                ? "Ramka śpi teraz bez Wi-Fi. Wyłączy się przy najbliższej pobudce"
+                : "Ramka wyłączy się za chwilę. Włączysz ją przyciskiem na ramce"
+        }
         await refreshStatus(live: false)
     }
 

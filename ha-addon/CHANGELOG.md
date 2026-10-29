@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.31.0
+
+- Zakładka Ramka: siłę sygnału pokazują łuki ikonki Wi-Fi (żółte przy słabym
+  sygnale), pod spodem nazwa sieci, tytuł „Online” zostaje; tak samo
+  w Konfiguracji.
+- Bateria: na zasilaczu „na zasilaczu”, na baterii liczba dni z faktycznego
+  spadku (serwer zapisuje poziom co pół godziny przez 3 dni) zamiast stałych
+  200 dni.
+- Dopiski kafelka Zasilanie zależą od trybu pracy, kafelek Obraz mówi, kiedy
+  pojawi się czekający obraz. „Sprawdź stan” budzi ramkę śpiącą w sieci
+  dopiero za drugim naciśnięciem.
+- Menu „Zasilanie”: „Głęboki sen” na 6 h, 12 h, 1, 2 albo 3 dni oraz „Wyłącz
+  ramkę” z ostrzeżeniem (`POST /api/device/sleep?hours=N` / `?off=true`).
+  Ramka śpi bez Wi-Fi, zmiany czekają do końca snu, wcześniej budzi ją tylko
+  przycisk; serwer co 2 minuty szuka obudzonej ramki przez MDC. Paczka
+  aplikacji ramki bez zmian (nowy `app.js` serwer podaje sam).
+
 ## 0.30.0
 
 - Osobny limit oryginałów dzieł: Konfiguracja ma dwa wybory, „Katalog

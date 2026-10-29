@@ -57,10 +57,21 @@ class WakeResult(BaseModel):
     problem: Literal["no_certificates", "no_mac"] | None = None
 
 
+class RestResult(BaseModel):
+    """ "Głęboki sen" / "Wyłącz ramkę" from the app."""
+
+    until: str | None = None  # ISO; None: switched off, only the button wakes it
+    # "soon": the app is awake (or woken for it) and sleeps at its next
+    # question; "at_wake": it sleeps with the Wi-Fi off already, so it takes
+    # it at its next alarm or the button.
+    applies: Literal["soon", "at_wake"] = "soon"
+
+
 class PowerManager:
     def __init__(self, service: FrameService) -> None:
         self.service = service
         service.status.asleep = self.asleep_state
+        self._tasks: set[asyncio.Task[None]] = set()
 
     # -- persisted state ------------------------------------------------------
 
@@ -84,6 +95,9 @@ class PowerManager:
         status.wake_at = wake.isoformat(timespec="seconds") if wake else None
         status.certificates_expire_at = app.certificates_warning(datetime.now(UTC))
         status.mode_pending = app.mode_pending()
+        state = app.state
+        status.rest_until = state.rest_until
+        status.switched_off = state.off
 
     def mark_pending(self, pending: bool) -> None:
         state = self.state
@@ -156,6 +170,31 @@ class PowerManager:
     async def sleep_now(self) -> None:
         """The app's "Uśpij ramkę": the app sleeps at its next question."""
         self.service.app.request_sleep()
+
+    async def rest_now(self, hours: int | None) -> RestResult:
+        """ "Głęboki sen" for ``hours``, or "Wyłącz ramkę" (None): the app
+        sleeps with the Wi-Fi off at its next question. Asleep in the
+        network it is woken for it; asleep without the Wi-Fi it takes it at
+        its next alarm (or the button)."""
+        app = self.service.app
+        now = datetime.now(UTC)
+        app.request_rest(now, None if hours is None else now + timedelta(hours=hours))
+        until = app.state.rest_until
+        if app.deep_asleep():
+            return RestResult(until=until, applies="at_wake")
+        if app.asleep() and self.service.settings.device_mac:
+            task = asyncio.create_task(self._wake_for_rest())
+            self._tasks.add(task)
+            task.add_done_callback(self._tasks.discard)
+        return RestResult(until=until)
+
+    async def _wake_for_rest(self) -> None:
+        burst = asyncio.create_task(self.service.panel.wake(seconds=WAKE_BURST_SECONDS))
+        try:
+            woke = await self.service.app.wait_for_contact(WAKE_LOOK.total_seconds())
+        finally:
+            burst.cancel()
+        log.info("Wake-on-LAN to put the frame to rest: %s", "it asked" if woke else "no answer")
 
     async def wake_now(self, sleep_after: bool = False) -> WakeResult:
         """The app's "Obudź ramkę": awake already (on the charger it asks

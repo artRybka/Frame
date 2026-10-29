@@ -16,7 +16,17 @@ from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
+from fastapi import (
+    Depends,
+    FastAPI,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    UploadFile,
+)
 from fastapi.responses import FileResponse
 from starlette.concurrency import run_in_threadpool
 
@@ -346,9 +356,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return await service.power.wake_now(sleep_after=sleep_after)
 
     @app.post("/api/device/sleep", dependencies=auth)
-    async def device_sleep() -> dict[str, object]:
+    async def device_sleep(
+        hours: Annotated[int | None, Query(ge=1, le=72)] = None, off: bool = False
+    ) -> dict[str, object]:
+        """ "Uśpij ramkę"; with ``hours`` "Głęboki sen" (the Wi-Fi off, no
+        changes) for that long, with ``off`` "Wyłącz ramkę" (no alarm: only
+        the button wakes it)."""
         if not service.device_configured:
             raise HTTPException(409, "panel not configured")
+        if off or hours is not None:
+            rest = await service.power.rest_now(None if off else hours)
+            return {"ok": True, **rest.model_dump()}
         try:
             await service.power.sleep_now()
         except MdcError as err:
