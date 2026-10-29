@@ -275,11 +275,19 @@
           // without it has a 1920x1080 page: the picture is scaled to fit.
           var w = window.innerWidth, h = window.innerHeight;
           var exact = img.naturalWidth === w && img.naturalHeight === h;
-          var el = document.getElementById("picture");
-          el.style.cssText = "position:fixed;left:0;top:0;width:" + w + "px;height:" + h + "px;display:block" +
+          // The decoded image itself replaces the old one: one change of the
+          // page, with the whole picture ready, and the panel refreshes once.
+          // The opacity nudge (0.99, back to 1 after 300 ms) was for an
+          // <img> still loading when the page changed (E16); as a second
+          // change moments after the first it can be drawn as a second
+          // refresh of the same picture once the first one is over.
+          var old = document.getElementById("picture");
+          img.id = "picture";
+          img.alt = "";
+          img.style.cssText = "position:fixed;left:0;top:0;width:" + w + "px;height:" + h + "px;display:block" +
             (exact ? ";image-rendering:pixelated" : "");
-          el.src = src;
-          nudge(el);
+          old.parentNode.replaceChild(img, old);
+          drawnAt = Date.now();
           note("");
           shown = answer.file_id;
           report("shown", {
@@ -309,17 +317,6 @@
       report("error", { message: "image did not load: " + why, image: answer.image });
       done(false);
     });
-  }
-
-  // The e-paper does not redraw for a new picture alone (E16, the first one
-  // stayed white): a small change of style makes it.
-  function nudge(el) {
-    el.style.opacity = "0.99";
-    drawnAt = Date.now();
-    setTimeout(function () {
-      el.style.opacity = "1";
-      drawnAt = Date.now();
-    }, 300);
   }
 
   // The panel's alarm, in its local time. Alarms add up and cannot be
