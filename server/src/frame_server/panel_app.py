@@ -13,6 +13,16 @@ The alarms cannot be cancelled and the launcher sometimes reinstalls and
 restarts the app as it goes to sleep, so the app keeps no plan of its own:
 whenever it wakes, for whatever reason, it asks again.
 
+After a sleep with the Wi-Fi off the panel boots cold and the launcher
+mostly does not start the app: the server does, over MDC. A cold boot
+alone leaves the screen as it is, while the app at every start drew its
+picture again (~40 s of blinking). So for such a sleep the app sets the
+alarms for every economy check up to the next change at once, and at a
+check with nothing new the server does not start it: the panel just goes
+back to sleep by itself, unredrawn. At the last of those alarms it always
+starts the app, which sets the next ones. The app keeps the picture it
+shows across starts and does not draw the same one again.
+
 With ``base_screen_resolution`` "always" in its config.xml the app's page is
 2560x1440, so it gets the very picture the Mobile source shows (passthrough
 or our dither, whatever the settings render) and shows it 1:1.
@@ -49,7 +59,7 @@ from .device import MdcError
 from .device.mdc import CONTENT_SOURCE_CUSTOM
 from .panel_package import CertificateInfo, Certificates, sign_package
 from .progress import Stage
-from .schedule import in_quiet_hours, quiet_hours
+from .schedule import in_quiet_hours, next_check, quiet_hours
 
 if TYPE_CHECKING:
     from .service import FrameService
@@ -70,6 +80,10 @@ MISSED_AFTER = timedelta(minutes=15)
 # JS keeps running up to ~130 s after goToSleep(), and an alarm due before
 # the panel is really down is lost (E16): never sleep for less than this.
 MIN_SLEEP = timedelta(minutes=5)
+# The alarms the app sets for one sleep with the Wi-Fi off at most: the
+# economy checks before the next change (every hour there can be more: the
+# server starts the app at the last one set, and it sets the next ones).
+MAX_ALARMS = 12
 # After a sleep with the Wi-Fi off the panel boots cold, and the launcher
 # does not start the app when it finds the same version on the server (E16):
 # MDC 0xC7 81 01 does (5 of 5 within 10 s), so this is the usual way, not a
@@ -118,6 +132,9 @@ class AppState(BaseModel):
     screen: str | None = None  # the page as the app sees it, e.g. "2560x1440@1"
     asleep: bool = False  # told to sleep at its last question
     wake_at: str | None = None  # when its alarm wakes it (ISO)
+    # Every alarm set for this sleep (ISO), the first one ``wake_at``.
+    wakes: list[str] = []
+    shown: str | None = None  # the picture on the screen (file_id), as the app says
     standby: bool = True  # network standby through that sleep
     missed_wake: str | None = None  # an alarm it did not show up for
     reboot_for: str | None = None  # the package version it last rebooted to install
@@ -134,6 +151,7 @@ class AppHello(BaseModel):
     screen: str | None = None
     battery: int | None = None  # percent
     charging: bool | None = None
+    shown: str | None = None  # file_id on the screen, "" for none
 
 
 class NextAnswer(BaseModel):
@@ -150,6 +168,8 @@ class NextAnswer(BaseModel):
     wait_s: int = 0
     wake_at: str | None = None
     wake_ms: int | None = None
+    # More alarms after ``wake_ms`` (a sleep with the Wi-Fi off), set at once.
+    wakes_ms: list[int] = []
     standby: Literal["ON", "OFF"] = "ON"
     code: str = ""  # app.js on the server: a different one is loaded at once
 
@@ -192,6 +212,7 @@ class PanelApp:
         self._kicked: datetime | None = None
         self._nudged: datetime | None = None
         self._silent_kicks = 0
+        self._next_alarm: datetime | None = None  # as the status shows it
         self.certificates = Certificates(self.dir / "certs")
         self._images: dict[str, str] = {}  # file_id -> the path the app gets
         self._shown: dict[str, asyncio.Event] = {}
@@ -215,12 +236,15 @@ class PanelApp:
         state = self.state
         return state.active and state.asleep
 
-    def wakes_at(self) -> datetime | None:
-        """When the sleeping app's alarm wakes it."""
+    def wakes_at(self, now: datetime | None = None) -> datetime | None:
+        """When the sleeping app's alarm wakes it next (the last one once
+        all have passed)."""
         state = self.state
-        if not (state.active and state.asleep and state.wake_at):
+        alarms = _alarms(state)
+        if not (state.active and state.asleep and alarms):
             return None
-        return datetime.fromisoformat(state.wake_at)
+        now = now or datetime.now(UTC)
+        return next((a for a in alarms if a > now), alarms[-1])
 
     def deep_asleep(self) -> bool:
         """Asleep with the Wi-Fi off: only its alarm or the button wakes it."""
@@ -412,19 +436,33 @@ class PanelApp:
         self.sleep_requested = False
         self.awake_until = None
         standby = not self._deep(now)
+        alarms = [wake] if standby else self.alarms(now, wake)
         state = self.state
         state.asleep = True
         state.wake_at = wake.isoformat(timespec="seconds")
+        state.wakes = [a.isoformat(timespec="seconds") for a in alarms]
         state.standby = standby
         state.mode = self.service.player.settings.power_mode
         self._save(state)
         return NextAnswer(
             action="sleep",
             wake_at=state.wake_at,
-            wake_ms=int(wake.timestamp() * 1000),
+            wake_ms=_ms(wake),
+            wakes_ms=[_ms(a) for a in alarms[1:]],
             standby="ON" if standby else "OFF",
             **common,
         )
+
+    def alarms(self, now: datetime, wake: datetime) -> list[datetime]:
+        """The alarms for a sleep with the Wi-Fi off: ``wake`` and every
+        economy check after it up to the next change."""
+        settings = self.service.player.settings
+        change = self.service.power.next_change_wake(now)
+        alarms = [wake]
+        while alarms[-1] < change and len(alarms) < MAX_ALARMS:
+            check = next_check(alarms[-1], settings)
+            alarms.append(check if check is not None and check < change else change)
+        return [a for a in alarms if a - now <= MAX_AHEAD]
 
     def _reboot(self, version: str, now: datetime, common: dict[str, object]) -> NextAnswer:
         """A newer package is on the server: the app reboots the panel
@@ -436,6 +474,8 @@ class PanelApp:
         state.reboot_for = version
         state.asleep = True
         state.wake_at = now.isoformat(timespec="seconds")  # back in a minute
+        state.wakes = []
+        state.shown = None  # the boot and the install draw over it
         self._save(state)
         log.info("panel app %s reboots to install %s", state.build, version)
         return NextAnswer(action="reboot", **common)
@@ -465,6 +505,8 @@ class PanelApp:
         state.build = hello.build or state.build
         state.code = hello.code or state.code
         state.screen = hello.screen or state.screen
+        if hello.shown is not None:
+            state.shown = hello.shown or None
         state.asleep = False
         state.missed_wake = None
         self._save(state)
@@ -489,7 +531,12 @@ class PanelApp:
         elif event == "wifi":
             self.service.status.note_wifi(data)
         elif event == "shown":
-            shown = self._shown.pop(str(data.get("file_id", "")), None)
+            file_id = str(data.get("file_id", ""))
+            state = self.state
+            if file_id and state.shown != file_id:
+                state.shown = file_id
+                self._save(state)
+            shown = self._shown.pop(file_id, None)
             if shown is not None:
                 shown.set()
 
@@ -589,12 +636,18 @@ class PanelApp:
         state = self.state
         seen = datetime.fromisoformat(state.seen_at) if state.seen_at else None
         silent = seen is None or now - seen >= SILENT_AFTER
-        wake = datetime.fromisoformat(state.wake_at) if state.wake_at else None
-        missed = state.asleep and wake is not None and now >= wake + MISSED_AFTER
-        if state.active and missed and state.missed_wake != state.wake_at:
-            state.missed_wake = state.wake_at
+        if self.wakes_at(now) != self._next_alarm:
+            # An alarm rang and the panel went back to sleep: show the next.
+            self._next_alarm = self.wakes_at(now)
+            self.service.power.publish_status()
+        # The alarm that last rang, if the app has to run for it.
+        wake = self._rung(now) if state.asleep else None
+        missed = wake is not None and now >= wake + MISSED_AFTER
+        rung = wake.isoformat(timespec="seconds") if wake is not None else None
+        if state.active and missed and state.missed_wake != rung:
+            state.missed_wake = rung
             self._save(state)
-            log.warning("panel app did not wake at %s", state.wake_at)
+            log.warning("panel app did not wake at %s", rung)
         lost = (
             not state.active
             or missed
@@ -619,6 +672,25 @@ class PanelApp:
         if after_alarm and (self._kicked is None or now - self._kicked >= KICK_EVERY):
             self._kicked = now
             await self._kick()
+
+    def _rung(self, now: datetime) -> datetime | None:
+        """The last alarm at or before ``now``, when the app has to run for
+        it: the last one set (the app sets the next ones), or there is
+        something new to show or another power mode to switch to. At any
+        other the panel, left alone, goes back to sleep by itself without
+        redrawing the screen."""
+        state = self.state
+        alarms = [a for a in _alarms(state) if a <= now]
+        if not alarms:
+            return None
+        wake = alarms[-1]
+        if wake == _alarms(state)[-1]:
+            return wake
+        content = self.service.store.current()
+        power = self.service.power
+        new = content is not None and content.file_id != state.shown
+        news = new or power.state.pending_push or power.change_due(now)
+        return wake if news or self.mode_pending() is not None else None
 
     async def _kick(self) -> None:
         """Start the app (or restart a hung one): selecting the Custom source
@@ -687,6 +759,15 @@ def _next_version(previous: str | None) -> str:
     if len(parts) != 3 or parts < FIRST_BUILD:
         return ".".join(map(str, FIRST_BUILD))
     return f"{parts[0]}.{parts[1]}.{parts[2] + 1}"
+
+
+def _alarms(state: AppState) -> list[datetime]:
+    wakes = state.wakes or ([state.wake_at] if state.wake_at else [])
+    return [datetime.fromisoformat(w) for w in wakes]
+
+
+def _ms(moment: datetime) -> int:
+    return int(moment.timestamp() * 1000)
 
 
 def _s(delta: timedelta) -> int:

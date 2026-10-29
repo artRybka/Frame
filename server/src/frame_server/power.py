@@ -104,6 +104,13 @@ class PowerManager:
         """The next change, or a check between changes in the economy mode
         when sooner; under a hold for good still the next change time, so
         the panel is refreshed now and then."""
+        wake = self.next_change_wake(now)
+        check = next_check(now + WAKE_MARGIN, self.service.player.settings)
+        return min(wake, check) if check is not None else wake
+
+    def next_change_wake(self, now: datetime) -> datetime:
+        """``next_wake`` without the economy checks: the next change, or the
+        end of a hold."""
         settings = self.service.player.settings
         player = self.service.player.state
         soon = now + WAKE_MARGIN
@@ -115,9 +122,6 @@ class PowerManager:
         elif player.next_change_at is not None:
             due = datetime.fromisoformat(player.next_change_at)
             candidates.append(due if due > soon else next_change(soon, settings))
-        check = next_check(soon, settings)
-        if check is not None:
-            candidates.append(check)
         candidates = [c for c in candidates if c > soon]
         return min(candidates) if candidates else next_change(soon, settings)
 

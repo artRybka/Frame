@@ -6,6 +6,11 @@
 // the heartbeat is how a wake is noticed. Alarms cannot be cancelled and the
 // launcher sometimes restarts the app as it goes to sleep: nothing is
 // planned here, every wake just asks again.
+//
+// A sleep with the Wi-Fi off ends in a cold boot, and the server starts the
+// app only when there is something new (panel_app.py): so before it the app
+// sets the alarms for all the checks up to the next change, and a picture
+// already on the screen is never drawn again.
 (function () {
   if (window.FrameApp) return;
 
@@ -22,6 +27,10 @@
   // JS runs up to ~130 s after goToSleep() and an alarm due before the
   // panel is really down is lost (E16), so keep a margin of 4 minutes.
   var MIN_AHEAD_MS = 4 * 60000;
+  // Woken by an alarm with nothing new, the panel is left alone and goes
+  // back to sleep after this much idleness (20 minutes as set by hand). The
+  // server starts the app a minute or three after an alarm that needs it.
+  var AUTO_SLEEP = "5MIN";
   var ATTEMPTS = 4;
   var ATTEMPT_DELAY_MS = 5000;
   // "wait" answers in a row before giving up on the server for now.
@@ -35,7 +44,6 @@
   var WIFI_TIMEOUT_MS = 10000;
 
   var ep = (typeof webapis !== "undefined" && webapis.epaper) ? webapis.epaper : null;
-  var shown = null;
   var busy = false;
   var waits = 0;
   var timer = null;
@@ -52,6 +60,13 @@
     }
     return value;
   }
+
+  // The picture on the screen, kept across starts: after a full sleep the
+  // app starts from scratch, and drawing the same picture again blinks the
+  // e-paper for ~40 s for nothing. Only for this package: a new one comes
+  // with the launcher's install screen.
+  var screen = saved("screen");
+  var shown = screen && screen.build === BUILD ? screen.file_id : null;
 
   function call(fn) {
     try {
@@ -117,7 +132,8 @@
   }
 
   // Up again after a sleep with the Wi-Fi off: back on in standby, so that
-  // Wake-on-LAN reaches the panel should it fall asleep on its own (E16).
+  // Wake-on-LAN reaches the panel should it fall asleep on its own (E16),
+  // and the auto sleep back to what it was.
   function wifiBack() {
     if (!ep) return;
     var now = call(function () { return ep.getNetworkStandby(); });
@@ -125,6 +141,21 @@
       var r = call(function () { return ep.setNetworkStandby("ON"); });
       report("standby", { restored: r });
     }
+    var before = saved("autoSleep");
+    if (before) {
+      var a = call(function () { return ep.setAutoSleepTime(before); });
+      if (a.ok) saved("autoSleep", null);
+      report("auto-sleep", { restored: before, result: a });
+    }
+  }
+
+  // getAutoSleepTime() says minutes (20), the setter wants "20MIN" or "OFF".
+  function shortAutoSleep() {
+    var now = call(function () { return ep.getAutoSleepTime(); });
+    if (!now.ok || now.value === null) return now;
+    var minutes = Number(now.value);
+    if (!saved("autoSleep")) saved("autoSleep", minutes > 0 ? minutes + "MIN" : "OFF");
+    return call(function () { return ep.setAutoSleepTime(AUTO_SLEEP); });
   }
 
   // The panel's Wi-Fi for the iOS app (signal, network, address): from
@@ -177,6 +208,7 @@
     var q = "reason=" + reason + "&build=" + encodeURIComponent(BUILD) +
       "&code=" + encodeURIComponent(CODE) +
       "&screen=" + window.innerWidth + "x" + window.innerHeight + "@" + (window.devicePixelRatio || 1) +
+      "&shown=" + encodeURIComponent(shown || "") +
       battery();
     attempt(q, 1);
   }
@@ -230,7 +262,7 @@
       }
       waits = 0;
       timer = setTimeout(function () {
-        sleep(answer.wake_ms, answer.standby, "plan");
+        sleep(answer.wake_ms, answer.standby, "plan", answer.wakes_ms);
       }, 2000);
     });
   }
@@ -282,6 +314,7 @@
           nudge(el);
           note("");
           shown = answer.file_id;
+          saved("screen", { file_id: shown, build: BUILD });
           report("shown", {
             file_id: answer.file_id, width: img.naturalWidth, height: img.naturalHeight,
             bytes: blob.size, download_ms: Date.now() - started
@@ -346,6 +379,7 @@
   // boots (and does not start it; the server does over MDC, E16).
   function reboot() {
     var sc = (typeof webapis !== "undefined" && webapis.systemcontrol) ? webapis.systemcontrol : null;
+    saved("screen", null);  // the boot and the install draw over it
     report("reboot", {}, function () {
       var r = sc ? call(function () { return sc.rebootDevice(); }) : { ok: false, error: "no systemcontrol" };
       if (!r.ok) {
@@ -356,11 +390,11 @@
   }
 
   // Show, let the refresh finish, set the alarm, sleep: in this order.
-  function sleep(wakeMs, standby, why) {
+  function sleep(wakeMs, standby, why, more) {
     var settle = drawnAt + SETTLE_MS - Date.now();
     if (settle > 0) {
       clearTimeout(timer);
-      timer = setTimeout(function () { sleep(wakeMs, standby, why); }, settle);
+      timer = setTimeout(function () { sleep(wakeMs, standby, why, more); }, settle);
       return;
     }
     if (wakeMs && wakeMs - Date.now() < MIN_AHEAD_MS) {
@@ -376,6 +410,13 @@
         }
       }
       if (wakeMs) r.alarm = arm(wakeMs);
+      if (more && more.length) {
+        r.more = more.map(function (ms) {
+          var a = arm(ms);
+          return a.ok ? new Date(ms).toTimeString().slice(0, 5) : a.error;
+        });
+        r.autoSleep = shortAutoSleep();
+      }
     }
     report("sleep", r, function () {
       last = Date.now();
