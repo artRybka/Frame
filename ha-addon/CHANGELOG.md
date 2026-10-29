@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.35.0
+
+- Prezentacja uporządkowana: dzieła sztuki bez kadru „Auto” (zapisany
+  przechodzi na passe-partout), styl obrazu zawsze automatyczny (bez
+  przełącznika), zdjęcia bez podpisu, szerokość passe-partout w milimetrach
+  (co 5 mm), sześć kolorów passe-partout w jednym rzędzie, kwadratowe ikony
+  kadrowania i siatek z zaznaczeniem wybranej, bez objaśnień trybów.
+- Multi: siatki zawsze wypełniają całą ramkę (zdjęcia przycinane do okien),
+  po dwie na liczbę zdjęć: „Para” i „Duży i mały”, 2×2 i „Duży i pięć”,
+  nowe „Duży i cztery” i „Duży i sześć”, „Cztery nad trzema” z pierwszym
+  z trzech na dwa; bez „Pion i dwa poziomy” i „Rząd pionów”.
+- „Ekran” → „Orientacja”: dwie pastylki z miniaturą ramki; pion to zawsze
+  ekran obrócony o 90° w prawo (zapisane 270° serwer czyta jako 90°).
+- „Źródła dzieł” przeniesione pod trybik do Konfiguracji, zapisują się od
+  razu po przełączeniu.
+
 ## 0.34.0
 
 - Szukaj → „+”: sekcje w kolejności Technika, Epoka, Styl, Kolorystyka,
