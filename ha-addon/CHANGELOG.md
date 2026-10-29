@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.32.1
+
+- „Sprawdź stan” budzi śpiącą w sieci ramkę jednym naciśnięciem: gdy serwer
+  wie, że ramka śpi, aplikacja od razu ją budzi (`POST /api/device/wake`), a gdy
+  nie jest pewien, najpierw ją sprawdza i budzi, jeśli nie odpowiada. W głębokim
+  śnie i po „Wyłącz ramkę” tylko mówi, kiedy zadzwoni budzik i że budzi
+  przycisk. Przeciągnięcie w dół i wejście w zakładkę dalej tylko patrzą.
+  Tylko aplikacja iOS; serwer i paczka aplikacji ramki bez zmian.
+
 ## 0.32.0
 
 - Ramka, która zasnęła sama (np. po odłączeniu zasilacza), nie jest już brana
