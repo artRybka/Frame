@@ -8,7 +8,7 @@ from typing import Annotated, Any, Literal
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
-from .. import __version__
+from .. import build_version
 from ..ai import PolishText
 from ..library import Item, ItemSummary, PlaylistRules, PlaylistSummary
 from ..player import Hold, hold_from
@@ -57,6 +57,9 @@ class Delivery(BaseModel):
     #: ``waiting`` with the Wi-Fi off (economy, quiet hours): only the alarm
     #: or the button wakes it. False: asleep with the Wi-Fi on (online).
     deep_sleep: bool = False
+    #: ``waiting`` with the Wi-Fi gone off by itself (unplugged, the panel
+    #: sleeps at once without it): the button wakes it.
+    wifi_lost: bool = False
     #: ``waiting`` for good: the panel does not run the app and the server
     #: cannot build it (no Samsung certificates).
     no_app: bool = False
@@ -144,6 +147,7 @@ def _delivery(svc: FrameService, content: ContentInfo | None) -> Delivery:
             asleep_until_at=until.isoformat(timespec="seconds") if until else None,
             missed_wake_at=svc.app.state.missed_wake,
             deep_sleep=svc.app.deep_asleep(),
+            wifi_lost=svc.app.deep_asleep() and svc.app.state.wifi_lost,
             **common,
         )
     failed = record.failed_file_id == content.file_id
@@ -261,7 +265,7 @@ async def status(svc: Svc, refresh: bool = False) -> StatusView:
     return StatusView(
         device=device,
         server=ServerStatus(
-            version=__version__,
+            version=build_version(),
             uptime_s=int(time.monotonic() - STARTED),
             library_count=svc.library.count(),
             playlists=len(svc.library.playlists()),

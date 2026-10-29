@@ -124,15 +124,22 @@ class ProgressTracker:
             elif key in ORDER and key != Stage.REFRESHING:
                 self.expected[Stage(key)] = float(value)
 
-    def begin(self, title: str, *, render: bool = True, keep: bool = False) -> None:
+    def begin(
+        self, title: str, *, render: bool = True, keep: bool = False, start: Stage | None = None
+    ) -> None:
         """A picture sets off. ``keep``: one with this title still being
-        prepared (its original downloaded first) goes on as it is."""
+        prepared (its original downloaded first) goes on as it is.
+        ``start``: the stage it sets off at (a waiting picture the woken
+        panel's app asked for: its download)."""
         if keep and self._stage == Stage.RENDERING and self._title == title:
             return
         now = self._clock()
-        wake = self.likely_asleep()
+        wake = self.likely_asleep() and start is None
+        first = ORDER.index(start) if start is not None else 0
         self._planned = [
-            s for s in ORDER if (wake or s != Stage.WAKING) and (render or s != Stage.RENDERING)
+            s
+            for s in ORDER[first:]
+            if (wake or s != Stage.WAKING) and (render or s != Stage.RENDERING)
         ]
         self._took = {}
         self._stage = self._planned[0]

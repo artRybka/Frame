@@ -227,7 +227,8 @@ struct FrameTabView: View {
         case "standby":
             return device.onNetwork == true ? "Śpi w sieci, czeka na sygnał budzenia" : "Śpi, czeka na sygnał budzenia"
         case "deep_sleep":
-            return device.switchedOff == true ? "Wyłączona, włączysz ją przyciskiem" : "Głęboki sen, bez Wi-Fi"
+            if device.switchedOff == true { return "Wyłączona, włączysz ją przyciskiem" }
+            return device.wifiLost == true ? "Śpi bez Wi-Fi, obudzi ją przycisk" : "Głęboki sen, bez Wi-Fi"
         case "offline":
             return device.onNetwork == false ? "Nie ma jej w sieci Wi-Fi" : "Nie odpowiada — śpi lub poza siecią"
         default: break  // a server before 0.12
@@ -362,6 +363,10 @@ struct FrameTabView: View {
                 return ("power", Theme.inkSoft, "Wyłączona", "włączysz ją przyciskiem na ramce")
             }
             let note = When.at(device.wakeAt).map { "budzik \($0), wcześniej przycisk" } ?? "Wi-Fi wyłączone, budzi przycisk"
+            if device.wifiLost == true {
+                // Unplugged, it sleeps at once and leaves the Wi-Fi.
+                return ("wifi.slash", Theme.inkSoft, "Bez Wi-Fi", device.wakeAt == nil ? "obudzi ją przycisk na ramce" : note)
+            }
             return ("wifi.slash", Theme.inkSoft, "Głęboki sen", note)
         case "offline":
             if device.onNetwork == false {
@@ -384,7 +389,8 @@ struct FrameTabView: View {
         }
         let next = When.schedule(model.player?.nextChangeAt) ?? "—"
         guard device?.pendingPush == true else { return (next, "następna zmiana") }
-        return (next, When.at(device?.wakeAt).map { "obraz pojawi się \($0)" } ?? "obraz czeka na pobudkę ramki")
+        if let at = When.at(device?.wakeAt) { return (next, "obraz pojawi się \(at)") }
+        return (next, device?.wifiLost == true ? "obraz czeka na przycisk ramki" : "obraz czeka na pobudkę ramki")
     }
 
     /// Under the battery level: how long it lasts at the rate measured on
@@ -430,6 +436,7 @@ struct FrameTabView: View {
         switch device?.powerSource {
         case "ac": return "nie śpi, zmiany od razu"
         case "battery":
+            if device?.wifiLost == true { return "po odpięciu zasnęła bez Wi-Fi" }
             if model.settings?.isEconomy == true { return "śpi bez Wi-Fi do pobudki" }
             return model.settings?.quietStart != nil ? "śpi w sieci, noc bez Wi-Fi" : "śpi w sieci, wysyłka ją budzi"
         default: return "zmiany według harmonogramu"
@@ -1430,6 +1437,7 @@ struct ConnectionSettingsView: View {
             .scrollDismissesKeyboard(.interactively)
             .task { await model.loadLibraryStorage() }
             .task { await model.loadPanelApp() }
+            .task { await model.loadServerUpdate() }
             .task { await model.loadAiSettings() }
             .navigationTitle("Konfiguracja")
             .navigationBarTitleDisplayMode(.inline)
@@ -1710,6 +1718,10 @@ struct ServerSection: View {
                         .font(.caption)
                         .foregroundStyle(Theme.inkSoft)
                 }
+                if let update = model.serverUpdate {
+                    Divider()
+                    ServerUpdateRow(update: update)
+                }
             }
         }
     }
@@ -1737,6 +1749,89 @@ struct ServerSection: View {
         case .home where !model.remoteURL.isEmpty: return "Połączono w domu"
         default: return "Połączono"
         }
+    }
+}
+
+/// "Aktualizuj serwer": the newest server image, put in place by the
+/// `frame-updater` helper next to the server on Synology.
+private struct ServerUpdateRow: View {
+    @Environment(AppModel.self) private var model
+    let update: ServerUpdate
+    @State private var checking = false
+    @State private var confirming = false
+
+    private var working: Bool { checking || model.updatingServer || update.busy }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Wersja serwera").font(.subheadline).foregroundStyle(Theme.ink)
+                Spacer()
+                Text(update.version)
+                    .font(.subheadline.monospacedDigit())
+                    .foregroundStyle(Theme.inkSoft)
+            }
+            if update.addon {
+                caption("Add-on aktualizuje Home Assistant: Ustawienia → Dodatki → Frame.")
+            } else if !update.updater {
+                caption("Aby aktualizować serwer stąd, raz dodaj pomocnika na NAS-ie: Container Manager → Projekt → frame → Zatrzymaj, potem Konfiguracja YAML → Edytuj, wklej aktualny docker-compose.yml i Kompiluj. Do tego czasu aktualizuje Projekt → frame → Kompiluj.")
+            } else {
+                status
+                Button {
+                    if update.updateAvailable {
+                        confirming = true
+                    } else {
+                        Task {
+                            checking = true
+                            await model.checkServerUpdate()
+                            checking = false
+                        }
+                    }
+                } label: {
+                    HStack {
+                        Text(update.updateAvailable ? "Aktualizuj serwer" : "Sprawdź aktualizacje")
+                        if working { ProgressView() }
+                    }
+                }
+                .fontWeight(.semibold)
+                .disabled(working)
+                .confirmationDialog(
+                    "Aktualizować serwer do wersji \(update.latestVersion ?? "najnowszej")?",
+                    isPresented: $confirming,
+                    titleVisibility: .visible
+                ) {
+                    Button("Aktualizuj serwer") { Task { await model.updateServer() } }
+                } message: {
+                    Text("Serwer zniknie na około minutę. Gdyby nowa wersja nie wystartowała, wróci obecna.")
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var status: some View {
+        if model.updatingServer || update.state == "updating" {
+            caption("Aktualizuję. Serwer wróci za około minutę.")
+        } else if update.state == "checking" || update.pending == "check" {
+            caption("Sprawdzam, czy jest nowsza wersja…")
+        } else if update.updateAvailable {
+            Text("Dostępna wersja \(update.latestVersion ?? "nowsza")")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Theme.accent)
+        } else if let checked = When.ago(update.checkedAt) {
+            caption("Aktualna, sprawdzono \(checked)")
+        }
+        if update.state == "failed", let error = update.error {
+            Text(error).font(.caption).foregroundStyle(Theme.warn)
+        } else if let last = update.lastUpdate, last.ok, let at = When.ago(last.at) {
+            caption("Zaktualizowano \(at)\(last.toVersion.map { " do \($0)" } ?? "").")
+        }
+    }
+
+    private func caption(_ text: String) -> some View {
+        Text(text)
+            .font(.caption)
+            .foregroundStyle(Theme.inkSoft)
     }
 }
 

@@ -57,6 +57,7 @@ struct RootView: View {
         }
         .onChange(of: model.suggestionsOpened) { tab = .discover }
         .task { await model.refreshAll() }
+        .task(id: model.player?.delivery?.isWaiting == true) { await model.followWaiting() }
         .onChange(of: scenePhase) { old, phase in
             // Back from the background, maybe on another network.
             if old == .background, phase != .background { Task { await model.recheckServer() } }

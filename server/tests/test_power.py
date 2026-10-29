@@ -165,14 +165,27 @@ async def test_a_silent_app_is_not_taken_for_awake(
     assert app.awake()
 
 
-async def test_a_panel_asleep_by_itself_is_taken_as_standby(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize(
+    ("on_network", "power_state"),
+    [
+        (True, "standby"),  # still on the Wi-Fi: Wake-on-LAN reaches it
+        (False, "deep_sleep"),  # off the Wi-Fi: only the button
+        (None, "deep_sleep"),  # cannot tell: unplugged, it leaves the Wi-Fi (E8)
+    ],
+)
+async def test_a_panel_asleep_by_itself(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    on_network: bool | None,
+    power_state: str,
 ) -> None:
-    """Silent and not answering MDC: asleep in the network (unplugged), not a
-    hung app on the charger."""
+    """Silent and not answering MDC: asleep by itself (unplugged), not a hung
+    app on the charger. 2026-10-29: unplugged, the panel left the Wi-Fi, yet
+    the app said "Czuwanie, wysyłka ją budzi" and "Sprawdź stan" said it is
+    not on the Wi-Fi. Whether it is (ARP) decides which sleep it is in."""
 
     async def presence(host: str) -> bool | None:
-        return None
+        return on_network
 
     monkeypatch.setattr(status_module, "on_network", presence)
     service = FrameService(_settings(tmp_path, _closed_port()))
@@ -184,13 +197,47 @@ async def test_a_panel_asleep_by_itself_is_taken_as_standby(
     await service.power.tick(now + timedelta(minutes=2))
     assert not app.asleep()
     await service.power.tick(now + timedelta(minutes=4))
-    assert app.asleep() and not app.deep_asleep() and app.wakes_at() is None
-    assert service.status.status.power_source == "battery"
-    assert not service.status.status.charging
-    assert (await service.status.refresh(force=True)).power_state == "standby"
+    # The spare alarms the app keeps on the charger (online mode) wake it.
+    assert app.asleep() and app.wakes_at(now + timedelta(minutes=4)) == _at("2026-10-29T10:30")
+    wifi = power_state == "standby"
+    assert app.deep_asleep() is not wifi and app.state.wifi_lost is not wifi
+    status = service.status.status
+    assert status.power_source == "battery" and not status.charging
+    assert status.power_state == power_state and status.wifi_lost is not wifi
+    assert (await service.status.refresh(force=True)).power_state == power_state
     # Nothing more to start until it is heard of again.
     await service.power.tick(now + timedelta(minutes=30))
     assert app.asleep() and app.state.missed_wake is None
+    if not wifi:
+        # No magic packets for a panel off the Wi-Fi: the button wakes it.
+        result = await service.power.wake_now()
+        assert not result.sent and result.deep_sleep and result.wifi_lost
+    # Heard of again (the button): it sleeps as it is told to again.
+    answer = app.answer(AppHello(reason="start", charging=False), now=now + timedelta(hours=1))
+    assert answer.action == "sleep" and answer.standby == "ON"
+    assert not app.deep_asleep() and not app.state.wifi_lost
+    assert not service.status.status.wifi_lost
+
+
+async def test_a_sleep_in_the_network_found_off_the_wifi(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Asleep with network standby on, but a look finds it off the Wi-Fi
+    (no ARP answer): the tiles, "Sprawdź stan" and "Obudź ramkę" all say
+    the button, none of them "wysyłka ją budzi"."""
+
+    async def presence(host: str) -> bool | None:
+        return False
+
+    monkeypatch.setattr(status_module, "on_network", presence)
+    service = FrameService(_settings(tmp_path, _closed_port()))
+    _asleep(service, deep=False)
+    status = await service.status.refresh(force=True)
+    assert status.power_state == "deep_sleep" and status.on_network is False
+    assert status.wifi_lost and status.wake_at is not None  # its alarm still rings
+    assert service.app.deep_asleep()
+    result = await service.power.wake_now()
+    assert not result.sent and result.deep_sleep and result.wifi_lost
 
 
 async def test_wake_starts_a_hung_app(
@@ -215,6 +262,69 @@ async def test_wake_starts_a_hung_app(
         service.app.answer(AppHello(reason="start", build="2.0.0", charging=False))
         result = await task
         assert result.woke and result.started
+    finally:
+        await panel.stop()
+
+
+async def test_a_picture_starts_the_app_of_a_panel_up(
+    tmp_path: Path, server_ssl: ssl.SSLContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """2026-10-29, 0.34.0: woken by the button, the panel was on the Wi-Fi
+    and answered MDC, but its app did not run (the launcher seldom starts it
+    after a cold boot). A picture sent kept "Budzę ramkę" with magic packets
+    for nothing. Now it starts the app over MDC, and a status look that
+    finds the panel up does too."""
+    monkeypatch.setattr(power, "WAKE_LOOK", timedelta(seconds=3))
+    monkeypatch.setattr(power, "WAKE_STEP", timedelta(seconds=0.2))
+    monkeypatch.setattr(power, "APP_GRACE", timedelta(seconds=0.5))
+    panel = FakePanel(server_ssl, handler=_handler)
+    await panel.start()
+    try:
+        service = FrameService(_settings(tmp_path, panel.port))
+        app = service.app
+        app.store_package(b"PK\x03\x04signed", "2.0.0")
+        service.ensure_initial_content()
+        _asleep(service, deep=False)
+        sent: list[int] = []
+
+        async def wake(seconds: int = 0) -> bool:
+            sent.append(seconds)
+            return True
+
+        monkeypatch.setattr(service.panel, "wake", wake)
+        task = asyncio.create_task(service.push_current(wait=5))
+        for _ in range(40):
+            await asyncio.sleep(0.1)
+            if (CMD_CONTENT_DOWNLOAD, b"\x81\x01") in panel.received:
+                break
+        assert panel.received[-1] == (CMD_CONTENT_DOWNLOAD, b"\x81\x01")
+        # Started, the app asks and downloads the picture.
+        app.answer(AppHello(reason="start", build="2.0.0", charging=False))
+        content = service.store.current()
+        assert content is not None
+        service.store._fetch_waiters[content.file_id].set()
+        outcome = await task
+        assert outcome.fetched and not service.power.state.pending_push
+
+        # Asleep again a while later, the panel answers a status look: the
+        # app is started.
+        _asleep(service, deep=False)
+        state = app.state
+        state.slept_at = (datetime.now(UTC) - timedelta(minutes=10)).isoformat()
+        state.wakes, state.wake_at = [], None
+        app._save(state)
+        app.heard_at = datetime.now(UTC) - timedelta(minutes=10)
+        app._kicked = None
+        panel.received.clear()
+        await service.status.refresh(force=True)
+        assert panel.received[-1] == (CMD_CONTENT_DOWNLOAD, b"\x81\x01")
+        # Not while it asks: the battery read before its answer leaves it be.
+        panel.received.clear()
+        app._kicked = None
+        service.status.status.checked_at = None  # the battery is read first
+        await app.ask(AppHello(reason="resume", build="2.0.0"))
+        assert panel.received  # read it was
+        assert (CMD_CONTENT_DOWNLOAD, b"\x81\x01") not in panel.received
     finally:
         await panel.stop()
 
@@ -292,7 +402,7 @@ async def test_power_state_for_the_network_tile(tmp_path: Path, server_ssl: ssl.
     [
         (None, True, "standby"),  # never seen, but on the Wi-Fi: asleep
         (True, True, "standby"),
-        (True, False, "standby"),  # no ARP answer: not taken as gone yet (E15)
+        (True, False, "deep_sleep"),  # no ARP answer: off the Wi-Fi (unplugged, E8)
         (False, True, "standby"),  # it is on the Wi-Fi after all
         (False, False, "deep_sleep"),
         (None, False, "offline"),

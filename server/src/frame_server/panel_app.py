@@ -102,11 +102,12 @@ REST_MAX = timedelta(days=3)
 STRAY_BEFORE = timedelta(minutes=2)
 STRAY_AFTER = timedelta(minutes=12)
 REST_SETTLE = timedelta(minutes=5)
-# Resting, the launcher seldom starts the app after the button's cold boot
+# After the button's cold boot (any sleep with the Wi-Fi off: a rest, the
+# economy mode, quiet hours, or unplugged) the launcher seldom starts the app
 # (E16): the server looks for the panel over MDC this often and starts it.
 # Asleep with the Wi-Fi off the panel is not on the network, so a look costs
 # nothing but a failed connection.
-BUTTON_LOOK_EVERY = timedelta(minutes=2)
+BUTTON_LOOK_EVERY = timedelta(minutes=1)
 # While the app is awake the server reads the battery over MDC (Tizen's
 # systeminfo fails on the panel) at most this often.
 BATTERY_EVERY = timedelta(minutes=10)
@@ -132,6 +133,17 @@ CERTIFICATES_WARN = timedelta(days=60)
 ICON = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNgYGAAAAAEAAH2FzhVAAAAAElFTkSuQmCC"
 )
+# Unplugged, the panel sleeps at once without the Wi-Fi and without a word to
+# the app (E8, 2026-10-29): nothing but the button would wake it. So on the
+# charger the app keeps spare alarms (in the online mode: in the economy one
+# sleeping without the Wi-Fi is the point) at every half hour (at least
+# ``SPARE_LEAD`` ahead, an alarm due as the panel goes down being lost, E16):
+# unplugged, the next one wakes it, the server starts the app, and from then
+# on it sleeps the usual way. Alarms cannot be cancelled: the ones left ring
+# once more after the app went back to sleep, which costs a wake each.
+SPARE_EVERY = timedelta(minutes=30)
+SPARE_LEAD = timedelta(minutes=5)
+SPARE_ALARMS = 2
 # A full-colour (passthrough) picture goes to the app as a JPEG (4:4:4): ~1 MB
 # instead of 3-4 MB of PNG over the panel's weak Wi-Fi (60-215 KB/s), and
 # the loss does not show (E16). A dithered one, a handful of inks, stays the
@@ -159,6 +171,11 @@ class AppState(BaseModel):
     reboot_for: str | None = None  # the package version it last rebooted to install
     installed_at: str | None = None  # the server last started it over MDC (ISO)
     mode: str | None = None  # the power mode it went to sleep in
+    slept_at: str | None = None  # told to sleep (ISO)
+    # Asleep with the Wi-Fi off although it was to keep it on (or stay up):
+    # unplugged, the panel sleeps at once and leaves the Wi-Fi (E8,
+    # 2026-10-29). Only the button (or an alarm still set) wakes it.
+    wifi_lost: bool = False
     # "Głęboki sen" until ``rest_until``, or switched off (no alarm at all):
     # the Wi-Fi off, no changes, only the button ends it.
     rest_until: str | None = None
@@ -166,6 +183,8 @@ class AppState(BaseModel):
     rested_at: str | None = None  # put to sleep for it (None: not yet)
     # Alarms set before the rest, still to ring (they cannot be cancelled).
     stray: list[str] = []
+    # Spare alarms set on the charger (ISO), for a frame unplugged.
+    spare: list[str] = []
 
 
 class AppHello(BaseModel):
@@ -242,6 +261,7 @@ class PanelApp:
         self._nudged: datetime | None = None
         self._looked: datetime | None = None  # for the button in a rest
         self._silent_kicks = 0
+        self._kick_error: MdcError | None = None  # why the last start failed
         self._next_alarm: datetime | None = None  # as the status shows it
         self.certificates = Certificates(self.dir / "certs")
         self._images: dict[str, str] = {}  # file_id -> the path the app gets
@@ -428,6 +448,7 @@ class PanelApp:
         the last read is old (Tizen's systeminfo fails on the panel): on the
         charger the app stays awake."""
         self.ensure_package()  # the files or the address changed: a new one
+        self.heard_at = datetime.now(UTC)  # asking: not started anew by a look
         status = self.service.status
         checked = status.status.checked_at
         now = datetime.now(UTC)
@@ -437,7 +458,23 @@ class PanelApp:
                 await asyncio.wait_for(status.refresh(force=True), BATTERY_TIMEOUT)
             except (TimeoutError, MdcError) as err:
                 log.info("no battery reading for the app: %s", err)
-        return self.answer(hello)
+        waiting = self.service.power.state.pending_push
+        answer = self.answer(hello)
+        if waiting and answer.action != "reboot" and answer.file_id not in (None, hello.shown):
+            self._deliver(answer)
+        return answer
+
+    def _deliver(self, answer: NextAnswer) -> None:
+        """The picture that waited for the panel goes to it now (it woke:
+        the button, an alarm): the progress bar in the iOS app shows its
+        download and refresh as for a picture sent."""
+        assert answer.file_id is not None
+        progress = self.service.progress
+        if not progress.active:
+            progress.begin(answer.title, render=False, start=Stage.DOWNLOADING)
+        progress.advance(Stage.DOWNLOADING)
+        self.follow(answer.file_id)
+        log.info("the waiting picture %s goes to the frame's app", answer.file_id)
 
     def answer(self, hello: AppHello, now: datetime | None = None) -> NextAnswer:
         """What the app shows and does next; it asked, so it is awake."""
@@ -471,7 +508,12 @@ class PanelApp:
         awake = self.awake_until is not None and now < self.awake_until
         charger = service.status.status.power_source == "ac"
         if not self.sleep_requested and (awake or charger):
-            return self._awake(NextAnswer(action="stay", wait_s=_s(POLL), **common))
+            answer = NextAnswer(action="stay", wait_s=_s(POLL), **common)
+            if charger and service.player.settings.power_mode == "online":
+                spare = self._spare(now)
+                answer.wake_ms = _ms(spare[0])
+                answer.wakes_ms = [_ms(a) for a in spare[1:]]
+            return self._awake(answer)
         wake = self.next_wake(now)
         if wake - now < MIN_SLEEP:
             # Too close to sleep for: stay up for it.
@@ -487,6 +529,8 @@ class PanelApp:
         state.wakes = [a.isoformat(timespec="seconds") for a in alarms]
         state.standby = standby
         state.mode = self.service.player.settings.power_mode
+        state.slept_at = now.isoformat(timespec="seconds")
+        state.wifi_lost = False
         self._save(state)
         return NextAnswer(
             action="sleep",
@@ -571,6 +615,8 @@ class PanelApp:
         state.wakes = [state.rest_until] if state.rest_until else []
         state.standby = False
         state.mode = self.service.player.settings.power_mode
+        state.slept_at = state.rested_at
+        state.wifi_lost = False
         self._save(state)
         return NextAnswer(
             action="sleep",
@@ -640,6 +686,7 @@ class PanelApp:
         if hello.shown is not None:
             state.shown = hello.shown or None
         state.asleep = False
+        state.wifi_lost = False
         state.missed_wake = None
         self._save(state)
         self._silent_kicks = 0
@@ -827,11 +874,11 @@ class PanelApp:
                 self._silent_kicks += 1
                 log.info("the frame's app has been silent since %s", state.seen_at)
                 if not await self._kick():
-                    self._fell_asleep()
+                    await self._fell_asleep(now)
             return
         if self._button_look_due(now):
-            # Up although nothing rang: the button. Started, the app asks and
-            # the rest is over.
+            # Up although nothing rang: the button. Started, the app asks (a
+            # rest is over, a waiting picture goes out).
             self._looked = now
             await self._kick(quiet=True)
             return
@@ -857,42 +904,107 @@ class PanelApp:
         power = self.service.power
         new = content is not None and content.file_id != state.shown
         news = new or power.state.pending_push or power.change_due(now)
-        return wake if news or self.mode_pending() is not None or self.rest_pending() else None
+        if news or self.mode_pending() is not None or self.rest_pending() or state.wifi_lost:
+            return wake  # asleep without the Wi-Fi by itself: back to the usual sleep
+        return None
 
     def _button_look_due(self, now: datetime) -> bool:
-        """Resting asleep, settled, no old alarm about to ring or ringing,
-        and not looked for a while: time to see whether the button woke it."""
+        """Asleep with the Wi-Fi off (a rest, the economy mode, quiet hours,
+        unplugged), or in the network with a picture waiting for it,
+        settled, no alarm about to ring or ringing (at a check with nothing
+        new the panel is left alone), and not looked for a while: time to
+        see whether the button woke it."""
         state = self.state
-        if not (state.asleep and state.rested_at and (state.off or state.rest_until)):
+        waiting = self.service.power.state.pending_push
+        if not state.asleep or (state.standby and not waiting):
             return False
-        if now - datetime.fromisoformat(state.rested_at) < REST_SETTLE:
-            return False
-        if any(
-            datetime.fromisoformat(a) - STRAY_BEFORE
-            <= now
-            <= datetime.fromisoformat(a) + STRAY_AFTER
-            for a in [*state.stray, *state.wakes]
-        ):
+        if _settling(state, now) or _near_alarm(state, now):
             return False
         return self._looked is None or now - self._looked >= BUTTON_LOOK_EVERY
 
-    def _fell_asleep(self) -> None:
+    async def panel_up(self, now: datetime) -> None:
+        """The panel answered MDC (a status look): it is up. An app asleep as
+        far as the server knows, or silent, is not running then (after the
+        button's cold boot the launcher seldom starts it, E16): started. Not
+        while it asks (it was heard just now), goes down after being told
+        to sleep, or around an alarm, and not again too soon."""
+        state = self.state
+        heard = self.heard_at
+        if not state.active or (heard is not None and now - heard < HEARD_EVERY):
+            return
+        if _settling(state, now) or _near_alarm(state, now):
+            return
+        if self._kicked is not None and now - self._kicked < KICK_EVERY:
+            return
+        self._kicked = now
+        await self._kick(why="did not run although the panel is up")
+
+    async def _fell_asleep(self, now: datetime) -> None:
         """Not told to sleep, silent, and the panel does not answer MDC: it
-        went to sleep by itself, most likely unplugged (the panel sleeps at
-        once then, E8; on the charger the app never sleeps). Taken as asleep
-        with the Wi-Fi on (the app keeps network standby on while awake),
-        with no alarm of ours: a picture and "Obudź ramkę" send Wake-on-LAN
-        again instead of waiting for an app that does not ask."""
+        went to sleep by itself, with no alarm of ours. Most likely it was
+        unplugged: the panel sleeps at once then and leaves the Wi-Fi,
+        whatever network standby says (E8; 2026-10-29 it did not answer ARP
+        and Wake-on-LAN did not reach it, the button did). On the charger
+        the app never sleeps. Whether it is still on the Wi-Fi is asked
+        (ARP): if so, a picture and "Obudź ramkę" send Wake-on-LAN; if not
+        (or it cannot be told and it was on the charger), only the button
+        wakes it, and the server looks for it over MDC to start the app."""
+        status = self.service.status
+        unplugged = status.status.power_source == "ac"
+        on_network = await status.look_for_panel(self._kick_error)
+        wifi = on_network is True or (on_network is None and not unplugged)
         state = self.state
         state.asleep = True
-        state.standby = True
-        state.wake_at = None
-        state.wakes = []
+        state.standby = wifi
+        state.wifi_lost = not wifi
+        state.wakes = self._spare_left(state, now)
+        state.wake_at = state.wakes[0] if state.wakes else None
+        state.slept_at = None  # down already: the panel did not answer
         self._save(state)
-        status = self.service.status
-        if status.status.power_source == "ac":
-            status.note_unplugged()
-        log.warning("the frame's app fell silent and the panel does not answer: asleep by itself")
+        status.note_fell_asleep(on_network, unplugged=unplugged, wifi=wifi)
+        log.warning(
+            "the frame's app fell silent and the panel does not answer: asleep by itself, %s",
+            "in the network" if wifi else "without the Wi-Fi (only the button wakes it)",
+        )
+
+    def _spare(self, now: datetime) -> list[datetime]:
+        """The spare alarms the app on the charger keeps set (it sets each
+        only once): the next ``SPARE_ALARMS`` half hours at least
+        ``SPARE_LEAD`` ahead. Noted as set, the future ones only."""
+        step = SPARE_EVERY.total_seconds()
+        first = (now + SPARE_LEAD).timestamp() // step * step + step
+        alarms = [datetime.fromtimestamp(first + i * step, UTC) for i in range(SPARE_ALARMS)]
+        state = self.state
+        kept = {a for a in state.spare if datetime.fromisoformat(a) > now}
+        spare = sorted(kept | {a.isoformat(timespec="seconds") for a in alarms})
+        if spare != state.spare:
+            state.spare = spare
+            self._save(state)
+        return alarms
+
+    @staticmethod
+    def _spare_left(state: AppState, now: datetime) -> list[str]:
+        """The spare alarms still to ring: what wakes a frame unplugged."""
+        return [a for a in state.spare if datetime.fromisoformat(a) > now]
+
+    def lost_wifi(self, now: datetime) -> bool:
+        """A look found the panel off the Wi-Fi (no ARP answer): an app taken
+        to sleep in the network, or silent for a while, is asleep without
+        the Wi-Fi after all (unplugged), and Wake-on-LAN cannot reach it.
+        The alarm it set still rings. Whether that changed anything."""
+        state = self.state
+        if not state.active or self.awake(now) or (state.asleep and not state.standby):
+            return False
+        if not state.asleep:
+            state.wakes = self._spare_left(state, now)
+            state.wake_at = state.wakes[0] if state.wakes else None
+        state.asleep = True
+        state.standby = False
+        state.wifi_lost = True
+        state.slept_at = None
+        self._save(state)
+        log.warning("the frame is not on the Wi-Fi: asleep without it, only the button wakes it")
+        return True
 
     async def _kick(self, quiet: bool = False, why: str = "was silent") -> bool:
         """Start the app (or restart a hung one): selecting the Custom source
@@ -900,15 +1012,17 @@ class PanelApp:
         panel left pointing elsewhere (a test server) comes back to ours.
         ``quiet``: only looking whether the panel is up (a rest). Whether the
         panel answered."""
+        self._kick_error = None
         try:
             async with self.service.panel.session() as mdc:
                 await mdc.set_custom_app_url(self.app_url())
                 await mdc.set_content_source(CONTENT_SOURCE_CUSTOM)
         except MdcError as err:
+            self._kick_error = err
             if not quiet:
                 log.info("could not start the frame's app: %s", err)
             return not isinstance(err, MdcConnectionError)
-        log.info("the frame's app %s: started it over MDC", "woke resting" if quiet else why)
+        log.info("the frame's app %s: started it over MDC", "woke by the button" if quiet else why)
         return True
 
     async def start(self, why: str) -> bool:
@@ -974,6 +1088,21 @@ def _next_version(previous: str | None) -> str:
 def _alarms(state: AppState) -> list[datetime]:
     wakes = state.wakes or ([state.wake_at] if state.wake_at else [])
     return [datetime.fromisoformat(w) for w in wakes]
+
+
+def _settling(state: AppState, now: datetime) -> bool:
+    """Just told to sleep: still going down, or restarted by the launcher as
+    it does."""
+    since = state.rested_at or state.slept_at
+    return since is not None and now - datetime.fromisoformat(since) < REST_SETTLE
+
+
+def _near_alarm(state: AppState, now: datetime) -> bool:
+    """An alarm about to ring or just rung (set now or before a rest)."""
+    return any(
+        datetime.fromisoformat(a) - STRAY_BEFORE <= now <= datetime.fromisoformat(a) + STRAY_AFTER
+        for a in [*state.stray, *state.wakes]
+    )
 
 
 def _ms(moment: datetime) -> int:

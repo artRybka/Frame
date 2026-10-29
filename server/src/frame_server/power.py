@@ -58,6 +58,10 @@ class WakeResult(BaseModel):
     started: bool = False
     asleep_until: str | None = None  # deep sleep: Wake-on-LAN cannot reach it
     asleep_until_at: str | None = None  # the same as a moment (ISO)
+    # Asleep with the Wi-Fi off (with or without an alarm): nothing was sent.
+    deep_sleep: bool = False
+    # The Wi-Fi went off by itself (unplugged): only the button wakes it.
+    wifi_lost: bool = False
     reason: str | None = None
     # Why nothing could be tried: no Samsung certificates on the server (so
     # no app to start), or no MAC address for Wake-on-LAN.
@@ -78,6 +82,8 @@ class PowerManager:
     def __init__(self, service: FrameService) -> None:
         self.service = service
         service.status.asleep = self.asleep_state
+        service.status.off_network = self._off_network
+        service.status.answered = self._answered
         self._tasks: set[asyncio.Task[None]] = set()
 
     # -- persisted state ------------------------------------------------------
@@ -105,6 +111,15 @@ class PowerManager:
         state = app.state
         status.rest_until = state.rest_until
         status.switched_off = state.off
+        status.wifi_lost = state.active and state.asleep and state.wifi_lost
+
+    def _off_network(self) -> None:
+        """A look found the panel off the Wi-Fi."""
+        self.service.app.lost_wifi(datetime.now(UTC))
+
+    async def _answered(self) -> None:
+        """A look found the panel up: its app is started if it does not run."""
+        await self.service.app.panel_up(datetime.now(UTC))
 
     def mark_pending(self, pending: bool) -> None:
         state = self.state
@@ -226,7 +241,7 @@ class PowerManager:
             return WakeResult(sent=False, woke=True)
         if not service.settings.device_mac:
             return WakeResult(sent=False, woke=False, problem="no_mac", reason="no MAC address set")
-        woke, started = await self._reach()
+        woke, started = await self.reach()
         log.info("Wake-on-LAN for the frame's app: %s", "it asked" if woke else "no answer")
         return WakeResult(
             sent=True,
@@ -249,7 +264,7 @@ class PowerManager:
         app.request_restart()
         awake = app.awake()
         mac = service.settings.device_mac
-        woke, started = await self._reach(wol=bool(mac) and not awake)
+        woke, started = await self.reach(wol=bool(mac) and not awake)
         if not woke:
             app.restart_requested = False  # not at some later question out of the blue
         log.info("restart of the frame: %s", "the app reboots it" if woke else "no answer")
@@ -260,7 +275,7 @@ class PowerManager:
             reason=None if woke else "no answer from the frame's app",
         )
 
-    async def _reach(self, wol: bool = True) -> tuple[bool, bool]:
+    async def reach(self, wol: bool = True) -> tuple[bool, bool]:
         """Wake-on-LAN (``wol``) until the app asks; once the panel answers
         MDC and its app still does not ask, the app is started over MDC.
         Whether it asked, and whether it had to be started."""
@@ -315,12 +330,15 @@ class PowerManager:
         )
 
     def _deep_result(self) -> WakeResult:
-        until = self.service.app.wakes_at()
+        app = self.service.app
+        until = app.wakes_at()
         return WakeResult(
             sent=False,
             woke=False,
             asleep_until=self._hhmm(until),
             asleep_until_at=until.isoformat(timespec="seconds") if until else None,
+            deep_sleep=True,
+            wifi_lost=app.state.wifi_lost,
             reason="deep sleep (Wi-Fi off) until the alarm, only the button wakes it",
         )
 

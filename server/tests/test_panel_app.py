@@ -18,6 +18,7 @@ from fake_panel import FakePanel
 from fastapi.testclient import TestClient
 from PIL import Image, JpegImagePlugin
 
+from frame_server import status as status_module
 from frame_server.config import Settings
 from frame_server.device.mdc import CMD_CONTENT_DOWNLOAD
 from frame_server.imaging.pipeline import encode_image
@@ -442,10 +443,10 @@ async def test_a_check_with_nothing_new_leaves_the_panel_asleep(
         # Nothing new at 14:00: the app is not started, the cold-booted panel
         # goes back to sleep by itself and no wake is missed.
         await service.power.tick(_at("2026-10-28T14:01:10"))
-        await service.power.tick(_at("2026-10-28T14:20"))
+        await service.power.tick(_at("2026-10-28T14:10"))
         assert panel.received == []
         assert app.state.missed_wake is None
-        assert app.wakes_at(_at("2026-10-28T14:20")) == _at("2026-10-28T16:00")
+        assert app.wakes_at(_at("2026-10-28T14:10")) == _at("2026-10-28T16:00")
 
         # A new picture while it sleeps: started at the next check.
         service.store.publish(b"png", "png", title="Słoneczniki")
@@ -728,10 +729,131 @@ async def test_a_resting_panel_is_looked_for_now_and_then(
         # Answering MDC although nothing rang: the button. The app is started.
         await service.power.tick(now + timedelta(minutes=6))
         assert panel.received == START
-        await service.power.tick(now + timedelta(minutes=7))
+        await service.power.tick(now + timedelta(minutes=6, seconds=30))
         assert panel.received == START  # not again so soon
     finally:
         await panel.stop()
+
+
+async def test_the_button_is_looked_for_in_any_sleep_without_wifi(
+    tmp_path: Path, server_ssl: ssl.SSLContext
+) -> None:
+    """After the button the launcher seldom starts the app: in the economy
+    mode and asleep by itself without the Wi-Fi the server looks for the
+    panel too, but not around an alarm (a check with nothing new is left
+    alone)."""
+    panel = FakePanel(server_ssl)
+    await panel.start()
+    try:
+        service = _service(tmp_path, panel.port)
+        service.player.save_settings(
+            FrameSettings(
+                change_times=["07:00", "19:00"],
+                power_mode="economy",
+                check_every_hours=2,
+                quiet_start=None,
+            )
+        )
+        _next_change(service, _at("2026-10-28T19:00"))
+        app = service.app
+        content = service.store.current()
+        assert content is not None
+        hello = BATTERY.model_copy(update={"shown": content.file_id})
+        app.answer(hello, now=_at("2026-10-28T12:00"))
+        await service.power.tick(_at("2026-10-28T12:03"))
+        assert panel.received == []  # just put to sleep
+        await service.power.tick(_at("2026-10-28T14:05"))
+        assert panel.received == []  # the 14:00 check
+        # Answering MDC although nothing rang: the button.
+        await service.power.tick(_at("2026-10-28T15:00"))
+        assert panel.received == START
+
+        # Unplugged on the charger: asleep by itself, off the Wi-Fi.
+        app.answer(AppHello(charging=True), now=_at("2026-10-28T15:01"))
+        state = app.state
+        state.asleep, state.standby, state.wifi_lost = True, False, True
+        state.wakes, state.wake_at, state.slept_at = [], None, None
+        app._save(state)
+        panel.received.clear()
+        await service.power.tick(_at("2026-10-28T15:30"))
+        assert panel.received == START
+    finally:
+        await panel.stop()
+
+
+async def test_spare_alarms_on_the_charger_wake_a_frame_unplugged(
+    tmp_path: Path, server_ssl: ssl.SSLContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Mateusz, 2026-10-29: unplugged, the frame sleeps at once without the
+    Wi-Fi. On the charger in the online mode the app keeps spare alarms, so
+    it wakes by itself and the server starts the app, back to the usual
+    sleep in the network. Not in the economy mode."""
+
+    async def presence(host: str) -> bool | None:
+        return False
+
+    monkeypatch.setattr(status_module, "on_network", presence)
+    panel = FakePanel(server_ssl)
+    await panel.start()
+    try:
+        service = _service(tmp_path, panel.port)
+        service.player.save_settings(
+            FrameSettings(change_times=["07:00", "19:00"], quiet_start=None)
+        )
+        app = service.app
+        service.status.status.power_source = "ac"
+        now = _at("2026-10-29T10:12")
+        answer = app.answer(AppHello(charging=True), now=now)
+        assert answer.action == "stay"
+        assert answer.wake_ms == _ms("2026-10-29T10:30")
+        assert answer.wakes_ms == [_ms("2026-10-29T11:00")]
+        # Less than five minutes before one: the next two.
+        answer = app.answer(AppHello(charging=True), now=_at("2026-10-29T10:26"))
+        assert answer.wake_ms == _ms("2026-10-29T11:00")
+        assert len(app.state.spare) == 3
+
+        # Unplugged at 10:27: silent, the panel does not answer, off the Wi-Fi.
+        unplugged = _at("2026-10-29T10:27")
+        app.heard_at = unplugged
+        port = service.settings.device_port
+        service.settings.device_port = 1  # nobody answers
+        await service.power.tick(unplugged + timedelta(minutes=4))
+        assert app.deep_asleep() and app.state.wifi_lost
+        assert app.wakes_at(unplugged + timedelta(minutes=4)) == _at("2026-10-29T11:00")
+
+        # 11:00: the spare alarm wakes it, the server starts the app.
+        service.settings.device_port = port
+        panel.received.clear()
+        await service.power.tick(_at("2026-10-29T11:01:10"))
+        assert panel.received == START
+
+        # Economy: no spare alarms (sleeping without the Wi-Fi is the point).
+        service.player.save_settings(
+            FrameSettings(change_times=["07:00", "19:00"], quiet_start=None, power_mode="economy")
+        )
+        service.status.status.power_source = "ac"
+        answer = app.answer(AppHello(charging=True), now=_at("2026-10-29T12:00"))
+        assert answer.action == "stay" and answer.wake_ms is None and answer.wakes_ms == []
+    finally:
+        await panel.stop()
+
+
+async def test_a_waiting_picture_goes_out_with_the_progress_bar(tmp_path: Path) -> None:
+    """Woken by the button, the app asks and gets the picture that waited
+    for it: the iOS app follows its download and refresh."""
+    service = _service(tmp_path)
+    app = service.app
+    old = service.store.current()
+    assert old is not None
+    service.store.publish(b"png", "png", title="Słoneczniki")
+    service.power.mark_pending(True)
+    answer = await app.ask(BATTERY.model_copy(update={"shown": old.file_id}))
+    assert answer.title == "Słoneczniki" and not service.power.state.pending_push
+    progress = service.progress.view()
+    assert progress.active and progress.stage == "downloading" and progress.title == "Słoneczniki"
+    app.report("shown", {"file_id": answer.file_id})
+    await asyncio.sleep(0)
+    assert service.progress.view().stage == "refreshing"
 
 
 def test_battery_rate_is_measured_on_battery(tmp_path: Path) -> None:

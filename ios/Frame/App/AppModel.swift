@@ -38,6 +38,9 @@ final class AppModel {
     /// The library's size on the server; loaded when Konfiguracja opens
     /// (measuring is slow on a NAS), nil on an older server.
     var libraryStorage: LibraryStorage?
+    var serverUpdate: ServerUpdate?
+    /// "Aktualizuj serwer": waiting for the server to come back as the new version.
+    var updatingServer = false
     /// Claude's settings, spending and progress; loaded when Konfiguracja
     /// opens, nil on an older server.
     var aiSettings: AiSettings?
@@ -125,6 +128,7 @@ final class AppModel {
         panelConfig = nil
         panelApp = nil
         libraryStorage = nil
+        serverUpdate = nil
         aiSettings = nil
         playlists = []
         facets = .empty
@@ -288,7 +292,7 @@ final class AppModel {
         }
         guard let device = status?.device, device.configured, device.powerState != "online" else { return }
         if device.powerState == "deep_sleep" {
-            toast = Self.deepSleepNote(device.wakeAt, off: device.switchedOff == true)
+            toast = Self.deepSleepNote(device.wakeAt, off: device.switchedOff == true, lost: device.wifiLost == true)
             return
         }
         if device.powerState == nil, device.reachable != false { return }  // a server before 0.12
@@ -301,9 +305,13 @@ final class AppModel {
         await wake(sleepAfter: true)
     }
 
-    /// `until`: the alarm (ISO).
-    private static func deepSleepNote(_ until: String?, off: Bool = false) -> String {
+    /// `until`: the alarm (ISO); `lost`: the Wi-Fi went off by itself (unplugged).
+    private static func deepSleepNote(_ until: String?, off: Bool = false, lost: Bool = false) -> String {
         if off { return "Ramka jest wyłączona. Włączysz ją przyciskiem na ramce" }
+        if lost {
+            let alarm = When.at(until).map { ", sama obudzi się \($0)" } ?? ""
+            return "Ramka śpi bez Wi-Fi (tak zasypia po odpięciu zasilacza). Obudzi ją krótkie naciśnięcie przycisku z tyłu\(alarm)"
+        }
         let alarm = When.at(until).map { "budzik \($0) lub przycisk" } ?? "tylko przycisk"
         return "Ramka w głębokim śnie (Wi-Fi wyłączone), obudzi ją \(alarm)"
     }
@@ -324,6 +332,19 @@ final class AppModel {
     /// Polish names of the vocabulary's terms by key.
     var termNames: [String: String] {
         Dictionary(vocabulary.map { ($0.key, $0.name) }, uniquingKeysWith: { first, _ in first })
+    }
+
+    /// While a picture waits for the frame ("Czeka na ramkę"), look now and
+    /// then whether it woke (the button, its alarm): the server sends the
+    /// picture as soon as the frame's app asks, and the bar follows it.
+    func followWaiting() async {
+        while !Task.isCancelled, player?.delivery?.isWaiting == true {
+            try? await Task.sleep(for: .seconds(8))
+            if Task.isCancelled { return }
+            await refreshPlayer()
+            if let value = try? await backend.status(refresh: false) { status = value }
+            if player?.progress?.active == true { trackProgress() }
+        }
     }
 
     /// After an action the server renders and pushes in the background;
@@ -632,6 +653,74 @@ final class AppModel {
         await loadLibraryStorage()
     }
 
+    func loadServerUpdate() async {
+        serverUpdate = try? await backend.serverUpdate()
+    }
+
+    /// The helper pulls the newest image now (it looks every few seconds; a
+    /// new image takes a minute or so to download).
+    func checkServerUpdate() async {
+        do {
+            serverUpdate = try await backend.checkServerUpdate()
+        } catch {
+            show(error)
+            return
+        }
+        for _ in 0..<60 {
+            try? await Task.sleep(for: .seconds(3))
+            guard let view = try? await backend.serverUpdate() else { continue }
+            serverUpdate = view
+            if !view.busy { break }
+        }
+        if let view = serverUpdate, !view.busy {
+            if view.state == "failed" {
+                toast = view.error ?? "Nie udało się sprawdzić"
+            } else if !view.updateAvailable {
+                toast = "Serwer jest aktualny"
+            }
+        }
+    }
+
+    /// The helper replaces the server's container with the newest image; the
+    /// server is away for about a minute and comes back as the new version
+    /// (or as the old one, when the new one did not start).
+    func updateServer() async {
+        guard let before = serverUpdate else { return }
+        do {
+            serverUpdate = try await backend.updateServer()
+        } catch {
+            show(error)
+            return
+        }
+        updatingServer = true
+        defer { updatingServer = false }
+        var wentAway = false
+        let deadline = Date.now.addingTimeInterval(300)
+        while Date.now < deadline {
+            try? await Task.sleep(for: .seconds(3))
+            guard let view = try? await backend.serverUpdate() else {
+                wentAway = true
+                continue
+            }
+            serverUpdate = view
+            if view.busy { continue }
+            if view.state == "failed" {
+                toast = view.error ?? "Aktualizacja się nie udała"
+                return
+            }
+            if wentAway || view.version != before.version {
+                toast = "Serwer zaktualizowany do wersji \(view.version)"
+                await refreshAll()
+                return
+            }
+            if !view.updateAvailable {
+                toast = "Serwer jest aktualny"
+                return
+            }
+        }
+        toast = "Serwer nie wrócił po aktualizacji. Sprawdź Container Manager na NAS-ie."
+    }
+
     func loadPanelApp() async {
         panelApp = try? await backend.panelApp()
     }
@@ -738,8 +827,12 @@ final class AppModel {
                     : "Ramka się obudziła"
             } else if result.problem == "no_certificates" {
                 toast = Delivery.noCertificates
-            } else if result.asleepUntil != nil {
-                toast = Self.deepSleepNote(result.asleepUntilAt ?? status?.device.wakeAt)
+            } else if result.asleepUntil != nil || result.deepSleep == true {
+                toast = Self.deepSleepNote(
+                    result.asleepUntilAt ?? status?.device.wakeAt,
+                    off: status?.device.switchedOff == true,
+                    lost: result.wifiLost == true
+                )
             } else if !result.sent, result.problem == nil, status?.device.switchedOff == true {
                 toast = Self.deepSleepNote(nil, off: true)
             } else if !result.sent {
@@ -810,8 +903,12 @@ final class AppModel {
                 toast = "Ramka uruchamia się ponownie. Za 2–3 minuty znów pokaże obraz"
             } else if result.problem == "no_certificates" {
                 toast = Delivery.noCertificates
-            } else if result.asleepUntil != nil {
-                toast = Self.deepSleepNote(result.asleepUntilAt ?? status?.device.wakeAt)
+            } else if result.asleepUntil != nil || result.deepSleep == true {
+                toast = Self.deepSleepNote(
+                    result.asleepUntilAt ?? status?.device.wakeAt,
+                    off: status?.device.switchedOff == true,
+                    lost: result.wifiLost == true
+                )
             } else if !result.sent, status?.device.switchedOff == true {
                 toast = Self.deepSleepNote(nil, off: true)
             } else {
