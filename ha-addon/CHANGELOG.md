@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.34.0
+
+- Szukaj → „+”: sekcje w kolejności Technika, Epoka, Styl, Kolorystyka,
+  Akcenty, Tematy, Muzea i nowa „Moje”: dzieła z serduszkiem
+  (`mine:favorites`) albo z dowolnej innej playlisty (`mine:playlists`);
+  z nimi muzea nie są pytane.
+- Fotografia, Rzeźba oraz Ceramika i rzemiosło jako osobne techniki: muzea
+  pytane o nie wprost, a bez ich wybrania wyszukiwanie i inteligentne
+  playlisty pokazują tylko obrazy, rysunki, grafiki i plakaty.
+- „Pokaż na ramce” i „Dodaj do kolejki” na karcie dzieła reagują na
+  dotknięcie (wciśnięcie, wibracja, „Wysyłam…”, potem „Wysłano”), opcje
+  pod przytrzymaniem; wskaźnik i wibracja także w motywach i przy
+  „Prezentuj na ramce”. Nieudana wysyłka nie pokazuje już dymka sukcesu.
+- Szerokie dzieła (od 2:1) zajmują w siatce cały wiersz, a panoramy nie
+  wychodzą poza swoją kartę.
+
 ## 0.33.0
 
 - Ramka → Harmonogram (Online i Oszczędny) uporządkowany: bez podtytułu
