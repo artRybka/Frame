@@ -140,6 +140,8 @@ class ItemSummary(BaseModel):
     favorite: bool
     suitability: float | None
     pooled: bool = False
+    #: The Polish title, where a list shows it ("Teraz"); None elsewhere.
+    title_pl: str | None = None
 
     @classmethod
     def of(cls, item: Item) -> ItemSummary:

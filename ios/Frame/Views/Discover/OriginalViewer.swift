@@ -78,7 +78,7 @@ struct OriginalViewer: View {
     private func load() async {
         for maxPixel: CGFloat in [1800, 4096] {
             guard let request = model.backend.request(for: .image(item.id)) else { break }
-            if let loaded = try? await ImageLoader.shared.image(for: request, maxPixel: maxPixel) {
+            if let loaded = try? await ImageLoader.shared.image(for: request, maxPixel: maxPixel, priority: .high) {
                 image = loaded
             }
             if Task.isCancelled { return }

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
 from datetime import UTC, datetime, time, timedelta
 
 import httpx
@@ -597,6 +598,30 @@ async def test_queued_work_waits_while_its_original_is_unavailable(service) -> N
     shown = await player.next()
     assert shown is not None and shown.id == cached.id  # took its turn
     assert player.state.requested == [missing.id]  # still first in line
+
+
+async def test_a_change_is_busy_from_the_download_on(service) -> None:
+    item = _artwork(service, 1, cached=False)
+    started, release = threading.Event(), threading.Event()
+
+    def slow(request: httpx.Request) -> httpx.Response:
+        started.set()
+        release.wait(5)
+        return httpx.Response(200, content=jpeg_bytes((90, 90, 90)))
+
+    service.images.http = lambda: httpx.Client(transport=httpx.MockTransport(slow))
+    player = service.player
+    player.queue_next(item.id)
+    change = asyncio.create_task(player.next("app"))
+    while not started.is_set():
+        await asyncio.sleep(0.01)
+    # The app follows the change, and its bar shows, while the original comes.
+    assert player.busy
+    assert service.progress.view().active and service.progress.view().title == "Painting 1"
+    release.set()
+    shown = await change
+    assert shown is not None and shown.id == item.id
+    assert not player.busy
 
 
 def test_api_adds_a_work_to_the_queue(service) -> None:

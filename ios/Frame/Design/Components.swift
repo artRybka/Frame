@@ -50,7 +50,7 @@ struct FramedArtwork<Inner: View>: View {
     var body: some View {
         Group {
             if let ref {
-                ArtImage(ref: ref, placeholder: placeholder, maxPixel: 1600, contentMode: .fit)
+                ArtImage(ref: ref, placeholder: placeholder, maxPixel: 1600, contentMode: .fit, priority: .high)
             } else {
                 Rectangle().fill(placeholder.gradient)
             }

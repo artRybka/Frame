@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.28.0
+
+- Najpierw to, na co patrzysz: podgląd w „Teraz”, oryginał na karcie i
+  podglądy mają własne wątki i pierwszeństwo przy pobieraniu z muzeów (dwa
+  dodatkowe miejsca na hosta); miniatury siatki nie blokują już `/player`
+  ani ustawień. iOS: obraz oglądany ładuje się z wysokim priorytetem we
+  własnej sesji, porzucone pobrania wychodzą z kolejki, sąsiednie dzieła
+  dopiero po głównym obrazie; karta pokazuje miniaturę, gdy oryginał zawiedzie.
+- Model językowy odpowiada na to, czego aplikacja lub ramka potrzebuje teraz,
+  na osobnym wątku, nigdy za pytaniami w tle.
+- Polskie tytuły i opisy także w „Teraz” i na paskach kolejki (`/player`
+  podaje `title_pl` i polskie teksty bieżącego dzieła). Angielska kopia opisu
+  z muzeum nie udaje tłumaczenia: zastępuje ją tekst na ramkę, a takie
+  teksty są raz odpytywane ponownie.
+- „Prezentuj na ramce” szybciej widać w „Teraz”: odtwarzacz jest zajęty już
+  od pobierania oryginału i od tego momentu biegnie pasek postępu.
+- Tryb Oszczędny: „Sprawdzaj też co” liczy od północy (co 4 h: 0, 4, 8, 12,
+  16, 20), pomija godziny zmian i nową własną „Ciszę nocną” od–do
+  (`check_quiet_start`/`check_quiet_end`, domyślnie 22:00–07:00; zmiany
+  nadal budzą ramkę). Nowa opcja: co godzinę. Pasek pobudek w iOS czytelny
+  (cisza nocna w paski, etykiety godzin bez nakładania, zawijana legenda).
+- Puste sprawdzenie nie miga ramką: aplikacja ustawia od razu budziki
+  wszystkich sprawdzeń do następnej zmiany (`wakes_ms`), pamięta obraz na
+  ekranie (`localStorage`) i nie rysuje go ponownie; serwer uruchamia ją przez
+  MDC tylko, gdy jest coś nowego, albo przy ostatnim budziku.
+- Bez podwójnego odświeżenia po wysyłce: aplikacja ramki zmienia stronę raz
+  na obraz (bez „szturchnięcia” przezroczystością 0.99 → 1).
+- Paczka aplikacji ramki bez zmian; nowa logika (`app.js`) wczytuje się sama.
+
 ## 0.27.0
 
 - Ramka działa wyłącznie przez aplikację Frame (źródło Custom): serwer nie

@@ -115,6 +115,11 @@ struct ItemSummary: Codable, Identifiable, Hashable, Sendable {
     var height: Int?
     var favorite: Bool
     var suitability: Double?
+    /// The Polish title, in "Teraz" once the work has one.
+    var titlePl: String?
+
+    /// The title "Teraz" shows: Polish when there is one.
+    var shownTitle: String { titlePl ?? title }
 
     /// Width / height, defaulting to landscape when unknown.
     var aspectRatio: Double {
@@ -315,6 +320,8 @@ struct NowShowing: Codable, Hashable, Sendable {
     var created: String
     var previewUrl: String
     var item: Item?
+    /// The work's Polish title and texts, once written; nil from older servers.
+    var polish: PolishText?
 }
 
 struct PlayerView: Codable, Sendable {
@@ -841,9 +848,14 @@ struct FrameSettings: Codable, Hashable, Sendable {
     /// "online" or "economy" ("Oszczędny": on battery the frame sleeps with
     /// the Wi-Fi off between its own wakes); nil: a server before it.
     var powerMode: String? = nil
-    /// Economy: also wake every so many hours between the changes, to show
-    /// what was sent from the app; 0: only at the changes.
+    /// Economy: also wake every so many hours after each change until the
+    /// next one, to show what was sent from the app; 0: only at the changes.
     var checkEveryHours: Int? = nil
+    /// Economy: no checks from here until `checkQuietEnd` (the changes still
+    /// wake the frame); nil: checks all night too.
+    var checkQuietStart: String? = nil
+    /// nil: a server before economy quiet hours.
+    var checkQuietEnd: String? = nil
 
     var isEconomy: Bool { powerMode == "economy" }
 
@@ -863,7 +875,8 @@ struct FrameSettings: Codable, Hashable, Sendable {
         orientation: "landscape", rotation: 90,
         art: Presentation(preset: "auto", fit: "auto", margin: 0.05, label: false),
         photo: Presentation(preset: "auto", fit: "fill", margin: 0, label: false),
-        timezone: "Europe/Warsaw", statusPollMinutes: 15, powerMode: "online", checkEveryHours: 0
+        timezone: "Europe/Warsaw", statusPollMinutes: 15, powerMode: "online", checkEveryHours: 0,
+        checkQuietStart: "22:00", checkQuietEnd: "07:00"
     )
 }
 
@@ -871,7 +884,7 @@ extension FrameSettings {
     private enum CodingKeys: String, CodingKey {
         case playlistId, changeTimes, changeEveryDays, quietStart, shuffle, avoidRepeatDays
         case orientation, rotation, art, photo, timezone, statusPollMinutes, privateUse, wikiart, name
-        case powerMode, checkEveryHours
+        case powerMode, checkEveryHours, checkQuietStart, checkQuietEnd
         case quietEnd  // older servers: decoded only
     }
 
@@ -896,6 +909,8 @@ extension FrameSettings {
         name = try c.decodeIfPresent(String.self, forKey: .name)
         powerMode = try c.decodeIfPresent(String.self, forKey: .powerMode)
         checkEveryHours = try c.decodeIfPresent(Int.self, forKey: .checkEveryHours)
+        checkQuietStart = try c.decodeIfPresent(String.self, forKey: .checkQuietStart)
+        checkQuietEnd = try c.decodeIfPresent(String.self, forKey: .checkQuietEnd)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -917,27 +932,46 @@ extension FrameSettings {
         try c.encodeIfPresent(name, forKey: .name)
         try c.encodeIfPresent(powerMode, forKey: .powerMode)
         try c.encodeIfPresent(checkEveryHours, forKey: .checkEveryHours)
+        if let end = checkQuietEnd {
+            try c.encode(checkQuietStart, forKey: .checkQuietStart)  // null: checks all night
+            try c.encode(end, forKey: .checkQuietEnd)
+        }
     }
 
     /// Economy: the short wakes between the changes, every `checkEveryHours`
-    /// from the day's first change until its last one (with one change a
-    /// day: for 12 hours after it), as minutes after midnight. As the server
-    /// counts them (`schedule.check_times`).
+    /// from midnight (0:00, 4:00, 8:00, …), but not at a change time nor in
+    /// `checkQuiet`, as minutes after midnight. As the server counts them
+    /// (`schedule.check_times`).
     var checkMinutes: [Int] {
         guard isEconomy, let every = checkEveryHours, every > 0 else { return [] }
-        let changes = changeMinutes
-        guard let first = changes.first, let lastChange = changes.last else { return [] }
-        let last = lastChange == first ? first + 12 * 60 : lastChange
-        return stride(from: first + every * 60, to: last, by: every * 60)
-            .filter { $0 < 24 * 60 && !changes.contains($0) }
+        let changes = Set(changeMinutes)
+        return stride(from: 0, to: 24 * 60, by: every * 60)
+            .filter { !changes.contains($0) && !inCheckQuiet($0) }
+    }
+
+    /// Economy: when there are no checks, in minutes after midnight (`end`
+    /// may be before `start`: across midnight).
+    var checkQuiet: (start: Int, end: Int)? {
+        guard let start = checkQuietStart.flatMap(Self.minutes),
+              let end = Self.minutes(checkQuietEnd ?? "07:00"), start != end else { return nil }
+        return (start, end)
+    }
+
+    private func inCheckQuiet(_ minutes: Int) -> Bool {
+        guard let quiet = checkQuiet else { return false }
+        return quiet.start < quiet.end
+            ? (quiet.start ..< quiet.end).contains(minutes)
+            : minutes >= quiet.start || minutes < quiet.end
+    }
+
+    private static func minutes(_ hhmm: String) -> Int? {
+        let parts = hhmm.split(separator: ":").compactMap { Int($0) }
+        return parts.count == 2 ? parts[0] * 60 + parts[1] : nil
     }
 
     /// The change times as minutes after midnight, sorted.
     var changeMinutes: [Int] {
-        changeTimes.compactMap { t -> Int? in
-            let parts = t.split(separator: ":").compactMap { Int($0) }
-            return parts.count == 2 ? parts[0] * 60 + parts[1] : nil
-        }.sorted()
+        Array(Set(changeTimes.compactMap(Self.minutes))).sorted()
     }
 
     /// When quiet hours end: the first change time after their start.

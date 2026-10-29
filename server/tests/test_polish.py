@@ -25,6 +25,7 @@ from frame_server.ai.pl_text import (
     model_for,
     request_text,
     schema,
+    untranslated,
     written_for,
 )
 from frame_server.config import Settings
@@ -197,6 +198,26 @@ def test_clean_fixes_and_trims_answers() -> None:
     assert clean({**answer, "frame": ""}, item, None) is None
 
 
+def test_an_english_copy_is_no_translation() -> None:
+    english = (
+        "This is the most famous cityscape of the Dutch Golden Age. The interplay of light "
+        "and shade and the subtle reflections in the water make this painting a masterpiece."
+    )
+    polish = (
+        "To najsłynniejszy pejzaż miejski holenderskiego złotego wieku. Gra światła i cienia "
+        "oraz subtelne odbicia w wodzie czynią z tego obrazu arcydzieło, by tak rzec."
+    )
+    assert untranslated(english)
+    assert not untranslated(polish)
+    assert not untranslated("The Hague")  # a name is too short to tell
+
+    item = _item(title="View of Delft", description=english)
+    answer = {"title": "Widok Delftu", "frame": polish, "full": english}
+    text = clean(answer, item, None)
+    assert text is not None and text.full == polish  # the frame's Polish text instead
+    assert clean({**answer, "frame": english}, item, None) is None
+
+
 def test_note_keeps_only_known_sources_and_models_note() -> None:
     item = _item(title="Rosa", artist="Salvator Rosa", medium="Oil on canvas")
     answer = {
@@ -357,6 +378,48 @@ def test_the_player_uses_polish_texts_once_written(
     assert service.player.render_settings(item, settings).text.title == "Snow Storm"
     service.ai.run_one(KIND, "met:1")
     assert service.player.render_settings(item, settings).text.title == "Burza śnieżna"
+
+
+def test_texts_kept_with_an_english_copy_are_asked_again(
+    service: FrameService, fake: FakeAnthropic
+) -> None:
+    item = _add(service, "met:1", description=DESCRIPTION)
+    fake.answer = {**PL_ANSWER, "full": DESCRIPTION}
+    service.ai.run_one(KIND, "met:1")
+    text = service.pl_text.text(item)
+    assert text is not None and text.full == PL_ANSWER["frame"]
+
+    # Kept before clean() caught it: not shown, and asked once more.
+    note = service.library.note("met:1", KIND)
+    assert note is not None
+    service.library.save_note(note.model_copy(update={"data": {**note.data, "full": DESCRIPTION}}))
+    assert service.pl_text.text(item) is None
+    fake.answer = PL_ANSWER
+    service.ai.run_one(KIND, "met:1")
+    text = service.pl_text.text(item)
+    assert text is not None and text.full == "Pełne tłumaczenie opisu."
+    assert len(fake.asked) == 2
+
+
+def test_teraz_gets_polish_titles_and_texts(tmp_path: Path) -> None:
+    app = create_app(
+        Settings(data_dir=tmp_path, seed_library=False, scheduler=False, public_host="127.0.0.1")
+    )
+    svc: FrameService = app.state.service
+    clients: dict[str, FakeAnthropic] = {}
+    svc.claude.factory = lambda key: clients.setdefault(key, FakeAnthropic(key))
+    _offline(svc)
+    svc.ai_config.set_key(GOOD_KEY)
+    clients.setdefault(GOOD_KEY, FakeAnthropic(GOOD_KEY)).answer = PL_ANSWER
+    with TestClient(app) as client:
+        _add(svc, "met:1", description=DESCRIPTION)
+        _add(svc, "met:2", description=DESCRIPTION)
+        svc.player.queue_next("met:1")
+        svc.player.queue_next("met:2")
+        svc.ai.run_one(KIND, "met:1")
+        upcoming = {i["id"]: i for i in client.get("/api/player").json()["upcoming"]}
+        assert upcoming["met:1"]["title_pl"] == "Burza śnieżna"
+        assert upcoming["met:2"]["title_pl"] is None
 
 
 def test_the_card_asks_for_polish_texts(tmp_path: Path) -> None:

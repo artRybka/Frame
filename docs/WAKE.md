@@ -402,6 +402,36 @@ zapyta w 60 s od budzika, serwer
 uruchamia ją przez MDC `0xC7 81 01`, potem co 2 minuty, aż do uznania pobudki
 za nieudaną (15 minut). Network standby ustawia aplikacja przed każdym snem.
 
+**Sprawdzenie bez nowego obrazu nie mruga ekranem (2026-10-29, pomysł
+Mateusza).** Aplikacja po zimnym starcie zaczynała od zera (`shown` tylko
+w pamięci), więc przy każdym sprawdzeniu w trybie Oszczędnym pobierała
+i rysowała ten sam obraz: ok. 40 s mrugania i bateria za nic. Sam zimny start
+ekranu nie odświeża: w pobudkach z E16, w których launcher nie uruchomił
+aplikacji, obraz został bez mrugnięcia. Teraz:
+
+- przed snem z wył. Wi-Fi aplikacja ustawia naraz budziki na wszystkie
+  sprawdzenia aż do następnej zmiany (`wakes_ms` w odpowiedzi `/panel/next`,
+  najwyżej 12, przy „co godzinę” resztę ustawi po ostatnim z nich; budziki
+  się sumują, a te już ustawione aplikacja pamięta
+  i nie ustawia drugi raz) i skraca automatyczne uśpienie do 5 minut
+  (`setAutoSleepTime("5MIN")`; poprzednią wartość przywraca przy starcie);
+- przy budziku serwer uruchamia aplikację przez MDC tylko wtedy, gdy jest
+  coś nowego (obraz inny niż ten, który aplikacja zgłosiła jako pokazany,
+  zaległa wysyłka albo zmiana w toku), a przy ostatnim z ustawionych
+  budzików zawsze, żeby aplikacja ustawiła kolejne. Przy pustym sprawdzeniu
+  ramka nikogo nie widzi i sama zasypia z wył. Wi-Fi, a serwer nie uznaje
+  takiej pobudki za nieudaną;
+- aplikacja pamięta w `localStorage` obraz na ekranie (`frame.screen`:
+  `file_id` i wersja paczki) i nie rysuje tego samego obrazu drugi raz, także
+  gdy launcher uruchomi ją sam. Zgłasza go serwerowi przy każdym pytaniu
+  (`shown`). Po restarcie dla nowej paczki rysuje od nowa (instalacja
+  przerysowuje ekran).
+
+Do sprawdzenia na ramce: czy budziki ustawione przed pełnym snem przetrwają
+zimny start i budzą kolejno, czy ramka po pustej pobudce sama zasypia po
+5 minutach z wył. Wi-Fi i czy start aplikacji z pustą stroną nie przerysowuje
+ekranu.
+
 **Obraz w aplikacji: 1:1, ten sam co w trybie Mobile.** Paczka ma w
 `config.xml` `base_screen_resolution` = `always`, więc strona ma 2560×1440
 (wieczór 2026-10-28). `/panel/next` podaje ten sam obraz `/panel/images/…`,
@@ -412,8 +442,14 @@ go w `<img>` 2560×1440 z `image-rendering: pixelated`. Starsza paczka (strona
 przyjdzie nowa (`pack.sh`; launcher pobiera ją po zimnym starcie). Wcześniej
 (add-on 0.24.1) serwer podawał osobną kopię 1920×1080 w pełnym kolorze; 1 px
 był miękki. E-papier nie odświeża się sam po wczytaniu obrazka, a
-`screenRefreshNow()` rzuca błąd: aplikacja po `onload` zmienia `opacity` na
-0,99 i po 300 ms z powrotem na 1.
+`screenRefreshNow()` rzuca błąd: do 0.27.0 aplikacja po `onload` zmieniała
+`opacity` na 0,99 i po 300 ms z powrotem na 1. Od 2026-10-29 aplikacja
+wstawia na stronę gotowy, zdekodowany `<img>` w miejsce starego, jedną
+zmianą strony i bez szturchania stylu. W 0.27.0 obraz po wysyłce mrugał
+drugi raz po kilkudziesięciu sekundach; podejrzenie: druga zmiana strony
+(powrót `opacity` na 1) w trakcie przygotowania odświeżenia dawała drugie
+odświeżenie tego samego obrazu. *(Do sprawdzenia na ramce: jedno mrugnięcie
+i obraz na pewno się pojawia.)*
 
 **Pobieranie i pasek postępu (pomiary wieczorem 2026-10-28).** Wi-Fi ramki
 jest słabe (sygnał 2/5, 2,4 GHz, 60–215 KB/s), a `<img>` pobierany w trakcie
@@ -684,10 +720,13 @@ Co pozwala ekran (EMDX 224B, firmware 1130.7):
 
 Jak działa (`power.py`, `PowerManager.enter_deep` i `_economy_tick`):
 
-- **Pobudki** = godziny zmiany, a z „Sprawdzaj też co” (2, 3, 4 albo 6 h)
-  także krótkie pobudki między pierwszą a ostatnią zmianą dnia (przy jednej
-  zmianie: przez 12 h po niej), `schedule.check_times`. W nocy nic nie budzi
-  ekranu, dlatego w tym trybie nie ma ciszy nocnej.
+- **Pobudki** = godziny zmiany, a z „Sprawdzaj też co” (1, 2, 3, 4 albo
+  6 h) także krótkie pobudki o pełnych godzinach doby, licząc od północy
+  (co 4 h: 0:00, 4:00, 8:00, 12:00, 16:00, 20:00), `schedule.check_times`.
+  Nie ma ich o godzinie zmiany ani w ciszy nocnej trybu Oszczędnego
+  (`check_quiet_start`–`check_quiet_end`, domyślnie 22:00–07:00, od 0.27.1);
+  zmiany budzą ekran także wtedy. Cisza nocna trybu Online (`quiet_start`,
+  do najbliższej zmiany) w tym trybie nie działa.
 - **Po każdym obrazie** (90 s na pobranie i odświeżenie) serwer czyta
   baterię, ustawia budzik na najbliższą pobudkę, wyłącza network standby
   i ekran. Na ładowarce nic z tego: działa jak „Online”.

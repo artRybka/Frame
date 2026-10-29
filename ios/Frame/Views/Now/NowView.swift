@@ -97,7 +97,7 @@ struct NowView: View {
                             NoticeRow(icon: "clock.arrow.circlepath", color: Theme.accent, text: pending)
                         }
                         if let selectedItem {
-                            ArtworkInfo(item: selectedItem)
+                            ArtworkInfo(item: selectedItem, polish: offset == 0 ? current?.polish : nil)
                                 .id(selectedItem.id)
                         } else if offset == 0, let current {
                             Card {
@@ -172,7 +172,8 @@ struct NowView: View {
             }
             .task(id: browsed?.summary.id) { await loadDetails() }
             .task(id: draftKey) { await loadFraming() }
-            .task(id: draftKey) { await prefetchNeighbours() }  // again with a new presentation
+            // Once the picture looked at is in, and again with a new presentation.
+            .task(id: heroReady ? draftKey : "") { await prefetchNeighbours() }
         }
     }
 
@@ -193,6 +194,7 @@ struct NowView: View {
 
     /// The server is still making the preview, or it is on its way.
     private var heroLoading: Bool { heroRef != nil && loadedHero != heroRef }
+    private var heroReady: Bool { heroRef != nil && loadedHero == heroRef }
 
     /// The crop of the picture shown is loaded, and so is its preview.
     private var canCrop: Bool {
@@ -465,13 +467,16 @@ struct NowView: View {
     // MARK: Loading and sending
 
     /// The previews one back and one ahead, so the server makes them while
-    /// this one is looked at and the arrows show them at once.
+    /// this one is looked at and the arrows show them at once. Only after
+    /// the one looked at: it goes first.
     private func prefetchNeighbours() async {
+        guard heroReady else { return }
         for target in [offset + 1, offset - 1] where target != 0 {
             guard let id = summary(at: target)?.id,
                   let request = model.backend.request(for: .framePreview(id, settings: model.settings))
             else { continue }
-            _ = try? await ImageLoader.shared.image(for: request, maxPixel: 1600)  // as FramedArtwork loads it
+            // As FramedArtwork loads it.
+            _ = try? await ImageLoader.shared.image(for: request, maxPixel: 1600, priority: .high)
         }
     }
 
@@ -608,12 +613,27 @@ struct LoadingBadge: View {
     }
 }
 
-/// Museum-label style description of the current picture.
+/// Museum-label style description of the current picture, in Polish once
+/// the work's Polish texts are written ("Polskie tytuły i opisy").
 struct ArtworkInfo: View {
     @Environment(AppModel.self) private var model
     let item: Item
+    /// As the player gave it for the picture on the frame; else asked for.
+    var polish: PolishText?
+    @State private var asked: PolishText?
     @State private var expanded = false
     @State private var favorite: Bool?
+
+    private var shown: PolishText? { asked ?? polish }
+    private var title: String {
+        nonEmpty(shown?.title) ?? (item.title.isEmpty ? "Bez tytułu" : item.title)
+    }
+    private var about: String { nonEmpty(shown?.full) ?? item.description }
+    private var artistNote: String { nonEmpty(shown?.artistNote) ?? item.artistBio }
+    private var facts: String {
+        [nonEmpty(shown?.date) ?? item.dateText, nonEmpty(shown?.medium) ?? item.medium]
+            .filter { !$0.isEmpty }.joined(separator: " · ")
+    }
 
     var body: some View {
         Card(padding: 22) {
@@ -636,7 +656,7 @@ struct ArtworkInfo: View {
             }
             // The title opens the work's card, like "Szczegóły" below.
             NavigationLink(value: item.id) {
-                Text(item.title.isEmpty ? "Bez tytułu" : item.title)
+                Text(title)
                     .font(.serif(28, weight: .semibold))
                     .foregroundStyle(Theme.ink)
                     .lineLimit(3)
@@ -665,11 +685,11 @@ struct ArtworkInfo: View {
                         .buttonStyle(.plain)
                         .accessibilityHint(Text("Szuka innych dzieł tego autora"))
                     }
-                    if !item.artistBio.isEmpty {
-                        Text(item.artistBio).font(.subheadline).foregroundStyle(Theme.inkSoft)
+                    if !artistNote.isEmpty {
+                        Text(artistNote).font(.subheadline).foregroundStyle(Theme.inkSoft)
                     }
                 }
-                Text([item.dateText, item.medium].filter { !$0.isEmpty }.joined(separator: " · "))
+                Text(facts)
                     .font(.subheadline)
                     .foregroundStyle(Theme.inkSoft)
             }
@@ -677,8 +697,8 @@ struct ArtworkInfo: View {
                 PaletteStrip(swatches: item.colors)
                     .padding(.vertical, 4)
             }
-            if !item.description.isEmpty {
-                Text(item.description)
+            if !about.isEmpty {
+                Text(about)
                     .font(.serif(16))
                     .lineSpacing(4)
                     .foregroundStyle(Theme.ink.opacity(0.88))
@@ -702,6 +722,29 @@ struct ArtworkInfo: View {
                 }
             }
         }
+        .task(id: item.id) { await loadPolish() }
+    }
+
+    /// The work's Polish texts, when the player did not bring them: at once
+    /// if written, else asked for ahead of the background and waited for a
+    /// few times. Without a key or with the switch off: the museum's own.
+    private func loadPolish() async {
+        guard polish == nil, item.kind != .photo else { return }
+        for attempt in 0 ..< 4 {
+            guard let view = try? await model.backend.polish(itemID: item.id, wait: attempt == 0 ? 0 : 20),
+                  !Task.isCancelled
+            else { return }
+            if let text = view.text {
+                withAnimation(.easeInOut) { asked = text }
+                return
+            }
+            if view.status != "waiting" { return }
+        }
+    }
+
+    private func nonEmpty(_ text: String?) -> String? {
+        guard let text, !text.isEmpty else { return nil }
+        return text
     }
 }
 
@@ -772,7 +815,7 @@ struct Strip: View {
                                         }
                                     }
                                     .shadow(color: .black.opacity(0.12), radius: 6, y: 4)
-                                Text(item.title)
+                                Text(item.shownTitle)
                                     .font(.serif(13, weight: .medium))
                                     .foregroundStyle(Theme.ink)
                                     .lineLimit(2)

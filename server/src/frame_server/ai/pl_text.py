@@ -79,8 +79,8 @@ je obok. Każde zdanie ma mówić coś o samym dziele.
 jest rodzaju żeńskiego, topola też)."""
 
 TRANSLATE_SYSTEM = f"""{_RULES}
-- "full": wierne, pełne tłumaczenie opisu muzeum, do aplikacji. Nie skracaj i nie dopisuj \
-niczego.
+- "full": wierne, pełne tłumaczenie opisu muzeum na polski, do aplikacji. Nie skracaj i nie \
+dopisuj niczego. Nigdy nie przepisuj opisu w oryginalnym języku.
 - Nie dodawaj faktów, których nie ma w danych."""
 
 NOTE_SYSTEM = f"""{_RULES}
@@ -210,12 +210,36 @@ def frame_text(text: str) -> str:
     return " ".join(chosen)
 
 
+#: Words that give an English text away; Polish has none of them.
+_ENGLISH = frozenset(
+    {
+        "the", "and", "of", "is", "were", "with", "this", "that", "which",
+        "his", "her", "its", "from", "are", "has", "have",
+    }
+)  # fmt: skip
+_WORD = re.compile(r"[^\W\d_]+")
+
+
+def untranslated(text: str) -> bool:
+    """Whether ``text`` is English rather than Polish: a model sometimes
+    copies the museum's description instead of translating it."""
+    words = [w.lower() for w in _WORD.findall(text)]
+    if len(words) < 12:
+        return False
+    english = sum(w in _ENGLISH for w in words)
+    return english / len(words) > 0.06
+
+
 def clean(data: dict[str, Any], item: Item, facts: Facts | None) -> PolishText | None:
     """A model's answer made safe to show; ``None`` when it is unusable."""
     written = written_for(item)
     title = (facts.title_pl if facts and facts.title_pl else "") or _plain(data.get("title"))
     frame = frame_text(_plain(data.get("frame")))
-    full = _paragraphs(data.get("full")) or frame
+    full = _paragraphs(data.get("full"))
+    if untranslated(frame):
+        return None
+    if not full or untranslated(full):
+        full = frame  # the frame's text is Polish: better than the original again
     if not title or not frame:
         return None
     gender = facts.creator_gender if facts else None
@@ -270,6 +294,16 @@ class PlTextJob(NoteJob):
 
     def in_library(self, item: Item) -> bool:
         return self.applies(item) and not (item.pooled and set_aside(item))
+
+    def fresh(self, item: Item, note: Note | None) -> bool:
+        """Up to date; texts kept with an English copy of the museum's
+        description (before ``clean`` caught it) are asked for once more."""
+        if not super().fresh(item, note) or note is None:
+            return False
+        data = note.data
+        return "title" not in data or not (
+            untranslated(str(data.get("frame", ""))) or untranslated(str(data.get("full", "")))
+        )
 
     def source_hash(self, item: Item) -> str:
         return text_hash(
