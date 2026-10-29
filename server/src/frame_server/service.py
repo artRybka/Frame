@@ -342,7 +342,7 @@ class FrameService:
             if not app.active:
                 await app.install()  # wakes the panel if need be
                 timeout = max(wait, INSTALL_LOOK.total_seconds())
-            elif not app.asleep():
+            elif app.awake():
                 timeout = max(wait, POLL.total_seconds() + 30)
             elif ringing:
                 assert wake is not None

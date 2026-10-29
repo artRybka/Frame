@@ -395,6 +395,16 @@ class StatusMonitor:
             self.status.wifi = None
             self._remember()
 
+    def note_unplugged(self) -> None:
+        """The app fell silent while the last reading said charger: on the
+        charger it never sleeps, so the panel was most likely unplugged (it
+        sleeps at once then). Not "ładuje się" until it answers again."""
+        self.status.power_source = "battery"
+        self.status.charging = False
+        self.status.reachable = False
+        self.status.power_state = "standby"
+        self._remember()
+
     def note_sleep(self, deep: bool) -> None:
         """The server put the panel to sleep: light (network standby on) or deep."""
         self.status.network_standby = not deep

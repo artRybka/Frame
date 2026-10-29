@@ -415,6 +415,13 @@ struct LiveBackend: FrameBackend {
 
     func sleep() async throws { try await send("/api/device/sleep", method: "POST") }
 
+    func restart() async throws -> WakeResult {
+        // Like "Obudź ramkę": magic packets for up to three minutes first.
+        var req = request("/api/device/restart", method: "POST")
+        req.timeoutInterval = 240
+        return try await perform(req)
+    }
+
     func rest(hours: Int?) async throws -> RestResult {
         let query = hours.map { [URLQueryItem(name: "hours", value: String($0))] }
             ?? [URLQueryItem(name: "off", value: "true")]

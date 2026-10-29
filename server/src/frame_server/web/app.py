@@ -355,6 +355,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(409, "panel not configured")
         return await service.power.wake_now(sleep_after=sleep_after)
 
+    @app.post("/api/device/restart", dependencies=auth)
+    async def device_restart() -> WakeResult:
+        """ "Uruchom ponownie": the frame's app reboots the panel (woken for
+        it when asleep in the network, started over MDC when hung)."""
+        if not service.device_configured:
+            raise HTTPException(409, "panel not configured")
+        return await service.power.restart_now()
+
     @app.post("/api/device/sleep", dependencies=auth)
     async def device_sleep(
         hours: Annotated[int | None, Query(ge=1, le=72)] = None, off: bool = False

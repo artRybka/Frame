@@ -35,6 +35,11 @@ POWER_KEY = "power"
 # second (E13, 2026-10-27): keep sending for 3 minutes, look a bit longer.
 WAKE_BURST_SECONDS = 180
 WAKE_LOOK = timedelta(seconds=190)
+# Meanwhile the server looks this often whether the panel is up (answers
+# MDC); up this long and its app still silent (hung, or not started after a
+# boot), it starts the app over MDC (0xC7 81 01).
+WAKE_STEP = timedelta(seconds=15)
+APP_GRACE = timedelta(seconds=30)
 # The launcher installs (or restarts) the app and it asks within this.
 INSTALL_LOOK = timedelta(seconds=90)
 # A wake closer than this is not worth a sleep, and a change due within it
@@ -49,6 +54,8 @@ class PowerState(BaseModel):
 class WakeResult(BaseModel):
     sent: bool  # magic packets went out
     woke: bool  # the app asked afterwards
+    # The app was not asking although the panel was up: started over MDC.
+    started: bool = False
     asleep_until: str | None = None  # deep sleep: Wake-on-LAN cannot reach it
     asleep_until_at: str | None = None  # the same as a moment (ISO)
     reason: str | None = None
@@ -182,7 +189,7 @@ class PowerManager:
         until = app.state.rest_until
         if app.deep_asleep():
             return RestResult(until=until, applies="at_wake")
-        if app.asleep() and self.service.settings.device_mac:
+        if app.active and not app.awake(now) and self.service.settings.device_mac:
             task = asyncio.create_task(self._wake_for_rest())
             self._tasks.add(task)
             task.add_done_callback(self._tasks.discard)
@@ -200,56 +207,121 @@ class PowerManager:
         """The app's "Obudź ramkę": awake already (on the charger it asks
         every few seconds), or Wake-on-LAN until it asks again, so the app
         can say whether it actually woke. In deep sleep nothing reaches it.
+        An app not told to sleep but silent (the panel fell asleep by itself,
+        or the app hung) is not taken for awake: it is woken like a sleeping
+        one, and started over MDC when the panel is up and it still does not
+        ask.
 
         ``sleep_after`` ("Sprawdź stan"): woken only to be looked at, so it
         is not kept awake."""
         service, app = self.service, self.service.app
         now = datetime.now(UTC)
         if app.deep_asleep():
-            until = app.wakes_at()
-            return WakeResult(
-                sent=False,
-                woke=False,
-                asleep_until=self._hhmm(until),
-                asleep_until_at=until.isoformat(timespec="seconds") if until else None,
-                reason="deep sleep (Wi-Fi off) until the alarm, only the button wakes it",
-            )
+            return self._deep_result()
         if not sleep_after:
             app.keep_awake(now)
         if not app.active:
-            # The panel is not running the app (never was, or fell back to
-            # another source): start it, waking the panel if need be.
-            if app.ensure_package() is None:
-                return WakeResult(
-                    sent=False,
-                    woke=False,
-                    problem="no_certificates",
-                    reason="no Samsung certificates on the server: no app to start",
-                )
-            try:
-                await app.install()
-            except MdcError as err:
-                return WakeResult(sent=service.panel.woke, woke=False, reason=str(err))
-            woke = await app.wait_for_contact(INSTALL_LOOK.total_seconds())
-            return WakeResult(
-                sent=service.panel.woke,
-                woke=woke,
-                reason=None if woke else "the frame's app did not start",
-            )
-        if not app.asleep():
+            return await self._install()
+        if app.awake(now):
             return WakeResult(sent=False, woke=True)
         if not service.settings.device_mac:
             return WakeResult(sent=False, woke=False, problem="no_mac", reason="no MAC address set")
-        burst = asyncio.create_task(service.panel.wake(seconds=WAKE_BURST_SECONDS))
-        try:
-            woke = await app.wait_for_contact(WAKE_LOOK.total_seconds())
-        finally:
-            burst.cancel()
+        woke, started = await self._reach()
         log.info("Wake-on-LAN for the frame's app: %s", "it asked" if woke else "no answer")
         return WakeResult(
             sent=True,
             woke=woke,
+            started=started,
             reason=None if woke else "no answer: the packets may not reach it (see docs/WAKE.md)",
+        )
+
+    async def restart_now(self) -> WakeResult:
+        """ "Uruchom ponownie" from the app: the app reboots the panel at its
+        next question (``rebootDevice``, the server starts it again after
+        the boot). Asleep in the network it is woken for it; up but with a
+        silent app, the app is started over MDC first. In deep sleep nothing
+        reaches it."""
+        service, app = self.service, self.service.app
+        if app.deep_asleep():
+            return self._deep_result()
+        if not app.active:
+            return await self._install()  # starting it is all there is to do
+        app.request_restart()
+        awake = app.awake()
+        mac = service.settings.device_mac
+        woke, started = await self._reach(wol=bool(mac) and not awake)
+        if not woke:
+            app.restart_requested = False  # not at some later question out of the blue
+        log.info("restart of the frame: %s", "the app reboots it" if woke else "no answer")
+        return WakeResult(
+            sent=bool(mac) and not awake,
+            woke=woke,
+            started=started,
+            reason=None if woke else "no answer from the frame's app",
+        )
+
+    async def _reach(self, wol: bool = True) -> tuple[bool, bool]:
+        """Wake-on-LAN (``wol``) until the app asks; once the panel answers
+        MDC and its app still does not ask, the app is started over MDC.
+        Whether it asked, and whether it had to be started."""
+        app = self.service.app
+        loop = asyncio.get_running_loop()
+        since = app.contacts
+        burst = (
+            asyncio.create_task(self.service.panel.wake(seconds=WAKE_BURST_SECONDS))
+            if wol
+            else None
+        )
+        deadline = loop.time() + WAKE_LOOK.total_seconds()
+        up_at: float | None = None
+        started = False
+        try:
+            while (left := deadline - loop.time()) > 0:
+                step = min(WAKE_STEP.total_seconds(), left)
+                if await app.wait_for_contact(step, since=since):
+                    return True, started
+                if started:
+                    continue
+                if up_at is None:
+                    if await app.panel_answers():
+                        up_at = loop.time()
+                elif loop.time() - up_at >= APP_GRACE.total_seconds():
+                    started = await app.start("did not ask after a wake")
+            return await app.wait_for_contact(0, since=since), started
+        finally:
+            if burst is not None:
+                burst.cancel()
+
+    async def _install(self) -> WakeResult:
+        """The panel does not run the app (never did, or fell back to
+        another source): start it, waking the panel if need be."""
+        service, app = self.service, self.service.app
+        if app.ensure_package() is None:
+            return WakeResult(
+                sent=False,
+                woke=False,
+                problem="no_certificates",
+                reason="no Samsung certificates on the server: no app to start",
+            )
+        try:
+            await app.install()
+        except MdcError as err:
+            return WakeResult(sent=service.panel.woke, woke=False, reason=str(err))
+        woke = await app.wait_for_contact(INSTALL_LOOK.total_seconds())
+        return WakeResult(
+            sent=service.panel.woke,
+            woke=woke,
+            reason=None if woke else "the frame's app did not start",
+        )
+
+    def _deep_result(self) -> WakeResult:
+        until = self.service.app.wakes_at()
+        return WakeResult(
+            sent=False,
+            woke=False,
+            asleep_until=self._hhmm(until),
+            asleep_until_at=until.isoformat(timespec="seconds") if until else None,
+            reason="deep sleep (Wi-Fi off) until the alarm, only the button wakes it",
         )
 
     def _hhmm(self, moment: datetime | None) -> str | None:

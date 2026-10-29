@@ -620,6 +620,8 @@ struct WakeResult: Codable, Hashable, Sendable {
     var reason: String?
     /// "no_certificates" | "no_mac": why nothing could be tried (0.27+).
     var problem: String?
+    /// The panel was up but its app did not ask: started again (0.32+).
+    var started: Bool?
 }
 
 /// How the server reaches the panel (Ramka → Ekran); the PIN is never sent back.

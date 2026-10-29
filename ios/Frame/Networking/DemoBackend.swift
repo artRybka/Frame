@@ -908,6 +908,11 @@ actor DemoBackend: FrameBackend {
     func pushAgain() async throws -> DisplayResponse { DisplayResponse(pushed: true, fetched: true) }
     func sleep() async throws { demoAsleep = true }
 
+    func restart() async throws -> WakeResult {
+        demoAsleep = false
+        return WakeResult(sent: false, woke: true)
+    }
+
     func rest(hours: Int?) async throws -> RestResult {
         demoAsleep = true
         let until = hours.map { ISO8601DateFormatter().string(from: .now.addingTimeInterval(Double($0) * 3600)) }

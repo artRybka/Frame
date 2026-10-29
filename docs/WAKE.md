@@ -539,6 +539,39 @@ nie odpowiada, obudzona przyciskiem odpowiada i serwer uruchamia aplikację
 szybko zasnęła z powrotem. *(Do sprawdzenia na ramce: przycisk w czasie
 głębokiego snu i po wyłączeniu.)*
 
+**Milcząca aplikacja to nie przytomna ramka (2026-10-29, zgłoszenie
+Mateusza).** Ramka w czuwaniu (IoT_Synology), „Obudź ramkę” od razu mówiło
+„Ramka się obudziła”, a nic się nie działo, a wysłany obraz czekał „na
+pobudkę” (kafelek Obraz). Serwer uznawał aplikację za obudzoną tylko dlatego,
+że nie kazał jej spać (`asleep` w stanie), i wtedy nie wysyłał ani jednego
+pakietu WoL, ani przy „Obudź ramkę”, ani przy wysyłce obrazu. Tak bywa, gdy
+ramka zasypia sama: aplikacja na ładowarce dostaje `stay` i pyta co 20 s, a po
+odłączeniu zasilacza ramka zasypia od razu (E8), bez `goToSleep` aplikacji;
+ostatni odczyt baterii zostawał przy tym „100 %, ładuje się”. Od 0.32:
+
+- Obudzona jest tylko aplikacja, która odezwała się w ciągu 90 s
+  (`HEARD_EVERY`, pytanie albo raport, np. postęp długiego pobierania).
+  Milczącą „Obudź ramkę” i wysyłka budzą WoL jak śpiącą.
+- Podczas serii WoL serwer co 15 s sprawdza, czy ramka odpowiada przez MDC.
+  Gdy odpowiada, a aplikacja przez 30 s nie pyta (zawieszona albo
+  nieuruchomiona po starcie), serwer uruchamia ją `0xC7 81 01` (`started`
+  w odpowiedzi).
+- Milcząca aplikacja, do której serwer nie może się dostać przez MDC (pierwsze
+  „kopnięcie” po 3 minutach ciszy), to ramka śpiąca sama z siebie: stan
+  `asleep` z czuwaniem sieci, bez budzika, a odczyt „zasilacz” zmienia się na
+  „bateria” (na zasilaczu aplikacja nie śpi). Odczyt z MDC przy następnej
+  pobudce to poprawia.
+
+**„Uruchom ponownie” (2026-10-29).** W menu „Zasilanie”: `POST
+/api/device/restart`. Aplikacja przy najbliższym pytaniu dostaje `reboot`
+i woła `rebootDevice()`, jak przy nowej paczce, ale bez zapamiętywania
+wersji (`reboot_for`). Śpiącą w sieci serwer budzi WoL, zawieszoną uruchamia
+przez MDC jak wyżej. Po zimnym starcie launcher aplikacji nie uruchamia, więc
+serwer robi to sam po minucie (`0xC7 81 01`). Aplikacja rysuje obraz od nowa,
+w sumie ok. 2–3 minut. W głębokim śnie nic do ramki nie dociera (jak
+przy „Obudź ramkę”). „Uruchom aplikację ponownie” w Konfiguracji → Aplikacja
+ramki zostaje: to restart samej aplikacji przez MDC, bez restartu ramki.
+
 **Zużycie baterii** liczy serwer z odczytów na baterii (`battery_log`, co
 najmniej co 30 minut, ostatnie 3 dni): po pół doby i spadku o 3 punkty
 podaje procent na dobę i dni do końca (`battery_per_day`, `battery_days`).

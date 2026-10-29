@@ -136,6 +136,129 @@ async def test_wake_starts_the_app_when_the_panel_does_not_run_it(
         await panel.stop()
 
 
+async def test_a_silent_app_is_not_taken_for_awake(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """2026-10-29: unplugged, the panel fell asleep while the app was told to
+    stay up on the charger. "Obudź ramkę" said "obudziła się" without a
+    single magic packet, and the next picture waited for a wake that never
+    came. Silent, the app is woken like a sleeping one."""
+    monkeypatch.setattr(power, "WAKE_LOOK", timedelta(seconds=2))
+    service = FrameService(_settings(tmp_path, _closed_port()))
+    app = service.app
+    now = datetime.now(UTC)
+    app.answer(AppHello(charging=True), now=now - timedelta(minutes=5))
+    assert not app.asleep() and not app.awake(now)
+
+    sent: list[int] = []
+
+    async def wake(seconds: int = 0) -> bool:
+        sent.append(seconds)
+        return True
+
+    monkeypatch.setattr(service.panel, "wake", wake)
+    task = asyncio.create_task(service.power.wake_now())
+    await asyncio.sleep(0.3)
+    app.answer(AppHello(reason="resume", charging=False))
+    result = await task
+    assert result.sent and result.woke and sent == [power.WAKE_BURST_SECONDS]
+    assert app.awake()
+
+
+async def test_a_panel_asleep_by_itself_is_taken_as_standby(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Silent and not answering MDC: asleep in the network (unplugged), not a
+    hung app on the charger."""
+
+    async def presence(host: str) -> bool | None:
+        return None
+
+    monkeypatch.setattr(status_module, "on_network", presence)
+    service = FrameService(_settings(tmp_path, _closed_port()))
+    app = service.app
+    service.status.status.power_source = "ac"
+    service.status.status.charging = True
+    now = _at("2026-10-29T10:00")
+    assert app.answer(AppHello(charging=True), now=now).action == "stay"
+    await service.power.tick(now + timedelta(minutes=2))
+    assert not app.asleep()
+    await service.power.tick(now + timedelta(minutes=4))
+    assert app.asleep() and not app.deep_asleep() and app.wakes_at() is None
+    assert service.status.status.power_source == "battery"
+    assert not service.status.status.charging
+    assert (await service.status.refresh(force=True)).power_state == "standby"
+    # Nothing more to start until it is heard of again.
+    await service.power.tick(now + timedelta(minutes=30))
+    assert app.asleep() and app.state.missed_wake is None
+
+
+async def test_wake_starts_a_hung_app(
+    tmp_path: Path, server_ssl: ssl.SSLContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Up (it answers MDC) but its app does not ask: started over MDC."""
+    monkeypatch.setattr(power, "WAKE_LOOK", timedelta(seconds=3))
+    monkeypatch.setattr(power, "WAKE_STEP", timedelta(seconds=0.2))
+    monkeypatch.setattr(power, "APP_GRACE", timedelta(seconds=0.5))
+    panel = FakePanel(server_ssl, handler=_handler)
+    await panel.start()
+    try:
+        service = FrameService(_settings(tmp_path, panel.port))
+        service.app.store_package(b"PK\x03\x04signed", "2.0.0")
+        _asleep(service, deep=False)
+        task = asyncio.create_task(service.power.wake_now())
+        for _ in range(40):
+            await asyncio.sleep(0.1)
+            if (CMD_CONTENT_DOWNLOAD, b"\x81\x01") in panel.received:
+                break
+        assert panel.received[-1] == (CMD_CONTENT_DOWNLOAD, b"\x81\x01")
+        service.app.answer(AppHello(reason="start", build="2.0.0", charging=False))
+        result = await task
+        assert result.woke and result.started
+    finally:
+        await panel.stop()
+
+
+async def test_restart_from_the_app(
+    tmp_path: Path, server_ssl: ssl.SSLContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ "Uruchom ponownie": the app reboots the panel at its next question,
+    and the server starts it after the boot."""
+    monkeypatch.setattr(power, "WAKE_LOOK", timedelta(seconds=2))
+    panel = FakePanel(server_ssl, handler=_handler)
+    await panel.start()
+    try:
+        service = FrameService(_settings(tmp_path, panel.port))
+        app = service.app
+        app.store_package(b"PK\x03\x04signed", "2.0.0")
+        hello = AppHello(reason="poll", build="2.0.0", charging=True)
+        assert app.answer(hello).action == "stay"
+        task = asyncio.create_task(service.power.restart_now())
+        await asyncio.sleep(0.3)
+        assert app.answer(hello).action == "reboot"
+        result = await task
+        assert result.woke and not result.sent
+        assert app.state.reboot_for is None  # not a package's reboot
+        assert app.answer(hello).action == "stay"  # once
+        # The launcher does not start it after the boot: the server does.
+        app.restart_requested = True
+        assert app.answer(hello).action == "reboot"
+        rebooted = datetime.fromisoformat(app.state.wake_at or "")
+        panel.received.clear()
+        await service.power.tick(rebooted + timedelta(seconds=30))
+        assert panel.received == []
+        await service.power.tick(rebooted + timedelta(seconds=70))
+        assert panel.received[-1] == (CMD_CONTENT_DOWNLOAD, b"\x81\x01")
+
+        # Nobody asks: not rebooted later out of the blue.
+        app.answer(hello)
+        app.heard_at = datetime.now(UTC) - timedelta(minutes=5)
+        result = await service.power.restart_now()
+        assert not result.woke and not app.restart_requested
+    finally:
+        await panel.stop()
+
+
 async def test_power_state_for_the_network_tile(tmp_path: Path, server_ssl: ssl.SSLContext) -> None:
     """Online when it answers; when it does not, the sleep the app went into:
     standby (Wake-on-LAN reaches it) or deep sleep (Wi-Fi off)."""
