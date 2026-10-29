@@ -577,7 +577,7 @@ struct NowView: View {
     }
 
     /// The frame's alarm when it sleeps with the Wi-Fi off and wakes before
-    /// the next change (a check between changes, "Sprawdzaj też co"): the
+    /// the next change (a check between changes, "Sprawdzenia"): the
     /// "Ramka śpi" card below no longer says when.
     private var wakeLine: String? {
         guard offset == 0, let device = model.status?.device, device.powerState == "deep_sleep",

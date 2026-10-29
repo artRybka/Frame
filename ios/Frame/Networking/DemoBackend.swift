@@ -540,6 +540,12 @@ actor DemoBackend: FrameBackend {
         try await next()
     }
 
+    func playSuggestions() async throws {
+        settingsValue.playlistId = nil
+        queue = items.map(\.id).shuffled()
+        try await next()
+    }
+
     // MARK: Settings, museums, device
 
     func settings() async throws -> FrameSettings { settingsValue }

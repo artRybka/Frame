@@ -458,9 +458,42 @@ def _text(item: Item) -> str:
     )
 
 
+#: Techniques that say what an object is: when its museum's type or
+#: material names one of these, that settles its technique.
+_OBJECT_TECHNIQUES = ("technique:painting", "technique:print", "technique:drawing")
+
+
+def _technique_matches(found: Term, item: Item) -> bool:
+    """What the museum says the object is, never what its text or the
+    model's keywords mention: a Monet drawing whose description talks of
+    his paintings, or a caricature tagged "obraz w ramie", is no painting.
+    The type and material decide; without a technique there, the title and
+    the museum's own tags. Posters are prints, so a print's title may still
+    make it one."""
+    pattern = found.pattern
+    if pattern is None:
+        return False
+    if pattern.search(f"{item.classification} {item.medium}"):
+        return True
+    if found.key != "technique:poster" and _object_technique(item.classification, item.medium):
+        return False
+    return bool(pattern.search(" ".join((item.title, *item.styles, *item.subjects))))
+
+
+@lru_cache(maxsize=1 << 15)
+def _object_technique(classification: str, medium: str) -> bool:
+    text = f"{classification} {medium}"
+    return any(
+        (pattern := BY_KEY[key].pattern) is not None and pattern.search(text)
+        for key in _OBJECT_TECHNIQUES
+    )
+
+
 def term_matches(found: Term, item: Item, text: str | None = None) -> bool:
     if found.key == MANUSCRIPTS:
         return is_manuscript(item)
+    if found.kind == "technique":
+        return _technique_matches(found, item)
     if found.year_from is not None or found.year_to is not None:
         if item.year is None:
             return False

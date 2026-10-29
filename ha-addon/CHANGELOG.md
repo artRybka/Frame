@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.33.0
+
+- Ramka → Harmonogram (Online i Oszczędny) uporządkowany: bez podtytułu
+  i wiersza „Playlista” (playlistę wybiera „Prezentuj”), godziny zmian obok
+  siebie jako żetony z (+), dotknięcie godziny otwiera kółko z „Usuń
+  godzinę”; „Losowo” i „Cisza nocna” jako dwie pigułki w jednym wierszu
+  (godziny ciszy pod nimi, też w zapisie 12-godzinnym w jednej linii),
+  „Sprawdzenia” (wyłączone / co N godzin).
+- Playlisty: pierwszy kafelek „Propozycje” (okładka z czterech kolejnych dzieł
+  rotacji) przywraca Propozycje na ramce (`POST /api/suggestions/play`) albo
+  otwiera Odkrywaj.
+- Filtr techniki patrzy na rodzaj i materiał dzieła według muzeum, a nie na
+  cały opis i słowa kluczowe (rysunek Moneta nie jest już „Obrazem”).
+- Europeana: wyszukiwanie obejmuje tylko obrazy, rysunki, grafiki i plakaty
+  (bez uprzęży, medali, znaczków czy zdjęć budynków) i pomija fotografie
+  botaniczne OpenUp!.
+
 ## 0.32.1
 
 - „Sprawdź stan” budzi śpiącą w sieci ramkę jednym naciśnięciem: gdy serwer

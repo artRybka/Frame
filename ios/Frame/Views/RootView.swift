@@ -20,7 +20,7 @@ struct RootView: View {
             switch LaunchRoute.screen {
             case "discover", "detail", "original", "museums", "search", "search-picker": .discover
             case "playlists", "playlist", "editor", "editor-new", "editor-manual": .playlists
-            case "frame", "connection": .frame
+            case "frame", "connection", "schedule", "schedule-economy": .frame
             default: .now
             }
         }
@@ -55,6 +55,7 @@ struct RootView: View {
         .onChange(of: model.artistSearch) { _, artist in
             if artist != nil { tab = .discover }
         }
+        .onChange(of: model.suggestionsOpened) { tab = .discover }
         .task { await model.refreshAll() }
         .onChange(of: scenePhase) { old, phase in
             // Back from the background, maybe on another network.

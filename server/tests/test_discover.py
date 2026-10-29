@@ -51,6 +51,40 @@ def test_terms_match_works() -> None:
     assert not matches(portrait, PlaylistRules(terms=["subject:sea"]))
 
 
+def test_techniques_follow_what_the_object_is() -> None:
+    painting = PlaylistRules(terms=["technique:painting"])
+    drawing = PlaylistRules(terms=["technique:drawing"])
+    oil = _work(1, classification="Painting", medium="Oil on canvas")
+    # Art Institute drawings by Monet: the museum's text talks of his
+    # paintings, the model's keywords of a framed picture in it.
+    boy = _work(
+        2,
+        title="Boy in the Country",
+        classification="Drawing and Watercolor",
+        medium="Graphite on ivory wove paper",
+        description="Before turning to painting, Monet drew caricatures.",
+    )
+    caricature = _work(
+        3,
+        title="Caricature of Léon Manchon",
+        classification="Drawing and Watercolor",
+        medium="Black and white chalks on blue laid paper",
+        keywords=["obraz w ramie", "plakat", "szyld"],
+    )
+    assert matches(oil, painting) and not matches(oil, drawing)
+    for work in (boy, caricature):
+        assert matches(work, drawing) and not matches(work, painting)
+    assert not matches(caricature, PlaylistRules(terms=["technique:poster"]))
+    # Without a technique in the type or material, the title and the
+    # museum's tags; a print's title can still make it a poster.
+    tagged = _work(4, classification="digitized_artwork", subjects=["painting", "river"])
+    assert matches(tagged, painting)
+    poster = _work(5, title="Affiche pour Job", classification="Print", medium="Lithograph")
+    assert matches(poster, PlaylistRules(terms=["technique:poster"]))
+    study = _work(6, title="Study for the painting", classification="Drawing", medium="Pen")
+    assert not matches(study, painting)
+
+
 def test_terms_are_suggested_in_polish_and_english() -> None:
     assert [t.key for t in suggest("morz")] == ["subject:sea"]
     assert "subject:sea" in [t.key for t in suggest("seasc")]

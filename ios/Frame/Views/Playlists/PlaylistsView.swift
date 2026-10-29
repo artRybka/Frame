@@ -13,6 +13,9 @@ struct PlaylistsView: View {
         return model.playlists.first { $0.id == id }
     }
 
+    /// The frame plays Propozycje: no playlist.
+    private var suggestionsActive: Bool { model.settings != nil && model.settings?.playlistId == nil }
+
     var body: some View {
         NavigationStack(path: $path) {
             ScrollView {
@@ -22,9 +25,24 @@ struct PlaylistsView: View {
                             NowPlayingCard(playlist: active)
                         }
                         .buttonStyle(.plain)
+                    } else if suggestionsActive {
+                        Button { model.suggestionsOpened += 1 } label: {
+                            NowPlayingCard(title: "Propozycje", subtitle: "dobór z Odkrywaj") {
+                                SuggestionsCover(works: model.suggestionCover)
+                            }
+                        }
+                        .buttonStyle(.plain)
                     }
-                    SectionHeader(title: "Kolekcje", subtitle: "Dzieła według artystów, stylów i kolorów oraz albumy iCloud")
+                    SectionHeader(
+                        title: "Kolekcje",
+                        subtitle: "Propozycje, dzieła według artystów, stylów i kolorów oraz albumy iCloud"
+                    )
                     LazyVGrid(columns: [GridItem(.flexible(), spacing: 16), GridItem(.flexible(), spacing: 16)], spacing: 22) {
+                        Button { model.suggestionsOpened += 1 } label: {
+                            SuggestionsCard(works: model.suggestionCover, isActive: suggestionsActive)
+                        }
+                        .buttonStyle(.plain)
+                        .contextMenu { suggestionsMenu }
                         ForEach(model.playlists) { playlist in
                             NavigationLink(value: playlist.id) {
                                 PlaylistCard(playlist: playlist, isActive: playlist.id == active?.id)
@@ -107,6 +125,17 @@ extension PlaylistsView {
         }
     }
 
+    /// Held on "Propozycje": present them, or open them in Discover.
+    @ViewBuilder
+    private var suggestionsMenu: some View {
+        if !suggestionsActive {
+            Button("Prezentuj na ramce", systemImage: "photo.artframe") {
+                Task { await model.playSuggestions() }
+            }
+        }
+        Button("Otwórz w Odkrywaj", systemImage: "square.grid.2x2") { model.suggestionsOpened += 1 }
+    }
+
     private func delete(_ playlist: PlaylistSummary) async {
         do {
             try await model.backend.deletePlaylist(id: playlist.id)
@@ -136,13 +165,15 @@ extension PlaylistKind {
     }
 }
 
-/// Large card for the playlist the frame presents.
-struct NowPlayingCard: View {
-    let playlist: PlaylistSummary
+/// Large card for the playlist the frame presents (or Propozycje).
+struct NowPlayingCard<Cover: View>: View {
+    let title: String
+    let subtitle: String
+    @ViewBuilder let cover: Cover
 
     var body: some View {
         HStack(spacing: 16) {
-            Collage(itemIDs: playlist.coverItemIds, title: playlist.name)
+            cover
                 .frame(width: 112, height: 112)
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             VStack(alignment: .leading, spacing: 6) {
@@ -151,11 +182,11 @@ struct NowPlayingCard: View {
                     Eyebrow("Teraz prezentowane", color: Theme.vermilion)
                 }
                 .foregroundStyle(Theme.vermilion)
-                Text(playlist.name)
+                Text(title)
                     .font(.serif(24, weight: .semibold))
                     .foregroundStyle(Theme.ink)
                     .lineLimit(2)
-                Text(playlist.countText)
+                Text(subtitle)
                     .font(.subheadline)
                     .foregroundStyle(Theme.inkSoft)
             }
@@ -167,6 +198,14 @@ struct NowPlayingCard: View {
         .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(Theme.hairline))
         .shadow(color: .black.opacity(0.06), radius: 16, y: 8)
         .padding(.top, 6)
+    }
+}
+
+extension NowPlayingCard where Cover == Collage {
+    init(playlist: PlaylistSummary) {
+        self.init(title: playlist.name, subtitle: playlist.countText) {
+            Collage(itemIDs: playlist.coverItemIds, title: playlist.name)
+        }
     }
 }
 
@@ -204,6 +243,87 @@ struct PlaylistCard: View {
                 .font(.caption)
                 .foregroundStyle(Theme.inkSoft)
             }
+        }
+    }
+}
+
+/// "Propozycje" first among the collections: the rotation the server picks
+/// in Discover, marked with sparkles; it can't be edited or deleted.
+struct SuggestionsCard: View {
+    let works: [RemoteItem]
+    var isActive = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SuggestionsCover(works: works)
+                .aspectRatio(1, contentMode: .fit)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(alignment: .topLeading) {
+                    if isActive {
+                        Image(systemName: "play.fill")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(.white)
+                            .padding(7)
+                            .background(Theme.vermilion, in: Circle())
+                            .padding(8)
+                    }
+                }
+                .overlay(alignment: .bottomTrailing) {
+                    Image(systemName: "sparkles")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(Theme.accent)
+                        .frame(width: 30, height: 30)
+                        .background(Theme.paper.opacity(0.85), in: Circle())
+                        .padding(8)
+                }
+                .shadow(color: .black.opacity(0.12), radius: 10, y: 6)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Propozycje")
+                    .font(.serif(16, weight: .semibold))
+                    .foregroundStyle(Theme.ink)
+                Text("dobór z Odkrywaj")
+                    .font(.caption)
+                    .foregroundStyle(Theme.inkSoft)
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityHint("Otwiera Propozycje w Odkrywaj; przytrzymaj, by pokazać je na ramce")
+    }
+}
+
+/// Four of the works next in Propozycje, two by two; plain paper where
+/// there are fewer.
+struct SuggestionsCover: View {
+    let works: [RemoteItem]
+
+    var body: some View {
+        GeometryReader { geo in
+            let side = (geo.size.width - 2) / 2
+            let height = (geo.size.height - 2) / 2
+            VStack(spacing: 2) {
+                ForEach(0 ..< 2, id: \.self) { row in
+                    HStack(spacing: 2) {
+                        ForEach(0 ..< 2, id: \.self) { column in
+                            tile(row * 2 + column)
+                                .frame(width: side, height: height)
+                                .clipped()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder private func tile(_ index: Int) -> some View {
+        if index < works.count {
+            ArtImage(
+                ref: works[index].thumb,
+                fallback: works[index].thumbFallback,
+                placeholder: works[index].item.summary.placeholderColor,
+                maxPixel: 400
+            )
+        } else {
+            Theme.mat
         }
     }
 }

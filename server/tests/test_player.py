@@ -235,6 +235,10 @@ def test_api_library_playlists_player(service) -> None:
         view = client.get("/api/player").json()
         assert view["playlist"]["id"] == playlist_id
 
+        # Back to Propozycje: no playlist.
+        assert client.post("/api/suggestions/play").status_code == 202
+        assert client.get("/api/settings").json()["playlist_id"] is None
+
         status = client.get("/api/status").json()
         assert status["device"]["configured"] is False
         assert status["server"]["library_count"] == 3

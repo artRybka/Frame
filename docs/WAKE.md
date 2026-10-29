@@ -361,7 +361,7 @@ przeładowuje się (najwyżej raz na 10 minut).
 **Co odpowiada serwer** (`server/src/frame_server/panel_app.py`):
 
 - pobudka: najbliższa zmiana (z uwzględnieniem przypięcia), w trybie
-  Oszczędnym także „Sprawdzaj też co”; w trybie Online na baterii także
+  Oszczędnym także „Sprawdzenia”; w trybie Online na baterii także
   początek ciszy nocnej, żeby wyłączyć Wi-Fi na noc. Najwyżej tydzień naprzód;
 - network standby: `OFF` w trybie Oszczędnym i w ciszy nocnej, `ON` w dzień
   w trybie Online (WoL dostarcza wtedy zdjęcia z telefonu od razu);
@@ -796,7 +796,7 @@ Co pozwala ekran (EMDX 224B, firmware 1130.7):
 
 Jak działa (`power.py`, `PowerManager.enter_deep` i `_economy_tick`):
 
-- **Pobudki** = godziny zmiany, a z „Sprawdzaj też co” (1, 2, 3, 4 albo
+- **Pobudki** = godziny zmiany, a z „Sprawdzenia” (1, 2, 3, 4 albo
   6 h) także krótkie pobudki o pełnych godzinach doby, licząc od północy
   (co 4 h: 0:00, 4:00, 8:00, 12:00, 16:00, 20:00), `schedule.check_times`.
   Nie ma ich o godzinie zmiany ani w ciszy nocnej trybu Oszczędnego

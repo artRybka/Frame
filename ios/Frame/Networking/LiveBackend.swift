@@ -177,6 +177,8 @@ struct LiveBackend: FrameBackend {
 
     func play(playlistID: Int) async throws { try await send("/api/playlists/\(playlistID)/play", method: "POST") }
 
+    func playSuggestions() async throws { try await send("/api/suggestions/play", method: "POST") }
+
     // MARK: Settings
 
     func settings() async throws -> FrameSettings { try await get("/api/settings") }
