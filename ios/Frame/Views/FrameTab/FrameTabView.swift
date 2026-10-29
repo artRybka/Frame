@@ -1,8 +1,8 @@
 import SwiftUI
 
 /// The frame itself: battery, charging, connection; schedule, presentation
-/// and screen settings. How to reach the panel and the server sits behind the
-/// gear at the top.
+/// and screen settings. How to reach the panel and the server, and where the
+/// art comes from, sit behind the gear at the top.
 struct FrameTabView: View {
     @Environment(AppModel.self) private var model
     @State private var draft: FrameSettings?
@@ -30,7 +30,6 @@ struct FrameTabView: View {
                         ScheduleSection(settings: binding)
                         PresentationSection(settings: binding)
                         ScreenSection(settings: binding)
-                        SourcesSection(settings: binding)
                     }
                 }
                 .padding(.horizontal, Theme.gutter)
@@ -1130,6 +1129,7 @@ struct MatSwatch: View {
     }
 }
 
+/// How the frame hangs. A portrait frame is the panel turned 90° to the right.
 struct ScreenSection: View {
     @Binding var settings: FrameSettings
 
@@ -1137,40 +1137,72 @@ struct ScreenSection: View {
         VStack(alignment: .leading, spacing: 16) {
             SectionHeader(title: "Ekran")
             Card {
-                Picker("Orientacja", selection: $settings.orientation) {
-                    Label("Pozioma", systemImage: "rectangle").tag("landscape")
-                    Label("Pionowa", systemImage: "rectangle.portrait").tag("portrait")
-                }
-                .pickerStyle(.segmented)
-                if settings.orientation == "portrait" {
-                    Picker("Obrót", selection: $settings.rotation) {
-                        Text("90° w prawo").tag(90)
-                        Text("90° w lewo").tag(270)
+                HStack(spacing: 8) {
+                    OrientationOption(title: "Pozioma", portrait: false, selected: settings.orientation == "landscape") {
+                        settings.orientation = "landscape"
                     }
-                    .pickerStyle(.segmented)
-                    Text("Jak powieszono ramkę. Gdy obraz jest do góry nogami, zmień kierunek.")
-                        .font(.caption)
-                        .foregroundStyle(Theme.inkSoft)
+                    OrientationOption(title: "Pionowa", portrait: true, selected: settings.orientation == "portrait") {
+                        settings.orientation = "portrait"
+                        settings.rotation = 90
+                    }
                 }
             }
         }
     }
 }
 
+/// A frame hanging one way or the other, to pick.
+private struct OrientationOption: View {
+    let title: String
+    let portrait: Bool
+    let selected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 8) {
+                Rectangle()
+                    .fill(Theme.accent.opacity(0.75))
+                    .aspectRatio(portrait ? 9.0 / 16.0 : 16.0 / 9.0, contentMode: .fit)
+                    .whiteFrame(3, corner: 1)
+                    .frame(height: 56)
+                Text(title)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(Theme.ink)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 10)
+            .background(selected ? Theme.accent.opacity(0.1) : .clear, in: RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(selected ? Theme.accent : Theme.hairline, lineWidth: selected ? 2 : 1))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+}
+
+/// Konfiguracja: where the server takes art from. Saved as soon as switched.
 struct SourcesSection: View {
-    @Binding var settings: FrameSettings
+    @Environment(AppModel.self) private var model
+    let settings: FrameSettings
 
     private var privateUse: Binding<Bool> {
-        Binding(get: { settings.privateUse ?? false }, set: { settings.privateUse = $0 })
+        Binding(get: { settings.privateUse ?? false }, set: { on in save { $0.privateUse = on } })
     }
 
     private var wikiart: Binding<Bool> {
-        Binding(get: { settings.wikiart ?? false }, set: { settings.wikiart = $0 })
+        Binding(get: { settings.wikiart ?? false }, set: { on in save { $0.wikiart = on } })
+    }
+
+    private func save(_ change: (inout FrameSettings) -> Void) {
+        var new = settings
+        change(&new)
+        Task { await model.saveSettings(new) }
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            SectionHeader(title: "Źródła dzieł", subtitle: "Skąd serwer bierze sztukę")
+            SectionHeader(title: "Źródła dzieł")
             Card {
                 Text("Muzea, Wikimedia Commons, Europeana i Openverse dają dzieła wolne do pokazywania: domenę publiczną (w UE 70 lat po śmierci twórcy), a przy użytku prywatnym także licencje Creative Commons.")
                     .font(.caption)
@@ -1249,8 +1281,9 @@ struct PanelWifiRow: View {
 }
 
 /// Behind the gear in "Ramka": how the server reaches the panel, how the
-/// app reaches the server, how much disk the library may take and the
-/// language model's key; set once, rarely touched again.
+/// app reaches the server, where the art comes from, how much disk the
+/// library may take and the language model's key; set once, rarely touched
+/// again.
 struct ConnectionSettingsView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
@@ -1266,6 +1299,9 @@ struct ConnectionSettingsView: View {
                         PanelAppSection(app: app)
                     }
                     ServerSection()
+                    if let settings = model.settings {
+                        SourcesSection(settings: settings)
+                    }
                     if let storage = model.libraryStorage {
                         LibrarySizeSection(storage: storage)
                     }

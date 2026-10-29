@@ -88,6 +88,7 @@ def test_photos_keep_their_own_fits() -> None:
     # Automatic framing is no longer offered; photos have no caption.
     old = FrameSettings.model_validate({"art": {"fit": "auto"}, "photo": {"label": True}})
     assert old.art.fit == Fit.FIT and not old.photo.label
+    assert FrameSettings.model_validate({"rotation": 270}).rotation == 90
     with pytest.raises(ValueError):
         Presentation(multi_count=9)
 

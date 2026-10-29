@@ -70,6 +70,8 @@ class FrameSettings(BaseModel):
     shuffle: bool = True
     avoid_repeat_days: int = Field(14, ge=0, le=365)
     orientation: Orientation = Orientation.LANDSCAPE
+    # A portrait frame hangs turned 90° to the right; the app no longer
+    # offers the other way, so older settings with 270 come back to 90.
     rotation: Literal[90, 270] = 90
     art: Presentation = Field(default_factory=Presentation)
     photo: Presentation = Field(default_factory=lambda: Presentation(fit=Fit.FILL, margin=0.0))
@@ -111,6 +113,11 @@ class FrameSettings(BaseModel):
             slot += timedelta(minutes=max(minutes, 15))
         data["change_times"] = times[:MAX_CHANGE_TIMES]
         return data
+
+    @field_validator("rotation", mode="before")
+    @classmethod
+    def _to_the_right(cls, value: Any) -> int:
+        return 90
 
     @field_validator("change_times")
     @classmethod
