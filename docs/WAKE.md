@@ -532,8 +532,11 @@ Budzików nie da się odwołać, więc te ustawione przed snem nadal dzwonią
 do 5 minut po uśpieniu (launcher potrafi uruchomić aplikację przy
 zasypianiu) kładzie ramkę z powrotem spać; każde inne to przycisk i kończy
 sen. Po przycisku launcher zwykle nie uruchamia aplikacji (zimny start),
-dlatego w czasie takiego snu serwer co 2 minuty próbuje MDC: ramka bez Wi-Fi
-nie odpowiada, obudzona przyciskiem odpowiada i serwer uruchamia aplikację
+dlatego w czasie każdego snu bez Wi-Fi (głęboki sen, wyłączenie, Oszczędny,
+cisza nocna, ramka odpięta od zasilacza) serwer co minutę próbuje MDC, poza
+oknem −2/+12 minut wokół budzików (sprawdzenie bez nowego obrazu zostaje bez
+aplikacji) i pierwszymi 5 minutami po uśpieniu: ramka bez Wi-Fi nie
+odpowiada, obudzona przyciskiem odpowiada i serwer uruchamia aplikację
 (`0xC7 81 01`). Na każdy sen bez Wi-Fi aplikacja skraca „Sleep After” do
 5 minut, żeby ramka obudzona budzikiem, dla którego serwer jej nie uruchamia,
 szybko zasnęła z powrotem. *(Do sprawdzenia na ramce: przycisk w czasie
@@ -558,9 +561,49 @@ ostatni odczyt baterii zostawał przy tym „100 %, ładuje się”. Od 0.32:
   w odpowiedzi).
 - Milcząca aplikacja, do której serwer nie może się dostać przez MDC (pierwsze
   „kopnięcie” po 3 minutach ciszy), to ramka śpiąca sama z siebie: stan
-  `asleep` z czuwaniem sieci, bez budzika, a odczyt „zasilacz” zmienia się na
-  „bateria” (na zasilaczu aplikacja nie śpi). Odczyt z MDC przy następnej
-  pobudce to poprawia.
+  `asleep` bez budzika, a odczyt „zasilacz” zmienia się na „bateria” (na
+  zasilaczu aplikacja nie śpi). Odczyt z MDC przy następnej pobudce to
+  poprawia. Od 0.35 serwer pyta przy tym ARP, czy ramka jest w sieci (niżej).
+
+**Po odpięciu zasilacza ramka śpi bez Wi-Fi (2026-10-29, zgłoszenie
+Mateusza, 0.34.0).** Po odpięciu kabla kafelki pokazywały „Czuwanie ·
+wysyłka ją budzi” i „śpi w sieci”, a „Sprawdź stan” mówiło „Ramki nie ma w
+sieci Wi-Fi”; WoL jej nie budził, budził dopiero przycisk. To nie nasza
+aplikacja: przy odpięciu ramka zasypia sama i od razu, bez `goToSleep`, a
+czuwanie sieci (`setNetworkStandby("ON")` przy każdej pobudce aplikacji)
+nie ma tu znaczenia. Tak samo wyglądało E8 („od razu zniknął z sieci”), a
+teraz NAS z tej samej podsieci nie dostawał odpowiedzi ARP. Sen zlecony
+przez aplikację (`goToSleep`) z czuwaniem sieci trzyma Wi-Fi i WoL go budzi
+(2026-10-26). Sprzeczność brała się z tego, że serwer uznawał taką ramkę za
+śpiącą „w sieci” (`standby`), a brak odpowiedzi ARP pokazywał tylko jako
+`on_network: false`. Od 0.35:
+
+- Ramka, która zasnęła sama, jest „w sieci” tylko wtedy, gdy odpowiada na
+  ARP. Bez odpowiedzi (albo gdy nie da się tego sprawdzić, a była na
+  zasilaczu) śpi bez Wi-Fi: `wifi_lost` w stanie aplikacji i statusie,
+  `power_state` `deep_sleep`.
+- Każde sprawdzenie, które nie dostanie odpowiedzi ARP od ramki uśpionej
+  „w sieci” albo milczącej, przestawia ją tak samo (`lost_wifi`), więc
+  kafelki, „Sprawdź stan” i „Obudź ramkę” mówią jedno: „Śpi bez Wi-Fi,
+  obudzi ją przycisk”. WoL wtedy nie idzie, wysłany obraz czeka („Czeka na
+  przycisk ramki”, bez „Obudź ramkę”).
+- Po przycisku serwer znajduje ramkę przez MDC w ciągu minuty (jak wyżej)
+  i uruchamia aplikację. Ta przy pierwszym pytaniu dostaje czekający obraz,
+  a serwer od razu prowadzi pasek postępu (pobieranie, potem odświeżanie).
+  Aplikacja iOS, dopóki obraz czeka, co 8 s odświeża „Teraz” i stan ramki,
+  więc „Czeka na ramkę” znika sam, a pasek pokazuje wysyłkę.
+- **Zapasowe budziki na zasilaczu (pomysł Mateusza, tylko w trybie Online).**
+  Na zasilaczu aplikacja przy każdym pytaniu dostaje w `stay` dwa najbliższe
+  pełne półgodzinne budziki co najmniej 5 minut naprzód (`wake_ms`,
+  `wakes_ms`) i ustawia każdy raz. Po odpięciu ramka sama wstaje przy
+  najbliższym (najpóźniej po ~35 minutach), serwer po minucie uruchamia
+  aplikację przez MDC (dla ramki z `wifi_lost` każdy budzik się liczy), a ta
+  zasypia już zwyczajnie, w sieci, więc WoL znów działa. Serwer pamięta te
+  budziki (`spare`), więc kafelki i „Teraz” podają godzinę pobudki. Budzików
+  nie da się odwołać: pozostałe zadzwonią jeszcze raz w lekkim śnie (jedna
+  krótka pobudka więcej). W trybie Oszczędnym zapasowych budzików nie ma, bo
+  sen bez Wi-Fi jest tam celem. *(Do sprawdzenia na ramce: czy budzik
+  dzwoniący na zasilaczu niczego nie psuje i czy budzi ramkę po odpięciu.)*
 
 **„Uruchom ponownie” (2026-10-29).** W menu „Zasilanie”: `POST
 /api/device/restart`. Aplikacja przy najbliższym pytaniu dostaje `reboot`

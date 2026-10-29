@@ -114,6 +114,9 @@ class DeviceStatus(BaseModel):
     # switched off from the app: no alarm, only the button wakes it.
     rest_until: str | None = None
     switched_off: bool = False
+    # Asleep without the Wi-Fi by itself (unplugged, it sleeps at once and
+    # leaves the Wi-Fi, E8): Wake-on-LAN cannot reach it, the button wakes it.
+    wifi_lost: bool = False
 
 
 class PanelWifi(BaseModel):
@@ -206,6 +209,8 @@ class StatusMonitor:
         self._slept_at: datetime | None = None  # the server last put it to sleep
         # Which sleep a panel that does not answer is in (see PowerManager).
         self.asleep: Callable[[DeviceStatus], PanelPower] | None = None
+        # Told when a panel that does not answer is not on the Wi-Fi either.
+        self.off_network: Callable[[], None] | None = None
 
     def _configured(self) -> bool:
         s = self.panel.settings
@@ -272,8 +277,17 @@ class StatusMonitor:
             status.power_state = self._sleep_state(status)
             log.info("panel status check failed: %s (on the network: %s)", err, status.on_network)
         self.status = status
+        if status.on_network is False and self.off_network:
+            self.off_network()  # it publishes what it changed into this status
         self._remember()
         return status
+
+    async def look_for_panel(self, err: MdcError | None) -> bool | None:
+        """Whether a panel that did not answer (``err``) is still on the
+        Wi-Fi, asked without waking it."""
+        on_network = await self._on_network(err) if err is not None else None
+        self.status.on_network = on_network
+        return on_network
 
     async def _on_network(self, err: MdcError) -> bool | None:
         """Asleep on the Wi-Fi or gone? Asked without waking the panel."""
@@ -291,8 +305,11 @@ class StatusMonitor:
         guess = self.asleep(status) if self.asleep else "offline"
         if status.on_network is True:
             return "standby"  # still on the Wi-Fi: Wake-on-LAN reaches it
-        # No ARP answer is not taken as gone until the EM32DX is known to
-        # answer ARP in its sleep (E15): the guess stands.
+        if status.on_network is False and guess == "standby":
+            # No ARP answer: not on the Wi-Fi, whatever network standby says
+            # (unplugged, the panel sleeps at once and leaves it, E8 and
+            # 2026-10-29). Wake-on-LAN cannot reach it, the button can.
+            return "deep_sleep"
         return guess
 
     @staticmethod
@@ -395,14 +412,18 @@ class StatusMonitor:
             self.status.wifi = None
             self._remember()
 
-    def note_unplugged(self) -> None:
-        """The app fell silent while the last reading said charger: on the
-        charger it never sleeps, so the panel was most likely unplugged (it
-        sleeps at once then). Not "ładuje się" until it answers again."""
-        self.status.power_source = "battery"
-        self.status.charging = False
-        self.status.reachable = False
-        self.status.power_state = "standby"
+    def note_fell_asleep(self, on_network: bool | None, *, unplugged: bool, wifi: bool) -> None:
+        """The app fell silent and the panel does not answer: asleep by
+        itself, in the network (``wifi``) or without it. ``unplugged``: the
+        last reading said charger, and on the charger the app never sleeps,
+        so it was unplugged. Not "ładuje się" until it answers again."""
+        status = self.status
+        if unplugged:
+            status.power_source = "battery"
+            status.charging = False
+        status.reachable = False
+        status.on_network = on_network
+        status.power_state = "standby" if wifi else "deep_sleep"
         self._remember()
 
     def note_sleep(self, deep: bool) -> None:

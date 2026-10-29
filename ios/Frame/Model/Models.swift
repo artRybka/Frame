@@ -363,6 +363,9 @@ struct Delivery: Codable, Hashable, Sendable {
     /// Waiting with the Wi-Fi off (economy, quiet hours); false: asleep with
     /// the Wi-Fi on and Wake-on-LAN did not reach it (missing before 0.27).
     var deepSleep: Bool?
+    /// Waiting with the Wi-Fi gone off by itself: unplugged, the frame
+    /// sleeps at once without it, only the button wakes it (0.35+).
+    var wifiLost: Bool?
     /// The frame does not run the Frame app and the server cannot build it:
     /// the Samsung certificates are missing on the server.
     var noApp: Bool?
@@ -379,6 +382,7 @@ struct Delivery: Codable, Hashable, Sendable {
             if noApp == true { return "Ramka nie ma aplikacji Frame" }
             if let missed = When.clock(missedWakeAt) { return "Ramka nie obudziła się o \(missed)" }
             if let wake = When.at(asleepUntilAt) { return "Pojawi się \(wake)" }
+            if deepSleep == true { return "Czeka na przycisk ramki" }
             return "Czeka na ramkę"
         case "failed": return "Nie dotarł na ramkę"
         default: return "Teraz na ramce"
@@ -397,6 +401,11 @@ struct Delivery: Codable, Hashable, Sendable {
                 why = Self.noCertificates
             } else if missedWakeAt != nil, let wake = When.at(asleepUntilAt) {
                 why = "Spróbuje znowu \(wake). \(button)"
+            } else if wifiLost == true {
+                let alarm = When.at(asleepUntilAt).map { " Inaczej pobierze go \($0)." } ?? ""
+                why = "Ramka zasnęła bez Wi-Fi (tak robi po odpięciu zasilacza), sygnał budzenia do niej nie dotrze. Naciśnij krótko przycisk z tyłu ramki, obraz trafi na nią zaraz potem.\(alarm)"
+            } else if deepSleep == true, asleepUntilAt == nil {
+                why = "Ramka śpi bez Wi-Fi. Naciśnij krótko przycisk z tyłu ramki, obraz trafi na nią zaraz potem."
             } else if asleepUntilAt != nil, deepSleep == false {
                 why = "Ramka śpi i nie odpowiedziała na sygnał budzenia. Pobierze obraz przy najbliższej pobudce. \(button)"
             } else if asleepUntilAt != nil {
@@ -512,6 +521,9 @@ struct DeviceStatus: Codable, Hashable, Sendable {
     /// button on the frame ends either sooner.
     var restUntil: String?
     var switchedOff: Bool?
+    /// Asleep without the Wi-Fi by itself: unplugged, the frame sleeps at
+    /// once and leaves the Wi-Fi, so only the button wakes it (0.35+).
+    var wifiLost: Bool?
 }
 
 /// "Głęboki sen" / "Wyłącz ramkę": until when (nil: switched off), and
@@ -626,6 +638,10 @@ struct WakeResult: Codable, Hashable, Sendable {
     var problem: String?
     /// The panel was up but its app did not ask: started again (0.32+).
     var started: Bool?
+    /// Asleep with the Wi-Fi off: nothing was sent; `wifiLost`: it went
+    /// off by itself (unplugged), only the button wakes it (0.35+).
+    var deepSleep: Bool?
+    var wifiLost: Bool?
 }
 
 /// How the server reaches the panel (Ramka → Ekran); the PIN is never sent back.
