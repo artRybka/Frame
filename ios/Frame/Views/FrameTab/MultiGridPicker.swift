@@ -25,8 +25,8 @@ struct MultiGrid: Hashable, Sendable {
             MultiGrid(id: "B", name: "Duży i trzy", cols: 12, rows: 12, cells: [[0, 0, 9, 12], [9, 0, 3, 4], [9, 4, 3, 4], [9, 8, 3, 4]]),
         ],
         5: [
-            MultiGrid(id: "A", name: "Środek i cztery rogi", cols: 4, rows: 2,
-                      cells: [[1, 0, 2, 2], [0, 0, 1, 1], [0, 1, 1, 1], [3, 0, 1, 1], [3, 1, 1, 1]]),
+            MultiGrid(id: "A", name: "Duży i cztery", cols: 4, rows: 2,
+                      cells: [[0, 0, 2, 2], [2, 0, 1, 1], [3, 0, 1, 1], [2, 1, 1, 1], [3, 1, 1, 1]]),
             MultiGrid(id: "B", name: "Pion i cztery", cols: 12, rows: 12,
                       cells: [[0, 0, 4, 12], [4, 0, 4, 6], [8, 0, 4, 6], [4, 6, 4, 6], [8, 6, 4, 6]]),
         ],
@@ -37,10 +37,10 @@ struct MultiGrid: Hashable, Sendable {
                       cells: [[0, 0, 2, 2], [2, 0, 1, 1], [2, 1, 1, 1], [0, 2, 1, 1], [1, 2, 1, 1], [2, 2, 1, 1]]),
         ],
         7: [
-            MultiGrid(id: "A", name: "Środek i boki", cols: 4, rows: 3,
-                      cells: [[1, 0, 2, 3], [0, 0, 1, 1], [0, 1, 1, 1], [0, 2, 1, 1], [3, 0, 1, 1], [3, 1, 1, 1], [3, 2, 1, 1]]),
-            MultiGrid(id: "B", name: "Cztery nad trzema", cols: 12, rows: 2,
-                      cells: [[0, 0, 3, 1], [3, 0, 3, 1], [6, 0, 3, 1], [9, 0, 3, 1], [0, 1, 4, 1], [4, 1, 4, 1], [8, 1, 4, 1]]),
+            MultiGrid(id: "A", name: "Duży i sześć", cols: 4, rows: 3,
+                      cells: [[0, 0, 2, 3], [2, 0, 1, 1], [3, 0, 1, 1], [2, 1, 1, 1], [3, 1, 1, 1], [2, 2, 1, 1], [3, 2, 1, 1]]),
+            MultiGrid(id: "B", name: "Cztery nad trzema", cols: 4, rows: 2,
+                      cells: [[0, 0, 1, 1], [1, 0, 1, 1], [2, 0, 1, 1], [3, 0, 1, 1], [0, 1, 2, 1], [2, 1, 1, 1], [3, 1, 1, 1]]),
         ],
         8: [
             MultiGrid(id: "A", name: "Siatka 4×2", cols: 4, rows: 2,
