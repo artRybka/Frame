@@ -5,7 +5,7 @@ struct ThemeGroupRoute: Hashable {
     let name: String
 }
 
-/// Opens the works of a suggestion row with no theme behind it ("Dla Ciebie").
+/// Opens the works of a suggestion row with no theme behind it ("Dawno ich nie było").
 struct SuggestionRowRoute: Hashable {
     let key: String
 }

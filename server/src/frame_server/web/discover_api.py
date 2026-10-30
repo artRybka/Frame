@@ -53,7 +53,7 @@ from ..library.vocabulary import (
     set_aside,
     suggest,
 )
-from ..player import POOL_SIZE, SUGGESTION_SUITABILITY
+from ..player import POOL_SIZE
 from ..service import FrameService
 from .deps import require_token, service
 from .library_api import RemoteItem, RemotePage, remote_items
@@ -77,8 +77,6 @@ DAY_ROW_MIN = 8
 DAY_ROW_WAIT = 3.0
 #: Museums that did not answer are asked again after this many seconds.
 DAY_ROW_RETRY = 600.0
-#: Works added to the catalogue within this many days are new.
-NEW_DAYS = 7
 #: The owner's works not shown for this many days come back in a row.
 BACK_DAYS = 180
 #: Rows of works shown only with at least this many.
@@ -91,7 +89,7 @@ _theme_rows: dict[date, list[Item]] = {}
 #: When the museums were last asked for the theme of the day, and that fetch.
 _day_fetch: tuple[float, threading.Thread | None] = (0.0, None)
 #: (when, the count, new works and cover by theme key)
-_cards: tuple[float, dict[str, tuple[int, int, list[Item]]]] = (0.0, {})
+_cards: tuple[float, dict[str, tuple[int, list[Item]]]] = (0.0, {})
 #: One worker on the cards at a time.
 _cards_lock = threading.Lock()
 
@@ -103,8 +101,6 @@ class ThemeCard(BaseModel):
     group: str = ""
     #: Works in the catalogue that fit, and four of them for the cover.
     count: int = 0
-    #: Of those, the ones added in the last ``NEW_DAYS`` days.
-    new_count: int = 0
     cover: list[RemoteItem] = []
     #: The owner's playlist made from this theme, if any.
     playlist_id: int | None = None
@@ -112,7 +108,7 @@ class ThemeCard(BaseModel):
 
 
 class SuggestionRow(BaseModel):
-    key: str  # "for-you", "new", "like:<theme>", "theme", "back"
+    key: str  # "for-you", "like:<theme>", "theme", "back"
     title: str
     subtitle: str = ""
     theme: str | None = None  # the theme to browse further
@@ -205,8 +201,8 @@ def _since(days: int) -> str:
     return (datetime.now(UTC) - timedelta(days=days)).isoformat(timespec="seconds")
 
 
-def work_out_cards(svc: FrameService) -> dict[str, tuple[int, int, list[Item]]]:
-    """Every theme's count, new works and cover: a query of the whole
+def work_out_cards(svc: FrameService) -> dict[str, tuple[int, list[Item]]]:
+    """Every theme's count and cover: a query of the whole
     catalogue each, seconds on a NAS, so done in the background but for the
     first time (as are the week's themes, once a week)."""
     global _cards
@@ -216,16 +212,14 @@ def work_out_cards(svc: FrameService) -> dict[str, tuple[int, int, list[Item]]]:
             return cards  # just worked out by another request
         cards = {}
         today = date.today().isoformat()
-        new = _since(NEW_DAYS)
         for found in [*weekly_themes(svc.library, date.today()), *THEMES]:
             total, items = svc.library.query(found.rules(), sort="suitability")
-            fresh = sum(i.added_at >= new for i in items)
-            cards[found.key] = (total, fresh, _cover(items, f"{today}:{found.key}"))
+            cards[found.key] = (total, _cover(items, f"{today}:{found.key}"))
         _cards = (time.monotonic(), cards)
         return cards
 
 
-def _theme_cards(svc: FrameService) -> dict[str, tuple[int, int, list[Item]]]:
+def _theme_cards(svc: FrameService) -> dict[str, tuple[int, list[Item]]]:
     """The cards as last worked out; older ones are worked out again in the
     background while this request gets them as they are."""
     stamp, cards = _cards
@@ -239,10 +233,10 @@ def _theme_cards(svc: FrameService) -> dict[str, tuple[int, int, list[Item]]]:
 def _card(
     svc: FrameService,
     found: Theme,
-    cards: dict[str, tuple[int, int, list[Item]]],
+    cards: dict[str, tuple[int, list[Item]]],
     playlists: list[Playlist],
 ) -> ThemeCard:
-    count, new, cover = cards.get(found.key, (0, 0, []))
+    count, cover = cards.get(found.key, (0, []))
     playlist = _theme_playlist(svc, found, playlists)
     return ThemeCard(
         key=found.key,
@@ -250,7 +244,6 @@ def _card(
         description=found.description,
         group=found.group,
         count=count,
-        new_count=new,
         cover=_light(remote_items(svc, cover)),
         playlist_id=playlist.id if playlist else None,
         rules=found.rules(),
@@ -321,23 +314,6 @@ def _day_row(svc: FrameService, found: Theme, day: date) -> list[Item]:
     return _theme_rows.get(day) or picked
 
 
-def _new_row(svc: FrameService, day: date) -> SuggestionRow | None:
-    """The best of the works the catalogue took in lately, not shown yet."""
-    rules = PlaylistRules(kinds=[ItemKind.ARTWORK], min_suitability=SUGGESTION_SUITABILITY)
-    since = _since(NEW_DAYS)
-    new = [i for i in svc.library.query(rules, sort="suitability")[1] if i.added_at >= since]
-    picked = [i for i in svc.player.fresh(new) if i.pooled][: 2 * ROW_SIZE]
-    if len(picked) < ROW_MIN:
-        return None
-    random.Random(day.toordinal()).shuffle(picked)
-    return SuggestionRow(
-        key="new",
-        title="Nowe w katalogu",
-        subtitle=f"Dodane w ostatnim tygodniu: {len(new)}",
-        items=remote_items(svc, picked[:ROW_SIZE]),
-    )
-
-
 def _back_row(svc: FrameService, day: date) -> SuggestionRow | None:
     """The owner's works (kept or liked) the frame has not shown for half
     a year or more."""
@@ -373,8 +349,6 @@ def _suggestion_rows(svc: FrameService) -> list[SuggestionRow]:
             )
         )
     today = date.today()
-    if new := _new_row(svc, today):
-        rows.append(new)
     rows += _taste_rows(svc, today)
     found = theme_of_the_day(today, svc.library)
     day = _day_row(svc, found, today)

@@ -1349,8 +1349,6 @@ struct ArtTheme: Codable, Hashable, Sendable, Identifiable {
     var group: String?
     /// Works in the catalogue that fit, and four of them for the cover.
     var count: Int?
-    /// Of those, the ones the catalogue took in during the last week.
-    var newCount: Int?
     var cover: [RemoteItem]?
     /// The playlist already made from it.
     var playlistId: Int?

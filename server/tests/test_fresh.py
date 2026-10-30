@@ -117,12 +117,10 @@ def test_new_and_returning_works_and_daily_covers(museums) -> None:  # noqa: F81
     discover_api._cards = (0.0, {})
     with TestClient(app) as client:
         rows = {r["key"]: r for r in client.get("/api/suggestions").json()}
-        assert {i["item"]["title"] for i in rows["new"]["items"]} == {
-            f"New snow {n}" for n in range(6)
-        }
+        assert "new" not in rows  # no "Nowe w katalogu" row (Mateusz, 2026-10-30)
         assert len(rows["back"]["items"]) == 5
         winter = next(c for c in client.get("/api/themes").json() if c["key"] == "winter")
-        assert winter["count"] == 6 and winter["new_count"] == 6
+        assert winter["count"] == 6 and "new_count" not in winter
 
     pool = [_work(n, artist=f"A{n}") for n in range(40)]
     covers = {
@@ -226,3 +224,33 @@ def test_a_full_catalogue_still_takes_in_new_works(museums) -> None:  # noqa: F8
     assert job is not None  # a few new works, and as many old ones go
     _wait(job)
     assert player.grow_catalogue() is None  # not again for a while
+
+
+def test_the_catalogue_takes_in_museum_highlights(museums, monkeypatch) -> None:  # noqa: F811
+    from frame_server.library.museums import MUSEUMS
+    from frame_server.player import CATALOGUE_HIGHLIGHT_MIN, HIGHLIGHTS_KEY
+
+    service = museums
+    library = service.library
+
+    def starred(plain):
+        class Starred(plain):  # type: ignore[misc,valid-type]
+            def random_draw(self, spec: Discovery, rng):
+                if not spec.highlight:
+                    return super().random_draw(spec, rng)
+                works = (self._work(n, "Star") for n in range(60))
+                return (w.model_copy(update={"highlight": True}) for w in works)
+
+        return Starred
+
+    for key in ("met", "cma"):
+        monkeypatch.setitem(MUSEUMS, key, starred(MUSEUMS[key]))
+    # Taken in before museums' highlights were kept: marked when met again.
+    old = library.upsert(Item(id="met:Star-0", source="met", source_id="Star-0"))
+    assert not old.highlight
+
+    _wait(service.player.grow_catalogue())
+    stars = library.query(PlaylistRules(terms=[HIGHLIGHT]))[0]
+    assert stars >= CATALOGUE_HIGHLIGHT_MIN
+    assert library.get(old.id).highlight
+    assert library.get_state(HIGHLIGHTS_KEY)  # not asked again today
