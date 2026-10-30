@@ -302,6 +302,21 @@ final class FrameAPITests: XCTestCase {
         XCTAssertEqual(Names.wakes(5), "pobudek")
     }
 
+    func testServerUpdateKeepsTheVersionBeingReplaced() throws {
+        let json = """
+        {"version": "0.42.0", "addon": false, "updater": true, "state": "updating",
+         "update_available": false, "latest_version": "0.42.0", "updating_from": "0.41.2"}
+        """
+        let update = try LiveBackend.decoder().decode(ServerUpdate.self, from: Data(json.utf8))
+        XCTAssertEqual(update.updatingFrom, "0.41.2")
+        XCTAssertTrue(update.busy)
+        let older = try LiveBackend.decoder().decode(
+            ServerUpdate.self,
+            from: Data(#"{"version": "0.42.0", "addon": false, "updater": true, "state": "idle", "update_available": false}"#.utf8)
+        )
+        XCTAssertNil(older.updatingFrom)
+    }
+
     func testPanelAppDecodes() throws {
         let json = """
         {"active": true,

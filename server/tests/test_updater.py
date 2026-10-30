@@ -342,3 +342,25 @@ def test_a_server_rebuilt_by_hand_is_not_offered_its_own_version(
     monkeypatch.setenv("FRAME_RELEASE", "0.36.0")  # Container Manager put the new one in place
     view = folder.view()
     assert view.latest_version == "0.36.0" and not view.update_available
+
+
+def test_while_the_new_server_settles_the_app_still_sees_both_versions(
+    tmp_path: Path, monkeypatch
+) -> None:
+    folder = UpdateFolder(tmp_path)
+    engine = FakeEngine()
+    engine.registry = "sha256:new"
+    seen = []
+
+    def settle(seconds: float) -> None:
+        # The new container answers while the helper waits to see it stay up.
+        monkeypatch.setenv("FRAME_RELEASE", "0.36.0")
+        seen.append(folder.view())
+
+    helper = Updater(engine.docker(), folder.folder, clock=lambda: datetime.now(UTC), sleep=settle)
+    folder.request("update")
+    helper.tick()
+    view = seen[0]
+    assert view.state == "updating" and view.version == "0.36.0"
+    assert view.updating_from == "0.35.0" and view.latest_version == "0.36.0"
+    assert folder.view().updating_from is None

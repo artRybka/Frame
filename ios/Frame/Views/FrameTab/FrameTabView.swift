@@ -540,7 +540,11 @@ struct FrameTabView: View {
         }
         let latest = update.latestVersion ?? "nowsza"
         if model.updatingServer || update.state == "updating" {
-            return ("arrow.triangle.2.circlepath", Theme.accent, "\(version) → \(latest)", "aktualizuję", "wróci za minutę", true)
+            // The new server answers while the helper still waits to see it
+            // stay up: by then `version` is the new one.
+            let from = update.updatingFrom ?? model.updatingServerFrom ?? version
+            let detail = version == update.latestVersion ? "sprawdzam, czy działa" : "wróci za minutę"
+            return ("arrow.triangle.2.circlepath", Theme.accent, "\(from) → \(latest)", "aktualizuję", detail, true)
         }
         if checkingUpdate || update.state == "checking" || update.pending == "check" {
             return ("arrow.triangle.2.circlepath", Theme.inkSoft, version, "sprawdzam…", nil, true)
@@ -2063,7 +2067,12 @@ private struct ServerUpdateRow: View {
     @ViewBuilder
     private var status: some View {
         if model.updatingServer || update.state == "updating" {
-            caption("Aktualizuję. Serwer wróci za około minutę.")
+            let from = update.updatingFrom ?? model.updatingServerFrom ?? update.version
+            if update.version == update.latestVersion {
+                caption("Aktualizuję z \(from) do \(update.version). Nowa wersja już wstała, sprawdzam, czy działa.")
+            } else {
+                caption("Aktualizuję z \(from) do \(update.latestVersion ?? "nowszej"). Serwer wróci za około minutę.")
+            }
         } else if update.state == "checking" || update.pending == "check" {
             caption("Sprawdzam, czy jest nowsza wersja…")
         } else if update.offersUpdate {

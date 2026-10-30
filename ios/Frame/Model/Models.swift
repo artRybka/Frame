@@ -777,6 +777,10 @@ struct ServerUpdate: Codable, Hashable, Sendable {
     var lastUpdate: LastUpdate?
     /// Asked for ("check" or "update"), not picked up by the helper yet.
     var pending: String?
+    /// While updating: the version being replaced. The new server answers
+    /// before the helper is done with it, so `version` is already the new
+    /// one then (older servers leave it out).
+    var updatingFrom: String?
 
     /// The helper is on it.
     var busy: Bool { pending != nil || state == "checking" || state == "updating" }
