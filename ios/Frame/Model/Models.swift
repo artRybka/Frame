@@ -363,8 +363,8 @@ struct Delivery: Codable, Hashable, Sendable {
     /// Waiting with the Wi-Fi off (economy, quiet hours); false: asleep with
     /// the Wi-Fi on and Wake-on-LAN did not reach it (missing before 0.27).
     var deepSleep: Bool?
-    /// Waiting with the Wi-Fi gone off by itself: unplugged, the frame
-    /// sleeps at once without it, only the button wakes it (0.35+).
+    /// Waiting for a frame asleep deeply by itself: unplugged, it sleeps at
+    /// once and no wake signal wakes it, only the button (0.36+).
     var wifiLost: Bool?
     /// The frame does not run the Frame app and the server cannot build it:
     /// the Samsung certificates are missing on the server.
@@ -403,7 +403,7 @@ struct Delivery: Codable, Hashable, Sendable {
                 why = "Spróbuje znowu \(wake). \(button)"
             } else if wifiLost == true {
                 let alarm = When.at(asleepUntilAt).map { " Inaczej pobierze go \($0)." } ?? ""
-                why = "Ramka zasnęła bez Wi-Fi (tak robi po odpięciu zasilacza), sygnał budzenia do niej nie dotrze. Naciśnij krótko przycisk z tyłu ramki, obraz trafi na nią zaraz potem.\(alarm)"
+                why = "Ramka śpi głęboko (tak zasypia po odpięciu zasilacza) i sygnał budzenia jej nie budzi. Naciśnij krótko przycisk z tyłu ramki, obraz trafi na nią zaraz potem.\(alarm)"
             } else if deepSleep == true, asleepUntilAt == nil {
                 why = "Ramka śpi bez Wi-Fi. Naciśnij krótko przycisk z tyłu ramki, obraz trafi na nią zaraz potem."
             } else if asleepUntilAt != nil, deepSleep == false {
@@ -521,8 +521,8 @@ struct DeviceStatus: Codable, Hashable, Sendable {
     /// button on the frame ends either sooner.
     var restUntil: String?
     var switchedOff: Bool?
-    /// Asleep without the Wi-Fi by itself: unplugged, the frame sleeps at
-    /// once and leaves the Wi-Fi, so only the button wakes it (0.35+).
+    /// Asleep deeply by itself: unplugged, the frame sleeps at once and no
+    /// wake signal wakes it (even back on the Wi-Fi), only the button (0.36+).
     var wifiLost: Bool?
 }
 
@@ -639,7 +639,7 @@ struct WakeResult: Codable, Hashable, Sendable {
     /// The panel was up but its app did not ask: started again (0.32+).
     var started: Bool?
     /// Asleep with the Wi-Fi off: nothing was sent; `wifiLost`: it went
-    /// off by itself (unplugged), only the button wakes it (0.35+).
+    /// off by itself (unplugged), only the button wakes it (0.36+).
     var deepSleep: Bool?
     var wifiLost: Bool?
 }

@@ -129,8 +129,9 @@ ARP do ekranu nie sięga (Mac w 192.168.0.0/22 widzi tylko router).
 
 Wynik decyduje, czy brak odpowiedzi na ARP może znaczyć „poza siecią”.
 2026-10-29: ramka odpięta od zasilacza nie odpowiadała na ARP z NAS-a, WoL jej
-nie budził, przycisk tak (jak E8). Od 0.35 brak odpowiedzi znaczy „śpi bez
-Wi-Fi, budzi przycisk” ([WAKE.md](WAKE.md#aplikacja-frame-na-ramce-2026-10-28)).
+nie budził, przycisk tak (jak E8); po kilkunastu sekundach UniFi pokazywał ją
+znowu, na „Ch. 0”, a WoL dalej nie działał. Od 0.36 brak odpowiedzi znaczy „śpi
+głęboko, budzi przycisk”, a odpowiedź nie znaczy „da się obudzić” ([WAKE.md](WAKE.md#aplikacja-frame-na-ramce-2026-10-28)).
 Krok 1–3 (sen zlecony z czuwaniem sieci odpowiada na ARP) nadal do potwierdzenia.
 
 ### E16 — Aplikacja Custom i budzik `webapis.epaper`
@@ -154,7 +155,7 @@ ramkę `goToSleep()` i zgłasza każde wznowienie. Opis i wnioski w
 | E5 | 2026-10-25 | 1130.7 | **1. Szachownice 1 px odtworzone 1:1, czyste farby.** 2. Gradienty: ekran sam ditheruje szumem (dyfuzja błędu), mocno przycina kolory spoza farb (cyjan → biały, magenta → czerwień, średnia szarość z fioletowym odcieniem). Kalibracja palety lampą światła dziennego: wbudowana paleta `em32dx` w `server/src/frame_server/imaging/palette.py`, teraz domyślna (czerń granatowa, żółta ciemniejsza, niebieska jaśniejsza niż w palecie domyślnej). 3. Zdjęcie (dziecko w lesie, preset `photo`): `passthrough` wygląda najlepiej; `compensate` odpada (przesycony, twarz czerwona); `dither` ma czystszy raster, ale jest wyprany; `dither` z `saturation=1.7 contrast=1.3 shadows=0.15 gamma=1.0` lepiej, nadal słabiej niż `passthrough`. **Decyzja techniczna: `dither` (piksele 1:1), ale strojenie mapowania tonów i gamutu (1.3/1.4) musi dogonić `passthrough`; do tego czasu `passthrough` jest bezpiecznym domyślnym.** | – |
 | E6 | 2026-10-27 | 1130.7 | Manifest z trzema wpisami `schedule` (00:00 A, 23:38 B, 23:48 C), po jednym obrazie, wysłany przez `0xC7` z Maca. Ekran od razu pobrał **wszystkie** obrazy i pokazał A; raport `POST /content-transfer-progress` zawiera `content_id`, `device_id` (SN), `progress`, `status: Successful` dla każdego obrazu. Po `0x11 00` (standby wł., bateria) o 23:38 ekran **sam się nie obudził** (brak ruchu w sieci). Po naciśnięciu przycisku o 23:46 pokazał B, czyli wpis obowiązujący o tej godzinie, z pamięci i bez łączenia się z siecią; C o 23:48 się nie pojawiło. Krótkie naciśnięcie Tryb (następny obraz) nic nie zmieniło. | Harmonogram w manifeście działa jako „co pokazać po pobudce”, ale nie budzi ekranu. Budzenie o godzinie daje tylko API Custom App (`webapis.epaper.setScheduleWakeupTime`), patrz WAKE.md. |
 | E7 | 2026-10-25 | 1130.7 | Wstępnie: po wybudzeniu przyciskiem ekran **nie** pobrał ponownie `content.json`. Test 24 h do zrobienia. | – |
-| E8 | 2026-10-25 | 1130.7 | Po odłączeniu ładowarki ekran od razu zniknął z sieci (ping i MDC). WoL (network standby wł.) przez Wi-Fi nie obudził go przez 2 min; krótkie naciśnięcie przycisku budzi (miga zielona dioda z tyłu, obraz bez zmian), MDC wraca po kilku sekundach. Pomiar 24 h do zrobienia. 2026-10-29 z aplikacją Custom (0.34.0) to samo: po odpięciu brak odpowiedzi ARP z NAS-a w tej samej podsieci, WoL nie budzi, przycisk tak. Sen zlecony przez aplikację z czuwaniem sieci trzyma Wi-Fi (WoL budzi), sen po odpięciu nie. | – |
+| E8 | 2026-10-25 | 1130.7 | Po odłączeniu ładowarki ekran od razu zniknął z sieci (ping i MDC). WoL (network standby wł.) przez Wi-Fi nie obudził go przez 2 min; krótkie naciśnięcie przycisku budzi (miga zielona dioda z tyłu, obraz bez zmian), MDC wraca po kilku sekundach. Pomiar 24 h do zrobienia. 2026-10-29 z aplikacją Custom (0.34.0) to samo: po odpięciu brak odpowiedzi ARP z NAS-a w tej samej podsieci, WoL nie budzi, przycisk tak. Po kilkunastu sekundach UniFi znów ją pokazuje (ten sam MAC i IP, „Ch. 0 (2.4 GHz)”), ale WoL nadal nie budzi. Sen zlecony przez aplikację z czuwaniem sieci budzi się WoL, sen po odpięciu nie. | – |
 | E9 | | | | |
 | E10 | | | | |
 | E11 | | | | |

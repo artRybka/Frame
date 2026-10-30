@@ -166,23 +166,30 @@ async def test_a_silent_app_is_not_taken_for_awake(
 
 
 @pytest.mark.parametrize(
-    ("on_network", "power_state"),
+    ("unplugged", "on_network", "power_state"),
     [
-        (True, "standby"),  # still on the Wi-Fi: Wake-on-LAN reaches it
-        (False, "deep_sleep"),  # off the Wi-Fi: only the button
-        (None, "deep_sleep"),  # cannot tell: unplugged, it leaves the Wi-Fi (E8)
+        # Unplugged, Wake-on-LAN does not wake it, on the Wi-Fi or not: in
+        # UniFi it came back on "Ch. 0" and no magic packet woke it.
+        (True, True, "deep_sleep"),
+        (True, False, "deep_sleep"),
+        (True, None, "deep_sleep"),
+        # Asleep by itself on battery: the Wi-Fi decides.
+        (False, True, "standby"),
+        (False, False, "deep_sleep"),
+        (False, None, "standby"),
     ],
 )
 async def test_a_panel_asleep_by_itself(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    unplugged: bool,
     on_network: bool | None,
     power_state: str,
 ) -> None:
-    """Silent and not answering MDC: asleep by itself (unplugged), not a hung
-    app on the charger. 2026-10-29: unplugged, the panel left the Wi-Fi, yet
+    """Silent and not answering MDC: asleep by itself, not a hung app.
+    2026-10-29: unplugged, the panel slept and no Wake-on-LAN woke it, yet
     the app said "Czuwanie, wysyłka ją budzi" and "Sprawdź stan" said it is
-    not on the Wi-Fi. Whether it is (ARP) decides which sleep it is in."""
+    not on the Wi-Fi."""
 
     async def presence(host: str) -> bool | None:
         return on_network
@@ -190,15 +197,18 @@ async def test_a_panel_asleep_by_itself(
     monkeypatch.setattr(status_module, "on_network", presence)
     service = FrameService(_settings(tmp_path, _closed_port()))
     app = service.app
-    service.status.status.power_source = "ac"
-    service.status.status.charging = True
     now = _at("2026-10-29T10:00")
-    assert app.answer(AppHello(charging=True), now=now).action == "stay"
+    service.status.status.power_source = "ac" if unplugged else "battery"
+    service.status.status.charging = unplugged
+    if not unplugged:
+        app.keep_awake(now)  # "Obudź ramkę": awake on battery
+    assert app.answer(AppHello(charging=unplugged), now=now).action == "stay"
     await service.power.tick(now + timedelta(minutes=2))
     assert not app.asleep()
     await service.power.tick(now + timedelta(minutes=4))
     # The spare alarms the app keeps on the charger (online mode) wake it.
-    assert app.asleep() and app.wakes_at(now + timedelta(minutes=4)) == _at("2026-10-29T10:30")
+    spare = _at("2026-10-29T10:30") if unplugged else None
+    assert app.asleep() and app.wakes_at(now + timedelta(minutes=4)) == spare
     wifi = power_state == "standby"
     assert app.deep_asleep() is not wifi and app.state.wifi_lost is not wifi
     status = service.status.status
@@ -403,7 +413,7 @@ async def test_power_state_for_the_network_tile(tmp_path: Path, server_ssl: ssl.
         (None, True, "standby"),  # never seen, but on the Wi-Fi: asleep
         (True, True, "standby"),
         (True, False, "deep_sleep"),  # no ARP answer: off the Wi-Fi (unplugged, E8)
-        (False, True, "standby"),  # it is on the Wi-Fi after all
+        (False, True, "deep_sleep"),  # on the Wi-Fi is not wakeable (2026-10-29)
         (False, False, "deep_sleep"),
         (None, False, "offline"),
         (True, None, "standby"),  # cannot tell (behind a router): as before

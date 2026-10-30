@@ -307,8 +307,11 @@ class StatusMonitor:
     def _sleep_state(self, status: DeviceStatus) -> PanelPower:
         """A panel that does not answer MDC: what it is most likely doing."""
         guess = self.asleep(status) if self.asleep else "offline"
-        if status.on_network is True:
+        if status.on_network is True and guess != "deep_sleep":
             return "standby"  # still on the Wi-Fi: Wake-on-LAN reaches it
+        # Known to sleep deeply, an ARP answer does not change that: unplugged,
+        # the panel showed up on the Wi-Fi again ("Ch. 0" in UniFi) and still
+        # no magic packet woke it (2026-10-29).
         if status.on_network is False and guess == "standby":
             # No ARP answer: not on the Wi-Fi, whatever network standby says
             # (unplugged, the panel sleeps at once and leaves it, E8 and

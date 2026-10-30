@@ -563,7 +563,8 @@ ostatni odczyt baterii zostawał przy tym „100 %, ładuje się”. Od 0.32:
   „kopnięcie” po 3 minutach ciszy), to ramka śpiąca sama z siebie: stan
   `asleep` bez budzika, a odczyt „zasilacz” zmienia się na „bateria” (na
   zasilaczu aplikacja nie śpi). Odczyt z MDC przy następnej pobudce to
-  poprawia. Od 0.35 serwer pyta przy tym ARP, czy ramka jest w sieci (niżej).
+  poprawia. Od 0.36 ramka odpięta od zasilacza śpi głęboko, a na baterii
+  decyduje ARP (niżej).
 
 **Po odpięciu zasilacza ramka śpi bez Wi-Fi (2026-10-29, zgłoszenie
 Mateusza, 0.34.0).** Po odpięciu kabla kafelki pokazywały „Czuwanie ·
@@ -576,15 +577,23 @@ teraz NAS z tej samej podsieci nie dostawał odpowiedzi ARP. Sen zlecony
 przez aplikację (`goToSleep`) z czuwaniem sieci trzyma Wi-Fi i WoL go budzi
 (2026-10-26). Sprzeczność brała się z tego, że serwer uznawał taką ramkę za
 śpiącą „w sieci” (`standby`), a brak odpowiedzi ARP pokazywał tylko jako
-`on_network: false`. Od 0.35:
+`on_network: false`. Tej samej nocy Mateusz zauważył w UniFi, że ramka po
+odpięciu na chwilę znika z sieci, a po kilkunastu sekundach wraca, ale z
+„Ch. 0 (2.4 GHz)” (ten sam MAC i adres), i dalej WoL jej nie budzi. Czyli
+po odpięciu bywa skojarzona z siecią (może drugi, oszczędny moduł Wi-Fi
+EM32DX-A, może martwy wpis w UniFi), ale magic packet jej nie budzi, więc
+widoczność w sieci ani odpowiedź ARP nie znaczą „da się obudzić”. Od 0.36:
 
-- Ramka, która zasnęła sama, jest „w sieci” tylko wtedy, gdy odpowiada na
-  ARP. Bez odpowiedzi (albo gdy nie da się tego sprawdzić, a była na
-  zasilaczu) śpi bez Wi-Fi: `wifi_lost` w stanie aplikacji i statusie,
-  `power_state` `deep_sleep`.
+- Ramka, która zasnęła sama, będąc na zasilaczu (aplikacja na zasilaczu nie
+  śpi, więc to odpięcie), śpi głęboko bez względu na ARP: `wifi_lost` w
+  stanie aplikacji i statusie, `power_state` `deep_sleep`. Zasnęła sama na
+  baterii: „w sieci” tylko wtedy, gdy nie ma dowodu, że jej w sieci nie ma
+  (brak odpowiedzi ARP).
+- Ramki znanej jako głęboko śpiąca odpowiedź ARP nie przestawia na
+  „Czuwanie”.
 - Każde sprawdzenie, które nie dostanie odpowiedzi ARP od ramki uśpionej
   „w sieci” albo milczącej, przestawia ją tak samo (`lost_wifi`), więc
-  kafelki, „Sprawdź stan” i „Obudź ramkę” mówią jedno: „Śpi bez Wi-Fi,
+  kafelki, „Sprawdź stan” i „Obudź ramkę” mówią jedno: „Śpi głęboko,
   obudzi ją przycisk”. WoL wtedy nie idzie, wysłany obraz czeka („Czeka na
   przycisk ramki”, bez „Obudź ramkę”).
 - Po przycisku serwer znajduje ramkę przez MDC w ciągu minuty (jak wyżej)
