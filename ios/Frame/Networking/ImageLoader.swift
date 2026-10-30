@@ -248,12 +248,12 @@ struct ArtImage: View {
     var subjectFocus = false
 
     @State private var image: UIImage?
-    @State private var focus: UnitPoint?
+    @State private var focus: UnitPoint = .center
     @State private var failed = false
 
     var body: some View {
         ZStack {
-            if let image, let focus, contentMode == .fill {
+            if let image, subjectFocus, contentMode == .fill {
                 FocusedFill(image: image, focus: focus)
                     .transition(.opacity)
             } else if let image {
@@ -282,13 +282,14 @@ struct ArtImage: View {
     private func load() async {
         let ref = ref
         failed = false
+        var key = ""
         for candidate in [ref, fallback].compactMap({ $0 }) {
             guard let request = model.backend.request(for: candidate) else { continue }
             do {
                 let loaded = try await ImageLoader.shared.image(for: request, maxPixel: maxPixel, priority: priority)
+                key = request.url?.absoluteString ?? ""
                 if subjectFocus {
-                    // Before it shows, so the crop does not jump.
-                    focus = await SubjectFocus.shared.point(in: loaded, key: request.url?.absoluteString ?? "")
+                    focus = await SubjectFocus.shared.cached(key) ?? .center
                 }
                 image = loaded
                 break
@@ -298,6 +299,14 @@ struct ArtImage: View {
         }
         failed = image == nil
         if !Task.isCancelled { loaded(ref) }
+        // The picture shows at once, centred; the crop glides to its
+        // subject once found. Never wait for it: the picture comes first.
+        if subjectFocus, let image, !Task.isCancelled, await SubjectFocus.shared.cached(key) == nil {
+            let point = await SubjectFocus.shared.point(in: image, key: key)
+            if !Task.isCancelled {
+                withAnimation(.easeInOut(duration: 0.5)) { focus = point }
+            }
+        }
     }
 }
 

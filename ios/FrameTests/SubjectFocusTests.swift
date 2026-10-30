@@ -23,4 +23,30 @@ final class SubjectFocusTests: XCTestCase {
         XCTAssertEqual(point.x, 0.5, accuracy: 0.25)
         XCTAssertEqual(point.y, 0.5, accuracy: 0.25)
     }
+
+    /// A screen of collages asks for many pictures at once: Vision must not
+    /// take Swift's shared threads, or every other task (downloads) stalls.
+    func testManyPicturesLeaveTheSharedThreadsFree() async throws {
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 300, height: 400)).image { context in
+            UIColor.brown.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 300, height: 400))
+            UIColor.white.setFill()
+            context.fill(CGRect(x: 120, y: 60, width: 60, height: 80))
+        }
+        let busy = Task {
+            await withTaskGroup(of: UnitPoint.self) { group in
+                for index in 0 ..< 48 {
+                    group.addTask { await SubjectFocus.shared.point(in: image, key: "test:busy:\(index)") }
+                }
+                for await _ in group {}
+            }
+        }
+        // Meanwhile other work still runs at once.
+        let started = Date()
+        for _ in 0 ..< ProcessInfo.processInfo.activeProcessorCount * 2 {
+            _ = await Task.detached { 1 }.value
+        }
+        XCTAssertLessThan(Date().timeIntervalSince(started), 2)
+        await busy.value
+    }
 }
