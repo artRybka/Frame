@@ -696,6 +696,10 @@ nie zmieniało. Od 0.37.1:
   (miga zielona dioda z tyłu; krótkie naciśnięcie nie wystarczyło). Po takim
   starcie launcher od razu pobrał i zainstalował nową paczkę (2026-10-30
   08:17–08:19).
+- Przełączenie źródła przez MDC (`0xC7 81 02`, potem `81 01`) nie
+  restartuje ani launchera, ani aplikacji (test na zdrowej ramce 2026-10-30
+  07:37 UTC: aplikacja pytała dalej bez przerwy), więc zdalnego restartu
+  nadal nie ma.
 
 **„Uruchom ponownie” (2026-10-29).** W menu „Zasilanie”: `POST
 /api/device/restart`. Aplikacja przy najbliższym pytaniu dostaje `reboot`
