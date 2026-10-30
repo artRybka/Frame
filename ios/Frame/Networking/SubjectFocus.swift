@@ -7,27 +7,78 @@ import Vision
 /// (Vision's attention saliency), else the middle. Worked out once per
 /// picture and remembered.
 ///
-/// Vision blocks its thread while it works, so it runs one picture at a
-/// time on a queue of its own: on Swift's few shared threads a screen of
-/// collages blocked them all, and with them every download in the app.
+/// Vision blocks its thread while it works, so it runs a couple of pictures
+/// at a time on a queue of its own: on Swift's few shared threads a screen
+/// of collages blocked them all, and with them every download in the app.
 actor SubjectFocus {
     static let shared = SubjectFocus()
 
-    private static let queue = DispatchQueue(label: "com.artrybka.frame.subject-focus", qos: .utility)
+    private static let queue: OperationQueue = {
+        let queue = OperationQueue()
+        queue.name = "com.artrybka.frame.subject-focus"
+        queue.maxConcurrentOperationCount = 2
+        queue.qualityOfService = .userInitiated
+        return queue
+    }()
+
     private var cache: [String: UnitPoint] = [:]
 
-    func cached(_ key: String) -> UnitPoint? {
-        cache[key]
+    /// Unit point in the picture, origin top-left. Waits `patience` seconds
+    /// at most, then gives the middle (the answer still comes in for next
+    /// time); a picture scrolled away before its turn is skipped.
+    func point(in image: UIImage, key: String, patience: Double = 2.5) async -> UnitPoint {
+        if let cached = cache[key] { return cached }
+        let job = Job()
+        let operation = BlockOperation {
+            let point = Self.find(in: image)
+            job.finish(point)
+            Task { await SubjectFocus.shared.remember(point, for: key) }
+        }
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { (continuation: CheckedContinuation<UnitPoint, Never>) in
+                job.start(continuation)
+                Self.queue.addOperation(operation)
+                DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + patience) {
+                    job.finish(.center)
+                }
+            }
+        } onCancel: {
+            operation.cancel()
+            job.finish(.center)
+        }
     }
 
-    /// Unit point in the picture, origin top-left.
-    func point(in image: UIImage, key: String) async -> UnitPoint {
-        if let cached = cache[key] { return cached }
-        let point = await withCheckedContinuation { (continuation: CheckedContinuation<UnitPoint, Never>) in
-            Self.queue.async { continuation.resume(returning: Self.find(in: image)) }
-        }
+    private func remember(_ point: UnitPoint, for key: String) {
         cache[key] = point
-        return point
+    }
+
+    /// One answer, from whichever comes first: Vision, the time limit or
+    /// the view going away.
+    private final class Job: @unchecked Sendable {
+        private let lock = NSLock()
+        private var continuation: CheckedContinuation<UnitPoint, Never>?
+        private var answer: UnitPoint?
+
+        func start(_ continuation: CheckedContinuation<UnitPoint, Never>) {
+            lock.lock()
+            if let answer {
+                lock.unlock()
+                continuation.resume(returning: answer)  // cancelled before it started
+            } else {
+                self.continuation = continuation
+                lock.unlock()
+            }
+        }
+
+        func finish(_ point: UnitPoint) {
+            lock.lock()
+            guard answer == nil else { return lock.unlock() }
+            answer = point
+            let waiting = continuation
+            continuation = nil
+            lock.unlock()
+            waiting?.resume(returning: point)
+        }
     }
 
     private static func find(in image: UIImage) -> UnitPoint {

@@ -282,14 +282,16 @@ struct ArtImage: View {
     private func load() async {
         let ref = ref
         failed = false
-        var key = ""
         for candidate in [ref, fallback].compactMap({ $0 }) {
             guard let request = model.backend.request(for: candidate) else { continue }
             do {
                 let loaded = try await ImageLoader.shared.image(for: request, maxPixel: maxPixel, priority: priority)
-                key = request.url?.absoluteString ?? ""
                 if subjectFocus {
-                    focus = await SubjectFocus.shared.cached(key) ?? .center
+                    // The placeholder stays until the crop is known, so the
+                    // picture fades in already framed instead of sliding.
+                    let point = await SubjectFocus.shared.point(in: loaded, key: request.url?.absoluteString ?? "")
+                    if Task.isCancelled { return }
+                    focus = point
                 }
                 image = loaded
                 break
@@ -299,14 +301,6 @@ struct ArtImage: View {
         }
         failed = image == nil
         if !Task.isCancelled { loaded(ref) }
-        // The picture shows at once, centred; the crop glides to its
-        // subject once found. Never wait for it: the picture comes first.
-        if subjectFocus, let image, !Task.isCancelled, await SubjectFocus.shared.cached(key) == nil {
-            let point = await SubjectFocus.shared.point(in: image, key: key)
-            if !Task.isCancelled {
-                withAnimation(.easeInOut(duration: 0.5)) { focus = point }
-            }
-        }
     }
 }
 
