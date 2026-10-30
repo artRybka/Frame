@@ -14,7 +14,7 @@ from test_ai import GOOD_KEY, FakeAnthropic
 
 from frame_server.ai import AiConfigUpdate
 from frame_server.ai.client import OPUS
-from frame_server.ai.daily import clean
+from frame_server.ai.daily import clean, short
 from frame_server.config import Settings
 from frame_server.daily import of_season, round_anniversary
 from frame_server.library import Item, ItemKind
@@ -29,19 +29,56 @@ DESCRIPTION = (
 )
 ANSWER: dict[str, Any] = {
     "title": "Wielka fala w Kanagawie",
-    "teaser": "Fala z pazurami i święta góra schowana w jej dolinie.",
+    "teaser": (
+        "Fala z pazurami i święta góra schowana w jej dolinie. "
+        "Drugie zdanie, które już nie zmieściłoby się w dwóch wierszach kafelka."
+    ),
+    "focus": {"x": 0.64, "y": 1.4},
     "why_today": "Jutro mija 266 lat od urodzin Hokusaia.",
+    "headline": "Pocztówka z pielgrzymki.",
     "context": ["Hokusai miał około siedemdziesięciu lat.", "Nowością był błękit pruski."],
-    "facts": [{"label": "Seria", "value": "36 widoków góry Fudżi"}],
+    "artist": "Katsushika Hokusai, malarz i rysownik z Edo, zmieniał imię ponad trzydzieści razy.",
     "composition": {
-        "points": [
-            {"x": 0.63, "y": 0.66, "title": "Fudżi", "text": "Mała i nieruchoma."},
-            {"x": 1.7, "y": -0.2, "title": "Poza obrazem", "text": "Przycięty do brzegu."},
-            {"x": 0.3, "y": 0.5, "title": "", "text": "Bez tytułu: wypada."},
-        ],
-        "lines": [
-            {"label": "Łuk fali", "points": [{"x": 0.0, "y": 0.97}, {"x": 0.4, "y": 0.1}]},
-            {"label": "Jeden punkt", "points": [{"x": 0.5, "y": 0.5}]},
+        "views": [
+            {
+                "title": "Droga oka",
+                "grid": "none",
+                "text": "Oko biegnie łukiem fali do Fudżi.",
+                "marks": [
+                    {
+                        "shape": "arrow",
+                        "points": [
+                            {"x": 0.0, "y": 0.97},
+                            {"x": 0.2, "y": 0.3},
+                            {"x": 0.4, "y": 0.1},
+                        ],
+                        "title": "Łuk fali",
+                        "text": "grzywa w pazurach",
+                    },
+                    {
+                        "shape": "loop",
+                        "points": [{"x": 0.64, "y": 0.66}, {"x": 1.7, "y": -0.2}],
+                        "title": "Fudżi",
+                        "text": "mała i nieruchoma",
+                    },
+                    {"shape": "triangle", "points": [{"x": 0.3, "y": 0.5}], "title": "Za mało"},
+                    {"shape": "spiral", "points": [{"x": 0.3, "y": 0.5}], "title": "Nie ma"},
+                ],
+            },
+            {"title": "Pusta", "grid": "golden", "text": "", "marks": []},
+            {
+                "title": "Geometria",
+                "grid": "fibonacci",
+                "text": "Szczyt w złotym punkcie.",
+                "marks": [
+                    {
+                        "shape": "rect",
+                        "points": [{"x": 0.1, "y": 0.1}, {"x": 0.3, "y": 0.5}],
+                        "title": "Kartusz",
+                        "text": "",
+                    }
+                ],
+            },
         ],
     },
     "colour": "Dwa błękity i biel papieru.",
@@ -139,13 +176,22 @@ def test_the_season_and_round_anniversaries() -> None:
 def test_an_answer_is_cleaned() -> None:
     essay = clean(ANSWER, ["met:2", "met:3"])
     assert essay is not None
+    assert essay.teaser == "Fala z pazurami i święta góra schowana w jej dolinie."  # fits the tile
+    assert essay.focus is not None and (essay.focus.x, essay.focus.y) == (0.64, 1.0)
+    assert essay.headline == "Pocztówka z pielgrzymki"
+    views = essay.composition.views
+    assert [v.title for v in views] == ["Droga oka", "Geometria"]  # an empty take goes
+    assert [m.title for m in views[0].marks] == ["Łuk fali", "Fudżi"]
+    assert (views[0].marks[1].points[1].x, views[0].marks[1].points[1].y) == (1.0, 0.0)
+    assert views[1].grid == "none"  # not a grid the app draws
+    # Drawn by 0.42 apps as numbered points and lines.
     points = essay.composition.points
-    assert [p.title for p in points] == ["Fudżi", "Poza obrazem"]
-    assert (points[1].x, points[1].y) == (1.0, 0.0)  # on the picture's edge
+    assert [(p.title, p.x, p.y) for p in points] == [("Łuk fali", 0.2, 0.3), ("Fudżi", 0.64, 0.66)]
     assert [line.label for line in essay.composition.lines] == ["Łuk fali"]
     assert [(s.id, s.why) for s in essay.similar] == [("met:2", "ta sama seria")]
     assert essay.sources == ["obraz", "Wikipedia"]
     assert clean({**ANSWER, "teaser": "  "}, []) is None
+    assert short("Bardzo długie zdanie " * 10, 40) == "Bardzo długie zdanie Bardzo długie…"
 
 
 def _app(tmp_path: Path) -> Any:
@@ -167,6 +213,8 @@ def test_without_a_key_the_page_shows_what_the_museum_says(tmp_path: Path) -> No
         assert work["written"] is False and work["writing"] is False
         assert work["teaser"].startswith("A great wave rises")
         assert work["context"] == [DESCRIPTION]
+        assert work["headline"] == "Co mówi muzeum" and work["artist"] == ""
+        assert work["focus"] is None
         assert work["composition"] is None
         assert [s["item"]["item"]["id"] for s in work["similar"]] == ["met:2"]
         assert work["similar"][0]["why"] == "ten sam autor"
@@ -194,7 +242,11 @@ def test_claude_writes_the_page(tmp_path: Path) -> None:
         assert work["written"] is True and work["model"] == OPUS
         assert work["title"] == "Wielka fala w Kanagawie"
         assert work["why_today"] == "Jutro mija 266 lat od urodzin Hokusaia."
-        assert [p["title"] for p in work["composition"]["points"]] == ["Fudżi", "Poza obrazem"]
+        assert work["headline"] == "Pocztówka z pielgrzymki"
+        assert work["artist"].startswith("Katsushika Hokusai, malarz")
+        assert work["focus"] == {"x": 0.64, "y": 1.0}
+        assert [v["title"] for v in work["composition"]["views"]] == ["Droga oka", "Geometria"]
+        assert work["composition"]["views"][0]["marks"][0]["shape"] == "arrow"
         assert [(s["item"]["item"]["id"], s["why"]) for s in work["similar"]] == [
             ("met:2", "ta sama seria")
         ]

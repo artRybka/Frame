@@ -78,6 +78,12 @@ extension Font {
     static func serif(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
         .system(size: size, weight: weight, design: .serif)
     }
+
+    /// Caveat, a hand-written face for the composition's labels (bundled,
+    /// SIL Open Font License: Resources/Fonts).
+    static func hand(_ size: CGFloat) -> Font {
+        .custom("Caveat-SemiBold", size: size)
+    }
 }
 
 extension ItemSummary {

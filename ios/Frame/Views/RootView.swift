@@ -6,6 +6,8 @@ enum LaunchRoute {
     static let screen = UserDefaults.standard.string(forKey: "screen") ?? ""
     static let fit = UserDefaults.standard.string(forKey: "fit")
     static let mat = UserDefaults.standard.string(forKey: "mat")
+    /// "end", "composition": a long page opens scrolled there.
+    static let scroll = UserDefaults.standard.string(forKey: "scroll")
 }
 
 struct RootView: View {

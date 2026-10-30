@@ -1264,11 +1264,6 @@ struct SuggestionRow: Codable, Hashable, Sendable, Identifiable {
 /// Propozycje and its own page, written by Claude once a day (without a key
 /// only what the museum says).
 struct DailyWork: Codable, Hashable, Sendable {
-    struct Fact: Codable, Hashable, Sendable {
-        var label: String
-        var value: String
-    }
-
     /// A place on the picture: fractions of its width and height.
     struct Spot: Codable, Hashable, Sendable {
         var x: Double
@@ -1287,9 +1282,43 @@ struct DailyWork: Codable, Hashable, Sendable {
         var points: [Spot]
     }
 
+    /// A pencil mark on the picture with its label around it. Shapes:
+    /// arrow and line (a path), loop (centre and a corner of the box it
+    /// fits), triangle (three corners), rect (two opposite corners),
+    /// underline (start and end, drawn as a wave).
+    struct Mark: Codable, Hashable, Sendable {
+        var shape: String
+        var points: [Spot]
+        var title: String
+        var text: String
+    }
+
+    /// One take on the composition ("Droga oka", "Geometria"): its marks and
+    /// a grid under them ("none", "golden", "thirds").
+    struct Take: Codable, Hashable, Sendable {
+        var title: String
+        var grid: String
+        var text: String
+        var marks: [Mark]
+    }
+
     struct Composition: Codable, Hashable, Sendable {
+        /// Nil from 0.42 servers, which send only the points and lines.
+        var views: [Take]?
         var points: [Point]
         var lines: [Line]
+
+        /// The takes, or the old points and lines as one: a loop around
+        /// each point and the lines unlabelled.
+        var takes: [Take] {
+            if let views, !views.isEmpty { return views }
+            guard !points.isEmpty else { return [] }
+            let loops = points.map { point in
+                Mark(shape: "loop", points: [Spot(x: point.x, y: point.y), Spot(x: point.x + 0.05, y: point.y + 0.04)], title: point.title, text: point.text)
+            }
+            let paths = lines.map { Mark(shape: "line", points: $0.points, title: "", text: "") }
+            return [Take(title: "Droga oka", grid: "none", text: "", marks: loops + paths)]
+        }
     }
 
     struct Similar: Codable, Hashable, Sendable {
@@ -1319,14 +1348,20 @@ struct DailyWork: Codable, Hashable, Sendable {
     var item: RemoteItem
     /// The Polish title when there is one.
     var title: String
+    /// One sentence that fits the tile's two lines.
     var teaser: String
+    /// Where the tile's band is cropped around; nil from 0.42 servers.
+    var focus: Spot?
     var whyToday: String
     /// Claude is writing the page now.
     var writing: Bool
     /// Claude wrote the page; else only the museum's text.
     var written: Bool
+    /// The title of the text ("Co mówi muzeum" without Claude).
+    var headline: String?
     var context: [String]
-    var facts: [Fact]
+    /// A short note about the artist.
+    var artist: String?
     var composition: Composition?
     var colour: String
     var onFrame: String

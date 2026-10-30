@@ -1,8 +1,9 @@
 import SwiftUI
 
-/// The work of the day at the top of Propozycje: a band of the picture, its
-/// title and two lines that invite to read; the whole tile opens its page.
-/// Kept low, so the themes start right below it.
+/// The work of the day at the top of Propozycje: a band of the picture
+/// (cropped around the place Claude named, else what draws the eye), its
+/// title and one sentence written to fit two lines; the whole tile opens its
+/// page. Kept low, so the themes start right below it.
 struct DailyTile: View {
     let work: DailyWork
 
@@ -23,7 +24,8 @@ struct DailyTile: View {
                             placeholder: work.item.item.placeholderColor,
                             maxPixel: 1000,
                             priority: .high,
-                            subjectFocus: true
+                            subjectFocus: true,
+                            focusPoint: work.focus.map { UnitPoint(x: $0.x, y: $0.y) }
                         )
                     }
                     .clipped()
@@ -33,25 +35,24 @@ struct DailyTile: View {
                         .foregroundStyle(Theme.ink)
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
-                    if !byline.isEmpty {
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
                         Text(byline)
                             .font(.caption)
                             .foregroundStyle(Theme.inkSoft)
                             .lineLimit(1)
-                    }
-                    HStack(alignment: .lastTextBaseline, spacing: 10) {
-                        Text(work.teaser)
-                            .font(.serif(14))
-                            .foregroundStyle(Theme.ink.opacity(0.85))
-                            .lineLimit(2)
-                            .multilineTextAlignment(.leading)
                             .frame(maxWidth: .infinity, alignment: .leading)
                         Text("Czytaj dalej ›")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(Theme.accent)
                             .fixedSize()
                     }
-                    .padding(.top, 4)
+                    Text(work.teaser)
+                        .font(.serif(14))
+                        .foregroundStyle(Theme.ink.opacity(0.85))
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.9)
+                        .multilineTextAlignment(.leading)
+                        .padding(.top, 4)
                 }
                 .padding(.horizontal, 12)
                 .padding(.top, 10)
@@ -67,41 +68,56 @@ struct DailyTile: View {
     }
 }
 
-/// The work of the day's own page: why today, the context, the composition
-/// drawn over the picture, colour, how it fares on the frame, works like it,
-/// what it led to and the days before. Written by Claude once a day; while
+/// The work of the day's own page: why today, the text under its own title,
+/// a note about the artist, the composition drawn over the picture, colour,
+/// works like it, what it led to, the days before and, last, how it fares on
+/// the frame with the buttons to show or queue it. Written by Claude once a day; while
 /// it writes (or without a key) the museum's text stands in.
 struct DailyView: View {
     @Environment(AppModel.self) private var model
     let route: DailyRoute
     @State private var work: DailyWork?
     @State private var failed = false
-    @State private var showLines = true
-    @State private var selected: Int?
+    @State private var take = 0
     @State private var sending = false
     @State private var sent: Bool?
+    @State private var queueTaps = 0
 
     var body: some View {
-        ScrollView {
-            if let work {
-                content(work)
-                    .padding(.horizontal, Theme.gutter)
-                    .padding(.bottom, 40)
-            } else if failed {
-                EmptyStateView(
-                    title: "Nie ma tego dzieła",
-                    message: "Serwer nie ma dzieła dnia na ten dzień.",
-                    systemImage: "photo.artframe"
-                )
-                .padding(.top, 80)
-            } else {
-                ProgressView().padding(.top, 120)
+        ScrollViewReader { proxy in
+            ScrollView {
+                page
+            }
+            .onChange(of: work?.day) {
+                guard let target = LaunchRoute.scroll else { return }  // CI screenshots: "composition", "end"
+                Task {
+                    try? await Task.sleep(for: .seconds(1))
+                    proxy.scrollTo(target, anchor: target == "end" ? .bottom : .top)
+                }
             }
         }
         .background(Theme.paper)
         .navigationTitle("Dzieło dnia")
         .navigationBarTitleDisplayMode(.inline)
         .task(id: route) { await load() }
+    }
+
+    @ViewBuilder
+    private var page: some View {
+        if let work {
+            content(work)
+                .padding(.horizontal, Theme.gutter)
+                .padding(.bottom, 40)
+        } else if failed {
+            EmptyStateView(
+                title: "Nie ma tego dzieła",
+                message: "Serwer nie ma dzieła dnia na ten dzień.",
+                systemImage: "photo.artframe"
+            )
+            .padding(.top, 80)
+        } else {
+            ProgressView().padding(.top, 120)
+        }
     }
 
     /// Today's as Discover has it, then fresh; a page being written is
@@ -130,7 +146,6 @@ struct DailyView: View {
             VStack(alignment: .leading, spacing: 14) {
                 picture(work)
                 header(work)
-                actions(work)
                 if !work.whyToday.isEmpty { whyToday(work.whyToday) }
                 if work.writing {
                     HStack(spacing: 8) {
@@ -142,15 +157,15 @@ struct DailyView: View {
                 }
             }
             if !work.context.isEmpty {
-                section("Kontekst") {
+                section(work.headline ?? "Co mówi muzeum") {
                     ForEach(Array(work.context.enumerated()), id: \.offset) { _, paragraph in
                         prose(paragraph)
                     }
                 }
             }
-            if !work.facts.isEmpty { section("W skrócie") { facts(work.facts) } }
-            if let composition = work.composition, !composition.points.isEmpty {
-                compositionSection(work, composition)
+            if let artist = work.artist, !artist.isEmpty { section("O autorze") { prose(artist) } }
+            if let takes = work.composition?.takes, !takes.isEmpty {
+                compositionSection(work, takes).id("composition")
             }
             if !work.colour.isEmpty || !work.item.item.colors.isEmpty {
                 section("Kolor i światło") {
@@ -158,11 +173,11 @@ struct DailyView: View {
                     if !work.colour.isEmpty { prose(work.colour) }
                 }
             }
-            if !work.onFrame.isEmpty { section("Na Twojej ramce") { onFrame(work) } }
             if !work.similar.isEmpty { section("Podobne dzieła") { similar(work.similar) } }
             if !work.legacy.isEmpty { section("Co z niego wyrosło") { legacy(work.legacy) } }
             if !work.previous.isEmpty { section("Poprzednie dzieła dnia") { previous(work.previous) } }
-            footer(work)
+            section("Na Twojej ramce") { onFrame(work) }
+            footer(work).id("end")
         }
     }
 
@@ -208,35 +223,45 @@ struct DailyView: View {
         }
     }
 
-    /// "Pokaż na ramce" (held: for longer) and the work's own card.
-    private func actions(_ work: DailyWork) -> some View {
-        HStack(spacing: 12) {
-            Button {
-                Task { await show(work, .untilNextChange) }
-            } label: {
-                Label {
-                    Text(sending ? "Wysyłam…" : sent == true ? "Wysłano" : "Pokaż na ramce")
-                } icon: {
-                    if sending {
-                        ProgressView().tint(Theme.paper)
-                    } else {
-                        Image(systemName: sent == true ? "checkmark" : "photo.artframe")
-                    }
+    /// "Pokaż na ramce" (held: for longer), at the end by "Na Twojej ramce".
+    private func showButton(_ work: DailyWork) -> some View {
+        Button {
+            Task { await show(work, .untilNextChange) }
+        } label: {
+            Label {
+                Text(sending ? "Wysyłam…" : sent == true ? "Wysłano" : "Pokaż na ramce")
+            } icon: {
+                if sending {
+                    ProgressView().tint(Theme.paper)
+                } else {
+                    Image(systemName: sent == true ? "checkmark" : "photo.artframe")
                 }
             }
-            .buttonStyle(ActionButtonStyle(prominent: true))
-            .contextMenu {
-                ForEach(HoldSpec.allCases) { spec in
-                    Button(spec.label) { Task { await show(work, spec) } }
-                }
-            }
-            .disabled(sending)
-            .sensoryFeedback(.impact(weight: .medium), trigger: sending) { _, now in now }
-            NavigationLink(value: work.item.id) {
-                Label("O dziele", systemImage: "info.circle")
-            }
-            .buttonStyle(ActionButtonStyle())
         }
+        .buttonStyle(ActionButtonStyle(prominent: true))
+        .contextMenu {
+            ForEach(HoldSpec.allCases) { spec in
+                Button(spec.label) { Task { await show(work, spec) } }
+            }
+        }
+        .disabled(sending)
+        .sensoryFeedback(.impact(weight: .medium), trigger: sending) { _, now in now }
+    }
+
+    /// "Dodaj do kolejki": shown at the next change; once it is first in
+    /// line, the button says so.
+    private func queueButton(_ work: DailyWork) -> some View {
+        let next = model.player?.queued?.first == work.item.id
+        return Button {
+            queueTaps += 1
+            Task { await model.queueNext(itemID: work.item.id) }
+        } label: {
+            Label(next ? "Następne na ramce" : "Dodaj do kolejki", systemImage: next ? "checkmark" : QueueButton.symbol)
+                .contentTransition(.symbolEffect(.replace))
+        }
+        .buttonStyle(ActionButtonStyle())
+        .disabled(next)
+        .sensoryFeedback(.impact(weight: .light), trigger: queueTaps)
     }
 
     private func show(_ work: DailyWork, _ hold: HoldSpec) async {
@@ -279,89 +304,54 @@ struct DailyView: View {
             .fixedSize(horizontal: false, vertical: true)
     }
 
-    private func facts(_ facts: [DailyWork.Fact]) -> some View {
-        LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
-            ForEach(facts, id: \.self) { fact in
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(fact.label.uppercased())
-                        .font(.system(size: 10.5, weight: .semibold))
-                        .tracking(0.6)
-                        .foregroundStyle(Theme.inkSoft)
-                    Text(fact.value)
-                        .font(.subheadline)
-                        .foregroundStyle(Theme.ink)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .padding(10)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                .background(Theme.card, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Theme.hairline))
-            }
-        }
-    }
-
-    private func compositionSection(_ work: DailyWork, _ composition: DailyWork.Composition) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("Analiza kompozycji")
-                    .font(.serif(20, weight: .semibold))
-                    .foregroundStyle(Theme.ink)
-                Spacer()
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) { showLines.toggle() }
-                } label: {
-                    Label("Linie", systemImage: showLines ? "checkmark" : "eye.slash")
-                        .font(.caption.weight(.semibold))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .foregroundStyle(showLines ? Theme.paper : Theme.inkSoft)
-                        .background(showLines ? Theme.accent : Theme.card, in: Capsule())
-                        .overlay(Capsule().strokeBorder(showLines ? Color.clear : Theme.hairline))
-                }
-                .buttonStyle(.plain)
-            }
-            CompositionPicture(
-                item: work.item,
-                aspect: aspect(work.item.item),
-                composition: composition,
-                showLines: showLines,
-                selected: $selected
-            )
-            Text("Dotknij numeru, by zaznaczyć opis. „Linie” chowa rysunek.")
-                .font(.caption)
-                .foregroundStyle(Theme.inkSoft)
-            ForEach(Array(composition.points.enumerated()), id: \.offset) { index, point in
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) { selected = selected == index ? nil : index }
-                } label: {
-                    HStack(alignment: .top, spacing: 10) {
-                        NumberBadge(number: index + 1, highlighted: selected == index)
-                        (Text(point.title + ". ").font(.serif(15, weight: .semibold))
-                            + Text(point.text).font(.serif(15)))
-                            .foregroundStyle(Theme.ink.opacity(0.9))
-                            .multilineTextAlignment(.leading)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+    /// The takes as pencil on tracing paper, one at a time: "1 · Droga oka",
+    /// "2 · Geometria".
+    private func compositionSection(_ work: DailyWork, _ takes: [DailyWork.Take]) -> some View {
+        let shown = takes[min(take, takes.count - 1)]
+        return section("Analiza kompozycji") {
+            if takes.count > 1 {
+                HStack(spacing: 6) {
+                    ForEach(Array(takes.enumerated()), id: \.offset) { index, each in
+                        let on = index == min(take, takes.count - 1)
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) { take = index }
+                        } label: {
+                            Text("\(index + 1) · \(each.title)")
+                                .font(.caption.weight(.semibold))
+                                .padding(.horizontal, 11)
+                                .padding(.vertical, 6)
+                                .foregroundStyle(on ? Theme.paper : Theme.inkSoft)
+                                .background(on ? Theme.ink : Theme.card, in: Capsule())
+                                .overlay(Capsule().strokeBorder(on ? Color.clear : Theme.hairline))
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .padding(6)
-                    .background(
-                        selected == index ? Theme.vermilion.opacity(0.1) : Color.clear,
-                        in: RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    )
                 }
-                .buttonStyle(.plain)
             }
+            CompositionSketch(item: work.item, aspect: aspect(work.item.item), take: shown)
+                .padding(.top, 4)
+            if !shown.text.isEmpty { prose(shown.text, size: 15) }
         }
     }
 
+    /// How the work fares on the frame, then the buttons to show or queue it.
     private func onFrame(_ work: DailyWork) -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            if work.item.inLibrary {
-                ArtImage(ref: .framePreview(work.item.id), placeholder: work.item.item.placeholderColor, maxPixel: 400, contentMode: .fit)
-                    .frame(width: 96)
-                    .whiteFrame(3)
+        VStack(alignment: .leading, spacing: 14) {
+            if work.item.inLibrary || !work.onFrame.isEmpty {
+                HStack(alignment: .top, spacing: 12) {
+                    if work.item.inLibrary {
+                        ArtImage(ref: .framePreview(work.item.id), placeholder: work.item.item.placeholderColor, maxPixel: 400, contentMode: .fit)
+                            .frame(width: 96)
+                            .whiteFrame(3)
+                    }
+                    if !work.onFrame.isEmpty { prose(work.onFrame, size: 15) }
+                }
             }
-            prose(work.onFrame, size: 15)
+            HStack(spacing: 12) {
+                showButton(work)
+                queueButton(work)
+            }
+            .labelStyle(ActionLabelStyle())
         }
     }
 
@@ -498,7 +488,7 @@ struct DailyView: View {
             let from = work.sources.isEmpty ? "" : " na podstawie: \(work.sources.joined(separator: ", "))"
             text = "Tekst napisał Claude\(from). Może zawierać błędy."
         } else {
-            text = "Opis muzeum. Kontekst i analizę kompozycji pisze Claude, gdy w Konfiguracji jest klucz i włączone „Dzieło dnia”."
+            text = "Opis muzeum. Tekst, notkę o autorze i analizę kompozycji pisze Claude, gdy w Konfiguracji jest klucz i włączone „Dzieło dnia”."
         }
         return VStack(alignment: .leading, spacing: 10) {
             Divider()
@@ -507,87 +497,5 @@ struct DailyView: View {
                 .foregroundStyle(Theme.inkSoft)
                 .fixedSize(horizontal: false, vertical: true)
         }
-    }
-}
-
-/// The picture with the composition drawn over it: the lines the model saw,
-/// dashed, and numbered points where each remark is about.
-struct CompositionPicture: View {
-    let item: RemoteItem
-    let aspect: CGFloat
-    let composition: DailyWork.Composition
-    let showLines: Bool
-    @Binding var selected: Int?
-
-    var body: some View {
-        Color.clear
-            .aspectRatio(aspect, contentMode: .fit)
-            .overlay {
-                ArtImage(
-                    ref: item.inLibrary ? .image(item.id) : item.thumb,
-                    fallback: .thumb(item.id),
-                    placeholder: item.item.placeholderColor,
-                    maxPixel: 1600
-                )
-            }
-            .overlay {
-                if showLines {
-                    GeometryReader { geo in
-                        ForEach(Array(composition.lines.enumerated()), id: \.offset) { _, line in
-                            Self.path(line.points, in: geo.size)
-                                .stroke(Color.black.opacity(0.35), style: StrokeStyle(lineWidth: 4, lineCap: .round))
-                            Self.path(line.points, in: geo.size)
-                                .stroke(Theme.vermilion, style: StrokeStyle(lineWidth: 2.5, lineCap: .round, dash: [8, 6]))
-                        }
-                        ForEach(Array(composition.points.enumerated()), id: \.offset) { index, point in
-                            Button {
-                                withAnimation(.easeInOut(duration: 0.2)) { selected = selected == index ? nil : index }
-                            } label: {
-                                NumberBadge(number: index + 1, highlighted: selected == index)
-                                    .shadow(color: .black.opacity(0.4), radius: 2)
-                                    .padding(8)  // a bigger target than the badge
-                                    .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                            .position(x: point.x * geo.size.width, y: point.y * geo.size.height)
-                        }
-                    }
-                    .transition(.opacity)
-                }
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
-    }
-
-    /// A smooth line through the points (fractions of the picture).
-    static func path(_ spots: [DailyWork.Spot], in size: CGSize) -> Path {
-        let points = spots.map { CGPoint(x: $0.x * size.width, y: $0.y * size.height) }
-        var path = Path()
-        guard let first = points.first, let last = points.last, points.count > 1 else { return path }
-        path.move(to: first)
-        if points.count > 2 {
-            for index in 1 ..< points.count - 1 {
-                let next = points[index + 1]
-                let middle = CGPoint(x: (points[index].x + next.x) / 2, y: (points[index].y + next.y) / 2)
-                path.addQuadCurve(to: middle, control: points[index])
-            }
-        }
-        path.addLine(to: last)
-        return path
-    }
-}
-
-/// A numbered point of the composition, on the picture and by its remark.
-struct NumberBadge: View {
-    let number: Int
-    var highlighted = false
-
-    var body: some View {
-        Text("\(number)")
-            .font(.system(size: 12, weight: .bold))
-            .foregroundStyle(Color(hex: 0x1A0F0B))
-            .frame(width: 22, height: 22)
-            .background(Theme.vermilion, in: Circle())
-            .overlay(Circle().strokeBorder(.white.opacity(highlighted ? 0.95 : 0), lineWidth: 2))
-            .scaleEffect(highlighted ? 1.2 : 1)
     }
 }
