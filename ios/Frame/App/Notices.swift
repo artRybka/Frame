@@ -16,11 +16,10 @@ struct Notice: Identifiable, Equatable {
     var kind: Kind
     var title: String
     var detail: String?
-    /// 0…1 when the share done is known; otherwise a band moves and the time runs.
+    /// 0…1 when the share done is known (a bar); otherwise only the spinner.
     var fraction: Double?
     /// "12 z 40" next to the title.
     var count: String?
-    let started = Date.now
     /// Work that goes on after its screen closed (an album, a museum fetch):
     /// kept above the rest.
     var background = false
@@ -77,7 +76,8 @@ final class Notices {
             items[index].title = title
             items[index].detail = detail
             items[index].count = nil
-            items[index].fraction = kind == .done ? 1 : nil
+            // A bar that was there fills up; none appears when there was none.
+            items[index].fraction = kind == .done && items[index].fraction != nil ? 1 : nil
             clear(sameSlotAs: kind, except: id)
         }
         if let notice = items.first(where: { $0.id == id }) { settle(notice) }
