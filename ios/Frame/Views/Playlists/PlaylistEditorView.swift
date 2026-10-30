@@ -628,7 +628,7 @@ struct PlaylistEditorView: View {
         if rules.favoritesOnly { return "Bierze dzieła z Ulubionych, z muzeów nie pobiera." }
         if rules.asksMine { return "Ulubione i playlisty to Twoje dzieła, z muzeów nie pobiera." }
         if !rules.kinds.isEmpty, !rules.kinds.contains(.artwork) { return "Z muzeów przychodzą tylko dzieła sztuki." }
-        let museums: Set<String> = ["aic", "cma", "met", "rijks", "wmc", "europeana", "openverse", "wikiart"]
+        let museums: Set<String> = ["aic", "cma", "met", "rijks", "wmc", "europeana", "openverse", "smk", "wikiart"]
         if !rules.sources.isEmpty, museums.isDisjoint(with: rules.sources) {
             return "Reguły nie dopuszczają żadnego muzeum."
         }

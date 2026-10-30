@@ -102,6 +102,8 @@ class Item(BaseModel):
     #: vocabulary's subjects (``"subject:sea"``) it found.
     keywords: list[str] = Field(default_factory=list)
     terms: list[str] = Field(default_factory=list)
+    #: One of the works its museum counts among its most important.
+    highlight: bool = False
     suitability: float | None = None
     # colors.tint_spread: ~0 when the picture has no colour of its own.
     tint_spread: float | None = None

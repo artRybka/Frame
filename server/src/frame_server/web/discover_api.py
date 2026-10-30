@@ -5,12 +5,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import random
 import threading
 import time
 from collections import Counter, OrderedDict
 from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 from typing import Annotated
 
 import httpx
@@ -19,11 +20,28 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 
-from ..library import Item, Job, Playlist, PlaylistKind, PlaylistRules, PlaylistSummary
+from ..library import (
+    Item,
+    ItemKind,
+    Job,
+    Playlist,
+    PlaylistKind,
+    PlaylistRules,
+    PlaylistSummary,
+)
 from ..library.duplicates import Shown
 from ..library.importer import ALL, span
 from ..library.museums import Discovery, Kind
-from ..library.themes import GROUPS, THEMES, Theme, browse_theme, theme, theme_of_the_day
+from ..library.themes import (
+    GROUPS,
+    THEMES,
+    Theme,
+    browse_theme,
+    day_reason,
+    theme,
+    theme_of_the_day,
+    weekly_themes,
+)
 from ..library.vocabulary import (
     TECHNIQUE_KINDS,
     TERMS,
@@ -35,7 +53,7 @@ from ..library.vocabulary import (
     set_aside,
     suggest,
 )
-from ..player import POOL_SIZE
+from ..player import POOL_SIZE, SUGGESTION_SUITABILITY
 from ..service import FrameService
 from .deps import require_token, service
 from .library_api import RemoteItem, RemotePage, remote_items
@@ -59,13 +77,21 @@ DAY_ROW_MIN = 8
 DAY_ROW_WAIT = 3.0
 #: Museums that did not answer are asked again after this many seconds.
 DAY_ROW_RETRY = 600.0
+#: Works added to the catalogue within this many days are new.
+NEW_DAYS = 7
+#: The owner's works not shown for this many days come back in a row.
+BACK_DAYS = 180
+#: Rows of works shown only with at least this many.
+ROW_MIN = 4
+#: A theme's cover: four works drawn each day from its best ones.
+COVER_POOL = 40
 
 #: The theme of the day's works, worked out once a day.
 _theme_rows: dict[date, list[Item]] = {}
 #: When the museums were last asked for the theme of the day, and that fetch.
 _day_fetch: tuple[float, threading.Thread | None] = (0.0, None)
-#: (when, covers and counts by theme key)
-_cards: tuple[float, dict[str, tuple[int, list[Item]]]] = (0.0, {})
+#: (when, the count, new works and cover by theme key)
+_cards: tuple[float, dict[str, tuple[int, int, list[Item]]]] = (0.0, {})
 #: One worker on the cards at a time.
 _cards_lock = threading.Lock()
 
@@ -77,6 +103,8 @@ class ThemeCard(BaseModel):
     group: str = ""
     #: Works in the catalogue that fit, and four of them for the cover.
     count: int = 0
+    #: Of those, the ones added in the last ``NEW_DAYS`` days.
+    new_count: int = 0
     cover: list[RemoteItem] = []
     #: The owner's playlist made from this theme, if any.
     playlist_id: int | None = None
@@ -84,7 +112,7 @@ class ThemeCard(BaseModel):
 
 
 class SuggestionRow(BaseModel):
-    key: str  # "for-you", "like:<theme>", "theme"
+    key: str  # "for-you", "new", "like:<theme>", "theme", "back"
     title: str
     subtitle: str = ""
     theme: str | None = None  # the theme to browse further
@@ -158,8 +186,12 @@ def _light(items: list[RemoteItem]) -> list[RemoteItem]:
     ]
 
 
-def _cover(items: list[Item]) -> list[Item]:
-    """Four works by different artists where there are such."""
+def _cover(items: list[Item], seed: str = "") -> list[Item]:
+    """Four works by different artists where there are such, drawn from the
+    best ``COVER_POOL`` by ``seed`` (a day's covers differ from the next's)."""
+    items = items[:COVER_POOL]
+    if seed:
+        random.Random(seed).shuffle(items)
     picked: list[Item] = []
     for item in items:
         if all(item.artist != p.artist for p in picked):
@@ -169,23 +201,31 @@ def _cover(items: list[Item]) -> list[Item]:
     return (picked + [i for i in items if i not in picked])[:4]
 
 
-def work_out_cards(svc: FrameService) -> dict[str, tuple[int, list[Item]]]:
-    """Every theme's count and cover: a query of the whole catalogue each,
-    seconds on a NAS, so done in the background but for the first time."""
+def _since(days: int) -> str:
+    return (datetime.now(UTC) - timedelta(days=days)).isoformat(timespec="seconds")
+
+
+def work_out_cards(svc: FrameService) -> dict[str, tuple[int, int, list[Item]]]:
+    """Every theme's count, new works and cover: a query of the whole
+    catalogue each, seconds on a NAS, so done in the background but for the
+    first time (as are the week's themes, once a week)."""
     global _cards
     with _cards_lock:
         stamp, cards = _cards
         if cards and time.monotonic() - stamp < CARDS_TTL:
             return cards  # just worked out by another request
         cards = {}
-        for found in THEMES:
-            total, items = svc.library.query(found.rules(), sort="suitability", limit=40)
-            cards[found.key] = (total, _cover(items))
+        today = date.today().isoformat()
+        new = _since(NEW_DAYS)
+        for found in [*weekly_themes(svc.library, date.today()), *THEMES]:
+            total, items = svc.library.query(found.rules(), sort="suitability")
+            fresh = sum(i.added_at >= new for i in items)
+            cards[found.key] = (total, fresh, _cover(items, f"{today}:{found.key}"))
         _cards = (time.monotonic(), cards)
         return cards
 
 
-def _theme_cards(svc: FrameService) -> dict[str, tuple[int, list[Item]]]:
+def _theme_cards(svc: FrameService) -> dict[str, tuple[int, int, list[Item]]]:
     """The cards as last worked out; older ones are worked out again in the
     background while this request gets them as they are."""
     stamp, cards = _cards
@@ -199,10 +239,10 @@ def _theme_cards(svc: FrameService) -> dict[str, tuple[int, list[Item]]]:
 def _card(
     svc: FrameService,
     found: Theme,
-    cards: dict[str, tuple[int, list[Item]]],
+    cards: dict[str, tuple[int, int, list[Item]]],
     playlists: list[Playlist],
 ) -> ThemeCard:
-    count, cover = cards.get(found.key, (0, []))
+    count, new, cover = cards.get(found.key, (0, 0, []))
     playlist = _theme_playlist(svc, found, playlists)
     return ThemeCard(
         key=found.key,
@@ -210,6 +250,7 @@ def _card(
         description=found.description,
         group=found.group,
         count=count,
+        new_count=new,
         cover=_light(remote_items(svc, cover)),
         playlist_id=playlist.id if playlist else None,
         rules=found.rules(),
@@ -280,6 +321,44 @@ def _day_row(svc: FrameService, found: Theme, day: date) -> list[Item]:
     return _theme_rows.get(day) or picked
 
 
+def _new_row(svc: FrameService, day: date) -> SuggestionRow | None:
+    """The best of the works the catalogue took in lately, not shown yet."""
+    rules = PlaylistRules(kinds=[ItemKind.ARTWORK], min_suitability=SUGGESTION_SUITABILITY)
+    since = _since(NEW_DAYS)
+    new = [i for i in svc.library.query(rules, sort="suitability")[1] if i.added_at >= since]
+    picked = [i for i in svc.player.fresh(new) if i.pooled][: 2 * ROW_SIZE]
+    if len(picked) < ROW_MIN:
+        return None
+    random.Random(day.toordinal()).shuffle(picked)
+    return SuggestionRow(
+        key="new",
+        title="Nowe w katalogu",
+        subtitle=f"Dodane w ostatnim tygodniu: {len(new)}",
+        items=remote_items(svc, picked[:ROW_SIZE]),
+    )
+
+
+def _back_row(svc: FrameService, day: date) -> SuggestionRow | None:
+    """The owner's works (kept or liked) the frame has not shown for half
+    a year or more."""
+    since = _since(BACK_DAYS)
+    rules = PlaylistRules(kinds=[ItemKind.ARTWORK])
+    back = [
+        i
+        for i in svc.library.query(rules)[1]
+        if (i.favorite or not i.pooled) and (i.last_shown_at or i.added_at or since) < since
+    ]
+    if len(back) < ROW_MIN:
+        return None
+    random.Random(day.toordinal()).shuffle(back)
+    return SuggestionRow(
+        key="back",
+        title="Dawno ich nie było",
+        subtitle="Twoje dzieła, których ramka nie pokazała od pół roku",
+        items=remote_items(svc, back[:ROW_SIZE]),
+    )
+
+
 def _suggestion_rows(svc: FrameService) -> list[SuggestionRow]:
     player = svc.player
     rows = []
@@ -294,19 +373,24 @@ def _suggestion_rows(svc: FrameService) -> list[SuggestionRow]:
             )
         )
     today = date.today()
+    if new := _new_row(svc, today):
+        rows.append(new)
     rows += _taste_rows(svc, today)
-    found = theme_of_the_day(today)
+    found = theme_of_the_day(today, svc.library)
     day = _day_row(svc, found, today)
     if day:
+        reason = day_reason(today)
         rows.append(
             SuggestionRow(
                 key="theme",
                 title=f"Motyw dnia: {found.name}",
-                subtitle=found.description,
+                subtitle=f"{reason}. {found.description}" if reason else found.description,
                 theme=found.key,
                 items=remote_items(svc, day),
             )
         )
+    if back := _back_row(svc, today):
+        rows.append(back)
     return [row.model_copy(update={"items": _light(row.items)}) for row in rows]
 
 
@@ -332,7 +416,9 @@ async def play_suggestions(svc: Svc) -> dict[str, bool]:
 def _theme_list(svc: FrameService) -> list[ThemeCard]:
     cards = _theme_cards(svc)
     playlists = svc.library.playlists()
-    ordered = sorted(THEMES, key=lambda t: GROUPS.index(t.group))
+    # The week's themes once the cards have them (worked out with them).
+    weekly = [t for t in weekly_themes(svc.library, date.today()) if t.key in cards]
+    ordered = sorted([*weekly, *THEMES], key=lambda t: GROUPS.index(t.group))
     return [_card(svc, t, cards, playlists) for t in ordered]
 
 
@@ -350,9 +436,9 @@ def warm_up(svc: FrameService) -> None:
     _suggestion_rows(svc)
 
 
-def _theme(key: str) -> Theme:
+def _theme(key: str, svc: FrameService) -> Theme:
     try:
-        return theme(key)
+        return theme(key, svc.library)
     except KeyError as err:
         raise HTTPException(404, str(err)) from err
 
@@ -360,7 +446,7 @@ def _theme(key: str) -> Theme:
 @router.get("/themes/{key}", response_model=ThemePage)
 async def theme_page(key: str, svc: Svc, page: Annotated[int, Query(ge=1)] = 1) -> ThemePage:
     """A theme, page by page, from the museums (or the catalogue)."""
-    found = _theme(key)
+    found = await run_in_threadpool(_theme, key, svc)
     try:
         items, following = await run_in_threadpool(
             browse_theme, svc.importer, found, page, ROW_SIZE
@@ -377,7 +463,7 @@ async def theme_playlist(key: str, request: ThemePlaylistRequest, svc: Svc) -> T
     """A smart playlist with the theme's rules (the one made before, if
     any); museums fill it in the background, and ``play`` puts it on the
     frame."""
-    found = _theme(key)
+    found = await run_in_threadpool(_theme, key, svc)
     playlist = _theme_playlist(svc, found)
     job_id = None
     if playlist is None:

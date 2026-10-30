@@ -206,7 +206,7 @@ def test_discover_endpoints(museums) -> None:
     with TestClient(app) as client:
         themes = client.get("/api/themes").json()
         assert themes and {"key", "name", "description"} <= themes[0].keys()
-        page = client.get(f"/api/themes/{themes[0]['key']}", params={"page": 1}).json()
+        page = client.get("/api/themes/impressionism", params={"page": 1}).json()
         assert page["items"] and page["more"]
         assert client.get("/api/themes/nope").status_code == 404
 

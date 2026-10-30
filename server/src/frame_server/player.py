@@ -82,6 +82,17 @@ TASTE_ARTISTS = 6
 CATALOGUE_BATCH = 300
 CATALOGUE_EVERY = timedelta(hours=1)
 CATALOGUE_KINDS: tuple[Kind, ...] = ("painting", "print", "drawing", "poster")
+#: Kinds of the museums' most important works it takes in too.
+CATALOGUE_HIGHLIGHTS: tuple[Kind, ...] = ("painting", "print")
+#: A full catalogue still takes in this many works at a time, at most every
+#: ``CATALOGUE_TURNOVER_EVERY``, and lets as many go: new works keep coming.
+CATALOGUE_TURNOVER = 60
+CATALOGUE_TURNOVER_EVERY = timedelta(hours=6)
+#: When a full catalogue last took works in.
+TURNOVER_KEY = "catalogue_turnover"
+#: Trimming: each month in the catalogue counts as this much less
+#: suitability, so works nobody kept make room for new ones in time.
+CATALOGUE_AGEING = 0.05
 #: Works hardly visible on e-paper are not worth a place in the catalogue.
 CATALOGUE_SUITABILITY = 0.25
 # How long a due change may keep the panel from its night sleep.
@@ -888,7 +899,7 @@ class Player:
             if len(picked) >= want:
                 return None
             artists = self.taste()
-            theme = theme_of_the_day(utcnow().date())
+            theme = theme_of_the_day(utcnow().date(), self.library)
             queries = theme.searches()
             queries = random.sample(queries, min(4, len(queries)))
 
@@ -978,7 +989,16 @@ class Player:
             and not i.framing
             and i.id not in protected
         ]
-        spare.sort(key=lambda i: (i.suitability or 0.0, i.added_at))
+        now = utcnow()
+
+        def worth(item: Item) -> float:
+            try:
+                months = (now - datetime.fromisoformat(item.added_at)).days / 30
+            except (ValueError, TypeError):
+                months = 0.0
+            return (item.suitability or 0.0) - CATALOGUE_AGEING * max(months, 0.0)
+
+        spare.sort(key=lambda i: (worth(i), i.added_at))
         gone: list[Item] = []
         for item in spare:
             if total <= limit:
@@ -1000,21 +1020,29 @@ class Player:
             job.description == "catalogue" and not job.finished for job in importer.jobs.values()
         ):
             return None
-        if self.service.images.thumbs_size() >= limit:
+        full = self.service.images.thumbs_size() >= limit
+        if full:
             self.trim_catalogue()
-            return None
+            turned = self.library.get_state(TURNOVER_KEY, "")
+            if turned and utcnow() - datetime.fromisoformat(turned) < CATALOGUE_TURNOVER_EVERY:
+                return None
+            self.library.set_state(TURNOVER_KEY, utcnow().isoformat())
         queries = [search for theme in SEARCHABLE for search in theme.searches()]
         queries = random.sample(queries, min(8, len(queries)))
-        return importer.start_job(
-            "catalogue",
-            lambda job: importer.collect(
-                CATALOGUE_BATCH,
+
+        def grow(job: Job) -> None:
+            importer.collect(
+                CATALOGUE_TURNOVER if full else CATALOGUE_BATCH,
                 job,
                 queries=queries,
                 kinds=CATALOGUE_KINDS,
+                highlights=CATALOGUE_HIGHLIGHTS,
                 min_suitability=CATALOGUE_SUITABILITY,
-            ),
-        )
+            )
+            if full:
+                self.trim_catalogue()
+
+        return importer.start_job("catalogue", grow)
 
     def rescore(self) -> int:
         """Once per ``SCORE_VERSION``: analyse the library's pictures again

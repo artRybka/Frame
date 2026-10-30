@@ -30,6 +30,7 @@ RANKS = {
     "cma": 0,
     "met": 0,
     "rijks": 0,
+    "smk": 0,
     "europeana": 1,
     "wmc": 2,
     "openverse": 3,

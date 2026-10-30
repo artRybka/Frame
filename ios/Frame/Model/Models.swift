@@ -1263,6 +1263,8 @@ struct ArtTheme: Codable, Hashable, Sendable, Identifiable {
     var group: String?
     /// Works in the catalogue that fit, and four of them for the cover.
     var count: Int?
+    /// Of those, the ones the catalogue took in during the last week.
+    var newCount: Int?
     var cover: [RemoteItem]?
     /// The playlist already made from it.
     var playlistId: Int?
@@ -1340,6 +1342,7 @@ struct SearchToken: Hashable, Sendable, Identifiable {
         case "subject", "legacy-subject": "Temat"
         case "period": "Epoka"
         case "technique": "Technika"
+        case "tag": "Wyróżnienie"
         case "mine": "Moje"
         case "museum": "Muzeum"
         case "color": "Kolor"
@@ -1354,6 +1357,7 @@ struct SearchToken: Hashable, Sendable, Identifiable {
         case "subject", "legacy-subject": "tag"
         case "period": "calendar"
         case "technique": "scribble.variable"
+        case "tag": "star"
         case "mine": MineTerm.named(key)?.icon ?? "person.crop.circle"
         case "museum": "building.columns"
         case "color": "circle.fill"
@@ -1383,7 +1387,7 @@ extension PlaylistRules {
     /// Puts chips back into the rules.
     mutating func setTokens(_ tokens: [SearchToken]) {
         artists = tokens.filter { $0.kind == "artist" }.map(\.key)
-        terms = tokens.filter { ["style", "subject", "period", "technique", "mine"].contains($0.kind) }.map(\.key)
+        terms = tokens.filter { ["style", "subject", "period", "technique", "tag", "mine"].contains($0.kind) }.map(\.key)
         styles = tokens.filter { $0.kind == "legacy-style" }.map(\.key)
         subjects = tokens.filter { $0.kind == "legacy-subject" }.map(\.key)
         query = tokens.filter { $0.kind == "word" }.map(\.key).joined(separator: " ")

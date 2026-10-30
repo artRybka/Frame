@@ -177,6 +177,12 @@ struct ThemeCard: View {
                         .disabled(making)
                     }
                     Spacer()
+                    if let new = theme.newCount, new > 0 {
+                        // The catalogue took in works for it this week.
+                        Text("+\(new)")
+                            .font(.caption2.weight(.semibold).monospacedDigit())
+                            .foregroundStyle(Theme.accent)
+                    }
                     if let count = theme.count, count > 0 {
                         Text("\(count)")
                             .font(.caption2.monospacedDigit())
