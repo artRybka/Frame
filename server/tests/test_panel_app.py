@@ -955,3 +955,25 @@ async def test_an_app_that_never_starts_is_installed_again(
         assert built == ["2.0.1"] and panel.received == START * 3
     finally:
         await panel.stop()
+
+
+def test_a_panel_that_answers_while_its_app_is_silent_says_so(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    app = service.app
+    stay = AppHello(reason="wake", build="1.0.0", battery=90, charging=True)
+    asked = datetime.now(UTC) - timedelta(minutes=51)
+    app.answer(stay, now=asked)
+    status = service.status.status
+    assert status.power_state == "online"
+    # Asked just now: nothing to say.
+    assert app.silent_since(asked + timedelta(minutes=2)) is None
+    # The panel answers MDC (power_state stays online), the app never asks again.
+    now = datetime.now(UTC)
+    assert app.silent_since(now) == asked
+    service.power.publish_status()
+    assert status.app_silent_since == asked.isoformat(timespec="seconds")
+    # Asleep as far as the server can tell: not "silent".
+    service.status.note_sleep(deep=False)
+    assert app.silent_since(now) is None
+    service.power.publish_status()
+    assert status.app_silent_since is None
