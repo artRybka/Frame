@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.38.2
+
+- Podgląd układu Multi w Ustawieniach → Prezentacja pokazuje pełną planszę
+  także wtedy, gdy ramka gra playlistę dzieł sztuki. Brakujące zdjęcia
+  podgląd bierze z biblioteki i z „Historii przesłanych”, za każdym razem
+  te same dla danego zdjęcia. Zmiana tylko w serwerze.
+
 ## 0.38.1
 
 - Zakładka Ramka: kafelki same są przyciskami, bez rzędu przycisków pod
