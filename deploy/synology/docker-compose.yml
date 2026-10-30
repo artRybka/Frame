@@ -20,6 +20,8 @@ services:
   # "Build" is needed only after editing this file or frame.env. It talks to
   # Docker through the socket and has no network at all (the Docker daemon
   # pulls the image); the server only leaves it a request in data/update.
+  # It mounts the whole data folder: Synology's Docker does not create a
+  # missing bind-mount folder (data/update), so the helper creates it.
   updater:
     image: ghcr.io/artrybka/frame:latest
     pull_policy: always
@@ -29,4 +31,4 @@ services:
     network_mode: none
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ./data/update:/data/update
+      - ./data:/data
