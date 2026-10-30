@@ -17,6 +17,9 @@ struct FrameTabView: View {
     @State private var confirmingOff = false
     @State private var confirmingUpdate = false
     @State private var checkingUpdate = false
+    /// The Sieć tile was tapped: it says "Sprawdzam…" until the look is done
+    /// (opening the tab only turns its badge).
+    @State private var checking = false
 
     private var device: DeviceStatus? { model.status?.device }
 
@@ -28,7 +31,6 @@ struct FrameTabView: View {
                         deviceHero
                         statusGrid
                         appNotice
-                        deviceActions
                         if draft != nil {
                             ScheduleSection(settings: binding).id("schedule")
                             PresentationSection(settings: binding).id("presentation")
@@ -155,17 +157,22 @@ struct FrameTabView: View {
         )
     }
 
-    /// `checking`: the "Sprawdź stan" button, which also wakes a frame
-    /// asleep in the network; pulling to refresh only looks.
+    /// `checking`: a tap on the Sieć tile, which also wakes a frame asleep
+    /// in the network; pulling to refresh only looks.
     private func refresh(checking: Bool = false) async {
         refreshing = true
+        self.checking = checking
         lastLook = .now
-        defer { refreshing = false }
+        defer {
+            refreshing = false
+            self.checking = false
+        }
         if checking {
             await model.checkStatus()
         } else {
             await model.refreshStatus(live: true)
         }
+        self.checking = false  // the tile shows what it found; the rest loads behind
         await model.refreshAll()
         await model.loadServerUpdate()
     }
@@ -223,6 +230,8 @@ struct FrameTabView: View {
         .padding(.top, 8)
     }
 
+    /// The one sentence on what the frame does and how it wakes; the tiles
+    /// under it only name the state (Sieć) and the power source (Zasilanie).
     private var connectionText: String {
         guard let device else { return "Brak danych" }
         if !device.configured { return "Podaj adres i PIN ekranu pod trybikiem u góry" }
@@ -230,10 +239,11 @@ struct FrameTabView: View {
         switch device.powerState {
         case "online": return "Połączona · \(When.ago(device.lastSeen) ?? "teraz")"
         case "standby":
-            return device.onNetwork == true ? "Śpi w sieci, czeka na sygnał budzenia" : "Śpi, czeka na sygnał budzenia"
+            return device.onNetwork == true ? "Śpi w sieci · wysyłka ją obudzi" : "Śpi · czeka na sygnał budzenia"
         case "deep_sleep":
-            if device.switchedOff == true { return "Wyłączona, włączysz ją przyciskiem" }
-            return device.wifiLost == true ? "Śpi głęboko, obudzi ją przycisk" : "Głęboki sen, bez Wi-Fi"
+            if device.switchedOff == true { return "Wyłączona · włączysz ją przyciskiem na ramce" }
+            if let alarm = When.at(device.wakeAt) { return "Śpi bez Wi-Fi · budzik \(alarm), wcześniej przycisk" }
+            return "Śpi bez Wi-Fi · obudzi ją przycisk na ramce"
         case "offline":
             return device.onNetwork == false ? "Nie ma jej w sieci Wi-Fi" : "Nie odpowiada — śpi lub poza siecią"
         default: break  // a server before 0.12
@@ -286,7 +296,7 @@ struct FrameTabView: View {
                 NoticeRow(
                     icon: "exclamationmark.triangle",
                     color: Theme.warn,
-                    text: "Ekran odpowiada, ale aplikacja Frame nie pytała o obraz \(silent), więc nowy obraz nie dotrze. Serwer próbuje ją uruchomić; możesz też wybrać Zasilanie → Uruchom aplikację ponownie."
+                    text: "Dopóki aplikacja Frame na ramce milczy, nowy obraz nie dotrze. Serwer próbuje ją uruchomić; możesz też stuknąć kafelek Zasilanie → Uruchom aplikację ponownie."
                 )
             } else if device.panelApp == false {
                 NoticeRow(
@@ -303,7 +313,36 @@ struct FrameTabView: View {
             StatusTile(title: "Bateria") {
                 BatteryRing(level: device?.batteryLevel, charging: device?.charging == true, note: batteryNote)
             }
-            StatusTile(title: "Zasilanie") {
+            powerTile
+            serverTile
+            networkTile
+        }
+    }
+
+    /// The Zasilanie tile: the power source; a tap opens the power menu.
+    private var powerTile: some View {
+        Menu {
+            Button("Obudź ramkę", systemImage: "sun.max") { Task { await model.wake() } }
+            Button("Uśpij ramkę", systemImage: "moon.zzz") { Task { await model.sleepFrame() } }
+            Menu {
+                ForEach(Self.restChoices, id: \.hours) { choice in
+                    Button(choice.label) { Task { await model.restFrame(hours: choice.hours) } }
+                }
+            } label: {
+                Label("Głęboki sen", systemImage: "moon.stars")
+            }
+            Button("Uruchom aplikację ponownie", systemImage: "arrow.triangle.2.circlepath") {
+                Task { await model.installPanelApp() }
+            }
+            Button("Uruchom ramkę ponownie", systemImage: "arrow.clockwise.circle") {
+                Task { await model.restartFrame() }
+            }
+            // The app reboots the panel: a silent one would not.
+            .disabled(appSilence != nil)
+            Divider()
+            Button("Wyłącz ramkę", systemImage: "power", role: .destructive) { confirmingOff = true }
+        } label: {
+            StatusTile(title: "Zasilanie", badge: TileBadge(systemImage: "power")) {
                 VStack(alignment: .leading, spacing: 6) {
                     Image(systemName: powerIcon)
                         .font(.title2)
@@ -315,11 +354,34 @@ struct FrameTabView: View {
                         .foregroundStyle(Theme.inkSoft)
                 }
             }
-            serverTile
-            StatusTile(title: "Sieć") {
-                let state = network
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .accessibilityHint("Otwiera menu zasilania ramki")
+        .alert("Wyłączyć ramkę?", isPresented: $confirmingOff) {
+            Button("Wyłącz", role: .destructive) { Task { await model.restFrame(hours: nil) } }
+            Button("Anuluj", role: .cancel) {}
+        } message: {
+            Text("Ramka zaśnie bez Wi-Fi i bez budzika: obraz zostanie, ale nie zmieni się, a z aplikacji nie da się jej obudzić. Włączysz ją dopiero przyciskiem z tyłu ramki.")
+        }
+    }
+
+    /// The Sieć tile: the state and the network; a tap checks the frame,
+    /// waking it when it sleeps in the network.
+    private var networkTile: some View {
+        let state = network
+        let busy = checking || model.wakingForStatus
+        return Button {
+            // Not disabled while the tab looks by itself: that would dim it.
+            guard !refreshing else { return }
+            Task { await refresh(checking: true) }
+        } label: {
+            StatusTile(title: "Sieć", badge: TileBadge(systemImage: "arrow.clockwise", working: refreshing)) {
                 VStack(alignment: .leading, spacing: 6) {
-                    if let arcs = state.arcs {
+                    if busy {
+                        ProgressView()
+                            .frame(height: 24)
+                    } else if let arcs = state.arcs {
                         WifiStrengthIcon(arcs: arcs, color: state.color)
                             .accessibilityLabel(device?.wifi?.strength ?? "Wi-Fi")
                     } else {
@@ -327,16 +389,20 @@ struct FrameTabView: View {
                             .font(.title2)
                             .foregroundStyle(state.color)
                     }
-                    Text(state.title)
+                    Text(busy ? checkLabel : state.title)
                         .font(.headline)
                         .foregroundStyle(Theme.ink)
-                    Text(state.note)
-                        .font(.caption)
-                        .foregroundStyle(Theme.inkSoft)
-                        .lineLimit(2)
+                    if !state.note.isEmpty {
+                        Text(state.note)
+                            .font(.caption)
+                            .foregroundStyle(Theme.inkSoft)
+                            .lineLimit(2)
+                    }
                 }
             }
         }
+        .buttonStyle(.plain)
+        .accessibilityHint("Sprawdza stan ramki i budzi ją, gdy śpi w sieci")
     }
 
     /// The Sieć tile: what the frame is doing, as far as the server can tell
@@ -356,35 +422,27 @@ struct FrameTabView: View {
         return (icon, arcs <= 1 ? Theme.warn : color, title, wifi.ssid ?? note, arcs)
     }
 
+    /// The Sieć tile's state; the note is only the network's name, the
+    /// header says what the state means.
     private var networkState: (icon: String, color: Color, title: String, note: String) {
         guard let device, device.configured else {
             return ("wifi", Theme.inkSoft, "—", "ekran nie jest ustawiony")
         }
+        let ssid = device.wifi?.ssid ?? ""
         switch device.powerState {
         case "online":
-            return ("wifi", Theme.good, "Online", "odpowiada · \(When.ago(device.lastSeen) ?? "teraz")")
+            return ("wifi", Theme.good, "Online", ssid)
         case "standby":
-            let note = device.wifi?.ssid.map { "\($0) · wysyłka ją budzi" } ?? "w sieci, wysyłka ją budzi"
-            return ("moon.zzz", Theme.accent, "Czuwanie", note)
+            return ("moon.zzz", Theme.accent, "Czuwanie", ssid)
         case "deep_sleep":
-            if device.switchedOff == true {
-                return ("power", Theme.inkSoft, "Wyłączona", "włączysz ją przyciskiem na ramce")
-            }
-            let note = When.at(device.wakeAt).map { "budzik \($0), wcześniej przycisk" } ?? "Wi-Fi wyłączone, budzi przycisk"
-            if device.wifiLost == true {
-                // Unplugged, it sleeps at once and no wake signal wakes it,
-                // even when it shows up on the Wi-Fi again.
-                let lost = When.at(device.wakeAt).map { "budzik \($0), wcześniej przycisk" } ?? "obudzi ją przycisk na ramce"
-                return ("moon.zzz", Theme.inkSoft, "Głęboki sen", lost)
-            }
-            return ("wifi.slash", Theme.inkSoft, "Głęboki sen", note)
+            return ("wifi.slash", Theme.inkSoft, "Bez Wi-Fi", ssid)
         case "offline":
             if device.onNetwork == false {
-                return ("wifi.exclamationmark", Theme.bad, "Poza siecią", "nie ma jej w Wi-Fi")
+                return ("wifi.exclamationmark", Theme.bad, "Poza siecią", ssid)
             }
-            return ("wifi.exclamationmark", Theme.bad, "Nie odpowiada", "śpi lub poza siecią")
+            return ("wifi.exclamationmark", Theme.bad, "Brak odpowiedzi", ssid)
         default:
-            return ("wifi", Theme.inkSoft, "Nie sprawdzono", "—")
+            return ("wifi", Theme.inkSoft, "Nie sprawdzono", "")
         }
     }
 
@@ -408,12 +466,12 @@ struct FrameTabView: View {
                 }
             }
         } label: {
-            StatusTile(title: "Serwer") {
+            StatusTile(title: "Serwer", badge: serverBadge) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Image(systemName: state.icon)
+                    // The update's arrow and the spinner are the badge's.
+                    Image(systemName: state.working || state.icon == "arrow.down.circle.fill" ? "server.rack" : state.icon)
                         .font(.title2)
                         .foregroundStyle(state.color)
-                        .symbolEffect(.pulse, options: .repeating, isActive: state.working)
                     Text(state.title)
                         .font(.headline)
                         .monospacedDigit()
@@ -442,6 +500,19 @@ struct FrameTabView: View {
         }
     }
 
+    /// What a tap on the Serwer tile does: update (the blue arrow), look
+    /// for an update, or open the settings where the app cannot update it.
+    private var serverBadge: TileBadge {
+        guard let update = model.serverUpdate, update.updater, !update.addon else {
+            return TileBadge(systemImage: "chevron.right")
+        }
+        if model.updatingServer || checkingUpdate || update.busy {
+            return TileBadge(systemImage: "arrow.clockwise", working: true)
+        }
+        if update.offersUpdate { return TileBadge(systemImage: "arrow.down", prominent: true) }
+        return TileBadge(systemImage: "arrow.clockwise")
+    }
+
     /// The Serwer tile's state; `detail` goes on a line of its own under `note`.
     private var server: (icon: String, color: Color, title: String, note: String, detail: String?, working: Bool) {
         let version = model.serverUpdate?.version ?? model.status?.server.version ?? "—"
@@ -463,20 +534,20 @@ struct FrameTabView: View {
         }
         let checked = When.ago(update.checkedAt).map { "sprawdzono \($0)" }
         if update.offersUpdate {
-            return ("arrow.down.circle.fill", Theme.accent, version, "jest \(latest)", "stuknij, by zaktualizować", false)
+            return ("arrow.down.circle.fill", Theme.accent, version, "jest \(latest)", nil, false)
         }
         if update.state == "failed" {
-            return ("exclamationmark.triangle", Theme.warn, version, "nie udało się", "stuknij, by sprawdzić", false)
+            return ("exclamationmark.triangle", Theme.warn, version, "nie udało się", checked, false)
         }
-        return ("server.rack", Theme.inkSoft, version, "aktualny", checked ?? "stuknij, by sprawdzić", false)
+        return ("server.rack", Theme.inkSoft, version, "aktualny", checked, false)
     }
 
     /// Under the battery level: how long it lasts at the rate measured on
-    /// battery, nothing to say on the charger.
+    /// battery; on the charger whether it charges (Zasilanie says "Zasilacz").
     private var batteryNote: String {
         if device?.charging == true { return "ładuje się" }
         switch device?.powerSource {
-        case "ac": return "na zasilaczu"
+        case "ac": return (device?.batteryLevel ?? 0) >= 95 ? "naładowana" : ""
         case "battery":
             guard let days = device?.batteryDays else { return "mierzę zużycie" }
             if days > 60 { return "ok. \(Int(days / 30)) mies." }
@@ -500,88 +571,36 @@ struct FrameTabView: View {
 
     private var powerText: String {
         switch device?.powerSource {
-        case "ac": device?.charging == true ? "Ładowanie" : "Zasilacz"
+        case "ac": "Zasilacz"
         case "battery": "Na baterii"
         default: "Nieznane"
         }
     }
 
-    /// What the power source and the mode change: on the charger the frame
-    /// never sleeps; on battery it sleeps in the network (Online, a work
-    /// sent wakes it) or without the Wi-Fi until its alarm (Oszczędny).
+    /// On the charger the frame never sleeps; on battery how it sleeps is
+    /// the mode's (the header says what it does now).
     private var powerNote: String {
-        if device?.charging == true { return "bateria się ładuje" }
         switch device?.powerSource {
         case "ac": return "nie śpi, zmiany od razu"
-        case "battery":
-            if device?.wifiLost == true { return "po odpięciu śpi głęboko, budzi przycisk" }
-            if model.settings?.isEconomy == true { return "śpi bez Wi-Fi do pobudki" }
-            return model.settings?.quietStart != nil ? "śpi w sieci, noc bez Wi-Fi" : "śpi w sieci, wysyłka ją budzi"
+        case "battery": return model.settings?.isEconomy == true ? "tryb Oszczędny" : "tryb Online"
         default: return "zmiany według harmonogramu"
         }
     }
 
     private var checkLabel: String {
-        if model.wakingForStatus { return "Budzę ramkę…" }
-        if refreshing { return "Sprawdzam…" }
-        return "Sprawdź stan"
+        model.wakingForStatus ? "Budzę ramkę…" : "Sprawdzam…"
     }
 
     /// "Głęboki sen" lengths: up to three days.
     private static let restChoices: [(hours: Int, label: String)] = [
         (6, "6 godzin"), (12, "12 godzin"), (24, "1 dzień"), (48, "2 dni"), (72, "3 dni"),
     ]
-
-    private var deviceActions: some View {
-        HStack(spacing: 10) {
-            Button {
-                Task { await refresh(checking: true) }
-            } label: {
-                Label(checkLabel, systemImage: model.wakingForStatus ? "sun.max" : "arrow.clockwise")
-            }
-            .buttonStyle(SecondaryButtonStyle())
-            .disabled(refreshing)
-            Menu {
-                Button("Obudź ramkę", systemImage: "sun.max") { Task { await model.wake() } }
-                Button("Uśpij ramkę", systemImage: "moon.zzz") { Task { await model.sleepFrame() } }
-                Menu {
-                    ForEach(Self.restChoices, id: \.hours) { choice in
-                        Button(choice.label) { Task { await model.restFrame(hours: choice.hours) } }
-                    }
-                } label: {
-                    Label("Głęboki sen", systemImage: "moon.stars")
-                }
-                Button("Uruchom aplikację ponownie", systemImage: "arrow.triangle.2.circlepath") {
-                    Task { await model.installPanelApp() }
-                }
-                Button("Uruchom ramkę ponownie", systemImage: "arrow.clockwise.circle") {
-                    Task { await model.restartFrame() }
-                }
-                // The app reboots the panel: a silent one would not.
-                .disabled(appSilence != nil)
-                Divider()
-                Button("Wyłącz ramkę", systemImage: "power", role: .destructive) { confirmingOff = true }
-            } label: {
-                Label("Zasilanie", systemImage: "power")
-                    .font(.headline)
-                    .foregroundStyle(Theme.ink)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 15)
-                    .background(Theme.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Theme.hairline))
-            }
-            .alert("Wyłączyć ramkę?", isPresented: $confirmingOff) {
-                Button("Wyłącz", role: .destructive) { Task { await model.restFrame(hours: nil) } }
-                Button("Anuluj", role: .cancel) {}
-            } message: {
-                Text("Ramka zaśnie bez Wi-Fi i bez budzika: obraz zostanie, ale nie zmieni się, a z aplikacji nie da się jej obudzić. Włączysz ją dopiero przyciskiem z tyłu ramki.")
-            }
-        }
-    }
 }
 
 struct StatusTile<Content: View>: View {
     let title: String
+    /// In the corner of a tile that does something when tapped.
+    var badge: TileBadge?
     @ViewBuilder let content: Content
 
     var body: some View {
@@ -592,8 +611,35 @@ struct StatusTile<Content: View>: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, minHeight: 150, alignment: .topLeading)
+        .overlay(alignment: .topTrailing) {
+            if let badge { badge.padding(10) }
+        }
         .background(Theme.card, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(Theme.hairline.opacity(0.7)))
+        .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+}
+
+/// The round mark in a tile's corner saying what a tap does: ⏻ the power
+/// menu, ↻ a check, a blue arrow an update; a spinner while it works.
+struct TileBadge: View {
+    let systemImage: String
+    var prominent = false
+    var working = false
+
+    var body: some View {
+        ZStack {
+            Circle().fill(prominent ? Theme.accent : Theme.mat)
+            if working {
+                ProgressView().controlSize(.small)
+            } else {
+                Image(systemName: systemImage)
+                    .font(.footnote.weight(.bold))
+                    .foregroundStyle(prominent ? Theme.card : Theme.ink)
+            }
+        }
+        .frame(width: 30, height: 30)
+        .accessibilityHidden(true)
     }
 }
 

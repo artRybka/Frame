@@ -57,7 +57,8 @@ final class AppModel {
     var connection = Connection.unknown
     var toast: String?
     var working = false
-    /// "Sprawdź stan" found the frame asleep and is waking it.
+    /// A tap on the Sieć tile (the check) found the frame asleep and is
+    /// waking it.
     var wakingForStatus = false
     /// The bar under the picture: set while a picture is on its way to the
     /// frame, and for a moment after it arrives.
@@ -283,12 +284,13 @@ final class AppModel {
         }
     }
 
-    /// "Sprawdź stan". A frame the server knows to be asleep in the network
-    /// is woken at once, only to be looked at (it goes back to sleep); when
-    /// the server is not sure (it last saw the frame awake, or never), it
-    /// asks the frame first and wakes it if it does not answer. Deep sleep
-    /// has the Wi-Fi off: only the frame's alarm or its button ends it, so
-    /// no signal is sent then, the app says when it wakes instead.
+    /// A tap on the Ramka tab's Sieć tile. A frame the server knows to be
+    /// asleep in the network is woken at once, only to be looked at (it goes
+    /// back to sleep); when the server is not sure (it last saw the frame
+    /// awake, or never), it asks the frame first and wakes it if it does not
+    /// answer. Deep sleep has the Wi-Fi off: only the frame's alarm or its
+    /// button ends it, so no signal is sent then, the app says when it wakes
+    /// instead.
     func checkStatus() async {
         await refreshStatus(live: false)  // what the server knows, the frame not asked
         let known = status?.device.powerState
