@@ -177,3 +177,31 @@ def wikipedia_intro(http: httpx.Client, lang: str, title: str) -> str:
         return str(resp.json().get("extract") or "")
     except (httpx.HTTPError, ValueError):
         return ""
+
+
+def wikipedia_text(http: httpx.Client, lang: str, title: str, chars: int = 8000) -> str:
+    """A Wikipedia article as plain text, cut to about ``chars``; "" when
+    unavailable. Longer than the opening paragraph: what a work led to is
+    usually further down ("Legacy", "Wpływ")."""
+    if not title:
+        return ""
+    try:
+        resp = http.get(
+            f"https://{lang}.wikipedia.org/w/api.php",
+            params={
+                "action": "query",
+                "prop": "extracts",
+                "explaintext": 1,
+                "redirects": 1,
+                "titles": title,
+                "format": "json",
+            },
+        )
+        resp.raise_for_status()
+        pages = (resp.json().get("query") or {}).get("pages") or {}
+        text = next((str(p.get("extract") or "") for p in pages.values()), "")
+    except (httpx.HTTPError, ValueError):
+        return ""
+    if len(text) <= chars:
+        return text
+    return text[:chars].rsplit("\n", 1)[0]

@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// What Discover opens with: ideas for playlists in groups, then rows of
-/// works the server picked for the frame, works like the ones the owner
-/// likes and the theme of the day.
+/// What Discover opens with: the work of the day, ideas for playlists in
+/// groups, then rows of works the server picked for the frame, works like
+/// the ones the owner likes and the theme of the day.
 ///
 /// The last ones loaded show at once (also after a launch) while fresh ones
 /// load, and only the cards and works on screen fetch their pictures.
@@ -36,6 +36,7 @@ struct SuggestionsView: View {
 
     var body: some View {
         LazyVStack(alignment: .leading, spacing: 28) {
+            if let daily = model.daily { DailyTile(work: daily) }
             if rows.isEmpty && themes.isEmpty && !loading {
                 EmptyStateView(
                     title: "Propozycje są w drodze",
@@ -88,6 +89,9 @@ struct SuggestionsView: View {
             if LaunchRoute.screen == "discover-group", path.isEmpty, let first {  // CI screenshots
                 path.append(ThemeGroupRoute(name: first))
             }
+        }
+        .onChange(of: model.daily?.day) { _, day in
+            if LaunchRoute.screen == "daily", path.isEmpty, day != nil { path.append(DailyRoute(day: nil)) }  // CI screenshots
         }
     }
 

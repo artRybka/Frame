@@ -1,4 +1,5 @@
 import UIKit
+import SwiftUI
 import XCTest
 @testable import Frame
 
@@ -42,6 +43,186 @@ final class FrameAPITests: XCTestCase {
         XCTAssertEqual(view.queued, ["aic:4371"])
         XCTAssertEqual(view.hold?.forever, true)
         XCTAssertNotNil(When.schedule(view.nextChangeAt))
+    }
+
+    func testDailyWorkDecodesFromServer() throws {
+        // GET /api/daily as the server answers it (tests/test_daily.py).
+        let json = """
+        {
+         "day": "2026-10-30",
+         "item": {
+          "item": {
+           "id": "met:1",
+           "kind": "artwork",
+           "source": "met",
+           "source_id": "met:1",
+           "title": "Under the Wave off Kanagawa",
+           "artist": "Katsushika Hokusai",
+           "artist_bio": "",
+           "date_text": "ca. 1830–32",
+           "year": 1831,
+           "medium": "",
+           "classification": "",
+           "styles": [],
+           "subjects": [],
+           "culture": "",
+           "museum": "",
+           "credit": "",
+           "license": "",
+           "url": "",
+           "description": "",
+           "image_url": "",
+           "thumb_url": "",
+           "width": 3000,
+           "height": 2000,
+           "colors": [],
+           "color_tags": [],
+           "keywords": [],
+           "terms": [],
+           "suitability": 0.95,
+           "tint_spread": null,
+           "favorite": false,
+           "excluded": false,
+           "pooled": false,
+           "added_at": "2026-10-30T20:07:09+00:00",
+           "last_shown_at": null,
+           "show_count": 0,
+           "photo": null,
+           "framing": {},
+           "look": null
+          },
+          "in_library": true,
+          "work": "hokusai|under wave off kanagawa",
+          "twin": null,
+          "replaces": null
+         },
+         "title": "Wielka fala w Kanagawie",
+         "teaser": "Fala z pazurami i święta góra schowana w jej dolinie.",
+         "why_today": "Jutro mija 266 lat od urodzin Hokusaia.",
+         "writing": false,
+         "written": true,
+         "context": [
+          "Hokusai miał około siedemdziesięciu lat.",
+          "Nowością był błękit pruski."
+         ],
+         "facts": [
+          {
+           "label": "Seria",
+           "value": "36 widoków góry Fudżi"
+          }
+         ],
+         "composition": {
+          "points": [
+           {
+            "x": 0.63,
+            "y": 0.66,
+            "title": "Fudżi",
+            "text": "Mała i nieruchoma."
+           },
+           {
+            "x": 1.0,
+            "y": 0.0,
+            "title": "Poza obrazem",
+            "text": "Przycięty do brzegu."
+           }
+          ],
+          "lines": [
+           {
+            "label": "Łuk fali",
+            "points": [
+             {
+              "x": 0.0,
+              "y": 0.97
+             },
+             {
+              "x": 0.4,
+              "y": 0.1
+             }
+            ]
+           }
+          ]
+         },
+         "colour": "Dwa błękity i biel papieru.",
+         "on_frame": "Błękit i biel to czyste tusze ramki.",
+         "similar": [
+          {
+           "item": {
+            "item": {
+             "id": "met:2",
+             "kind": "artwork",
+             "source": "met",
+             "source_id": "met:2",
+             "title": "South Wind, Clear Sky",
+             "artist": "Katsushika Hokusai",
+             "artist_bio": "",
+             "date_text": "",
+             "year": 1831,
+             "medium": "",
+             "classification": "",
+             "styles": [],
+             "subjects": [],
+             "culture": "",
+             "museum": "",
+             "credit": "",
+             "license": "",
+             "url": "",
+             "description": "",
+             "image_url": "",
+             "thumb_url": "",
+             "width": 3000,
+             "height": 2000,
+             "colors": [],
+             "color_tags": [],
+             "keywords": [],
+             "terms": [],
+             "suitability": 0.7,
+             "tint_spread": null,
+             "favorite": false,
+             "excluded": false,
+             "pooled": false,
+             "added_at": "2026-10-30T20:07:09+00:00",
+             "last_shown_at": null,
+             "show_count": 0,
+             "photo": null,
+             "framing": {},
+             "look": null
+            },
+            "in_library": true,
+            "work": "hokusai|south wind clear sky",
+            "twin": null,
+            "replaces": null
+           },
+           "why": "ta sama seria"
+          }
+         ],
+         "legacy": [
+          {
+           "year": "1905",
+           "who": "Claude Debussy",
+           "title": "Morze",
+           "text": "Fala na okładce partytury.",
+           "quote": "",
+           "search": "Debussy La Mer",
+           "item": null
+          }
+         ],
+         "sources": [
+          "obraz",
+          "Wikipedia"
+         ],
+         "model": "claude-opus-5-5",
+         "previous": []
+        }
+        """
+        let work = try LiveBackend.decoder().decode(DailyWork.self, from: Data(json.utf8))
+        XCTAssertTrue(work.written)
+        XCTAssertEqual(work.title, "Wielka fala w Kanagawie")
+        XCTAssertEqual(work.composition?.points.first?.title, "Fudżi")
+        XCTAssertEqual(work.composition?.lines.first?.points.count, 2)
+        XCTAssertEqual(work.similar.first?.why, "ta sama seria")
+        XCTAssertNil(work.legacy.first?.item)
+        let path = CompositionPicture.path(work.composition?.lines.first?.points ?? [], in: CGSize(width: 100, height: 50))
+        XCTAssertFalse(path.isEmpty)
     }
 
     func testDecodesUndeliveredPicture() throws {

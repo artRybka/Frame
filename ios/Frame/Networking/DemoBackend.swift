@@ -37,7 +37,7 @@ actor DemoBackend: FrameBackend {
     private var originalsLimitMb: Int?
     private var aiValue = AiSettings(
         keySet: false, keyTail: nil, keyFromApp: false, plText: true, keywordsArtworks: true,
-        keywordsPhotos: true, monthlyLimitUsd: 5, spentUsd: 0,
+        keywordsPhotos: true, daily: true, monthlyLimitUsd: 5, spentUsd: 0,
         keywordsProgress: .init(done: 0, waiting: 0, refused: 0, batchItems: 0, batchDone: 0, preparing: false),
         plTextProgress: nil, error: nil
     )
@@ -665,6 +665,73 @@ actor DemoBackend: FrameBackend {
         return ArtThemePage(items: page == 1 ? remote(works(theme)) : [], more: false)
     }
 
+    func daily(day: String?, wait: Int) async throws -> DailyWork {
+        func found(_ id: String) -> Item? { items.first { $0.id == id } }
+        guard let wave = found("aic:24645") ?? items.max(by: { ($0.suitability ?? 0) < ($1.suitability ?? 0) }) else {
+            throw BackendError.notFound
+        }
+        let today = Calendar.current.startOfDay(for: Date())
+        func iso(_ daysAgo: Int) -> String {
+            let date = Calendar.current.date(byAdding: .day, value: -daysAgo, to: today) ?? today
+            let parts = Calendar.current.dateComponents([.year, .month, .day], from: date)
+            return String(format: "%04d-%02d-%02d", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0)
+        }
+        let similar: [DailyWork.Similar] = [
+            ("aic:87008", "ta sama seria"), ("aic:2914", "drzeworyt, ten sam czas"),
+            ("aic:14620", "morze widziane z góry"),
+        ].compactMap { id, why in
+            found(id).map { DailyWork.Similar(item: RemoteItem(item: $0, inLibrary: true), why: why) }
+        }
+        let previous: [DailyWork.Brief] = [(1, "aic:14620"), (2, "aic:64818")].compactMap { ago, id in
+            found(id).map { DailyWork.Brief(day: iso(ago), item: RemoteItem(item: $0, inLibrary: true), title: $0.title) }
+        }
+        typealias Spot = DailyWork.Spot
+        return DailyWork(
+            day: day ?? iso(0),
+            item: RemoteItem(item: wave, inLibrary: true),
+            title: "Wielka fala w Kanagawie",
+            teaser: "Fala z pazurami i święta góra schowana w jej dolinie. Najsłynniejszy japoński druk był tanią pamiątką.",
+            whyToday: "31 października mija kolejna rocznica urodzin Hokusaia (1760).",
+            writing: false,
+            written: true,
+            context: [
+                "Hokusai miał około siedemdziesięciu lat, gdy wydawca Nishimuraya Yohachi zaczął wydawać jego serię „36 widoków góry Fudżi”. Japonia żyła modą na podróże i pielgrzymki do świętej góry, a barwne drzeworyty były tanimi pamiątkami.",
+                "Nowością był kolor: błękit pruski, sprowadzany do Japonii od niedawna, trwalszy i głębszy od indygo. Z zachodnich rycin Hokusai wziął niski horyzont i perspektywę.",
+            ],
+            facts: [
+                .init(label: "Seria", value: "36 widoków góry Fudżi (46 arkuszy)"),
+                .init(label: "Wydawca", value: "Nishimuraya Yohachi (Eijudō)"),
+            ],
+            composition: .init(
+                points: [
+                    .init(x: 0.22, y: 0.17, title: "Łuk fali", text: "Jedna krzywa prowadzi oko z lewego dolnego rogu do grzywy, która rozpada się w „pazury”."),
+                    .init(x: 0.64, y: 0.66, title: "Fudżi", text: "Najmniejsza, a najważniejsza: nieruchomy szczyt w dolinie między falami."),
+                    .init(x: 0.34, y: 0.58, title: "Rym kształtów", text: "Mała fala na pierwszym planie ma sylwetkę Fudżi."),
+                    .init(x: 0.55, y: 0.87, title: "Łodzie", text: "Wioślarze przyciśnięci do burt dają skalę: fala jest ogromna."),
+                    .init(x: 0.87, y: 0.72, title: "Niski horyzont", text: "Zachodnia perspektywa, a puste niebo równoważy ciężką lewą stronę."),
+                ],
+                lines: [
+                    .init(label: "Łuk fali", points: [
+                        Spot(x: 0.01, y: 0.97), Spot(x: 0.03, y: 0.55), Spot(x: 0.15, y: 0.2),
+                        Spot(x: 0.38, y: 0.09), Spot(x: 0.52, y: 0.2), Spot(x: 0.57, y: 0.37),
+                    ]),
+                    .init(label: "Horyzont", points: [Spot(x: 0.44, y: 0.72), Spot(x: 1, y: 0.72)]),
+                ]
+            ),
+            colour: "Dwa błękity, pruski i jaśniejszy, rysują wodę; papier zostaje bielą piany.",
+            onFrame: "Pasuje bardzo dobrze: błękit i biel to czyste tusze ramki. Beżowe niebo zamieni się w drobny raster.",
+            similar: similar,
+            legacy: [
+                .init(year: "1888", who: "Vincent van Gogh", title: "List do Thea", text: "Van Gogh pisze bratu o fali Hokusaia.", quote: "Te fale to szpony, łódź jest w nie złapana, czuje się to.", item: nil),
+                .init(year: "1897–1903", who: "Camille Claudel", title: "Fala", text: "Trzy kąpiące się kobiety pod falą z onyksu.", quote: "", item: nil),
+                .init(year: "1905", who: "Claude Debussy", title: "Morze", text: "Fala Hokusaia na okładce pierwszego wydania partytury.", quote: "", item: nil),
+            ],
+            sources: ["obraz", "Wikipedia"],
+            model: "claude-opus-5-5",
+            previous: previous
+        )
+    }
+
     func themePlaylist(key: String, play: Bool) async throws -> ThemePlaylist {
         guard let theme = DemoDiscover.themes.first(where: { $0.key == key }) else {
             throw BackendError.notFound
@@ -950,6 +1017,7 @@ actor DemoBackend: FrameBackend {
         if let value = update.plText { aiValue.plText = value }
         if let value = update.keywordsArtworks { aiValue.keywordsArtworks = value }
         if let value = update.keywordsPhotos { aiValue.keywordsPhotos = value }
+        if let value = update.daily { aiValue.daily = value }
         if let value = update.monthlyLimitUsd { aiValue.monthlyLimitUsd = value }
         return aiValue
     }

@@ -13,9 +13,10 @@ from pathlib import Path
 
 from PIL import Image
 
-from .ai import AiConfigStore, AiWorker, Claude, KeywordsJob, PlTextJob
+from .ai import AiConfigStore, AiWorker, Claude, DailyJob, KeywordsJob, PlTextJob
 from .albums import Albums
 from .config import Settings
+from .daily import Daily
 from .device import MdcClient, MdcConnectionError, MdcError, wol
 from .imaging import Palette, RenderSettings, get_palette, render, render_multi
 from .imaging.pipeline import encode_image
@@ -176,6 +177,14 @@ class FrameService:
         self.ai.register(KeywordsJob(self.library, self.images, self.ai_config))
         self.pl_text = PlTextJob(self.library, self.images, self.ai_config)
         self.ai.register(self.pl_text)
+        # Discover's work of the day and its page.
+        self.daily = Daily(
+            self.library,
+            self.player,
+            self.ai,
+            DailyJob(self.library, self.images, self.ai_config),
+        )
+        self.ai.register(self.daily.job)
 
         self._tasks: set[asyncio.Task[object]] = set()
 

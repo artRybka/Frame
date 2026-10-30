@@ -2,14 +2,26 @@
 keywords for what pictures show, Polish texts for works. Optional: without
 an API key nothing is asked."""
 
-from .client import HAIKU, SONNET, AiUnavailable, Answer, Claude, KeyRejected, image_block, request
+from .client import (
+    HAIKU,
+    OPUS,
+    SONNET,
+    AiUnavailable,
+    Answer,
+    Claude,
+    KeyRejected,
+    image_block,
+    request,
+)
 from .config import AiConfig, AiConfigStore, AiConfigUpdate
+from .daily import DailyJob, Essay
 from .jobs import AiWorker, NoteJob, Progress, text_hash
 from .keywords import KeywordsJob
 from .pl_text import PlTextJob, PolishText
 
 __all__ = [
     "HAIKU",
+    "OPUS",
     "SONNET",
     "AiConfig",
     "AiConfigStore",
@@ -18,6 +30,8 @@ __all__ = [
     "AiWorker",
     "Answer",
     "Claude",
+    "DailyJob",
+    "Essay",
     "KeyRejected",
     "KeywordsJob",
     "NoteJob",

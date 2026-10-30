@@ -193,6 +193,14 @@ struct LiveBackend: FrameBackend {
 
     func themes() async throws -> [ArtTheme] { try await get("/api/themes") }
 
+    func daily(day: String?, wait: Int) async throws -> DailyWork {
+        var query = [URLQueryItem(name: "wait", value: String(wait))]
+        if let day { query.append(URLQueryItem(name: "day", value: day)) }
+        var req = request("/api/daily", query: query)
+        req.timeoutInterval = TimeInterval(wait + 30)
+        return try await perform(req)
+    }
+
     func themePage(key: String, page: Int) async throws -> ArtThemePage {
         try await get("/api/themes/\(key)", query: [URLQueryItem(name: "page", value: String(page))])
     }
