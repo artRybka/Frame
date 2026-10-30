@@ -66,8 +66,9 @@ struct NoticeCard: View {
                 Spacer(minLength: 8)
                 trailing
             }
-            if notice.kind == .working || notice.fraction != nil {
-                NoticeBar(fraction: notice.fraction, tint: tint)
+            // A bar only when the share done is known; otherwise the spinner says it all.
+            if let fraction = notice.fraction {
+                NoticeBar(fraction: fraction, tint: tint)
             }
         }
         .padding(.horizontal, 16)
@@ -124,17 +125,10 @@ struct NoticeCard: View {
     @ViewBuilder private var trailing: some View {
         switch notice.kind {
         case .working:
-            Group {
-                if let count = notice.count {
-                    Text(count)
-                } else if notice.fraction == nil {
-                    // How long it has taken so far, when nobody knows how long it takes.
-                    Text(notice.started, style: .timer)
-                }
-            }
-            .font(.caption.weight(.medium).monospacedDigit())
-            .foregroundStyle(Theme.inkSoft)
-            .padding(.top, 1)
+            Text(notice.count ?? "")
+                .font(.caption.weight(.medium).monospacedDigit())
+                .foregroundStyle(Theme.inkSoft)
+                .padding(.top, 1)
         case .warning, .error:
             Button(action: close) {
                 Image(systemName: "xmark")
@@ -152,32 +146,19 @@ struct NoticeCard: View {
     }
 }
 
-/// The card's bar: filled as far as it is known, or a band going across.
+/// The card's bar, filled as far as the work is.
 private struct NoticeBar: View {
-    let fraction: Double?
+    let fraction: Double
     let tint: Color
 
     var body: some View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
                 Capsule().fill(Theme.ink.opacity(0.1))
-                if let fraction {
-                    Capsule()
-                        .fill(tint)
-                        .frame(width: max(6, geo.size.width * fraction))
-                } else {
-                    TimelineView(.animation) { context in
-                        let period = 1.6
-                        let phase = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: period) / period
-                        let band = geo.size.width * 0.3
-                        Capsule()
-                            .fill(LinearGradient(colors: [tint.opacity(0), tint, tint.opacity(0)], startPoint: .leading, endPoint: .trailing))
-                            .frame(width: band)
-                            .offset(x: -band + (geo.size.width + band) * phase)
-                    }
-                }
+                Capsule()
+                    .fill(tint)
+                    .frame(width: max(6, geo.size.width * fraction))
             }
-            .clipShape(Capsule())
         }
         .frame(height: 6)
         .animation(.linear(duration: 0.6), value: fraction)
