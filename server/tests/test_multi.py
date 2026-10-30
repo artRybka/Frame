@@ -11,7 +11,7 @@ from PIL import Image
 from frame_server.imaging import RenderSettings, render_multi, render_original
 from frame_server.imaging.grids import GRIDS, MAX_PHOTOS, MIN_PHOTOS, choose, grid_rects
 from frame_server.imaging.layout import Fit, Orientation
-from frame_server.library import ItemKind, Playlist, PlaylistKind
+from frame_server.library import ItemKind, Look, Playlist, PlaylistKind
 from frame_server.schedule import FrameSettings, Presentation
 
 LANDSCAPE = (2560, 1440)
@@ -165,3 +165,24 @@ def test_preview_of_a_board(service) -> None:
         assert Image.open(io.BytesIO(response.content)).size == (1280, 720)
         framing = client.get(f"/api/library/items/{photos[0].id}/framing").json()
         assert framing["fit"] == "multi" and framing["windows"] == []
+
+
+def test_preview_of_a_board_with_art_on_the_frame(service) -> None:
+    """Prezentacja tries Multi on a photo while the frame plays art: the
+    library's photos and those sent once fill the board, the same each time."""
+    photos = [_photo(service, n) for n in range(3)]
+    sent = _photo(service, 3)
+    sent = service.library.update(sent.id, look=Look())
+    assert sent is not None
+    service.player.remember_sent(sent)
+    player = service.player
+    settings = player.settings
+    settings.playlist_id = None  # Suggestions: works of art only
+    settings.photo = Presentation(fit=Fit.MULTI, margin=0.07, multi_count=4)
+    player.save_settings(settings)
+    assert all(i.kind != ItemKind.PHOTO for i in player.candidates(settings))
+    board = player.preview_board(photos[0], settings)
+    assert len(board) == 4 and board[0] == photos[0]
+    assert {i.id for i in board} == {p.id for p in [*photos, sent]}
+    assert [i.id for i in player.preview_board(photos[0], settings)] == [i.id for i in board]
+    assert player.state.queue == []  # nothing taken
