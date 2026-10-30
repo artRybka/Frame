@@ -350,6 +350,11 @@ class PanelApp:
         now = now or datetime.now(UTC)
         return next((a for a in alarms if a > now), alarms[-1])
 
+    def alarms_rang(self, start: datetime, end: datetime) -> int:
+        """How many of the alarms set for this sleep rang in ``(start, end]``."""
+        state = self.state
+        return sum(start < a <= end for a in _alarms(state)) if state.active else 0
+
     def deep_asleep(self) -> bool:
         """Asleep with the Wi-Fi off: only its alarm or the button wakes it."""
         state = self.state
@@ -776,6 +781,7 @@ class PanelApp:
         elif event == "wifi":
             self.service.status.note_wifi(data)
         elif event == "shown":
+            self.service.status.note_drawn()
             file_id = str(data.get("file_id", ""))
             state = self.state
             if file_id and state.shown != file_id:

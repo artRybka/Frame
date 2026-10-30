@@ -862,23 +862,39 @@ async def test_a_waiting_picture_goes_out_with_the_progress_bar(tmp_path: Path) 
     assert service.progress.view().stage == "refreshing"
 
 
-def test_battery_rate_is_measured_on_battery(tmp_path: Path) -> None:
+def test_battery_estimate_from_the_first_reading(tmp_path: Path) -> None:
+    """Days left at once, from the costs others measured; the range narrows
+    as readings on battery come in, and starts over after charging."""
     service = _service(tmp_path)
     status = service.status
     start = _at("2026-10-28T08:00")
-    for hours, level in [(0, 90), (0.2, 90), (6, 88)]:
-        status.note_app(start + timedelta(hours=hours), level, False)
-    assert status.status.battery_per_day is None  # not half a day yet
-    status.note_app(start + timedelta(hours=13), 85, False)
-    assert status.status.battery_per_day == 9.2
-    status.note_app(start + timedelta(hours=24), 81, False)
-    assert status.status.battery_per_day == 9.0
-    assert status.status.battery_days == 9.0
-    # Recharged: measured anew.
-    status.note_app(start + timedelta(hours=25), 81, True)
-    assert status.status.battery_per_day is None and status.status.battery_days is None
-    status.note_app(start + timedelta(hours=30), 100, False)
-    assert status.status.battery_days is None
+    status.note_app(start, 90, False)
+    service.power.publish_status()
+    first = status.status.battery
+    assert first is not None and first.days is not None and status.status.battery_days == first.days
+    assert first.days_low is not None and first.days_high is not None
+    assert first.days_low < first.days < first.days_high
+    # A day in the network: asleep with standby on, a wake now and then.
+    level = 90.0
+    for hour in range(1, 25):
+        at = start + timedelta(hours=hour)
+        status.note_sleep(deep=False, now=at - timedelta(minutes=57))
+        level -= 1.0
+        status.note_app(at, int(level), False)
+    service.power.publish_status()
+    later = status.status.battery
+    assert later is not None and later.days is not None
+    assert later.days_low is not None and later.days_high is not None
+    assert later.days_high - later.days_low < first.days_high - first.days_low
+    assert later.readings > 10 and later.hours_measured > 20
+    assert later.costs.learnt[0] > 0.5  # standby: measured now
+    assert 18 < later.costs.standby_per_day < 30
+    # On the charger: no days left, still a full battery's worth.
+    status.note_app(start + timedelta(hours=25), 70, True)
+    service.power.publish_status()
+    charged = status.status.battery
+    assert status.status.battery_days is None and status.status.battery_per_day is None
+    assert charged is not None and charged.days is None and charged.full_days > 0
 
 
 async def test_no_start_over_mdc_once_the_app_asked_or_sleeps(

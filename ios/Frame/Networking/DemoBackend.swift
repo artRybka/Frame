@@ -222,7 +222,16 @@ actor DemoBackend: FrameBackend {
                 readAt: now, signal: 0.6, level: 3, ssid: "Frame_IoT", ip: "192.0.2.20",
                 frequency: 2437, expectedIp: "192.0.2.20", homeSsid: "Frame_IoT", wrongNetwork: false
             ),
-            batteryPerDay: 8.4, batteryDays: 9.0
+            batteryPerDay: 8.4, batteryDays: 9.0,
+            battery: BatteryEstimate(
+                perDay: 8.4, days: 9.0, daysLow: 7.2, daysHigh: 12.1,
+                fullDays: 11.9, fullDaysLow: 9.5, fullDaysHigh: 15.9, hoursMeasured: 30, readings: 18,
+                costs: BatteryCosts(standbyPerDay: 12.5, deepPerDay: 0.1, perWake: 0.21, perChange: 0.34, learnt: [0.72, 0.0, 0.31, 0.25]),
+                day: BatteryDay(
+                    standbyHours: 15, deepHours: 9, wakes: 2, changes: 1,
+                    standbyCost: 7.8, deepCost: 0.04, wakesCost: 0.42, changesCost: 0.34
+                )
+            )
         )
         let server = ServerStatus(
             version: "demo", uptimeS: 3600, libraryCount: items.count,
