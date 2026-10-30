@@ -1,7 +1,12 @@
 # Changelog
 
-## 0.37.3
+## 0.38.0
 
+- Podgląd w Ustawieniach → Prezentacja nie znika po przełączeniu Sztuka ↔
+  Zdjęcia. Gdy ramka pokazuje coś innego, podgląd bierze ostatni obraz tego
+  rodzaju z historii ramki, a jeśli takiego nie było, losowy z biblioteki.
+  Wysłane raz zdjęcie pokazuje się w podglądzie z ustawieniami dla zdjęć
+  (nowy parametr `own_look=false` podglądu w API).
 - Serwer nie bierze już pobrania `content.json` z innego komputera (np.
   przeglądarki sprawdzającej serwer) za ramkę, która opuściła aplikację.
   Liczy się tylko adres ramki; wcześniej taki odczyt gubił stan snu ramki.
