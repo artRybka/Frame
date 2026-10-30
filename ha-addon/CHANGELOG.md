@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.43.0
+
+- Nowa karta Szukaj między Odkrywaj a Playlistami. Odkrywaj pokazuje już
+  tylko Propozycje, bez przełącznika Propozycje/Szukaj; dotknięcie nazwiska
+  artysty otwiera kartę Szukaj.
+- Propozycje: kafelki motywów bez liczby dzieł i „+N”, bez rzędów „Dla
+  Ciebie” i „Nowe w katalogu”, a Motyw dnia stoi zaraz pod Dziełem dnia,
+  nad „Na ten tydzień”. Motyw „Arcydzieła muzeów” nie jest już pusty:
+  katalog raz dziennie dociąga wyróżnione dzieła Met i Cleveland do 40.
+- Kafelek Serwer w czasie aktualizacji pokazuje, z której wersji na którą
+  przechodzi serwer, zamiast „0.42.0 → 0.42.0”.
+- Po powrocie do aplikacji nie wyskakuje już fałszywy błąd „Serwer nie
+  odpowiedział na czas”: zapytanie przerwane uśpieniem w tle idzie
+  ponownie.
+
 ## 0.42.0
 
 - Dzieło dnia: na samej górze Odkrywaj → Propozycje niski kafelek z
