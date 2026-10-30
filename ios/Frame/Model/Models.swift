@@ -524,6 +524,9 @@ struct DeviceStatus: Codable, Hashable, Sendable {
     /// Asleep deeply by itself: unplugged, the frame sleeps at once and no
     /// wake signal wakes it (even back on the Wi-Fi), only the button (0.36+).
     var wifiLost: Bool?
+    /// The frame answers the server, yet the Frame app on it has not asked
+    /// for a picture since this moment: it does not run or hangs (0.37+).
+    var appSilentSince: String?
 }
 
 /// "Głęboki sen" / "Wyłącz ramkę": until when (nil: switched off), and

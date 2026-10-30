@@ -117,6 +117,10 @@ class DeviceStatus(BaseModel):
     # Asleep without the Wi-Fi by itself (unplugged, it sleeps at once and
     # leaves the Wi-Fi, E8): Wake-on-LAN cannot reach it, the button wakes it.
     wifi_lost: bool = False
+    # The panel answers MDC, yet the frame's app has not been heard from
+    # since then (ISO): it does not run or hangs, and no picture gets through
+    # (2026-10-30: "Połączona" while the app had been frozen for 51 min).
+    app_silent_since: str | None = None
 
 
 class PanelWifi(BaseModel):

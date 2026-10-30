@@ -112,6 +112,8 @@ class PowerManager:
         status.rest_until = state.rest_until
         status.switched_off = state.off
         status.wifi_lost = state.active and state.asleep and state.wifi_lost
+        silent = app.silent_since(datetime.now(UTC))
+        status.app_silent_since = silent.isoformat(timespec="seconds") if silent else None
 
     def _off_network(self) -> None:
         """A look found the panel off the Wi-Fi."""

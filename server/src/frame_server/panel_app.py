@@ -313,6 +313,20 @@ class PanelApp:
         heard = self.heard_at or (datetime.fromisoformat(state.seen_at) if state.seen_at else None)
         return heard is not None and (now or datetime.now(UTC)) - heard < HEARD_EVERY
 
+    def silent_since(self, now: datetime) -> datetime | None:
+        """The panel answered MDC at the last look, but the app has not been
+        heard from for ``SILENT_AFTER``: since when. Not while it goes down
+        after being told to sleep (the panel answers for a while then)."""
+        state = self.state
+        if not state.active or self.service.status.status.power_state != "online":
+            return None
+        if _settling(state, now) or self._going_down(now):
+            return None
+        heard = self.heard_at or (datetime.fromisoformat(state.seen_at) if state.seen_at else None)
+        if heard is None or now - heard < SILENT_AFTER:
+            return None
+        return heard
+
     def wakes_at(self, now: datetime | None = None) -> datetime | None:
         """When the sleeping app's alarm wakes it next (the last one once
         all have passed)."""

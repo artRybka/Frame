@@ -15,6 +15,8 @@ struct FrameTabView: View {
     @State private var newName = ""
     @State private var showingConnection = LaunchRoute.screen == "connection"
     @State private var confirmingOff = false
+    @State private var confirmingUpdate = false
+    @State private var checkingUpdate = false
 
     private var device: DeviceStatus? { model.status?.device }
 
@@ -83,6 +85,7 @@ struct FrameTabView: View {
             .onAppear {
                 follow(model.settings)
                 look()
+                Task { await model.loadServerUpdate() }
             }
             .onChange(of: model.settings) { _, new in follow(new) }
             .alert("Nazwa ramki", isPresented: $renaming) {
@@ -164,6 +167,7 @@ struct FrameTabView: View {
             await model.refreshStatus(live: true)
         }
         await model.refreshAll()
+        await model.loadServerUpdate()
     }
 
     /// Opening the tab looks at the frame without waking it: the server asks
@@ -222,6 +226,7 @@ struct FrameTabView: View {
     private var connectionText: String {
         guard let device else { return "Brak danych" }
         if !device.configured { return "Podaj adres i PIN ekranu pod trybikiem u góry" }
+        if let silent = appSilence { return "Ekran odpowiada · aplikacja milczy \(silent)" }
         switch device.powerState {
         case "online": return "Połączona · \(When.ago(device.lastSeen) ?? "teraz")"
         case "standby":
@@ -240,7 +245,16 @@ struct FrameTabView: View {
         }
     }
 
+    /// The frame answers the server over MDC, but its app has not asked for
+    /// a picture for a while ("od 51 min"): nothing gets through then, so
+    /// "Połączona" would mislead.
+    private var appSilence: String? {
+        guard device?.configured == true else { return nil }
+        return When.since(device?.appSilentSince)
+    }
+
     private var connectionColor: Color {
+        if appSilence != nil { return Theme.warn }
         switch device?.powerState {
         case "online": return Theme.good
         case "standby", "deep_sleep": return Theme.inkSoft
@@ -268,7 +282,13 @@ struct FrameTabView: View {
                     text: certificatesText(expires)
                 )
             }
-            if device.panelApp == false {
+            if let silent = appSilence {
+                NoticeRow(
+                    icon: "exclamationmark.triangle",
+                    color: Theme.warn,
+                    text: "Ekran odpowiada, ale aplikacja Frame nie pytała o obraz \(silent), więc nowy obraz nie dotrze. Serwer próbuje ją uruchomić; możesz też wybrać Zasilanie → Uruchom aplikację ponownie."
+                )
+            } else if device.panelApp == false {
                 NoticeRow(
                     icon: "app.badge",
                     color: Theme.inkSoft,
@@ -295,19 +315,7 @@ struct FrameTabView: View {
                         .foregroundStyle(Theme.inkSoft)
                 }
             }
-            StatusTile(title: "Obraz") {
-                VStack(alignment: .leading, spacing: 6) {
-                    Image(systemName: "clock.arrow.2.circlepath")
-                        .font(.title2)
-                        .foregroundStyle(Theme.accent)
-                    Text(picture.when)
-                        .font(.headline)
-                        .foregroundStyle(Theme.ink)
-                    Text(picture.note)
-                        .font(.caption)
-                        .foregroundStyle(Theme.inkSoft)
-                }
-            }
+            serverTile
             StatusTile(title: "Sieć") {
                 let state = network
                 VStack(alignment: .leading, spacing: 6) {
@@ -380,19 +388,81 @@ struct FrameTabView: View {
         }
     }
 
-    /// The Obraz tile: when the picture changes next. In a rest
-    /// ("Głęboki sen", "Wyłącz ramkę") nothing changes until it ends.
-    private var picture: (when: String, note: String) {
-        if device?.switchedOff == true {
-            return ("—", device?.pendingPush == true ? "czeka, aż włączysz ramkę" : "ramka wyłączona")
+    /// The Serwer tile: the server's version and whether a newer one is out.
+    /// A tap updates (after asking) or looks for one; where the app cannot
+    /// update the server (Home Assistant, no helper) it opens the settings.
+    private var serverTile: some View {
+        let state = server
+        return Button {
+            guard let update = model.serverUpdate, update.updater, !update.addon else {
+                showingConnection = true
+                return
+            }
+            if update.updateAvailable {
+                confirmingUpdate = true
+            } else if !update.busy, !model.updatingServer {
+                Task {
+                    checkingUpdate = true
+                    await model.checkServerUpdate()
+                    checkingUpdate = false
+                }
+            }
+        } label: {
+            StatusTile(title: "Serwer") {
+                VStack(alignment: .leading, spacing: 6) {
+                    Image(systemName: state.icon)
+                        .font(.title2)
+                        .foregroundStyle(state.color)
+                        .symbolEffect(.pulse, options: .repeating, isActive: state.working)
+                    Text(state.title)
+                        .font(.headline)
+                        .monospacedDigit()
+                        .foregroundStyle(Theme.ink)
+                    Text(state.note)
+                        .font(.caption)
+                        .foregroundStyle(state.color == Theme.accent ? Theme.accent : Theme.inkSoft)
+                        .lineLimit(2)
+                }
+            }
         }
-        if let until = When.schedule(device?.restUntil) {
-            return (until, "koniec głębokiego snu")
+        .buttonStyle(.plain)
+        .confirmationDialog(
+            "Aktualizować serwer do wersji \(model.serverUpdate?.latestVersion ?? "najnowszej")?",
+            isPresented: $confirmingUpdate,
+            titleVisibility: .visible
+        ) {
+            Button("Aktualizuj serwer") { Task { await model.updateServer() } }
+        } message: {
+            Text("Serwer zniknie na około minutę. Gdyby nowa wersja nie wystartowała, wróci obecna.")
         }
-        let next = When.schedule(model.player?.nextChangeAt) ?? "—"
-        guard device?.pendingPush == true else { return (next, "następna zmiana") }
-        if let at = When.at(device?.wakeAt) { return (next, "obraz pojawi się \(at)") }
-        return (next, device?.wifiLost == true ? "obraz czeka na przycisk ramki" : "obraz czeka na pobudkę ramki")
+    }
+
+    private var server: (icon: String, color: Color, title: String, note: String, working: Bool) {
+        let version = model.serverUpdate?.version ?? model.status?.server.version ?? "—"
+        guard let update = model.serverUpdate else {
+            return ("server.rack", Theme.inkSoft, version, "wersja serwera", false)
+        }
+        if update.addon {
+            return ("server.rack", Theme.inkSoft, version, "aktualizuje Home Assistant", false)
+        }
+        if !update.updater {
+            return ("server.rack", Theme.inkSoft, version, "aktualizacja na NAS-ie", false)
+        }
+        let latest = update.latestVersion ?? "nowsza"
+        if model.updatingServer || update.state == "updating" {
+            return ("arrow.triangle.2.circlepath", Theme.accent, "\(version) → \(latest)", "aktualizuję, wróci za minutę", true)
+        }
+        if checkingUpdate || update.state == "checking" || update.pending == "check" {
+            return ("arrow.triangle.2.circlepath", Theme.inkSoft, version, "sprawdzam…", true)
+        }
+        if update.updateAvailable {
+            return ("arrow.down.circle.fill", Theme.accent, version, "jest \(latest) · stuknij, by zaktualizować", false)
+        }
+        if update.state == "failed" {
+            return ("exclamationmark.triangle", Theme.warn, version, "nie udało się, stuknij, by sprawdzić", false)
+        }
+        let checked = When.ago(update.checkedAt).map { "aktualny · sprawdzono \($0)" } ?? "stuknij, by sprawdzić"
+        return ("server.rack", Theme.inkSoft, version, checked, false)
     }
 
     /// Under the battery level: how long it lasts at the rate measured on
@@ -475,7 +545,10 @@ struct FrameTabView: View {
                 } label: {
                     Label("Głęboki sen", systemImage: "moon.stars")
                 }
-                Button("Uruchom ponownie", systemImage: "arrow.clockwise.circle") {
+                Button("Uruchom aplikację ponownie", systemImage: "arrow.triangle.2.circlepath") {
+                    Task { await model.installPanelApp() }
+                }
+                Button("Uruchom ramkę ponownie", systemImage: "arrow.clockwise.circle") {
                     Task { await model.restartFrame() }
                 }
                 Divider()
