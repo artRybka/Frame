@@ -1037,3 +1037,22 @@ async def test_a_panel_stuck_after_a_reinstall_is_put_into_deep_sleep(
         assert panel.received == []
     finally:
         await panel.stop()
+
+
+def test_content_json_from_another_computer_is_not_the_panel_leaving(tmp_path: Path) -> None:
+    """2026-10-30: a Mac checking the server fetched content.json and the
+    server took it for the panel leaving the app."""
+    from frame_server.web import create_app
+
+    service = _service(tmp_path)
+    app = create_app(service.settings)
+    svc = app.state.service
+    gradient = Image.linear_gradient("L").resize((2560, 1440)).convert("RGB")
+    svc.store.publish(encode_image(gradient, "png"), "png", title="Passthrough")
+    svc.app.answer(AppHello(reason="start", build="2.0.0", charging=True))
+    with TestClient(app) as client:  # its address is "testclient"
+        assert client.get("/panel/content.json").status_code == 200
+        assert svc.app.active
+        svc.settings.device_host = "testclient"
+        assert client.get("/panel/content.json").status_code == 200
+        assert not svc.app.active

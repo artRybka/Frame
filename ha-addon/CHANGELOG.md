@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.37.3
+
+- Serwer nie bierze już pobrania `content.json` z innego komputera (np.
+  przeglądarki sprawdzającej serwer) za ramkę, która opuściła aplikację.
+  Liczy się tylko adres ramki; wcześniej taki odczyt gubił stan snu ramki.
+
 ## 0.37.2
 
 - Obraz wysłany do ramki obudzonej budzikiem albo przyciskiem (na baterii)

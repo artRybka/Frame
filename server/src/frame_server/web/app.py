@@ -151,7 +151,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             # The Frame app's page is a file:// origin.
             response.headers["Access-Control-Allow-Origin"] = "*"
         if request.url.path == "/panel/content.json" and response.status_code == 200:
-            service.app.left()  # another source (Mobile): the app is started again
+            # Only the panel itself: a browser or script on another computer
+            # checking the server is not the panel leaving (2026-10-30).
+            client = request.client.host if request.client else None
+            panel = service.settings.device_host
+            if not panel or client == panel:
+                service.app.left()  # another source (Mobile): the app is started again
         if request.url.path.startswith("/panel/") or request.url.path == PROGRESS_PATH:
             entry = PanelRequest(
                 time=datetime.now(UTC).isoformat(timespec="milliseconds"),
