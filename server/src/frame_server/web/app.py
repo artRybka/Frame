@@ -47,6 +47,7 @@ from ..store import PanelRequest
 from . import (
     ai_api,
     calibration_api,
+    daily_api,
     device_api,
     discover_api,
     library_api,
@@ -122,10 +123,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if settings.scheduler:
             # Discover's first visit then finds its themes worked out.
             threading.Thread(target=discover_api.warm_up, args=(service,), daemon=True).start()
+            threading.Thread(target=service.daily.run, name="daily", daemon=True).start()
         yield
         for task in tasks:
             task.cancel()
         service.ai.stop()
+        service.daily.stop()
         service.library.close()
 
     app = FastAPI(title="Frame", version=build_version(), lifespan=lifespan)
@@ -133,6 +136,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     routers = (
         library_api.router,
         discover_api.router,
+        daily_api.router,
         playlists_api.router,
         player_api.router,
         calibration_api.router,

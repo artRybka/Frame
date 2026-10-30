@@ -63,6 +63,7 @@ jobs:
             xcrun simctl ui "$UDID" appearance "$appearance"
             capture now 16 "now-$appearance"
             capture discover 12 "discover-$appearance"
+            capture daily 14 "daily-$appearance"
             capture detail 14 "detail-$appearance"
             capture playlists 12 "playlists-$appearance"
             capture playlist 12 "playlist-$appearance"
