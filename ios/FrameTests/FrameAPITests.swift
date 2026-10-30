@@ -690,6 +690,10 @@ final class FrameAPITests: XCTestCase {
         let plain = try XCTUnwrap(api.request(for: .framePreview(id))?.url)
         let fresh = try XCTUnwrap(api.request(for: .framePreview(id, framing: named))?.url)
         XCTAssertNotEqual(plain, fresh)
+        // Prezentacja tries the settings for photos on a photo sent once.
+        let tried = try XCTUnwrap(api.request(for: .framePreview(id, ownLook: false))?.url)
+        XCTAssertTrue(tried.query?.contains("own_look=false") == true)
+        XCTAssertFalse(plain.query?.contains("own_look") == true)
     }
 
     func testChangesPlural() {

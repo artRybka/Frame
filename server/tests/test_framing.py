@@ -442,6 +442,12 @@ def test_photo_sent_once_has_its_own_look(service) -> None:
         assert svc.library.query(PlaylistRules(kinds=[ItemKind.PHOTO]))[0] == 0
         url = f"/api/library/items/{item['id']}"
         assert client.get(f"{url}/framing").json()["fit"] == "fit"
+        # Prezentacja tries the settings for photos on it.
+        own = client.get(f"{url}/preview").content
+        assert client.get(f"{url}/preview", params={"own_look": "true"}).content == own
+        tried = client.get(f"{url}/preview", params={"own_look": "false"})
+        assert tried.status_code == 200 and tried.content != own
+        assert svc.library.get(item["id"]).look is not None
 
         changed = client.patch(url, json={"look": {"fit": "fill"}}).json()
         assert changed["look"]["fit"] == "fill"

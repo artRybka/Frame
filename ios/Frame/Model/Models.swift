@@ -256,6 +256,9 @@ struct Playlist: Codable, Hashable, Sendable {
 
     /// "Ulubione", the owner's hearts: always there, never deleted.
     var isFavorites: Bool { kind == .smart && rules.favoritesOnly }
+
+    /// The photos sent once (server: player.SENT_NAME).
+    static let sentName = "Historia przesłanych"
 }
 
 struct PlaylistSummary: Codable, Identifiable, Hashable, Sendable {
@@ -271,6 +274,9 @@ struct PlaylistSummary: Codable, Identifiable, Hashable, Sendable {
     var theme: String?
 
     var isFavorites: Bool { kind == .smart && rules.favoritesOnly }
+
+    /// The photos sent once (server: player.SENT_NAME).
+    static let sentName = "Historia przesłanych"
 }
 
 struct PlaylistDetail: Codable, Sendable {
