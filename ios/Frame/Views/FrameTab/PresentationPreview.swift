@@ -30,10 +30,10 @@ struct PreviewLayout: Hashable {
     var darkMat: Bool { mat == "black" || mat == "picture_dark" }
 }
 
-/// The frame in Prezentacja: always the same height, so nothing below it
-/// moves when it turns. Turned to the other orientation, it rotates the
-/// way the frame on the wall would, the picture going with it, and the new
-/// picture comes in over a sketch of its framing.
+/// The frame in Prezentacja, as tall as its orientation needs. Turned to
+/// the other orientation, it rotates the way the frame on the wall would,
+/// the picture going with it, and the new picture comes in over a sketch
+/// of its framing.
 struct PresentationPreview<Note: View>: View {
     @Environment(AppModel.self) private var model
     let ref: ImageRef?
@@ -43,6 +43,7 @@ struct PresentationPreview<Note: View>: View {
     var warm: [ImageRef] = []
     @ViewBuilder var note: Note
 
+    /// A portrait frame's height.
     static var height: CGFloat { 290 }
     private static var moulding: CGFloat { 5 }
 
@@ -56,6 +57,8 @@ struct PresentationPreview<Note: View>: View {
     /// orientation, it turns with the frame and fades.
     @State private var shown: Shown?
     @State private var failed: ImageRef?
+    /// The room across, for the height: a landscape frame takes no more.
+    @State private var width: CGFloat = 0
 
     /// The rotation's progress: the frame laid as it was, then upright.
     private struct Turn {
@@ -66,13 +69,16 @@ struct PresentationPreview<Note: View>: View {
 
     var body: some View {
         GeometryReader { geo in
-            let box = Self.box(portrait: layout.portrait, in: geo.size)
-            let other = Self.box(portrait: !layout.portrait, in: geo.size)
+            let box = Self.box(portrait: layout.portrait, width: geo.size.width)
+            let other = Self.box(portrait: !layout.portrait, width: geo.size.width)
             KeyframeAnimator(initialValue: Turn(), trigger: layout.portrait) { turn in
                 framed(fade: turn.fade)
                     .frame(width: box.width, height: box.height)
                     .scaleEffect(turn.scale)
                     .rotationEffect(.degrees(turn.angle))
+                    // Its size switches at once and the keyframes turn it:
+                    // only its place goes with the spring of the switch.
+                    .transaction { $0.animation = nil }
                     .frameShadow()
                     .position(x: geo.size.width / 2, y: geo.size.height / 2)
             } keyframes: { _ in
@@ -93,19 +99,21 @@ struct PresentationPreview<Note: View>: View {
                     LinearKeyframe(0, duration: 0.3)
                 }
             }
+            .onAppear { width = geo.size.width }
+            .onChange(of: geo.size.width) { _, new in width = new }
         }
-        .frame(height: Self.height)
+        .frame(height: width > 0 ? Self.box(portrait: layout.portrait, width: width).height : Self.height)
         .task(id: ref) { await load() }
     }
 
-    /// The frame at its size on the wall, the moulding included.
-    private static func box(portrait: Bool, in size: CGSize) -> CGSize {
+    /// The frame at its size on the wall, the moulding included: a
+    /// landscape one as wide as there is room, a portrait one `height` tall.
+    static func box(portrait: Bool, width: CGFloat) -> CGSize {
         let m = 2 * moulding
         if portrait {
-            let height = min(size.height, (size.width - m) * 16 / 9 + m)
+            let height = min(Self.height, (width - m) * 16 / 9 + m)
             return CGSize(width: (height - m) * 9 / 16 + m, height: height)
         }
-        let width = min(size.width, (size.height - m) * 16 / 9 + m)
         return CGSize(width: width, height: (width - m) * 9 / 16 + m)
     }
 
@@ -260,4 +268,9 @@ struct LayoutSketch: View {
             return ([canvas.insetBy(dx: outer, dy: outer)], [])
         }
     }
+}
+
+extension Animation {
+    /// The frame turning to the other orientation, and what moves with it.
+    static let frameTurn = Animation.spring(duration: 0.6, bounce: 0.15)
 }

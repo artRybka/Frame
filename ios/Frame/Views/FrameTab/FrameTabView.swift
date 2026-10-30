@@ -35,7 +35,6 @@ struct FrameTabView: View {
                         if draft != nil {
                             ScheduleSection(settings: binding).id("schedule")
                             PresentationSection(settings: binding).id("presentation")
-                            ScreenSection(settings: binding).id("orientation")
                         }
                     }
                     .padding(.horizontal, Theme.gutter)
@@ -46,8 +45,9 @@ struct FrameTabView: View {
                     guard ready else { return }
                     let screen = LaunchRoute.screen
                     if screen.hasPrefix("schedule") { proxy.scrollTo("schedule", anchor: .top) }
-                    if screen.hasPrefix("presentation") { proxy.scrollTo("presentation", anchor: .top) }
-                    if screen == "orientation" { proxy.scrollTo("orientation", anchor: .top) }
+                    if screen.hasPrefix("presentation") || screen == "orientation" {
+                        proxy.scrollTo("presentation", anchor: .top)
+                    }
                 }
             }
             .background(Theme.paper)
@@ -1214,7 +1214,7 @@ struct PresentationSection: View {
         var tries: [FrameSettings] = []
         var turned = shown
         turned.orientation = shown.orientation == "portrait" ? "landscape" : "portrait"
-        if turned.orientation == "portrait" { turned.rotation = 90 }  // as ScreenSection sets it
+        if turned.orientation == "portrait" { turned.rotation = 90 }  // as OrientationPicker sets it
         tries.append(turned)
         let presentation = shown[keyPath: presentationPath]
         if presentation.fit == "multi", !presentation.multiRandom {
@@ -1244,16 +1244,14 @@ struct PresentationSection: View {
                     .padding(8)
             }
         }
-        .padding(.vertical, 6)
+        .padding(.top, 2)
+        .padding(.bottom, 10)  // room for its shadow
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             SectionHeader(title: "Prezentacja")
-            Picker("Dla", selection: $target) {
-                ForEach(Target.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-            }
-            .pickerStyle(.segmented)
+            OrientationPicker(settings: $settings)
             preview
                 .task(id: settings) {
                     // Only a slider waits: a tap renders at once.
@@ -1266,6 +1264,10 @@ struct PresentationSection: View {
                 .task(id: "\(target.rawValue) \(model.player != nil)") {  // the history comes with the player
                     if model.player != nil, currentID == nil, standIns[target] == nil { await drawStandIn() }
                 }
+            Picker("Dla", selection: $target) {
+                ForEach(Target.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+            }
+            .pickerStyle(.segmented)
             Card {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Kadrowanie").foregroundStyle(Theme.ink)
@@ -1479,27 +1481,30 @@ struct MatSwatch: View {
     }
 }
 
-/// How the frame hangs. A portrait frame is the panel turned 90° to the right.
-struct ScreenSection: View {
+/// How the frame hangs, above its preview. A portrait frame is the panel
+/// turned 90° to the right; the preview turns with the same spring.
+struct OrientationPicker: View {
     @Binding var settings: FrameSettings
     @Namespace private var pills
 
+    private func turn(portrait: Bool) {
+        withAnimation(.frameTurn) {
+            settings.orientation = portrait ? "portrait" : "landscape"
+            if portrait { settings.rotation = 90 }
+        }
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            SectionHeader(title: "Orientacja")
-            Card {
-                HStack(spacing: 8) {
-                    OrientationPill(title: "Pozioma", portrait: false, selected: settings.orientation == "landscape",
-                                    namespace: pills) {
-                        settings.orientation = "landscape"
-                    }
-                    OrientationPill(title: "Pionowa", portrait: true, selected: settings.orientation == "portrait",
-                                    namespace: pills) {
-                        settings.orientation = "portrait"
-                        settings.rotation = 90
-                    }
+        Card(padding: 10) {
+            HStack(spacing: 8) {
+                OrientationPill(title: "Pozioma", portrait: false, selected: settings.orientation == "landscape",
+                                namespace: pills) {
+                    turn(portrait: false)
                 }
-                .animation(.snappy(duration: 0.3), value: settings.orientation)
+                OrientationPill(title: "Pionowa", portrait: true, selected: settings.orientation == "portrait",
+                                namespace: pills) {
+                    turn(portrait: true)
+                }
             }
         }
     }
