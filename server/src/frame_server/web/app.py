@@ -309,7 +309,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             render_settings.strategy = strategy
         title = title or (file.filename or "")
         if push:
-            service.progress.begin(title)
+            service.progress.begin(title, origin="app")
         try:
             content = await run_in_threadpool(
                 service.prepare,

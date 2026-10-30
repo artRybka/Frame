@@ -321,7 +321,7 @@ class FrameService:
         url = f"{self.settings.base_url()}{self.app.image_path(content)}"
         app, power, progress = self.app, self.power, self.progress
         if not progress.active:
-            progress.begin(content.title, render=False)
+            progress.begin(content.title, render=False, origin=self.player.state.last_change_origin)
         progress.advance(Stage.SENDING)
         file_id = content.file_id
         now = datetime.now(UTC)

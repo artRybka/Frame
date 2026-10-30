@@ -256,8 +256,25 @@ actor DemoBackend: FrameBackend {
             hold: holdValue,
             lastChangeAt: ISO8601DateFormatter().string(from: .now.addingTimeInterval(-5400)),
             nextChangeAt: next.map { ISO8601DateFormatter().string(from: $0) },
-            busy: runElapsed.map { $0 < 5 } ?? false, lastError: nil, progress: try await progress()
+            busy: runElapsed.map { $0 < 5 } ?? false, lastError: nil, progress: try await progress(),
+            historyMarks: demoMarks()
         )
+    }
+
+    /// Who put the pictures of "Ostatnio na ramce" there: the schedule at
+    /// 7:00 and 19:30, and one sent from the app in between.
+    private func demoMarks() -> [String: ShownMark] {
+        let ids = Array(history.suffix(8).reversed())
+        var marks: [String: ShownMark] = [:]
+        for (index, id) in ids.enumerated() {
+            let fromApp = index % 3 == 1
+            let hours = 5400.0 / 3600 + Double(index) * 6 + (fromApp ? 3 : 0)
+            marks[id] = ShownMark(
+                at: ISO8601DateFormatter().string(from: .now.addingTimeInterval(-hours * 3600)),
+                origin: fromApp ? "app" : "schedule"
+            )
+        }
+        return marks
     }
 
     private var runElapsed: Double? { run.map { Date.now.timeIntervalSince($0.start) } }
@@ -283,7 +300,7 @@ actor DemoBackend: FrameBackend {
                 return DisplayProgress(
                     stage: step.stage, phase: step.phase, active: true, title: run.title,
                     fraction: elapsed / total, secondsLeft: Int((total - elapsed).rounded(.up)),
-                    startedAt: stamp
+                    startedAt: stamp, origin: "app"
                 )
             }
         }

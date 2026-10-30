@@ -569,6 +569,19 @@ class Library:
         if item is not None:
             self.update(item_id, last_shown_at=stamp, show_count=item.show_count + 1)
 
+    def last_shown(self, item_ids: list[str]) -> dict[str, tuple[str, str]]:
+        """When each of ``item_ids`` last went on the frame, and why."""
+        if not item_ids:
+            return {}
+        marks = ",".join("?" * len(item_ids))
+        with self._db() as db:
+            rows = db.execute(
+                f"SELECT item_id, shown_at, reason FROM history WHERE id IN "
+                f"(SELECT MAX(id) FROM history WHERE item_id IN ({marks}) GROUP BY item_id)",
+                item_ids,
+            ).fetchall()
+        return {i: (s, r) for i, s, r in rows}
+
     def history(self, limit: int = 50) -> list[dict[str, str]]:
         with self._db() as db:
             rows = db.execute(
