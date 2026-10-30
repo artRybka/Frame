@@ -660,10 +660,9 @@ struct NowView: View {
             return false
         }
         if onFrame {
-            model.toast = "Nowy kadr — ramka odświeża obraz"
-            Task { await model.followPlayer() }
+            Task { await model.followPlayer() }  // the bar under the picture shows the redraw
         } else {
-            model.toast = "Zapisano kadr"
+            model.notices.done("Zapisano kadr")
         }
         return true
     }

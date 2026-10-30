@@ -55,7 +55,8 @@ final class AppModel {
     /// Styles, subjects, periods and techniques to search by, with Polish names.
     var vocabulary: [TermInfo] = []
     var connection = Connection.unknown
-    var toast: String?
+    /// The cards at the bottom of the screen (`NoticeStack`).
+    let notices = Notices()
     var working = false
     /// A tap on the Sieć tile (the check) found the frame asleep and is
     /// waking it.
@@ -299,12 +300,12 @@ final class AppModel {
         }
         guard let device = status?.device, device.configured, device.powerState != "online" else { return }
         if device.powerState == "deep_sleep" {
-            toast = Self.deepSleepNote(device.wakeAt, off: device.switchedOff == true, lost: device.wifiLost == true)
+            warnDeepSleep(device.wakeAt, off: device.switchedOff == true, lost: device.wifiLost == true)
             return
         }
         if device.powerState == nil, device.reachable != false { return }  // a server before 0.12
         if device.onNetwork == false {
-            toast = "Ramki nie ma w sieci Wi-Fi, sygnał budzenia do niej nie dotrze"
+            notices.warn("Ramki nie ma w sieci Wi-Fi", "Sygnał budzenia do niej nie dotrze.")
             return
         }
         wakingForStatus = true
@@ -313,15 +314,32 @@ final class AppModel {
     }
 
     /// `until`: the alarm (ISO); `lost`: asleep deeply by itself (unplugged).
-    private static func deepSleepNote(_ until: String?, off: Bool = false, lost: Bool = false) -> String {
-        if off { return "Ramka jest wyłączona. Włączysz ją przyciskiem na ramce" }
-        if lost {
-            let alarm = When.at(until).map { ", sama obudzi się \($0)" } ?? ""
-            return "Ramka śpi głęboko (tak zasypia po odpięciu zasilacza) i sygnał budzenia jej nie budzi. Obudzi ją krótkie naciśnięcie przycisku z tyłu\(alarm)"
-        }
-        let alarm = When.at(until).map { "budzik \($0) lub przycisk" } ?? "tylko przycisk"
-        return "Ramka w głębokim śnie (Wi-Fi wyłączone), obudzi ją \(alarm)"
+    private func warnDeepSleep(_ until: String?, off: Bool = false, lost: Bool = false, in card: Notice.ID? = nil) {
+        let (title, detail) = Self.deepSleepNote(until, off: off, lost: lost)
+        if let card { notices.end(card, .warning, title, detail) } else { notices.warn(title, detail) }
     }
+
+    private static func deepSleepNote(_ until: String?, off: Bool, lost: Bool) -> (String, String) {
+        if off { return ("Ramka jest wyłączona", "Włączysz ją przyciskiem na ramce.") }
+        let alarm = When.at(until)
+        if lost {
+            return (
+                alarm.map { "Ramka śpi głęboko, sama obudzi się \($0)" } ?? "Ramka śpi głęboko",
+                "Po odpięciu zasilacza sygnał budzenia jej nie budzi. "
+                    + (alarm == nil ? "Obudzi" : "Wcześniej obudzi") + " ją krótkie naciśnięcie przycisku z tyłu."
+            )
+        }
+        return (
+            "Ramka w głębokim śnie",
+            "Wi-Fi jest wyłączone. Obudzi ją " + (alarm.map { "budzik \($0) lub przycisk." } ?? "tylko przycisk.")
+        )
+    }
+
+    /// The server cannot build the frame's app.
+    private static let noCertificates = (
+        "Brak certyfikatów Samsunga na serwerze",
+        "Skopiuj raz author.p12, distributor.p12 i password.txt do folderu data/panel-app/certs serwera (np. File Station)."
+    )
 
     func refreshPlaylists() async {
         if let value = try? await backend.playlists() { playlists = value }
@@ -366,7 +384,7 @@ final class AppModel {
             await refreshPlayer()
             if player?.busy != true { break }
         }
-        if let error = player?.lastError, !error.isEmpty { toast = error }
+        if let error = player?.lastError, !error.isEmpty { notices.fail("Nie udało się wysłać obrazu", error) }
     }
 
     /// Poll the server's progress while a picture is on its way. With
@@ -437,8 +455,7 @@ final class AppModel {
             show(error)
             return false
         }
-        toast = offset == 0 ? "Nowy kadr — ramka odświeża obraz" : "Wysyłam na ramkę…"
-        return true
+        return true  // the bar follows it
     }
 
     /// Saves a crop edited in the app (or forgets it); the framing as the
@@ -455,12 +472,12 @@ final class AppModel {
     func releaseHold() async {
         do {
             player = try await backend.releaseHold()
-            toast = "Odpięto"
+            notices.done("Odpięto")
         } catch { show(error) }
     }
 
     /// Sends the work to the frame and follows it there; false if that
-    /// failed (the error is on the toast).
+    /// failed (the error is on a card).
     @discardableResult
     func show(itemID: String, hold: HoldSpec) async -> Bool {
         do {
@@ -469,7 +486,6 @@ final class AppModel {
             show(error)
             return false
         }
-        toast = "Wysyłam na ramkę…"
         await followPlayer()
         return player?.lastError?.isEmpty ?? true
     }
@@ -488,15 +504,13 @@ final class AppModel {
             return
         }
         await refreshPlayer()
-        toast = player?.hold?.forever == true
-            ? "W kolejce jako następne — po odpięciu obrazu"
-            : "W kolejce jako następne"
+        notices.done("W kolejce jako następne", player?.hold?.forever == true ? "Pojawi się po odpięciu obrazu." : nil)
     }
 
     func dequeue(itemID: String) async {
         do {
             player = try await backend.dequeue(itemID: itemID)
-            toast = "Usunięto z kolejki"
+            notices.done("Usunięto z kolejki")
         } catch { show(error) }
     }
 
@@ -504,7 +518,7 @@ final class AppModel {
     func skip(_ summary: ItemSummary) async -> Bool {
         do {
             player = try await backend.skip(itemID: summary.id)
-            toast = "Pominięto „\(summary.shownTitle)”"
+            notices.done("Pominięto „\(summary.shownTitle)”")
             return true
         } catch {
             show(error)
@@ -520,7 +534,7 @@ final class AppModel {
             return
         }
         settings?.playlistId = playlist.id
-        toast = "Teraz prezentowane: \(playlist.name)"
+        notices.done("Teraz prezentowane: \(playlist.name)")
         await followPlayer()
     }
 
@@ -533,7 +547,7 @@ final class AppModel {
             return
         }
         settings?.playlistId = nil
-        toast = "Teraz prezentowane: Propozycje"
+        notices.done("Teraz prezentowane: Propozycje")
         await followPlayer()
     }
 
@@ -586,7 +600,11 @@ final class AppModel {
             // A sleeping frame takes a new power mode on only when it wakes:
             // the status says so (DeviceStatus.modePending).
             if remoded { await refreshStatus(live: false) }
-            toast = !turned && restyled ? "Zapisano. Nowy wygląd dostanie następny obraz" : "Zapisano ustawienia"
+            if !turned, restyled {
+                notices.done("Zapisano", "Nowy wygląd dostanie następny obraz.")
+            } else {
+                notices.done("Zapisano ustawienia")
+            }
             if turned {
                 // The server redraws the current picture for the turned screen.
                 await followPlayer()
@@ -603,7 +621,7 @@ final class AppModel {
         new.name = trimmed.isEmpty ? nil : trimmed
         do {
             settings = try await backend.saveSettings(new)
-            toast = new.name.map { "Ramka nazywa się teraz „\($0)”" } ?? "Przywrócono nazwę z ekranu"
+            notices.done(new.name.map { "Ramka nazywa się teraz „\($0)”" } ?? "Przywrócono nazwę z ekranu")
         } catch { show(error) }
     }
 
@@ -650,9 +668,9 @@ final class AppModel {
             return
         }
         if let originals {
-            toast = "Oryginały mogą zająć do \(ByteSize.mb(originals))"
+            notices.done("Oryginały mogą zająć do \(ByteSize.mb(originals))")
         } else if let catalogue {
-            toast = "Katalog może zająć do \(ByteSize.mb(catalogue))"
+            notices.done("Katalog może zająć do \(ByteSize.mb(catalogue))")
         }
         let lower = (catalogue ?? .max) < old.catalogueMb || (originals ?? .max) < old.originalsMb
         guard lower else { return }
@@ -667,10 +685,11 @@ final class AppModel {
     /// The helper pulls the newest image now (it looks every few seconds; a
     /// new image takes a minute or so to download).
     func checkServerUpdate() async {
+        let card = notices.begin("Sprawdzam, czy jest nowsza wersja serwera")
         do {
             serverUpdate = try await backend.checkServerUpdate()
         } catch {
-            show(error)
+            notices.fail(error, in: card)
             return
         }
         for _ in 0..<60 {
@@ -679,12 +698,16 @@ final class AppModel {
             serverUpdate = view
             if !view.busy { break }
         }
-        if let view = serverUpdate, !view.busy {
-            if view.state == "failed" {
-                toast = view.error ?? "Nie udało się sprawdzić"
-            } else if !view.offersUpdate {
-                toast = "Serwer jest aktualny"
-            }
+        guard let view = serverUpdate, !view.busy else {
+            notices.drop(card)
+            return
+        }
+        if view.state == "failed" {
+            notices.end(card, .error, "Nie udało się sprawdzić wersji serwera", view.error)
+        } else if view.offersUpdate {
+            notices.end(card, .info, "Jest nowsza wersja serwera", view.latestVersion.map { "Wersja \($0)." })
+        } else {
+            notices.end(card, .done, "Serwer jest aktualny")
         }
     }
 
@@ -693,10 +716,11 @@ final class AppModel {
     /// (or as the old one, when the new one did not start).
     func updateServer() async {
         guard let before = serverUpdate else { return }
+        let card = notices.begin("Aktualizuję serwer", "Na około minutę zniknie z sieci.")
         do {
             serverUpdate = try await backend.updateServer()
         } catch {
-            show(error)
+            notices.fail(error, in: card)
             return
         }
         updatingServer = true
@@ -712,20 +736,20 @@ final class AppModel {
             serverUpdate = view
             if view.busy { continue }
             if view.state == "failed" {
-                toast = view.error ?? "Aktualizacja się nie udała"
+                notices.end(card, .error, "Aktualizacja serwera się nie udała", view.error)
                 return
             }
             if wentAway || view.version != before.version {
-                toast = "Serwer zaktualizowany do wersji \(view.version)"
+                notices.end(card, .done, "Serwer zaktualizowany do wersji \(view.version)")
                 await refreshAll()
                 return
             }
             if !view.offersUpdate {
-                toast = "Serwer jest aktualny"
+                notices.end(card, .done, "Serwer jest aktualny")
                 return
             }
         }
-        toast = "Serwer nie wrócił po aktualizacji. Sprawdź Container Manager na NAS-ie."
+        notices.end(card, .error, "Serwer nie wrócił po aktualizacji", "Sprawdź Container Manager na NAS-ie.")
     }
 
     func loadPanelApp() async {
@@ -735,12 +759,12 @@ final class AppModel {
     /// Points the panel's launcher at the Frame app and starts it (installs
     /// it when the frame has another version); a sleeping frame is woken first.
     func installPanelApp() async {
-        toast = "Uruchamiam aplikację Frame na ramce…"
+        let card = notices.begin("Uruchamiam aplikację Frame na ramce", "Śpiącą ramkę najpierw budzę.")
         do {
             panelApp = try await backend.installPanelApp()
-            toast = "Ramka uruchamia aplikację Frame, za chwilę sama poprosi o obraz"
+            notices.end(card, .done, "Aplikacja Frame uruchomiona", "Za chwilę ramka sama poprosi o obraz.")
         } catch {
-            show(error)
+            notices.fail(error, in: card)
         }
         await refreshStatus(live: false)
     }
@@ -762,16 +786,16 @@ final class AppModel {
         do {
             aiSettings = try await backend.saveAiKey(key)
         } catch BackendError.http(400, _) {
-            toast = "Anthropic nie przyjął klucza. Sprawdź, czy skopiowano go w całości."
+            notices.fail("Anthropic nie przyjął klucza", "Sprawdź, czy skopiowano go w całości.")
             return false
         } catch BackendError.http(502, _) {
-            toast = "Anthropic teraz nie odpowiada. Spróbuj za chwilę."
+            notices.fail("Anthropic teraz nie odpowiada", "Spróbuj za chwilę.")
             return false
         } catch {
             show(error)
             return false
         }
-        toast = "Klucz zapisany"
+        notices.done("Klucz zapisany")
         return true
     }
 
@@ -782,7 +806,7 @@ final class AppModel {
             show(error)
             return
         }
-        toast = "Usunięto klucz"
+        notices.done("Usunięto klucz")
     }
 
     func keywordsEstimate() async -> AiEstimate? {
@@ -797,9 +821,11 @@ final class AppModel {
     func describeLibrary() async {
         do {
             let started = try await backend.describeLibrary()
-            toast = started.items == 0
-                ? "Cała biblioteka ma już słowa kluczowe"
-                : "Opisuję \(Names.pictures(started.items)), potrwa do doby"
+            if started.items == 0 {
+                notices.info("Cała biblioteka ma już słowa kluczowe")
+            } else {
+                notices.done("Opisuję \(Names.pictures(started.items))", "Potrwa do doby.")
+            }
         } catch {
             show(error)
         }
@@ -809,47 +835,52 @@ final class AppModel {
     private func checkPanel(saved: String) async {
         guard panelConfig?.host != nil, panelConfig?.pinSet == true else {
             await refreshStatus(live: false)
-            toast = saved
+            notices.done(saved)
             return
         }
-        toast = "\(saved) · sprawdzam ekran…"
+        let card = notices.begin(saved, "Sprawdzam, czy ekran odpowiada")
         await refreshStatus(live: true)
         switch status?.device.reachable {
-        case .some(true): toast = "\(saved) · ekran odpowiada"
+        case .some(true): notices.end(card, .done, saved, "Ekran odpowiada.")
         case .some(false) where status?.device.error?.contains("authentication") == true:
-            toast = "\(saved) · ekran odrzucił PIN"
-        case .some(false): toast = "\(saved) · ekran nie odpowiada (może śpi)"
-        case .none: toast = saved
+            notices.end(card, .error, "Ekran odrzucił PIN", "\(saved). Sprawdź PIN w menu ekranu.")
+        case .some(false): notices.end(card, .warning, "Ekran nie odpowiada, może śpi", "\(saved).")
+        case .none: notices.end(card, .done, saved)
         }
     }
 
     /// `sleepAfter`: woken only to check on it (see `checkStatus`).
     func wake(sleepAfter: Bool = false) async {
-        toast = "Budzę ramkę…"
+        let card = notices.begin("Budzę ramkę", "Na baterii trwa to do 3 minut")
         do {
             let result = try await backend.wake(sleepAfter: sleepAfter)
             if result.woke == true {
-                toast = result.started == true
-                    ? "Ramka się obudziła, aplikacja na niej wystartowała od nowa"
-                    : "Ramka się obudziła"
+                notices.end(
+                    card, .done, "Ramka się obudziła",
+                    result.started == true ? "Aplikacja na niej wystartowała od nowa." : nil
+                )
             } else if result.problem == "no_certificates" {
-                toast = Delivery.noCertificates
+                notices.end(card, .error, Self.noCertificates.0, Self.noCertificates.1)
             } else if result.asleepUntil != nil || result.deepSleep == true {
-                toast = Self.deepSleepNote(
+                warnDeepSleep(
                     result.asleepUntilAt ?? status?.device.wakeAt,
                     off: status?.device.switchedOff == true,
-                    lost: result.wifiLost == true
+                    lost: result.wifiLost == true,
+                    in: card
                 )
             } else if !result.sent, result.problem == nil, status?.device.switchedOff == true {
-                toast = Self.deepSleepNote(nil, off: true)
+                warnDeepSleep(nil, off: true, in: card)
             } else if !result.sent {
-                toast = "Brak adresu MAC ramki, ustaw go w Połączeniu z ekranem"
+                notices.end(card, .warning, "Brak adresu MAC ramki", "Ustaw go w Połączeniu z ekranem.")
             } else {
-                toast = "Ramka nie odpowiada na sygnał budzenia. Na baterii bywa zawodny: naciśnij krótko przycisk z tyłu ramki"
+                notices.end(
+                    card, .warning, "Ramka nie odpowiada na sygnał budzenia",
+                    "Na baterii bywa zawodny. Naciśnij krótko przycisk z tyłu ramki."
+                )
             }
             await refreshStatus(live: false)
         } catch {
-            show(error)
+            notices.fail(error, in: card)
         }
     }
 
@@ -861,11 +892,11 @@ final class AppModel {
         do {
             let result = try await backend.pushAgain()
             if result.fetched == true {
-                toast = "Ramka pobrała obraz"
+                notices.done("Ramka pobrała obraz")
             } else if !result.pushed {
-                toast = "Ramka nie odpowiada, obraz trafi na nią, gdy się obudzi"
+                notices.warn("Ramka nie odpowiada", "Obraz trafi na nią, gdy się obudzi.")
             } else {
-                toast = "Ramka znowu nie pobrała obrazu"
+                notices.fail("Ramka znowu nie pobrała obrazu")
             }
         } catch {
             show(error)
@@ -875,14 +906,12 @@ final class AppModel {
 
     /// "Zapisz w Zdjęciach" on a work's screen.
     func saveToPhotos(_ item: Item) async {
-        toast = "Pobieram obraz…"
+        let card = notices.begin("Pobieram obraz do Zdjęć")
         do {
             try await PhotoSaver.save(item, backend: backend)
-            toast = "Zapisano w Zdjęciach"
-        } catch is CancellationError {
-            toast = nil
+            notices.end(card, .done, "Zapisano w Zdjęciach")
         } catch {
-            show(error)
+            notices.fail(error, in: card)
         }
     }
 
@@ -895,35 +924,41 @@ final class AppModel {
             show(error)
             return
         }
-        toast = status?.device.powerSource == "ac"
-            ? "Ramka zaśnie za kilka sekund. Na zasilaczu obudzi się na najbliższą zmianę i znów nie będzie spać"
-            : "Ramka zaśnie za kilka sekund"
+        notices.done(
+            "Ramka zaśnie za kilka sekund",
+            status?.device.powerSource == "ac"
+                ? "Na zasilaczu obudzi się na najbliższą zmianę i znów nie będzie spać." : nil
+        )
         await refreshStatus(live: false)
     }
 
     /// "Uruchom ponownie": the frame reboots and shows its picture again.
     func restartFrame() async {
-        toast = "Uruchamiam ramkę ponownie…"
+        let card = notices.begin("Uruchamiam ramkę ponownie", "Śpiącą ramkę najpierw budzę.")
         do {
             let result = try await backend.restart()
             if result.woke == true {
-                toast = "Ramka uruchamia się ponownie. Za 2–3 minuty znów pokaże obraz"
+                notices.end(card, .done, "Ramka uruchamia się ponownie", "Za 2–3 minuty znów pokaże obraz.")
             } else if result.problem == "no_certificates" {
-                toast = Delivery.noCertificates
+                notices.end(card, .error, Self.noCertificates.0, Self.noCertificates.1)
             } else if result.asleepUntil != nil || result.deepSleep == true {
-                toast = Self.deepSleepNote(
+                warnDeepSleep(
                     result.asleepUntilAt ?? status?.device.wakeAt,
                     off: status?.device.switchedOff == true,
-                    lost: result.wifiLost == true
+                    lost: result.wifiLost == true,
+                    in: card
                 )
             } else if !result.sent, status?.device.switchedOff == true {
-                toast = Self.deepSleepNote(nil, off: true)
+                warnDeepSleep(nil, off: true, in: card)
             } else {
-                toast = "Ramka nie odpowiada. Naciśnij krótko przycisk z tyłu ramki i spróbuj jeszcze raz"
+                notices.end(
+                    card, .warning, "Ramka nie odpowiada",
+                    "Naciśnij krótko przycisk z tyłu ramki i spróbuj jeszcze raz."
+                )
             }
             await refreshStatus(live: false)
         } catch {
-            show(error)
+            notices.fail(error, in: card)
         }
     }
 
@@ -937,22 +972,22 @@ final class AppModel {
             return
         }
         let later = result.applies == "at_wake"
-        if let at = When.at(result.until) {
-            toast = later
-                ? "Ramka śpi teraz bez Wi-Fi. Przy najbliższej pobudce zaśnie głęboko do \(at)"
-                : "Ramka zaśnie bez Wi-Fi do \(at). Wcześniej obudzi ją tylko przycisk"
-        } else {
-            toast = later
-                ? "Ramka śpi teraz bez Wi-Fi. Wyłączy się przy najbliższej pobudce"
-                : "Ramka wyłączy się za chwilę. Włączysz ją przyciskiem na ramce"
+        switch (When.at(result.until), later) {
+        case let (at?, true):
+            notices.done("Ramka śpi teraz bez Wi-Fi", "Przy najbliższej pobudce zaśnie głęboko do \(at).")
+        case let (at?, false):
+            notices.done("Ramka zaśnie bez Wi-Fi do \(at)", "Wcześniej obudzi ją tylko przycisk.")
+        case (nil, true):
+            notices.done("Ramka śpi teraz bez Wi-Fi", "Wyłączy się przy najbliższej pobudce.")
+        case (nil, false):
+            notices.done("Ramka wyłączy się za chwilę", "Włączysz ją przyciskiem na ramce.")
         }
         await refreshStatus(live: false)
     }
 
+    /// An error on a card; a request cut short is no news.
     func show(_ error: Error) {
-        // A request cut short (a pull to refresh let go, a view gone) is no news.
-        guard !error.isCancellation else { return }
-        toast = error.localizedDescription
+        notices.fail(error)
     }
 }
 

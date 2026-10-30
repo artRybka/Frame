@@ -661,18 +661,20 @@ struct PlaylistEditorView: View {
         }
     }
 
-    /// Reports the first sync of an album once it ends; runs on after the editor closes.
+    /// Follows the first sync of an album on its card; runs on after the editor closes.
     @MainActor
-    private static func followSync(_ id: String, name: String, model: AppModel) async {
-        do {
-            let job = try await watchJob(id, backend: model.backend) { _ in }
-            model.toast = job.error.isEmpty
-                ? "„\(name)”: \(Names.photos(job.done)) z albumu"
-                : "„\(name)”: nie udało się pobrać albumu"
-            await model.refreshPlaylists()
-        } catch {
-            model.show(error)
+    private static func followSync(_ id: String, name: String, card: Notice.ID, model: AppModel) async throws {
+        let job = try await watchJob(id, backend: model.backend) { job in
+            if job.total > 0 {
+                model.notices.update(card, fraction: Double(job.done) / Double(job.total), count: "\(job.done) z \(job.total)")
+            }
         }
+        if job.error.isEmpty {
+            model.notices.end(card, .done, "„\(name)”: \(Names.photos(job.done)) z albumu")
+        } else {
+            model.notices.end(card, .error, "„\(name)”: nie udało się pobrać albumu", job.error)
+        }
+        await model.refreshPlaylists()
     }
 
     private func refreshPreview() async {
@@ -740,17 +742,18 @@ struct PlaylistEditorView: View {
         }
     }
 
-    /// Reports the fetch once it ends; runs on after the editor closes.
+    /// Follows the museum fetch on its card; runs on after the editor closes.
     @MainActor
-    private static func followFill(_ id: String, name: String, model: AppModel) async {
-        do {
-            let job = try await watchJob(id, backend: model.backend) { _ in }
-            model.toast = "„\(name)”: dodano \(job.done) dzieł z muzeów"
-            await model.refreshPlaylists()
-            await model.refreshFacets()
-        } catch {
-            model.show(error)
+    private static func followFill(_ id: String, name: String, card: Notice.ID, model: AppModel) async throws {
+        let job = try await watchJob(id, backend: model.backend) { job in
+            if job.total > 0 {
+                let seen = job.done + job.failed
+                model.notices.update(card, fraction: Double(seen) / Double(job.total), count: "\(seen) z \(job.total)")
+            }
         }
+        model.notices.end(card, .done, "„\(name)”: dodano \(Names.works(job.done)) z muzeów")
+        await model.refreshPlaylists()
+        await model.refreshFacets()
     }
 
     /// Reads the chosen photos: an upright JPEG with its date and place, and a thumbnail.
@@ -772,7 +775,7 @@ struct PlaylistEditorView: View {
     }
 
     /// Closes the editor at once; photos, the playlist and what follows are
-    /// sent in the background, reported in toasts.
+    /// sent in the background, followed on a card.
     private func save() {
         var playlist = playlist
         if !photos.isEmpty { playlist.kind = .manual }
@@ -793,28 +796,33 @@ struct PlaylistEditorView: View {
     private static func store(_ playlist: Playlist, uploads: [PhotoUpload], fetch: Int, model: AppModel) async {
         var playlist = playlist
         let name = playlist.name
+        let notices = model.notices
+        let card = notices.begin("Zapisuję „\(name)”", background: true)
         do {
-            if !uploads.isEmpty { model.toast = "„\(name)”: wysyłam \(Names.photos(uploads.count))…" }
-            for upload in uploads {
+            for (index, upload) in uploads.enumerated() {
+                notices.update(
+                    card, title: "„\(name)”: wysyłam zdjęcia",
+                    fraction: Double(index) / Double(uploads.count), count: "\(index) z \(uploads.count)"
+                )
                 let item = try await model.backend.uploadPhoto(upload)
                 playlist.itemIds.append(item.id)
             }
             let saved = try await model.backend.savePlaylist(playlist)
-            model.toast = "Zapisano „\(name)”"
             model.libraryChanged()
             if saved.playlist.kind == .album, saved.playlist.albumSync == nil {
                 // A new album (or a new link): its first sync is running.
                 let jobID = try await model.backend.syncAlbum(playlistID: saved.playlist.id)
-                model.toast = "Zapisano „\(name)”, pobieram miniatury zdjęć"
-                await followSync(jobID, name: name, model: model)
-            }
-            if saved.playlist.kind == .smart, fetch > 0 {
+                notices.update(card, title: "„\(name)”: pobieram miniatury zdjęć")
+                try await followSync(jobID, name: name, card: card, model: model)
+            } else if saved.playlist.kind == .smart, fetch > 0 {
                 let jobID = try await model.backend.fillLibrary(rules: playlist.rules, count: fetch)
-                model.toast = "Zapisano „\(name)”, pobieram do \(fetch) dzieł w tle"
-                await followFill(jobID, name: name, model: model)
+                notices.update(card, title: "„\(name)”: pobieram dzieła z muzeów")
+                try await followFill(jobID, name: name, card: card, model: model)
+            } else {
+                notices.end(card, .done, "Zapisano „\(name)”")
             }
         } catch {
-            model.show(error)
+            notices.fail(error, in: card)
         }
     }
 }

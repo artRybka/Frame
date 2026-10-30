@@ -263,9 +263,9 @@ struct PlaylistDetailView: View {
                 await load()
                 await model.refreshPlaylists()
                 if !job.error.isEmpty {
-                    model.toast = "Nie udało się zsynchronizować albumu"
+                    model.notices.fail("Nie udało się zsynchronizować albumu", job.error)
                 } else {
-                    model.toast = job.itemIds.isEmpty ? "Album bez zmian" : "Nowe zdjęcia: \(job.itemIds.count)"
+                    model.notices.done(job.itemIds.isEmpty ? "Album bez zmian" : "Nowe zdjęcia: \(job.itemIds.count)")
                 }
             } catch {
                 model.show(error)

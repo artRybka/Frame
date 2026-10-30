@@ -98,18 +98,29 @@ enum ThemeActions {
             await model.refreshPlaylists()
             // The card says "Masz" from now on.
             if let fresh = try? await model.backend.themes() { model.themes = fresh }
+            let name = made.playlist.name
             if play {
-                model.toast = "Teraz prezentowane: \(made.playlist.name)"
+                model.notices.done("Teraz prezentowane: \(name)")
                 await model.refreshPlayer()
             } else if let jobID = made.jobId {
-                model.toast = "Utworzono „\(made.playlist.name)”, pobieram dzieła z muzeów"
+                let card = model.notices.begin("Utworzono „\(name)”, pobieram dzieła z muzeów", background: true)
                 Task {
-                    let job = try? await watchJob(jobID, backend: model.backend) { _ in }
-                    if let job { model.toast = "„\(made.playlist.name)”: dodano \(Names.works(job.done))" }
+                    do {
+                        let job = try await watchJob(jobID, backend: model.backend) { job in
+                            guard job.total > 0 else { return }
+                            let seen = job.done + job.failed
+                            model.notices.update(
+                                card, fraction: Double(seen) / Double(job.total), count: "\(seen) z \(job.total)"
+                            )
+                        }
+                        model.notices.end(card, .done, "„\(name)”: dodano \(Names.works(job.done))")
+                    } catch {
+                        model.notices.fail(error, in: card)
+                    }
                     await model.refreshPlaylists()
                 }
             } else {
-                model.toast = "Playlista „\(made.playlist.name)” jest w Playlistach"
+                model.notices.info("Playlista „\(name)” jest w Playlistach")
             }
             return made.playlist.id
         } catch {

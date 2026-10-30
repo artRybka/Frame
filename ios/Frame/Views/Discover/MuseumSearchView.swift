@@ -335,7 +335,7 @@ struct MuseumSearchView: View {
             if let index = results.firstIndex(where: { $0.id == remote.id }) {
                 results[index].inLibrary = true
             }
-            model.toast = "Zapisano"
+            model.notices.done("Dodano do biblioteki")
             await model.refreshFacets()
         } catch {
             model.show(error)
