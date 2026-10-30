@@ -134,6 +134,18 @@ DOWN_AFTER_REPORT = timedelta(seconds=150)
 # at most this often.
 FROZEN_STARTS = 2
 REINSTALL_EVERY = timedelta(minutes=30)
+# Every MDC session keeps the panel up: starting a stuck app every few
+# minutes kept it awake all night on battery (2026-10-30, 97 % to 58 %).
+# Past ``FROZEN_STARTS`` on battery the starts space out, doubling from
+# ``NUDGE_EVERY`` up to this.
+BACKOFF_MAX = timedelta(hours=1)
+# Still no word this long after the reinstall: the panel's whole web
+# runtime is stuck (2026-10-30: not even the launcher fetched
+# sssp_config.xml for hours, and MDC has no restart, 0x11 02 is NAKed).
+# Put into deep sleep over MDC (network standby off, power off), the panel
+# boots afresh at its next alarm or the button, which a sleep with the
+# Wi-Fi off always ends in (E16), and the server starts the app then.
+DOWN_AFTER_REINSTALL = timedelta(minutes=10)
 # Awake, the app is heard from at least this often: a question every 20 s on
 # the charger, a minute at most while it waits, progress reports during a
 # long download. Silent longer it may well be asleep after all (unplugged,
@@ -278,6 +290,7 @@ class PanelApp:
         self._silent_kicks = 0
         self._unanswered = 0  # starts acknowledged over MDC since the last question
         self._reinstalled: datetime | None = None
+        self._reinstall_pending = False  # reinstalled, and not heard from since
         self._sleep_reported: datetime | None = None  # its last "sleep" report
         self._kick_error: MdcError | None = None  # why the last start failed
         self._next_alarm: datetime | None = None  # as the status shows it
@@ -737,6 +750,7 @@ class PanelApp:
         self._save(state)
         self._silent_kicks = 0
         self._unanswered = 0
+        self._reinstall_pending = False
         self.heard_at = now
         self.service.status.note_app(now, hello.battery, hello.charging)
         self.contacts += 1
@@ -911,6 +925,11 @@ class PanelApp:
             or missed
             or (not state.asleep and silent and self._silent_kicks >= SILENT_KICKS)
         )
+        if self._stuck_after_reinstall():
+            await self._put_down(now)
+            return
+        if self._backing_off(now):
+            return
         if lost:
             # Whatever the launcher points at (another source, another
             # server's app): ours, started, whenever the panel answers.
@@ -987,8 +1006,56 @@ class PanelApp:
             return
         if self._kicked is not None and now - self._kicked < KICK_EVERY:
             return
+        if self._backing_off(now):
+            return
         self._kicked = now
         await self._kick(why="did not run although the panel is up")
+
+    def _stuck_after_reinstall(self) -> bool:
+        reinstalled = self._reinstalled
+        return (
+            self._reinstall_pending
+            and reinstalled is not None
+            and datetime.now(UTC) - reinstalled >= DOWN_AFTER_REINSTALL
+        )
+
+    async def _put_down(self, now: datetime) -> None:
+        """The app stays stuck after a reinstall (``DOWN_AFTER_REINSTALL``):
+        deep sleep over MDC, so the panel boots afresh at its next alarm or
+        the button; asleep without the Wi-Fi as far as the app shows."""
+        self._reinstall_pending = False
+        try:
+            async with self.service.panel.session() as mdc:
+                await mdc.set_network_standby(False)
+                await mdc.set_power(False)
+        except MdcError as err:
+            log.info("could not put the panel to sleep: %s", err)
+            return
+        state = self.state
+        state.asleep = True
+        state.standby = False
+        state.wifi_lost = True  # only an alarm or the button wakes it
+        kept = [a for a in state.wakes if datetime.fromisoformat(a) > now]
+        state.wakes = sorted(set(kept) | set(self._spare_left(state, now)))
+        state.wake_at = state.wakes[0] if state.wakes else None
+        state.slept_at = now.isoformat(timespec="seconds")
+        self._save(state)
+        self.service.status.note_sleep(deep=True)
+        log.warning(
+            "the frame's app stays stuck after a reinstall: the panel sleeps deeply now and "
+            "boots afresh at its next alarm (%s) or the button",
+            state.wake_at,
+        )
+
+    def _backing_off(self, now: datetime) -> bool:
+        """On battery, with starts unanswered past ``FROZEN_STARTS``: too soon
+        for another one (``BACKOFF_MAX``), so the panel can go to sleep."""
+        extra = self._unanswered - FROZEN_STARTS
+        if extra <= 0 or self.service.status.status.power_source == "ac":
+            return False
+        gap = min(BACKOFF_MAX, NUDGE_EVERY * 2 ** (extra - 1))
+        tried = [t for t in (self._kicked, self._nudged, self._looked) if t is not None]
+        return bool(tried) and now - max(tried) < gap
 
     async def _fell_asleep(self, now: datetime) -> None:
         """Not told to sleep, silent, and the panel does not answer MDC: it
@@ -1124,6 +1191,7 @@ class PanelApp:
                 if info is None:
                     return False
                 self._reinstalled = datetime.now(UTC)
+                self._reinstall_pending = True
                 log.warning(
                     "the frame's app did not start after %d starts over MDC: "
                     "installing it again as %s",

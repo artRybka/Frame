@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.37.1
+
+- Ramka, której aplikacja przestała odpowiadać, nie jest już na baterii
+  budzona co kilka minut przez całą noc: kolejne próby uruchomienia
+  aplikacji idą coraz rzadziej (do raz na godzinę), żeby ramka mogła zasnąć.
+- Gdy aplikacja milczy także 10 minut po ponownej instalacji, serwer usypia
+  ramkę głęboko; przy najbliższym budziku albo po przycisku startuje ona od
+  nowa i serwer uruchamia aplikację (restartu przez MDC ramka nie przyjmuje).
+
 ## 0.37.0
 
 - Playlista otwiera się płynnie: od razu z nagłówkiem z kafelka i dziełami

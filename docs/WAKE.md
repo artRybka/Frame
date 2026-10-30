@@ -674,6 +674,26 @@ Od 0.36.2:
   wersję kodu raportuje też (`probe`), jak launcher widzi ją i VXT Playera
   (informacje, metadane, certyfikaty, działające aplikacje).
 
+Ranek 2026-10-30 (0.37.0) pokazał, że to nie wystarcza: ramka stała w tym
+stanie ponad 6 godzin. Ponowna instalacja nic nie dała, bo launcher też
+milczał (ani `sssp_config.xml`, ani `Frame.wgt`), więc nowa paczka
+z `enable` nigdy nie dotarła na ramkę (Konfiguracja: 2.0.3 na serwerze, 2.0.0
+na ramce). Restartu przez MDC nie ma: `0x11 02` ramka odrzuca (NAK, test
+z Maca 07:03 UTC). Do tego starty co kilka minut trzymały ją przytomną całą
+noc i zjadły baterię (97 % do 58 %). Krótkie naciśnięcie przycisku niczego
+nie zmieniało. Od 0.37.1:
+
+- Na baterii, po `FROZEN_STARTS` startach bez odpowiedzi, kolejne starty idą
+  coraz rzadziej: odstęp podwaja się od 5 minut do najwyżej godziny
+  (`BACKOFF_MAX`), żeby ramka mogła zasnąć.
+- Gdy 10 minut po ponownej instalacji (`DOWN_AFTER_REINSTALL`) aplikacja
+  dalej milczy, serwer usypia ramkę głęboko przez MDC (`0xB5 00`, `0x11 00`).
+  Taki sen kończy się świeżym startem przy najbliższym budziku albo po
+  przycisku, a wtedy serwer uruchamia aplikację jak po każdej pobudce
+  przyciskiem. W logu: `the frame's app stays stuck after a reinstall`.
+- Ręcznie: przytrzymanie przycisku około 6 s wyłącza ramkę (biały ekran,
+  czyszczenie e-papieru), a krótkie naciśnięcie ją włącza.
+
 **„Uruchom ponownie” (2026-10-29).** W menu „Zasilanie”: `POST
 /api/device/restart`. Aplikacja przy najbliższym pytaniu dostaje `reboot`
 i woła `rebootDevice()`, jak przy nowej paczce, ale bez zapamiętywania
