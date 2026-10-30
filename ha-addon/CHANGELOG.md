@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.41.1
+
+- Poprawka: w 0.41.0 obrazy w całej aplikacji zostawały szare. Szukanie
+  twarzy do kolaży zajmowało wszystkie wspólne wątki i pobieranie obrazów
+  czekało. Teraz Vision działa po jednym obrazie we własnej kolejce, a obraz
+  w kolażu pojawia się od razu i dopiero potem płynnie przesuwa kadr na
+  twarz. Zmiana tylko w aplikacji iOS.
+- Kafelki komunikatów na dole: czynność o nieznanej długości pokazuje tylko
+  tekst i kręcące się kółko, bez biegającego paska i licznika sekund. Pasek
+  zostaje tam, gdzie postęp jest znany. Zmiana tylko w aplikacji iOS.
+
 ## 0.41.0
 
 - Podgląd w Ustawieniach → Prezentacja działa płynniej: ma stałą wysokość,

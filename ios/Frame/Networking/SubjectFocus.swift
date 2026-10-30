@@ -6,16 +6,26 @@ import Vision
 /// instead of through its middle: the faces in it, else what draws the eye
 /// (Vision's attention saliency), else the middle. Worked out once per
 /// picture and remembered.
+///
+/// Vision blocks its thread while it works, so it runs one picture at a
+/// time on a queue of its own: on Swift's few shared threads a screen of
+/// collages blocked them all, and with them every download in the app.
 actor SubjectFocus {
     static let shared = SubjectFocus()
 
+    private static let queue = DispatchQueue(label: "com.artrybka.frame.subject-focus", qos: .utility)
     private var cache: [String: UnitPoint] = [:]
+
+    func cached(_ key: String) -> UnitPoint? {
+        cache[key]
+    }
 
     /// Unit point in the picture, origin top-left.
     func point(in image: UIImage, key: String) async -> UnitPoint {
         if let cached = cache[key] { return cached }
-        // Detached: Vision runs beside this actor, not on it.
-        let point = await Task.detached(priority: .utility) { Self.find(in: image) }.value
+        let point = await withCheckedContinuation { (continuation: CheckedContinuation<UnitPoint, Never>) in
+            Self.queue.async { continuation.resume(returning: Self.find(in: image)) }
+        }
         cache[key] = point
         return point
     }

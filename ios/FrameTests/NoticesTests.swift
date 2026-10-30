@@ -24,6 +24,15 @@ final class NoticesTests: XCTestCase {
         XCTAssertEqual(notices.items.map(\.id), [card])
         XCTAssertEqual(notices.items.first?.kind, .done)
         XCTAssertNil(notices.items.first?.count)
+        XCTAssertEqual(notices.items.first?.fraction, 1)
+    }
+
+    func testWorkWithoutKnownProgressHasNoBarToTheEnd() {
+        let notices = Notices()
+        let card = notices.begin("Sprawdzam, czy jest nowsza wersja serwera")
+        XCTAssertNil(notices.items.first?.fraction)
+        notices.end(card, .done, "Serwer jest aktualny")
+        XCTAssertNil(notices.items.first?.fraction)
     }
 
     func testBackgroundWorkStaysAboveTheRest() {
