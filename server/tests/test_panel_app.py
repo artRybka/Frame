@@ -63,6 +63,10 @@ def _at(text: str) -> datetime:
     return datetime.fromisoformat(text).replace(tzinfo=WARSAW)
 
 
+# Requests made as the panel itself: content.json counts only from its address.
+PANEL_CLIENT = ("127.0.0.1", 50000)
+
+
 def _service(tmp_path: Path, port: int = 1515) -> FrameService:
     settings = Settings(
         data_dir=tmp_path,
@@ -324,7 +328,7 @@ def test_panel_routes(tmp_path: Path) -> None:
     service = _service(tmp_path)
     app = create_app(service.settings)
     svc = app.state.service
-    with TestClient(app) as client:
+    with TestClient(app, client=PANEL_CLIENT) as client:
         assert client.get("/panel/app/sssp_config.xml").status_code == 404
         author, distributor = _p12("Author"), _p12("Distributor")
         files = {"author": ("author.p12", author), "distributor": ("distributor.p12", distributor)}
@@ -550,7 +554,7 @@ def test_wifi_report_shows_in_the_status_until_the_panel_leaves_the_app(tmp_path
 
     service = _service(tmp_path)
     app = create_app(service.settings)
-    with TestClient(app) as client:
+    with TestClient(app, client=PANEL_CLIENT) as client:
         client.get("/panel/next", params={"reason": "start", "charging": "true"})
         report = {"event": "wifi", "via": "webapis", "level": 2, "ssid": "IoT", "ip": "127.0.0.1"}
         client.post("/panel/report", content=json.dumps(report))
