@@ -151,7 +151,7 @@ struct PlaylistDetailView: View {
 
     private func header(_ playlist: PlaylistSummary) -> some View {
         VStack(alignment: .leading, spacing: 14) {
-            Collage(itemIDs: playlist.coverItemIds, title: playlist.name, spacing: 3)
+            Collage(itemIDs: playlist.coverItemIds, title: playlist.name, spacing: 3, opensWorks: true)
                 .aspectRatio(1.6, contentMode: .fit)
                 .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                 .shadow(color: .black.opacity(0.15), radius: 18, y: 10)
