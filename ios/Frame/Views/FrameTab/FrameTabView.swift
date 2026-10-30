@@ -398,7 +398,7 @@ struct FrameTabView: View {
                 showingConnection = true
                 return
             }
-            if update.updateAvailable {
+            if update.offersUpdate {
                 confirmingUpdate = true
             } else if !update.busy, !model.updatingServer {
                 Task {
@@ -418,10 +418,15 @@ struct FrameTabView: View {
                         .font(.headline)
                         .monospacedDigit()
                         .foregroundStyle(Theme.ink)
-                    Text(state.note)
-                        .font(.caption)
-                        .foregroundStyle(state.color == Theme.accent ? Theme.accent : Theme.inkSoft)
-                        .lineLimit(2)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(state.note)
+                            .foregroundStyle(state.color == Theme.accent ? Theme.accent : Theme.inkSoft)
+                        if let detail = state.detail {
+                            Text(detail).foregroundStyle(Theme.inkSoft)
+                        }
+                    }
+                    .font(.caption)
+                    .lineLimit(2)
                 }
             }
         }
@@ -437,32 +442,33 @@ struct FrameTabView: View {
         }
     }
 
-    private var server: (icon: String, color: Color, title: String, note: String, working: Bool) {
+    /// The Serwer tile's state; `detail` goes on a line of its own under `note`.
+    private var server: (icon: String, color: Color, title: String, note: String, detail: String?, working: Bool) {
         let version = model.serverUpdate?.version ?? model.status?.server.version ?? "—"
         guard let update = model.serverUpdate else {
-            return ("server.rack", Theme.inkSoft, version, "wersja serwera", false)
+            return ("server.rack", Theme.inkSoft, version, "wersja serwera", nil, false)
         }
         if update.addon {
-            return ("server.rack", Theme.inkSoft, version, "aktualizuje Home Assistant", false)
+            return ("server.rack", Theme.inkSoft, version, "aktualizuje Home Assistant", nil, false)
         }
         if !update.updater {
-            return ("server.rack", Theme.inkSoft, version, "aktualizacja na NAS-ie", false)
+            return ("server.rack", Theme.inkSoft, version, "aktualizacja na NAS-ie", nil, false)
         }
         let latest = update.latestVersion ?? "nowsza"
         if model.updatingServer || update.state == "updating" {
-            return ("arrow.triangle.2.circlepath", Theme.accent, "\(version) → \(latest)", "aktualizuję, wróci za minutę", true)
+            return ("arrow.triangle.2.circlepath", Theme.accent, "\(version) → \(latest)", "aktualizuję", "wróci za minutę", true)
         }
         if checkingUpdate || update.state == "checking" || update.pending == "check" {
-            return ("arrow.triangle.2.circlepath", Theme.inkSoft, version, "sprawdzam…", true)
+            return ("arrow.triangle.2.circlepath", Theme.inkSoft, version, "sprawdzam…", nil, true)
         }
-        if update.updateAvailable {
-            return ("arrow.down.circle.fill", Theme.accent, version, "jest \(latest) · stuknij, by zaktualizować", false)
+        let checked = When.ago(update.checkedAt).map { "sprawdzono \($0)" }
+        if update.offersUpdate {
+            return ("arrow.down.circle.fill", Theme.accent, version, "jest \(latest)", "stuknij, by zaktualizować", false)
         }
         if update.state == "failed" {
-            return ("exclamationmark.triangle", Theme.warn, version, "nie udało się, stuknij, by sprawdzić", false)
+            return ("exclamationmark.triangle", Theme.warn, version, "nie udało się", "stuknij, by sprawdzić", false)
         }
-        let checked = When.ago(update.checkedAt).map { "aktualny · sprawdzono \($0)" } ?? "stuknij, by sprawdzić"
-        return ("server.rack", Theme.inkSoft, version, checked, false)
+        return ("server.rack", Theme.inkSoft, version, "aktualny", checked ?? "stuknij, by sprawdzić", false)
     }
 
     /// Under the battery level: how long it lasts at the rate measured on
@@ -551,6 +557,8 @@ struct FrameTabView: View {
                 Button("Uruchom ramkę ponownie", systemImage: "arrow.clockwise.circle") {
                     Task { await model.restartFrame() }
                 }
+                // The app reboots the panel: a silent one would not.
+                .disabled(appSilence != nil)
                 Divider()
                 Button("Wyłącz ramkę", systemImage: "power", role: .destructive) { confirmingOff = true }
             } label: {
@@ -1853,7 +1861,7 @@ private struct ServerUpdateRow: View {
             } else {
                 status
                 Button {
-                    if update.updateAvailable {
+                    if update.offersUpdate {
                         confirming = true
                     } else {
                         Task {
@@ -1864,7 +1872,7 @@ private struct ServerUpdateRow: View {
                     }
                 } label: {
                     HStack {
-                        Text(update.updateAvailable ? "Aktualizuj serwer" : "Sprawdź aktualizacje")
+                        Text(update.offersUpdate ? "Aktualizuj serwer" : "Sprawdź aktualizacje")
                         if working { ProgressView() }
                     }
                 }
@@ -1889,7 +1897,7 @@ private struct ServerUpdateRow: View {
             caption("Aktualizuję. Serwer wróci za około minutę.")
         } else if update.state == "checking" || update.pending == "check" {
             caption("Sprawdzam, czy jest nowsza wersja…")
-        } else if update.updateAvailable {
+        } else if update.offersUpdate {
             Text("Dostępna wersja \(update.latestVersion ?? "nowsza")")
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(Theme.accent)

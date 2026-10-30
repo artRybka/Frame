@@ -135,11 +135,16 @@ class UpdateFolder:
                 version=build_version(), addon=ADDON_OPTIONS.is_file(), updater=False
             )
         latest = status.latest
+        version = build_version()
+        # The helper notes what runs at its checks (every few hours): the
+        # server rebuilt in Container Manager meanwhile already runs the
+        # newest image, though the helper still has the old one down.
+        current = latest is not None and latest.version == version
         return ServerUpdateView(
-            version=build_version(),
+            version=version,
             updater=True,
             state=status.state,
-            update_available=status.update_available,
+            update_available=status.update_available and not current,
             latest_version=latest.version if latest else None,
             latest_revision=latest.revision if latest else None,
             checked_at=status.checked_at,

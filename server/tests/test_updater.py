@@ -328,3 +328,17 @@ def test_a_silent_helper_counts_as_gone(tmp_path: Path) -> None:
     folder.save_status(UpdaterStatus(alive_at=stale))
     assert not folder.helper_alive(NOW)
     assert folder.helper_alive(NOW - timedelta(minutes=10))
+
+
+def test_a_server_rebuilt_by_hand_is_not_offered_its_own_version(
+    tmp_path: Path, monkeypatch
+) -> None:
+    folder = UpdateFolder(tmp_path / "update")
+    engine = FakeEngine()
+    engine.registry = "sha256:new"
+    now = datetime.now(UTC)
+    helper = Updater(engine.docker(), folder.folder, clock=lambda: now, sleep=lambda s: None)
+    helper.tick()  # the helper still has the old image down as running
+    monkeypatch.setenv("FRAME_RELEASE", "0.36.0")  # Container Manager put the new one in place
+    view = folder.view()
+    assert view.latest_version == "0.36.0" and not view.update_available

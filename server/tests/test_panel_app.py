@@ -977,3 +977,63 @@ def test_a_panel_that_answers_while_its_app_is_silent_says_so(tmp_path: Path) ->
     assert app.silent_since(now) is None
     service.power.publish_status()
     assert status.app_silent_since is None
+
+
+def test_unanswered_starts_space_out_on_battery(tmp_path: Path) -> None:
+    """2026-10-30: a stuck app was started every few minutes all night, and
+    every MDC session kept the panel up (97 % to 58 %). Past two unanswered
+    starts on battery the next ones wait 5, 10, 20 ... minutes, at most an
+    hour; on the charger they do not."""
+    service = _service(tmp_path)
+    app = service.app
+    now = _at("2026-10-30T06:00")
+    service.status.status.power_source = "battery"
+    app._unanswered = 2
+    app._kicked = now
+    assert not app._backing_off(now)  # the reinstall is still to come
+    app._unanswered = 3
+    assert app._backing_off(now + timedelta(minutes=4))
+    assert not app._backing_off(now + timedelta(minutes=5))
+    app._unanswered = 5
+    assert app._backing_off(now + timedelta(minutes=19))
+    assert not app._backing_off(now + timedelta(minutes=20))
+    app._unanswered = 20
+    assert not app._backing_off(now + timedelta(hours=1))
+    service.status.status.power_source = "ac"
+    assert not app._backing_off(now + timedelta(minutes=1))
+    app.answer(AppHello(reason="start", build="2.0.0", charging=True), now=now)
+    assert app._unanswered == 0
+
+
+async def test_a_panel_stuck_after_a_reinstall_is_put_into_deep_sleep(
+    tmp_path: Path, server_ssl: ssl.SSLContext
+) -> None:
+    """2026-10-30: after the reinstall not even the launcher asked the server
+    for hours, and MDC has no restart (0x11 02 NAK). Ten minutes on, the
+    panel is put into deep sleep, which ends in a fresh boot at its alarm or
+    the button."""
+    panel = FakePanel(server_ssl)
+    await panel.start()
+    try:
+        service = _service(tmp_path, panel.port)
+        app = service.app
+        app.answer(
+            AppHello(reason="start", build="2.0.0", charging=False), now=_at("2026-10-30T00:24")
+        )
+        app._reinstall_pending = True
+        app._reinstalled = datetime.now(UTC) - timedelta(minutes=5)
+        now = datetime.now(UTC)
+        assert not app._stuck_after_reinstall()
+        app._reinstalled = datetime.now(UTC) - timedelta(minutes=11)
+        panel.received.clear()
+        await service.power.tick(now)
+        assert panel.received == [(0xB5, b"\x00"), (0x11, b"\x00")]
+        state = app.state
+        assert state.asleep and not state.standby and state.wifi_lost
+        assert app.deep_asleep()
+        # Once: the next tick leaves it alone (just put to sleep).
+        panel.received.clear()
+        await service.power.tick(now + timedelta(seconds=5))
+        assert panel.received == []
+    finally:
+        await panel.stop()
