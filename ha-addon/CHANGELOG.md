@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.41.0
+
+- Podgląd w Ustawieniach → Prezentacja działa płynniej: ma stałą wysokość,
+  więc przyciski Orientacji nie skaczą, a ich zaznaczenie przesuwa się.
+  Zmiana orientacji obraca ramkę jak tę na ścianie. Zanim podgląd się
+  wyrenderuje, widać pulsujący szkic passe-partout, opisu albo siatki Multi.
+  Druga orientacja i pozostałe układy Multi wczytują się z wyprzedzeniem.
+  Serwer: podgląd planszy Multi z dużych zdjęć JPEG liczy się ok. 2,7×
+  szybciej.
+- Widać, kto zmienił obraz na ramce: pasek wysyłania ma ikonę zegara
+  (harmonogram) albo telefonu (aplikacja), a zmiana z harmonogramu przy
+  otwartej aplikacji sama pokazuje pasek i podmianę. „Ostatnio na ramce”
+  i „Poprzednio na ramce” mówią, kto i kiedy postawił każdy obraz. Serwer:
+  `origin` w postępie, `history_marks` i `last_change_origin` w
+  `/api/player`.
+
+- Kolaże playlist (nagłówek playlisty i kafelki na Playlistach) kadrują
+  obrazy wokół twarzy, a bez twarzy wokół tego, co przyciąga wzrok, zamiast
+  ciąć przez środek. Każdy obraz w kolażu nagłówka otwiera swoje dzieło.
+  Zmiana tylko w aplikacji iOS.
+
+- Szacowanie baterii: serwer śledzi, co robi ramka (czuwanie, głęboki sen,
+  wybudzenia, rysowanie obrazów), i z odczytów na baterii uczy się, ile
+  kosztuje każda z tych rzeczy, zaczynając od pomiarów z innych ramek
+  EM32DX. Kafelek Bateria pokazuje, na ile dni starczy przy obecnym
+  harmonogramie (z zakresem, który zawęża się z kolejnymi odczytami), i
+  otwiera rozbicie. Serwer: pole `battery` w statusie.
+
 ## 0.40.0
 
 - Wysyłanie obrazu na ramkę widać też poza aplikacją: pasek na ekranie

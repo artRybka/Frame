@@ -20,6 +20,7 @@ struct FrameTabView: View {
     /// The Sieć tile was tapped: it says "Sprawdzam…" until the look is done
     /// (opening the tab only turns its badge).
     @State private var checking = false
+    @State private var showingBattery = LaunchRoute.screen == "battery"
 
     private var device: DeviceStatus? { model.status?.device }
 
@@ -78,6 +79,11 @@ struct FrameTabView: View {
                             base = model.settings
                         }
                     }
+                }
+            }
+            .sheet(isPresented: $showingBattery) {
+                if let device, let battery = device.battery {
+                    BatteryView(estimate: battery, onBattery: device.powerSource == "battery" && device.charging != true)
                 }
             }
             // In a task of its own: SwiftUI cancels the refresh's task when the
@@ -310,9 +316,16 @@ struct FrameTabView: View {
 
     private var statusGrid: some View {
         LazyVGrid(columns: [GridItem(.flexible(), spacing: 14), GridItem(.flexible(), spacing: 14)], spacing: 14) {
-            StatusTile(title: "Bateria") {
-                BatteryRing(level: device?.batteryLevel, charging: device?.charging == true, note: batteryNote)
+            Button {
+                // Not disabled without an estimate (an older server): that would dim it.
+                showingBattery = device?.battery != nil
+            } label: {
+                StatusTile(title: "Bateria", badge: device?.battery == nil ? nil : TileBadge(systemImage: "info")) {
+                    BatteryRing(level: device?.batteryLevel, charging: device?.charging == true, note: batteryNote)
+                }
             }
+            .buttonStyle(.plain)
+            .accessibilityHint("Pokazuje, ile kosztuje czuwanie, sen, pobudka i zmiana obrazu")
             powerTile
             serverTile
             networkTile
@@ -542,17 +555,20 @@ struct FrameTabView: View {
         return ("server.rack", Theme.inkSoft, version, "aktualny", checked, false)
     }
 
-    /// Under the battery level: how long it lasts at the rate measured on
-    /// battery; on the charger whether it charges (Zasilanie says "Zasilacz").
+    /// Under the battery level: how long it lasts at the schedule set, as a
+    /// range while the costs are still mostly assumed; on the charger
+    /// whether it charges (Zasilanie says "Zasilacz").
     private var batteryNote: String {
         if device?.charging == true { return "ładuje się" }
         switch device?.powerSource {
         case "ac": return (device?.batteryLevel ?? 0) >= 95 ? "naładowana" : ""
         case "battery":
+            if let battery = device?.battery, let days = battery.days {
+                // Kept on one line: "7–" and "12 dni" apart read as a mistake.
+                return "ok. " + BatteryText.unbroken(BatteryText.span(days, low: battery.daysLow, high: battery.daysHigh))
+            }
             guard let days = device?.batteryDays else { return "mierzę zużycie" }
-            if days > 60 { return "ok. \(Int(days / 30)) mies." }
-            if days >= 2 { return "ok. \(Int(days)) dni" }
-            return "ok. \(max(1, Int(days * 24))) godz."
+            return "ok. " + BatteryText.span(days, low: nil, high: nil)
         default: return ""
         }
     }
@@ -1183,16 +1199,42 @@ struct PresentationSection: View {
         }
     }
 
+    private var presentationPath: WritableKeyPath<FrameSettings, Presentation> {
+        target == .art ? \.art : \.photo
+    }
+
+    private func ref(_ settings: FrameSettings) -> ImageRef? {
+        previewID.map { ImageRef.framePreview($0, settings: settings, ownLook: false) }
+    }
+
+    /// What the owner may try next, rendered ahead: the frame turned, and
+    /// on a Multi board the count's other grids.
+    private var warmRefs: [ImageRef] {
+        let shown = previewed ?? settings
+        var tries: [FrameSettings] = []
+        var turned = shown
+        turned.orientation = shown.orientation == "portrait" ? "landscape" : "portrait"
+        if turned.orientation == "portrait" { turned.rotation = 90 }  // as ScreenSection sets it
+        tries.append(turned)
+        let presentation = shown[keyPath: presentationPath]
+        if presentation.fit == "multi", !presentation.multiRandom {
+            for grid in ["auto"] + MultiGrid.grids(presentation.multiCount).map(\.id) where grid != presentation.multiGrid {
+                var other = shown
+                other[keyPath: presentationPath].multiGrid = grid
+                tries.append(other)
+            }
+        }
+        return tries.compactMap(ref)
+    }
+
     /// The frame with the picture on it, or, for the other kind, with one of
     /// that kind to try the settings on.
     private var preview: some View {
-        let portrait = settings.orientation == "portrait"
         let empty = previewID == nil && emptyKinds.contains(target)
-        return FramedArtwork(
-            ref: previewID.map { ImageRef.framePreview($0, settings: previewed ?? settings, ownLook: false) },
-            aspectRatio: portrait ? 9.0 / 16.0 : 16.0 / 9.0,
-            placeholder: MatSwatch.color(presentation.mat.wrappedValue),
-            moulding: 5
+        return PresentationPreview(
+            ref: ref(previewed ?? settings),
+            layout: PreviewLayout(portrait: settings.orientation == "portrait", presentation: presentation.wrappedValue),
+            warm: warmRefs
         ) {
             if empty {
                 Text(target == .photo ? "Brak zdjęć w bibliotece" : "Brak dzieł w bibliotece")
@@ -1202,8 +1244,6 @@ struct PresentationSection: View {
                     .padding(8)
             }
         }
-        .frame(maxWidth: portrait ? 190 : .infinity)
-        .frame(maxWidth: .infinity)
         .padding(.vertical, 6)
     }
 
@@ -1216,7 +1256,11 @@ struct PresentationSection: View {
             .pickerStyle(.segmented)
             preview
                 .task(id: settings) {
-                    try? await Task.sleep(for: .milliseconds(450))
+                    // Only a slider waits: a tap renders at once.
+                    let sliding = previewed.map {
+                        $0.art.margin != settings.art.margin || $0.photo.margin != settings.photo.margin
+                    } ?? true
+                    if sliding { try? await Task.sleep(for: .milliseconds(450)) }
                     if !Task.isCancelled { previewed = settings }
                 }
                 .task(id: "\(target.rawValue) \(model.player != nil)") {  // the history comes with the player
@@ -1438,31 +1482,37 @@ struct MatSwatch: View {
 /// How the frame hangs. A portrait frame is the panel turned 90° to the right.
 struct ScreenSection: View {
     @Binding var settings: FrameSettings
+    @Namespace private var pills
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             SectionHeader(title: "Orientacja")
             Card {
                 HStack(spacing: 8) {
-                    OrientationPill(title: "Pozioma", portrait: false, selected: settings.orientation == "landscape") {
+                    OrientationPill(title: "Pozioma", portrait: false, selected: settings.orientation == "landscape",
+                                    namespace: pills) {
                         settings.orientation = "landscape"
                     }
-                    OrientationPill(title: "Pionowa", portrait: true, selected: settings.orientation == "portrait") {
+                    OrientationPill(title: "Pionowa", portrait: true, selected: settings.orientation == "portrait",
+                                    namespace: pills) {
                         settings.orientation = "portrait"
                         settings.rotation = 90
                     }
                 }
+                .animation(.snappy(duration: 0.3), value: settings.orientation)
             }
         }
     }
 }
 
 /// A frame hanging one way or the other, to pick: a pill like the
-/// schedule's, led by a small frame of that shape.
+/// schedule's, led by a small frame of that shape. The highlight slides
+/// from one to the other.
 private struct OrientationPill: View {
     let title: String
     let portrait: Bool
     let selected: Bool
+    let namespace: Namespace.ID
     let action: () -> Void
 
     var body: some View {
@@ -1480,7 +1530,16 @@ private struct OrientationPill: View {
             .padding(.horizontal, 8)
             .padding(.vertical, 9)
             .foregroundStyle(selected ? Theme.accent : Theme.ink)
-            .background(selected ? Theme.accent.opacity(0.17) : Theme.mat, in: Capsule())
+            .background {
+                if selected {
+                    Capsule()
+                        .fill(Theme.accent.opacity(0.17))
+                        .matchedGeometryEffect(id: "selected", in: namespace)
+                } else {
+                    Capsule().fill(Theme.mat)
+                }
+            }
+            .contentShape(Capsule())
         }
         .buttonStyle(.plain)
         .sensoryFeedback(.selection, trigger: selected)

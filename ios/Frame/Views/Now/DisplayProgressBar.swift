@@ -19,6 +19,12 @@ struct DisplayProgressBar: View {
                     .lineLimit(1)
                     .contentTransition(.opacity)
                 Spacer(minLength: 8)
+                // Who changed the picture: the schedule or the app.
+                if let origin = progress.origin {
+                    Image(systemName: origin == "schedule" ? "clock" : "iphone")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(origin == "schedule" ? Theme.accent : Theme.vermilion)
+                }
             }
             bar
             if !compact {
@@ -40,7 +46,7 @@ struct DisplayProgressBar: View {
         )
         .animation(.easeInOut(duration: 0.3), value: progress.stage)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(progress.stageLabel)
+        .accessibilityLabel(progress.origin == "schedule" ? "Harmonogram: \(progress.stageLabel)" : progress.stageLabel)
         .accessibilityValue("\(Int((progress.fraction * 100).rounded())) %")
     }
 

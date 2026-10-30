@@ -105,6 +105,11 @@ actor DemoBackend: FrameBackend {
         queue = (first.flatMap { $0.isEmpty ? nil : $0 } ?? loaded.items).map(\.id)
         currentID = queue.first
         if !queue.isEmpty { queue.removeFirst() }
+        if ["history", "history-back"].contains(LaunchRoute.screen) {
+            // CI screenshots: "Ostatnio na ramce" with pictures in it.
+            let earlier = loaded.items.map(\.id).filter { $0 != currentID && !queue.prefix(8).contains($0) }
+            history = Array(earlier.prefix(4).reversed())
+        }
         shared.current = settingsValue
         shared.shown = settingsValue
     }
@@ -222,7 +227,16 @@ actor DemoBackend: FrameBackend {
                 readAt: now, signal: 0.6, level: 3, ssid: "Frame_IoT", ip: "192.0.2.20",
                 frequency: 2437, expectedIp: "192.0.2.20", homeSsid: "Frame_IoT", wrongNetwork: false
             ),
-            batteryPerDay: 8.4, batteryDays: 9.0
+            batteryPerDay: 8.4, batteryDays: 9.0,
+            battery: BatteryEstimate(
+                perDay: 8.4, days: 9.0, daysLow: 7.2, daysHigh: 12.1,
+                fullDays: 11.9, fullDaysLow: 9.5, fullDaysHigh: 15.9, hoursMeasured: 30, readings: 18,
+                costs: BatteryCosts(standbyPerDay: 12.5, deepPerDay: 0.1, perWake: 0.21, perChange: 0.34, learnt: [0.72, 0.0, 0.31, 0.25]),
+                day: BatteryDay(
+                    standbyHours: 15, deepHours: 9, wakes: 2, changes: 1,
+                    standbyCost: 7.8, deepCost: 0.04, wakesCost: 0.42, changesCost: 0.34
+                )
+            )
         )
         let server = ServerStatus(
             version: "demo", uptimeS: 3600, libraryCount: items.count,
@@ -256,8 +270,25 @@ actor DemoBackend: FrameBackend {
             hold: holdValue,
             lastChangeAt: ISO8601DateFormatter().string(from: .now.addingTimeInterval(-5400)),
             nextChangeAt: next.map { ISO8601DateFormatter().string(from: $0) },
-            busy: runElapsed.map { $0 < 5 } ?? false, lastError: nil, progress: try await progress()
+            busy: runElapsed.map { $0 < 5 } ?? false, lastError: nil, progress: try await progress(),
+            historyMarks: demoMarks()
         )
+    }
+
+    /// Who put the pictures of "Ostatnio na ramce" there: the schedule at
+    /// 7:00 and 19:30, and one sent from the app in between.
+    private func demoMarks() -> [String: ShownMark] {
+        let ids = Array(history.suffix(8).reversed())
+        var marks: [String: ShownMark] = [:]
+        for (index, id) in ids.enumerated() {
+            let fromApp = index % 3 == 1
+            let hours = 5400.0 / 3600 + Double(index) * 6 + (fromApp ? 3 : 0)
+            marks[id] = ShownMark(
+                at: ISO8601DateFormatter().string(from: .now.addingTimeInterval(-hours * 3600)),
+                origin: fromApp ? "app" : "schedule"
+            )
+        }
+        return marks
     }
 
     private var runElapsed: Double? { run.map { Date.now.timeIntervalSince($0.start) } }
@@ -283,7 +314,7 @@ actor DemoBackend: FrameBackend {
                 return DisplayProgress(
                     stage: step.stage, phase: step.phase, active: true, title: run.title,
                     fraction: elapsed / total, secondsLeft: Int((total - elapsed).rounded(.up)),
-                    startedAt: stamp
+                    startedAt: stamp, origin: "app"
                 )
             }
         }

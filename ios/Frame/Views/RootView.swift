@@ -20,7 +20,7 @@ struct RootView: View {
             switch LaunchRoute.screen {
             case "discover", "detail", "original", "museums", "search", "search-picker": .discover
             case "playlists", "playlist", "editor", "editor-new", "editor-manual": .playlists
-            case "frame", "notices", "connection", "schedule", "schedule-economy", "presentation", "presentation-photo", "orientation": .frame
+            case "frame", "notices", "connection", "battery", "schedule", "schedule-economy", "presentation", "presentation-photo", "orientation": .frame
             default: .now
             }
         }
@@ -67,6 +67,9 @@ struct RootView: View {
             model.notices.end(wake, .done, "Ramka się obudziła")
         }
         .task(id: model.player?.delivery?.isWaiting == true) { await model.followWaiting() }
+        .task(id: "\(model.player?.nextChangeAt ?? "") \(model.player?.hold?.until ?? "")") {
+            await model.followSchedule()
+        }
         .onChange(of: scenePhase) { old, phase in
             // Back from the background, maybe on another network.
             if old == .background, phase != .background {

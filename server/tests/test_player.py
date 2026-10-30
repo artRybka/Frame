@@ -177,6 +177,26 @@ async def test_tick_respects_hold_and_schedule(service) -> None:
     assert player.state.current_item_id is not None
 
 
+async def test_the_app_learns_who_changed_the_picture(service) -> None:
+    """A change of the schedule and one from the app: on the progress bar, for
+    the picture on the frame and for those in "Ostatnio na ramce"."""
+    from frame_server.web.player_api import _player_view
+
+    a, b = _add(service, 1, (200, 40, 40), "Ala"), _add(service, 2, (40, 40, 200), "Ola")
+    player = service.player
+    await player.show(a, "schedule")
+    assert service.progress.view().origin == "schedule"
+    assert player.state.last_change_origin == "schedule"
+    await player.show(b, "app")
+    assert service.progress.view().origin == "app"
+
+    view = _player_view(service)
+    assert view.last_change_origin == "app"
+    assert [i.id for i in view.history] == [a.id]
+    assert view.history_marks[a.id].origin == "schedule"
+    assert view.history_marks[a.id].at == service.library.get(a.id).last_shown_at
+
+
 def test_api_library_playlists_player(service) -> None:
     from frame_server.web import create_app
 

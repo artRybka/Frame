@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel
 
+from .battery import day_plan
 from .device import MdcError
 from .schedule import next_change, next_check
 from .status import DeviceStatus, PanelPower
@@ -84,6 +85,7 @@ class PowerManager:
         service.status.asleep = self.asleep_state
         service.status.off_network = self._off_network
         service.status.answered = self._answered
+        service.status.rang = service.app.alarms_rang
         self._tasks: set[asyncio.Task[None]] = set()
 
     # -- persisted state ------------------------------------------------------
@@ -114,6 +116,12 @@ class PowerManager:
         status.wifi_lost = state.active and state.asleep and state.wifi_lost
         silent = app.silent_since(datetime.now(UTC))
         status.app_silent_since = silent.isoformat(timespec="seconds") if silent else None
+        rest = datetime.fromisoformat(state.rest_until) if state.rest_until else None
+        settings = self.service.player.settings
+        now = datetime.now(UTC)
+        self.service.status.estimate_battery(
+            lambda awake: day_plan(settings, now, awake, rest_until=rest, off=state.off)
+        )
 
     def _off_network(self) -> None:
         """A look found the panel off the Wi-Fi."""

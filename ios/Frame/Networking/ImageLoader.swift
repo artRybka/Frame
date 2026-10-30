@@ -243,13 +243,20 @@ struct ArtImage: View {
     var contentMode: ContentMode = .fill
     /// `.high` for the picture the screen is about, ahead of thumbnails.
     var priority: ImageLoader.Priority = .normal
+    /// Filling a box of another shape, crop around the faces or what draws
+    /// the eye instead of through the middle.
+    var subjectFocus = false
 
     @State private var image: UIImage?
+    @State private var focus: UnitPoint?
     @State private var failed = false
 
     var body: some View {
         ZStack {
-            if let image {
+            if let image, let focus, contentMode == .fill {
+                FocusedFill(image: image, focus: focus)
+                    .transition(.opacity)
+            } else if let image {
                 Image(uiImage: image)
                     .resizable()
                     .aspectRatio(contentMode: contentMode)
@@ -278,7 +285,12 @@ struct ArtImage: View {
         for candidate in [ref, fallback].compactMap({ $0 }) {
             guard let request = model.backend.request(for: candidate) else { continue }
             do {
-                image = try await ImageLoader.shared.image(for: request, maxPixel: maxPixel, priority: priority)
+                let loaded = try await ImageLoader.shared.image(for: request, maxPixel: maxPixel, priority: priority)
+                if subjectFocus {
+                    // Before it shows, so the crop does not jump.
+                    focus = await SubjectFocus.shared.point(in: loaded, key: request.url?.absoluteString ?? "")
+                }
+                image = loaded
                 break
             } catch {
                 if Task.isCancelled { return }

@@ -717,12 +717,24 @@ w sumie ok. 2–3 minut. W głębokim śnie nic do ramki nie dociera (jak
 przy „Obudź ramkę”). „Uruchom aplikację ponownie” w Konfiguracji → Aplikacja
 ramki zostaje: to restart samej aplikacji przez MDC, bez restartu ramki.
 
-**Zużycie baterii** liczy serwer z odczytów na baterii (`battery_log`, co
-najmniej co 30 minut, ostatnie 3 dni): po pół doby i spadku o 3 punkty
-podaje procent na dobę i dni do końca (`battery_per_day`, `battery_days`).
-Na zasilaczu pomiar zaczyna się od nowa. Kafelek Bateria pokazuje to
-zamiast stałych „200 dni na pełnej baterii” (liczba Samsunga dla głębokiego
-snu, w Online z czuwaniem sieci zupełnie nietrafiona).
+**Zużycie baterii** (`battery.py`) serwer podaje od pierwszej minuty na
+baterii i uczy się go z czasem. Śledzi, co ramka robi (czuwanie w sieci, sen
+bez Wi-Fi, czas obudzona, pobudki, w tym budziki kontroli bez aplikacji,
+oraz narysowane obrazy, `battery_activity`), a przy każdym odczycie poziomu
+na baterii zapisuje poziom obok sum tych czynności (`battery_runs`, co
+najmniej co 30 minut, pierwszy i ostatni odczyt każdego poziomu, do 120 dni,
+osobno każdy okres na baterii). Koszt każdej czynności liczy regresja
+z założeniem startowym: czuwanie 1,5%/h i obudzona ok. 4%/h
+(samsung-epaper-calendar), sen prawie nic, zmiana ok. 0,3% (200 dni
+Samsunga). Przy kilku odczytach przeważają odczyty. Szacunek to dzień
+według harmonogramu (`day_plan`: zmiany, kontrole trybu Oszczędnego,
+początek ciszy nocnej, głęboki sen, wyłączenie) razy te koszty; zakres
+(80%) zawęża się z każdym odczytem. `battery` w statusie podaje dni, zakres,
+dzień ramki i koszty (także na zasilaczu, dla pełnej baterii), a
+`battery_per_day`/`battery_days` zostają dla starszych aplikacji. W iOS
+kafelek Bateria mówi „ok. 2–14 dni”, dopóki koszty są założeniem, a
+stuknięty pokazuje rozbicie (2026-10-30, prośba Mateusza: „szacunki podawaj
+na podstawie tego, co już wiesz”).
 
 **Certyfikaty na serwer (raz, i ponownie po odnowieniu).** Leżą tylko na
 Macu (`~/SamsungCertificate/frame`), a do repozytorium trafić nie mogą, więc

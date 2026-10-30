@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel
 
+from .battery import BatteryEstimate, BatteryLog, awake_mode
 from .device import MdcConnectionError, MdcError
 from .device.presence import connect_says_gone, on_network
 
@@ -31,6 +32,9 @@ PanelPower = Literal["online", "standby", "deep_sleep", "offline"]
 # minutes in node-samsung-emdx), and a session then may keep it awake: status
 # checks leave it alone for that long and report the sleep it is going into.
 SLEEP_SETTLE = timedelta(minutes=3)
+# An alarm this long ago or more rang without the app asking: the wake that
+# follows it is not the one it caused.
+RANG_UNSEEN = timedelta(minutes=3)
 
 # What was last read from the panel, kept across server restarts: a panel
 # asleep since then is still known to sleep with network standby on.
@@ -53,16 +57,6 @@ REMEMBERED = {
     "battery_days",
 }
 
-# How fast the battery runs down, measured rather than guessed: a reading at
-# most every half hour while on battery, over the last three days; a rate
-# once they span half a day and the level fell by a few points. Network
-# standby (the online mode) and deep sleep (economy) differ a lot.
-BATTERY_LOG_KEY = "battery_log"
-BATTERY_SAMPLE_EVERY = timedelta(minutes=30)
-BATTERY_WINDOW = timedelta(days=3)
-BATTERY_MIN_SPAN = timedelta(hours=12)
-BATTERY_MIN_DROP = 3
-
 
 def _now() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
@@ -79,10 +73,12 @@ class DeviceStatus(BaseModel):
     charging: bool | None = None
     power_source: Literal["ac", "battery"] | None = None
     battery_raw: str | None = None
-    # Measured on battery (see ``BATTERY_LOG_KEY``): percent a day, and the
-    # days left at that rate. None on the charger or until measured.
+    # Percent a day at the schedule set, and the days left at that rate
+    # (battery.py: what each thing costs, learnt from the readings on
+    # battery); None on the charger. ``battery`` says more, also on it.
     battery_per_day: float | None = None
     battery_days: float | None = None
+    battery: BatteryEstimate | None = None
     network_standby: bool | None = None
     power_state: PanelPower | None = None
     # Not answering MDC, but on the Wi-Fi (answers ARP): asleep, not gone.
@@ -217,6 +213,10 @@ class StatusMonitor:
         # and when it answers (its app may not be running).
         self.off_network: Callable[[], None] | None = None
         self.answered: Callable[[], Awaitable[None]] | None = None
+        # What the panel does and how its battery fares (battery.py), and
+        # how many of the app's alarms rang between two moments.
+        self.battery = BatteryLog(library)
+        self.rang: Callable[[datetime, datetime], int] | None = None
 
     def _configured(self) -> bool:
         s = self.panel.settings
@@ -233,9 +233,37 @@ class StatusMonitor:
         self._slept_at = None
         self._remember()
 
-    def _remember(self) -> None:
+    def _remember(self, now: datetime | None = None) -> None:
+        self._follow(now or datetime.now(UTC))
         if self.library is not None:
             self.library.set_state(STATUS_KEY, self.status.model_dump(include=REMEMBERED))
+
+    def _follow(self, now: datetime) -> None:
+        """Tell the battery log what the panel does now. A wake from a sleep
+        without the Wi-Fi may come after alarms that rang unseen (economy
+        checks with nothing new: the panel slept on without the app)."""
+        mode = awake_mode(self.status.power_state)
+        activity = self.battery.activity
+        silent = 0
+        if mode != activity.mode and activity.mode == "deep" and activity.since and self.rang:
+            silent = self.rang(datetime.fromisoformat(activity.since), now - RANG_UNSEEN)
+        self.battery.track(now, mode, silent)
+
+    def note_drawn(self) -> None:
+        """The app drew a picture: the costliest thing it does."""
+        self.battery.drew()
+
+    def estimate_battery(self, plan: Callable[[float], list[float]]) -> None:
+        """How long the battery lasts at ``plan`` (a day's totals for the
+        hours a wake keeps the panel up)."""
+        status = self.status
+        on_battery = status.power_source == "battery" and not status.charging
+        estimate = self.battery.estimate(
+            status.battery_level, on_battery, plan(self.battery.activity.awake_per_wake())
+        )
+        status.battery = estimate
+        status.battery_per_day = estimate.per_day if on_battery else None
+        status.battery_days = estimate.days
 
     @property
     def on_battery(self) -> bool:
@@ -367,38 +395,14 @@ class StatusMonitor:
             status.power_source = "ac" if charging else "battery"
         self._track_battery(status, now)
         self._slept_at = None
-        self._remember()
+        self._remember(now)
 
     def _track_battery(self, status: DeviceStatus, now: datetime) -> None:
-        """Note the level on battery and work out how fast it falls."""
-        level = status.battery_level
-        if self.library is None or level is None:
+        """Note the level for the battery log (battery.py)."""
+        if status.battery_level is None or status.power_source is None:
             return
-        if status.power_source != "battery" or status.charging:
-            status.battery_per_day = status.battery_days = None
-            if self.library.get_state(BATTERY_LOG_KEY):
-                self.library.set_state(BATTERY_LOG_KEY, [])
-            return
-        samples = [
-            (datetime.fromisoformat(at), int(was))
-            for at, was in self.library.get_state(BATTERY_LOG_KEY, [])
-        ]
-        if samples and level > samples[-1][1] + 2:
-            samples = []  # charged in between
-        if not samples or now - samples[-1][0] >= BATTERY_SAMPLE_EVERY:
-            samples.append((now, level))
-        samples = [s for s in samples if now - s[0] <= BATTERY_WINDOW] or samples[-1:]
-        self.library.set_state(
-            BATTERY_LOG_KEY, [[at.isoformat(timespec="seconds"), was] for at, was in samples]
-        )
-        first_at, first = samples[0]
-        span, drop = now - first_at, first - level
-        if span < BATTERY_MIN_SPAN or drop < BATTERY_MIN_DROP:
-            status.battery_per_day = status.battery_days = None
-            return
-        per_day = drop / (span / timedelta(days=1))
-        status.battery_per_day = round(per_day, 1)
-        status.battery_days = round(level / per_day, 1)
+        on_battery = status.power_source == "battery" and not status.charging
+        self.battery.note(now, status.battery_level, on_battery)
 
     def note_wifi(self, data: dict[str, object], now: datetime | None = None) -> None:
         """The Frame app read the panel's Wi-Fi."""
@@ -437,10 +441,11 @@ class StatusMonitor:
         status.power_state = "standby" if wifi else "deep_sleep"
         self._remember()
 
-    def note_sleep(self, deep: bool) -> None:
+    def note_sleep(self, deep: bool, now: datetime | None = None) -> None:
         """The server put the panel to sleep: light (network standby on) or deep."""
+        now = now or datetime.now(UTC)
         self.status.network_standby = not deep
         self.status.on_network = None
         self.status.power_state = "deep_sleep" if deep else "standby"
-        self._slept_at = datetime.now(UTC)
-        self._remember()
+        self._slept_at = now
+        self._remember(now)

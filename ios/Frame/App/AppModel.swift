@@ -374,6 +374,28 @@ final class AppModel {
         }
     }
 
+    /// A change of the schedule while the app is open: its bar and swap
+    /// come up as for a picture sent from the app. Waits for the change
+    /// (or the end of a timed hold), then for the server's scheduler, which
+    /// looks every 30 s.
+    func followSchedule() async {
+        guard let player, player.hold?.forever != true,
+              let due = When.date(player.hold?.until ?? player.nextChangeAt)
+        else { return }
+        let wait = due.timeIntervalSinceNow
+        guard wait > -60 else { return }
+        if wait > 0 { try? await Task.sleep(for: .seconds(wait)) }
+        for _ in 0 ..< 30 {
+            if Task.isCancelled || progressTask != nil { return }
+            if let value = try? await backend.progress(), value.active {
+                trackProgress()
+                return
+            }
+            try? await Task.sleep(for: .seconds(3))
+        }
+        if !Task.isCancelled { await refreshPlayer() }
+    }
+
     /// After an action the server renders and pushes in the background;
     /// follow it until the panel has the picture. The bar goes on through
     /// the panel's redraw on its own.

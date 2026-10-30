@@ -45,6 +45,8 @@ struct FramedArtwork<Inner: View>: View {
     var placeholder: Color = Theme.mat
     var mat: CGFloat = 0
     var moulding: CGFloat = 8
+    /// Off when the frame is turned: the caller casts it, so it keeps falling down.
+    var shadow = true
     @ViewBuilder var inner: Inner
 
     var body: some View {
@@ -70,8 +72,15 @@ struct FramedArtwork<Inner: View>: View {
             )
             .clipShape(RoundedRectangle(cornerRadius: 2))
             .overlay(RoundedRectangle(cornerRadius: 2).strokeBorder(Theme.mouldingEdge, lineWidth: 0.5))
-            .shadow(color: .black.opacity(0.22), radius: 18, x: 0, y: 14)
-            .shadow(color: .black.opacity(0.12), radius: 2, x: 0, y: 1)
+            .frameShadow(shadow)
+    }
+}
+
+extension View {
+    /// The shadow a frame casts on the wall.
+    func frameShadow(_ on: Bool = true) -> some View {
+        shadow(color: .black.opacity(on ? 0.22 : 0), radius: 18, x: 0, y: 14)
+            .shadow(color: .black.opacity(on ? 0.12 : 0), radius: 2, x: 0, y: 1)
     }
 }
 
@@ -547,13 +556,16 @@ struct EmptyStateView: View {
     }
 }
 
-/// 2×2 collage of playlist covers.
+/// 2×2 collage of playlist covers, each cropped around its subject.
 /// Playlist cover: up to four works, laid out by how many there are. An
 /// empty playlist gets a monogram on a mat instead of blank tiles.
 struct Collage: View {
     let itemIDs: [String]
     var title: String = ""
     var spacing: CGFloat = 2
+    /// Each picture opens its work (a playlist's header); else the collage
+    /// is one picture inside a tile that opens the playlist.
+    var opensWorks = false
 
     var body: some View {
         GeometryReader { geo in
@@ -591,10 +603,19 @@ struct Collage: View {
         }
     }
 
+    @ViewBuilder
     private func tile(_ index: Int, _ width: CGFloat, _ height: CGFloat) -> some View {
-        ArtImage(ref: .thumb(itemIDs[index]), maxPixel: 400)
+        let picture = ArtImage(ref: .thumb(itemIDs[index]), maxPixel: 400, subjectFocus: true)
             .frame(width: width, height: height)
             .clipped()
+            .contentShape(Rectangle())  // taps only where the tile shows
+        if opensWorks {
+            NavigationLink(value: itemIDs[index]) { picture }
+                .buttonStyle(PressableStyle())
+                .accessibilityLabel("Otwórz dzieło \(index + 1) z okładki")
+        } else {
+            picture
+        }
     }
 }
 
