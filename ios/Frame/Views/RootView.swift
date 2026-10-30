@@ -49,7 +49,10 @@ struct RootView: View {
             if artist != nil { tab = .discover }
         }
         .onChange(of: model.suggestionsOpened) { tab = .discover }
-        .task { await model.refreshAll() }
+        .task {
+            await model.refreshAll()
+            await model.settleLiveActivity()  // one left from before the app was closed
+        }
         .task {
             // CI screenshots: the cards at the bottom, one of each kind.
             guard LaunchRoute.screen == "notices" else { return }
@@ -66,7 +69,12 @@ struct RootView: View {
         .task(id: model.player?.delivery?.isWaiting == true) { await model.followWaiting() }
         .onChange(of: scenePhase) { old, phase in
             // Back from the background, maybe on another network.
-            if old == .background, phase != .background { Task { await model.recheckServer() } }
+            if old == .background, phase != .background {
+                Task {
+                    await model.recheckServer()
+                    await model.settleLiveActivity()
+                }
+            }
         }
     }
 }
