@@ -2,6 +2,16 @@
 
 ## 0.42.0
 
+- Dzieło dnia: na samej górze Odkrywaj → Propozycje niski kafelek z
+  obrazem, tytułem, autorem i dwiema linijkami zachęty. Po dotknięciu strona
+  dzieła: „Pokaż na ramce”, dlaczego dziś, kontekst, fakty w skrócie, analiza
+  kompozycji z liniami na obrazie, kolor i światło, jak wypadnie na ramce,
+  podobne dzieła z katalogu, „Co z niego wyrosło” i poprzednie dzieła dnia.
+  Serwer codziennie wybiera dzieło z katalogu (dobrze wypada na e-papierze,
+  bez powtórek artysty przez 30 dni i dzieła przez rok), a tekst raz pisze
+  Claude z obrazu, opisu muzeum, Wikidanych i Wikipedii. Przełącznik „Dzieło
+  dnia” w Konfiguracji, ok. 0,10 USD dziennie we wspólnym limicie; bez klucza
+  zostaje opis muzeum i podobne dzieła tego samego autora.
 - Odkrywaj → Propozycje są codziennie świeże: okładki motywów losują się
   każdego dnia z 40 najlepszych dzieł motywu, a kafelek pokazuje „+N”, gdy
   w tym tygodniu doszły do niego nowe dzieła. Nowe rzędy „Nowe w katalogu”
