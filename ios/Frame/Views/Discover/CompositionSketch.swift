@@ -1,0 +1,352 @@
+import SwiftUI
+
+/// One take on the composition as pencil on tracing paper: the picture
+/// washed out (darkened in dark mode, with the pencil white), the marks drawn
+/// over it with a number beside each, and their labels above and below the
+/// picture: a hand-written title and a line in the app's font.
+struct CompositionSketch: View {
+    let item: RemoteItem
+    let aspect: CGFloat
+    let take: DailyWork.Take
+    @Environment(\.colorScheme) private var scheme
+
+    /// A mark with a label, by its number on the picture.
+    struct Labelled: Identifiable {
+        let number: Int
+        let mark: DailyWork.Mark
+        var id: Int { number }
+    }
+
+    var body: some View {
+        let labelled = Self.labelled(take.marks)
+        let rows = Self.rows(labelled)
+        VStack(spacing: 10) {
+            if !rows.top.isEmpty { labelRow(rows.top, alignment: .bottom) }
+            picture(labelled)
+            if !rows.bottom.isEmpty { labelRow(rows.bottom, alignment: .top) }
+        }
+    }
+
+    private var dark: Bool { scheme == .dark }
+    private var pencil: Color { dark ? Color(hex: 0xF6F1E8) : Color(hex: 0x2E2A25) }
+
+    private func picture(_ labelled: [Labelled]) -> some View {
+        Color.clear
+            .aspectRatio(aspect, contentMode: .fit)
+            .overlay {
+                ArtImage(
+                    ref: item.inLibrary ? .image(item.id) : item.thumb,
+                    fallback: .thumb(item.id),
+                    placeholder: item.item.placeholderColor,
+                    maxPixel: 1600
+                )
+                .saturation(dark ? 0.55 : 0.7)
+                .contrast(0.9)
+                .blur(radius: 0.4)
+            }
+            .overlay(dark ? Color(hex: 0x0E0C0A).opacity(0.55) : Color(hex: 0xF6F1E7).opacity(0.58))
+            .overlay {
+                Canvas { context, size in draw(in: &context, size: size, labelled: labelled) }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
+            .frame(maxWidth: 380 * aspect)  // a tall picture no taller than a landscape one
+            .frame(maxWidth: .infinity)
+    }
+
+    private func draw(in context: inout GraphicsContext, size: CGSize, labelled: [Labelled]) {
+        for (index, line) in Pencil.grid(take.grid, in: size).enumerated() {
+            context.fill(Pencil.stroke(line, width: 1, seed: 90 + index, start: 0.05, end: 0.05), with: .color(pencil.opacity(0.45)))
+        }
+        for (index, mark) in take.marks.enumerated() {
+            for path in Pencil.paths(for: mark, in: size, seed: index * 7 + 1) {
+                context.fill(path, with: .color(pencil.opacity(dark ? 0.95 : 0.92)))
+            }
+        }
+        for entry in labelled {
+            let spot = Pencil.numberSpot(for: entry.mark, in: size)
+            context.fill(Pencil.loop(center: spot, rx: 8.5, ry: 8, width: 1.4, seed: 40 + entry.number), with: .color(pencil))
+            context.draw(
+                Text("\(entry.number)").font(.system(size: 10.5, weight: .bold)).foregroundStyle(pencil),
+                at: spot
+            )
+        }
+    }
+
+    private func labelRow(_ entries: [Labelled], alignment: VerticalAlignment) -> some View {
+        HStack(alignment: alignment, spacing: 10) {
+            ForEach(entries) { entry in
+                label(entry).frame(maxWidth: .infinity, alignment: .leading)
+            }
+            if entries.count == 1 { Color.clear.frame(maxWidth: .infinity, maxHeight: 0) }
+        }
+    }
+
+    private func label(_ entry: Labelled) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            HStack(spacing: 5) {
+                Text("\(entry.number)")
+                    .font(.system(size: 10, weight: .bold))
+                    .frame(width: 17, height: 17)
+                    .overlay(Circle().strokeBorder(Theme.ink, lineWidth: 1.3))
+                Text(entry.mark.title)
+                    .font(.hand(20))
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.8)
+            }
+            .foregroundStyle(Theme.ink)
+            if !entry.mark.text.isEmpty {
+                Text(entry.mark.text)
+                    .font(.caption)
+                    .foregroundStyle(Theme.inkSoft)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    /// The marks with a title, numbered in the order the model gave them
+    /// (the eye's path): untitled marks are drawn, not labelled.
+    static func labelled(_ marks: [DailyWork.Mark]) -> [Labelled] {
+        marks.filter { !$0.title.isEmpty }.enumerated().map { Labelled(number: $0.offset + 1, mark: $0.element) }
+    }
+
+    /// Labels of marks in the upper half go above the picture, the rest
+    /// below; a row of more than three gives its nearest ones to the other.
+    static func rows(_ entries: [Labelled]) -> (top: [Labelled], bottom: [Labelled]) {
+        var top = entries.filter { $0.mark.anchor.y < 0.5 }.sorted { $0.mark.anchor.y < $1.mark.anchor.y }
+        var bottom = entries.filter { $0.mark.anchor.y >= 0.5 }.sorted { $0.mark.anchor.y < $1.mark.anchor.y }
+        while top.count > 3, top.count > bottom.count + 1 { bottom.insert(top.removeLast(), at: 0) }
+        while bottom.count > 3, bottom.count > top.count + 1 { top.append(bottom.removeFirst()) }
+        return (top.sorted { $0.number < $1.number }, bottom.sorted { $0.number < $1.number })
+    }
+}
+
+extension DailyWork.Mark {
+    /// Where a remark about the mark points, as the server has it: a
+    /// loop's centre, the middle of a rect or triangle, a path's middle point.
+    var anchor: DailyWork.Spot {
+        guard let first = points.first else { return DailyWork.Spot(x: 0.5, y: 0.5) }
+        switch shape {
+        case "loop": return first
+        case "rect" where points.count == 2:
+            return DailyWork.Spot(x: (points[0].x + points[1].x) / 2, y: (points[0].y + points[1].y) / 2)
+        case "triangle" where points.count == 3:
+            return DailyWork.Spot(x: points.map(\.x).reduce(0, +) / 3, y: points.map(\.y).reduce(0, +) / 3)
+        default: return points[points.count / 2]
+        }
+    }
+}
+
+/// Pencil marks as filled outlines: strokes thin at both ends and a little
+/// uneven, loops that overshoot where they close, arrowheads of two
+/// strokes. The same seed draws the same mark every time.
+enum Pencil {
+    static func paths(for mark: DailyWork.Mark, in size: CGSize, seed: Int) -> [Path] {
+        let points = mark.points.map { CGPoint(x: $0.x * size.width, y: $0.y * size.height) }
+        guard let first = points.first else { return [] }
+        switch mark.shape {
+        case "loop":
+            let corner = points.count > 1 ? points[1] : first
+            let rx = max(abs(corner.x - first.x), 8)
+            let ry = max(abs(corner.y - first.y), 8)
+            return [loop(center: first, rx: rx, ry: ry, width: 2.4, seed: seed)]
+        case "triangle" where points.count == 3:
+            return (0..<3).map { side(points[$0], points[($0 + 1) % 3], width: 2, seed: seed + $0) }
+        case "rect" where points.count == 2:
+            let (a, b) = (points[0], points[1])
+            let corners = [a, CGPoint(x: b.x, y: a.y), b, CGPoint(x: a.x, y: b.y)]
+            return (0..<4).map { side(corners[$0], corners[($0 + 1) % 4], width: 1.6, seed: seed + $0) }
+        case "underline" where points.count >= 2:
+            return [stroke(wave(from: first, to: points[points.count - 1]), width: 2.2, seed: seed)]
+        case "arrow" where points.count >= 2:
+            let line = smooth(points)
+            let tip = line[line.count - 1]
+            let from = line[max(0, line.count - 6)]
+            return [stroke(points, width: 2.6, seed: seed)] + head(tip: tip, from: from, width: 2.3, size: 10)
+        default:
+            return points.count >= 2 ? [stroke(points, width: 2.2, seed: seed)] : []
+        }
+    }
+
+    /// Where a mark's number goes: beside a loop's upper right, inside a
+    /// rect's corner, over a triangle's top, before an underline, above a
+    /// line's end or an arrow's middle; always inside the picture.
+    static func numberSpot(for mark: DailyWork.Mark, in size: CGSize) -> CGPoint {
+        let points = mark.points.map { CGPoint(x: $0.x * size.width, y: $0.y * size.height) }
+        guard let first = points.first else { return CGPoint(x: size.width / 2, y: size.height / 2) }
+        var spot: CGPoint
+        switch mark.shape {
+        case "loop":
+            let corner = points.count > 1 ? points[1] : first
+            let rx = max(abs(corner.x - first.x), 8)
+            let ry = max(abs(corner.y - first.y), 8)
+            spot = CGPoint(x: first.x + rx * 0.72 + 9, y: first.y - ry * 0.72 - 9)
+        case "rect":
+            spot = CGPoint(x: points.map(\.x).min()! + 12, y: points.map(\.y).min()! + 12)
+        case "triangle":
+            let top = points.min { $0.y < $1.y }!
+            spot = CGPoint(x: top.x + 13, y: top.y - 6)
+        case "underline":
+            let start = points.min { $0.x < $1.x }!
+            spot = CGPoint(x: start.x - 14, y: start.y)
+        case "line":
+            let end = points[points.count - 1]
+            spot = CGPoint(x: end.x - 4, y: end.y - 14)
+        default:
+            let middle = points[points.count / 2]
+            spot = CGPoint(x: middle.x, y: middle.y - 15)
+        }
+        let margin: CGFloat = 11
+        spot.x = min(max(spot.x, margin), max(size.width - margin, margin))
+        spot.y = min(max(spot.y, margin), max(size.height - margin, margin))
+        return spot
+    }
+
+    /// The grid under a take: lines at the golden section or thirds, each a
+    /// faint ruled stroke across the picture.
+    static func grid(_ grid: String, in size: CGSize) -> [[CGPoint]] {
+        let cuts: [CGFloat]
+        switch grid {
+        case "golden": cuts = [0.382, 0.618]
+        case "thirds": cuts = [1 / 3, 2 / 3]
+        default: return []
+        }
+        return cuts.flatMap { cut in
+            [
+                [CGPoint(x: cut * size.width, y: size.height * 0.01), CGPoint(x: cut * size.width, y: size.height * 0.99)],
+                [CGPoint(x: size.width * 0.01, y: cut * size.height), CGPoint(x: size.width * 0.99, y: cut * size.height)],
+            ]
+        }
+    }
+
+    /// A pen stroke through the points: a filled outline, thin at both ends
+    /// (`start` and `end` are the fractions it takes to reach full width).
+    static func stroke(_ points: [CGPoint], width: CGFloat, seed: Int, start: CGFloat = 0.25, end: CGFloat = 0.25) -> Path {
+        let line = smooth(points)
+        guard line.count > 1 else { return Path() }
+        var lengths: [CGFloat] = [0]
+        for index in 1..<line.count {
+            lengths.append(lengths[index - 1] + hypot(line[index].x - line[index - 1].x, line[index].y - line[index - 1].y))
+        }
+        let total = max(lengths[lengths.count - 1], 1)
+        let phase = CGFloat(Jitter.random(seed) * 6)
+        var left: [CGPoint] = []
+        var right: [CGPoint] = []
+        for index in line.indices {
+            let t = lengths[index] / total
+            let a = start > 0 ? min(1, t / start) : 1
+            let b = end > 0 ? min(1, (1 - t) / end) : 1
+            let wobble = 1 + 0.12 * sin(CGFloat(index) * 0.35 + phase)
+            let half = width * (0.25 + 0.75 * pow(max(min(a, b), 0), 0.7)) * wobble / 2
+            let before = line[max(index - 1, 0)]
+            let after = line[min(index + 1, line.count - 1)]
+            let dx = after.x - before.x
+            let dy = after.y - before.y
+            let length = max(hypot(dx, dy), 0.0001)
+            let normal = CGPoint(x: -dy / length * half, y: dx / length * half)
+            left.append(CGPoint(x: line[index].x + normal.x, y: line[index].y + normal.y))
+            right.append(CGPoint(x: line[index].x - normal.x, y: line[index].y - normal.y))
+        }
+        var path = Path()
+        path.addLines(left + right.reversed())
+        path.closeSubpath()
+        return path
+    }
+
+    /// A loop drawn in one go: it starts lower left, goes round a little more
+    /// than once and widens as it goes, so the ends do not meet.
+    static func loop(center: CGPoint, rx: CGFloat, ry: CGFloat, width: CGFloat, seed: Int) -> Path {
+        var jitter = Jitter(seed: seed)
+        let start = 190 + jitter.next() * 40
+        let points = (0..<24).map { index -> CGPoint in
+            let angle = (start + 380 * Double(index) / 23) * .pi / 180
+            let k = 1 + 0.04 * sin(Double(index) * 0.8) + 0.07 * Double(index) / 23
+            return CGPoint(x: center.x + rx * k * cos(angle), y: center.y + ry * k * sin(angle))
+        }
+        return stroke(points, width: width, seed: seed, start: 0.12, end: 0.3)
+    }
+
+    /// An arrowhead: two short strokes back from the tip.
+    static func head(tip: CGPoint, from: CGPoint, width: CGFloat, size: CGFloat) -> [Path] {
+        let angle = atan2(tip.y - from.y, tip.x - from.x)
+        return [CGFloat(2.55), -2.45].map { turn -> Path in
+            let a = angle + turn
+            let points = [
+                tip,
+                CGPoint(x: tip.x + size * 0.55 * cos(a) + 0.6, y: tip.y + size * 0.55 * sin(a)),
+                CGPoint(x: tip.x + size * cos(a), y: tip.y + size * sin(a)),
+            ]
+            return stroke(points, width: width, seed: 1, start: 0.05, end: 0.6)
+        }
+    }
+
+    /// A ruled side of a triangle or rect, a little past both corners.
+    static func side(_ a: CGPoint, _ b: CGPoint, width: CGFloat, seed: Int) -> Path {
+        let length = max(hypot(b.x - a.x, b.y - a.y), 0.0001)
+        let over = CGPoint(x: (b.x - a.x) / length * 3, y: (b.y - a.y) / length * 3)
+        let bend = CGFloat(Jitter.random(seed) - 0.5) * 1.2
+        let middle = CGPoint(x: (a.x + b.x) / 2 - over.y / 3 * bend, y: (a.y + b.y) / 2 + over.x / 3 * bend)
+        return stroke(
+            [CGPoint(x: a.x - over.x, y: a.y - over.y), middle, CGPoint(x: b.x + over.x, y: b.y + over.y)],
+            width: width, seed: seed, start: 0.1, end: 0.1
+        )
+    }
+
+    /// An underline as a small wave from start to end.
+    static func wave(from start: CGPoint, to end: CGPoint) -> [CGPoint] {
+        let length = hypot(end.x - start.x, end.y - start.y)
+        let steps = max(Int(length / 12.5), 3)
+        let normal = CGPoint(x: -(end.y - start.y) / max(length, 0.0001), y: (end.x - start.x) / max(length, 0.0001))
+        return (0...steps).map { step -> CGPoint in
+            let t = CGFloat(step) / CGFloat(steps)
+            let lift: CGFloat = step % 2 == 0 ? 0 : 3.5
+            return CGPoint(
+                x: start.x + (end.x - start.x) * t + normal.x * lift,
+                y: start.y + (end.y - start.y) * t + normal.y * lift
+            )
+        }
+    }
+
+    /// A Catmull-Rom curve through the points, ten samples a segment.
+    static func smooth(_ points: [CGPoint], samples: Int = 10) -> [CGPoint] {
+        guard points.count > 1 else { return points }
+        var out: [CGPoint] = []
+        for index in 0..<(points.count - 1) {
+            let p0 = points[max(index - 1, 0)]
+            let p1 = points[index]
+            let p2 = points[index + 1]
+            let p3 = points[min(index + 2, points.count - 1)]
+            for step in 0..<samples {
+                let t = CGFloat(step) / CGFloat(samples)
+                let t2 = t * t
+                let t3 = t2 * t
+                func axis(_ v0: CGFloat, _ v1: CGFloat, _ v2: CGFloat, _ v3: CGFloat) -> CGFloat {
+                    0.5 * (2 * v1 + (v2 - v0) * t + (2 * v0 - 5 * v1 + 4 * v2 - v3) * t2 + (3 * v1 - v0 - 3 * v2 + v3) * t3)
+                }
+                out.append(CGPoint(x: axis(p0.x, p1.x, p2.x, p3.x), y: axis(p0.y, p1.y, p2.y, p3.y)))
+            }
+        }
+        out.append(points[points.count - 1])
+        return out
+    }
+
+    /// SplitMix64: the same marks for the same seed.
+    struct Jitter {
+        var state: UInt64
+
+        init(seed: Int) { state = UInt64(truncatingIfNeeded: seed) &+ 0x9E37_79B9_7F4A_7C15 }
+
+        static func random(_ seed: Int) -> Double {
+            var jitter = Jitter(seed: seed)
+            return jitter.next()
+        }
+
+        mutating func next() -> Double {
+            state = state &+ 0x9E37_79B9_7F4A_7C15
+            var z = state
+            z = (z ^ (z >> 30)) &* 0xBF58_476D_1CE4_E5B9
+            z = (z ^ (z >> 27)) &* 0x94D0_49BB_1331_11EB
+            z ^= z >> 31
+            return Double(z >> 11) / Double(1 << 53)
+        }
+    }
+}

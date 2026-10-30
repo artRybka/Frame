@@ -78,8 +78,7 @@ struct DailyView: View {
     let route: DailyRoute
     @State private var work: DailyWork?
     @State private var failed = false
-    @State private var showLines = true
-    @State private var selected: Int?
+    @State private var take = 0
     @State private var sending = false
     @State private var sent: Bool?
     @State private var queueTaps = 0
@@ -90,10 +89,10 @@ struct DailyView: View {
                 page
             }
             .onChange(of: work?.day) {
-                guard LaunchRoute.scroll == "end" else { return }  // CI screenshots
+                guard let target = LaunchRoute.scroll else { return }  // CI screenshots: "composition", "end"
                 Task {
                     try? await Task.sleep(for: .seconds(1))
-                    proxy.scrollTo("end", anchor: .bottom)
+                    proxy.scrollTo(target, anchor: target == "end" ? .bottom : .top)
                 }
             }
         }
@@ -147,7 +146,6 @@ struct DailyView: View {
             VStack(alignment: .leading, spacing: 14) {
                 picture(work)
                 header(work)
-                showButton(work)
                 if !work.whyToday.isEmpty { whyToday(work.whyToday) }
                 if work.writing {
                     HStack(spacing: 8) {
@@ -166,8 +164,8 @@ struct DailyView: View {
                 }
             }
             if let artist = work.artist, !artist.isEmpty { section("O autorze") { prose(artist) } }
-            if let composition = work.composition, !composition.points.isEmpty {
-                compositionSection(work, composition)
+            if let takes = work.composition?.takes, !takes.isEmpty {
+                compositionSection(work, takes).id("composition")
             }
             if !work.colour.isEmpty || !work.item.item.colors.isEmpty {
                 section("Kolor i światło") {
@@ -225,7 +223,7 @@ struct DailyView: View {
         }
     }
 
-    /// "Pokaż na ramce" (held: for longer), at the top and by "Na Twojej ramce".
+    /// "Pokaż na ramce" (held: for longer), at the end by "Na Twojej ramce".
     private func showButton(_ work: DailyWork) -> some View {
         Button {
             Task { await show(work, .untilNextChange) }
@@ -306,57 +304,33 @@ struct DailyView: View {
             .fixedSize(horizontal: false, vertical: true)
     }
 
-    private func compositionSection(_ work: DailyWork, _ composition: DailyWork.Composition) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("Analiza kompozycji")
-                    .font(.serif(20, weight: .semibold))
-                    .foregroundStyle(Theme.ink)
-                Spacer()
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) { showLines.toggle() }
-                } label: {
-                    Label("Linie", systemImage: showLines ? "checkmark" : "eye.slash")
-                        .font(.caption.weight(.semibold))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .foregroundStyle(showLines ? Theme.paper : Theme.inkSoft)
-                        .background(showLines ? Theme.accent : Theme.card, in: Capsule())
-                        .overlay(Capsule().strokeBorder(showLines ? Color.clear : Theme.hairline))
-                }
-                .buttonStyle(.plain)
-            }
-            CompositionPicture(
-                item: work.item,
-                aspect: aspect(work.item.item),
-                composition: composition,
-                showLines: showLines,
-                selected: $selected
-            )
-            Text("Dotknij numeru, by zaznaczyć opis. „Linie” chowa rysunek.")
-                .font(.caption)
-                .foregroundStyle(Theme.inkSoft)
-            ForEach(Array(composition.points.enumerated()), id: \.offset) { index, point in
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) { selected = selected == index ? nil : index }
-                } label: {
-                    HStack(alignment: .top, spacing: 10) {
-                        NumberBadge(number: index + 1, highlighted: selected == index)
-                        (Text(point.title + ". ").font(.serif(15, weight: .semibold))
-                            + Text(point.text).font(.serif(15)))
-                            .foregroundStyle(Theme.ink.opacity(0.9))
-                            .multilineTextAlignment(.leading)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+    /// The takes as pencil on tracing paper, one at a time: "1 · Droga oka",
+    /// "2 · Geometria".
+    private func compositionSection(_ work: DailyWork, _ takes: [DailyWork.Take]) -> some View {
+        let shown = takes[min(take, takes.count - 1)]
+        return section("Analiza kompozycji") {
+            if takes.count > 1 {
+                HStack(spacing: 6) {
+                    ForEach(Array(takes.enumerated()), id: \.offset) { index, each in
+                        let on = index == min(take, takes.count - 1)
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) { take = index }
+                        } label: {
+                            Text("\(index + 1) · \(each.title)")
+                                .font(.caption.weight(.semibold))
+                                .padding(.horizontal, 11)
+                                .padding(.vertical, 6)
+                                .foregroundStyle(on ? Theme.paper : Theme.inkSoft)
+                                .background(on ? Theme.ink : Theme.card, in: Capsule())
+                                .overlay(Capsule().strokeBorder(on ? Color.clear : Theme.hairline))
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .padding(6)
-                    .background(
-                        selected == index ? Theme.vermilion.opacity(0.1) : Color.clear,
-                        in: RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    )
                 }
-                .buttonStyle(.plain)
             }
+            CompositionSketch(item: work.item, aspect: aspect(work.item.item), take: shown)
+                .padding(.top, 4)
+            if !shown.text.isEmpty { prose(shown.text, size: 15) }
         }
     }
 
@@ -373,10 +347,11 @@ struct DailyView: View {
                     if !work.onFrame.isEmpty { prose(work.onFrame, size: 15) }
                 }
             }
-            VStack(spacing: 10) {
+            HStack(spacing: 12) {
                 showButton(work)
                 queueButton(work)
             }
+            .labelStyle(ActionLabelStyle())
         }
     }
 
@@ -522,87 +497,5 @@ struct DailyView: View {
                 .foregroundStyle(Theme.inkSoft)
                 .fixedSize(horizontal: false, vertical: true)
         }
-    }
-}
-
-/// The picture with the composition drawn over it: the lines the model saw,
-/// dashed, and numbered points where each remark is about.
-struct CompositionPicture: View {
-    let item: RemoteItem
-    let aspect: CGFloat
-    let composition: DailyWork.Composition
-    let showLines: Bool
-    @Binding var selected: Int?
-
-    var body: some View {
-        Color.clear
-            .aspectRatio(aspect, contentMode: .fit)
-            .overlay {
-                ArtImage(
-                    ref: item.inLibrary ? .image(item.id) : item.thumb,
-                    fallback: .thumb(item.id),
-                    placeholder: item.item.placeholderColor,
-                    maxPixel: 1600
-                )
-            }
-            .overlay {
-                if showLines {
-                    GeometryReader { geo in
-                        ForEach(Array(composition.lines.enumerated()), id: \.offset) { _, line in
-                            Self.path(line.points, in: geo.size)
-                                .stroke(Color.black.opacity(0.35), style: StrokeStyle(lineWidth: 4, lineCap: .round))
-                            Self.path(line.points, in: geo.size)
-                                .stroke(Theme.vermilion, style: StrokeStyle(lineWidth: 2.5, lineCap: .round, dash: [8, 6]))
-                        }
-                        ForEach(Array(composition.points.enumerated()), id: \.offset) { index, point in
-                            Button {
-                                withAnimation(.easeInOut(duration: 0.2)) { selected = selected == index ? nil : index }
-                            } label: {
-                                NumberBadge(number: index + 1, highlighted: selected == index)
-                                    .shadow(color: .black.opacity(0.4), radius: 2)
-                                    .padding(8)  // a bigger target than the badge
-                                    .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                            .position(x: point.x * geo.size.width, y: point.y * geo.size.height)
-                        }
-                    }
-                    .transition(.opacity)
-                }
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
-    }
-
-    /// A smooth line through the points (fractions of the picture).
-    static func path(_ spots: [DailyWork.Spot], in size: CGSize) -> Path {
-        let points = spots.map { CGPoint(x: $0.x * size.width, y: $0.y * size.height) }
-        var path = Path()
-        guard let first = points.first, let last = points.last, points.count > 1 else { return path }
-        path.move(to: first)
-        if points.count > 2 {
-            for index in 1 ..< points.count - 1 {
-                let next = points[index + 1]
-                let middle = CGPoint(x: (points[index].x + next.x) / 2, y: (points[index].y + next.y) / 2)
-                path.addQuadCurve(to: middle, control: points[index])
-            }
-        }
-        path.addLine(to: last)
-        return path
-    }
-}
-
-/// A numbered point of the composition, on the picture and by its remark.
-struct NumberBadge: View {
-    let number: Int
-    var highlighted = false
-
-    var body: some View {
-        Text("\(number)")
-            .font(.system(size: 12, weight: .bold))
-            .foregroundStyle(Color(hex: 0x1A0F0B))
-            .frame(width: 22, height: 22)
-            .background(Theme.vermilion, in: Circle())
-            .overlay(Circle().strokeBorder(.white.opacity(highlighted ? 0.95 : 0), lineWidth: 2))
-            .scaleEffect(highlighted ? 1.2 : 1)
     }
 }
