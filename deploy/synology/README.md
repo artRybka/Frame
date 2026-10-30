@@ -29,7 +29,9 @@ Uwagi:
 - Pomocnik ma dostęp do Dockera (`/var/run/docker.sock`), ale nie ma sieci
   (`network_mode: none`) ani portu: obraz pobiera sam Docker, a polecenie
   dostaje tylko od serwera Frame (plik w `data/update`, zlecany przez API
-  z tokenem). Zmienia wyłącznie kontener `frame`.
+  z tokenem). Zmienia wyłącznie kontener `frame`. Montuje cały folder
+  `data`, bo Docker na Synology nie tworzy brakującego folderu do
+  zamontowania (błąd „Bind mount failed: … does not exist”).
 - *Kompiluj* (*Container Manager → Projekt → frame → Akcja → Kompiluj*)
   potrzebne jest już tylko po zmianie `docker-compose.yml` lub `frame.env`.
   Dzięki `pull_policy: always` sama pobiera nowy `latest`. Odpowiednik
