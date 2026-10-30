@@ -142,6 +142,32 @@ raportuje na serwer na Macu `getVersion`, przyczynę startu i resztę getterów
 ramkę `goToSleep()` i zgłasza każde wznowienie. Opis i wnioski w
 [WAKE.md](WAKE.md#aplikacja-custom-budzik-działa-e16-2026-10-28).
 
+### E17 — Aplikacja zamrożona na przytomnej ramce (0.36.2)
+
+Po logach z nocy 29/30.10 ([WAKE.md](WAKE.md#aplikacja-frame-na-ramce-2026-10-28),
+„Aplikacja, która przestała działać na przytomnej ramce”). Ramka na baterii,
+tryb Online, serwer na 0.36.2. Po każdym kroku log kontenera (Container
+Manager → frame → Log → eksport), aplikacja Samsung E-Paper zamknięta.
+
+1. **Zwykła wysyłka po śnie w sieci.** Wysłać obraz, poczekać, aż ramka go
+   pokaże i zaśnie (w logu `panel app sleep`), odczekać 5 minut, wysłać
+   następny. Oczekiwane: WoL, w ciągu ok. minuty `/panel/next?reason=resume`,
+   obraz na ramce. Trzy razy, z czasem od wysłania do obrazu.
+2. **Wyjście z zamrożenia.** Jeśli przy 1. aplikacja milczy, a ramka odpowiada
+   przez MDC: w logu po dwóch `started it over MDC` powinno pojawić się
+   `installing it again as 2.0.x`, pobranie `Frame.wgt` i
+   `/panel/next?reason=start`. Zanotować, co pokazuje ekran (ekran instalacji
+   launchera?) i ile to trwa.
+3. **Przycisk w głębokim śnie.** Na zasilaczu co najmniej 5 minut, odpiąć,
+   wysłać obraz (czeka na przycisk), po minucie nacisnąć krótko przycisk.
+   Oczekiwane: w ciągu ok. minuty `woke by the button`, potem pytanie
+   aplikacji i obraz z paskiem postępu w „Teraz”.
+4. **Zapasowy budzik.** Jak w 3., ale bez przycisku: najpóźniej przy
+   najbliższym pełnym półgodzinnym budziku ramka wstaje sama, serwer po
+   minucie uruchamia aplikację, obraz idzie, a po zaśnięciu krok 1 działa.
+5. **Porównanie z VXT Playerem.** W logu po instalacji 0.36.2 raport
+   `panel app probe`: skopiować go do wyników (metadane VXT, czy działa w tle).
+
 ---
 
 ## Wyniki
@@ -164,3 +190,4 @@ ramkę `goToSleep()` i zgłasza każde wznowienie. Opis i wnioski w
 | E13 | 2026-10-27 | 1130.7 | Kroki 1–2 z Maca (ramka 192.0.2.20 na baterii, standby wł.): **`0x25` przyjmuje tylko jeden bajt `00`–`05`**, zapis godziny zawsze NAK `01`; odczyt przed testem `00`, więc serwer nigdy nie ustawił budzika. Aplikacja Samsung E-Paper też nie ma godziny pobudki (tylko Sleep mode / Deep sleep / off, Sleep After 00:20, „sleep po aktualizacji”). **WoL na baterii działa**: z Maca (Wi-Fi, ta sama podsieć) budzi po ok. 60 s i ok. 145 s nadawania co 1 s. Po pobudce ekran sam zasypia po ok. 3 min 10 s bezczynności; po `0x11 00` znika z sieci po ok. 20 s. Aplikacja Samsunga, gdy jest otwarta, zajmuje sesję MDC. `0xCB` → `01 20` (kandydat na Sleep After). | Budzenie zegarem przez MDC niemożliwe; tryb oszczędny oprze się na WoL z długą serią albo na harmonogramie w manifeście (E6). |
 | E14 | 2026-10-25 | 1130.7 | 12 plansz. **Passthrough z korektą wygrał z naszym ditherem w każdym stylu.** Wyjściowy problem: za dużo niebieskiego i zieleni w jasnych partiach. 1. Jasne partie: odbarwienie do 0.55 (rampa L 0.55–0.9) i punkt bieli 0.93 (L ≥ 0.93 → biel papieru); same ocieplenie pomagało mniej. 2. Zdjęcia: nasycenie i kontrast +5% (+10% już za dużo). 3. Malarstwo: passthrough lepszy niż nasz dither (także z poprawką jasnych), ale bez korekty za ciemny; γ 1.1 i podniesione jasne partie (`highlights` −0.15). 4. Grafika (Hokusai, Toulouse-Lautrec): jak malarstwo, plus nasycenie i kontrast +10%; nasz dither Atkinson/F-S słabszy. 5. Cz-b: nasz dither z czerni i bieli ma dobrą szarość, ale passthrough w szarościach płynniejsze przejścia i głębię; wygrał passthrough, kontrast +10%, wyostrzenie 0.9, szarość przesunięta od zieleni (OKLab a +0.012) i odrobinę chłodniej (b −0.006). 6. Ta sama korekta w kolorze: najlepiej połowa, tylko w szarych miejscach (chroma < 0.06). 7. Białe passe-partout: dolna i prawa faza zlewała się z kartonem; z sześciu linii załamania (plansza 13, wycinki 1:1) wygrała 1 px z co drugim pikselem czarnym, dookoła całego okna i na każdym kartonie. Na czarnym kartonie białe kropki były za mocne; wygrały na przemian biała i niebieska co drugi piksel (plansze 14–15, Vermeer). Wartości są w presetach (`pipeline.py`) i w `mat.py`. | – |
 | E16 | 2026-10-28 | 1130.7 | Tryb Custom = SSSP URL Launcher: ramka pobiera `<url>/sssp_config.xml` i `<url>/<widgetname>.wgt`; MDC `0xC7 82 <url>` ustawia adres, `0xC7 81 01` tryb Custom i od razu instalację. Paczki z własnym podpisem, samym podpisem autora i bez podpisu: czarny ekran, sdb: `Check certificate error: Invalid certificate chain`. Z certyfikatem Samsung TV, poziom **Partner**, DUID `<DUID ramki>`: instalacja ok, wszystkie 19 metod `webapis.epaper` dostępne, `getVersion` = `1.0`. Na baterii po `goToSleep()` **ramka budzi się sama** o godzinie z `setScheduleWakeupTime` (4 pobudki, 0–11 s przed czasem), `isScheduledPlayBootReason()` = 1; aplikacja jest wtedy wznawiana, nie przeładowywana. `cancelScheduleWakeupTime` zawsze `UnknownError` 9999. Przy usypianiu launcher czasem reinstaluje i uruchamia aplikację od nowa. Strona aplikacji jest widoczna na ekranie. Noc 28.10: WoL budzi z `goToSleep()` w 2 s; pełny sen (standby OFF) też budzi budzik, ale to zimny start i aplikacja wystartowała sama 1 raz na 3 (`0xC7 81 01` ją uruchamia); bateria z `webapis.deviced`; kod ładowany z serwera działa; strona ma 1920×1080 (nie 1:1). Rano 28.10: obrazu z odtwarzacza (`0xC7 53 80`, 1:1) nie da się łączyć z aplikacją, strona zawsze go przykrywa; działa pełnokolorowy JPEG 1920×1080 w `<img>`, który ramka sama powiększa i dituje (1 px miękko, 2–4 px czysto), po `onload` trzeba szturchnąć styl, żeby e-papier się odświeżył. Wieczór 28.10: z `base_screen_resolution` = `always` w `config.xml` strona ma 2560×1440 i obraz idzie 1:1 (potwierdzone zdjęciem). | Budzik działa tylko z aplikacji Custom podpisanej certyfikatem Samsunga dla tej ramki. |
+| E17 | 2026-10-30 | 1130.7 | Z logów serwera 0.36.1 (bez testu na żywo): po starcie przez MDC wysłanym 30 ms po tym, jak aplikacja dostała `sleep` (2 s przed jej `goToSleep()`), aplikacja nie odezwała się już ani razu przez 14 minut, choć ramka po WoL i przycisku odpowiadała przez MDC i potwierdziła kilkanaście startów `0xC7 82`/`81 01` (także „Uruchom aplikację ponownie”); ani jednego pobrania `app.js`, więc strona nie była ładowana od nowa. Wcześniej tej samej nocy WoL wybudził ramkę z płytkiego snu, a aplikacja wznowiona zapytała po 7 s. Hipoteza: aplikacja stoi w tle, bo nasza paczka miała `background-support="disable"` (WakeProbe z E16: `enable`), a start w chwili zasypiania zostawił ją tam na stałe. Od 0.36.2 paczka ma `enable`, serwer nie uruchamia aplikacji w chwili zasypiania, a zamrożoną instaluje od nowa w następnej wersji; plan testu wyżej. | |

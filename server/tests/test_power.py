@@ -71,7 +71,7 @@ def _asleep(service: FrameService, *, deep: bool) -> None:
             power_mode="economy" if deep else "online",
         )
     )
-    answer = service.app.answer(BATTERY, now=datetime.now(UTC))
+    answer = service.app.answer(BATTERY, now=datetime.now(UTC) - timedelta(minutes=10))
     assert answer.action == "sleep" and answer.standby == ("OFF" if deep else "ON")
 
 
