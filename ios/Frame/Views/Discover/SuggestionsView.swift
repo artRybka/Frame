@@ -45,9 +45,10 @@ struct SuggestionsView: View {
             }
             ForEach(groups) { group in
                 VStack(alignment: .leading, spacing: 12) {
-                    Text(group.name)
-                        .font(.serif(22, weight: .semibold))
-                        .foregroundStyle(Theme.ink)
+                    NavigationLink(value: ThemeGroupRoute(name: group.name)) {
+                        SectionHeader(title: group.name, size: 22, weight: .semibold)
+                    }
+                    .buttonStyle(.plain)
                     // One row per group, so all groups and the rows of works
                     // below fit in a few screens.
                     ScrollView(.horizontal, showsIndicators: false) {
@@ -82,6 +83,11 @@ struct SuggestionsView: View {
         }
         .onChange(of: rows.first?.items.first?.id) { _, first in
             if ["detail", "original"].contains(LaunchRoute.screen), path.isEmpty, let first { path.append(first) }
+        }
+        .onChange(of: groups.first?.name, initial: true) { _, first in
+            if LaunchRoute.screen == "discover-group", path.isEmpty, let first {  // CI screenshots
+                path.append(ThemeGroupRoute(name: first))
+            }
         }
     }
 
@@ -233,21 +239,20 @@ struct SuggestionRowView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(row.title)
-                        .font(.serif(20, weight: .medium))
-                        .foregroundStyle(Theme.ink)
-                    if !row.subtitle.isEmpty {
-                        Text(row.subtitle)
-                            .font(.footnote)
-                            .foregroundStyle(Theme.inkSoft)
+            VStack(alignment: .leading, spacing: 3) {
+                // The theme's works page by page, or the row's own works.
+                Group {
+                    if let theme {
+                        NavigationLink(value: theme) { title }
+                    } else {
+                        NavigationLink(value: SuggestionRowRoute(key: row.key)) { title }
                     }
                 }
-                Spacer()
-                if let theme {
-                    NavigationLink("Więcej", value: theme)
-                        .font(.subheadline.weight(.semibold))
+                .buttonStyle(.plain)
+                if !row.subtitle.isEmpty {
+                    Text(row.subtitle)
+                        .font(.footnote)
+                        .foregroundStyle(Theme.inkSoft)
                 }
             }
             ScrollView(.horizontal, showsIndicators: false) {
@@ -265,6 +270,10 @@ struct SuggestionRowView: View {
             }
             .scrollClipDisabled()
         }
+    }
+
+    private var title: some View {
+        SectionHeader(title: row.title, size: 20, weight: .medium)
     }
 }
 
