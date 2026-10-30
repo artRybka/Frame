@@ -160,7 +160,7 @@ def _work(svc: FrameService, day: date, item: Item, writing: bool) -> DailyWork:
         if essay and essay.context
         else [p for p in museum.split("\n\n") if p],
         artist=essay.artist if essay else "",
-        composition=essay.composition if essay and essay.composition.points else None,
+        composition=essay.composition if essay and essay.composition.views else None,
         colour=essay.colour if essay else "",
         on_frame=essay.on_frame if essay else "",
         similar=similar,

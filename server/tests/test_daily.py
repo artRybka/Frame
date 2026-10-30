@@ -39,14 +39,46 @@ ANSWER: dict[str, Any] = {
     "context": ["Hokusai miał około siedemdziesięciu lat.", "Nowością był błękit pruski."],
     "artist": "Katsushika Hokusai, malarz i rysownik z Edo, zmieniał imię ponad trzydzieści razy.",
     "composition": {
-        "points": [
-            {"x": 0.63, "y": 0.66, "title": "Fudżi", "text": "Mała i nieruchoma."},
-            {"x": 1.7, "y": -0.2, "title": "Poza obrazem", "text": "Przycięty do brzegu."},
-            {"x": 0.3, "y": 0.5, "title": "", "text": "Bez tytułu: wypada."},
-        ],
-        "lines": [
-            {"label": "Łuk fali", "points": [{"x": 0.0, "y": 0.97}, {"x": 0.4, "y": 0.1}]},
-            {"label": "Jeden punkt", "points": [{"x": 0.5, "y": 0.5}]},
+        "views": [
+            {
+                "title": "Droga oka",
+                "grid": "none",
+                "text": "Oko biegnie łukiem fali do Fudżi.",
+                "marks": [
+                    {
+                        "shape": "arrow",
+                        "points": [
+                            {"x": 0.0, "y": 0.97},
+                            {"x": 0.2, "y": 0.3},
+                            {"x": 0.4, "y": 0.1},
+                        ],
+                        "title": "Łuk fali",
+                        "text": "grzywa w pazurach",
+                    },
+                    {
+                        "shape": "loop",
+                        "points": [{"x": 0.64, "y": 0.66}, {"x": 1.7, "y": -0.2}],
+                        "title": "Fudżi",
+                        "text": "mała i nieruchoma",
+                    },
+                    {"shape": "triangle", "points": [{"x": 0.3, "y": 0.5}], "title": "Za mało"},
+                    {"shape": "spiral", "points": [{"x": 0.3, "y": 0.5}], "title": "Nie ma"},
+                ],
+            },
+            {"title": "Pusta", "grid": "golden", "text": "", "marks": []},
+            {
+                "title": "Geometria",
+                "grid": "fibonacci",
+                "text": "Szczyt w złotym punkcie.",
+                "marks": [
+                    {
+                        "shape": "rect",
+                        "points": [{"x": 0.1, "y": 0.1}, {"x": 0.3, "y": 0.5}],
+                        "title": "Kartusz",
+                        "text": "",
+                    }
+                ],
+            },
         ],
     },
     "colour": "Dwa błękity i biel papieru.",
@@ -147,9 +179,14 @@ def test_an_answer_is_cleaned() -> None:
     assert essay.teaser == "Fala z pazurami i święta góra schowana w jej dolinie."  # fits the tile
     assert essay.focus is not None and (essay.focus.x, essay.focus.y) == (0.64, 1.0)
     assert essay.headline == "Pocztówka z pielgrzymki"
+    views = essay.composition.views
+    assert [v.title for v in views] == ["Droga oka", "Geometria"]  # an empty take goes
+    assert [m.title for m in views[0].marks] == ["Łuk fali", "Fudżi"]
+    assert (views[0].marks[1].points[1].x, views[0].marks[1].points[1].y) == (1.0, 0.0)
+    assert views[1].grid == "none"  # not a grid the app draws
+    # Drawn by 0.42 apps as numbered points and lines.
     points = essay.composition.points
-    assert [p.title for p in points] == ["Fudżi", "Poza obrazem"]
-    assert (points[1].x, points[1].y) == (1.0, 0.0)  # on the picture's edge
+    assert [(p.title, p.x, p.y) for p in points] == [("Łuk fali", 0.2, 0.3), ("Fudżi", 0.64, 0.66)]
     assert [line.label for line in essay.composition.lines] == ["Łuk fali"]
     assert [(s.id, s.why) for s in essay.similar] == [("met:2", "ta sama seria")]
     assert essay.sources == ["obraz", "Wikipedia"]
@@ -208,7 +245,8 @@ def test_claude_writes_the_page(tmp_path: Path) -> None:
         assert work["headline"] == "Pocztówka z pielgrzymki"
         assert work["artist"].startswith("Katsushika Hokusai, malarz")
         assert work["focus"] == {"x": 0.64, "y": 1.0}
-        assert [p["title"] for p in work["composition"]["points"]] == ["Fudżi", "Poza obrazem"]
+        assert [v["title"] for v in work["composition"]["views"]] == ["Droga oka", "Geometria"]
+        assert work["composition"]["views"][0]["marks"][0]["shape"] == "arrow"
         assert [(s["item"]["item"]["id"], s["why"]) for s in work["similar"]] == [
             ("met:2", "ta sama seria")
         ]
