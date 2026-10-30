@@ -191,10 +191,13 @@ struct AiSection: View {
                 estimating = false
                 if let found = estimate, found.items == 0 {
                     estimate = nil
-                    model.toast = "Cała biblioteka ma już słowa kluczowe"
+                    model.notices.info("Cała biblioteka ma już słowa kluczowe")
                 } else if let found = estimate, found.usd > budgetLeft {
                     estimate = nil
-                    model.toast = "Opisanie biblioteki to około \(Money.usd(found.usd)), więcej niż zostało w limicie (\(Money.usd(budgetLeft)))"
+                    model.notices.warn(
+                        "Opisanie biblioteki to około \(Money.usd(found.usd))",
+                        "Więcej niż zostało w limicie (\(Money.usd(budgetLeft)))."
+                    )
                 }
             }
         } label: {

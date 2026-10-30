@@ -140,10 +140,9 @@ struct ItemDetailView: View {
         let onFrame = model.player?.current?.item?.id == itemID
         guard await saveCrop() else { return false }
         if onFrame {
-            model.toast = "Nowy kadr — ramka odświeża obraz"
-            Task { await model.followPlayer() }
+            Task { await model.followPlayer() }  // the send bar shows the redraw
         } else {
-            model.toast = "Zapisano kadr"
+            model.notices.done("Zapisano kadr")
         }
         return true
     }
@@ -179,7 +178,6 @@ struct ItemDetailView: View {
         }
         if cropped, hold == .untilNextChange, model.player?.current?.item?.id == itemID {
             // Already on the frame: the server redraws it with the new crop.
-            model.toast = "Nowy kadr — ramka odświeża obraz"
             await model.followPlayer()
             sent = model.player?.lastError?.isEmpty ?? true ? .done : .failed
             return
@@ -652,7 +650,7 @@ struct AddToPlaylistSheet: View {
         do {
             _ = try await model.backend.savePlaylist(playlist)
             await model.refreshPlaylists()
-            model.toast = "Utworzono „\(newName)”"
+            model.notices.done("Utworzono „\(newName)”")
             dismiss()
         } catch { model.show(error) }
     }
@@ -662,7 +660,7 @@ struct AddToPlaylistSheet: View {
         do {
             _ = try await model.backend.addToPlaylist(id: id, itemIDs: [item.id])
             await model.refreshPlaylists()
-            model.toast = "Dodano do playlisty"
+            model.notices.done("Dodano do playlisty")
             dismiss()
         } catch { model.show(error) }
     }

@@ -145,7 +145,7 @@ extension PlaylistsView {
     private func delete(_ playlist: PlaylistSummary) async {
         do {
             try await model.backend.deletePlaylist(id: playlist.id)
-            model.toast = "Usunięto „\(playlist.name)”"
+            model.notices.done("Usunięto „\(playlist.name)”")
         } catch {
             model.show(error)
         }

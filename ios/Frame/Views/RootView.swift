@@ -20,7 +20,7 @@ struct RootView: View {
             switch LaunchRoute.screen {
             case "discover", "detail", "original", "museums", "search", "search-picker": .discover
             case "playlists", "playlist", "editor", "editor-new", "editor-manual": .playlists
-            case "frame", "connection", "schedule", "schedule-economy", "presentation", "presentation-photo", "orientation": .frame
+            case "frame", "notices", "connection", "schedule", "schedule-economy", "presentation", "presentation-photo", "orientation": .frame
             default: .now
             }
         }
@@ -41,50 +41,32 @@ struct RootView: View {
                 .tabItem { Label("Ramka", systemImage: "slider.horizontal.3") }
                 .tag(Tab.frame)
         }
-        .overlay(alignment: .top) { ToastView() }
-        .overlay(alignment: .bottom) {
-            // "Teraz" shows the full bar under the picture.
-            if tab != .now, let progress = model.displayProgress {
-                DisplayProgressBar(progress: progress, compact: true)
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 58)  // above the tab bar
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
-        }
-        .animation(.easeInOut, value: model.displayProgress == nil)
+        // Cards and the send bar, in a window above the app (over sheets too).
+        .background { NoticeWindowInstaller(model: model) }
+        // "Teraz" shows the full send bar under the picture.
+        .onChange(of: tab, initial: true) { _, tab in model.notices.nowTabOpen = tab == .now }
         .onChange(of: model.artistSearch) { _, artist in
             if artist != nil { tab = .discover }
         }
         .onChange(of: model.suggestionsOpened) { tab = .discover }
         .task { await model.refreshAll() }
+        .task {
+            // CI screenshots: the cards at the bottom, one of each kind.
+            guard LaunchRoute.screen == "notices" else { return }
+            try? await Task.sleep(for: .seconds(2))
+            model.notices.begin("„Japonia”: pobieram dzieła z muzeów", background: true)
+            let wake = model.notices.begin("Budzę ramkę", "Na baterii trwa to do 3 minut")
+            model.notices.warn(
+                "Ramka śpi głęboko, sama obudzi się jutro o 7:00",
+                "Po odpięciu zasilacza sygnał budzenia jej nie budzi. Wcześniej obudzi ją krótkie naciśnięcie przycisku z tyłu."
+            )
+            try? await Task.sleep(for: .seconds(4))
+            model.notices.end(wake, .done, "Ramka się obudziła")
+        }
         .task(id: model.player?.delivery?.isWaiting == true) { await model.followWaiting() }
         .onChange(of: scenePhase) { old, phase in
             // Back from the background, maybe on another network.
             if old == .background, phase != .background { Task { await model.recheckServer() } }
-        }
-    }
-}
-
-/// Short confirmation / error banner.
-struct ToastView: View {
-    @Environment(AppModel.self) private var model
-
-    var body: some View {
-        if let message = model.toast {
-            Text(message)
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(Theme.paper)
-                .padding(.horizontal, 18)
-                .padding(.vertical, 11)
-                .background(Theme.ink.opacity(0.92), in: Capsule())
-                .shadow(color: .black.opacity(0.2), radius: 12, y: 6)
-                .padding(.top, 8)
-                .transition(.move(edge: .top).combined(with: .opacity))
-                .task(id: message) {
-                    try? await Task.sleep(for: .seconds(2.6))
-                    withAnimation(.easeOut) { model.toast = nil }
-                }
-                .onTapGesture { model.toast = nil }
         }
     }
 }
