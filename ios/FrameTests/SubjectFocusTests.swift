@@ -1,3 +1,4 @@
+import SwiftUI
 import XCTest
 @testable import Frame
 
@@ -47,6 +48,6 @@ final class SubjectFocusTests: XCTestCase {
             _ = await Task.detached { 1 }.value
         }
         XCTAssertLessThan(Date().timeIntervalSince(started), 2)
-        await busy.value
+        _ = await busy.result
     }
 }
