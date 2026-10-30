@@ -86,6 +86,27 @@ def test_render_multi_composes_one_board() -> None:
     assert np.abs(board - fast).mean() < 0.5
 
 
+def test_board_preview_decodes_large_photos_smaller() -> None:
+    # Smooth photos, large enough to be decoded at half their size.
+    y, x = np.mgrid[0:2400, 0:3200]
+    photos = []
+    for i in range(4):
+        channels = [x * 255 // 3200, y * 255 // 2400, np.full_like(x, 60 * i)]
+        rgb = np.stack(channels, axis=-1).astype(np.uint8)
+        buffer = io.BytesIO()
+        Image.fromarray(rgb).save(buffer, "JPEG", quality=92)
+        photos.append(buffer.getvalue())
+    settings = RenderSettings()
+    settings.layout.fit = Fit.MULTI
+    settings.layout.margin = 0.07
+    drafted = render_original(photos, settings, multi=True, seed="s")
+    opened = [Image.open(io.BytesIO(p)) for p in photos]  # not decoded smaller
+    full = render_original(opened, settings, multi=True, seed="s")
+    assert drafted.size == full.size == LANDSCAPE
+    diff = np.abs(np.asarray(drafted, dtype=np.float32) - np.asarray(full, dtype=np.float32))
+    assert diff.mean() < 1.5
+
+
 def test_photos_keep_their_own_fits() -> None:
     old = FrameSettings.model_validate({"photo": {"preset": "photo", "fit": "auto"}})
     assert old.photo.fit == Fit.FILL

@@ -284,8 +284,9 @@ def render_original(
     may differ from the panel's at the very edge between the two.
     """
     s = settings or RenderSettings()
-    imgs = [load_image(source) for source in sources[:MAX_PHOTOS]]
-    if multi and len(imgs) >= MIN_PHOTOS:
+    several = multi and len(sources) >= MIN_PHOTOS
+    imgs = [_preview_image(source, several) for source in sources[:MAX_PHOTOS]]
+    if several:
         linear, plan = _compose_multi(imgs, s, seed, fast=True)
         s = s.model_copy(update={"caption": None, "text": None})
     else:
@@ -297,6 +298,21 @@ def render_original(
     for index, mask in _marks(plan, s, pal, dark_board):
         original[mask] = pal.device_u8()[index]
     return Image.fromarray(original)
+
+
+#: The most a photo on a Multi preview needs (its largest window, before the
+#: preview is halved): larger JPEGs are decoded at 1/2, 1/4 or 1/8 of their
+#: size, several times faster than in full.
+PREVIEW_BOARD_PIXELS = 1440
+
+
+def _preview_image(source: Source, several: bool) -> Image.Image:
+    if not several or isinstance(source, Image.Image):
+        return load_image(source)
+    img = Image.open(io.BytesIO(source) if isinstance(source, bytes) else source)
+    if img.format == "JPEG":
+        img.draft(img.mode, (PREVIEW_BOARD_PIXELS, PREVIEW_BOARD_PIXELS))
+    return load_image(img)
 
 
 def _compose_one(
