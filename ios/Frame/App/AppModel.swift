@@ -680,7 +680,7 @@ final class AppModel {
         if let view = serverUpdate, !view.busy {
             if view.state == "failed" {
                 toast = view.error ?? "Nie udało się sprawdzić"
-            } else if !view.updateAvailable {
+            } else if !view.offersUpdate {
                 toast = "Serwer jest aktualny"
             }
         }
@@ -718,7 +718,7 @@ final class AppModel {
                 await refreshAll()
                 return
             }
-            if !view.updateAvailable {
+            if !view.offersUpdate {
                 toast = "Serwer jest aktualny"
                 return
             }
