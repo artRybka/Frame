@@ -469,7 +469,13 @@ serwer musi zawsze podawać tę zainstalowaną; inną wersję zgłasza w logu.
 **Kolejność przed snem.** `goToSleep()` nie czeka na trwające odświeżanie:
 sen w jego trakcie zostawił pół narysowany szary ekran i zgubił budzik (E16).
 Aplikacja pokazuje obraz, czeka 60 s od ostatniej zmiany ekranu (obraz albo
-komunikat), dopiero wtedy ustawia network standby i budzik i zasypia. Gdy
+komunikat), dopiero wtedy ustawia network standby i budzik i zasypia. Od
+0.37.2 czeka też co najmniej 150 s od załadowania strony (`START_SETTLE_MS`):
+po starcie przez launcher (zimny start po głębokim śnie i `0xC7 81 01`)
+ramka najpierw rysuje ekran instalatora Samsunga, a stronę dopiero po nim.
+2026-10-30 obraz pokazany 6 s po starcie aplikacji zaczął się odświeżać
+około 70 s później, a sen 60 s po nim urwał odświeżanie (fioletowy, nie do
+końca narysowany obraz). Gdy
 przez długie pobieranie do pobudki zostały mniej niż 2 minuty, pyta serwer
 od nowa zamiast zasypiać.
 

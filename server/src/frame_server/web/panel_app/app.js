@@ -23,6 +23,12 @@
   // goToSleep() does not wait for it: a sleep mid-refresh left a half-drawn
   // grey screen and lost the alarm (E16). Sleep this long after the last one.
   var SETTLE_MS = 60000;
+  // Started by the launcher (a cold start, or a start over MDC), the panel
+  // first redraws Samsung's install screen and only then the page: the
+  // picture shown 10 s after the start began to refresh 70 s later, and a
+  // sleep 60 s after it cut the refresh short (2026-10-30, a purple, half
+  // drawn picture). Sleep no sooner than this after the page loaded.
+  var START_SETTLE_MS = 150000;
   // An alarm this close by the time the app may sleep: ask again instead.
   // JS runs up to ~130 s after goToSleep() and an alarm due before the
   // panel is really down is lost (E16), so keep a margin of 4 minutes.
@@ -55,6 +61,7 @@
   var timer = null;
   var last = Date.now();
   var drawnAt = 0;  // the last change of the screen
+  var loadedAt = Date.now();
   var wifiAt = 0;
 
   function saved(key, value) {
@@ -412,7 +419,7 @@
 
   // Show, let the refresh finish, set the alarm, sleep: in this order.
   function sleep(wakeMs, standby, why, more) {
-    var settle = drawnAt + SETTLE_MS - Date.now();
+    var settle = Math.max(drawnAt + SETTLE_MS, loadedAt + START_SETTLE_MS) - Date.now();
     if (settle > 0) {
       clearTimeout(timer);
       timer = setTimeout(function () { sleep(wakeMs, standby, why, more); }, settle);

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.37.2
+
+- Obraz wysłany do ramki obudzonej budzikiem albo przyciskiem (na baterii)
+  rysuje się do końca: aplikacja ramki zasypia najwcześniej 2,5 minuty po
+  starcie, bo ramka najpierw rysuje ekran instalatora Samsunga. Wcześniej sen
+  przerywał odświeżanie i obraz zostawał fioletowy.
+
 ## 0.37.1
 
 - Ramka, której aplikacja przestała odpowiadać, nie jest już na baterii
