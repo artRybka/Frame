@@ -175,6 +175,8 @@ struct ArtCard: View {
                 }
             }
         }
+        // The card opened from here shows this much while it loads.
+        .onAppear { ItemPeeks.remember(item, thumb: ref ?? .thumb(item.id)) }
     }
 }
 
