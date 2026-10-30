@@ -28,7 +28,8 @@ Przełącznik jest w zakładce *Ramka → trybik → Serwer ramki*.
 ## Ekrany
 
 - **Teraz**: obraz na ramce w „oprawie”, tło w kolorach dzieła, bateria i połączenie, poprzedni / przypnij / następny, opis jak etykieta w muzeum, dla zdjęć data, miejsce i kto dodał, następne i ostatnie obrazy. Przycisk **+** wysyła zdjęcie z rolki z wyborem, jak długo ma zostać.
-- **Odkrywaj**: siatka biblioteki z filtrami (artyści, style, tematy, kolorystyka, ulubione), sortowanie; szczegóły dzieła z przełącznikiem *Oryginał / Na ramce* (symulacja e-papieru), paletą, „Pokaż na ramce”, ulubionymi i playlistami; wyszukiwanie w muzeach z importem.
+- **Odkrywaj**: propozycje serwera (Dzieło dnia, motywy w grupach z „Utwórz playlistę”, rzędy dobranych dzieł); szczegóły dzieła z przełącznikiem *Oryginał / Na ramce* (symulacja e-papieru), paletą, „Pokaż na ramce”, ulubionymi i playlistami.
+- **Szukaj**: jedno wyszukiwanie w katalogu i muzeach (żetony pod „+”), z zapisem dzieł z muzeów i playlistą z wyszukiwania.
 - **Playlisty**: co gra teraz, kolekcje inteligentne (reguły z podglądem na żywo) i ręczne, odtwarzanie na ramce.
 - **Ramka**: bateria, zasilanie i ładowanie, połączenie, czuwanie Wi-Fi, następna zmiana; harmonogram, prezentacja, orientacja ekranu; pod trybikiem w prawym górnym rogu połączenie z ekranem i z serwerem.
 
