@@ -24,6 +24,7 @@ from PIL import Image
 from pydantic import BaseModel, Field
 
 from ..imaging.layout import load_image
+from ..imaging.text import sentences
 from ..library.markup import strip_markup
 from ..library.models import Note
 from ..library.museums import client
@@ -38,7 +39,9 @@ if TYPE_CHECKING:
 
 KIND = "daily"
 #: Changed whenever the prompt changes, so the text is written again.
-PROMPT_VERSION = "daily-1"
+PROMPT_VERSION = "daily-2"
+#: The tile's two lines under the title (characters).
+TEASER_CHARS = 100
 #: The picture goes out this big: enough to see the composition.
 IMAGE_SIDE = 1568
 #: Wikipedia articles about the work, and the artist's opening paragraph.
@@ -69,15 +72,20 @@ ozdobników i bez zwrotów do czytelnika. Nazwy japońskie i chińskie w polskie
 jej pewien jak encyklopedia (np. słynne nawiązania do bardzo znanego dzieła). Nie wymyślaj dat, \
 cytatów, nazwisk ani okoliczności. Jeśli czegoś nie wiesz, pomiń to.
 - "title": polski tytuł dzieła.
-- "teaser": jedno lub dwa zdania, najwyżej 160 znaków, które zachęcą do przeczytania reszty. \
-Bez daty i nazwiska autora (aplikacja je pokazuje).
+- "teaser": JEDNO zdanie, najwyżej 90 znaków ze spacjami (musi się zmieścić w dwóch wierszach \
+kafelka, nie będzie skracane), które zachęci do przeczytania reszty. Bez daty i nazwiska autora \
+(aplikacja je pokazuje).
+- "focus": najważniejsze miejsce obrazu (twarz głównej postaci albo główny motyw), x i y jak \
+w kompozycji. Aplikacja kadruje wokół niego niski, szeroki pasek miniatury.
 - "why_today": jedno zdanie, dlaczego to dzieło pasuje do podanej daty: rocznica urodzin lub \
 śmierci autora albo powstania dzieła (tylko gdy wynika z dat w źródłach i wypada dziś lub w \
 tym tygodniu), pora roku, święto. Pusty, gdy nie ma prawdziwego powodu.
+- "headline": tytuł tekstu o okolicznościach (2–6 słów, bez kropki), konkretny dla tego \
+dzieła, np. „Pocztówka z pielgrzymki do Fudżi”. Nie „Kontekst”, nie tytuł dzieła.
 - "context": dwa krótkie akapity (po 300–550 znaków): kiedy i w jakich okolicznościach dzieło \
 powstało, co było w nim nowe, jak je przyjęto.
-- "facts": 2–4 krótkie fakty (etykieta i wartość, np. "Seria" / "36 widoków góry Fudżi"), \
-bez powtarzania autora, daty, techniki i muzeum.
+- "artist": krótka notka o autorze, dwa-trzy zdania (najwyżej 400 znaków): kim był, czym się \
+wyróżniał i w którym miejscu jego drogi powstało to dzieło. Bez powtarzania tekstu powyżej.
 - "composition": analiza kompozycji widocznej na obrazie. "points": 3–6 punktów, każdy z \
 krótkim tytułem (2–3 słowa) i jednym-dwoma zdaniami; x i y to miejsce na obrazie, ułamki \
 szerokości i wysokości od lewego górnego rogu (0–1), dokładnie tam, gdzie jest opisywana rzecz. \
@@ -120,9 +128,11 @@ _POINT = _object(x={"type": "number"}, y={"type": "number"})
 SCHEMA = _object(
     title=_str(),
     teaser=_str(),
+    focus=_POINT,
     why_today=_str(),
+    headline=_str(),
     context=_list(_str()),
-    facts=_list(_object(label=_str(), value=_str())),
+    artist=_str(),
     composition=_object(
         points=_list(
             _object(x={"type": "number"}, y={"type": "number"}, title=_str(), text=_str())
@@ -137,11 +147,6 @@ SCHEMA = _object(
     ),
     sources=_list({"type": "string", "enum": list(SOURCES)}),
 )
-
-
-class Fact(BaseModel):
-    label: str
-    value: str
 
 
 class Spot(BaseModel):
@@ -185,9 +190,14 @@ class Essay(BaseModel):
 
     title: str = ""
     teaser: str
+    #: Where the tile's band is cropped around.
+    focus: Spot | None = None
     why_today: str = ""
+    #: The title of the text (instead of "Kontekst").
+    headline: str = ""
     context: list[str] = Field(default_factory=list)
-    facts: list[Fact] = Field(default_factory=list)
+    #: A short note about the artist.
+    artist: str = ""
     composition: Composition = Field(default_factory=Composition)
     colour: str = ""
     on_frame: str = ""
@@ -266,6 +276,18 @@ def _text(value: Any, limit: int = 2000) -> str:
     return text
 
 
+def short(text: str, limit: int) -> str:
+    """``text`` as it fits the tile: its first sentence when the whole is too
+    long, cut at a word only when that is too long as well."""
+    if len(text) <= limit:
+        return text
+    found = sentences(text)
+    first = found[0] if found else text
+    if len(first) <= limit:
+        return first
+    return first[:limit].rsplit(" ", 1)[0].rstrip(" ,;:–-") + "…"
+
+
 def _unit(value: Any) -> float | None:
     try:
         number = float(value)
@@ -287,7 +309,7 @@ def _dicts(value: Any) -> list[dict[str, Any]]:
 
 def clean(data: dict[str, Any], candidates: list[str]) -> Essay | None:
     """A model's answer made safe to show; ``None`` when it is unusable."""
-    teaser = _text(data.get("teaser"), 220)
+    teaser = short(_text(data.get("teaser"), 400), TEASER_CHARS)
     if not teaser:
         return None
     found = data.get("composition")
@@ -319,18 +341,15 @@ def clean(data: dict[str, Any], candidates: list[str]) -> Essay | None:
         for e in _dicts(data.get("legacy"))[:MAX_LEGACY]
         if _text(e.get("who")) and _text(e.get("text"))
     ]
-    facts = [
-        Fact(label=_text(f.get("label"), 40), value=_text(f.get("value"), 120))
-        for f in _dicts(data.get("facts"))[:4]
-        if _text(f.get("label")) and _text(f.get("value"))
-    ]
     context = [_text(p, 900) for p in data.get("context") or [] if _text(p)][:3]
     return Essay(
         title=_text(data.get("title"), 120),
         teaser=teaser,
+        focus=_spot(data.get("focus")),
         why_today=_text(data.get("why_today"), 220),
+        headline=_text(data.get("headline"), 80).rstrip("."),
         context=context,
-        facts=facts,
+        artist=_text(data.get("artist"), 600),
         composition=Composition(points=points, lines=lines),
         colour=_text(data.get("colour"), 500),
         on_frame=_text(data.get("on_frame"), 400),

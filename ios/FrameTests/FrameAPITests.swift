@@ -98,19 +98,20 @@ final class FrameAPITests: XCTestCase {
          },
          "title": "Wielka fala w Kanagawie",
          "teaser": "Fala z pazurami i święta góra schowana w jej dolinie.",
+         "focus": {
+          "x": 0.64,
+          "y": 1.0
+         },
          "why_today": "Jutro mija 266 lat od urodzin Hokusaia.",
          "writing": false,
          "written": true,
+         "headline": "Pocztówka z pielgrzymki",
          "context": [
           "Hokusai miał około siedemdziesięciu lat.",
           "Nowością był błękit pruski."
          ],
-         "facts": [
-          {
-           "label": "Seria",
-           "value": "36 widoków góry Fudżi"
-          }
-         ],
+         "artist": "Katsushika Hokusai, malarz i rysownik z Edo, zmieniał imię ponad trzydzieści razy.",
+         "facts": [],
          "composition": {
           "points": [
            {
@@ -217,6 +218,9 @@ final class FrameAPITests: XCTestCase {
         let work = try LiveBackend.decoder().decode(DailyWork.self, from: Data(json.utf8))
         XCTAssertTrue(work.written)
         XCTAssertEqual(work.title, "Wielka fala w Kanagawie")
+        XCTAssertEqual(work.focus?.y, 1.0)
+        XCTAssertEqual(work.headline, "Pocztówka z pielgrzymki")
+        XCTAssertEqual(work.artist?.hasPrefix("Katsushika Hokusai"), true)
         XCTAssertEqual(work.composition?.points.first?.title, "Fudżi")
         XCTAssertEqual(work.composition?.lines.first?.points.count, 2)
         XCTAssertEqual(work.similar.first?.why, "ta sama seria")

@@ -11,9 +11,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 
-from ..ai.daily import Composition, Essay, Fact, Legacy
+from ..ai.daily import TEASER_CHARS, Composition, Essay, Legacy, Spot, short
 from ..ai.pl_text import description
-from ..imaging.text import sentences
 from ..library import Item, PlaylistRules
 from ..library.markup import strip_markup
 from ..library.vocabulary import artist_matches
@@ -26,8 +25,8 @@ Svc = Annotated[FrameService, Depends(service)]
 
 #: Past days listed under the page.
 PREVIOUS = 7
-#: The tile's two lines when the model wrote nothing.
-TEASER_MAX = 200
+#: The text's title when only the museum speaks.
+MUSEUM_HEADLINE = "Co mówi muzeum"
 
 
 class SimilarWork(BaseModel):
@@ -52,13 +51,20 @@ class DailyWork(BaseModel):
     #: The Polish title when there is one.
     title: str
     teaser: str = ""
+    #: Where the tile's band is cropped around (fractions of the picture).
+    focus: Spot | None = None
     why_today: str = ""
     #: The model is writing the page now.
     writing: bool = False
     #: The model wrote the page (else only what the museum says).
     written: bool = False
+    #: The title of the text below.
+    headline: str = ""
     context: list[str] = []
-    facts: list[Fact] = []
+    #: A short note about the artist.
+    artist: str = ""
+    #: Left empty: read by 0.42 apps.
+    facts: list[dict[str, str]] = []
     composition: Composition | None = None
     colour: str = ""
     on_frame: str = ""
@@ -87,16 +93,6 @@ def _museum_text(svc: FrameService, item: Item) -> str:
     """What the museum says (in Polish once translated); "" when nothing."""
     polish = svc.pl_text.text(item)
     return polish.full if polish else description(item)
-
-
-def _teaser(text: str) -> str:
-    chosen: list[str] = []
-    for sentence in sentences(text):
-        if chosen and sum(len(s) + 1 for s in chosen) + len(sentence) > TEASER_MAX:
-            break
-        chosen.append(sentence)
-    teaser = " ".join(chosen)
-    return teaser if len(teaser) <= TEASER_MAX + 60 else teaser[:TEASER_MAX].rsplit(" ", 1)[0] + "…"
 
 
 def _later(svc: FrameService, entry: Legacy, item: Item) -> RemoteItem | None:
@@ -154,14 +150,16 @@ def _work(svc: FrameService, day: date, item: Item, writing: bool) -> DailyWork:
         day=day.isoformat(),
         item=_light(svc, item),
         title=_title(svc, item, essay),
-        teaser=essay.teaser if essay else _teaser(museum),
+        teaser=essay.teaser if essay else short(museum, TEASER_CHARS),
+        focus=essay.focus if essay else None,
         why_today=essay.why_today if essay else "",
         writing=writing and essay is None,
         written=essay is not None,
+        headline=essay.headline if essay and essay.headline else MUSEUM_HEADLINE,
         context=essay.context
         if essay and essay.context
         else [p for p in museum.split("\n\n") if p],
-        facts=essay.facts if essay else [],
+        artist=essay.artist if essay else "",
         composition=essay.composition if essay and essay.composition.points else None,
         colour=essay.colour if essay else "",
         on_frame=essay.on_frame if essay else "",

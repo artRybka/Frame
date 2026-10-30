@@ -246,6 +246,8 @@ struct ArtImage: View {
     /// Filling a box of another shape, crop around the faces or what draws
     /// the eye instead of through the middle.
     var subjectFocus = false
+    /// A known place to crop around instead (fractions of the picture).
+    var focusPoint: UnitPoint?
 
     @State private var image: UIImage?
     @State private var focus: UnitPoint = .center
@@ -253,7 +255,7 @@ struct ArtImage: View {
 
     var body: some View {
         ZStack {
-            if let image, subjectFocus, contentMode == .fill {
+            if let image, subjectFocus || focusPoint != nil, contentMode == .fill {
                 FocusedFill(image: image, focus: focus)
                     .transition(.opacity)
             } else if let image {
@@ -286,7 +288,9 @@ struct ArtImage: View {
             guard let request = model.backend.request(for: candidate) else { continue }
             do {
                 let loaded = try await ImageLoader.shared.image(for: request, maxPixel: maxPixel, priority: priority)
-                if subjectFocus {
+                if let focusPoint {
+                    focus = focusPoint
+                } else if subjectFocus {
                     // The placeholder stays until the crop is known, so the
                     // picture fades in already framed instead of sliding.
                     let point = await SubjectFocus.shared.point(in: loaded, key: request.url?.absoluteString ?? "")

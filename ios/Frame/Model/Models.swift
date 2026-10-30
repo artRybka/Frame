@@ -1260,11 +1260,6 @@ struct SuggestionRow: Codable, Hashable, Sendable, Identifiable {
 /// Propozycje and its own page, written by Claude once a day (without a key
 /// only what the museum says).
 struct DailyWork: Codable, Hashable, Sendable {
-    struct Fact: Codable, Hashable, Sendable {
-        var label: String
-        var value: String
-    }
-
     /// A place on the picture: fractions of its width and height.
     struct Spot: Codable, Hashable, Sendable {
         var x: Double
@@ -1315,14 +1310,20 @@ struct DailyWork: Codable, Hashable, Sendable {
     var item: RemoteItem
     /// The Polish title when there is one.
     var title: String
+    /// One sentence that fits the tile's two lines.
     var teaser: String
+    /// Where the tile's band is cropped around; nil from 0.42 servers.
+    var focus: Spot?
     var whyToday: String
     /// Claude is writing the page now.
     var writing: Bool
     /// Claude wrote the page; else only the museum's text.
     var written: Bool
+    /// The title of the text ("Co mówi muzeum" without Claude).
+    var headline: String?
     var context: [String]
-    var facts: [Fact]
+    /// A short note about the artist.
+    var artist: String?
     var composition: Composition?
     var colour: String
     var onFrame: String

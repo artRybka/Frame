@@ -1,8 +1,9 @@
 import SwiftUI
 
-/// The work of the day at the top of Propozycje: a band of the picture, its
-/// title and two lines that invite to read; the whole tile opens its page.
-/// Kept low, so the themes start right below it.
+/// The work of the day at the top of Propozycje: a band of the picture
+/// (cropped around the place Claude named, else what draws the eye), its
+/// title and one sentence written to fit two lines; the whole tile opens its
+/// page. Kept low, so the themes start right below it.
 struct DailyTile: View {
     let work: DailyWork
 
@@ -23,7 +24,8 @@ struct DailyTile: View {
                             placeholder: work.item.item.placeholderColor,
                             maxPixel: 1000,
                             priority: .high,
-                            subjectFocus: true
+                            subjectFocus: true,
+                            focusPoint: work.focus.map { UnitPoint(x: $0.x, y: $0.y) }
                         )
                     }
                     .clipped()
@@ -33,25 +35,24 @@ struct DailyTile: View {
                         .foregroundStyle(Theme.ink)
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
-                    if !byline.isEmpty {
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
                         Text(byline)
                             .font(.caption)
                             .foregroundStyle(Theme.inkSoft)
                             .lineLimit(1)
-                    }
-                    HStack(alignment: .lastTextBaseline, spacing: 10) {
-                        Text(work.teaser)
-                            .font(.serif(14))
-                            .foregroundStyle(Theme.ink.opacity(0.85))
-                            .lineLimit(2)
-                            .multilineTextAlignment(.leading)
                             .frame(maxWidth: .infinity, alignment: .leading)
                         Text("Czytaj dalej ›")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(Theme.accent)
                             .fixedSize()
                     }
-                    .padding(.top, 4)
+                    Text(work.teaser)
+                        .font(.serif(14))
+                        .foregroundStyle(Theme.ink.opacity(0.85))
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.9)
+                        .multilineTextAlignment(.leading)
+                        .padding(.top, 4)
                 }
                 .padding(.horizontal, 12)
                 .padding(.top, 10)
@@ -67,9 +68,10 @@ struct DailyTile: View {
     }
 }
 
-/// The work of the day's own page: why today, the context, the composition
-/// drawn over the picture, colour, how it fares on the frame, works like it,
-/// what it led to and the days before. Written by Claude once a day; while
+/// The work of the day's own page: why today, the text under its own title,
+/// a note about the artist, the composition drawn over the picture, colour,
+/// works like it, what it led to, the days before and, last, how it fares on
+/// the frame with the buttons to show or queue it. Written by Claude once a day; while
 /// it writes (or without a key) the museum's text stands in.
 struct DailyView: View {
     @Environment(AppModel.self) private var model
@@ -80,28 +82,43 @@ struct DailyView: View {
     @State private var selected: Int?
     @State private var sending = false
     @State private var sent: Bool?
+    @State private var queueTaps = 0
 
     var body: some View {
-        ScrollView {
-            if let work {
-                content(work)
-                    .padding(.horizontal, Theme.gutter)
-                    .padding(.bottom, 40)
-            } else if failed {
-                EmptyStateView(
-                    title: "Nie ma tego dzieła",
-                    message: "Serwer nie ma dzieła dnia na ten dzień.",
-                    systemImage: "photo.artframe"
-                )
-                .padding(.top, 80)
-            } else {
-                ProgressView().padding(.top, 120)
+        ScrollViewReader { proxy in
+            ScrollView {
+                page
+            }
+            .onChange(of: work?.day) {
+                guard LaunchRoute.scroll == "end" else { return }  // CI screenshots
+                Task {
+                    try? await Task.sleep(for: .seconds(1))
+                    proxy.scrollTo("end", anchor: .bottom)
+                }
             }
         }
         .background(Theme.paper)
         .navigationTitle("Dzieło dnia")
         .navigationBarTitleDisplayMode(.inline)
         .task(id: route) { await load() }
+    }
+
+    @ViewBuilder
+    private var page: some View {
+        if let work {
+            content(work)
+                .padding(.horizontal, Theme.gutter)
+                .padding(.bottom, 40)
+        } else if failed {
+            EmptyStateView(
+                title: "Nie ma tego dzieła",
+                message: "Serwer nie ma dzieła dnia na ten dzień.",
+                systemImage: "photo.artframe"
+            )
+            .padding(.top, 80)
+        } else {
+            ProgressView().padding(.top, 120)
+        }
     }
 
     /// Today's as Discover has it, then fresh; a page being written is
@@ -130,7 +147,7 @@ struct DailyView: View {
             VStack(alignment: .leading, spacing: 14) {
                 picture(work)
                 header(work)
-                actions(work)
+                showButton(work)
                 if !work.whyToday.isEmpty { whyToday(work.whyToday) }
                 if work.writing {
                     HStack(spacing: 8) {
@@ -142,13 +159,13 @@ struct DailyView: View {
                 }
             }
             if !work.context.isEmpty {
-                section("Kontekst") {
+                section(work.headline ?? "Co mówi muzeum") {
                     ForEach(Array(work.context.enumerated()), id: \.offset) { _, paragraph in
                         prose(paragraph)
                     }
                 }
             }
-            if !work.facts.isEmpty { section("W skrócie") { facts(work.facts) } }
+            if let artist = work.artist, !artist.isEmpty { section("O autorze") { prose(artist) } }
             if let composition = work.composition, !composition.points.isEmpty {
                 compositionSection(work, composition)
             }
@@ -158,11 +175,11 @@ struct DailyView: View {
                     if !work.colour.isEmpty { prose(work.colour) }
                 }
             }
-            if !work.onFrame.isEmpty { section("Na Twojej ramce") { onFrame(work) } }
             if !work.similar.isEmpty { section("Podobne dzieła") { similar(work.similar) } }
             if !work.legacy.isEmpty { section("Co z niego wyrosło") { legacy(work.legacy) } }
             if !work.previous.isEmpty { section("Poprzednie dzieła dnia") { previous(work.previous) } }
-            footer(work)
+            section("Na Twojej ramce") { onFrame(work) }
+            footer(work).id("end")
         }
     }
 
@@ -208,35 +225,45 @@ struct DailyView: View {
         }
     }
 
-    /// "Pokaż na ramce" (held: for longer) and the work's own card.
-    private func actions(_ work: DailyWork) -> some View {
-        HStack(spacing: 12) {
-            Button {
-                Task { await show(work, .untilNextChange) }
-            } label: {
-                Label {
-                    Text(sending ? "Wysyłam…" : sent == true ? "Wysłano" : "Pokaż na ramce")
-                } icon: {
-                    if sending {
-                        ProgressView().tint(Theme.paper)
-                    } else {
-                        Image(systemName: sent == true ? "checkmark" : "photo.artframe")
-                    }
+    /// "Pokaż na ramce" (held: for longer), at the top and by "Na Twojej ramce".
+    private func showButton(_ work: DailyWork) -> some View {
+        Button {
+            Task { await show(work, .untilNextChange) }
+        } label: {
+            Label {
+                Text(sending ? "Wysyłam…" : sent == true ? "Wysłano" : "Pokaż na ramce")
+            } icon: {
+                if sending {
+                    ProgressView().tint(Theme.paper)
+                } else {
+                    Image(systemName: sent == true ? "checkmark" : "photo.artframe")
                 }
             }
-            .buttonStyle(ActionButtonStyle(prominent: true))
-            .contextMenu {
-                ForEach(HoldSpec.allCases) { spec in
-                    Button(spec.label) { Task { await show(work, spec) } }
-                }
-            }
-            .disabled(sending)
-            .sensoryFeedback(.impact(weight: .medium), trigger: sending) { _, now in now }
-            NavigationLink(value: work.item.id) {
-                Label("O dziele", systemImage: "info.circle")
-            }
-            .buttonStyle(ActionButtonStyle())
         }
+        .buttonStyle(ActionButtonStyle(prominent: true))
+        .contextMenu {
+            ForEach(HoldSpec.allCases) { spec in
+                Button(spec.label) { Task { await show(work, spec) } }
+            }
+        }
+        .disabled(sending)
+        .sensoryFeedback(.impact(weight: .medium), trigger: sending) { _, now in now }
+    }
+
+    /// "Dodaj do kolejki": shown at the next change; once it is first in
+    /// line, the button says so.
+    private func queueButton(_ work: DailyWork) -> some View {
+        let next = model.player?.queued?.first == work.item.id
+        return Button {
+            queueTaps += 1
+            Task { await model.queueNext(itemID: work.item.id) }
+        } label: {
+            Label(next ? "Następne na ramce" : "Dodaj do kolejki", systemImage: next ? "checkmark" : QueueButton.symbol)
+                .contentTransition(.symbolEffect(.replace))
+        }
+        .buttonStyle(ActionButtonStyle())
+        .disabled(next)
+        .sensoryFeedback(.impact(weight: .light), trigger: queueTaps)
     }
 
     private func show(_ work: DailyWork, _ hold: HoldSpec) async {
@@ -277,27 +304,6 @@ struct DailyView: View {
             .lineSpacing(3)
             .foregroundStyle(Theme.ink.opacity(0.9))
             .fixedSize(horizontal: false, vertical: true)
-    }
-
-    private func facts(_ facts: [DailyWork.Fact]) -> some View {
-        LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
-            ForEach(facts, id: \.self) { fact in
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(fact.label.uppercased())
-                        .font(.system(size: 10.5, weight: .semibold))
-                        .tracking(0.6)
-                        .foregroundStyle(Theme.inkSoft)
-                    Text(fact.value)
-                        .font(.subheadline)
-                        .foregroundStyle(Theme.ink)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .padding(10)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                .background(Theme.card, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Theme.hairline))
-            }
-        }
     }
 
     private func compositionSection(_ work: DailyWork, _ composition: DailyWork.Composition) -> some View {
@@ -354,14 +360,23 @@ struct DailyView: View {
         }
     }
 
+    /// How the work fares on the frame, then the buttons to show or queue it.
     private func onFrame(_ work: DailyWork) -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            if work.item.inLibrary {
-                ArtImage(ref: .framePreview(work.item.id), placeholder: work.item.item.placeholderColor, maxPixel: 400, contentMode: .fit)
-                    .frame(width: 96)
-                    .whiteFrame(3)
+        VStack(alignment: .leading, spacing: 14) {
+            if work.item.inLibrary || !work.onFrame.isEmpty {
+                HStack(alignment: .top, spacing: 12) {
+                    if work.item.inLibrary {
+                        ArtImage(ref: .framePreview(work.item.id), placeholder: work.item.item.placeholderColor, maxPixel: 400, contentMode: .fit)
+                            .frame(width: 96)
+                            .whiteFrame(3)
+                    }
+                    if !work.onFrame.isEmpty { prose(work.onFrame, size: 15) }
+                }
             }
-            prose(work.onFrame, size: 15)
+            VStack(spacing: 10) {
+                showButton(work)
+                queueButton(work)
+            }
         }
     }
 
@@ -498,7 +513,7 @@ struct DailyView: View {
             let from = work.sources.isEmpty ? "" : " na podstawie: \(work.sources.joined(separator: ", "))"
             text = "Tekst napisał Claude\(from). Może zawierać błędy."
         } else {
-            text = "Opis muzeum. Kontekst i analizę kompozycji pisze Claude, gdy w Konfiguracji jest klucz i włączone „Dzieło dnia”."
+            text = "Opis muzeum. Tekst, notkę o autorze i analizę kompozycji pisze Claude, gdy w Konfiguracji jest klucz i włączone „Dzieło dnia”."
         }
         return VStack(alignment: .leading, spacing: 10) {
             Divider()

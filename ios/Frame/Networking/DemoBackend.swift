@@ -690,18 +690,17 @@ actor DemoBackend: FrameBackend {
             day: day ?? iso(0),
             item: RemoteItem(item: wave, inLibrary: true),
             title: "Wielka fala w Kanagawie",
-            teaser: "Fala z pazurami i święta góra schowana w jej dolinie. Najsłynniejszy japoński druk był tanią pamiątką.",
+            teaser: "Fala z pazurami i święta góra schowana w jej dolinie.",
+            focus: Spot(x: 0.3, y: 0.3),
             whyToday: "31 października mija kolejna rocznica urodzin Hokusaia (1760).",
             writing: false,
             written: true,
+            headline: "Pocztówka z pielgrzymki do Fudżi",
             context: [
                 "Hokusai miał około siedemdziesięciu lat, gdy wydawca Nishimuraya Yohachi zaczął wydawać jego serię „36 widoków góry Fudżi”. Japonia żyła modą na podróże i pielgrzymki do świętej góry, a barwne drzeworyty były tanimi pamiątkami.",
                 "Nowością był kolor: błękit pruski, sprowadzany do Japonii od niedawna, trwalszy i głębszy od indygo. Z zachodnich rycin Hokusai wziął niski horyzont i perspektywę.",
             ],
-            facts: [
-                .init(label: "Seria", value: "36 widoków góry Fudżi (46 arkuszy)"),
-                .init(label: "Wydawca", value: "Nishimuraya Yohachi (Eijudō)"),
-            ],
+            artist: "Katsushika Hokusai (1760–1849), malarz i rysownik z Edo, zmieniał imię ponad trzydzieści razy i do końca życia uważał, że dopiero uczy się rysować. „36 widoków góry Fudżi” wydał po siedemdziesiątce, u szczytu sławy.",
             composition: .init(
                 points: [
                     .init(x: 0.22, y: 0.17, title: "Łuk fali", text: "Jedna krzywa prowadzi oko z lewego dolnego rogu do grzywy, która rozpada się w „pazury”."),
