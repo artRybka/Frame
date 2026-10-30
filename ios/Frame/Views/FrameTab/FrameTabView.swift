@@ -228,7 +228,7 @@ struct FrameTabView: View {
             return device.onNetwork == true ? "Śpi w sieci, czeka na sygnał budzenia" : "Śpi, czeka na sygnał budzenia"
         case "deep_sleep":
             if device.switchedOff == true { return "Wyłączona, włączysz ją przyciskiem" }
-            return device.wifiLost == true ? "Śpi bez Wi-Fi, obudzi ją przycisk" : "Głęboki sen, bez Wi-Fi"
+            return device.wifiLost == true ? "Śpi głęboko, obudzi ją przycisk" : "Głęboki sen, bez Wi-Fi"
         case "offline":
             return device.onNetwork == false ? "Nie ma jej w sieci Wi-Fi" : "Nie odpowiada — śpi lub poza siecią"
         default: break  // a server before 0.12
@@ -364,8 +364,10 @@ struct FrameTabView: View {
             }
             let note = When.at(device.wakeAt).map { "budzik \($0), wcześniej przycisk" } ?? "Wi-Fi wyłączone, budzi przycisk"
             if device.wifiLost == true {
-                // Unplugged, it sleeps at once and leaves the Wi-Fi.
-                return ("wifi.slash", Theme.inkSoft, "Bez Wi-Fi", device.wakeAt == nil ? "obudzi ją przycisk na ramce" : note)
+                // Unplugged, it sleeps at once and no wake signal wakes it,
+                // even when it shows up on the Wi-Fi again.
+                let lost = When.at(device.wakeAt).map { "budzik \($0), wcześniej przycisk" } ?? "obudzi ją przycisk na ramce"
+                return ("moon.zzz", Theme.inkSoft, "Głęboki sen", lost)
             }
             return ("wifi.slash", Theme.inkSoft, "Głęboki sen", note)
         case "offline":
@@ -436,7 +438,7 @@ struct FrameTabView: View {
         switch device?.powerSource {
         case "ac": return "nie śpi, zmiany od razu"
         case "battery":
-            if device?.wifiLost == true { return "po odpięciu zasnęła bez Wi-Fi" }
+            if device?.wifiLost == true { return "po odpięciu śpi głęboko, budzi przycisk" }
             if model.settings?.isEconomy == true { return "śpi bez Wi-Fi do pobudki" }
             return model.settings?.quietStart != nil ? "śpi w sieci, noc bez Wi-Fi" : "śpi w sieci, wysyłka ją budzi"
         default: return "zmiany według harmonogramu"

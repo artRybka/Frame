@@ -172,9 +172,10 @@ class AppState(BaseModel):
     installed_at: str | None = None  # the server last started it over MDC (ISO)
     mode: str | None = None  # the power mode it went to sleep in
     slept_at: str | None = None  # told to sleep (ISO)
-    # Asleep with the Wi-Fi off although it was to keep it on (or stay up):
-    # unplugged, the panel sleeps at once and leaves the Wi-Fi (E8,
-    # 2026-10-29). Only the button (or an alarm still set) wakes it.
+    # Asleep deeply although it was to keep the Wi-Fi on (or stay up):
+    # unplugged, the panel sleeps at once and Wake-on-LAN does not wake it,
+    # even when it shows up on the Wi-Fi again (E8, 2026-10-29), or a look
+    # found it off the Wi-Fi. Only the button (or an alarm still set) wakes it.
     wifi_lost: bool = False
     # "Głęboki sen" until ``rest_until``, or switched off (no alarm at all):
     # the Wi-Fi off, no changes, only the button ends it.
@@ -941,18 +942,19 @@ class PanelApp:
 
     async def _fell_asleep(self, now: datetime) -> None:
         """Not told to sleep, silent, and the panel does not answer MDC: it
-        went to sleep by itself, with no alarm of ours. Most likely it was
-        unplugged: the panel sleeps at once then and leaves the Wi-Fi,
-        whatever network standby says (E8; 2026-10-29 it did not answer ARP
-        and Wake-on-LAN did not reach it, the button did). On the charger
-        the app never sleeps. Whether it is still on the Wi-Fi is asked
-        (ARP): if so, a picture and "Obudź ramkę" send Wake-on-LAN; if not
-        (or it cannot be told and it was on the charger), only the button
-        wakes it, and the server looks for it over MDC to start the app."""
+        went to sleep by itself, with no alarm of ours. On the charger the
+        app never sleeps, so the panel was unplugged: it sleeps at once then,
+        and Wake-on-LAN does not wake it, whatever network standby says (E8;
+        2026-10-29: no ARP answer at first, then UniFi showed it associated
+        again on "Ch. 0" and still no magic packet woke it, the button did).
+        So unplugged, only the button (or a spare alarm) wakes it, and the
+        server looks for it over MDC to start the app. Asleep by itself on
+        battery, the Wi-Fi decides (ARP): on it, a picture and "Obudź ramkę"
+        send Wake-on-LAN."""
         status = self.service.status
         unplugged = status.status.power_source == "ac"
         on_network = await status.look_for_panel(self._kick_error)
-        wifi = on_network is True or (on_network is None and not unplugged)
+        wifi = not unplugged and on_network is not False
         state = self.state
         state.asleep = True
         state.standby = wifi
@@ -964,7 +966,7 @@ class PanelApp:
         status.note_fell_asleep(on_network, unplugged=unplugged, wifi=wifi)
         log.warning(
             "the frame's app fell silent and the panel does not answer: asleep by itself, %s",
-            "in the network" if wifi else "without the Wi-Fi (only the button wakes it)",
+            "in the network" if wifi else "deeply (unplugged or off the Wi-Fi: only the button)",
         )
 
     def _spare(self, now: datetime) -> list[datetime]:

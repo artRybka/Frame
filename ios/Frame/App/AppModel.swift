@@ -305,12 +305,12 @@ final class AppModel {
         await wake(sleepAfter: true)
     }
 
-    /// `until`: the alarm (ISO); `lost`: the Wi-Fi went off by itself (unplugged).
+    /// `until`: the alarm (ISO); `lost`: asleep deeply by itself (unplugged).
     private static func deepSleepNote(_ until: String?, off: Bool = false, lost: Bool = false) -> String {
         if off { return "Ramka jest wyłączona. Włączysz ją przyciskiem na ramce" }
         if lost {
             let alarm = When.at(until).map { ", sama obudzi się \($0)" } ?? ""
-            return "Ramka śpi bez Wi-Fi (tak zasypia po odpięciu zasilacza). Obudzi ją krótkie naciśnięcie przycisku z tyłu\(alarm)"
+            return "Ramka śpi głęboko (tak zasypia po odpięciu zasilacza) i sygnał budzenia jej nie budzi. Obudzi ją krótkie naciśnięcie przycisku z tyłu\(alarm)"
         }
         let alarm = When.at(until).map { "budzik \($0) lub przycisk" } ?? "tylko przycisk"
         return "Ramka w głębokim śnie (Wi-Fi wyłączone), obudzi ją \(alarm)"
