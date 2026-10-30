@@ -116,8 +116,17 @@ class PlayerState(BaseModel):
     history: list[str] = Field(default_factory=list)
     hold: Hold | None = None
     last_change_at: str | None = None
+    #: Who made that change: ``schedule`` or ``app`` (see ``origin_of``).
+    last_change_origin: str | None = None
     next_change_at: str | None = None
     last_error: str | None = None
+
+
+def origin_of(reason: str) -> str:
+    """Who changed the picture, for the app: the schedule (a timed change,
+    also the end of a timed hold) or the owner from the app (everything else:
+    "Pokaż na ramce", a playlist presented, back, next)."""
+    return "schedule" if reason == "schedule" else "app"
 
 
 def hold_from(spec: str | int | None) -> Hold | None:
@@ -586,7 +595,8 @@ class Player:
             board = self.board(item, state, settings)
 
             async def work() -> None:
-                self.service.progress.begin(item.title, keep=True)  # begun at the download
+                # Begun at the download.
+                self.service.progress.begin(item.title, keep=True, origin=origin_of(reason))
                 await self.wait_for_polish(item, settings, POLISH_SHOW_SECONDS)
                 await self._publish(board, settings)
                 if state.current_item_id and state.current_item_id != item.id:
@@ -596,6 +606,7 @@ class Player:
                 state.hold = hold
                 now = utcnow()
                 state.last_change_at = now.isoformat(timespec="seconds")
+                state.last_change_origin = origin_of(reason)
                 state.next_change_at = next_change(now, settings).isoformat(timespec="seconds")
                 state.last_error = None
                 for shown in board:
@@ -634,7 +645,7 @@ class Player:
             board = self.board(item, state, settings, keep=state.current_group)
 
             async def work() -> None:
-                self.service.progress.begin(item.title)
+                self.service.progress.begin(item.title, origin="app")  # new settings
                 await self.wait_for_polish(item, settings, POLISH_SHOW_SECONDS)
                 await self._publish(board, settings)
                 state.current_group = [i.id for i in board[1:]]
@@ -655,7 +666,7 @@ class Player:
             state = self.state
 
             async def work() -> None:
-                self.service.progress.begin(title, render=False)
+                self.service.progress.begin(title, render=False, origin="app")
                 await run_in_threadpool(
                     self.service.store.publish,
                     png,
@@ -772,7 +783,7 @@ class Player:
         picks wait for the change after it."""
         with self._working():  # busy from the start: the original may take a while
             state, settings = self.state, self.settings
-            item = await self._pop_ready(state, settings, picks)
+            item = await self._pop_ready(state, settings, picks, origin_of(reason))
             if item is None and state.last_error:
                 state.next_change_at = (utcnow() + RETRY_AFTER).isoformat(timespec="seconds")
             self._save_state(state)
@@ -783,7 +794,11 @@ class Player:
         return item
 
     async def _pop_ready(
-        self, state: PlayerState, settings: FrameSettings, picks: bool = True
+        self,
+        state: PlayerState,
+        settings: FrameSettings,
+        picks: bool = True,
+        origin: str | None = None,
     ) -> Item | None:
         """The next picture whose original is at hand. One that cannot be
         downloaded now (no internet, museum down) goes to the back of the
@@ -797,7 +812,7 @@ class Player:
         progress = self.service.progress
         downloading = not images.has_image(item)
         if downloading:
-            progress.begin(item.title)  # the app's bar from the download on
+            progress.begin(item.title, origin=origin)  # the app's bar from the download on
         try:
             await run_in_threadpool(images.ensure_image, item, True)
             return item
@@ -1180,6 +1195,7 @@ class Player:
         state.hold = hold
         now = utcnow()
         state.last_change_at = now.isoformat(timespec="seconds")
+        state.last_change_origin = "app"
         state.next_change_at = next_change(now, self.settings).isoformat(timespec="seconds")
         self._save_state(state)
 

@@ -293,6 +293,20 @@ enum When {
         return "\(day.hasPrefix("wt") ? "we" : "w") \(day) o \(time)"
     }
 
+    /// "dziś, 07:00", "wczoraj, 19:30", "w środę, 07:00", "28 paź, 07:00":
+    /// a moment gone by.
+    static func past(_ iso: String?) -> String? {
+        guard let date = date(iso), let time = clock(iso) else { return nil }
+        let calendar = Calendar.current
+        if calendar.isDateInToday(date) { return "dziś, \(time)" }
+        if calendar.isDateInYesterday(date) { return "wczoraj, \(time)" }
+        let pl = Locale(identifier: "pl_PL")
+        if date.timeIntervalSinceNow > -6 * 86400 {
+            return "\(date.formatted(.dateTime.weekday(.abbreviated).locale(pl))) \(time)"
+        }
+        return "\(date.formatted(.dateTime.day().month(.abbreviated).locale(pl))), \(time)"
+    }
+
     /// "19:00".
     static func clock(_ iso: String?) -> String? {
         date(iso)?.formatted(.dateTime.hour().minute().locale(Locale(identifier: "pl_PL")))

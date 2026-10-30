@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from .. import build_version
 from ..ai import PolishText
 from ..library import Item, ItemSummary, PlaylistRules, PlaylistSummary
-from ..player import Hold, hold_from
+from ..player import Hold, hold_from, origin_of
 from ..progress import DisplayProgress
 from ..schedule import FrameSettings
 from ..service import FrameService
@@ -65,6 +65,13 @@ class Delivery(BaseModel):
     no_app: bool = False
 
 
+class ShownMark(BaseModel):
+    """When a picture in the history went on the frame, and who put it there."""
+
+    at: str
+    origin: str  # schedule | app
+
+
 class PlayerView(BaseModel):
     playlist: PlaylistSummary | None
     current: NowShowing | None
@@ -72,8 +79,11 @@ class PlayerView(BaseModel):
     #: Those of ``upcoming`` added from the app ("Dodaj do kolejki").
     queued: list[str]
     history: list[ItemSummary]
+    #: By item id, for those of ``history`` the server has a record of.
+    history_marks: dict[str, ShownMark] = {}
     hold: Hold | None
     last_change_at: str | None
+    last_change_origin: str | None = None
     next_change_at: str | None
     busy: bool
     last_error: str | None
@@ -169,15 +179,22 @@ def _player_view(svc: FrameService) -> PlayerView:
     if settings.playlist_id is not None:
         found = svc.library.playlist(settings.playlist_id)
         playlist = svc.library.playlist_summary(found) if found else None
-    history = [svc.library.get(i) for i in reversed(state.history[-12:])]
+    history = [i for i in (svc.library.get(i) for i in reversed(state.history[-12:])) if i]
+    shown = svc.library.last_shown([i.id for i in history])
     return PlayerView(
         playlist=playlist,
         current=current,
         upcoming=[_summary(svc, i) for i in player.upcoming(8)],
         queued=state.requested,
-        history=[_summary(svc, i) for i in history if i is not None],
+        history=[_summary(svc, i) for i in history],
+        history_marks={
+            i: ShownMark(at=at, origin=origin_of(reason))
+            for i, (at, reason) in shown.items()
+            if reason
+        },
         hold=state.hold,
         last_change_at=state.last_change_at,
+        last_change_origin=state.last_change_origin,
         next_change_at=state.next_change_at,
         busy=player.busy,
         last_error=state.last_error,

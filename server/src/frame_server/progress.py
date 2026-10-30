@@ -83,6 +83,8 @@ class DisplayProgress(BaseModel):
     started_at: str | None = None
     finished_at: str | None = None
     message: str | None = None
+    #: Who changed the picture: ``schedule`` or ``app``; None when unknown.
+    origin: str | None = None
 
 
 class ProgressTracker:
@@ -99,6 +101,7 @@ class ProgressTracker:
         self._stage = Stage.IDLE
         self._planned: list[Stage] = []
         self._title = ""
+        self._origin: str | None = None
         self._message: str | None = None
         self._start = 0.0
         self._stage_start = 0.0
@@ -125,13 +128,21 @@ class ProgressTracker:
                 self.expected[Stage(key)] = float(value)
 
     def begin(
-        self, title: str, *, render: bool = True, keep: bool = False, start: Stage | None = None
+        self,
+        title: str,
+        *,
+        render: bool = True,
+        keep: bool = False,
+        start: Stage | None = None,
+        origin: str | None = None,
     ) -> None:
         """A picture sets off. ``keep``: one with this title still being
         prepared (its original downloaded first) goes on as it is.
         ``start``: the stage it sets off at (a waiting picture the woken
-        panel's app asked for: its download)."""
+        panel's app asked for: its download). ``origin``: who changed it,
+        ``schedule`` or ``app``."""
         if keep and self._stage == Stage.RENDERING and self._title == title:
+            self._origin = origin or self._origin
             return
         now = self._clock()
         wake = self.likely_asleep() and start is None
@@ -144,6 +155,7 @@ class ProgressTracker:
         self._took = {}
         self._stage = self._planned[0]
         self._title = title
+        self._origin = origin
         self._message = None
         self._start = self._stage_start = now
         self._end = None
@@ -254,4 +266,5 @@ class ProgressTracker:
                 _stamp(wall - timedelta(seconds=now - self._end)) if self._end is not None else None
             ),
             message=self._message,
+            origin=self._origin,
         )

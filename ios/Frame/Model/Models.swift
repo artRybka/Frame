@@ -348,6 +348,17 @@ struct PlayerView: Codable, Sendable {
     var lastError: String?
     var progress: DisplayProgress?  // nil from older servers
     var delivery: Delivery? = nil  // nil from older servers
+    /// When each picture of `history` went on the frame, and who put it
+    /// there, by item id; nil from older servers.
+    var historyMarks: [String: ShownMark]? = nil
+}
+
+/// When a picture went on the frame, and who put it there.
+struct ShownMark: Codable, Hashable, Sendable {
+    var at: String
+    var origin: String  // schedule, app
+
+    var fromSchedule: Bool { origin == "schedule" }
 }
 
 /// Whether `current` reached the panel: the server knows which picture the
@@ -447,6 +458,8 @@ struct DisplayProgress: Codable, Hashable, Sendable {
     var startedAt: String?
     var finishedAt: String?
     var message: String?
+    /// Who changed the picture: schedule or app; nil when the server does not say.
+    var origin: String? = nil
 
     static let idle = DisplayProgress(stage: "idle", active: false, title: "", fraction: 0)
 

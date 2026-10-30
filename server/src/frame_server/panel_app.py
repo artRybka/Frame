@@ -530,7 +530,8 @@ class PanelApp:
         assert answer.file_id is not None
         progress = self.service.progress
         if not progress.active:
-            progress.begin(answer.title, render=False, start=Stage.DOWNLOADING)
+            origin = self.service.player.state.last_change_origin
+            progress.begin(answer.title, render=False, start=Stage.DOWNLOADING, origin=origin)
         progress.advance(Stage.DOWNLOADING)
         self.follow(answer.file_id)
         log.info("the waiting picture %s goes to the frame's app", answer.file_id)

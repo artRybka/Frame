@@ -160,7 +160,7 @@ struct NowView: View {
                             Strip(title: "Następne", items: upcoming, queued: Set(model.player?.queued ?? []))
                         }
                         if !history.isEmpty {
-                            Strip(title: "Ostatnio na ramce", items: history)
+                            Strip(title: "Ostatnio na ramce", items: history, marks: model.player?.historyMarks ?? [:])
                         }
                     }
                     .padding(.horizontal, Theme.gutter)
@@ -169,6 +169,8 @@ struct NowView: View {
                     .animation(.easeInOut, value: model.displayProgress == nil)
                 }
                 .refreshable { await Task { await model.refreshAll() }.value }
+                // CI screenshots: `-screen history` shows "Ostatnio na ramce".
+                .defaultScrollAnchor(LaunchRoute.screen == "history" ? .bottom : .top)
             }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -223,6 +225,14 @@ struct NowView: View {
                 redrawFrom = now ? model.displayProgress?.fraction : nil
             }
             .task(id: inFlight ? current?.previewUrl : nil) { await loadSwap() }
+            .onChange(of: history.first?.id, initial: true) { _, first in
+                // CI screenshots: `-screen history-back` starts at the picture before.
+                guard LaunchRoute.screen == "history-back", !routed, let first else { return }
+                routed = true
+                if let previous = history.first, previous.id == first {
+                    browsed = Browsed(summary: previous, offset: -1)
+                }
+            }
             .onChange(of: upcoming.first?.id, initial: true) { _, first in
                 // CI screenshots: `-screen browse` starts at the next picture.
                 guard LaunchRoute.screen == "browse", !routed, let first else { return }
@@ -361,7 +371,8 @@ struct NowView: View {
                     if let placeLine {
                         let place = Text(placeLine).fontWeight(.semibold).foregroundStyle(Theme.vermilion)
                         let when = Text(nextChange.map { " · \($0)" } ?? "").foregroundStyle(Theme.inkSoft)
-                        Text("\(place)\(when)")
+                        let shown = browsedMark.map { Text(" · ").foregroundStyle(Theme.inkSoft) + $0 } ?? Text("")
+                        Text("\(place)\(when)\(shown)")
                             .font(.footnote)
                             .multilineTextAlignment(.center)
                     }
@@ -558,6 +569,14 @@ struct NowView: View {
             return hold.forever ? "po odpięciu" : When.schedule(hold.until)
         }
         return When.schedule(player.nextChangeAt)
+    }
+
+    /// For a picture back in the history: who put it on the frame, and when.
+    private var browsedMark: Text? {
+        guard offset < 0, let id = browsed?.summary.id, let mark = model.player?.historyMarks?[id],
+              let when = When.past(mark.at)
+        else { return nil }
+        return ShownMarkLabel.text(mark: mark, when: when)
     }
 
     private var addedLine: String {
@@ -939,6 +958,8 @@ struct Strip: View {
     let title: String
     let items: [ItemSummary]
     var queued: Set<String> = []
+    /// Who put each picture on the frame, and when ("Ostatnio na ramce").
+    var marks: [String: ShownMark] = [:]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -968,6 +989,11 @@ struct Strip: View {
                                     .foregroundStyle(Theme.ink)
                                     .lineLimit(2)
                                     .frame(width: 120, alignment: .leading)
+                                if let mark = marks[item.id], let when = When.past(mark.at) {
+                                    ShownMarkLabel(mark: mark, when: when)
+                                        .font(.caption2)
+                                        .frame(width: 120, alignment: .leading)
+                                }
                             }
                         }
                         .buttonStyle(.plain)
@@ -986,5 +1012,24 @@ struct Strip: View {
             }
             .scrollClipDisabled()
         }
+    }
+}
+
+/// A clock for a picture the schedule put on the frame, a phone for one sent
+/// from the app, and when.
+struct ShownMarkLabel: View {
+    let mark: ShownMark
+    let when: String
+
+    var body: some View {
+        Self.text(mark: mark, when: when)
+            .lineLimit(1)
+            .accessibilityLabel("\(mark.fromSchedule ? "Z harmonogramu" : "Z aplikacji"), \(when)")
+    }
+
+    static func text(mark: ShownMark, when: String) -> Text {
+        let icon = Text(Image(systemName: mark.fromSchedule ? "clock" : "iphone"))
+            .foregroundStyle(mark.fromSchedule ? Theme.accent : Theme.vermilion)
+        return Text("\(icon) \(Text(when).foregroundStyle(Theme.inkSoft))")
     }
 }
