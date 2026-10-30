@@ -469,7 +469,13 @@ serwer musi zawsze podawać tę zainstalowaną; inną wersję zgłasza w logu.
 **Kolejność przed snem.** `goToSleep()` nie czeka na trwające odświeżanie:
 sen w jego trakcie zostawił pół narysowany szary ekran i zgubił budzik (E16).
 Aplikacja pokazuje obraz, czeka 60 s od ostatniej zmiany ekranu (obraz albo
-komunikat), dopiero wtedy ustawia network standby i budzik i zasypia. Gdy
+komunikat), dopiero wtedy ustawia network standby i budzik i zasypia. Od
+0.37.2 czeka też co najmniej 150 s od załadowania strony (`START_SETTLE_MS`):
+po starcie przez launcher (zimny start po głębokim śnie i `0xC7 81 01`)
+ramka najpierw rysuje ekran instalatora Samsunga, a stronę dopiero po nim.
+2026-10-30 obraz pokazany 6 s po starcie aplikacji zaczął się odświeżać
+około 70 s później, a sen 60 s po nim urwał odświeżanie (fioletowy, nie do
+końca narysowany obraz). Gdy
 przez długie pobieranie do pobudki zostały mniej niż 2 minuty, pyta serwer
 od nowa zamiast zasypiać.
 
@@ -696,6 +702,10 @@ nie zmieniało. Od 0.37.1:
   (miga zielona dioda z tyłu; krótkie naciśnięcie nie wystarczyło). Po takim
   starcie launcher od razu pobrał i zainstalował nową paczkę (2026-10-30
   08:17–08:19).
+- Przełączenie źródła przez MDC (`0xC7 81 02`, potem `81 01`) nie
+  restartuje ani launchera, ani aplikacji (test na zdrowej ramce 2026-10-30
+  07:37 UTC: aplikacja pytała dalej bez przerwy), więc zdalnego restartu
+  nadal nie ma.
 
 **„Uruchom ponownie” (2026-10-29).** W menu „Zasilanie”: `POST
 /api/device/restart`. Aplikacja przy najbliższym pytaniu dostaje `reboot`

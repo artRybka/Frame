@@ -16,6 +16,7 @@ from PIL import Image
 
 from ..fsutil import own_files
 from ..imaging.layout import load_image
+from .hosts import Resting
 from .models import Item
 
 log = logging.getLogger(__name__)
@@ -118,6 +119,8 @@ class ImageCache:
             for attempt in range(1, ATTEMPTS + 1):
                 try:
                     resp = http.get(url)
+                except Resting:
+                    raise  # asked again once the host's wall forgets us
                 except httpx.TransportError:
                     if attempt == ATTEMPTS:
                         raise

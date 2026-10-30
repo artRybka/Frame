@@ -211,6 +211,7 @@ Cel: potwierdzić protokół na Twoim egzemplarzu i poznać zachowanie ekranu.
 | Publiczne API albumów iCloud jest nieudokumentowane | sync przestaje działać | Izolowany moduł i testy na nagranych odpowiedziach. W zapasie: wysyłanie z aplikacji iOS (PhotoKit). |
 | Wydajność na ARM (HA Green) | wolne renderowanie | numba z cache JIT, renderowanie z wyprzedzeniem, cache wyników. Alternatywnie kontener na Synology (x86). |
 | API polskich instytucji (Polona, muzea narodowe) | brak API lub niejasne licencje | Weryfikacja na początku Etapu 2; ewentualnie ręcznie kuratorowane kolekcje z plików. |
+| Muzea za Cloudflare (Art Institute of Chicago) i Imperva (Met) odrzucają adres po seriach zapytań (403 na wszystko, 2026-10-30) | brak nowych dzieł z tych muzeów | Zapytania do jednego hosta w odstępach (API AIC co 1 s), a po 403 od ochrony przed botami host ma przerwę 15 min, potem 30 min itd. do 4 h, zamiast dalej go nękać. Nagłówek User-Agent / AIC-User-Agent jest w porządku. |
 | Licencje obrazów | problemy prawne | Domena publiczna (także według prawa UE: 70 lat po śmierci twórcy), CC0, a przy „Użytku prywatnym” licencje CC; pole licencji w bazie. WikiArt wyłącznie do testów, za przełącznikiem. |
 
 ## 7. Pytania otwarte
