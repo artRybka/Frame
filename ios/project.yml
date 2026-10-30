@@ -20,6 +20,9 @@ targets:
     platform: iOS
     sources:
       - Frame
+      - Shared
+    dependencies:
+      - target: FrameWidgets
     info:
       path: Frame/Info.plist
       properties:
@@ -43,6 +46,8 @@ targets:
           NSAllowsArbitraryLoads: true
         # Only system TLS (URLSession): exempt, so TestFlight skips the export question.
         ITSAppUsesNonExemptEncryption: false
+        # The send bar on the Lock Screen and in the Dynamic Island (FrameWidgets).
+        NSSupportsLiveActivities: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.artrybka.frame
@@ -50,6 +55,26 @@ targets:
         TARGETED_DEVICE_FAMILY: "1"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+  FrameWidgets:
+    # Live Activity only (no home screen widgets yet): the picture on its way to the frame.
+    type: app-extension
+    platform: iOS
+    sources:
+      - FrameWidgets
+      - Shared
+    info:
+      path: FrameWidgets/Info.plist
+      properties:
+        CFBundleDisplayName: Frame
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleDevelopmentRegion: pl
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.artrybka.frame.widgets
+        TARGETED_DEVICE_FAMILY: "1"
   FrameTests:
     type: bundle.unit-test
     platform: iOS

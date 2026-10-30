@@ -57,6 +57,8 @@ final class AppModel {
     var connection = Connection.unknown
     /// The cards at the bottom of the screen (`NoticeStack`).
     let notices = Notices()
+    /// The send bar on the Lock Screen and in the Dynamic Island.
+    let liveActivity = SendLiveActivity()
     var working = false
     /// A tap on the Sieć tile (the check) found the frame asleep and is
     /// waking it.
@@ -398,6 +400,8 @@ final class AppModel {
     }
 
     private func pollProgress(expectingStart: Bool) async {
+        let awake = BackgroundTime()
+        defer { awake.end() }
         let started = Date.now
         var seenActive = false
         var first: DisplayProgress?  // with `expectingStart`, maybe the run before
@@ -413,6 +417,7 @@ final class AppModel {
             if value.active {
                 seenActive = true
                 displayProgress = value
+                liveActivity.show(value)
             } else if seenActive || !expectingStart || Date.now.timeIntervalSince(started) > 20 {
                 if seenActive { await finishProgress(value) }
                 break
@@ -423,16 +428,46 @@ final class AppModel {
         if !Task.isCancelled {
             displayProgress = nil
             progressTask = nil
+            await settleLiveActivity()
         }
     }
 
     private func finishProgress(_ value: DisplayProgress) async {
         displayProgress = value
+        if value.isWaiting {
+            await refreshPlayer()
+            liveActivity.wait(value, until: player?.delivery?.asleepUntilAt)
+        } else {
+            liveActivity.finish(value)
+        }
         if value.isDone {
             await refreshPlayer()
             try? await Task.sleep(for: .seconds(2.5))
         } else {
             try? await Task.sleep(for: .seconds(5))  // long enough to read why
+        }
+    }
+
+    /// The Lock Screen card after a run, or when the app is back: on while
+    /// a picture is under way or waits for the frame, its result otherwise.
+    func settleLiveActivity() async {
+        guard liveActivity.isRunning, progressTask == nil else { return }
+        guard let value = try? await backend.progress() else {
+            liveActivity.finish(.idle)
+            return
+        }
+        if value.active {
+            trackProgress()
+            return
+        }
+        await refreshPlayer()
+        if player?.delivery?.isWaiting == true {
+            var waiting = value
+            waiting.stage = "waiting"
+            if waiting.title.isEmpty { waiting.title = player?.current?.title ?? "" }
+            liveActivity.wait(waiting, until: player?.delivery?.asleepUntilAt)
+        } else {
+            liveActivity.finish(value)
         }
     }
 
