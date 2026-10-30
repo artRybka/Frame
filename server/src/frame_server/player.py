@@ -32,7 +32,7 @@ from .library.nationality import life_years, note_years
 from .library.repo import SENT_KEY
 from .library.style import AUTO, auto_preset
 from .library.themes import SEARCHABLE, theme_of_the_day
-from .library.vocabulary import set_aside
+from .library.vocabulary import HIGHLIGHT, set_aside
 from .progress import Stage
 from .schedule import FrameSettings, Presentation, in_quiet_hours, next_change
 
@@ -84,6 +84,12 @@ CATALOGUE_EVERY = timedelta(hours=1)
 CATALOGUE_KINDS: tuple[Kind, ...] = ("painting", "print", "drawing", "poster")
 #: Kinds of the museums' most important works it takes in too.
 CATALOGUE_HIGHLIGHTS: tuple[Kind, ...] = ("painting", "print")
+#: Highlights the catalogue keeps at least (for "Arcydzieła muzeów"),
+#: topped up at most every ``CATALOGUE_HIGHLIGHT_EVERY``.
+CATALOGUE_HIGHLIGHT_MIN = 40
+CATALOGUE_HIGHLIGHT_EVERY = timedelta(days=1)
+#: When the catalogue's highlights were last topped up.
+HIGHLIGHTS_KEY = "catalogue_highlights"
 #: A full catalogue still takes in this many works at a time, at most every
 #: ``CATALOGUE_TURNOVER_EVERY``, and lets as many go: new works keep coming.
 CATALOGUE_TURNOVER = 60
@@ -1010,6 +1016,19 @@ class Player:
         self._forget(gone)
         return len(gone)
 
+    def _add_highlights(self, job: Job) -> None:
+        """Top the catalogue's museum highlights up to ``CATALOGUE_HIGHLIGHT_MIN``."""
+        have = self.library.query(PlaylistRules(terms=[HIGHLIGHT]))[0]
+        if have >= CATALOGUE_HIGHLIGHT_MIN:
+            return
+        self.service.importer.collect(
+            CATALOGUE_HIGHLIGHT_MIN - have,
+            Job(id=job.id, description="highlights"),  # its own count
+            kinds=(),
+            highlights=CATALOGUE_HIGHLIGHTS,
+            min_suitability=CATALOGUE_SUITABILITY,
+        )
+
     def grow_catalogue(self) -> Job | None:
         """Add a batch of museum works to the catalogue while its thumbnails
         take less than ``catalogue_mb``; themes and random draws of every
@@ -1021,24 +1040,41 @@ class Player:
         ):
             return None
         full = self.service.images.thumbs_size() >= limit
+        # "Arcydzieła muzeów" needs the museums' highlights in the catalogue,
+        # which works taken in before 0.42 never say they are: asked for on
+        # their own, once a day, while the catalogue has too few.
+        tried = self.library.get_state(HIGHLIGHTS_KEY, "")
+        highlights = (
+            not tried or utcnow() - datetime.fromisoformat(tried) >= CATALOGUE_HIGHLIGHT_EVERY
+        )
+        turnover = True
         if full:
             self.trim_catalogue()
             turned = self.library.get_state(TURNOVER_KEY, "")
-            if turned and utcnow() - datetime.fromisoformat(turned) < CATALOGUE_TURNOVER_EVERY:
+            turnover = (
+                not turned or utcnow() - datetime.fromisoformat(turned) >= CATALOGUE_TURNOVER_EVERY
+            )
+            if not turnover and not highlights:
                 return None
-            self.library.set_state(TURNOVER_KEY, utcnow().isoformat())
+            if turnover:
+                self.library.set_state(TURNOVER_KEY, utcnow().isoformat())
+        if highlights:
+            self.library.set_state(HIGHLIGHTS_KEY, utcnow().isoformat())
         queries = [search for theme in SEARCHABLE for search in theme.searches()]
         queries = random.sample(queries, min(8, len(queries)))
 
         def grow(job: Job) -> None:
-            importer.collect(
-                CATALOGUE_TURNOVER if full else CATALOGUE_BATCH,
-                job,
-                queries=queries,
-                kinds=CATALOGUE_KINDS,
-                highlights=CATALOGUE_HIGHLIGHTS,
-                min_suitability=CATALOGUE_SUITABILITY,
-            )
+            if highlights:
+                self._add_highlights(job)
+            if turnover:
+                importer.collect(
+                    CATALOGUE_TURNOVER if full else CATALOGUE_BATCH,
+                    job,
+                    queries=queries,
+                    kinds=CATALOGUE_KINDS,
+                    highlights=CATALOGUE_HIGHLIGHTS,
+                    min_suitability=CATALOGUE_SUITABILITY,
+                )
             if full:
                 self.trim_catalogue()
 

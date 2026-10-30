@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// What Discover opens with: the work of the day, ideas for playlists in
-/// groups, then rows of works the server picked for the frame, works like
-/// the ones the owner likes and the theme of the day.
+/// What Discover opens with: the work of the day, the theme of the day,
+/// ideas for playlists in groups, then rows of works like the ones the owner
+/// likes and the owner's works not shown for long.
 ///
 /// The last ones loaded show at once (also after a launch) while fresh ones
 /// load, and only the cards and works on screen fetch their pictures.
@@ -12,6 +12,10 @@ struct SuggestionsView: View {
     @Binding var path: NavigationPath
 
     private var rows: [SuggestionRow] { model.suggestionRows ?? [] }
+    /// "Motyw dnia" goes above the groups; "Dla Ciebie" (still the cover of
+    /// Propozycje in Playlisty) and "Nowe w katalogu" are not shown.
+    private var dayRow: SuggestionRow? { rows.first { $0.key == "theme" } }
+    private var otherRows: [SuggestionRow] { rows.filter { !["theme", "for-you", "new"].contains($0.key) } }
     private var themes: [ArtTheme] { model.themes ?? [] }
 
     private struct ThemeGroup: Identifiable {
@@ -44,6 +48,7 @@ struct SuggestionsView: View {
                     systemImage: "sparkles"
                 )
             }
+            if let dayRow { rowView(dayRow) }
             ForEach(groups) { group in
                 VStack(alignment: .leading, spacing: 12) {
                     NavigationLink(value: ThemeGroupRoute(name: group.name)) {
@@ -70,9 +75,7 @@ struct SuggestionsView: View {
                     .scrollClipDisabled()
                 }
             }
-            ForEach(rows) { row in
-                SuggestionRowView(row: row, theme: themes.first { $0.key == row.theme })
-            }
+            ForEach(otherRows) { row in rowView(row) }
         }
         .overlay(alignment: .top) {
             if loading && rows.isEmpty { ProgressView().padding(.top, 60) }
@@ -95,6 +98,9 @@ struct SuggestionsView: View {
         }
     }
 
+    private func rowView(_ row: SuggestionRow) -> some View {
+        SuggestionRowView(row: row, theme: themes.first { $0.key == row.theme })
+    }
 }
 
 /// Making a playlist from a theme, from a card or the theme's page.
@@ -187,17 +193,6 @@ struct ThemeCard: View {
                         .disabled(making)
                     }
                     Spacer()
-                    if let new = theme.newCount, new > 0 {
-                        // The catalogue took in works for it this week.
-                        Text("+\(new)")
-                            .font(.caption2.weight(.semibold).monospacedDigit())
-                            .foregroundStyle(Theme.accent)
-                    }
-                    if let count = theme.count, count > 0 {
-                        Text("\(count)")
-                            .font(.caption2.monospacedDigit())
-                            .foregroundStyle(Theme.inkSoft)
-                    }
                 }
             }
             .padding(10)
