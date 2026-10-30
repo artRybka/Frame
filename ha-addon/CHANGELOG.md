@@ -8,6 +8,12 @@
 - Gdy aplikacja milczy także 10 minut po ponownej instalacji, serwer usypia
   ramkę głęboko; przy najbliższym budziku albo po przycisku startuje ona od
   nowa i serwer uruchamia aplikację (restartu przez MDC ramka nie przyjmuje).
+- Kafelek „Serwer”: „sprawdzono …” w osobnej linii, a serwer przebudowany
+  w Container Manager między sprawdzeniami pomocnika nie proponuje już
+  aktualizacji do wersji, która właśnie działa.
+- „Uruchom ramkę ponownie” jest wyszarzone, gdy aplikacja ramki milczy
+  (restart robi aplikacja, więc zamrożona by go nie wykonała); zostaje
+  „Uruchom aplikację ponownie”.
 
 ## 0.37.0
 

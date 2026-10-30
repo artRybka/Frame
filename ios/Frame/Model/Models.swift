@@ -717,6 +717,11 @@ struct ServerUpdate: Codable, Hashable, Sendable {
 
     /// The helper is on it.
     var busy: Bool { pending != nil || state == "checking" || state == "updating" }
+
+    /// A newer server than this one. Servers before 0.37.1 also offered the
+    /// version they already ran after a rebuild in Container Manager between
+    /// the helper's checks.
+    var offersUpdate: Bool { updateAvailable && latestVersion != version }
 }
 
 /// One limit or both; the default value goes back to frame.env.
