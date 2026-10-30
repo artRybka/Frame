@@ -692,7 +692,10 @@ nie zmieniało. Od 0.37.1:
   przycisku, a wtedy serwer uruchamia aplikację jak po każdej pobudce
   przyciskiem. W logu: `the frame's app stays stuck after a reinstall`.
 - Ręcznie: przytrzymanie przycisku około 6 s wyłącza ramkę (biały ekran,
-  czyszczenie e-papieru), a krótkie naciśnięcie ją włącza.
+  czyszczenie e-papieru), a przytrzymanie około 3 s włącza ją z powrotem
+  (miga zielona dioda z tyłu; krótkie naciśnięcie nie wystarczyło). Po takim
+  starcie launcher od razu pobrał i zainstalował nową paczkę (2026-10-30
+  08:17–08:19).
 
 **„Uruchom ponownie” (2026-10-29).** W menu „Zasilanie”: `POST
 /api/device/restart`. Aplikacja przy najbliższym pytaniu dostaje `reboot`
