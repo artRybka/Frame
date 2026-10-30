@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.39.0
+
+- Komunikaty w aplikacji wyglądają jak pasek wysyłania: zamiast ciemnych
+  dymków u góry na 2,6 s pojawiają się kafelki na dole nad zakładkami, też
+  nad otwartymi arkuszami. Czynność w toku (budzenie, restart, aktualizacja
+  serwera, zdjęcia i dzieła z muzeów w tle) trzyma kafelek do końca, a wynik
+  pojawia się w tym samym miejscu. Potwierdzenie znika po 2,5–5 s,
+  ostrzeżenie i błąd zostają do zamknięcia; wibracja i VoiceOver. Teksty są
+  krótsze, z wyjaśnieniem w drugiej linii, błędy serwera po polsku. Zmiana
+  tylko w aplikacji iOS, serwer bez zmian.
+
 ## 0.38.1
 
 - Zakładka Ramka: kafelki same są przyciskami, bez rzędu przycisków pod
