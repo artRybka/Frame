@@ -36,6 +36,7 @@ struct ItemDetailView: View {
     @State private var sent: Sent?
     @State private var taps = 0
     @State private var queueTaps = 0
+    @State private var loadFailed = false
 
     enum Sent { case done, failed }
 
@@ -52,51 +53,152 @@ struct ItemDetailView: View {
 
     var body: some View {
         ScrollView {
-            if let item {
-                VStack(alignment: .leading, spacing: 24) {
-                    picture(item)
-                    titleBlock(item)
-                    actions(item)
-                    if !item.colors.isEmpty { palette(item) }
-                    about(item)
-                    facts(item)
-                    if !(item.styles + item.subjects).isEmpty {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Eyebrow("Styl i tematy")
-                            FlowLayout(spacing: 6) {
-                                ForEach(item.styles + item.subjects, id: \.self) { TagLabel(text: $0) }
-                            }
-                        }
-                    }
+            // One over the other while the work fades in over its placeholder.
+            ZStack(alignment: .top) {
+                if let item {
+                    loaded(item)
+                        .transition(.opacity)
+                } else {
+                    loading
+                        .transition(.opacity)
                 }
-                .padding(.horizontal, Theme.gutter)
-                .padding(.bottom, 40)
-            } else {
-                ProgressView().padding(.top, 120)
             }
+            // Full width from the first frame, also before the work is here:
+            // a lone spinner made the page (and its paper) a narrow strip.
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .animation(.easeOut(duration: 0.3), value: item == nil)
         }
         .background(Theme.paper)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if let item { itemToolbar(item) }
         }
-        .task(id: itemID) {
-            do {
-                item = try await model.backend.item(id: itemID)
-                if LaunchRoute.screen == "original" { opened = .original }  // CI screenshots
-            } catch {
-                model.show(error)
-                return
-            }
-            // Keywords and Polish texts ahead of the background queue.
-            _ = try? await model.backend.describe(itemID: itemID, wait: 0)
-            described = itemID
-            await loadPolish()
-        }
+        .task(id: itemID) { await load() }
         .task(id: described) { await loadSeen() }
         .task(id: view == .frame ? draftKey : "") { await loadFraming() }
+        .onChange(of: item) { _, item in
+            if let item { ItemPeeks.keep(item) }
+        }
         .sheet(isPresented: $showingPlaylists) {
             if let item { AddToPlaylistSheet(item: item, beforeAdding: saveCrop) }
+        }
+    }
+
+    private func loaded(_ item: Item) -> some View {
+        VStack(alignment: .leading, spacing: 24) {
+            picture(item)
+            titleBlock(item)
+            actions(item)
+            if !item.colors.isEmpty { palette(item) }
+            about(item)
+            facts(item)
+            if !(item.styles + item.subjects).isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    Eyebrow("Styl i tematy")
+                    FlowLayout(spacing: 6) {
+                        ForEach(item.styles + item.subjects, id: \.self) { TagLabel(text: $0) }
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, Theme.gutter)
+        .padding(.bottom, 40)
+    }
+
+    /// The work, at once from the last visit if there was one, then fresh
+    /// from the server; keywords and Polish texts after it.
+    private func load() async {
+        loadFailed = false
+        if item == nil { item = ItemPeeks.cards[itemID] }
+        do {
+            item = try await model.backend.item(id: itemID)
+            if LaunchRoute.screen == "original" { opened = .original }  // CI screenshots
+        } catch {
+            if item == nil {
+                loadFailed = true
+                model.show(error)
+            }
+            return
+        }
+        // Keywords and Polish texts ahead of the background queue.
+        _ = try? await model.backend.describe(itemID: itemID, wait: 0)
+        described = itemID
+        await loadPolish()
+    }
+
+    // MARK: Loading
+
+    /// The card before the work is here: the picture, title and artist of
+    /// the tile it was opened from (or quiet shapes where there was none),
+    /// laid out as the card will be, so the work fades in over them.
+    private var loading: some View {
+        let peek = ItemPeeks.tiles[itemID]
+        return VStack(alignment: .leading, spacing: 24) {
+            VStack(spacing: 12) {
+                ArtImage(
+                    ref: peek?.thumb ?? .thumb(itemID), placeholder: peek?.summary.placeholderColor ?? Theme.mat,
+                    maxPixel: 700, contentMode: .fit, priority: .high
+                )
+                    .aspectRatio(CGFloat(peek?.summary.aspectRatio ?? 4.0 / 3.0), contentMode: .fit)
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .shadow(color: .black.opacity(0.22), radius: 16, y: 12)
+                    .frame(maxHeight: 460)
+                    .frame(maxWidth: .infinity)
+                Picker("Widok", selection: .constant(ViewMode.original)) {
+                    ForEach(ViewMode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 260)
+                .disabled(true)
+            }
+            .padding(.top, 8)
+            if let summary = peek?.summary {
+                peekTitle(summary)
+            } else {
+                TitleSkeleton()
+            }
+            HStack(spacing: 12) {
+                Button {} label: { Label("Pokaż na ramce", systemImage: "photo.artframe") }
+                    .buttonStyle(ActionButtonStyle(prominent: true))
+                Button {} label: { Label("Dodaj do kolejki", systemImage: QueueButton.symbol) }
+                    .buttonStyle(ActionButtonStyle())
+            }
+            .labelStyle(ActionLabelStyle())
+            .disabled(true)
+            .opacity(0.45)
+            if loadFailed {
+                Button("Spróbuj ponownie", systemImage: "arrow.clockwise") {
+                    Task { await load() }
+                }
+                .buttonStyle(.bordered)
+                .frame(maxWidth: .infinity)
+            } else {
+                ProgressView().frame(maxWidth: .infinity)
+            }
+        }
+        .padding(.horizontal, Theme.gutter)
+        .padding(.bottom, 40)
+    }
+
+    /// The title block as the tile knew it.
+    private func peekTitle(_ summary: ItemSummary) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Eyebrow(Names.source(summary.source), color: Theme.vermilion)
+            Text(summary.title.isEmpty ? "Bez tytułu" : summary.title)
+                .font(.serif(30, weight: .semibold))
+                .foregroundStyle(Theme.ink)
+                .fixedSize(horizontal: false, vertical: true)
+            if !summary.artist.isEmpty {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(summary.artist).font(.serif(19)).foregroundStyle(Theme.ink)
+                    Image(systemName: "magnifyingglass")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(Theme.inkSoft)
+                }
+            }
+            if !summary.dateText.isEmpty {
+                Text(summary.dateText).font(.subheadline).foregroundStyle(Theme.inkSoft)
+            }
         }
     }
 
@@ -279,10 +381,18 @@ struct ItemDetailView: View {
         VStack(spacing: 12) {
             Group {
                 if view == .original {
+                    // The tile's thumbnail, already loaded, under the
+                    // original until it is here.
                     ArtImage(
-                        ref: .image(item.id), fallback: .thumb(item.id), placeholder: item.placeholderColor,
+                        ref: .image(item.id), fallback: .thumb(item.id), placeholder: .clear,
                         maxPixel: 1800, contentMode: .fit, priority: .high
                     )
+                        .background {
+                            ArtImage(
+                                ref: ItemPeeks.tiles[item.id]?.thumb ?? .thumb(item.id),
+                                placeholder: item.placeholderColor, maxPixel: 700, contentMode: .fit, priority: .high
+                            )
+                        }
                         .aspectRatio(CGFloat(aspect(item)), contentMode: .fit)
                         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                         .shadow(color: .black.opacity(0.22), radius: 16, y: 12)
@@ -663,5 +773,44 @@ struct AddToPlaylistSheet: View {
             model.notices.done("Dodano do playlisty")
             dismiss()
         } catch { model.show(error) }
+    }
+}
+
+/// What the app already knows of a work before its card loads: the tile it
+/// was opened from, and the card itself from the last visit. The card shows
+/// them at once instead of an empty page.
+@MainActor
+enum ItemPeeks {
+    struct Tile {
+        var summary: ItemSummary
+        /// The picture the tile showed, so the card asks for the same one.
+        var thumb: ImageRef
+    }
+
+    private(set) static var tiles: [String: Tile] = [:]
+    private(set) static var cards: [String: Item] = [:]
+
+    static func remember(_ summary: ItemSummary, thumb: ImageRef) {
+        if tiles.count > 3000 { tiles.removeAll() }
+        tiles[summary.id] = Tile(summary: summary, thumb: thumb)
+    }
+
+    static func keep(_ item: Item) {
+        if cards.count > 200 { cards.removeAll() }
+        cards[item.id] = item
+    }
+}
+
+/// Where the title and artist will be, before anything is known of them.
+private struct TitleSkeleton: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Capsule().fill(Theme.mat).frame(width: 70, height: 9)
+            Capsule().fill(Theme.mat).frame(height: 24).padding(.trailing, 60)
+            Capsule().fill(Theme.mat).frame(width: 150, height: 14)
+        }
+        .breathing()
+        .accessibilityElement()
+        .accessibilityLabel("Wczytuję dzieło")
     }
 }
