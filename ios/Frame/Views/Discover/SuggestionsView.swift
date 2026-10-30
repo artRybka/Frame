@@ -46,7 +46,7 @@ struct SuggestionsView: View {
             ForEach(groups) { group in
                 VStack(alignment: .leading, spacing: 12) {
                     NavigationLink(value: ThemeGroupRoute(name: group.name)) {
-                        SectionHeader(title: group.name, size: 22, weight: .semibold)
+                        SeeAllHeader(title: group.name, size: 22, weight: .semibold)
                     }
                     .buttonStyle(.plain)
                     // One row per group, so all groups and the rows of works
@@ -273,7 +273,7 @@ struct SuggestionRowView: View {
     }
 
     private var title: some View {
-        SectionHeader(title: row.title, size: 20, weight: .medium)
+        SeeAllHeader(title: row.title, size: 20, weight: .medium)
     }
 }
 

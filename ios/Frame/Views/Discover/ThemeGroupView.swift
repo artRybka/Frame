@@ -11,7 +11,7 @@ struct SuggestionRowRoute: Hashable {
 }
 
 /// A section's title with a chevron, tapped to see all of it.
-struct SectionHeader: View {
+struct SeeAllHeader: View {
     let title: String
     var size: CGFloat = 22
     var weight: Font.Weight = .semibold
