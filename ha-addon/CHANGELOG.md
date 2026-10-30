@@ -6,6 +6,11 @@
   rysuje się do końca: aplikacja ramki zasypia najwcześniej 2,5 minuty po
   starcie, bo ramka najpierw rysuje ekran instalatora Samsunga. Wcześniej sen
   przerywał odświeżanie i obraz zostawał fioletowy.
+- Koniec błędów 403 z muzeów: Art Institute of Chicago nie dostaje już próśb
+  o podgląd szerszy niż sam obraz (wąskie obrazy pobieramy w pełnym
+  rozmiarze), zapytania do AIC i Met idą w odstępach (API AIC raz na
+  sekundę), a po odmowie ochrony przed botami serwer daje muzeum spokój na
+  15 minut, za każdym kolejnym razem dwa razy dłużej, do 4 godzin.
 
 ## 0.37.1
 
