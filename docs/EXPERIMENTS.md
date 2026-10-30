@@ -130,7 +130,7 @@ ARP do ekranu nie sięga (Mac w 192.168.0.0/22 widzi tylko router).
 Wynik decyduje, czy brak odpowiedzi na ARP może znaczyć „poza siecią”.
 2026-10-29: ramka odpięta od zasilacza nie odpowiadała na ARP z NAS-a, WoL jej
 nie budził, przycisk tak (jak E8); po kilkunastu sekundach UniFi pokazywał ją
-znowu, na „Ch. 0”, a WoL dalej nie działał. Od 0.36 brak odpowiedzi znaczy „śpi
+znowu, na „Ch. 0”, a WoL dalej nie działał. Od 0.36.1 brak odpowiedzi znaczy „śpi
 głęboko, budzi przycisk”, a odpowiedź nie znaczy „da się obudzić” ([WAKE.md](WAKE.md#aplikacja-frame-na-ramce-2026-10-28)).
 Krok 1–3 (sen zlecony z czuwaniem sieci odpowiada na ARP) nadal do potwierdzenia.
 

@@ -684,6 +684,38 @@ struct LibraryStorage: Codable, Hashable, Sendable {
     var originalsFromApp: Bool
 }
 
+/// Updating the server from the app: only where the `frame updater` helper
+/// runs next to it (Synology, deploy/synology/docker-compose.yml).
+struct ServerUpdate: Codable, Hashable, Sendable {
+    struct LastUpdate: Codable, Hashable, Sendable {
+        var at: String
+        var fromVersion: String?
+        var toVersion: String?
+        var ok: Bool
+        var error: String?
+    }
+
+    /// The running server.
+    var version: String
+    /// A Home Assistant add-on: HA updates it.
+    var addon: Bool
+    /// The helper answers; without it the app explains the one-time setup.
+    var updater: Bool
+    /// idle, checking, updating or failed.
+    var state: String
+    var updateAvailable: Bool
+    var latestVersion: String?
+    var latestRevision: String?
+    var checkedAt: String?
+    var error: String?
+    var lastUpdate: LastUpdate?
+    /// Asked for ("check" or "update"), not picked up by the helper yet.
+    var pending: String?
+
+    /// The helper is on it.
+    var busy: Bool { pending != nil || state == "checking" || state == "updating" }
+}
+
 /// One limit or both; the default value goes back to frame.env.
 struct LibraryStorageUpdate: Encodable, Sendable {
     var catalogueMb: Int?
@@ -765,6 +797,16 @@ struct PanelConfigUpdate: Encodable, Sendable {
     private enum CodingKeys: String, CodingKey { case host, pin, mac, port }
 }
 
+/// The EM32DX's screen: 2560×1440 pixels at a 0.272 mm pitch. A
+/// passe-partout's width is stored as a share of the short side.
+enum Panel {
+    static let shortSideMillimetres = 1440 * 0.272  // 391.68
+
+    static func millimetres(_ margin: Double) -> Double { margin * shortSideMillimetres }
+
+    static func margin(mm: Double) -> Double { mm / shortSideMillimetres }
+}
+
 /// The same checks the server makes, to point at a typo before saving.
 enum PanelAddress {
     /// A bare address: "http://203.0.113.152/" becomes 203.0.113.152; nil if it cannot be one.
@@ -808,7 +850,7 @@ struct StatusView: Codable, Sendable {
 
 struct Presentation: Codable, Hashable, Sendable {
     var preset: String
-    var fit: String  // "fit" | "fill" | "description" | "auto"; photos: "fit" | "fill" | "multi"
+    var fit: String  // "fit" | "fill" | "description"; photos: "fit" | "fill" | "multi"
     var mat: String = "white"  // "white" | "cream" | "grey" | "black" | "picture" | "picture_dark"
     var margin: Double
     var label: Bool
@@ -928,7 +970,7 @@ struct FrameSettings: Codable, Hashable, Sendable {
         playlistId: nil, changeTimes: ["07:00"], changeEveryDays: 1,
         quietStart: "22:00", shuffle: true, avoidRepeatDays: 14,
         orientation: "landscape", rotation: 90,
-        art: Presentation(preset: "auto", fit: "auto", margin: 0.05, label: false),
+        art: Presentation(preset: "auto", fit: "fit", margin: 0.05, label: false),
         photo: Presentation(preset: "auto", fit: "fill", margin: 0, label: false),
         timezone: "Europe/Warsaw", statusPollMinutes: 15, powerMode: "online", checkEveryHours: 0,
         checkQuietStart: "22:00", checkQuietEnd: "07:00"

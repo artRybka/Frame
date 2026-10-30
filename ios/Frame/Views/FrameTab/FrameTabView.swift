@@ -1,8 +1,8 @@
 import SwiftUI
 
 /// The frame itself: battery, charging, connection; schedule, presentation
-/// and screen settings. How to reach the panel and the server sits behind the
-/// gear at the top.
+/// and screen settings. How to reach the panel and the server, and where the
+/// art comes from, sit behind the gear at the top.
 struct FrameTabView: View {
     @Environment(AppModel.self) private var model
     @State private var draft: FrameSettings?
@@ -29,9 +29,8 @@ struct FrameTabView: View {
                         deviceActions
                         if draft != nil {
                             ScheduleSection(settings: binding).id("schedule")
-                            PresentationSection(settings: binding)
-                            ScreenSection(settings: binding)
-                            SourcesSection(settings: binding)
+                            PresentationSection(settings: binding).id("presentation")
+                            ScreenSection(settings: binding).id("orientation")
                         }
                     }
                     .padding(.horizontal, Theme.gutter)
@@ -39,7 +38,11 @@ struct FrameTabView: View {
                 }
                 .onChange(of: draft != nil, initial: true) { _, ready in
                     // CI screenshots
-                    if ready, LaunchRoute.screen.hasPrefix("schedule") { proxy.scrollTo("schedule", anchor: .top) }
+                    guard ready else { return }
+                    let screen = LaunchRoute.screen
+                    if screen.hasPrefix("schedule") { proxy.scrollTo("schedule", anchor: .top) }
+                    if screen.hasPrefix("presentation") { proxy.scrollTo("presentation", anchor: .top) }
+                    if screen == "orientation" { proxy.scrollTo("orientation", anchor: .top) }
                 }
             }
             .background(Theme.paper)
@@ -113,7 +116,7 @@ struct FrameTabView: View {
         base = settings
     }
 
-    /// CI screenshots: the schedule with a few times and the quiet hours on.
+    /// CI screenshots: the schedule with a few times and the quiet hours on, or photos three to a board.
     private static func screenshotDraft(_ settings: FrameSettings) -> FrameSettings {
         var settings = settings
         switch LaunchRoute.screen {
@@ -126,6 +129,10 @@ struct FrameTabView: View {
             settings.checkEveryHours = 4
             settings.checkQuietStart = "22:00"
             settings.checkQuietEnd = "07:00"
+        case "presentation-photo":
+            settings.photo.fit = "multi"
+            settings.photo.multiCount = 3
+            settings.photo.margin = Panel.margin(mm: 30)
         default:
             break
         }
@@ -970,7 +977,7 @@ struct ChangeTimeChip: View {
 struct PresentationSection: View {
     @Environment(AppModel.self) private var model
     @Binding var settings: FrameSettings
-    @State private var target = Target.art
+    @State private var target = LaunchRoute.screen == "presentation-photo" ? Target.photo : .art
     /// `settings` after a short pause, so a slider drag renders once.
     @State private var previewed: FrameSettings?
 
@@ -983,15 +990,15 @@ struct PresentationSection: View {
         target == .art ? $settings.art : $settings.photo
     }
 
-    /// Off: one style picked by hand, starting from the usual one for the target.
-    private var autoStyle: Binding<Bool> {
+    private var isMulti: Bool { target == .photo && presentation.fit.wrappedValue == "multi" }
+
+    /// The passe-partout's width in millimetres on the panel, in 5 mm steps.
+    private var marginMillimetres: Binding<Double> {
         Binding(
-            get: { presentation.preset.wrappedValue == "auto" },
-            set: { presentation.preset.wrappedValue = $0 ? "auto" : (target == .photo ? "photo" : "painting") }
+            get: { (Panel.millimetres(presentation.margin.wrappedValue) / 5).rounded() * 5 },
+            set: { presentation.margin.wrappedValue = Panel.margin(mm: $0) }
         )
     }
-
-    private var isMulti: Bool { target == .photo && presentation.fit.wrappedValue == "multi" }
 
     private var matSwatches: some View {
         ForEach(MatSwatch.names, id: \.self) { name in
@@ -1009,30 +1016,19 @@ struct PresentationSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            SectionHeader(title: "Prezentacja", subtitle: "Jak obraz wygląda na ramce")
+            SectionHeader(title: "Prezentacja")
             Picker("Dla", selection: $target) {
                 ForEach(Target.allCases, id: \.self) { Text($0.rawValue).tag($0) }
             }
             .pickerStyle(.segmented)
-            Text(target == .art
-                ? "Dla playlist z dziełami z muzeów i własnymi pracami oraz dla Propozycji."
-                : "Dla albumów iCloud i zdjęć z rolki aparatu.")
-                .font(.caption)
-                .foregroundStyle(Theme.inkSoft)
             if let item = previewItem {
                 let portrait = settings.orientation == "portrait"
-                VStack(spacing: 10) {
-                    FramedArtwork(
-                        ref: .framePreview(item.id, settings: previewed ?? settings),
-                        aspectRatio: portrait ? 9.0 / 16.0 : 16.0 / 9.0,
-                        moulding: 5
-                    )
-                    .frame(maxWidth: portrait ? 190 : .infinity)
-                    Text("Tak wyglądałby obraz, który jest teraz na ramce. Po zapisaniu ramka pokaże nowy wygląd od następnego obrazu.")
-                        .font(.caption)
-                        .foregroundStyle(Theme.inkSoft)
-                        .multilineTextAlignment(.center)
-                }
+                FramedArtwork(
+                    ref: .framePreview(item.id, settings: previewed ?? settings),
+                    aspectRatio: portrait ? 9.0 / 16.0 : 16.0 / 9.0,
+                    moulding: 5
+                )
+                .frame(maxWidth: portrait ? 190 : .infinity)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 6)
                 .task(id: settings) {
@@ -1051,18 +1047,14 @@ struct PresentationSection: View {
                             ) {
                                 presentation.fit.wrappedValue = mode.fit
                                 if mode.fit == "fit", presentation.margin.wrappedValue == 0 {
-                                    presentation.margin.wrappedValue = 0.05
+                                    presentation.margin.wrappedValue = Panel.margin(mm: 20)
                                 }
-                                if mode.fit == "multi", presentation.margin.wrappedValue < 0.05 {
-                                    presentation.margin.wrappedValue = 0.07
+                                if mode.fit == "multi", presentation.margin.wrappedValue < Panel.margin(mm: 20) {
+                                    presentation.margin.wrappedValue = Panel.margin(mm: 30)
                                 }
                             }
                         }
                     }
-                    Text(FitOption.explanation(presentation.fit.wrappedValue, photo: target == .photo))
-                        .font(.caption)
-                        .foregroundStyle(Theme.inkSoft)
-                        .fixedSize(horizontal: false, vertical: true)
                 }
                 if isMulti {
                     Divider()
@@ -1071,13 +1063,7 @@ struct PresentationSection: View {
                 Divider()
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Passe-partout").foregroundStyle(Theme.ink)
-                    // Six swatches: one row where they fit, else two rows of three.
-                    ViewThatFits(in: .horizontal) {
-                        HStack(spacing: 10) { matSwatches }
-                        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 10) {
-                            matSwatches
-                        }
-                    }
+                    HStack(spacing: 0) { matSwatches }
                 }
                 if presentation.fit.wrappedValue != "fill" {
                     Divider()
@@ -1085,37 +1071,17 @@ struct PresentationSection: View {
                         HStack {
                             Text("Szerokość passe-partout")
                             Spacer()
-                            Text("\(Int((presentation.margin.wrappedValue * 100).rounded())) %")
+                            Text("\(Int(Panel.millimetres(presentation.margin.wrappedValue).rounded())) mm")
                                 .monospacedDigit()
                                 .foregroundStyle(Theme.inkSoft)
                         }
-                        Slider(value: presentation.margin, in: 0 ... 0.2, step: 0.01)
+                        Slider(value: marginMillimetres, in: 0 ... 80, step: 5)
                     }
                 }
-                if !isMulti {
+                if target == .art {
                     Divider()
                     Toggle("Podpis na ramce", isOn: presentation.label)
-                    Text(target == .art ? "Np. „Claude Monet — Lilie wodne, 1906”, drukiem na passe-partout; przy wypełnieniu na wąskim pasku u dołu."
-                                        : "Data i podpis zdjęcia na passe-partout albo na pasku u dołu.")
-                        .font(.caption)
-                        .foregroundStyle(Theme.inkSoft)
                 }
-                Divider()
-                Toggle("Styl obrazu automatycznie", isOn: autoStyle)
-                if !autoStyle.wrappedValue {
-                    HStack {
-                        Text("Styl obrazu")
-                        Spacer()
-                        Picker("Styl obrazu", selection: presentation.preset) {
-                            ForEach(Names.manualPresets, id: \.self) { Text(Names.preset($0)).tag($0) }
-                        }
-                        .labelsHidden()
-                    }
-                }
-                Text(Names.presetExplanation(presentation.preset.wrappedValue, photo: target == .photo))
-                    .font(.caption)
-                    .foregroundStyle(Theme.inkSoft)
-                    .fixedSize(horizontal: false, vertical: true)
             }
             .tint(Theme.accent)
         }
@@ -1132,30 +1098,12 @@ struct FitOption: View {
 
     static let modes: [(fit: String, title: String)] = [
         ("fit", "Passe-partout"), ("fill", "Wypełnij"), ("description", "Opis"),
-        ("auto", "Auto"),
     ]
 
     /// Photos have their own framings (server: schedule.PHOTO_FITS).
     static let photoModes: [(fit: String, title: String)] = [
         ("fit", "Passe-partout"), ("fill", "Wypełnij"), ("multi", "Multi"),
     ]
-
-    static func explanation(_ fit: String, photo: Bool = false) -> String {
-        if photo {
-            switch fit {
-            case "fit": return "Całe zdjęcie w okienku passe-partout. Kadr i proporcje okienka zmienisz w „Teraz”."
-            case "multi": return "Kilka zdjęć na jednej planszy, każde w swoim okienku passe-partout, przycięte do niego automatycznie."
-            case "fill": break
-            default: return "Wybierz jeden z trybów dla zdjęć."
-            }
-        }
-        return switch fit {
-        case "fill": "Cały ekran; kadr sam ustawia się na tym, co najciekawsze (twarze, szczegóły). Poprawisz go w „Teraz”."
-        case "description": "Obraz, obok jego detal w okienku passe-partout i krótki opis nadrukowany na passe-partout: tytuł, autor, data i kilka zdań o obrazie. Gdy proporcje obrazu są bliskie ramce, obraz jest mniejszy, żeby zmieściły się detal i opis. Kadr obrazu i detalu poprawisz w „Teraz”."
-        case "auto": "Wypełnienie, gdy proporcje pasują; passe-partout, gdy trochę się różnią; opis z detalem, gdy bardzo."
-        default: "Cały obraz w okienku passe-partout. Kadr i proporcje okienka zmienisz w „Teraz”."
-        }
-    }
 
     var body: some View {
         Button(action: action) {
@@ -1164,17 +1112,19 @@ struct FitOption: View {
                     Rectangle().fill(mat)
                     miniature
                 }
-                .frame(height: 44)
+                .aspectRatio(1, contentMode: .fit)  // square: the same for portrait and landscape frames
+                .frame(height: 52)
                 .whiteFrame(3, corner: 1)
+                .selectionRing(selected)
                 Text(title)
                     .font(.caption2.weight(.medium))
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
                     .foregroundStyle(Theme.ink)
             }
-            .padding(6)
-            .background(selected ? Theme.accent.opacity(0.1) : .clear, in: RoundedRectangle(cornerRadius: 10))
-            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(selected ? Theme.accent : Theme.hairline, lineWidth: selected ? 2 : 1))
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 6)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(title)
@@ -1188,7 +1138,7 @@ struct FitOption: View {
             Rectangle().fill(art)
         case "description":
             HStack(spacing: 4) {
-                Rectangle().fill(art).frame(width: 16)
+                Rectangle().fill(art).frame(width: 14)
                 VStack(alignment: .leading, spacing: 2) {
                     Rectangle().fill(art.opacity(0.7))
                     Spacer(minLength: 2)
@@ -1202,8 +1152,6 @@ struct FitOption: View {
                 .padding(.vertical, 5)
                 .padding(.trailing, 5)
             }
-        case "auto":
-            Rectangle().fill(art).padding(.horizontal, 6)
         case "multi":
             HStack(spacing: 4) {
                 Rectangle().fill(art)
@@ -1211,13 +1159,23 @@ struct FitOption: View {
                     Rectangle().fill(art.opacity(0.8))
                     Rectangle().fill(art.opacity(0.8))
                 }
-                .frame(width: 14)
+                .frame(width: 12)
             }
-            .padding(.vertical, 6)
-            .padding(.horizontal, 10)
+            .padding(8)
         default:
-            Rectangle().fill(art).padding(.vertical, 6).padding(.horizontal, 18)
+            Rectangle().fill(art).padding(10)
         }
+    }
+}
+
+extension View {
+    /// The chosen miniature: an accent outline a little off its frame, no tile around it.
+    func selectionRing(_ selected: Bool) -> some View {
+        overlay(
+            RoundedRectangle(cornerRadius: 3)
+                .strokeBorder(selected ? Theme.accent : .clear, lineWidth: 2)
+                .padding(-5)
+        )
     }
 }
 
@@ -1267,20 +1225,23 @@ struct MatSwatch: View {
             VStack(spacing: 6) {
                 RoundedRectangle(cornerRadius: 6)
                     .fill(fill)
-                    .frame(width: 44, height: 32)
+                    .frame(width: 40, height: 30)
                     .overlay(
                         // The window cut at 45°: a light inner edge.
                         RoundedRectangle(cornerRadius: 2)
                             .strokeBorder(.white.opacity(name == "white" ? 0 : 0.8), lineWidth: 1.5)
-                            .padding(9)
+                            .padding(8)
                     )
                     .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Theme.inkSoft.opacity(0.35), lineWidth: 0.75))
                     .padding(3)
                     .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(selected ? Theme.accent : .clear, lineWidth: 2))
                 Text(Self.title(name))
                     .font(.caption2.weight(.medium))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
                     .foregroundStyle(selected ? Theme.ink : Theme.inkSoft)
             }
+            .frame(maxWidth: .infinity)  // six in one row
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Passe-partout \(Self.title(name).lowercased())")
@@ -1288,47 +1249,82 @@ struct MatSwatch: View {
     }
 }
 
+/// How the frame hangs. A portrait frame is the panel turned 90° to the right.
 struct ScreenSection: View {
     @Binding var settings: FrameSettings
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            SectionHeader(title: "Ekran")
+            SectionHeader(title: "Orientacja")
             Card {
-                Picker("Orientacja", selection: $settings.orientation) {
-                    Label("Pozioma", systemImage: "rectangle").tag("landscape")
-                    Label("Pionowa", systemImage: "rectangle.portrait").tag("portrait")
-                }
-                .pickerStyle(.segmented)
-                if settings.orientation == "portrait" {
-                    Picker("Obrót", selection: $settings.rotation) {
-                        Text("90° w prawo").tag(90)
-                        Text("90° w lewo").tag(270)
+                HStack(spacing: 8) {
+                    OrientationPill(title: "Pozioma", portrait: false, selected: settings.orientation == "landscape") {
+                        settings.orientation = "landscape"
                     }
-                    .pickerStyle(.segmented)
-                    Text("Jak powieszono ramkę. Gdy obraz jest do góry nogami, zmień kierunek.")
-                        .font(.caption)
-                        .foregroundStyle(Theme.inkSoft)
+                    OrientationPill(title: "Pionowa", portrait: true, selected: settings.orientation == "portrait") {
+                        settings.orientation = "portrait"
+                        settings.rotation = 90
+                    }
                 }
             }
         }
     }
 }
 
+/// A frame hanging one way or the other, to pick: a pill like the
+/// schedule's, led by a small frame of that shape.
+private struct OrientationPill: View {
+    let title: String
+    let portrait: Bool
+    let selected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                RoundedRectangle(cornerRadius: 1.5)
+                    .strokeBorder(lineWidth: 1.75)
+                    .frame(width: portrait ? 11 : 18, height: portrait ? 18 : 11)
+                    .frame(width: 18, height: 18)
+                Text(title)
+                    .font(.subheadline.weight(.medium))
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 9)
+            .foregroundStyle(selected ? Theme.accent : Theme.ink)
+            .background(selected ? Theme.accent.opacity(0.17) : Theme.mat, in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .sensoryFeedback(.selection, trigger: selected)
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+}
+
+/// Konfiguracja: where the server takes art from. Saved as soon as switched.
 struct SourcesSection: View {
-    @Binding var settings: FrameSettings
+    @Environment(AppModel.self) private var model
+    let settings: FrameSettings
 
     private var privateUse: Binding<Bool> {
-        Binding(get: { settings.privateUse ?? false }, set: { settings.privateUse = $0 })
+        Binding(get: { settings.privateUse ?? false }, set: { on in save { $0.privateUse = on } })
     }
 
     private var wikiart: Binding<Bool> {
-        Binding(get: { settings.wikiart ?? false }, set: { settings.wikiart = $0 })
+        Binding(get: { settings.wikiart ?? false }, set: { on in save { $0.wikiart = on } })
+    }
+
+    private func save(_ change: (inout FrameSettings) -> Void) {
+        var new = settings
+        change(&new)
+        Task { await model.saveSettings(new) }
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            SectionHeader(title: "Źródła dzieł", subtitle: "Skąd serwer bierze sztukę")
+            SectionHeader(title: "Źródła dzieł")
             Card {
                 Text("Muzea, Wikimedia Commons, Europeana i Openverse dają dzieła wolne do pokazywania: domenę publiczną (w UE 70 lat po śmierci twórcy), a przy użytku prywatnym także licencje Creative Commons.")
                     .font(.caption)
@@ -1407,8 +1403,9 @@ struct PanelWifiRow: View {
 }
 
 /// Behind the gear in "Ramka": how the server reaches the panel, how the
-/// app reaches the server, how much disk the library may take and the
-/// language model's key; set once, rarely touched again.
+/// app reaches the server, where the art comes from, how much disk the
+/// library may take and the language model's key; set once, rarely touched
+/// again.
 struct ConnectionSettingsView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
@@ -1424,6 +1421,9 @@ struct ConnectionSettingsView: View {
                         PanelAppSection(app: app)
                     }
                     ServerSection()
+                    if let settings = model.settings {
+                        SourcesSection(settings: settings)
+                    }
                     if let storage = model.libraryStorage {
                         LibrarySizeSection(storage: storage)
                     }
@@ -1439,6 +1439,7 @@ struct ConnectionSettingsView: View {
             .scrollDismissesKeyboard(.interactively)
             .task { await model.loadLibraryStorage() }
             .task { await model.loadPanelApp() }
+            .task { await model.loadServerUpdate() }
             .task { await model.loadAiSettings() }
             .navigationTitle("Konfiguracja")
             .navigationBarTitleDisplayMode(.inline)
@@ -1719,6 +1720,10 @@ struct ServerSection: View {
                         .font(.caption)
                         .foregroundStyle(Theme.inkSoft)
                 }
+                if let update = model.serverUpdate {
+                    Divider()
+                    ServerUpdateRow(update: update)
+                }
             }
         }
     }
@@ -1746,6 +1751,89 @@ struct ServerSection: View {
         case .home where !model.remoteURL.isEmpty: return "Połączono w domu"
         default: return "Połączono"
         }
+    }
+}
+
+/// "Aktualizuj serwer": the newest server image, put in place by the
+/// `frame-updater` helper next to the server on Synology.
+private struct ServerUpdateRow: View {
+    @Environment(AppModel.self) private var model
+    let update: ServerUpdate
+    @State private var checking = false
+    @State private var confirming = false
+
+    private var working: Bool { checking || model.updatingServer || update.busy }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Wersja serwera").font(.subheadline).foregroundStyle(Theme.ink)
+                Spacer()
+                Text(update.version)
+                    .font(.subheadline.monospacedDigit())
+                    .foregroundStyle(Theme.inkSoft)
+            }
+            if update.addon {
+                caption("Add-on aktualizuje Home Assistant: Ustawienia → Dodatki → Frame.")
+            } else if !update.updater {
+                caption("Aby aktualizować serwer stąd, raz dodaj pomocnika na NAS-ie: Container Manager → Projekt → frame → Zatrzymaj, potem Konfiguracja YAML → Edytuj, wklej aktualny docker-compose.yml i Kompiluj. Do tego czasu aktualizuje Projekt → frame → Kompiluj.")
+            } else {
+                status
+                Button {
+                    if update.updateAvailable {
+                        confirming = true
+                    } else {
+                        Task {
+                            checking = true
+                            await model.checkServerUpdate()
+                            checking = false
+                        }
+                    }
+                } label: {
+                    HStack {
+                        Text(update.updateAvailable ? "Aktualizuj serwer" : "Sprawdź aktualizacje")
+                        if working { ProgressView() }
+                    }
+                }
+                .fontWeight(.semibold)
+                .disabled(working)
+                .confirmationDialog(
+                    "Aktualizować serwer do wersji \(update.latestVersion ?? "najnowszej")?",
+                    isPresented: $confirming,
+                    titleVisibility: .visible
+                ) {
+                    Button("Aktualizuj serwer") { Task { await model.updateServer() } }
+                } message: {
+                    Text("Serwer zniknie na około minutę. Gdyby nowa wersja nie wystartowała, wróci obecna.")
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var status: some View {
+        if model.updatingServer || update.state == "updating" {
+            caption("Aktualizuję. Serwer wróci za około minutę.")
+        } else if update.state == "checking" || update.pending == "check" {
+            caption("Sprawdzam, czy jest nowsza wersja…")
+        } else if update.updateAvailable {
+            Text("Dostępna wersja \(update.latestVersion ?? "nowsza")")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Theme.accent)
+        } else if let checked = When.ago(update.checkedAt) {
+            caption("Aktualna, sprawdzono \(checked)")
+        }
+        if update.state == "failed", let error = update.error {
+            Text(error).font(.caption).foregroundStyle(Theme.warn)
+        } else if let last = update.lastUpdate, last.ok, let at = When.ago(last.at) {
+            caption("Zaktualizowano \(at)\(last.toVersion.map { " do \($0)" } ?? "").")
+        }
+    }
+
+    private func caption(_ text: String) -> some View {
+        Text(text)
+            .font(.caption)
+            .foregroundStyle(Theme.inkSoft)
     }
 }
 

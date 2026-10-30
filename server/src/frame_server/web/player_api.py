@@ -8,7 +8,7 @@ from typing import Annotated, Any, Literal
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
-from .. import __version__
+from .. import build_version
 from ..ai import PolishText
 from ..library import Item, ItemSummary, PlaylistRules, PlaylistSummary
 from ..player import Hold, hold_from
@@ -265,7 +265,7 @@ async def status(svc: Svc, refresh: bool = False) -> StatusView:
     return StatusView(
         device=device,
         server=ServerStatus(
-            version=__version__,
+            version=build_version(),
             uptime_s=int(time.monotonic() - STARTED),
             library_count=svc.library.count(),
             playlists=len(svc.library.playlists()),

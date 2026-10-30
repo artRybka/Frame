@@ -15,8 +15,10 @@ from .imaging.layout import Fit, Orientation
 class Presentation(BaseModel):
     model_config = ConfigDict(validate_assignment=True)
 
-    preset: str = "auto"  # library.style.AUTO: chosen per picture; else an imaging.PRESETS key
-    fit: Fit = Fit.AUTO  # fill, passe-partout or description, by the picture's proportions
+    # library.style.AUTO: chosen per picture. Always automatic now; a style
+    # picked by hand in older settings reads as automatic too.
+    preset: Literal["auto"] = "auto"
+    fit: Fit = Fit.FIT
     # picture, picture_dark: a light or a dark board in the picture's hue
     mat: Literal["white", "cream", "grey", "black", "picture", "picture_dark"] = "white"
     margin: float = Field(0.05, ge=0, le=0.3)
@@ -25,7 +27,18 @@ class Presentation(BaseModel):
     # and the grid's letter (grids.GRIDS) or automatic by the photos' shapes.
     multi_count: int = Field(4, ge=MIN_PHOTOS, le=MAX_PHOTOS)
     multi_random: bool = False
-    multi_grid: Literal["auto", "A", "B", "C"] = "auto"
+    multi_grid: Literal["auto", "A", "B"] = "auto"
+
+    @field_validator("multi_grid", mode="before")
+    @classmethod
+    def _known_grid(cls, value: Any) -> Any:
+        """A grid since dropped ("C") is automatic again."""
+        return value if value in ("A", "B") else "auto"
+
+    @field_validator("preset", mode="before")
+    @classmethod
+    def _automatic(cls, value: Any) -> str:
+        return "auto"
 
 
 MAX_CHANGE_TIMES = 12
@@ -63,6 +76,8 @@ class FrameSettings(BaseModel):
     shuffle: bool = True
     avoid_repeat_days: int = Field(14, ge=0, le=365)
     orientation: Orientation = Orientation.LANDSCAPE
+    # A portrait frame hangs turned 90° to the right; the app no longer
+    # offers the other way, so older settings with 270 come back to 90.
     rotation: Literal[90, 270] = 90
     art: Presentation = Field(default_factory=Presentation)
     photo: Presentation = Field(default_factory=lambda: Presentation(fit=Fit.FILL, margin=0.0))
@@ -105,6 +120,11 @@ class FrameSettings(BaseModel):
         data["change_times"] = times[:MAX_CHANGE_TIMES]
         return data
 
+    @field_validator("rotation", mode="before")
+    @classmethod
+    def _to_the_right(cls, value: Any) -> int:
+        return 90
+
     @field_validator("change_times")
     @classmethod
     def _sorted_times(cls, value: list[str]) -> list[str]:
@@ -132,11 +152,14 @@ class FrameSettings(BaseModel):
 
     @model_validator(mode="after")
     def _own_fits(self) -> FrameSettings:
-        """Older settings: photos framed as pictures fill the screen."""
-        if self.photo.fit not in PHOTO_FITS:
-            self.photo = self.photo.model_copy(update={"fit": Fit.FILL})
-        if self.art.fit == Fit.MULTI:
-            self.art = self.art.model_copy(update={"fit": Fit.AUTO})
+        """Older settings: photos framed as pictures fill the screen, and
+        have no caption; pictures framed automatically (no longer offered)
+        or as photos get a passe-partout."""
+        if self.photo.fit not in PHOTO_FITS or self.photo.label:
+            fit = self.photo.fit if self.photo.fit in PHOTO_FITS else Fit.FILL
+            self.photo = self.photo.model_copy(update={"fit": fit, "label": False})
+        if self.art.fit in (Fit.AUTO, Fit.MULTI):
+            self.art = self.art.model_copy(update={"fit": Fit.FIT})
         return self
 
     def tz(self) -> ZoneInfo:

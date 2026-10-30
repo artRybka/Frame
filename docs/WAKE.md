@@ -563,7 +563,7 @@ ostatni odczyt baterii zostawał przy tym „100 %, ładuje się”. Od 0.32:
   „kopnięcie” po 3 minutach ciszy), to ramka śpiąca sama z siebie: stan
   `asleep` bez budzika, a odczyt „zasilacz” zmienia się na „bateria” (na
   zasilaczu aplikacja nie śpi). Odczyt z MDC przy następnej pobudce to
-  poprawia. Od 0.36 ramka odpięta od zasilacza śpi głęboko, a na baterii
+  poprawia. Od 0.36.1 ramka odpięta od zasilacza śpi głęboko, a na baterii
   decyduje ARP (niżej).
 
 **Po odpięciu zasilacza ramka śpi bez Wi-Fi (2026-10-29, zgłoszenie
@@ -582,7 +582,8 @@ odpięciu na chwilę znika z sieci, a po kilkunastu sekundach wraca, ale z
 „Ch. 0 (2.4 GHz)” (ten sam MAC i adres), i dalej WoL jej nie budzi. Czyli
 po odpięciu bywa skojarzona z siecią (może drugi, oszczędny moduł Wi-Fi
 EM32DX-A, może martwy wpis w UniFi), ale magic packet jej nie budzi, więc
-widoczność w sieci ani odpowiedź ARP nie znaczą „da się obudzić”. Od 0.36:
+widoczność w sieci ani odpowiedź ARP nie znaczą „da się obudzić”. Od 0.36
+(„Ch. 0” od 0.36.1):
 
 - Ramka, która zasnęła sama, będąc na zasilaczu (aplikacja na zasilaczu nie
   śpi, więc to odpięcie), śpi głęboko bez względu na ARP: `wifi_lost` w

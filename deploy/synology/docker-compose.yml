@@ -15,3 +15,18 @@ services:
       - ./data:/data
     env_file:
       - frame.env
+
+  # Updates `frame` when the app asks (Konfiguracja → Serwer ramki), so
+  # "Build" is needed only after editing this file or frame.env. It talks to
+  # Docker through the socket and has no network at all (the Docker daemon
+  # pulls the image); the server only leaves it a request in data/update.
+  updater:
+    image: ghcr.io/artrybka/frame:latest
+    pull_policy: always
+    container_name: frame-updater
+    restart: unless-stopped
+    command: ["frame", "updater", "--container", "frame"]
+    network_mode: none
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./data/update:/data/update

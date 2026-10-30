@@ -119,3 +119,22 @@ lokalnego (`public_host`), a aplikacja używa ścieżek względnych. Odrzucone:
 publiczny adres HTTPS przez reverse proxy (serwer chroniony tylko tokenem)
 oraz sam VPN z jednym adresem (trzeba pamiętać o włączaniu go także w domu
 albo routować podsieć).
+
+## D14. Aktualizacja serwera z aplikacji: pomocnik obok kontenera — 2026-10-29
+
+**Kontekst.** Na Synology każda wersja wymagała ręcznego *Projekt → frame →
+Kompiluj* w Container Managerze.
+**Decyzja.** W projekcie `frame` działa drugi kontener z tego samego obrazu,
+`frame-updater` (`frame updater`), z gniazdem Dockera i bez sieci
+(`network_mode: none`). Co 6 godzin i na prośbę aplikacji pobiera obraz,
+z którego powstał kontener `frame`, a na polecenie tworzy ten kontener na
+nowo z tymi samymi ustawieniami (bez ENV/CMD/etykiet starego obrazu); gdy
+nowy nie działa po 20 s, wraca poprzedni. Na koniec podmienia też siebie
+przez krótkotrwały kontener. Serwer nie ma dostępu do Dockera: zostawia
+prośbę w `data/update/request.json` (API `/api/server/update` z tokenem),
+pomocnik odpowiada w `status.json`. Wersję obrazu podaje etykieta
+`org.opencontainers.image.version` i plik `/etc/frame-release` (wersja
+add-onu).
+**Konsekwencje.** Raz trzeba wkleić nowy `docker-compose.yml` w projekcie.
+Odrzucone: Watchtower (obcy obraz z pełnym dostępem do Dockera i otwarty
+port API) i API Synology (hasło administratora DSM na serwerze).

@@ -381,6 +381,16 @@ struct LiveBackend: FrameBackend {
         try await send("/api/library/storage", method: "PUT", body: update)
     }
 
+    func serverUpdate() async throws -> ServerUpdate { try await get("/api/server/update") }
+
+    func checkServerUpdate() async throws -> ServerUpdate {
+        try await send("/api/server/update/check", method: "POST")
+    }
+
+    func updateServer() async throws -> ServerUpdate {
+        try await send("/api/server/update", method: "POST")
+    }
+
     func aiSettings() async throws -> AiSettings { try await get("/api/ai") }
 
     func saveAiSettings(_ update: AiSettingsUpdate) async throws -> AiSettings {

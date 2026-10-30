@@ -1,5 +1,46 @@
 # Changelog
 
+## 0.36.0
+
+- Ramka odpięta od zasilacza zasypia od razu i bez Wi-Fi: serwer nie bierze
+  jej już za śpiącą w sieci (w sieci tylko, gdy odpowiada na ARP), kafelki
+  i komunikaty mówią „Śpi bez Wi-Fi, obudzi ją przycisk”, bez „Obudź ramkę”
+  dla obrazu czekającego na przycisk. W takim śnie serwer co minutę szuka
+  ramki przez MDC i po naciśnięciu przycisku sam uruchamia aplikację.
+- Koniec ciągłego „Budzę ramkę”: wysyłka i „Sprawdź stan” uruchamiają przez
+  MDC aplikację na ramce, która odpowiada, ale nie ma jej uruchomionej.
+- „Teraz” odświeża się samo co 8 s, gdy obraz czeka na ramkę; pasek postępu
+  rusza od pobierania przez obudzoną aplikację.
+- Tryb Online na zasilaczu: aplikacja ramki trzyma zapasowe budziki na dwa
+  najbliższe pełne pół godziny (np. 14:00 i 14:30), więc ramka odpięta od
+  zasilacza budzi się sama, a serwer ją uruchamia i odsyła do zwykłego snu
+  w sieci. Kafelki
+  i „Teraz” mówią, kiedy się obudzi. Nie dotyczy trybu Oszczędnego.
+- Aktualizacja serwera z aplikacji (Synology): Konfiguracja → Serwer ramki
+  pokazuje wersję serwera, „Sprawdź aktualizacje” i „Aktualizuj serwer”.
+  Robi to nowy kontener `frame-updater` (ten sam obraz, gniazdo Dockera,
+  bez sieci): co 6 h pobiera nowy obraz, na prośbę tworzy `frame` na nowo
+  z tymi samymi ustawieniami i wraca do poprzedniego, gdy nowy nie wstanie.
+  Wymaga jednorazowo nowego `deploy/synology/docker-compose.yml`.
+- Serwer podaje wersję dodatku (`/etc/frame-release` z budowy obrazu);
+  obraz ghcr ma etykiety wersji i rewizji oraz tag z wersją dodatku.
+
+## 0.35.0
+
+- Prezentacja uporządkowana: dzieła sztuki bez kadru „Auto” (zapisany
+  przechodzi na passe-partout), styl obrazu zawsze automatyczny (bez
+  przełącznika), zdjęcia bez podpisu, szerokość passe-partout w milimetrach
+  (co 5 mm), sześć kolorów passe-partout w jednym rzędzie, kwadratowe ikony
+  kadrowania i siatek z zaznaczeniem wybranej, bez objaśnień trybów.
+- Multi: siatki zawsze wypełniają całą ramkę (zdjęcia przycinane do okien),
+  po dwie na liczbę zdjęć: „Para” i „Duży i mały”, 2×2 i „Duży i pięć”,
+  nowe „Duży i cztery” i „Duży i sześć”, „Cztery nad trzema” z pierwszym
+  z trzech na dwa; bez „Pion i dwa poziomy” i „Rząd pionów”.
+- „Ekran” → „Orientacja”: dwie pastylki z miniaturą ramki; pion to zawsze
+  ekran obrócony o 90° w prawo (zapisane 270° serwer czyta jako 90°).
+- „Źródła dzieł” przeniesione pod trybik do Konfiguracji, zapisują się od
+  razu po przełączeniu.
+
 ## 0.34.0
 
 - Szukaj → „+”: sekcje w kolejności Technika, Epoka, Styl, Kolorystyka,

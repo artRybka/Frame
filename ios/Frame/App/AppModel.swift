@@ -38,6 +38,9 @@ final class AppModel {
     /// The library's size on the server; loaded when Konfiguracja opens
     /// (measuring is slow on a NAS), nil on an older server.
     var libraryStorage: LibraryStorage?
+    var serverUpdate: ServerUpdate?
+    /// "Aktualizuj serwer": waiting for the server to come back as the new version.
+    var updatingServer = false
     /// Claude's settings, spending and progress; loaded when Konfiguracja
     /// opens, nil on an older server.
     var aiSettings: AiSettings?
@@ -125,6 +128,7 @@ final class AppModel {
         panelConfig = nil
         panelApp = nil
         libraryStorage = nil
+        serverUpdate = nil
         aiSettings = nil
         playlists = []
         facets = .empty
@@ -647,6 +651,74 @@ final class AppModel {
         guard lower else { return }
         try? await Task.sleep(for: .seconds(8))
         await loadLibraryStorage()
+    }
+
+    func loadServerUpdate() async {
+        serverUpdate = try? await backend.serverUpdate()
+    }
+
+    /// The helper pulls the newest image now (it looks every few seconds; a
+    /// new image takes a minute or so to download).
+    func checkServerUpdate() async {
+        do {
+            serverUpdate = try await backend.checkServerUpdate()
+        } catch {
+            show(error)
+            return
+        }
+        for _ in 0..<60 {
+            try? await Task.sleep(for: .seconds(3))
+            guard let view = try? await backend.serverUpdate() else { continue }
+            serverUpdate = view
+            if !view.busy { break }
+        }
+        if let view = serverUpdate, !view.busy {
+            if view.state == "failed" {
+                toast = view.error ?? "Nie udało się sprawdzić"
+            } else if !view.updateAvailable {
+                toast = "Serwer jest aktualny"
+            }
+        }
+    }
+
+    /// The helper replaces the server's container with the newest image; the
+    /// server is away for about a minute and comes back as the new version
+    /// (or as the old one, when the new one did not start).
+    func updateServer() async {
+        guard let before = serverUpdate else { return }
+        do {
+            serverUpdate = try await backend.updateServer()
+        } catch {
+            show(error)
+            return
+        }
+        updatingServer = true
+        defer { updatingServer = false }
+        var wentAway = false
+        let deadline = Date.now.addingTimeInterval(300)
+        while Date.now < deadline {
+            try? await Task.sleep(for: .seconds(3))
+            guard let view = try? await backend.serverUpdate() else {
+                wentAway = true
+                continue
+            }
+            serverUpdate = view
+            if view.busy { continue }
+            if view.state == "failed" {
+                toast = view.error ?? "Aktualizacja się nie udała"
+                return
+            }
+            if wentAway || view.version != before.version {
+                toast = "Serwer zaktualizowany do wersji \(view.version)"
+                await refreshAll()
+                return
+            }
+            if !view.updateAvailable {
+                toast = "Serwer jest aktualny"
+                return
+            }
+        }
+        toast = "Serwer nie wrócił po aktualizacji. Sprawdź Container Manager na NAS-ie."
     }
 
     func loadPanelApp() async {
