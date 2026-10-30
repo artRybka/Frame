@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
@@ -10,6 +11,7 @@ import httpx
 import pytest
 from conftest import jpeg_bytes
 from fastapi.testclient import TestClient
+from PIL import Image
 from test_ai import GOOD_KEY, FakeAnthropic
 
 from frame_server.ai import AiConfigUpdate
@@ -82,6 +84,26 @@ ANSWER: dict[str, Any] = {
         ],
     },
     "colour": "Dwa błękity i biel papieru.",
+    "details": [
+        {
+            "title": "Pazury piany",
+            "text": "Grzbiet rozpada się w palce.",
+            "x": 0.4,
+            "y": 0.1,
+            "w": 0.2,
+            "h": 0.3,
+        },
+        {
+            "title": "Wioślarze",
+            "text": "Twarze to kilka kresek.",
+            "x": 0.9,
+            "y": 0.75,
+            "w": 0.3,
+            "h": 0.4,
+        },
+        {"title": "", "text": "Bez tytułu.", "x": 0.1, "y": 0.1, "w": 0.2, "h": 0.2},
+        {"title": "Bez kadru", "text": "", "x": "lewo", "y": 0.1, "w": 0.2, "h": 0.2},
+    ],
     "on_frame": "Błękit i biel to czyste tusze ramki.",
     "similar": [
         {"id": "met:2", "why": "ta sama seria"},
@@ -189,6 +211,10 @@ def test_an_answer_is_cleaned() -> None:
     assert [(p.title, p.x, p.y) for p in points] == [("Łuk fali", 0.2, 0.3), ("Fudżi", 0.64, 0.66)]
     assert [line.label for line in essay.composition.lines] == ["Łuk fali"]
     assert [(s.id, s.why) for s in essay.similar] == [("met:2", "ta sama seria")]
+    # Fragments stay on the picture; one without a title or a box goes.
+    assert [d.title for d in essay.details] == ["Pazury piany", "Wioślarze"]
+    boat = essay.details[1]
+    assert (boat.x, boat.y, boat.w, boat.h) == (0.7, 0.6, 0.3, 0.4)
     assert essay.sources == ["obraz", "Wikipedia"]
     assert clean({**ANSWER, "teaser": "  "}, []) is None
     assert short("Bardzo długie zdanie " * 10, 40) == "Bardzo długie zdanie Bardzo długie…"
@@ -251,6 +277,14 @@ def test_claude_writes_the_page(tmp_path: Path) -> None:
             ("met:2", "ta sama seria")
         ]
         assert work["legacy"][0]["who"] == "Claude Debussy" and work["legacy"][0]["item"] is None
+        details = work["details"]
+        assert [d["title"] for d in details] == ["Pazury piany", "Wioślarze"]
+        assert details[0]["image"].startswith(f"/api/daily/detail?day={date.today()}&n=0&v=")
+        # Cut from the original (900 × 600 here): 0.3 × 0.4 of it.
+        cut = client.get(details[1]["image"])
+        assert cut.status_code == 200 and cut.headers["content-type"] == "image/jpeg"
+        assert Image.open(io.BytesIO(cut.content)).size == (270, 240)
+        assert client.get(f"/api/daily/detail?day={date.today()}&n=5").status_code == 404
 
         (asked,) = [p for p in fake.asked if p["model"] == OPUS]
         content = asked["messages"][0]["content"]

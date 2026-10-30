@@ -89,7 +89,7 @@ struct DailyView: View {
                 page
             }
             .onChange(of: work?.day) {
-                guard let target = LaunchRoute.scroll else { return }  // CI screenshots: "composition", "end"
+                guard let target = LaunchRoute.scroll else { return }  // CI screenshots: "composition", "details", "end"
                 Task {
                     try? await Task.sleep(for: .seconds(1))
                     proxy.scrollTo(target, anchor: target == "end" ? .bottom : .top)
@@ -172,6 +172,9 @@ struct DailyView: View {
                     if !work.item.item.colors.isEmpty { PaletteStrip(swatches: work.item.item.colors, height: 26, cornerRadius: 6) }
                     if !work.colour.isEmpty { prose(work.colour) }
                 }
+            }
+            if let details = work.details, !details.isEmpty {
+                section("Detale") { self.details(work, details) }.id("details")
             }
             if !work.similar.isEmpty { section("Podobne dzieła") { similar(work.similar) } }
             if !work.legacy.isEmpty { section("Co z niego wyrosło") { legacy(work.legacy) } }
@@ -304,8 +307,8 @@ struct DailyView: View {
             .fixedSize(horizontal: false, vertical: true)
     }
 
-    /// The takes as pencil on tracing paper, one at a time: "1 · Droga oka",
-    /// "2 · Geometria".
+    /// The takes as pencil on tracing paper, one at a time: "Droga oka",
+    /// "Geometria".
     private func compositionSection(_ work: DailyWork, _ takes: [DailyWork.Take]) -> some View {
         let shown = takes[min(take, takes.count - 1)]
         return section("Analiza kompozycji") {
@@ -316,7 +319,7 @@ struct DailyView: View {
                         Button {
                             withAnimation(.easeInOut(duration: 0.2)) { take = index }
                         } label: {
-                            Text("\(index + 1) · \(each.title)")
+                            Text(each.title)
                                 .font(.caption.weight(.semibold))
                                 .padding(.horizontal, 11)
                                 .padding(.vertical, 6)
@@ -332,6 +335,57 @@ struct DailyView: View {
                 .padding(.top, 4)
             if !shown.text.isEmpty { prose(shown.text, size: 15) }
         }
+    }
+
+    /// Fragments cut from the original, each with a small copy of the whole
+    /// showing where it is.
+    private func details(_ work: DailyWork, _ details: [DailyWork.Detail]) -> some View {
+        let item = work.item.item
+        let whole = aspect(item)
+        return VStack(alignment: .leading, spacing: 22) {
+            ForEach(details, id: \.image) { detail in
+                VStack(alignment: .leading, spacing: 8) {
+                    let shape = max(0.4, min(2.5, whole * detail.w / max(detail.h, 0.01)))
+                    Color.clear
+                        .aspectRatio(shape, contentMode: .fit)
+                        .overlay {
+                            ArtImage(ref: .path(detail.image), placeholder: item.placeholderColor, maxPixel: 1600, contentMode: .fit)
+                        }
+                        .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                        .frame(maxWidth: 330 * shape)  // a tall fragment no taller than 330 pt
+                        .frame(maxWidth: .infinity)
+                    HStack(alignment: .top, spacing: 10) {
+                        locator(work, detail, aspect: whole)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(detail.title)
+                                .font(.serif(16, weight: .semibold))
+                                .foregroundStyle(Theme.ink)
+                            if !detail.text.isEmpty { prose(detail.text, size: 15) }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// The whole picture, small, with the fragment's box drawn on it.
+    private func locator(_ work: DailyWork, _ detail: DailyWork.Detail, aspect: CGFloat) -> some View {
+        Color.clear
+            .aspectRatio(aspect, contentMode: .fit)
+            .overlay {
+                ArtImage(ref: work.item.thumb, fallback: work.item.thumbFallback, placeholder: work.item.item.placeholderColor, maxPixel: 300)
+            }
+            .overlay {
+                GeometryReader { geo in
+                    Rectangle()
+                        .strokeBorder(Theme.vermilion, lineWidth: 1.5)
+                        .frame(width: max(detail.w * geo.size.width, 4), height: max(detail.h * geo.size.height, 4))
+                        .offset(x: detail.x * geo.size.width, y: detail.y * geo.size.height)
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 2, style: .continuous))
+            .frame(width: 72)
+            .padding(.top, 3)
     }
 
     /// How the work fares on the frame, then the buttons to show or queue it.

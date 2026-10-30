@@ -1322,6 +1322,19 @@ struct DailyWork: Codable, Hashable, Sendable {
         var why: String
     }
 
+    /// A fragment worth a close look ("Detale"): a box on the picture
+    /// (fractions, from the top left) and its cut from the original.
+    struct Detail: Codable, Hashable, Sendable {
+        var title: String
+        var text: String
+        var x: Double
+        var y: Double
+        var w: Double
+        var h: Double
+        /// Server path of the cut.
+        var image: String
+    }
+
     /// A later work, artist or movement that drew on this one.
     struct Legacy: Codable, Hashable, Sendable {
         var year: String
@@ -1360,6 +1373,8 @@ struct DailyWork: Codable, Hashable, Sendable {
     var artist: String?
     var composition: Composition?
     var colour: String
+    /// Nil from 0.42 servers.
+    var details: [Detail]?
     var onFrame: String
     var similar: [Similar]
     var legacy: [Legacy]

@@ -1,7 +1,7 @@
 """Discover's work of the day, written up by Claude: why today, the context,
-an analysis of the composition with points and lines on the picture, its
-colour, how it fares on the frame, which of the catalogue's works are like
-it and what it led to later.
+an analysis of the composition as pencil marks on the picture, its colour,
+fragments worth a close look, how it fares on the frame, which of the
+catalogue's works are like it and what it led to later.
 
 One question a day (Opus sees a picture far better than the others), from
 the picture itself and what the museum, Wikidata and Wikipedia say. The
@@ -39,7 +39,7 @@ if TYPE_CHECKING:
 
 KIND = "daily"
 #: Changed whenever the prompt changes, so the text is written again.
-PROMPT_VERSION = "daily-3"
+PROMPT_VERSION = "daily-4"
 #: The tile's two lines under the title (characters).
 TEASER_CHARS = 100
 #: The picture goes out this big: enough to see the composition.
@@ -56,6 +56,10 @@ SHAPES = {"arrow": 2, "line": 2, "loop": 2, "triangle": 3, "rect": 2, "underline
 #: The grids the app draws under a view: none, the golden section, thirds.
 GRIDS = ("none", "golden", "thirds")
 MAX_SIMILAR = 6
+#: Fragments worth a close look ("Detale"), and their sides (fractions).
+MAX_DETAILS = 3
+DETAIL_MIN = 0.04
+DETAIL_MAX = 0.6
 MAX_LEGACY = 5
 SOURCES = ("obraz", "dane muzeum", "Wikidata", "Wikipedia", "wiedza ogólna")
 #: Picture, sources and an answer with thinking.
@@ -107,6 +111,14 @@ wokół rzeczy: środek i jeden róg prostokąta, w który się wpisuje), "trian
 każdego "title" (1–3 słowa, podpis przy śladzie) i "text" (najwyżej 45 znaków, dopisek pod \
 podpisem). Kolejność śladów to kolejność czytania.
 - "colour": dwa-trzy zdania o kolorze i świetle.
+- "details": 2–3 fragmenty warte powiększenia, których w całym obrazie na telefonie nie \
+widać: twarz, dłoń, przedmiot, napis lub sygnatura, faktura farby, drobny motyw w tle. \
+Aplikacja wytnie je z oryginału w pełnej rozdzielczości. Każdy: "title" (1–3 słowa), "text" \
+(jedno-dwa zdania, najwyżej 220 znaków: co tu widać i dlaczego warto się przyjrzeć), "x" i \
+"y" (lewy górny róg kadru) oraz "w" i "h" (szerokość i wysokość kadru), wszystko jako ułamki \
+szerokości i wysokości obrazu. Kadr ciasno wokół rzeczy: bok 10–35% szerokości obrazu, \
+proporcje w pikselach od 3:4 do 4:3. Fragmenty różne od siebie i od tego, co pokazuje \
+kompozycja.
 - "on_frame": jedno-dwa zdania, jak dzieło wypadnie na ramce. Ramka ma sześć tuszy: czarny, \
 biały, czerwony, żółty, niebieski, zielony; pozostałe barwy, beże i pastele składa z \
 drobnego rastra tych tuszy. Ocena serwera (0–1) jest w danych.
@@ -165,6 +177,16 @@ SCHEMA = _object(
         ),
     ),
     colour=_str(),
+    details=_list(
+        _object(
+            title=_str(),
+            text=_str(),
+            x={"type": "number"},
+            y={"type": "number"},
+            w={"type": "number"},
+            h={"type": "number"},
+        )
+    ),
     on_frame=_str(),
     similar=_list(_object(id=_str(), why=_str())),
     legacy=_list(
@@ -228,6 +250,18 @@ class Composition(BaseModel):
     lines: list[Line] = Field(default_factory=list)
 
 
+class Detail(BaseModel):
+    """A fragment worth a close look: a box on the picture (fractions of its
+    width and height, from the top left), cut from the original."""
+
+    title: str
+    text: str = ""
+    x: float
+    y: float
+    w: float
+    h: float
+
+
 class Similar(BaseModel):
     id: str
     why: str
@@ -257,6 +291,8 @@ class Essay(BaseModel):
     artist: str = ""
     composition: Composition = Field(default_factory=Composition)
     colour: str = ""
+    #: Fragments worth a close look ("Detale").
+    details: list[Detail] = Field(default_factory=list)
     on_frame: str = ""
     similar: list[Similar] = Field(default_factory=list)
     legacy: list[Legacy] = Field(default_factory=list)
@@ -382,6 +418,18 @@ def _view(raw: dict[str, Any]) -> View | None:
     return View(title=title, grid=str(grid), text=_text(raw.get("text"), 600), marks=marks)
 
 
+def _detail(raw: dict[str, Any]) -> Detail | None:
+    """A fragment's box kept on the picture and neither a speck nor the
+    whole of it."""
+    title = _text(raw.get("title"), 40)
+    x, y, w, h = (_unit(raw.get(k)) for k in ("x", "y", "w", "h"))
+    if not title or x is None or y is None or w is None or h is None:
+        return None
+    w, h = min(max(w, DETAIL_MIN), DETAIL_MAX), min(max(h, DETAIL_MIN), DETAIL_MAX)
+    x, y = min(x, 1 - w), min(y, 1 - h)
+    return Detail(title=title, text=_text(raw.get("text"), 300), x=x, y=y, w=w, h=h)
+
+
 def _composition(views: list[View]) -> Composition:
     """The takes, and the first one as 0.42 apps draw it: a numbered point
     per mark and its lines and arrows."""
@@ -429,6 +477,9 @@ def clean(data: dict[str, Any], candidates: list[str]) -> Essay | None:
         artist=_text(data.get("artist"), 600),
         composition=_composition(views),
         colour=_text(data.get("colour"), 500),
+        details=[d for d in map(_detail, _dicts(data.get("details"))) if d is not None][
+            :MAX_DETAILS
+        ],
         on_frame=_text(data.get("on_frame"), 400),
         similar=similar[:MAX_SIMILAR],
         legacy=legacy,

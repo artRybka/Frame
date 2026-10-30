@@ -67,6 +67,7 @@ jobs:
             capture daily 14 "daily-$appearance"
             capture daily 16 "daily-end-$appearance" -scroll end
             capture daily 16 "daily-composition-$appearance" -scroll composition
+            capture daily 16 "daily-details-$appearance" -scroll details
             capture detail 14 "detail-$appearance"
             capture playlists 12 "playlists-$appearance"
             capture playlist 12 "playlist-$appearance"
