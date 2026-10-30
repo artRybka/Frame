@@ -22,6 +22,7 @@ from urllib.parse import quote, unquote, urlsplit
 import httpx
 
 from .commons import commons_html, commons_year
+from .hosts import guard
 from .lifespan import EUROPEANA_AGENT, WIKIDATA_ENTITY, LifeDates, death_in_name, free_in_eu
 from .markup import VECTOR, WEB_IMAGES, commons_rendition, extension, strip_markup
 from .models import Item, ItemKind
@@ -41,6 +42,7 @@ def strip_html(text: str | None) -> str:
 def client() -> httpx.Client:
     return httpx.Client(
         headers={"User-Agent": USER_AGENT, "AIC-User-Agent": USER_AGENT},
+        event_hooks=guard.hooks(),
         timeout=30,
         follow_redirects=True,
     )
@@ -161,6 +163,12 @@ class ArtInstituteChicago(Museum):
             return None
         display = (d.get("artist_display") or "").split("\n")
         thumb = d.get("thumbnail") or {}
+        # The IIIF server refuses (403) a picture asked wider than it is.
+        width = thumb.get("width")
+
+        def size(most: int) -> str:
+            return "full" if width and width <= most else f"{most},"
+
         return self._item(
             str(d["id"]),
             title=d.get("title") or "",
@@ -177,9 +185,9 @@ class ArtInstituteChicago(Museum):
             license="CC0 1.0",
             url=f"https://www.artic.edu/artworks/{d['id']}",
             description=strip_html(d.get("description") or d.get("short_description")),
-            image_url=f"{self.iiif}/{d['image_id']}/full/1686,/0/default.jpg",
-            thumb_url=f"{self.iiif}/{d['image_id']}/full/600,/0/default.jpg",
-            width=thumb.get("width"),
+            image_url=f"{self.iiif}/{d['image_id']}/full/{size(1686)}/0/default.jpg",
+            thumb_url=f"{self.iiif}/{d['image_id']}/full/{size(600)}/0/default.jpg",
+            width=width,
             height=thumb.get("height"),
         )
 
