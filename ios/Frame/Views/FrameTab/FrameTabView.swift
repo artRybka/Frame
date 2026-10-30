@@ -564,7 +564,8 @@ struct FrameTabView: View {
         case "ac": return (device?.batteryLevel ?? 0) >= 95 ? "naładowana" : ""
         case "battery":
             if let battery = device?.battery, let days = battery.days {
-                return "ok. " + BatteryText.span(days, low: battery.daysLow, high: battery.daysHigh)
+                // Kept on one line: "7–" and "12 dni" apart read as a mistake.
+                return "ok. " + BatteryText.unbroken(BatteryText.span(days, low: battery.daysLow, high: battery.daysHigh))
             }
             guard let days = device?.batteryDays else { return "mierzę zużycie" }
             return "ok. " + BatteryText.span(days, low: nil, high: nil)

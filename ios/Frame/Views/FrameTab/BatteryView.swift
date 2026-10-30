@@ -140,6 +140,12 @@ enum BatteryText {
         return "\(middle) \(unit)"
     }
 
+    /// The same with no line break inside (word joiners, no-break space).
+    static func unbroken(_ text: String) -> String {
+        text.replacingOccurrences(of: "–", with: "\u{2060}–\u{2060}")
+            .replacingOccurrences(of: " ", with: "\u{00A0}")
+    }
+
     static func percent(_ value: Double) -> String {
         if value > 0, value < 0.1 { return "<0,1%" }
         let digits = value < 10 ? 1 : 0
