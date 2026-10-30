@@ -85,6 +85,15 @@ struct PlaylistsView: View {
             .navigationDestination(for: ArtTheme.self) { theme in
                 ThemeView(theme: theme)
             }
+            .navigationDestination(for: ThemeGroupRoute.self) { route in
+                ThemeGroupView(name: route.name)
+            }
+            .navigationDestination(for: SuggestionRowRoute.self) { route in
+                SuggestionRowGridView(key: route.key)
+            }
+            .navigationDestination(for: DailyRoute.self) { route in
+                DailyView(route: route)
+            }
             .sheet(item: $editing) { playlist in
                 PlaylistEditorView(playlist: playlist)
             }

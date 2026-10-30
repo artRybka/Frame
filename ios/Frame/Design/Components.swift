@@ -118,7 +118,7 @@ private struct ArtCardAspectsKey: EnvironmentKey {
 
 extension EnvironmentValues {
     /// The proportions an `ArtCard` shows; a work outside them is cropped
-    /// from the middle.
+    /// around its subject.
     var artCardAspects: ClosedRange<Double> {
         get { self[ArtCardAspectsKey.self] }
         set { self[ArtCardAspectsKey.self] = newValue }
@@ -144,7 +144,9 @@ struct ArtCard: View {
                         ref: ref ?? .thumb(item.id),
                         fallback: ref.flatMap { $0 == .thumb(item.id) ? nil : ImageRef.thumb(item.id) },
                         placeholder: item.placeholderColor,
-                        maxPixel: 700
+                        maxPixel: 700,
+                        // Only a work the box crops: the rest show whole.
+                        subjectFocus: aspects.clamp(item.aspectRatio) != item.aspectRatio
                     )
                 }
                 .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))

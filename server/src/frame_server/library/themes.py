@@ -8,17 +8,32 @@ museums spell full names differently; rules match them word by word.
 from __future__ import annotations
 
 import logging
+import random
+import re
+import threading
 import time
-from dataclasses import dataclass
-from datetime import date
+from collections import Counter
+from dataclasses import asdict, dataclass
+from datetime import date, timedelta
+from typing import Any
 
 import httpx
 
 from .importer import Importer
 from .models import Item, ItemKind, PlaylistRules
+from .nationality import artist_note
 from .repo import Library
 from .seed import MORE_POLISH_PAINTERS, PACKS, POLISH_PAINTERS
-from .vocabulary import museum_queries, set_aside
+from .vocabulary import (
+    HIGHLIGHT,
+    TERMS,
+    _text,
+    artist_matches,
+    fold,
+    museum_queries,
+    set_aside,
+    term_matches,
+)
 
 log = logging.getLogger(__name__)
 
@@ -29,6 +44,7 @@ SEARCH_SOURCES = ("aic", "cma", "met")
 BROWSE_WAIT = 8.0
 
 GROUPS = (
+    "Na ten tydzień",
     "Kierunki i style",
     "Grafika i plakat",
     "Tematy",
@@ -50,9 +66,14 @@ class Theme:
     min_suitability: float | None = None
     #: (museum, query) to browse by; else the artists', else the terms'.
     queries: tuple[tuple[str, str], ...] = ()
+    #: Words every work's text must have (a season: "autumn").
+    query: str = ""
+    #: Browsed in the catalogue only (themes made from what it holds).
+    catalogue: bool = False
 
     def rules(self) -> PlaylistRules:
         return PlaylistRules(
+            query=self.query,
             artists=list(self.artists),
             terms=list(self.terms),
             colors=list(self.colors),
@@ -63,6 +84,8 @@ class Theme:
     def searches(self) -> list[tuple[str, str]]:
         """Museum searches to browse the theme by; none for themes of
         colour or period, which are browsed in the catalogue."""
+        if self.catalogue:
+            return []
         if self.queries:
             return list(self.queries)
         if self.artists:
@@ -125,6 +148,7 @@ POLISH_INTERWAR = (
 )
 
 
+WEEKLY = "Na ten tydzień"
 STYLES = "Kierunki i style"
 PRINTS = "Grafika i plakat"
 SUBJECTS = "Tematy"
@@ -134,6 +158,13 @@ PERIODS = "Epoki"
 
 THEMES: list[Theme] = [
     # Movements and styles
+    Theme(
+        "masterpieces",
+        "Arcydzieła muzeów",
+        "Dzieła, które Met i Cleveland liczą do najważniejszych w swoich zbiorach.",
+        STYLES,
+        terms=(HIGHLIGHT,),
+    ),
     Theme(
         "impressionism",
         "Impresjonizm i postimpresjonizm",
@@ -384,6 +415,30 @@ THEMES: list[Theme] = [
         terms=("subject:winter",),
     ),
     Theme(
+        "autumn",
+        "Jesień",
+        "Złote liście, mgły, żniwa i pierwsze przymrozki.",
+        SUBJECTS,
+        query="autumn",
+        queries=(("aic", "autumn"), ("cma", "autumn"), ("met", "autumn")),
+    ),
+    Theme(
+        "spring",
+        "Wiosna",
+        "Kwitnące sady, pierwsza zieleń i wiosenne światło.",
+        SUBJECTS,
+        query="spring",
+        queries=(("aic", "spring"), ("cma", "spring"), ("met", "spring blossom")),
+    ),
+    Theme(
+        "summer",
+        "Lato",
+        "Plaże, łąki, upał i długie wieczory.",
+        SUBJECTS,
+        query="summer",
+        queries=(("aic", "summer"), ("cma", "summer"), ("met", "summer")),
+    ),
+    Theme(
         "night",
         "Nokturny",
         "Noc, księżyc i latarnie: Whistler, Hiroshige, Grimshaw.",
@@ -527,15 +582,288 @@ BY_KEY = {theme.key: theme for theme in THEMES}
 SEARCHABLE = [theme for theme in THEMES if theme.searches()]
 
 
-def theme(key: str) -> Theme:
-    try:
-        return BY_KEY[key]
-    except KeyError:
-        raise KeyError(f"unknown theme {key!r}") from None
+def theme(key: str, library: Library | None = None) -> Theme:
+    """A theme by its key: one of ``THEMES`` or of the week's (those need
+    ``library`` after a restart)."""
+    found = BY_KEY.get(key) or _weekly.get(key)
+    if found is None and library is not None:
+        weekly_themes(library, date.today())
+        found = _weekly.get(key)
+    if found is None:
+        raise KeyError(f"unknown theme {key!r}")
+    return found
 
 
-def theme_of_the_day(day: date) -> Theme:
-    return SEARCHABLE[day.toordinal() % len(SEARCHABLE)]
+# -- the theme of the day ------------------------------------------------------
+
+#: The theme of each day lately (ISO date → key), so one day keeps its
+#: theme and later days pick others.
+DAYS_KEY = "theme_days"
+#: A theme of the day is not picked again for this many days (there are
+#: some 40 themes, a few of them out of season).
+DAY_REPEAT = 30
+#: Themes of a season: picked four times as often in it, never in the
+#: opposite one and seldom in the two others.
+SEASON_THEMES = {
+    "winter": ("winter", "night"),
+    "spring": ("spring", "flowers"),
+    "summer": ("summer", "sea"),
+    "autumn": ("autumn", "landscapes"),
+}
+OPPOSITE = {"winter": "summer", "summer": "winter", "spring": "autumn", "autumn": "spring"}
+
+
+@dataclass(frozen=True)
+class Occasion:
+    """A day in the Polish calendar with a theme of its own."""
+
+    name: str
+    theme: str
+
+
+#: (first day, last day) as (month, day), the occasion and its theme.
+OCCASIONS: tuple[tuple[tuple[int, int], tuple[int, int], str, str], ...] = (
+    ((1, 1), (1, 1), "Nowy Rok", "night"),
+    ((2, 14), (2, 14), "Walentynki", "flowers"),
+    ((3, 21), (3, 21), "Pierwszy dzień wiosny", "spring"),
+    ((5, 3), (5, 3), "Święto Konstytucji 3 Maja", "polish"),
+    ((6, 21), (6, 21), "Pierwszy dzień lata", "summer"),
+    ((9, 23), (9, 23), "Pierwszy dzień jesieni", "autumn"),
+    ((11, 1), (11, 2), "Wszystkich Świętych", "autumn"),
+    ((11, 11), (11, 11), "Narodowe Święto Niepodległości", "polish"),
+    ((12, 22), (12, 22), "Pierwszy dzień zimy", "winter"),
+    ((12, 24), (12, 26), "Boże Narodzenie", "winter"),
+    ((12, 31), (12, 31), "Sylwester", "night"),
+)
+
+
+def easter(year: int) -> date:
+    """Easter Sunday (the Gregorian computus)."""
+    a, b, c = year % 19, year // 100, year % 100
+    d, e = b // 4, b % 4
+    g = (8 * b + 13) // 25
+    h = (19 * a + b - d - g + 15) % 30
+    i, k = c // 4, c % 4
+    l_ = (32 + 2 * e + 2 * i - h - k) % 7
+    m = (a + 11 * h + 19 * l_) // 433
+    month = (h + l_ - 7 * m + 90) // 25
+    return date(year, month, (h + l_ - 7 * m + 33 * month + 19) % 32)
+
+
+def occasion(day: date) -> Occasion | None:
+    """The occasion of ``day``, if it has one."""
+    if day - easter(day.year) in (timedelta(0), timedelta(days=1)):
+        return Occasion("Wielkanoc", "spring")
+    for start, end, name, key in OCCASIONS:
+        if start <= (day.month, day.day) <= end:
+            return Occasion(name, key)
+    return None
+
+
+def season(day: date) -> str:
+    return ("winter", "spring", "summer", "autumn")[day.month % 12 // 3]
+
+
+def _day_weight(found: Theme, now: str, recent: set[str]) -> float:
+    weight = 0.0 if found.key in recent else 1.0
+    if found.key in SEASON_THEMES[now]:
+        return weight * 4
+    if found.key in SEASON_THEMES[OPPOSITE[now]]:
+        return 0.0
+    if any(found.key in keys for keys in SEASON_THEMES.values()):
+        return weight * 0.2
+    return weight
+
+
+def _pick_day(day: date, days: dict[str, str]) -> Theme:
+    """An occasion's theme; else one drawn for ``day``, the season's more
+    often, those of the last ``DAY_REPEAT`` days not at all."""
+    found = occasion(day)
+    if found is not None:
+        return BY_KEY[found.theme]
+    now, today = season(day), day.isoformat()
+    for repeat in (DAY_REPEAT, DAY_REPEAT // 3, 0):
+        since = (day - timedelta(days=repeat)).isoformat()
+        recent = {key for when, key in days.items() if since <= when < today}
+        weights = [_day_weight(t, now, recent) for t in THEMES]
+        if any(weights):
+            break
+    return random.Random(day.toordinal()).choices(THEMES, weights)[0]
+
+
+def theme_of_the_day(day: date, library: Library | None = None) -> Theme:
+    """The theme of ``day``: worked out once and remembered in ``library``
+    (without it, worked out from the date alone)."""
+    days: dict[str, str] = library.get_state(DAYS_KEY, {}) if library is not None else {}
+    known = BY_KEY.get(days.get(day.isoformat(), ""))
+    if known is not None:
+        return known
+    found = _pick_day(day, days)
+    if library is not None:
+        since = (day - timedelta(days=2 * DAY_REPEAT)).isoformat()
+        kept = {when: key for when, key in days.items() if when >= since}
+        library.set_state(DAYS_KEY, {**kept, day.isoformat(): found.key})
+    return found
+
+
+def day_reason(day: date) -> str:
+    """Why the theme of the day is what it is, when that is an occasion."""
+    found = occasion(day)
+    return found.name if found is not None else ""
+
+
+# -- themes of the week ----------------------------------------------------------
+
+#: The week's themes, made from the catalogue: {"week", "themes", "history"}.
+WEEK_KEY = "weekly_themes"
+#: Least works of a theme of the week the catalogue must have (and how good).
+WEEKLY_MIN = 12
+WEEKLY_SUITABILITY = 0.4
+#: Pairs of terms each week, besides the artist of the week.
+WEEKLY_MIXES = 3
+#: A theme of the week is not made again for this many weeks.
+WEEKLY_REPEAT = 12
+#: Pairs made of a subject and a style, period or one of these techniques.
+MIX_TECHNIQUES = ("technique:print", "technique:drawing", "technique:poster")
+#: Names that are no artist's.
+_NAMELESS = re.compile(r"unknown|anonymous|nieznany|anonim|^$", re.IGNORECASE)
+
+#: Themes of the week by key: this week's and those seen since the start.
+_weekly: dict[str, Theme] = {}
+_weekly_lock = threading.Lock()
+
+
+def week_of(day: date) -> str:
+    year, week, _ = day.isocalendar()
+    return f"{year}-W{week:02d}"
+
+
+def _works(count: int) -> str:
+    """ "1 dzieło", "3 dzieła", "12 dzieł"."""
+    if count == 1:
+        return "1 dzieło"
+    if count % 10 in (2, 3, 4) and count % 100 not in (12, 13, 14):
+        return f"{count} dzieła"
+    return f"{count} dzieł"
+
+
+def _slug(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", fold(text)).strip("-")
+
+
+def _theme_from(data: dict[str, Any]) -> Theme:
+    fields: dict[str, Any] = {k: tuple(v) if isinstance(v, list) else v for k, v in data.items()}
+    fields["queries"] = tuple(tuple(q) for q in data.get("queries") or ())
+    return Theme(**fields)
+
+
+def _artist_of_the_week(items: list[Item], rng: random.Random, history: set[str]) -> Theme | None:
+    """An artist with ``WEEKLY_MIN`` good works in the catalogue, not shown
+    lately; those no theme names twice as likely."""
+    counts = Counter(i.artist for i in items if not _NAMELESS.search(i.artist))
+    named = [a for t in THEMES for a in t.artists]
+    found = [
+        a for a, n in counts.items() if n >= WEEKLY_MIN and f"week-artist-{_slug(a)}" not in history
+    ]
+    if not found:
+        return None
+    found.sort()
+    weights = [1.0 if artist_matches(a, named) else 2.0 for a in found]
+    artist = rng.choices(found, weights)[0]
+    bio = next((i.artist_bio for i in items if i.artist == artist and i.artist_bio), "")
+    note = artist_note(bio) if bio else None
+    about = f"{note}. " if note else ""
+    return Theme(
+        f"week-artist-{_slug(artist)}",
+        artist,
+        f"Artysta tygodnia. {about}W katalogu: {_works(counts[artist])}.",
+        WEEKLY,
+        artists=(artist,),
+        catalogue=True,
+    )
+
+
+def _mixes(items: list[Item], rng: random.Random, history: set[str]) -> list[Theme]:
+    """Pairs of a subject and a style, technique or period that at least
+    ``WEEKLY_MIN`` works in the catalogue share, and no theme is made of."""
+    subjects = [t for t in TERMS if t.kind == "subject"]
+    others = [
+        t
+        for t in TERMS
+        if (t.kind in ("style", "period") or t.key in MIX_TECHNIQUES)
+        and not t.key.startswith("years:")
+    ]
+    pairs: Counter[tuple[str, str]] = Counter()
+    for item in items:
+        text = _text(item)
+        has = [t.key for t in subjects if term_matches(t, item, text)]
+        if not has:
+            continue
+        for other in others:
+            if term_matches(other, item, text):
+                pairs.update((other.key, subject) for subject in has)
+    made = {frozenset(t.terms) for t in THEMES}
+    found = sorted(
+        pair
+        for pair, n in pairs.items()
+        if n >= WEEKLY_MIN
+        and frozenset(pair) not in made
+        and f"week-mix-{_slug(pair[0])}-{_slug(pair[1])}" not in history
+    )
+    rng.shuffle(found)
+    picked: list[Theme] = []
+    used: set[str] = set()
+    names = {t.key: t for t in TERMS}
+    for first, second in found:
+        if first in used or second in used:
+            continue
+        used |= {first, second}
+        a, b = names[first], names[second]
+        picked.append(
+            Theme(
+                f"week-mix-{_slug(first)}-{_slug(second)}",
+                f"{a.name}: {b.name[0].lower()}{b.name[1:]}",
+                f"{a.name} i {b.name.lower()}: {_works(pairs[first, second])} w katalogu, "
+                "wybrane na ten tydzień.",
+                WEEKLY,
+                terms=(first, second),
+                catalogue=True,
+            )
+        )
+        if len(picked) == WEEKLY_MIXES:
+            break
+    return picked
+
+
+def make_weekly(library: Library, week: str, history: set[str]) -> list[Theme]:
+    """The themes of ``week`` from what the catalogue holds: the artist of
+    the week and a few pairs of terms, none made in the weeks before."""
+    rules = PlaylistRules(kinds=[ItemKind.ARTWORK], min_suitability=WEEKLY_SUITABILITY)
+    items = library.query(rules)[1]
+    rng = random.Random(week)
+    artist = _artist_of_the_week(items, rng, history)
+    return ([artist] if artist else []) + _mixes(items, rng, history)
+
+
+def weekly_themes(library: Library, day: date) -> list[Theme]:
+    """The themes of ``day``'s week: made once a week (the first time, a
+    pass over the catalogue) and remembered in ``library``."""
+    week = week_of(day)
+    with _weekly_lock:
+        stored: dict[str, Any] = library.get_state(WEEK_KEY, {})
+        if stored.get("week") == week:
+            themes = [_theme_from(t) for t in stored.get("themes") or []]
+        else:
+            history: list[str] = stored.get("history") or []
+            themes = make_weekly(library, week, set(history))
+            history = (history + [t.key for t in themes])[-WEEKLY_REPEAT * (WEEKLY_MIXES + 1) :]
+            library.set_state(
+                WEEK_KEY,
+                {"week": week, "themes": [asdict(t) for t in themes], "history": history},
+            )
+            log.info("themes of %s: %s", week, ", ".join(t.name for t in themes) or "none")
+        _weekly.update({t.key: t for t in themes})
+        return themes
 
 
 def browse_theme(

@@ -51,6 +51,15 @@ struct DiscoverView: View {
             .navigationDestination(for: ArtTheme.self) { theme in
                 ThemeView(theme: theme)
             }
+            .navigationDestination(for: ThemeGroupRoute.self) { route in
+                ThemeGroupView(name: route.name)
+            }
+            .navigationDestination(for: SuggestionRowRoute.self) { route in
+                SuggestionRowGridView(key: route.key)
+            }
+            .navigationDestination(for: DailyRoute.self) { route in
+                DailyView(route: route)
+            }
         }
         // A tapped artist's name: back to the top, on the search.
         .onChange(of: model.artistSearch, initial: true) { _, artist in

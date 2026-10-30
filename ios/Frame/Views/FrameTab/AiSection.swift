@@ -45,6 +45,14 @@ struct AiSection: View {
                     hint: "Miniatury Twoich zdjęć są wysyłane do Anthropic.",
                     value: settings.keywordsPhotos
                 ) { AiSettingsUpdate(keywordsPhotos: $0) }
+                if let daily = settings.daily {
+                    Divider()
+                    toggle(
+                        "Dzieło dnia",
+                        hint: "Kontekst i analiza kompozycji w Odkrywaj, raz dziennie (Opus, ok. 3 USD miesięcznie).",
+                        value: daily
+                    ) { AiSettingsUpdate(daily: $0) }
+                }
                 Divider()
                 spending
                 Divider()

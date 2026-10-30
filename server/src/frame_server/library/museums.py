@@ -79,6 +79,8 @@ class Discovery:
     #: Free text matched against styles and movements, e.g. "Impressionism".
     style: str = ""
     kind: Kind = "any"
+    #: Only the works the museum counts among its most important.
+    highlight: bool = False
 
     def fits(self, item: Item) -> bool:
         """Museums' date filters are coarse; this checks the year exactly."""
@@ -99,6 +101,8 @@ class Museum(ABC):
     random_depth = 10_000
     #: Only offered while the owner has switched it on for tests.
     testing: ClassVar[bool] = False
+    #: Marks its most important works and can be asked for only those.
+    highlights: ClassVar[bool] = False
 
     def __init__(
         self, http: httpx.Client, private_use: bool = False, access: Access | None = None
@@ -124,6 +128,8 @@ class Museum(ABC):
 
     def random_draw(self, spec: Discovery, rng: random.Random) -> Iterator[Item]:
         """Works matching ``spec``, from result pages taken in random order."""
+        if spec.highlight and not self.highlights:
+            return
         size = min(self.page_size, 24)
         total, _ = self.discover(spec, limit=1, page=1)
         pages = list(range(1, -(-min(total, self.random_depth) // size) + 1))
@@ -291,6 +297,7 @@ class ClevelandMuseum(Museum):
     key = "cma"
     name = "Cleveland Museum of Art"
     api = "https://openaccess-api.clevelandart.org/api"
+    highlights = True
 
     @staticmethod
     def _creator(d: dict[str, Any]) -> tuple[str, str]:
@@ -324,6 +331,7 @@ class ClevelandMuseum(Museum):
             credit=d.get("creditline") or "",
             license="CC0 1.0",
             url=d.get("url") or "",
+            highlight=bool(d.get("is_highlight")),
             description=strip_html(d.get("description") or d.get("wall_description")),
             image_url=large.get("url") or web["url"],
             thumb_url=web["url"],
@@ -352,6 +360,8 @@ class ClevelandMuseum(Museum):
             params["created_after"] = spec.year_from
         if spec.year_to is not None:
             params["created_before"] = spec.year_to
+        if spec.highlight:
+            params["highlight"] = 1
         return self._get(params, limit, page)
 
     def _get(self, params: dict[str, Any], limit: int, page: int) -> tuple[int, list[Item]]:
@@ -382,6 +392,7 @@ class MetropolitanMuseum(Museum):
     key = "met"
     name = "The Metropolitan Museum of Art"
     api = "https://collectionapi.metmuseum.org/public/collection"
+    highlights = True
 
     def _map(self, d: dict[str, Any]) -> Item | None:
         if not d.get("isPublicDomain") or not d.get("primaryImageSmall"):
@@ -402,6 +413,7 @@ class MetropolitanMuseum(Museum):
             credit=d.get("creditLine") or "",
             license="CC0 1.0",
             url=d.get("objectURL") or "",
+            highlight=bool(d.get("isHighlight")),
             description="",
             image_url=d.get("primaryImage") or d["primaryImageSmall"],
             thumb_url=d["primaryImageSmall"],
@@ -434,6 +446,8 @@ class MetropolitanMuseum(Museum):
             # The Met wants both ends of the range.
             params["dateBegin"] = spec.year_from if spec.year_from is not None else -5000
             params["dateEnd"] = spec.year_to if spec.year_to is not None else 2100
+        if spec.highlight:
+            params["isHighlight"] = "true"
         return self._search({**params, "isPublicDomain": "true"}, limit, page)
 
     def _search(self, params: dict[str, Any], limit: int, page: int) -> tuple[int, list[Item]]:
@@ -763,7 +777,7 @@ class Rijksmuseum(Museum):
     def random_draw(self, spec: Discovery, rng: random.Random) -> Iterator[Item]:
         """Decades in random order (the API has no date ranges), then the
         first results of each, shuffled."""
-        if spec.style.strip() or spec.kind == "decorative":
+        if spec.highlight or spec.style.strip() or spec.kind == "decorative":
             return
         decades = self._decades(spec)
         rng.shuffle(decades)
@@ -1155,6 +1169,106 @@ class Openverse(Museum):
         return self._map(resp.json())
 
 
+class StatensMuseum(Museum):
+    """Statens Museum for Kunst, Copenhagen: an open API without a key.
+    Only works in the public domain (the Danish Golden Age, Hammershøi, the
+    Skagen painters); answers in English where it has English."""
+
+    key = "smk"
+    name = "Statens Museum for Kunst"
+    api = "https://api.smk.dk/api/v1"
+    #: Works offered: public domain with a picture.
+    filters = "[public_domain:true],[has_image:true]"
+    #: ``object_names`` with ``lang=en``; other kinds are not drawn.
+    names: ClassVar[dict[str, str]] = {
+        "painting": "painting",
+        "print": "print",
+        "drawing": "drawing",
+    }
+    #: The title in English, when there is one.
+    english = "engelsk"
+
+    def _map(self, d: dict[str, Any]) -> Item | None:
+        iiif = d.get("image_iiif_id")
+        if not d.get("public_domain") or not iiif or not d.get("object_number"):
+            return None
+        titles = [t for t in d.get("titles") or [] if t.get("title")]
+        english = [t for t in titles if t.get("language") == self.english]
+        made = (d.get("production") or [{}])[0]
+        life = [str(made.get(f"creator_date_of_{end}") or "")[:4] for end in ("birth", "death")]
+        bio = ", ".join(
+            p for p in (made.get("creator_nationality") or "", "–".join(life).strip("–")) if p
+        )
+        dates = (d.get("production_date") or [{}])[0]
+        start = str(dates.get("start") or "")
+        year = int(start[:4]) if start[:4].isdigit() else None
+        names = d.get("object_names") or [{}]
+        thumb = d.get("image_thumbnail") or ""
+        thumb = (
+            thumb.replace("/full/!1024,/", "/full/600,/")
+            if thumb
+            else f"{iiif}/full/600,/0/default.jpg"
+        )
+        return self._item(
+            str(d["object_number"]),
+            title=str((english or titles or [{"title": ""}])[0]["title"]),
+            artist=str((d.get("artist") or [made.get("creator") or ""])[0]),
+            artist_bio=bio,
+            date_text=str(dates.get("period") or ""),
+            year=year,
+            medium=", ".join(d.get("techniques") or d.get("materials") or []),
+            classification=str(names[0].get("name") or ""),
+            styles=[],
+            subjects=[],
+            culture="Danish" if made.get("creator_nationality") == "Danish" else "",
+            credit=self.name,
+            license="Public Domain Mark 1.0",
+            url=d.get("frontend_url") or "",
+            description=strip_html(" ".join(d.get("content_description") or [])),
+            image_url=f"{iiif}/full/!2560,2560/0/default.jpg",
+            thumb_url=thumb,
+            width=d.get("image_width"),
+            height=d.get("image_height"),
+        )
+
+    def _get(self, params: dict[str, Any], limit: int, page: int) -> tuple[int, list[Item]]:
+        resp = self.http.get(
+            f"{self.api}/art/search/",
+            params={**params, "lang": "en", "offset": (page - 1) * limit, "rows": limit},
+        )
+        resp.raise_for_status()
+        body = resp.json()
+        items = [i for d in body.get("items") or [] if (i := self._map(d))]
+        return int(body.get("found", len(items))), items
+
+    def search(self, query: str, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
+        return self._get({"keys": query or "*", "filters": self.filters}, limit, page)
+
+    def discover(self, spec: Discovery, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
+        if spec.highlight or (spec.kind != "any" and spec.kind not in self.names):
+            return 0, []
+        filters = self.filters
+        if spec.kind in self.names:
+            filters += f",[object_names:{self.names[spec.kind]}]"
+        params: dict[str, Any] = {"keys": spec.style.strip() or "*", "filters": filters}
+        if spec.year_from is not None or spec.year_to is not None:
+            start = spec.year_from if spec.year_from is not None else 1
+            end = spec.year_to if spec.year_to is not None else 2100
+            params["range"] = (
+                f"[production_dates_start:{{{start:04d}-01-01T00:00:00.000Z;"
+                f"{end:04d}-12-31T23:59:59.999Z}}]"
+            )
+        return self._get(params, limit, page)
+
+    def fetch(self, source_id: str) -> Item | None:
+        resp = self.http.get(f"{self.api}/art/", params={"object_number": source_id, "lang": "en"})
+        if resp.status_code == 404:
+            return None
+        resp.raise_for_status()
+        found = resp.json().get("items") or []
+        return self._map(found[0]) if found else None
+
+
 class WikiArt(Museum):
     """WikiArt, only to test the panel with newer art.
 
@@ -1268,6 +1382,7 @@ MUSEUMS: dict[str, type[Museum]] = {
         WikimediaCommons,
         Europeana,
         Openverse,
+        StatensMuseum,
         WikiArt,
     )
 }

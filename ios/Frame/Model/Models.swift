@@ -817,6 +817,8 @@ struct AiSettings: Codable, Hashable, Sendable {
     var plText: Bool
     var keywordsArtworks: Bool
     var keywordsPhotos: Bool
+    /// Discover's work of the day written by Claude; nil from older servers.
+    var daily: Bool?
     var monthlyLimitUsd: Double
     /// This month.
     var spentUsd: Double
@@ -832,6 +834,7 @@ struct AiSettingsUpdate: Encodable, Sendable {
     var plText: Bool?
     var keywordsArtworks: Bool?
     var keywordsPhotos: Bool?
+    var daily: Bool?
     var monthlyLimitUsd: Double?
 }
 
@@ -1253,6 +1256,89 @@ struct SuggestionRow: Codable, Hashable, Sendable, Identifiable {
     var id: String { key }
 }
 
+/// Discover's work of the day, `GET /api/daily`: the tile at the top of
+/// Propozycje and its own page, written by Claude once a day (without a key
+/// only what the museum says).
+struct DailyWork: Codable, Hashable, Sendable {
+    struct Fact: Codable, Hashable, Sendable {
+        var label: String
+        var value: String
+    }
+
+    /// A place on the picture: fractions of its width and height.
+    struct Spot: Codable, Hashable, Sendable {
+        var x: Double
+        var y: Double
+    }
+
+    struct Point: Codable, Hashable, Sendable {
+        var x: Double
+        var y: Double
+        var title: String
+        var text: String
+    }
+
+    struct Line: Codable, Hashable, Sendable {
+        var label: String
+        var points: [Spot]
+    }
+
+    struct Composition: Codable, Hashable, Sendable {
+        var points: [Point]
+        var lines: [Line]
+    }
+
+    struct Similar: Codable, Hashable, Sendable {
+        var item: RemoteItem
+        var why: String
+    }
+
+    /// A later work, artist or movement that drew on this one.
+    struct Legacy: Codable, Hashable, Sendable {
+        var year: String
+        var who: String
+        var title: String
+        var text: String
+        var quote: String
+        /// The catalogue's copy, when it has one.
+        var item: RemoteItem?
+    }
+
+    struct Brief: Codable, Hashable, Sendable {
+        var day: String
+        var item: RemoteItem
+        var title: String
+    }
+
+    /// "2026-10-30".
+    var day: String
+    var item: RemoteItem
+    /// The Polish title when there is one.
+    var title: String
+    var teaser: String
+    var whyToday: String
+    /// Claude is writing the page now.
+    var writing: Bool
+    /// Claude wrote the page; else only the museum's text.
+    var written: Bool
+    var context: [String]
+    var facts: [Fact]
+    var composition: Composition?
+    var colour: String
+    var onFrame: String
+    var similar: [Similar]
+    var legacy: [Legacy]
+    var sources: [String]
+    var model: String
+    var previous: [Brief]
+}
+
+/// A work of the day's page, opened from the tile or from a past day.
+struct DailyRoute: Hashable {
+    /// Nil: today.
+    var day: String?
+}
+
 /// An idea for a playlist, `GET /api/themes`: browsed live from the
 /// museums, or made into a smart playlist with its rules.
 struct ArtTheme: Codable, Hashable, Sendable, Identifiable {
@@ -1263,6 +1349,8 @@ struct ArtTheme: Codable, Hashable, Sendable, Identifiable {
     var group: String?
     /// Works in the catalogue that fit, and four of them for the cover.
     var count: Int?
+    /// Of those, the ones the catalogue took in during the last week.
+    var newCount: Int?
     var cover: [RemoteItem]?
     /// The playlist already made from it.
     var playlistId: Int?
@@ -1340,6 +1428,7 @@ struct SearchToken: Hashable, Sendable, Identifiable {
         case "subject", "legacy-subject": "Temat"
         case "period": "Epoka"
         case "technique": "Technika"
+        case "tag": "Wyróżnienie"
         case "mine": "Moje"
         case "museum": "Muzeum"
         case "color": "Kolor"
@@ -1354,6 +1443,7 @@ struct SearchToken: Hashable, Sendable, Identifiable {
         case "subject", "legacy-subject": "tag"
         case "period": "calendar"
         case "technique": "scribble.variable"
+        case "tag": "star"
         case "mine": MineTerm.named(key)?.icon ?? "person.crop.circle"
         case "museum": "building.columns"
         case "color": "circle.fill"
@@ -1383,7 +1473,7 @@ extension PlaylistRules {
     /// Puts chips back into the rules.
     mutating func setTokens(_ tokens: [SearchToken]) {
         artists = tokens.filter { $0.kind == "artist" }.map(\.key)
-        terms = tokens.filter { ["style", "subject", "period", "technique", "mine"].contains($0.kind) }.map(\.key)
+        terms = tokens.filter { ["style", "subject", "period", "technique", "tag", "mine"].contains($0.kind) }.map(\.key)
         styles = tokens.filter { $0.kind == "legacy-style" }.map(\.key)
         subjects = tokens.filter { $0.kind == "legacy-subject" }.map(\.key)
         query = tokens.filter { $0.kind == "word" }.map(\.key).joined(separator: " ")

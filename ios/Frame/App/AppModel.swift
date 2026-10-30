@@ -76,6 +76,8 @@ final class AppModel {
     /// launch): shown at once while fresh ones load.
     var suggestionRows: [SuggestionRow]?
     var themes: [ArtTheme]?
+    /// The work of the day at the top of Propozycje; nil while there is none.
+    var daily: DailyWork?
     private var discoverLoad: Task<Void, Never>?
     private var discoverLoadedAt: Date?
     private var progressTask: Task<Void, Never>?
@@ -233,7 +235,8 @@ final class AppModel {
         let backend = self.backend
         async let rows = loadSuggestionRows(backend)
         async let themes = loadThemes(backend)
-        let (gotRows, gotThemes) = await (rows, themes)
+        async let daily: Void = loadDaily(backend)
+        let (gotRows, gotThemes, _) = await (rows, themes, daily)
         guard gotRows, gotThemes else { return }
         discoverLoadedAt = Date()
         if !demoMode, let suggestionRows, let themes = self.themes {
@@ -248,6 +251,21 @@ final class AppModel {
         } catch {
             if suggestionRows == nil { show(error) }  // else the last ones stay
             return false
+        }
+    }
+
+    /// The work of the day; an older server without one, or a catalogue
+    /// without a work fit for it, shows no tile.
+    private func loadDaily(_ backend: any FrameBackend) async {
+        do {
+            daily = try await backend.daily(day: nil, wait: 0)
+        } catch {
+            // Offline for a moment: the last one stays.
+            if case BackendError.notFound = error {
+                daily = nil
+            } else if case let BackendError.http(status, _) = error, status == 404 {
+                daily = nil
+            }
         }
     }
 

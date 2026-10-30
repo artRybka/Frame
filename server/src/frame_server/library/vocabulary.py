@@ -22,7 +22,7 @@ from .lifespan import last_free_year
 from .models import Item, ItemKind
 from .museums import Kind
 
-TermKind = Literal["style", "subject", "period", "technique"]
+TermKind = Literal["style", "subject", "period", "technique", "tag"]
 #: discovery kinds (museums.Kind) of techniques that museums can filter by.
 TECHNIQUE_KINDS: dict[str, Kind] = {
     "technique:painting": "painting",
@@ -37,6 +37,8 @@ MANUSCRIPTS = "technique:manuscripts"
 PHOTOGRAPHY = "technique:photography"
 SCULPTURE = "technique:sculpture"
 DECORATIVE = "technique:decorative"
+#: Works their museum counts among its most important (``Item.highlight``).
+HIGHLIGHT = "tag:highlight"
 #: Works that are not pictures: shown only when one of these is asked for.
 OBJECT_CATEGORIES = (MANUSCRIPTS, PHOTOGRAPHY, SCULPTURE, DECORATIVE)
 
@@ -335,6 +337,8 @@ TERMS: list[Term] = [
         "tkanin*",
         "rzemiosło",
     ),
+    # What museums say about their works
+    Term(HIGHLIGHT, "Arcydzieła muzeów"),
 ]
 
 BY_KEY = {term.key: term for term in TERMS}
@@ -574,6 +578,8 @@ def _object_technique(classification: str, medium: str) -> bool:
 def term_matches(found: Term, item: Item, text: str | None = None) -> bool:
     if found.key in OBJECT_CATEGORIES:
         return object_category(item) == found.key
+    if found.key == HIGHLIGHT:
+        return item.highlight
     if found.kind == "technique":
         return _technique_matches(found, item)
     if found.year_from is not None or found.year_to is not None:

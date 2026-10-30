@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// What Discover opens with: ideas for playlists in groups, then rows of
-/// works the server picked for the frame, works like the ones the owner
-/// likes and the theme of the day.
+/// What Discover opens with: the work of the day, ideas for playlists in
+/// groups, then rows of works the server picked for the frame, works like
+/// the ones the owner likes and the theme of the day.
 ///
 /// The last ones loaded show at once (also after a launch) while fresh ones
 /// load, and only the cards and works on screen fetch their pictures.
@@ -36,6 +36,7 @@ struct SuggestionsView: View {
 
     var body: some View {
         LazyVStack(alignment: .leading, spacing: 28) {
+            if let daily = model.daily { DailyTile(work: daily) }
             if rows.isEmpty && themes.isEmpty && !loading {
                 EmptyStateView(
                     title: "Propozycje są w drodze",
@@ -45,9 +46,10 @@ struct SuggestionsView: View {
             }
             ForEach(groups) { group in
                 VStack(alignment: .leading, spacing: 12) {
-                    Text(group.name)
-                        .font(.serif(22, weight: .semibold))
-                        .foregroundStyle(Theme.ink)
+                    NavigationLink(value: ThemeGroupRoute(name: group.name)) {
+                        SeeAllHeader(title: group.name, size: 22, weight: .semibold)
+                    }
+                    .buttonStyle(.plain)
                     // One row per group, so all groups and the rows of works
                     // below fit in a few screens.
                     ScrollView(.horizontal, showsIndicators: false) {
@@ -82,6 +84,14 @@ struct SuggestionsView: View {
         }
         .onChange(of: rows.first?.items.first?.id) { _, first in
             if ["detail", "original"].contains(LaunchRoute.screen), path.isEmpty, let first { path.append(first) }
+        }
+        .onChange(of: groups.first?.name, initial: true) { _, first in
+            if LaunchRoute.screen == "discover-group", path.isEmpty, let first {  // CI screenshots
+                path.append(ThemeGroupRoute(name: first))
+            }
+        }
+        .onChange(of: model.daily?.day) { _, day in
+            if LaunchRoute.screen == "daily", path.isEmpty, day != nil { path.append(DailyRoute(day: nil)) }  // CI screenshots
         }
     }
 
@@ -177,6 +187,12 @@ struct ThemeCard: View {
                         .disabled(making)
                     }
                     Spacer()
+                    if let new = theme.newCount, new > 0 {
+                        // The catalogue took in works for it this week.
+                        Text("+\(new)")
+                            .font(.caption2.weight(.semibold).monospacedDigit())
+                            .foregroundStyle(Theme.accent)
+                    }
                     if let count = theme.count, count > 0 {
                         Text("\(count)")
                             .font(.caption2.monospacedDigit())
@@ -211,7 +227,8 @@ struct ThemeCard: View {
                                         ref: works[index].thumb,
                                         fallback: works[index].thumbFallback,
                                         placeholder: works[index].item.summary.placeholderColor,
-                                        maxPixel: 240
+                                        maxPixel: 240,
+                                        subjectFocus: true
                                     )
                                 } else {
                                     Theme.mat
@@ -233,21 +250,20 @@ struct SuggestionRowView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(row.title)
-                        .font(.serif(20, weight: .medium))
-                        .foregroundStyle(Theme.ink)
-                    if !row.subtitle.isEmpty {
-                        Text(row.subtitle)
-                            .font(.footnote)
-                            .foregroundStyle(Theme.inkSoft)
+            VStack(alignment: .leading, spacing: 3) {
+                // The theme's works page by page, or the row's own works.
+                Group {
+                    if let theme {
+                        NavigationLink(value: theme) { title }
+                    } else {
+                        NavigationLink(value: SuggestionRowRoute(key: row.key)) { title }
                     }
                 }
-                Spacer()
-                if let theme {
-                    NavigationLink("Więcej", value: theme)
-                        .font(.subheadline.weight(.semibold))
+                .buttonStyle(.plain)
+                if !row.subtitle.isEmpty {
+                    Text(row.subtitle)
+                        .font(.footnote)
+                        .foregroundStyle(Theme.inkSoft)
                 }
             }
             ScrollView(.horizontal, showsIndicators: false) {
@@ -265,6 +281,10 @@ struct SuggestionRowView: View {
             }
             .scrollClipDisabled()
         }
+    }
+
+    private var title: some View {
+        SeeAllHeader(title: row.title, size: 20, weight: .medium)
     }
 }
 

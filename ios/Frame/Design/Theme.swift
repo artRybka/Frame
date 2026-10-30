@@ -216,6 +216,7 @@ enum Names {
         case "wmc": "Wikimedia Commons"
         case "europeana": "Europeana"
         case "openverse": "Openverse"
+        case "smk": "Statens Museum for Kunst"
         case "wikiart": "WikiArt"
         case "upload": "Własne"
         case "icloud": "Album iCloud"

@@ -25,6 +25,7 @@ from .models import Item, ItemKind, Look, PhotoInfo, PlaylistRules
 from .museums import MUSEUMS, Access, Discovery, Kind, Museum, available, client, museum
 from .repo import Library, matches, now_iso
 from .vocabulary import (
+    HIGHLIGHT,
     is_copy,
     is_grey_painting,
     is_painting,
@@ -39,9 +40,11 @@ log = logging.getLogger(__name__)
 #: Pseudo source: every museum at once.
 ALL = "all"
 #: Museums asked for works by the artists the owner likes.
-TASTE_SOURCES = ("aic", "cma", "met", "rijks", "europeana")
+TASTE_SOURCES = ("aic", "cma", "met", "rijks", "europeana", "smk")
 #: Museums that draw random paintings for variety.
-DRAW_SOURCES = ("aic", "cma", "met", "rijks", "europeana")
+DRAW_SOURCES = ("aic", "cma", "met", "rijks", "europeana", "smk")
+#: Museums that can be asked for their most important works.
+HIGHLIGHT_SOURCES = ("met", "cma")
 #: Museum works seen in search results, kept in memory so that opening one
 #: needs no second request.
 REMOTE_MEMO = 500
@@ -422,6 +425,9 @@ class Importer:
         ]
         # Colours and suitability are only known once the thumbnail is in.
         cheap = rules.model_copy(update={"colors": [], "min_suitability": None})
+        highlight = HIGHLIGHT in rules.terms
+        if highlight:
+            sources = [s for s in sources if MUSEUMS[s].highlights] or sources
         with self.http() as http:
             museums = [museum(s, http, self.access()) for s in sources]
             if rules.artists or rules.query:
@@ -437,7 +443,13 @@ class Importer:
                 kind = museum_kind(rules.terms)
                 streams = [
                     m.random_draw(
-                        Discovery(year_from=year_from, year_to=year_to, style=text, kind=kind),
+                        Discovery(
+                            year_from=year_from,
+                            year_to=year_to,
+                            style=text,
+                            kind=kind,
+                            highlight=highlight,
+                        ),
                         rng,
                     )
                     for text in texts
@@ -462,13 +474,15 @@ class Importer:
         artists: Iterable[str] = (),
         queries: Iterable[tuple[str, str]] = (),
         kinds: Iterable[Kind] = ("painting",),
+        highlights: Iterable[Kind] = (),
         min_suitability: float = 0.0,
         rng: random.Random | None = None,
     ) -> None:
         """Add ``count`` works the server picks (``pooled``), taking turns
         between works by ``artists``, the museum searches ``queries`` (e.g.
-        a theme) and works of ``kinds`` drawn at random; works below
-        ``min_suitability`` are left out."""
+        a theme), works of ``kinds`` drawn at random and museums' most
+        important works of ``highlights``; works below ``min_suitability``
+        are left out."""
         rng = rng or random.Random()
         with self.http() as http:
 
@@ -481,6 +495,11 @@ class Importer:
                 source(s).random_draw(Discovery(kind=kind), rng)
                 for kind in kinds
                 for s in DRAW_SOURCES
+            ]
+            streams += [
+                source(s).random_draw(Discovery(kind=kind, highlight=True), rng)
+                for kind in highlights
+                for s in HIGHLIGHT_SOURCES
             ]
             rng.shuffle(streams)
             self._take(

@@ -75,6 +75,9 @@ protocol FrameBackend: Sendable {
     func suggestions() async throws -> [SuggestionRow]
     func themes() async throws -> [ArtTheme]
     func themePage(key: String, page: Int) async throws -> ArtThemePage
+    /// The work of the day (`day`: a past one, "2026-10-30"); waits up to
+    /// `wait` seconds for Claude's page being written.
+    func daily(day: String?, wait: Int) async throws -> DailyWork
     /// The smart playlist made from a theme (made now if there is none);
     /// `play` also puts it on the frame.
     func themePlaylist(key: String, play: Bool) async throws -> ThemePlaylist

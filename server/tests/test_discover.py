@@ -9,7 +9,7 @@ from test_pools import _wait, museums  # noqa: F401  (fixture)
 from frame_server.library import Item, ItemKind, PlaylistRules
 from frame_server.library.lifespan import last_free_year
 from frame_server.library.repo import matches
-from frame_server.library.themes import GROUPS, THEMES, theme_of_the_day
+from frame_server.library.themes import GROUPS, THEMES, WEEKLY, theme_of_the_day
 from frame_server.library.vocabulary import (
     BY_KEY,
     artist_matches,
@@ -101,7 +101,7 @@ def test_terms_are_suggested_in_polish_and_english() -> None:
     assert museum_queries(["subject:sea", "subject:flowers"]) == ["sea", "flower"]
     # Every theme's terms are known.
     assert all(t in BY_KEY for theme in THEMES for t in theme.terms)
-    assert {theme.group for theme in THEMES} == set(GROUPS)
+    assert {theme.group for theme in THEMES} == set(GROUPS) - {WEEKLY}  # made each week
     assert theme_of_the_day.__name__  # importable
 
 
