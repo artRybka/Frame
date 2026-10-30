@@ -354,7 +354,11 @@ def _prune(directory: Path, keep: int) -> None:
 
 @router.get("/library/items/{item_id}/preview")
 async def item_preview(
-    item_id: str, svc: Svc, settings: str | None = None, framing: str | None = None
+    item_id: str,
+    svc: Svc,
+    settings: str | None = None,
+    framing: str | None = None,
+    own_look: bool = True,
 ) -> Response:
     """The picture framed as on the panel (crop, mat, lettering), in its own
     colours: the correction for the inks is left to the panel's image.
@@ -363,8 +367,12 @@ async def item_preview(
     orientation and presentation matter) to try a framing before saving it.
     ``framing`` (Framing JSON) likewise tries crops before they are saved:
     the ones it gives replace the saved ones for that orientation.
+    Without ``own_look`` a photo sent once is framed as the settings frame
+    photos, to try them on it.
     """
     item = await _work(svc, item_id, threads=SHOWN_THREADS)
+    if not own_look and item.look is not None:
+        item = item.model_copy(update={"look": None})
     frame_settings = svc.player.settings
     try:
         if settings:

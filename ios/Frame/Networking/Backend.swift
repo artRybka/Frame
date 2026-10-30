@@ -6,8 +6,9 @@ enum ImageRef: Hashable, Sendable {
     case image(String)  // display-size original
     /// Simulated look on the e-paper panel, framed with `settings` (saved or
     /// still being edited); nil means the server's saved settings. `framing`
-    /// tries crops not saved yet.
-    case framePreview(String, settings: FrameSettings? = nil, framing: FramingCrops? = nil)
+    /// tries crops not saved yet. Without `ownLook` a photo sent once is
+    /// framed as the settings frame photos.
+    case framePreview(String, settings: FrameSettings? = nil, framing: FramingCrops? = nil, ownLook: Bool = true)
     case path(String)  // server-relative path, e.g. /api/previews/<id>.png
     case url(URL)  // public URL (museum CDN)
 }

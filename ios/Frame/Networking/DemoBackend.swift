@@ -970,7 +970,7 @@ actor DemoBackend: FrameBackend {
         switch image {
         case let .thumb(id): url = Self.bundled(id) ?? imageURLs[id]?.thumb
         case let .image(id): url = Self.bundled(id) ?? imageURLs[id]?.image ?? imageURLs[id]?.thumb
-        case let .framePreview(id, settings, framing):
+        case let .framePreview(id, settings, framing, _):
             url = framed(id, settings, trying: framing) ?? Self.bundled(id) ?? imageURLs[id]?.thumb
         case let .path(path):
             // "/demo/<id>?<presentation key>"; the key only makes the path change.
