@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.40.0
+
+- Wysyłanie obrazu na ramkę widać też poza aplikacją: pasek na ekranie
+  blokady i w Dynamic Island (Live Activity) z etapem, trzema częściami i
+  czasem do końca; przy czekaniu na ramkę pokazuje, kiedy się obudzi. Po
+  wyjściu z aplikacji pasek sam dochodzi do końca, który przewiduje serwer,
+  a wynik pojawia się po powrocie do aplikacji. Nowe rozszerzenie
+  FrameWidgets. Zmiana tylko w aplikacji iOS, serwer bez zmian.
+
 ## 0.39.0
 
 - Komunikaty w aplikacji wyglądają jak pasek wysyłania: zamiast ciemnych
