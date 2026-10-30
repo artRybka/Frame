@@ -8,6 +8,13 @@
   wokół kółka wczytywania.
 - Kafelek „Propozycje” w Playlistach otwiera stronę jak zwykła playlista,
   zamiast przeskakiwać do Odkrywaj („Otwórz w Odkrywaj” zostaje w menu).
+- Zakładka Ramka mówi, gdy ekran odpowiada, a aplikacja ramki od ponad
+  3 minut nie pytała o obraz: „Ekran odpowiada · aplikacja milczy od …”
+  z podpowiedzią, zamiast „Połączona”.
+- Kafelek „Serwer” zamiast „Obraz”: wersja serwera, a gdy jest nowsza,
+  „jest X · stuknij, by zaktualizować” (sprawdza pomocnik aktualizacji).
+- W menu Zasilanie „Uruchom aplikację ponownie” obok „Uruchom ramkę
+  ponownie” (dawne „Uruchom ponownie”).
 - Synology: pomocnik aktualizacji (`frame-updater`) montuje cały folder
   `data` zamiast `data/update`, bo Docker na Synology nie tworzy brakującego
   folderu („Bind mount failed: … does not exist”).
