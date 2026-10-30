@@ -26,7 +26,7 @@ struct PlaylistsView: View {
                         }
                         .buttonStyle(.plain)
                     } else if suggestionsActive {
-                        Button { model.suggestionsOpened += 1 } label: {
+                        NavigationLink(value: SuggestionsRoute()) {
                             NowPlayingCard(title: "Propozycje", subtitle: "dobór z Odkrywaj") {
                                 SuggestionsCover(works: model.suggestionCover)
                             }
@@ -38,7 +38,7 @@ struct PlaylistsView: View {
                         subtitle: "Propozycje, dzieła według artystów, stylów i kolorów oraz albumy iCloud"
                     )
                     LazyVGrid(columns: [GridItem(.flexible(), spacing: 16), GridItem(.flexible(), spacing: 16)], spacing: 22) {
-                        Button { model.suggestionsOpened += 1 } label: {
+                        NavigationLink(value: SuggestionsRoute()) {
                             SuggestionsCard(works: model.suggestionCover, isActive: suggestionsActive)
                         }
                         .buttonStyle(.plain)
@@ -76,8 +76,14 @@ struct PlaylistsView: View {
             .navigationDestination(for: Int.self) { id in
                 PlaylistDetailView(playlistID: id)
             }
+            .navigationDestination(for: SuggestionsRoute.self) { _ in
+                SuggestionsPage(path: $path)
+            }
             .navigationDestination(for: String.self) { id in
                 ItemDetailView(itemID: id)
+            }
+            .navigationDestination(for: ArtTheme.self) { theme in
+                ThemeView(theme: theme)
             }
             .sheet(item: $editing) { playlist in
                 PlaylistEditorView(playlist: playlist)
@@ -148,6 +154,79 @@ extension PlaylistsView {
 }
 
 extension Playlist: Identifiable {}
+
+/// Opens Propozycje within Playlisty, pushed like a playlist.
+struct SuggestionsRoute: Hashable {}
+
+/// Propozycje opened from their tile: a header like a playlist's, with
+/// "Prezentuj na ramce", over the same themes and rows as in Discover.
+struct SuggestionsPage: View {
+    @Environment(AppModel.self) private var model
+    @Binding var path: NavigationPath
+    @State private var starting = false
+
+    private var isActive: Bool { model.settings != nil && model.settings?.playlistId == nil }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 22) {
+                header
+                SuggestionsView(path: $path)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, Theme.gutter)
+            .padding(.bottom, 40)
+        }
+        .background(Theme.paper.ignoresSafeArea())
+        .navigationBarTitleDisplayMode(.inline)
+        .refreshable { await model.refreshDiscover(force: true) }
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            SuggestionsCover(works: model.suggestionCover)
+                .aspectRatio(1.6, contentMode: .fit)
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .shadow(color: .black.opacity(0.15), radius: 18, y: 10)
+            Eyebrow("Dobór z Odkrywaj", color: Theme.vermilion)
+            Text("Propozycje")
+                .font(.serif(32, weight: .semibold))
+                .foregroundStyle(Theme.ink)
+            Text("Dzieła, które serwer wybiera z muzeów, i motywy, z których zrobisz playlistę.")
+                .font(.serif(17))
+                .foregroundStyle(Theme.inkSoft)
+            if isActive {
+                Label("Teraz prezentowane na ramce", systemImage: "photo.artframe")
+                    .font(.headline)
+                    .foregroundStyle(Theme.vermilion)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 15)
+                    .background(Theme.vermilion.opacity(0.1), in: RoundedRectangle(cornerRadius: 14))
+            } else {
+                Button {
+                    Task {
+                        starting = true
+                        defer { starting = false }
+                        await model.playSuggestions()
+                    }
+                } label: {
+                    Label {
+                        Text("Prezentuj na ramce")
+                    } icon: {
+                        if starting {
+                            ProgressView().tint(Theme.paper)
+                        } else {
+                            Image(systemName: "photo.artframe")
+                        }
+                    }
+                }
+                .buttonStyle(PrimaryButtonStyle())
+                .disabled(starting)
+                .sensoryFeedback(.impact(weight: .medium), trigger: starting) { _, now in now }
+            }
+        }
+    }
+}
 
 extension PlaylistSummary {
     /// "12 dzieł", or "12 zdjęć" for an album.
@@ -287,7 +366,7 @@ struct SuggestionsCard: View {
             }
         }
         .accessibilityElement(children: .combine)
-        .accessibilityHint("Otwiera Propozycje w Odkrywaj; przytrzymaj, by pokazać je na ramce")
+        .accessibilityHint("Otwiera Propozycje; przytrzymaj, by pokazać je na ramce")
     }
 }
 

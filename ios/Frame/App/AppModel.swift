@@ -45,6 +45,9 @@ final class AppModel {
     /// opens, nil on an older server.
     var aiSettings: AiSettings?
     var playlists: [PlaylistSummary] = []
+    /// Each playlist's works as last opened: shown at once when it opens
+    /// again while fresh ones load.
+    var playlistDetails: [Int: PlaylistDetail] = [:]
     /// Goes up when a work is liked, unliked, left out or brought back:
     /// views listing a playlist's works load them again.
     private(set) var libraryRevision = 0
@@ -62,7 +65,8 @@ final class AppModel {
     /// An artist whose works Discover's search should show: set by tapping
     /// the name on a work, taken (and cleared) by the search.
     var artistSearch: String?
-    /// Bumped to open Discover on Propozycje (from Playlisty).
+    /// Bumped to open Discover on Propozycje (from the menu of their tile
+    /// in Playlisty).
     var suggestionsOpened = 0
     /// Discover's rows and themes as last loaded (also by the previous
     /// launch): shown at once while fresh ones load.
@@ -131,6 +135,7 @@ final class AppModel {
         serverUpdate = nil
         aiSettings = nil
         playlists = []
+        playlistDetails = [:]
         facets = .empty
         vocabulary = []
         restoreDiscover()
