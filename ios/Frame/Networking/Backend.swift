@@ -173,6 +173,9 @@ enum BackendError: LocalizedError {
     case http(status: Int, body: String)
     case invalidResponse
     case notFound
+    /// A change sent as the app went to the background, cut short there:
+    /// it may or may not have reached the server.
+    case interrupted
 
     var errorDescription: String? {
         switch self {
@@ -182,6 +185,7 @@ enum BackendError: LocalizedError {
             return "Serwer odpowiedział \(status)" + (detail.map { ": \($0)" } ?? "")
         case .invalidResponse: return "Nieprawidłowa odpowiedź serwera"
         case .notFound: return "Nie znaleziono"
+        case .interrupted: return "Przerwane, gdy aplikacja była w tle"
         }
     }
 }

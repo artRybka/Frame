@@ -574,6 +574,30 @@ final class FrameAPITests: XCTestCase {
         XCTAssertFalse(ServerRoute.unreachable(URLError(.cancelled)))
     }
 
+    func testRequestsCutShortByTheBackgroundAreNotServerErrors() async {
+        let absence = Absence()
+        let timedOut = URLError(.timedOut)
+        let before = absence.mark()
+        XCTAssertFalse(absence.interrupted(timedOut, since: before))  // a server that did not answer
+
+        absence.left()
+        XCTAssertTrue(absence.interrupted(timedOut, since: before))  // frozen with the app
+        let back = Date.now
+        absence.cameBack(at: back)
+        XCTAssertTrue(absence.interrupted(timedOut, since: before, now: back.addingTimeInterval(60)))
+
+        let sentOnReturn = absence.mark()
+        XCTAssertTrue(absence.interrupted(URLError(.notConnectedToInternet), since: sentOnReturn, now: back.addingTimeInterval(2)))
+        XCTAssertFalse(absence.interrupted(timedOut, since: sentOnReturn, now: back.addingTimeInterval(60)))
+        XCTAssertFalse(absence.interrupted(URLError(.cancelled), since: before))
+        XCTAssertFalse(absence.interrupted(BackendError.http(status: 500, body: ""), since: before))
+
+        absence.left()
+        let waited = Task { await absence.whenBack(pause: 0) }
+        absence.cameBack()
+        await waited.value  // let go when the app is back
+    }
+
     func testMultipartBodyContainsFieldsAndFile() throws {
         var form = MultipartForm()
         form.addField("hold", "forever")

@@ -63,5 +63,6 @@ final class NoticesTests: XCTestCase {
         XCTAssertEqual(Notices.words(for: polish).0, "Aktualizacja już trwa")
         XCTAssertNil(Notices.words(for: polish).1)
         XCTAssertEqual(Notices.words(for: URLError(.cannotConnectToHost)).0, "Brak połączenia z serwerem")
+        XCTAssertEqual(Notices.words(for: BackendError.interrupted).0, "Przerwane, gdy aplikacja była w tle")
     }
 }
