@@ -43,8 +43,14 @@
   var WIFI_EVERY_MS = 5 * 60000;
   var WIFI_TIMEOUT_MS = 10000;
 
+  // A question with no answer this long (a request that never ended): ask
+  // again instead of waiting for it forever.
+  var STUCK_MS = 2 * 60000;
+
   var ep = (typeof webapis !== "undefined" && webapis.epaper) ? webapis.epaper : null;
   var busy = false;
+  var busySince = 0;
+  var gap = 0;  // the last heartbeat gap: how long the panel was down
   var waits = 0;
   var timer = null;
   var last = Date.now();
@@ -105,7 +111,6 @@
 
   function getJson(url, ok, fail) {
     var x = new XMLHttpRequest();
-    x.open("GET", url, true);
     x.timeout = 15000;
     x.onload = function () {
       if (x.status !== 200) return fail("HTTP " + x.status);
@@ -115,7 +120,12 @@
     };
     x.onerror = function () { fail("network"); };
     x.ontimeout = function () { fail("timeout"); };
-    x.send();
+    try {
+      x.open("GET", url, true);
+      x.send();
+    } catch (e) {
+      setTimeout(function () { fail(String(e)); }, 0);
+    }
   }
 
   // The battery from webapis.deviced (tizen.systeminfo fails on the panel,
@@ -202,6 +212,7 @@
   function ask(reason) {
     if (busy) return;
     busy = true;
+    busySince = Date.now();
     clearTimeout(timer);
     if (reason !== "poll" && reason !== "retry") wifiBack();
     if ((reason !== "poll" && reason !== "retry") || Date.now() - wifiAt > WIFI_EVERY_MS) wifi();
@@ -209,6 +220,7 @@
       "&code=" + encodeURIComponent(CODE) +
       "&screen=" + window.innerWidth + "x" + window.innerHeight + "@" + (window.devicePixelRatio || 1) +
       "&shown=" + encodeURIComponent(shown || "") +
+      (reason === "resume" || reason === "wake" ? "&gap=" + Math.round(gap / 1000) : "") +
       battery();
     attempt(q, 1);
   }
@@ -440,15 +452,59 @@
 
   function heartbeat() {
     var now = Date.now();
-    var gap = now - last;
+    gap = now - last;
     last = now;
+    if (busy && now - busySince > STUCK_MS) {
+      report("error", { message: "a question never ended", since: new Date(busySince).toString() });
+      busy = false;
+    }
     if (gap > ASLEEP_GAP_MS) {
       var alarm = ep ? call(function () { return ep.isScheduledPlayBootReason(); }) : null;
       ask(alarm && alarm.ok && Number(alarm.value) === 1 ? "wake" : "resume");
     }
   }
 
+  // How the launcher shows and hides the page (2026-10-30: a panel up
+  // whose app never asked again): in the server's log.
+  document.addEventListener("visibilitychange", function () {
+    report("visibility", { state: document.visibilityState });
+  });
+
+  // Once per version of this code: how the launcher sees this app and
+  // Samsung's own player (VXT, whose metadata gave the 1:1 page), to compare
+  // how each is set up (2026-10-30).
+  function probe() {
+    if (typeof tizen === "undefined" || !tizen.application) return;
+    if (saved("probed") === CODE) return;
+    saved("probed", CODE);
+    var a = tizen.application;
+    var vxt = "PbHvnmrROv.VXPlayer";
+    var data = {
+      visibility: document.visibilityState,
+      self: call(function () { var c = a.getCurrentApplication(); return { info: c.appInfo, context: c.contextId }; }),
+      selfMeta: call(function () { return a.getAppMetaData(); }),
+      vxt: call(function () { return a.getAppInfo(vxt); }),
+      vxtMeta: call(function () { return a.getAppMetaData(vxt); }),
+      vxtCerts: call(function () { return a.getAppCerts(vxt).map(function (c) { return c.type; }); })
+    };
+    var sent = false;
+    var send = function (contexts) {
+      if (sent) return;
+      sent = true;
+      data.running = contexts;
+      report("probe", data);
+    };
+    var r = call(function () {
+      a.getAppsContext(function (list) {
+        send(list.map(function (c) { return c.appId; }));
+      }, function (e) { send({ error: String(e) }); });
+    });
+    if (!r.ok) send(r);
+    setTimeout(function () { send({ error: "no answer" }); }, 5000);
+  }
+
   window.FrameApp = { ask: ask, version: CODE };
   setInterval(heartbeat, HEARTBEAT_MS);
   ask("start");
+  setTimeout(probe, 30000);
 })();

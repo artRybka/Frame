@@ -120,6 +120,20 @@ NUDGE_EVERY = timedelta(minutes=5)
 # most likely asleep (unplugged: it sleeps at once, E8).
 SILENT_AFTER = timedelta(minutes=3)
 SILENT_KICKS = 3
+# Told to sleep, the app's JS runs on up to ~130 s after goToSleep() (E16).
+# A start over MDC in that time raced the sleep (2026-10-30): the panel went
+# down halfway through the launcher's restart, and afterwards the app never
+# ran again, though the panel answered MDC and every start was acknowledged.
+# No start this soon after a sleep answer (the app may wait a minute for a
+# refresh first) or after its sleep report, and none once the app asked.
+GOING_DOWN = timedelta(minutes=3)
+DOWN_AFTER_REPORT = timedelta(seconds=150)
+# That many starts acknowledged over MDC without a question from the app:
+# it is stuck (the launcher takes it for running and only brings it to the
+# front). A new version makes the launcher install it afresh and start it;
+# at most this often.
+FROZEN_STARTS = 2
+REINSTALL_EVERY = timedelta(minutes=30)
 # Awake, the app is heard from at least this often: a question every 20 s on
 # the charger, a minute at most while it waits, progress reports during a
 # long download. Silent longer it may well be asleep after all (unplugged,
@@ -262,6 +276,9 @@ class PanelApp:
         self._nudged: datetime | None = None
         self._looked: datetime | None = None  # for the button in a rest
         self._silent_kicks = 0
+        self._unanswered = 0  # starts acknowledged over MDC since the last question
+        self._reinstalled: datetime | None = None
+        self._sleep_reported: datetime | None = None  # its last "sleep" report
         self._kick_error: MdcError | None = None  # why the last start failed
         self._next_alarm: datetime | None = None  # as the status shows it
         self.certificates = Certificates(self.dir / "certs")
@@ -377,6 +394,20 @@ class PanelApp:
             log.warning("could not build the frame's app: %s", err)
             return current
         return self.store_package(data, version, source)
+
+    def _rebuild_package(self) -> PackageInfo | None:
+        """The same package with the next version: the launcher installs it
+        and starts the app afresh. None without the certificates."""
+        current = self.package()
+        if current is None or not self.certificates.present():
+            return None
+        version = _next_version(current.version)
+        try:
+            data = sign_package(self.package_files(version), self.certificates)
+        except (OSError, ValueError) as err:
+            log.warning("could not build the frame's app: %s", err)
+            return None
+        return self.store_package(data, version, self.source())
 
     def store_certificates(self, author: bytes, distributor: bytes, password: bytes) -> AppView:
         """The Samsung certificates (once, and again when renewed): kept in
@@ -691,6 +722,7 @@ class PanelApp:
         state.missed_wake = None
         self._save(state)
         self._silent_kicks = 0
+        self._unanswered = 0
         self.heard_at = now
         self.service.status.note_app(now, hello.battery, hello.charging)
         self.contacts += 1
@@ -699,14 +731,15 @@ class PanelApp:
 
     def report(self, event: str, data: dict[str, object]) -> None:
         """What the app did: drew a picture, set its alarm, fell asleep, failed."""
-        text = json.dumps(data, ensure_ascii=False)[:600]
-        if event != "sleep":
-            self.heard_at = datetime.now(UTC)
+        text = json.dumps(data, ensure_ascii=False)[: 6000 if event == "probe" else 600]
+        if event not in ("sleep", "visibility"):
+            self.heard_at = datetime.now(UTC)  # hidden as it goes down is no sign of life
         if event == "error":
             log.warning("panel app: %s", text)
         else:
             log.info("panel app %s: %s", event, text)
         if event == "sleep":
+            self._sleep_reported = datetime.now(UTC)
             self.service.status.note_sleep(deep=not self.state.standby)
         elif event == "progress":
             loaded, total = data.get("loaded"), data.get("total")
@@ -843,6 +876,9 @@ class PanelApp:
         seen = datetime.fromisoformat(state.seen_at) if state.seen_at else None
         if self.heard_at is not None and (seen is None or self.heard_at > seen):
             seen = self.heard_at  # a long download: it reports, not asks
+        installed = datetime.fromisoformat(state.installed_at) if state.installed_at else None
+        if installed is not None and installed <= now and (seen is None or installed > seen):
+            seen = installed  # just started: not silent before it had a chance to ask
         silent = seen is None or now - seen >= SILENT_AFTER
         if self.wakes_at(now) != self._next_alarm:
             # An alarm rang and the panel went back to sleep: show the next.
@@ -1013,10 +1049,31 @@ class PanelApp:
         again starts it. The launcher's address is set again first, so a
         panel left pointing elsewhere (a test server) comes back to ours.
         ``quiet``: only looking whether the panel is up (a rest). Whether the
-        panel answered."""
+        panel answered.
+
+        Not sent when the app asked meanwhile (the session takes seconds to
+        open on a panel just up) or was just told to sleep (``GOING_DOWN``).
+        After ``FROZEN_STARTS`` starts without a question the app is
+        installed afresh instead (``_reinstall``)."""
         self._kick_error = None
+        contacts = self.contacts
+        now = datetime.now(UTC)
+        frozen = self._unanswered >= FROZEN_STARTS and (
+            self._reinstalled is None or now - self._reinstalled >= REINSTALL_EVERY
+        )
+        if frozen and await self._reinstall():
+            return True
         try:
             async with self.service.panel.session() as mdc:
+                if self.contacts != contacts or self._going_down(datetime.now(UTC)):
+                    log.info("the frame's app asked or goes to sleep: not started")
+                    return True
+                try:
+                    source = f"{await mdc.content_source():02x}"
+                except MdcConnectionError:
+                    raise
+                except MdcError:
+                    source = "unknown"
                 await mdc.set_custom_app_url(self.app_url())
                 await mdc.set_content_source(CONTENT_SOURCE_CUSTOM)
         except MdcError as err:
@@ -1024,11 +1081,55 @@ class PanelApp:
             if not quiet:
                 log.info("could not start the frame's app: %s", err)
             return not isinstance(err, MdcConnectionError)
-        log.info("the frame's app %s: started it over MDC", "woke by the button" if quiet else why)
+        self._unanswered += 1
+        log.info(
+            "the frame's app %s: started it over MDC (source was %s, %d without an answer)",
+            "woke by the button" if quiet else why,
+            source,
+            self._unanswered,
+        )
+        return True
+
+    def _going_down(self, now: datetime) -> bool:
+        """Told to sleep moments ago: its JS still runs towards goToSleep(),
+        or the panel is not down yet."""
+        slept = self.state.slept_at
+        if slept is not None and now - datetime.fromisoformat(slept) < GOING_DOWN:
+            return True
+        reported = self._sleep_reported
+        return reported is not None and now - reported < DOWN_AFTER_REPORT
+
+    async def _reinstall(self) -> bool:
+        """The app does not start though the panel acknowledges every start:
+        a new version of the package, and the launcher pointed at it, which
+        installs it and starts it afresh (E16: 0xC7 81 01 installs at once).
+        Built only once the panel answers. Whether the panel took it."""
+        try:
+            async with self.service.panel.session() as mdc:
+                info = self._rebuild_package()
+                if info is None:
+                    return False
+                self._reinstalled = datetime.now(UTC)
+                log.warning(
+                    "the frame's app did not start after %d starts over MDC: "
+                    "installing it again as %s",
+                    self._unanswered,
+                    info.version,
+                )
+                self._unanswered = 0
+                await mdc.set_custom_app_url(self.app_url())
+                await mdc.set_content_source(CONTENT_SOURCE_CUSTOM)
+        except MdcError as err:
+            self._kick_error = err
+            log.info("could not install the frame's app again: %s", err)
+            return False
         return True
 
     async def start(self, why: str) -> bool:
-        """Start (or restart) the app over MDC, if the panel answers."""
+        """Start (or restart) the app over MDC, if the panel answers; not
+        while it goes to sleep (False: try again later)."""
+        if self._going_down(datetime.now(UTC)):
+            return False
         return await self._kick(why=why)
 
     async def _nudge(self) -> None:
@@ -1056,6 +1157,7 @@ class PanelApp:
         async with panel.waking_session() if waking else panel.session() as mdc:
             await mdc.set_custom_app_url(self.app_url())
             await mdc.set_content_source(CONTENT_SOURCE_CUSTOM)
+        self._unanswered += 1
         state = self.state
         state.asleep = False
         state.installed_at = datetime.now(UTC).isoformat(timespec="seconds")

@@ -101,11 +101,13 @@ def _fetch(service: FrameService) -> None:
     )
 
 
-# The server points the launcher at the app and starts it.
-START = [
+# The server points the launcher at the app and starts it ...
+INSTALL = [
     (CMD_CONTENT_DOWNLOAD, b"\x82http://127.0.0.1:8099/panel/app"),
     (CMD_CONTENT_DOWNLOAD, b"\x81\x01"),
 ]
+# ... and reads the source first when it starts an app that should run.
+START = [(CMD_CONTENT_DOWNLOAD, b"\x81"), *INSTALL]
 BATTERY = AppHello(reason="wake", build="1.0.0", battery=80, charging=False)
 
 
@@ -304,7 +306,7 @@ async def test_the_server_starts_the_app_when_the_panel_does_not_run_it(
         assert panel.received == START * 3
         for minutes in (10, 11, 13):
             await service.power.tick(now + timedelta(minutes=minutes))
-        assert panel.received == START * 4
+        assert panel.received == START * 3 + INSTALL
 
         # The panel fell back to Mobile and fetched content.json: started again.
         panel.received.clear()
@@ -400,7 +402,7 @@ async def test_a_silent_app_is_started_after_its_alarm(
         # Not heard of since: pointed at the app and started every 5 minutes.
         service.app.store_package(b"PK\x03\x04signed", "2.0.0")
         await service.power.tick(_at("2026-10-28T19:21"))
-        assert panel.received == START * 2
+        assert panel.received == START + INSTALL
         assert service.app.state.missed_wake == _at("2026-10-28T19:00").isoformat()
     finally:
         await panel.stop()
@@ -873,3 +875,83 @@ def test_battery_rate_is_measured_on_battery(tmp_path: Path) -> None:
     assert status.status.battery_per_day is None and status.status.battery_days is None
     status.note_app(start + timedelta(hours=30), 100, False)
     assert status.status.battery_days is None
+
+
+async def test_no_start_over_mdc_once_the_app_asked_or_sleeps(
+    tmp_path: Path, server_ssl: ssl.SSLContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """2026-10-30: the server took the app for silent, and its start over MDC
+    went out just as the app asked and was told to sleep. The panel went down
+    halfway through the launcher's restart and the app never ran again. A
+    question while the session opens, or a sleep answer moments ago, stops
+    the start."""
+    panel = FakePanel(server_ssl)
+    await panel.start()
+    try:
+        service = _service(tmp_path, panel.port)
+        app = service.app
+        app.store_package(b"PK\x03\x04signed", "2.0.0")
+        _next_change(service, datetime.now(UTC) + timedelta(hours=3))
+        opened = service.panel.session
+
+        def asking_meanwhile():  # type: ignore[no-untyped-def]
+            hello = AppHello(reason="resume", build="2.0.0", battery=80, charging=False)
+            assert app.answer(hello).action == "sleep"  # it asks, and goes to sleep
+            return opened()
+
+        monkeypatch.setattr(service.panel, "session", asking_meanwhile)
+        assert await app._kick()
+        assert panel.received == []
+        monkeypatch.setattr(service.panel, "session", opened)
+        assert not await app.start("did not ask after a wake")
+        assert panel.received == []
+        # Down for a while: started again.
+        state = app.state
+        state.slept_at = (datetime.now(UTC) - timedelta(minutes=4)).isoformat()
+        app._save(state)
+        assert await app.start("did not ask after a wake")
+        assert panel.received == START
+        app.report("sleep", {"why": "plan"})
+        assert not await app.start("did not ask after a wake")
+    finally:
+        await panel.stop()
+
+
+async def test_an_app_that_never_starts_is_installed_again(
+    tmp_path: Path, server_ssl: ssl.SSLContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """2026-10-30: the panel acknowledged start after start over MDC and the
+    app never asked (the launcher took it for running). After two starts
+    without a question a new version is installed, which starts it afresh;
+    a question in between resets the count."""
+    panel = FakePanel(server_ssl)
+    await panel.start()
+    try:
+        service = _service(tmp_path, panel.port)
+        app = service.app
+        app.store_package(b"PK\x03\x04signed", "2.0.0")
+        built: list[str] = []
+
+        def rebuild():  # type: ignore[no-untyped-def]
+            info = app.store_package(b"PK\x03\x04again", "2.0.1")
+            built.append(info.version)
+            return info
+
+        monkeypatch.setattr(app, "_rebuild_package", rebuild)
+        await app.start("did not ask after a wake")
+        app.answer(AppHello(reason="start", build="2.0.0", charging=True))  # it asked
+        await app.start("did not ask after a wake")
+        await app.start("did not ask after a wake")
+        assert built == [] and panel.received == START * 3
+        panel.received.clear()
+        await app.start("did not ask after a wake")
+        assert built == ["2.0.1"] and panel.received == INSTALL
+        assert app.sssp_config() is not None and "<ver>2.0.1</ver>" in app.sssp_config()
+        # Not again within half an hour: started as usual.
+        panel.received.clear()
+        await app.start("did not ask after a wake")
+        await app.start("did not ask after a wake")
+        await app.start("did not ask after a wake")
+        assert built == ["2.0.1"] and panel.received == START * 3
+    finally:
+        await panel.stop()

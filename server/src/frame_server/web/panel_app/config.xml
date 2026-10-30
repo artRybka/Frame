@@ -17,5 +17,9 @@
     <!-- A 2560x1440 page, so pictures are shown 1:1 (without it 1920x1080, E16). -->
     <tizen:metadata key="http://tizen.org/metadata/app_ui_type/base_screen_resolution" value="always"/>
     <tizen:profile name="tv-samsung"/>
-    <tizen:setting screen-orientation="landscape" context-menu="disable" background-support="disable" encryption="disable" install-location="auto" hwkey-event="enable"/>
+    <!-- background-support: with "disable" Tizen stops the page's JS whenever
+         the launcher puts it in the background (around a sleep), and after a
+         wake it stood still until brought to the front (2026-10-30). The
+         WakeProbe of E16, which a magic packet resumed in 2 s, had "enable". -->
+    <tizen:setting screen-orientation="landscape" context-menu="disable" background-support="enable" encryption="disable" install-location="auto" hwkey-event="enable"/>
 </widget>

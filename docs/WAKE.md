@@ -625,6 +625,55 @@ widoczność w sieci ani odpowiedź ARP nie znaczą „da się obudzić”. Od 0
   sen bez Wi-Fi jest tam celem. *(Do sprawdzenia na ramce: czy budzik
   dzwoniący na zasilaczu niczego nie psuje i czy budzi ramkę po odpięciu.)*
 
+**Aplikacja, która przestała działać na przytomnej ramce (2026-10-30, logi
+Mateusza z 0.36.1).** Ramka na baterii, w sieci, odpowiadała przez MDC
+(„Połączona, przed chwilą”), a od 00:24:37 do końca logu (00:38:52) aplikacja
+nie odezwała się ani razu: żadnego `/panel/next`, raportu ani pobrania
+`app.js`, choć serwer kilkanaście razy wysłał `0xC7 82`/`81 01` i ramka każde
+potwierdziła, a „Uruchom aplikację ponownie” dawało tylko ponowne
+narysowanie strony (launcher wyciąga stronę na wierzch, ale jej JS stoi).
+Przebieg:
+
+- 00:24 „Uruchom aplikację ponownie”: WoL, ramka wstaje, launcher pobiera
+  `sssp_config.xml`, aplikacja (wznowiona, `reason=resume`) pyta o 00:24:34
+  i dostaje `sleep` do 21:50.
+- 30 ms później serwer wysyła drugi start przez MDC: decyzję „milczy od
+  00:17” podjął 5 s wcześniej (instalacja zmieniła stan na „nie śpi”, a
+  ostatnie pytanie było stare), a sesja MDC otwierała się tyle, ile ramka
+  się budziła. Po 2 s aplikacja woła `goToSleep()`, w środku restartu przez
+  launcher.
+- Od tej chwili po każdej pobudce (WoL, przycisk) ramka odpowiada przez MDC,
+  a aplikacja nie działa i żadne `81 01` jej nie uruchamia.
+
+Wniosek (hipoteza, do potwierdzenia testem E17): aplikacja stoi, bo jest
+w tle. Nasza paczka miała `background-support="disable"`, a testowa
+WakeProbe z E16 (którą WoL wznawiał w 2 s) `enable` (trop Mateusza: porównać
+z VXT Playerem). Przy `disable` Tizen zatrzymuje JS strony w tle; po pobudce
+aplikacja ruszała dopiero, gdy launcher wyciągnął ją na wierzch (o 00:24:27
+po `81 01`). Start przez MDC w chwili zasypiania zostawił ją w tle na stałe,
+a launcher, uważając ją za uruchomioną, tylko rysował stronę od nowa.
+Od 0.36.2:
+
+- Paczka ma `background-support="enable"` (nowa wersja: aplikacja przy
+  najbliższym pytaniu restartuje ramkę i launcher ją instaluje, jak przy
+  każdej aktualizacji).
+
+- Start przez MDC nie idzie, gdy aplikacja zapytała w czasie otwierania
+  sesji, przez 3 minuty po odpowiedzi `sleep` ani przez 150 s po jej raporcie
+  `sleep` (`GOING_DOWN`, `DOWN_AFTER_REPORT`). Po instalacji („Uruchom
+  aplikację ponownie”) aplikacja nie jest brana za milczącą, zanim zdąży
+  zapytać.
+- Po dwóch potwierdzonych startach bez żadnego pytania (`FROZEN_STARTS`)
+  serwer buduje paczkę z następną wersją i wskazuje ją launcherowi, który
+  instaluje ją i uruchamia od nowa (najwyżej co 30 minut). W logu:
+  `installing it again as 2.0.x`, potem pobranie `Frame.wgt`.
+- Każdy start przez MDC zapisuje w logu odczytane źródło (`source was 01`)
+  i liczbę startów bez odpowiedzi, a aplikacja raportuje zmiany widoczności
+  strony (`visibility`), przerwę po pobudce (`gap` w `/panel/next`) i
+  pytanie, które nigdy się nie skończyło (wtedy pyta od nowa). Raz na
+  wersję kodu raportuje też (`probe`), jak launcher widzi ją i VXT Playera
+  (informacje, metadane, certyfikaty, działające aplikacje).
+
 **„Uruchom ponownie” (2026-10-29).** W menu „Zasilanie”: `POST
 /api/device/restart`. Aplikacja przy najbliższym pytaniu dostaje `reboot`
 i woła `rebootDevice()`, jak przy nowej paczce, ale bez zapamiętywania

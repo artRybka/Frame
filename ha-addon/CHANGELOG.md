@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.36.2
+
+- Aplikacja na ramce na baterii przestawała działać: ramka odpowiadała
+  („Połączona”), a wysyłka wisiała na „Budzę ramkę”. Serwer uruchamiał ją
+  przez MDC w tej samej chwili, w której zasypiała, i od tego czasu żaden
+  start jej nie ruszał. Serwer nie uruchamia już aplikacji, która właśnie
+  zapytała albo zasypia, a gdy dwa starty z rzędu nie pomogą, instaluje
+  aplikację od nowa (następna wersja paczki), co uruchamia ją na czysto.
+- Nowa paczka aplikacji ramki z `background-support="enable"` (jak w
+  testowej aplikacji, na której pobudki działały): Tizen nie zatrzymuje już
+  aplikacji w tle. Ramka zainstaluje ją sama przy najbliższej pobudce
+  (krótki restart, ok. 40 s mrugania).
+- Więcej śladów w logu do dalszych testów (źródło treści przy każdym
+  starcie, widoczność strony aplikacji, długość snu przy pobudce).
+
 ## 0.36.1
 
 - Ramka odpięta od zasilacza bywa po kilkunastu sekundach znów widoczna w
