@@ -246,6 +246,7 @@ struct LiveBackend: FrameBackend {
             bytes.task.cancel()
             throw BackendError.http(status: http.statusCode, body: "")
         }
+        let mark = Absence.shared.mark()
         return AsyncThrowingStream { continuation in
             let reading = Task {
                 do {
@@ -254,6 +255,8 @@ struct LiveBackend: FrameBackend {
                         continuation.yield(try decoder.decode(MuseumAnswer.self, from: Data(line.utf8)))
                     }
                     continuation.finish()
+                } catch where Absence.shared.interrupted(error, since: mark) {
+                    continuation.finish()  // the app went away mid-answer: what came is kept
                 } catch {
                     continuation.finish(throwing: error)
                 }
@@ -545,28 +548,47 @@ struct LiveBackend: FrameBackend {
         return try Self.decoder().decode(T.self, from: data)
     }
 
-    /// Sends the request. When the address in use does not answer (left
-    /// home, or came back), finds the one that does and, if nothing can
-    /// happen twice, sends the request there once more.
+    /// Sends the request. One cut short by the app going away (or sent as
+    /// it came back, before the network woke up) goes again once the app
+    /// is back, if nothing can happen twice; otherwise it ends as
+    /// `BackendError.interrupted`, not as a server that did not answer.
     private func load(_ req: URLRequest) async throws -> (Data, URLResponse) {
+        try await again(req) { try await reach($0) { try await URLSession.shared.data(for: $0) } }
+    }
+
+    /// Like `load`, for a response read as it comes.
+    private func stream(_ req: URLRequest) async throws -> (URLSession.AsyncBytes, URLResponse) {
+        try await again(req) { try await reach($0) { try await URLSession.shared.bytes(for: $0) } }
+    }
+
+    private func again<T>(_ req: URLRequest, _ send: (URLRequest) async throws -> T) async throws -> T {
+        var retries = 0
+        while true {
+            let mark = Absence.shared.mark()
+            do {
+                return try await send(req)
+            } catch let error as URLError where Absence.shared.interrupted(error, since: mark) {
+                guard req.httpMethod == "GET" || ServerRoute.neverArrived(error) else { throw BackendError.interrupted }
+                guard retries < 2 else { throw error }
+                retries += 1
+                await Absence.shared.whenBack(pause: Double(retries))
+                try Task.checkCancellation()
+            }
+        }
+    }
+
+    /// When the address in use does not answer (left home, or came back),
+    /// finds the one that does and, if nothing can happen twice, sends the
+    /// request there once more.
+    private func reach<T>(_ req: URLRequest, _ send: (URLRequest) async throws -> T) async throws -> T {
         do {
-            return try await URLSession.shared.data(for: req)
+            return try await send(req)
         } catch let error as URLError where route.hasRemote && ServerRoute.unreachable(error) {
             guard await route.resolve() != nil,
                   req.httpMethod == "GET" || ServerRoute.neverArrived(error),
                   let moved = route.rebased(req)
             else { throw error }
-            return try await URLSession.shared.data(for: moved)
-        }
-    }
-
-    /// Like `load`, for a response read as it comes.
-    private func stream(_ req: URLRequest) async throws -> (URLSession.AsyncBytes, URLResponse) {
-        do {
-            return try await URLSession.shared.bytes(for: req)
-        } catch let error as URLError where route.hasRemote && ServerRoute.unreachable(error) {
-            guard await route.resolve() != nil, let moved = route.rebased(req) else { throw error }
-            return try await URLSession.shared.bytes(for: moved)
+            return try await send(moved)
         }
     }
 }

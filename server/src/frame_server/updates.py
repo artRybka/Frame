@@ -76,6 +76,9 @@ class ServerUpdateView(BaseModel):
     update_available: bool = False
     latest_version: str | None = None
     latest_revision: str | None = None
+    # While updating: the version being replaced. The new server answers
+    # before the helper is done with it, so `version` is already the new one.
+    updating_from: str | None = None
     checked_at: str | None = None
     error: str | None = None
     last_update: LastUpdate | None = None
@@ -147,6 +150,9 @@ class UpdateFolder:
             update_available=status.update_available and not current,
             latest_version=latest.version if latest else None,
             latest_revision=latest.revision if latest else None,
+            updating_from=(
+                status.running.version if status.state == "updating" and status.running else None
+            ),
             checked_at=status.checked_at,
             error=status.error,
             last_update=status.last_update,

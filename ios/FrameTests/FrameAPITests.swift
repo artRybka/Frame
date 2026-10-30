@@ -302,6 +302,21 @@ final class FrameAPITests: XCTestCase {
         XCTAssertEqual(Names.wakes(5), "pobudek")
     }
 
+    func testServerUpdateKeepsTheVersionBeingReplaced() throws {
+        let json = """
+        {"version": "0.42.0", "addon": false, "updater": true, "state": "updating",
+         "update_available": false, "latest_version": "0.42.0", "updating_from": "0.41.2"}
+        """
+        let update = try LiveBackend.decoder().decode(ServerUpdate.self, from: Data(json.utf8))
+        XCTAssertEqual(update.updatingFrom, "0.41.2")
+        XCTAssertTrue(update.busy)
+        let older = try LiveBackend.decoder().decode(
+            ServerUpdate.self,
+            from: Data(#"{"version": "0.42.0", "addon": false, "updater": true, "state": "idle", "update_available": false}"#.utf8)
+        )
+        XCTAssertNil(older.updatingFrom)
+    }
+
     func testPanelAppDecodes() throws {
         let json = """
         {"active": true,
@@ -557,6 +572,30 @@ final class FrameAPITests: XCTestCase {
         XCTAssertFalse(ServerRoute.neverArrived(URLError(.timedOut)))
         XCTAssertTrue(ServerRoute.unreachable(URLError(.timedOut)))
         XCTAssertFalse(ServerRoute.unreachable(URLError(.cancelled)))
+    }
+
+    func testRequestsCutShortByTheBackgroundAreNotServerErrors() async {
+        let absence = Absence()
+        let timedOut = URLError(.timedOut)
+        let before = absence.mark()
+        XCTAssertFalse(absence.interrupted(timedOut, since: before))  // a server that did not answer
+
+        absence.left()
+        XCTAssertTrue(absence.interrupted(timedOut, since: before))  // frozen with the app
+        let back = Date.now
+        absence.cameBack(at: back)
+        XCTAssertTrue(absence.interrupted(timedOut, since: before, now: back.addingTimeInterval(60)))
+
+        let sentOnReturn = absence.mark()
+        XCTAssertTrue(absence.interrupted(URLError(.notConnectedToInternet), since: sentOnReturn, now: back.addingTimeInterval(2)))
+        XCTAssertFalse(absence.interrupted(timedOut, since: sentOnReturn, now: back.addingTimeInterval(60)))
+        XCTAssertFalse(absence.interrupted(URLError(.cancelled), since: before))
+        XCTAssertFalse(absence.interrupted(BackendError.http(status: 500, body: ""), since: before))
+
+        absence.left()
+        let waited = Task { await absence.whenBack(pause: 0) }
+        absence.cameBack()
+        await waited.value  // let go when the app is back
     }
 
     func testMultipartBodyContainsFieldsAndFile() throws {

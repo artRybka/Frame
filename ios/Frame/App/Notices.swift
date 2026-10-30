@@ -128,6 +128,8 @@ final class Notices {
                 }
             case .invalidResponse: return ("Serwer odpowiedział coś niezrozumiałego", nil)
             case .notFound: return ("Nie znaleziono", nil)
+            case .interrupted:
+                return ("Przerwane, gdy aplikacja była w tle", "Nie wiadomo, czy serwer to dostał. Sprawdź i w razie potrzeby powtórz.")
             }
         }
         if let error = error as? URLError {

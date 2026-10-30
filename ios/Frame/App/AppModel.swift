@@ -41,6 +41,9 @@ final class AppModel {
     var serverUpdate: ServerUpdate?
     /// "Aktualizuj serwer": waiting for the server to come back as the new version.
     var updatingServer = false
+    /// The version `updateServer()` started from, for "old → new" once the
+    /// new server already answers.
+    var updatingServerFrom: String?
     /// Claude's settings, spending and progress; loaded when Konfiguracja
     /// opens, nil on an older server.
     var aiSettings: AiSettings?
@@ -799,7 +802,11 @@ final class AppModel {
             return
         }
         updatingServer = true
-        defer { updatingServer = false }
+        updatingServerFrom = before.version
+        defer {
+            updatingServer = false
+            updatingServerFrom = nil
+        }
         var wentAway = false
         let deadline = Date.now.addingTimeInterval(300)
         while Date.now < deadline {

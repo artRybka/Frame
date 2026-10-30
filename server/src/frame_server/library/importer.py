@@ -552,7 +552,11 @@ class Importer:
                     streams.remove(stream)
                     continue
                 drawn += 1
-                if self.library.has(item.id) or self.copy_of(item) or not before(item):
+                if (known := self.library.get(item.id)) is not None:
+                    if item.highlight and not known.highlight:  # taken in before 0.42
+                        self.library.update(item.id, highlight=True)
+                    continue
+                if self.copy_of(item) or not before(item):
                     continue
                 if set_aside(item, terms or []):
                     job.skipped += 1
