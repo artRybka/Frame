@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.38.1
+
+- Zakładka Ramka: kafelki same są przyciskami, bez rzędu przycisków pod
+  nimi. Stuknięcie w Zasilanie otwiera menu zasilania, w Sieć sprawdza stan
+  ramki (kafelek pokazuje „Sprawdzam…” albo „Budzę ramkę…”), w Serwer
+  aktualizuje albo sprawdza wersję; kółko w rogu kafelka mówi, co zrobi
+  stuknięcie. Każda informacja pada raz: nagłówek jednym zdaniem mówi, co
+  ramka robi i jak ją obudzić („Śpi w sieci · wysyłka ją obudzi”), Sieć
+  podaje stan i nazwę sieci, Zasilanie źródło prądu i tryb. Zmiana tylko w
+  aplikacji iOS, serwer bez zmian.
+
 ## 0.38.0
 
 - Podgląd w Ustawieniach → Prezentacja nie znika po przełączeniu Sztuka ↔
