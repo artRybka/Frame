@@ -309,6 +309,16 @@ enum When {
         return rest == 0 ? "za \(hours) h" : "za \(hours) h \(rest) min"
     }
 
+    /// "od 51 min", "od 2 h 5 min", "od 3 dni": how long something lasts.
+    static func since(_ iso: String?, to now: Date = .now) -> String? {
+        guard let date = date(iso) else { return nil }
+        let minutes = max(1, Int(now.timeIntervalSince(date) / 60))
+        let hours = minutes / 60, rest = minutes % 60
+        if hours >= 48 { return "od \(hours / 24) dni" }
+        if hours == 0 { return "od \(minutes) min" }
+        return rest == 0 ? "od \(hours) h" : "od \(hours) h \(rest) min"
+    }
+
     /// "5 min temu", "wczoraj".
     static func ago(_ iso: String?) -> String? {
         guard let date = date(iso) else { return nil }

@@ -347,7 +347,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/api/device/status", dependencies=auth)
     async def device_status() -> DeviceStatus:
-        return await service.status.refresh()
+        await service.status.refresh()
+        service.power.publish_status()
+        return service.status.status
 
     @app.post("/api/device/wake", dependencies=auth)
     async def device_wake(sleep_after: bool = False) -> WakeResult:

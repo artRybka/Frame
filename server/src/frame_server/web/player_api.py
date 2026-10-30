@@ -261,7 +261,10 @@ async def put_settings(settings: FrameSettings, svc: Svc) -> FrameSettings:
 
 @router.get("/status", response_model=StatusView)
 async def status(svc: Svc, refresh: bool = False) -> StatusView:
-    device = await svc.status.refresh() if refresh else svc.status.status
+    if refresh:
+        await svc.status.refresh()
+    svc.power.publish_status()  # whether the app is silent changes with the clock
+    device = svc.status.status
     return StatusView(
         device=device,
         server=ServerStatus(

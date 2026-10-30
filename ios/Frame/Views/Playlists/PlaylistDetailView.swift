@@ -4,7 +4,6 @@ struct PlaylistDetailView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     let playlistID: Int
-    @State private var detail: PlaylistDetail?
     @State private var editing: Playlist?
     @State private var confirmDelete = false
     /// Tapping a work takes it out of the playlist instead of opening it.
@@ -12,38 +11,46 @@ struct PlaylistDetailView: View {
     @State private var syncing = false
     /// "Prezentuj na ramce" asked, until the playlist plays.
     @State private var starting = false
+    /// The first load failed: a retry instead of the skeleton.
+    @State private var failed = false
 
+    /// The works as last loaded; nil until the first load.
+    private var detail: PlaylistDetail? { model.playlistDetails[playlistID] }
+    /// The header shows at once from the list's tile while the works load.
+    private var summary: PlaylistSummary? { detail?.playlist ?? model.playlists.first { $0.id == playlistID } }
     private var isActive: Bool { model.settings?.playlistId == playlistID }
-    private var isAlbum: Bool { detail?.playlist.kind == .album }
+    private var isAlbum: Bool { summary?.kind == .album }
 
     var body: some View {
         ScrollView {
-            if let detail {
-                VStack(alignment: .leading, spacing: 22) {
-                    header(detail.playlist)
-                    if !detail.items.isEmpty {
-                        MasonryGrid(items: detail.items) { item in card(item) }
-                        if detail.playlist.kind == .smart, detail.playlist.itemCount > detail.items.count {
-                            // The server lists a part of a very large playlist.
-                            Text("Widać \(Names.works(detail.items.count)) z \(detail.playlist.itemCount).")
-                                .font(.footnote)
-                                .foregroundStyle(Theme.inkSoft)
-                                .frame(maxWidth: .infinity)
-                        }
-                    } else {
-                        EmptyStateView(
-                            title: "Pusta playlista",
-                            message: Self.emptyMessage(detail.playlist)
-                        )
-                    }
+            VStack(alignment: .leading, spacing: 22) {
+                if let summary {
+                    header(summary)
+                } else {
+                    HeaderSkeleton()
                 }
-                .padding(.horizontal, Theme.gutter)
-                .padding(.bottom, 40)
-            } else {
-                ProgressView().padding(.top, 120)
+                if let detail {
+                    works(detail)
+                        .transition(.opacity)
+                } else if failed {
+                    Button("Spróbuj ponownie", systemImage: "arrow.clockwise") {
+                        Task { await load() }
+                    }
+                    .buttonStyle(.bordered)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 20)
+                } else if (summary?.itemCount ?? 1) > 0 {
+                    GridSkeleton(count: min(summary?.itemCount ?? 6, 6))
+                        .transition(.opacity)
+                }
             }
+            // Full width from the first frame, also with nothing loaded yet.
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, Theme.gutter)
+            .padding(.bottom, 40)
+            .animation(.easeOut(duration: 0.3), value: detail == nil)
         }
-        .background(Theme.paper)
+        .background(Theme.paper.ignoresSafeArea())
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -53,6 +60,7 @@ struct PlaylistDetailView: View {
                 } else {
                     Menu {
                         Button("Edytuj", systemImage: "slider.horizontal.3") { editing = playlistBody() }
+                            .disabled(detail == nil)
                         if isAlbum {
                             Button("Synchronizuj z albumem", systemImage: "arrow.triangle.2.circlepath") { sync() }
                                 .disabled(syncing)
@@ -68,7 +76,7 @@ struct PlaylistDetailView: View {
                                 restoreRemoved()
                             }
                         }
-                        if detail?.playlist.isFavorites != true {
+                        if summary?.isFavorites != true {
                             // "Ulubione" is always there, even with no hearts.
                             Button("Usuń playlistę", systemImage: "trash", role: .destructive) { confirmDelete = true }
                         }
@@ -86,10 +94,32 @@ struct PlaylistDetailView: View {
             Button("Usuń", role: .destructive) {
                 Task {
                     try? await model.backend.deletePlaylist(id: playlistID)
+                    model.playlistDetails[playlistID] = nil
                     await model.refreshPlaylists()
                     dismiss()
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private func works(_ detail: PlaylistDetail) -> some View {
+        if !detail.items.isEmpty {
+            VStack(spacing: 22) {
+                MasonryGrid(items: detail.items) { item in card(item) }
+                if detail.playlist.kind == .smart, detail.playlist.itemCount > detail.items.count {
+                    // The server lists a part of a very large playlist.
+                    Text("Widać \(Names.works(detail.items.count)) z \(detail.playlist.itemCount).")
+                        .font(.footnote)
+                        .foregroundStyle(Theme.inkSoft)
+                        .frame(maxWidth: .infinity)
+                }
+            }
+        } else {
+            EmptyStateView(
+                title: "Pusta playlista",
+                message: Self.emptyMessage(detail.playlist)
+            )
         }
     }
 
@@ -248,7 +278,7 @@ struct PlaylistDetailView: View {
             do {
                 let updated = try await model.backend.removeFromPlaylist(id: playlistID, itemID: item.id)
                 withAnimation(.snappy) {
-                    detail = updated
+                    model.playlistDetails[playlistID] = updated
                     if updated.items.isEmpty { removingItems = false }
                 }
                 await model.refreshPlaylists()
@@ -265,7 +295,7 @@ struct PlaylistDetailView: View {
         Task {
             do {
                 let updated = try await model.backend.savePlaylist(playlist)
-                withAnimation(.snappy) { detail = updated }
+                withAnimation(.snappy) { model.playlistDetails[playlistID] = updated }
                 await model.refreshPlaylists()
             } catch {
                 model.show(error)
@@ -274,12 +304,90 @@ struct PlaylistDetailView: View {
     }
 
     private func load() async {
+        failed = false
         do {
-            detail = try await model.backend.playlist(id: playlistID)
+            model.playlistDetails[playlistID] = try await model.backend.playlist(id: playlistID)
         } catch {
+            if Task.isCancelled { return }
+            failed = detail == nil
             model.show(error)
         }
     }
+}
+
+/// Stand-in for a playlist's header when it opens before the list loaded.
+private struct HeaderSkeleton: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(Theme.mat)
+                .aspectRatio(1.6, contentMode: .fit)
+            Capsule().fill(Theme.mat).frame(width: 120, height: 10)
+            Capsule().fill(Theme.mat).frame(width: 220, height: 26)
+        }
+        .breathing()
+        .accessibilityHidden(true)
+    }
+}
+
+/// Where a playlist's works will be: quiet cards in two columns, breathing
+/// slowly, that give way to the works as they load.
+struct GridSkeleton: View {
+    var count = 6
+    /// Proportions that read as a mix of portraits and landscapes.
+    private static let aspects: [CGFloat] = [0.78, 1.3, 1.0, 0.72, 1.45, 0.9]
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 16) {
+            ForEach(0 ..< 2, id: \.self) { column in
+                VStack(spacing: 16) {
+                    ForEach(Array(stride(from: column, to: count, by: 2)), id: \.self) { index in
+                        card(Self.aspects[index % Self.aspects.count])
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .top)
+            }
+        }
+        .breathing()
+        .accessibilityElement()
+        .accessibilityLabel("Wczytuję dzieła")
+    }
+
+    private func card(_ aspect: CGFloat) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(Theme.mat)
+                .aspectRatio(aspect, contentMode: .fit)
+            VStack(alignment: .leading, spacing: 5) {
+                Capsule().fill(Theme.mat).frame(height: 11).padding(.trailing, 24)
+                Capsule().fill(Theme.mat).frame(width: 70, height: 8)
+            }
+        }
+    }
+}
+
+private struct Breathing: ViewModifier {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var shown = false
+    @State private var dim = false
+
+    func body(content: Content) -> some View {
+        content
+            // Fades in only when the load takes a moment, so a quick one
+            // goes straight from the header to the works without a flash.
+            .opacity(shown ? 1 : 0)
+            .opacity(dim ? 0.55 : 1)
+            .onAppear {
+                withAnimation(.easeIn(duration: 0.3).delay(0.2)) { shown = true }
+                guard !reduceMotion else { return }
+                withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true).delay(0.5)) { dim = true }
+            }
+    }
+}
+
+extension View {
+    /// A placeholder's slow pulse while something loads.
+    func breathing() -> some View { modifier(Breathing()) }
 }
 
 /// An album playlist's source: the order it shows photos in and the last sync.
