@@ -45,6 +45,8 @@ struct FramedArtwork<Inner: View>: View {
     var placeholder: Color = Theme.mat
     var mat: CGFloat = 0
     var moulding: CGFloat = 8
+    /// Off when the frame is turned: the caller casts it, so it keeps falling down.
+    var shadow = true
     @ViewBuilder var inner: Inner
 
     var body: some View {
@@ -70,8 +72,15 @@ struct FramedArtwork<Inner: View>: View {
             )
             .clipShape(RoundedRectangle(cornerRadius: 2))
             .overlay(RoundedRectangle(cornerRadius: 2).strokeBorder(Theme.mouldingEdge, lineWidth: 0.5))
-            .shadow(color: .black.opacity(0.22), radius: 18, x: 0, y: 14)
-            .shadow(color: .black.opacity(0.12), radius: 2, x: 0, y: 1)
+            .frameShadow(shadow)
+    }
+}
+
+extension View {
+    /// The shadow a frame casts on the wall.
+    func frameShadow(_ on: Bool = true) -> some View {
+        shadow(color: .black.opacity(on ? 0.22 : 0), radius: 18, x: 0, y: 14)
+            .shadow(color: .black.opacity(on ? 0.12 : 0), radius: 2, x: 0, y: 1)
     }
 }
 
