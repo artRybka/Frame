@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.36.1
+
+- Ramka odpięta od zasilacza bywa po kilkunastu sekundach znów widoczna w
+  sieci (UniFi: „Ch. 0”), ale sygnał budzenia jej nie budzi. Ramka, która
+  zasnęła sama zaraz po zdjęciu z zasilacza, jest więc zawsze w głębokim
+  śnie, bez względu na odpowiedź ARP, i odpowiedź ARP nie zmienia już
+  głębokiego snu w „Czuwanie”. Aplikacja pisze „Śpi głęboko, obudzi ją
+  przycisk” zamiast „Śpi bez Wi-Fi”.
+
 ## 0.36.0
 
 - Ramka odpięta od zasilacza zasypia od razu i bez Wi-Fi: serwer nie bierze
