@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.42.0
+
+- Odkrywaj → Propozycje są codziennie świeże: okładki motywów losują się
+  każdego dnia z 40 najlepszych dzieł motywu, a kafelek pokazuje „+N”, gdy
+  w tym tygodniu doszły do niego nowe dzieła. Nowe rzędy „Nowe w katalogu”
+  (najlepsze z tygodniowych nabytków) i „Dawno ich nie było” (zachowane
+  dzieła niepokazywane od pół roku).
+- Motyw dnia nie powtarza się przez 30 dni, motywy sezonowe wypadają
+  częściej (i nigdy poza sezonem), a polskie święta i Wielkanoc mają własny
+  motyw z uzasadnieniem. Nowe motywy: Jesień, Wiosna, Lato i Arcydzieła
+  muzeów (wyróżnione dzieła Met i Cleveland).
+- „Na ten tydzień”: co tydzień artysta tygodnia i trzy pary tematów z tego,
+  co jest w katalogu, bez powtórek przez 12 tygodni.
+- Nowe źródło: Statens Museum for Kunst (SMK, Kopenhaga), domena publiczna.
+  Pełny katalog nadal przyjmuje 60 dzieł co 6 godzin, a przy przycinaniu
+  pierwsze odchodzą starsze, niezachowane dzieła.
+- Strzałka przy każdym nagłówku w Propozycjach otwiera całość jako siatkę
+  w dwóch kolumnach: grupa motywów pokazuje wszystkie swoje motywy, rząd
+  otwiera swój motyw albo swoje dzieła („Dla Ciebie”). Zastępuje link
+  „Więcej”.
+- Obrazy w kolażach pojawiają się od razu w kadrze na twarz, bez
+  przesuwania po wyświetleniu. Okładki motywów w Propozycjach też kadrują
+  się wokół postaci.
+
 ## 0.41.2
 
 - Ustawienia → Prezentacja: przyciski Orientacji są teraz na górze, nad
