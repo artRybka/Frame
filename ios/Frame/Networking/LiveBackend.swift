@@ -447,8 +447,9 @@ struct LiveBackend: FrameBackend {
         switch image {
         case let .thumb(id): req = request("/api/library/items/\(escape(id))/thumb")
         case let .image(id): req = request("/api/library/items/\(escape(id))/image")
-        case let .framePreview(id, settings, framing):
+        case let .framePreview(id, settings, framing, ownLook):
             var query = framingQuery(settings)
+            if !ownLook { query.append(URLQueryItem(name: "own_look", value: "false")) }
             let encoder = Self.encoder()
             encoder.outputFormatting = .sortedKeys
             if let framing, let data = try? encoder.encode(framing) {

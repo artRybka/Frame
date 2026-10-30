@@ -1061,6 +1061,11 @@ struct PresentationSection: View {
     @State private var target = LaunchRoute.screen == "presentation-photo" ? Target.photo : .art
     /// `settings` after a short pause, so a slider drag renders once.
     @State private var previewed: FrameSettings?
+    /// What the preview shows for a kind the frame is not showing now: the
+    /// last of that kind on the frame, else one drawn from the library.
+    @State private var standIns: [Target: String] = [:]
+    /// Kinds the library has nothing of.
+    @State private var emptyKinds: Set<Target> = []
 
     enum Target: String, CaseIterable {
         case art = "Sztuka"
@@ -1090,9 +1095,70 @@ struct PresentationSection: View {
     }
 
     /// The picture on the frame, when the selected presentation applies to it.
-    private var previewItem: Item? {
+    private var currentID: String? {
         guard let item = model.player?.current?.item else { return nil }
-        return (item.kind == .photo) == (target == .photo) ? item : nil
+        return (item.kind == .photo) == (target == .photo) ? item.id : nil
+    }
+
+    private var previewID: String? { currentID ?? standIns[target] }
+
+    /// A picture of `target`'s kind to preview: the last one on the frame,
+    /// else a random one of the library, the owner's works first.
+    private func drawStandIn() async {
+        let target = target
+        let photo = target == .photo
+        if let last = model.player?.history.first(where: { ($0.kind == .photo) == photo }) {
+            standIns[target] = last.id
+            return
+        }
+        var query = LibraryQuery()
+        query.kinds = photo ? [.photo] : [.artwork, .own]
+        query.keptOnly = !photo
+        query.sort = photo ? "recent" : "suitability"
+        var pool: [String] = []
+        do {
+            pool = try await model.backend.items(query).items.map(\.id)
+            if pool.isEmpty, query.keptOnly {
+                query.keptOnly = false
+                pool = try await model.backend.items(query).items.map(\.id)
+            }
+            // Photos sent once are not in the library's lists, only in theirs.
+            if photo, let sent = model.playlists.first(where: { $0.name == PlaylistSummary.sentName }) {
+                pool += (try? await model.backend.playlist(id: sent.id).itemIds) ?? []
+            }
+        } catch {
+            return  // no server now: the next visit tries again
+        }
+        if pool.isEmpty {
+            emptyKinds.insert(target)
+        } else {
+            emptyKinds.remove(target)
+            standIns[target] = pool.randomElement()
+        }
+    }
+
+    /// The frame with the picture on it, or, for the other kind, with one of
+    /// that kind to try the settings on.
+    private var preview: some View {
+        let portrait = settings.orientation == "portrait"
+        let empty = previewID == nil && emptyKinds.contains(target)
+        return FramedArtwork(
+            ref: previewID.map { ImageRef.framePreview($0, settings: previewed ?? settings, ownLook: false) },
+            aspectRatio: portrait ? 9.0 / 16.0 : 16.0 / 9.0,
+            placeholder: MatSwatch.color(presentation.mat.wrappedValue),
+            moulding: 5
+        ) {
+            if empty {
+                Text(target == .photo ? "Brak zdjęć w bibliotece" : "Brak dzieł w bibliotece")
+                    .font(.caption)
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(Theme.inkSoft)
+                    .padding(8)
+            }
+        }
+        .frame(maxWidth: portrait ? 190 : .infinity)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 6)
     }
 
     var body: some View {
@@ -1102,21 +1168,14 @@ struct PresentationSection: View {
                 ForEach(Target.allCases, id: \.self) { Text($0.rawValue).tag($0) }
             }
             .pickerStyle(.segmented)
-            if let item = previewItem {
-                let portrait = settings.orientation == "portrait"
-                FramedArtwork(
-                    ref: .framePreview(item.id, settings: previewed ?? settings),
-                    aspectRatio: portrait ? 9.0 / 16.0 : 16.0 / 9.0,
-                    moulding: 5
-                )
-                .frame(maxWidth: portrait ? 190 : .infinity)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 6)
+            preview
                 .task(id: settings) {
                     try? await Task.sleep(for: .milliseconds(450))
                     if !Task.isCancelled { previewed = settings }
                 }
-            }
+                .task(id: "\(target.rawValue) \(model.player != nil)") {  // the history comes with the player
+                    if model.player != nil, currentID == nil, standIns[target] == nil { await drawStandIn() }
+                }
             Card {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Kadrowanie").foregroundStyle(Theme.ink)
