@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.41.2
+
+- Ustawienia → Prezentacja: przyciski Orientacji są teraz na górze, nad
+  podglądem ramki, a Sztuka/Zdjęcia pod nim, potem Kadrowanie. Podgląd ma
+  tylko taką wysokość, jakiej potrzebuje ramka, więc w poziomie nie ma pustego
+  pasa, a wysokość zmienia się płynnie razem z obrotem. Zmiana tylko w
+  aplikacji iOS.
+
 ## 0.41.1
 
 - Poprawka: w 0.41.0 obrazy w całej aplikacji zostawały szare. Szukanie
