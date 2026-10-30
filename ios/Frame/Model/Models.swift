@@ -530,11 +530,13 @@ struct DeviceStatus: Codable, Hashable, Sendable {
     /// The power mode ("online", "economy") set while the frame sleeps: it
     /// takes it on at its next wake. Nil when nothing waits.
     var modePending: String?
-    /// How fast the battery runs down, measured on battery: percent a day
-    /// and the days left at that rate. Nil on the charger, until measured
-    /// and from servers before 0.31.
+    /// How fast the battery runs down: percent a day at the schedule set
+    /// and the days left at that rate. Nil on the charger, and from servers
+    /// before 0.31 (until 0.41 also until half a day was measured).
     var batteryPerDay: Double?
     var batteryDays: Double?
+    /// The same with its likely range and what each thing costs (0.41+).
+    var battery: BatteryEstimate?
     /// "Głęboki sen" chosen in the app: the Wi-Fi off and no changes until
     /// this moment; `switchedOff`: "Wyłącz ramkę", no alarm at all. Only the
     /// button on the frame ends either sooner.
@@ -546,6 +548,48 @@ struct DeviceStatus: Codable, Hashable, Sendable {
     /// The frame answers the server, yet the Frame app on it has not asked
     /// for a picture since this moment: it does not run or hangs (0.37+).
     var appSilentSince: String?
+}
+
+/// How long the battery lasts at the schedule set: the server learns what
+/// each thing costs from the readings on battery, starting from what was
+/// measured on other EM32DX frames, so the range narrows day by day.
+struct BatteryEstimate: Codable, Hashable, Sendable {
+    var perDay: Double
+    /// Days left on battery (nil on the charger), and on a full battery,
+    /// each with the low and high ends of its likely range.
+    var days: Double?
+    var daysLow: Double?
+    var daysHigh: Double?
+    var fullDays: Double
+    var fullDaysLow: Double
+    var fullDaysHigh: Double
+    /// Hours on battery and readings behind the costs.
+    var hoursMeasured: Double
+    var readings: Int
+    var costs: BatteryCosts
+    var day: BatteryDay
+}
+
+/// In percent of a full battery; `learnt` 0 (still the assumption) to 1
+/// (measured), in the order standby, deep sleep, wake, change.
+struct BatteryCosts: Codable, Hashable, Sendable {
+    var standbyPerDay: Double
+    var deepPerDay: Double
+    var perWake: Double
+    var perChange: Double
+    var learnt: [Double]
+}
+
+/// A day at the schedule set and what each part of it costs (percent).
+struct BatteryDay: Codable, Hashable, Sendable {
+    var standbyHours: Double
+    var deepHours: Double
+    var wakes: Double
+    var changes: Double
+    var standbyCost: Double
+    var deepCost: Double
+    var wakesCost: Double
+    var changesCost: Double
 }
 
 /// "Głęboki sen" / "Wyłącz ramkę": until when (nil: switched off), and

@@ -76,6 +76,7 @@ jobs:
             capture presentation-photo 12 "presentation-photo-$appearance"
             capture orientation 10 "orientation-$appearance"
             capture connection 10 "connection-$appearance"
+            capture battery 10 "battery-$appearance"
             capture museums 8 "museums-$appearance"
             capture search 8 "search-$appearance"
             capture search-picker 8 "search-picker-$appearance"

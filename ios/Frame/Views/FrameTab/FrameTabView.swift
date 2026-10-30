@@ -20,6 +20,7 @@ struct FrameTabView: View {
     /// The Sieć tile was tapped: it says "Sprawdzam…" until the look is done
     /// (opening the tab only turns its badge).
     @State private var checking = false
+    @State private var showingBattery = LaunchRoute.screen == "battery"
 
     private var device: DeviceStatus? { model.status?.device }
 
@@ -78,6 +79,11 @@ struct FrameTabView: View {
                             base = model.settings
                         }
                     }
+                }
+            }
+            .sheet(isPresented: $showingBattery) {
+                if let device, let battery = device.battery {
+                    BatteryView(estimate: battery, onBattery: device.powerSource == "battery" && device.charging != true)
                 }
             }
             // In a task of its own: SwiftUI cancels the refresh's task when the
@@ -310,9 +316,16 @@ struct FrameTabView: View {
 
     private var statusGrid: some View {
         LazyVGrid(columns: [GridItem(.flexible(), spacing: 14), GridItem(.flexible(), spacing: 14)], spacing: 14) {
-            StatusTile(title: "Bateria") {
-                BatteryRing(level: device?.batteryLevel, charging: device?.charging == true, note: batteryNote)
+            Button {
+                // Not disabled without an estimate (an older server): that would dim it.
+                showingBattery = device?.battery != nil
+            } label: {
+                StatusTile(title: "Bateria", badge: device?.battery == nil ? nil : TileBadge(systemImage: "info")) {
+                    BatteryRing(level: device?.batteryLevel, charging: device?.charging == true, note: batteryNote)
+                }
             }
+            .buttonStyle(.plain)
+            .accessibilityHint("Pokazuje, ile kosztuje czuwanie, sen, pobudka i zmiana obrazu")
             powerTile
             serverTile
             networkTile
@@ -542,17 +555,19 @@ struct FrameTabView: View {
         return ("server.rack", Theme.inkSoft, version, "aktualny", checked, false)
     }
 
-    /// Under the battery level: how long it lasts at the rate measured on
-    /// battery; on the charger whether it charges (Zasilanie says "Zasilacz").
+    /// Under the battery level: how long it lasts at the schedule set, as a
+    /// range while the costs are still mostly assumed; on the charger
+    /// whether it charges (Zasilanie says "Zasilacz").
     private var batteryNote: String {
         if device?.charging == true { return "ładuje się" }
         switch device?.powerSource {
         case "ac": return (device?.batteryLevel ?? 0) >= 95 ? "naładowana" : ""
         case "battery":
+            if let battery = device?.battery, let days = battery.days {
+                return "ok. " + BatteryText.span(days, low: battery.daysLow, high: battery.daysHigh)
+            }
             guard let days = device?.batteryDays else { return "mierzę zużycie" }
-            if days > 60 { return "ok. \(Int(days / 30)) mies." }
-            if days >= 2 { return "ok. \(Int(days)) dni" }
-            return "ok. \(max(1, Int(days * 24))) godz."
+            return "ok. " + BatteryText.span(days, low: nil, high: nil)
         default: return ""
         }
     }

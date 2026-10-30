@@ -191,6 +191,24 @@ final class FrameAPITests: XCTestCase {
         XCTAssertEqual(rest.applies, "at_wake")
     }
 
+    func testBatteryEstimateDecodesAndReads() throws {
+        let json = #"{"configured": true, "battery_days": 3.4, "battery": {"per_day":23.27,"days":3.4,"days_low":1.9,"days_high":13.8,"full_days":4.3,"full_days_low":2.4,"full_days_high":17.2,"hours_measured":0.0,"readings":0,"costs":{"standby_per_day":36.0,"deep_per_day":0.12,"per_wake":0.25,"per_change":0.3,"learnt":[0.0,0.0,0.0,0.0]},"day":{"standby_hours":15.0,"deep_hours":9.0,"wakes":2.0,"changes":1.0,"standby_cost":22.42,"deep_cost":0.04,"wakes_cost":0.5,"changes_cost":0.3}}}"#
+        let status = try LiveBackend.decoder().decode(DeviceStatus.self, from: Data(json.utf8))
+        let battery = try XCTUnwrap(status.battery)
+        XCTAssertEqual(battery.costs.standbyPerDay, 36.0)
+        XCTAssertEqual(battery.day.wakes, 2.0)
+        XCTAssertEqual(BatteryText.span(3.4, low: 1.9, high: 13.8), "2–14 dni")
+        XCTAssertEqual(BatteryText.span(9.2, low: 8.5, high: 10.1), "9 dni")
+        XCTAssertEqual(BatteryText.span(1.0, low: nil, high: nil), "24 godz.")
+        XCTAssertEqual(BatteryText.span(200, low: nil, high: nil), "7 mies.")
+        XCTAssertEqual(BatteryText.percent(22.42), "22%")
+        XCTAssertEqual(BatteryText.percent(0.26), "0,3%")
+        XCTAssertEqual(BatteryText.percent(0.04), "<0,1%")
+        XCTAssertEqual(BatteryText.count(2, one: "pobudka", few: "pobudki", many: "pobudek"), "2 pobudki")
+        XCTAssertEqual(BatteryText.count(5, one: "pobudka", few: "pobudki", many: "pobudek"), "5 pobudek")
+        XCTAssertEqual(BatteryText.count(1, one: "zmiana", few: "zmiany", many: "zmian"), "1 zmiana")
+    }
+
     func testProgressPhasesAndLabels() {
         var progress = DisplayProgress(stage: "refreshing", phase: "displaying", active: true,
                                        title: "", fraction: 0.8, secondsLeft: 150)
