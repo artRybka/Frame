@@ -460,11 +460,12 @@ class Player:
         state: PlayerState,
         settings: FrameSettings,
         keep: list[str] | None = None,
+        spare: list[Item] | None = None,
     ) -> list[Item]:
         """The photos shown with ``item``: ``item`` alone unless photos are
         shown several to a board. ``keep`` (a redraw) are the ones shown with
         it before; missing photos are taken from the queue (removed from
-        it), then from the rest of the playlist."""
+        it), then from the rest of the playlist, then from ``spare``."""
         if not self.multi(item, settings):
             return [item]
         pres = settings.photo
@@ -491,6 +492,10 @@ class Player:
             ]
             random.shuffle(rest)
             board += rest[: count - len(board)]
+            taken |= {i.id for i in board}
+        if len(board) < count and spare:
+            more = [i for i in spare if i.id not in taken and not i.excluded]
+            board += more[: count - len(board)]
         return board
 
     def preview_board(self, item: Item, settings: FrameSettings) -> list[Item]:
@@ -498,7 +503,16 @@ class Player:
         ``item`` is current, else the photos that would join it next."""
         state = self.state
         keep = state.current_group if state.current_item_id == item.id else None
-        return self.board(item, state, settings, keep)  # state is a copy: nothing is taken
+        spare = None
+        if self.multi(item, settings):
+            # A playlist of art has no photos to join it: the library's
+            # photos and those sent once fill the board, the same ones each
+            # time for one photo.
+            listed = self.library.query(PlaylistRules(kinds=[ItemKind.PHOTO]))[1]
+            sent = (self.library.get(i) for i in sorted(self.library.sent_photo_ids()))
+            spare = sorted([*listed, *(i for i in sent if i is not None)], key=lambda i: i.id)
+            random.Random(item.id).shuffle(spare)
+        return self.board(item, state, settings, keep, spare)  # state is a copy: nothing is taken
 
     # -- showing -------------------------------------------------------------
 
