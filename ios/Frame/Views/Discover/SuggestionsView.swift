@@ -211,7 +211,8 @@ struct ThemeCard: View {
                                         ref: works[index].thumb,
                                         fallback: works[index].thumbFallback,
                                         placeholder: works[index].item.summary.placeholderColor,
-                                        maxPixel: 240
+                                        maxPixel: 240,
+                                        subjectFocus: true
                                     )
                                 } else {
                                     Theme.mat
