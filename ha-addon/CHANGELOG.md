@@ -21,6 +21,13 @@
   ciąć przez środek. Każdy obraz w kolażu nagłówka otwiera swoje dzieło.
   Zmiana tylko w aplikacji iOS.
 
+- Szacowanie baterii: serwer śledzi, co robi ramka (czuwanie, głęboki sen,
+  wybudzenia, rysowanie obrazów), i z odczytów na baterii uczy się, ile
+  kosztuje każda z tych rzeczy, zaczynając od pomiarów z innych ramek
+  EM32DX. Kafelek Bateria pokazuje, na ile dni starczy przy obecnym
+  harmonogramie (z zakresem, który zawęża się z kolejnymi odczytami), i
+  otwiera rozbicie. Serwer: pole `battery` w statusie.
+
 ## 0.40.0
 
 - Wysyłanie obrazu na ramkę widać też poza aplikacją: pasek na ekranie
