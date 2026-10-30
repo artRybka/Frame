@@ -169,6 +169,8 @@ struct NowView: View {
                     .animation(.easeInOut, value: model.displayProgress == nil)
                 }
                 .refreshable { await Task { await model.refreshAll() }.value }
+                // CI screenshots: `-screen history` shows "Ostatnio na ramce".
+                .defaultScrollAnchor(LaunchRoute.screen == "history" ? .bottom : .top)
             }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -223,6 +225,14 @@ struct NowView: View {
                 redrawFrom = now ? model.displayProgress?.fraction : nil
             }
             .task(id: inFlight ? current?.previewUrl : nil) { await loadSwap() }
+            .onChange(of: history.first?.id, initial: true) { _, first in
+                // CI screenshots: `-screen history-back` starts at the picture before.
+                guard LaunchRoute.screen == "history-back", !routed, let first else { return }
+                routed = true
+                if let previous = history.first, previous.id == first {
+                    browsed = Browsed(summary: previous, offset: -1)
+                }
+            }
             .onChange(of: upcoming.first?.id, initial: true) { _, first in
                 // CI screenshots: `-screen browse` starts at the next picture.
                 guard LaunchRoute.screen == "browse", !routed, let first else { return }

@@ -105,6 +105,11 @@ actor DemoBackend: FrameBackend {
         queue = (first.flatMap { $0.isEmpty ? nil : $0 } ?? loaded.items).map(\.id)
         currentID = queue.first
         if !queue.isEmpty { queue.removeFirst() }
+        if ["history", "history-back"].contains(LaunchRoute.screen) {
+            // CI screenshots: "Ostatnio na ramce" with pictures in it.
+            let earlier = loaded.items.map(\.id).filter { $0 != currentID && !queue.prefix(8).contains($0) }
+            history = Array(earlier.prefix(4).reversed())
+        }
         shared.current = settingsValue
         shared.shown = settingsValue
     }
