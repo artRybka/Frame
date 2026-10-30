@@ -98,20 +98,32 @@ final class FrameAPITests: XCTestCase {
          },
          "title": "Wielka fala w Kanagawie",
          "teaser": "Fala z pazurami i święta góra schowana w jej dolinie.",
+         "focus": {
+          "x": 0.64,
+          "y": 1.0
+         },
          "why_today": "Jutro mija 266 lat od urodzin Hokusaia.",
          "writing": false,
          "written": true,
+         "headline": "Pocztówka z pielgrzymki",
          "context": [
           "Hokusai miał około siedemdziesięciu lat.",
           "Nowością był błękit pruski."
          ],
-         "facts": [
-          {
-           "label": "Seria",
-           "value": "36 widoków góry Fudżi"
-          }
-         ],
+         "artist": "Katsushika Hokusai, malarz i rysownik z Edo, zmieniał imię ponad trzydzieści razy.",
+         "facts": [],
          "composition": {
+          "views": [
+           {
+            "title": "Geometria",
+            "grid": "golden",
+            "text": "Szczyt w złotym punkcie.",
+            "marks": [
+             {"shape": "loop", "points": [{"x": 0.62, "y": 0.62}, {"x": 0.66, "y": 0.66}], "title": "Fudżi", "text": "w złotym punkcie"},
+             {"shape": "arrow", "points": [{"x": 0.1, "y": 0.9}, {"x": 0.3, "y": 0.1}, {"x": 0.55, "y": 0.35}], "title": "Łuk fali", "text": ""}
+            ]
+           }
+          ],
           "points": [
            {
             "x": 0.63,
@@ -217,12 +229,27 @@ final class FrameAPITests: XCTestCase {
         let work = try LiveBackend.decoder().decode(DailyWork.self, from: Data(json.utf8))
         XCTAssertTrue(work.written)
         XCTAssertEqual(work.title, "Wielka fala w Kanagawie")
+        XCTAssertEqual(work.focus?.y, 1.0)
+        XCTAssertEqual(work.headline, "Pocztówka z pielgrzymki")
+        XCTAssertEqual(work.artist?.hasPrefix("Katsushika Hokusai"), true)
         XCTAssertEqual(work.composition?.points.first?.title, "Fudżi")
         XCTAssertEqual(work.composition?.lines.first?.points.count, 2)
         XCTAssertEqual(work.similar.first?.why, "ta sama seria")
         XCTAssertNil(work.legacy.first?.item)
-        let path = CompositionPicture.path(work.composition?.lines.first?.points ?? [], in: CGSize(width: 100, height: 50))
-        XCTAssertFalse(path.isEmpty)
+        let take = try XCTUnwrap(work.composition?.takes.first)
+        XCTAssertEqual(take.grid, "golden")
+        XCTAssertEqual(take.marks.map(\.shape), ["loop", "arrow"])
+        let size = CGSize(width: 300, height: 200)
+        for mark in take.marks {
+            XCTAssertFalse(Pencil.paths(for: mark, in: size, seed: 1).isEmpty)
+            let spot = Pencil.numberSpot(for: mark, in: size)
+            XCTAssertTrue((0...size.width).contains(spot.x) && (0...size.height).contains(spot.y))
+        }
+        // 0.42 servers: the points and lines become one take.
+        var old = try XCTUnwrap(work.composition)
+        old.views = nil
+        XCTAssertEqual(old.takes.first?.marks.first?.title, "Fudżi")
+        XCTAssertEqual(old.takes.first?.marks.count, 3)
     }
 
     func testDecodesUndeliveredPicture() throws {

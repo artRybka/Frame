@@ -24,6 +24,7 @@ from PIL import Image
 from pydantic import BaseModel, Field
 
 from ..imaging.layout import load_image
+from ..imaging.text import sentences
 from ..library.markup import strip_markup
 from ..library.models import Note
 from ..library.museums import client
@@ -38,15 +39,22 @@ if TYPE_CHECKING:
 
 KIND = "daily"
 #: Changed whenever the prompt changes, so the text is written again.
-PROMPT_VERSION = "daily-1"
+PROMPT_VERSION = "daily-3"
+#: The tile's two lines under the title (characters).
+TEASER_CHARS = 100
 #: The picture goes out this big: enough to see the composition.
 IMAGE_SIDE = 1568
 #: Wikipedia articles about the work, and the artist's opening paragraph.
 WORK_CHARS = 9000
 ARTIST_CHARS = 1500
-MAX_POINTS = 6
-MAX_LINES = 4
+MAX_VIEWS = 3
+MAX_MARKS = 6
 MAX_LINE_POINTS = 12
+#: The marks drawn over the picture, and how many points each takes
+#: (lines and arrows: 2 up to ``MAX_LINE_POINTS``).
+SHAPES = {"arrow": 2, "line": 2, "loop": 2, "triangle": 3, "rect": 2, "underline": 2}
+#: The grids the app draws under a view: none, the golden section, thirds.
+GRIDS = ("none", "golden", "thirds")
 MAX_SIMILAR = 6
 MAX_LEGACY = 5
 SOURCES = ("obraz", "dane muzeum", "Wikidata", "Wikipedia", "wiedza ogólna")
@@ -69,21 +77,35 @@ ozdobników i bez zwrotów do czytelnika. Nazwy japońskie i chińskie w polskie
 jej pewien jak encyklopedia (np. słynne nawiązania do bardzo znanego dzieła). Nie wymyślaj dat, \
 cytatów, nazwisk ani okoliczności. Jeśli czegoś nie wiesz, pomiń to.
 - "title": polski tytuł dzieła.
-- "teaser": jedno lub dwa zdania, najwyżej 160 znaków, które zachęcą do przeczytania reszty. \
-Bez daty i nazwiska autora (aplikacja je pokazuje).
+- "teaser": JEDNO zdanie, najwyżej 90 znaków ze spacjami (musi się zmieścić w dwóch wierszach \
+kafelka, nie będzie skracane), które zachęci do przeczytania reszty. Bez daty i nazwiska autora \
+(aplikacja je pokazuje).
+- "focus": najważniejsze miejsce obrazu (twarz głównej postaci albo główny motyw), x i y jak \
+w kompozycji. Aplikacja kadruje wokół niego niski, szeroki pasek miniatury.
 - "why_today": jedno zdanie, dlaczego to dzieło pasuje do podanej daty: rocznica urodzin lub \
 śmierci autora albo powstania dzieła (tylko gdy wynika z dat w źródłach i wypada dziś lub w \
 tym tygodniu), pora roku, święto. Pusty, gdy nie ma prawdziwego powodu.
+- "headline": tytuł tekstu o okolicznościach (2–6 słów, bez kropki), konkretny dla tego \
+dzieła, np. „Pocztówka z pielgrzymki do Fudżi”. Nie „Kontekst”, nie tytuł dzieła.
 - "context": dwa krótkie akapity (po 300–550 znaków): kiedy i w jakich okolicznościach dzieło \
 powstało, co było w nim nowe, jak je przyjęto.
-- "facts": 2–4 krótkie fakty (etykieta i wartość, np. "Seria" / "36 widoków góry Fudżi"), \
-bez powtarzania autora, daty, techniki i muzeum.
-- "composition": analiza kompozycji widocznej na obrazie. "points": 3–6 punktów, każdy z \
-krótkim tytułem (2–3 słowa) i jednym-dwoma zdaniami; x i y to miejsce na obrazie, ułamki \
-szerokości i wysokości od lewego górnego rogu (0–1), dokładnie tam, gdzie jest opisywana rzecz. \
-Kolejność punktów to kolejność czytania. "lines": 0–4 linie kompozycyjne (główny łuk, \
-przekątna, horyzont, oś symetrii, trójkąt), każda jako 2–12 punktów, przez które biegnie, \
-i krótki podpis. Rysuj tylko linie, które naprawdę widać.
+- "artist": krótka notka o autorze, dwa-trzy zdania (najwyżej 400 znaków): kim był, czym się \
+wyróżniał i w którym miejscu jego drogi powstało to dzieło. Bez powtarzania tekstu powyżej.
+- "composition": analiza kompozycji jako 1–3 ujęcia ("views"), każde rysowane osobno na \
+rozbielonym obrazie jak ołówkiem na kalce. Najczęściej dwa: „Droga oka” (co i w jakiej \
+kolejności prowadzi wzrok) i „Geometria”. W geometrii szukaj złotego podziału (linie 0,382 i \
+0,618), trójpodziału, przekątnych, trójkątów, kół i owali, osi symetrii, rytmu powtórzeń; \
+trzecie ujęcie tylko, gdy ma sens (np. „Światło”). Pokazuj tylko to, co naprawdę widać, \
+niczego nie naginaj; jeśli żadna siatka nie pasuje, "grid" to "none". Każde ujęcie: \
+"title" (1–3 słowa), "grid" ("golden" lub "thirds", gdy kompozycja naprawdę się na nich \
+opiera, aplikacja narysuje siatkę), "text" (dwa-trzy zdania, co to ujęcie pokazuje) i \
+"marks": 2–5 śladów. Ślad: "shape" i "points" (x i y to ułamki szerokości i wysokości obrazu \
+od lewego górnego rogu, 0–1, dokładnie na opisywanej rzeczy): "arrow" (2–12 punktów wzdłuż \
+drogi, grot na końcu), "line" (2–12 punktów: horyzont, przekątna, oś, krawędź), "loop" (kółko \
+wokół rzeczy: środek i jeden róg prostokąta, w który się wpisuje), "triangle" (3 wierzchołki), \
+"rect" (dwa przeciwległe rogi), "underline" (podkreślenie falką: początek i koniec). Do \
+każdego "title" (1–3 słowa, podpis przy śladzie) i "text" (najwyżej 45 znaków, dopisek pod \
+podpisem). Kolejność śladów to kolejność czytania.
 - "colour": dwa-trzy zdania o kolorze i świetle.
 - "on_frame": jedno-dwa zdania, jak dzieło wypadnie na ramce. Ramka ma sześć tuszy: czarny, \
 biały, czerwony, żółty, niebieski, zielony; pozostałe barwy, beże i pastele składa z \
@@ -120,14 +142,27 @@ _POINT = _object(x={"type": "number"}, y={"type": "number"})
 SCHEMA = _object(
     title=_str(),
     teaser=_str(),
+    focus=_POINT,
     why_today=_str(),
+    headline=_str(),
     context=_list(_str()),
-    facts=_list(_object(label=_str(), value=_str())),
+    artist=_str(),
     composition=_object(
-        points=_list(
-            _object(x={"type": "number"}, y={"type": "number"}, title=_str(), text=_str())
+        views=_list(
+            _object(
+                title=_str(),
+                grid={"type": "string", "enum": list(GRIDS)},
+                text=_str(),
+                marks=_list(
+                    _object(
+                        shape={"type": "string", "enum": list(SHAPES)},
+                        points=_list(_POINT),
+                        title=_str(),
+                        text=_str(),
+                    )
+                ),
+            )
         ),
-        lines=_list(_object(label=_str(), points=_list(_POINT))),
     ),
     colour=_str(),
     on_frame=_str(),
@@ -137,11 +172,6 @@ SCHEMA = _object(
     ),
     sources=_list({"type": "string", "enum": list(SOURCES)}),
 )
-
-
-class Fact(BaseModel):
-    label: str
-    value: str
 
 
 class Spot(BaseModel):
@@ -161,7 +191,39 @@ class Line(BaseModel):
     points: list[Spot]
 
 
+class Mark(BaseModel):
+    """A pencil mark on the picture, with its label around it."""
+
+    shape: str
+    points: list[Spot]
+    title: str
+    text: str = ""
+
+    def anchor(self) -> Spot:
+        """Where a remark about the mark points: its middle."""
+        if self.shape == "loop" or len(self.points) == 1:
+            return self.points[0]
+        if self.shape == "rect":
+            a, b = self.points
+            return Spot(x=(a.x + b.x) / 2, y=(a.y + b.y) / 2)
+        if self.shape == "triangle":
+            return Spot(x=sum(p.x for p in self.points) / 3, y=sum(p.y for p in self.points) / 3)
+        return self.points[len(self.points) // 2]
+
+
+class View(BaseModel):
+    """One take on the composition: its marks over the picture, a grid under
+    them and a few sentences."""
+
+    title: str
+    grid: str = "none"
+    text: str = ""
+    marks: list[Mark] = Field(default_factory=list)
+
+
 class Composition(BaseModel):
+    views: list[View] = Field(default_factory=list)
+    #: The first take as numbered points and lines, for 0.42 apps.
     points: list[Point] = Field(default_factory=list)
     lines: list[Line] = Field(default_factory=list)
 
@@ -185,9 +247,14 @@ class Essay(BaseModel):
 
     title: str = ""
     teaser: str
+    #: Where the tile's band is cropped around.
+    focus: Spot | None = None
     why_today: str = ""
+    #: The title of the text (instead of "Kontekst").
+    headline: str = ""
     context: list[str] = Field(default_factory=list)
-    facts: list[Fact] = Field(default_factory=list)
+    #: A short note about the artist.
+    artist: str = ""
     composition: Composition = Field(default_factory=Composition)
     colour: str = ""
     on_frame: str = ""
@@ -266,6 +333,18 @@ def _text(value: Any, limit: int = 2000) -> str:
     return text
 
 
+def short(text: str, limit: int) -> str:
+    """``text`` as it fits the tile: its first sentence when the whole is too
+    long, cut at a word only when that is too long as well."""
+    if len(text) <= limit:
+        return text
+    found = sentences(text)
+    first = found[0] if found else text
+    if len(first) <= limit:
+        return first
+    return first[:limit].rsplit(" ", 1)[0].rstrip(" ,;:–-") + "…"
+
+
 def _unit(value: Any) -> float | None:
     try:
         number = float(value)
@@ -285,23 +364,43 @@ def _dicts(value: Any) -> list[dict[str, Any]]:
     return [v for v in value if isinstance(v, dict)] if isinstance(value, list) else []
 
 
+def _mark(raw: dict[str, Any]) -> Mark | None:
+    shape, title = str(raw.get("shape") or ""), _text(raw.get("title"), 40)
+    spots = [s for s in map(_spot, raw.get("points") or []) if s is not None]
+    if shape not in SHAPES or not title or len(spots) < SHAPES[shape]:
+        return None
+    keep = MAX_LINE_POINTS if shape in ("arrow", "line") else SHAPES[shape]
+    return Mark(shape=shape, points=spots[:keep], title=title, text=_text(raw.get("text"), 80))
+
+
+def _view(raw: dict[str, Any]) -> View | None:
+    marks = [m for m in map(_mark, _dicts(raw.get("marks"))) if m is not None][:MAX_MARKS]
+    title = _text(raw.get("title"), 40)
+    if not marks or not title:
+        return None
+    grid = raw.get("grid") if raw.get("grid") in GRIDS else "none"
+    return View(title=title, grid=str(grid), text=_text(raw.get("text"), 600), marks=marks)
+
+
+def _composition(views: list[View]) -> Composition:
+    """The takes, and the first one as 0.42 apps draw it: a numbered point
+    per mark and its lines and arrows."""
+    if not views:
+        return Composition()
+    first = views[0].marks
+    points = [Point(**m.anchor().model_dump(), title=m.title, text=m.text) for m in first]
+    lines = [Line(label=m.title, points=m.points) for m in first if m.shape in ("arrow", "line")]
+    return Composition(views=views, points=points, lines=lines)
+
+
 def clean(data: dict[str, Any], candidates: list[str]) -> Essay | None:
     """A model's answer made safe to show; ``None`` when it is unusable."""
-    teaser = _text(data.get("teaser"), 220)
+    teaser = short(_text(data.get("teaser"), 400), TEASER_CHARS)
     if not teaser:
         return None
     found = data.get("composition")
     raw: dict[str, Any] = found if isinstance(found, dict) else {}
-    points = []
-    for p in _dicts(raw.get("points"))[:MAX_POINTS]:
-        spot, title = _spot(p), _text(p.get("title"), 60)
-        if spot is not None and title:
-            points.append(Point(x=spot.x, y=spot.y, title=title, text=_text(p.get("text"), 400)))
-    lines = []
-    for line in _dicts(raw.get("lines"))[:MAX_LINES]:
-        spots = [s for s in map(_spot, line.get("points") or []) if s is not None]
-        if len(spots) >= 2:
-            lines.append(Line(label=_text(line.get("label"), 60), points=spots[:MAX_LINE_POINTS]))
+    views = [v for v in map(_view, _dicts(raw.get("views"))) if v is not None][:MAX_VIEWS]
     allowed, similar = set(candidates), list[Similar]()
     for s in _dicts(data.get("similar")):
         item_id = str(s.get("id") or "")
@@ -319,19 +418,16 @@ def clean(data: dict[str, Any], candidates: list[str]) -> Essay | None:
         for e in _dicts(data.get("legacy"))[:MAX_LEGACY]
         if _text(e.get("who")) and _text(e.get("text"))
     ]
-    facts = [
-        Fact(label=_text(f.get("label"), 40), value=_text(f.get("value"), 120))
-        for f in _dicts(data.get("facts"))[:4]
-        if _text(f.get("label")) and _text(f.get("value"))
-    ]
     context = [_text(p, 900) for p in data.get("context") or [] if _text(p)][:3]
     return Essay(
         title=_text(data.get("title"), 120),
         teaser=teaser,
+        focus=_spot(data.get("focus")),
         why_today=_text(data.get("why_today"), 220),
+        headline=_text(data.get("headline"), 80).rstrip("."),
         context=context,
-        facts=facts,
-        composition=Composition(points=points, lines=lines),
+        artist=_text(data.get("artist"), 600),
+        composition=_composition(views),
         colour=_text(data.get("colour"), 500),
         on_frame=_text(data.get("on_frame"), 400),
         similar=similar[:MAX_SIMILAR],

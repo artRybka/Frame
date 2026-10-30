@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.44.0
+
+- Dzieło dnia, kafelek: kadr wokół twarzy albo głównego motywu dzieła,
+  zajawka to jedno zdanie, które mieści się w dwóch linijkach, a „Czytaj
+  dalej” stoi w wierszu autora.
+- Dzieło dnia, strona: bez „O dziele” i „W skrócie”, zamiast „Kontekst”
+  własny tytuł tekstu, nowa krótka notka „O autorze”, a „Na Twojej ramce”
+  na samym końcu z przyciskami „Pokaż na ramce” i „Dodaj do kolejki”.
+- Analiza kompozycji w nowej odsłonie: jedno do trzech ujęć (droga oka,
+  geometria: złoty podział, trójpodział, trójkąty, koła) rysowanych ołówkiem
+  na rozbielonym obrazie, z odręcznymi strzałkami, pętlami i numerami;
+  podpisy nad i pod obrazem, tytuł pismem odręcznym. W trybie ciemnym
+  białe ślady na przyciemnionym obrazie.
+- Karta dzieła otwiera się od razu na całą szerokość z miniaturą, tytułem
+  i autorem z kafelka zamiast czarnego ekranu z wąskim paskiem; oryginał
+  doczytuje się na miniaturze, a nieudane wczytanie można ponowić.
+- Po aktualizacji serwer napisze tekst dzieła dnia od nowa w nowym układzie;
+  starsze teksty aplikacja nadal pokaże.
+
 ## 0.43.0
 
 - Nowa karta Szukaj między Odkrywaj a Playlistami. Odkrywaj pokazuje już

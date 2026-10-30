@@ -48,6 +48,9 @@ targets:
         ITSAppUsesNonExemptEncryption: false
         # The send bar on the Lock Screen and in the Dynamic Island (FrameWidgets).
         NSSupportsLiveActivities: true
+        # The composition's hand-written labels (Resources/Fonts, SIL OFL).
+        UIAppFonts:
+          - Caveat-SemiBold.ttf
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.artrybka.frame
