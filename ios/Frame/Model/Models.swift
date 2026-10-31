@@ -1397,7 +1397,7 @@ struct DailyWork: Codable, Hashable, Sendable {
     var legacyPending: Bool?
 }
 
-/// A work with a study, `GET /api/studies`: Discover's row "Pod lupą".
+/// A work with a study, `GET /api/studies`: Discover's row "Studia dzieł".
 struct StudyBrief: Codable, Hashable, Sendable, Identifiable {
     var item: RemoteItem
     /// The Polish title the study gives it.

@@ -229,7 +229,7 @@ struct DailyView: View {
                 section("Detale") { self.details(work, details) }.id("details")
             }
             if !work.similar.isEmpty { section("Podobne dzieła") { similar(work.similar) } }
-            if !work.legacy.isEmpty { section("Co z niego wyrosło") { legacy(work.legacy) }.id("legacy") }
+            if !work.legacy.isEmpty { section("Dalsze losy") { legacy(work.legacy) }.id("legacy") }
             if !work.previous.isEmpty { section("Poprzednie dzieła dnia") { previous(work.previous) } }
             section("Na Twojej ramce") { onFrame(work) }
             footer(work).id("end")
