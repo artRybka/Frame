@@ -8,6 +8,8 @@
   „Wyczyść wybory” nad grupami; schowane grupy wracają chwilę po zatrzymaniu
   przewijania; Epoka pobiera okresy od nowa po aktualizacji serwera; koniec
   białego ekranu z wąskim paskiem podczas pisania.
+- Dzieło dnia otwiera się od razu na całą szerokość z obrazem, zanim
+  wczyta się reszta strony.
 
 ## 1.52.0
 
