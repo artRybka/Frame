@@ -2,13 +2,14 @@
 
 ## 0.46.0
 
-- Odkrywaj: przed „Bo lubisz” rząd „Pod lupą” ze wszystkimi gotowymi
+- Odkrywaj: przed „Bo lubisz” rząd „Studia dzieł” ze wszystkimi gotowymi
   studiami dzieł (ostatnio zamówione pierwsze), z dopiskiem
   „Dotychczas przyszykowane studia dzieł”.
 - Karta dzieła: „Przygotuj studium dzieła” z gwiazdkami AI, bez opisu pod
   spodem. Kafelek Dzieła dnia ma strzałkę w rogu zamiast „Czytaj dalej”.
-- Studium, „Co z niego wyrosło”: późniejsze dzieła z miniaturą z muzeum
-  albo z katalogu; dotknięcie otwiera kartę dzieła.
+- Studium, sekcja „Dalsze losy” (dawniej „Co z niego wyrosło”): późniejsze
+  dzieła z miniaturą z muzeum albo z katalogu; dotknięcie otwiera kartę
+  dzieła.
 - Analiza kompozycji na obrazie w pełnych kolorach, ślady ołówka z jasną
   obwódką, dopisek tuż pod tytułem uwagi; stuknięcie w obraz chowa ślady.
 - Szukaj: serce na każdym kafelku zamiast „+ Zapisz”, dodaje dzieło do
