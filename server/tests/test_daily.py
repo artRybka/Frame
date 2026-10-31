@@ -173,23 +173,35 @@ def offline(service: FrameService) -> FrameService:
 def test_the_work_of_the_day_is_picked_once_and_kept(offline: FrameService) -> None:
     _catalogue(offline)
     first = offline.daily.pick(DAY)
-    assert first is not None and first.id == "met:1"  # best suited, with a museum text
+    assert first is not None
     _add(offline, "met:5", title="Better still", artist="Someone Else", suitability=0.99)
     again = offline.daily.pick(DAY)
     assert again is not None and again.id == first.id
-    assert offline.daily.history() == {DAY.isoformat(): "met:1"}
-    assert offline.daily.day_of("met:1") == DAY
+    assert offline.daily.history() == {DAY.isoformat(): first.id}
+    assert offline.daily.day_of(first.id) == DAY
+
+
+def test_a_dark_masterpiece_can_be_the_work_of_the_day(offline: FrameService) -> None:
+    # No e-paper threshold: a low score left out Rembrandt and Vermeer.
+    _add(offline, "met:9", title="Self-Portrait", artist="Rembrandt", suitability=0.2)
+    found = offline.daily.pick(DAY)
+    assert found is not None and found.id == "met:9"
 
 
 def test_an_artist_waits_a_month_and_a_work_a_year(offline: FrameService) -> None:
     _catalogue(offline)
-    offline.daily.pick(DAY)
-    later = [offline.daily.pick(DAY + timedelta(days=n)) for n in (1, 2)]
-    assert {i.artist for i in later if i} == {"Claude Monet", "Pieter Bruegel"}
-    # Hokusai's other print waits for the month, his wave for the year.
+    picked = [offline.daily.pick(DAY + timedelta(days=n)) for n in (0, 1, 2)]
+    assert all(picked)
+    assert {i.artist for i in picked if i} == {
+        "Katsushika Hokusai",
+        "Claude Monet",
+        "Pieter Bruegel",
+    }
+    # Hokusai's other print waits for the month, the works shown for the year.
     assert offline.daily.pick(DAY + timedelta(days=3)) is None
     found = offline.daily.pick(DAY + timedelta(days=40))
-    assert found is not None and found.id == "met:2"
+    hokusai = {"met:1", "met:2"} - {i.id for i in picked if i}
+    assert found is not None and {found.id} == hokusai
 
 
 def test_the_season_and_round_anniversaries() -> None:
