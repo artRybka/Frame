@@ -19,6 +19,8 @@ from functools import lru_cache
 from typing import NamedTuple
 from urllib.parse import unquote
 
+from .artists import NOBODY as NAMELESS
+from .artists import ROLES
 from .models import Item, ItemKind
 from .vocabulary import fold
 
@@ -112,7 +114,7 @@ EUROPEANA_SETS = {"90402": "rijks"}
 #: (".../object/SK-A-2344--42dd…").
 RIJKS_NUMBER = re.compile(r"rijksmuseum\.nl/.*/([a-z]{1,4}-[a-z0-9_.-]+?)(?:--[0-9a-f]+)?$")
 #: Names that are no artist at all.
-NOBODY = frozenset({"unknown", "anonymous", "unidentified", "nieznany", "anonim", "artist"})
+NOBODY = NAMELESS | ROLES
 
 
 def rank(source: str) -> int:

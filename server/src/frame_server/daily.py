@@ -29,6 +29,7 @@ from .ai.daily import KIND, DailyJob, Detail, Essay
 from .ai.jobs import text_hash
 from .imaging.layout import load_image
 from .library import Item, ItemKind, PlaylistRules
+from .library.artists import is_artist
 from .library.models import Note
 from .library.vocabulary import artist_matches, is_photograph
 
@@ -191,7 +192,7 @@ class Daily:
                 if other.id != item.id and other.look is None and other not in picked and not twin:
                     picked.append(other)
 
-        if item.artist:
+        if is_artist(item.artist):
             same = PlaylistRules(kinds=[ItemKind.ARTWORK], artists=[item.artist])
             add(self.library.query(same, sort="suitability", limit=40)[1], SAME_ARTIST)
         for term in [t for t in item.terms if t.startswith(("style:", "years:", "technique:"))]:

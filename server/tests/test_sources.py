@@ -129,6 +129,7 @@ def test_europeana_takes_works_free_in_the_eu() -> None:
         "TYPE:IMAGE",
         "contentTier:(2 OR 3 OR 4)",
         '-PROVIDER:"OpenUp!"',  # botany: roses named "Claude Monet"
+        '-DATA_PROVIDER:"Ajuntament de Girona"',  # photographs called paintings
         "what:(painting OR drawing OR print OR poster)",  # no medals or stamps
     ]
 
@@ -208,7 +209,7 @@ def test_europeana_discovery_and_fetch() -> None:
     assert item is not None and item.license == "CC0 1.0"
     discover, fetch = sent[0].url.params, sent[1].url.params
     assert discover["query"] == "cubism"
-    assert discover.get_list("qf")[3:] == ["what:painting", "YEAR:[* TO 1955]"]
+    assert discover.get_list("qf")[4:] == ["what:painting", "YEAR:[* TO 1955]"]
     assert fetch["query"] == 'europeana_id:"/2048047/Clasate_e91c"'
 
     # Browsing with nothing asked: openly licensed images only.

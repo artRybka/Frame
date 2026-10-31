@@ -24,6 +24,7 @@ from .imaging.grids import MAX_PHOTOS, MIN_PHOTOS
 from .imaging.layout import Fit
 from .imaging.text import TextBlock
 from .library import AlbumOrder, Item, ItemKind, Job, Note, Playlist, PlaylistKind, PlaylistRules
+from .library.artists import is_artist
 from .library.colors import SCORE_VERSION, analyse, tint_spread
 from .library.icloud import only_copy
 from .library.images import Unavailable
@@ -62,8 +63,9 @@ RESET_KEY = "library_reset"
 #: Set once the catalogue has been cleared of what it leaves out now.
 SET_ASIDE_KEY = "set_aside_dropped"
 #: Bump when ``set_aside`` leaves out more, so the catalogue is cleaned again
-#: (1: photographs and manuscripts, 2: reproductions and B&W copies).
-SET_ASIDE_VERSION = 2
+#: (1: photographs and manuscripts, 2: reproductions and B&W copies,
+#: 3: Girona's photo archive).
+SET_ASIDE_VERSION = 3
 #: Version of the colour analysis and score the library's pictures carry.
 SCORE_KEY = "suitability_version"
 #: The playlist the photos sent once gather in, newest first.
@@ -393,7 +395,7 @@ class Player:
         artists lately searched for."""
         scores: Counter[str] = Counter()
         for item in self.library.query(PlaylistRules(kinds=[ItemKind.ARTWORK]))[1]:
-            if item.artist:
+            if is_artist(item.artist):
                 scores[item.artist] += 3 * item.favorite + (not item.pooled)
         searched = Counter(self.library.get_state(SEARCHED_ARTISTS_KEY, []))
         for artist, times in searched.items():

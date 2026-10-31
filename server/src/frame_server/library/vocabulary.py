@@ -442,11 +442,23 @@ def _is_painting(classification: str, medium: str) -> bool:
     return bool(_PAINTING.search(f"{classification} {medium}"))
 
 
+#: Europeana datasets of photo archives that call their photographs
+#: paintings, prints and posters: the city of Girona's (football teams, film
+#: stills, festival programmes, photographs of pictures; all by "Desconegut").
+PHOTO_ARCHIVES = frozenset({"718", "2024914"})
+
+
+def is_archive_photo(item: Item) -> bool:
+    return item.source == "europeana" and item.source_id.split("~")[0] in PHOTO_ARCHIVES
+
+
 def is_copy(item: Item) -> bool:
-    """A reproduction of a work in print or on a slide, or a photograph
-    Openverse has from Flickr: never what the frame looks for."""
+    """A reproduction of a work in print or on a slide, a photograph
+    Openverse has from Flickr or one from a photo archive: never what the
+    frame looks for."""
     return (
         (is_photograph(item) and item.source == "openverse")
+        or is_archive_photo(item)
         or is_reproduction(item)
         or is_grey_painting(item)
     )
