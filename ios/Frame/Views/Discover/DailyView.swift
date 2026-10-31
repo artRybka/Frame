@@ -517,7 +517,10 @@ struct DailyView: View {
                     }
                 }
             }
-            CompositionSketch(item: work.item, aspect: aspect(work.item.item), take: shown)
+            CompositionSketch(
+                item: work.item, aspect: aspect(work.item.item), take: shown,
+                width: pageWidth > 0 ? pageWidth - 2 * Theme.gutter : nil
+            )
                 .padding(.top, 4)
             if !shown.text.isEmpty { prose(shown.text, size: 15) }
         }
