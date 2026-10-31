@@ -8,6 +8,11 @@ name: testflight
 #   ASC_ISSUER_ID  issuer ID shown above the key list
 #   ASC_KEY_P8     full contents of AuthKey_<id>.p8
 # Without them the upload job is skipped.
+#
+# Version shown in TestFlight = the release version from ha-addon/config.yaml
+# (bumped on every release), build number = UTC time. After Apple has
+# processed the build, the `notes` job fills "What to Test" with that
+# version's section of ha-addon/CHANGELOG.md (scripts/testflight-notes.py).
 
 on:
   push:
@@ -42,6 +47,9 @@ jobs:
     needs: check
     if: needs.check.outputs.ready == 'true'
     runs-on: macos-26
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      build: ${{ steps.version.outputs.build }}
     defaults:
       run:
         working-directory: ios
@@ -50,6 +58,15 @@ jobs:
       ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
     steps:
       - uses: actions/checkout@v4
+      - name: Version and build number
+        id: version
+        # Build number from the UTC time, so every upload is higher than the last.
+        run: |
+          version="$(python3 ../scripts/testflight-notes.py version)"
+          build="$(date -u +%y%m%d%H%M)"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+          echo "::notice::TestFlight $version ($build)"
       - run: brew install xcodegen
       - run: xcodegen generate
       - name: Write the API key
@@ -63,8 +80,8 @@ jobs:
       - name: Archive
         # Unsigned: signing at archive time wants a development profile, which
         # needs a registered device. The export below signs for distribution
-        # with an Apple-managed (cloud) certificate instead.
-        # Build number from the UTC time, so every upload is higher than the last.
+        # with an Apple-managed (cloud) certificate instead. Command-line
+        # settings apply to every target, so the widget extension matches.
         run: >
           xcodebuild archive
           -project Frame.xcodeproj
@@ -73,7 +90,8 @@ jobs:
           -destination "generic/platform=iOS"
           -archivePath "$RUNNER_TEMP/Frame.xcarchive"
           CODE_SIGNING_ALLOWED=NO
-          CURRENT_PROJECT_VERSION="$(date -u +%y%m%d%H%M)"
+          MARKETING_VERSION="${{ steps.version.outputs.version }}"
+          CURRENT_PROJECT_VERSION="${{ steps.version.outputs.build }}"
       - name: Upload to App Store Connect
         run: |
           cat > "$RUNNER_TEMP/ExportOptions.plist" <<'EOF'
@@ -97,6 +115,35 @@ jobs:
             -authenticationKeyPath "$ASC_KEY_PATH" \
             -authenticationKeyID "$ASC_KEY_ID" \
             -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+      - name: Remove the API key
+        if: always()
+        run: rm -f "$ASC_KEY_PATH"
+
+  notes:
+    # Separate Linux job: waiting for Apple's processing (usually 5–15 min)
+    # should not hold a macOS runner.
+    needs: upload
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Write the API key
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          key="$RUNNER_TEMP/AuthKey_$ASC_KEY_ID.p8"
+          printf '%s\n' "$ASC_KEY_P8" > "$key"
+          chmod 600 "$key"
+          echo "ASC_KEY_PATH=$key" >> "$GITHUB_ENV"
+      - name: What to Test from the CHANGELOG
+        run: >
+          python3 scripts/testflight-notes.py upload
+          --bundle-id com.artrybka.frame
+          --version "${{ needs.upload.outputs.version }}"
+          --build "${{ needs.upload.outputs.build }}"
       - name: Remove the API key
         if: always()
         run: rm -f "$ASC_KEY_PATH"

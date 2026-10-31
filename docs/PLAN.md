@@ -196,7 +196,7 @@ Cel: potwierdzić protokół na Twoim egzemplarzu i poznać zachowanie ekranu.
 - [x] ~~3.8 Kreator kalibracji~~ usunięty z aplikacji po E5: paleta EM32DX jest zmierzona i wbudowana w serwer; ponowny pomiar przez API serwera ([IMAGE_PIPELINE.md](IMAGE_PIPELINE.md#kalibracja-etap-1)).
 - [ ] 3.9 Użytkownicy (administrator): zaproszenie domownika (kod QR), role, odebranie dostępu.
 - [ ] 3.10 Widget (aktualny obraz) i rozszerzenie „Udostępnij → Pokaż na ramce”.
-- [ ] 3.11 TestFlight dla domowników. *(Build trafia do TestFlight automatycznie z GitHuba, workflow `testflight` na Xcode 26; do zrobienia: grupy testerów i przegląd Apple dla testów zewnętrznych.)*
+- [ ] 3.11 TestFlight dla domowników. *(Build trafia do TestFlight automatycznie z GitHuba, workflow `testflight` na Xcode 26, z numerem wersji wydania i notką „Co testować” z CHANGELOG; do zrobienia: grupy testerów i przegląd Apple dla testów zewnętrznych.)*
 
 ### Etap 4 — Integracja z Home Assistant
 
