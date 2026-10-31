@@ -865,11 +865,16 @@ struct ArtworkInfo: View {
                     .padding(.vertical, 4)
             }
             if !about.isEmpty {
-                Text(about)
-                    .font(.serif(16))
-                    .lineSpacing(4)
-                    .foregroundStyle(Theme.ink.opacity(0.88))
-                    .lineLimit(expanded ? nil : 5)
+                if expanded {
+                    // Not Text: it cut long notes short with "…" (ReadingText).
+                    ReadingText(text: about, size: 16, lineSpacing: 4, color: Theme.ink.opacity(0.88))
+                } else {
+                    Text(about)
+                        .font(.serif(16))
+                        .lineSpacing(4)
+                        .foregroundStyle(Theme.ink.opacity(0.88))
+                        .lineLimit(5)
+                }
                 Button(expanded ? "Zwiń" : "Czytaj więcej") {
                     withAnimation(.easeInOut) { expanded.toggle() }
                 }
