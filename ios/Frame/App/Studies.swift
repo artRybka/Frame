@@ -80,7 +80,7 @@ extension AppModel {
                 action: Notice.Action(label: "Otwórz") { [weak self] in self?.openStudy(itemID: itemID) }
             )
             studyReadyCards[itemID] = card
-            await loadStudyList(backend)  // first in "Pod lupą"
+            await loadStudyList(backend)  // first in "Studia dzieł"
         case "failed":
             notices.end(card, .error, "Nie udało się przygotować studium", view.error.isEmpty ? nil : view.error)
         case "off":

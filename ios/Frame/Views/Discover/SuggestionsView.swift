@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// What Discover opens with: the work of the day, the theme of the day,
-/// ideas for playlists in groups, the works with a study ("Pod lupą"), then
+/// ideas for playlists in groups, the works with a study ("Studia dzieł"), then
 /// rows of works like the ones the owner likes and the owner's works not
 /// shown for long.
 ///
@@ -239,7 +239,7 @@ struct ThemeCard: View {
     }
 }
 
-/// "Pod lupą": every work with a study, the last asked for first, as cards
+/// "Studia dzieł": every work with a study, the last asked for first, as cards
 /// to swipe through; each opens its study.
 struct StudyRow: View {
     let studies: [StudyBrief]
@@ -247,7 +247,7 @@ struct StudyRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 3) {
-                Text("Pod lupą")
+                Text("Studia dzieł")
                     .font(.serif(22, weight: .semibold))
                     .foregroundStyle(Theme.ink)
                 Text("Dotychczas przyszykowane studia dzieł")

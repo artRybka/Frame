@@ -1,4 +1,4 @@
-"""What a work led to ("Co z niego wyrosło"), with pictures: each later
+"""What a work led to ("Dalsze losy"), with pictures: each later
 work Claude names in a page (the work of the day, a study) is looked up
 once in the museums, and what was found is kept; its picture opens its card.
 

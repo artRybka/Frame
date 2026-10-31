@@ -86,7 +86,7 @@ final class AppModel {
     var daily: DailyWork?
     /// Studies of works asked for on their cards, as last heard (`Studies.swift`).
     var studies: [String: StudyView] = [:]
-    /// Every work with a study, for Discover's row "Pod lupą"; nil from older servers.
+    /// Every work with a study, for Discover's row "Studia dzieł"; nil from older servers.
     var studyList: [StudyBrief]?
     /// The work whose card is on top: "Studium gotowe" opens its study there.
     var topCard: String?
