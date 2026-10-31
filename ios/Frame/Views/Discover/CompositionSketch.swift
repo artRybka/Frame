@@ -46,11 +46,11 @@ struct CompositionSketch: View {
                     placeholder: item.item.placeholderColor,
                     maxPixel: 1600
                 )
-                .saturation(dark ? 0.55 : 0.7)
+                .saturation(dark ? 0.65 : 0.75)
                 .contrast(0.9)
                 .blur(radius: 0.4)
             }
-            .overlay(dark ? Color(hex: 0x0E0C0A).opacity(0.55) : Color(hex: 0xF6F1E7).opacity(0.58))
+            .overlay(dark ? Color(hex: 0x0E0C0A).opacity(0.42) : Color(hex: 0xF6F1E7).opacity(0.45))
             .overlay {
                 Canvas { context, size in draw(in: &context, size: size, labelled: labelled) }
             }
