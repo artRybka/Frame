@@ -596,12 +596,27 @@ struct AmbientBackground: View {
     let swatches: [ColorSwatch]
 
     var body: some View {
-        let colors = swatches.prefix(3).compactMap { Color(hexString: $0.hex) }
         ZStack {
             Theme.paper
+            PaperGlow(swatches: swatches)
+        }
+        .ignoresSafeArea()
+        .animation(.easeInOut(duration: 0.8), value: swatches)
+    }
+}
+
+/// A picture's colours blurred into the paper from the top, fading to plain
+/// paper at the bottom: behind "Teraz" and the top of Odkrywaj.
+struct PaperGlow: View {
+    let swatches: [ColorSwatch]
+    var strength = 0.45
+
+    var body: some View {
+        let colors = swatches.prefix(3).compactMap { Color(hexString: $0.hex) }
+        ZStack {
             if !colors.isEmpty {
                 LinearGradient(
-                    colors: colors.map { $0.opacity(0.45) } + [Theme.paper.opacity(0)],
+                    colors: colors.map { $0.opacity(strength) } + [Theme.paper.opacity(0)],
                     startPoint: .top,
                     endPoint: .bottom
                 )
@@ -614,8 +629,6 @@ struct AmbientBackground: View {
                 endPoint: .bottom
             )
         }
-        .ignoresSafeArea()
-        .animation(.easeInOut(duration: 0.8), value: swatches)
     }
 }
 
