@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.46.1
+
+- Artysta tygodnia i inne miejsca grupujące po artyście pomijają autorów
+  nieznanych i anonimowych (np. „Desconegut”).
+- Z Europeany znikają zdjęcia z archiwum miasta Girona opisane jako obrazy
+  i plakaty; katalog usuwa je raz po aktualizacji.
+- TestFlight pokazuje numer wydania zamiast 1.0, a w „Co testować” tę listę
+  zmian.
+
 ## 0.46.0
 
 - Odkrywaj: przed „Bo lubisz” rząd „Studia dzieł” ze wszystkimi gotowymi
