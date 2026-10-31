@@ -1691,6 +1691,7 @@ struct ConnectionSettingsView: View {
                         PanelAppSection(app: app)
                     }
                     ServerSection()
+                    NotificationsSection()
                     if let settings = model.settings {
                         SourcesSection(settings: settings)
                     }

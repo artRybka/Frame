@@ -147,6 +147,13 @@ protocol FrameBackend: Sendable {
     /// The helper replaces the server's container: about a minute without a server.
     func updateServer() async throws -> ServerUpdate
     /// Claude's settings, spending and progress.
+    /// Notifications on the phone: the APNs key, this phone (`device`: its token) and its kinds.
+    func notifications(device: String?) async throws -> NotificationSettings
+    func registerPush(token: String, _ update: PushDeviceUpdate) async throws -> NotificationSettings
+    func uploadPushKey(filename: String, data: Data, device: String?) async throws -> NotificationSettings
+    func deletePushKey(device: String?) async throws -> NotificationSettings
+    /// A notification to this phone now; Apple's answer if it fails.
+    func testPush(device: String) async throws -> PushTestResult
     func aiSettings() async throws -> AiSettings
     func saveAiSettings(_ update: AiSettingsUpdate) async throws -> AiSettings
     /// The server checks the key with Anthropic before keeping it.

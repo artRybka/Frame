@@ -217,6 +217,8 @@ class StatusMonitor:
         # how many of the app's alarms rang between two moments.
         self.battery = BatteryLog(library)
         self.rang: Callable[[datetime, datetime], int] | None = None
+        # Every battery reading: its level, and whether on battery (notifications).
+        self.on_battery_level: Callable[[int, bool], None] | None = None
 
     def _configured(self) -> bool:
         s = self.panel.settings
@@ -403,6 +405,8 @@ class StatusMonitor:
             return
         on_battery = status.power_source == "battery" and not status.charging
         self.battery.note(now, status.battery_level, on_battery)
+        if self.on_battery_level:
+            self.on_battery_level(status.battery_level, on_battery)
 
     def note_wifi(self, data: dict[str, object], now: datetime | None = None) -> None:
         """The Frame app read the panel's Wi-Fi."""

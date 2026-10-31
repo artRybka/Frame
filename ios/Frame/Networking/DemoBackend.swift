@@ -1090,6 +1090,43 @@ actor DemoBackend: FrameBackend {
         return try await serverUpdate()
     }
 
+    private var pushValue = NotificationSettings(
+        key: nil,
+        kinds: [
+            NotificationKind(key: "battery", title: "Bateria poniżej 20%", hint: "Raz na rozładowanie, gdy ramka działa na baterii."),
+            NotificationKind(key: "send_failed", title: "Błąd wysyłki", hint: "Obraz nie dotarł na ramkę."),
+            NotificationKind(key: "changed", title: "Zmiana dzieła", hint: "Ramka pokazuje nowy obraz: z harmonogramu lub z aplikacji."),
+            NotificationKind(key: "server_update", title: "Nowa wersja serwera", hint: "Gotowa do instalacji w aplikacji."),
+            NotificationKind(key: "daily", title: "Dzieło dnia", hint: "Codziennie o 8:30."),
+        ],
+        device: nil,
+        devices: 0
+    )
+
+    func notifications(device: String?) async throws -> NotificationSettings { pushValue }
+
+    func registerPush(token: String, _ update: PushDeviceUpdate) async throws -> NotificationSettings {
+        let kinds = update.kinds ?? pushValue.device?.kinds ?? pushValue.kinds.map(\.key)
+        pushValue.device = PushDevice(token: token, sandbox: update.sandbox, kinds: kinds, name: update.name, lastSentAt: nil, lastError: nil)
+        pushValue.devices = 1
+        return pushValue
+    }
+
+    func uploadPushKey(filename: String, data: Data, device: String?) async throws -> NotificationSettings {
+        let id = filename.replacingOccurrences(of: "AuthKey_", with: "").replacingOccurrences(of: ".p8", with: "")
+        pushValue.key = PushKey(keyId: String(id.prefix(10)), teamId: "3MQRJF4A9D", addedAt: "2026-10-31T12:00:00+00:00")
+        return pushValue
+    }
+
+    func deletePushKey(device: String?) async throws -> NotificationSettings {
+        pushValue.key = nil
+        return pushValue
+    }
+
+    func testPush(device: String) async throws -> PushTestResult {
+        PushTestResult(ok: false, error: "W trybie demo nic nie jest wysyłane")
+    }
+
     func aiSettings() async throws -> AiSettings { aiValue }
 
     func saveAiSettings(_ update: AiSettingsUpdate) async throws -> AiSettings {

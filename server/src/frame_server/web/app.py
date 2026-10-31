@@ -30,7 +30,7 @@ from fastapi import (
 from fastapi.responses import FileResponse
 from starlette.concurrency import run_in_threadpool
 
-from .. import build_version
+from .. import build_version, notifications
 from ..config import Settings
 from ..device import MdcError
 from ..imaging import PRESETS, RenderSettings, Strategy
@@ -51,6 +51,7 @@ from . import (
     device_api,
     discover_api,
     library_api,
+    notify_api,
     player_api,
     playlists_api,
     storage_api,
@@ -105,12 +106,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         tasks = []
+        service.notifier.bind(asyncio.get_running_loop())
         if settings.scheduler:
             tasks = [
                 asyncio.create_task(service.player.run()),
                 asyncio.create_task(service.power.run()),
                 asyncio.create_task(poll_status(service)),
                 asyncio.create_task(sync_albums_periodically(service)),
+                asyncio.create_task(notifications.watch(service)),
             ]
             service.ai.start()
         service.app.ensure_package()  # built and signed here (panel_package.py)
@@ -146,6 +149,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         storage_api.router,
         ai_api.router,
         update_api.router,
+        notify_api.router,
     )
     for router in routers:
         app.include_router(router)
