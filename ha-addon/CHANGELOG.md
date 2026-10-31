@@ -12,6 +12,8 @@
   w tle (ok. 0,10 USD za stronę).
 - Notka „O dziele” i „Czytaj więcej” na Teraz pokazują się w całości, bez
   urwania wielokropkiem; tekst da się zaznaczyć.
+- Wyszukiwanie i katalog nie pokazują już znaczków, monet ani rzeczy
+  pocztowych z Europeany (np. arkusz Ateny 2004 jako martwa natura).
 
 ## 1.54.0
 
