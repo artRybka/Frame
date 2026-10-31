@@ -1,11 +1,9 @@
-"""What a work led to ("Co z niego wyrosło"), with pictures and links: each
-later work Claude names in a page (the work of the day, a study) is looked
-up once, in the museums and on Wikipedia, and what was found is kept.
+"""What a work led to ("Co z niego wyrosło"), with pictures: each later
+work Claude names in a page (the work of the day, a study) is looked up
+once in the museums, and what was found is kept; its picture opens its card.
 
 A museum's copy is taken only when its author is the one named and its
-title shares a word with the one named; a Wikipedia article only when it
-names the author. Wikipedia's picture is a free one (what its summaries
-give), so a work still under copyright gets a link without a picture.
+title shares a word with the one named.
 """
 
 from __future__ import annotations
@@ -14,17 +12,14 @@ import logging
 import re
 import threading
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any
-from urllib.parse import quote
+from typing import TYPE_CHECKING
 
 import httpx
 from pydantic import BaseModel
 
 from .ai.jobs import text_hash
 from .library import Item
-from .library.duplicates import surname
 from .library.models import Note
-from .library.museums import client
 from .library.vocabulary import artist_matches, fold
 
 if TYPE_CHECKING:
@@ -34,7 +29,7 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 KIND = "later"
-VERSION = "later-1"
+VERSION = "later-2"
 #: Results asked from each museum for one later work.
 MUSEUM_HITS = 4
 #: Title words this short say nothing ("the", "of", "la").
@@ -46,10 +41,6 @@ class LaterLink(BaseModel):
 
     #: A museum's copy of it (not in the library).
     item: Item | None = None
-    #: Its Wikipedia article, and the article's (free) picture.
-    wiki_url: str = ""
-    wiki_title: str = ""
-    picture: str = ""
 
 
 def entry_key(entry: Legacy) -> str:
@@ -78,14 +69,8 @@ class LaterWorks:
         self.library = library
         #: Every museum at once: ``Importer.search_all``.
         self.search = search
-        self._http: httpx.Client | None = None
         self._lock = threading.Lock()
         self._looking: set[str] = set()
-
-    def http(self) -> httpx.Client:
-        if self._http is None:
-            self._http = client()
-        return self._http
 
     def known(self, item_id: str) -> dict[str, LaterLink]:
         """What was found for the later works of ``item_id``'s pages, by
@@ -98,9 +83,6 @@ class LaterWorks:
     def missing(self, item_id: str, entries: list[Legacy]) -> list[Legacy]:
         known = self.known(item_id)
         return [e for e in entries if entry_key(e) not in known]
-
-    def looking(self, item_id: str) -> bool:
-        return item_id in self._looking
 
     def look_soon(self, item: Item, entries: list[Legacy]) -> bool:
         """Looks the later works up in the background unless they are known;
@@ -145,8 +127,7 @@ class LaterWorks:
         return known
 
     def _find(self, item: Item, entry: Legacy) -> LaterLink:
-        found = LaterLink(item=self._museum(item, entry))
-        return found.model_copy(update=self._wikipedia(entry))
+        return LaterLink(item=self._museum(item, entry))
 
     def _museum(self, item: Item, entry: Legacy) -> Item | None:
         if not entry.search:
@@ -157,61 +138,3 @@ class LaterWorks:
             log.info("museums on %r: %s", entry.search, err)
             return None
         return next((h for h in hits if h.id != item.id and same_work(h, entry)), None)
-
-    def _wikipedia(self, entry: Legacy) -> dict[str, Any]:
-        """The article about the later work (Polish first), when one names
-        its author."""
-        name = fold(surname(entry.who) or entry.who)
-        asks = [("pl", f"{entry.who} {entry.title}"), ("en", entry.search or entry.title)]
-        person: dict[str, Any] = {}
-        for lang, query in asks:
-            if not query.strip() or not name:
-                continue
-            for title in self._titles(lang, query):
-                summary = self._summary(lang, title)
-                text = fold(" ".join(str(summary.get(k) or "") for k in ("title", "extract")))
-                page = (summary.get("content_urls") or {}).get("mobile") or {}
-                url = str(page.get("page") or "")
-                if name not in text or not url:
-                    continue
-                found = {
-                    "wiki_url": url,
-                    "wiki_title": str(summary.get("title") or title),
-                    "picture": str((summary.get("thumbnail") or {}).get("source") or ""),
-                }
-                if _words(found["wiki_title"]) <= _words(entry.who):
-                    # The author's own article: a link, not their portrait.
-                    person = person or {**found, "picture": ""}
-                    continue
-                return found
-        return person
-
-    def _titles(self, lang: str, query: str) -> list[str]:
-        try:
-            resp = self.http().get(
-                f"https://{lang}.wikipedia.org/w/api.php",
-                params={
-                    "action": "query",
-                    "list": "search",
-                    "srsearch": query,
-                    "srlimit": 2,
-                    "format": "json",
-                },
-            )
-            resp.raise_for_status()
-            hits = (resp.json().get("query") or {}).get("search") or []
-        except (httpx.HTTPError, ValueError):
-            return []
-        return [str(h["title"]) for h in hits if h.get("title")]
-
-    def _summary(self, lang: str, title: str) -> dict[str, Any]:
-        try:
-            resp = self.http().get(
-                f"https://{lang}.wikipedia.org/api/rest_v1/page/summary/"
-                + quote(title.replace(" ", "_"), safe="")
-            )
-            resp.raise_for_status()
-            data = resp.json()
-        except (httpx.HTTPError, ValueError):
-            return {}
-        return data if isinstance(data, dict) and data.get("type") != "disambiguation" else {}

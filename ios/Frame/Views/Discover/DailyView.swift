@@ -153,8 +153,8 @@ struct DailyView: View {
         }
     }
 
-    /// The later works' pictures and links, looked up by the server once
-    /// the page is written: asked for again a few times while they are.
+    /// The later works' pictures, looked up in the museums by the server
+    /// once the page is written: asked for again a few times while they are.
     private func followLegacy() async {
         for _ in 0..<6 {
             guard work?.legacyPending == true else { return }
@@ -485,9 +485,8 @@ struct DailyView: View {
         }
     }
 
-    /// Later works on a line through time, each with its picture when one
-    /// was found (the catalogue's or a museum's copy opens its card, a
-    /// Wikipedia picture its article) and a link to its Wikipedia article.
+    /// Later works on a line through time, each with its picture when the
+    /// catalogue or a museum has it (opening its card).
     private func legacy(_ entries: [DailyWork.Legacy]) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(entries.enumerated()), id: \.offset) { index, entry in
@@ -520,20 +519,7 @@ struct DailyView: View {
                         }
                         HStack(alignment: .top, spacing: 12) {
                             laterPicture(entry)
-                            VStack(alignment: .leading, spacing: 6) {
-                                prose(entry.text, size: 15)
-                                if let link = entry.link.flatMap(URL.init(string:)) {
-                                    Link(destination: link) {
-                                        HStack(spacing: 3) {
-                                            Text("Wikipedia")
-                                            Image(systemName: "arrow.up.right").imageScale(.small)
-                                        }
-                                        .font(.footnote.weight(.semibold))
-                                        .foregroundStyle(Theme.accent)
-                                    }
-                                    .accessibilityLabel("\(entry.linkTitle ?? entry.who) w Wikipedii")
-                                }
-                            }
+                            prose(entry.text, size: 15)
                         }
                     }
                     .padding(.bottom, 16)
@@ -542,8 +528,8 @@ struct DailyView: View {
         }
     }
 
-    /// The later work's picture: a copy in the catalogue or a museum opens
-    /// its card, Wikipedia's picture its article; nothing when none was found.
+    /// The later work's picture when the catalogue or a museum has it:
+    /// it opens the work's card.
     @ViewBuilder
     private func laterPicture(_ entry: DailyWork.Legacy) -> some View {
         if let later = entry.item {
@@ -553,15 +539,6 @@ struct DailyView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
             }
             .buttonStyle(.plain)
-        } else if let picture = entry.picture.flatMap(URL.init(string:)) {
-            let thumb = ArtImage(ref: .url(picture), placeholder: Theme.mat, maxPixel: 300)
-                .frame(width: 72, height: 88)
-                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-            if let link = entry.link.flatMap(URL.init(string:)) {
-                Link(destination: link) { thumb }.buttonStyle(.plain)
-            } else {
-                thumb
-            }
         }
     }
 

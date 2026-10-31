@@ -40,10 +40,6 @@ class SimilarWork(BaseModel):
 class LegacyWork(Legacy):
     #: A copy of the later work: the catalogue's, else a museum's.
     item: RemoteItem | None = None
-    #: Its Wikipedia article and the article's picture, when found.
-    link: str = ""
-    link_title: str = ""
-    picture: str = ""
 
 
 class DailyDetail(Detail):
@@ -68,7 +64,7 @@ class DailyWork(BaseModel):
     why_today: str = ""
     #: The model is writing the page now.
     writing: bool = False
-    #: The later works' pictures and links are being looked up now.
+    #: The later works are being looked up in the museums now.
     legacy_pending: bool = False
     #: The model wrote the page (else only what the museum says).
     written: bool = False
@@ -122,8 +118,8 @@ def _later(svc: FrameService, entry: Legacy, item: Item) -> RemoteItem | None:
 
 
 def _legacy(svc: FrameService, item: Item, essay: Essay) -> list[LegacyWork]:
-    """What the work led to, each with a copy of it (the catalogue's, else
-    the museum's found for it) and its Wikipedia article, as far as found."""
+    """What the work led to, each with a copy of it when there is one: the
+    catalogue's, else the museum's found for it."""
     known = svc.later.known(item.id)
     works = []
     for entry in essay.legacy:
@@ -131,15 +127,7 @@ def _legacy(svc: FrameService, item: Item, essay: Essay) -> list[LegacyWork]:
         copy = _later(svc, entry, item)
         if copy is None and found is not None and found.item is not None:
             copy = _light(svc, found.item)
-        works.append(
-            LegacyWork(
-                **entry.model_dump(),
-                item=copy,
-                link=found.wiki_url if found else "",
-                link_title=found.wiki_title if found else "",
-                picture=found.picture if found else "",
-            )
-        )
+        works.append(LegacyWork(**entry.model_dump(), item=copy))
     return works
 
 
