@@ -68,6 +68,7 @@ struct RootView: View {
         .task {
             await model.refreshAll()
             await model.settleLiveActivity()  // one left from before the app was closed
+            await model.offerServerUpdate()  // the app was updated, the server not yet
         }
         .task {
             // CI screenshots: the cards at the bottom, one of each kind.
