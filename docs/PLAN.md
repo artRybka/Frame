@@ -225,7 +225,7 @@ Cel: potwierdzić protokół na Twoim egzemplarzu i poznać zachowanie ekranu.
 ### Etap 5 — Dopracowanie
 
 - [x] Dostęp spoza domu przez Tailscale: w aplikacji adres domowy i zdalny z automatycznym wyborem, instrukcja w [deploy/synology/README.md](../deploy/synology/README.md) *(2026-10-26, D13)*.
-- [x] Niestabilne CI serwera *(2026-10-31)*: job `server` czasem kończył się kodem 139 (segfault), mimo że wszystkie testy przeszły. Proces padał przy zamykaniu interpretera, gdy działały jeszcze wątki demona (ai-worker, daily, artist-works, study-details i inne). `tests/conftest.py` po wypisaniu wyników kończy teraz proces przez `os._exit` z prawdziwym kodem wyjścia pytest.
+- [x] Niestabilne CI serwera *(2026-10-31)*: job `server` czasem kończył się kodem 139 (segfault), mimo że wszystkie testy przeszły. Proces padał przy zamykaniu interpretera, gdy działały jeszcze wątki demona (ai-worker, daily, artist-works, study-details i inne). `tests/conftest.py` po wypisaniu wyników kończy teraz proces przez `os._exit` z prawdziwym kodem wyjścia pytest. Trzy testy (`test_a_waiting_picture_goes_out_at_the_wake`, `test_no_start_over_mdc_once_the_app_asked_or_sleeps`, `test_put_to_sleep_from_the_app`) padały co wieczór między 21:55 a 22:00 czasu warszawskiego: biegną na prawdziwym zegarze, a domyślne godziny ciszy zaczynają się o 22:00, więc aplikacja dostawała „wait” zamiast „sleep”. Te testy mają teraz godziny ciszy wyłączone.
 - [ ] Testy długoterminowe: zużycie baterii, ghosting, stabilność po aktualizacjach firmware.
 - [ ] Dokumentacja użytkownika, kopie zapasowe, ewentualna strona konfiguracji w panelu Home Assistanta (ingress).
 
