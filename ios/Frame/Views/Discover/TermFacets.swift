@@ -199,22 +199,21 @@ struct TermFacetSheet: View {
     var museums: [Museum] = []
     var colors: [String] = []
 
-    /// The content's height, measured once (narrowing the list doesn't
-    /// shrink the sheet under the keyboard).
-    @State private var height: CGFloat?
-    /// Kept in step with the height: a set of detents that changes under a
-    /// sheet without its selection sends the sheet to the whole screen.
-    @State private var detent = PresentationDetent.height(320 + TermFacetSheet.chrome)
     @State private var filter = ""
     @State private var accents = false
 
-    /// The title bar and the room under the content.
-    private static let chrome: CGFloat = 104
-
-    private var fitted: PresentationDetent { .height((height ?? 320) + Self.chrome) }
-
+    /// Fixed heights that fit each group: a sheet's detents changed after it
+    /// opens are not followed (CI screenshots went to the whole screen).
+    /// Longer groups scroll and can be pulled up.
     private var detents: Set<PresentationDetent> {
-        facet.long ? [fitted, .large] : [fitted]
+        switch facet {
+        case .technique: [.height(320)]
+        case .period: [.height(390)]
+        case .color: [.height(570), .large]
+        case .museum: [.height(CGFloat(max(museums.count, 1)) * 46 + 200), .large]
+        case .mine: [.height(300)]
+        case .style, .subject: [.fraction(0.62), .large]
+        }
     }
 
     var body: some View {
@@ -232,12 +231,6 @@ struct TermFacetSheet: View {
                 .padding(.horizontal, Theme.gutter)
                 .padding(.top, 4)
                 .padding(.bottom, 12)
-                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { measured in
-                    guard height == nil || (height ?? 0) < measured && filter.isEmpty else { return }
-                    let pulledUp = detent == .large
-                    height = measured
-                    if !pulledUp { detent = fitted }
-                }
             }
             .scrollBounceBehavior(.basedOnSize)
             .scrollDismissesKeyboard(.interactively)
@@ -254,7 +247,7 @@ struct TermFacetSheet: View {
                 }
             }
         }
-        .presentationDetents(detents, selection: $detent)
+        .presentationDetents(detents)
         .presentationDragIndicator(.visible)
         .presentationBackground(Theme.paper)
         .task {
@@ -394,7 +387,7 @@ struct TermFacetSheet: View {
                 Circle()
                     .fill(ColorTag.color(family))
                     .frame(width: 34, height: 34)
-                    .overlay(Circle().strokeBorder(Theme.ink.opacity(0.12)))
+                    .overlay(Circle().strokeBorder(Theme.ink.opacity(0.25)))
                     .padding(3)
                     .overlay(Circle().strokeBorder(on ? Theme.ink : .clear, lineWidth: 2))
                     .overlay {
