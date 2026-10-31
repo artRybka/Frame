@@ -19,6 +19,7 @@ from frame_server.library.vocabulary import (
     is_grey_painting,
     is_manuscript,
     is_photograph,
+    is_postal,
     is_reproduction,
     museum_queries,
     object_category,
@@ -199,6 +200,32 @@ def test_paintings_without_colour_are_copies() -> None:
     assert not any(is_grey_painting(i) for i in (coloured, unknown, etching))
 
 
+def test_stamps_are_never_pictures() -> None:
+    athens = Item(
+        id="europeana:1592~76122",
+        source="europeana",
+        source_id="1592~76122",
+        title="Igrzyska Olimpijskie Ateny 2004: starożytne monety olimpijskie",
+        credit="Philatelic Postal Museum",
+    )
+    assert is_postal(athens) and is_copy(athens) and set_aside(athens)
+    assert set_aside(athens, ["technique:decorative"])
+    assert is_postal(_work(1, title="Wilhelmina", classification="Postage stamp"))
+    assert is_postal(_work(2, title="Chopin", classification="Znaczek pocztowy"))
+    # Posters for the post and artists' postcards are pictures.
+    poster = _work(3, title="Poste aérienne", classification="Poster", credit="Postal Museum")
+    card = _work(4, title="Postcard for the Wiener Werkstätte", classification="Print")
+    assert not is_postal(poster) and not is_postal(card)
+    # Kept, it stays in the library and the favourites, but no search finds it.
+    athens.favorite = True
+    athens.terms = ["subject:still-life"]
+    assert matches(athens, PlaylistRules()) and matches(athens, PlaylistRules(favorites_only=True))
+    assert not matches(athens, PlaylistRules(terms=["subject:still-life"]))
+    # Of another provider of Greek works, the same title is no stamp.
+    other = athens.model_copy(update={"credit": "Numismatic Museum of Athens"})
+    assert not is_postal(other)
+
+
 def test_catalogue_leaves_manuscripts_out(museums) -> None:  # noqa: F811
     service = museums
     library = service.library
@@ -209,13 +236,18 @@ def test_catalogue_leaves_manuscripts_out(museums) -> None:  # noqa: F811
     plate = library.upsert(
         _work(5, title="Orka", classification="Painting", tint_spread=0.001, pooled=True)
     )
+    stamps = library.upsert(
+        _work(6, title="Ateny 2004", credit="Philatelic Postal Museum", pooled=True).model_copy(
+            update={"id": "europeana:1592~6", "source": "europeana", "source_id": "1592~6"}
+        )
+    )
     assert {i.id for i in library.query()[1]} == {kept.id, painting.id}
     asked = library.query(PlaylistRules(terms=["technique:manuscripts"]))[1]
     assert {i.id for i in asked} == {page.id, kept.id}
 
-    assert service.player.drop_set_aside() == 3
+    assert service.player.drop_set_aside() == 4
     assert library.get(page.id) is None and library.get(photo.id) is None
-    assert library.get(plate.id) is None
+    assert library.get(plate.id) is None and library.get(stamps.id) is None
     assert library.get(kept.id) is not None
     assert service.player.drop_set_aside() == 0  # once
 

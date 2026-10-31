@@ -915,11 +915,27 @@ class Europeana(Museum):
     copies = re.compile(
         r"\b(slides?|transparenc\w*|photograph(?:s|y)?|reproduc\w*|postcards?)\b", re.IGNORECASE
     )
+    #: Types of objects that are no pictures: stamps, coins, medals,
+    #: banknotes and the post's envelopes and proofs. Providers mark them
+    #: "print" too.
+    objects = re.compile(
+        r"\b(stamps?|postage|postal|philatel\w*|postmarks?|envelopes?|coins?|medals?|"
+        r"bank ?notes?|numismat\w*)\b",
+        re.IGNORECASE,
+    )
     #: Aggregators of natural history, not art: OpenUp! brings botanical
     #: photos with names like "Rosa 'Claude Monet'", found by artist. The
     #: city of Girona's photo archive calls its photographs paintings and
-    #: posters (see ``vocabulary.PHOTO_ARCHIVES``).
-    not_art = ('-PROVIDER:"OpenUp!"', '-DATA_PROVIDER:"Ajuntament de Girona"')
+    #: posters (see ``vocabulary.PHOTO_ARCHIVES``). Athens' Philatelic
+    #: Postal Museum calls its stamps, first-day covers and proofs prints:
+    #: nearly every print after 1950 (see ``vocabulary.NOT_ART_PROVIDERS``).
+    not_art = (
+        '-PROVIDER:"OpenUp!"',
+        '-DATA_PROVIDER:"Ajuntament de Girona"',
+        '-DATA_PROVIDER:"Philatelic Postal Museum"',
+        '-what:(stamp OR "postage stamp" OR "postal services" OR coin OR coins OR medal '
+        "OR medals OR banknote OR banknotes)",
+    )
 
     def _death(self, d: dict[str, Any]) -> int | None:
         """When the work's last author died, if every author is known."""
@@ -968,6 +984,8 @@ class Europeana(Museum):
         # the record's concepts ("slides (photographs)").
         concepts = (d.get("edmConceptPrefLabelLangAware") or {}).get("en") or []
         if any(self.copies.search(str(k)) for k in [*kinds, *concepts]):
+            return None
+        if any(self.objects.search(str(k)) for k in [*kinds, *concepts]):
             return None
         licence = self._licence(d)
         if not licence:

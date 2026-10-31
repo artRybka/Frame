@@ -518,13 +518,34 @@ def is_archive_photo(item: Item) -> bool:
     return item.source == "europeana" and item.source_id.split("~")[0] in PHOTO_ARCHIVES
 
 
+#: Europeana's providers of objects that are no pictures, whatever type
+#: they give: Athens' Philatelic Postal Museum (stamps, first-day covers,
+#: proofs, all "prints"), as ``Item.credit`` names them.
+NOT_ART_PROVIDERS = frozenset({"Philatelic Postal Museum"})
+#: Museums' types of stamps, banknotes and the post's papers.
+_POSTAL = re.compile(
+    r"\b(stamps?|postage|postal|philatel\w*|postmarks?|first[- ]day covers?|bank ?notes?|"
+    r"znacz(?:ek|k\w*)|filatel\w*|banknot\w*|γραμματόσημ\w*)\b",
+    re.IGNORECASE,
+)
+
+
+def is_postal(item: Item) -> bool:
+    """A stamp, banknote or envelope, or a work of a provider of nothing
+    else: a photograph of an object, never a picture for the frame."""
+    if item.source == "europeana" and item.credit in NOT_ART_PROVIDERS:
+        return True
+    return item.kind == ItemKind.ARTWORK and bool(_POSTAL.search(item.classification))
+
+
 def is_copy(item: Item) -> bool:
     """A reproduction of a work in print or on a slide, a photograph
-    Openverse has from Flickr or one from a photo archive: never what the
-    frame looks for."""
+    Openverse has from Flickr or one from a photo archive, a stamp: never
+    what the frame looks for."""
     return (
         (is_photograph(item) and item.source == "openverse")
         or is_archive_photo(item)
+        or is_postal(item)
         or is_reproduction(item)
         or is_grey_painting(item)
     )
