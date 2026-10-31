@@ -179,7 +179,7 @@ struct TermFacetBar: View {
 
     /// Over the keyboard the system field floats above the bar's usual place
     /// (the keyboard's top): the bar rises over the field.
-    static let overField: CGFloat = 58
+    static let overField: CGFloat = 66
 
     /// CI's screenshots of a group's panel.
     private static var launched: TermFacet? {
