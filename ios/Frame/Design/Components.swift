@@ -235,6 +235,13 @@ struct QueueButton: View {
 /// Two-column waterfall layout using the pictures' aspect ratios. A work
 /// wider than `wide` takes the whole row, once the columns above it end
 /// about level.
+///
+/// The columns are cut into short blocks that end where both columns are
+/// about level, and only the list of blocks is lazy: the columns inside a
+/// block are plain stacks. Lazy columns nested in an `HStack` guessed the
+/// heights of the cards they hadn't made yet, so the grid grew and shrank
+/// while scrolling (the results jumped back) and could lose its cards
+/// altogether (an empty screen) until scrolled again.
 struct MasonryGrid<Content: View>: View {
     let items: [ItemSummary]
     var columns = 2
@@ -246,11 +253,15 @@ struct MasonryGrid<Content: View>: View {
     /// A spanning work is shown whole up to this; wider ones are cropped.
     static var panorama: Double { 4.5 }
     /// Columns this much apart (in column widths) count as level.
-    private static var level: Double { 0.3 }
+    static var level: Double { 0.3 }
     /// A wide work waits for level columns behind at most this many cards.
-    private static var maxDeferred: Int { 3 }
+    static var maxDeferred: Int { 3 }
+    /// A block ends at level columns once it holds this many cards...
+    static var minBlock: Int { 4 }
+    /// ...and at the latest with this many, level or not.
+    static var maxBlock: Int { 16 }
 
-    private enum Block: Identifiable {
+    enum Block: Identifiable {
         case columns([[ItemSummary]])
         case row(ItemSummary)
 
@@ -262,15 +273,25 @@ struct MasonryGrid<Content: View>: View {
         }
     }
 
-    private var blocks: [Block] {
+    /// A card's height in column widths: the picture and about its caption
+    /// (a long title takes two lines).
+    static func height(_ item: ItemSummary) -> Double {
+        1 / (0.45...wide).clamp(item.aspectRatio) + (item.title.count > 20 ? 0.36 : 0.25)
+    }
+
+    /// The blocks for these works. Only the last block changes as works
+    /// are added at the end, so the ones above keep their place.
+    static func blocks(_ items: [ItemSummary], columns: Int = 2) -> [Block] {
         var blocks: [Block] = []
         var buckets = Array(repeating: [ItemSummary](), count: columns)
         var heights = Array(repeating: 0.0, count: columns)
         var waiting: [ItemSummary] = []
         var deferred = 0
-        let columnAspects = 0.45...Self.wide
+        var count = 0
+        // The same work twice would confuse the lazy list.
+        var seen = Set<String>()
 
-        func isLevel() -> Bool { (heights.max() ?? 0) - (heights.min() ?? 0) <= Self.level }
+        func isLevel() -> Bool { (heights.max() ?? 0) - (heights.min() ?? 0) <= level }
         func flush() {
             if buckets.contains(where: { !$0.isEmpty }) { blocks.append(.columns(buckets)) }
             blocks += waiting.map(Block.row)
@@ -278,20 +299,25 @@ struct MasonryGrid<Content: View>: View {
             heights = Array(repeating: 0, count: columns)
             waiting = []
             deferred = 0
+            count = 0
         }
 
         for item in items {
-            if columns > 1, item.aspectRatio >= Self.wide {
+            guard seen.insert(item.id).inserted else { continue }
+            if columns > 1, item.aspectRatio >= wide {
                 waiting.append(item)
                 if isLevel() { flush() }
                 continue
             }
             let target = heights.indices.min { heights[$0] < heights[$1] } ?? 0
             buckets[target].append(item)
-            heights[target] += 1 / columnAspects.clamp(item.aspectRatio) + 0.28
+            heights[target] += height(item)
+            count += 1
             if !waiting.isEmpty {
                 deferred += 1
-                if isLevel() || deferred >= Self.maxDeferred { flush() }
+                if isLevel() || deferred >= maxDeferred { flush() }
+            } else if columns > 1, (count >= minBlock && isLevel()) || count >= maxBlock {
+                flush()
             }
         }
         flush()
@@ -300,12 +326,12 @@ struct MasonryGrid<Content: View>: View {
 
     var body: some View {
         LazyVStack(alignment: .leading, spacing: spacing + 6) {
-            ForEach(blocks) { block in
+            ForEach(Self.blocks(items, columns: columns)) { block in
                 switch block {
                 case .columns(let buckets):
                     HStack(alignment: .top, spacing: spacing) {
                         ForEach(Array(buckets.enumerated()), id: \.offset) { _, column in
-                            LazyVStack(spacing: spacing + 6) {
+                            VStack(spacing: spacing + 6) {
                                 ForEach(column) { item in
                                     content(item)
                                 }

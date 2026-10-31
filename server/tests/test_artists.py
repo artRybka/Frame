@@ -118,7 +118,7 @@ def test_a_week_made_with_a_nameless_artist_gets_another(service) -> None:
     nameless = Theme(
         "week-artist-desconegut",
         "Desconegut",
-        "Artysta tygodnia. W katalogu: 40 dzieł.",
+        "Artysta tygodnia. 40 dzieł na ten tydzień.",
         "Na ten tydzień",
         artists=("Desconegut",),
         catalogue=True,

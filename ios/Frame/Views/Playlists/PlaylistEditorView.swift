@@ -247,7 +247,7 @@ struct PlaylistEditorView: View {
     private var search: some View {
         VStack(alignment: .leading, spacing: 14) {
             if playlist.kind == .manual {
-                Eyebrow("Dzieła z katalogu i muzeów")
+                Eyebrow("Dodaj dzieła")
             }
             if lookup.typing {
                 TermSuggestions(lookup: lookup, tokens: tokens, pickedFromMuseums: pickedFromMuseums)
@@ -255,7 +255,7 @@ struct PlaylistEditorView: View {
             if playlist.kind == .smart {
                 if rulesMissing, playlist.rules.isEmpty {
                     Label(
-                        "Wyszukaj coś na dole albo wybierz grupę nad polem: bez tego playlista objęłaby cały katalog.",
+                        "Wyszukaj coś na dole albo wybierz grupę nad polem: bez tego playlista objęłaby wszystkie dzieła.",
                         systemImage: "exclamationmark.circle"
                     )
                     .font(.footnote.weight(.medium))
@@ -330,7 +330,7 @@ struct PlaylistEditorView: View {
                         .foregroundStyle(Theme.accent)
                     }
                 } else {
-                    Text("Teraz tylko to, co jest już w katalogu")
+                    Text("Teraz tylko dzieła, które już mamy")
                         .font(.caption)
                         .foregroundStyle(Theme.inkSoft)
                 }
@@ -583,7 +583,9 @@ struct PlaylistEditorView: View {
                 // What makes the playlist, also while the groups are hidden.
                 TokenSummary(tokens: tokens.wrappedValue)
             }
-            if museumsFirst {
+            if playlist.kind == .manual {
+                manualPreview
+            } else if museumsFirst {
                 museumPreview
                 cataloguePreview
             } else {
@@ -596,17 +598,33 @@ struct PlaylistEditorView: View {
     @ViewBuilder
     private var cataloguePreview: some View {
         if let preview, !preview.items.isEmpty {
-            Eyebrow("W katalogu · \(Names.works(preview.count))")
+            Eyebrow("W playliście · \(Names.works(preview.count))")
             MasonryGrid(items: preview.items) { item in
                 card(item)
             }
         } else if preview != nil, !museumsFirst {
-            Text(playlist.kind == .manual
-                 ? "W katalogu nic nie pasuje."
-                 : "W bazie nic jeszcze nie pasuje. Włącz pobieranie z muzeów, a playlista zapełni się w tle.")
+            Text("Na razie nic nie pasuje. Włącz pobieranie z muzeów, a playlista zapełni się w tle.")
                 .font(.subheadline)
                 .foregroundStyle(Theme.inkSoft)
                 .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// A manual playlist's search: one grid, the works we have first and
+    /// the museums' coming in under them, without saying which is which.
+    @ViewBuilder
+    private var manualPreview: some View {
+        let remotes = asksMuseums && preview != nil ? fromMuseums : []
+        let byID = Dictionary(remotes.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let known = preview?.items ?? []
+        if !known.isEmpty || !remotes.isEmpty {
+            MasonryGrid(items: known + remotes.map(\.item.summary)) { item in
+                card(item, remote: byID[item.id])
+            }
+        } else if preview != nil, !askingMuseums {
+            Text("Nic nie pasuje.")
+                .font(.subheadline)
+                .foregroundStyle(Theme.inkSoft)
         }
     }
 
