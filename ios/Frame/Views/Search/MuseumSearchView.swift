@@ -20,11 +20,8 @@ struct MuseumSearchView: View {
     @State private var sources: [String] = []
     @State private var catalogue: ItemPage?
     @State private var results: [RemoteItem] = []
-    /// How many works each museum has for the search.
-    @State private var totals: [String: Int] = [:]
     /// The page to ask each museum for more; museums with no more are left out.
     @State private var next: [String: Int] = [:]
-    @State private var failed: [String] = []
     /// The catalogue is being asked.
     @State private var searching = false
     /// The museums are still answering.
@@ -37,8 +34,6 @@ struct MuseumSearchView: View {
     /// Works whose heart the server is still taking.
     @State private var liking: Set<String> = []
     @State private var editing: Playlist?
-    /// Whether the playlist made from the search fetches the museums' works.
-    @State private var fetchForPlaylist = false
     @State private var lookup = TermLookup()
     @FocusState private var fieldFocused: Bool
     /// The groups over the field: hidden while scrolling the results.
@@ -110,7 +105,7 @@ struct MuseumSearchView: View {
             if groupsShown {
                 TermFacetBar(
                     tokens: tokens, museums: museums, colors: ColorTag.families + ColorTag.moods,
-                    focus: $fieldFocused, panelHeight: height * 0.6
+                    focus: $fieldFocused, panelHeight: height * TermFacetBar.panelShare
                 )
                 .padding(.horizontal, Theme.gutter)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -159,7 +154,7 @@ struct MuseumSearchView: View {
             }
         }
         .sheet(item: $editing) { playlist in
-            PlaylistEditorView(playlist: playlist, fetchFromMuseums: fetchForPlaylist)
+            PlaylistEditorView(playlist: playlist)
         }
     }
 
@@ -197,8 +192,8 @@ struct MuseumSearchView: View {
             }
             if asked {
                 Button {
-                    // The same search, museums included; what they show
-                    // comes along when fetching is on.
+                    // The same search, museums included; the playlist asks
+                    // them for what it misses up to its limit.
                     var playlistRules = rules
                     playlistRules.sources = sources
                     let name = rules.suggestedName(names: model.termNames)
@@ -206,7 +201,6 @@ struct MuseumSearchView: View {
                         name: name.isEmpty ? sources.map(museumName).joined(separator: " · ") : name,
                         kind: .smart, rules: playlistRules
                     )
-                    fetchForPlaylist = !fromMuseums.isEmpty
                 } label: {
                     Label("Utwórz playlistę z tego wyszukiwania", systemImage: "text.badge.plus")
                 }
@@ -215,12 +209,6 @@ struct MuseumSearchView: View {
             // One grid: the server's works first, the museums' coming in
             // under them. Where a work comes from isn't shown.
             worksGrid(catalogue?.items ?? [], shownFromMuseums)
-            // Under the works: a museum that gives up late doesn't push them down.
-            if !failed.isEmpty {
-                Text("Nie odpowiedziało: " + failed.map(Names.source).joined(separator: ", "))
-                    .font(.footnote)
-                    .foregroundStyle(Theme.inkSoft)
-            }
             if !searching, !asking, catalogue?.items.isEmpty ?? true, fromMuseums.isEmpty {
                 EmptyStateView(
                     title: "Nic tu nie ma",
@@ -273,9 +261,7 @@ struct MuseumSearchView: View {
     @MainActor
     private func search(_ key: SearchKey) async {
         results = []
-        totals = [:]
         next = [:]
-        failed = []
         guard !key.rules.isEmpty || !key.sources.isEmpty else {
             catalogue = nil
             searching = false
@@ -308,18 +294,12 @@ struct MuseumSearchView: View {
             for try await answer in answers {
                 guard !Task.isCancelled, key == searched else { return }
                 results = results.adding(answer.items)
-                totals[answer.source] = max(totals[answer.source] ?? 0, answer.total)
                 next[answer.source] = answer.next
-                failed += (answer.failed ?? []).filter { !failed.contains($0) }
             }
         } catch {
-            guard !Task.isCancelled, !error.isCancellation, key == searched else { return }
-            if page > 1 {
-                model.show(error)
-            } else {
-                let silent = (sources.isEmpty ? museums.map(\.key) : sources).filter { totals[$0] == nil }
-                failed += silent.filter { !failed.contains($0) }
-            }
+            // A museum that doesn't answer (the Met's bot wall turns the
+            // server away for a while) is left out quietly: the others'
+            // works are enough (Mateusz, 2026-10-31).
         }
     }
 

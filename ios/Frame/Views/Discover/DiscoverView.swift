@@ -7,6 +7,8 @@ struct DiscoverView: View {
     @State private var path = NavigationPath()
     @State private var dailyShown = 0
     @State private var themeShown = 0
+    /// How far the page is scrolled, for the glow of the study of the day.
+    @State private var scrolled: CGFloat = 0
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -18,6 +20,12 @@ struct DiscoverView: View {
                         .padding(.top, 8)
                         .padding(.bottom, 32)
                 }
+                // Clamped, so scrolling further down the page redraws nothing.
+                .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                    min(max(geometry.contentOffset.y + geometry.contentInsets.top, 0), PageGlow.height)
+                } action: { _, offset in
+                    scrolled = offset
+                }
                 .onChange(of: model.studyList?.count) {
                     guard LaunchRoute.screen == "discover", LaunchRoute.scroll == "studies" else { return }  // CI screenshots
                     Task {
@@ -27,7 +35,8 @@ struct DiscoverView: View {
                 }
             }
             .refreshable { await model.refreshDiscover(force: true) }
-            .paperPage()
+            // The colours of the study of the day glow behind its card, as in "Teraz".
+            .paperPage(glow: model.daily?.item.item.colors ?? [], lift: scrolled)
             .navigationTitle("Odkrywaj")
             .navigationDestination(for: String.self) { id in
                 ItemDetailView(itemID: id)

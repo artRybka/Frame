@@ -349,7 +349,7 @@ def _suggestion_rows(svc: FrameService) -> list[SuggestionRow]:
 @router.get("/suggestions", response_model=list[SuggestionRow])
 async def suggestions(svc: Svc) -> list[SuggestionRow]:
     """What Discover opens with: the works the server picked for the frame,
-    the theme of the day (a card of "Na ten tydzień" in the app) and the
+    the theme of the day (a card of "Dziś dla Ciebie" in the app) and the
     owner's works not shown for long. Works like the ones the owner likes
     are the cards of "Bo lubisz" in ``/themes``."""
     return await run_in_threadpool(_suggestion_rows, svc)

@@ -20,4 +20,30 @@ extension View {
         frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Theme.paper.ignoresSafeArea())
     }
+
+    /// The paper with a picture's colours glowing at the top, as behind
+    /// "Teraz" but lighter and only on the first screen. `lift` is how far
+    /// the page is scrolled: the glow goes up with what it belongs to, and
+    /// stays put when the page is pulled down.
+    func paperPage(glow swatches: [ColorSwatch], lift: CGFloat = 0) -> some View {
+        frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background {
+                ZStack(alignment: .top) {
+                    Theme.paper
+                    PaperGlow(swatches: swatches, strength: PageGlow.strength)
+                        .frame(height: PageGlow.height)
+                        .offset(y: -max(0, lift))
+                        .animation(.easeInOut(duration: 0.8), value: swatches)
+                }
+                .ignoresSafeArea()
+                .allowsHitTesting(false)
+            }
+    }
+}
+
+enum PageGlow {
+    /// "Teraz" has 0.45 on the whole screen; a page with a title and a list is busier.
+    static let strength = 0.38
+    /// From the top of the screen (under the bars): the title and the first card.
+    static let height: CGFloat = 640
 }

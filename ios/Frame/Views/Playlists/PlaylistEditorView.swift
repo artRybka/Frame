@@ -24,11 +24,7 @@ struct PlaylistEditorView: View {
     @State private var nameMissing = false
     /// What the museums have for the rules, as each answers (as in Szukaj).
     @State private var remote: [RemoteItem] = []
-    /// How many works the museums that answered have for the rules.
-    @State private var remoteTotal = 0
     @State private var askingMuseums = false
-    /// The rules the museums finished answering for.
-    @State private var remoteAsked = PlaylistRules()
     @State private var lookup = TermLookup()
     @FocusState private var fieldFocused: Bool
     @FocusState private var descriptionFocused: Bool
@@ -44,8 +40,6 @@ struct PlaylistEditorView: View {
     @State private var picked: [PhotosPickerItem] = []
     @State private var photos: [PickedPhoto] = []
     @State private var loadingPhotos = false
-    /// Also fetch this many matching museum works into the library (0: no).
-    @State private var fetchCount: Int
     @State private var album: AlbumSource
     @State private var albumCheck: Result<AlbumCheck, Error>?
     @State private var checkingAlbum = false
@@ -54,9 +48,9 @@ struct PlaylistEditorView: View {
     /// So does "Ulubione", the hearts' playlist.
     private let wasFavorites: Bool
 
-    /// `fetchFromMuseums` starts with fetching on, e.g. for a playlist made
-    /// from a search that showed museum works.
-    init(playlist: Playlist, fetchFromMuseums: Bool = false) {
+    /// A new playlist starts with `Playlist.defaultLimit` works; one saved
+    /// before there was a limit keeps all that match ("Wszystkie").
+    init(playlist: Playlist) {
         var playlist = playlist
         // "Only the best on e-paper" is gone from the editor: saving drops it.
         playlist.rules.minSuitability = nil
@@ -67,8 +61,10 @@ struct PlaylistEditorView: View {
             playlist.rules.yearFrom = nil
             playlist.rules.yearTo = nil
         }
+        if playlist.id == nil, !playlist.isFavorites, playlist.limit == nil {
+            playlist.limit = Playlist.defaultLimit
+        }
         _playlist = State(initialValue: playlist)
-        _fetchCount = State(initialValue: fetchFromMuseums ? 100 : 0)
         _album = State(initialValue: playlist.album ?? AlbumSource(url: ""))
         wasAlbum = playlist.id != nil && playlist.kind == .album
         wasFavorites = playlist.id != nil && playlist.isFavorites
@@ -95,8 +91,14 @@ struct PlaylistEditorView: View {
         return playlist.kind == .manual || fetchBlocker == nil
     }
 
-    /// Museum works go first: a smart playlist fetching them.
-    private var museumsFirst: Bool { playlist.kind == .smart && fetchCount > 0 && fetchBlocker == nil }
+    /// How many works the playlist misses that the museums are asked for
+    /// after saving: up to its limit ("Wszystkie": up to the default), when
+    /// museums can supply them; nil until the matching works are counted.
+    private var missing: Int? {
+        guard playlist.kind == .smart, let preview else { return nil }
+        guard fetchBlocker == nil else { return 0 }
+        return max(0, (playlist.limit ?? Playlist.defaultLimit) - preview.count)
+    }
 
     var body: some View {
         NavigationStack {
@@ -154,8 +156,7 @@ struct PlaylistEditorView: View {
                     tokens: tokens,
                     focused: $fieldFocused,
                     groupsShown: groupsShown && !nameFocused && !descriptionFocused,
-                    museums: museums,
-                    pickedFromMuseums: pickedFromMuseums
+                    museums: museums
                 ))
                 // Typing: up to the suggestions.
                 .onChange(of: lookup.typing) { _, typing in
@@ -246,11 +247,6 @@ struct PlaylistEditorView: View {
     /// A manual playlist's works.
     private static let chosenID = "playlist.editor.chosen"
 
-    /// The catalogue has nothing for a chip yet: museums will.
-    private func pickedFromMuseums() {
-        if playlist.kind == .smart, fetchCount == 0, fetchBlocker == nil { fetchCount = 100 }
-    }
-
     /// Nothing asked yet: no chips (exceptions and the hidden "favourites
     /// only" of the seeded playlist count as asked).
     private var asked: Bool { !searched.wrappedValue.isEmpty }
@@ -265,7 +261,7 @@ struct PlaylistEditorView: View {
                 Eyebrow("Dodaj dzieła")
             }
             if lookup.typing {
-                TermSuggestions(lookup: lookup, tokens: tokens, pickedFromMuseums: pickedFromMuseums)
+                TermSuggestions(lookup: lookup, tokens: tokens)
             }
             if playlist.kind == .smart {
                 if rulesMissing, playlist.rules.isEmpty {
@@ -277,7 +273,7 @@ struct PlaylistEditorView: View {
                     .foregroundStyle(Theme.bad)
                     .fixedSize(horizontal: false, vertical: true)
                 }
-                fetchRow
+                limitRow
             }
             if !lookup.typing {
                 if asked {
@@ -318,50 +314,68 @@ struct PlaylistEditorView: View {
         .frame(maxWidth: .infinity)
     }
 
-    /// Fetching from the museums, right under the field: on, it says how
-    /// many works it brings after saving.
-    private var fetchRow: some View {
-        HStack(spacing: 12) {
-            Image(systemName: playlist.rules.favoritesOnly ? "heart" : "arrow.down.circle")
-                .font(.title3)
-                .foregroundStyle(fetchCount > 0 ? Theme.accent : Theme.inkSoft)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(playlist.rules.favoritesOnly ? "Tylko ulubione" : "Pobieraj pasujące z muzeów")
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(Theme.ink)
-                if let fetchBlocker {
-                    Text(fetchBlocker).font(.caption).foregroundStyle(Theme.inkSoft)
-                } else if fetchCount > 0 {
-                    Menu {
-                        Picker("Ile dzieł", selection: $fetchCount) {
-                            ForEach([50, 100, 200, 300], id: \.self) { Text("do \($0) dzieł").tag($0) }
-                        }
+    /// "Ile dzieł", right under the field: the playlist's limit, and what
+    /// saving does with it (works asked from the museums, or which are taken).
+    private var limitRow: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(playlist.rules.favoritesOnly ? "Ile ulubionych" : "Ile dzieł")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Theme.ink)
+            HStack(spacing: 6) {
+                ForEach(Playlist.limits, id: \.self) { limit in
+                    let chosen = playlist.limit == limit
+                    Button {
+                        withAnimation(.snappy) { playlist.limit = limit }
                     } label: {
-                        HStack(spacing: 3) {
-                            Text("do \(fetchCount) dzieł, w tle po zapisaniu")
-                            Image(systemName: "chevron.up.chevron.down").font(.caption2)
-                        }
-                        .font(.caption)
-                        .foregroundStyle(Theme.accent)
+                        Text(limit.map(String.init) ?? "Wszystkie")
+                            .font(.footnote.weight(.medium))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 7)
+                            .foregroundStyle(chosen ? Theme.paper : Theme.ink)
+                            .background(chosen ? Theme.ink : Theme.ink.opacity(0.06), in: Capsule())
+                            .contentShape(Capsule())
                     }
-                } else {
-                    Text("Teraz tylko dzieła, które już mamy")
-                        .font(.caption)
-                        .foregroundStyle(Theme.inkSoft)
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(chosen ? .isSelected : [])
                 }
             }
-            Spacer(minLength: 8)
-            if fetchBlocker == nil {
-                Toggle("Pobieraj pasujące z muzeów", isOn: Binding(get: { fetchCount > 0 }, set: { fetchCount = $0 ? 100 : 0 }))
-                    .labelsHidden()
-                    .tint(Theme.accent)
-            }
+            .sensoryFeedback(.selection, trigger: playlist.limit)
+            Text(limitNote)
+                .font(.caption)
+                .foregroundStyle(Theme.inkSoft)
+                .fixedSize(horizontal: false, vertical: true)
+                .contentTransition(.numericText())
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .padding(.vertical, 12)
         .background(Theme.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Theme.hairline))
-        .animation(.snappy, value: fetchCount > 0)
+    }
+
+    /// Under "Ile dzieł": how many match and what saving does about it.
+    private var limitNote: AttributedString {
+        guard let preview, let missing else {
+            return AttributedString(playlist.rules.isEmpty ? "Wyszukaj albo wybierz grupę, a policzę pasujące." : "Liczę pasujące…")
+        }
+        let matching = preview.count
+        if let limit = playlist.limit, matching > limit {
+            var note = AttributedString("Pasuje \(matching), playlista weźmie ")
+            var taken = AttributedString("\(limit)")
+            taken.foregroundColor = Theme.accent
+            note += taken + AttributedString(": najpierw ulubione, reszta losowo.")
+            return note
+        }
+        if missing > 0 {
+            var note = AttributedString(matching == 0 ? "Jeszcze nic nie pasuje. " : "Pasuje \(matching). ")
+            var asked = AttributedString(matching == 0 ? "\(missing) dobiorę z muzeów" : "Brakujące \(missing) dobiorę z muzeów")
+            asked.foregroundColor = Theme.accent
+            note += asked + AttributedString(" w tle po zapisaniu.")
+            return note
+        }
+        let mine = fetchBlocker.map { " \($0)" } ?? ""
+        return AttributedString((playlist.limit == nil ? "Pasuje \(matching), playlista weźmie wszystkie." : "Pasuje \(matching).") + mine)
     }
 
     /// The rules' chips, then the colours' and the museums' (the playlist's
@@ -600,28 +614,29 @@ struct PlaylistEditorView: View {
             }
             if playlist.kind == .manual {
                 manualPreview
-            } else if museumsFirst {
-                museumPreview
-                cataloguePreview
             } else {
-                cataloguePreview
-                museumPreview
+                smartPreview
             }
         }
     }
 
+    /// A smart playlist's works: those that match first, then (paler) what
+    /// the museums would add up to the limit after saving.
     @ViewBuilder
-    private var cataloguePreview: some View {
-        if let preview, !preview.items.isEmpty {
-            Eyebrow("W playliście · \(Names.works(preview.count))")
-            MasonryGrid(items: preview.items) { item in
-                card(item)
+    private var smartPreview: some View {
+        let remotes = asksMuseums ? Array(fromMuseums.prefix(missing ?? 0)) : []
+        let byID = Dictionary(remotes.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let known = preview?.items ?? []
+        if !known.isEmpty || !remotes.isEmpty {
+            MasonryGrid(items: known + remotes.map(\.item.summary)) { item in
+                let remote = byID[item.id]
+                card(item, remote: remote)
+                    .opacity(remote == nil ? 1 : 0.55)
             }
-        } else if preview != nil, !museumsFirst {
-            Text("Na razie nic nie pasuje. Włącz pobieranie z muzeów, a playlista zapełni się w tle.")
+        } else if preview != nil, missing == 0 {
+            Text("Nic nie pasuje.")
                 .font(.subheadline)
                 .foregroundStyle(Theme.inkSoft)
-                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -685,36 +700,9 @@ struct PlaylistEditorView: View {
 
     private var summary: String {
         guard let preview else { return "Szukam…" }
-        let found = Names.works(preview.count + fromMuseums.count)
-        return playlist.kind == .manual ? "Znalezione · \(found)" : found
-    }
-
-    @ViewBuilder
-    private var museumPreview: some View {
-        if asksMuseums, !fromMuseums.isEmpty || askingMuseums {
-            HStack {
-                Eyebrow("Z muzeów" + (remoteTotal > 0 ? " · \(Names.works(remoteTotal))" : ""), color: Theme.accent)
-                Spacer()
-                if askingMuseums {
-                    Text("doczytuję…").font(.caption).foregroundStyle(Theme.inkSoft)
-                }
-            }
-            if playlist.kind == .smart, !fromMuseums.isEmpty {
-                Text(fetchCount == 0
-                     ? "Takie dzieła trafią do playlisty, gdy włączysz pobieranie z muzeów."
-                     : "Takie dzieła trafią do playlisty w tle po zapisaniu.")
-                    .font(.footnote)
-                    .foregroundStyle(Theme.inkSoft)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            MasonryGrid(items: fromMuseums.map(\.item.summary)) { summary in
-                card(summary, remote: fromMuseums.first { $0.id == summary.id })
-            }
-        } else if asksMuseums, preview != nil, remoteAsked == searched.wrappedValue, remoteTotal == 0 {
-            Text("W muzeach nic więcej nie znaleziono.")
-                .font(.footnote)
-                .foregroundStyle(Theme.inkSoft)
-        }
+        if playlist.kind == .manual { return "Znalezione · " + Names.works(preview.count + fromMuseums.count) }
+        if let limit = playlist.limit, preview.count > limit { return "\(limit) z " + Names.works(preview.count) }
+        return Names.works(preview.count + (missing ?? 0))
     }
 
     /// Why museums can't supply works for these rules, if they can't.
@@ -784,8 +772,6 @@ struct PlaylistEditorView: View {
     private func askMuseums() async {
         guard playlist.kind != .album, asksMuseums, !searched.wrappedValue.isEmpty else {
             remote = []
-            remoteTotal = 0
-            remoteAsked = PlaylistRules()
             askingMuseums = false
             return
         }
@@ -793,24 +779,16 @@ struct PlaylistEditorView: View {
         guard !Task.isCancelled else { return }
         let rules = searched.wrappedValue
         remote = []
-        remoteTotal = 0
-        remoteAsked = PlaylistRules()
         askingMuseums = true
-        var totals: [String: Int] = [:]
         do {
             let answers = try await model.backend.museumAnswers(rules, sources: museumKeys, page: 1)
             for try await answer in answers {
                 guard !Task.isCancelled else { return }
-                totals[answer.source] = max(totals[answer.source] ?? 0, answer.total)
-                withAnimation(.snappy) {
-                    remote = remote.adding(answer.items)
-                    remoteTotal = totals.values.reduce(0, +)
-                }
+                withAnimation(.snappy) { remote = remote.adding(answer.items) }
             }
         } catch {}
         // A newer search may have started meanwhile; it owns the spinner.
         guard !Task.isCancelled else { return }
-        remoteAsked = rules
         askingMuseums = false
     }
 
@@ -882,7 +860,8 @@ struct PlaylistEditorView: View {
             playlist.album = nil
         }
         let uploads = photos.map(\.upload)
-        let fetch = playlist.kind == .smart && fetchBlocker == nil ? fetchCount : 0
+        let fetch = missing ?? 0
+        if playlist.kind != .smart { playlist.limit = nil }
         Task { [model] in await Self.store(playlist, uploads: uploads, fetch: fetch, model: model) }
         dismiss()
     }
@@ -958,7 +937,6 @@ private struct EditorSearch: ViewModifier {
     /// Not while the name or description is being typed.
     let groupsShown: Bool
     let museums: [Museum]
-    let pickedFromMuseums: () -> Void
     /// The sheet's height, for how tall an open group may be.
     @State private var height: CGFloat = 700
 
@@ -970,7 +948,7 @@ private struct EditorSearch: ViewModifier {
                     if groupsShown {
                         TermFacetBar(
                             tokens: tokens, museums: museums, colors: ColorTag.families + ColorTag.moods,
-                            focus: focused, panelHeight: height * 0.6
+                            focus: focused, panelHeight: height * TermFacetBar.panelShare
                         )
                         .padding(.horizontal, Theme.gutter)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -978,7 +956,7 @@ private struct EditorSearch: ViewModifier {
                 }
                 // Measured outside the groups' inset: an open group grows it.
                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
-                .termSearch(lookup, tokens: tokens, focused: focused, pickedFromMuseums: pickedFromMuseums)
+                .termSearch(lookup, tokens: tokens, focused: focused)
                 .toolbar {
                     DefaultToolbarItem(kind: .search, placement: .bottomBar)
                 }

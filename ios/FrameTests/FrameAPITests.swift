@@ -830,13 +830,22 @@ final class FrameAPITests: XCTestCase {
         let theme = try XCTUnwrap(themes.first { $0.key == rows[1].theme })
         XCTAssertNotNil(theme.group)
         XCTAssertFalse(theme.cover?.isEmpty ?? true)
-        // "Motyw dnia" is the first card of "Na ten tydzień"; "Bo lubisz" has a card per artist.
+        // "Motyw dnia" is the first card of "Dziś dla Ciebie"; "Bo lubisz" has a card per artist.
         let shown = DiscoverLayout.themes(themes, rows: rows)
         let day = try XCTUnwrap(shown.first { $0.group == DiscoverLayout.weekly })
         XCTAssertEqual(day.key, theme.key)
         XCTAssertEqual(day.name, "Motyw dnia: \(theme.name)")
         XCTAssertFalse(day.cover?.isEmpty ?? true)
         XCTAssertEqual(shown.filter { $0.group == DiscoverLayout.likes }.map(\.name), ["Claude Monet", "Katsushika Hokusai"])
+        // An older server names the group "Na ten tydzień": the same group.
+        let old = themes.map { theme in
+            var theme = theme
+            if theme.group == DiscoverLayout.weekly { theme.group = DiscoverLayout.oldWeekly }
+            return theme
+        }
+        let shownOld = DiscoverLayout.themes(old, rows: rows)
+        XCTAssertFalse(shownOld.contains { $0.group == DiscoverLayout.oldWeekly })
+        XCTAssertEqual(shownOld.filter { $0.group == DiscoverLayout.weekly }.count, shown.filter { $0.group == DiscoverLayout.weekly }.count)
         let page = try await demo.themePage(key: theme.key, page: 1)
         XCTAssertFalse(page.items.isEmpty)
         XCTAssertFalse(page.more)
@@ -993,6 +1002,39 @@ final class FrameAPITests: XCTestCase {
         )
         let left = try await demo.removeFromPlaylist(id: manual.playlist.id, itemID: manual.itemIds[0])
         XCTAssertEqual(left.itemIds, [manual.itemIds[1]])
+    }
+
+    /// "Ile dzieł": a smart playlist holds at most its limit, the rest
+    /// waits; with no limit it takes all that match.
+    func testASmartPlaylistKeepsToItsLimit() async throws {
+        let demo = DemoBackend()
+        let playlists = try await demo.playlists()
+        let smart = try XCTUnwrap(playlists.first { $0.kind == .smart && !$0.isFavorites && $0.itemCount > 2 })
+        let detail = try await demo.playlist(id: smart.id)
+        var playlist = Playlist(
+            id: smart.id, name: smart.name, kind: .smart, rules: smart.rules, limit: 2
+        )
+        let limited = try await demo.savePlaylist(playlist)
+        XCTAssertEqual(limited.playlist.itemCount, 2)
+        XCTAssertEqual(limited.playlist.limit, 2)
+        XCTAssertEqual(limited.items.count, 2)
+        playlist.limit = nil
+        let all = try await demo.savePlaylist(playlist)
+        XCTAssertEqual(all.items.count, detail.items.count)
+    }
+
+    func testAPlaylistSummaryFromAnOlderServerHasNoLimit() throws {
+        let encoder = JSONEncoder()
+        encoder.keyEncodingStrategy = .convertToSnakeCase
+        let rules = try XCTUnwrap(String(data: encoder.encode(PlaylistRules()), encoding: .utf8))
+        let json = """
+            {"id": 1, "name": "A", "description": "", "kind": "smart", "rules": \(rules),
+             "item_count": 3, "cover_item_ids": []}
+            """
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let summary = try decoder.decode(PlaylistSummary.self, from: Data(json.utf8))
+        XCTAssertNil(summary.limit)
     }
 
     func testRulesFromOlderServersHaveNoExceptions() throws {

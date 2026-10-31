@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.57.0
+
+- Inteligentne playlisty: zamiast przełącznika „Pobieraj pasujące z muzeów”
+  wybór „Ile dzieł” (50, 100, 200, 300 albo Wszystkie). Brakujące dzieła
+  dobierają się z muzeów w tle, a gdy pasuje więcej, playlista bierze stały
+  zestaw, najpierw ulubione. Starsze playlisty zachowują wszystkie dzieła.
+- Sprawdzanie wersji serwera w aplikacji trwa około sekundy: serwer pyta
+  rejestr obrazów zamiast pobierać cały obraz. Aktualizacje serwera pobierają
+  kilka MB zamiast ~200 MB (od następnej wersji po tej).
+- Szukaj: okienko grupy zamyka się z powrotem do swojego przycisku (a nie do
+  „Techniki”) i może być wyższe, więc Epoka mieści więcej okresów bez
+  przewijania.
+- Szukaj: muzeum, które nie odpowiada (np. The Met), jest pomijane po cichu,
+  bez napisu „Nie odpowiedziało”; siatka dzieł z mniejszymi dziurami między
+  kolumnami.
+- Grupa „Na ten tydzień” w Odkrywaj i Propozycjach nazywa się teraz
+  „Dziś dla Ciebie”.
+- Ramka nie budzi się już o 03:00 na kilka minut: przed każdym snem
+  z pobudką aplikacja ramki przesuwa dzienne odświeżanie ekranu Samsunga na
+  godzinę tej pobudki.
+- Na górze Odkrywaj kolory Studium dnia lekko przenikają w tło, jak na
+  karcie Teraz.
+
 ## 1.56.0
 
 - Dzieło dnia jest teraz Studium dnia: codziennie na górze Odkrywaj nowe

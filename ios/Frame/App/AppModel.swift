@@ -889,8 +889,9 @@ final class AppModel {
         serverUpdate = try? await backend.serverUpdate()
     }
 
-    /// The helper pulls the newest image now (it looks every few seconds; a
-    /// new image takes a minute or so to download).
+    /// The server asks the image registry and answers at once (newer servers);
+    /// older servers, or one that cannot reach the registry, leave it to the
+    /// helper, which pulls the newest image (a minute or more).
     func checkServerUpdate() async {
         let card = notices.begin("Sprawdzam, czy jest nowsza wersja serwera")
         do {
@@ -899,7 +900,7 @@ final class AppModel {
             notices.fail(error, in: card)
             return
         }
-        for _ in 0..<60 {
+        for _ in 0..<60 where serverUpdate?.busy ?? false {
             try? await Task.sleep(for: .seconds(3))
             guard let view = try? await backend.serverUpdate() else { continue }
             serverUpdate = view

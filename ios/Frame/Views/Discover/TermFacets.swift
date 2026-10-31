@@ -180,6 +180,9 @@ struct TermFacetBar: View {
     /// Over the keyboard the system field floats above the bar's usual place
     /// (the keyboard's top): the bar rises over the field.
     static let overField: CGFloat = 66
+    /// How much of the screen between the title and the tab bar an open
+    /// group may take (Epoka's periods need most of it).
+    static let panelShare: CGFloat = 0.85
 
     /// CI's screenshots of a group's panel.
     private static var launched: TermFacet? {
@@ -210,11 +213,11 @@ struct TermFacetBar: View {
         GlassEffectContainer(spacing: 8) {
             if let open {
                 TermFacetPanel(
-                    facet: open, tokens: $tokens, museums: museums, colors: colors, maxHeight: panelHeight
+                    facet: open, tokens: $tokens, museums: museums, colors: colors, maxHeight: panelHeight,
+                    glass: glass
                 ) {
                     withAnimation(.bouncy) { self.open = nil }
                 }
-                .glassEffectID(open.rawValue, in: glass)
             } else {
                 VStack(alignment: .trailing, spacing: 8) {
                     if grouped {
@@ -230,13 +233,19 @@ struct TermFacetBar: View {
                                 .padding(.vertical, 6)
                                 .contentShape(Capsule())
                                 .glassEffect(.regular.interactive(), in: .capsule)
+                                .glassEffectID("clear", in: glass)
                         }
                         .buttonStyle(.plain)
-                        .glassEffectID("clear", in: glass)
                         .accessibilityHint("Usuwa wybory we wszystkich grupach")
                     }
-                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
-                        ForEach(facets) { facet in button(facet) }
+                    // Not lazy: every button's glass is there for the panel
+                    // to shrink back into (a lazy grid's went to "Technika").
+                    Grid(horizontalSpacing: 8, verticalSpacing: 8) {
+                        ForEach(Array(stride(from: 0, to: facets.count, by: 3)), id: \.self) { start in
+                            GridRow {
+                                ForEach(facets[start ..< min(start + 3, facets.count)]) { facet in button(facet) }
+                            }
+                        }
                     }
                 }
             }
@@ -289,9 +298,9 @@ struct TermFacetBar: View {
             .foregroundStyle(on ? Theme.paper : Theme.ink)
             .contentShape(Capsule())
             .glassEffect(on ? Glass.regular.tint(Theme.accent).interactive() : Glass.regular.interactive(), in: .capsule)
+            .glassEffectID(facet.rawValue, in: glass)
         }
         .buttonStyle(.plain)
-        .glassEffectID(facet.rawValue, in: glass)
         .sensoryFeedback(.selection, trigger: open == facet)
         .accessibilityLabel(facet.label(tokens, periods: periods))
         .accessibilityHint("Otwiera wybór: \(facet.title.lowercased())")
@@ -307,6 +316,8 @@ struct TermFacetPanel: View {
     var museums: [Museum] = []
     var colors: [String] = []
     var maxHeight: CGFloat = 460
+    /// The bar's glass, to grow out of the group's button and back into it.
+    var glass: Namespace.ID
     var close: () -> Void
 
     @State private var filter = ""
@@ -349,6 +360,7 @@ struct TermFacetPanel: View {
             Glass.regular.tint(Theme.paper.opacity(0.55)),
             in: RoundedRectangle(cornerRadius: 28, style: .continuous)
         )
+        .glassEffectID(facet.rawValue, in: glass)
         .task {
             await model.loadVocabulary(fresh: true)
             // Opened on an accent: show the accents.

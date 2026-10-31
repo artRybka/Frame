@@ -948,13 +948,18 @@ class Player:
             or not museum_works
         ):
             return None
-        have = len(self.fresh(self.library.playlist_items(playlist), settings))
+        items = self.library.playlist_items(playlist)
+        have = len(self.fresh(items, settings))
         if have >= POOL_LOW:
             return None
+        want = POOL_SIZE - have
+        if playlist.limit is not None:
+            # A full playlist goes round its own works again.
+            want = min(want, playlist.limit - len(items))
+            if want <= 0:
+                return None
         rules = rules.model_copy(update={"kinds": [ItemKind.ARTWORK]})
-        return importer.start_job(
-            "pool", lambda job: importer.fill(rules, POOL_SIZE - have, job, pooled=True)
-        )
+        return importer.start_job("pool", lambda job: importer.fill(rules, want, job, pooled=True))
 
     def _pick_from_catalogue(self, count: int, settings: FrameSettings) -> list[Item]:
         """Up to ``count`` new Suggestions from the catalogue: half by the

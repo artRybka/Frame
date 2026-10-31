@@ -260,6 +260,10 @@ class Playlist(BaseModel):
     #: Who made it: only they change it. Others see it when ``shared``.
     owner: str = OWNER_ID
     shared: bool = False
+    #: A smart playlist's most works (None: all that match). With more
+    #: matching, a steady set is taken: favourites first, the rest drawn
+    #: once for these rules and limit (`repo.limited`).
+    limit: int | None = Field(default=None, ge=1)
     created_at: str = ""
     updated_at: str = ""
 
@@ -289,6 +293,7 @@ class PlaylistSummary(BaseModel):
     shared: bool = False
     #: The viewer made it (and may change it).
     mine: bool = True
+    limit: int | None = None
 
 
 class FacetValue(BaseModel):

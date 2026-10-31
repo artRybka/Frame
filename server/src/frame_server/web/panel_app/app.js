@@ -175,6 +175,20 @@
     return call(function () { return ep.setAutoSleepTime(AUTO_SLEEP); });
   }
 
+  // Samsung's daily screen refresh (03:00 out of the box) wakes the panel
+  // on its own, also from a sleep with the Wi-Fi off (2026-10-31: up for
+  // 5 minutes at 03:00 before a 07:00 alarm). Moved to the time of the
+  // next wake, it rides along with a wake that happens anyway.
+  function refreshAt(ms) {
+    var d = new Date(ms);
+    var now = call(function () { return ep.getScreenRefreshTime(); });
+    if (now.ok && now.value && Number(now.value.hour) === d.getHours() &&
+        Number(now.value.minute) === d.getMinutes()) return null;
+    return call(function () {
+      return ep.setScreenRefreshTime({ hour: d.getHours(), minute: d.getMinutes() });
+    });
+  }
+
   // The panel's Wi-Fi for the iOS app (signal, network, address): from
   // webapis.network, which needs the privilege network.public (package
   // 1.2.0+), else from tizen.systeminfo (signal 0-1, no frequency).
@@ -437,7 +451,10 @@
           r.standby = call(function () { return ep.setNetworkStandby(standby); });
         }
       }
-      if (wakeMs) r.alarm = arm(wakeMs);
+      if (wakeMs) {
+        r.alarm = arm(wakeMs);
+        r.refresh = refreshAt(wakeMs);
+      }
       if (more && more.length) {
         r.more = more.map(function (ms) {
           var a = arm(ms);

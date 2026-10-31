@@ -9,6 +9,7 @@ works under free licences. Every museum maps its records onto :class:`Item`
 from __future__ import annotations
 
 import html
+import logging
 import random
 import re
 import threading
@@ -22,7 +23,7 @@ from urllib.parse import quote, unquote, urlsplit
 import httpx
 
 from .commons import commons_html, commons_year
-from .hosts import guard
+from .hosts import Resting, guard
 from .lifespan import (
     EUROPEANA_AGENT,
     TERM_YEARS,
@@ -33,6 +34,8 @@ from .lifespan import (
 )
 from .markup import VECTOR, WEB_IMAGES, commons_rendition, extension, strip_markup
 from .models import Item, ItemKind
+
+log = logging.getLogger(__name__)
 
 USER_AGENT = "Frame/0.2 (home e-paper art frame; +https://github.com/artRybka/Frame)"
 
@@ -468,10 +471,23 @@ class MetropolitanMuseum(Museum):
         resp.raise_for_status()
         body = resp.json()
         items = []
-        for object_id in body.get("objectIDs") or []:
-            item = self.fetch(str(object_id))
+        missed: httpx.HTTPError | None = None
+        ids = body.get("objectIDs") or []
+        for object_id in ids:
+            try:
+                item = self.fetch(str(object_id))
+            except Resting:
+                raise  # the bot wall turned us away: the rest would fail too
+            except httpx.HTTPError as err:
+                # One object that doesn't load (a timeout, a 5xx) is left
+                # out instead of the whole page.
+                log.info("met: object %s left out: %s", object_id, err)
+                missed = err
+                continue
             if item is not None:
                 items.append(item)
+        if missed is not None and not items:
+            raise missed
         return int(body.get("total", len(items))), items
 
     def fetch(self, source_id: str) -> Item | None:
