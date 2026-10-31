@@ -10,6 +10,8 @@
   (limit dzienny u właściciela, domyślnie 5). Konfiguracja, nazwa ramki,
   usuwanie dzieł i aktualizacja serwera tylko dla właściciela. Wymaga
   FRAME_API_TOKEN na serwerze.
+- Szukaj: okienko grupy naprawdę wyrasta ze swojego przycisku i do niego
+  wraca (poprawka z 1.57.0 nie działała). Opis „Tylko akcent” krótszy.
 
 ## 1.57.0
 
