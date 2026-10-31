@@ -247,9 +247,10 @@ struct StudyRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 3) {
-                Text("Studia dzieł")
-                    .font(.serif(22, weight: .semibold))
-                    .foregroundStyle(Theme.ink)
+                NavigationLink(value: StudiesRoute()) {
+                    SeeAllHeader(title: "Studia dzieł", size: 22, weight: .semibold)
+                }
+                .buttonStyle(.plain)
                 Text("Wszystkie dzieła dnia i zamówione studia")
                     .font(.footnote)
                     .foregroundStyle(Theme.inkSoft)
@@ -268,6 +269,48 @@ struct StudyRow: View {
             }
             .scrollClipDisabled()
         }
+    }
+}
+
+/// Opens every study and work of the day as a grid ("Studia dzieł" ›).
+struct StudiesRoute: Hashable {}
+
+/// Every study and work of the day, two cards to a row, the last written
+/// first; each opens its page.
+struct StudiesGridView: View {
+    @Environment(AppModel.self) private var model
+
+    private let columns = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
+
+    var body: some View {
+        let studies = model.studyList ?? []
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                Text("Wszystkie dzieła dnia i zamówione studia")
+                    .font(.serif(17))
+                    .foregroundStyle(Theme.inkSoft)
+                LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
+                    ForEach(studies) { study in
+                        NavigationLink(value: study.route) { StudyCard(study: study) }
+                            .buttonStyle(.plain)
+                    }
+                }
+                if studies.isEmpty {
+                    EmptyStateView(
+                        title: "Nie ma jeszcze studiów",
+                        message: "Tu trafia każde dzieło dnia i każde studium zamówione na karcie dzieła.",
+                        systemImage: "sparkles"
+                    )
+                }
+            }
+            .padding(.horizontal, Theme.gutter)
+            .padding(.top, 4)
+            .padding(.bottom, 32)
+        }
+        .background(Theme.paper)
+        .navigationTitle("Studia dzieł")
+        .navigationBarTitleDisplayMode(.inline)
+        .refreshable { await model.loadStudyList(model.backend) }
     }
 }
 

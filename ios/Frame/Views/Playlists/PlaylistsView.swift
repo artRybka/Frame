@@ -94,6 +94,9 @@ struct PlaylistsView: View {
             .navigationDestination(for: DailyRoute.self) { route in
                 DailyView(route: route)
             }
+            .navigationDestination(for: StudiesRoute.self) { _ in
+                StudiesGridView()
+            }
             .sheet(item: $editing) { playlist in
                 PlaylistEditorView(playlist: playlist)
             }

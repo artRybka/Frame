@@ -41,6 +41,9 @@ struct DiscoverView: View {
             .navigationDestination(for: DailyRoute.self) { route in
                 DailyView(route: route)
             }
+            .navigationDestination(for: StudiesRoute.self) { _ in
+                StudiesGridView()
+            }
         }
         .onChange(of: model.suggestionsOpened) { path = NavigationPath() }
     }
