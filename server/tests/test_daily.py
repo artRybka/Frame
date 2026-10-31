@@ -44,7 +44,7 @@ ANSWER: dict[str, Any] = {
     "composition": {
         "views": [
             {
-                "title": "Spojrzenie",
+                "title": "Geometria detali",
                 "grid": "none",
                 "text": "Oko biegnie łukiem fali do Fudżi.",
                 "marks": [
@@ -259,7 +259,7 @@ def test_an_answer_is_cleaned() -> None:
     assert essay.headline == "Pocztówka z pielgrzymki"
     views = essay.composition.views
     # An empty take goes; "Geometria" comes first, whatever the answer's order.
-    assert [v.title for v in views] == ["Geometria", "Spojrzenie"]
+    assert [v.title for v in views] == ["Geometria", "Geometria detali"]
     assert [m.title for m in views[1].marks] == ["Łuk fali", "Fudżi"]
     assert (views[1].marks[1].points[1].x, views[1].marks[1].points[1].y) == (1.0, 0.0)
     assert views[0].grid == "none"  # not a grid the app draws
@@ -288,7 +288,7 @@ def test_rhythms_are_no_longer_shown() -> None:
     composition = {"views": [*ANSWER["composition"]["views"], rhythm]}
     essay = clean({**ANSWER, "composition": composition}, [])
     assert essay is not None
-    assert [v.title for v in essay.composition.views] == ["Geometria", "Spojrzenie"]
+    assert [v.title for v in essay.composition.views] == ["Geometria", "Geometria detali"]
 
 
 def _app(tmp_path: Path) -> Any:
@@ -345,7 +345,10 @@ def test_claude_writes_the_page(tmp_path: Path) -> None:
         assert work["headline"] == "Pocztówka z pielgrzymki"
         assert work["artist"].startswith("Katsushika Hokusai, malarz")
         assert work["focus"] == {"x": 0.64, "y": 1.0}
-        assert [v["title"] for v in work["composition"]["views"]] == ["Geometria", "Spojrzenie"]
+        assert [v["title"] for v in work["composition"]["views"]] == [
+            "Geometria",
+            "Geometria detali",
+        ]
         assert work["composition"]["views"][1]["marks"][0]["shape"] == "arrow"
         assert [(s["item"]["item"]["id"], s["why"]) for s in work["similar"]] == [
             ("met:2", "ta sama seria")

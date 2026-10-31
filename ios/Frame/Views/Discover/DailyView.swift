@@ -450,7 +450,7 @@ struct DailyView: View {
     }
 
     /// The takes as pencil over the picture in full colour, one at a time:
-    /// "Spojrzenie", "Geometria"; the take's summary under it in the page's
+    /// "Geometria", "Geometria detali"; the take's summary under it in the page's
     /// own type.
     private func compositionSection(_ work: DailyWork, _ takes: [DailyWork.Take]) -> some View {
         let shown = takes[min(take, takes.count - 1)]
