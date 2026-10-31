@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.56.0
+
+- Dzieło dnia jest teraz Studium dnia: codziennie na górze Odkrywaj nowe
+  studium dzieła, a dawne Dzieła dnia stają się zwykłymi studiami bez nowego
+  kosztu. Na karcie dzieła pojawia się wtedy „Otwórz studium”.
+- Na stronie studium obraz ma zawsze pełną szerokość i otwiera się na całym
+  ekranie z powiększaniem. Obraz w Analizie kompozycji ma szerokość tekstu
+  w obu ujęciach.
+- „Dlaczego dziś” pojawia się tylko w dniu studium, na białej albo czarnej
+  karteczce. Nie ma już „Poprzednich dzieł dnia”.
+- Nowa sekcja „Inne prace artysty”: 6 prac z katalogu, a gdy jest ich za
+  mało, serwer raz szuka w muzeach.
+- Przełącznik i powiadomienie nazywają się „Studium dnia”.
+
 ## 1.55.1
 
 - Szukaj: siatka dzieł nie znika i nie skacze przy przewijaniu.
