@@ -9,6 +9,9 @@
 - Sprawdzanie wersji serwera w aplikacji trwa około sekundy: serwer pyta
   rejestr obrazów zamiast pobierać cały obraz. Aktualizacje serwera pobierają
   kilka MB zamiast ~200 MB (od następnej wersji po tej).
+- Szukaj: okienko grupy zamyka się z powrotem do swojego przycisku (a nie do
+  „Techniki”) i może być wyższe, więc Epoka mieści więcej okresów bez
+  przewijania.
 
 ## 1.56.0
 
