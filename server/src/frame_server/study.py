@@ -12,6 +12,7 @@ from __future__ import annotations
 import logging
 import threading
 from concurrent.futures import Future
+from datetime import date
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
@@ -20,7 +21,7 @@ from .ai.study import KIND, StudyJob
 
 if TYPE_CHECKING:
     from .ai import AiWorker
-    from .ai.daily import Essay
+    from .ai.daily import DailyJob, Essay
     from .daily import Daily
     from .library import Item
     from .library.models import Note
@@ -54,15 +55,33 @@ class Study:
     def essay(self, item: Item) -> Essay | None:
         return self.job.essay(item)
 
-    def written(self) -> list[tuple[Item, Essay]]:
-        """The works with a study, the last asked for first."""
-        found = []
-        for item_id in reversed(self.library.get_state(STATE_KEY, [])):
+    def written(self) -> list[tuple[Item, Essay, date | None]]:
+        """The works with a page written about them, the last written first:
+        those the owner asked a study of, and every work of the day (with
+        its day). A work that was both is there once, with its day."""
+        found: dict[str, tuple[tuple[str, int], Item, Essay, date | None]] = {}
+
+        def add(item_id: str, job: DailyJob, day: date | None, order: int) -> None:
             item = self.library.get(item_id)
-            essay = self.job.essay(item) if item is not None and not item.excluded else None
-            if item is not None and essay is not None:
-                found.append((item, essay))
-        return found
+            if item is None or item.excluded:
+                return
+            essay = job.essay(item)
+            note = self.library.note(item_id, job.kind) if essay is not None else None
+            if essay is None or note is None:
+                return
+            key = (note.created_at, order)
+            known = found.get(item_id)
+            if known is not None:
+                key = max(key, known[0])
+                day = day or known[3]
+            found[item_id] = (key, item, essay, day)
+
+        for order, item_id in enumerate(self.library.get_state(STATE_KEY, [])):
+            add(item_id, self.job, None, order)
+        for item_id in set(self.daily.history().values()):
+            add(item_id, self.daily.job, self.daily.day_of(item_id), -1)
+        ranked = sorted(found.values(), key=lambda entry: entry[0], reverse=True)
+        return [(item, essay, day) for _, item, essay, day in ranked]
 
     def ask(self, item: Item, again: bool = False) -> Future[Note | None] | None:
         """Asks Claude for the work's study unless it has one (``again``:

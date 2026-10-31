@@ -267,6 +267,70 @@ final class FrameAPITests: XCTestCase {
         XCTAssertEqual(view.costUsd, 0.14, accuracy: 0.001)
     }
 
+    func testStudiesListWorksOfTheDayToo() throws {
+        // GET /api/studies (tests/test_study.py): a work of the day opens its
+        // day's page, a study asked for its study; older servers send no day.
+        let item = """
+         {
+          "item": {
+           "id": "met:1",
+           "kind": "artwork",
+           "source": "met",
+           "source_id": "met:1",
+           "title": "Under the Wave off Kanagawa",
+           "artist": "Katsushika Hokusai",
+           "artist_bio": "",
+           "date_text": "ca. 1830–32",
+           "year": 1831,
+           "medium": "",
+           "classification": "",
+           "styles": [],
+           "subjects": [],
+           "culture": "",
+           "museum": "",
+           "credit": "",
+           "license": "",
+           "url": "",
+           "description": "",
+           "image_url": "",
+           "thumb_url": "",
+           "width": 3000,
+           "height": 2000,
+           "colors": [],
+           "color_tags": [],
+           "keywords": [],
+           "terms": [],
+           "suitability": 0.95,
+           "tint_spread": null,
+           "favorite": false,
+           "excluded": false,
+           "pooled": false,
+           "added_at": "2026-10-30T20:07:09+00:00",
+           "last_shown_at": null,
+           "show_count": 0,
+           "photo": null,
+           "framing": {},
+           "look": null
+          },
+          "in_library": true,
+          "work": "hokusai|under wave off kanagawa",
+          "twin": null,
+          "replaces": null
+         }
+        """
+        let json = """
+        [{"item": \(item), "title": "Wielka fala", "day": "2026-10-30"},
+         {"item": \(item), "title": "Wielka fala", "day": null},
+         {"item": \(item), "title": "Wielka fala"}]
+        """
+        let briefs = try LiveBackend.decoder().decode([StudyBrief].self, from: Data(json.utf8))
+        XCTAssertEqual(briefs.map(\.route), [
+            DailyRoute(day: "2026-10-30"),
+            DailyRoute(day: nil, study: "met:1"),
+            DailyRoute(day: nil, study: "met:1"),
+        ])
+    }
+
     func testDecodesUndeliveredPicture() throws {
         let json = """
         {"state": "failed", "failure": "timeout", "failed_at": "2026-10-26T06:00:00+00:00",

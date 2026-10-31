@@ -1397,13 +1397,20 @@ struct DailyWork: Codable, Hashable, Sendable {
     var legacyPending: Bool?
 }
 
-/// A work with a study, `GET /api/studies`: Discover's row "Studia dzieł".
+/// A work with a study or a work of the day's page, `GET /api/studies`:
+/// Discover's row "Studia dzieł".
 struct StudyBrief: Codable, Hashable, Sendable, Identifiable {
     var item: RemoteItem
     /// The Polish title the study gives it.
     var title: String
+    /// A work of the day: its (last) day, whose page opens; nil: a study
+    /// asked for (and from servers before the works of the day were listed).
+    var day: String? = nil
 
     var id: String { item.id }
+
+    /// Its page: the day's for a work of the day, else its study.
+    var route: DailyRoute { day.map { DailyRoute(day: $0) } ?? DailyRoute(day: nil, study: id) }
 }
 
 /// A work of the day's page, opened from the tile or from a past day; or a

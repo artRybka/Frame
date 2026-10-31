@@ -797,12 +797,21 @@ actor DemoBackend: FrameBackend {
         return StudyView(status: "ready", error: "", work: work, costUsd: 0.14)
     }
 
-    /// The ones asked for (the last first), then a few the demo has written.
+    /// The ones asked for (the last first), then a few the demo has written;
+    /// the wave is today's work of the day and opens as that.
     func studies() async throws -> [StudyBrief] {
         let asked = askedStudies.filter { Date().timeIntervalSince($0.value) >= 6 }.sorted { $0.value > $1.value }.map { $0.key }
         let ids = asked + ["aic:24645", "aic:14620", "aic:64818", "aic:87008", "aic:2914"].filter { !asked.contains($0) }
+        let parts = Calendar.current.dateComponents([.year, .month, .day], from: Date())
+        let today = String(format: "%04d-%02d-%02d", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0)
         return ids.compactMap { id in
-            items.first { $0.id == id }.map { StudyBrief(item: RemoteItem(item: $0, inLibrary: true), title: $0.title) }
+            items.first { $0.id == id }.map {
+                StudyBrief(
+                    item: RemoteItem(item: $0, inLibrary: true),
+                    title: $0.title,
+                    day: id == "aic:24645" && !asked.contains(id) ? today : nil
+                )
+            }
         }
     }
 
