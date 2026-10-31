@@ -22,6 +22,8 @@ struct FrameApp: App {
                 // A tap on a Lock Screen card ("Studium gotowe"): where it points,
                 // as for a notification.
                 .onOpenURL { url in
+                    // An invitation to the frame (QR code, AirDrop, Wiadomości).
+                    if model.open(invitation: url) { return }
                     let route = URLComponents(url: url, resolvingAgainstBaseURL: false)?
                         .queryItems?.first { $0.name == "route" }?.value
                     if let route { PushCenter.shared.open(route) }

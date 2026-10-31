@@ -23,10 +23,10 @@ from ..imaging.pipeline import encode_image, render
 from ..imaging.testchart import palette_chart
 from ..player import Hold, utcnow
 from ..service import FrameService
-from .deps import require_token, service
+from .deps import require_owner, service
 
 router = APIRouter(
-    prefix="/api/calibration", dependencies=[Depends(require_token)], tags=["calibration"]
+    prefix="/api/calibration", dependencies=[Depends(require_owner)], tags=["calibration"]
 )
 Svc = Annotated[FrameService, Depends(service)]
 

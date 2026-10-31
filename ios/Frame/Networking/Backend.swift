@@ -178,6 +178,21 @@ protocol FrameBackend: Sendable {
     func rest(hours: Int?) async throws -> RestResult
 
     func request(for image: ImageRef) -> URLRequest?
+
+    // People (Model/People.swift; the demo's are there too).
+    /// Who this phone is on the server: a member sees no Konfiguracja.
+    func me() async throws -> Me
+    /// "Odłącz ten telefon": this phone's own token stops working.
+    func leave() async throws
+    /// Konfiguracja → Domownicy (the owner's).
+    func people() async throws -> People
+    func invite(_ request: InviteRequest) async throws -> NewInvite
+    func cancelInvite(id: String) async throws -> People
+    /// "Odbierz dostęp": that phone's token stops working at once.
+    func removeDevice(id: String) async throws -> People
+    func removePerson(id: String) async throws -> People
+    func renamePerson(id: String, name: String) async throws -> People
+    func savePeopleSettings(_ settings: PeopleSettings) async throws -> People
 }
 
 extension FrameBackend {

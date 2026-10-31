@@ -146,3 +146,26 @@ pobiera obraz tylko co 6 h, przy aktualizacji i gdy rejestr nie odpowiada
 **Konsekwencje.** Raz trzeba wkleić nowy `docker-compose.yml` w projekcie.
 Odrzucone: Watchtower (obcy obraz z pełnym dostępem do Dockera i otwarty
 port API) i API Synology (hasło administratora DSM na serwerze).
+
+## D15. Domownicy: właściciel i domownik, token na telefon — 2026-10-31
+
+**Kontekst.** Mateusz chce dać aplikację żonie (Paulinie): ten sam serwer i ta
+sama ramka, ale własne playlisty i Ulubione, bez Konfiguracji.
+**Decyzja.** Dwie role. Właściciel to każdy, kto ma token serwera
+`FRAME_API_TOKEN`, i jego telefony dodane zaproszeniem. Domownik dołącza
+zaproszeniem: kod jednorazowy, ważny 30 min, w kodzie QR albo linku
+`com.artrybka.frame://join?code=…&home=…&remote=…`; po `POST /api/join`
+telefon dostaje własny token (w Keychain, przenosi się z kopią iCloud),
+serwer trzyma tylko jego skrót SHA-256 (`users.py`, klucz `people` w bazie).
+5 błędnych kodów w 10 min blokuje dołączanie. Bez `FRAME_API_TOKEN`
+zaproszeń nie ma (każdy w sieci jest właścicielem). Serca są osobne (tabela
+`favorites`); `Item.favorite` w bazie znaczy „ktoś lubi” i dalej chroni
+dzieło przed porządkami. Playlista ma właściciela i `shared`; jej reguły
+(„Ulubione”, limit „Ile dzieł”) liczą się sercami właściciela, także gdy
+gra ramka. Ograniczenia domownika pilnuje serwer (403), aplikacja tylko
+chowa przyciski. Propozycje i rotacja ramki są wspólne, z gustu całego
+domu.
+**Konsekwencje.** Stare aplikacje (bez `shared`) nie odbierają wspólności
+przy edycji. Odrzucone: konta z hasłem (logowanie na telefonie jest zbędne
+w domu) i jeden wspólny token z rolą w nagłówku (nie da się odebrać dostępu
+jednemu telefonowi).

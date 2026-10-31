@@ -86,10 +86,15 @@ class Births:
         text = entry.get("born") if entry else None
         return date.fromisoformat(text) if text else None
 
-    def favourites(self) -> Counter[str]:
-        """Artists of the favourite works, with how many there are."""
-        rules = PlaylistRules(kinds=[ItemKind.ARTWORK], favorites_only=True)
-        items: list[Item] = self.library.query(rules)[1]
+    def favourites(self, user: str | None = None) -> Counter[str]:
+        """Artists of ``user``'s favourite works (None: anyone's), with how
+        many there are."""
+        if user is None:
+            everyone = self.library.query(PlaylistRules(kinds=[ItemKind.ARTWORK]))[1]
+            items: list[Item] = [i for i in everyone if i.favorite]
+        else:
+            rules = PlaylistRules(kinds=[ItemKind.ARTWORK], favorites_only=True)
+            items = self.library.query(rules, user=user)[1]
         return Counter(i.artist for i in items if i.artist)
 
     def _years(self, artist: str) -> list[int]:

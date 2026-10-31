@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from .. import build_version
@@ -18,7 +18,9 @@ from ..schedule import FrameSettings
 from ..service import FrameService
 from ..status import DeviceStatus
 from ..store import ContentInfo
-from .deps import require_token, service
+from ..users import User
+from .deps import CurrentUser, require_token, service
+from .playlists_api import summary
 
 router = APIRouter(prefix="/api", dependencies=[Depends(require_token)], tags=["player"])
 Svc = Annotated[FrameService, Depends(service)]
@@ -179,7 +181,7 @@ def _player_view(svc: FrameService) -> PlayerView:
     playlist = None
     if settings.playlist_id is not None:
         found = svc.library.playlist(settings.playlist_id)
-        playlist = svc.library.playlist_summary(found) if found else None
+        playlist = summary(svc, found) if found else None
     history = [i for i in (svc.library.get(i) for i in reversed(state.history[-12:])) if i]
     shown = svc.library.last_shown([i.id for i in history])
     return PlayerView(
@@ -257,9 +259,11 @@ def get_settings(svc: Svc) -> FrameSettings:
 
 
 @router.put("/settings", response_model=FrameSettings)
-async def put_settings(settings: FrameSettings, svc: Svc) -> FrameSettings:
+async def put_settings(settings: FrameSettings, svc: Svc, user: CurrentUser) -> FrameSettings:
     player = svc.player
     old = player.settings
+    if not user.is_owner:
+        _member_may(svc, user, old, settings)
     saved = player.save_settings(settings)
     svc.power.publish_status()  # a mode the sleeping frame takes on later
     if old.wikiart and not saved.wikiart:
@@ -284,8 +288,25 @@ async def put_settings(settings: FrameSettings, svc: Svc) -> FrameSettings:
     return saved
 
 
+#: Settings of Konfiguracja and the frame's name: the owner's (Mateusz,
+#: 2026-10-31); a member changes the schedule, presentation and screen.
+OWNER_SETTINGS = frozenset(
+    {"name", "private_use", "wikiart", "ignore_term", "timezone", "status_poll_minutes"}
+)
+
+
+def _member_may(svc: FrameService, user: User, old: FrameSettings, new: FrameSettings) -> None:
+    changed = {k for k in OWNER_SETTINGS if getattr(old, k) != getattr(new, k)}
+    if changed:
+        raise HTTPException(403, f"tylko właściciel zmienia: {', '.join(sorted(changed))}")
+    if new.playlist_id is not None and new.playlist_id != old.playlist_id:
+        playlist = svc.library.playlist(new.playlist_id)
+        if playlist is None or not playlist.visible_to(user.id):
+            raise HTTPException(404, f"no playlist {new.playlist_id}")
+
+
 @router.get("/status", response_model=StatusView)
-async def status(svc: Svc, refresh: bool = False) -> StatusView:
+async def status(svc: Svc, user: CurrentUser, refresh: bool = False) -> StatusView:
     if refresh:
         await svc.status.refresh()
     svc.power.publish_status()  # whether the app is silent changes with the clock
@@ -296,7 +317,7 @@ async def status(svc: Svc, refresh: bool = False) -> StatusView:
             version=build_version(),
             uptime_s=int(time.monotonic() - STARTED),
             library_count=svc.library.count(),
-            playlists=len(svc.library.playlists()),
+            playlists=len(svc.library.playlists(user.id)),
             jobs_running=sum(not j.finished for j in svc.importer.jobs.values()),
             palette=svc.palette.name,
         ),

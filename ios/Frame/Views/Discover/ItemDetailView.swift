@@ -821,7 +821,7 @@ struct AddToPlaylistSheet: View {
     var beforeAdding: () async -> Bool = { true }
     @State private var newName = ""
 
-    private var manual: [PlaylistSummary] { model.playlists.filter { $0.kind == .manual } }
+    private var manual: [PlaylistSummary] { model.playlists.filter { $0.kind == .manual && $0.isMine } }
 
     var body: some View {
         NavigationStack {

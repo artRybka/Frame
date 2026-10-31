@@ -57,8 +57,9 @@ from . import (
     storage_api,
     study_api,
     update_api,
+    users_api,
 )
-from .deps import require_token
+from .deps import require_owner, require_token
 
 log = logging.getLogger(__name__)
 
@@ -150,6 +151,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         ai_api.router,
         update_api.router,
         notify_api.router,
+        users_api.router,
     )
     for router in routers:
         app.include_router(router)
@@ -400,7 +402,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(502, f"panel: {err}") from err
         return {"ok": True}
 
-    @app.get("/api/debug/panel-requests", dependencies=auth)
+    @app.get("/api/debug/panel-requests", dependencies=[Depends(require_owner)])
     def panel_requests() -> list[dict[str, object]]:
         return [asdict(r) for r in service.store.recent_requests]
 

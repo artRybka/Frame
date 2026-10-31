@@ -11,9 +11,9 @@ from ..device import MdcError
 from ..panel_app import AppView
 from ..panel_config import PanelConfigUpdate, PanelConfigView
 from ..service import FrameService
-from .deps import require_token, service
+from .deps import require_owner, service
 
-router = APIRouter(prefix="/api/device", dependencies=[Depends(require_token)], tags=["device"])
+router = APIRouter(prefix="/api/device", dependencies=[Depends(require_owner)], tags=["device"])
 Svc = Annotated[FrameService, Depends(service)]
 
 
