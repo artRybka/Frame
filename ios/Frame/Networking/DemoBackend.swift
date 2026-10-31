@@ -749,15 +749,8 @@ actor DemoBackend: FrameBackend {
             similar: similar,
             legacy: [
                 .init(year: "1888", who: "Vincent van Gogh", title: "List do Thea", text: "Van Gogh pisze bratu o fali Hokusaia.", quote: "Te fale to szpony, łódź jest w nie złapana, czuje się to.", item: nil),
-                .init(
-                    year: "1897–1903", who: "Camille Claudel", title: "Fala", text: "Trzy kąpiące się kobiety pod falą z onyksu.", quote: "", item: nil,
-                    link: "https://en.wikipedia.org/wiki/Camille_Claudel", linkTitle: "Camille Claudel"
-                ),
-                .init(
-                    year: "1905", who: "Claude Debussy", title: "Morze", text: "Fala Hokusaia na okładce pierwszego wydania partytury.", quote: "", item: nil,
-                    link: "https://en.wikipedia.org/wiki/La_mer_(Debussy)", linkTitle: "La mer (Debussy)",
-                    picture: "https://upload.wikimedia.org/wikipedia/commons/thumb/a/af/Debussy_-_La_Mer_-_The_great_wave_of_Kanaga_from_Hokusai.jpg/330px-Debussy_-_La_Mer_-_The_great_wave_of_Kanaga_from_Hokusai.jpg"
-                ),
+                .init(year: "1897–1903", who: "Camille Claudel", title: "Fala", text: "Trzy kąpiące się kobiety pod falą z onyksu.", quote: "", item: nil),
+                .init(year: "1905", who: "Claude Debussy", title: "Morze", text: "Fala Hokusaia na okładce pierwszego wydania partytury.", quote: "", item: nil),
             ],
             sources: ["obraz", "Wikipedia"],
             model: "claude-opus-5-5",

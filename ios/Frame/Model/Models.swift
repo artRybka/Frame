@@ -1356,11 +1356,6 @@ struct DailyWork: Codable, Hashable, Sendable {
         var quote: String
         /// A copy of the later work: the catalogue's, else a museum's.
         var item: RemoteItem?
-        /// Its Wikipedia article and the article's picture, when the server
-        /// found them (nil from 0.45 servers).
-        var link: String?
-        var linkTitle: String?
-        var picture: String?
     }
 
     struct Brief: Codable, Hashable, Sendable {
@@ -1398,7 +1393,7 @@ struct DailyWork: Codable, Hashable, Sendable {
     var sources: [String]
     var model: String
     var previous: [Brief]
-    /// The later works' pictures and links are being looked up now.
+    /// The later works' copies are being looked up in the museums now.
     var legacyPending: Bool?
 }
 

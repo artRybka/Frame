@@ -167,7 +167,6 @@ def _today_is(service: FrameService, item_id: str) -> None:
 @pytest.fixture
 def offline(service: FrameService) -> FrameService:
     service.daily.job._http = _offline()
-    service.later._http = _offline()
     service.later.search = lambda query, limit: (0, [], [])
     return service
 
@@ -233,7 +232,6 @@ def _app(tmp_path: Path) -> Any:
     )
     svc: FrameService = app.state.service
     svc.daily.job._http = _offline()
-    svc.later._http = _offline()
     svc.later.search = lambda query, limit: (0, [], [])
     return app
 

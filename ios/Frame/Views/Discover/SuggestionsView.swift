@@ -250,7 +250,7 @@ struct StudyRow: View {
                 Text("Pod lupą")
                     .font(.serif(22, weight: .semibold))
                     .foregroundStyle(Theme.ink)
-                Text("Studia dzieł, które przygotował dla Ciebie Claude")
+                Text("Dotychczas przyszykowane studia dzieł")
                     .font(.footnote)
                     .foregroundStyle(Theme.inkSoft)
             }

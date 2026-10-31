@@ -4,7 +4,8 @@ import SwiftUI
 /// marks drawn over it in pencil with a paper-coloured edge (so they read on
 /// dark and light parts alike) and a number beside each, and their labels
 /// under the picture in two columns, all hand-written: a title and a line
-/// under it. A tap on the picture hides the marks, another brings them back.
+/// under it. A tap on the picture hides the marks, another brings them back
+/// (no sign for it on the picture).
 struct CompositionSketch: View {
     let item: RemoteItem
     let aspect: CGFloat
@@ -56,16 +57,6 @@ struct CompositionSketch: View {
                     .allowsHitTesting(false)
             }
             .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
-            .overlay(alignment: .bottomTrailing) {
-                Image(systemName: bare ? "pencil.and.outline" : "eye")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(pencil)
-                    .frame(width: 26, height: 26)
-                    .background(paper.opacity(0.9), in: Circle())
-                    .padding(6)
-                    .allowsHitTesting(false)
-                    .accessibilityHidden(true)
-            }
             .contentShape(Rectangle())
             .onTapGesture {
                 withAnimation(.easeInOut(duration: 0.25)) { bare.toggle() }
@@ -114,7 +105,9 @@ struct CompositionSketch: View {
                 .frame(width: 17, height: 17)
                 .overlay(Circle().strokeBorder(Theme.ink, lineWidth: 1.3))
                 .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 5 }
-            VStack(alignment: .leading, spacing: 1) {
+            // The hand-written face has tall lines: the note sits close
+            // under its title, as written by hand.
+            VStack(alignment: .leading, spacing: -7) {
                 Text(entry.mark.title)
                     .font(.hand(21))
                     .lineLimit(2)
