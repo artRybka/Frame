@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.49.1
+
+- Szukaj i edytor playlist: przyciski grup zawijają się do drugiej linii
+  zamiast przewijać się w bok.
+- Kolory: kolory i nastroje to jedna grupa „lub”, akcenty druga, a obie
+  muszą pasować (np. Błękit + Akcent: czerwień to niebieskie dzieła
+  z czerwonym akcentem). Dotyczy playlist i wyników z muzeów.
+
 ## 1.49.0
 
 - Powiadomienia na telefonie (Konfiguracja → Powiadomienia): bateria poniżej

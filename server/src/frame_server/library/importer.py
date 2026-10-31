@@ -273,8 +273,9 @@ class Importer:
         return tags
 
     def in_colors(self, items: list[Item], colors: list[str]) -> list[Item]:
-        """``items`` with any of ``colors`` (colour, accent or mood tags),
-        judged from their thumbnails; museums don't know colours."""
+        """``items`` that fit ``colors`` (colour, accent or mood tags, as
+        :func:`has_colours`), judged from their thumbnails; museums don't
+        know colours."""
         if not colors or not items:
             return items
         with ThreadPoolExecutor(min(len(items), 16)) as pool:
