@@ -30,3 +30,27 @@ def service(tmp_path: Path):
     svc = FrameService(settings)
     svc.ensure_initial_content()
     return svc
+
+
+# Services in the tests start daemon threads (AI workers, the daily job,
+# artist-works and study-details lookups) that can still be inside C code when
+# the interpreter shuts down, which now and then crashed CI with exit 139 after
+# every test had passed. Once pytest has reported, end the process with its
+# own exit status instead of tearing those threads down.
+_exit_status: int | None = None
+
+
+def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    global _exit_status
+    _exit_status = int(exitstatus)
+
+
+@pytest.hookimpl(trylast=True)
+def pytest_unconfigure(config: pytest.Config) -> None:
+    if _exit_status is None:
+        return
+    import os
+
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(_exit_status)
