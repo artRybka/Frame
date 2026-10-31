@@ -9,7 +9,8 @@
   z konta Apple Developer; „Wyślij próbne powiadomienie” pokazuje odpowiedź
   Apple.
 - „Studia dzieł” w Odkrywaj mają też każde Dzieło dnia z napisaną stroną;
-  dotknięcie otwiera stronę z jego dnia.
+  dotknięcie otwiera stronę z jego dnia, a strzałka przy tytule otwiera
+  pełne zestawienie.
 - Rytm także w starych studiach: strony napisane przed „Rytmem” nie
   pokazują już trzeciego ujęcia innego rodzaju (np. „Światło”), a serwer
   w tle dopisuje do nich same rytmy.
