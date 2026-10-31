@@ -13,11 +13,13 @@ from pathlib import Path
 
 from PIL import Image
 
+from . import notifications
 from .ai import AiConfigStore, AiWorker, Claude, DailyJob, KeywordsJob, PlTextJob
 from .ai.check import CheckJob
 from .ai.rhythm import RhythmJob
 from .ai.study import StudyJob
 from .albums import Albums
+from .births import Births
 from .config import Settings
 from .daily import Daily
 from .device import MdcClient, MdcConnectionError, MdcError, wol
@@ -203,6 +205,11 @@ class FrameService:
         # Studies of any work, asked for on its card.
         self.study = Study(self.daily, self.ai, StudyJob(self.library, self.images, self.ai_config))
         self.ai.register(self.study.job)
+        self.study.on_ready = lambda item: self.notifier.study_ready(
+            item.id, notifications.item_title(self, item)
+        )
+        # Favourite artists' birthdays, for the notifications.
+        self.births = Births(self.library)
         # "Rytm" for the pages written before the composition had it.
         self.ai.register(RhythmJob(self.library, self.images, self.ai_config))
         # The composition checked over its marks, for pages written before that.
