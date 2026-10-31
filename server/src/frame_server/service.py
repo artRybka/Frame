@@ -14,6 +14,7 @@ from pathlib import Path
 from PIL import Image
 
 from .ai import AiConfigStore, AiWorker, Claude, DailyJob, KeywordsJob, PlTextJob
+from .ai.rhythm import RhythmJob
 from .ai.study import StudyJob
 from .albums import Albums
 from .config import Settings
@@ -26,6 +27,7 @@ from .library import ImageCache, Importer, Library
 from .library.commons import repair_library
 from .library.museums import Access, europeana_mirrors
 from .library.museums import client as museum_client
+from .notifications import Notifier
 from .panel_app import POLL, PanelApp
 from .panel_config import PanelConfigStore
 from .player import Player
@@ -166,6 +168,12 @@ class FrameService:
             access=self._access,
         )
         self.status = StatusMonitor(self.panel, self.library)
+        # The owner's phone hears of the battery, failed sends, new pictures.
+        self.notifier = Notifier(settings.data_dir, self.library)
+        self.status.on_battery_level = self.notifier.battery
+        self.progress.on_end = lambda stage, title, message: self.notifier.ended(
+            stage == Stage.FAILED, title, message
+        )
         self.progress.restore(self.library.get_state(PROGRESS_KEY, {}))
         self.progress.on_learn = lambda learned: self.library.set_state(PROGRESS_KEY, learned)
         self.progress.likely_asleep = lambda: self.status.sleeping
@@ -194,6 +202,8 @@ class FrameService:
         # Studies of any work, asked for on its card.
         self.study = Study(self.daily, self.ai, StudyJob(self.library, self.images, self.ai_config))
         self.ai.register(self.study.job)
+        # "Rytm" for the pages written before the composition had it.
+        self.ai.register(RhythmJob(self.library, self.images, self.ai_config))
 
         self._tasks: set[asyncio.Task[object]] = set()
 

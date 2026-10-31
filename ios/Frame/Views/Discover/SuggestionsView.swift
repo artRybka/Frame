@@ -1,9 +1,9 @@
 import SwiftUI
 
 /// What Discover opens with: the work of the day, the theme of the day,
-/// ideas for playlists in groups, the works with a study ("Studia dzieł"), then
-/// rows of works like the ones the owner likes and the owner's works not
-/// shown for long.
+/// ideas for playlists in groups, the works of the day and those with a
+/// study ("Studia dzieł"), then rows of works like the ones the owner likes
+/// and the owner's works not shown for long.
 ///
 /// The last ones loaded show at once (also after a launch) while fresh ones
 /// load, and only the cards and works on screen fetch their pictures.
@@ -239,25 +239,26 @@ struct ThemeCard: View {
     }
 }
 
-/// "Studia dzieł": every work with a study, the last asked for first, as cards
-/// to swipe through; each opens its study.
+/// "Studia dzieł": every work of the day and every work with a study, the
+/// last written first, as cards to swipe through; each opens its page.
 struct StudyRow: View {
     let studies: [StudyBrief]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 3) {
-                Text("Studia dzieł")
-                    .font(.serif(22, weight: .semibold))
-                    .foregroundStyle(Theme.ink)
-                Text("Dotychczas przyszykowane studia dzieł")
+                NavigationLink(value: StudiesRoute()) {
+                    SeeAllHeader(title: "Studia dzieł", size: 22, weight: .semibold)
+                }
+                .buttonStyle(.plain)
+                Text("Wszystkie dzieła dnia i zamówione studia")
                     .font(.footnote)
                     .foregroundStyle(Theme.inkSoft)
             }
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(alignment: .top, spacing: 12) {
                     ForEach(studies) { study in
-                        NavigationLink(value: DailyRoute(day: nil, study: study.id)) {
+                        NavigationLink(value: study.route) {
                             StudyCard(study: study).frame(width: 172)
                         }
                         .buttonStyle(.plain)
@@ -268,6 +269,48 @@ struct StudyRow: View {
             }
             .scrollClipDisabled()
         }
+    }
+}
+
+/// Opens every study and work of the day as a grid ("Studia dzieł" ›).
+struct StudiesRoute: Hashable {}
+
+/// Every study and work of the day, two cards to a row, the last written
+/// first; each opens its page.
+struct StudiesGridView: View {
+    @Environment(AppModel.self) private var model
+
+    private let columns = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
+
+    var body: some View {
+        let studies = model.studyList ?? []
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                Text("Wszystkie dzieła dnia i zamówione studia")
+                    .font(.serif(17))
+                    .foregroundStyle(Theme.inkSoft)
+                LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
+                    ForEach(studies) { study in
+                        NavigationLink(value: study.route) { StudyCard(study: study) }
+                            .buttonStyle(.plain)
+                    }
+                }
+                if studies.isEmpty {
+                    EmptyStateView(
+                        title: "Nie ma jeszcze studiów",
+                        message: "Tu trafia każde dzieło dnia i każde studium zamówione na karcie dzieła.",
+                        systemImage: "sparkles"
+                    )
+                }
+            }
+            .padding(.horizontal, Theme.gutter)
+            .padding(.top, 4)
+            .padding(.bottom, 32)
+        }
+        .background(Theme.paper)
+        .navigationTitle("Studia dzieł")
+        .navigationBarTitleDisplayMode(.inline)
+        .refreshable { await model.loadStudyList(model.backend) }
     }
 }
 

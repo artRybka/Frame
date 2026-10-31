@@ -58,6 +58,17 @@ struct RootView: View {
             if artist != nil { tab = .search }
         }
         .onChange(of: model.suggestionsOpened) { tab = .discover }
+        // A notification tapped: where it points.
+        .onChange(of: PushCenter.shared.taps, initial: true) {
+            switch PushCenter.shared.takeRoute() {
+            case "daily":
+                tab = .discover
+                model.dailyOpened += 1
+            case "now": tab = .now
+            case "frame", "server": tab = .frame
+            default: break
+            }
+        }
         // A study ready, opened from its card at the bottom.
         .sheet(isPresented: Binding(
             get: { model.studySheet != nil },
@@ -68,6 +79,7 @@ struct RootView: View {
         .task {
             await model.refreshAll()
             await model.settleLiveActivity()  // one left from before the app was closed
+            await model.offerServerUpdate()  // the app was updated, the server not yet
         }
         .task {
             // CI screenshots: the cards at the bottom, one of each kind.

@@ -35,9 +35,8 @@ struct CompositionSketch: View {
         }
     }
 
-    /// Pencil and the paper edge around it, the same over any picture.
-    private let pencil = Color(hex: 0x2E2A25)
-    private let paper = Color(hex: 0xFBF8F2)
+    private let pencil = Pencil.lead
+    private let paper = Pencil.paper
 
     private func picture(_ labelled: [Labelled]) -> some View {
         Color.clear
@@ -69,7 +68,7 @@ struct CompositionSketch: View {
     }
 
     /// Each stroke twice: a wider paper-coloured one under it, then the
-    /// pencil; the grid fainter, the numbers on paper discs.
+    /// pencil; the grid fainter, the numbers on paper discs (`Pencil.badge`).
     private func draw(in context: inout GraphicsContext, size: CGSize, labelled: [Labelled]) {
         for (index, line) in Pencil.grid(take.grid, in: size).enumerated() {
             let path = Pencil.stroke(line, width: 1, seed: 90 + index, start: 0.05, end: 0.05)
@@ -86,37 +85,33 @@ struct CompositionSketch: View {
             }
         }
         for entry in labelled {
-            let spot = Pencil.numberSpot(for: entry.mark, in: size)
-            context.fill(Path(ellipseIn: CGRect(x: spot.x - 9.5, y: spot.y - 9.5, width: 19, height: 19)), with: .color(paper))
-            context.fill(Pencil.loop(center: spot, rx: 8.5, ry: 8, width: 1.4, seed: 40 + entry.number), with: .color(pencil))
-            context.draw(
-                Text("\(entry.number)").font(.system(size: 10.5, weight: .bold)).foregroundStyle(pencil),
-                at: spot
-            )
+            Pencil.badge(entry.number, at: Pencil.numberSpot(for: entry.mark, in: size), in: &context)
         }
     }
 
-    /// The number in its ring, and beside it the title with its line under
-    /// it: the line starts where the title does, not under the number.
+    /// The number on the same badge as on the picture, and beside it the
+    /// title with its line under it: the line starts where the title does,
+    /// not under the number.
     private func label(_ entry: Labelled) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Text("\(entry.number)")
-                .font(.system(size: 10, weight: .bold))
-                .frame(width: 17, height: 17)
-                .overlay(Circle().strokeBorder(Theme.ink, lineWidth: 1.3))
-                .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 5 }
+        HStack(alignment: .firstTextBaseline, spacing: 5) {
+            Canvas { context, size in
+                Pencil.badge(entry.number, at: CGPoint(x: size.width / 2, y: size.height / 2), in: &context)
+            }
+            .frame(width: 22, height: 22)
+            .shadow(color: .black.opacity(0.22), radius: 1.2, y: 0.5)
+            .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 5 }
+            .accessibilityHidden(true)
             // The hand-written face has tall lines: the note sits close
-            // under its title, as written by hand.
+            // under its title, and its own lines close together, as
+            // written by hand.
             VStack(alignment: .leading, spacing: -7) {
                 Text(entry.mark.title)
                     .font(.hand(21))
                     .lineLimit(2)
                     .minimumScaleFactor(0.8)
                 if !entry.mark.text.isEmpty {
-                    Text(entry.mark.text)
-                        .font(.hand(18))
+                    HandLines(text: entry.mark.text, size: 18)
                         .foregroundStyle(Theme.inkSoft)
-                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
         }
@@ -147,10 +142,92 @@ extension DailyWork.Mark {
     }
 }
 
+/// Hand-written text wrapped word by word, its lines closer together than
+/// the face's own: Caveat's lines are tall (1.26 em) for its small letters,
+/// and SwiftUI's `Text` cannot tighten them (negative line spacing does
+/// nothing), so a wrapped note looked double-spaced.
+struct HandLines: View {
+    let text: String
+    let size: CGFloat
+
+    var body: some View {
+        let words = text.split(whereSeparator: \.isWhitespace).map(String.init)
+        // Caveat's space is 0.242 em; a line every 0.95 em, as close as the
+        // note sits under its title.
+        WordFlow(space: size * 0.242, pitch: size * 0.95) {
+            ForEach(words.indices, id: \.self) { index in
+                Text(words[index]).font(.hand(size))
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(text)
+    }
+}
+
+/// Words laid out like a paragraph: as many as fit on a line, then the
+/// next line `pitch` below (less than a word's own height, so the lines'
+/// frames overlap; they have no background).
+struct WordFlow: Layout {
+    let space: CGFloat
+    let pitch: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let placed = place(subviews, width: proposal.width ?? .infinity)
+        guard let last = placed.last else { return .zero }
+        let width = placed.map { $0.origin.x + $0.size.width }.max() ?? 0
+        return CGSize(width: width, height: last.origin.y + last.size.height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        for (subview, frame) in zip(subviews, place(subviews, width: bounds.width)) {
+            subview.place(
+                at: CGPoint(x: bounds.minX + frame.origin.x, y: bounds.minY + frame.origin.y),
+                anchor: .topLeading,
+                proposal: ProposedViewSize(frame.size)
+            )
+        }
+    }
+
+    /// Each word's frame: on the line while it fits, else at the start of
+    /// the next (a word wider than the line gets a line of its own).
+    private func place(_ subviews: Subviews, width: CGFloat) -> [CGRect] {
+        var frames: [CGRect] = []
+        var x: CGFloat = 0
+        var y: CGFloat = 0
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x > 0, x + space + size.width > width {
+                x = 0
+                y += pitch
+            }
+            if x > 0 { x += space }
+            frames.append(CGRect(origin: CGPoint(x: x, y: y), size: size))
+            x += size.width
+        }
+        return frames
+    }
+}
+
 /// Pencil marks as filled outlines: strokes thin at both ends and a little
 /// uneven, loops that overshoot where they close, arrowheads of two
 /// strokes. The same seed draws the same mark every time.
 enum Pencil {
+    /// Pencil and the paper edge around it, the same over any picture.
+    static let lead = Color(hex: 0x2E2A25)
+    static let paper = Color(hex: 0xFBF8F2)
+
+    /// A mark's number: on a paper disc in a pencil ring drawn by hand, the
+    /// same on the picture and in the legend under it (the ring's seed is
+    /// the number, so number 2 has the same ring in both).
+    static func badge(_ number: Int, at spot: CGPoint, in context: inout GraphicsContext) {
+        context.fill(Path(ellipseIn: CGRect(x: spot.x - 9.5, y: spot.y - 9.5, width: 19, height: 19)), with: .color(paper))
+        context.fill(loop(center: spot, rx: 8.5, ry: 8, width: 1.4, seed: 40 + number), with: .color(lead))
+        context.draw(
+            Text("\(number)").font(.system(size: 10.5, weight: .bold)).foregroundStyle(lead),
+            at: spot
+        )
+    }
+
     static func paths(for mark: DailyWork.Mark, in size: CGSize, seed: Int) -> [Path] {
         let points = mark.points.map { CGPoint(x: $0.x * size.width, y: $0.y * size.height) }
         guard let first = points.first else { return [] }

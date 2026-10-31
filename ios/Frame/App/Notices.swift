@@ -48,7 +48,10 @@ final class Notices {
     @ObservationIgnored private var timers: [Notice.ID: Task<Void, Never>] = [:]
 
     func done(_ title: String, _ detail: String? = nil) { post(.done, title, detail) }
-    func info(_ title: String, _ detail: String? = nil) { post(.info, title, detail) }
+    /// With an `action`, the card stays until it is tapped or closed.
+    func info(_ title: String, _ detail: String? = nil, action: Notice.Action? = nil) {
+        post(.info, title, detail, action: action)
+    }
     func warn(_ title: String, _ detail: String? = nil) { post(.warning, title, detail) }
     func fail(_ title: String, _ detail: String? = nil) { post(.error, title, detail) }
 

@@ -5,6 +5,7 @@ import SwiftUI
 struct DiscoverView: View {
     @Environment(AppModel.self) private var model
     @State private var path = NavigationPath()
+    @State private var dailyShown = 0
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -41,7 +42,17 @@ struct DiscoverView: View {
             .navigationDestination(for: DailyRoute.self) { route in
                 DailyView(route: route)
             }
+            .navigationDestination(for: StudiesRoute.self) { _ in
+                StudiesGridView()
+            }
         }
         .onChange(of: model.suggestionsOpened) { path = NavigationPath() }
+        // A notification of the work of the day tapped (also before this tab was first opened).
+        .onChange(of: model.dailyOpened, initial: true) { _, count in
+            guard count > dailyShown else { return }
+            dailyShown = count
+            path = NavigationPath()
+            path.append(DailyRoute(day: nil))
+        }
     }
 }

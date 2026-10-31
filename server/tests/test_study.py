@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import io
 import time
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +17,7 @@ from test_daily import ANSWER, _app, _catalogue, _today_is
 from frame_server.ai import AiConfigUpdate
 from frame_server.ai.client import OPUS
 from frame_server.ai.study import KIND
+from frame_server.daily import HISTORY_KEY
 from frame_server.service import FrameService
 
 
@@ -142,6 +144,48 @@ def test_discover_lists_the_written_studies(tmp_path: Path) -> None:
         assert brief["item"]["item"]["id"] == "met:1"
         assert brief["title"] == "Wielka fala w Kanagawie"
         assert brief["item"]["item"]["description"] == ""
+
+
+def test_discover_lists_the_works_of_the_day_too(tmp_path: Path) -> None:
+    """ "Studia dzieł" holds every work of the day with its page, by its day,
+    and the studies asked for; a work that was both is there once."""
+    app = _app(tmp_path)
+    svc: FrameService = app.state.service
+    fake = FakeAnthropic(GOOD_KEY)
+    fake.answer = ANSWER
+    svc.claude.factory = lambda key: fake
+    svc.ai_config.set_key(GOOD_KEY)
+    svc.ai_config.update(AiConfigUpdate(pl_text=False, keywords_artworks=False))
+    today = date.today()
+    yesterday = (today - timedelta(days=1)).isoformat()
+    with TestClient(app) as client:
+        _catalogue(svc)
+        svc.library.set_state(HISTORY_KEY, {yesterday: "met:2", today.isoformat(): "met:1"})
+        svc.ai.start()
+        try:
+            assert client.get(f"/api/daily?day={yesterday}&wait=10").json()["written"] is True
+            assert client.get("/api/daily?wait=10").json()["written"] is True
+            client.post("/api/study/met:3?wait=10")
+            assert _ready(client, "met:3")["status"] == "ready"
+            client.post("/api/study/met:1?wait=10")  # the day's work: its page
+            assert _ready(client, "met:1")["status"] == "ready"
+        finally:
+            svc.ai.stop()
+        # The last written first.
+        for n, (item_id, kind) in enumerate(
+            [("met:2", "daily"), ("met:3", KIND), ("met:1", "daily"), ("met:1", KIND)]
+        ):
+            note = svc.library.note(item_id, kind)
+            assert note is not None
+            svc.library.save_note(
+                note.model_copy(update={"created_at": f"2026-10-0{n + 1}T10:00:00"})
+            )
+        briefs = client.get("/api/studies").json()
+        assert [(b["item"]["item"]["id"], b["day"]) for b in briefs] == [
+            ("met:1", today.isoformat()),
+            ("met:3", None),
+            ("met:2", yesterday),
+        ]
 
 
 def test_a_page_is_written_once_for_the_day_and_the_study(tmp_path: Path) -> None:

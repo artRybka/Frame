@@ -797,12 +797,21 @@ actor DemoBackend: FrameBackend {
         return StudyView(status: "ready", error: "", work: work, costUsd: 0.14)
     }
 
-    /// The ones asked for (the last first), then a few the demo has written.
+    /// The ones asked for (the last first), then a few the demo has written;
+    /// the wave is today's work of the day and opens as that.
     func studies() async throws -> [StudyBrief] {
         let asked = askedStudies.filter { Date().timeIntervalSince($0.value) >= 6 }.sorted { $0.value > $1.value }.map { $0.key }
         let ids = asked + ["aic:24645", "aic:14620", "aic:64818", "aic:87008", "aic:2914"].filter { !asked.contains($0) }
+        let parts = Calendar.current.dateComponents([.year, .month, .day], from: Date())
+        let today = String(format: "%04d-%02d-%02d", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0)
         return ids.compactMap { id in
-            items.first { $0.id == id }.map { StudyBrief(item: RemoteItem(item: $0, inLibrary: true), title: $0.title) }
+            items.first { $0.id == id }.map {
+                StudyBrief(
+                    item: RemoteItem(item: $0, inLibrary: true),
+                    title: $0.title,
+                    day: id == "aic:24645" && !asked.contains(id) ? today : nil
+                )
+            }
         }
     }
 
@@ -1088,6 +1097,43 @@ actor DemoBackend: FrameBackend {
     func updateServer() async throws -> ServerUpdate {
         demoServerVersion = "0.36.0"
         return try await serverUpdate()
+    }
+
+    private var pushValue = NotificationSettings(
+        key: nil,
+        kinds: [
+            NotificationKind(key: "battery", title: "Bateria poniżej 20%", hint: "Raz na rozładowanie, gdy ramka działa na baterii."),
+            NotificationKind(key: "send_failed", title: "Błąd wysyłki", hint: "Obraz nie dotarł na ramkę."),
+            NotificationKind(key: "changed", title: "Zmiana dzieła", hint: "Ramka pokazuje nowy obraz: z harmonogramu lub z aplikacji."),
+            NotificationKind(key: "server_update", title: "Nowa wersja serwera", hint: "Gotowa do instalacji w aplikacji."),
+            NotificationKind(key: "daily", title: "Dzieło dnia", hint: "Codziennie o 8:30."),
+        ],
+        device: nil,
+        devices: 0
+    )
+
+    func notifications(device: String?) async throws -> NotificationSettings { pushValue }
+
+    func registerPush(token: String, _ update: PushDeviceUpdate) async throws -> NotificationSettings {
+        let kinds = update.kinds ?? pushValue.device?.kinds ?? pushValue.kinds.map(\.key)
+        pushValue.device = PushDevice(token: token, sandbox: update.sandbox, kinds: kinds, name: update.name, lastSentAt: nil, lastError: nil)
+        pushValue.devices = 1
+        return pushValue
+    }
+
+    func uploadPushKey(filename: String, data: Data, device: String?) async throws -> NotificationSettings {
+        let id = filename.replacingOccurrences(of: "AuthKey_", with: "").replacingOccurrences(of: ".p8", with: "")
+        pushValue.key = PushKey(keyId: String(id.prefix(10)), teamId: "3MQRJF4A9D", addedAt: "2026-10-31T12:00:00+00:00")
+        return pushValue
+    }
+
+    func deletePushKey(device: String?) async throws -> NotificationSettings {
+        pushValue.key = nil
+        return pushValue
+    }
+
+    func testPush(device: String) async throws -> PushTestResult {
+        PushTestResult(ok: false, error: "W trybie demo nic nie jest wysyłane")
     }
 
     func aiSettings() async throws -> AiSettings { aiValue }

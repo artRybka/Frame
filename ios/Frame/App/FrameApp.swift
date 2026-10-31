@@ -2,6 +2,7 @@ import SwiftUI
 
 @main
 struct FrameApp: App {
+    @UIApplicationDelegateAdaptor(PushAppDelegate.self) private var pushDelegate
     @State private var model = AppModel()
 
     init() {

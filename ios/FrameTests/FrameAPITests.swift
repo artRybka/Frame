@@ -258,6 +258,25 @@ final class FrameAPITests: XCTestCase {
         XCTAssertEqual(old.takes.first?.marks.count, 3)
     }
 
+    func testNotificationSettingsDecodeFromServer() throws {
+        let json = """
+        {"key": {"key_id": "ABCDE12345", "team_id": "3MQRJF4A9D", "added_at": "2026-10-31T12:00:00+00:00"},
+         "kinds": [{"key": "battery", "title": "Bateria poniżej 20%", "hint": "Raz na rozładowanie."},
+                   {"key": "daily", "title": "Dzieło dnia", "hint": "Codziennie o 8:30."}],
+         "device": {"token": "abab", "sandbox": false, "kinds": ["daily"], "name": "iPhone",
+                    "added_at": "2026-10-31T12:00:00+00:00", "last_sent_at": null, "last_error": null},
+         "devices": 1}
+        """
+        let settings = try LiveBackend.decoder().decode(NotificationSettings.self, from: Data(json.utf8))
+        XCTAssertEqual(settings.key?.keyId, "ABCDE12345")
+        XCTAssertEqual(settings.kinds.map(\.key), ["battery", "daily"])
+        XCTAssertEqual(settings.device?.kinds, ["daily"])
+        let body = try LiveBackend.encoder().encode(PushDeviceUpdate(sandbox: true, kinds: nil, name: "iPhone"))
+        let sent = try JSONSerialization.jsonObject(with: body) as? [String: Any]
+        XCTAssertEqual(sent?["sandbox"] as? Bool, true)
+        XCTAssertNil(sent?["kinds"])  // nil keeps the server's kinds
+    }
+
     func testStudyViewDecodesFromServer() throws {
         // GET /api/study/<id> while Claude writes (tests/test_study.py).
         let json = #"{"status": "writing", "error": "", "work": null, "cost_usd": 0.14}"#
@@ -265,6 +284,70 @@ final class FrameAPITests: XCTestCase {
         XCTAssertTrue(view.isPending)
         XCTAssertNil(view.work)
         XCTAssertEqual(view.costUsd, 0.14, accuracy: 0.001)
+    }
+
+    func testStudiesListWorksOfTheDayToo() throws {
+        // GET /api/studies (tests/test_study.py): a work of the day opens its
+        // day's page, a study asked for its study; older servers send no day.
+        let item = """
+         {
+          "item": {
+           "id": "met:1",
+           "kind": "artwork",
+           "source": "met",
+           "source_id": "met:1",
+           "title": "Under the Wave off Kanagawa",
+           "artist": "Katsushika Hokusai",
+           "artist_bio": "",
+           "date_text": "ca. 1830–32",
+           "year": 1831,
+           "medium": "",
+           "classification": "",
+           "styles": [],
+           "subjects": [],
+           "culture": "",
+           "museum": "",
+           "credit": "",
+           "license": "",
+           "url": "",
+           "description": "",
+           "image_url": "",
+           "thumb_url": "",
+           "width": 3000,
+           "height": 2000,
+           "colors": [],
+           "color_tags": [],
+           "keywords": [],
+           "terms": [],
+           "suitability": 0.95,
+           "tint_spread": null,
+           "favorite": false,
+           "excluded": false,
+           "pooled": false,
+           "added_at": "2026-10-30T20:07:09+00:00",
+           "last_shown_at": null,
+           "show_count": 0,
+           "photo": null,
+           "framing": {},
+           "look": null
+          },
+          "in_library": true,
+          "work": "hokusai|under wave off kanagawa",
+          "twin": null,
+          "replaces": null
+         }
+        """
+        let json = """
+        [{"item": \(item), "title": "Wielka fala", "day": "2026-10-30"},
+         {"item": \(item), "title": "Wielka fala", "day": null},
+         {"item": \(item), "title": "Wielka fala"}]
+        """
+        let briefs = try LiveBackend.decoder().decode([StudyBrief].self, from: Data(json.utf8))
+        XCTAssertEqual(briefs.map(\.route), [
+            DailyRoute(day: "2026-10-30"),
+            DailyRoute(day: nil, study: "met:1"),
+            DailyRoute(day: nil, study: "met:1"),
+        ])
     }
 
     func testDecodesUndeliveredPicture() throws {

@@ -92,6 +92,18 @@ jobs:
           CODE_SIGNING_ALLOWED=NO
           MARKETING_VERSION="${{ steps.version.outputs.version }}"
           CURRENT_PROJECT_VERSION="${{ steps.version.outputs.build }}"
+      - name: Keep the entitlements for the export
+        # The archive is unsigned, so it carries no entitlements, and the
+        # export signs with what the archived app says it needs: an ad-hoc
+        # signature with Frame.entitlements (push notifications) hands them
+        # on. The extension first, then the app around it.
+        run: |
+          app="$RUNNER_TEMP/Frame.xcarchive/Products/Applications/Frame.app"
+          for ext in "$app"/PlugIns/*.appex; do
+            codesign --force --sign - --timestamp=none "$ext"
+          done
+          codesign --force --sign - --timestamp=none --entitlements Frame/Frame.entitlements "$app"
+          codesign -d --entitlements - "$app" 2>/dev/null | grep -q aps-environment
       - name: Upload to App Store Connect
         run: |
           cat > "$RUNNER_TEMP/ExportOptions.plist" <<'EOF'

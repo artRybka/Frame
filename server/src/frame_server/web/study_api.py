@@ -55,22 +55,26 @@ def _view(svc: FrameService, item: Item | None) -> StudyView:
 
 
 class StudyBrief(BaseModel):
-    """A work with a study, for Discover's row of them."""
+    """A work with a study or a work of the day's page, for Discover's row
+    "Studia dzieł"."""
 
     item: RemoteItem
     #: The Polish title the study gives it.
     title: str
+    #: A work of the day: its (last) day, whose page opens; else its study.
+    day: str | None = None
 
 
 def _briefs(svc: FrameService) -> list[StudyBrief]:
     written = svc.study.written()
-    remote = remote_items(svc, [item for item, _ in written], copies=False)
+    remote = remote_items(svc, [item for item, _, _ in written], copies=False)
     return [
         StudyBrief(
             item=r.model_copy(update={"item": _plain(r.item)}),
             title=essay.title or strip_markup(r.item.title),
+            day=day.isoformat() if day else None,
         )
-        for r, (_, essay) in zip(remote, written, strict=True)
+        for r, (_, essay, day) in zip(remote, written, strict=True)
     ]
 
 
@@ -80,7 +84,8 @@ def _plain(item: Item) -> Item:
 
 @router.get("/studies", response_model=list[StudyBrief])
 async def studies(svc: Svc) -> list[StudyBrief]:
-    """Every work with a study, the last asked for first."""
+    """Every work with a study or a work of the day's page, the last
+    written first."""
     return await run_in_threadpool(_briefs, svc)
 
 

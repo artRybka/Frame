@@ -788,9 +788,21 @@ class PanelApp:
             if file_id and state.shown != file_id:
                 state.shown = file_id
                 self._save(state)
+                self._tell_shown(file_id)
             shown = self._shown.pop(file_id, None)
             if shown is not None:
                 shown.set()
+
+    def _tell_shown(self, file_id: str) -> None:
+        """The owner's phone hears of a picture new on the frame."""
+        from .notifications import shown_text
+
+        service = self.service
+        content = service.store.current()
+        if content is not None and content.file_id != file_id:
+            content = None
+        title, artist = shown_text(service, content)
+        service.notifier.shown(title, artist, service.player.state.last_change_origin)
 
     # -- pictures -------------------------------------------------------------
 

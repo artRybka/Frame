@@ -53,6 +53,12 @@ targets:
         # The composition's hand-written labels (Resources/Fonts, SIL OFL).
         UIAppFonts:
           - Caveat-SemiBold.ttf
+    # Notifications from the server over APNs. Xcode builds use the sandbox;
+    # the App Store export turns this into "production" (TestFlight).
+    entitlements:
+      path: Frame/Frame.entitlements
+      properties:
+        aps-environment: development
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.artrybka.frame

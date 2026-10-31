@@ -47,6 +47,11 @@ final class AppModel {
     /// Claude's settings, spending and progress; loaded when Konfiguracja
     /// opens, nil on an older server.
     var aiSettings: AiSettings?
+    /// Notifications on this phone as the server has them; loaded when
+    /// Konfiguracja opens, nil on an older server.
+    var notificationSettings: NotificationSettings?
+    /// Bumped to open Discover on the work of the day (a notification tapped).
+    var dailyOpened = 0
     var playlists: [PlaylistSummary] = []
     /// Each playlist's works as last opened: shown at once when it opens
     /// again while fresh ones load.
@@ -86,7 +91,8 @@ final class AppModel {
     var daily: DailyWork?
     /// Studies of works asked for on their cards, as last heard (`Studies.swift`).
     var studies: [String: StudyView] = [:]
-    /// Every work with a study, for Discover's row "Studia dzieł"; nil from older servers.
+    /// Every work with a study or a work of the day's page, for Discover's row
+    /// "Studia dzieł"; nil from older servers.
     var studyList: [StudyBrief]?
     /// The work whose card is on top: "Studium gotowe" opens its study there.
     var topCard: String?
@@ -119,6 +125,9 @@ final class AppModel {
         connect(demo: demo, url: url, remote: remote, token: token)
         restoreDiscover()
         watchNetwork()
+        PushCenter.shared.onToken = { [weak self] token in
+            Task { await self?.registerPush(token) }
+        }
     }
 
     private func connect(demo: Bool, url: String, remote: String, token: String) {
@@ -158,6 +167,7 @@ final class AppModel {
         libraryStorage = nil
         serverUpdate = nil
         aiSettings = nil
+        notificationSettings = nil
         playlists = []
         playlistDetails = [:]
         facets = .empty
@@ -199,6 +209,8 @@ final class AppModel {
         self.playlists = await playlists.value ?? []
         self.facets = await facets.value ?? .empty
         self.panelConfig = await panelConfig.value
+        // The APNs token goes to the server on every start (registerPush).
+        if !demoMode { Task { await PushCenter.shared.registerIfAllowed() } }
         // Ready before Discover is opened.
         Task { await refreshDiscover() }
     }
@@ -273,7 +285,8 @@ final class AppModel {
         }
     }
 
-    /// The works with a study; an older server without the list shows no row.
+    /// The works with a study or a day's page; an older server without the
+    /// list shows no row.
     func loadStudyList(_ backend: any FrameBackend) async {
         do {
             studyList = try await backend.studies()

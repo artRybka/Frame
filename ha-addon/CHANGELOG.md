@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.49.0
+
+- Powiadomienia na telefonie (Konfiguracja → Powiadomienia): bateria poniżej
+  20%, błąd wysyłki, zmiana dzieła na ramce, nowa wersja serwera i Dzieło
+  dnia o 8:30, każde do włączenia osobno. Serwer wysyła je przez Apple, więc
+  przychodzą też poza domem. Raz trzeba dodać klucz APNs (AuthKey_….p8)
+  z konta Apple Developer; „Wyślij próbne powiadomienie” pokazuje odpowiedź
+  Apple.
+- „Studia dzieł” w Odkrywaj mają też każde Dzieło dnia z napisaną stroną;
+  dotknięcie otwiera stronę z jego dnia, a strzałka przy tytule otwiera
+  pełne zestawienie.
+- Rytm także w starych studiach: strony napisane przed „Rytmem” nie
+  pokazują już trzeciego ujęcia innego rodzaju (np. „Światło”), a serwer
+  w tle dopisuje do nich same rytmy.
+- Legenda analizy kompozycji: dopiski pod tytułami bez podwójnych odstępów,
+  a numery w takich samych kółkach ołówkiem jak na obrazie.
+- Po aktualizacji aplikacji, gdy serwer jest starszy i jest dla niego nowa
+  wersja, na dole pojawia się raz karta z „Aktualizuj”.
+
 ## 1.48.0
 
 - Szukaj: pod polem pasek grup (Technika, Epoka, Styl, Kolor, Temat,
