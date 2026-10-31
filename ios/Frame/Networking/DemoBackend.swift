@@ -736,6 +736,15 @@ actor DemoBackend: FrameBackend {
                             .init(shape: "triangle", points: [Spot(x: 0.57, y: 0.72), Spot(x: 0.64, y: 0.6), Spot(x: 0.71, y: 0.72)], title: "Szczyt Fudżi", text: "mały trójkąt w dolinie fal"),
                         ]
                     ),
+                    .init(
+                        title: "Rytm",
+                        grid: "none",
+                        text: "Te same kształty wracają jak takty: pazury piany na grzbiecie fali i coraz mniejsze fale po prawej, aż do linii horyzontu.",
+                        marks: [
+                            .init(shape: "rhythm", points: [Spot(x: 0.27, y: 0.33), Spot(x: 0.34, y: 0.22), Spot(x: 0.42, y: 0.17), Spot(x: 0.5, y: 0.2), Spot(x: 0.56, y: 0.29)], title: "Pazury piany", text: "palce fali jeden za drugim"),
+                            .init(shape: "rhythm", points: [Spot(x: 0.6, y: 0.66), Spot(x: 0.7, y: 0.6), Spot(x: 0.8, y: 0.54), Spot(x: 0.9, y: 0.48)], title: "Coraz mniejsze fale", text: "takt zwalnia ku horyzontowi"),
+                        ]
+                    ),
                 ],
                 points: [],
                 lines: []

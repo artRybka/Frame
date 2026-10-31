@@ -168,6 +168,12 @@ enum Pencil {
             return (0..<4).map { side(corners[$0], corners[($0 + 1) % 4], width: 1.6, seed: seed + $0) }
         case "underline" where points.count >= 2:
             return [stroke(wave(from: first, to: points[points.count - 1]), width: 2.2, seed: seed)]
+        case "rhythm" where points.count >= 2:
+            // A light line through the repeated things, a beat across it at each.
+            let line = stroke(points, width: 1.6, seed: seed, start: 0.08, end: 0.08)
+            return [line] + points.enumerated().map { index, point in
+                beat(at: point, along: points, index: index, seed: seed + index)
+            }
         case "arrow" where points.count >= 2:
             let line = smooth(points)
             let tip = line[line.count - 1]
@@ -274,6 +280,22 @@ enum Pencil {
             return CGPoint(x: center.x + rx * k * cos(angle), y: center.y + ry * k * sin(angle))
         }
         return stroke(points, width: width, seed: seed, start: 0.12, end: 0.3)
+    }
+
+    /// A beat of a rhythm: a short stroke across the line at one of its
+    /// points, a little longer at the first.
+    static func beat(at point: CGPoint, along points: [CGPoint], index: Int, seed: Int) -> Path {
+        let before = points[max(index - 1, 0)]
+        let after = points[min(index + 1, points.count - 1)]
+        let dx = after.x - before.x
+        let dy = after.y - before.y
+        let length = max(hypot(dx, dy), 0.0001)
+        let half: CGFloat = index == 0 ? 8 : 6
+        let normal = CGPoint(x: -dy / length * half, y: dx / length * half)
+        return stroke(
+            [CGPoint(x: point.x - normal.x, y: point.y - normal.y), CGPoint(x: point.x + normal.x, y: point.y + normal.y)],
+            width: 2.6, seed: seed, start: 0.15, end: 0.15
+        )
     }
 
     /// An arrowhead: two short strokes back from the tip.

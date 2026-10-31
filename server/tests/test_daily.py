@@ -238,6 +238,25 @@ def test_an_answer_is_cleaned() -> None:
     assert short("Bardzo długie zdanie " * 10, 40) == "Bardzo długie zdanie Bardzo długie…"
 
 
+def test_rhythms_are_a_take_of_their_own() -> None:
+    beats = [{"x": 0.1 * n, "y": 0.5} for n in range(1, 10)]
+    rhythm = {
+        "title": "Rytm",
+        "grid": "none",
+        "text": "Fale powtarzają się jak takty.",
+        "marks": [
+            {"shape": "rhythm", "points": beats, "title": "Grzbiety fal", "text": "co krok"},
+            {"shape": "rhythm", "points": beats[:1], "title": "Za mało"},
+        ],
+    }
+    composition = {"views": [*ANSWER["composition"]["views"], rhythm]}
+    essay = clean({**ANSWER, "composition": composition}, [])
+    assert essay is not None
+    take = essay.composition.views[-1]
+    assert take.title == "Rytm" and [m.title for m in take.marks] == ["Grzbiety fal"]
+    assert len(take.marks[0].points) == 9  # a point on each wave
+
+
 def _app(tmp_path: Path) -> Any:
     app = create_app(
         Settings(data_dir=tmp_path, seed_library=False, scheduler=False, public_host="127.0.0.1")
