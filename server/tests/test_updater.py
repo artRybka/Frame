@@ -304,7 +304,13 @@ def test_without_the_helper_the_app_is_told_so(tmp_path: Path, monkeypatch) -> N
         assert client.get("/api/health").json()["version"] == "0.36.0"
 
 
-def test_the_app_asks_the_helper(tmp_path: Path) -> None:
+def _registry_down(ref: str) -> Any:
+    raise httpx.ConnectError("no network")
+
+
+def test_the_app_asks_the_helper(tmp_path: Path, monkeypatch) -> None:
+    # Without the registry the helper pulls the image, as before.
+    monkeypatch.setattr("frame_server.registry.latest_image", _registry_down)
     folder = UpdateFolder(tmp_path / "update")
     engine = FakeEngine()
     engine.registry = "sha256:new"

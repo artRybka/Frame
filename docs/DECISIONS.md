@@ -139,7 +139,10 @@ przez krótkotrwały kontener. Serwer nie ma dostępu do Dockera: zostawia
 prośbę w `data/update/request.json` (API `/api/server/update` z tokenem),
 pomocnik odpowiada w `status.json`. Wersję obrazu podaje etykieta
 `org.opencontainers.image.version` i plik `/etc/frame-release` (wersja
-add-onu).
+add-onu). Sprawdzenie zlecone z aplikacji serwer robi sam, pytając rejestr
+o manifest i konfigurację obrazu (bez pobierania warstw, ~1 s); pomocnik
+pobiera obraz tylko co 6 h, przy aktualizacji i gdy rejestr nie odpowiada
+*(2026-10-31)*.
 **Konsekwencje.** Raz trzeba wkleić nowy `docker-compose.yml` w projekcie.
 Odrzucone: Watchtower (obcy obraz z pełnym dostępem do Dockera i otwarty
 port API) i API Synology (hasło administratora DSM na serwerze).
