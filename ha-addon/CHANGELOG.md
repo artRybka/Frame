@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.51.0
+
+- Trzy nowe powiadomienia, każde z własnym przełącznikiem: „Studium gotowe”
+  (dotknięcie otwiera studium), „Artysta tygodnia” w poniedziałek o 9:00
+  (otwiera jego temat w Odkrywaj) i „Rocznica urodzin” o 10:00 dla artystów
+  Twoich ulubionych dzieł (data urodzenia z Wikidata; otwiera Szukaj na
+  artyście). Telefony zapisane wcześniej mają je od razu włączone.
+
 ## 1.50.0
 
 - Analiza kompozycji trafniejsza: Claude dostaje większy obraz i podaje
