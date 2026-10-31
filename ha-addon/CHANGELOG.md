@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.46.0
+
+- Odkrywaj: przed „Bo lubisz” rząd „Pod lupą” ze wszystkimi gotowymi
+  studiami dzieł (ostatnio zamówione pierwsze).
+- Karta dzieła: „Przygotuj studium dzieła” z gwiazdkami AI, bez opisu pod
+  spodem. Kafelek Dzieła dnia ma strzałkę w rogu zamiast „Czytaj dalej”.
+- Studium, „Co z niego wyrosło”: każde późniejsze dzieło z miniaturą
+  i linkiem do Wikipedii (serwer szuka go raz w muzeach i w Wikipedii).
+- Analiza kompozycji na obrazie w pełnych kolorach, ślady ołówka z jasną
+  obwódką; stuknięcie w obraz chowa ślady.
+- Szukaj: serce na każdym kafelku zamiast „+ Zapisz”, dodaje dzieło do
+  Ulubionych i od razu się zapala. Serce na karcie dzieła też zapala się
+  od razu.
+- Dzieła z muzeów, które pokazało Szukaj, serwer w tle dokłada do katalogu
+  zamiast losowych (bez progu e-papieru). Artyści, których szukasz, lekko
+  podbijają „Bo lubisz”.
+
 ## 0.45.0
 
 - Dzieło dnia, analiza kompozycji: przełącznik ujęć bez numerów, wszystkie
