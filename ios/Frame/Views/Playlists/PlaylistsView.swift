@@ -126,6 +126,7 @@ struct PlaylistsView: View {
                 }
             }
         }
+        .opensStudies(on: $path)
     }
 }
 

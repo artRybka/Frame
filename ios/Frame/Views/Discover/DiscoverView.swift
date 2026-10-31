@@ -57,6 +57,7 @@ struct DiscoverView: View {
                 StudiesGridView()
             }
         }
+        .opensStudies(on: $path)
         .onChange(of: model.suggestionsOpened) { path = NavigationPath() }
         // The artist of the week from a notification: its theme, loaded if need be.
         .onChange(of: model.themeOpenings, initial: true) { _, count in
