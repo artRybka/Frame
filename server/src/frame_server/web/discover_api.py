@@ -39,6 +39,8 @@ from ..library.themes import (
     Theme,
     browse_theme,
     day_reason,
+    liked,
+    make_liked,
     theme,
     theme_of_the_day,
     weekly_themes,
@@ -46,7 +48,6 @@ from ..library.themes import (
 from ..library.vocabulary import (
     TECHNIQUE_KINDS,
     TERMS,
-    artist_matches,
     category_fits,
     fold,
     museum_kind,
@@ -65,8 +66,6 @@ router = APIRouter(prefix="/api", dependencies=[Depends(require_token)], tags=["
 Svc = Annotated[FrameService, Depends(service)]
 
 ROW_SIZE = 24
-#: Rows of works by artists like the ones the owner likes.
-TASTE_ROWS = 2
 #: Theme covers and counts are worked out again (in the background) after
 #: this many seconds.
 CARDS_TTL = 600.0
@@ -109,7 +108,7 @@ class ThemeCard(BaseModel):
 
 
 class SuggestionRow(BaseModel):
-    key: str  # "for-you", "like:<theme>", "theme", "back"
+    key: str  # "for-you", "theme", "back" ("like:<theme>" before "Bo lubisz" cards)
     title: str
     subtitle: str = ""
     theme: str | None = None  # the theme to browse further
@@ -169,7 +168,7 @@ def _theme_playlist(
     svc: FrameService, found: Theme, playlists: list[Playlist] | None = None
 ) -> Playlist | None:
     for playlist in svc.library.playlists() if playlists is None else playlists:
-        if playlist.theme == found.key or fold(playlist.name) == fold(found.name):
+        if playlist.theme == found.key or fold(playlist.name) == fold(found.playlist or found.name):
             return playlist
     return None
 
@@ -207,7 +206,8 @@ def _since(days: int) -> str:
 def work_out_cards(svc: FrameService) -> dict[str, tuple[int, list[Item]]]:
     """Every theme's count and cover: a query of the whole
     catalogue each, seconds on a NAS, so done in the background but for the
-    first time (as are the week's themes, once a week)."""
+    first time (as are the week's themes, once a week, and the cards of
+    "Bo lubisz", from the owner's taste then)."""
     global _cards
     with _cards_lock:
         stamp, cards = _cards
@@ -215,7 +215,8 @@ def work_out_cards(svc: FrameService) -> dict[str, tuple[int, list[Item]]]:
             return cards  # just worked out by another request
         cards = {}
         today = date.today().isoformat()
-        for found in [*weekly_themes(svc.library, date.today()), *THEMES]:
+        mine = make_liked(svc.library, svc.player.taste())
+        for found in [*weekly_themes(svc.library, date.today()), *mine, *THEMES]:
             total, items = svc.library.query(found.rules(), sort="suitability")
             cards[found.key] = (total, _cover(items, f"{today}:{found.key}"))
         _cards = (time.monotonic(), cards)
@@ -251,38 +252,6 @@ def _card(
         playlist_id=playlist.id if playlist else None,
         rules=found.rules(),
     )
-
-
-def _taste_rows(svc: FrameService, day: date) -> list[SuggestionRow]:
-    """Works from the catalogue by artists of the themes the owner's
-    favourite artists belong to: because you like Monet, Sisley."""
-    player = svc.player
-    rows: list[SuggestionRow] = []
-    used: set[str] = set()
-    for artist in player.taste():
-        found = next(
-            (t for t in THEMES if t.artists and artist_matches(artist, list(t.artists))), None
-        )
-        if found is None or found.key in used:
-            continue
-        rules = found.rules()
-        items = svc.library.query(rules, sort="random", seed=day.toordinal())[1]
-        others = [i for i in player.fresh(items) if not artist_matches(i.artist, [artist])]
-        if len(others) < 4:
-            continue
-        used.add(found.key)
-        rows.append(
-            SuggestionRow(
-                key=f"like:{found.key}",
-                title=f"Bo lubisz: {artist}",
-                subtitle=found.name,
-                theme=found.key,
-                items=remote_items(svc, others[:ROW_SIZE]),
-            )
-        )
-        if len(rows) == TASTE_ROWS:
-            break
-    return rows
 
 
 def _fetch_day_row(svc: FrameService, found: Theme, day: date) -> None:
@@ -352,7 +321,6 @@ def _suggestion_rows(svc: FrameService) -> list[SuggestionRow]:
             )
         )
     today = date.today()
-    rows += _taste_rows(svc, today)
     found = theme_of_the_day(today, svc.library)
     day = _day_row(svc, found, today)
     if day:
@@ -374,7 +342,9 @@ def _suggestion_rows(svc: FrameService) -> list[SuggestionRow]:
 @router.get("/suggestions", response_model=list[SuggestionRow])
 async def suggestions(svc: Svc) -> list[SuggestionRow]:
     """What Discover opens with: the works the server picked for the frame,
-    works like the ones the owner likes and the theme of the day."""
+    the theme of the day (a card of "Na ten tydzień" in the app) and the
+    owner's works not shown for long. Works like the ones the owner likes
+    are the cards of "Bo lubisz" in ``/themes``."""
     return await run_in_threadpool(_suggestion_rows, svc)
 
 
@@ -393,9 +363,11 @@ async def play_suggestions(svc: Svc) -> dict[str, bool]:
 def _theme_list(svc: FrameService) -> list[ThemeCard]:
     cards = _theme_cards(svc)
     playlists = svc.library.playlists()
-    # The week's themes once the cards have them (worked out with them).
+    # The week's themes and "Bo lubisz" once the cards have them (worked
+    # out with them).
     weekly = [t for t in weekly_themes(svc.library, date.today()) if t.key in cards]
-    ordered = sorted([*weekly, *THEMES], key=lambda t: GROUPS.index(t.group))
+    mine = [t for t in liked(svc.library) if t.key in cards]
+    ordered = sorted([*weekly, *mine, *THEMES], key=lambda t: GROUPS.index(t.group))
     return [_card(svc, t, cards, playlists) for t in ordered]
 
 
@@ -446,7 +418,7 @@ async def theme_playlist(key: str, request: ThemePlaylistRequest, svc: Svc) -> T
     if playlist is None:
         playlist = svc.library.save_playlist(
             Playlist(
-                name=found.name,
+                name=found.playlist or found.name,
                 description=found.description,
                 kind=PlaylistKind.SMART,
                 rules=found.rules(),

@@ -46,6 +46,7 @@ BROWSE_WAIT = 8.0
 
 GROUPS = (
     "Na ten tydzień",
+    "Bo lubisz",
     "Kierunki i style",
     "Grafika i plakat",
     "Tematy",
@@ -71,6 +72,8 @@ class Theme:
     query: str = ""
     #: Browsed in the catalogue only (themes made from what it holds).
     catalogue: bool = False
+    #: The name of a playlist made from it, when not the theme's own.
+    playlist: str = ""
 
     def rules(self) -> PlaylistRules:
         return PlaylistRules(
@@ -150,6 +153,7 @@ POLISH_INTERWAR = (
 
 
 WEEKLY = "Na ten tydzień"
+LIKES = "Bo lubisz"
 STYLES = "Kierunki i style"
 PRINTS = "Grafika i plakat"
 SUBJECTS = "Tematy"
@@ -584,12 +588,12 @@ SEARCHABLE = [theme for theme in THEMES if theme.searches()]
 
 
 def theme(key: str, library: Library | None = None) -> Theme:
-    """A theme by its key: one of ``THEMES`` or of the week's (those need
-    ``library`` after a restart)."""
+    """A theme by its key: one of ``THEMES``, of the week's or of "Bo lubisz"
+    (those two need ``library``)."""
     found = BY_KEY.get(key) or _weekly.get(key)
     if found is None and library is not None:
         weekly_themes(library, date.today())
-        found = _weekly.get(key)
+        found = _weekly.get(key) or next((t for t in liked(library) if t.key == key), None)
     if found is None:
         raise KeyError(f"unknown theme {key!r}")
     return found
@@ -886,6 +890,78 @@ def weekly_themes(library: Library, day: date) -> list[Theme]:
             log.info("themes of %s: %s", week, ", ".join(t.name for t in themes) or "none")
         _weekly.update({t.key: t for t in themes})
         return themes
+
+
+# -- "Bo lubisz" -----------------------------------------------------------------
+
+#: The cards of "Bo lubisz" as last made: a list of themes.
+LIKED_KEY = "liked_themes"
+#: Artists like a favourite one on its card.
+LIKED_ARTISTS = 4
+#: Least works of theirs the catalogue must have for the card.
+LIKED_MIN = 4
+
+
+def surname(name: str) -> str:
+    """ "Morisot" for "Berthe Morisot", "van Gogh" and "de Hooch" as they
+    are, "Witkiewicz" for "Stanisław Ignacy Witkiewicz"."""
+    words = name.split()
+    start = next((n for n, w in enumerate(words) if w[:1].islower()), len(words) - 1)
+    return " ".join(words[start:]) if words else name
+
+
+def _listed(names: list[str]) -> str:
+    """ "Renoir, Morisot, Degas i Gauguin"."""
+    return names[0] if len(names) == 1 else f"{', '.join(names[:-1])} i {names[-1]}"
+
+
+def make_liked(library: Library, taste: list[str]) -> list[Theme]:
+    """A card for each artist the owner likes (``taste``, most liked first):
+    the artists of the first theme naming them, the ones with the most works
+    in the catalogue, browsed in the museums like the theme. Remembered in
+    ``library``, so a card opened after a restart is still found."""
+    rules = PlaylistRules(kinds=[ItemKind.ARTWORK])
+    have = Counter(i.artist for i in library.query(rules)[1])
+    made: list[Theme] = []
+    seen: set[str] = set()
+    for artist in taste:
+        found = next(
+            (t for t in THEMES if t.artists and artist_matches(artist, list(t.artists))), None
+        )
+        if found is None:
+            continue
+        own = [a for a in found.artists if artist_matches(artist, [a])]
+        if not own or own[0] in seen:
+            continue  # the same artist spelled otherwise
+        seen.add(own[0])
+        counts = {
+            a: sum(n for name, n in have.items() if artist_matches(name, [a]))
+            for a in found.artists
+            if a not in own
+        }
+        others = sorted((a for a, n in counts.items() if n), key=lambda a: -counts[a])
+        others = others[:LIKED_ARTISTS]
+        if sum(counts[a] for a in others) < LIKED_MIN:
+            continue
+        queries = tuple(q for q in found.queries if any(fold(a) in fold(q[1]) for a in others))
+        made.append(
+            Theme(
+                f"like-{_slug(artist)}",
+                artist,
+                _listed([surname(a) for a in others]),
+                LIKES,
+                artists=tuple(others),
+                queries=queries,
+                playlist=f"Bo lubisz: {artist}",
+            )
+        )
+    library.set_state(LIKED_KEY, [asdict(t) for t in made])
+    return made
+
+
+def liked(library: Library) -> list[Theme]:
+    """The cards of "Bo lubisz" as last made."""
+    return [_theme_from(t) for t in library.get_state(LIKED_KEY, [])]
 
 
 def browse_theme(

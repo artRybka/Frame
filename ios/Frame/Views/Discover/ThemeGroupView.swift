@@ -38,7 +38,8 @@ struct ThemeGroupView: View {
     let name: String
 
     private var themes: [ArtTheme] {
-        (model.themes ?? []).filter { ($0.group ?? "Motywy") == name }
+        DiscoverLayout.themes(model.themes ?? [], rows: model.suggestionRows ?? [])
+            .filter { ($0.group ?? "Motywy") == name }
     }
 
     private let columns = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]

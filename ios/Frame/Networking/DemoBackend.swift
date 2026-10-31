@@ -633,17 +633,15 @@ actor DemoBackend: FrameBackend {
     }
 
     func suggestions() async throws -> [SuggestionRow] {
-        let themes = DemoDiscover.themes.filter { !works($0).isEmpty }
+        // As the server: the theme of the day is one of the lasting themes.
+        let themes = DemoDiscover.themes.filter {
+            !works($0).isEmpty && !DiscoverLayout.ownGroups.contains($0.group ?? "")
+        }
         let theme = themes[Calendar.current.component(.day, from: Date()) % themes.count]
-        let liked = DemoDiscover.themes.first { $0.key == "impressionism" }!
         return [
             SuggestionRow(
                 key: "for-you", title: "Dla Ciebie", subtitle: "Następne w rotacji Propozycje",
                 items: remote(Array(items.shuffled().prefix(12)))
-            ),
-            SuggestionRow(
-                key: "like:impressionism", title: "Bo lubisz: Claude Monet", subtitle: liked.name,
-                theme: liked.key, items: remote(works(liked).filter { $0.artist != "Claude Monet" })
             ),
             SuggestionRow(
                 key: "theme", title: "Motyw dnia: \(theme.name)", subtitle: theme.description,
