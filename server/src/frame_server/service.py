@@ -14,6 +14,7 @@ from pathlib import Path
 from PIL import Image
 
 from .ai import AiConfigStore, AiWorker, Claude, DailyJob, KeywordsJob, PlTextJob
+from .ai.study import StudyJob
 from .albums import Albums
 from .config import Settings
 from .daily import Daily
@@ -33,6 +34,7 @@ from .rendered import RenderCache, Rendered, render_key
 from .status import StatusMonitor
 from .storage import StorageStore
 from .store import ContentInfo, ContentStore
+from .study import Study
 
 log = logging.getLogger(__name__)
 
@@ -185,6 +187,9 @@ class FrameService:
             DailyJob(self.library, self.images, self.ai_config),
         )
         self.ai.register(self.daily.job)
+        # Studies of any work, asked for on its card.
+        self.study = Study(self.daily, self.ai, StudyJob(self.library, self.images, self.ai_config))
+        self.ai.register(self.study.job)
 
         self._tasks: set[asyncio.Task[object]] = set()
 
@@ -197,6 +202,7 @@ class FrameService:
         return Access(
             private_use=chosen.private_use,
             wikiart=chosen.wikiart,
+            ignore_term=chosen.ignore_term,
             europeana_key=config.europeana_key,
             openverse_app=app,
         )

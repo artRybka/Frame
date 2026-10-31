@@ -201,6 +201,17 @@ struct LiveBackend: FrameBackend {
         return try await perform(req)
     }
 
+    func study(itemID: String, wait: Int) async throws -> StudyView {
+        var req = request("/api/study/\(escape(itemID))", query: [URLQueryItem(name: "wait", value: String(wait))])
+        req.timeoutInterval = TimeInterval(wait + 30)
+        return try await perform(req)
+    }
+
+    func prepareStudy(itemID: String, again: Bool) async throws -> StudyView {
+        let query = again ? [URLQueryItem(name: "again", value: "true")] : []
+        return try await perform(request("/api/study/\(escape(itemID))", method: "POST", query: query))
+    }
+
     func themePage(key: String, page: Int) async throws -> ArtThemePage {
         try await get("/api/themes/\(key)", query: [URLQueryItem(name: "page", value: String(page))])
     }
@@ -467,7 +478,11 @@ struct LiveBackend: FrameBackend {
                 query.append(URLQueryItem(name: "framing", value: String(decoding: data, as: UTF8.self)))
             }
             req = request("/api/library/items/\(escape(id))/preview", query: query)
-        case let .path(path): req = request(path)
+        case let .path(path):
+            // A query ("?n=0&v=…") goes as the query, not into the path.
+            let parts = path.split(separator: "?", maxSplits: 1).map(String.init)
+            let query = parts.count > 1 ? URLComponents(string: "?" + parts[1])?.queryItems ?? [] : []
+            req = request(parts.first ?? path, query: query)
         case let .url(url): req = URLRequest(url: url)
         }
         req.timeoutInterval = 120

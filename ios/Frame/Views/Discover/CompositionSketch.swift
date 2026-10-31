@@ -2,8 +2,8 @@ import SwiftUI
 
 /// One take on the composition as pencil on tracing paper: the picture
 /// washed out (darkened in dark mode, with the pencil white), the marks drawn
-/// over it with a number beside each, and their labels above and below the
-/// picture: a hand-written title and a line in the app's font.
+/// over it with a number beside each, and their labels under the picture in
+/// two columns, all hand-written: a title and a line under it.
 struct CompositionSketch: View {
     let item: RemoteItem
     let aspect: CGFloat
@@ -19,11 +19,17 @@ struct CompositionSketch: View {
 
     var body: some View {
         let labelled = Self.labelled(take.marks)
-        let rows = Self.rows(labelled)
-        VStack(spacing: 10) {
-            if !rows.top.isEmpty { labelRow(rows.top, alignment: .bottom) }
+        VStack(spacing: 14) {
             picture(labelled)
-            if !rows.bottom.isEmpty { labelRow(rows.bottom, alignment: .top) }
+            if !labelled.isEmpty {
+                LazyVGrid(
+                    columns: [GridItem(.flexible(), spacing: 14, alignment: .topLeading), GridItem(.flexible(), alignment: .topLeading)],
+                    alignment: .leading,
+                    spacing: 12
+                ) {
+                    ForEach(labelled) { label($0) }
+                }
+            }
         }
     }
 
@@ -40,11 +46,11 @@ struct CompositionSketch: View {
                     placeholder: item.item.placeholderColor,
                     maxPixel: 1600
                 )
-                .saturation(dark ? 0.55 : 0.7)
+                .saturation(dark ? 0.65 : 0.75)
                 .contrast(0.9)
                 .blur(radius: 0.4)
             }
-            .overlay(dark ? Color(hex: 0x0E0C0A).opacity(0.55) : Color(hex: 0xF6F1E7).opacity(0.58))
+            .overlay(dark ? Color(hex: 0x0E0C0A).opacity(0.42) : Color(hex: 0xF6F1E7).opacity(0.45))
             .overlay {
                 Canvas { context, size in draw(in: &context, size: size, labelled: labelled) }
             }
@@ -72,51 +78,36 @@ struct CompositionSketch: View {
         }
     }
 
-    private func labelRow(_ entries: [Labelled], alignment: VerticalAlignment) -> some View {
-        HStack(alignment: alignment, spacing: 10) {
-            ForEach(entries) { entry in
-                label(entry).frame(maxWidth: .infinity, alignment: .leading)
-            }
-            if entries.count == 1 { Color.clear.frame(maxWidth: .infinity, maxHeight: 0) }
-        }
-    }
-
+    /// The number in its ring, and beside it the title with its line under
+    /// it: the line starts where the title does, not under the number.
     private func label(_ entry: Labelled) -> some View {
-        VStack(alignment: .leading, spacing: 1) {
-            HStack(spacing: 5) {
-                Text("\(entry.number)")
-                    .font(.system(size: 10, weight: .bold))
-                    .frame(width: 17, height: 17)
-                    .overlay(Circle().strokeBorder(Theme.ink, lineWidth: 1.3))
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text("\(entry.number)")
+                .font(.system(size: 10, weight: .bold))
+                .frame(width: 17, height: 17)
+                .overlay(Circle().strokeBorder(Theme.ink, lineWidth: 1.3))
+                .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 5 }
+            VStack(alignment: .leading, spacing: 1) {
                 Text(entry.mark.title)
-                    .font(.hand(20))
+                    .font(.hand(21))
                     .lineLimit(2)
                     .minimumScaleFactor(0.8)
-            }
-            .foregroundStyle(Theme.ink)
-            if !entry.mark.text.isEmpty {
-                Text(entry.mark.text)
-                    .font(.caption)
-                    .foregroundStyle(Theme.inkSoft)
-                    .fixedSize(horizontal: false, vertical: true)
+                if !entry.mark.text.isEmpty {
+                    Text(entry.mark.text)
+                        .font(.hand(18))
+                        .foregroundStyle(Theme.inkSoft)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
+        .foregroundStyle(Theme.ink)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     /// The marks with a title, numbered in the order the model gave them
     /// (the eye's path): untitled marks are drawn, not labelled.
     static func labelled(_ marks: [DailyWork.Mark]) -> [Labelled] {
         marks.filter { !$0.title.isEmpty }.enumerated().map { Labelled(number: $0.offset + 1, mark: $0.element) }
-    }
-
-    /// Labels of marks in the upper half go above the picture, the rest
-    /// below; a row of more than three gives its nearest ones to the other.
-    static func rows(_ entries: [Labelled]) -> (top: [Labelled], bottom: [Labelled]) {
-        var top = entries.filter { $0.mark.anchor.y < 0.5 }.sorted { $0.mark.anchor.y < $1.mark.anchor.y }
-        var bottom = entries.filter { $0.mark.anchor.y >= 0.5 }.sorted { $0.mark.anchor.y < $1.mark.anchor.y }
-        while top.count > 3, top.count > bottom.count + 1 { bottom.insert(top.removeLast(), at: 0) }
-        while bottom.count > 3, bottom.count > top.count + 1 { top.append(bottom.removeFirst()) }
-        return (top.sorted { $0.number < $1.number }, bottom.sorted { $0.number < $1.number })
     }
 }
 

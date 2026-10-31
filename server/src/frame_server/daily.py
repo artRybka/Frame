@@ -11,15 +11,23 @@ the same work again ("Poprzednie dzieła dnia").
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import random
 import re
 import threading
+import time
 from concurrent.futures import Future
 from datetime import date, timedelta
+from pathlib import Path
 from typing import TYPE_CHECKING
 
-from .ai.daily import KIND, DailyJob
+import httpx
+from PIL import Image
+
+from .ai.daily import KIND, DailyJob, Detail, Essay
+from .ai.jobs import text_hash
+from .imaging.layout import load_image
 from .library import Item, ItemKind, PlaylistRules
 from .library.models import Note
 from .library.vocabulary import artist_matches, is_photograph
@@ -47,6 +55,9 @@ CANDIDATES = 12
 SAME_ARTIST = 4
 #: How often the background picks the day's work and asks for its page.
 TICK_SECONDS = 1800.0
+#: The fragments' pictures ("Detale"): their longer side, and how long kept.
+DETAIL_SIDE = 1600
+DETAIL_DAYS = 30
 
 SEASON_WORDS = {
     "winter": ("winter", "snow", "ice", "skating", "zima", "śnieg", "subject:winter"),
@@ -95,6 +106,8 @@ class Daily:
         self._lock = threading.Lock()
         self._candidates: dict[str, list[str]] = {}
         self._stop = threading.Event()
+        self._cutting = threading.Lock()
+        self.details_dir = job.images.thumbs.parent / "details"
 
     # -- the days ----------------------------------------------------------
 
@@ -193,6 +206,59 @@ class Daily:
         if not self.job.enabled() or self.job.essay(item) or self.job.failed(item):
             return None
         return self.ai.need_now(item.id, KIND)
+
+    # -- its fragments ("Detale") ----------------------------------------------
+
+    def detail_path(self, item: Item, box: Detail) -> Path:
+        key = text_hash(f"{box.x:.4f}", f"{box.y:.4f}", f"{box.w:.4f}", f"{box.h:.4f}")[:10]
+        return self.details_dir / f"{item.file_stem}-{key}.jpg"
+
+    def detail(self, item: Item, index: int, essay: Essay | None = None) -> Path | None:
+        """The page's ``index``th fragment cut from the work's original; None
+        when the page has no such fragment. All of them are cut at once,
+        from the museum's full size when it can be had. ``essay``: another
+        write-up than the day's (a study of the work)."""
+        essay = essay or self.job.essay(item)
+        if essay is None or not 0 <= index < len(essay.details):
+            return None
+        path = self.detail_path(item, essay.details[index])
+        if path.is_file():
+            return path
+        with self._cutting:
+            if not path.is_file():
+                self._cut(item, essay.details)
+        return path
+
+    def _cut(self, item: Item, boxes: list[Detail]) -> None:
+        img = self._full_size(item)
+        width, height = img.size
+        self.details_dir.mkdir(parents=True, exist_ok=True)
+        for box in boxes:
+            left, top = round(box.x * width), round(box.y * height)
+            right, bottom = round((box.x + box.w) * width), round((box.y + box.h) * height)
+            crop = img.crop((left, top, right, bottom))
+            crop.thumbnail((DETAIL_SIDE, DETAIL_SIDE), Image.Resampling.LANCZOS)
+            path = self.detail_path(item, box)
+            tmp = path.with_suffix(".tmp")
+            crop.convert("RGB").save(tmp, "JPEG", quality=88, optimize=True)
+            tmp.replace(path)
+        cutoff = time.time() - DETAIL_DAYS * 86400
+        for old in self.details_dir.glob("*.jpg"):
+            with contextlib.suppress(OSError):
+                if old.stat().st_mtime < cutoff:
+                    old.unlink()
+
+    def _full_size(self, item: Item) -> Image.Image:
+        """The museum's file as it is (the cached original is cut down to
+        the panel's size); the cached one when the museum's cannot be had."""
+        images = self.job.images
+        if item.image_url and item.source not in images.fetchers:
+            try:
+                return images.sample(item.image_url)
+            except (httpx.HTTPError, OSError) as err:
+                log.info("full size of %s failed: %s; the cached original", item.id, err)
+        path, _ = images.picture(item, urgent=True)
+        return load_image(path)
 
     def tick(self, day: date | None = None) -> None:
         item = self.pick(day or date.today())

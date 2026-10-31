@@ -23,6 +23,16 @@ struct Notice: Identifiable, Equatable {
     /// Work that goes on after its screen closed (an album, a museum fetch):
     /// kept above the rest.
     var background = false
+    /// What a tap on the card opens ("Otwórz" on it); such a card stays
+    /// until it is tapped or closed.
+    var action: Action?
+
+    struct Action: Equatable {
+        var label: String
+        var run: @MainActor () -> Void
+
+        static func == (a: Action, b: Action) -> Bool { a.label == b.label }
+    }
 }
 
 /// The cards on screen. A new confirmation replaces the one before, a new
@@ -58,23 +68,28 @@ final class Notices {
     }
 
     /// Progress of work under way; `fraction` nil keeps the one it had.
-    func update(_ id: Notice.ID, title: String? = nil, fraction: Double? = nil, count: String? = nil) {
+    func update(
+        _ id: Notice.ID, title: String? = nil, detail: String? = nil, fraction: Double? = nil, count: String? = nil
+    ) {
         guard let index = items.firstIndex(where: { $0.id == id }), items[index].kind == .working else { return }
         if let title { items[index].title = title }
+        if let detail { items[index].detail = detail }
         if let fraction { items[index].fraction = min(max(fraction, 0), 1) }
         if let count { items[index].count = count }
     }
 
-    /// The work ended: its card shows the result where it is.
-    func end(_ id: Notice.ID, _ kind: Notice.Kind, _ title: String, _ detail: String? = nil) {
+    /// The work ended: its card shows the result where it is; with an
+    /// `action`, a tap on it opens what the work made.
+    func end(_ id: Notice.ID, _ kind: Notice.Kind, _ title: String, _ detail: String? = nil, action: Notice.Action? = nil) {
         guard let index = items.firstIndex(where: { $0.id == id }) else {
-            post(kind, title, detail)
+            post(kind, title, detail, action: action)
             return
         }
         withAnimation(.snappy) {
             items[index].kind = kind
             items[index].title = title
             items[index].detail = detail
+            items[index].action = action
             items[index].count = nil
             // A bar that was there fills up; none appears when there was none.
             items[index].fraction = kind == .done && items[index].fraction != nil ? 1 : nil
@@ -141,8 +156,8 @@ final class Notices {
 
     // MARK: Private
 
-    private func post(_ kind: Notice.Kind, _ title: String, _ detail: String?) {
-        let notice = Notice(kind: kind, title: title, detail: detail)
+    private func post(_ kind: Notice.Kind, _ title: String, _ detail: String?, action: Notice.Action? = nil) {
+        let notice = Notice(kind: kind, title: title, detail: detail, action: action)
         withAnimation(.snappy) {
             clear(sameSlotAs: kind, except: notice.id)
             items.append(notice)
@@ -153,7 +168,10 @@ final class Notices {
     /// One confirmation and one warning or error at a time.
     private func clear(sameSlotAs kind: Notice.Kind, except id: Notice.ID) {
         guard kind != .working else { return }
-        let gone = items.filter { $0.id != id && $0.kind != .working && $0.kind.transient == kind.transient }
+        // A card to open waits for its tap.
+        let gone = items.filter {
+            $0.id != id && $0.kind != .working && $0.action == nil && $0.kind.transient == kind.transient
+        }
         for notice in gone {
             timers[notice.id]?.cancel()
             timers[notice.id] = nil
@@ -171,7 +189,7 @@ final class Notices {
         case .working, .info: break
         }
         announce(notice)
-        guard notice.kind.transient else { return }
+        guard notice.kind.transient, notice.action == nil else { return }
         let id = notice.id
         timers[id]?.cancel()
         timers[id] = Task { [weak self] in

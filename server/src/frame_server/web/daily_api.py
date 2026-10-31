@@ -4,14 +4,16 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+from collections.abc import Callable
 from datetime import date
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 
-from ..ai.daily import TEASER_CHARS, Composition, Essay, Legacy, Spot, short
+from ..ai.daily import TEASER_CHARS, Composition, DailyJob, Detail, Essay, Legacy, Spot, short
 from ..ai.pl_text import description
 from ..library import Item, PlaylistRules
 from ..library.markup import strip_markup
@@ -37,6 +39,11 @@ class SimilarWork(BaseModel):
 class LegacyWork(Legacy):
     #: The catalogue's copy of the later work, when it has one.
     item: RemoteItem | None = None
+
+
+class DailyDetail(Detail):
+    #: The fragment cut from the original (``GET /api/daily/detail``).
+    image: str
 
 
 class DailyBrief(BaseModel):
@@ -67,6 +74,7 @@ class DailyWork(BaseModel):
     facts: list[dict[str, str]] = []
     composition: Composition | None = None
     colour: str = ""
+    details: list[DailyDetail] = []
     on_frame: str = ""
     similar: list[SimilarWork] = []
     legacy: list[LegacyWork] = []
@@ -113,7 +121,34 @@ def _brief(svc: FrameService, day: str, item: Item) -> DailyBrief:
 
 
 def _work(svc: FrameService, day: date, item: Item, writing: bool) -> DailyWork:
-    job = svc.daily.job
+    def detail_url(n: int, box: Detail) -> str:
+        v = svc.daily.detail_path(item, box).stem.rsplit("-", 1)[-1]
+        return f"/api/daily/detail?day={day.isoformat()}&n={n}&v={v}"
+
+    work = page(svc, item, svc.daily.job, day=day.isoformat(), writing=writing, url=detail_url)
+    history = svc.daily.history()
+    previous = []
+    for past in sorted((d for d in history if d < day.isoformat()), reverse=True):
+        found = svc.library.get(history[past])
+        if found is not None:
+            previous.append(_brief(svc, past, found))
+        if len(previous) == PREVIOUS:
+            break
+    return work.model_copy(update={"previous": previous})
+
+
+def page(
+    svc: FrameService,
+    item: Item,
+    job: DailyJob,
+    *,
+    day: str,
+    writing: bool,
+    url: Callable[[int, Detail], str],
+) -> DailyWork:
+    """The work's page as ``job`` wrote it (the work of the day, or a study
+    of it), the museum's text while there is none; ``url``: where the app
+    gets each fragment."""
     essay = job.essay(item)
     museum = _museum_text(svc, item)
     candidates = svc.daily.candidates(item)
@@ -137,17 +172,13 @@ def _work(svc: FrameService, day: date, item: Item, writing: bool) -> DailyWork:
             for c in candidates[:4]
         ]
         legacy = []
+    details = [
+        DailyDetail(**box.model_dump(), image=url(n, box))
+        for n, box in enumerate(essay.details if essay else [])
+    ]
     note = svc.library.note(item.id, job.kind) if essay else None
-    history = svc.daily.history()
-    previous = []
-    for past in sorted((d for d in history if d < day.isoformat()), reverse=True):
-        found = svc.library.get(history[past])
-        if found is not None:
-            previous.append(_brief(svc, past, found))
-        if len(previous) == PREVIOUS:
-            break
     return DailyWork(
-        day=day.isoformat(),
+        day=day,
         item=_light(svc, item),
         title=_title(svc, item, essay),
         teaser=essay.teaser if essay else short(museum, TEASER_CHARS),
@@ -162,12 +193,12 @@ def _work(svc: FrameService, day: date, item: Item, writing: bool) -> DailyWork:
         artist=essay.artist if essay else "",
         composition=essay.composition if essay and essay.composition.views else None,
         colour=essay.colour if essay else "",
+        details=details,
         on_frame=essay.on_frame if essay else "",
         similar=similar,
         legacy=legacy,
         sources=essay.sources if essay else [],
         model=note.model if note else "",
-        previous=previous,
     )
 
 
@@ -196,3 +227,16 @@ async def daily(
             await asyncio.wait_for(asyncio.shield(asyncio.wrap_future(future)), wait)
     writing = future is not None and not future.done()
     return await run_in_threadpool(_work, svc, day, item, writing)
+
+
+@router.get("/daily/detail")
+async def daily_detail(
+    svc: Svc, day: date, n: Annotated[int, Query(ge=0, le=9)] = 0
+) -> FileResponse:
+    """A fragment of the day's work ("Detale"), cut from its original; ``v``
+    in the page's address only changes it when the fragment does."""
+    item = await run_in_threadpool(svc.daily.item, day)
+    path = await run_in_threadpool(svc.daily.detail, item, n) if item is not None else None
+    if path is None:
+        raise HTTPException(404, "no such fragment")
+    return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "max-age=604800"})

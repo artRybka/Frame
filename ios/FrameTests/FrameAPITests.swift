@@ -155,6 +155,10 @@ final class FrameAPITests: XCTestCase {
           ]
          },
          "colour": "Dwa błękity i biel papieru.",
+         "details": [
+          {"title": "Pazury piany", "text": "Grzbiet rozpada się w palce.", "x": 0.4, "y": 0.1,
+           "w": 0.2, "h": 0.3, "image": "/api/daily/detail?day=2026-10-30&n=0&v=ab12"}
+         ],
          "on_frame": "Błękit i biel to czyste tusze ramki.",
          "similar": [
           {
@@ -234,6 +238,8 @@ final class FrameAPITests: XCTestCase {
         XCTAssertEqual(work.artist?.hasPrefix("Katsushika Hokusai"), true)
         XCTAssertEqual(work.composition?.points.first?.title, "Fudżi")
         XCTAssertEqual(work.composition?.lines.first?.points.count, 2)
+        XCTAssertEqual(work.details?.first?.title, "Pazury piany")
+        XCTAssertEqual(work.details?.first?.image, "/api/daily/detail?day=2026-10-30&n=0&v=ab12")
         XCTAssertEqual(work.similar.first?.why, "ta sama seria")
         XCTAssertNil(work.legacy.first?.item)
         let take = try XCTUnwrap(work.composition?.takes.first)
@@ -250,6 +256,15 @@ final class FrameAPITests: XCTestCase {
         old.views = nil
         XCTAssertEqual(old.takes.first?.marks.first?.title, "Fudżi")
         XCTAssertEqual(old.takes.first?.marks.count, 3)
+    }
+
+    func testStudyViewDecodesFromServer() throws {
+        // GET /api/study/<id> while Claude writes (tests/test_study.py).
+        let json = #"{"status": "writing", "error": "", "work": null, "cost_usd": 0.14}"#
+        let view = try LiveBackend.decoder().decode(StudyView.self, from: Data(json.utf8))
+        XCTAssertTrue(view.isPending)
+        XCTAssertNil(view.work)
+        XCTAssertEqual(view.costUsd, 0.14, accuracy: 0.001)
     }
 
     func testDecodesUndeliveredPicture() throws {

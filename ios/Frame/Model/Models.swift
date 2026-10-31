@@ -1018,6 +1018,10 @@ struct FrameSettings: Codable, Hashable, Sendable {
     /// WikiArt as a source, only to test the panel; its works leave the
     /// library when switched off.
     var wikiart: Bool? = nil
+    /// Only to test the app as it will be in some years: Europeana also gives
+    /// works whose authors died less than 70 years ago; they leave the
+    /// library when switched off. nil: a server before it.
+    var ignoreTerm: Bool? = nil
     /// The frame's name in the app; nil: the name the panel reports.
     var name: String? = nil
     /// "online" or "economy" ("Oszczędny": on battery the frame sleeps with
@@ -1078,6 +1082,7 @@ extension FrameSettings {
         follow(\.statusPollMinutes)
         follow(\.privateUse)
         follow(\.wikiart)
+        follow(\.ignoreTerm)
         follow(\.name)
         follow(\.powerMode)
         follow(\.checkEveryHours)
@@ -1091,6 +1096,7 @@ extension FrameSettings {
     private enum CodingKeys: String, CodingKey {
         case playlistId, changeTimes, changeEveryDays, quietStart, shuffle, avoidRepeatDays
         case orientation, rotation, art, photo, timezone, statusPollMinutes, privateUse, wikiart, name
+        case ignoreTerm
         case powerMode, checkEveryHours, checkQuietStart, checkQuietEnd
         case quietEnd  // older servers: decoded only
     }
@@ -1113,6 +1119,7 @@ extension FrameSettings {
         statusPollMinutes = try c.decode(Int.self, forKey: .statusPollMinutes)
         privateUse = try c.decodeIfPresent(Bool.self, forKey: .privateUse)
         wikiart = try c.decodeIfPresent(Bool.self, forKey: .wikiart)
+        ignoreTerm = try c.decodeIfPresent(Bool.self, forKey: .ignoreTerm)
         name = try c.decodeIfPresent(String.self, forKey: .name)
         powerMode = try c.decodeIfPresent(String.self, forKey: .powerMode)
         checkEveryHours = try c.decodeIfPresent(Int.self, forKey: .checkEveryHours)
@@ -1136,6 +1143,7 @@ extension FrameSettings {
         try c.encode(statusPollMinutes, forKey: .statusPollMinutes)
         try c.encodeIfPresent(privateUse, forKey: .privateUse)
         try c.encodeIfPresent(wikiart, forKey: .wikiart)
+        try c.encodeIfPresent(ignoreTerm, forKey: .ignoreTerm)
         try c.encodeIfPresent(name, forKey: .name)
         try c.encodeIfPresent(powerMode, forKey: .powerMode)
         try c.encodeIfPresent(checkEveryHours, forKey: .checkEveryHours)
@@ -1293,7 +1301,7 @@ struct DailyWork: Codable, Hashable, Sendable {
         var text: String
     }
 
-    /// One take on the composition ("Droga oka", "Geometria"): its marks and
+    /// One take on the composition ("Spojrzenie", "Geometria"): its marks and
     /// a grid under them ("none", "golden", "thirds").
     struct Take: Codable, Hashable, Sendable {
         var title: String
@@ -1317,13 +1325,26 @@ struct DailyWork: Codable, Hashable, Sendable {
                 Mark(shape: "loop", points: [Spot(x: point.x, y: point.y), Spot(x: point.x + 0.05, y: point.y + 0.04)], title: point.title, text: point.text)
             }
             let paths = lines.map { Mark(shape: "line", points: $0.points, title: "", text: "") }
-            return [Take(title: "Droga oka", grid: "none", text: "", marks: loops + paths)]
+            return [Take(title: "Spojrzenie", grid: "none", text: "", marks: loops + paths)]
         }
     }
 
     struct Similar: Codable, Hashable, Sendable {
         var item: RemoteItem
         var why: String
+    }
+
+    /// A fragment worth a close look ("Detale"): a box on the picture
+    /// (fractions, from the top left) and its cut from the original.
+    struct Detail: Codable, Hashable, Sendable {
+        var title: String
+        var text: String
+        var x: Double
+        var y: Double
+        var w: Double
+        var h: Double
+        /// Server path of the cut.
+        var image: String
     }
 
     /// A later work, artist or movement that drew on this one.
@@ -1364,6 +1385,8 @@ struct DailyWork: Codable, Hashable, Sendable {
     var artist: String?
     var composition: Composition?
     var colour: String
+    /// Nil from 0.42 servers.
+    var details: [Detail]?
     var onFrame: String
     var similar: [Similar]
     var legacy: [Legacy]
@@ -1372,10 +1395,31 @@ struct DailyWork: Codable, Hashable, Sendable {
     var previous: [Brief]
 }
 
-/// A work of the day's page, opened from the tile or from a past day.
+/// A work of the day's page, opened from the tile or from a past day; or a
+/// study of any work, the same page asked for on the work's card.
 struct DailyRoute: Hashable {
     /// Nil: today.
     var day: String?
+    /// The work whose study this is.
+    var study: String? = nil
+}
+
+/// A study of a work, `GET`/`POST /api/study/<id>`: the work of the day's
+/// page for any work, written by Claude when asked for and kept.
+struct StudyView: Codable, Hashable, Sendable {
+    /// "off" (no key), "none" (not asked for), on its way ("waiting",
+    /// "sources", "writing", "details"), "ready" or "failed".
+    var status: String
+    /// Why it failed, in Polish.
+    var error: String
+    /// The page, once ready.
+    var work: DailyWork?
+    /// What one costs, about (USD).
+    var costUsd: Double
+
+    static let pending: Set<String> = ["waiting", "sources", "writing", "details"]
+
+    var isPending: Bool { Self.pending.contains(status) }
 }
 
 /// An idea for a playlist, `GET /api/themes`: browsed live from the

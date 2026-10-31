@@ -6,7 +6,7 @@ enum LaunchRoute {
     static let screen = UserDefaults.standard.string(forKey: "screen") ?? ""
     static let fit = UserDefaults.standard.string(forKey: "fit")
     static let mat = UserDefaults.standard.string(forKey: "mat")
-    /// "end", "composition": a long page opens scrolled there.
+    /// "end", "composition", "details": a long page opens scrolled there.
     static let scroll = UserDefaults.standard.string(forKey: "scroll")
 }
 
@@ -55,6 +55,13 @@ struct RootView: View {
             if artist != nil { tab = .search }
         }
         .onChange(of: model.suggestionsOpened) { tab = .discover }
+        // A study ready, opened from its card at the bottom.
+        .sheet(isPresented: Binding(
+            get: { model.studySheet != nil },
+            set: { if !$0 { model.studySheet = nil } }
+        )) {
+            if let id = model.studySheet { StudySheet(itemID: id) }
+        }
         .task {
             await model.refreshAll()
             await model.settleLiveActivity()  // one left from before the app was closed
