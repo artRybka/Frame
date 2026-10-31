@@ -39,7 +39,7 @@ if TYPE_CHECKING:
 
 KIND = "daily"
 #: Changed whenever the prompt changes, so the text is written again.
-PROMPT_VERSION = "daily-6"
+PROMPT_VERSION = "daily-7"
 #: The tile's two lines under the title (characters).
 TEASER_CHARS = 100
 #: The picture goes out this big: enough to see the composition.
@@ -48,6 +48,9 @@ IMAGE_SIDE = 1568
 WORK_CHARS = 9000
 ARTIST_CHARS = 1500
 MAX_VIEWS = 3
+#: Kept in a written page whose question asked for "Rytm" (or that got
+#: one asked alone later, ``ai.rhythm``).
+RHYTHM_ASKED = "rhythm_asked"
 MAX_MARKS = 6
 MAX_LINE_POINTS = 12
 #: The marks drawn over the picture, and how many points each takes
@@ -75,7 +78,16 @@ MONTHS = (
     "września", "października", "listopada", "grudnia",
 )  # fmt: skip
 
-SYSTEM = """Piszesz „Dzieło dnia” do aplikacji domowej ramki z kolorowym e-papierem: \
+#: The third take on the composition, "Rytm" (also asked alone of pages
+#: written before it, ``ai.rhythm``).
+RHYTHM = """Trzecie ujęcie, „Rytm”, tylko wtedy, gdy \
+obraz naprawdę ma rytmy, czyli powtórzenia, które oko czyta jak takty (szereg postaci, kolumn, \
+drzew, fal, okien, fałd, plam koloru, kresek): każdy rytm, który widać, jako ślad "rhythm" \
+z punktami na kolejnych powtórzeniach i krótkim podpisem, co się powtarza i jak (np. „pnie co \
+krok, coraz gęściej”); bez rytmów pomiń to ujęcie."""
+
+SYSTEM = (
+    """Piszesz „Dzieło dnia” do aplikacji domowej ramki z kolorowym e-papierem: \
 krótkie, mądre omówienie jednego dzieła dla miłośnika sztuki, który nie jest historykiem sztuki.
 
 Zasady:
@@ -102,12 +114,11 @@ powstało, co było w nim nowe, jak je przyjęto.
 wyróżniał i w którym miejscu jego drogi powstało to dzieło. Bez powtarzania tekstu powyżej.
 - "composition": analiza kompozycji jako 1–3 ujęcia ("views"), każde rysowane osobno \
 ołówkiem na obrazie, kolejno: „Spojrzenie” (co i w jakiej kolejności prowadzi wzrok), \
-„Geometria” i „Rytm”. W geometrii szukaj złotego podziału (linie 0,382 i 0,618), trójpodziału, \
-przekątnych, trójkątów, kół i owali, osi symetrii. Trzecie ujęcie, „Rytm”, tylko wtedy, gdy \
-obraz naprawdę ma rytmy, czyli powtórzenia, które oko czyta jak takty (szereg postaci, kolumn, \
-drzew, fal, okien, fałd, plam koloru, kresek): każdy rytm, który widać, jako ślad "rhythm" \
-z punktami na kolejnych powtórzeniach i krótkim podpisem, co się powtarza i jak (np. „pnie co \
-krok, coraz gęściej”); bez rytmów pomiń to ujęcie. Pokazuj tylko to, co naprawdę widać, \
+„Geometria” i „Rytm”, i żadnych innych (o świetle piszesz w "colour"). W geometrii szukaj \
+złotego podziału (linie 0,382 i 0,618), trójpodziału, przekątnych, trójkątów, kół i owali, osi \
+symetrii. """
+    + RHYTHM
+    + """ Pokazuj tylko to, co naprawdę widać, \
 niczego nie naginaj; jeśli żadna siatka nie pasuje, "grid" to "none". Każde ujęcie: \
 "title" (1–3 słowa), "grid" ("golden" lub "thirds", gdy kompozycja naprawdę się na nich \
 opiera, aplikacja narysuje siatkę), "text" (dwa-trzy zdania, co to ujęcie pokazuje) i \
@@ -139,6 +150,7 @@ od najwcześniejszego. Rok, kto, tytuł po polsku, jedno-dwa zdania i, jeśli ź
 krótki cytat. "search": nazwisko i oryginalny tytuł do wyszukania w katalogu. Pusta lista, gdy \
 źródła o tym milczą, a dzieło nie jest na tyle słynne, żebyś był pewien.
 - "sources": źródła, z których faktycznie skorzystałeś."""
+)
 
 
 def _str(description: str = "") -> dict[str, Any]:
@@ -439,6 +451,18 @@ def _detail(raw: dict[str, Any]) -> Detail | None:
     return Detail(title=title, text=_text(raw.get("text"), 300), x=x, y=y, w=w, h=h)
 
 
+def has_rhythm(view: View) -> bool:
+    return any(m.shape == "rhythm" for m in view.marks)
+
+
+def takes(views: list[View]) -> list[View]:
+    """The takes the app shows: "Spojrzenie", "Geometria" and a "Rytm" with
+    rhythms in it. A third take of another kind (pages written before
+    "Rytm" were asked for one "if it made sense", e.g. "Światło") is left
+    out."""
+    return [v for n, v in enumerate(views) if n < 2 or has_rhythm(v)][:MAX_VIEWS]
+
+
 def _composition(views: list[View]) -> Composition:
     """The takes, and the first one as 0.42 apps draw it: a numbered point
     per mark and its lines and arrows."""
@@ -457,7 +481,7 @@ def clean(data: dict[str, Any], candidates: list[str]) -> Essay | None:
         return None
     found = data.get("composition")
     raw: dict[str, Any] = found if isinstance(found, dict) else {}
-    views = [v for v in map(_view, _dicts(raw.get("views"))) if v is not None][:MAX_VIEWS]
+    views = takes([v for v in map(_view, _dicts(raw.get("views"))) if v is not None])
     allowed, similar = set(candidates), list[Similar]()
     for s in _dicts(data.get("similar")):
         item_id = str(s.get("id") or "")
@@ -580,7 +604,7 @@ class DailyJob(NoteJob):
         """Keeps the answer cleaned: what the app shows."""
         ids = [c.id for c in self.candidates(item)]
         essay = clean(note.data, ids)
-        data = essay.model_dump() if essay is not None else {"failed": True}
+        data = {**essay.model_dump(), RHYTHM_ASKED: True} if essay is not None else {"failed": True}
         self.library.save_note(note.model_copy(update={"data": data}))
 
     def fresh(self, item: Item, note: Note | None) -> bool:
@@ -616,7 +640,11 @@ class DailyJob(NoteJob):
         note = self.library.note(item.id, self.kind)
         if not self.fresh(item, note) or note is None or "teaser" not in note.data:
             return None
-        return Essay.model_validate(note.data)
+        essay = Essay.model_validate(note.data)
+        shown = takes(essay.composition.views)
+        if len(shown) == len(essay.composition.views):
+            return essay
+        return essay.model_copy(update={"composition": _composition(shown)})
 
     def failed(self, item: Item) -> bool:
         """Asked already, without a usable answer: not asked again today."""

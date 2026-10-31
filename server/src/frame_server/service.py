@@ -14,6 +14,7 @@ from pathlib import Path
 from PIL import Image
 
 from .ai import AiConfigStore, AiWorker, Claude, DailyJob, KeywordsJob, PlTextJob
+from .ai.rhythm import RhythmJob
 from .ai.study import StudyJob
 from .albums import Albums
 from .config import Settings
@@ -194,6 +195,8 @@ class FrameService:
         # Studies of any work, asked for on its card.
         self.study = Study(self.daily, self.ai, StudyJob(self.library, self.images, self.ai_config))
         self.ai.register(self.study.job)
+        # "Rytm" for the pages written before the composition had it.
+        self.ai.register(RhythmJob(self.library, self.images, self.ai_config))
 
         self._tasks: set[asyncio.Task[object]] = set()
 
