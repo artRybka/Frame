@@ -16,8 +16,12 @@
   Ulubionych i od razu się zapala. Serce na karcie dzieła też zapala się
   od razu.
 - Dzieła z muzeów, które pokazało Szukaj, serwer w tle dokłada do katalogu
-  zamiast losowych (bez progu e-papieru). Artyści, których szukasz, lekko
-  podbijają „Bo lubisz”.
+  zamiast losowych. Artyści, których szukasz, lekko podbijają „Bo lubisz”.
+- Koniec progu „przydatności na e-papier” w całej aplikacji: Propozycje,
+  dobór do katalogu, Dzieło dnia, motywy tygodnia i starsze playlisty biorą
+  też dzieła, które ocena wcześniej odrzucała (np. autoportret Rembrandta,
+  „Straż nocna”). Ocena zostaje na karcie dzieła i do kolejności. Katalog
+  przycina od najdłużej trzymanych dzieł.
 
 ## 0.45.0
 
