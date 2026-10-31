@@ -222,7 +222,7 @@ class AppHello(BaseModel):
     code: str | None = None
     screen: str | None = None
     battery: int | None = None  # percent
-    charging: bool | None = None
+    charging: bool | None = None  # the charger is in (getBatteryPowerSource), full or not
     shown: str | None = None  # file_id on the screen, "" for none
 
 

@@ -35,6 +35,13 @@ SLEEP_SETTLE = timedelta(minutes=3)
 # An alarm this long ago or more rang without the app asking: the wake that
 # follows it is not the one it caused.
 RANG_UNSEEN = timedelta(minutes=3)
+# On the charger from this level up the battery counts as full: the app shows
+# a plug instead of the charging bolt (Mateusz, 2026-10-31: "prawie pełna").
+# Neither the panel nor the app says whether it charges: Tizen's
+# getBatteryPowerSource() only names the charger, and MDC 0x1B 73 byte 1
+# reads 00 on the charger (E1 at 100 %, and while charging the bolt turned
+# into the plug after each MDC read), so the level decides.
+FULL_AT = 95
 
 # What was last read from the panel, kept across server restarts: a panel
 # asleep since then is still known to sleep with network standby on.
@@ -58,6 +65,13 @@ REMEMBERED = {
 }
 
 
+def charging_at(plugged: bool | None, level: int | None) -> bool | None:
+    """Charging: on the charger and not yet (almost) full."""
+    if plugged is None:
+        return None
+    return plugged and (level is None or level < FULL_AT)
+
+
 def _now() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
 
@@ -68,8 +82,8 @@ class DeviceStatus(BaseModel):
     checked_at: str | None = None
     last_seen: str | None = None
     battery_level: int | None = None
-    # Interpretation of the status bytes follows ha-emdx (verified on an
-    # EM32DX); still to be confirmed on this unit, see experiment E1.
+    # On the charger below ``FULL_AT`` (``charging_at``); on the charger and
+    # full, ``power_source`` is "ac" and this False.
     charging: bool | None = None
     power_source: Literal["ac", "battery"] | None = None
     battery_raw: str | None = None
@@ -358,12 +372,12 @@ class StatusMonitor:
         battery = await mdc.battery()
         status.battery_level = battery.level
         status.battery_raw = battery.raw.hex(" ")
-        status.charging = battery.raw[1] == 0x01 if len(battery.raw) > 1 else None
         plugged = battery.external_power
-        if plugged is None:
-            plugged = status.charging
+        if plugged is None:  # a short reply: byte 1, as ha-emdx reads it
+            plugged = battery.raw[1] == 0x01 if len(battery.raw) > 1 else None
         if plugged is not None:
             status.power_source = "ac" if plugged else "battery"
+        status.charging = charging_at(plugged, battery.level)
 
     async def read_battery(self, mdc: MdcClient) -> None:
         """Battery and charger within a session opened for something else."""
@@ -380,9 +394,10 @@ class StatusMonitor:
             self._slept_at = None
         self._remember()
 
-    def note_app(self, now: datetime, battery: int | None, charging: bool | None) -> None:
+    def note_app(self, now: datetime, battery: int | None, plugged: bool | None) -> None:
         """The Frame app asked for its picture: the panel is awake, and the
-        app may know its battery better than the last MDC read."""
+        app may know its battery better than the last MDC read. ``plugged``:
+        the app's ``charging``, which only says the charger is in."""
         stamp = now.isoformat(timespec="seconds")
         status = self.status
         status.reachable = True
@@ -392,9 +407,13 @@ class StatusMonitor:
         status.error = None
         if battery is not None:
             status.battery_level = battery
-        if charging is not None:
-            status.charging = charging
-            status.power_source = "ac" if charging else "battery"
+        if plugged is not None:
+            status.power_source = "ac" if plugged else "battery"
+        if plugged is not None or battery is not None:
+            status.charging = charging_at(
+                status.power_source == "ac" if status.power_source else None,
+                status.battery_level,
+            )
         self._track_battery(status, now)
         self._slept_at = None
         self._remember(now)
