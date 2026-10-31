@@ -81,6 +81,11 @@ struct MuseumSearchView: View {
         return results.filter { !known.contains($0.id) && !known.contains($0.twin ?? "") }
     }
 
+    /// The museums' works on screen: only once the catalogue has answered,
+    /// so that its works don't come in above them (the museums' grid jumped
+    /// down) and the copies it holds are left out from the start.
+    private var shownFromMuseums: [RemoteItem] { searching ? [] : fromMuseums }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
@@ -229,19 +234,12 @@ struct MuseumSearchView: View {
                     }
                 }
             }
+            museumGrid(shownFromMuseums)
+            // Under the works: a museum that gives up late doesn't push them down.
             if !failed.isEmpty {
                 Text("Nie odpowiedziało: " + failed.map(Names.source).joined(separator: ", "))
                     .font(.footnote)
                     .foregroundStyle(Theme.inkSoft)
-            }
-            MasonryGrid(items: fromMuseums.map(\.item.summary)) { summary in
-                let remote = fromMuseums.first { $0.id == summary.id }
-                NavigationLink(value: summary.id) {
-                    ArtCard(item: summary, ref: remote?.thumb, showsFavorite: false)
-                }
-                .buttonStyle(.plain)
-                .contextMenu { QueueButton(itemID: summary.id) }
-                .overlay(alignment: .topTrailing) { heart(summary) }
             }
             if !searching, !asking, catalogue?.items.isEmpty ?? true, fromMuseums.isEmpty {
                 EmptyStateView(
@@ -255,6 +253,19 @@ struct MuseumSearchView: View {
                     Task { await loadMore() }
                 }
             }
+        }
+    }
+
+    /// The museums' works, each with its picture from the museum.
+    private func museumGrid(_ remotes: [RemoteItem]) -> some View {
+        let thumbs = Dictionary(remotes.map { ($0.id, $0.thumb) }, uniquingKeysWith: { first, _ in first })
+        return MasonryGrid(items: remotes.map(\.item.summary)) { summary in
+            NavigationLink(value: summary.id) {
+                ArtCard(item: summary, ref: thumbs[summary.id], showsFavorite: false)
+            }
+            .buttonStyle(.plain)
+            .contextMenu { QueueButton(itemID: summary.id) }
+            .overlay(alignment: .topTrailing) { heart(summary) }
         }
     }
 
