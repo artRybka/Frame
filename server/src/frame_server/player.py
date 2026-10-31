@@ -68,8 +68,8 @@ RESET_KEY = "library_reset"
 SET_ASIDE_KEY = "set_aside_dropped"
 #: Bump when ``set_aside`` leaves out more, so the catalogue is cleaned again
 #: (1: photographs and manuscripts, 2: reproductions and B&W copies,
-#: 3: Girona's photo archive).
-SET_ASIDE_VERSION = 3
+#: 3: Girona's photo archive, 4: stamps and Athens' Philatelic Postal Museum).
+SET_ASIDE_VERSION = 4
 #: Version of the colour analysis and score the library's pictures carry.
 SCORE_KEY = "suitability_version"
 #: The playlist the photos sent once gather in, newest first.
