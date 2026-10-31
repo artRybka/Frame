@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.48.0
+
+- Szukaj: pod polem pasek grup (Technika, Epoka, Styl, Kolor, Temat,
+  Muzeum, Moje) zamiast „+” i jednego długiego arkusza. Każdy przycisk
+  otwiera mały arkusz tylko ze swoją grupą i pokazuje, co wybrano. Epoka to
+  oś czasu do stuknięcia albo przeciągnięcia, Kolor to paleta
+  z przełącznikiem „Dominuje / Tylko akcent” i nastrojami, Styl i Temat
+  mają pole do zawężenia listy. Ten sam pasek jest w edytorze playlist.
+
 ## 1.47.0
 
 - Napisane studia dzieł i strony Dzieła dnia zostają na stałe: porządki
