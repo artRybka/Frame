@@ -20,6 +20,8 @@
 - Ramka nie budzi się już o 03:00 na kilka minut: przed każdym snem
   z pobudką aplikacja ramki przesuwa dzienne odświeżanie ekranu Samsunga na
   godzinę tej pobudki.
+- Na górze Odkrywaj kolory Studium dnia lekko przenikają w tło, jak na
+  karcie Teraz.
 
 ## 1.56.0
 
