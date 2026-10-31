@@ -32,6 +32,26 @@ enum Theme {
     static let gutter: CGFloat = 20
 }
 
+extension Theme {
+    /// Screen titles in the same serif as the section headers: the large
+    /// title on each tab and the inline one on pushed screens and sheets.
+    /// Only the font changes; colours and bar backgrounds stay the system's.
+    static func serifNavigationTitles() {
+        func serif(_ style: UIFont.TextStyle, weight: UIFont.Weight) -> UIFont {
+            let size = UIFont.preferredFont(
+                forTextStyle: style,
+                compatibleWith: UITraitCollection(preferredContentSizeCategory: .large)
+            ).pointSize
+            let base = UIFont.systemFont(ofSize: size, weight: weight)
+            let font = base.fontDescriptor.withDesign(.serif).map { UIFont(descriptor: $0, size: size) } ?? base
+            return UIFontMetrics(forTextStyle: style).scaledFont(for: font)
+        }
+        let bar = UINavigationBar.appearance()
+        bar.largeTitleTextAttributes = [.font: serif(.largeTitle, weight: .semibold)]
+        bar.titleTextAttributes = [.font: serif(.headline, weight: .semibold)]
+    }
+}
+
 extension View {
     /// A thin white frame around a miniature of the panel.
     func whiteFrame(_ width: CGFloat, corner: CGFloat = 2) -> some View {
