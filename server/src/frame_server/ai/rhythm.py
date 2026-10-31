@@ -11,11 +11,13 @@ A page without rhythms keeps its two takes; either way it is asked once.
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
+from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 
 from ..library.markup import strip_markup
 from ..library.models import Note
-from .client import OPUS, request
+from .client import OPUS, Answer, request
 from .daily import (
     _POINT,
     GRIDS,
@@ -30,8 +32,11 @@ from .daily import (
     _str,
     _view,
     has_rhythm,
-    picture_block,
+    image_block,
+    picture,
+    sent_size,
     takes,
+    to_fractions,
 )
 from .daily import (
     KIND as DAILY,
@@ -43,7 +48,7 @@ if TYPE_CHECKING:
     from ..library import Item
 
 KIND = "rhythm"
-PROMPT_VERSION = "rhythm-1"
+PROMPT_VERSION = "rhythm-2"
 #: The pages a rhythm is asked for.
 PAGES = (DAILY, STUDY)
 #: How long the list of pages wanting a rhythm is kept between looks.
@@ -63,8 +68,8 @@ naginaj.
 
 Ujęcie (najwyżej jedno): "title" „Rytm”, "grid" "none", "text" (dwa-trzy zdania, co \
 się powtarza i jak to prowadzi oko) i "marks": 1–5 śladów "rhythm", każdy z "points" \
-(2–12 punktów, po jednym na każdym powtórzeniu, po kolei; x i y to ułamki szerokości i \
-wysokości obrazu od lewego górnego rogu, 0–1, dokładnie na powtarzanej rzeczy), "title" \
+(3–12 punktów, po jednym na środku każdego powtórzenia, po kolei; x i y w pikselach \
+obrazu, którego wymiary są w danych (OBRAZ), od lewego górnego rogu), "title" \
 (1–3 słowa, podpis przy śladzie) i "text" (najwyżej 45 znaków, dopisek pod podpisem)."""
 )
 
@@ -106,8 +111,9 @@ def rhythm(data: dict[str, Any]) -> View | None:
     return None
 
 
-def request_text(item: Item, page: dict[str, Any]) -> str:
+def request_text(item: Item, page: dict[str, Any], size: tuple[int, int] | None = None) -> str:
     lines = [
+        *([f"OBRAZ: {size[0]} × {size[1]} px (współrzędne w tych pikselach)", ""] if size else []),
         "DZIEŁO",
         f"Tytuł: {page.get('title') or strip_markup(item.title)}",
         f"Autor: {item.artist}",
@@ -158,15 +164,24 @@ class RhythmJob(NoteJob):
         return {}
 
     def params(self, item: Item) -> dict[str, Any]:
-        text = {"type": "text", "text": request_text(item, self._page(item))}
+        img = picture(self.images, item)
+        text = {"type": "text", "text": request_text(item, self._page(item), img.size)}
         return request(
             model=OPUS,
             system=SYSTEM,
-            content=[picture_block(self.images, item), text],
+            content=[image_block(img), text],
             schema=SCHEMA,
             max_tokens=8000,
             effort="medium",
         )
+
+    def revise(
+        self, item: Item, params: dict[str, Any], answer: Answer, ask: Callable[..., Answer]
+    ) -> Answer:
+        """The answer's pixels made fractions of the picture."""
+        if answer.data is None:
+            return answer
+        return replace(answer, data=to_fractions(answer.data, sent_size(params)))
 
     def apply(self, item: Item, note: Note) -> None:
         """Puts the take in each of the work's pages wanting it, in place of

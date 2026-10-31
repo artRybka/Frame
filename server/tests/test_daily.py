@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import io
 from datetime import date, timedelta
 from pathlib import Path
@@ -122,6 +123,43 @@ ANSWER: dict[str, Any] = {
     ],
     "sources": ["obraz", "Wikipedia", "nie-źródło"],
 }
+
+
+#: The pictures in these tests are 900 × 600 px: the model answers in pixels.
+SIZE = (900, 600)
+
+
+def pixels(answer: dict[str, Any], size: tuple[int, int] = SIZE) -> dict[str, Any]:
+    """``answer`` as the model gives it: its fractions in pixels of the picture."""
+    out = copy.deepcopy(answer)
+    w, h = size
+
+    def scale(raw: dict[str, Any], keys: str) -> None:
+        for key in keys:
+            if isinstance(raw.get(key), int | float):
+                raw[key] = raw[key] * (w if key in "xw" else h)
+
+    if isinstance(out.get("focus"), dict):
+        scale(out["focus"], "xy")
+    for view in (out.get("composition") or {}).get("views") or out.get("views") or []:
+        for mark in view.get("marks") or []:
+            for point in mark.get("points") or []:
+                scale(point, "xy")
+    for detail in out.get("details") or []:
+        scale(detail, "xywh")
+    return out
+
+
+ANSWER_PX = pixels(ANSWER)
+
+
+def written(fake: FakeAnthropic) -> list[dict[str, Any]]:
+    """The questions that wrote a page (not the checks of its composition)."""
+    return [
+        p
+        for p in fake.asked
+        if p["model"] == OPUS and not p["system"][0]["text"].startswith("Sprawdzasz")
+    ]
 
 
 def _offline() -> httpx.Client:
@@ -293,7 +331,7 @@ def test_claude_writes_the_page(tmp_path: Path) -> None:
     app = _app(tmp_path)
     svc: FrameService = app.state.service
     fake = FakeAnthropic(GOOD_KEY)
-    fake.answer = ANSWER
+    fake.answer = ANSWER_PX
     svc.claude.factory = lambda key: fake
     svc.ai_config.set_key(GOOD_KEY)
     svc.ai_config.update(AiConfigUpdate(pl_text=False, keywords_artworks=False))
@@ -326,15 +364,21 @@ def test_claude_writes_the_page(tmp_path: Path) -> None:
         assert Image.open(io.BytesIO(cut.content)).size == (270, 240)
         assert client.get(f"/api/daily/detail?day={date.today()}&n=5").status_code == 404
 
-        (asked,) = [p for p in fake.asked if p["model"] == OPUS]
+        (asked,) = written(fake)
         content = asked["messages"][0]["content"]
         assert content[0]["type"] == "image"
+        assert "OBRAZ: 900 × 600 px" in content[1]["text"]  # the pixels it points in
         assert "met:2 | Katsushika Hokusai" in content[1]["text"]  # the works to choose from
         assert asked["timeout"] > 120
+        # Its composition checked over the marks drawn on the picture: the
+        # clean picture, then each take drawn.
+        (check,) = [p for p in fake.asked if p not in written(fake)]
+        images = [b for b in check["messages"][0]["content"] if b["type"] == "image"]
+        assert len(images) == 1 + len(work["composition"]["views"])
 
         # Asked once: the page is kept.
         client.get("/api/daily")
-        assert len([p for p in fake.asked if p["model"] == OPUS]) == 1
+        assert len(written(fake)) == 1
 
 
 def test_the_switch_turns_the_page_off(offline: FrameService) -> None:

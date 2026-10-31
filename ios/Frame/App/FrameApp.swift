@@ -11,6 +11,7 @@ struct FrameApp: App {
         URLCache.shared = URLCache(memoryCapacity: 32 << 20, diskCapacity: 300 << 20)
         // Watches the app going away from the first request on.
         _ = Absence.shared
+        Theme.serifNavigationTitles()
     }
 
     var body: some Scene {

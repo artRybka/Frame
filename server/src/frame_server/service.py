@@ -14,6 +14,7 @@ from pathlib import Path
 from PIL import Image
 
 from .ai import AiConfigStore, AiWorker, Claude, DailyJob, KeywordsJob, PlTextJob
+from .ai.check import CheckJob
 from .ai.rhythm import RhythmJob
 from .ai.study import StudyJob
 from .albums import Albums
@@ -204,6 +205,8 @@ class FrameService:
         self.ai.register(self.study.job)
         # "Rytm" for the pages written before the composition had it.
         self.ai.register(RhythmJob(self.library, self.images, self.ai_config))
+        # The composition checked over its marks, for pages written before that.
+        self.ai.register(CheckJob(self.library, self.images, self.ai_config))
 
         self._tasks: set[asyncio.Task[object]] = set()
 

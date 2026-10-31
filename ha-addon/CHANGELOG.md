@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.50.0
+
+- Analiza kompozycji trafniejsza: Claude dostaje większy obraz i podaje
+  ślady w pikselach, nowy opis zadania (siatka do ok. 5%, otwarte trójkąty,
+  rytm od trzech powtórzeń), a drugie pytanie sprawdza ślady narysowane na
+  obrazie i je poprawia albo usuwa. Zapisane studia sprawdzane są raz
+  w tle. Studium kosztuje teraz ok. 0,24 USD zamiast 0,14.
+- Tytuły ekranów w aplikacji pisane szeryfowym krojem, półgrubym,
+  z Dynamic Type.
+
 ## 1.49.1
 
 - Szukaj i edytor playlist: przyciski grup zawijają się do drugiej linii
