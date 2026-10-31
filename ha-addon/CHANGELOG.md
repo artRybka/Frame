@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.45.0
+
+- Dzieło dnia, analiza kompozycji: przełącznik ujęć bez numerów, wszystkie
+  punkty pod obrazem w dwóch kolumnach, dopiski pisane odręcznie, a zdanie
+  podsumowania ujęcia zwykłym pismem. Obraz pod śladami jest mniej
+  rozjaśniony (w trybie ciemnym mniej przyciemniony). Ujęcie „Droga oka”
+  nazywa się teraz „Spojrzenie”.
+- Nowa sekcja „Detale” po „Kolor i światło”: dwa, trzy zbliżenia wycięte
+  z pełnego pliku muzeum, w karuzeli do przesuwania w bok, każde z tytułem
+  i krótkim opisem.
+- Ramka → Źródła dzieł: przełącznik „Bez limitu 70 lat (tylko testy)”,
+  wyłącznie do sprawdzenia, jak aplikacja będzie działać za kilka lat.
+  Europeana daje wtedy także dzieła twórców zmarłych mniej niż 70 lat temu,
+  opisane „Tylko do testów” z rokiem, od którego będą wolne; po wyłączeniu
+  przełącznika znikają z biblioteki.
+- Po aktualizacji serwer napisze tekst dzieła dnia od nowa w nowym układzie.
+
 ## 0.44.0
 
 - Dzieło dnia, kafelek: kadr wokół twarzy albo głównego motywu dzieła,
