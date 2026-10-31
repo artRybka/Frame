@@ -15,6 +15,8 @@
 - Szukaj: muzeum, które nie odpowiada (np. The Met), jest pomijane po cichu,
   bez napisu „Nie odpowiedziało”; siatka dzieł z mniejszymi dziurami między
   kolumnami.
+- Grupa „Na ten tydzień” w Odkrywaj i Propozycjach nazywa się teraz
+  „Dziś dla Ciebie”.
 
 ## 1.56.0
 
