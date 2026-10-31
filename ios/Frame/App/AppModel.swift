@@ -47,6 +47,11 @@ final class AppModel {
     /// Claude's settings, spending and progress; loaded when Konfiguracja
     /// opens, nil on an older server.
     var aiSettings: AiSettings?
+    /// Notifications on this phone as the server has them; loaded when
+    /// Konfiguracja opens, nil on an older server.
+    var notificationSettings: NotificationSettings?
+    /// Bumped to open Discover on the work of the day (a notification tapped).
+    var dailyOpened = 0
     var playlists: [PlaylistSummary] = []
     /// Each playlist's works as last opened: shown at once when it opens
     /// again while fresh ones load.
@@ -119,6 +124,9 @@ final class AppModel {
         connect(demo: demo, url: url, remote: remote, token: token)
         restoreDiscover()
         watchNetwork()
+        PushCenter.shared.onToken = { [weak self] token in
+            Task { await self?.registerPush(token) }
+        }
     }
 
     private func connect(demo: Bool, url: String, remote: String, token: String) {
@@ -158,6 +166,7 @@ final class AppModel {
         libraryStorage = nil
         serverUpdate = nil
         aiSettings = nil
+        notificationSettings = nil
         playlists = []
         playlistDetails = [:]
         facets = .empty
@@ -199,6 +208,8 @@ final class AppModel {
         self.playlists = await playlists.value ?? []
         self.facets = await facets.value ?? .empty
         self.panelConfig = await panelConfig.value
+        // The APNs token goes to the server on every start (registerPush).
+        if !demoMode { Task { await PushCenter.shared.registerIfAllowed() } }
         // Ready before Discover is opened.
         Task { await refreshDiscover() }
     }

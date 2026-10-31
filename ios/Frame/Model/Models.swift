@@ -1779,3 +1779,54 @@ struct FramingView: Codable, Hashable, Sendable {
     let height: Int
     var windows: [FramingWindow]
 }
+
+// MARK: Notifications (APNs from the server)
+
+/// One thing the server can tell the phone, with the texts of its toggle.
+struct NotificationKind: Codable, Hashable, Identifiable, Sendable {
+    let key: String
+    let title: String
+    let hint: String
+    var id: String { key }
+}
+
+/// The APNs key on the server (never the key itself).
+struct PushKey: Codable, Hashable, Sendable {
+    let keyId: String
+    let teamId: String
+    let addedAt: String
+}
+
+/// This phone as the server knows it.
+struct PushDevice: Codable, Hashable, Sendable {
+    let token: String
+    let sandbox: Bool
+    var kinds: [String]
+    let name: String?
+    let lastSentAt: String?
+    let lastError: String?
+}
+
+/// GET /api/notifications.
+struct NotificationSettings: Codable, Hashable, Sendable {
+    var key: PushKey?
+    let kinds: [NotificationKind]
+    var device: PushDevice?
+    var devices: Int
+}
+
+struct PushDeviceUpdate: Codable, Hashable, Sendable {
+    let sandbox: Bool
+    /// nil keeps what the server has (a new phone gets every kind).
+    var kinds: [String]?
+    var name: String = ""
+}
+
+struct PushTestRequest: Codable, Sendable {
+    let device: String
+}
+
+struct PushTestResult: Codable, Hashable, Sendable {
+    let ok: Bool
+    let error: String?
+}

@@ -97,6 +97,8 @@ class ProgressTracker:
         # Whether the panel will need waking, asked when a picture sets off.
         self.likely_asleep: Callable[[], bool] = lambda: False
         self.on_learn: Callable[[dict[str, float]], None] | None = None  # e.g. to save it
+        # A run ended (DONE, WAITING, FAILED): its stage, title and reason.
+        self.on_end: Callable[[Stage, str, str | None], None] | None = None
         self._took: dict[Stage, float] = {}
         self._stage = Stage.IDLE
         self._planned: list[Stage] = []
@@ -218,6 +220,11 @@ class ProgressTracker:
         self._stage = stage
         self._message = message
         self._end = now
+        if self.on_end:
+            try:
+                self.on_end(stage, self._title, message)
+            except Exception:
+                log.exception("progress end")
 
     def _settle(self) -> None:
         """The refresh has no end signal: it is over when its time is up."""

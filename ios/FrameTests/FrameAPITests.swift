@@ -258,6 +258,25 @@ final class FrameAPITests: XCTestCase {
         XCTAssertEqual(old.takes.first?.marks.count, 3)
     }
 
+    func testNotificationSettingsDecodeFromServer() throws {
+        let json = """
+        {"key": {"key_id": "ABCDE12345", "team_id": "3MQRJF4A9D", "added_at": "2026-10-31T12:00:00+00:00"},
+         "kinds": [{"key": "battery", "title": "Bateria poniżej 20%", "hint": "Raz na rozładowanie."},
+                   {"key": "daily", "title": "Dzieło dnia", "hint": "Codziennie o 8:30."}],
+         "device": {"token": "abab", "sandbox": false, "kinds": ["daily"], "name": "iPhone",
+                    "added_at": "2026-10-31T12:00:00+00:00", "last_sent_at": null, "last_error": null},
+         "devices": 1}
+        """
+        let settings = try LiveBackend.decoder().decode(NotificationSettings.self, from: Data(json.utf8))
+        XCTAssertEqual(settings.key?.keyId, "ABCDE12345")
+        XCTAssertEqual(settings.kinds.map(\.key), ["battery", "daily"])
+        XCTAssertEqual(settings.device?.kinds, ["daily"])
+        let body = try LiveBackend.encoder().encode(PushDeviceUpdate(sandbox: true, kinds: nil, name: "iPhone"))
+        let sent = try JSONSerialization.jsonObject(with: body) as? [String: Any]
+        XCTAssertEqual(sent?["sandbox"] as? Bool, true)
+        XCTAssertNil(sent?["kinds"])  // nil keeps the server's kinds
+    }
+
     func testStudyViewDecodesFromServer() throws {
         // GET /api/study/<id> while Claude writes (tests/test_study.py).
         let json = #"{"status": "writing", "error": "", "work": null, "cost_usd": 0.14}"#

@@ -415,6 +415,35 @@ struct LiveBackend: FrameBackend {
         try await send("/api/server/update", method: "POST")
     }
 
+    func notifications(device: String?) async throws -> NotificationSettings {
+        try await get("/api/notifications", query: device.map { [URLQueryItem(name: "device", value: $0)] } ?? [])
+    }
+
+    func registerPush(token: String, _ update: PushDeviceUpdate) async throws -> NotificationSettings {
+        try await send("/api/notifications/devices/\(escape(token))", method: "PUT", body: update)
+    }
+
+    func uploadPushKey(filename: String, data: Data, device: String?) async throws -> NotificationSettings {
+        var form = MultipartForm()
+        if let device { form.addField("device", device) }
+        form.addFile("file", filename: filename, mimeType: "application/octet-stream", data: data)
+        var req = request("/api/notifications/key", method: "PUT")
+        req.setValue(form.contentType, forHTTPHeaderField: "Content-Type")
+        req.httpBody = form.body()
+        return try await perform(req)
+    }
+
+    func deletePushKey(device: String?) async throws -> NotificationSettings {
+        try await perform(request(
+            "/api/notifications/key", method: "DELETE",
+            query: device.map { [URLQueryItem(name: "device", value: $0)] } ?? []
+        ))
+    }
+
+    func testPush(device: String) async throws -> PushTestResult {
+        try await send("/api/notifications/test", method: "POST", body: PushTestRequest(device: device))
+    }
+
     func aiSettings() async throws -> AiSettings { try await get("/api/ai") }
 
     func saveAiSettings(_ update: AiSettingsUpdate) async throws -> AiSettings {

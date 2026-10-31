@@ -59,3 +59,17 @@ spoza domu przez Tailscale:
 Aplikacja sama wybiera adres, który odpowiada; domowy ma pierwszeństwo. Pod
 przyciskiem *Połącz* widać, którędy jest połączona („w domu” albo „spoza
 domu”). Poza domem Tailscale na iPhonie musi być włączony.
+
+## Powiadomienia na telefonie
+
+Serwer wysyła powiadomienia sam, przez Apple (APNs, `api.push.apple.com`,
+port 443), więc NAS potrzebuje tylko zwykłego wyjścia do internetu. Raz:
+
+1. developer.apple.com → Certificates, IDs & Profiles → Keys → „+”, zaznacz
+   **Apple Push Notifications service (APNs)**, środowisko **Sandbox &
+   Production**, zakres **Team Scoped**; pobierz `AuthKey_XXXXXXXXXX.p8`
+   (da się tylko raz).
+2. W aplikacji: Ramka → trybik → Konfiguracja → Powiadomienia → „Włącz
+   powiadomienia”, potem „Dodaj klucz z Plików”. Serwer trzyma go w
+   `data/push/` (nie w repozytorium).
+3. „Wyślij próbne powiadomienie”: przy błędzie widać odpowiedź Apple.
