@@ -13,6 +13,9 @@
 - Ekrany w trakcie wczytywania lub puste (m.in. Odkrywaj przy pierwszym
   uruchomieniu) mają od razu pełną szerokość: koniec białej strony z wąskim
   beżowym paskiem w całej aplikacji.
+- Kafelek Zasilanie pokazuje błyskawicę przez całe ładowanie (zasilacz
+  wpięty i bateria poniżej 95%), a wtyczkę dopiero przy prawie pełnej
+  baterii; wcześniej błyskawica migała i zmieniała się we wtyczkę.
 
 ## 1.52.0
 
