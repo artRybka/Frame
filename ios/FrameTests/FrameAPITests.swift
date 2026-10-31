@@ -222,6 +222,54 @@ final class FrameAPITests: XCTestCase {
            "item": null
           }
          ],
+         "by_artist": [
+          {
+            "item": {
+             "id": "met:2",
+             "kind": "artwork",
+             "source": "met",
+             "source_id": "met:2",
+             "title": "South Wind, Clear Sky",
+             "artist": "Katsushika Hokusai",
+             "artist_bio": "",
+             "date_text": "",
+             "year": 1831,
+             "medium": "",
+             "classification": "",
+             "styles": [],
+             "subjects": [],
+             "culture": "",
+             "museum": "",
+             "credit": "",
+             "license": "",
+             "url": "",
+             "description": "",
+             "image_url": "",
+             "thumb_url": "",
+             "width": 3000,
+             "height": 2000,
+             "colors": [],
+             "color_tags": [],
+             "keywords": [],
+             "terms": [],
+             "suitability": 0.7,
+             "tint_spread": null,
+             "favorite": false,
+             "excluded": false,
+             "pooled": false,
+             "added_at": "2026-10-30T20:07:09+00:00",
+             "last_shown_at": null,
+             "show_count": 0,
+             "photo": null,
+             "framing": {},
+             "look": null
+            },
+            "in_library": true,
+            "work": "hokusai|south wind clear sky",
+            "twin": null,
+            "replaces": null
+           }
+         ],
          "sources": [
           "obraz",
           "Wikipedia"
@@ -242,6 +290,7 @@ final class FrameAPITests: XCTestCase {
         XCTAssertEqual(work.details?.first?.image, "/api/daily/detail?day=2026-10-30&n=0&v=ab12")
         XCTAssertEqual(work.similar.first?.why, "ta sama seria")
         XCTAssertNil(work.legacy.first?.item)
+        XCTAssertEqual(work.byArtist?.map(\.id), ["met:2"])
         let take = try XCTUnwrap(work.composition?.takes.first)
         XCTAssertEqual(take.grid, "golden")
         XCTAssertEqual(take.marks.map(\.shape), ["loop", "arrow"])
@@ -344,7 +393,7 @@ final class FrameAPITests: XCTestCase {
         """
         let briefs = try LiveBackend.decoder().decode([StudyBrief].self, from: Data(json.utf8))
         XCTAssertEqual(briefs.map(\.route), [
-            DailyRoute(day: "2026-10-30"),
+            DailyRoute(day: "2026-10-30", study: "met:1"),
             DailyRoute(day: nil, study: "met:1"),
             DailyRoute(day: nil, study: "met:1"),
         ])

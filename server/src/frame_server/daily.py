@@ -1,12 +1,13 @@
-"""Discover's work of the day: one work from the catalogue a day, at the top
-of Propozycje, with its own page written by Claude (``ai.daily``).
+"""Discover's study of the day: one work from the catalogue a day, at the top
+of Odkrywaj, with its own page written by Claude (``ai.daily``). Once written,
+the page is the work's study like any other (``Study.adopt``).
 
 The work is picked without the model: museum works only, well suited to
 the e-paper, large enough, not an artist of the last few weeks and never a
 work of the last year; a little ahead are works of the season, works with
 a round anniversary this year, artists the owner likes and works whose
 museum tells something about them. Every day is kept, so a past day opens
-the same work again ("Poprzednie dzieła dnia").
+the same work again.
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ import random
 import re
 import threading
 import time
+from collections.abc import Callable
 from concurrent.futures import Future
 from datetime import date, timedelta
 from pathlib import Path
@@ -111,6 +113,9 @@ class Daily:
         self.details_dir = job.images.thumbs.parent / "details"
         #: Looks up what the pages say a work led to; set by the service.
         self.later: LaterWorks | None = None
+        #: Told of a work whose page is written (it becomes its study); set
+        #: by ``frame_server.study``.
+        self.on_written: Callable[[Item], object] | None = None
 
     # -- the days ----------------------------------------------------------
 
@@ -214,7 +219,23 @@ class Daily:
             return None
         if self.job.take(item, self.library.note(item.id, STUDY)):
             return None  # the owner had its study written: the page is that
-        return self.ai.need_now(item.id, KIND)
+        future = self.ai.need_now(item.id, KIND)
+        future.add_done_callback(lambda done: self._written(item.id))
+        return future
+
+    def _written(self, item_id: str) -> None:
+        item = self.library.get(item_id)
+        if item is not None and self.on_written is not None and self.job.essay(item):
+            try:
+                self.on_written(item)
+            except Exception:
+                log.exception("study of the day's work %s", item_id)
+
+    def adopt_all(self) -> None:
+        """Every day's written page made its work's study (the days before
+        the two were one, and any the background missed)."""
+        for item_id in sorted(set(self.history().values())):
+            self._written(item_id)
 
     # -- its fragments ("Detale") ----------------------------------------------
 
@@ -270,6 +291,7 @@ class Daily:
         return load_image(path)
 
     def tick(self, day: date | None = None) -> None:
+        self.adopt_all()
         item = self.pick(day or date.today())
         if item is not None:
             self.ask(item)

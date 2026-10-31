@@ -1390,10 +1390,14 @@ struct DailyWork: Codable, Hashable, Sendable {
     var onFrame: String
     var similar: [Similar]
     var legacy: [Legacy]
+    /// Other works by the artist ("Inne prace artysty"); nil from servers before 1.56.
+    var byArtist: [RemoteItem]?
     var sources: [String]
     var model: String
-    var previous: [Brief]
-    /// The later works' copies are being looked up in the museums now.
+    /// The days before, from servers before 1.56; no longer shown.
+    var previous: [Brief]? = nil
+    /// The later works' copies (or the artist's other works) are being
+    /// looked up in the museums now.
     var legacyPending: Bool?
 }
 
@@ -1403,22 +1407,24 @@ struct StudyBrief: Codable, Hashable, Sendable, Identifiable {
     var item: RemoteItem
     /// The Polish title the study gives it.
     var title: String
-    /// A work of the day: its (last) day, whose page opens; nil: a study
-    /// asked for (and from servers before the works of the day were listed).
+    /// A study of the day: its (last) day; nil: a study asked for (and
+    /// from servers before the studies of the day were listed).
     var day: String? = nil
 
     var id: String { item.id }
 
-    /// Its page: the day's for a work of the day, else its study.
-    var route: DailyRoute { day.map { DailyRoute(day: $0) } ?? DailyRoute(day: nil, study: id) }
+    /// Its study; the day's page when the server has no study of it (a
+    /// server from before the day's page became the work's study).
+    var route: DailyRoute { DailyRoute(day: day, study: id) }
 }
 
-/// A work of the day's page, opened from the tile or from a past day; or a
-/// study of any work, the same page asked for on the work's card.
+/// The study of the day, opened from the tile at the top of Odkrywaj; or a
+/// study of any work (the day's studies too, once written).
 struct DailyRoute: Hashable {
     /// Nil: today.
     var day: String?
-    /// The work whose study this is.
+    /// The work whose study this is; with `day`, that day's page stands in
+    /// when the server has no study of it.
     var study: String? = nil
 }
 

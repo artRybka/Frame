@@ -290,7 +290,7 @@ struct ThemeCard: View {
     }
 }
 
-/// "Studia dzieł": every work of the day and every work with a study, the
+/// "Studia dzieł": every study of the day and every study asked for, the
 /// last written first, as cards to swipe through; each opens its page.
 struct StudyRow: View {
     let studies: [StudyBrief]
@@ -302,7 +302,7 @@ struct StudyRow: View {
                     SeeAllHeader(title: "Studia dzieł", size: 22, weight: .semibold)
                 }
                 .buttonStyle(.plain)
-                Text("Wszystkie dzieła dnia i zamówione studia")
+                Text("Codzienne i zamówione studia dzieł")
                     .font(.footnote)
                     .foregroundStyle(Theme.inkSoft)
             }
@@ -337,7 +337,7 @@ struct StudiesGridView: View {
         let studies = model.studyList ?? []
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                Text("Wszystkie dzieła dnia i zamówione studia")
+                Text("Codzienne i zamówione studia dzieł")
                     .font(.serif(17))
                     .foregroundStyle(Theme.inkSoft)
                 LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
@@ -349,7 +349,7 @@ struct StudiesGridView: View {
                 if studies.isEmpty {
                     EmptyStateView(
                         title: "Nie ma jeszcze studiów",
-                        message: "Tu trafia każde dzieło dnia i każde studium zamówione na karcie dzieła.",
+                        message: "Tu trafia każde studium dnia i każde zamówione na karcie dzieła.",
                         systemImage: "sparkles"
                     )
                 }

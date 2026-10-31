@@ -201,7 +201,7 @@ def test_the_work_of_the_day_goes_out_at_half_past_eight(
     )
     assert len(apple.sent) == 1
     payload = apple.sent[0][3]
-    assert payload["aps"]["alert"]["title"] == "Dzieło dnia: Ul"  # type: ignore[index]
+    assert payload["aps"]["alert"]["title"] == "Studium dnia: Ul"  # type: ignore[index]
     assert payload["route"] == "daily"
     assert "apns-expiration" in apple.sent[0][2]
 

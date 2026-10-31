@@ -10,6 +10,9 @@ struct CompositionSketch: View {
     let item: RemoteItem
     let aspect: CGFloat
     let take: DailyWork.Take
+    /// The text block's width: the picture takes all of it, the same in
+    /// every take (nil: as wide as the column lets it).
+    var width: CGFloat? = nil
     @State private var bare = false
 
     /// A mark with a label, by its number on the picture.
@@ -38,9 +41,18 @@ struct CompositionSketch: View {
     private let pencil = Pencil.lead
     private let paper = Pencil.paper
 
+    /// The picture's box: the whole given width, as tall as its shape makes it.
+    @ViewBuilder
+    private var box: some View {
+        if let width, width > 0 {
+            Color.clear.frame(width: width, height: width / aspect)
+        } else {
+            Color.clear.frame(maxWidth: .infinity).aspectRatio(aspect, contentMode: .fit)
+        }
+    }
+
     private func picture(_ labelled: [Labelled]) -> some View {
-        Color.clear
-            .aspectRatio(aspect, contentMode: .fit)
+        box
             .overlay {
                 ArtImage(
                     ref: item.inLibrary ? .image(item.id) : item.thumb,
@@ -63,7 +75,6 @@ struct CompositionSketch: View {
             .sensoryFeedback(.selection, trigger: bare)
             .accessibilityAddTraits(.isButton)
             .accessibilityHint(bare ? "Pokazuje ślady analizy" : "Pokazuje sam obraz")
-            .frame(maxWidth: 380 * aspect)  // a tall picture no taller than a landscape one
             .frame(maxWidth: .infinity)
     }
 

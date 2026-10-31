@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+from datetime import date
 from typing import Annotated
 from urllib.parse import quote
 
@@ -50,7 +51,10 @@ def _view(svc: FrameService, item: Item | None) -> StudyView:
             return f"/api/study/{quote(item.id, safe='')}/detail?n={n}&v={v}"
 
         work = page(svc, item, svc.study.job, day="", writing=False, url=detail_url)
-        work = work.model_copy(update={"why_today": ""})
+        # "Why today" on the day the work is the study of the day only.
+        today = svc.daily.day_of(item.id) == date.today()
+        essay = svc.daily.job.essay(item) if today else None
+        work = work.model_copy(update={"why_today": essay.why_today if essay else ""})
     cost = svc.study.job.estimate_usd(1, batch=False)
     return StudyView(status=status, error=error, work=work, cost_usd=round(cost, 2))
 
