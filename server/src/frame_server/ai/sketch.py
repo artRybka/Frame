@@ -12,7 +12,6 @@ runs corner to corner.
 from __future__ import annotations
 
 import io
-import itertools
 import math
 from typing import TYPE_CHECKING
 
@@ -82,7 +81,7 @@ def _number_spot(mark: Mark, size: tuple[int, int], radius: float) -> tuple[floa
     if mark.shape == "loop":
         _x0, y0, x1, _ = _loop_box(mark, size)
         spot = (x1 + radius * 0.6, y0 - radius * 0.6)
-    elif mark.shape in ("arrow", "line", "rhythm", "underline"):
+    elif mark.shape in ("arrow", "line", "underline"):
         x, y = _xy(mark.points[0], size)
         spot = (x - radius * 1.2, y - radius * 1.2)
     else:
@@ -121,10 +120,6 @@ def draw(picture: Image.Image, view: View) -> Image.Image:
                 head = _arrow_head(line, pen * 6)
                 canvas.line(head, fill=EDGE, width=pen + 2)
                 canvas.line(head, fill=INK, width=pen)
-        if mark.shape == "rhythm":
-            dot = pen * 2.2
-            for x, y in (_xy(p, size) for p in mark.points):
-                canvas.ellipse((x - dot, y - dot, x + dot, y + dot), fill=INK, outline=EDGE)
     radius = max(9.0, max(size) / 70)
     font = _font(round(radius * 1.3))
     for number, mark in enumerate(view.marks, start=1):
@@ -165,10 +160,17 @@ def _corner(spot: Spot) -> str | None:
 def measure(mark: Mark, size: tuple[int, int]) -> str:
     """What the server measures of one mark, in a line of Polish."""
     points = mark.points
+    if mark.shape == "line" and len(points) == 3:  # an open triangle, a wedge
+        arms = [_degrees(points[1], p, size) for p in (points[0], points[2])]
+        a = mark.points[1]
+        text = (
+            f"wierzchołek ({_px(a, size)}: x {_nearest(a.x)}, y {_nearest(a.y)}), "
+            f"ramiona pod kątem {arms[0]:.0f}° i {arms[1]:.0f}°"
+        )
+        return text + (", biegnie poza obraz" if _outside(points) else "")
     if mark.shape in ("line", "arrow", "underline") and len(points) >= 2:
         a, b = points[0], points[-1]
-        dx, dy = (b.x - a.x) * size[0], (b.y - a.y) * size[1]
-        degrees = math.degrees(math.atan2(-dy, dx)) % 180
+        degrees = _degrees(a, b, size) % 180
         parts = [f"kąt {degrees:.0f}°"]
         if min(degrees, 180 - degrees) <= LEVEL_DEGREES:
             parts.append(f"poziomo na wysokości {_nearest((a.y + b.y) / 2)}")
@@ -181,15 +183,26 @@ def measure(mark: Mark, size: tuple[int, int]) -> str:
             parts.append(f"jeden koniec w rogu ({next(e for e in ends if e)})")
         else:
             parts.append("żaden koniec nie leży w rogu")
+        if _outside(points):
+            parts.append("biegnie poza obraz")
         return ", ".join(parts)
-    if mark.shape == "rhythm":
-        gaps = [
-            math.hypot((q.x - p.x) * size[0], (q.y - p.y) * size[1])
-            for p, q in itertools.pairwise(points)
-        ]
-        return f"{len(points)} uderzeń, odstępy (px): " + ", ".join(f"{g:.0f}" for g in gaps)
     centre = mark.anchor()
-    return f"środek: x {_nearest(centre.x)}, y {_nearest(centre.y)}"
+    text = f"środek: x {_nearest(centre.x)}, y {_nearest(centre.y)}"
+    return text + (", wychodzi poza obraz" if _outside(points) else "")
+
+
+def _degrees(a: Spot, b: Spot, size: tuple[int, int]) -> float:
+    """The direction from ``a`` to ``b`` on the picture, anticlockwise from
+    the right, 0–360."""
+    return math.degrees(math.atan2(-(b.y - a.y) * size[1], (b.x - a.x) * size[0])) % 360
+
+
+def _px(spot: Spot, size: tuple[int, int]) -> str:
+    return f"{spot.x * size[0]:.0f}, {spot.y * size[1]:.0f}"
+
+
+def _outside(points: list[Spot]) -> bool:
+    return any(not (0 <= p.x <= 1 and 0 <= p.y <= 1) for p in points)
 
 
 def measures(view: View, size: tuple[int, int]) -> list[str]:
@@ -210,6 +223,8 @@ def grid_fits(view: View) -> bool:
                 places.append(("y", (a.y + b.y) / 2))
             if abs(a.x - b.x) <= 0.02:
                 places.append(("x", (a.x + b.x) / 2))
+            if mark.shape == "line" and len(mark.points) == 3:  # a wedge's apex
+                places += [("x", mark.points[1].x), ("y", mark.points[1].y)]
         elif mark.shape in ("loop", "rect", "triangle"):
             centre = mark.anchor()
             places += [("x", centre.x), ("y", centre.y)]

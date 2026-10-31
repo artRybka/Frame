@@ -41,9 +41,7 @@ def test_pixels_become_fractions_and_fractions_stay() -> None:
 
 
 def test_marks_that_mean_nothing_go() -> None:
-    assert _drawn("rhythm", (0.1, 0.5), (0.3, 0.5)) is None  # two beats are a pair
-    assert _drawn("rhythm", (0.1, 0.5), (0.1, 0.5), (0.3, 0.5)) is None  # one beat twice
-    assert _drawn("rhythm", (0.1, 0.5), (0.2, 0.5), (0.3, 0.5)) is not None
+    assert _drawn("rhythm", (0.1, 0.5), (0.2, 0.5), (0.3, 0.5)) is None  # no longer drawn
     assert _drawn("triangle", (0.1, 0.1), (0.5, 0.5), (0.9, 0.9)) is None  # a line
     assert _drawn("rect", (0.2, 0.2), (0.2, 0.6)) is None
     loop = _drawn("loop", (0.5, 0.5), (0.5, 0.5))  # around nothing: made a small loop
@@ -59,6 +57,15 @@ def test_lines_are_drawn_as_meant() -> None:
     assert axis.points[0].x == axis.points[1].x == 0.5
     slant = _drawn("line", (0.1, 0.2), (0.6, 0.7))
     assert [(p.x, p.y) for p in slant.points] == [(0.1, 0.2), (0.6, 0.7)]
+
+
+def test_great_lines_run_past_the_edges() -> None:
+    wedge = _drawn("line", (-0.2, 0.9), (0.43, 0.3), (1.3, 1.2))
+    assert [(p.x, p.y) for p in wedge.points] == [(-0.2, 0.9), (0.43, 0.3), (1.3, 1.2)]
+    pyramid = _drawn("triangle", (0.6, 0.15), (-3.0, 1.2), (1.2, 2.5))
+    assert [(p.x, p.y) for p in pyramid.points] == [(0.6, 0.15), (-0.5, 1.2), (1.2, 1.5)]
+    loop = _drawn("loop", (1.2, 0.5), (1.3, 0.6))  # a thing ringed is on the picture
+    assert all(0 <= p.x <= 1 for p in loop.points)
 
 
 def _take(grid: str, *marks: dict[str, Any]) -> View:
@@ -77,6 +84,8 @@ def test_a_grid_stays_only_under_what_lies_on_it() -> None:
     assert _take("thirds", face).grid == "thirds"
     arrow = {"shape": "arrow", "points": _points((0.1, 0.9), (0.62, 0.38)), "title": "Wzrok"}
     assert _take("golden", arrow).grid == "none"  # a path proves no grid
+    wedge = {"shape": "line", "points": _points((0.0, 0.9), (0.4, 0.37), (1.2, 1.1)), "title": "V"}
+    assert _take("golden", wedge).grid == "golden"  # its apex lies on the section
     assert grid_fits(_take("none", arrow))
 
 
@@ -86,8 +95,9 @@ def test_the_server_measures_what_the_eye_cannot() -> None:
     assert "poziomo" in text and "złoty podział 0.618: o 0.018" in text
     diagonal = _drawn("line", (0.0, 1.0), (1.0, 0.0))
     assert "z rogu do rogu" in measure(diagonal, (1000, 800))
-    beats = _drawn("rhythm", (0.1, 0.5), (0.2, 0.5), (0.4, 0.5))
-    assert measure(beats, (1000, 800)) == "3 uderzeń, odstępy (px): 100, 200"
+    wedge = measure(_drawn("line", (-0.1, 1.0), (0.5, 0.2), (1.1, 1.0)), (1000, 800))
+    assert wedge.startswith("wierzchołek (500, 160") and "ramiona pod kątem" in wedge
+    assert wedge.endswith("biegnie poza obraz")
 
 
 def test_the_marks_are_drawn_on_the_picture() -> None:
@@ -172,9 +182,20 @@ def test_old_pages_are_checked_once(service: FrameService) -> None:
     assert isinstance(job, CheckJob)
     item = service.library.get("met:1")
     assert item is not None
-    _old_page(service)  # still waiting for its "Rytm": that comes first
-    assert not job.wanted(item)
-    _old_page(service, rhythm_asked=True)
+    beats = _points((0.1, 0.5), (0.2, 0.5), (0.3, 0.5))
+    rhythm = {"shape": "rhythm", "points": beats, "title": "Fale"}
+    _old_page(service)
+    page = service.library.note("met:1", STUDY)
+    assert page is not None
+    views = [*page.data["composition"]["views"], {**CHECKED_TAKE, "title": "Rytm"}]
+    views[-1]["marks"] = [rhythm]
+    service.library.save_note(
+        page.model_copy(update={"data": {**page.data, "composition": {"views": views}}})
+    )
+    # Shown as today: "Geometria" first, no "Rytm".
+    essay = service.study.essay(item)
+    assert essay is not None
+    assert [v.title for v in essay.composition.views] == ["Geometria", "Spojrzenie"]
     job._pages = (0.0, set())
     assert job.wanted(item)
     params = job.params(item)

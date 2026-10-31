@@ -714,6 +714,16 @@ actor DemoBackend: FrameBackend {
             composition: .init(
                 views: [
                     .init(
+                        title: "Geometria",
+                        grid: "golden",
+                        text: "Grzywa fali jest wierzchołkiem wielkiej, otwartej piramidy, której boki schodzą poza dolną krawędź. Linie złotego podziału przecinają się tuż przy szczycie Fudżi.",
+                        marks: [
+                            .init(shape: "line", points: [Spot(x: -0.05, y: 0.95), Spot(x: 0.3, y: 0.09), Spot(x: 0.9, y: 1.1)], title: "Piramida fali", text: "od grzywy w dół, poza ramę"),
+                            .init(shape: "loop", points: [Spot(x: 0.3, y: 0.48), Spot(x: 0.566, y: 0.866)], title: "Koło", text: "grzbiet fali i dolina zamykają krąg"),
+                            .init(shape: "loop", points: [Spot(x: 0.618, y: 0.618), Spot(x: 0.64, y: 0.65)], title: "Złoty punkt", text: "linie φ przecinają się przy szczycie"),
+                        ]
+                    ),
+                    .init(
                         title: "Spojrzenie",
                         grid: "none",
                         text: "Oko wchodzi łukiem fali od lewego dolnego rogu, spada w „pazury” i ląduje na małej, nieruchomej Fudżi.",
@@ -728,25 +738,6 @@ actor DemoBackend: FrameBackend {
                             ], title: "Rym kształtów", text: "mała fala ma sylwetkę góry"),
                             .init(shape: "underline", points: [Spot(x: 0.39, y: 0.94), Spot(x: 0.71, y: 0.94)], title: "Łodzie", text: "dają skalę fali"),
                             .init(shape: "line", points: [Spot(x: 0.46, y: 0.725), Spot(x: 0.7, y: 0.72), Spot(x: 0.97, y: 0.715)], title: "Horyzont", text: "nisko, po zachodniemu"),
-                        ]
-                    ),
-                    .init(
-                        title: "Geometria",
-                        grid: "golden",
-                        text: "Linie złotego podziału przecinają się tuż przy szczycie Fudżi, a fala zatacza koło wokół lewej połowy.",
-                        marks: [
-                            .init(shape: "loop", points: [Spot(x: 0.3, y: 0.48), Spot(x: 0.566, y: 0.866)], title: "Koło", text: "grzbiet fali i dolina zamykają krąg"),
-                            .init(shape: "loop", points: [Spot(x: 0.618, y: 0.618), Spot(x: 0.64, y: 0.65)], title: "Złoty punkt", text: "linie φ przecinają się przy szczycie"),
-                            .init(shape: "triangle", points: [Spot(x: 0.57, y: 0.72), Spot(x: 0.64, y: 0.6), Spot(x: 0.71, y: 0.72)], title: "Szczyt Fudżi", text: "mały trójkąt w dolinie fal"),
-                        ]
-                    ),
-                    .init(
-                        title: "Rytm",
-                        grid: "none",
-                        text: "Te same kształty wracają jak takty: pazury piany na grzbiecie fali i coraz mniejsze fale po prawej, aż do linii horyzontu.",
-                        marks: [
-                            .init(shape: "rhythm", points: [Spot(x: 0.27, y: 0.33), Spot(x: 0.34, y: 0.22), Spot(x: 0.42, y: 0.17), Spot(x: 0.5, y: 0.2), Spot(x: 0.56, y: 0.29)], title: "Pazury piany", text: "palce fali jeden za drugim"),
-                            .init(shape: "rhythm", points: [Spot(x: 0.6, y: 0.66), Spot(x: 0.7, y: 0.6), Spot(x: 0.8, y: 0.54), Spot(x: 0.9, y: 0.48)], title: "Coraz mniejsze fale", text: "takt zwalnia ku horyzontowi"),
                         ]
                     ),
                 ],

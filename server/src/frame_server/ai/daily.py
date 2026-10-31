@@ -45,7 +45,7 @@ log = logging.getLogger(__name__)
 
 KIND = "daily"
 #: Changed whenever the prompt changes, so the text is written again.
-PROMPT_VERSION = "daily-8"
+PROMPT_VERSION = "daily-9"
 #: The tile's two lines under the title (characters).
 TEASER_CHARS = 100
 #: The picture goes out this big: as large as Opus reads one, so that it
@@ -54,18 +54,15 @@ IMAGE_SIDE = 2576
 #: Wikipedia articles about the work, and the artist's opening paragraph.
 WORK_CHARS = 9000
 ARTIST_CHARS = 1500
-MAX_VIEWS = 3
-#: Kept in a written page whose question asked for "Rytm" (or that got
-#: one asked alone later, ``ai.rhythm``).
-RHYTHM_ASKED = "rhythm_asked"
+#: "Geometria" and "Spojrzenie" (Mateusz 2026-10-31 dropped "Rytm": the
+#: model hunted for small repetitions).
+MAX_VIEWS = 2
 #: Kept in a page whose composition Claude checked over its own marks drawn
 #: on the picture (``ai.check``): what the check changed.
 CHECKED = "composition_checked"
 MAX_MARKS = 6
 MAX_LINE_POINTS = 12
-#: A rhythm is three beats at least; two are a pair.
-RHYTHM_BEATS = 3
-#: Beats closer than this (fraction of the picture) are one.
+#: Points closer than this (fraction of the picture) are one.
 SAME_SPOT = 0.012
 #: A triangle smaller than this (fraction of the picture) is a line.
 MIN_TRIANGLE = 0.004
@@ -76,13 +73,16 @@ MIN_LOOP = 0.015
 STRAIGHTEN = 0.012
 SNAP_CORNER = 0.04
 #: The marks drawn over the picture, and how many points each takes
-#: (lines, arrows and rhythms: 2 up to ``MAX_LINE_POINTS``). A rhythm has a
-#: point on each repeated thing; the app draws a beat at each.
-SHAPES = {
-    "arrow": 2, "line": 2, "loop": 2, "triangle": 3, "rect": 2, "underline": 2, "rhythm": 2,
-}  # fmt: skip
+#: (lines and arrows: 2 up to ``MAX_LINE_POINTS``). Older pages may hold
+#: "rhythm" marks too; their take is no longer shown.
+SHAPES = {"arrow": 2, "line": 2, "loop": 2, "triangle": 3, "rect": 2, "underline": 2}
 #: The shapes that run through several points.
-PATHS = ("arrow", "line", "rhythm")
+PATHS = ("arrow", "line")
+#: The shapes of the picture's great lines, which may run on past its
+#: edges (a big triangle's apex up in the sky, its feet beyond the frame):
+#: their points may lie this far outside it (fraction of the side).
+REACHING = ("line", "triangle")
+REACH = 0.5
 #: The grids the app draws under a view: none, the golden section, thirds.
 GRIDS = ("none", "golden", "thirds")
 MAX_SIMILAR = 6
@@ -101,15 +101,6 @@ MONTHS = (
     "września", "października", "listopada", "grudnia",
 )  # fmt: skip
 
-#: The third take on the composition, "Rytm" (also asked alone of pages
-#: written before it, ``ai.rhythm``).
-RHYTHM = """Trzecie ujęcie, „Rytm”, tylko wtedy, gdy \
-obraz naprawdę ma rytmy: co najmniej trzy powtórzenia podobnej rzeczy, które oko czyta jak \
-takty (szereg postaci lub głów, kolumn, łuków, drzew, fal, okien, fałd, plam koloru, kresek). \
-Każdy rytm jako ślad "rhythm" z punktem na środku każdego kolejnego powtórzenia, po kolei, \
-i krótkim podpisem, co się powtarza i jak: równo, coraz gęściej w głąb, na przemian (np. „pnie \
-co krok, coraz gęściej”). Bez rytmów pomiń to ujęcie."""
-
 #: Where the model puts its points: pixels of the picture it gets (it
 #: points far better in pixels than in fractions); the server divides them.
 POINTS = """Współrzędne podajesz w pikselach \
@@ -117,39 +108,59 @@ obrazu, który dostajesz (jego wymiary są w danych: OBRAZ), od lewego górnego 
 y w dół. Celuj dokładnie w rzecz, o której mowa: kółko ma środek w środku rzeczy, a róg na \
 krawędzi prostokąta, w który się ona wpisuje; linia horyzontu leży na horyzoncie i biegnie \
 wzdłuż niego; krawędź lub oś idzie po tej krawędzi lub osi; wierzchołki trójkąta leżą na \
-prawdziwych punktach formy (czubek głowy, łokieć, skraj szaty), nie obok; punkty rytmu na \
-środku każdego powtórzenia; przekątna od rogu do rogu; punkty strzałki na rzeczach, przez \
-które idzie wzrok."""
+prawdziwych punktach formy (czubek głowy, łokieć, skraj szaty), nie obok; przekątna od rogu \
+do rogu; punkty strzałki na rzeczach, przez które idzie wzrok. Wielkie linie Geometrii mogą \
+wychodzić poza obraz (opis niżej)."""
 
-#: How the composition is looked at: what an art historian looks for.
+#: How the composition is looked at: what an art historian looks for. The
+#: skeleton comes first and is looked for whole: Mateusz (2026-10-31) drew
+#: the great lines the takes missed (a pyramid from a hat down past both
+#: lower corners, an X of two diagonals through haystacks, a wedge from a
+#: mast's top out past both edges) while the model ringed single things.
 COMPOSITION = """- "composition": analiza kompozycji \
-jako ujęcia ("views"), każde rysowane osobno ołówkiem na obrazie, kolejno „Spojrzenie”, \
-„Geometria” i „Rytm”, i żadnych innych (o świetle piszesz w "colour"). Patrz jak historyk \
-sztuki: najpierw obraz, potem schemat. Nazywaj tylko układy, które naprawdę porządkują obraz, \
-nie takie, które da się do niego dorysować. Każdy ślad dotyczy konkretnej, widocznej rzeczy, \
-którą jego podpis nazywa („Linia ramion”, „Horyzont”, nie „Dynamika”), a tekst ujęcia \
-twierdzi tylko to, co pokazują ślady.
+jako ujęcia ("views"), każde rysowane osobno ołówkiem na obrazie, kolejno „Geometria” \
+i „Spojrzenie”, i żadnych innych (o świetle piszesz w "colour"). Patrz jak historyk sztuki: \
+najpierw cały obraz, potem schemat. Nazywaj tylko układy, które naprawdę porządkują obraz. \
+Podpis śladu nazywa to, co ślad pokazuje („Piramida postaci”, „Horyzont”, nie „Dynamika”), \
+a tekst ujęcia twierdzi tylko to, co pokazują ślady.
+  „Geometria”: szkielet CAŁEGO obrazu, nie pojedyncze rzeczy. Odsuń się i zmruż oczy: jakie \
+wielkie linie i figury łączą naraz wiele form, przez większą część obrazu, od krawędzi do \
+krawędzi? Takie linie zwykle nie są nigdzie narysowane: wyznacza je kilka rzeczy ułożonych \
+w jednym kierunku (głowy, szczyty, krawędzie, ramiona, zbocza, maszty, cienie, skraje szat \
+i stołów), a oko je dopowiada. Szukaj kolejno:
+  * wielkiego trójkąta lub piramidy: wierzchołek to najwyższy ważny punkt (głowa, kapelusz, \
+szczyt masztu, czubek stogu, góra), a boki schodzą przez ramiona, plecy, szaty, zbocza aż do \
+dolnej krawędzi obrazu albo za nią; podstawą bywa sama dolna krawędź;
+  * litery V lub odwróconego V (klin, rozchodzące się promienie), X dwóch przekątnych \
+przecinających się w ważnym miejscu, jednej silnej przekątnej (ukośna przez kilka form, nie \
+musi biec z rogu do rogu; diagonala barokowa);
+  * osi pionowej i równowagi (symetrycznej czy asymetrycznej, gdzie leży ciężar), horyzontu \
+i poziomych pasów, planów;
+  * łuku, koła lub owalu, krzywej S, zygzaka, krzyża, układu L, ramy w ramie, perspektywy \
+linearnej (horyzont i punkt zbiegu, do którego prowadzą linie).
+  Wielką linię prowadź przez środki i krawędzie form, które ją wyznaczają, i przedłużaj aż \
+do krawędzi obrazu w obie strony; jej punkty mogą leżeć poza obrazem (do połowy szerokości \
+lub wysokości za krawędzią, także ujemne), aplikacja przytnie rysunek do obrazu. Otwarty \
+trójkąt lub odwrócone V rysuj jako "line" z 3 punktami (koniec lewego boku, wierzchołek, \
+koniec prawego boku), zamknięty trójkąt jako "triangle", X jako dwie linie. Najpierw 1–3 \
+wielkie linie szkieletu, potem najwyżej dwa ślady, które je dopełniają (horyzont, oś, \
+miejsce przecięcia). Bez kółek i prostokątów wokół pojedynczych rzeczy (to robota \
+„Spojrzenia”), chyba że rzecz leży na siatce. Złoty podział (linie 0,382 i 0,618) \
+i trójpodział (1/3 i 2/3), gdy główny \
+element (horyzont, oś postaci, twarz, wierzchołek, przecięcie przekątnych, wyraźna krawędź) \
+leży na linii lub blisko niej, do około 5% boku obrazu; narysuj wtedy ten element śladem. Gdy \
+leży dokładnie (do ok. 2%), pisz „na linii”, gdy dalej, „blisko linii” albo „w pobliżu \
+złotego podziału”. Obie siatki leżą blisko siebie, więc wybierz tę, której element jest \
+bliżej, a gdy żadna nie pasuje, "grid" to "none". Nie przypisuj artyście świadomego użycia \
+złotego podziału, jeśli źródła tego nie mówią.
   „Spojrzenie”: gdzie oko wchodzi (najsilniejszy kontrast jasnego i ciemnego, twarz, \
 najjaśniejsza lub najbardziej nasycona plama, największa forma) i którędy idzie dalej: za \
-spojrzeniami i gestami postaci, liniami prowadzącymi (droga, rzeka, krawędź, fałd, \
-ramię), zbiegającymi się liniami perspektywy, światłem i kolorem; gdzie droga się kończy albo \
-zawraca w obraz. Zwróć uwagę na repoussoir (ciemna postać, drzewo lub kotara na pierwszym \
-planie, która wpycha wzrok w głąb) i na plany: pierwszy, środkowy, dalszy. Strzałka biegnie od \
-rzeczy do rzeczy, w kolejności czytania; kółka na głównych miejscach.
-  „Geometria”: szkielet obrazu. Sprawdź oś symetrii i równowagę (symetryczną czy \
-asymetryczną, gdzie leży ciężar), główne kierunki (poziomy spokoju, piony, przekątne, \
-diagonala barokowa), figury, w które układają się główne formy (trójkąt lub piramida postaci, \
-koło lub owal, krzywa S, zygzak, krzyż, układ L), perspektywę linearną (horyzont i punkt \
-zbiegu, do którego prowadzą linie), ramę w ramie, pasy i plany. Trójkąty mogą być duże \
-i otwarte (podstawą bywa dolna krawędź obrazu, wierzchołkiem głowa lub szczyt), byle ich \
-boki wyznaczały prawdziwe formy: ramię, zbocze, skraj szaty, linię spojrzeń. Złoty podział \
-(linie 0,382 i 0,618) i trójpodział (1/3 i 2/3), gdy główny element (horyzont, oś postaci, \
-twarz, wyraźna krawędź) leży na linii lub blisko niej, do około 5% boku obrazu; narysuj wtedy \
-ten element śladem. Gdy leży dokładnie (do ok. 2%), pisz „na linii”, gdy dalej, „blisko \
-linii” albo „w pobliżu złotego podziału”. Obie siatki leżą blisko siebie, więc wybierz tę, \
-której element jest bliżej, a gdy żadna nie pasuje, "grid" to "none". Nie przypisuj \
-artyście świadomego użycia złotego podziału, jeśli źródła tego nie mówią. Przekątna to \
-linia z rogu do rogu, którą forma naprawdę wyznacza.
+spojrzeniami i gestami postaci, liniami prowadzącymi (droga, rzeka, krawędź, fałd, ramię), \
+zbiegającymi się liniami perspektywy, światłem i kolorem; gdzie droga się kończy albo zawraca \
+w obraz. Zwróć uwagę na repoussoir (ciemna postać, drzewo lub kotara na pierwszym planie, \
+która wpycha wzrok w głąb) i na plany: pierwszy, środkowy, dalszy. Strzałka biegnie od \
+rzeczy do rzeczy, w kolejności czytania; kółka na głównych miejscach, każde dokładnie na \
+rzeczy, którą nazywa.
   """
 
 SYSTEM = (
@@ -183,15 +194,15 @@ powstało, co było w nim nowe, jak je przyjęto.
 wyróżniał i w którym miejscu jego drogi powstało to dzieło. Bez powtarzania tekstu powyżej.
 """
     + COMPOSITION
-    + RHYTHM
     + """
   Każde ujęcie: "title" (1–3 słowa), "grid" ("golden" lub "thirds" tylko na warunkach \
 powyżej, aplikacja narysuje siatkę; inaczej "none"), "text" (dwa-trzy zdania, co to ujęcie \
 pokazuje) i "marks": 2–5 śladów. Ślad: "shape" i "points" w pikselach: "arrow" (2–12 punktów \
-wzdłuż drogi, grot na końcu), "line" (2–12 punktów: horyzont, przekątna, oś, krawędź), "loop" \
+wzdłuż drogi, grot na końcu), "line" (2–12 punktów: horyzont, przekątna, oś, krawędź, \
+boki otwartego trójkąta), "loop" \
 (kółko wokół rzeczy: środek i jeden róg prostokąta, w który się wpisuje), "triangle" \
 (3 wierzchołki), "rect" (dwa przeciwległe rogi), "underline" (podkreślenie falką: początek \
-i koniec), "rhythm" (3–12 punktów, po jednym na każdym powtórzeniu, po kolei). Do każdego \
+i koniec). Do każdego \
 "title" (1–3 słowa, podpis przy śladzie) i "text" (najwyżej 45 znaków, dopisek pod \
 podpisem). Kolejność śladów to kolejność czytania. Serwer narysuje ślady na obrazie \
 i sprawdzi, czy trafiają.
@@ -474,18 +485,21 @@ def short(text: str, limit: int) -> str:
     return first[:limit].rsplit(" ", 1)[0].rstrip(" ,;:–-") + "…"
 
 
-def _unit(value: Any) -> float | None:
+def _unit(value: Any, reach: float = 0.0) -> float | None:
     try:
         number = float(value)
     except (TypeError, ValueError):
         return None
-    return min(1.0, max(0.0, number)) if number == number else None  # NaN is not a place
+    if number != number:  # NaN is not a place
+        return None
+    return min(1.0 + reach, max(-reach, number))
 
 
-def _spot(raw: Any) -> Spot | None:
+def _spot(raw: Any, reach: float = 0.0) -> Spot | None:
+    """A point on the picture, or up to ``reach`` beyond its edges."""
     if not isinstance(raw, dict):
         return None
-    x, y = _unit(raw.get("x")), _unit(raw.get("y"))
+    x, y = _unit(raw.get("x"), reach), _unit(raw.get("y"), reach)
     return None if x is None or y is None else Spot(x=x, y=y)
 
 
@@ -541,19 +555,19 @@ def _area(a: Spot, b: Spot, c: Spot) -> float:
 
 
 def _mark(raw: dict[str, Any]) -> Mark | None:
-    """A mark that can be drawn and means something: a rhythm of three
-    beats at least, a triangle that is not a line, a loop around something;
-    a nearly level line drawn level, a diagonal from corner to corner."""
+    """A mark that can be drawn and means something: a triangle that is not
+    a line, a loop around something; a nearly level line drawn level, a
+    diagonal from corner to corner. The picture's great lines may run on
+    past its edges. Old pages' rhythms are no longer drawn."""
     shape, title = str(raw.get("shape") or ""), _text(raw.get("title"), 40)
-    spots = [s for s in map(_spot, raw.get("points") or []) if s is not None]
+    reach = REACH if shape in REACHING else 0.0
+    spots = [s for s in (_spot(p, reach) for p in raw.get("points") or []) if s is not None]
     if shape in PATHS:
         spots = _distinct(spots)
     if shape not in SHAPES or not title or len(spots) < SHAPES[shape]:
         return None
     keep = MAX_LINE_POINTS if shape in PATHS else SHAPES[shape]
     spots = spots[:keep]
-    if shape == "rhythm" and len(spots) < RHYTHM_BEATS:
-        return None
     if shape == "triangle" and _area(*spots) < MIN_TRIANGLE:
         return None
     if shape == "rect" and (
@@ -590,16 +604,21 @@ def _detail(raw: dict[str, Any]) -> Detail | None:
     return Detail(title=title, text=_text(raw.get("text"), 300), x=x, y=y, w=w, h=h)
 
 
-def has_rhythm(view: View) -> bool:
-    return any(m.shape == "rhythm" for m in view.marks)
+def _geometry(view: View) -> bool:
+    return view.title.casefold().startswith("geometr")
 
 
 def takes(views: list[View]) -> list[View]:
-    """The takes the app shows: "Spojrzenie", "Geometria" and a "Rytm" with
-    rhythms in it. A third take of another kind (pages written before
-    "Rytm" were asked for one "if it made sense", e.g. "Światło") is left
-    out."""
-    return [v for n, v in enumerate(views) if n < 2 or has_rhythm(v)][:MAX_VIEWS]
+    """The takes the app shows: "Geometria", then "Spojrzenie". Pages written
+    before asked for "Spojrzenie" first and a third take ("Rytm", or one
+    "if it made sense", e.g. "Światło"): it is left out, and the two shown
+    in today's order."""
+    kept: list[View] = []
+    for view in views:
+        marks = [m for m in view.marks if m.shape in SHAPES]
+        if marks and not view.title.casefold().startswith("rytm"):
+            kept.append(view if marks == view.marks else view.model_copy(update={"marks": marks}))
+    return sorted(kept[:MAX_VIEWS], key=lambda v: not _geometry(v))
 
 
 def _composition(views: list[View]) -> Composition:
@@ -608,7 +627,11 @@ def _composition(views: list[View]) -> Composition:
     if not views:
         return Composition()
     first = views[0].marks
-    points = [Point(**m.anchor().model_dump(), title=m.title, text=m.text) for m in first]
+    points = [
+        Point(x=_unit(a.x) or 0.0, y=_unit(a.y) or 0.0, title=m.title, text=m.text)
+        for m in first
+        for a in [m.anchor()]
+    ]
     lines = [Line(label=m.title, points=m.points) for m in first if m.shape in ("arrow", "line")]
     return Composition(views=views, points=points, lines=lines)
 
@@ -699,7 +722,7 @@ def _numbers(data: dict[str, Any]) -> list[float]:
 def _spots(data: dict[str, Any]) -> list[Any]:
     composition = data.get("composition")
     views = _dicts(composition.get("views")) if isinstance(composition, dict) else []
-    views += _dicts(data.get("views"))  # a rhythm's or a check's answer
+    views += _dicts(data.get("views"))  # a check's answer
     return [p for v in views for m in _dicts(v.get("marks")) for p in m.get("points") or []]
 
 
@@ -824,7 +847,7 @@ class DailyJob(NoteJob):
         if essay is None:
             data: dict[str, Any] = {"failed": True}
         else:
-            data = {**essay.model_dump(), RHYTHM_ASKED: True}
+            data = essay.model_dump()
             if CHECKED in note.data:
                 data[CHECKED] = note.data[CHECKED]
         self.library.save_note(note.model_copy(update={"data": data}))
@@ -864,7 +887,7 @@ class DailyJob(NoteJob):
             return None
         essay = Essay.model_validate(note.data)
         shown = takes(essay.composition.views)
-        if len(shown) == len(essay.composition.views):
+        if shown == essay.composition.views:
             return essay
         return essay.model_copy(update={"composition": _composition(shown)})
 

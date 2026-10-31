@@ -258,14 +258,15 @@ def test_an_answer_is_cleaned() -> None:
     assert essay.focus is not None and (essay.focus.x, essay.focus.y) == (0.64, 1.0)
     assert essay.headline == "Pocztówka z pielgrzymki"
     views = essay.composition.views
-    assert [v.title for v in views] == ["Spojrzenie", "Geometria"]  # an empty take goes
-    assert [m.title for m in views[0].marks] == ["Łuk fali", "Fudżi"]
-    assert (views[0].marks[1].points[1].x, views[0].marks[1].points[1].y) == (1.0, 0.0)
-    assert views[1].grid == "none"  # not a grid the app draws
+    # An empty take goes; "Geometria" comes first, whatever the answer's order.
+    assert [v.title for v in views] == ["Geometria", "Spojrzenie"]
+    assert [m.title for m in views[1].marks] == ["Łuk fali", "Fudżi"]
+    assert (views[1].marks[1].points[1].x, views[1].marks[1].points[1].y) == (1.0, 0.0)
+    assert views[0].grid == "none"  # not a grid the app draws
     # Drawn by 0.42 apps as numbered points and lines.
     points = essay.composition.points
-    assert [(p.title, p.x, p.y) for p in points] == [("Łuk fali", 0.2, 0.3), ("Fudżi", 0.64, 0.66)]
-    assert [line.label for line in essay.composition.lines] == ["Łuk fali"]
+    assert [(p.title, p.x, p.y) for p in points] == [("Kartusz", 0.2, 0.3)]
+    assert essay.composition.lines == []
     assert [(s.id, s.why) for s in essay.similar] == [("met:2", "ta sama seria")]
     # Fragments stay on the picture; one without a title or a box goes.
     assert [d.title for d in essay.details] == ["Pazury piany", "Wioślarze"]
@@ -276,23 +277,18 @@ def test_an_answer_is_cleaned() -> None:
     assert short("Bardzo długie zdanie " * 10, 40) == "Bardzo długie zdanie Bardzo długie…"
 
 
-def test_rhythms_are_a_take_of_their_own() -> None:
+def test_rhythms_are_no_longer_shown() -> None:
     beats = [{"x": 0.1 * n, "y": 0.5} for n in range(1, 10)]
     rhythm = {
         "title": "Rytm",
         "grid": "none",
         "text": "Fale powtarzają się jak takty.",
-        "marks": [
-            {"shape": "rhythm", "points": beats, "title": "Grzbiety fal", "text": "co krok"},
-            {"shape": "rhythm", "points": beats[:1], "title": "Za mało"},
-        ],
+        "marks": [{"shape": "rhythm", "points": beats, "title": "Grzbiety fal", "text": "co krok"}],
     }
     composition = {"views": [*ANSWER["composition"]["views"], rhythm]}
     essay = clean({**ANSWER, "composition": composition}, [])
     assert essay is not None
-    take = essay.composition.views[-1]
-    assert take.title == "Rytm" and [m.title for m in take.marks] == ["Grzbiety fal"]
-    assert len(take.marks[0].points) == 9  # a point on each wave
+    assert [v.title for v in essay.composition.views] == ["Geometria", "Spojrzenie"]
 
 
 def _app(tmp_path: Path) -> Any:
@@ -349,8 +345,8 @@ def test_claude_writes_the_page(tmp_path: Path) -> None:
         assert work["headline"] == "Pocztówka z pielgrzymki"
         assert work["artist"].startswith("Katsushika Hokusai, malarz")
         assert work["focus"] == {"x": 0.64, "y": 1.0}
-        assert [v["title"] for v in work["composition"]["views"]] == ["Spojrzenie", "Geometria"]
-        assert work["composition"]["views"][0]["marks"][0]["shape"] == "arrow"
+        assert [v["title"] for v in work["composition"]["views"]] == ["Geometria", "Spojrzenie"]
+        assert work["composition"]["views"][1]["marks"][0]["shape"] == "arrow"
         assert [(s["item"]["item"]["id"], s["why"]) for s in work["similar"]] == [
             ("met:2", "ta sama seria")
         ]

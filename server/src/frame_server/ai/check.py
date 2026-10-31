@@ -42,7 +42,6 @@ from .daily import (
     KIND as DAILY,
 )
 from .jobs import NoteJob, Usage, text_hash
-from .rhythm import wants_rhythm
 from .sketch import draw, measures
 from .study import KIND as STUDY
 
@@ -50,7 +49,7 @@ if TYPE_CHECKING:
     from ..library import ImageCache, Item
 
 KIND = "check"
-PROMPT_VERSION = "check-1"
+PROMPT_VERSION = "check-2"
 #: The pages checked.
 PAGES = (DAILY, STUDY)
 #: How long the list of pages wanting a check is kept between looks.
@@ -65,43 +64,52 @@ MAX_CHANGES = 20
 
 SYSTEM = """Sprawdzasz analizę kompozycji dzieła, którą inny autor narysował ołówkiem na \
 obrazie do aplikacji domowej ramki. Dostajesz obraz bez śladów, a potem każde ujęcie na tym \
-samym obrazie z narysowanymi śladami: różowe linie, strzałki, kółka, trójkąty i ramki, kropki \
-rytmu, numer śladu w białym kółku przy jego początku; niebieskie linie to siatka ujęcia \
-(złoty podział lub trójpodział), gdy ją ma. Dalej ujęcia jako dane, ze współrzędnymi \
-w pikselach obrazu (wymiary są w danych: OBRAZ, od lewego górnego rogu, x w prawo, y w dół), \
-i pomiary serwera.
+samym obrazie z narysowanymi śladami: różowe linie, strzałki, kółka, trójkąty i ramki, numer \
+śladu w białym kółku przy jego początku; niebieskie linie to siatka ujęcia (złoty podział lub \
+trójpodział), gdy ją ma. Dalej ujęcia jako dane, ze współrzędnymi w pikselach obrazu (wymiary \
+są w danych: OBRAZ, od lewego górnego rogu, x w prawo, y w dół), i pomiary serwera. Ujęcia są \
+dwa: „Geometria” (szkielet całego obrazu) i „Spojrzenie” (droga oka).
 
-Dla każdego śladu sprawdź na obrazie:
-- czy leży dokładnie na rzeczy, którą nazywa jego podpis: kółko obejmuje tę rzecz (nie obok, \
-nie połowę), linia biegnie po horyzoncie, krawędzi lub osi, wierzchołki trójkąta leżą na \
-prawdziwych punktach form, punkty rytmu na kolejnych powtórzeniach i nigdzie indziej, \
-strzałka przechodzi przez rzeczy w kolejności, o której mówi tekst;
-- czy to, co twierdzi, jest zasadne: trójkąt, przekątna, oś symetrii, owal czy krzywa S \
-naprawdę porządkują obraz, a nie są do niego dorysowane (trójkąt może być duży i otwarty, \
-z podstawą na krawędzi obrazu, byle jego boki wyznaczały prawdziwe formy); rytm to co \
-najmniej trzy powtórzenia; siatka zostaje, gdy kluczowy element leży na jej linii lub blisko \
-niej (pomiary podają odległości w ułamkach boku: do ok. 0,02 to „na linii”, do ok. 0,05 \
-„blisko linii”, dalej siatka nie pasuje), a tekst mówi o tym tak, jak jest.
+Najpierw sam spójrz na obraz bez śladów, z daleka, jak historyk sztuki: jakie wielkie linie \
+i figury porządkują cały obraz? Wielki trójkąt lub piramida (wierzchołek w najwyższym ważnym \
+punkcie: głowa, kapelusz, szczyt masztu, czubek stogu; boki przez ramiona, szaty, zbocza aż do \
+dolnej krawędzi albo za nią), odwrócone V lub klin, X dwóch przekątnych, silna przekątna przez \
+kilka form, oś, horyzont, łuk, owal, S. Takie linie zwykle nie są narysowane: wyznacza je kilka \
+rzeczy ułożonych w jednym kierunku, a oko je dopowiada. Są zasadne, gdy kilka ważnych form \
+naprawdę leży na nich albo wzdłuż nich, i mogą biec daleko poza obraz.
+
+Potem sprawdź każdy ślad:
+- „Geometria”: czy pokazuje ten szkielet. Gdy brakuje głównej wielkiej linii lub figury, którą \
+widzisz, dodaj ją (to jedyny wypadek, gdy dodajesz ślad bez wzmianki w tekście; dopisz ją do \
+tekstu). Drobną figurę wokół jednej rzeczy zastąp wielką linią albo usuń. Linię, która \
+skraca się przed krawędzią, choć jej kierunek biegnie dalej, przedłuż do krawędzi lub za nią; \
+punkty poza obrazem są dozwolone (do połowy boku za krawędzią, także ujemne), nie przycinaj \
+ich. Otwarty trójkąt lub odwrócone V to "line" z 3 punktami (koniec boku, wierzchołek, koniec \
+drugiego boku), X to dwie linie. Linia ma biec przez formy, które ją wyznaczają, a nie obok \
+nich: przesuń ją, gdy mija je o więcej niż ich szerokość. Siatka zostaje, gdy kluczowy \
+element leży na jej linii lub blisko niej (pomiary podają odległości w ułamkach boku: do ok. \
+0,02 to „na linii”, do ok. 0,05 „blisko linii”, dalej siatka nie pasuje), a tekst mówi o tym \
+tak, jak jest.
+- „Spojrzenie”: czy kółko obejmuje rzecz, którą nazywa jego podpis (nie obok, nie połowę), \
+a strzałka przechodzi przez rzeczy w kolejności, o której mówi tekst.
 
 Popraw: przesuń punkty tego, co chybia, celując dokładnie; usuń ślad, którego nie da się \
 obronić; ustaw "grid" na "none", gdy nic na siatce ani blisko niej nie leży; popraw "text" \
 ujęcia i podpisy, gdy twierdzą coś, czego obraz nie potwierdza (np. złoty podział, którego \
-nie ma). Ujęcie bez żadnego zasadnego śladu pomiń. Nie dodawaj nowych ujęć; nowy ślad tylko \
-wtedy, gdy tekst \
-ujęcia mówi o rzeczy, której nie zaznaczono. Co poprawne, zostaw bez zmian: te same \
-współrzędne, te same słowa.
+nie ma). Ujęcie bez żadnego zasadnego śladu pomiń. Nie dodawaj nowych ujęć. Co poprawne, \
+zostaw bez zmian: te same współrzędne, te same słowa.
 
 Kształty i ich punkty: "arrow" (2–12 punktów wzdłuż drogi wzroku, grot na końcu), "line" \
-(2–12 punktów: horyzont, przekątna, oś, krawędź), "loop" (kółko: środek rzeczy i jeden róg \
-prostokąta, w który się wpisuje), "triangle" (3 wierzchołki), "rect" (dwa przeciwległe rogi), \
-"underline" (falka pod rzeczą: początek i koniec), "rhythm" (3–12 punktów, po jednym na \
-każdym powtórzeniu, po kolei). Forma jak w oryginale, naturalną polszczyzną: "title" ujęcia \
-1–3 słowa, "text" dwa-trzy zdania, podpis śladu ("title") 1–3 słowa, dopisek ("text") \
-najwyżej 45 znaków; kolejność śladów to kolejność czytania.
+(2–12 punktów: horyzont, przekątna, oś, krawędź, bok wielkiego trójkąta), "loop" (kółko: \
+środek rzeczy i jeden róg prostokąta, w który się wpisuje), "triangle" (3 wierzchołki, może \
+wychodzić poza obraz), "rect" (dwa przeciwległe rogi), "underline" (falka pod rzeczą: początek \
+i koniec). Forma jak w oryginale, naturalną polszczyzną: "title" ujęcia 1–3 słowa, "text" \
+dwa-trzy zdania, podpis śladu ("title") 1–3 słowa, dopisek ("text") najwyżej 45 znaków; \
+2–5 śladów w ujęciu; kolejność śladów to kolejność czytania.
 
-Zwróć wszystkie zachowane ujęcia w tej samej kolejności ("views", współrzędne w pikselach) \
-i "changes": krótkie notatki, co zmieniłeś i dlaczego (np. „Geometria, ślad 2: kółko \
-przesunięte na twarz”); pusta lista, gdy wszystko było dobrze."""
+Zwróć zachowane ujęcia w tej samej kolejności ("views", współrzędne w pikselach) i "changes": \
+krótkie notatki, co zmieniłeś i dlaczego (np. „Geometria: dodana piramida od kapelusza po \
+dolne rogi”); pusta lista, gdy wszystko było dobrze."""
 
 SCHEMA = _object(
     views=_list(
@@ -134,11 +142,10 @@ def _px(view: View, size: tuple[int, int]) -> list[str]:
 
 
 def wants_check(note: Note | None) -> bool:
-    """A written page with takes, never checked, that is not waiting for its
-    "Rytm" (``ai.rhythm``) first."""
+    """A written page with takes, never checked."""
     if note is None or "teaser" not in note.data or CHECKED in note.data:
         return False
-    return bool(page_views(note.data)) and not wants_rhythm(note)
+    return bool(page_views(note.data))
 
 
 def question(views: list[View], images: ImageCache, item: Item) -> dict[str, Any]:
