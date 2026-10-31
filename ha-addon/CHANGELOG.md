@@ -14,6 +14,8 @@
   urwania wielokropkiem; tekst da się zaznaczyć.
 - Wyszukiwanie i katalog nie pokazują już znaczków, monet ani rzeczy
   pocztowych z Europeany (np. arkusz Ateny 2004 jako martwa natura).
+- Szukaj: przy otwartej klawiaturze grupy stoją wyżej, z wyraźnym odstępem
+  od pola szukania.
 
 ## 1.54.0
 
