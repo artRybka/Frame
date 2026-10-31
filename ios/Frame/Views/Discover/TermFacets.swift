@@ -109,7 +109,8 @@ enum PeriodAxis {
     }
 }
 
-/// The bar of groups under the search field, edge to edge.
+/// The groups under the search field, all in view: the buttons wrap onto a
+/// second line rather than scroll sideways.
 struct TermFacetBar: View {
     @Environment(AppModel.self) private var model
     @Binding var tokens: [SearchToken]
@@ -141,13 +142,10 @@ struct TermFacetBar: View {
     private var periods: [TermInfo] { model.vocabulary.filter { $0.kind == "period" } }
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) {
-                ForEach(facets) { facet in button(facet) }
-            }
+        FlowLayout(spacing: 6) {
+            ForEach(facets) { facet in button(facet) }
         }
-        .contentMargins(.horizontal, Theme.gutter, for: .scrollContent)
-        .padding(.horizontal, -Theme.gutter)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .sheet(item: $open) { facet in
             TermFacetSheet(facet: facet, tokens: $tokens, museums: museums, colors: colors)
         }
@@ -209,7 +207,7 @@ struct TermFacetSheet: View {
         switch facet {
         case .technique: [.height(320)]
         case .period: [.height(390)]
-        case .color: [.height(570), .large]
+        case .color: [.height(610), .large]
         case .museum: [.height(CGFloat(max(museums.count, 1)) * 46 + 200), .large]
         case .mine: [.height(300)]
         case .style, .subject: [.fraction(0.62), .large]
@@ -221,9 +219,7 @@ struct TermFacetSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     content
-                    Text(facet == .museum
-                        ? "Bez wybranych pytam wszystkie muzea. Wybrane: tylko je."
-                        : "Wybierz dowolnie wiele: wystarczy, że dzieło pasuje do jednego z nich.")
+                    Text(footnote)
                         .font(.footnote)
                         .foregroundStyle(Theme.inkSoft)
                         .fixedSize(horizontal: false, vertical: true)
@@ -257,6 +253,14 @@ struct TermFacetSheet: View {
                !tokens.contains(where: { $0.kind == "color" && ColorTag.families.contains($0.key) }) {
                 accents = true
             }
+        }
+    }
+
+    private var footnote: String {
+        switch facet {
+        case .museum: "Bez wybranych pytam wszystkie muzea. Wybrane: tylko je."
+        case .color: "Wśród kolorów i nastrojów wystarczy jeden z wybranych, wśród akcentów też. Kolor i akcent muszą pasować razem: Błękit z akcentem czerwieni to niebieskie obrazy z czymś czerwonym."
+        default: "Wybierz dowolnie wiele: wystarczy, że dzieło pasuje do jednego z nich."
         }
     }
 
