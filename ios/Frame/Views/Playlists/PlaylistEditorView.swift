@@ -197,8 +197,9 @@ struct PlaylistEditorView: View {
     /// only" of the seeded playlist count as asked).
     private var asked: Bool { !searched.wrappedValue.isEmpty }
 
-    /// Szukaj's field, then (smart) whether to fetch from the museums, a
-    /// word on "+", and the squares until something is asked, then the works.
+    /// Szukaj's field and its bar of groups, then (smart) whether to fetch
+    /// from the museums, a word on how groups combine, and the squares until
+    /// something is asked, then the works.
     private var search: some View {
         VStack(alignment: .leading, spacing: 14) {
             if playlist.kind == .manual {
@@ -213,7 +214,7 @@ struct PlaylistEditorView: View {
             if playlist.kind == .smart {
                 if rulesMissing, playlist.rules.isEmpty {
                     Label(
-                        "Wyszukaj coś albo wybierz z \(Image(systemName: "plus.circle.fill")): bez tego playlista objęłaby cały katalog.",
+                        "Wyszukaj coś albo wybierz w pasku pod polem: bez tego playlista objęłaby cały katalog.",
                         systemImage: "exclamationmark.circle"
                     )
                     .font(.footnote.weight(.medium))
@@ -236,9 +237,9 @@ struct PlaylistEditorView: View {
         VStack(spacing: 4) {
             Group {
                 if playlist.kind == .manual {
-                    Text("Znajdź dzieła jak w Szukaj i dodaj każde przyciskiem \(Image(systemName: "plus")) przy nim. Techniki, epoki, style, kolory, tematy i muzea dodasz przyciskiem \(Image(systemName: "plus.circle.fill")) w polu wyszukiwania.")
+                    Text("Znajdź dzieła jak w Szukaj i dodaj każde przyciskiem \(Image(systemName: "plus")) przy nim.")
                 } else {
-                    Text("Techniki, epoki, style, kolory, tematy, muzea i swoje Ulubione dodasz przyciskiem \(Image(systemName: "plus.circle.fill")) w polu wyszukiwania. Te same rodzaje to alternatywy, różne muszą pasować razem.")
+                    Text("W jednej grupie wystarczy jedno z wybranych, różne grupy muszą pasować razem: np. Impresjonizm lub Secesja, a do tego Morze.")
                 }
             }
                 .font(.footnote)

@@ -3,7 +3,7 @@ import SwiftUI
 /// The Szukaj tab's search: words, artists, styles, subjects, periods,
 /// techniques, colours and museums as chips, over the catalogue (at once)
 /// and the museums (each as it answers). Museums, colours, styles, subjects,
-/// periods and techniques come from the field's "+"; with nothing asked yet
+/// periods and techniques come from the bar under the field; with nothing asked yet
 /// the icon's squares play, and at the end of the results they ask the
 /// museums for more when pulled. Coming back from a work finds the results
 /// as they were. The heart on a tile puts the work in Ulubione (a museum's
@@ -126,12 +126,6 @@ struct MuseumSearchView: View {
 
     private var idle: some View {
         VStack(spacing: 4) {
-            Text("Techniki, epoki, style, kolory, tematy, muzea i swoje Ulubione dodasz przyciskiem \(Image(systemName: "plus.circle.fill")) w polu wyszukiwania.")
-                .font(.footnote)
-                .foregroundStyle(Theme.inkSoft)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, 12)
             // Down to the tab bar, so the squares have room below their row
             // (in the middle of the screen) to fall to the bottom.
             SquaresAnimation()
