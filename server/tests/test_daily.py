@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import io
+import time
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
@@ -18,6 +19,7 @@ from test_ai import GOOD_KEY, FakeAnthropic
 from frame_server.ai import AiConfigUpdate
 from frame_server.ai.client import OPUS
 from frame_server.ai.daily import clean, short
+from frame_server.ai.study import KIND as STUDY
 from frame_server.config import Settings
 from frame_server.daily import HISTORY_KEY, of_season, round_anniversary
 from frame_server.library import Item, ItemKind
@@ -206,6 +208,7 @@ def _today_is(service: FrameService, item_id: str) -> None:
 def offline(service: FrameService) -> FrameService:
     service.daily.job._http = _offline()
     service.later.search = lambda query, limit: (0, [], [])
+    service.artists.search = lambda query, limit: (0, [], [])
     return service
 
 
@@ -298,6 +301,7 @@ def _app(tmp_path: Path) -> Any:
     svc: FrameService = app.state.service
     svc.daily.job._http = _offline()
     svc.later.search = lambda query, limit: (0, [], [])
+    svc.artists.search = lambda query, limit: (0, [], [])
     return app
 
 
@@ -388,3 +392,96 @@ def test_the_switch_turns_the_page_off(offline: FrameService) -> None:
     assert offline.daily.ask(item) is not None
     offline.ai_config.update(AiConfigUpdate(daily=False))
     assert offline.daily.ask(item) is None
+
+
+def test_other_works_by_the_artist(offline: FrameService) -> None:
+    _catalogue(offline)
+    for n in range(5, 13):
+        _add(offline, f"met:{n}", title=f"View {n} of Mount Fuji", artist="Katsushika Hokusai")
+    _add(offline, "met:20", title="View 5 of Mount Fuji", artist="Katsushika Hokusai")  # twin
+    _add(offline, "met:21", title="Fine Wind", artist="Katsushika Hokusai", favorite=True)
+    _add(offline, "met:22", title="A Bowl", artist="Unknown")
+    item = offline.library.get("met:1")
+    assert item is not None
+    works = offline.artists.works(item, {"met:2"})
+    ids = [w.id for w in works]
+    assert len(ids) == 6 and ids[0] == "met:21"  # the owner's favourites first
+    assert not {"met:1", "met:2"} & set(ids)  # not the work, not "Podobne dzieła"
+    assert len({w.title for w in works}) == 6
+    # The same six each time the page opens.
+    assert [w.id for w in offline.artists.works(item, {"met:2"})] == ids
+    # Enough in the catalogue: the museums are not asked.
+    assert offline.artists.look_soon(item, len(ids)) is False
+    bowl = offline.library.get("met:22")
+    assert bowl is not None and offline.artists.works(bowl) == []
+
+
+def test_too_few_by_the_artist_asks_the_museums_once(offline: FrameService) -> None:
+    _catalogue(offline)
+    asked: list[str] = []
+
+    def search(query: str, limit: int) -> tuple[int, list[Item], list[str]]:
+        asked.append(query)
+        hits = [
+            Item(
+                id="aic:7",
+                source="aic",
+                source_id="7",
+                title="Red Fuji",
+                artist="Katsushika Hokusai",
+            ),
+            Item(id="aic:8", source="aic", source_id="8", title="Copy", artist="Hiroshige"),
+        ]
+        return 2, hits, []
+
+    offline.artists.search = search
+    item = offline.library.get("met:1")
+    assert item is not None
+    assert [w.id for w in offline.artists.works(item)] == ["met:2"]
+    offline.artists.look(item)
+    assert [w.id for w in offline.artists.works(item)] == ["met:2", "aic:7"]
+    # Asked once, also when the museums have too few.
+    assert offline.artists.look_soon(item, 2) is False
+    assert asked == ["Katsushika Hokusai"]
+
+
+def test_the_day_page_is_the_works_study(tmp_path: Path) -> None:
+    """Once written, a day's page is its work's study: no new question,
+    kept with the day it was written, "why today" only on its day."""
+    app = _app(tmp_path)
+    svc: FrameService = app.state.service
+    fake = FakeAnthropic(GOOD_KEY)
+    fake.answer = ANSWER_PX
+    svc.claude.factory = lambda key: fake
+    svc.ai_config.set_key(GOOD_KEY)
+    svc.ai_config.update(AiConfigUpdate(pl_text=False, keywords_artworks=False))
+    yesterday = (date.today() - timedelta(days=1)).isoformat()
+    with TestClient(app) as client:
+        _catalogue(svc)
+        svc.library.set_state(HISTORY_KEY, {yesterday: "met:1"})
+        svc.ai.start()
+        try:
+            work = client.get(f"/api/daily?day={yesterday}&wait=10").json()
+        finally:
+            svc.ai.stop()
+        assert work["written"] is True and work["previous"] == []
+        for _ in range(40):  # made the study as the question ends
+            if svc.study.requested("met:1"):
+                break
+            time.sleep(0.05)
+        assert svc.study.requested("met:1")
+        daily_note = svc.library.note("met:1", "daily")
+        study_note = svc.library.note("met:1", STUDY)
+        assert daily_note is not None and study_note is not None
+        assert study_note.created_at == daily_note.created_at
+        view = client.get("/api/study/met:1").json()
+        assert view["status"] == "ready" and view["work"]["why_today"] == ""
+        assert view["work"]["title"] == "Wielka fala w Kanagawie"
+        assert len(written(fake)) == 1
+
+        # A day's page from before the two were one: its study on the next round.
+        svc.library.delete_notes(STUDY, "met:1")
+        svc.library.set_state("study_items", [])
+        svc.daily.adopt_all()
+        assert svc.study.requested("met:1") and svc.study.essay(svc.library.get("met:1"))  # type: ignore[arg-type]
+        assert len(written(fake)) == 1

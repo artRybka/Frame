@@ -186,15 +186,16 @@ def test_discover_lists_the_works_of_the_day_too(tmp_path: Path) -> None:
             assert _ready(client, "met:1")["status"] == "ready"
         finally:
             svc.ai.stop()
-        # The last written first.
-        for n, (item_id, kind) in enumerate(
-            [("met:2", "daily"), ("met:3", KIND), ("met:1", "daily"), ("met:1", KIND)]
-        ):
-            note = svc.library.note(item_id, kind)
-            assert note is not None
-            svc.library.save_note(
-                note.model_copy(update={"created_at": f"2026-10-0{n + 1}T10:00:00"})
-            )
+        # The last written first. The days' pages are the works' studies too.
+        for n, item_id in enumerate(["met:2", "met:3", "met:1"]):
+            for kind in ("daily", KIND):
+                note = svc.library.note(item_id, kind)
+                if item_id != "met:3":
+                    assert note is not None, (item_id, kind)
+                if note is not None:
+                    svc.library.save_note(
+                        note.model_copy(update={"created_at": f"2026-10-0{n + 1}T10:00:00"})
+                    )
         briefs = client.get("/api/studies").json()
         assert [(b["item"]["item"]["id"], b["day"]) for b in briefs] == [
             ("met:1", today.isoformat()),
@@ -223,7 +224,9 @@ def test_a_page_is_written_once_for_the_day_and_the_study(tmp_path: Path) -> Non
             # The day's work studied: its page, no new question.
             client.post("/api/study/met:1?wait=10")
             view = _ready(client, "met:1")
-            assert view["status"] == "ready" and view["work"]["why_today"] == ""
+            assert view["status"] == "ready"
+            # "Why today" while it is the study of the day.
+            assert view["work"]["why_today"] == "Jutro mija 266 lat od urodzin Hokusaia."
             assert len(_studies(fake)) == 1
 
             # A studied work picked for a day: its study, no new question.

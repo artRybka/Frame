@@ -1,5 +1,6 @@
-"""Studies of works the owner asks for on a work's card ("Przygotuj studium
-dzieła"): the work of the day's page for any work (``ai.study``).
+"""Studies of works: those the owner asks for on a work's card ("Przygotuj
+studium dzieła"), and every day's study at the top of Odkrywaj (``daily``),
+whose page becomes the work's study once written (:meth:`Study.adopt`).
 
 The works asked about are kept, so their studies are kept too and opening
 one again costs nothing. Once Claude has written a study, its fragments
@@ -55,6 +56,7 @@ class Study:
         #: "failed" with why; from worker threads (notifications, Live Activity).
         self.on_step: Callable[[Item, Status, str], None] | None = None
         job.on_stage = self._staged
+        daily.on_written = self.adopt
 
     def requested(self, item_id: str) -> bool:
         return item_id in self.library.get_state(STATE_KEY, [])
@@ -89,6 +91,22 @@ class Study:
             add(item_id, self.daily.job, self.daily.day_of(item_id), -1)
         ranked = sorted(found.values(), key=lambda entry: entry[0], reverse=True)
         return [(item, essay, day) for _, item, essay, day in ranked]
+
+    def adopt(self, item: Item) -> bool:
+        """The day's page written about ``item`` made its study, as if asked
+        for (no new question, no "why today"); False when it has a study
+        already or there is no such page."""
+        with self._lock:
+            if self.job.essay(item) is not None or self.daily.job.essay(item) is None:
+                return False
+            if not self.job.take(
+                item, self.library.note(item.id, self.daily.job.kind), keep_date=True
+            ):
+                return False
+            ids = list(self.library.get_state(STATE_KEY, []))
+            if item.id not in ids:
+                self.library.set_state(STATE_KEY, [*ids, item.id])
+        return True
 
     def ask(self, item: Item, again: bool = False) -> Future[Note | None] | None:
         """Asks Claude for the work's study unless it has one (``again``:
@@ -185,6 +203,8 @@ class Study:
 
     def status(self, item: Item | None) -> tuple[Status, str]:
         """Where the work's study is, and why it failed when it did."""
+        if item is not None and item.id not in self._asking:
+            self.adopt(item)  # a day's page the background has not made one yet
         if item is not None and self.job.essay(item) is not None:
             return ("details" if item.id in self._cutting else "ready"), ""
         if item is not None and item.id in self._asking:

@@ -493,6 +493,10 @@ def test_put_to_sleep_from_the_app(tmp_path: Path) -> None:
     """ "Uśpij ramkę" on the charger: the app sleeps at its next question."""
     service = FrameService(_settings(tmp_path, _closed_port()))
     service.ensure_initial_content()
+    # Off on the real clock: just before 22:00 the app would wait for them.
+    settings = service.player.settings
+    settings.quiet_start = None
+    service.player.save_settings(settings)
     charger = AppHello(reason="poll", build="2.0.0", charging=True)
     assert service.app.answer(charger).action == "stay"
     asyncio.run(service.power.sleep_now())

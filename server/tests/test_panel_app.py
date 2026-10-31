@@ -88,6 +88,16 @@ def _next_change(service: FrameService, at: datetime) -> None:
     service.player._save_state(state)
 
 
+def _no_quiet_hours(service: FrameService) -> None:
+    """Quiet hours off for a test that runs on the real clock: from 21:55 the
+    start of the default quiet hours at 22:00 is under ``MIN_SLEEP`` away, so
+    the app is told to wait instead of to sleep, and from 22:00 it sleeps
+    deeply (CI failed so every evening around 22:00 Warsaw time)."""
+    settings = service.player.settings
+    settings.quiet_start = None
+    service.player.save_settings(settings)
+
+
 def _fetch(service: FrameService) -> None:
     """The app loads the picture it was told about."""
     content = service.store.current()
@@ -223,6 +233,7 @@ def test_charger_stays_awake_and_a_change_is_waited_for(tmp_path: Path) -> None:
 
 def test_a_waiting_picture_goes_out_at_the_wake(tmp_path: Path) -> None:
     service = _service(tmp_path)
+    _no_quiet_hours(service)
     now = datetime.now(UTC)
     _next_change(service, now + timedelta(hours=5))
     service.app.answer(BATTERY, now=now)  # asleep, Wi-Fi on, no MAC: no Wake-on-LAN
@@ -945,6 +956,7 @@ async def test_no_start_over_mdc_once_the_app_asked_or_sleeps(
     await panel.start()
     try:
         service = _service(tmp_path, panel.port)
+        _no_quiet_hours(service)
         app = service.app
         app.store_package(b"PK\x03\x04signed", "2.0.0")
         _next_change(service, datetime.now(UTC) + timedelta(hours=3))

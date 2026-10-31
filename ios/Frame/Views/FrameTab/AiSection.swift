@@ -48,8 +48,8 @@ struct AiSection: View {
                 if let daily = settings.daily {
                     Divider()
                     toggle(
-                        "Dzieło dnia",
-                        hint: "Kontekst i analiza kompozycji w Odkrywaj, raz dziennie (Opus, ok. 3 USD miesięcznie).",
+                        "Studium dnia",
+                        hint: "Nowe studium dzieła na górze Odkrywaj, raz dziennie (Opus, ok. 3 USD miesięcznie).",
                         value: daily
                     ) { AiSettingsUpdate(daily: $0) }
                 }
