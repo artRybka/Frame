@@ -6,6 +6,8 @@
   nieznanych i anonimowych (np. „Desconegut”).
 - Z Europeany znikają zdjęcia z archiwum miasta Girona opisane jako obrazy
   i plakaty; katalog usuwa je raz po aktualizacji.
+- TestFlight pokazuje numer wydania zamiast 1.0, a w „Co testować” tę listę
+  zmian.
 
 ## 0.46.0
 
