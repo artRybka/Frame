@@ -54,6 +54,16 @@ class Study:
     def essay(self, item: Item) -> Essay | None:
         return self.job.essay(item)
 
+    def written(self) -> list[tuple[Item, Essay]]:
+        """The works with a study, the last asked for first."""
+        found = []
+        for item_id in reversed(self.library.get_state(STATE_KEY, [])):
+            item = self.library.get(item_id)
+            essay = self.job.essay(item) if item is not None and not item.excluded else None
+            if item is not None and essay is not None:
+                found.append((item, essay))
+        return found
+
     def ask(self, item: Item, again: bool = False) -> Future[Note | None] | None:
         """Asks Claude for the work's study unless it has one (``again``:
         a new one); None when Claude is off."""
@@ -84,7 +94,9 @@ class Study:
                 return
             item = self.library.get(item_id)
             essay = self.job.essay(item) if item is not None else None
-            if item is None or essay is None or not essay.details or item_id in self._cutting:
+            if item is None or essay is None or item_id in self._cutting:
+                return
+            if not essay.details and not essay.legacy:
                 return
             self._cutting.add(item_id)
         threading.Thread(target=self._cut, args=(item,), name="study-details", daemon=True).start()
@@ -94,6 +106,14 @@ class Study:
             self.detail(item, 0)
         except Exception:
             log.exception("details of the study of %s", item.id)
+        try:
+            # What it led to, with pictures, before the study opens.
+            essay = self.job.essay(item)
+            later = self.daily.later
+            if later is not None and essay is not None and later.missing(item.id, essay.legacy):
+                later.look(item, essay.legacy)
+        except Exception:
+            log.exception("later works in the study of %s", item.id)
         finally:
             with self._lock:
                 self._cutting.discard(item.id)

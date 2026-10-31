@@ -117,3 +117,28 @@ def test_a_new_study_on_request(tmp_path: Path) -> None:
         finally:
             svc.ai.stop()
         assert len(_studies(fake)) == 2
+
+
+def test_discover_lists_the_written_studies(tmp_path: Path) -> None:
+    app = _app(tmp_path)
+    svc: FrameService = app.state.service
+    fake = FakeAnthropic(GOOD_KEY)
+    fake.answer = ANSWER
+    svc.claude.factory = lambda key: fake
+    svc.ai_config.set_key(GOOD_KEY)
+    svc.ai_config.update(AiConfigUpdate(pl_text=False, keywords_artworks=False, daily=False))
+    with TestClient(app) as client:
+        _catalogue(svc)
+        assert client.get("/api/studies").json() == []
+        svc.ai.start()
+        try:
+            client.post("/api/study/met:1?wait=10")
+            _ready(client, "met:1")
+        finally:
+            svc.ai.stop()
+        # Asked for, not written yet: not listed.
+        svc.library.set_state("study_items", ["met:1", "met:3"])
+        (brief,) = client.get("/api/studies").json()
+        assert brief["item"]["item"]["id"] == "met:1"
+        assert brief["title"] == "Wielka fala w Kanagawie"
+        assert brief["item"]["item"]["description"] == ""

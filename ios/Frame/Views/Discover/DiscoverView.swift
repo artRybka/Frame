@@ -8,11 +8,20 @@ struct DiscoverView: View {
 
     var body: some View {
         NavigationStack(path: $path) {
-            ScrollView {
-                SuggestionsView(path: $path)
-                    .padding(.horizontal, Theme.gutter)
-                    .padding(.top, 8)
-                    .padding(.bottom, 32)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    SuggestionsView(path: $path)
+                        .padding(.horizontal, Theme.gutter)
+                        .padding(.top, 8)
+                        .padding(.bottom, 32)
+                }
+                .onChange(of: model.studyList?.count) {
+                    guard LaunchRoute.screen == "discover", LaunchRoute.scroll == "studies" else { return }  // CI screenshots
+                    Task {
+                        try? await Task.sleep(for: .seconds(1))
+                        proxy.scrollTo("studies", anchor: .top)
+                    }
+                }
             }
             .refreshable { await model.refreshDiscover(force: true) }
             .background(Theme.paper)

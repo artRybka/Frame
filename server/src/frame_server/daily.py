@@ -34,6 +34,7 @@ from .library.vocabulary import artist_matches, is_photograph
 
 if TYPE_CHECKING:
     from .ai import AiWorker
+    from .later import LaterWorks
     from .library import Library
     from .player import Player
 
@@ -108,6 +109,8 @@ class Daily:
         self._stop = threading.Event()
         self._cutting = threading.Lock()
         self.details_dir = job.images.thumbs.parent / "details"
+        #: Looks up what the pages say a work led to; set by the service.
+        self.later: LaterWorks | None = None
 
     # -- the days ----------------------------------------------------------
 
@@ -264,6 +267,9 @@ class Daily:
         item = self.pick(day or date.today())
         if item is not None:
             self.ask(item)
+            essay = self.job.essay(item)
+            if self.later is not None and essay and self.later.missing(item.id, essay.legacy):
+                self.later.look(item, essay.legacy)  # what it led to, with pictures
 
     def run(self) -> None:
         """Picks the day's work and asks for its page, so they are ready when

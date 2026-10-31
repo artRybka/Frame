@@ -1354,8 +1354,13 @@ struct DailyWork: Codable, Hashable, Sendable {
         var title: String
         var text: String
         var quote: String
-        /// The catalogue's copy, when it has one.
+        /// A copy of the later work: the catalogue's, else a museum's.
         var item: RemoteItem?
+        /// Its Wikipedia article and the article's picture, when the server
+        /// found them (nil from 0.45 servers).
+        var link: String?
+        var linkTitle: String?
+        var picture: String?
     }
 
     struct Brief: Codable, Hashable, Sendable {
@@ -1393,6 +1398,17 @@ struct DailyWork: Codable, Hashable, Sendable {
     var sources: [String]
     var model: String
     var previous: [Brief]
+    /// The later works' pictures and links are being looked up now.
+    var legacyPending: Bool?
+}
+
+/// A work with a study, `GET /api/studies`: Discover's row "Pod lupą".
+struct StudyBrief: Codable, Hashable, Sendable, Identifiable {
+    var item: RemoteItem
+    /// The Polish title the study gives it.
+    var title: String
+
+    var id: String { item.id }
 }
 
 /// A work of the day's page, opened from the tile or from a past day; or a
