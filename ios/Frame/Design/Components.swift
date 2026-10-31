@@ -273,15 +273,22 @@ struct MasonryGrid<Content: View>: View {
         }
     }
 
-    /// A card's height in column widths: the picture and about its caption
-    /// (a long title takes two lines).
-    static func height(_ item: ItemSummary) -> Double {
-        1 / (0.45...wide).clamp(item.aspectRatio) + (item.title.count > 20 ? 0.36 : 0.25)
+    /// A column's width on a phone, until the grid is measured.
+    static var phoneColumn: Double { 170 }
+
+    /// A card's height in column widths: the picture and its caption, the
+    /// title on one or two lines as it fits the column (`ArtCard`: serif
+    /// 15 pt title, caption-size artist, 8 pt apart).
+    static func height(_ item: ItemSummary, columnWidth: Double = phoneColumn) -> Double {
+        let title = item.title.isEmpty ? "Bez tytułu" : item.title
+        let lines = Double(title.count) * 8 > columnWidth ? 2.0 : 1.0
+        let caption = 8 + lines * 19 + 2 + 16
+        return 1 / (0.45...wide).clamp(item.aspectRatio) + caption / max(columnWidth, 60)
     }
 
     /// The blocks for these works. Only the last block changes as works
     /// are added at the end, so the ones above keep their place.
-    static func blocks(_ items: [ItemSummary], columns: Int = 2) -> [Block] {
+    static func blocks(_ items: [ItemSummary], columns: Int = 2, columnWidth: Double = phoneColumn) -> [Block] {
         var blocks: [Block] = []
         var buckets = Array(repeating: [ItemSummary](), count: columns)
         var heights = Array(repeating: 0.0, count: columns)
@@ -311,7 +318,7 @@ struct MasonryGrid<Content: View>: View {
             }
             let target = heights.indices.min { heights[$0] < heights[$1] } ?? 0
             buckets[target].append(item)
-            heights[target] += height(item)
+            heights[target] += height(item, columnWidth: columnWidth)
             count += 1
             if !waiting.isEmpty {
                 deferred += 1
@@ -324,9 +331,17 @@ struct MasonryGrid<Content: View>: View {
         return blocks
     }
 
+    /// The grid's width, for how long the titles are in a column.
+    @State private var width: CGFloat = 0
+
+    private var columnWidth: Double {
+        guard width > 0 else { return Self.phoneColumn }
+        return Double((width - spacing * CGFloat(columns - 1)) / CGFloat(columns))
+    }
+
     var body: some View {
         LazyVStack(alignment: .leading, spacing: spacing + 6) {
-            ForEach(Self.blocks(items, columns: columns)) { block in
+            ForEach(Self.blocks(items, columns: columns, columnWidth: columnWidth)) { block in
                 switch block {
                 case .columns(let buckets):
                     HStack(alignment: .top, spacing: spacing) {
@@ -346,6 +361,7 @@ struct MasonryGrid<Content: View>: View {
                 }
             }
         }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
     }
 }
 
@@ -580,12 +596,27 @@ struct AmbientBackground: View {
     let swatches: [ColorSwatch]
 
     var body: some View {
-        let colors = swatches.prefix(3).compactMap { Color(hexString: $0.hex) }
         ZStack {
             Theme.paper
+            PaperGlow(swatches: swatches)
+        }
+        .ignoresSafeArea()
+        .animation(.easeInOut(duration: 0.8), value: swatches)
+    }
+}
+
+/// A picture's colours blurred into the paper from the top, fading to plain
+/// paper at the bottom: behind "Teraz" and the top of Odkrywaj.
+struct PaperGlow: View {
+    let swatches: [ColorSwatch]
+    var strength = 0.45
+
+    var body: some View {
+        let colors = swatches.prefix(3).compactMap { Color(hexString: $0.hex) }
+        ZStack {
             if !colors.isEmpty {
                 LinearGradient(
-                    colors: colors.map { $0.opacity(0.45) } + [Theme.paper.opacity(0)],
+                    colors: colors.map { $0.opacity(strength) } + [Theme.paper.opacity(0)],
                     startPoint: .top,
                     endPoint: .bottom
                 )
@@ -598,8 +629,6 @@ struct AmbientBackground: View {
                 endPoint: .bottom
             )
         }
-        .ignoresSafeArea()
-        .animation(.easeInOut(duration: 0.8), value: swatches)
     }
 }
 

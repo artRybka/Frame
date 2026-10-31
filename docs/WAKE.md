@@ -717,6 +717,19 @@ w sumie ok. 2–3 minut. W głębokim śnie nic do ramki nie dociera (jak
 przy „Obudź ramkę”). „Uruchom aplikację ponownie” w Konfiguracji → Aplikacja
 ramki zostaje: to restart samej aplikacji przez MDC, bez restartu ramki.
 
+**Dzienny przegląd ekranu Samsunga (2026-10-31, zgłoszenie Mateusza).**
+Ramka w głębokim śnie z budzikiem na 07:00 obudziła się także o 03:00 i po
+5 minutach zasnęła sama (`AUTO_SLEEP`, aplikacja nie startowała). O 03:00
+ramka ma ustawiony własny przegląd ekranu (`getScreenRefreshTime()` =
+`{hour: "3", minute: "0"}`, E16), który budzi ją niezależnie od budzików,
+także ze snu bez Wi-Fi. To ok. 5 minut przytomności co noc (ok. 0,35 %).
+Aplikacja przed każdym snem z budzikiem przestawia przegląd
+(`setScreenRefreshTime`) na godzinę i minutę tej pobudki, więc przegląd
+wypada przy pobudce, która i tak następuje (zmianę widać w raporcie `sleep`
+jako `refresh`, `null` gdy godzina już się zgadzała). *(Do sprawdzenia na
+ramce: czy noc mija bez pobudki o 03:00 i czy przegląd przy porannej
+pobudce nie daje dwóch mrugnięć ani nie gubi budzika.)*
+
 **Zużycie baterii** (`battery.py`) serwer podaje od pierwszej minuty na
 baterii i uczy się go z czasem. Śledzi, co ramka robi (czuwanie w sieci, sen
 bez Wi-Fi, czas obudzona, pobudki, w tym budziki kontroli bez aplikacji,

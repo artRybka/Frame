@@ -11,7 +11,7 @@ import pytest
 from frame_server.library import Item, ItemKind
 from frame_server.library.artists import is_artist
 from frame_server.library.duplicates import artist_words
-from frame_server.library.themes import WEEK_KEY, Theme, week_of, weekly_themes
+from frame_server.library.themes import WEEK_KEY, WEEKLY, Theme, week_of, weekly_themes
 
 
 @pytest.mark.parametrize(
@@ -119,7 +119,7 @@ def test_a_week_made_with_a_nameless_artist_gets_another(service) -> None:
         "week-artist-desconegut",
         "Desconegut",
         "Artysta tygodnia. 40 dzieł na ten tydzień.",
-        "Na ten tydzień",
+        "Dziś dla Ciebie",
         artists=("Desconegut",),
         catalogue=True,
     )
@@ -132,6 +132,25 @@ def test_a_week_made_with_a_nameless_artist_gets_another(service) -> None:
     assert "Desconegut" not in str(library.get_state(WEEK_KEY, {})["themes"])
     # Remembered: the same again.
     assert [t.key for t in weekly_themes(library, day)] == [t.key for t in themes]
+
+
+def test_a_week_stored_under_the_old_group_name_shows_under_the_new(service) -> None:
+    library = service.library
+    day = date(2026, 10, 31)
+    artist = Theme(
+        "week-artist-theodore-robinson",
+        "Theodore Robinson",
+        "Artysta tygodnia. 40 dzieł na ten tydzień.",
+        "Na ten tydzień",
+        artists=("Theodore Robinson",),
+        catalogue=True,
+    )
+    library.set_state(
+        WEEK_KEY,
+        {"week": week_of(day), "themes": [asdict(artist)], "history": [artist.key]},
+    )
+    assert WEEKLY == "Dziś dla Ciebie"
+    assert [(t.key, t.group) for t in weekly_themes(library, day)] == [(artist.key, WEEKLY)]
 
 
 def test_taste_and_search_leave_nobody_out(service) -> None:

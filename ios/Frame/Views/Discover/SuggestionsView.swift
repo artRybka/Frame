@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// What Discover opens with: the work of the day, ideas for playlists in
-/// groups ("Na ten tydzień" opens with the theme of the day, "Bo lubisz" has
+/// groups ("Dziś dla Ciebie" opens with the theme of the day, "Bo lubisz" has
 /// a card for each artist the owner likes), the owner's works not shown for
 /// long and, last, the works of the day and those with a study ("Studia
 /// dzieł").
@@ -14,7 +14,7 @@ struct SuggestionsView: View {
     @Binding var path: NavigationPath
 
     private var rows: [SuggestionRow] { model.suggestionRows ?? [] }
-    /// "Motyw dnia" is a card of "Na ten tydzień"; "Dla Ciebie" (still the
+    /// "Motyw dnia" is a card of "Dziś dla Ciebie"; "Dla Ciebie" (still the
     /// cover of Propozycje in Playlisty) and "Nowe w katalogu" are not shown,
     /// nor the rows "Bo lubisz: …" of older servers once they send its cards.
     private var otherRows: [SuggestionRow] {
@@ -114,7 +114,9 @@ struct SuggestionsView: View {
 
 /// How Propozycje lays out the themes and rows the server sends.
 enum DiscoverLayout {
-    static let weekly = "Na ten tydzień"
+    static let weekly = "Dziś dla Ciebie"
+    /// The same group as older servers name it.
+    static let oldWeekly = "Na ten tydzień"
     static let likes = "Bo lubisz"
     /// Groups made for this week or for this owner, not lasting themes.
     static let ownGroups: Set<String> = [weekly, likes]
@@ -145,8 +147,13 @@ enum DiscoverLayout {
     }
 
     /// The themes as Propozycje shows them: the theme of the day first in
-    /// "Na ten tydzień" (the group made for it when the week has no themes).
+    /// "Dziś dla Ciebie" (the group made for it when the week has no themes).
     static func themes(_ themes: [ArtTheme], rows: [SuggestionRow]) -> [ArtTheme] {
+        let themes = themes.map { theme in
+            var theme = theme
+            if theme.group == oldWeekly { theme.group = weekly }
+            return theme
+        }
         guard let row = rows.first(where: { $0.key == "theme" }), let card = dayCard(row, themes: themes) else {
             return themes
         }

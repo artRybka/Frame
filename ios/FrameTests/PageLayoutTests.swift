@@ -21,6 +21,18 @@ final class PageLayoutTests: XCTestCase {
         XCTAssertEqual(size.width, screen.width, accuracy: 0.5)
     }
 
+    /// The glow of a picture (Odkrywaj) is only a background: the page is
+    /// still the whole screen, also scrolled past the glow.
+    func testAGlowingPageIsTheWholeScreen() {
+        let glow = [ColorSwatch(hex: "#2B4C8C", weight: 0.6), ColorSwatch(hex: "#D9A441", weight: 0.4)]
+        for lift: CGFloat in [-80, 0, 300, 2000] {
+            let page = ScrollView { ProgressView() }.paperPage(glow: glow, lift: lift)
+            let size = UIHostingController(rootView: page).sizeThatFits(in: screen)
+            XCTAssertEqual(size.width, screen.width, accuracy: 0.5)
+            XCTAssertEqual(size.height, screen.height, accuracy: 0.5)
+        }
+    }
+
     /// Pages put their paper with `paperPage()`, never a bare background
     /// that is only as wide as the ScrollView (see Design/Page.swift).
     func testNoPageHasABarePaperBackground() throws {

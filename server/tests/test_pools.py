@@ -172,6 +172,22 @@ def test_smart_playlist_pool_is_topped_up(museums) -> None:
     assert service.player.top_up() is None  # museums cannot add hearts
 
 
+def test_a_full_smart_playlist_asks_no_museum(museums) -> None:
+    service = museums
+    playlist = service.library.save_playlist(
+        Playlist(name="Ola", rules=PlaylistRules(artists=["Ola"]), limit=5)
+    )
+    settings = service.player.settings
+    settings.playlist_id = playlist.id
+    service.player.save_settings(settings)
+
+    job = service.player.top_up()
+    assert job is not None
+    _wait(job)
+    assert len(service.library.playlist_items(playlist)) == 5  # no more than its limit
+    assert service.player.top_up() is None  # full: it goes round its own works
+
+
 def test_catalogue_stays_within_its_size(museums) -> None:
     service = museums
     player = service.player

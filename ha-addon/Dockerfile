@@ -11,6 +11,19 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends git fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 
+# The dependencies first, in a layer of their own: it stays the same from one
+# release to the next (until pyproject.toml changes), so a server update on
+# the NAS downloads a few MB of server code instead of ~200 MB of numpy,
+# numba, OpenCV, ... every time. Only the bundled build has the pyproject
+# (the wildcards let the COPY find nothing else); from git, the step below
+# installs everything as before.
+COPY build.yaml serve[r]/pyproject.tom[l] /deps/
+RUN if [ -f /deps/pyproject.toml ]; then \
+        python -c "import tomllib; print('\n'.join(tomllib.load(open('/deps/pyproject.toml', 'rb'))['project']['dependencies']))" > /deps/requirements.txt \
+        && pip install -r /deps/requirements.txt; \
+    fi \
+    && rm -rf /deps
+
 # Two ways to get the server code:
 #  * scripts/bundle-addon.sh copies ./server next to this Dockerfile (local
 #    add-on on the HA box, CI image builds) -> install that copy;
