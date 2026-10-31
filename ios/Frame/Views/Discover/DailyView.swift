@@ -97,7 +97,7 @@ struct DailyView: View {
                 }
             }
         }
-        .background(Theme.paper)
+        .paperPage()
         .navigationTitle(route.study == nil ? "Dzieło dnia" : "Studium dzieła")
         .navigationBarTitleDisplayMode(.inline)
         .task(id: route) {

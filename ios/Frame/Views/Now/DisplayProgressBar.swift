@@ -107,5 +107,5 @@ struct DisplayProgressBar: View {
         DisplayProgressBar(progress: DisplayProgress(stage: "done", active: false, title: "Fala", fraction: 1))
     }
     .padding()
-    .background(Theme.paper)
+    .paperPage()
 }

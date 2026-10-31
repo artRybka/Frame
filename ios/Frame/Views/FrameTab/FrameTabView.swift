@@ -37,6 +37,7 @@ struct FrameTabView: View {
                             PresentationSection(settings: binding).id("presentation")
                         }
                     }
+                    .pageWidth()
                     .padding(.horizontal, Theme.gutter)
                     .padding(.bottom, 40)
                 }
@@ -50,7 +51,7 @@ struct FrameTabView: View {
                     }
                 }
             }
-            .background(Theme.paper)
+            .paperPage()
             .navigationTitle("Ramka")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -1702,11 +1703,12 @@ struct ConnectionSettingsView: View {
                         AiSection(settings: ai)
                     }
                 }
+                .pageWidth()
                 .padding(.horizontal, Theme.gutter)
                 .padding(.top, 8)
                 .padding(.bottom, 40)
             }
-            .background(Theme.paper)
+            .paperPage()
             .scrollDismissesKeyboard(.interactively)
             .task { await model.loadLibraryStorage() }
             .task { await model.loadPanelApp() }

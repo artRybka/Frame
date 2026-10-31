@@ -97,7 +97,7 @@ struct MuseumSearchView: View {
         }
         .scrollDismissesKeyboard(.immediately)
         .hidesOnScroll($groupsShown)
-        .background(Theme.paper)
+        .paperPage()
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if groupsShown {
                 TermFacetBar(

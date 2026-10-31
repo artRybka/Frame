@@ -90,7 +90,7 @@ struct CropScreen: View {
             .disabled(saving)
             .animation(.easeInOut(duration: 0.2), value: draft.changed)
             .animation(.easeInOut(duration: 0.2), value: draft.offAutomatic)
-            .background(Theme.paper)
+            .paperPage()
             .navigationTitle("Kadr")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

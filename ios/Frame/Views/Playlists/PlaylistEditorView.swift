@@ -131,7 +131,7 @@ struct PlaylistEditorView: View {
                 }
                 .scrollDismissesKeyboard(.immediately)
                 .hidesOnScroll($groupsShown)
-                .background(Theme.paper)
+                .paperPage()
                 .modifier(EditorSearch(
                     enabled: playlist.kind != .album,
                     lookup: lookup,

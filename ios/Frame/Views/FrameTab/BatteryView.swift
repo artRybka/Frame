@@ -45,7 +45,7 @@ struct BatteryView: View {
                 }
             }
             .scrollContentBackground(.hidden)
-            .background(Theme.paper)
+            .paperPage()
             .navigationTitle("Bateria")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

@@ -163,6 +163,7 @@ struct NowView: View {
                             Strip(title: "Ostatnio na ramce", items: history, marks: model.player?.historyMarks ?? [:])
                         }
                     }
+                    .pageWidth()
                     .padding(.horizontal, Theme.gutter)
                     .padding(.top, 4)
                     .padding(.bottom, 40)
