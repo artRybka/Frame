@@ -35,6 +35,18 @@ enum DemoDiscover {
 
     static let themes: [ArtTheme] = [
         theme(
+            "week-artist-utagawa-hiroshige", "Utagawa Hiroshige", "Artysta tygodnia. W katalogu: 9 dzieł.",
+            group: "Na ten tydzień", rules: PlaylistRules(artists: ["Utagawa Hiroshige"])
+        ),
+        theme(
+            "like-claude-monet", "Claude Monet", "Cezanne, van Gogh i Seurat", group: "Bo lubisz",
+            rules: PlaylistRules(artists: ["Cezanne", "van Gogh", "Seurat"])
+        ),
+        theme(
+            "like-katsushika-hokusai", "Katsushika Hokusai", "Hiroshige i Utamaro", group: "Bo lubisz",
+            rules: PlaylistRules(artists: ["Hiroshige", "Utamaro"])
+        ),
+        theme(
             "impressionism", "Impresjonizm i postimpresjonizm", "Monet, Cézanne, van Gogh, Seurat.",
             group: "Kierunki i style",
             rules: PlaylistRules(artists: ["Claude Monet", "Cezanne", "van Gogh", "Seurat"])

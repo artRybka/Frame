@@ -254,3 +254,60 @@ def test_the_catalogue_takes_in_museum_highlights(museums, monkeypatch) -> None:
     assert stars >= CATALOGUE_HIGHLIGHT_MIN
     assert library.get(old.id).highlight
     assert library.get_state(HIGHLIGHTS_KEY)  # not asked again today
+
+
+def test_a_card_for_each_liked_artist(museums) -> None:  # noqa: F811
+    """ "Bo lubisz": a card per favourite artist, naming the artists like them
+    with the most works in the catalogue (Mateusz, 2026-10-31)."""
+    from fastapi.testclient import TestClient
+
+    from frame_server.library.themes import LIKES, liked, make_liked, surname
+    from frame_server.web import create_app, discover_api
+
+    assert [surname(n) for n in ("Berthe Morisot", "van Gogh", "Pieter de Hooch")] == [
+        "Morisot",
+        "van Gogh",
+        "de Hooch",
+    ]
+    assert surname("Stanisław Ignacy Witkiewicz") == "Witkiewicz"
+
+    service = museums
+    library = service.library
+    painters = {"Claude Monet": 2, "Pierre-Auguste Renoir": 5, "Edgar Degas": 3, "Gauguin": 1}
+    with library.batch():
+        n = 0
+        for artist, count in painters.items():
+            for _ in range(count):
+                n += 1
+                library.upsert(_work(n, artist=artist, title=f"Work {n}", suitability=0.8))
+        library.update("cma:1", favorite=True)
+    taste = service.player.taste()
+    assert taste[0] == "Claude Monet"
+
+    made = make_liked(library, ["Claude Monet", "Monet", "Nobody Known"])
+    assert [t.name for t in made] == ["Claude Monet"]  # once, and no theme names the third
+    card = made[0]
+    assert card.group == LIKES and card.key == "like-claude-monet"
+    assert card.description == "Renoir, Degas i Gauguin"
+    assert card.playlist == "Bo lubisz: Claude Monet"
+    assert "Claude Monet" not in card.artists
+    assert liked(library) == made
+    assert theme(card.key, library) == card  # also after a restart
+
+    app = create_app(service.settings)
+    app.state.service = service
+    discover_api._theme_rows.clear()
+    discover_api._cards = (0.0, {})
+    with TestClient(app) as client:
+        cards = client.get("/api/themes").json()
+        groups = list(dict.fromkeys(c["group"] for c in cards))
+        assert groups[:2] == [WEEKLY, LIKES] or groups[0] == LIKES
+        mine = next(c for c in cards if c["key"] == "like-claude-monet")
+        assert mine["name"] == "Claude Monet" and mine["count"] == 9
+        assert all(w["item"]["artist"] != "Claude Monet" for w in mine["cover"])
+        rows = client.get("/api/suggestions").json()
+        assert not [r for r in rows if r["key"].startswith("like:")]
+        made = client.post(f"/api/themes/{card.key}/playlist", json={}).json()
+        assert made["playlist"]["name"] == "Bo lubisz: Claude Monet"
+        mine = next(c for c in client.get("/api/themes").json() if c["key"] == card.key)
+        assert mine["playlist_id"] == made["playlist"]["id"]
