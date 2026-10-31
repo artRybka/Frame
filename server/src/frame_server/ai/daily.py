@@ -901,10 +901,11 @@ class DailyJob(NoteJob):
             and ("teaser" in note.data or note.prompt_version == self.prompt_version)
         )
 
-    def take(self, item: Item, note: Note | None) -> bool:
+    def take(self, item: Item, note: Note | None, *, keep_date: bool = False) -> bool:
         """Keeps another page written about the work (its study, its day's
         page) as this job's, without "why today": the same text is never
-        paid for twice. False when ``note`` is no written page."""
+        paid for twice. False when ``note`` is no written page. ``keep_date``:
+        written when that page was (else now)."""
         if note is None or "teaser" not in note.data:
             return False
         self.library.save_note(
@@ -915,6 +916,7 @@ class DailyJob(NoteJob):
                 prompt_version=self.prompt_version,
                 source_hash=self.source_hash(item),
                 data={**note.data, "why_today": ""},
+                created_at=note.created_at if keep_date else "",
             )
         )
         return True

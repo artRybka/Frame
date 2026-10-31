@@ -1,4 +1,5 @@
-"""Discover's work of the day: the tile at the top of Propozycje and its page."""
+"""Discover's study of the day: the tile at the top of Odkrywaj and its page,
+which is also every study's page (``web.study_api``)."""
 
 from __future__ import annotations
 
@@ -26,8 +27,6 @@ from .library_api import RemoteItem, remote_items
 router = APIRouter(prefix="/api", dependencies=[Depends(require_token)], tags=["discover"])
 Svc = Annotated[FrameService, Depends(service)]
 
-#: Past days listed under the page.
-PREVIOUS = 7
 #: The text's title when only the museum speaks.
 MUSEUM_HEADLINE = "Co mówi muzeum"
 
@@ -64,7 +63,8 @@ class DailyWork(BaseModel):
     why_today: str = ""
     #: The model is writing the page now.
     writing: bool = False
-    #: The later works are being looked up in the museums now.
+    #: The later works (or the artist's other works) are being looked up
+    #: in the museums now.
     legacy_pending: bool = False
     #: The model wrote the page (else only what the museum says).
     written: bool = False
@@ -81,8 +81,11 @@ class DailyWork(BaseModel):
     on_frame: str = ""
     similar: list[SimilarWork] = []
     legacy: list[LegacyWork] = []
+    #: Other works by the artist ("Inne prace artysty").
+    by_artist: list[RemoteItem] = []
     sources: list[str] = []
     model: str = ""
+    #: Left empty: the days before are no longer listed under the page.
     previous: list[DailyBrief] = []
 
 
@@ -131,27 +134,12 @@ def _legacy(svc: FrameService, item: Item, essay: Essay) -> list[LegacyWork]:
     return works
 
 
-def _brief(svc: FrameService, day: str, item: Item) -> DailyBrief:
-    return DailyBrief(
-        day=day, item=_light(svc, item), title=_title(svc, item, svc.daily.job.essay(item))
-    )
-
-
 def _work(svc: FrameService, day: date, item: Item, writing: bool) -> DailyWork:
     def detail_url(n: int, box: Detail) -> str:
         v = svc.daily.detail_path(item, box).stem.rsplit("-", 1)[-1]
         return f"/api/daily/detail?day={day.isoformat()}&n={n}&v={v}"
 
-    work = page(svc, item, svc.daily.job, day=day.isoformat(), writing=writing, url=detail_url)
-    history = svc.daily.history()
-    previous = []
-    for past in sorted((d for d in history if d < day.isoformat()), reverse=True):
-        found = svc.library.get(history[past])
-        if found is not None:
-            previous.append(_brief(svc, past, found))
-        if len(previous) == PREVIOUS:
-            break
-    return work.model_copy(update={"previous": previous})
+    return page(svc, item, svc.daily.job, day=day.isoformat(), writing=writing, url=detail_url)
 
 
 def page(
@@ -190,6 +178,9 @@ def page(
         DailyDetail(**box.model_dump(), image=url(n, box))
         for n, box in enumerate(essay.details if essay else [])
     ]
+    shown = {s.item.item.id for s in similar}
+    by_artist = svc.artists.works(item, shown)
+    looking = svc.artists.look_soon(item, len(by_artist))
     note = svc.library.note(item.id, job.kind) if essay else None
     return DailyWork(
         day=day,
@@ -211,7 +202,8 @@ def page(
         on_frame=essay.on_frame if essay else "",
         similar=similar,
         legacy=legacy,
-        legacy_pending=bool(essay and svc.later.look_soon(item, essay.legacy)),
+        by_artist=[_light(svc, other) for other in by_artist],
+        legacy_pending=bool(essay and svc.later.look_soon(item, essay.legacy)) or looking,
         sources=essay.sources if essay else [],
         model=note.model if note else "",
     )

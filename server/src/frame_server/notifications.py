@@ -60,7 +60,7 @@ KINDS: dict[str, tuple[str, str]] = {
     "send_failed": ("Błąd wysyłki", "Obraz nie dotarł na ramkę."),
     "changed": ("Zmiana dzieła", "Ramka pokazuje nowy obraz: z harmonogramu lub z aplikacji."),
     "server_update": ("Nowa wersja serwera", "Gotowa do instalacji w aplikacji."),
-    "daily": ("Dzieło dnia", "Codziennie o 8:30."),
+    "daily": ("Studium dnia", "Nowe studium dzieła w Odkrywaj, codziennie o 8:30."),
     "study": ("Studium gotowe", "Gdy skończy się pisać zamówione studium dzieła."),
     "week_artist": ("Artysta tygodnia", "W poniedziałek o 9:00."),
     "birthday": ("Rocznica urodzin", "Urodziny artystów Twoich ulubionych dzieł, o 10:00."),
@@ -700,7 +700,7 @@ async def daily_tick(service: FrameService, now: datetime | None = None) -> bool
     notifier.library.set_state(DAILY_KEY, day.isoformat())
     end_of_day = datetime.combine(day + timedelta(days=1), time(0), tz)
     await notifier.send(
-        "daily", f"Dzieło dnia: {title}", body, route="daily", collapse="daily", expires=end_of_day
+        "daily", f"Studium dnia: {title}", body, route="daily", collapse="daily", expires=end_of_day
     )
     return True
 

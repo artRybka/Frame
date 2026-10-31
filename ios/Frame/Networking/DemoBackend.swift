@@ -705,9 +705,6 @@ actor DemoBackend: FrameBackend {
         ].compactMap { id, why in
             found(id).map { DailyWork.Similar(item: RemoteItem(item: $0, inLibrary: true), why: why) }
         }
-        let previous: [DailyWork.Brief] = [(1, "aic:14620"), (2, "aic:64818")].compactMap { ago, id in
-            found(id).map { DailyWork.Brief(day: iso(ago), item: RemoteItem(item: $0, inLibrary: true), title: $0.title) }
-        }
         let cuts: [(String, String, Double, Double, Double, Double)] = [
             ("Pazury piany", "Grzbiet fali rozpada się w drobne, zakrzywione palce piany, zawieszone nad łodziami tuż przed uderzeniem.", 0.415, 0.12, 0.2, 0.3),
             ("Wioślarze", "Ośmiu wioślarzy wtulonych w burtę łodzi. Twarze to kilka kresek, a cała łódź jest ledwie dłuższa niż grzbiet fali.", 0.6, 0.74, 0.24, 0.24),
@@ -766,9 +763,9 @@ actor DemoBackend: FrameBackend {
                 .init(year: "1897–1903", who: "Camille Claudel", title: "Fala", text: "Trzy kąpiące się kobiety pod falą z onyksu.", quote: "", item: nil),
                 .init(year: "1905", who: "Claude Debussy", title: "Morze", text: "Fala Hokusaia na okładce pierwszego wydania partytury.", quote: "", item: nil),
             ],
+            byArtist: byArtist(wave, skip: Set(similar.map(\.item.id))),
             sources: ["obraz", "Wikipedia"],
-            model: "claude-opus-5-5",
-            previous: previous
+            model: "claude-opus-5-5"
         )
     }
 
@@ -785,7 +782,6 @@ actor DemoBackend: FrameBackend {
         var work = try await daily(day: nil, wait: 0)
         work.day = ""
         work.whyToday = ""
-        work.previous = []
         if work.item.id != itemID {
             // The demo's text is about the wave: another work keeps what its museum says.
             work.item = RemoteItem(item: item, inLibrary: true)
@@ -799,8 +795,19 @@ actor DemoBackend: FrameBackend {
             work.details = []
             work.onFrame = ""
             work.legacy = []
+            work.similar = []
+            work.byArtist = byArtist(item, skip: [])
         }
         return StudyView(status: "ready", error: "", work: work, costUsd: 0.14)
+    }
+
+    /// Up to six other works by `item`'s artist ("Inne prace artysty").
+    private func byArtist(_ item: Item, skip: Set<String>) -> [RemoteItem] {
+        guard !item.artist.isEmpty else { return [] }
+        return items
+            .filter { $0.id != item.id && !skip.contains($0.id) && $0.artist == item.artist }
+            .prefix(6)
+            .map { RemoteItem(item: $0, inLibrary: true) }
     }
 
     /// The ones asked for (the last first), then a few the demo has written;
@@ -1116,7 +1123,7 @@ actor DemoBackend: FrameBackend {
             NotificationKind(key: "send_failed", title: "Błąd wysyłki", hint: "Obraz nie dotarł na ramkę."),
             NotificationKind(key: "changed", title: "Zmiana dzieła", hint: "Ramka pokazuje nowy obraz: z harmonogramu lub z aplikacji."),
             NotificationKind(key: "server_update", title: "Nowa wersja serwera", hint: "Gotowa do instalacji w aplikacji."),
-            NotificationKind(key: "daily", title: "Dzieło dnia", hint: "Codziennie o 8:30."),
+            NotificationKind(key: "daily", title: "Studium dnia", hint: "Nowe studium dzieła w Odkrywaj, codziennie o 8:30."),
             NotificationKind(key: "study", title: "Studium gotowe", hint: "Gdy skończy się pisać zamówione studium dzieła."),
             NotificationKind(key: "week_artist", title: "Artysta tygodnia", hint: "W poniedziałek o 9:00."),
             NotificationKind(key: "birthday", title: "Rocznica urodzin", hint: "Urodziny artystów Twoich ulubionych dzieł, o 10:00."),

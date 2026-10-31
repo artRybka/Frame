@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// The work of the day at the top of Propozycje: a band of the picture
+/// The study of the day at the top of Odkrywaj: a band of the picture
 /// (cropped around the place Claude named, else what draws the eye), its
 /// title and one sentence written to fit two lines, an arrow in the corner;
 /// the whole tile opens its page. Kept low, so the themes start right below it.
@@ -64,16 +64,18 @@ struct DailyTile: View {
             .contentShape(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
         }
         .buttonStyle(.plain)
-        .accessibilityHint("Dzieło dnia")
+        .accessibilityHint("Studium dnia")
     }
 }
 
-/// The work of the day's own page: why today, the text under its own title,
-/// a note about the artist, the composition drawn over the picture, colour,
-/// works like it, what it led to, the days before and, last, how it fares on
-/// the frame with the buttons to show or queue it. Written by Claude once a day; while
-/// it writes (or without a key) the museum's text stands in. The same page is a
-/// study of any work (`route.study`), written when asked for on its card.
+/// A work's study: why today (on its day, for the study of the day), the
+/// text under its own title, a note about the artist, the composition drawn
+/// over the picture, colour, works like it, what it led to, other works by
+/// the artist and, last, how it fares on the frame with the buttons to show
+/// or queue it. Written by Claude once a day for the study of the day (while
+/// it writes, or without a key, the museum's text stands in), or when asked
+/// for on a work's card (`route.study`). A tap on the picture opens it on the
+/// whole screen to zoom into.
 struct DailyView: View {
     @Environment(AppModel.self) private var model
     let route: DailyRoute
@@ -83,6 +85,9 @@ struct DailyView: View {
     @State private var sending = false
     @State private var sent: Bool?
     @State private var queueTaps = 0
+    /// The page's width: the picture takes all of it, whatever loads first.
+    @State private var pageWidth: CGFloat = 0
+    @State private var zoomed = false
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -106,7 +111,8 @@ struct DailyView: View {
             }
         }
         .paperPage()
-        .navigationTitle(route.study == nil ? "Dzieło dnia" : "Studium dzieła")
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { pageWidth = $0 }
+        .navigationTitle("Studium dzieła")
         .navigationBarTitleDisplayMode(.inline)
         .task(id: route) {
             await load()
@@ -114,6 +120,9 @@ struct DailyView: View {
         }
         .onAppear {
             if let id = route.study { model.studyOpened(itemID: id) }
+        }
+        .fullScreenCover(isPresented: $zoomed) {
+            if let work { OriginalViewer(item: work.item.item) }
         }
     }
 
@@ -127,9 +136,9 @@ struct DailyView: View {
         } else if failed {
             VStack(spacing: 16) {
                 EmptyStateView(
-                    title: route.study == nil ? "Nie ma tego dzieła" : "Nie ma jeszcze studium",
+                    title: "Nie ma jeszcze studium",
                     message: route.study == nil
-                        ? "Serwer nie ma dzieła dnia na ten dzień."
+                        ? "Serwer nie ma studium na ten dzień."
                         : "Przygotuj je na karcie dzieła, pod opisem.",
                     systemImage: "photo.artframe"
                 )
@@ -150,21 +159,21 @@ struct DailyView: View {
 
     // MARK: Loading
 
-    /// What is known of the page before it loads: the strip of earlier
-    /// days it was opened from, or the work's card for a study.
+    /// What is known of the page before it loads: the card of "Studia
+    /// dzieł" it was opened from, or the work's card.
     private var peek: DailyPeeks.Peek? {
-        if let id = route.study {
-            if let item = ItemPeeks.cards[id] {
-                return DailyPeeks.Peek(
-                    item: item, title: item.title, thumb: ItemPeeks.tiles[id]?.thumb ?? .thumb(id), fallback: nil
-                )
-            }
-            return nil
+        guard let id = route.study else { return nil }
+        if let brief = model.studyList?.first(where: { $0.id == id }) {
+            return DailyPeeks.Peek(
+                item: brief.item.item, title: brief.title, thumb: brief.item.thumb, fallback: brief.item.thumbFallback
+            )
         }
-        guard let day = route.day, let brief = DailyPeeks.briefs[day] else { return nil }
-        return DailyPeeks.Peek(
-            item: brief.item.item, title: brief.title, thumb: brief.item.thumb, fallback: brief.item.thumbFallback
-        )
+        if let item = ItemPeeks.cards[id] {
+            return DailyPeeks.Peek(
+                item: item, title: item.title, thumb: ItemPeeks.tiles[id]?.thumb ?? .thumb(id), fallback: nil
+            )
+        }
+        return nil
     }
 
     /// The page before it is here, laid out as it will be: the picture and
@@ -173,8 +182,7 @@ struct DailyView: View {
         let peek = peek
         return VStack(alignment: .leading, spacing: 26) {
             VStack(alignment: .leading, spacing: 14) {
-                Color.clear
-                    .aspectRatio(peek.map { aspect($0.item) } ?? 1.5, contentMode: .fit)
+                pictureBox(peek.map { aspect($0.item) } ?? 1.5)
                     .overlay {
                         if let peek {
                             ArtImage(
@@ -210,21 +218,30 @@ struct DailyView: View {
             .accessibilityHidden(true)
             HStack(spacing: 8) {
                 ProgressView().controlSize(.small)
-                Text(route.study == nil ? "Wczytuję dzieło dnia…" : "Wczytuję studium…")
+                Text("Wczytuję studium…")
                     .font(.footnote)
                     .foregroundStyle(Theme.inkSoft)
             }
         }
     }
 
-    /// Today's as Discover has it (another day's as last seen), then fresh;
-    /// a page being written is waited for a few times.
     private func load() async {
         failed = false
         if let id = route.study {
             await loadStudy(id)
+            // A server from before the day's page became the work's study.
+            if work == nil, route.day != nil {
+                failed = false
+                await loadDay()
+            }
             return
         }
+        await loadDay()
+    }
+
+    /// Today's as Discover has it (another day's as last seen), then fresh;
+    /// a page being written is waited for a few times.
+    private func loadDay() async {
         if route.day == nil, let shown = model.daily { work = shown }
         if let day = route.day, work == nil { work = DailyPeeks.days[day] }
         for attempt in 0..<5 {
@@ -251,7 +268,7 @@ struct DailyView: View {
             try? await Task.sleep(for: .seconds(5))
             if Task.isCancelled { return }
             let fresh: DailyWork?
-            if let id = route.study {
+            if let id = route.study, route.day == nil || work?.day.isEmpty == true {
                 fresh = try? await model.backend.study(itemID: id, wait: 0).work
             } else {
                 fresh = try? await model.backend.daily(day: route.day, wait: 0)
@@ -320,7 +337,9 @@ struct DailyView: View {
             }
             if !work.similar.isEmpty { section("Podobne dzieła") { similar(work.similar) } }
             if !work.legacy.isEmpty { section("Dalsze losy") { legacy(work.legacy) }.id("legacy") }
-            if !work.previous.isEmpty { section("Poprzednie dzieła dnia") { previous(work.previous) } }
+            if let others = work.byArtist, !others.isEmpty {
+                section("Inne prace artysty") { byArtist(others) }.id("artist")
+            }
             section("Na Twojej ramce") { onFrame(work) }
             footer(work).id("end")
         }
@@ -333,12 +352,27 @@ struct DailyView: View {
         return CGFloat(width) / CGFloat(height)
     }
 
-    /// The picture as large as the width allows; tapping it opens the work's
-    /// card (the original, the frame preview, the playlists).
+    /// The picture's box: the page's whole width (less its margins) and
+    /// as tall as the picture's shape makes it. Sized from the page itself,
+    /// not from what the column around it holds yet: laid out by the shape
+    /// alone it loaded narrower than the page and sometimes stayed so.
+    @ViewBuilder
+    private func pictureBox(_ ratio: CGFloat) -> some View {
+        let width = pageWidth - 2 * Theme.gutter
+        if width > 0 {
+            Color.clear.frame(width: width, height: width / ratio)
+        } else {
+            Color.clear.frame(maxWidth: .infinity).aspectRatio(ratio, contentMode: .fit)
+        }
+    }
+
+    /// The picture on the page's whole width; tapping it opens it on the
+    /// whole screen to zoom into, as on the work's card.
     private func picture(_ work: DailyWork) -> some View {
-        NavigationLink(value: work.item.id) {
-            Color.clear
-                .aspectRatio(aspect(work.item.item), contentMode: .fit)
+        Button {
+            zoomed = true
+        } label: {
+            pictureBox(aspect(work.item.item))
                 .overlay {
                     ArtImage(
                         ref: work.item.inLibrary ? .image(work.item.id) : work.item.thumb,
@@ -349,8 +383,10 @@ struct DailyView: View {
                     )
                 }
                 .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityHint(Text("Otwiera obraz na całym ekranie"))
         .padding(.top, 6)
     }
 
@@ -419,16 +455,23 @@ struct DailyView: View {
         sent = nil
     }
 
+    /// "Dlaczego dziś" on a slip of paper: white in the light style, black
+    /// in the dark one, lifted a little off the page.
     private func whyToday(_ text: String) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Eyebrow("Dlaczego dziś", color: Theme.vermilion)
+        let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
+        return VStack(alignment: .leading, spacing: 5) {
+            Eyebrow("Dlaczego dziś", color: Theme.inkSoft)
             prose(text, size: 15)
         }
-        .padding(12)
+        .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.vermilion.opacity(0.1), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Theme.vermilion.opacity(0.3)))
+        .background {
+            shape.fill(Self.slip).shadow(color: .black.opacity(0.08), radius: 6, y: 2)
+        }
+        .overlay(shape.strokeBorder(Theme.hairline.opacity(0.7)))
     }
+
+    private static let slip = Color(light: 0xFFFFFF, dark: 0x000000)
 
     // MARK: Sections
 
@@ -632,39 +675,42 @@ struct DailyView: View {
         }
     }
 
-    private func previous(_ days: [DailyWork.Brief]) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 10) {
-                ForEach(days, id: \.day) { brief in
-                    NavigationLink(value: DailyRoute(day: brief.day)) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            ArtImage(ref: brief.item.thumb, fallback: brief.item.thumbFallback, placeholder: brief.item.item.placeholderColor, maxPixel: 300)
-                                .frame(width: 112, height: 76)
-                                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                            Text(Self.dayName(brief.day))
-                                .font(.caption2.weight(.semibold))
+    /// Six other works by the artist, three to a row; each opens its card.
+    private func byArtist(_ works: [RemoteItem]) -> some View {
+        let columns = Array(repeating: GridItem(.flexible(), spacing: 10, alignment: .top), count: 3)
+        return LazyVGrid(columns: columns, alignment: .leading, spacing: 14) {
+            ForEach(works, id: \.id) { other in
+                NavigationLink(value: other.id) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Color.clear
+                            .frame(height: 104)
+                            .frame(maxWidth: .infinity)
+                            .overlay {
+                                ArtImage(
+                                    ref: other.thumb,
+                                    fallback: other.thumbFallback,
+                                    placeholder: other.item.placeholderColor,
+                                    maxPixel: 400
+                                )
+                            }
+                            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                        Text(other.item.title.isEmpty ? "Bez tytułu" : other.item.title)
+                            .font(.serif(13, weight: .semibold))
+                            .foregroundStyle(Theme.ink)
+                            .lineLimit(2)
+                            .multilineTextAlignment(.leading)
+                        if !other.item.dateText.isEmpty {
+                            Text(other.item.dateText)
+                                .font(.caption2)
                                 .foregroundStyle(Theme.inkSoft)
-                            Text(brief.title)
-                                .font(.caption)
-                                .foregroundStyle(Theme.ink)
                                 .lineLimit(1)
                         }
-                        .frame(width: 112, alignment: .leading)
                     }
-                    .buttonStyle(.plain)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                .buttonStyle(.plain)
             }
         }
-        .scrollClipDisabled()
-    }
-
-    /// "2026-10-29" → "czw., 29 paź".
-    static func dayName(_ iso: String) -> String {
-        let parts = iso.split(separator: "-").compactMap { Int($0) }
-        guard parts.count == 3,
-              let date = Calendar.current.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2]))
-        else { return iso }
-        return date.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated).locale(Locale(identifier: "pl_PL")))
     }
 
     private func footer(_ work: DailyWork) -> some View {
@@ -673,7 +719,7 @@ struct DailyView: View {
             let from = work.sources.isEmpty ? "" : " na podstawie: \(work.sources.joined(separator: ", "))"
             text = "Tekst napisał Claude\(from). Może zawierać błędy."
         } else {
-            text = "Opis muzeum. Tekst, notkę o autorze i analizę kompozycji pisze Claude, gdy w Konfiguracji jest klucz i włączone „Dzieło dnia”."
+            text = "Opis muzeum. Tekst, notkę o autorze i analizę kompozycji pisze Claude, gdy w Konfiguracji jest klucz i włączone „Studium dnia”."
         }
         return VStack(alignment: .leading, spacing: 10) {
             Divider()
@@ -685,9 +731,9 @@ struct DailyView: View {
     }
 }
 
-/// What the app already knows of a work of the day's page before it loads:
-/// the days' pages seen, and the strip of earlier days they list, so another
-/// day opens on its picture and title instead of an empty page.
+/// What the app already knows of a day's page before it loads: the days'
+/// pages seen, so one opens again on its picture and title instead of an
+/// empty page.
 @MainActor
 enum DailyPeeks {
     struct Peek {
@@ -698,14 +744,12 @@ enum DailyPeeks {
     }
 
     private(set) static var days: [String: DailyWork] = [:]
-    private(set) static var briefs: [String: DailyWork.Brief] = [:]
 
     static func keep(_ work: DailyWork, for route: DailyRoute) {
         if route.study == nil, !work.day.isEmpty {
             if days.count > 60 { days.removeAll() }
             days[work.day] = work
         }
-        for brief in work.previous { briefs[brief.day] = brief }
     }
 }
 

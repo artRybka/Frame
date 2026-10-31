@@ -18,6 +18,7 @@ from .ai import AiConfigStore, AiWorker, Claude, DailyJob, KeywordsJob, PlTextJo
 from .ai.check import CheckJob
 from .ai.study import StudyJob
 from .albums import Albums
+from .artist_works import ArtistWorks
 from .births import Births
 from .config import Settings
 from .daily import Daily
@@ -201,6 +202,8 @@ class FrameService:
         # What the pages say a work led to, looked up in the museums and on Wikipedia.
         self.later = LaterWorks(self.library, lambda q, n: self.importer.search_all(q, n))
         self.daily.later = self.later
+        # Other works by a study's artist, from the museums when the catalogue has too few.
+        self.artists = ArtistWorks(self.library, lambda q, n: self.importer.search_all(q, n))
         # Studies of any work, asked for on its card.
         self.study = Study(self.daily, self.ai, StudyJob(self.library, self.images, self.ai_config))
         self.ai.register(self.study.job)
