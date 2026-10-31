@@ -253,9 +253,17 @@ struct Playlist: Codable, Hashable, Sendable {
     var album: AlbumSource?
     /// The Discover theme the playlist was made from.
     var theme: String?
+    /// A smart playlist's most works; nil: all that match. With more
+    /// matching, the server takes a steady set, favourites first.
+    var limit: Int?
 
     /// "Ulubione", the owner's hearts: always there, never deleted.
     var isFavorites: Bool { kind == .smart && rules.favoritesOnly }
+
+    /// What "Ile dzieł" offers; nil is "Wszystkie".
+    static let limits: [Int?] = [50, 100, 200, 300, nil]
+    /// A new smart playlist's limit.
+    static let defaultLimit = 100
 
     /// The photos sent once (server: player.SENT_NAME).
     static let sentName = "Historia przesłanych"
@@ -272,6 +280,7 @@ struct PlaylistSummary: Codable, Identifiable, Hashable, Sendable {
     var album: AlbumSource?
     var albumSync: AlbumSync?
     var theme: String?
+    var limit: Int?
 
     var isFavorites: Bool { kind == .smart && rules.favoritesOnly }
 

@@ -37,8 +37,6 @@ struct MuseumSearchView: View {
     /// Works whose heart the server is still taking.
     @State private var liking: Set<String> = []
     @State private var editing: Playlist?
-    /// Whether the playlist made from the search fetches the museums' works.
-    @State private var fetchForPlaylist = false
     @State private var lookup = TermLookup()
     @FocusState private var fieldFocused: Bool
     /// The groups over the field: hidden while scrolling the results.
@@ -159,7 +157,7 @@ struct MuseumSearchView: View {
             }
         }
         .sheet(item: $editing) { playlist in
-            PlaylistEditorView(playlist: playlist, fetchFromMuseums: fetchForPlaylist)
+            PlaylistEditorView(playlist: playlist)
         }
     }
 
@@ -197,8 +195,8 @@ struct MuseumSearchView: View {
             }
             if asked {
                 Button {
-                    // The same search, museums included; what they show
-                    // comes along when fetching is on.
+                    // The same search, museums included; the playlist asks
+                    // them for what it misses up to its limit.
                     var playlistRules = rules
                     playlistRules.sources = sources
                     let name = rules.suggestedName(names: model.termNames)
@@ -206,7 +204,6 @@ struct MuseumSearchView: View {
                         name: name.isEmpty ? sources.map(museumName).joined(separator: " · ") : name,
                         kind: .smart, rules: playlistRules
                     )
-                    fetchForPlaylist = !fromMuseums.isEmpty
                 } label: {
                     Label("Utwórz playlistę z tego wyszukiwania", systemImage: "text.badge.plus")
                 }

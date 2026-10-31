@@ -180,7 +180,12 @@ actor DemoBackend: FrameBackend {
                 .compactMap { id in items.first { $0.id == id } }
         }
         let listed = listed(for: playlist.rules)
-        return Self.sorted(items.filter { Self.matches($0, playlist.rules, listed: listed) }, by: "suitability")
+        let found = Self.sorted(items.filter { Self.matches($0, playlist.rules, listed: listed) }, by: "suitability")
+        guard let limit = playlist.limit, found.count > limit else { return found }
+        // As the server: favourites first, then a steady draw.
+        let taken = Set(found.sorted { ($0.favorite ? 0 : 1, $0.id.hashValue) < ($1.favorite ? 0 : 1, $1.id.hashValue) }
+            .prefix(limit).map(\.id))
+        return found.filter { taken.contains($0.id) }
     }
 
     /// The works on the playlists but "Ulubione", when `rules` ask for them
@@ -205,7 +210,7 @@ actor DemoBackend: FrameBackend {
                     name: playlist.name, count: list.count
                 )
             },
-            theme: playlist.theme
+            theme: playlist.theme, limit: playlist.limit
         )
     }
 
