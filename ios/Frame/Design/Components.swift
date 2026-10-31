@@ -47,12 +47,17 @@ struct FramedArtwork<Inner: View>: View {
     var moulding: CGFloat = 8
     /// Off when the frame is turned: the caller casts it, so it keeps falling down.
     var shadow = true
+    /// A new picture fades in over the one before (`ArtImage.crossfade`).
+    var crossfade = false
     @ViewBuilder var inner: Inner
 
     var body: some View {
         Group {
             if let ref {
-                ArtImage(ref: ref, placeholder: placeholder, maxPixel: 1600, contentMode: .fit, priority: .high)
+                ArtImage(
+                    ref: ref, placeholder: placeholder, maxPixel: 1600, contentMode: .fit, priority: .high,
+                    crossfade: crossfade
+                )
             } else {
                 Rectangle().fill(placeholder.gradient)
             }

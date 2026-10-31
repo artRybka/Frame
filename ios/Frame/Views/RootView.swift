@@ -102,6 +102,8 @@ struct RootView: View {
             await model.followSchedule()
         }
         .onChange(of: scenePhase) { old, phase in
+            // The queue and history as they are now, for the next launch.
+            if phase == .background { model.rememberNow() }
             // Back from the background, maybe on another network.
             if old == .background, phase != .background {
                 Task {
