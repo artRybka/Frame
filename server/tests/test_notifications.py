@@ -419,7 +419,7 @@ def test_the_artist_of_the_week_goes_out_on_monday_at_nine(
     week = themes.Theme(
         "week-artist-monet",
         "Claude Monet",
-        "Artysta tygodnia. Impresjonista. W katalogu: 12 dzieł.",
+        "Artysta tygodnia. Impresjonista. 12 dzieł na ten tydzień.",
         themes.WEEKLY,
         artists=("Claude Monet",),
     )
@@ -434,7 +434,7 @@ def test_the_artist_of_the_week_goes_out_on_monday_at_nine(
     payload = apple.sent[0][3]
     assert payload["aps"]["alert"] == {  # type: ignore[index]
         "title": "Artysta tygodnia: Claude Monet",
-        "body": "Impresjonista. W katalogu: 12 dzieł.",
+        "body": "Impresjonista. 12 dzieł na ten tydzień.",
     }
     assert payload["route"] == "theme/week-artist-monet"
 

@@ -168,7 +168,7 @@ struct TermSuggestions: View {
                     }
                 }
             } else if let hint = lookup.hint, hint.total == 0, lookup.hits.allSatisfy({ $0.count == 0 }) {
-                Text("Nic nie znaleziono ani w katalogu, ani w muzeach.")
+                Text("Nic nie znaleziono.")
                     .font(.subheadline)
                     .foregroundStyle(Theme.inkSoft)
                     .padding(12)

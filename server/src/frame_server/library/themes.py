@@ -778,7 +778,7 @@ def _artist_of_the_week(items: list[Item], rng: random.Random, history: set[str]
     return Theme(
         f"week-artist-{_slug(artist)}",
         artist,
-        f"Artysta tygodnia. {about}W katalogu: {_works(counts[artist])}.",
+        f"Artysta tygodnia. {about}{_works(counts[artist])} na ten tydzień.",
         WEEKLY,
         artists=(artist,),
         catalogue=True,
@@ -825,7 +825,7 @@ def _mixes(items: list[Item], rng: random.Random, history: set[str]) -> list[The
             Theme(
                 f"week-mix-{_slug(first)}-{_slug(second)}",
                 f"{a.name}: {b.name[0].lower()}{b.name[1:]}",
-                f"{a.name} i {b.name.lower()}: {_works(pairs[first, second])} w katalogu, "
+                f"{a.name} i {b.name.lower()}: {_works(pairs[first, second])}, "
                 "wybrane na ten tydzień.",
                 WEEKLY,
                 terms=(first, second),

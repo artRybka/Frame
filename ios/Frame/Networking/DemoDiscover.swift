@@ -35,7 +35,7 @@ enum DemoDiscover {
 
     static let themes: [ArtTheme] = [
         theme(
-            "week-artist-utagawa-hiroshige", "Utagawa Hiroshige", "Artysta tygodnia. W katalogu: 9 dzieł.",
+            "week-artist-utagawa-hiroshige", "Utagawa Hiroshige", "Artysta tygodnia. 9 dzieł na ten tydzień.",
             group: "Na ten tydzień", rules: PlaylistRules(artists: ["Utagawa Hiroshige"])
         ),
         theme(
