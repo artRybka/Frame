@@ -1,7 +1,10 @@
 # Changelog
 
-## 1.52.1
+## 1.53.0
 
+- Odkrywaj: Motyw dnia jako pierwszy kafelek w „Na ten tydzień”; zamiast
+  rzędów „Bo lubisz: …” grupa „Bo lubisz” z kafelkiem na każdego ulubionego
+  artystę i pokrewnymi artystami w środku; „Studia dzieł” na końcu ekranu.
 - Poprawki szklanego Szukaj: grupy przy klawiaturze stoją nad polem, a nie
   za nim; znowu wyższe grupy na całą szerokość 3 × 2 z nazwą nad wyborem;
   grupa otwiera się jako szklane okienko nad polem zamiast arkusza;
