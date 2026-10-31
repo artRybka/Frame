@@ -248,7 +248,8 @@ struct PlaylistDetailView: View {
         guard let summary = detail?.playlist else { return nil }
         return Playlist(
             id: summary.id, name: summary.name, description: summary.description, kind: summary.kind,
-            rules: summary.rules, itemIds: detail?.itemIds ?? [], album: summary.album
+            rules: summary.rules, itemIds: detail?.itemIds ?? [], album: summary.album,
+            theme: summary.theme, limit: summary.limit
         )
     }
 

@@ -247,6 +247,10 @@ class Playlist(BaseModel):
     album: AlbumSource | None = None  # album playlists
     #: The Discover theme the playlist was made from.
     theme: str | None = None
+    #: A smart playlist's most works (None: all that match). With more
+    #: matching, a steady set is taken: favourites first, the rest drawn
+    #: once for these rules and limit (`repo.limited`).
+    limit: int | None = Field(default=None, ge=1)
     created_at: str = ""
     updated_at: str = ""
 
@@ -267,6 +271,7 @@ class PlaylistSummary(BaseModel):
     album: AlbumSource | None = None
     album_sync: AlbumSync | None = None
     theme: str | None = None
+    limit: int | None = None
 
 
 class FacetValue(BaseModel):

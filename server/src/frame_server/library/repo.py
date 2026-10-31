@@ -7,6 +7,7 @@ cached copy; SQLite gives durability and atomic writes.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import random
 import sqlite3
@@ -460,7 +461,8 @@ class Library:
                     if i in all_items and not all_items[i].excluded and i not in skip
                 ]
             )
-        return dedupe(self.query(playlist.rules, sort=sort)[1])
+        items = dedupe(self.query(playlist.rules, sort=sort)[1])
+        return limited(items, playlist) if playlist.limit else items
 
     def playlist_summary(self, playlist: Playlist) -> PlaylistSummary:
         items = self.playlist_items(playlist, sort="suitability")
@@ -476,6 +478,7 @@ class Library:
             album=playlist.album,
             album_sync=self.album_sync(playlist.id),
             theme=playlist.theme,
+            limit=playlist.limit,
         )
 
     def album_sync(self, playlist_id: int) -> AlbumSync | None:
@@ -592,3 +595,21 @@ class Library:
                 "SELECT item_id, shown_at, reason FROM history ORDER BY id DESC LIMIT ?", (limit,)
             ).fetchall()
         return [{"item_id": i, "shown_at": s, "reason": r} for i, s, r in rows]
+
+
+def limited(items: list[Item], playlist: Playlist) -> list[Item]:
+    """A smart playlist's works within its limit, in the order given: the
+    favourites first, then the others in an order drawn from the rules and
+    the limit, so the same works stay until either changes (Mateusz,
+    2026-10-31: a steady set)."""
+    limit = playlist.limit
+    if limit is None or len(items) <= limit:
+        return items
+    seed = playlist.rules.model_dump_json(exclude={"exclude_ids"}) + f"|{limit}"
+
+    def drawn(item: Item) -> tuple[bool, str]:
+        digest = hashlib.sha1(f"{seed}|{item.id}".encode()).hexdigest()
+        return (not item.favorite, digest)
+
+    taken = {i.id for i in sorted(items, key=drawn)[:limit]}
+    return [i for i in items if i.id in taken]
