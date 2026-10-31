@@ -1,14 +1,16 @@
 import SwiftUI
 
 /// One search box for artists, styles, subjects, periods, techniques and
-/// plain words. What is picked becomes a chip; while typing it suggests what
-/// the words could mean, with how many works the catalogue has, and when the
-/// catalogue has little, what the museums have.
+/// plain words, with the bar of groups (techniques, periods, styles, colours,
+/// subjects, museums, the owner's own) under it. Artists and words become
+/// chips in the field, the rest shows on its group's button; while typing it
+/// suggests what the words could mean, with how many works the catalogue
+/// has, and when the catalogue has little, what the museums have.
 struct TermSearchField: View {
     @Environment(AppModel.self) private var model
     @Binding var tokens: [SearchToken]
     var prompt = "Artysta, styl, temat, epoka albo słowo"
-    /// Museums and colours the "+" offers too (Discover's search).
+    /// Museums and colours the bar offers too.
     var museums: [Museum] = []
     var colors: [String] = []
     /// Whether there are words typed in the field.
@@ -21,7 +23,6 @@ struct TermSearchField: View {
     @State private var hits: [TermHit] = []
     @State private var hint: MuseumHint?
     @State private var askingMuseums = false
-    @State private var picking = LaunchRoute.screen == "search-picker"
     @FocusState private var focused: Bool
 
     private var trimmed: String { text.trimmingCharacters(in: .whitespaces) }
@@ -32,22 +33,23 @@ struct TermSearchField: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             field
+            TermFacetBar(tokens: $tokens, museums: museums, colors: colors)
             if !trimmed.isEmpty {
                 suggestions
             }
         }
         .task(id: trimmed) { await lookUp() }
         .onChange(of: trimmed.isEmpty, initial: true) { _, empty in typing.wrappedValue = !empty }
-        .sheet(isPresented: $picking) {
-            TermPickerSheet(tokens: $tokens, museums: museums, colors: colors)
-        }
     }
+
+    /// The chips the field shows; the groups' ones are on the bar.
+    private var fieldTokens: [SearchToken] { tokens.filter(TermFacet.inField) }
 
     private var field: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Image(systemName: "magnifyingglass").foregroundStyle(Theme.inkSoft)
             FlowLayout(spacing: 6) {
-                ForEach(tokens) { token in
+                ForEach(fieldTokens) { token in
                     Button {
                         tokens.removeAll { $0.id == token.id }
                     } label: {
@@ -71,7 +73,7 @@ struct TermSearchField: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel("\(token.kindName): \(token.name), usuń")
                 }
-                TextField(tokens.isEmpty ? prompt : "Dodaj…", text: $text)
+                TextField(fieldTokens.isEmpty ? prompt : "Dodaj…", text: $text)
                     .focused($focused)
                     .submitLabel(.search)
                     .textInputAutocapitalization(.never)
@@ -79,19 +81,6 @@ struct TermSearchField: View {
                     .frame(minWidth: 120)
                     .onSubmit { addWords() }
             }
-            Button {
-                picking = true
-            } label: {
-                Image(systemName: "plus.circle.fill")
-                    .font(.title3)
-                    .foregroundStyle(Theme.accent)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(
-                museums.isEmpty
-                    ? "Dodaj technikę, epokę, styl, temat albo swoje dzieła"
-                    : "Dodaj technikę, epokę, styl, kolor, temat, muzeum albo swoje dzieła"
-            )
             if !text.isEmpty || !tokens.isEmpty {
                 Button {
                     if text.isEmpty { tokens = [] } else { text = "" }
@@ -227,180 +216,5 @@ struct TermSearchField: View {
         askingMuseums = true
         defer { askingMuseums = false }
         hint = try? await model.backend.museumHint(words)
-    }
-}
-
-/// Techniques, periods, styles, (colours and accents,) subjects, (museums)
-/// and the owner's own works to tap, in sections; what is picked shows
-/// selected and a second tap takes it off.
-struct TermBrowser: View {
-    @Environment(AppModel.self) private var model
-    @Binding var tokens: [SearchToken]
-    var museums: [Museum] = []
-    var colors: [String] = []
-
-    private func terms(_ kind: String) -> [TermInfo] { model.vocabulary.filter { $0.kind == kind } }
-
-    private func picked(_ term: TermInfo) -> Bool { tokens.contains { $0.key == term.key } }
-
-    private func toggle(_ term: TermInfo) {
-        if picked(term) {
-            tokens.removeAll { $0.key == term.key }
-        } else {
-            tokens.append(SearchToken(kind: term.kind, key: term.key, name: term.name))
-        }
-    }
-
-    private func picked(_ kind: String, _ key: String) -> Bool {
-        tokens.contains { $0.kind == kind && $0.key == key }
-    }
-
-    private func toggle(_ kind: String, _ key: String, _ name: String) {
-        if picked(kind, key) {
-            tokens.removeAll { $0.kind == kind && $0.key == key }
-        } else {
-            tokens.append(SearchToken(kind: kind, key: key, name: name))
-        }
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 22) {
-            section("Techniki", terms("technique"))
-            periods
-            section("Style i kierunki", terms("style"))
-            if !colors.isEmpty {
-                VStack(alignment: .leading, spacing: 10) {
-                    Eyebrow("Kolory")
-                    FlowLayout(spacing: 8) {
-                        ForEach(colors, id: \.self) { tag in
-                            Chip(title: ColorTag.name(tag), swatch: ColorTag.color(tag), selected: picked("color", tag)) {
-                                toggle("color", tag, ColorTag.name(tag))
-                            }
-                        }
-                    }
-                }
-                // Colours that are only a small part of a picture: "Akcent:
-                // czerwień" finds those, "Czerwień" above the red pictures.
-                VStack(alignment: .leading, spacing: 10) {
-                    Eyebrow("Akcenty")
-                    FlowLayout(spacing: 8) {
-                        ForEach(ColorTag.accentFamilies, id: \.self) { family in
-                            let tag = ColorTag.accent(family)
-                            Chip(title: ColorTag.name(family), swatch: ColorTag.color(family), selected: picked("color", tag)) {
-                                toggle("color", tag, ColorTag.name(tag))
-                            }
-                        }
-                    }
-                }
-            }
-            section("Tematy", terms("subject"))
-            if !museums.isEmpty {
-                VStack(alignment: .leading, spacing: 10) {
-                    Eyebrow("Muzea")
-                    FlowLayout(spacing: 8) {
-                        ForEach(museums) { museum in
-                            Chip(title: museum.name, systemImage: "building.columns", selected: picked("museum", museum.key)) {
-                                toggle("museum", museum.key, museum.name)
-                            }
-                        }
-                    }
-                }
-            }
-            // The owner's own works: with a heart, or on any other playlist.
-            VStack(alignment: .leading, spacing: 10) {
-                Eyebrow("Moje")
-                FlowLayout(spacing: 8) {
-                    ForEach(MineTerm.all) { mine in
-                        Chip(title: mine.name, systemImage: mine.icon, selected: picked("mine", mine.key)) {
-                            toggle("mine", mine.key, mine.name)
-                        }
-                    }
-                }
-            }
-        }
-        .task { await model.loadVocabulary() }
-    }
-
-    private func section(_ title: String, _ terms: [TermInfo]) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Eyebrow(title)
-            FlowLayout(spacing: 8) {
-                ForEach(terms) { term in
-                    Chip(title: term.name, selected: picked(term)) { toggle(term) }
-                }
-            }
-        }
-    }
-
-    private var periods: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Eyebrow("Epoki")
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 0) {
-                    ForEach(terms("period")) { period in
-                        let on = picked(period)
-                        Button { toggle(period) } label: {
-                            VStack(spacing: 2) {
-                                Text(period.name).font(.subheadline.weight(.semibold))
-                                if let from = period.yearFrom ?? period.yearTo {
-                                    Text(period.yearFrom == nil ? "do \(from)" : "od \(from)")
-                                        .font(.caption2.monospacedDigit())
-                                        .foregroundStyle(on ? Theme.paper.opacity(0.8) : Theme.inkSoft)
-                                }
-                            }
-                            .foregroundStyle(on ? Theme.paper : Theme.ink)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 9)
-                            .background(on ? Theme.ink : .clear)
-                            .overlay(alignment: .leading) { Rectangle().fill(Theme.hairline).frame(width: 1) }
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityAddTraits(on ? .isSelected : [])
-                    }
-                }
-                .background(Theme.card, in: RoundedRectangle(cornerRadius: 10))
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Theme.hairline))
-            }
-            .scrollClipDisabled()
-        }
-    }
-}
-
-/// The browser in a sheet, opened from the search field's "+" to add a
-/// subject to a style, a period to both, and so on.
-struct TermPickerSheet: View {
-    @Environment(\.dismiss) private var dismiss
-    @Binding var tokens: [SearchToken]
-    var museums: [Museum] = []
-    var colors: [String] = []
-    /// Half the screen; all of it for CI's screenshot of every section.
-    @State private var detent: PresentationDetent = LaunchRoute.screen == "search-picker" ? .large : .medium
-
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    Text(museums.isEmpty
-                        ? "Wybierz dowolnie wiele. Te same rodzaje to alternatywy, różne muszą pasować razem: np. Impresjonizm + Morze + 1850–1900."
-                        : "Wybierz dowolnie wiele. Te same rodzaje to alternatywy, różne muszą pasować razem: np. dwa muzea + Impresjonizm + Morze + Błękit.")
-                        .font(.footnote)
-                        .foregroundStyle(Theme.inkSoft)
-                        .fixedSize(horizontal: false, vertical: true)
-                    TermBrowser(tokens: $tokens, museums: museums, colors: colors)
-                }
-                .padding(.horizontal, Theme.gutter)
-                .padding(.bottom, 32)
-            }
-            .background(Theme.paper)
-            .navigationTitle("Dodaj do wyszukiwania")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Gotowe") { dismiss() }
-                }
-            }
-        }
-        .presentationDetents([.medium, .large], selection: $detent)
     }
 }
