@@ -916,8 +916,10 @@ class Europeana(Museum):
         r"\b(slides?|transparenc\w*|photograph(?:s|y)?|reproduc\w*|postcards?)\b", re.IGNORECASE
     )
     #: Aggregators of natural history, not art: OpenUp! brings botanical
-    #: photos with names like "Rosa 'Claude Monet'", found by artist.
-    not_art = ('-PROVIDER:"OpenUp!"',)
+    #: photos with names like "Rosa 'Claude Monet'", found by artist. The
+    #: city of Girona's photo archive calls its photographs paintings and
+    #: posters (see ``vocabulary.PHOTO_ARCHIVES``).
+    not_art = ('-PROVIDER:"OpenUp!"', '-DATA_PROVIDER:"Ajuntament de Girona"')
 
     def _death(self, d: dict[str, Any]) -> int | None:
         """When the work's last author died, if every author is known."""

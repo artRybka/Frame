@@ -19,6 +19,7 @@ from typing import Any
 
 import httpx
 
+from .artists import is_artist
 from .importer import Importer
 from .models import Item, ItemKind, PlaylistRules
 from .nationality import artist_note
@@ -725,8 +726,6 @@ WEEKLY_MIXES = 3
 WEEKLY_REPEAT = 12
 #: Pairs made of a subject and a style, period or one of these techniques.
 MIX_TECHNIQUES = ("technique:print", "technique:drawing", "technique:poster")
-#: Names that are no artist's.
-_NAMELESS = re.compile(r"unknown|anonymous|nieznany|anonim|^$", re.IGNORECASE)
 
 #: Themes of the week by key: this week's and those seen since the start.
 _weekly: dict[str, Theme] = {}
@@ -760,7 +759,7 @@ def _theme_from(data: dict[str, Any]) -> Theme:
 def _artist_of_the_week(items: list[Item], rng: random.Random, history: set[str]) -> Theme | None:
     """An artist with ``WEEKLY_MIN`` good works in the catalogue, not shown
     lately; those no theme names twice as likely."""
-    counts = Counter(i.artist for i in items if not _NAMELESS.search(i.artist))
+    counts = Counter(i.artist for i in items if is_artist(i.artist))
     named = [a for t in THEMES for a in t.artists]
     found = [
         a for a, n in counts.items() if n >= WEEKLY_MIN and f"week-artist-{_slug(a)}" not in history
@@ -845,6 +844,28 @@ def make_weekly(library: Library, week: str, history: set[str]) -> list[Theme]:
     return ([artist] if artist else []) + _mixes(items, rng, history)
 
 
+def _without_nameless(
+    library: Library, week: str, stored: dict[str, Any], themes: list[Theme]
+) -> list[Theme]:
+    """The week's themes made before nameless artists were told apart
+    ("Desconegut" as the artist of the week): another artist instead."""
+    kept = [t for t in themes if all(map(is_artist, t.artists))]
+    history: list[str] = stored.get("history") or []
+    made = make_weekly(library, week, set(history))
+    found = next((t for t in made if t.artists), None)
+    themes = ([found] if found else []) + kept
+    library.set_state(
+        WEEK_KEY,
+        {
+            "week": week,
+            "themes": [asdict(t) for t in themes],
+            "history": history + ([found.key] if found else []),
+        },
+    )
+    log.info("artist of %s made again: %s", week, found.name if found else "none")
+    return themes
+
+
 def weekly_themes(library: Library, day: date) -> list[Theme]:
     """The themes of ``day``'s week: made once a week (the first time, a
     pass over the catalogue) and remembered in ``library``."""
@@ -853,6 +874,8 @@ def weekly_themes(library: Library, day: date) -> list[Theme]:
         stored: dict[str, Any] = library.get_state(WEEK_KEY, {})
         if stored.get("week") == week:
             themes = [_theme_from(t) for t in stored.get("themes") or []]
+            if any(not all(map(is_artist, t.artists)) for t in themes):
+                themes = _without_nameless(library, week, stored, themes)
         else:
             history: list[str] = stored.get("history") or []
             themes = make_weekly(library, week, set(history))

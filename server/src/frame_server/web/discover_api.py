@@ -29,6 +29,7 @@ from ..library import (
     PlaylistRules,
     PlaylistSummary,
 )
+from ..library.artists import is_artist
 from ..library.duplicates import Shown
 from ..library.importer import ALL, span
 from ..library.museums import Discovery, Kind
@@ -493,7 +494,7 @@ def _term_hits(svc: FrameService, text: str, limit: int) -> list[TermHit]:
     hits: list[TermHit] = []
     artists: Counter[str] = Counter()
     for item in library.query()[1]:
-        if item.artist and wanted in fold(item.artist):
+        if wanted in fold(item.artist) and is_artist(item.artist):
             artists[item.artist] += 1
     for name, count in artists.most_common(5):
         hits.append(TermHit(kind="artist", key=name, name=name, count=count))
@@ -527,7 +528,9 @@ async def terms_in_museums(svc: Svc, q: str) -> MuseumHint:
     total, items, failed = await run_in_threadpool(svc.importer.search_all, words, 8, 1)
     items = [i for i in items if not set_aside(i)]
     wanted = fold(words)
-    names: Counter[str] = Counter(i.artist for i in items if i.artist and wanted in fold(i.artist))
+    names: Counter[str] = Counter(
+        i.artist for i in items if wanted in fold(i.artist) and is_artist(i.artist)
+    )
     artists = [TermHit(kind="artist", key=n, name=n, count=c) for n, c in names.most_common(3)]
     return MuseumHint(
         total=total, artists=artists, items=remote_items(svc, items[:8]), failed=failed
