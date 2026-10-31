@@ -10,6 +10,8 @@
   złota spirala rysowana dokładnie, siatki 3×2 i 2×3 obok złotego podziału,
   3×3 i 2×2, złote trójkąty; zapisane studia i Dzieła dnia poprawione raz
   w tle (ok. 0,10 USD za stronę).
+- Notka „O dziele” i „Czytaj więcej” na Teraz pokazują się w całości, bez
+  urwania wielokropkiem; tekst da się zaznaczyć.
 
 ## 1.54.0
 
