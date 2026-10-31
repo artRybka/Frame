@@ -175,7 +175,9 @@ struct TermFacetBar: View {
     var panelHeight: CGFloat = 460
 
     @State private var open: TermFacet? = TermFacetBar.launched
-    @Namespace private var glass
+    /// Where each group's button is on the screen: its panel grows out of it
+    /// and shrinks back into it.
+    @State private var frames: [TermFacet: CGRect] = [:]
 
     /// Over the keyboard the system field floats above the bar's usual place
     /// (the keyboard's top): the bar rises over the field.
@@ -210,53 +212,61 @@ struct TermFacetBar: View {
     private var grouped: Bool { tokens.contains { !TermFacet.inField($0) } }
 
     var body: some View {
-        GlassEffectContainer(spacing: 8) {
+        ZStack(alignment: .bottom) {
+            GlassEffectContainer(spacing: 8) {
+                if open == nil {
+                    VStack(alignment: .trailing, spacing: 8) {
+                        if grouped {
+                            Button {
+                                withAnimation(.snappy) {
+                                    tokens.removeAll { token in TermFacet.allCases.contains { $0.holds(token) } }
+                                }
+                            } label: {
+                                Label("Wyczyść wybory", systemImage: "xmark")
+                                    .font(.footnote.weight(.semibold))
+                                    .foregroundStyle(Theme.ink)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 6)
+                                    .contentShape(Capsule())
+                                    .glassEffect(.regular.interactive(), in: .capsule)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityHint("Usuwa wybory we wszystkich grupach")
+                        }
+                        Grid(horizontalSpacing: 8, verticalSpacing: 8) {
+                            ForEach(Array(stride(from: 0, to: facets.count, by: 3)), id: \.self) { start in
+                                GridRow {
+                                    ForEach(facets[start ..< min(start + 3, facets.count)]) { facet in button(facet) }
+                                }
+                            }
+                        }
+                    }
+                    .transition(.opacity)
+                }
+            }
+            // Outside the buttons' glass container: in it the panel's glass
+            // was melted out of the first button ("Technika") whatever group
+            // it was. It grows out of its own button's place instead.
             if let open {
                 TermFacetPanel(
-                    facet: open, tokens: $tokens, museums: museums, colors: colors, maxHeight: panelHeight,
-                    glass: glass
+                    facet: open, tokens: $tokens, museums: museums, colors: colors, maxHeight: panelHeight
                 ) {
-                    withAnimation(.bouncy) { self.open = nil }
+                    withAnimation(Self.motion) { self.open = nil }
                 }
-            } else {
-                VStack(alignment: .trailing, spacing: 8) {
-                    if grouped {
-                        Button {
-                            withAnimation(.snappy) {
-                                tokens.removeAll { token in TermFacet.allCases.contains { $0.holds(token) } }
-                            }
-                        } label: {
-                            Label("Wyczyść wybory", systemImage: "xmark")
-                                .font(.footnote.weight(.semibold))
-                                .foregroundStyle(Theme.ink)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 6)
-                                .contentShape(Capsule())
-                                .glassEffect(.regular.interactive(), in: .capsule)
-                                .glassEffectID("clear", in: glass)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityHint("Usuwa wybory we wszystkich grupach")
-                    }
-                    // Not lazy: every button's glass is there for the panel
-                    // to shrink back into (a lazy grid's went to "Technika").
-                    Grid(horizontalSpacing: 8, verticalSpacing: 8) {
-                        ForEach(Array(stride(from: 0, to: facets.count, by: 3)), id: \.self) { start in
-                            GridRow {
-                                ForEach(facets[start ..< min(start + 3, facets.count)]) { facet in button(facet) }
-                            }
-                        }
-                    }
-                }
+                .transition(GrowFrom(source: frames[open]))
+                .zIndex(1)
             }
         }
         .frame(maxWidth: .infinity, alignment: .trailing)
         .padding(.bottom, focus.wrappedValue ? Self.overField : 8)
         .onChange(of: focus.wrappedValue) { _, focused in
-            if focused, open != nil { withAnimation(.bouncy) { open = nil } }
+            if focused, open != nil { withAnimation(Self.motion) { open = nil } }
         }
         .task { await model.loadVocabulary() }
     }
+
+    /// How a group opens and closes.
+    static let motion = Animation.smooth(duration: 0.4)
 
     private func button(_ facet: TermFacet) -> some View {
         let picked = tokens.filter(facet.holds)
@@ -264,7 +274,7 @@ struct TermFacetBar: View {
         let on = value != nil
         return Button {
             focus.wrappedValue = false
-            withAnimation(.bouncy) { open = facet }
+            withAnimation(Self.motion) { open = facet }
         } label: {
             VStack(spacing: 1) {
                 if let value {
@@ -298,12 +308,36 @@ struct TermFacetBar: View {
             .foregroundStyle(on ? Theme.paper : Theme.ink)
             .contentShape(Capsule())
             .glassEffect(on ? Glass.regular.tint(Theme.accent).interactive() : Glass.regular.interactive(), in: .capsule)
-            .glassEffectID(facet.rawValue, in: glass)
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frames[facet] = $0 }
         }
         .buttonStyle(.plain)
         .sensoryFeedback(.selection, trigger: open == facet)
         .accessibilityLabel(facet.label(tokens, periods: periods))
         .accessibilityHint("Otwiera wybór: \(facet.title.lowercased())")
+    }
+}
+
+/// A group's panel coming out of its button: from the button's place and
+/// width, fading in, to its own; and back the same way when it closes.
+struct GrowFrom: Transition {
+    /// The button on the screen (nil: the panel just fades).
+    var source: CGRect?
+
+    func body(content: Content, phase: TransitionPhase) -> some View {
+        let shown = phase.isIdentity
+        let source = source
+        return content
+            .visualEffect { effect, proxy in
+                let frame = proxy.frame(in: .global)
+                var scale: CGFloat = 1
+                var shift = CGSize.zero
+                if !shown, let source, frame.width > 0 {
+                    scale = max(source.width / frame.width, 0.05)
+                    shift = CGSize(width: source.midX - frame.midX, height: source.midY - frame.midY)
+                }
+                return effect.scaleEffect(scale).offset(shift)
+            }
+            .opacity(shown ? 1 : 0)
     }
 }
 
@@ -316,8 +350,6 @@ struct TermFacetPanel: View {
     var museums: [Museum] = []
     var colors: [String] = []
     var maxHeight: CGFloat = 460
-    /// The bar's glass, to grow out of the group's button and back into it.
-    var glass: Namespace.ID
     var close: () -> Void
 
     @State private var filter = ""
@@ -360,7 +392,6 @@ struct TermFacetPanel: View {
             Glass.regular.tint(Theme.paper.opacity(0.55)),
             in: RoundedRectangle(cornerRadius: 28, style: .continuous)
         )
-        .glassEffectID(facet.rawValue, in: glass)
         .task {
             await model.loadVocabulary(fresh: true)
             // Opened on an accent: show the accents.
@@ -471,7 +502,7 @@ struct TermFacetPanel: View {
             }
             .pickerStyle(.segmented)
             Text(accents
-                ? "Kolor jako mały fragment obrazu, np. czerwony płaszcz na szarym tle."
+                ? "Kolor jako mały fragment obrazu."
                 : "Kolor, którego w obrazie jest dużo.")
                 .font(.footnote)
                 .foregroundStyle(Theme.inkSoft)
