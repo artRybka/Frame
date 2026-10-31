@@ -74,6 +74,7 @@ jobs:
             capture daily 16 "daily-details-$appearance" -scroll details
             capture daily 16 "daily-legacy-$appearance" -scroll legacy
             capture detail 14 "detail-$appearance"
+            capture detail 16 "detail-about-$appearance" -scroll about
             capture playlists 12 "playlists-$appearance"
             capture playlist 12 "playlist-$appearance"
             capture editor 12 "editor-$appearance"

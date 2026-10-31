@@ -385,8 +385,28 @@ actor DemoBackend: FrameBackend {
         return item
     }
 
+    /// A long note, as the language model writes one (400–900 characters),
+    /// so the card shows "O dziele" in full in the demo screenshots.
     func polish(itemID: String, wait: Int) async throws -> PolishView {
-        PolishView(status: "off", text: nil)  // no language model in the demo
+        guard let item = items.first(where: { $0.id == itemID }) else { return PolishView(status: "off", text: nil) }
+        let note = """
+        Pierwszy plan zajmuje stół przykryty białym obrusem, na którym stoją kosz z owocami, \
+        ciemna butelka i talerz z podłużnymi ciastkami. Obrus układa się w ostre, geometryczne \
+        płaszczyzny, w których biel łączy się z błękitem i szarością. Owoce są modelowane osobnymi \
+        plamami czerwieni, zieleni, żółci i pomarańczu, bez gładkich przejść. Perspektywa nie jest \
+        jednolita: blat stołu zdaje się unosić ku górze, a kosz po lewej jest pochylony, jakby każdy \
+        przedmiot oglądano z innego miejsca. W lewym dolnym rogu fałdy obrusu opadają ku krawędzi \
+        stołu i zamykają kompozycję.
+
+        Tło jest spokojne i ciepłe, z brązami i ochrą położonymi szerokimi pociągnięciami pędzla. \
+        Dzięki temu jasne owoce i biel tkaniny wysuwają się do przodu, a cała scena nabiera ciężaru. \
+        To ostatnie zdanie notki kończy się tutaj.
+        """
+        let text = PolishText(
+            title: item.title, frame: note, full: note, medium: item.medium, date: item.dateText,
+            artistNote: item.artistBio, written: "note", sources: ["dane muzeum", "obraz"]
+        )
+        return PolishView(status: "ready", text: text)
     }
 
     func describe(itemID: String, wait: Int) async throws -> SeenView {
