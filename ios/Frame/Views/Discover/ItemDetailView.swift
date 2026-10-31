@@ -899,7 +899,7 @@ enum ItemPeeks {
 }
 
 /// Where the title and artist will be, before anything is known of them.
-private struct TitleSkeleton: View {
+struct TitleSkeleton: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Capsule().fill(Theme.mat).frame(width: 70, height: 9)

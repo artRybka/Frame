@@ -87,7 +87,15 @@ struct DailyView: View {
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                page
+                // One over the other while the page fades in over its placeholder.
+                ZStack(alignment: .top) { page }
+                    // Full width from the first frame, also while loading: a
+                    // lone spinner made the page (and its paper) a narrow strip.
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .animation(.easeOut(duration: 0.3), value: work == nil)
+            }
+            .onChange(of: work) { _, work in
+                if let work { DailyPeeks.keep(work, for: route) }
             }
             .onChange(of: work?.day) {
                 guard let target = LaunchRoute.scroll else { return }  // CI screenshots: "composition", "details", "end"
@@ -115,28 +123,110 @@ struct DailyView: View {
             content(work)
                 .padding(.horizontal, Theme.gutter)
                 .padding(.bottom, 40)
+                .transition(.opacity)
         } else if failed {
-            EmptyStateView(
-                title: route.study == nil ? "Nie ma tego dzieła" : "Nie ma jeszcze studium",
-                message: route.study == nil
-                    ? "Serwer nie ma dzieła dnia na ten dzień."
-                    : "Przygotuj je na karcie dzieła, pod opisem.",
-                systemImage: "photo.artframe"
-            )
+            VStack(spacing: 16) {
+                EmptyStateView(
+                    title: route.study == nil ? "Nie ma tego dzieła" : "Nie ma jeszcze studium",
+                    message: route.study == nil
+                        ? "Serwer nie ma dzieła dnia na ten dzień."
+                        : "Przygotuj je na karcie dzieła, pod opisem.",
+                    systemImage: "photo.artframe"
+                )
+                Button("Spróbuj ponownie", systemImage: "arrow.clockwise") {
+                    Task { await load() }
+                }
+                .buttonStyle(.bordered)
+            }
+            .frame(maxWidth: .infinity)
             .padding(.top, 80)
         } else {
-            ProgressView().padding(.top, 120)
+            loading
+                .padding(.horizontal, Theme.gutter)
+                .padding(.bottom, 40)
+                .transition(.opacity)
         }
     }
 
-    /// Today's as Discover has it, then fresh; a page being written is
-    /// waited for a few times.
+    // MARK: Loading
+
+    /// What is known of the page before it loads: the strip of earlier
+    /// days it was opened from, or the work's card for a study.
+    private var peek: DailyPeeks.Peek? {
+        if let id = route.study {
+            if let item = ItemPeeks.cards[id] {
+                return DailyPeeks.Peek(
+                    item: item, title: item.title, thumb: ItemPeeks.tiles[id]?.thumb ?? .thumb(id), fallback: nil
+                )
+            }
+            return nil
+        }
+        guard let day = route.day, let brief = DailyPeeks.briefs[day] else { return nil }
+        return DailyPeeks.Peek(
+            item: brief.item.item, title: brief.title, thumb: brief.item.thumb, fallback: brief.item.thumbFallback
+        )
+    }
+
+    /// The page before it is here, laid out as it will be: the picture and
+    /// title when known, else quiet shapes, and the text's place breathing.
+    private var loading: some View {
+        let peek = peek
+        return VStack(alignment: .leading, spacing: 26) {
+            VStack(alignment: .leading, spacing: 14) {
+                Color.clear
+                    .aspectRatio(peek.map { aspect($0.item) } ?? 1.5, contentMode: .fit)
+                    .overlay {
+                        if let peek {
+                            ArtImage(
+                                ref: peek.thumb, fallback: peek.fallback, placeholder: peek.item.placeholderColor,
+                                maxPixel: 700, priority: .high
+                            )
+                        } else {
+                            Rectangle().fill(Theme.mat).breathing()
+                        }
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                    .padding(.top, 6)
+                if let peek {
+                    let byline = [peek.item.artist, peek.item.dateText].filter { !$0.isEmpty }.joined(separator: " · ")
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(peek.title.isEmpty ? "Bez tytułu" : peek.title)
+                            .font(.serif(26, weight: .semibold))
+                            .foregroundStyle(Theme.ink)
+                            .fixedSize(horizontal: false, vertical: true)
+                        if !byline.isEmpty { Text(byline).font(.subheadline).foregroundStyle(Theme.ink) }
+                    }
+                } else {
+                    TitleSkeleton()
+                }
+            }
+            VStack(alignment: .leading, spacing: 9) {
+                ForEach(0 ..< 5, id: \.self) { line in
+                    Capsule().fill(Theme.mat).frame(height: 10)
+                        .padding(.trailing, line == 4 ? 120 : CGFloat(line % 2) * 18)
+                }
+            }
+            .breathing()
+            .accessibilityHidden(true)
+            HStack(spacing: 8) {
+                ProgressView().controlSize(.small)
+                Text(route.study == nil ? "Wczytuję dzieło dnia…" : "Wczytuję studium…")
+                    .font(.footnote)
+                    .foregroundStyle(Theme.inkSoft)
+            }
+        }
+    }
+
+    /// Today's as Discover has it (another day's as last seen), then fresh;
+    /// a page being written is waited for a few times.
     private func load() async {
+        failed = false
         if let id = route.study {
             await loadStudy(id)
             return
         }
         if route.day == nil, let shown = model.daily { work = shown }
+        if let day = route.day, work == nil { work = DailyPeeks.days[day] }
         for attempt in 0..<5 {
             do {
                 let fresh = try await model.backend.daily(day: route.day, wait: attempt == 0 ? 0 : 60)
@@ -592,6 +682,30 @@ struct DailyView: View {
                 .foregroundStyle(Theme.inkSoft)
                 .fixedSize(horizontal: false, vertical: true)
         }
+    }
+}
+
+/// What the app already knows of a work of the day's page before it loads:
+/// the days' pages seen, and the strip of earlier days they list, so another
+/// day opens on its picture and title instead of an empty page.
+@MainActor
+enum DailyPeeks {
+    struct Peek {
+        var item: Item
+        var title: String
+        var thumb: ImageRef
+        var fallback: ImageRef?
+    }
+
+    private(set) static var days: [String: DailyWork] = [:]
+    private(set) static var briefs: [String: DailyWork.Brief] = [:]
+
+    static func keep(_ work: DailyWork, for route: DailyRoute) {
+        if route.study == nil, !work.day.isEmpty {
+            if days.count > 60 { days.removeAll() }
+            days[work.day] = work
+        }
+        for brief in work.previous { briefs[brief.day] = brief }
     }
 }
 
