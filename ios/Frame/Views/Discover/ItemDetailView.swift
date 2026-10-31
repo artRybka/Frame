@@ -7,6 +7,7 @@ import SwiftUI
 /// "Na ramce" opens it there to be cropped.
 struct ItemDetailView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.openStudy) private var openStudy
     let itemID: String
     @State private var item: Item?
     @State private var view = ViewMode.original
@@ -40,7 +41,6 @@ struct ItemDetailView: View {
     /// The work's study as the card found it ("Przygotuj studium dzieła");
     /// the model's, while one is followed, wins.
     @State private var study: StudyView?
-    @State private var studyOpen = false
     @State private var studyTaps = 0
 
     enum Sent { case done, failed }
@@ -93,9 +93,6 @@ struct ItemDetailView: View {
         .onChange(of: item) { _, item in
             if let item { ItemPeeks.keep(item) }
         }
-        .navigationDestination(isPresented: $studyOpen) {
-            DailyView(route: DailyRoute(day: nil, study: itemID))
-        }
         .onAppear { model.topCard = itemID }
         .onDisappear {
             if model.topCard == itemID { model.topCard = nil }
@@ -104,7 +101,7 @@ struct ItemDetailView: View {
             // "Studium dzieła gotowe" tapped while this card is on top.
             guard id == itemID else { return }
             model.studyOnCard = nil
-            studyOpen = true
+            showStudy()
         }
         .sheet(isPresented: $showingPlaylists) {
             if let item { AddToPlaylistSheet(item: item, beforeAdding: saveCrop) }
@@ -401,9 +398,9 @@ struct ItemDetailView: View {
             VStack(alignment: .leading, spacing: 8) {
                 if state.status == "ready" {
                     Button {
-                        studyOpen = true
+                        showStudy()
                     } label: {
-                        Label("Otwórz studium", systemImage: "text.book.closed.fill")
+                        Label("Otwórz studium", systemImage: "sparkles")
                     }
                     .contextMenu {
                         Button("Przygotuj od nowa", systemImage: "arrow.clockwise") { prepareStudy(item, again: true) }
@@ -434,6 +431,16 @@ struct ItemDetailView: View {
             .labelStyle(ActionLabelStyle())
             .sensoryFeedback(.impact(weight: .light), trigger: studyTaps)
             .animation(.easeInOut(duration: 0.2), value: state.status)
+        }
+    }
+
+    /// The study on top of this card, on the same stack, so the works it
+    /// shows open on top of it in turn; in a sheet off such a stack.
+    private func showStudy() {
+        if let openStudy {
+            openStudy(itemID)
+        } else {
+            model.studySheet = itemID
         }
     }
 

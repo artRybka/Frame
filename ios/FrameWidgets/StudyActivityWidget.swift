@@ -39,7 +39,7 @@ struct StudyActivityWidget: Widget {
                     .padding(.horizontal, 4)
                 }
             } compactLeading: {
-                Image(systemName: "text.book.closed.fill")
+                Image(systemName: "sparkles")
                     .foregroundStyle(StudyText.islandTint(state))
             } compactTrailing: {
                 StudyCompact(state: state)
@@ -106,13 +106,13 @@ private struct StudySteps: View {
     }
 }
 
-/// The book while it is written, then the result.
+/// The AI sparkles while it is written, then the result.
 private struct StudyMark: View {
     let state: StudyActivityAttributes.ContentState
     let island: Bool
 
     var body: some View {
-        Image(systemName: state.isReady ? "checkmark.circle.fill" : state.isFailed ? "xmark.circle.fill" : "text.book.closed.fill")
+        Image(systemName: state.isReady ? "checkmark.circle.fill" : state.isFailed ? "xmark.circle.fill" : "sparkles")
             .foregroundStyle(island ? StudyText.islandTint(state) : StudyText.tint(state))
     }
 }

@@ -218,6 +218,9 @@ struct NowView: View {
             .navigationDestination(for: String.self) { id in
                 ItemDetailView(itemID: id)
             }
+            .navigationDestination(for: DailyRoute.self) { route in
+                DailyView(route: route)
+            }
             .sheet(isPresented: $showingSend) {
                 SendSheet()
             }
@@ -285,6 +288,7 @@ struct NowView: View {
                 if !missing, intro == .waiting, model.player?.current == nil { finishIntro() }
             }
         }
+        .opensStudies(on: $path)
     }
 
     // MARK: Hero
