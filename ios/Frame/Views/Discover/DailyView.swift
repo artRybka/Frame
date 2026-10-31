@@ -308,7 +308,7 @@ struct DailyView: View {
     }
 
     /// The takes as pencil on tracing paper, one at a time: "Spojrzenie",
-    /// "Geometria"; the take's summary under it hand-written too.
+    /// "Geometria"; the take's summary under it in the page's own type.
     private func compositionSection(_ work: DailyWork, _ takes: [DailyWork.Take]) -> some View {
         let shown = takes[min(take, takes.count - 1)]
         return section("Analiza kompozycji") {
@@ -333,12 +333,7 @@ struct DailyView: View {
             }
             CompositionSketch(item: work.item, aspect: aspect(work.item.item), take: shown)
                 .padding(.top, 4)
-            if !shown.text.isEmpty {
-                Text(shown.text)
-                    .font(.hand(21))
-                    .foregroundStyle(Theme.ink.opacity(0.9))
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            if !shown.text.isEmpty { prose(shown.text, size: 15) }
         }
     }
 
