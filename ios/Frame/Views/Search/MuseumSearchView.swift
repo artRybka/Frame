@@ -1,12 +1,12 @@
 import SwiftUI
 
-/// Discover's search: words, artists, styles, subjects, periods, techniques,
-/// colours and museums as chips, over the catalogue (at once) and the
-/// museums (each as it answers). Museums, colours, styles, subjects, periods
-/// and techniques come from the field's "+"; with nothing asked yet the
-/// icon's squares play, and at the end of the results they ask the museums
-/// for more when pulled. Coming back from a work finds the results as they
-/// were.
+/// The Szukaj tab's search: words, artists, styles, subjects, periods,
+/// techniques, colours and museums as chips, over the catalogue (at once)
+/// and the museums (each as it answers). Museums, colours, styles, subjects,
+/// periods and techniques come from the field's "+"; with nothing asked yet
+/// the icon's squares play, and at the end of the results they ask the
+/// museums for more when pulled. Coming back from a work finds the results
+/// as they were.
 struct MuseumSearchView: View {
     @Environment(AppModel.self) private var model
     @State private var museums: [Museum] = []
@@ -35,7 +35,7 @@ struct MuseumSearchView: View {
     /// Whether the playlist made from the search fetches the museums' works.
     @State private var fetchForPlaylist = false
     @State private var typing = false
-    /// Where the squares start, from the top of Discover's content.
+    /// Where the squares start, from the top of the scrolled content.
     @State private var squaresTop: CGFloat = 0
 
     /// The rules' chips, then the colours' and the museums'.
@@ -106,7 +106,7 @@ struct MuseumSearchView: View {
             asked.artists = [artist]
             rules = asked
             sources = []
-            // Later, so the tab and Discover see the request first.
+            // Later, so the tab and the search's stack see the request first.
             Task { model.artistSearch = nil }
         }
         .sheet(item: $editing) { playlist in
@@ -129,10 +129,10 @@ struct MuseumSearchView: View {
             SquaresAnimation()
                 .frame(maxWidth: .infinity)
                 .containerRelativeFrame(.vertical) { height, _ in
-                    max(200, height - squaresTop - DiscoverView.bottomPadding)
+                    max(200, height - squaresTop - SearchView.bottomPadding)
                 }
                 .onGeometryChange(for: CGFloat.self) { proxy in
-                    proxy.frame(in: .named(DiscoverView.content)).minY
+                    proxy.frame(in: .named(SearchView.content)).minY
                 } action: { squaresTop = $0 }
         }
         .frame(maxWidth: .infinity)

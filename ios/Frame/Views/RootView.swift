@@ -16,11 +16,12 @@ struct RootView: View {
     @State private var tab = Tab.initial
 
     enum Tab: Hashable {
-        case now, discover, playlists, frame
+        case now, discover, search, playlists, frame
 
         static var initial: Tab {
             switch LaunchRoute.screen {
-            case "discover", "discover-group", "daily", "detail", "original", "museums", "search", "search-picker": .discover
+            case "discover", "discover-group", "daily", "detail", "original": .discover
+            case "museums", "search", "search-picker": .search
             case "playlists", "playlist", "editor", "editor-new", "editor-manual": .playlists
             case "frame", "notices", "connection", "battery", "schedule", "schedule-economy", "presentation", "presentation-photo", "orientation": .frame
             default: .now
@@ -36,6 +37,9 @@ struct RootView: View {
             DiscoverView()
                 .tabItem { Label("Odkrywaj", systemImage: "square.grid.2x2") }
                 .tag(Tab.discover)
+            SearchView()
+                .tabItem { Label("Szukaj", systemImage: "magnifyingglass") }
+                .tag(Tab.search)
             PlaylistsView()
                 .tabItem { Label("Playlisty", systemImage: "rectangle.stack") }
                 .tag(Tab.playlists)
@@ -48,7 +52,7 @@ struct RootView: View {
         // "Teraz" shows the full send bar under the picture.
         .onChange(of: tab, initial: true) { _, tab in model.notices.nowTabOpen = tab == .now }
         .onChange(of: model.artistSearch) { _, artist in
-            if artist != nil { tab = .discover }
+            if artist != nil { tab = .search }
         }
         .onChange(of: model.suggestionsOpened) { tab = .discover }
         .task {
