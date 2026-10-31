@@ -10,6 +10,9 @@
   białego ekranu z wąskim paskiem podczas pisania.
 - Dzieło dnia otwiera się od razu na całą szerokość z obrazem, zanim
   wczyta się reszta strony.
+- Ekrany w trakcie wczytywania lub puste (m.in. Odkrywaj przy pierwszym
+  uruchomieniu) mają od razu pełną szerokość: koniec białej strony z wąskim
+  beżowym paskiem w całej aplikacji.
 
 ## 1.52.0
 
