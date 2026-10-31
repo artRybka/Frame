@@ -202,15 +202,19 @@ struct TermFacetSheet: View {
     /// The content's height, measured once (narrowing the list doesn't
     /// shrink the sheet under the keyboard).
     @State private var height: CGFloat?
+    /// Kept in step with the height: a set of detents that changes under a
+    /// sheet without its selection sends the sheet to the whole screen.
+    @State private var detent = PresentationDetent.height(320 + TermFacetSheet.chrome)
     @State private var filter = ""
     @State private var accents = false
 
     /// The title bar and the room under the content.
     private static let chrome: CGFloat = 104
 
+    private var fitted: PresentationDetent { .height((height ?? 320) + Self.chrome) }
+
     private var detents: Set<PresentationDetent> {
-        let fitted = PresentationDetent.height((height ?? 320) + Self.chrome)
-        return facet.long ? [fitted, .large] : [fitted]
+        facet.long ? [fitted, .large] : [fitted]
     }
 
     var body: some View {
@@ -229,7 +233,10 @@ struct TermFacetSheet: View {
                 .padding(.top, 4)
                 .padding(.bottom, 12)
                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { measured in
-                    if height == nil || (height ?? 0) < measured && filter.isEmpty { height = measured }
+                    guard height == nil || (height ?? 0) < measured && filter.isEmpty else { return }
+                    let pulledUp = detent == .large
+                    height = measured
+                    if !pulledUp { detent = fitted }
                 }
             }
             .scrollBounceBehavior(.basedOnSize)
@@ -247,7 +254,7 @@ struct TermFacetSheet: View {
                 }
             }
         }
-        .presentationDetents(detents)
+        .presentationDetents(detents, selection: $detent)
         .presentationDragIndicator(.visible)
         .presentationBackground(Theme.paper)
         .task {
