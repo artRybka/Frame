@@ -66,6 +66,20 @@ actor ImageLoader {
         return image
     }
 
+    /// A picture kept from before (the last launch's "Teraz"), as if it had
+    /// just been loaded for `request` at `maxPixel`.
+    func remember(_ image: UIImage, for request: URLRequest, maxPixel: CGFloat) {
+        let key = "\(request.url?.absoluteString ?? "")#\(Int(maxPixel))"
+        guard cache.object(forKey: key as NSString) == nil else { return }
+        let cost = Int(image.size.width * image.size.height * image.scale * image.scale * 4)
+        cache.setObject(image, forKey: key as NSString, cost: cost)
+    }
+
+    /// The picture loaded for `request` at `maxPixel`, if it is in memory.
+    func cached(for request: URLRequest, maxPixel: CGFloat) -> UIImage? {
+        cache.object(forKey: "\(request.url?.absoluteString ?? "")#\(Int(maxPixel))" as NSString)
+    }
+
     private func finish(_ key: String, task: Task<UIImage, Error>) {
         guard inflight[key]?.task == task else { return }
         inflight[key] = nil  // done: the next ask downloads again or finds it cached
@@ -248,6 +262,9 @@ struct ArtImage: View {
     var subjectFocus = false
     /// A known place to crop around instead (fractions of the picture).
     var focusPoint: UnitPoint?
+    /// A new picture fades in over the one before instead of taking its
+    /// place at once ("Teraz" from the last launch, then the fresh one).
+    var crossfade = false
 
     @State private var image: UIImage?
     @State private var focus: UnitPoint = .center
@@ -263,6 +280,7 @@ struct ArtImage: View {
                     .resizable()
                     .aspectRatio(contentMode: contentMode)
                     .transition(.opacity)
+                    .id(crossfade ? ObjectIdentifier(image) : nil)
             } else {
                 Rectangle()
                     .fill(placeholder.gradient)
@@ -297,7 +315,11 @@ struct ArtImage: View {
                     if Task.isCancelled { return }
                     focus = point
                 }
-                image = loaded
+                if crossfade, image != nil, image !== loaded {
+                    withAnimation(.easeInOut(duration: 0.5)) { image = loaded }
+                } else {
+                    image = loaded
+                }
                 break
             } catch {
                 if Task.isCancelled { return }

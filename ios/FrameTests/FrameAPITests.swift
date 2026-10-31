@@ -350,6 +350,37 @@ final class FrameAPITests: XCTestCase {
         ])
     }
 
+    func testNowCacheKeepsTeraz() throws {
+        let json = """
+        {"playlist": null,
+         "current": {"title": "Fala", "description": "", "source": "aic",
+                     "created": "2026-10-31T06:00:00+00:00", "preview_url": "/api/previews/ABC.png",
+                     "item": null, "polish": null},
+         "upcoming": [{"id": "aic:4371", "kind": "artwork", "source": "aic", "title": "Hamamatsu",
+                       "artist": "Utagawa Hiroshige", "date_text": "1832", "year": 1832,
+                       "colors": [{"hex": "#c1b59d", "weight": 0.4}], "width": 900, "height": 600,
+                       "favorite": false, "suitability": 0.88}],
+         "queued": ["aic:4371"], "history": [], "hold": null,
+         "last_change_at": null, "next_change_at": "2026-11-01T06:00:00+00:00",
+         "busy": false, "last_error": null,
+         "history_marks": {"europeana:/2048_x/Item": {"at": "2026-10-30T06:00:00+00:00", "origin": "app"}}}
+        """
+        let player = try LiveBackend.decoder().decode(PlayerView.self, from: Data(json.utf8))
+        let snapshot = NowCache.Snapshot(player: player, orientation: "portrait", imageURL: "/api/previews/ABC.png")
+        let data = try XCTUnwrap(NowCache.encode(snapshot))
+        let back = try XCTUnwrap(NowCache.decode(data))
+        XCTAssertEqual(back.orientation, "portrait")
+        XCTAssertEqual(back.imageURL, back.player.current?.previewUrl)
+        XCTAssertEqual(back.player.upcoming.map(\.id), ["aic:4371"])
+        XCTAssertEqual(back.player.queued, ["aic:4371"])
+        XCTAssertEqual(back.player.nextChangeAt, "2026-11-01T06:00:00+00:00")
+        XCTAssertEqual(
+            back.player.historyMarks?.keys.sorted(), player.historyMarks?.keys.sorted(),
+            "ids as the server sent them, not turned into camel case"
+        )
+        XCTAssertNil(NowCache.decode(Data("{}".utf8)))
+    }
+
     func testDecodesUndeliveredPicture() throws {
         let json = """
         {"state": "failed", "failure": "timeout", "failed_at": "2026-10-26T06:00:00+00:00",
