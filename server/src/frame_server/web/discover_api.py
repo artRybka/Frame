@@ -756,6 +756,8 @@ async def stream_museums(
     keys = [] if search.empty else search.keys or svc.importer.sources()
     copies = len(search.keys) != 1
     shown = shown_in(search.rules, page)
+    if page == 1:
+        svc.player.searched_for(search.rules.artists)
 
     loop = asyncio.get_running_loop()
     answers: asyncio.Queue[MuseumAnswer | None] = asyncio.Queue()
@@ -776,6 +778,8 @@ async def stream_museums(
                 ]
                 answer = MuseumAnswer(source=key, total=total, items=new, failed=failed, next=next_)
                 loop.call_soon_threadsafe(answers.put_nowait, answer)
+                # What the owner looks for, into the catalogue.
+                svc.player.keep_searched(r.item for r in new if not r.in_library)
         except Exception:
             log.exception("searching %s failed", key)
             failure = MuseumAnswer(source=key, total=0, items=[], failed=[key])

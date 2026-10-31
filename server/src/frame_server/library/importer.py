@@ -53,6 +53,10 @@ REMOTE_MEMO = 500
 #: they are shown. How many verdicts are remembered.
 GREY_PRONE = ("wmc", "europeana")
 SPREAD_MEMO = 20_000
+#: Works a search showed, waiting to join the catalogue; more are left out.
+SEARCHED_QUEUE = 400
+#: Works a search showed that were taken or left out, not looked at again.
+SEARCHED_MEMO = 5_000
 
 
 def small_thumb(item: Item) -> str:
@@ -133,6 +137,11 @@ class Importer:
         self._spreads: OrderedDict[str, float] = OrderedDict()
         #: Colour tags of works looked at in search results, by id.
         self._tags: OrderedDict[str, list[str]] = OrderedDict()
+        #: Works a search showed, on their way into the catalogue.
+        self._searched: OrderedDict[str, Item] = OrderedDict()
+        self._searched_seen: OrderedDict[str, None] = OrderedDict()
+        self._searched_lock = threading.Lock()
+        self._searching: threading.Thread | None = None
 
     def access(self) -> Access:
         """The owner's current choices, with the shared death-year cache."""
@@ -580,6 +589,50 @@ class Importer:
                     continue
                 job.done += 1
                 job.item_ids.append(item.id)
+
+    def keep_searched(self, items: Iterable[Item], min_suitability: float = 0.0) -> None:
+        """Works a search showed, into the catalogue (``pooled``) in the
+        background, one at a time so the museums aren't hurried: what the
+        owner looks for beats a random draw. As with the catalogue's own
+        draws, copies, manuscripts and the like, black-and-white copies and
+        works below ``min_suitability`` are left out."""
+        with self._searched_lock:
+            for item in items:
+                if item.id in self._searched or item.id in self._searched_seen:
+                    continue
+                if len(self._searched) >= SEARCHED_QUEUE:
+                    break
+                self._searched[item.id] = item
+            if not self._searched or (self._searching and self._searching.is_alive()):
+                return
+            self._searching = threading.Thread(
+                target=self._take_searched, args=(min_suitability,), name="searched", daemon=True
+            )
+            self._searching.start()
+
+    def _take_searched(self, min_suitability: float) -> None:
+        while True:
+            with self._searched_lock:
+                if not self._searched:
+                    self._searching = None
+                    return
+                batch = list(self._searched.values())
+                self._searched.clear()
+                for item in batch:
+                    self._searched_seen[item.id] = None
+                while len(self._searched_seen) > SEARCHED_MEMO:
+                    self._searched_seen.popitem(last=False)
+            try:
+                self._take(
+                    [iter(batch)],
+                    len(batch),
+                    Job(id="searched", description="searched"),
+                    before=lambda item: True,
+                    after=lambda item: (item.suitability or 0.0) >= min_suitability,
+                    pooled=True,
+                )
+            except Exception:
+                log.exception("keeping searched works failed")
 
     def add_upload(
         self,

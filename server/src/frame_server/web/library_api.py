@@ -82,9 +82,10 @@ class RemoteItem(BaseModel):
 
 def remote_items(svc: FrameService, items: list[Item], copies: bool = True) -> list[RemoteItem]:
     """Works found for the app, each once, marked whether the library holds
-    them. With ``copies`` (results from several sources) a work the library
-    holds from another source comes as the library's copy, unless this one
-    is from a more reliable source than a copy only the server added."""
+    them (and whether the owner likes them). With ``copies`` (results from
+    several sources) a work the library holds from another source comes as
+    the library's copy, unless this one is from a more reliable source than a
+    copy only the server added."""
     found: dict[str, RemoteItem] = {}
     for item in items:
         twin: str | None = None
@@ -93,9 +94,12 @@ def remote_items(svc: FrameService, items: list[Item], copies: bool = True) -> l
                 item = copy
             elif other := svc.library.twin(item):
                 twin = other.id
-        held = svc.library.has(item.id)
+        own = svc.library.get(item.id)
+        if own is not None:  # the museum's text, the owner's heart
+            item = item.model_copy(update={"favorite": own.favorite})
         found.setdefault(
-            item.id, RemoteItem(item=item, in_library=held, work=work_key(item), twin=twin)
+            item.id,
+            RemoteItem(item=item, in_library=own is not None, work=work_key(item), twin=twin),
         )
     return list(found.values())
 

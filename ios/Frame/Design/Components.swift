@@ -132,6 +132,9 @@ struct ArtCard: View {
     var showsCaption = true
     /// Where the picture comes from; the server's thumbnail by default.
     var ref: ImageRef?
+    /// The heart in the corner of a favourite; off where a `TileHeart`
+    /// takes its place.
+    var showsFavorite = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -152,7 +155,7 @@ struct ArtCard: View {
                 .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                 .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                 .overlay(alignment: .topTrailing) {
-                    if item.favorite {
+                    if showsFavorite, item.favorite {
                         Image(systemName: "heart.fill")
                             .font(.caption.weight(.bold))
                             .foregroundStyle(.white)
@@ -177,6 +180,36 @@ struct ArtCard: View {
         }
         // The card opened from here shows this much while it loads.
         .onAppear { ItemPeeks.remember(item, thumb: ref ?? .thumb(item.id)) }
+    }
+}
+
+/// The heart over a tile's top right corner, as `ArtCard` shows a
+/// favourite's, but tapped: into Ulubione and out again. Put over the tile's
+/// link, so the tap doesn't open the work.
+struct TileHeart: View {
+    let favorite: Bool
+    let toggle: () -> Void
+    @State private var taps = 0
+
+    var body: some View {
+        Button {
+            taps += 1
+            toggle()
+        } label: {
+            Image(systemName: favorite ? "heart.fill" : "heart")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.white)
+                .contentTransition(.symbolEffect(.replace))
+                .padding(6)
+                .background(.black.opacity(0.35), in: Circle())
+                .padding(6)
+                // A finger's room, the circle where the favourite's is.
+                .padding([.leading, .bottom], 8)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .sensoryFeedback(.impact(weight: .light), trigger: taps)
+        .accessibilityLabel(favorite ? "Usuń z ulubionych" : "Dodaj do ulubionych")
     }
 }
 
