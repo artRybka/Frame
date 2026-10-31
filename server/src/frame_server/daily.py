@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING
 import httpx
 from PIL import Image
 
-from .ai.daily import KIND, DailyJob, Detail
+from .ai.daily import KIND, DailyJob, Detail, Essay
 from .ai.jobs import text_hash
 from .imaging.layout import load_image
 from .library import Item, ItemKind, PlaylistRules
@@ -213,11 +213,12 @@ class Daily:
         key = text_hash(f"{box.x:.4f}", f"{box.y:.4f}", f"{box.w:.4f}", f"{box.h:.4f}")[:10]
         return self.details_dir / f"{item.file_stem}-{key}.jpg"
 
-    def detail(self, item: Item, index: int) -> Path | None:
+    def detail(self, item: Item, index: int, essay: Essay | None = None) -> Path | None:
         """The page's ``index``th fragment cut from the work's original; None
         when the page has no such fragment. All of them are cut at once,
-        from the museum's full size when it can be had."""
-        essay = self.job.essay(item)
+        from the museum's full size when it can be had. ``essay``: another
+        write-up than the day's (a study of the work)."""
+        essay = essay or self.job.essay(item)
         if essay is None or not 0 <= index < len(essay.details):
             return None
         path = self.detail_path(item, essay.details[index])

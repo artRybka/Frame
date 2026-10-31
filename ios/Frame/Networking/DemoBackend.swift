@@ -35,6 +35,8 @@ actor DemoBackend: FrameBackend {
     /// "Aktualizuj serwer" in demo: the newer version is installed at once.
     private var demoServerVersion = "0.35.0"
     private var originalsLimitMb: Int?
+    /// Studies asked for, and when: "written" a few seconds later.
+    private var studies: [String: Date] = [:]
     private var aiValue = AiSettings(
         keySet: false, keyTail: nil, keyFromApp: false, plText: true, keywordsArtworks: true,
         keywordsPhotos: true, daily: true, monthlyLimitUsd: 5, spentUsd: 0,
@@ -754,6 +756,42 @@ actor DemoBackend: FrameBackend {
             model: "claude-opus-5-5",
             previous: previous
         )
+    }
+
+    func study(itemID: String, wait: Int) async throws -> StudyView {
+        guard let asked = studies[itemID] else {
+            return StudyView(status: "none", error: "", work: nil, costUsd: 0.14)
+        }
+        let elapsed = Date().timeIntervalSince(asked)
+        if elapsed < 6 {
+            try? await Task.sleep(for: .seconds(min(Double(wait), 2)))
+            return StudyView(status: elapsed < 2 ? "sources" : "writing", error: "", work: nil, costUsd: 0.14)
+        }
+        guard let item = items.first(where: { $0.id == itemID }) else { throw BackendError.notFound }
+        var work = try await daily(day: nil, wait: 0)
+        work.day = ""
+        work.whyToday = ""
+        work.previous = []
+        if work.item.id != itemID {
+            // The demo's text is about the wave: another work keeps what its museum says.
+            work.item = RemoteItem(item: item, inLibrary: true)
+            work.title = item.title
+            work.teaser = ""
+            work.headline = "Co mówi muzeum"
+            work.context = item.description.isEmpty ? [] : [item.description]
+            work.artist = item.artistBio
+            work.composition = nil
+            work.colour = ""
+            work.details = []
+            work.onFrame = ""
+            work.legacy = []
+        }
+        return StudyView(status: "ready", error: "", work: work, costUsd: 0.14)
+    }
+
+    func prepareStudy(itemID: String, again: Bool) async throws -> StudyView {
+        if again || studies[itemID] == nil { studies[itemID] = Date() }
+        return try await study(itemID: itemID, wait: 0)
     }
 
     func themePlaylist(key: String, play: Bool) async throws -> ThemePlaylist {

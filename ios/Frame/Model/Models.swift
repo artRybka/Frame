@@ -1387,10 +1387,31 @@ struct DailyWork: Codable, Hashable, Sendable {
     var previous: [Brief]
 }
 
-/// A work of the day's page, opened from the tile or from a past day.
+/// A work of the day's page, opened from the tile or from a past day; or a
+/// study of any work, the same page asked for on the work's card.
 struct DailyRoute: Hashable {
     /// Nil: today.
     var day: String?
+    /// The work whose study this is.
+    var study: String? = nil
+}
+
+/// A study of a work, `GET`/`POST /api/study/<id>`: the work of the day's
+/// page for any work, written by Claude when asked for and kept.
+struct StudyView: Codable, Hashable, Sendable {
+    /// "off" (no key), "none" (not asked for), on its way ("waiting",
+    /// "sources", "writing", "details"), "ready" or "failed".
+    var status: String
+    /// Why it failed, in Polish.
+    var error: String
+    /// The page, once ready.
+    var work: DailyWork?
+    /// What one costs, about (USD).
+    var costUsd: Double
+
+    static let pending: Set<String> = ["waiting", "sources", "writing", "details"]
+
+    var isPending: Bool { Self.pending.contains(status) }
 }
 
 /// An idea for a playlist, `GET /api/themes`: browsed live from the

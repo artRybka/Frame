@@ -1,0 +1,119 @@
+"""A study of any work, asked for on its card: the work of the day's page
+for the work, written once and kept."""
+
+from __future__ import annotations
+
+import io
+import time
+from pathlib import Path
+from typing import Any
+
+from fastapi.testclient import TestClient
+from PIL import Image
+from test_ai import GOOD_KEY, FakeAnthropic
+from test_daily import ANSWER, _app, _catalogue
+
+from frame_server.ai import AiConfigUpdate
+from frame_server.ai.client import OPUS
+from frame_server.ai.study import KIND
+from frame_server.service import FrameService
+
+
+def _studies(fake: FakeAnthropic) -> list[dict[str, Any]]:
+    return [p for p in fake.asked if p["model"] == OPUS]
+
+
+def _ready(client: TestClient, item_id: str) -> dict[str, Any]:
+    """The study once its fragments are cut."""
+    for _ in range(40):
+        view = client.get(f"/api/study/{item_id}?wait=1").json()
+        if view["status"] not in ("waiting", "sources", "writing", "details"):
+            return view
+        time.sleep(0.05)
+    raise AssertionError(f"still {view['status']}")
+
+
+def test_without_a_key_there_is_no_study(tmp_path: Path) -> None:
+    app = _app(tmp_path)
+    with TestClient(app) as client:
+        _catalogue(app.state.service)
+        assert client.get("/api/study/met:1").json()["status"] == "off"
+        assert client.post("/api/study/met:1").status_code == 409
+
+
+def test_claude_writes_a_study_once_and_it_is_kept(tmp_path: Path) -> None:
+    app = _app(tmp_path)
+    svc: FrameService = app.state.service
+    fake = FakeAnthropic(GOOD_KEY)
+    fake.answer = ANSWER
+    svc.claude.factory = lambda key: fake
+    svc.ai_config.set_key(GOOD_KEY)
+    svc.ai_config.update(AiConfigUpdate(pl_text=False, keywords_artworks=False, daily=False))
+    with TestClient(app) as client:
+        _catalogue(svc)
+        svc.ai.start()
+        try:
+            before = client.get("/api/study/met:1").json()
+            assert before["status"] == "none" and before["work"] is None
+            assert 0 < before["cost_usd"] < 1
+            # Opening the card asks for keywords and Polish texts, never a study.
+            client.post("/api/library/items/met:3/describe")
+            assert client.get("/api/study/met:3").json()["status"] == "none"
+
+            client.post("/api/study/met:1?wait=10")
+            view = _ready(client, "met:1")
+        finally:
+            svc.ai.stop()
+        assert view["status"] == "ready", view
+        work = view["work"]
+        assert work["written"] is True and work["model"] == OPUS
+        assert work["title"] == "Wielka fala w Kanagawie"
+        assert work["why_today"] == "" and work["day"] == "" and work["previous"] == []
+        assert [v["title"] for v in work["composition"]["views"]] == ["Spojrzenie", "Geometria"]
+        assert [(s["item"]["item"]["id"], s["why"]) for s in work["similar"]] == [
+            ("met:2", "ta sama seria")
+        ]
+        details = work["details"]
+        assert details[0]["image"].startswith("/api/study/met%3A1/detail?n=0&v=")
+        cut = client.get(details[1]["image"])
+        assert cut.status_code == 200
+        assert Image.open(io.BytesIO(cut.content)).size == (270, 240)
+        assert client.get("/api/study/met:1/detail?n=5").status_code == 404
+
+        (asked,) = _studies(fake)
+        assert "studium" in asked["system"][0]["text"]
+        assert "Dziś jest" in asked["messages"][0]["content"][1]["text"]
+
+        # Kept: asked once, and still there after the prompt changes.
+        client.post("/api/study/met:1")
+        note = svc.library.note("met:1", KIND)
+        assert note is not None
+        svc.library.save_note(note.model_copy(update={"prompt_version": "study-0"}))
+        assert client.get("/api/study/met:1").json()["status"] == "ready"
+        assert len(_studies(fake)) == 1
+
+
+def test_a_new_study_on_request(tmp_path: Path) -> None:
+    app = _app(tmp_path)
+    svc: FrameService = app.state.service
+    fake = FakeAnthropic(GOOD_KEY)
+    fake.answer = {**ANSWER, "teaser": ""}  # unusable
+    svc.claude.factory = lambda key: fake
+    svc.ai_config.set_key(GOOD_KEY)
+    svc.ai_config.update(AiConfigUpdate(pl_text=False, keywords_artworks=False, daily=False))
+    with TestClient(app) as client:
+        _catalogue(svc)
+        svc.ai.start()
+        try:
+            client.post("/api/study/met:1?wait=10")
+            failed = _ready(client, "met:1")
+            assert failed["status"] == "failed" and failed["error"]
+            client.post("/api/study/met:1?wait=10")  # not asked again by itself
+            assert len(_studies(fake)) == 1
+
+            fake.answer = ANSWER
+            client.post("/api/study/met:1?again=true&wait=10")
+            assert _ready(client, "met:1")["status"] == "ready"
+        finally:
+            svc.ai.stop()
+        assert len(_studies(fake)) == 2

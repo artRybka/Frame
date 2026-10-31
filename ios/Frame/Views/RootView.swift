@@ -55,6 +55,13 @@ struct RootView: View {
             if artist != nil { tab = .search }
         }
         .onChange(of: model.suggestionsOpened) { tab = .discover }
+        // A study ready, opened from its card at the bottom.
+        .sheet(isPresented: Binding(
+            get: { model.studySheet != nil },
+            set: { if !$0 { model.studySheet = nil } }
+        )) {
+            if let id = model.studySheet { StudySheet(itemID: id) }
+        }
         .task {
             await model.refreshAll()
             await model.settleLiveActivity()  // one left from before the app was closed

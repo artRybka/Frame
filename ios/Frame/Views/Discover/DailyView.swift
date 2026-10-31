@@ -72,7 +72,8 @@ struct DailyTile: View {
 /// a note about the artist, the composition drawn over the picture, colour,
 /// works like it, what it led to, the days before and, last, how it fares on
 /// the frame with the buttons to show or queue it. Written by Claude once a day; while
-/// it writes (or without a key) the museum's text stands in.
+/// it writes (or without a key) the museum's text stands in. The same page is a
+/// study of any work (`route.study`), written when asked for on its card.
 struct DailyView: View {
     @Environment(AppModel.self) private var model
     let route: DailyRoute
@@ -97,9 +98,12 @@ struct DailyView: View {
             }
         }
         .background(Theme.paper)
-        .navigationTitle("Dzieło dnia")
+        .navigationTitle(route.study == nil ? "Dzieło dnia" : "Studium dzieła")
         .navigationBarTitleDisplayMode(.inline)
         .task(id: route) { await load() }
+        .onAppear {
+            if let id = route.study { model.studyOpened(itemID: id) }
+        }
     }
 
     @ViewBuilder
@@ -110,8 +114,10 @@ struct DailyView: View {
                 .padding(.bottom, 40)
         } else if failed {
             EmptyStateView(
-                title: "Nie ma tego dzieła",
-                message: "Serwer nie ma dzieła dnia na ten dzień.",
+                title: route.study == nil ? "Nie ma tego dzieła" : "Nie ma jeszcze studium",
+                message: route.study == nil
+                    ? "Serwer nie ma dzieła dnia na ten dzień."
+                    : "Przygotuj je na karcie dzieła, pod opisem.",
                 systemImage: "photo.artframe"
             )
             .padding(.top, 80)
@@ -123,6 +129,10 @@ struct DailyView: View {
     /// Today's as Discover has it, then fresh; a page being written is
     /// waited for a few times.
     private func load() async {
+        if let id = route.study {
+            await loadStudy(id)
+            return
+        }
         if route.day == nil, let shown = model.daily { work = shown }
         for attempt in 0..<5 {
             do {
@@ -138,6 +148,26 @@ struct DailyView: View {
                 return
             }
         }
+    }
+
+    /// A study, as the card last heard it, then fresh; one still on its way
+    /// (its card at the bottom says how far) is waited for.
+    private func loadStudy(_ id: String) async {
+        if let shown = model.studies[id]?.work { work = shown }
+        for attempt in 0..<12 {
+            do {
+                let view = try await model.backend.study(itemID: id, wait: attempt == 0 ? 0 : 25)
+                if let fresh = view.work {
+                    work = fresh
+                    return
+                }
+                guard view.isPending else { break }
+            } catch {
+                if work == nil, !error.isCancellation { model.show(error) }
+                break
+            }
+        }
+        if work == nil { failed = true }
     }
 
     @ViewBuilder
@@ -536,6 +566,30 @@ struct DailyView: View {
                 .font(.caption)
                 .foregroundStyle(Theme.inkSoft)
                 .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
+/// A study opened from "Studium dzieła gotowe" at the bottom, over whatever
+/// was open.
+struct StudySheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let itemID: String
+
+    var body: some View {
+        NavigationStack {
+            DailyView(route: DailyRoute(day: nil, study: itemID))
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Zamknij") { dismiss() }
+                    }
+                }
+                .navigationDestination(for: String.self) { id in
+                    ItemDetailView(itemID: id)
+                }
+                .navigationDestination(for: DailyRoute.self) { route in
+                    DailyView(route: route)
+                }
         }
     }
 }
