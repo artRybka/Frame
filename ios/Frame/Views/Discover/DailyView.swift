@@ -761,9 +761,10 @@ enum DailyPeeks {
 struct StudySheet: View {
     @Environment(\.dismiss) private var dismiss
     let itemID: String
+    @State private var path = NavigationPath()
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             DailyView(route: DailyRoute(day: nil, study: itemID))
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
@@ -777,5 +778,6 @@ struct StudySheet: View {
                     DailyView(route: route)
                 }
         }
+        .opensStudies(on: $path)
     }
 }

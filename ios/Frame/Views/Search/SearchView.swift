@@ -17,7 +17,11 @@ struct SearchView: View {
                 .navigationDestination(for: String.self) { id in
                     ItemDetailView(itemID: id)
                 }
+                .navigationDestination(for: DailyRoute.self) { route in
+                    DailyView(route: route)
+                }
         }
+        .opensStudies(on: $path)
         // A tapped artist's name: back to the top, on the search.
         .onChange(of: model.artistSearch, initial: true) { _, artist in
             if artist != nil { path = NavigationPath() }

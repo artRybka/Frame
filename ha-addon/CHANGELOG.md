@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.58.1
+
+- Miniatury w studium (Inne prace artysty, Podobne dzieła, Dalsze losy)
+  otwierają wskazane dzieło, a nie studiowane; ikona studium to gwiazdki AI.
+- Tytuły dzieł bez przedrostka języka (np. „en:Night Windows”); zapisane
+  dzieła poprawiane raz przy starcie.
+
 ## 1.58.0
 
 - Domownicy: właściciel zaprasza osobę w Konfiguracja → Domownicy (kod QR

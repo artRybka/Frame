@@ -15,6 +15,8 @@ struct PlaylistEditorView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var playlist: Playlist
     @State private var preview: RulesPreview?
+    /// Works opened from the search, and their studies.
+    @State private var path = NavigationPath()
     /// What a manual playlist's works are looked for with.
     @State private var manualSearch = PlaylistRules()
     /// Museum works being saved to the library to join a manual playlist.
@@ -101,7 +103,7 @@ struct PlaylistEditorView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             ScrollViewReader { scroller in
                 ScrollView {
                     VStack(alignment: .leading, spacing: 26) {
@@ -177,6 +179,9 @@ struct PlaylistEditorView: View {
                 .navigationDestination(for: String.self) { id in
                     ItemDetailView(itemID: id)
                 }
+                .navigationDestination(for: DailyRoute.self) { route in
+                    DailyView(route: route)
+                }
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
                         Button("Anuluj") { dismiss() }
@@ -214,6 +219,7 @@ struct PlaylistEditorView: View {
             .task(id: picked) { await loadPhotos() }
             .task(id: playlist.kind == .album ? album.url : "") { await checkAlbum() }
         }
+        .opensStudies(on: $path)
     }
 
     // MARK: Sections

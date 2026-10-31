@@ -20,7 +20,7 @@ import httpx
 from pydantic import BaseModel, Field
 
 from ..imaging.text import MAX_BODY, sentences
-from ..library.markup import strip_markup
+from ..library.markup import strip_language_prefix, strip_markup
 from ..library.models import ItemKind, Note
 from ..library.museums import client
 from ..library.nationality import artist_note, fix_note
@@ -272,7 +272,9 @@ def clean(data: dict[str, Any], item: Item, facts: Facts | None) -> PolishText |
         note = fix_note(_plain(data.get("artist_note"), SHORT_MAX), gender)
     sources = [s for s in data.get("sources") or [] if s in SOURCES] if written == "note" else []
     return PolishText(
-        title=_plain(title, TITLE_MAX + 40),  # the frame wraps three lines, then cuts
+        title=strip_language_prefix(
+            _plain(title, TITLE_MAX + 40)
+        ),  # the frame wraps three lines, then cuts
         frame=frame,
         full=full,
         medium=_plain(data.get("medium"), SHORT_MAX) if item.medium else "",
