@@ -126,6 +126,7 @@ struct PlaylistEditorView: View {
                             albumSection
                         }
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(Theme.gutter)
                     .coordinateSpace(.named(Self.content))
                 }

@@ -93,6 +93,9 @@ struct MuseumSearchView: View {
                     idle
                 }
             }
+            // Full width also while only the suggestions' spinner is there:
+            // the scrolled content alone made the page a narrow strip.
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, Theme.gutter)
             .padding(.bottom, SearchView.bottomPadding)
             .coordinateSpace(.named(SearchView.content))

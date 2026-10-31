@@ -121,6 +121,14 @@ struct TermSuggestions: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            if lookup.hits.isEmpty, lookup.hint == nil, !lookup.askingMuseums {
+                // Asking the catalogue (the words are still being typed).
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text("Szukam…").font(.subheadline).foregroundStyle(Theme.inkSoft)
+                }
+                .padding(12)
+            }
             ForEach(lookup.hits) { hit in
                 row(
                     icon: hit.token.icon, title: hit.name, kind: hit.token.kindName,
@@ -166,6 +174,7 @@ struct TermSuggestions: View {
                     .padding(12)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(Theme.card, in: RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.hairline))
     }
