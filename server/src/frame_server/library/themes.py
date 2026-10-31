@@ -716,9 +716,8 @@ def day_reason(day: date) -> str:
 
 #: The week's themes, made from the catalogue: {"week", "themes", "history"}.
 WEEK_KEY = "weekly_themes"
-#: Least works of a theme of the week the catalogue must have (and how good).
+#: Least works of a theme of the week the catalogue must have.
 WEEKLY_MIN = 12
-WEEKLY_SUITABILITY = 0.4
 #: Pairs of terms each week, besides the artist of the week.
 WEEKLY_MIXES = 3
 #: A theme of the week is not made again for this many weeks.
@@ -838,7 +837,7 @@ def _mixes(items: list[Item], rng: random.Random, history: set[str]) -> list[The
 def make_weekly(library: Library, week: str, history: set[str]) -> list[Theme]:
     """The themes of ``week`` from what the catalogue holds: the artist of
     the week and a few pairs of terms, none made in the weeks before."""
-    rules = PlaylistRules(kinds=[ItemKind.ARTWORK], min_suitability=WEEKLY_SUITABILITY)
+    rules = PlaylistRules(kinds=[ItemKind.ARTWORK])
     items = library.query(rules)[1]
     rng = random.Random(week)
     artist = _artist_of_the_week(items, rng, history)

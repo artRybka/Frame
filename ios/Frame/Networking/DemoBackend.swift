@@ -149,7 +149,6 @@ actor DemoBackend: FrameBackend {
         if !rules.terms.isEmpty && !DemoDiscover.matches(item, terms: rules.terms) { return false }
         if let from = rules.yearFrom, (item.year ?? Int.min) < from { return false }
         if let to = rules.yearTo, (item.year ?? Int.max) > to { return false }
-        if let minimum = rules.minSuitability, (item.suitability ?? 0) < minimum { return false }
         if !rules.query.isEmpty {
             let haystack = ([item.title, item.artist, item.medium, item.classification, item.culture]
                 + item.styles + item.subjects).joined(separator: " ").lowercased()

@@ -150,8 +150,8 @@ def matches(item: Item, rules: PlaylistRules, listed: Collection[str] = ()) -> b
         return False
     if rules.year_to is not None and (item.year is None or item.year > rules.year_to):
         return False
-    if rules.min_suitability is not None and (item.suitability or 0) < rules.min_suitability:
-        return False
+    # ``min_suitability`` of older playlists and themes is no longer kept to
+    # (Mateusz, 2026-10-31: the e-paper threshold left out important works).
     if rules.query:
         haystack = " ".join(
             [

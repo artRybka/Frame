@@ -73,8 +73,6 @@ SENT_NAME = "Historia przesłanych"
 POOL_LOW = 8
 POOL_SIZE = 24
 POOL_MAX = 80
-#: Suggestions: least suitability for e-paper.
-SUGGESTION_SUITABILITY = 0.4
 #: Artists of the owner's taste asked for when topping up Suggestions.
 TASTE_ARTISTS = 6
 #: Artists asked for in Szukaj, the latest this many: each search counts as
@@ -101,11 +99,6 @@ CATALOGUE_TURNOVER = 60
 CATALOGUE_TURNOVER_EVERY = timedelta(hours=6)
 #: When a full catalogue last took works in.
 TURNOVER_KEY = "catalogue_turnover"
-#: Trimming: each month in the catalogue counts as this much less
-#: suitability, so works nobody kept make room for new ones in time.
-CATALOGUE_AGEING = 0.05
-#: Works hardly visible on e-paper are not worth a place in the catalogue.
-CATALOGUE_SUITABILITY = 0.25
 # How long a due change may keep the panel from its night sleep.
 CHANGE_GRACE = timedelta(minutes=3)
 
@@ -924,7 +917,6 @@ class Player:
                     job,
                     artists=artists,
                     queries=queries,
-                    min_suitability=SUGGESTION_SUITABILITY,
                 )
                 self._add_suggestions(job.item_ids)
 
@@ -948,9 +940,10 @@ class Player:
 
     def _pick_from_catalogue(self, count: int, settings: FrameSettings) -> list[Item]:
         """Up to ``count`` new Suggestions from the catalogue: half by the
-        artists the owner likes, the rest anything good on e-paper."""
+        artists the owner likes, the rest anything. (No e-paper threshold:
+        Mateusz, 2026-10-31, it left out Rembrandt and Vermeer.)"""
         taken = {i.id for i in self.suggestions()}
-        rules = PlaylistRules(kinds=[ItemKind.ARTWORK], min_suitability=SUGGESTION_SUITABILITY)
+        rules = PlaylistRules(kinds=[ItemKind.ARTWORK])
         pool = [i for i in self.fresh(self.library.query(rules)[1], settings) if i.id not in taken]
         taste = set(self.taste())
         liked = [i for i in pool if i.artist in taste]
@@ -988,8 +981,7 @@ class Player:
 
     def keep_searched(self, items: Iterable[Item]) -> None:
         """Works a search showed join the catalogue in the background (as
-        the catalogue's own draws do, so not while tests run the server),
-        however they would do on e-paper: the owner chose them."""
+        the catalogue's own draws do, so not while tests run the server)."""
         settings = self.service.settings
         if settings.scheduler and settings.catalogue_mb:
             self.service.importer.keep_searched(items)
@@ -1006,7 +998,7 @@ class Player:
 
     def trim_catalogue(self) -> int:
         """Keep the catalogue's thumbnails within ``catalogue_mb``: works the
-        server added that nobody kept go, the weakest on e-paper first."""
+        server added that nobody kept go, the longest there first."""
         images = self.service.images
         limit = self.service.settings.catalogue_mb * 1024 * 1024
         total = images.thumbs_size()
@@ -1022,16 +1014,7 @@ class Player:
             and not i.framing
             and i.id not in protected
         ]
-        now = utcnow()
-
-        def worth(item: Item) -> float:
-            try:
-                months = (now - datetime.fromisoformat(item.added_at)).days / 30
-            except (ValueError, TypeError):
-                months = 0.0
-            return (item.suitability or 0.0) - CATALOGUE_AGEING * max(months, 0.0)
-
-        spare.sort(key=lambda i: (worth(i), i.added_at))
+        spare.sort(key=lambda i: i.added_at)
         gone: list[Item] = []
         for item in spare:
             if total <= limit:
@@ -1053,7 +1036,6 @@ class Player:
             Job(id=job.id, description="highlights"),  # its own count
             kinds=(),
             highlights=CATALOGUE_HIGHLIGHTS,
-            min_suitability=CATALOGUE_SUITABILITY,
         )
 
     def grow_catalogue(self) -> Job | None:
@@ -1100,7 +1082,6 @@ class Player:
                     queries=queries,
                     kinds=CATALOGUE_KINDS,
                     highlights=CATALOGUE_HIGHLIGHTS,
-                    min_suitability=CATALOGUE_SUITABILITY,
                 )
             if full:
                 self.trim_catalogue()

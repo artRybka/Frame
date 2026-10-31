@@ -590,12 +590,12 @@ class Importer:
                 job.done += 1
                 job.item_ids.append(item.id)
 
-    def keep_searched(self, items: Iterable[Item], min_suitability: float = 0.0) -> None:
+    def keep_searched(self, items: Iterable[Item]) -> None:
         """Works a search showed, into the catalogue (``pooled``) in the
         background, one at a time so the museums aren't hurried: what the
         owner looks for beats a random draw. As with the catalogue's own
-        draws, copies, manuscripts and the like, black-and-white copies and
-        works below ``min_suitability`` are left out."""
+        draws, copies, manuscripts and the like and black-and-white copies
+        are left out, however the works would do on e-paper."""
         with self._searched_lock:
             for item in items:
                 if item.id in self._searched or item.id in self._searched_seen:
@@ -606,11 +606,11 @@ class Importer:
             if not self._searched or (self._searching and self._searching.is_alive()):
                 return
             self._searching = threading.Thread(
-                target=self._take_searched, args=(min_suitability,), name="searched", daemon=True
+                target=self._take_searched, name="searched", daemon=True
             )
             self._searching.start()
 
-    def _take_searched(self, min_suitability: float) -> None:
+    def _take_searched(self) -> None:
         while True:
             with self._searched_lock:
                 if not self._searched:
@@ -628,7 +628,7 @@ class Importer:
                     len(batch),
                     Job(id="searched", description="searched"),
                     before=lambda item: True,
-                    after=lambda item: (item.suitability or 0.0) >= min_suitability,
+                    after=lambda item: True,
                     pooled=True,
                 )
             except Exception:
