@@ -13,7 +13,7 @@ import re
 import threading
 import time
 from collections import Counter
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import date, timedelta
 from typing import Any
 
@@ -45,7 +45,7 @@ SEARCH_SOURCES = ("aic", "cma", "met")
 BROWSE_WAIT = 8.0
 
 GROUPS = (
-    "Na ten tydzień",
+    "Dziś dla Ciebie",
     "Bo lubisz",
     "Kierunki i style",
     "Grafika i plakat",
@@ -152,7 +152,9 @@ POLISH_INTERWAR = (
 )
 
 
-WEEKLY = "Na ten tydzień"
+#: The group of the theme of the day (made in the app) and the week's
+#: themes; "Na ten tydzień" before it was renamed.
+WEEKLY = "Dziś dla Ciebie"
 LIKES = "Bo lubisz"
 STYLES = "Kierunki i style"
 PRINTS = "Grafika i plakat"
@@ -876,7 +878,8 @@ def weekly_themes(library: Library, day: date) -> list[Theme]:
     with _weekly_lock:
         stored: dict[str, Any] = library.get_state(WEEK_KEY, {})
         if stored.get("week") == week:
-            themes = [_theme_from(t) for t in stored.get("themes") or []]
+            # Stored before the group was renamed: under its new name.
+            themes = [replace(_theme_from(t), group=WEEKLY) for t in stored.get("themes") or []]
             if any(not all(map(is_artist, t.artists)) for t in themes):
                 themes = _without_nameless(library, week, stored, themes)
         else:
