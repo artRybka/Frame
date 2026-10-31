@@ -6,7 +6,8 @@ import SwiftUI
 /// periods and techniques come from the field's "+"; with nothing asked yet
 /// the icon's squares play, and at the end of the results they ask the
 /// museums for more when pulled. Coming back from a work finds the results
-/// as they were.
+/// as they were. The heart on a tile puts the work in Ulubione (a museum's
+/// work joins the library with it).
 struct MuseumSearchView: View {
     @Environment(AppModel.self) private var model
     @State private var museums: [Museum] = []
@@ -30,7 +31,8 @@ struct MuseumSearchView: View {
     /// search again; the search goes on while a work is open.
     @State private var searched: SearchKey?
     @State private var loader: Task<Void, Never>?
-    @State private var adding: Set<String> = []
+    /// Works whose heart the server is still taking.
+    @State private var liking: Set<String> = []
     @State private var editing: Playlist?
     /// Whether the playlist made from the search fetches the museums' works.
     @State private var fetchForPlaylist = false
@@ -109,6 +111,12 @@ struct MuseumSearchView: View {
             // Later, so the tab and the search's stack see the request first.
             Task { model.artistSearch = nil }
         }
+        .onChange(of: model.hearts) { _, hearts in
+            // Liked or unliked on the work's card meanwhile.
+            for (id, favorite) in hearts where !liking.contains(id) {
+                mark(id, favorite: favorite)
+            }
+        }
         .sheet(item: $editing) { playlist in
             PlaylistEditorView(playlist: playlist, fetchFromMuseums: fetchForPlaylist)
         }
@@ -170,10 +178,11 @@ struct MuseumSearchView: View {
                 Eyebrow("W katalogu · \(Names.works(catalogue.total))")
                 MasonryGrid(items: catalogue.items) { item in
                     NavigationLink(value: item.id) {
-                        ArtCard(item: item)
+                        ArtCard(item: item, showsFavorite: false)
                     }
                     .buttonStyle(.plain)
                     .contextMenu { QueueButton(itemID: item.id) }
+                    .overlay(alignment: .topTrailing) { heart(item) }
                 }
             }
             if !fromMuseums.isEmpty || asking {
@@ -192,14 +201,12 @@ struct MuseumSearchView: View {
             }
             MasonryGrid(items: fromMuseums.map(\.item.summary)) { summary in
                 let remote = fromMuseums.first { $0.id == summary.id }
-                VStack(alignment: .leading, spacing: 8) {
-                    NavigationLink(value: summary.id) {
-                        ArtCard(item: summary, ref: remote?.thumb)
-                    }
-                    .buttonStyle(.plain)
-                    .contextMenu { QueueButton(itemID: summary.id) }
-                    addButton(remote)
+                NavigationLink(value: summary.id) {
+                    ArtCard(item: summary, ref: remote?.thumb, showsFavorite: false)
                 }
+                .buttonStyle(.plain)
+                .contextMenu { QueueButton(itemID: summary.id) }
+                .overlay(alignment: .topTrailing) { heart(summary) }
             }
             if !searching, !asking, catalogue?.items.isEmpty ?? true, fromMuseums.isEmpty {
                 EmptyStateView(
@@ -222,32 +229,10 @@ struct MuseumSearchView: View {
         return Names.works(inCatalogue + fromMuseums.count) + (next.isEmpty ? "" : "+")
     }
 
-    @ViewBuilder
-    private func addButton(_ remote: RemoteItem?) -> some View {
-        if let remote {
-            if remote.inLibrary {
-                Label("Zapisane", systemImage: "checkmark")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(Theme.good)
-            } else {
-                Button {
-                    Task { await add(remote) }
-                } label: {
-                    HStack(spacing: 6) {
-                        if adding.contains(remote.id) {
-                            ProgressView().controlSize(.mini)
-                        } else {
-                            Image(systemName: "plus")
-                        }
-                        Text("Zapisz")
-                    }
-                    .font(.caption.weight(.semibold))
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(Theme.accent.opacity(0.12), in: Capsule())
-                }
-                .disabled(adding.contains(remote.id))
-            }
+    private func heart(_ item: ItemSummary) -> some View {
+        TileHeart(favorite: item.favorite) {
+            guard !liking.contains(item.id) else { return }
+            Task { await setFavorite(item.id, !item.favorite) }
         }
     }
 
@@ -327,18 +312,30 @@ struct MuseumSearchView: View {
         }
     }
 
-    private func add(_ remote: RemoteItem) async {
-        adding.insert(remote.id)
-        defer { adding.remove(remote.id) }
-        do {
-            _ = try await model.backend.importArtwork(source: remote.item.source, sourceID: remote.item.sourceId)
-            if let index = results.firstIndex(where: { $0.id == remote.id }) {
-                results[index].inLibrary = true
-            }
-            model.notices.done("Dodano do biblioteki")
-            await model.refreshFacets()
-        } catch {
-            model.show(error)
+    /// Into Ulubione or out, the heart turned at once; a museum's work joins
+    /// the library with it (the server keeps a work once it is liked).
+    @MainActor
+    private func setFavorite(_ id: String, _ favorite: Bool) async {
+        liking.insert(id)
+        defer { liking.remove(id) }
+        let joins = results.contains { $0.id == id && !$0.inLibrary }
+        mark(id, favorite: favorite)
+        guard let item = await model.setFavorite(id, favorite) else {
+            mark(id, favorite: !favorite)
+            return
+        }
+        mark(id, favorite: item.favorite)
+        if joins { await model.refreshFacets() }
+    }
+
+    /// The tile's heart. A museum's work keeps its picture from the museum:
+    /// the server's own would load it again.
+    private func mark(_ id: String, favorite: Bool) {
+        if let index = results.firstIndex(where: { $0.id == id }) {
+            results[index].item.favorite = favorite
+        }
+        if let index = catalogue?.items.firstIndex(where: { $0.id == id }) {
+            catalogue?.items[index].favorite = favorite
         }
     }
 }

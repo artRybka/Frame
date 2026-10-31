@@ -54,6 +54,9 @@ final class AppModel {
     /// Goes up when a work is liked, unliked, left out or brought back:
     /// views listing a playlist's works load them again.
     private(set) var libraryRevision = 0
+    /// The heart each work was last given here, for tiles loaded before
+    /// (Szukaj's, after the work's card liked it).
+    private(set) var hearts: [String: Bool] = [:]
     var facets = Facets.empty
     /// Styles, subjects, periods and techniques to search by, with Polish names.
     var vocabulary: [TermInfo] = []
@@ -648,6 +651,7 @@ final class AppModel {
     func setFavorite(_ id: String, _ favorite: Bool) async -> Item? {
         do {
             let item = try await backend.setFavorite(id: id, favorite)
+            hearts[id] = item.favorite
             if player?.current?.item?.id == id { player?.current?.item = item }
             libraryChanged()
             return item

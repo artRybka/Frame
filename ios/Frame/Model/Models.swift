@@ -130,7 +130,7 @@ struct ItemSummary: Codable, Identifiable, Hashable, Sendable {
 
 struct ItemPage: Codable, Sendable {
     let total: Int
-    let items: [ItemSummary]
+    var items: [ItemSummary]
 }
 
 struct FacetValue: Codable, Hashable, Sendable, Identifiable {

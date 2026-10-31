@@ -216,6 +216,10 @@ def test_searching_every_source_finds_each_work_once(service, monkeypatch) -> No
     ]
     # One source asked for: its own works, as they are.
     assert [r.item.id for r in remote_items(service, items, copies=False)][2] == "aic:1"
+    # The heart on a search tile is the library's, over the museum's text.
+    service.library.upsert(items[2].model_copy(update={"favorite": True}))
+    held = remote_items(service, items, copies=False)[2]
+    assert (held.in_library, held.item.favorite, items[2].favorite) == (True, True, False)
 
 
 def test_filling_takes_each_work_once_from_the_best_source(service, monkeypatch) -> None:
