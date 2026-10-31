@@ -53,9 +53,14 @@ struct NotificationsSection: View {
                         .font(.caption)
                         .foregroundStyle(Theme.bad)
                 }
-                if settings != nil {
+                if settings != nil, model.isOwner {
                     Divider()
                     keyRow
+                } else if settings != nil, settings?.key == nil {
+                    // A household member: the key is the owner's to add.
+                    Text("Serwer nie ma jeszcze klucza APNs: poproś właściciela ramki, żeby go dodał.")
+                        .font(.caption)
+                        .foregroundStyle(Theme.inkSoft)
                 }
                 if allowed, settings?.key != nil, settings?.device != nil {
                     Divider()

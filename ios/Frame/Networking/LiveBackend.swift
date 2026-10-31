@@ -453,6 +453,41 @@ struct LiveBackend: FrameBackend {
 
     func aiSettings() async throws -> AiSettings { try await get("/api/ai") }
 
+    // MARK: People
+
+    func me() async throws -> Me { try await get("/api/me") }
+    func leave() async throws { try await send("/api/me/device", method: "DELETE") }
+    func people() async throws -> People { try await get("/api/users") }
+
+    func invite(_ request: InviteRequest) async throws -> NewInvite {
+        try await send("/api/users/invites", method: "POST", body: request)
+    }
+
+    func cancelInvite(id: String) async throws -> People {
+        try await send("/api/users/invites/\(escape(id))", method: "DELETE")
+    }
+
+    func removeDevice(id: String) async throws -> People {
+        try await send("/api/users/devices/\(escape(id))", method: "DELETE")
+    }
+
+    func removePerson(id: String) async throws -> People {
+        try await send("/api/users/\(escape(id))", method: "DELETE")
+    }
+
+    func renamePerson(id: String, name: String) async throws -> People {
+        try await send("/api/users/\(escape(id))", method: "PUT", body: PersonRename(name: name))
+    }
+
+    func savePeopleSettings(_ settings: PeopleSettings) async throws -> People {
+        try await send("/api/users/settings", method: "PUT", body: settings)
+    }
+
+    /// An invitation redeemed (no token yet: the code is the proof).
+    func join(code: String, device: String) async throws -> Joined {
+        try await send("/api/join", method: "POST", body: JoinRequest(code: code, device: device))
+    }
+
     func saveAiSettings(_ update: AiSettingsUpdate) async throws -> AiSettings {
         try await send("/api/ai", method: "PUT", body: update)
     }

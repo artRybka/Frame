@@ -113,6 +113,21 @@ struct PlaylistEditorView: View {
                             }
                             .pickerStyle(.segmented)
                         }
+                        if model.me?.people == true {
+                            // Mateusz, 2026-10-31: new playlists are private.
+                            Toggle(isOn: Binding(
+                                get: { playlist.shared ?? false },
+                                set: { playlist.shared = $0 }
+                            )) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Wspólna")
+                                    Text("Domownicy też ją widzą i mogą pokazać na ramce; zmieniasz ją tylko Ty.")
+                                        .font(.caption)
+                                        .foregroundStyle(Theme.inkSoft)
+                                }
+                            }
+                            .tint(Theme.accent)
+                        }
 
                         switch playlist.kind {
                         case .smart:

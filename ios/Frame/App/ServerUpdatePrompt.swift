@@ -63,7 +63,8 @@ extension AppModel {
     /// card shows once per app and server version, the Serwer tile keeps the
     /// arrow after that.
     func offerServerUpdate() async {
-        guard !demoMode, connection == .connected else { return }
+        // A household member does not run the server.
+        guard !demoMode, connection == .connected, isOwner else { return }
         let app = ServerUpdatePrompt.appVersion
         guard var update = try? await backend.serverUpdate() else { return }
         serverUpdate = update

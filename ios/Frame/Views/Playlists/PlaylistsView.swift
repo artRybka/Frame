@@ -10,7 +10,8 @@ struct PlaylistsView: View {
 
     private var active: PlaylistSummary? {
         guard let id = model.settings?.playlistId else { return nil }
-        return model.playlists.first { $0.id == id }
+        // Another person's private playlist on the frame: as the player has it.
+        return model.playlists.first { $0.id == id } ?? model.player?.playlist.flatMap { $0.id == id ? $0 : nil }
     }
 
     /// The frame plays Propozycje: no playlist.
@@ -20,11 +21,13 @@ struct PlaylistsView: View {
         NavigationStack(path: $path) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 26) {
-                    if let active {
+                    if let active, model.playlists.contains(where: { $0.id == active.id }) {
                         NavigationLink(value: active.id) {
                             NowPlayingCard(playlist: active)
                         }
                         .buttonStyle(.plain)
+                    } else if let active {
+                        NowPlayingCard(playlist: active)  // someone else's, not shared
                     } else if suggestionsActive {
                         NavigationLink(value: SuggestionsRoute()) {
                             NowPlayingCard(title: "Propozycje", subtitle: "dobór z Odkrywaj") {
@@ -139,7 +142,7 @@ extension PlaylistsView {
             }
             .disabled(playlist.itemCount == 0)
         }
-        if !playlist.isFavorites {
+        if !playlist.isFavorites, playlist.isMine {
             Button("Usuń playlistę", systemImage: "trash", role: .destructive) { deleting = playlist }
         }
     }
@@ -334,6 +337,16 @@ struct PlaylistCard: View {
                 }
                 .font(.caption)
                 .foregroundStyle(Theme.inkSoft)
+                if !playlist.isMine, let owner = playlist.ownerName, !owner.isEmpty {
+                    // Someone else's, shared with the household.
+                    Label(owner, systemImage: "person.2")
+                        .font(.caption2)
+                        .foregroundStyle(Theme.inkSoft)
+                } else if playlist.isMine, playlist.shared == true {
+                    Label("Wspólna", systemImage: "person.2")
+                        .font(.caption2)
+                        .foregroundStyle(Theme.inkSoft)
+                }
             }
         }
     }
