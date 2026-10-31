@@ -955,7 +955,7 @@ private struct EditorSearch: ViewModifier {
                     if groupsShown {
                         TermFacetBar(
                             tokens: tokens, museums: museums, colors: ColorTag.families + ColorTag.moods,
-                            focus: focused, panelHeight: height * 0.6
+                            focus: focused, panelHeight: height * TermFacetBar.panelShare
                         )
                         .padding(.horizontal, Theme.gutter)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
