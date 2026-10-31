@@ -278,3 +278,139 @@ def test_the_app_registers_uploads_the_key_and_tests(tmp_path: Path) -> None:
 
         client.delete(f"/api/notifications/devices/{PHONE}")
         assert client.get("/api/notifications").json()["devices"] == 0
+
+
+# -- studies, the artist of the week, birthdays ---------------------------------
+
+
+def _work(service, item_id: str, **kw):
+    from frame_server.library.models import Item, ItemKind
+
+    kw.setdefault("kind", ItemKind.ARTWORK)
+    return service.library.upsert(
+        Item(id=item_id, source=item_id.split(":")[0], source_id=item_id, **kw)
+    )
+
+
+def test_a_phone_of_the_first_release_gets_the_new_kinds(notifier: Notifier) -> None:
+    from frame_server.notifications import DEVICES_KEY, FIRST_KINDS
+
+    old = {"token": PHONE, "sandbox": False, "kinds": ["battery", "daily"]}
+    notifier.library.set_state(DEVICES_KEY, [old])
+    device = notifier.device(PHONE)
+    assert device is not None
+    assert device.kinds == ["battery", "daily", "study", "week_artist", "birthday"]
+    assert set(FIRST_KINDS) < set(device.seen or [])
+    # Switched off once, it stays off.
+    notifier.register(PHONE, sandbox=False, kinds=["daily"])
+    assert notifier.device(PHONE).kinds == ["daily"]  # type: ignore[union-attr]
+
+
+def test_a_written_study_is_told(service) -> None:
+    told: list[tuple[str, str, str | None]] = []
+    service.notifier.notify = lambda kind, title, body, **kw: told.append(
+        (kind, body, kw.get("route"))
+    )
+    item = _work(service, "met:7", title="Ul", artist="Claude Monet")
+    assert service.study.on_ready is not None
+    service.study.on_ready(item)
+    assert told == [("study", "„Ul”: można czytać.", "study/met:7")]
+
+
+def test_the_artist_of_the_week_goes_out_on_monday_at_nine(
+    notifier: Notifier, apple: FakeApple, service, monkeypatch
+) -> None:
+    from frame_server.library import themes
+
+    notifier.register(PHONE, sandbox=False)
+    week = themes.Theme(
+        "week-artist-monet",
+        "Claude Monet",
+        "Artysta tygodnia. Impresjonista. W katalogu: 12 dzieł.",
+        themes.WEEKLY,
+        artists=("Claude Monet",),
+    )
+    monkeypatch.setattr(themes, "weekly_themes", lambda library, day: [week])
+    sunday = datetime(2026, 11, 1, 9, 30, tzinfo=UTC)
+    monday_early = datetime(2026, 11, 2, 7, 30, tzinfo=UTC)  # 8:30 in Warsaw
+    monday = datetime(2026, 11, 2, 8, 5, tzinfo=UTC)
+    assert not asyncio.run(notifications.week_tick(service, sunday))
+    assert not asyncio.run(notifications.week_tick(service, monday_early))
+    assert asyncio.run(notifications.week_tick(service, monday))
+    assert not asyncio.run(notifications.week_tick(service, monday))
+    payload = apple.sent[0][3]
+    assert payload["aps"]["alert"] == {  # type: ignore[index]
+        "title": "Artysta tygodnia: Claude Monet",
+        "body": "Impresjonista. W katalogu: 12 dzieł.",
+    }
+    assert payload["route"] == "theme/week-artist-monet"
+
+
+def test_birthdays_of_favourite_artists_go_out_at_ten(
+    notifier: Notifier, apple: FakeApple, service
+) -> None:
+    from frame_server.births import STATE_KEY
+
+    notifier.register(PHONE, sandbox=False)
+    _work(service, "met:1", title="Ul", artist="Monet, Claude", favorite=True, year=1891)
+    _work(service, "met:2", title="Most", artist="Monet, Claude", favorite=True, year=1899)
+    _work(service, "met:3", title="Taniec", artist="Henri Matisse", favorite=True)
+    _work(service, "met:4", title="Fale", artist="Hokusai", favorite=False)
+    service.library.set_state(
+        STATE_KEY,
+        {
+            "Monet, Claude": {"born": "1840-11-14", "at": "2026-11-01T00:00:00+00:00"},
+            "Henri Matisse": {"born": "1869-12-31", "at": "2026-11-01T00:00:00+00:00"},
+        },
+    )
+    morning = datetime(2026, 11, 14, 8, 0, tzinfo=UTC)  # 9:00 in Warsaw
+    ten = datetime(2026, 11, 14, 9, 5, tzinfo=UTC)
+    assert asyncio.run(notifications.birthday_tick(service, morning)) == 0
+    assert asyncio.run(notifications.birthday_tick(service, ten)) == 1
+    assert asyncio.run(notifications.birthday_tick(service, ten)) == 0
+    payload = apple.sent[0][3]
+    assert payload["aps"]["alert"] == {  # type: ignore[index]
+        "title": "Urodziny: Claude Monet",
+        "body": "186. rocznica urodzin (ur. 14.11.1840). W Twoich ulubionych: 2 dzieła.",
+    }
+    assert payload["route"] == "artist/Monet, Claude"
+
+
+def test_a_birthday_is_found_on_wikidata_only_for_the_right_person(service) -> None:
+    from frame_server.births import Births, search_name
+
+    assert search_name("Monet, Claude (1840-1926)") == "Claude Monet"
+    _work(service, "met:1", title="Ul", artist="Monet, Claude", favorite=True, year=1891)
+
+    def wikidata(request: httpx.Request) -> httpx.Response:
+        params = dict(request.url.params)
+        if params["action"] == "wbsearchentities":
+            assert params["search"] == "Claude Monet"
+            return httpx.Response(200, json={"search": [{"id": "Q1"}, {"id": "Q2"}, {"id": "Q3"}]})
+
+        def born(time: str, precision: int = 11) -> list[dict[str, object]]:
+            value = {"time": time, "precision": precision}
+            return [{"mainsnak": {"datavalue": {"value": value}}}]
+
+        human = [{"mainsnak": {"datavalue": {"value": {"id": "Q5"}}}}]
+        return httpx.Response(
+            200,
+            json={
+                "entities": {
+                    "Q1": {"claims": {"P31": [], "P569": born("+1840-11-14T00:00:00Z")}},
+                    "Q2": {"claims": {"P31": human, "P569": born("+1990-03-01T00:00:00Z")}},
+                    "Q3": {"claims": {"P31": human, "P569": born("+1840-11-14T00:00:00Z")}},
+                }
+            },
+        )
+
+    births = Births(service.library)
+    assert births.missing(["Monet, Claude"]) == ["Monet, Claude"]
+    with httpx.Client(transport=httpx.MockTransport(wikidata)) as client:
+        assert births.look_up(["Monet, Claude"], client) == 1
+    assert str(births.born("Monet, Claude")) == "1840-11-14"
+    assert births.missing(["Monet, Claude"]) == []
+    from datetime import date
+
+    assert births.today(date(2026, 11, 14), ["Monet, Claude"])
+    assert not births.today(date(2026, 11, 15), ["Monet, Claude"])

@@ -1301,8 +1301,8 @@ struct DailyWork: Codable, Hashable, Sendable {
         var text: String
     }
 
-    /// One take on the composition ("Spojrzenie", "Geometria"): its marks and
-    /// a grid under them ("none", "golden", "thirds").
+    /// One take on the composition ("Geometria", "Spojrzenie", "Geometria detali"): its marks and
+    /// a grid under them ("none", "golden", "thirds", "halves").
     struct Take: Codable, Hashable, Sendable {
         var title: String
         var grid: String

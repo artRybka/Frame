@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.52.0
+
+- Szklane Szukaj (iOS 26): systemowa karta wyszukiwania z polem na dole; nad
+  polem sześć grup w cienkich szklanych kapsułach (bez „Moje” i strzałek),
+  które chowają się przy przewijaniu wyników i wracają po stuknięciu pola;
+  nad wynikami linijka z tym, czego szukasz. To samo w edytorze playlist
+  (pole na dole arkusza, w ręcznej „Wybrane · N”).
+- Epoka: 20 nazwanych okresów w grupach Europa, Polska oraz Japonia i Chiny,
+  z klamrą lat pod osią; okresy polskie i azjatyckie sprawdzają też
+  pochodzenie dzieła.
+- Analiza kompozycji: Geometria pierwsza i z wielkimi liniami całego obrazu
+  (piramida, X, klin, koła i owale, linie mogą wychodzić poza obraz), siatka
+  2×2 obok złotego podziału i 3×3, nowe ujęcie Geometria detali zamiast
+  Rytmu; zapisane studia i Dzieła dnia poprawione raz w tle (ok. 0,10 USD
+  za stronę).
+- Aplikacja wymaga teraz iOS 26.
+
+## 1.51.0
+
+- Trzy nowe powiadomienia, każde z własnym przełącznikiem: „Studium gotowe”
+  (dotknięcie otwiera studium), „Artysta tygodnia” w poniedziałek o 9:00
+  (otwiera jego temat w Odkrywaj) i „Rocznica urodzin” o 10:00 dla artystów
+  Twoich ulubionych dzieł (data urodzenia z Wikidata; otwiera Szukaj na
+  artyście). Telefony zapisane wcześniej mają je od razu włączone.
+
 ## 1.50.0
 
 - Analiza kompozycji trafniejsza: Claude dostaje większy obraz i podaje

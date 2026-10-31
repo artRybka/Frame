@@ -9,7 +9,7 @@ enum LaunchRoute {
     /// "end", "composition", "details", "legacy": a long page opens scrolled
     /// there; "studies": Discover at "Studia dzieł".
     static let scroll = UserDefaults.standard.string(forKey: "scroll")
-    /// The composition's take shown first (CI screenshots of "Rytm").
+    /// The composition's take shown first (CI screenshots of the later takes).
     static let take = UserDefaults.standard.integer(forKey: "take")
 }
 
@@ -52,10 +52,21 @@ struct RootView: View {
         .onChange(of: model.suggestionsOpened) { tab = .discover }
         // A notification tapped: where it points.
         .onChange(of: PushCenter.shared.taps, initial: true) {
-            switch PushCenter.shared.takeRoute() {
+            guard let route = PushCenter.shared.takeRoute() else { return }
+            let parts = route.split(separator: "/", maxSplits: 1).map(String.init)
+            let argument = parts.count > 1 ? parts[1] : ""
+            switch parts[0] {
             case "daily":
                 tab = .discover
                 model.dailyOpened += 1
+            case "study" where !argument.isEmpty:
+                model.openStudy(itemID: argument)
+            case "theme" where !argument.isEmpty:
+                tab = .discover
+                model.themeOpened = argument
+                model.themeOpenings += 1
+            case "artist" where !argument.isEmpty:
+                model.artistSearch = argument  // Szukaj opens on the artist
             case "now": tab = .now
             case "frame", "server": tab = .frame
             default: break

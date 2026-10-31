@@ -295,13 +295,14 @@ enum Pencil {
         return spot
     }
 
-    /// The grid under a take: lines at the golden section or thirds, each a
-    /// faint ruled stroke across the picture.
+    /// The grid under a take: lines at the golden section, thirds (3×3) or
+    /// halves (2×2), each a faint ruled stroke across the picture.
     static func grid(_ grid: String, in size: CGSize) -> [[CGPoint]] {
         let cuts: [CGFloat]
         switch grid {
         case "golden": cuts = [0.382, 0.618]
         case "thirds": cuts = [1 / 3, 2 / 3]
+        case "halves": cuts = [0.5]
         default: return []
         }
         return cuts.flatMap { cut in

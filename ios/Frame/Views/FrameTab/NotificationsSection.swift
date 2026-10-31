@@ -90,7 +90,7 @@ struct NotificationsSection: View {
             }
         case .notDetermined:
             VStack(alignment: .leading, spacing: 6) {
-                Text("Bateria, błąd wysyłki, zmiana dzieła, nowa wersja serwera i Dzieło dnia o 8:30.")
+                Text("Bateria, błąd wysyłki, zmiana dzieła, nowa wersja serwera, Dzieło dnia, gotowe studium, Artysta tygodnia i urodziny ulubionych artystów.")
                     .font(.subheadline)
                     .foregroundStyle(Theme.inkSoft)
                 Button {
