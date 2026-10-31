@@ -20,13 +20,13 @@ from PIL import Image, JpegImagePlugin
 
 from frame_server import status as status_module
 from frame_server.config import Settings
-from frame_server.device.mdc import CMD_CONTENT_DOWNLOAD
+from frame_server.device.mdc import CMD_CONTENT_DOWNLOAD, BatteryStatus
 from frame_server.imaging.pipeline import encode_image
 from frame_server.panel_app import AppHello
 from frame_server.progress import Stage
 from frame_server.schedule import FrameSettings
 from frame_server.service import FrameService
-from frame_server.status import wifi_reading
+from frame_server.status import DeviceStatus, StatusMonitor, wifi_reading
 from frame_server.store import PanelRequest
 from frame_server.web.player_api import _player_view
 
@@ -113,6 +113,42 @@ INSTALL = [
 # ... and reads the source first when it starts an app that should run.
 START = [(CMD_CONTENT_DOWNLOAD, b"\x81"), *INSTALL]
 BATTERY = AppHello(reason="wake", build="1.0.0", battery=80, charging=False)
+
+
+@pytest.mark.parametrize(("level", "charging"), [(40, True), (94, True), (95, False), (100, False)])
+def test_the_app_on_the_charger_charges_until_almost_full(
+    tmp_path: Path, level: int, charging: bool
+) -> None:
+    """The app's ``charging`` only says the charger is in: the bolt while
+    the battery fills, the plug once it is (almost) full (2026-10-31)."""
+    service = _service(tmp_path)
+    service.app.answer(AppHello(reason="poll", build="2.0.0", battery=level, charging=True))
+    status = service.status.status
+    assert status.power_source == "ac" and status.charging is charging
+    service.app.answer(AppHello(reason="wake", build="2.0.0", battery=level, charging=False))
+    assert status.power_source == "battery" and status.charging is False
+
+
+@pytest.mark.parametrize(
+    ("raw", "source", "charging"),
+    [
+        ("73 00 01 01 50 02 02", "ac", True),  # 80 % on the charger
+        ("73 00 01 01 64 02 02", "ac", False),  # 100 % on the charger (E1)
+        ("73 00 01 01 50 02 00", "battery", False),
+    ],
+)
+def test_the_mdc_read_agrees_with_the_app(raw: str, source: str, charging: bool) -> None:
+    """MDC and the app no longer take turns: byte 1 is 00 on the charger,
+    and read as "charging" it put the plug in place of the bolt."""
+    payload = bytes.fromhex(raw)
+
+    class Mdc:
+        async def battery(self) -> BatteryStatus:
+            return BatteryStatus(level=payload[4], raw=payload, flags=())
+
+    status = DeviceStatus()
+    asyncio.run(StatusMonitor._read_battery(Mdc(), status))  # type: ignore[arg-type]
+    assert status.power_source == source and status.charging is charging
 
 
 def test_online_sleeps_until_the_change_and_deeply_at_night(tmp_path: Path) -> None:
