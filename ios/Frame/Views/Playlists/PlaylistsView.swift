@@ -58,10 +58,11 @@ struct PlaylistsView: View {
                         .buttonStyle(.plain)
                     }
                 }
+                .pageWidth()
                 .padding(.horizontal, Theme.gutter)
                 .padding(.bottom, 40)
             }
-            .background(Theme.paper)
+            .paperPage()
             .navigationTitle("Playlisty")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -189,7 +190,7 @@ struct SuggestionsPage: View {
             .padding(.horizontal, Theme.gutter)
             .padding(.bottom, 40)
         }
-        .background(Theme.paper.ignoresSafeArea())
+        .paperPage()
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await model.refreshDiscover(force: true) }
     }

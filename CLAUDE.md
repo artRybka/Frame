@@ -38,6 +38,10 @@ from Linux.
 Screenshots are not part of CI: when a branch changes the look, dispatch
 `ios-screenshots.yml` on that branch (`workflow_dispatch`, ref = branch) and
 take the `screenshots` artifact.
+Pages: `.paperPage()` on the ScrollView (never a bare `.background(Theme.paper)`,
+`PageLayoutTests` fails on it) and `.pageWidth()` on its content. A vertical
+ScrollView is only as wide as its content, so a page holding just a spinner or
+an empty list was a narrow beige strip on white (`Design/Page.swift`).
 
 ## CI
 

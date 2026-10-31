@@ -13,6 +13,7 @@ struct DiscoverView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     SuggestionsView(path: $path)
+                        .pageWidth()
                         .padding(.horizontal, Theme.gutter)
                         .padding(.top, 8)
                         .padding(.bottom, 32)
@@ -26,7 +27,7 @@ struct DiscoverView: View {
                 }
             }
             .refreshable { await model.refreshDiscover(force: true) }
-            .background(Theme.paper)
+            .paperPage()
             .navigationTitle("Odkrywaj")
             .navigationDestination(for: String.self) { id in
                 ItemDetailView(itemID: id)

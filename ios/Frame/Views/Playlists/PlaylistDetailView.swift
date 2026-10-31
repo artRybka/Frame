@@ -50,7 +50,7 @@ struct PlaylistDetailView: View {
             .padding(.bottom, 40)
             .animation(.easeOut(duration: 0.3), value: detail == nil)
         }
-        .background(Theme.paper.ignoresSafeArea())
+        .paperPage()
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {

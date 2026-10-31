@@ -73,7 +73,7 @@ struct ItemDetailView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .animation(.easeOut(duration: 0.3), value: item == nil)
         }
-        .background(Theme.paper)
+        .paperPage()
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if let item { itemToolbar(item) }

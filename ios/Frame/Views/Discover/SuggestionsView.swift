@@ -79,6 +79,8 @@ struct SuggestionsView: View {
             if let studies = model.studyList, !studies.isEmpty { StudyRow(studies: studies).id("studies") }
             ForEach(otherRows) { row in rowView(row) }
         }
+        // Full width while it is still empty, so the spinner is in the middle.
+        .pageWidth()
         .overlay(alignment: .top) {
             if loading && rows.isEmpty { ProgressView().padding(.top, 60) }
         }
@@ -303,11 +305,12 @@ struct StudiesGridView: View {
                     )
                 }
             }
+            .pageWidth()
             .padding(.horizontal, Theme.gutter)
             .padding(.top, 4)
             .padding(.bottom, 32)
         }
-        .background(Theme.paper)
+        .paperPage()
         .navigationTitle("Studia dzieł")
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await model.loadStudyList(model.backend) }
@@ -460,10 +463,11 @@ struct ThemeView: View {
                     .disabled(loading)
                 }
             }
+            .pageWidth()
             .padding(.horizontal, Theme.gutter)
             .padding(.bottom, 32)
         }
-        .background(Theme.paper)
+        .paperPage()
         .navigationTitle(theme.name)
         .navigationBarTitleDisplayMode(.inline)
         .task {
