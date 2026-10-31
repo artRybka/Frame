@@ -34,6 +34,7 @@ STATE_KEY = "study_items"
 Status = Literal["off", "none", "waiting", "sources", "writing", "details", "ready", "failed"]
 #: The study is on its way.
 PENDING: tuple[Status, ...] = ("waiting", "sources", "writing", "details")
+FAILED = "Claude nie napisał studium tego dzieła."
 
 
 class Study:
@@ -49,8 +50,11 @@ class Study:
         self._cutting: set[str] = set()
         #: Why the last question about a work failed, in Polish.
         self._errors: dict[str, str] = {}
-        #: Told when a study is written (notifications), from a worker thread.
-        self.on_ready: Callable[[Item], None] | None = None
+        #: Told of each step of a study asked for: on its way ("waiting",
+        #: "sources", "writing", "details"), then "ready" (fragments cut) or
+        #: "failed" with why; from worker threads (notifications, Live Activity).
+        self.on_step: Callable[[Item, Status, str], None] | None = None
+        job.on_stage = self._staged
 
     def requested(self, item_id: str) -> bool:
         return item_id in self.library.get_state(STATE_KEY, [])
@@ -102,8 +106,11 @@ class Study:
             self._errors.pop(item.id, None)
             future = self._borrowed(item) if not again else None
             future = future or self.ai.need_now(item.id, KIND)
+            waiting = not future.done() and item.id not in self._cutting
             if not future.done():
                 self._asking[item.id] = future
+        if waiting:
+            self._step(item, self.job.stages.get(item.id, "waiting"))  # type: ignore[arg-type]
         future.add_done_callback(lambda done: self._written(item.id, done))
         return future
 
@@ -120,25 +127,30 @@ class Study:
 
     def _written(self, item_id: str, future: Future[Note | None]) -> None:
         """Claude answered (or failed): the fragments are cut now."""
+        item = self.library.get(item_id)
         with self._lock:
             self._asking.pop(item_id, None)
             self.job.stages.pop(item_id, None)
             if (err := future.exception()) is not None:
                 self._errors[item_id] = _words(err)
+                step: tuple[Status, str] = ("failed", self._errors[item_id])
+            elif item is None:
                 return
-            item = self.library.get(item_id)
-            essay = self.job.essay(item) if item is not None else None
-            if item is not None and essay is not None and self.on_ready:
-                try:
-                    self.on_ready(item)
-                except Exception:
-                    log.exception("study ready")
-            if item is None or essay is None or item_id in self._cutting:
-                return
-            if not essay.details and not essay.legacy:
-                return
-            self._cutting.add(item_id)
-        threading.Thread(target=self._cut, args=(item,), name="study-details", daemon=True).start()
+            elif (essay := self.job.essay(item)) is None:
+                step = ("failed", FAILED)
+            elif item_id in self._cutting:
+                return  # told when the cutting under way ends
+            elif not essay.details and not essay.legacy:
+                step = ("ready", "")
+            else:
+                self._cutting.add(item_id)
+                step = ("details", "")
+        if item is not None:
+            self._step(item, *step)
+        if step[0] == "details" and item is not None:
+            threading.Thread(
+                target=self._cut, args=(item,), name="study-details", daemon=True
+            ).start()
 
     def _cut(self, item: Item) -> None:
         try:
@@ -156,6 +168,20 @@ class Study:
         finally:
             with self._lock:
                 self._cutting.discard(item.id)
+            self._step(item, "ready")
+
+    def _staged(self, item_id: str, stage: str) -> None:
+        """A step of Claude's question (``StudyJob.params``), when asked for here."""
+        if item_id in self._asking and (item := self.library.get(item_id)) is not None:
+            self._step(item, stage)  # type: ignore[arg-type]
+
+    def _step(self, item: Item, status: Status, error: str = "") -> None:
+        if self.on_step is None:
+            return
+        try:
+            self.on_step(item, status, error)
+        except Exception:
+            log.exception("study step %s of %s", status, item.id)
 
     def status(self, item: Item | None) -> tuple[Status, str]:
         """Where the work's study is, and why it failed when it did."""
@@ -166,7 +192,7 @@ class Study:
         if item is not None and (error := self._errors.get(item.id)):
             return "failed", error
         if item is not None and self.requested(item.id) and self.job.failed(item):
-            return "failed", "Claude nie napisał studium tego dzieła."
+            return "failed", FAILED
         return ("none" if self.job.enabled() else "off"), ""
 
     def detail(self, item: Item, index: int) -> Path | None:

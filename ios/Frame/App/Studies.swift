@@ -3,7 +3,9 @@ import Foundation
 /// Studies of works ("Przygotuj studium dzieła" on a work's card): Claude
 /// writes the work of the day's page for the work, in a minute or three.
 /// A card at the bottom follows it wherever the app goes, says each step and
-/// at the end opens the study when tapped.
+/// at the end opens the study when tapped; the same on the Lock Screen and
+/// in the Dynamic Island (`StudyLiveActivity`), pushed on by the server
+/// while the app is closed.
 extension AppModel {
     /// Asks for the work's study (`again`: a new one) and follows it.
     func prepareStudy(itemID: String, title: String, again: Bool = false) async {
@@ -11,6 +13,7 @@ extension AppModel {
         let card = beginStudyCard(itemID: itemID, title: title)
         do {
             let view = try await backend.prepareStudy(itemID: itemID, again: again)
+            studyActivity.start(itemID: itemID, title: title, status: view.status)
             await followStudy(itemID: itemID, title: title, from: view, card: card)
         } catch {
             studyCards[itemID] = nil
@@ -23,6 +26,7 @@ extension AppModel {
     func resumeStudy(itemID: String, title: String, view: StudyView) async {
         studies[itemID] = view
         guard view.isPending, studyCards[itemID] == nil else { return }
+        studyActivity.start(itemID: itemID, title: title, status: view.status)
         let card = beginStudyCard(itemID: itemID, title: title)
         await followStudy(itemID: itemID, title: title, from: view, card: card)
     }
@@ -40,6 +44,36 @@ extension AppModel {
     /// The study is on screen: the card saying it is ready has done its job.
     func studyOpened(itemID: String) {
         if let card = studyReadyCards.removeValue(forKey: itemID) { notices.close(card) }
+        studyActivity.dismiss(itemID: itemID)
+    }
+
+    /// The Lock Screen card's push token, on the server (`StudyLiveActivity.onToken`).
+    func followStudyOnLockScreen(itemID: String, token: String) async {
+        try? await backend.followStudy(itemID: itemID, activityToken: token, sandbox: PushCenter.sandbox)
+    }
+
+    /// Lock Screen cards of studies asked for before the app was closed:
+    /// followed again while still on their way (with the card at the bottom
+    /// too), ended with the result otherwise, in case no push said it.
+    func settleStudyActivities() async {
+        studyActivity.watchTokens()
+        for activity in studyActivity.running {
+            let itemID = activity.attributes.itemID
+            guard studyCards[itemID] == nil else { continue }
+            guard let view = try? await backend.study(itemID: itemID, wait: 0) else { continue }
+            if view.isPending {
+                Task { await resumeStudy(itemID: itemID, title: activity.attributes.title, view: view) }
+            } else {
+                studies[itemID] = view
+                studyActivity.finish(itemID: itemID, status: Self.studyResult(view.status), error: view.error)
+            }
+        }
+    }
+
+    /// The server's word for a study that is no longer on its way, as the
+    /// Lock Screen card says it: "none" means the server lost it.
+    private static func studyResult(_ status: String) -> String {
+        status == "none" ? "stopped" : status
     }
 
     // MARK: Private
@@ -61,6 +95,7 @@ extension AppModel {
         studies[itemID] = view
         while view.isPending {
             notices.update(card, title: Self.studyStep(view.status), detail: Self.studyDetail(title, step: view.status))
+            studyActivity.update(itemID: itemID, status: view.status)
             do {
                 view = try await backend.study(itemID: itemID, wait: 25)
                 misses = 0
@@ -73,6 +108,7 @@ extension AppModel {
                 return
             }
         }
+        studyActivity.finish(itemID: itemID, status: Self.studyResult(view.status), error: view.error)
         switch view.status {
         case "ready":
             notices.end(

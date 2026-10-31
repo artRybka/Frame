@@ -41,6 +41,8 @@ class StudyJob(DailyJob):
         self.requested: Callable[[str], bool] = lambda item_id: False
         #: How far the question being asked now is ("sources", "writing"), by item.
         self.stages: dict[str, str] = {}
+        #: Told of each step (item id, stage), from the worker thread.
+        self.on_stage: Callable[[str, str], None] = lambda item_id, stage: None
 
     def in_library(self, item: Item) -> bool:
         return self.requested(item.id)
@@ -49,7 +51,11 @@ class StudyJob(DailyJob):
         return text_hash(item.title, item.artist, item.date_text)
 
     def params(self, item: Item) -> dict[str, Any]:
-        self.stages[item.id] = "sources"  # the museum, Wikidata and Wikipedia first
+        self._stage(item.id, "sources")  # the museum, Wikidata and Wikipedia first
         params = super().params(item)
-        self.stages[item.id] = "writing"
+        self._stage(item.id, "writing")
         return params
+
+    def _stage(self, item_id: str, stage: str) -> None:
+        self.stages[item_id] = stage
+        self.on_stage(item_id, stage)

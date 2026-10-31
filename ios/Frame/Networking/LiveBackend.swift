@@ -214,6 +214,13 @@ struct LiveBackend: FrameBackend {
         return try await perform(request("/api/study/\(escape(itemID))", method: "POST", query: query))
     }
 
+    func followStudy(itemID: String, activityToken: String, sandbox: Bool) async throws {
+        try await send(
+            "/api/study/\(escape(itemID))/activity", method: "PUT",
+            body: StudyActivityToken(token: activityToken, sandbox: sandbox)
+        )
+    }
+
     func themePage(key: String, page: Int) async throws -> ArtThemePage {
         try await get("/api/themes/\(key)", query: [URLQueryItem(name: "page", value: String(page))])
     }
