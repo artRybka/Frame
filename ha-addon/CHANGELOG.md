@@ -6,6 +6,9 @@
   wybór „Ile dzieł” (50, 100, 200, 300 albo Wszystkie). Brakujące dzieła
   dobierają się z muzeów w tle, a gdy pasuje więcej, playlista bierze stały
   zestaw, najpierw ulubione. Starsze playlisty zachowują wszystkie dzieła.
+- Sprawdzanie wersji serwera w aplikacji trwa około sekundy: serwer pyta
+  rejestr obrazów zamiast pobierać cały obraz. Aktualizacje serwera pobierają
+  kilka MB zamiast ~200 MB (od następnej wersji po tej).
 
 ## 1.56.0
 
