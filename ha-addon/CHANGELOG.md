@@ -10,6 +10,11 @@
 - Epoka: 20 nazwanych okresów w grupach Europa, Polska oraz Japonia i Chiny,
   z klamrą lat pod osią; okresy polskie i azjatyckie sprawdzają też
   pochodzenie dzieła.
+- Analiza kompozycji: Geometria pierwsza i z wielkimi liniami całego obrazu
+  (piramida, X, klin, koła i owale, linie mogą wychodzić poza obraz), siatka
+  2×2 obok złotego podziału i 3×3, nowe ujęcie Geometria detali zamiast
+  Rytmu; zapisane studia i Dzieła dnia poprawione raz w tle (ok. 0,10 USD
+  za stronę).
 - Aplikacja wymaga teraz iOS 26.
 
 ## 1.51.0

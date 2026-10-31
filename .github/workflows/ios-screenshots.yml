@@ -70,7 +70,8 @@ jobs:
             capture daily 14 "daily-$appearance"
             capture daily 16 "daily-end-$appearance" -scroll end
             capture daily 16 "daily-composition-$appearance" -scroll composition
-            capture daily 16 "daily-rhythm-$appearance" -scroll composition -take 2
+            capture daily 16 "daily-look-$appearance" -scroll composition -take 1
+            capture daily 16 "daily-detail-geometry-$appearance" -scroll composition -take 2
             capture daily 16 "daily-details-$appearance" -scroll details
             capture daily 16 "daily-legacy-$appearance" -scroll legacy
             capture detail 14 "detail-$appearance"

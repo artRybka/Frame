@@ -9,7 +9,7 @@ enum LaunchRoute {
     /// "end", "composition", "details", "legacy": a long page opens scrolled
     /// there; "studies": Discover at "Studia dzieł".
     static let scroll = UserDefaults.standard.string(forKey: "scroll")
-    /// The composition's take shown first (CI screenshots of "Rytm").
+    /// The composition's take shown first (CI screenshots of the later takes).
     static let take = UserDefaults.standard.integer(forKey: "take")
 }
 
