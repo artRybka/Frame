@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// The Szukaj tab: one search over the catalogue and the museums.
+/// The Szukaj tab, the system search tab: one search over the catalogue and
+/// the museums, its glass field at the bottom.
 struct SearchView: View {
     @Environment(AppModel.self) private var model
     @State private var path = NavigationPath()
@@ -11,18 +12,11 @@ struct SearchView: View {
 
     var body: some View {
         NavigationStack(path: $path) {
-            ScrollView {
-                MuseumSearchView()
-                    .padding(.horizontal, Theme.gutter)
-                    .padding(.bottom, Self.bottomPadding)
-                    .coordinateSpace(.named(Self.content))
-            }
-            .scrollDismissesKeyboard(.interactively)
-            .background(Theme.paper)
-            .navigationTitle("Szukaj")
-            .navigationDestination(for: String.self) { id in
-                ItemDetailView(itemID: id)
-            }
+            MuseumSearchView()
+                .navigationTitle("Szukaj")
+                .navigationDestination(for: String.self) { id in
+                    ItemDetailView(itemID: id)
+                }
         }
         // A tapped artist's name: back to the top, on the search.
         .onChange(of: model.artistSearch, initial: true) { _, artist in

@@ -1,9 +1,10 @@
 import PhotosUI
 import SwiftUI
 
-/// Create or edit a playlist. Smart playlists are built like Discover's
-/// search: the field at once (museums, colours, styles, subjects and periods
-/// under "+"), the icon's squares at play until something is asked, then
+/// Create or edit a playlist. Smart playlists are built like Szukaj: the
+/// system search field at the bottom of the sheet with the same glass groups
+/// over it (hidden while the works scroll, back when the field is tapped),
+/// the icon's squares at play until something is asked, then
 /// what the catalogue and the museums have for it as Szukaj shows it (with
 /// fetching on, the museums' works first: they are what it brings).
 /// Manual ones can take photos from the camera roll, uploaded to the library
@@ -28,7 +29,13 @@ struct PlaylistEditorView: View {
     @State private var askingMuseums = false
     /// The rules the museums finished answering for.
     @State private var remoteAsked = PlaylistRules()
-    @State private var typing = false
+    @State private var lookup = TermLookup()
+    @FocusState private var fieldFocused: Bool
+    @FocusState private var descriptionFocused: Bool
+    /// The groups over the field: hidden while scrolling the works.
+    @State private var groupsShown = true
+    /// "Wybrane · N" was tapped: up to the playlist's works.
+    @State private var showChosen = 0
     /// Where the squares start, from the top of the scrolled content.
     @State private var squaresTop: CGFloat = 0
     /// "Zapisz" was tapped on a smart playlist with nothing searched.
@@ -113,6 +120,7 @@ struct PlaylistEditorView: View {
                         case .manual:
                             cameraRoll
                             chosen
+                                .id(Self.chosenID)
                             search
                         case .album:
                             albumSection
@@ -121,8 +129,32 @@ struct PlaylistEditorView: View {
                     .padding(Theme.gutter)
                     .coordinateSpace(.named(Self.content))
                 }
-                .scrollDismissesKeyboard(.interactively)
+                .scrollDismissesKeyboard(.immediately)
+                .hidesOnScroll($groupsShown)
                 .background(Theme.paper)
+                .modifier(EditorSearch(
+                    enabled: playlist.kind != .album,
+                    lookup: lookup,
+                    tokens: tokens,
+                    focused: $fieldFocused,
+                    groupsShown: groupsShown && !nameFocused && !descriptionFocused,
+                    museums: museums,
+                    pickedFromMuseums: pickedFromMuseums
+                ))
+                // Typing: up to the suggestions.
+                .onChange(of: lookup.typing) { _, typing in
+                    if typing { withAnimation(.snappy) { scroller.scrollTo(Self.searchID, anchor: .top) } }
+                }
+                .onChange(of: showChosen) {
+                    withAnimation(.snappy) { scroller.scrollTo(Self.chosenID, anchor: .top) }
+                }
+                // Tapping the field brings the groups back, as does asking nothing.
+                .onChange(of: fieldFocused) { _, focused in
+                    if focused, !groupsShown { withAnimation(.snappy) { groupsShown = true } }
+                }
+                .onChange(of: asked) { _, asked in
+                    if !asked, !groupsShown { withAnimation(.snappy) { groupsShown = true } }
+                }
                 .navigationTitle(playlist.id == nil ? "Nowa playlista" : "Edycja playlisty")
                 .navigationBarTitleDisplayMode(.inline)
                 .navigationDestination(for: String.self) { id in
@@ -182,6 +214,7 @@ struct PlaylistEditorView: View {
                 if !name.trimmingCharacters(in: .whitespaces).isEmpty { nameMissing = false }
             }
             TextField("Opis (opcjonalnie)", text: $playlist.description, axis: .vertical)
+                .focused($descriptionFocused)
                 .font(.serif(17))
                 .foregroundStyle(Theme.inkSoft)
                 .lineLimit(1 ... 3)
@@ -192,29 +225,36 @@ struct PlaylistEditorView: View {
     private static let content = "playlist.editor.content"
     /// The name fields, to scroll up to.
     private static let nameID = "playlist.editor.name"
+    /// The search's part, with the suggestions while typing.
+    private static let searchID = "playlist.editor.search"
+    /// A manual playlist's works.
+    private static let chosenID = "playlist.editor.chosen"
+
+    /// The catalogue has nothing for a chip yet: museums will.
+    private func pickedFromMuseums() {
+        if playlist.kind == .smart, fetchCount == 0, fetchBlocker == nil { fetchCount = 100 }
+    }
 
     /// Nothing asked yet: no chips (exceptions and the hidden "favourites
     /// only" of the seeded playlist count as asked).
     private var asked: Bool { !searched.wrappedValue.isEmpty }
 
-    /// Szukaj's field and its bar of groups, then (smart) whether to fetch
+    /// While typing, what the words could mean; (smart) whether to fetch
     /// from the museums, a word on how groups combine, and the squares until
-    /// something is asked, then the works.
+    /// something is asked, then the works. The field and its groups are at
+    /// the bottom of the sheet.
     private var search: some View {
         VStack(alignment: .leading, spacing: 14) {
             if playlist.kind == .manual {
                 Eyebrow("Dzieła z katalogu i muzeów")
             }
-            TermSearchField(
-                tokens: tokens, museums: museums, colors: ColorTag.families + ColorTag.moods, typing: $typing
-            ) {
-                // The catalogue has nothing for it yet: museums will.
-                if playlist.kind == .smart, fetchCount == 0, fetchBlocker == nil { fetchCount = 100 }
+            if lookup.typing {
+                TermSuggestions(lookup: lookup, tokens: tokens, pickedFromMuseums: pickedFromMuseums)
             }
             if playlist.kind == .smart {
                 if rulesMissing, playlist.rules.isEmpty {
                     Label(
-                        "Wyszukaj coś albo wybierz w pasku pod polem: bez tego playlista objęłaby cały katalog.",
+                        "Wyszukaj coś na dole albo wybierz grupę nad polem: bez tego playlista objęłaby cały katalog.",
                         systemImage: "exclamationmark.circle"
                     )
                     .font(.footnote.weight(.medium))
@@ -223,7 +263,7 @@ struct PlaylistEditorView: View {
                 }
                 fetchRow
             }
-            if !typing {
+            if !lookup.typing {
                 if asked {
                     previewSection
                 } else {
@@ -231,6 +271,7 @@ struct PlaylistEditorView: View {
                 }
             }
         }
+        .id(Self.searchID)
     }
 
     private var idle: some View {
@@ -515,13 +556,31 @@ struct PlaylistEditorView: View {
     /// the museums' first when the playlist fetches them.
     private var previewSection: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(summary)
-                    .font(.serif(17, weight: .medium))
-                    .foregroundStyle(preview?.count == 0 && fromMuseums.isEmpty && !askingMuseums ? Theme.bad : Theme.ink)
-                    .contentTransition(.numericText())
-                Spacer()
-                if preview == nil || askingMuseums { ProgressView().controlSize(.small) }
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(summary)
+                        .font(.serif(17, weight: .medium))
+                        .foregroundStyle(preview?.count == 0 && fromMuseums.isEmpty && !askingMuseums ? Theme.bad : Theme.ink)
+                        .contentTransition(.numericText())
+                    if preview == nil || askingMuseums { ProgressView().controlSize(.small) }
+                    Spacer()
+                    if playlist.kind == .manual, !playlist.itemIds.isEmpty {
+                        Button {
+                            showChosen += 1
+                        } label: {
+                            Label("Wybrane · \(playlist.itemIds.count)", systemImage: "checkmark.circle")
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(Theme.accent)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .glassEffect(.regular.interactive(), in: .capsule)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityHint("Pokazuje dzieła tej playlisty")
+                    }
+                }
+                // What makes the playlist, also while the groups are hidden.
+                TokenSummary(tokens: tokens.wrappedValue)
             }
             if museumsFirst {
                 museumPreview
@@ -592,7 +651,8 @@ struct PlaylistEditorView: View {
 
     private var summary: String {
         guard let preview else { return "Szukam…" }
-        return Names.works(preview.count + fromMuseums.count)
+        let found = Names.works(preview.count + fromMuseums.count)
+        return playlist.kind == .manual ? "Znalezione · \(found)" : found
     }
 
     @ViewBuilder
@@ -851,5 +911,42 @@ struct PickedPhoto: Identifiable, Sendable {
               let date = Calendar.current.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2]))
         else { return "Zdjęcie z rolki" }
         return "Zdjęcie z " + date.formatted(.dateTime.day().month(.wide).year().locale(Locale(identifier: "pl_PL")))
+    }
+}
+
+/// The editor's search, except for an album playlist: the system field at the
+/// bottom of the sheet and the glass groups over it.
+private struct EditorSearch: ViewModifier {
+    let enabled: Bool
+    let lookup: TermLookup
+    let tokens: Binding<[SearchToken]>
+    let focused: FocusState<Bool>.Binding
+    /// Not while the name or description is being typed.
+    let groupsShown: Bool
+    let museums: [Museum]
+    let pickedFromMuseums: () -> Void
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if enabled {
+            content
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    if groupsShown {
+                        TermFacetBar(
+                            tokens: tokens, museums: museums, colors: ColorTag.families + ColorTag.moods,
+                            opening: { focused.wrappedValue = false }
+                        )
+                        .padding(.horizontal, Theme.gutter)
+                        .padding(.bottom, 8)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
+                }
+                .termSearch(lookup, tokens: tokens, focused: focused, pickedFromMuseums: pickedFromMuseums)
+                .toolbar {
+                    DefaultToolbarItem(kind: .search, placement: .bottomBar)
+                }
+        } else {
+            content
+        }
     }
 }

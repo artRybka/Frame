@@ -12,6 +12,7 @@ from frame_server.library.repo import matches
 from frame_server.library.themes import GROUPS, THEMES, WEEKLY, theme_of_the_day
 from frame_server.library.vocabulary import (
     BY_KEY,
+    TERMS,
     artist_matches,
     category_fits,
     is_copy,
@@ -388,3 +389,31 @@ def test_periods_reach_the_last_year_free_in_the_eu() -> None:
         PlaylistRules(terms=["style:constructivism"]),
     )
     assert "style:abstraction" in [t.key for t in suggest("abstrak")]
+
+
+def test_named_periods_of_one_country_need_the_place_too() -> None:
+    hokusai = _work(1, title="The Great Wave", year=1831, artist_bio="Japanese, 1760-1849")
+    rembrandt = _work(2, title="The Night Watch", year=1642, artist_bio="Dutch, 1606-1669")
+    polish_rider = _work(3, title="The Polish Rider", year=1655, artist_bio="Dutch, 1606-1669")
+    hiroshige = _work(4, title="Kambara", year=1833, terms=["style:ukiyo-e"])
+    vase = _work(5, title="Vase", year=1700, culture="China")
+    canaletto = _work(6, title="Warsaw", year=1775, museum="Muzeum Narodowe w Warszawie")
+    edo = PlaylistRules(terms=["period:edo"])
+    assert matches(hokusai, edo) and matches(hiroshige, edo)
+    assert not matches(rembrandt, edo)
+    assert matches(vase, PlaylistRules(terms=["period:qing"]))
+    assert not matches(vase, PlaylistRules(terms=["period:edo"]))
+    stanislaus = PlaylistRules(terms=["period:pl-stanislaus"])
+    assert matches(canaletto, stanislaus)
+    # The title says nothing of where a work comes from.
+    assert not matches(polish_rider, PlaylistRules(terms=["period:pl-saxon"]))
+    # Europe's are years only.
+    assert matches(rembrandt, PlaylistRules(terms=["period:thirty-years-war"]))
+    # Museums are asked with the country's word.
+    assert museum_queries(["period:edo", "period:meiji"]) == ["japanese"]
+    assert museum_queries(["period:edo", "period:17c"]) == []
+    # The app's Epoka sheet: twenty named periods in three groups.
+    named = [t for t in TERMS if t.kind == "period" and t.region]
+    assert len(named) == 20
+    assert {t.region for t in named} == {"europe", "poland", "east-asia"}
+    assert all(t.region is None for t in TERMS if t.kind == "period" and t not in named)

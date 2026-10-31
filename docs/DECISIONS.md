@@ -30,6 +30,11 @@ też poza Home Assistantem (`frame serve` na Macu), co przyspiesza pracę.
 trzymamy w Keychain. CI buduje aplikację i uruchamia testy na macOS.
 **Konsekwencje.** Brak konfliktów w pliku projektu. Trzeba zainstalować
 `xcodegen` (`brew install xcodegen`).
+**Zmiana 2026-10-31.** Cel podniesiony do iOS 26 (decyzja Mateusza przy
+szklanym Szukaj): systemowa karta wyszukiwania (`Tab(role: .search)`),
+pole Szukaj na dole i szklane przyciski grup (`glassEffect`). Aplikacji
+używa tylko rodzina na iPhone'ach z iOS 26; CI wybiera symulator z
+najnowszym iOS.
 
 ## D4. Algorytm obrazu na zmierzonej palecie — 2026-10-23
 

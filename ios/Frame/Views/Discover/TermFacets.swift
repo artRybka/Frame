@@ -1,10 +1,10 @@
 import SwiftUI
 
-/// One group of the search's chips: a button in the bar under the field opens
-/// a small sheet with just that group. Within a group any of the picked ones
-/// is enough; the groups together must all fit.
+/// One group of the search's chips: a glass button on the bar over the
+/// search field opens a small sheet with just that group. Within a group any
+/// of the picked ones is enough; the groups together must all fit.
 enum TermFacet: String, CaseIterable, Identifiable, Sendable {
-    case technique, period, style, color, subject, museum, mine
+    case technique, period, style, color, subject, museum
 
     var id: String { rawValue }
 
@@ -16,7 +16,6 @@ enum TermFacet: String, CaseIterable, Identifiable, Sendable {
         case .color: "Kolor"
         case .subject: "Temat"
         case .museum: "Muzeum"
-        case .mine: "Moje"
         }
     }
 
@@ -29,12 +28,11 @@ enum TermFacet: String, CaseIterable, Identifiable, Sendable {
         case .color: token.kind == "color"
         case .subject: token.kind == "subject" || token.kind == "legacy-subject"
         case .museum: token.kind == "museum"
-        case .mine: token.kind == "mine"
         }
     }
 
     /// What the field itself shows: artists, words, and what no group
-    /// holds ("Arcydzieła muzeów").
+    /// holds ("Arcydzieła muzeów", older playlists' Ulubione and Playlisty).
     static func inField(_ token: SearchToken) -> Bool {
         !allCases.contains { $0.holds(token) }
     }
@@ -60,9 +58,29 @@ enum TermFacet: String, CaseIterable, Identifiable, Sendable {
 }
 
 /// The periods as a time line: those that follow one another make the axis,
-/// the ones across them (Belle Époque, Międzywojnie) are named apart.
+/// the ones across them (Belle Époque, Edo, Zabory) are named apart.
 enum PeriodAxis {
+    /// A group of named periods in the sheet.
+    struct Region: Identifiable {
+        let id: String
+        let title: String
+    }
+
+    /// The named periods' groups, in order.
+    static let regions = [
+        Region(id: "europe", title: "Europa"),
+        Region(id: "poland", title: "Polska"),
+        Region(id: "east-asia", title: "Japonia i Chiny"),
+    ]
+
     static func split(_ periods: [TermInfo]) -> (axis: [TermInfo], named: [TermInfo]) {
+        // The server says which are named; an older one doesn't.
+        if periods.contains(where: { $0.region != nil }) {
+            return (
+                periods.filter { $0.region == nil }.sorted { ($0.yearFrom ?? Int.min) < ($1.yearFrom ?? Int.min) },
+                periods.filter { $0.region != nil }
+            )
+        }
         var axis: [TermInfo] = []
         var named: [TermInfo] = []
         var end = Int.min
@@ -84,6 +102,32 @@ enum PeriodAxis {
     /// The year a period is read to end with: 1399 → 1400, 1849 → 1850,
     /// but 1930 and the last free year as they are.
     static func shownEnd(_ year: Int) -> Int { (year + 1) % 50 == 0 ? year + 1 : year }
+
+    /// A named period's years: "1880–1914".
+    static func years(_ period: TermInfo) -> String {
+        switch (period.yearFrom, period.yearTo) {
+        case let (from?, to?): "\(from)–\(to)"
+        case let (nil, to?): "do \(to)"
+        case let (from?, nil): "od \(from)"
+        case (nil, nil): ""
+        }
+    }
+
+    /// Where a year falls on the axis, from 0 (its start) to 1 (its end):
+    /// the pieces are of equal width, so within its piece.
+    static func position(_ year: Int, on axis: [TermInfo]) -> CGFloat {
+        guard !axis.isEmpty else { return 0 }
+        for (index, piece) in axis.enumerated() {
+            let to = piece.yearTo ?? Int.max
+            guard year <= to else { continue }
+            let end = piece.yearTo.map { $0 + 1 } ?? (year + 1)
+            let start = piece.yearFrom ?? min(end - 100, year)
+            if year < start, index == 0 { return 0 }
+            let within = CGFloat(year - start) / CGFloat(max(end - start, 1))
+            return (CGFloat(index) + min(max(within, 0), 1)) / CGFloat(axis.count)
+        }
+        return 1
+    }
 
     /// Under each piece of the axis: where it starts.
     static func mark(_ period: TermInfo) -> String {
@@ -109,13 +153,16 @@ enum PeriodAxis {
     }
 }
 
-/// The groups under the search field, all in view: the buttons wrap onto a
-/// second line rather than scroll sideways.
+/// The groups over the search field, as thin glass capsules that wrap onto
+/// a second row (four and two) rather than scroll sideways; a picked group
+/// turns blue and says what it holds ("Styl: Ukiyo-e").
 struct TermFacetBar: View {
     @Environment(AppModel.self) private var model
     @Binding var tokens: [SearchToken]
     var museums: [Museum] = []
     var colors: [String] = []
+    /// Called as a group opens (to put the keyboard away).
+    var opening: () -> Void = {}
 
     @State private var open: TermFacet? = TermFacetBar.launched
 
@@ -142,8 +189,10 @@ struct TermFacetBar: View {
     private var periods: [TermInfo] { model.vocabulary.filter { $0.kind == "period" } }
 
     var body: some View {
-        FlowLayout(spacing: 6) {
-            ForEach(facets) { facet in button(facet) }
+        GlassEffectContainer(spacing: 6) {
+            FlowLayout(spacing: 6) {
+                ForEach(facets) { facet in button(facet) }
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .sheet(item: $open) { facet in
@@ -156,6 +205,7 @@ struct TermFacetBar: View {
         let picked = tokens.filter(facet.holds)
         let on = !picked.isEmpty
         return Button {
+            opening()
             open = facet
         } label: {
             HStack(spacing: 5) {
@@ -164,25 +214,22 @@ struct TermFacetBar: View {
                     ForEach(Array(swatches.prefix(3)), id: \.self) { tag in
                         Circle()
                             .fill(ColorTag.color(tag))
-                            .frame(width: 10, height: 10)
-                            .overlay(Circle().strokeBorder(Theme.paper.opacity(0.7), lineWidth: 1))
+                            .frame(width: 9, height: 9)
+                            .overlay(Circle().strokeBorder(.white.opacity(0.7), lineWidth: 1))
                     }
                 }
                 Text(facet.label(tokens, periods: periods))
-                    .font(.subheadline.weight(.semibold))
+                    .font(.subheadline.weight(on ? .semibold : .medium))
                     .lineLimit(1)
-                Image(systemName: "chevron.down")
-                    .font(.caption2.weight(.bold))
-                    .foregroundStyle(on ? Theme.paper.opacity(0.75) : Theme.inkSoft)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 7)
+            .padding(.horizontal, 13)
+            .padding(.vertical, 6)
             .foregroundStyle(on ? Theme.paper : Theme.ink)
-            .background(on ? Theme.accent : Theme.card, in: Capsule())
-            .overlay(Capsule().strokeBorder(on ? .clear : Theme.hairline))
             .contentShape(Capsule())
+            .glassEffect(on ? Glass.regular.tint(Theme.accent).interactive() : Glass.regular.interactive(), in: .capsule)
         }
         .buttonStyle(.plain)
+        .sensoryFeedback(.selection, trigger: open == facet)
         .accessibilityLabel(facet.label(tokens, periods: periods))
         .accessibilityHint("Otwiera wybór: \(facet.title.lowercased())")
     }
@@ -206,10 +253,9 @@ struct TermFacetSheet: View {
     private var detents: Set<PresentationDetent> {
         switch facet {
         case .technique: [.height(320)]
-        case .period: [.height(390)]
+        case .period: [.large]
         case .color: [.height(610), .large]
         case .museum: [.height(CGFloat(max(museums.count, 1)) * 46 + 200), .large]
-        case .mine: [.height(300)]
         case .style, .subject: [.fraction(0.62), .large]
         }
     }
@@ -270,7 +316,6 @@ struct TermFacetSheet: View {
         case .period: PeriodPicker(tokens: $tokens)
         case .color: palette
         case .museum: museumList
-        case .mine: mineList
         }
     }
 
@@ -415,14 +460,10 @@ struct TermFacetSheet: View {
         .accessibilityAddTraits(on ? .isSelected : [])
     }
 
-    // MARK: Museums, mine
+    // MARK: Museums
 
     private var museumList: some View {
         checkList(museums.map { CheckRow(kind: "museum", key: $0.key, name: $0.name, icon: "building.columns") })
-    }
-
-    private var mineList: some View {
-        checkList(MineTerm.all.map { CheckRow(kind: "mine", key: $0.key, name: $0.name, icon: $0.icon) })
     }
 
     private struct CheckRow: Identifiable {
@@ -495,23 +536,36 @@ struct PeriodPicker: View {
         // Spans of older playlists ("years:1880-1914").
         let other = tokens.filter { $0.kind == "period" && !vocabulary.contains($0.key) }
         let keys = tokens.filter { $0.kind == "period" }.map(\.key)
+        let regions = PeriodAxis.regions.filter { region in named.contains { $0.region == region.id } }
+        // An older server: one group with no name of its own.
+        let loose = named.filter { period in !PeriodAxis.regions.contains { $0.id == period.region } }
         VStack(alignment: .leading, spacing: 14) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(summary(keys))
-                    .font(.title3.weight(.semibold))
-                    .contentTransition(.numericText())
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(summary(keys))
+                        .font(.title3.weight(.semibold))
+                        .contentTransition(.numericText())
+                    if keys.count == 1, let period = named.first(where: { $0.key == keys[0] }) {
+                        Text(PeriodAxis.years(period))
+                            .font(.subheadline.monospacedDigit())
+                            .foregroundStyle(Theme.inkSoft)
+                    }
+                }
                 Text("Stuknij odcinek albo przeciągnij palcem po osi.")
                     .font(.footnote)
                     .foregroundStyle(Theme.inkSoft)
             }
             if !axis.isEmpty {
-                line(axis)
+                line(axis, brackets: named.filter { picked($0.key) })
             }
-            if !named.isEmpty || !other.isEmpty {
+            ForEach(regions) { region in
+                namedGroup(region.title, named.filter { $0.region == region.id })
+            }
+            if !loose.isEmpty || !other.isEmpty {
                 VStack(alignment: .leading, spacing: 10) {
                     Eyebrow("Nazwane okresy")
                     FlowLayout(spacing: 8) {
-                        ForEach(named) { period in
+                        ForEach(loose) { period in
                             Chip(title: period.name, selected: picked(period.key)) { toggle(period) }
                         }
                         ForEach(other) { token in
@@ -520,6 +574,40 @@ struct PeriodPicker: View {
                             }
                         }
                     }
+                }
+            }
+        }
+    }
+
+    /// One group of named periods, each with its years.
+    private func namedGroup(_ title: String, _ periods: [TermInfo]) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Eyebrow(title)
+            FlowLayout(spacing: 6) {
+                ForEach(periods) { period in
+                    let on = picked(period.key)
+                    Button {
+                        toggle(period)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text(period.name).font(.subheadline.weight(.medium))
+                            Text(PeriodAxis.years(period))
+                                .font(.caption2.monospacedDigit())
+                                .foregroundStyle(on ? Theme.paper.opacity(0.75) : Theme.inkSoft)
+                        }
+                        .padding(.horizontal, 11)
+                        .padding(.vertical, 5)
+                        .foregroundStyle(on ? Theme.paper : Theme.ink)
+                        .background(on ? Theme.ink : Theme.card, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .strokeBorder(on ? .clear : Theme.hairline)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .sensoryFeedback(.selection, trigger: on)
+                    .accessibilityLabel("\(period.name), \(PeriodAxis.years(period))")
+                    .accessibilityAddTraits(on ? .isSelected : [])
                 }
             }
         }
@@ -540,7 +628,9 @@ struct PeriodPicker: View {
         }
     }
 
-    private func line(_ axis: [TermInfo]) -> some View {
+    /// The axis; under it a red bracket for each picked named period, over
+    /// its years.
+    private func line(_ axis: [TermInfo], brackets: [TermInfo]) -> some View {
         let gap: CGFloat = 3
         let piece = width > 0 ? (width - gap * CGFloat(axis.count - 1)) / CGFloat(axis.count) : 0
         return VStack(spacing: 5) {
@@ -597,6 +687,32 @@ struct PeriodPicker: View {
                 }
             }
             .accessibilityHidden(true)
+            if !brackets.isEmpty, width > 0 {
+                ZStack(alignment: .topLeading) {
+                    ForEach(brackets) { period in
+                        let from = PeriodAxis.position(period.yearFrom ?? Int.min / 2, on: axis) * (width + gap)
+                        let to = PeriodAxis.position(period.yearTo ?? Int.max / 2, on: axis) * (width + gap) - gap
+                        Bracket()
+                            .stroke(Theme.bad, style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
+                            .frame(width: max(to - from, 4), height: 7)
+                            .offset(x: min(from, width - 4))
+                    }
+                }
+                .frame(width: width, height: 7, alignment: .topLeading)
+                .accessibilityHidden(true)
+            }
         }
+    }
+}
+
+/// A bracket under the axis: ⎣___⎦.
+private struct Bracket: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+        return path
     }
 }

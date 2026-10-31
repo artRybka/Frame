@@ -141,6 +141,8 @@ class TermInfo(BaseModel):
     words: list[str] = []
     year_from: int | None = None
     year_to: int | None = None
+    #: Named periods: their group in Epoka ("europe", "poland", "east-asia").
+    region: str | None = None
 
 
 class TermHit(BaseModel):
@@ -483,6 +485,7 @@ def vocabulary() -> list[TermInfo]:
             words=[w.rstrip("*") for w in t.words],
             year_from=t.year_from,
             year_to=t.year_to,
+            region=t.region,
         )
         for t in TERMS
     ]

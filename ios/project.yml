@@ -3,7 +3,7 @@ name: Frame
 options:
   bundleIdPrefix: com.artrybka
   deploymentTarget:
-    iOS: "17.0"
+    iOS: "26.0"
   createIntermediateGroups: true
 settings:
   base:
