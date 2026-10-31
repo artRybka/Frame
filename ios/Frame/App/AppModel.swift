@@ -417,9 +417,11 @@ final class AppModel {
         if let value = try? await backend.facets() { facets = value }
     }
 
-    func loadVocabulary() async {
-        guard vocabulary.isEmpty else { return }
-        if let value = try? await backend.vocabulary() { vocabulary = value }
+    /// The server's words to search by, asked once; `fresh` asks again (a
+    /// group opening: the server may have been updated while the app ran).
+    func loadVocabulary(fresh: Bool = false) async {
+        guard fresh || vocabulary.isEmpty else { return }
+        if let value = try? await backend.vocabulary(), value != vocabulary { vocabulary = value }
     }
 
     /// Polish names of the vocabulary's terms by key.
