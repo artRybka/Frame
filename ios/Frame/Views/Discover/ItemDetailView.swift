@@ -700,8 +700,16 @@ struct ItemDetailView: View {
     private func itemToolbar(_ item: Item) -> some ToolbarContent {
         ToolbarItemGroup(placement: .topBarTrailing) {
             Button {
+                // At once: a museum's work joins the library first, which
+                // takes the server a while.
+                let favorite = !item.favorite
+                self.item?.favorite = favorite
                 Task {
-                    if let updated = await model.setFavorite(item.id, !item.favorite) { self.item = updated }
+                    if let updated = await model.setFavorite(item.id, favorite) {
+                        self.item = updated
+                    } else if self.item?.id == item.id {
+                        self.item?.favorite = !favorite
+                    }
                 }
             } label: {
                 Image(systemName: item.favorite ? "heart.fill" : "heart")
