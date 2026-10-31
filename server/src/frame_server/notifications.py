@@ -33,8 +33,10 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
 from pydantic import BaseModel
 
+from .births import search_name
+
 if TYPE_CHECKING:
-    from .library import Library
+    from .library import Item, Library
     from .service import FrameService
     from .store import ContentInfo
 
@@ -52,7 +54,13 @@ KINDS: dict[str, tuple[str, str]] = {
     "changed": ("Zmiana dzieła", "Ramka pokazuje nowy obraz: z harmonogramu lub z aplikacji."),
     "server_update": ("Nowa wersja serwera", "Gotowa do instalacji w aplikacji."),
     "daily": ("Dzieło dnia", "Codziennie o 8:30."),
+    "study": ("Studium gotowe", "Gdy skończy się pisać zamówione studium dzieła."),
+    "week_artist": ("Artysta tygodnia", "W poniedziałek o 9:00."),
+    "birthday": ("Rocznica urodzin", "Urodziny artystów Twoich ulubionych dzieł, o 10:00."),
 }
+# The kinds of the first release: a phone registered then gets the later
+# ones switched on as they come (``PushDevice.seen``).
+FIRST_KINDS = ["battery", "send_failed", "changed", "server_update", "daily"]
 
 BATTERY_LOW = 20
 # Told once below ``BATTERY_LOW``; again only after charging or this level.
@@ -63,6 +71,14 @@ DAILY_WAIT_UNTIL = time(9, 0)
 # Started later than this (the NAS was off), the day goes without.
 DAILY_LATEST = time(12, 0)
 UPDATE_EVERY = timedelta(minutes=10)
+WEEK_AT = time(9, 0)  # Mondays
+WEEK_LATEST = time(14, 0)
+BIRTHDAY_AT = time(10, 0)
+BIRTHDAY_LATEST = time(15, 0)
+BIRTHDAYS_MAX = 3  # a day, the artists with most favourites first
+# Favourite artists looked up on Wikidata at a time, once an hour.
+BIRTHS_EVERY = timedelta(hours=1)
+BIRTHS_BATCH = 15
 # Apple takes a provider token for an hour and wants it no more often than
 # every 20 minutes.
 JWT_FOR = timedelta(minutes=40)
@@ -72,6 +88,8 @@ DEVICES_KEY = "push_devices"
 BATTERY_KEY = "push_battery_told"
 DAILY_KEY = "push_daily_day"
 UPDATE_KEY = "push_update_version"
+WEEK_SENT_KEY = "push_week_artist"
+BIRTHDAY_SENT_KEY = "push_birthday_day"
 
 # APNs answers meaning the token is no good any more.
 GONE = {"BadDeviceToken", "Unregistered", "DeviceTokenNotForTopic"}
@@ -93,6 +111,8 @@ class PushDevice(BaseModel):
     token: str
     sandbox: bool = False  # a build from Xcode; TestFlight and the App Store are not
     kinds: list[str] = list(KINDS)
+    #: The kinds there were when it last chose (None: the first release's).
+    seen: list[str] | None = None
     name: str = ""
     added_at: str = ""
     last_sent_at: str | None = None
@@ -275,7 +295,15 @@ class Notifier:
 
     def devices(self) -> list[PushDevice]:
         stored = self.library.get_state(DEVICES_KEY, [])
-        return [PushDevice.model_validate(d) for d in stored]
+        devices = [PushDevice.model_validate(d) for d in stored]
+        for device in devices:
+            seen = device.seen if device.seen is not None else FIRST_KINDS
+            new = [k for k in KINDS if k not in seen]
+            if new or device.seen is None:
+                wanted = set(device.kinds) | set(new)
+                device.kinds = [k for k in KINDS if k in wanted]
+                device.seen = list(KINDS)
+        return devices
 
     def _save(self, devices: list[PushDevice]) -> None:
         self.library.set_state(DEVICES_KEY, [d.model_dump() for d in devices])
@@ -292,11 +320,12 @@ class Notifier:
         devices = self.devices()
         found = next((d for d in devices if d.token == token), None)
         if found is None:
-            found = PushDevice(token=token, sandbox=sandbox, added_at=_now())
+            found = PushDevice(token=token, sandbox=sandbox, added_at=_now(), seen=list(KINDS))
             devices.append(found)
         found.sandbox = sandbox
         if kinds is not None:
             found.kinds = [k for k in KINDS if k in kinds]
+            found.seen = list(KINDS)
         if name:
             found.name = name[:60]
         self._save(devices)
@@ -464,8 +493,33 @@ class Notifier:
             route="now",
         )
 
+    def study_ready(self, item_id: str, title: str) -> None:
+        """A study asked for on a work's card is written."""
+        self.notify(
+            "study",
+            "Studium gotowe",
+            f"„{title}”: można czytać." if title else "Można czytać.",
+            route=f"study/{item_id}",
+            collapse=f"study-{item_id}"[:64],
+        )
+
 
 # -- the clock ----------------------------------------------------------------
+
+
+def item_title(service: FrameService, item: Item) -> str:
+    """A work's title, in Polish where known."""
+    polish = service.pl_text.text(item)
+    return polish.title if polish and polish.title else item.title
+
+
+def works(count: int) -> str:
+    """ "1 dzieło", "3 dzieła", "12 dzieł"."""
+    if count == 1:
+        return "1 dzieło"
+    if count % 10 in (2, 3, 4) and count % 100 not in (12, 13, 14):
+        return f"{count} dzieła"
+    return f"{count} dzieł"
 
 
 def shown_text(service: FrameService, content: ContentInfo | None) -> tuple[str, str]:
@@ -534,18 +588,90 @@ async def update_tick(service: FrameService) -> bool:
     return True
 
 
+async def week_tick(service: FrameService, now: datetime | None = None) -> bool:
+    """The artist of the week on Monday at 9:00, once a week."""
+    from .library.themes import weekly_themes
+
+    notifier = service.notifier
+    local = (now or datetime.now(UTC)).astimezone(service.player.settings.tz())
+    if local.weekday() != 0 or not WEEK_AT <= local.time() < WEEK_LATEST:
+        return False
+    year, week, _ = local.isocalendar()
+    stamp = f"{year}-W{week:02d}"
+    if notifier.library.get_state(WEEK_SENT_KEY) == stamp or not notifier.wanted("week_artist"):
+        return False
+    themes = await asyncio.to_thread(weekly_themes, service.library, local.date())
+    theme = next((t for t in themes if t.key.startswith("week-artist-")), None)
+    notifier.library.set_state(WEEK_SENT_KEY, stamp)
+    if theme is None:
+        return False
+    body = theme.description.removeprefix("Artysta tygodnia.").strip() or "Zobacz w Odkrywaj."
+    await notifier.send(
+        "week_artist",
+        f"Artysta tygodnia: {theme.name}",
+        body,
+        route=f"theme/{theme.key}",
+        collapse="week_artist",
+    )
+    return True
+
+
+async def births_tick(service: FrameService) -> int:
+    """Birthdays of a few more favourite artists from Wikidata."""
+    births = service.births
+    if not service.notifier.wanted("birthday"):
+        return 0
+    artists = [a for a, _ in (await asyncio.to_thread(births.favourites)).most_common()]
+    missing = births.missing(artists)[:BIRTHS_BATCH]
+    if not missing:
+        return 0
+    return await asyncio.to_thread(births.look_up, missing)
+
+
+async def birthday_tick(service: FrameService, now: datetime | None = None) -> int:
+    """Today's birthdays of the favourite works' artists, at 10:00; how many."""
+    notifier = service.notifier
+    local = (now or datetime.now(UTC)).astimezone(service.player.settings.tz())
+    day = local.date()
+    if not BIRTHDAY_AT <= local.time() < BIRTHDAY_LATEST:
+        return 0
+    if notifier.library.get_state(BIRTHDAY_SENT_KEY) == day.isoformat():
+        return 0
+    if not notifier.wanted("birthday"):
+        return 0
+    favourites = await asyncio.to_thread(service.births.favourites)
+    notifier.library.set_state(BIRTHDAY_SENT_KEY, day.isoformat())
+    born_today = service.births.today(day, [a for a, _ in favourites.most_common()])
+    for artist, born in born_today[:BIRTHDAYS_MAX]:
+        years = day.year - born.year
+        await notifier.send(
+            "birthday",
+            f"Urodziny: {search_name(artist)}",
+            f"{years}. rocznica urodzin (ur. {born.day}.{born.month:02d}.{born.year}). "
+            f"W Twoich ulubionych: {works(favourites[artist])}.",
+            route=f"artist/{artist}",
+            collapse=f"birthday-{artist}"[:64],
+        )
+    return len(born_today[:BIRTHDAYS_MAX])
+
+
 async def watch(service: FrameService) -> None:
     """The clock-driven notifications, a look a minute."""
     service.notifier.bind(asyncio.get_running_loop())
     await asyncio.sleep(30)
-    last_update = datetime.min.replace(tzinfo=UTC)
+    last_update = last_births = datetime.min.replace(tzinfo=UTC)
     while True:
         try:
             await daily_tick(service)
+            await week_tick(service)
+            await birthday_tick(service)
             now = datetime.now(UTC)
             if now - last_update >= UPDATE_EVERY:
                 last_update = now
                 await update_tick(service)
+            if now - last_births >= BIRTHS_EVERY:
+                last_births = now
+                await births_tick(service)
         except Exception:
             log.exception("notifications")
         await asyncio.sleep(60)

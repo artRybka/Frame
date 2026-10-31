@@ -1111,6 +1111,9 @@ actor DemoBackend: FrameBackend {
             NotificationKind(key: "changed", title: "Zmiana dzieła", hint: "Ramka pokazuje nowy obraz: z harmonogramu lub z aplikacji."),
             NotificationKind(key: "server_update", title: "Nowa wersja serwera", hint: "Gotowa do instalacji w aplikacji."),
             NotificationKind(key: "daily", title: "Dzieło dnia", hint: "Codziennie o 8:30."),
+            NotificationKind(key: "study", title: "Studium gotowe", hint: "Gdy skończy się pisać zamówione studium dzieła."),
+            NotificationKind(key: "week_artist", title: "Artysta tygodnia", hint: "W poniedziałek o 9:00."),
+            NotificationKind(key: "birthday", title: "Rocznica urodzin", hint: "Urodziny artystów Twoich ulubionych dzieł, o 10:00."),
         ],
         device: nil,
         devices: 0

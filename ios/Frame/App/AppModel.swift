@@ -52,6 +52,9 @@ final class AppModel {
     var notificationSettings: NotificationSettings?
     /// Bumped to open Discover on the work of the day (a notification tapped).
     var dailyOpened = 0
+    /// A theme to open in Discover (the artist of the week, from a notification).
+    var themeOpened: String?
+    var themeOpenings = 0
     var playlists: [PlaylistSummary] = []
     /// Each playlist's works as last opened: shown at once when it opens
     /// again while fresh ones load.

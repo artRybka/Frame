@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import threading
+from collections.abc import Callable
 from concurrent.futures import Future
 from datetime import date
 from pathlib import Path
@@ -48,6 +49,8 @@ class Study:
         self._cutting: set[str] = set()
         #: Why the last question about a work failed, in Polish.
         self._errors: dict[str, str] = {}
+        #: Told when a study is written (notifications), from a worker thread.
+        self.on_ready: Callable[[Item], None] | None = None
 
     def requested(self, item_id: str) -> bool:
         return item_id in self.library.get_state(STATE_KEY, [])
@@ -125,6 +128,11 @@ class Study:
                 return
             item = self.library.get(item_id)
             essay = self.job.essay(item) if item is not None else None
+            if item is not None and essay is not None and self.on_ready:
+                try:
+                    self.on_ready(item)
+                except Exception:
+                    log.exception("study ready")
             if item is None or essay is None or item_id in self._cutting:
                 return
             if not essay.details and not essay.legacy:
