@@ -15,10 +15,12 @@ from starlette.concurrency import run_in_threadpool
 
 from ..ai.daily import Detail
 from ..library import Item
+from ..library.markup import strip_markup
 from ..service import FrameService
 from ..study import PENDING, Status
 from .daily_api import DailyWork, page
 from .deps import require_token, service
+from .library_api import RemoteItem, remote_items
 from .library_api import _work as find_work
 
 router = APIRouter(prefix="/api", dependencies=[Depends(require_token)], tags=["discover"])
@@ -50,6 +52,36 @@ def _view(svc: FrameService, item: Item | None) -> StudyView:
         work = work.model_copy(update={"why_today": ""})
     cost = svc.study.job.estimate_usd(1, batch=False)
     return StudyView(status=status, error=error, work=work, cost_usd=round(cost, 2))
+
+
+class StudyBrief(BaseModel):
+    """A work with a study, for Discover's row of them."""
+
+    item: RemoteItem
+    #: The Polish title the study gives it.
+    title: str
+
+
+def _briefs(svc: FrameService) -> list[StudyBrief]:
+    written = svc.study.written()
+    remote = remote_items(svc, [item for item, _ in written], copies=False)
+    return [
+        StudyBrief(
+            item=r.model_copy(update={"item": _plain(r.item)}),
+            title=essay.title or strip_markup(r.item.title),
+        )
+        for r, (_, essay) in zip(remote, written, strict=True)
+    ]
+
+
+def _plain(item: Item) -> Item:
+    return item.model_copy(update={"description": "", "artist_bio": ""})
+
+
+@router.get("/studies", response_model=list[StudyBrief])
+async def studies(svc: Svc) -> list[StudyBrief]:
+    """Every work with a study, the last asked for first."""
+    return await run_in_threadpool(_briefs, svc)
 
 
 async def _wait(svc: FrameService, item: Item | None, wait: float) -> None:

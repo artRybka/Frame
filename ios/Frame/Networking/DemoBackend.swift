@@ -36,7 +36,7 @@ actor DemoBackend: FrameBackend {
     private var demoServerVersion = "0.35.0"
     private var originalsLimitMb: Int?
     /// Studies asked for, and when: "written" a few seconds later.
-    private var studies: [String: Date] = [:]
+    private var askedStudies: [String: Date] = [:]
     private var aiValue = AiSettings(
         keySet: false, keyTail: nil, keyFromApp: false, plText: true, keywordsArtworks: true,
         keywordsPhotos: true, daily: true, monthlyLimitUsd: 5, spentUsd: 0,
@@ -149,7 +149,6 @@ actor DemoBackend: FrameBackend {
         if !rules.terms.isEmpty && !DemoDiscover.matches(item, terms: rules.terms) { return false }
         if let from = rules.yearFrom, (item.year ?? Int.min) < from { return false }
         if let to = rules.yearTo, (item.year ?? Int.max) > to { return false }
-        if let minimum = rules.minSuitability, (item.suitability ?? 0) < minimum { return false }
         if !rules.query.isEmpty {
             let haystack = ([item.title, item.artist, item.medium, item.classification, item.culture]
                 + item.styles + item.subjects).joined(separator: " ").lowercased()
@@ -759,7 +758,7 @@ actor DemoBackend: FrameBackend {
     }
 
     func study(itemID: String, wait: Int) async throws -> StudyView {
-        guard let asked = studies[itemID] else {
+        guard let asked = askedStudies[itemID] else {
             return StudyView(status: "none", error: "", work: nil, costUsd: 0.14)
         }
         let elapsed = Date().timeIntervalSince(asked)
@@ -789,8 +788,17 @@ actor DemoBackend: FrameBackend {
         return StudyView(status: "ready", error: "", work: work, costUsd: 0.14)
     }
 
+    /// The ones asked for (the last first), then a few the demo has written.
+    func studies() async throws -> [StudyBrief] {
+        let asked = askedStudies.filter { Date().timeIntervalSince($0.value) >= 6 }.sorted { $0.value > $1.value }.map { $0.key }
+        let ids = asked + ["aic:24645", "aic:14620", "aic:64818", "aic:87008", "aic:2914"].filter { !asked.contains($0) }
+        return ids.compactMap { id in
+            items.first { $0.id == id }.map { StudyBrief(item: RemoteItem(item: $0, inLibrary: true), title: $0.title) }
+        }
+    }
+
     func prepareStudy(itemID: String, again: Bool) async throws -> StudyView {
-        if again || studies[itemID] == nil { studies[itemID] = Date() }
+        if again || askedStudies[itemID] == nil { askedStudies[itemID] = Date() }
         return try await study(itemID: itemID, wait: 0)
     }
 

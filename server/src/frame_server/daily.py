@@ -34,6 +34,7 @@ from .library.vocabulary import artist_matches, is_photograph
 
 if TYPE_CHECKING:
     from .ai import AiWorker
+    from .later import LaterWorks
     from .library import Library
     from .player import Player
 
@@ -45,9 +46,8 @@ KEEP_DAYS = 400
 REPEAT_DAYS = 365
 #: An artist comes back after this many days at the earliest.
 ARTIST_DAYS = 30
-#: The best suited works the pick looks among.
+#: The works of the catalogue the pick looks among, drawn for the day.
 POOL = 800
-MIN_SUITABILITY = 0.4
 #: The longer side of the original, when the museum says (pixels).
 MIN_SIDE = 1000
 #: Works like the work of the day the model chooses among.
@@ -87,8 +87,7 @@ def round_anniversary(item: Item, day: date) -> bool:
 
 
 def score(item: Item, day: date, taste: list[str], rng: random.Random) -> float:
-    value = item.suitability or 0.0
-    value += 0.25 * of_season(item, day)
+    value = 0.25 * of_season(item, day)
     value += 0.2 * round_anniversary(item, day)
     value += 0.15 * bool(taste and item.artist and artist_matches(item.artist, taste))
     value += 0.1 * (len(item.description) >= 200)
@@ -108,6 +107,8 @@ class Daily:
         self._stop = threading.Event()
         self._cutting = threading.Lock()
         self.details_dir = job.images.thumbs.parent / "details"
+        #: Looks up what the pages say a work led to; set by the service.
+        self.later: LaterWorks | None = None
 
     # -- the days ----------------------------------------------------------
 
@@ -152,10 +153,13 @@ class Daily:
             for d, i in history.items()
             if artists_cutoff <= d < day.isoformat() and (item := self.library.get(i)) is not None
         ]
-        rules = PlaylistRules(kinds=[ItemKind.ARTWORK], min_suitability=MIN_SUITABILITY)
+        # Any work of the catalogue: no e-paper threshold (it left out
+        # Rembrandt and Vermeer).
+        rules = PlaylistRules(kinds=[ItemKind.ARTWORK])
+        drawn = self.library.query(rules, sort="random", seed=day.toordinal(), limit=POOL)[1]
         pool = [
             i
-            for i in self.library.query(rules, sort="suitability", limit=POOL)[1]
+            for i in drawn
             if i.id not in recent
             and i.look is None
             and i.artist
@@ -264,6 +268,9 @@ class Daily:
         item = self.pick(day or date.today())
         if item is not None:
             self.ask(item)
+            essay = self.job.essay(item)
+            if self.later is not None and essay and self.later.missing(item.id, essay.legacy):
+                self.later.look(item, essay.legacy)  # what it led to, with pictures
 
     def run(self) -> None:
         """Picks the day's work and asks for its page, so they are ready when

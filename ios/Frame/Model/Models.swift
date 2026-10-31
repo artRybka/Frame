@@ -130,7 +130,7 @@ struct ItemSummary: Codable, Identifiable, Hashable, Sendable {
 
 struct ItemPage: Codable, Sendable {
     let total: Int
-    let items: [ItemSummary]
+    var items: [ItemSummary]
 }
 
 struct FacetValue: Codable, Hashable, Sendable, Identifiable {
@@ -1354,7 +1354,7 @@ struct DailyWork: Codable, Hashable, Sendable {
         var title: String
         var text: String
         var quote: String
-        /// The catalogue's copy, when it has one.
+        /// A copy of the later work: the catalogue's, else a museum's.
         var item: RemoteItem?
     }
 
@@ -1393,6 +1393,17 @@ struct DailyWork: Codable, Hashable, Sendable {
     var sources: [String]
     var model: String
     var previous: [Brief]
+    /// The later works' copies are being looked up in the museums now.
+    var legacyPending: Bool?
+}
+
+/// A work with a study, `GET /api/studies`: Discover's row "Studia dzieł".
+struct StudyBrief: Codable, Hashable, Sendable, Identifiable {
+    var item: RemoteItem
+    /// The Polish title the study gives it.
+    var title: String
+
+    var id: String { item.id }
 }
 
 /// A work of the day's page, opened from the tile or from a past day; or a

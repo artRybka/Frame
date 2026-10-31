@@ -15,6 +15,7 @@ from starlette.concurrency import run_in_threadpool
 
 from ..ai.daily import TEASER_CHARS, Composition, DailyJob, Detail, Essay, Legacy, Spot, short
 from ..ai.pl_text import description
+from ..later import entry_key
 from ..library import Item, PlaylistRules
 from ..library.markup import strip_markup
 from ..library.vocabulary import artist_matches
@@ -37,7 +38,7 @@ class SimilarWork(BaseModel):
 
 
 class LegacyWork(Legacy):
-    #: The catalogue's copy of the later work, when it has one.
+    #: A copy of the later work: the catalogue's, else a museum's.
     item: RemoteItem | None = None
 
 
@@ -63,6 +64,8 @@ class DailyWork(BaseModel):
     why_today: str = ""
     #: The model is writing the page now.
     writing: bool = False
+    #: The later works are being looked up in the museums now.
+    legacy_pending: bool = False
     #: The model wrote the page (else only what the museum says).
     written: bool = False
     #: The title of the text below.
@@ -114,6 +117,20 @@ def _later(svc: FrameService, entry: Legacy, item: Item) -> RemoteItem | None:
     return None
 
 
+def _legacy(svc: FrameService, item: Item, essay: Essay) -> list[LegacyWork]:
+    """What the work led to, each with a copy of it when there is one: the
+    catalogue's, else the museum's found for it."""
+    known = svc.later.known(item.id)
+    works = []
+    for entry in essay.legacy:
+        found = known.get(entry_key(entry))
+        copy = _later(svc, entry, item)
+        if copy is None and found is not None and found.item is not None:
+            copy = _light(svc, found.item)
+        works.append(LegacyWork(**entry.model_dump(), item=copy))
+    return works
+
+
 def _brief(svc: FrameService, day: str, item: Item) -> DailyBrief:
     return DailyBrief(
         day=day, item=_light(svc, item), title=_title(svc, item, svc.daily.job.essay(item))
@@ -159,10 +176,7 @@ def page(
             for s in essay.similar
             if s.id in by_id
         ]
-        legacy = [
-            LegacyWork(**entry.model_dump(), item=_later(svc, entry, item))
-            for entry in essay.legacy
-        ]
+        legacy = _legacy(svc, item, essay)
     else:
         similar = [
             SimilarWork(
@@ -197,6 +211,7 @@ def page(
         on_frame=essay.on_frame if essay else "",
         similar=similar,
         legacy=legacy,
+        legacy_pending=bool(essay and svc.later.look_soon(item, essay.legacy)),
         sources=essay.sources if essay else [],
         model=note.model if note else "",
     )

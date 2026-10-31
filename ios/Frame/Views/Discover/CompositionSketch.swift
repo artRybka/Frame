@@ -1,14 +1,16 @@
 import SwiftUI
 
-/// One take on the composition as pencil on tracing paper: the picture
-/// washed out (darkened in dark mode, with the pencil white), the marks drawn
-/// over it with a number beside each, and their labels under the picture in
-/// two columns, all hand-written: a title and a line under it.
+/// One take on the composition: the picture as it is, in full colour, the
+/// marks drawn over it in pencil with a paper-coloured edge (so they read on
+/// dark and light parts alike) and a number beside each, and their labels
+/// under the picture in two columns, all hand-written: a title and a line
+/// under it. A tap on the picture hides the marks, another brings them back
+/// (no sign for it on the picture).
 struct CompositionSketch: View {
     let item: RemoteItem
     let aspect: CGFloat
     let take: DailyWork.Take
-    @Environment(\.colorScheme) private var scheme
+    @State private var bare = false
 
     /// A mark with a label, by its number on the picture.
     struct Labelled: Identifiable {
@@ -33,8 +35,9 @@ struct CompositionSketch: View {
         }
     }
 
-    private var dark: Bool { scheme == .dark }
-    private var pencil: Color { dark ? Color(hex: 0xF6F1E8) : Color(hex: 0x2E2A25) }
+    /// Pencil and the paper edge around it, the same over any picture.
+    private let pencil = Color(hex: 0x2E2A25)
+    private let paper = Color(hex: 0xFBF8F2)
 
     private func picture(_ labelled: [Labelled]) -> some View {
         Color.clear
@@ -46,30 +49,45 @@ struct CompositionSketch: View {
                     placeholder: item.item.placeholderColor,
                     maxPixel: 1600
                 )
-                .saturation(dark ? 0.65 : 0.75)
-                .contrast(0.9)
-                .blur(radius: 0.4)
             }
-            .overlay(dark ? Color(hex: 0x0E0C0A).opacity(0.42) : Color(hex: 0xF6F1E7).opacity(0.45))
             .overlay {
                 Canvas { context, size in draw(in: &context, size: size, labelled: labelled) }
+                    .shadow(color: .black.opacity(0.3), radius: 1.5, y: 0.5)
+                    .opacity(bare ? 0 : 1)
+                    .allowsHitTesting(false)
             }
             .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
+            .contentShape(Rectangle())
+            .onTapGesture {
+                withAnimation(.easeInOut(duration: 0.25)) { bare.toggle() }
+            }
+            .sensoryFeedback(.selection, trigger: bare)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityHint(bare ? "Pokazuje ślady analizy" : "Pokazuje sam obraz")
             .frame(maxWidth: 380 * aspect)  // a tall picture no taller than a landscape one
             .frame(maxWidth: .infinity)
     }
 
+    /// Each stroke twice: a wider paper-coloured one under it, then the
+    /// pencil; the grid fainter, the numbers on paper discs.
     private func draw(in context: inout GraphicsContext, size: CGSize, labelled: [Labelled]) {
         for (index, line) in Pencil.grid(take.grid, in: size).enumerated() {
-            context.fill(Pencil.stroke(line, width: 1, seed: 90 + index, start: 0.05, end: 0.05), with: .color(pencil.opacity(0.45)))
+            let path = Pencil.stroke(line, width: 1, seed: 90 + index, start: 0.05, end: 0.05)
+            context.stroke(path, with: .color(paper.opacity(0.7)), lineWidth: 1.6)
+            context.fill(path, with: .color(pencil.opacity(0.75)))
         }
         for (index, mark) in take.marks.enumerated() {
-            for path in Pencil.paths(for: mark, in: size, seed: index * 7 + 1) {
-                context.fill(path, with: .color(pencil.opacity(dark ? 0.95 : 0.92)))
+            let paths = Pencil.paths(for: mark, in: size, seed: index * 7 + 1)
+            for path in paths {
+                context.stroke(path, with: .color(paper), style: StrokeStyle(lineWidth: 3.2, lineCap: .round, lineJoin: .round))
+            }
+            for path in paths {
+                context.fill(path, with: .color(pencil))
             }
         }
         for entry in labelled {
             let spot = Pencil.numberSpot(for: entry.mark, in: size)
+            context.fill(Path(ellipseIn: CGRect(x: spot.x - 9.5, y: spot.y - 9.5, width: 19, height: 19)), with: .color(paper))
             context.fill(Pencil.loop(center: spot, rx: 8.5, ry: 8, width: 1.4, seed: 40 + entry.number), with: .color(pencil))
             context.draw(
                 Text("\(entry.number)").font(.system(size: 10.5, weight: .bold)).foregroundStyle(pencil),
@@ -87,7 +105,9 @@ struct CompositionSketch: View {
                 .frame(width: 17, height: 17)
                 .overlay(Circle().strokeBorder(Theme.ink, lineWidth: 1.3))
                 .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 5 }
-            VStack(alignment: .leading, spacing: 1) {
+            // The hand-written face has tall lines: the note sits close
+            // under its title, as written by hand.
+            VStack(alignment: .leading, spacing: -7) {
                 Text(entry.mark.title)
                     .font(.hand(21))
                     .lineLimit(2)

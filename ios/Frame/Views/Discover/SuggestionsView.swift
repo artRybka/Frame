@@ -1,8 +1,9 @@
 import SwiftUI
 
 /// What Discover opens with: the work of the day, the theme of the day,
-/// ideas for playlists in groups, then rows of works like the ones the owner
-/// likes and the owner's works not shown for long.
+/// ideas for playlists in groups, the works with a study ("Studia dzieł"), then
+/// rows of works like the ones the owner likes and the owner's works not
+/// shown for long.
 ///
 /// The last ones loaded show at once (also after a launch) while fresh ones
 /// load, and only the cards and works on screen fetch their pictures.
@@ -75,6 +76,7 @@ struct SuggestionsView: View {
                     .scrollClipDisabled()
                 }
             }
+            if let studies = model.studyList, !studies.isEmpty { StudyRow(studies: studies).id("studies") }
             ForEach(otherRows) { row in rowView(row) }
         }
         .overlay(alignment: .top) {
@@ -234,6 +236,82 @@ struct ThemeCard: View {
                 }
             }
         }
+    }
+}
+
+/// "Studia dzieł": every work with a study, the last asked for first, as cards
+/// to swipe through; each opens its study.
+struct StudyRow: View {
+    let studies: [StudyBrief]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Studia dzieł")
+                    .font(.serif(22, weight: .semibold))
+                    .foregroundStyle(Theme.ink)
+                Text("Dotychczas przyszykowane studia dzieł")
+                    .font(.footnote)
+                    .foregroundStyle(Theme.inkSoft)
+            }
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(alignment: .top, spacing: 12) {
+                    ForEach(studies) { study in
+                        NavigationLink(value: DailyRoute(day: nil, study: study.id)) {
+                            StudyCard(study: study).frame(width: 172)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.vertical, 2)
+            }
+            .scrollClipDisabled()
+        }
+    }
+}
+
+/// A study as a card, like a theme's: the work on top, its title and artist
+/// below on the card's white.
+struct StudyCard: View {
+    let study: StudyBrief
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Color.clear
+                .frame(height: 118)
+                .frame(maxWidth: .infinity)
+                .overlay {
+                    ArtImage(
+                        ref: study.item.thumb,
+                        fallback: study.item.thumbFallback,
+                        placeholder: study.item.item.placeholderColor,
+                        maxPixel: 500,
+                        subjectFocus: true
+                    )
+                }
+                .clipped()
+            VStack(alignment: .leading, spacing: 4) {
+                Text(study.title)
+                    .font(.serif(15, weight: .semibold))
+                    .foregroundStyle(Theme.ink)
+                    .lineLimit(2, reservesSpace: true)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(study.item.item.artist)
+                    .font(.caption)
+                    .foregroundStyle(Theme.inkSoft)
+                    .lineLimit(1)
+            }
+            .padding(10)
+            .frame(maxHeight: .infinity, alignment: .top)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.card, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Theme.hairline))
+        .accessibilityElement(children: .combine)
+        .accessibilityHint("Otwiera studium dzieła")
     }
 }
 

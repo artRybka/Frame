@@ -121,6 +121,20 @@ def test_suggestions_follow_the_owners_taste(museums) -> None:
     assert not service.importer.save(picked[1].id).pooled
 
 
+def test_searched_artists_count_lightly_towards_taste(service) -> None:
+    player = service.player
+    liked = Item(id="aic:1", source="aic", source_id="1", artist="Ala", favorite=True)
+    service.library.upsert(liked)
+    player.searched_for(["Ola"])
+    player.searched_for(["Ola"])  # the same search again: once
+    assert player.taste() == ["Ala", "Ola"]
+    for _ in range(5):
+        player.searched_for(["Ola"])
+        player.searched_for(["Ela"])
+    # Searched often, an artist counts as much as a favourite at most.
+    assert player.taste()[0] == "Ala" and set(player.taste()[1:]) == {"Ola", "Ela"}
+
+
 def test_suggestions_come_from_the_catalogue_first(museums) -> None:
     service = museums
     player = service.player
