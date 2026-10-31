@@ -32,7 +32,7 @@ uv run mypy src
 ## iOS (`ios/`)
 
 XcodeGen (`project.yml`); the `.xcodeproj` and `Info.plist` are generated and
-git-ignored. iOS 17+, SwiftUI, `@Observable`. CI builds and tests on macOS
+git-ignored. iOS 26+, SwiftUI, `@Observable`, Liquid Glass. CI builds and tests on macOS
 (`.github/workflows/ios.yml`): it is the only compile check when working
 from Linux.
 Screenshots are not part of CI: when a branch changes the look, dispatch

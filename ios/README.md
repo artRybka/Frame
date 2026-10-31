@@ -1,6 +1,6 @@
 # Frame — aplikacja iOS
 
-SwiftUI, iOS 17+, interfejs po polsku. Projekt Xcode jest generowany z
+SwiftUI, iOS 26+, interfejs po polsku. Projekt Xcode jest generowany z
 `project.yml` przez [XcodeGen](https://github.com/yonaskolb/XcodeGen) i nie
 trafia do repozytorium.
 

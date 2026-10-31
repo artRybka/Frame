@@ -27,9 +27,11 @@ jobs:
         id: sim
         run: |
           udid=$(xcrun simctl list devices available -j | python3 -c "
-          import json, sys
+          import json, re, sys
           devices = json.load(sys.stdin)['devices']
-          phones = [d for runtime, ds in devices.items() if 'iOS' in runtime for d in ds if d['name'].startswith('iPhone')]
+          # The app needs iOS 26: the newest runtime's iPhones.
+          runtimes = sorted((r for r in devices if 'iOS' in r), key=lambda r: [int(n) for n in re.findall(r'\d+', r.split('iOS')[-1])])
+          phones = [d for d in devices[runtimes[-1]] if d['name'].startswith('iPhone')]
           pro = [d for d in phones if 'Pro' in d['name'] and 'Max' not in d['name']]
           print((pro or phones)[-1]['udid'])
           ")

@@ -24,6 +24,30 @@ final class TermFacetTests: XCTestCase {
         XCTAssertEqual(split.axis.map(PeriodAxis.mark).first, "śr.")
     }
 
+    func testNamedPeriodsComeInTheServersGroups() {
+        let named = [
+            TermInfo(key: "period:belle-epoque", kind: "period", name: "Belle Époque", yearFrom: 1880, yearTo: 1914, region: "europe"),
+            TermInfo(key: "period:edo", kind: "period", name: "Edo", yearFrom: 1603, yearTo: 1868, region: "east-asia"),
+            TermInfo(key: "period:ming", kind: "period", name: "Ming", yearFrom: 1368, yearTo: 1644, region: "east-asia"),
+        ]
+        let withRegions = periods.filter { !["period:belle-epoque", "period:interwar"].contains($0.key) } + named
+        let split = PeriodAxis.split(withRegions)
+        XCTAssertEqual(split.axis.count, 10)
+        XCTAssertEqual(split.named.map(\.name), ["Belle Époque", "Edo", "Ming"])
+        XCTAssertEqual(PeriodAxis.years(named[1]), "1603–1868")
+        // Where a year falls on the axis of ten equal pieces.
+        XCTAssertEqual(PeriodAxis.position(1400, on: split.axis), 0.1, accuracy: 0.001)
+        XCTAssertEqual(PeriodAxis.position(1650, on: split.axis), 0.35, accuracy: 0.001)
+        XCTAssertEqual(PeriodAxis.position(1368, on: split.axis), 0.068, accuracy: 0.001)
+        XCTAssertEqual(PeriodAxis.position(2100, on: split.axis), 1)
+    }
+
+    func testOlderPlaylistsMineTermsStayInTheField() {
+        let token = SearchToken(kind: "mine", key: "mine:favorites", name: "Ulubione")
+        XCTAssertTrue(TermFacet.inField(token))
+        XCTAssertEqual(TermFacet.allCases.map(\.title), ["Technika", "Epoka", "Styl", "Kolor", "Temat", "Muzeum"])
+    }
+
     func testPiecesSideBySideReadAsOneSpan() {
         XCTAssertEqual(PeriodAxis.span(["period:18c", "period:1850-1900", "period:1800-1850"], periods: periods), "1700–1900")
         XCTAssertEqual(PeriodAxis.span(["period:medieval", "period:15c"], periods: periods), "do 1500")

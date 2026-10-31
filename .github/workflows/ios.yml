@@ -19,11 +19,12 @@ jobs:
       - uses: actions/checkout@v4
       - run: brew install xcodegen
       - run: xcodegen generate
+      # The app needs iOS 26: the newest runtime's iPhone.
       - name: Pick an available iPhone simulator
         id: sim
         run: |
           udid=$(xcrun simctl list devices available -j \
-            | python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; print(next(x['udid'] for r,v in d.items() if 'iOS' in r for x in v if x['name'].startswith('iPhone')))")
+            | python3 -c "import json,re,sys; d=json.load(sys.stdin)['devices']; v=lambda r: [int(n) for n in re.findall(r'\d+', r.split('iOS')[-1])]; print(next(x['udid'] for r in sorted((r for r in d if 'iOS' in r), key=v, reverse=True) for x in d[r] if x['name'].startswith('iPhone')))")
           echo "udid=$udid" >> "$GITHUB_OUTPUT"
       - name: Build and test
         run: >
