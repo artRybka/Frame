@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.55.0
+
+- Przygotowanie studium dzieła na ekranie blokady i w Dynamic Island (Live
+  Activity): trzy kroki, serwer przesuwa kartę pushem także przy zamkniętej
+  aplikacji, na koniec stuknięcie otwiera studium. „Studium gotowe”
+  przychodzi po wycięciu detali.
+
 ## 1.54.0
 
 - Teraz startuje tak, jak go zostawiono: ostatni obraz od razu, z pigułką
