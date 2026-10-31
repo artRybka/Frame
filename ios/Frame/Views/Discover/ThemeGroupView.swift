@@ -38,7 +38,8 @@ struct ThemeGroupView: View {
     let name: String
 
     private var themes: [ArtTheme] {
-        (model.themes ?? []).filter { ($0.group ?? "Motywy") == name }
+        DiscoverLayout.themes(model.themes ?? [], rows: model.suggestionRows ?? [])
+            .filter { ($0.group ?? "Motywy") == name }
     }
 
     private let columns = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
@@ -55,6 +56,7 @@ struct ThemeGroupView: View {
                     .buttonStyle(.plain)
                 }
             }
+            .pageWidth()
             .padding(.horizontal, Theme.gutter)
             .padding(.top, 4)
             .padding(.bottom, 32)
@@ -67,7 +69,7 @@ struct ThemeGroupView: View {
                 .padding(.horizontal, Theme.gutter)
             }
         }
-        .background(Theme.paper)
+        .paperPage()
         .navigationTitle(name)
         .refreshable { await model.refreshDiscover(force: true) }
     }
@@ -104,10 +106,11 @@ struct SuggestionRowGridView: View {
                     )
                 }
             }
+            .pageWidth()
             .padding(.horizontal, Theme.gutter)
             .padding(.bottom, 32)
         }
-        .background(Theme.paper)
+        .paperPage()
         .navigationTitle(row?.title ?? "Propozycje")
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await model.refreshDiscover(force: true) }

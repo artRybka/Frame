@@ -70,6 +70,10 @@ final class TermFacetTests: XCTestCase {
         XCTAssertEqual(TermFacet.period.label(tokens, periods: periods), "Epoka: 1700–1850")
         XCTAssertEqual(TermFacet.color.label(tokens, periods: periods), "Akcent: czerwień")
         XCTAssertEqual(TermFacet.subject.label(tokens, periods: periods), "Temat")
+        // Under the group's name on its button.
+        XCTAssertEqual(TermFacet.style.value(tokens, periods: periods), "Ukiyo-e +1")
+        XCTAssertEqual(TermFacet.period.value(tokens, periods: periods), "1700–1850")
+        XCTAssertNil(TermFacet.subject.value(tokens, periods: periods))
         XCTAssertEqual(tokens.filter(TermFacet.inField).map(\.name), ["Hiroshige"])
     }
 }

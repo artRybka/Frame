@@ -39,7 +39,7 @@ wysyłamy komend szybciej niż co ~0,3 s.
 | `0x0E` | – | wersja oprogramowania | potwierdzone |
 | `0x10` | – | model: kod `02 7a 01`, nie tekst | odczytane (E1) |
 | `0x11` | `00`/`01` | zasilanie wył./wł. (odczyt NAK) | potwierdzone |
-| `0x1B` | `73` | stan baterii: `payload[4]` = poziom %, `payload[6]` = zasilanie USB-C (`02` podłączone, `00` odłączone); reszta (`00 01 01`, `02`) bez zmian | częściowo (E1) |
+| `0x1B` | `73` | stan baterii: `payload[4]` = poziom %, `payload[6]` = zasilanie USB-C (`02` podłączone, `00` odłączone); reszta (`00 01 01`, `02`) bez zmian; `payload[1]` bywa `00` na zasilaczu także w trakcie ładowania (zgłoszenie Mateusza, ikonka zmieniała się we wtyczkę), więc nie mówi o ładowaniu (serwer: ładuje się = zasilacz i poziom poniżej 95 %, 2026-10-31) | częściowo (E1) |
 | `0x25` | jeden bajt `00`–`05` | Na firmware 1130.7 **nie** jest budzikiem z godziną: przyjmuje tylko jeden bajt `00`–`05` (odczyt zwraca go z powrotem), każdy zapis z hh:mm (`en repeat hh mm 01` z node-samsung-emdx, 12 h z AM/PM, 2–15 bajtów) kończy się NAK `01`. Znaczenie nieznane. Patrz [WAKE.md](WAKE.md#tryb-oszczędny) | E13 (2026-10-27) |
 | `0xCB` | – | odczyt `01 20` przy „Sleep After” = 00:20 w aplikacji; prawdopodobnie czas uśpienia (do potwierdzenia) | E13 |
 | `0x1B` + sub | – | poza `0x73` (bateria) odpowiadają m.in. `0x13`, `0x61`, `0x62`, `0x71`, `0x75`, `0x81` (MAC jako tekst), `0x87` (**PIN**, nie wklejać), `0x88`, `0x8C`, `0x8D`, `0xB0`, `0xB1`, `0xB2` | E13 |

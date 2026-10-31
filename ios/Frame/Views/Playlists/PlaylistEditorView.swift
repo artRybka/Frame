@@ -126,12 +126,13 @@ struct PlaylistEditorView: View {
                             albumSection
                         }
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(Theme.gutter)
                     .coordinateSpace(.named(Self.content))
                 }
                 .scrollDismissesKeyboard(.immediately)
                 .hidesOnScroll($groupsShown)
-                .background(Theme.paper)
+                .paperPage()
                 .modifier(EditorSearch(
                     enabled: playlist.kind != .album,
                     lookup: lookup,
@@ -925,6 +926,8 @@ private struct EditorSearch: ViewModifier {
     let groupsShown: Bool
     let museums: [Museum]
     let pickedFromMuseums: () -> Void
+    /// The sheet's height, for how tall an open group may be.
+    @State private var height: CGFloat = 700
 
     @ViewBuilder
     func body(content: Content) -> some View {
@@ -934,13 +937,14 @@ private struct EditorSearch: ViewModifier {
                     if groupsShown {
                         TermFacetBar(
                             tokens: tokens, museums: museums, colors: ColorTag.families + ColorTag.moods,
-                            opening: { focused.wrappedValue = false }
+                            focus: focused, panelHeight: height * 0.6
                         )
                         .padding(.horizontal, Theme.gutter)
-                        .padding(.bottom, 8)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
                 }
+                // Measured outside the groups' inset: an open group grows it.
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
                 .termSearch(lookup, tokens: tokens, focused: focused, pickedFromMuseums: pickedFromMuseums)
                 .toolbar {
                     DefaultToolbarItem(kind: .search, placement: .bottomBar)

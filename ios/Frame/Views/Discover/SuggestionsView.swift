@@ -1,9 +1,10 @@
 import SwiftUI
 
-/// What Discover opens with: the work of the day, the theme of the day,
-/// ideas for playlists in groups, the works of the day and those with a
-/// study ("Studia dzieł"), then rows of works like the ones the owner likes
-/// and the owner's works not shown for long.
+/// What Discover opens with: the work of the day, ideas for playlists in
+/// groups ("Na ten tydzień" opens with the theme of the day, "Bo lubisz" has
+/// a card for each artist the owner likes), the owner's works not shown for
+/// long and, last, the works of the day and those with a study ("Studia
+/// dzieł").
 ///
 /// The last ones loaded show at once (also after a launch) while fresh ones
 /// load, and only the cards and works on screen fetch their pictures.
@@ -13,11 +14,16 @@ struct SuggestionsView: View {
     @Binding var path: NavigationPath
 
     private var rows: [SuggestionRow] { model.suggestionRows ?? [] }
-    /// "Motyw dnia" goes above the groups; "Dla Ciebie" (still the cover of
-    /// Propozycje in Playlisty) and "Nowe w katalogu" are not shown.
-    private var dayRow: SuggestionRow? { rows.first { $0.key == "theme" } }
-    private var otherRows: [SuggestionRow] { rows.filter { !["theme", "for-you", "new"].contains($0.key) } }
-    private var themes: [ArtTheme] { model.themes ?? [] }
+    /// "Motyw dnia" is a card of "Na ten tydzień"; "Dla Ciebie" (still the
+    /// cover of Propozycje in Playlisty) and "Nowe w katalogu" are not shown,
+    /// nor the rows "Bo lubisz: …" of older servers once they send its cards.
+    private var otherRows: [SuggestionRow] {
+        let liked = themes.contains { $0.group == DiscoverLayout.likes }
+        return rows.filter { row in
+            !["theme", "for-you", "new"].contains(row.key) && !(liked && row.key.hasPrefix("like:"))
+        }
+    }
+    private var themes: [ArtTheme] { DiscoverLayout.themes(model.themes ?? [], rows: rows) }
 
     private struct ThemeGroup: Identifiable {
         let name: String
@@ -49,7 +55,6 @@ struct SuggestionsView: View {
                     systemImage: "sparkles"
                 )
             }
-            if let dayRow { rowView(dayRow) }
             ForEach(groups) { group in
                 VStack(alignment: .leading, spacing: 12) {
                     NavigationLink(value: ThemeGroupRoute(name: group.name)) {
@@ -76,9 +81,11 @@ struct SuggestionsView: View {
                     .scrollClipDisabled()
                 }
             }
-            if let studies = model.studyList, !studies.isEmpty { StudyRow(studies: studies).id("studies") }
             ForEach(otherRows) { row in rowView(row) }
+            if let studies = model.studyList, !studies.isEmpty { StudyRow(studies: studies).id("studies") }
         }
+        // Full width while it is still empty, so the spinner is in the middle.
+        .pageWidth()
         .overlay(alignment: .top) {
             if loading && rows.isEmpty { ProgressView().padding(.top, 60) }
         }
@@ -101,7 +108,51 @@ struct SuggestionsView: View {
     }
 
     private func rowView(_ row: SuggestionRow) -> some View {
-        SuggestionRowView(row: row, theme: themes.first { $0.key == row.theme })
+        SuggestionRowView(row: row, theme: (model.themes ?? []).first { $0.key == row.theme })
+    }
+}
+
+/// How Propozycje lays out the themes and rows the server sends.
+enum DiscoverLayout {
+    static let weekly = "Na ten tydzień"
+    static let likes = "Bo lubisz"
+    /// Groups made for this week or for this owner, not lasting themes.
+    static let ownGroups: Set<String> = [weekly, likes]
+
+    /// The theme of the day as a card, "Motyw dnia: …" with the day's works
+    /// on its cover (by different artists where it can); it opens the theme.
+    static func dayCard(_ row: SuggestionRow, themes: [ArtTheme]) -> ArtTheme? {
+        guard let key = row.theme else { return nil }
+        let base = themes.first { $0.key == key && $0.group != weekly }
+        var cover: [RemoteItem] = []
+        for remote in row.items where !cover.contains(where: { $0.item.artist == remote.item.artist }) {
+            cover.append(remote)
+            if cover.count == 4 { break }
+        }
+        for remote in row.items where cover.count < 4 && !cover.contains(remote) {
+            cover.append(remote)
+        }
+        return ArtTheme(
+            key: key,
+            name: row.title,
+            description: row.subtitle,
+            group: weekly,
+            count: base?.count,
+            cover: cover.isEmpty ? base?.cover : cover,
+            playlistId: base?.playlistId,
+            rules: base?.rules
+        )
+    }
+
+    /// The themes as Propozycje shows them: the theme of the day first in
+    /// "Na ten tydzień" (the group made for it when the week has no themes).
+    static func themes(_ themes: [ArtTheme], rows: [SuggestionRow]) -> [ArtTheme] {
+        guard let row = rows.first(where: { $0.key == "theme" }), let card = dayCard(row, themes: themes) else {
+            return themes
+        }
+        var all = themes
+        all.insert(card, at: all.firstIndex { $0.group == weekly } ?? 0)
+        return all
     }
 }
 
@@ -303,11 +354,12 @@ struct StudiesGridView: View {
                     )
                 }
             }
+            .pageWidth()
             .padding(.horizontal, Theme.gutter)
             .padding(.top, 4)
             .padding(.bottom, 32)
         }
-        .background(Theme.paper)
+        .paperPage()
         .navigationTitle("Studia dzieł")
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await model.loadStudyList(model.backend) }
@@ -460,10 +512,11 @@ struct ThemeView: View {
                     .disabled(loading)
                 }
             }
+            .pageWidth()
             .padding(.horizontal, Theme.gutter)
             .padding(.bottom, 32)
         }
-        .background(Theme.paper)
+        .paperPage()
         .navigationTitle(theme.name)
         .navigationBarTitleDisplayMode(.inline)
         .task {

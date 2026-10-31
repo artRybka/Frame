@@ -46,7 +46,7 @@ struct SendSheet: View {
             .padding(.horizontal, Theme.gutter)
             .padding(.vertical, 12)
             .animation(.easeInOut(duration: 0.2), value: look?.fit)
-            .background(Theme.paper)
+            .paperPage()
             .navigationTitle("Zdjęcie na ramkę")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

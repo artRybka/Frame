@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.53.0
+
+- Odkrywaj: Motyw dnia jako pierwszy kafelek w „Na ten tydzień”; zamiast
+  rzędów „Bo lubisz: …” grupa „Bo lubisz” z kafelkiem na każdego ulubionego
+  artystę i pokrewnymi artystami w środku; „Studia dzieł” na końcu ekranu.
+- Poprawki szklanego Szukaj: grupy przy klawiaturze stoją nad polem, a nie
+  za nim; znowu wyższe grupy na całą szerokość 3 × 2 z nazwą nad wyborem;
+  grupa otwiera się jako szklane okienko nad polem zamiast arkusza;
+  „Wyczyść wybory” nad grupami; schowane grupy wracają chwilę po zatrzymaniu
+  przewijania; Epoka pobiera okresy od nowa po aktualizacji serwera; koniec
+  białego ekranu z wąskim paskiem podczas pisania.
+- Dzieło dnia otwiera się od razu na całą szerokość z obrazem, zanim
+  wczyta się reszta strony.
+- Ekrany w trakcie wczytywania lub puste (m.in. Odkrywaj przy pierwszym
+  uruchomieniu) mają od razu pełną szerokość: koniec białej strony z wąskim
+  beżowym paskiem w całej aplikacji.
+- Kafelek Zasilanie pokazuje błyskawicę przez całe ładowanie (zasilacz
+  wpięty i bateria poniżej 95%), a wtyczkę dopiero przy prawie pełnej
+  baterii; wcześniej błyskawica migała i zmieniała się we wtyczkę.
+
 ## 1.52.0
 
 - Szklane Szukaj (iOS 26): systemowa karta wyszukiwania z polem na dole; nad
