@@ -54,6 +54,7 @@ from . import (
     player_api,
     playlists_api,
     storage_api,
+    study_api,
     update_api,
 )
 from .deps import require_token
@@ -137,6 +138,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         library_api.router,
         discover_api.router,
         daily_api.router,
+        study_api.router,
         playlists_api.router,
         player_api.router,
         calibration_api.router,

@@ -37,6 +37,11 @@ struct ItemDetailView: View {
     @State private var taps = 0
     @State private var queueTaps = 0
     @State private var loadFailed = false
+    /// The work's study as the card found it ("Przygotuj studium dzieła");
+    /// the model's, while one is followed, wins.
+    @State private var study: StudyView?
+    @State private var studyOpen = false
+    @State private var studyTaps = 0
 
     enum Sent { case done, failed }
 
@@ -79,6 +84,19 @@ struct ItemDetailView: View {
         .onChange(of: item) { _, item in
             if let item { ItemPeeks.keep(item) }
         }
+        .navigationDestination(isPresented: $studyOpen) {
+            DailyView(route: DailyRoute(day: nil, study: itemID))
+        }
+        .onAppear { model.topCard = itemID }
+        .onDisappear {
+            if model.topCard == itemID { model.topCard = nil }
+        }
+        .onChange(of: model.studyOnCard) { _, id in
+            // "Studium dzieła gotowe" tapped while this card is on top.
+            guard id == itemID else { return }
+            model.studyOnCard = nil
+            studyOpen = true
+        }
         .sheet(isPresented: $showingPlaylists) {
             if let item { AddToPlaylistSheet(item: item, beforeAdding: saveCrop) }
         }
@@ -91,6 +109,7 @@ struct ItemDetailView: View {
             actions(item)
             if !item.colors.isEmpty { palette(item) }
             about(item)
+            studySection(item)
             facts(item)
             if !(item.styles + item.subjects).isEmpty {
                 VStack(alignment: .leading, spacing: 10) {
@@ -123,7 +142,19 @@ struct ItemDetailView: View {
         // Keywords and Polish texts ahead of the background queue.
         _ = try? await model.backend.describe(itemID: itemID, wait: 0)
         described = itemID
+        await loadStudy()
         await loadPolish()
+    }
+
+    /// Whether the work has a study; one on its way (asked before the app
+    /// was closed) is followed on a card at the bottom.
+    private func loadStudy() async {
+        guard let found = try? await model.backend.study(itemID: itemID, wait: 0) else { return }
+        study = found
+        if found.isPending, let item {
+            let name = title(item)
+            Task { await model.resumeStudy(itemID: itemID, title: name, view: found) }
+        }
     }
 
     // MARK: Loading
@@ -352,6 +383,75 @@ struct ItemDetailView: View {
                 if let polish { polishOrigin(polish) }
             }
         }
+    }
+
+    /// "Przygotuj studium dzieła" under "O dziele": Claude writes the work
+    /// of the day's page for this work; the card at the bottom follows it
+    /// and opens it once ready. A study made is kept: "Otwórz studium".
+    @ViewBuilder
+    private func studySection(_ item: Item) -> some View {
+        if let state = model.studies[itemID] ?? study, state.status != "off" {
+            VStack(alignment: .leading, spacing: 8) {
+                if state.status == "ready" {
+                    Button {
+                        studyOpen = true
+                    } label: {
+                        Label("Otwórz studium", systemImage: "text.book.closed.fill")
+                    }
+                    .contextMenu {
+                        Button("Przygotuj od nowa", systemImage: "arrow.clockwise") { prepareStudy(item, again: true) }
+                    }
+                } else if state.isPending {
+                    Button {} label: {
+                        Label {
+                            Text("Przygotowuję studium…")
+                        } icon: {
+                            ProgressView().controlSize(.small)
+                        }
+                    }
+                    .disabled(true)
+                    studyNote("Postęp widać w dymku na dole; możesz w tym czasie przeglądać dalej.")
+                } else {
+                    let failed = state.status == "failed"
+                    Button {
+                        prepareStudy(item, again: failed)
+                    } label: {
+                        Label(failed ? "Spróbuj ponownie" : "Przygotuj studium dzieła", systemImage: "text.book.closed")
+                    }
+                    if failed, !state.error.isEmpty {
+                        studyNote(state.error, color: Theme.bad)
+                    } else {
+                        studyNote(
+                            "Claude opisze okoliczności powstania, autora, kompozycję, kolor i detale, jak w Dziele dnia. "
+                                + "Trwa to 1–3 minuty\(Self.cost(state.costUsd)). Studium zostaje na serwerze."
+                        )
+                    }
+                }
+            }
+            .buttonStyle(ActionButtonStyle())
+            .labelStyle(ActionLabelStyle())
+            .sensoryFeedback(.impact(weight: .light), trigger: studyTaps)
+            .animation(.easeInOut(duration: 0.2), value: state.status)
+        }
+    }
+
+    private func prepareStudy(_ item: Item, again: Bool = false) {
+        studyTaps += 1
+        let name = title(item)
+        Task { await model.prepareStudy(itemID: item.id, title: name, again: again) }
+    }
+
+    private func studyNote(_ text: String, color: Color = Theme.inkSoft) -> some View {
+        Text(text)
+            .font(.footnote)
+            .foregroundStyle(color)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    /// ", około 0,14 USD z limitu na Claude’a"; nothing when unknown.
+    private static func cost(_ usd: Double) -> String {
+        guard usd > 0 else { return "" }
+        return ", około " + String(format: "%.2f", usd).replacingOccurrences(of: ".", with: ",") + " USD z limitu na Claude’a"
     }
 
     private func polishOrigin(_ polish: PolishText) -> some View {

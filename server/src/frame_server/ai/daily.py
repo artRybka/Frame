@@ -504,6 +504,7 @@ class DailyJob(NoteJob):
     model = OPUS
     prompt_version = PROMPT_VERSION
     typical = TYPICAL
+    system = SYSTEM
 
     def __init__(
         self,
@@ -557,7 +558,7 @@ class DailyJob(NoteJob):
         text = {"type": "text", "text": request_text(item, context)}
         params = request(
             model=OPUS,
-            system=SYSTEM,
+            system=self.system,
             content=[picture_block(self.images, item), text],
             schema=SCHEMA,
             max_tokens=16000,
@@ -575,12 +576,12 @@ class DailyJob(NoteJob):
 
     def essay(self, item: Item) -> Essay | None:
         """The work's write-up, if it is up to date."""
-        note = self.library.note(item.id, KIND)
+        note = self.library.note(item.id, self.kind)
         if not self.fresh(item, note) or note is None or "teaser" not in note.data:
             return None
         return Essay.model_validate(note.data)
 
     def failed(self, item: Item) -> bool:
         """Asked already, without a usable answer: not asked again today."""
-        note = self.library.note(item.id, KIND)
+        note = self.library.note(item.id, self.kind)
         return self.fresh(item, note) and note is not None and "teaser" not in note.data

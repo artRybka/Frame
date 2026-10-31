@@ -81,6 +81,16 @@ final class AppModel {
     var themes: [ArtTheme]?
     /// The work of the day at the top of Propozycje; nil while there is none.
     var daily: DailyWork?
+    /// Studies of works asked for on their cards, as last heard (`Studies.swift`).
+    var studies: [String: StudyView] = [:]
+    /// The work whose card is on top: "Studium gotowe" opens its study there.
+    var topCard: String?
+    /// A study to open: pushed on its card when that is on top, else in a sheet.
+    var studyOnCard: String?
+    var studySheet: String?
+    /// The cards following studies on their way, and those saying one is ready.
+    @ObservationIgnored var studyCards: [String: Notice.ID] = [:]
+    @ObservationIgnored var studyReadyCards: [String: Notice.ID] = [:]
     private var discoverLoad: Task<Void, Never>?
     private var discoverLoadedAt: Date?
     private var progressTask: Task<Void, Never>?

@@ -82,13 +82,26 @@ struct NoticeCard: View {
         .shadow(color: .black.opacity(0.08), radius: 10, y: 4)
         .animation(.easeInOut(duration: 0.3), value: notice.kind)
         .contentShape(Rectangle())
-        .onTapGesture { if notice.kind.transient { close() } }
+        .onTapGesture {
+            if let action = notice.action {
+                close()
+                action.run()
+            } else if notice.kind.transient {
+                close()
+            }
+        }
         .gesture(
             DragGesture(minimumDistance: 12).onEnded { drag in
                 if notice.kind != .working, drag.translation.height > 24 { close() }
             }
         )
         .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(notice.action == nil ? [] : .isButton)
+        .accessibilityAction {
+            guard let action = notice.action else { return }
+            close()
+            action.run()
+        }
         .accessibilityAction(named: "Zamknij") { if notice.kind != .working { close() } }
     }
 
@@ -129,20 +142,34 @@ struct NoticeCard: View {
                 .font(.caption.weight(.medium).monospacedDigit())
                 .foregroundStyle(Theme.inkSoft)
                 .padding(.top, 1)
-        case .warning, .error:
-            Button(action: close) {
-                Image(systemName: "xmark")
+        case _ where notice.action != nil:
+            HStack(spacing: 10) {
+                Text(notice.action?.label ?? "")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(Theme.inkSoft)
-                    .padding(6)
-                    .contentShape(Rectangle())
+                    .foregroundStyle(Theme.paper)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(Theme.accent, in: Capsule())
+                closeButton
             }
-            .buttonStyle(.plain)
-            .padding(-6)
-            .accessibilityLabel("Zamknij")
+        case .warning, .error:
+            closeButton
         case .done, .info:
             EmptyView()
         }
+    }
+
+    private var closeButton: some View {
+        Button(action: close) {
+            Image(systemName: "xmark")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Theme.inkSoft)
+                .padding(6)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(-6)
+        .accessibilityLabel("Zamknij")
     }
 }
 

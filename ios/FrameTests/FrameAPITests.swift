@@ -258,6 +258,15 @@ final class FrameAPITests: XCTestCase {
         XCTAssertEqual(old.takes.first?.marks.count, 3)
     }
 
+    func testStudyViewDecodesFromServer() throws {
+        // GET /api/study/<id> while Claude writes (tests/test_study.py).
+        let json = #"{"status": "writing", "error": "", "work": null, "cost_usd": 0.14}"#
+        let view = try LiveBackend.decoder().decode(StudyView.self, from: Data(json.utf8))
+        XCTAssertTrue(view.isPending)
+        XCTAssertNil(view.work)
+        XCTAssertEqual(view.costUsd, 0.14, accuracy: 0.001)
+    }
+
     func testDecodesUndeliveredPicture() throws {
         let json = """
         {"state": "failed", "failure": "timeout", "failed_at": "2026-10-26T06:00:00+00:00",
