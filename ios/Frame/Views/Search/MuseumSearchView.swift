@@ -5,7 +5,7 @@ import SwiftUI
 /// and the museums (each as it answers). Artists and words are the system
 /// field's tokens; museums, colours, styles, subjects, periods and techniques
 /// come from the glass groups over the field, which hide as the results
-/// scroll and come back when the field is tapped. With nothing asked yet
+/// scroll and come back when the field is tapped or the scrolling stops. With nothing asked yet
 /// the icon's squares play, and at the end of the results they ask the
 /// museums for more when pulled. Coming back from a work finds the results
 /// as they were. The heart on a tile puts the work in Ulubione (a museum's
@@ -42,6 +42,8 @@ struct MuseumSearchView: View {
     @FocusState private var fieldFocused: Bool
     /// The groups over the field: hidden while scrolling the results.
     @State private var groupsShown = true
+    /// The screen's height, for how tall an open group may be.
+    @State private var height: CGFloat = 760
     /// Where the squares start, from the top of the scrolled content.
     @State private var squaresTop: CGFloat = 0
 
@@ -97,15 +99,15 @@ struct MuseumSearchView: View {
         }
         .scrollDismissesKeyboard(.immediately)
         .hidesOnScroll($groupsShown)
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
         .background(Theme.paper)
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if groupsShown {
                 TermFacetBar(
                     tokens: tokens, museums: museums, colors: ColorTag.families + ColorTag.moods,
-                    opening: { fieldFocused = false }
+                    focus: $fieldFocused, panelHeight: height * 0.6
                 )
                 .padding(.horizontal, Theme.gutter)
-                .padding(.bottom, 8)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }

@@ -238,8 +238,8 @@ struct TokenSummary: View {
 
 extension View {
     /// The groups over the search field: they hide at the first scroll down
-    /// through the results and come back only when the field is tapped (or
-    /// nothing is asked any more), as `shown` says.
+    /// through the results and come back a moment after the scrolling stops,
+    /// when the field is tapped or nothing is asked any more, as `shown` says.
     func hidesOnScroll(_ shown: Binding<Bool>) -> some View {
         modifier(HidesOnScroll(shown: shown))
     }
@@ -249,11 +249,22 @@ private struct HidesOnScroll: ViewModifier {
     @Binding var shown: Bool
     /// The finger moves the content (or it glides on after it).
     @State private var moving = false
+    @State private var showing: Task<Void, Never>?
+
+    /// How long the results rest before the groups come back.
+    private static let rest: Duration = .seconds(1.2)
 
     func body(content: Content) -> some View {
         content
             .onScrollPhaseChange { _, phase in
                 moving = phase == .interacting || phase == .decelerating
+                showing?.cancel()
+                guard phase == .idle else { return }
+                showing = Task { @MainActor in
+                    try? await Task.sleep(for: Self.rest)
+                    guard !Task.isCancelled, !shown else { return }
+                    withAnimation(.snappy) { shown = true }
+                }
             }
             .onScrollGeometryChange(for: CGFloat.self) { geometry in
                 geometry.contentOffset.y + geometry.contentInsets.top

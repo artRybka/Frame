@@ -41,19 +41,25 @@ enum TermFacet: String, CaseIterable, Identifiable, Sendable {
     /// has a field to narrow the list.
     var long: Bool { self == .style || self == .subject }
 
-    /// The button's words: "Styl", "Styl: Ukiyo-e", "Styl: Ukiyo-e +2";
-    /// periods side by side on the axis read as one span ("Epoka: 1700–1900").
-    func label(_ tokens: [SearchToken], periods: [TermInfo]) -> String {
+    /// What the group holds: "Ukiyo-e", "Ukiyo-e +2", nil for nothing;
+    /// periods side by side on the axis read as one span ("1700–1900").
+    func value(_ tokens: [SearchToken], periods: [TermInfo]) -> String? {
         let picked = tokens.filter(holds)
-        guard let first = picked.first else { return title }
+        guard let first = picked.first else { return nil }
         if self == .period, picked.count > 1, let span = PeriodAxis.span(picked.map(\.key), periods: periods) {
-            return "\(title): \(span)"
+            return span
         }
         let more = picked.count > 1 ? " +\(picked.count - 1)" : ""
-        // "Akcent: czerwień" says what it is on its own.
-        if self == .color, first.key.hasPrefix(ColorTag.accentPrefix) { return ColorTag.name(first.key) + more }
         let name = self == .color ? ColorTag.name(first.key) : first.name
-        return "\(title): \(name)\(more)"
+        return name + more
+    }
+
+    /// The group in words: "Styl", "Styl: Ukiyo-e +2", "Epoka: 1700–1900".
+    func label(_ tokens: [SearchToken], periods: [TermInfo]) -> String {
+        guard let value = value(tokens, periods: periods) else { return title }
+        // "Akcent: czerwień" says what it is on its own.
+        if self == .color, tokens.first(where: holds)?.key.hasPrefix(ColorTag.accentPrefix) == true { return value }
+        return "\(title): \(value)"
     }
 }
 
@@ -153,20 +159,29 @@ enum PeriodAxis {
     }
 }
 
-/// The groups over the search field, as thin glass capsules that wrap onto
-/// a second row (four and two) rather than scroll sideways; a picked group
-/// turns blue and says what it holds ("Styl: Ukiyo-e").
+/// The groups over the search field: six glass buttons, three to a row
+/// across the width; a picked group turns blue and shows what it holds under
+/// its name. A tapped group grows into its glass panel in the same place,
+/// over the field; "Wyczyść wybory" takes every group's chips off.
 struct TermFacetBar: View {
     @Environment(AppModel.self) private var model
     @Binding var tokens: [SearchToken]
     var museums: [Museum] = []
     var colors: [String] = []
-    /// Called as a group opens (to put the keyboard away).
-    var opening: () -> Void = {}
+    /// The search field: a group opening puts its keyboard away, and the
+    /// field tapped closes the group.
+    var focus: FocusState<Bool>.Binding
+    /// The tallest an open group may be.
+    var panelHeight: CGFloat = 460
 
     @State private var open: TermFacet? = TermFacetBar.launched
+    @Namespace private var glass
 
-    /// CI's screenshots of a group's sheet.
+    /// Over the keyboard the system field floats above the bar's usual place
+    /// (the keyboard's top): the bar rises over the field.
+    static let overField: CGFloat = 58
+
+    /// CI's screenshots of a group's panel.
     private static var launched: TermFacet? {
         switch LaunchRoute.screen {
         case "search-picker": .period
@@ -188,80 +203,132 @@ struct TermFacetBar: View {
 
     private var periods: [TermInfo] { model.vocabulary.filter { $0.kind == "period" } }
 
+    /// Chips the groups hold (not the field's artists and words).
+    private var grouped: Bool { tokens.contains { !TermFacet.inField($0) } }
+
     var body: some View {
-        GlassEffectContainer(spacing: 6) {
-            FlowLayout(spacing: 6) {
-                ForEach(facets) { facet in button(facet) }
+        GlassEffectContainer(spacing: 8) {
+            if let open {
+                TermFacetPanel(
+                    facet: open, tokens: $tokens, museums: museums, colors: colors, maxHeight: panelHeight
+                ) {
+                    withAnimation(.bouncy) { self.open = nil }
+                }
+                .glassEffectID(open.rawValue, in: glass)
+            } else {
+                VStack(alignment: .trailing, spacing: 8) {
+                    if grouped {
+                        Button {
+                            withAnimation(.snappy) {
+                                tokens.removeAll { token in TermFacet.allCases.contains { $0.holds(token) } }
+                            }
+                        } label: {
+                            Label("Wyczyść wybory", systemImage: "xmark")
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(Theme.ink)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .contentShape(Capsule())
+                                .glassEffect(.regular.interactive(), in: .capsule)
+                        }
+                        .buttonStyle(.plain)
+                        .glassEffectID("clear", in: glass)
+                        .accessibilityHint("Usuwa wybory we wszystkich grupach")
+                    }
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
+                        ForEach(facets) { facet in button(facet) }
+                    }
+                }
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .sheet(item: $open) { facet in
-            TermFacetSheet(facet: facet, tokens: $tokens, museums: museums, colors: colors)
+        .frame(maxWidth: .infinity, alignment: .trailing)
+        .padding(.bottom, focus.wrappedValue ? Self.overField : 8)
+        .onChange(of: focus.wrappedValue) { _, focused in
+            if focused, open != nil { withAnimation(.bouncy) { open = nil } }
         }
         .task { await model.loadVocabulary() }
     }
 
     private func button(_ facet: TermFacet) -> some View {
         let picked = tokens.filter(facet.holds)
-        let on = !picked.isEmpty
+        let value = facet.value(tokens, periods: periods)
+        let on = value != nil
         return Button {
-            opening()
-            open = facet
+            focus.wrappedValue = false
+            withAnimation(.bouncy) { open = facet }
         } label: {
-            HStack(spacing: 5) {
-                if facet == .color {
-                    let swatches = picked.map(\.key).filter { !ColorTag.moods.contains($0) }
-                    ForEach(Array(swatches.prefix(3)), id: \.self) { tag in
-                        Circle()
-                            .fill(ColorTag.color(tag))
-                            .frame(width: 9, height: 9)
-                            .overlay(Circle().strokeBorder(.white.opacity(0.7), lineWidth: 1))
+            VStack(spacing: 1) {
+                if let value {
+                    Text(facet.title.uppercased())
+                        .font(.system(size: 9, weight: .semibold))
+                        .tracking(0.6)
+                        .opacity(0.75)
+                    HStack(spacing: 4) {
+                        if facet == .color {
+                            let swatches = picked.map(\.key).filter { !ColorTag.moods.contains($0) }
+                            ForEach(Array(swatches.prefix(3)), id: \.self) { tag in
+                                Circle()
+                                    .fill(ColorTag.color(tag))
+                                    .frame(width: 8, height: 8)
+                                    .overlay(Circle().strokeBorder(.white.opacity(0.7), lineWidth: 1))
+                            }
+                        }
+                        Text(value)
+                            .font(.subheadline.weight(.semibold))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
                     }
+                } else {
+                    Text(facet.title)
+                        .font(.subheadline.weight(.medium))
+                        .lineLimit(1)
                 }
-                Text(facet.label(tokens, periods: periods))
-                    .font(.subheadline.weight(on ? .semibold : .medium))
-                    .lineLimit(1)
             }
-            .padding(.horizontal, 13)
-            .padding(.vertical, 6)
+            .padding(.horizontal, 8)
+            .frame(maxWidth: .infinity, minHeight: 44)
             .foregroundStyle(on ? Theme.paper : Theme.ink)
             .contentShape(Capsule())
             .glassEffect(on ? Glass.regular.tint(Theme.accent).interactive() : Glass.regular.interactive(), in: .capsule)
         }
         .buttonStyle(.plain)
+        .glassEffectID(facet.rawValue, in: glass)
         .sensoryFeedback(.selection, trigger: open == facet)
         .accessibilityLabel(facet.label(tokens, periods: periods))
         .accessibilityHint("Otwiera wybór: \(facet.title.lowercased())")
     }
 }
 
-/// One group's sheet, as tall as what it holds.
-struct TermFacetSheet: View {
-    @Environment(\.dismiss) private var dismiss
+/// One group's glass panel over the search field, as tall as what it holds
+/// (longer groups scroll inside it).
+struct TermFacetPanel: View {
     @Environment(AppModel.self) private var model
     let facet: TermFacet
     @Binding var tokens: [SearchToken]
     var museums: [Museum] = []
     var colors: [String] = []
+    var maxHeight: CGFloat = 460
+    var close: () -> Void
 
     @State private var filter = ""
     @State private var accents = false
+    /// How tall the group's content is.
+    @State private var height: CGFloat = 280
 
-    /// Fixed heights that fit each group: a sheet's detents changed after it
-    /// opens are not followed (CI screenshots went to the whole screen).
-    /// Longer groups scroll and can be pulled up.
-    private var detents: Set<PresentationDetent> {
-        switch facet {
-        case .technique: [.height(320)]
-        case .period: [.large]
-        case .color: [.height(610), .large]
-        case .museum: [.height(CGFloat(max(museums.count, 1)) * 46 + 200), .large]
-        case .style, .subject: [.fraction(0.62), .large]
-        }
-    }
+    private static let header: CGFloat = 52
 
     var body: some View {
-        NavigationStack {
+        VStack(spacing: 0) {
+            HStack {
+                Button("Wyczyść") { withAnimation(.snappy) { tokens.removeAll(where: facet.holds) } }
+                    .disabled(!tokens.contains(where: facet.holds))
+                Spacer()
+                Text(facet.title).font(.headline).foregroundStyle(Theme.ink)
+                Spacer()
+                Button("Gotowe", action: close).fontWeight(.semibold)
+            }
+            .tint(Theme.accent)
+            .padding(.horizontal, 18)
+            .frame(height: Self.header)
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     content
@@ -270,28 +337,18 @@ struct TermFacetSheet: View {
                         .foregroundStyle(Theme.inkSoft)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                .padding(.horizontal, Theme.gutter)
-                .padding(.top, 4)
-                .padding(.bottom, 12)
+                .padding(.horizontal, 18)
+                .padding(.bottom, 18)
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
             }
             .scrollBounceBehavior(.basedOnSize)
             .scrollDismissesKeyboard(.interactively)
-            .background(Theme.paper)
-            .navigationTitle(facet.title)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Wyczyść") { tokens.removeAll(where: facet.holds) }
-                        .disabled(!tokens.contains(where: facet.holds))
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Gotowe") { dismiss() }
-                }
-            }
+            .frame(height: min(height, max(maxHeight - Self.header, 160)))
         }
-        .presentationDetents(detents)
-        .presentationDragIndicator(.visible)
-        .presentationBackground(Theme.paper)
+        .glassEffect(
+            Glass.regular.tint(Theme.paper.opacity(0.55)),
+            in: RoundedRectangle(cornerRadius: 28, style: .continuous)
+        )
         .task {
             await model.loadVocabulary()
             // Opened on an accent: show the accents.

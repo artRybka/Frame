@@ -925,19 +925,21 @@ private struct EditorSearch: ViewModifier {
     let groupsShown: Bool
     let museums: [Museum]
     let pickedFromMuseums: () -> Void
+    /// The sheet's height, for how tall an open group may be.
+    @State private var height: CGFloat = 700
 
     @ViewBuilder
     func body(content: Content) -> some View {
         if enabled {
             content
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     if groupsShown {
                         TermFacetBar(
                             tokens: tokens, museums: museums, colors: ColorTag.families + ColorTag.moods,
-                            opening: { focused.wrappedValue = false }
+                            focus: focused, panelHeight: height * 0.6
                         )
                         .padding(.horizontal, Theme.gutter)
-                        .padding(.bottom, 8)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
                 }
