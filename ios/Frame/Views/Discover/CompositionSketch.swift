@@ -128,7 +128,8 @@ struct CompositionSketch: View {
 
 extension DailyWork.Mark {
     /// Where a remark about the mark points, as the server has it: a
-    /// loop's centre, the middle of a rect or triangle, a path's middle point.
+    /// loop's centre, the middle of a rect or triangle, a spiral's eye, a
+    /// path's middle point.
     var anchor: DailyWork.Spot {
         guard let first = points.first else { return DailyWork.Spot(x: 0.5, y: 0.5) }
         switch shape {
@@ -137,6 +138,7 @@ extension DailyWork.Mark {
             return DailyWork.Spot(x: (points[0].x + points[1].x) / 2, y: (points[0].y + points[1].y) / 2)
         case "triangle" where points.count == 3:
             return DailyWork.Spot(x: points.map(\.x).reduce(0, +) / 3, y: points.map(\.y).reduce(0, +) / 3)
+        case "spiral": return points[points.count - 1]
         default: return points[points.count / 2]
         }
     }
@@ -245,6 +247,9 @@ enum Pencil {
             return (0..<4).map { side(corners[$0], corners[($0 + 1) % 4], width: 1.6, seed: seed + $0) }
         case "underline" where points.count >= 2:
             return [stroke(wave(from: first, to: points[points.count - 1]), width: 2.2, seed: seed)]
+        case "spiral" where points.count == 3:
+            let line = spiral(start: points[0], through: points[1], eye: points[2])
+            return line.count >= 2 ? [stroke(line, width: 2.2, seed: seed, start: 0.04, end: 0.3)] : []
         case "rhythm" where points.count >= 2:
             // A light line through the repeated things, a beat across it at each.
             let line = stroke(points, width: 1.6, seed: seed, start: 0.08, end: 0.08)
@@ -263,7 +268,8 @@ enum Pencil {
 
     /// Where a mark's number goes: beside a loop's upper right, inside a
     /// rect's corner, over a triangle's top, before an underline, above a
-    /// line's end or an arrow's middle; always inside the picture.
+    /// line's end or an arrow's middle, beside a spiral's eye; always inside
+    /// the picture.
     static func numberSpot(for mark: DailyWork.Mark, in size: CGSize) -> CGPoint {
         let points = mark.points.map { CGPoint(x: $0.x * size.width, y: $0.y * size.height) }
         guard let first = points.first else { return CGPoint(x: size.width / 2, y: size.height / 2) }
@@ -279,6 +285,9 @@ enum Pencil {
         case "triangle":
             let top = points.min { $0.y < $1.y }!
             spot = CGPoint(x: top.x + 13, y: top.y - 6)
+        case "spiral":
+            let eye = points[points.count - 1]
+            spot = CGPoint(x: eye.x + 14, y: eye.y - 14)
         case "underline":
             let start = points.min { $0.x < $1.x }!
             spot = CGPoint(x: start.x - 14, y: start.y)
@@ -295,21 +304,43 @@ enum Pencil {
         return spot
     }
 
-    /// The grid under a take: lines at the golden section, thirds (3×3) or
-    /// halves (2×2), each a faint ruled stroke across the picture.
+    /// The grid under a take: lines at the golden section, thirds (3×3),
+    /// halves (2×2), thirds across and halves down (3×2) or the other way
+    /// round (2×3), each a faint ruled stroke across the picture.
     static func grid(_ grid: String, in size: CGSize) -> [[CGPoint]] {
-        let cuts: [CGFloat]
+        let across: [CGFloat], down: [CGFloat]
         switch grid {
-        case "golden": cuts = [0.382, 0.618]
-        case "thirds": cuts = [1 / 3, 2 / 3]
-        case "halves": cuts = [0.5]
+        case "golden": (across, down) = ([0.382, 0.618], [0.382, 0.618])
+        case "thirds": (across, down) = ([1 / 3, 2 / 3], [1 / 3, 2 / 3])
+        case "halves": (across, down) = ([0.5], [0.5])
+        case "3x2": (across, down) = ([1 / 3, 2 / 3], [0.5])
+        case "2x3": (across, down) = ([0.5], [1 / 3, 2 / 3])
         default: return []
         }
-        return cuts.flatMap { cut in
-            [
-                [CGPoint(x: cut * size.width, y: size.height * 0.01), CGPoint(x: cut * size.width, y: size.height * 0.99)],
-                [CGPoint(x: size.width * 0.01, y: cut * size.height), CGPoint(x: size.width * 0.99, y: cut * size.height)],
-            ]
+        return across.map { cut in
+            [CGPoint(x: cut * size.width, y: size.height * 0.01), CGPoint(x: cut * size.width, y: size.height * 0.99)]
+        } + down.map { cut in
+            [CGPoint(x: size.width * 0.01, y: cut * size.height), CGPoint(x: size.width * 0.99, y: cut * size.height)]
+        }
+    }
+
+    /// A golden spiral from `start` into its `eye`, turning the way `through`
+    /// lies from the line between them: every quarter turn its radius shrinks
+    /// by φ, as the server draws it (`ai/sketch.py`).
+    static func spiral(start: CGPoint, through: CGPoint, eye: CGPoint) -> [CGPoint] {
+        let dx = start.x - eye.x, dy = start.y - eye.y
+        let radius = hypot(dx, dy)
+        guard radius > 2 else { return [] }
+        let cross = dx * (through.y - eye.y) - dy * (through.x - eye.x)
+        let turn: CGFloat = cross < 0 ? -1 : 1
+        let angle = atan2(dy, dx)
+        let growth = log((1 + sqrt(5)) / 2) / (.pi / 2)
+        let end = log(radius / 1.5) / growth
+        let steps = max(Int(end / (.pi / 12)), 2)
+        return (0...steps).map { step in
+            let theta = end * CGFloat(step) / CGFloat(steps)
+            let r = radius * exp(-growth * theta)
+            return CGPoint(x: eye.x + r * cos(angle + turn * theta), y: eye.y + r * sin(angle + turn * theta))
         }
     }
 

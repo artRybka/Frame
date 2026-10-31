@@ -10,6 +10,7 @@ Met: 177 of ~12 900 paintings), so everything here is optional.
 
 from __future__ import annotations
 
+import re
 import threading
 from dataclasses import dataclass
 from typing import Any
@@ -179,10 +180,32 @@ def wikipedia_intro(http: httpx.Client, lang: str, title: str) -> str:
         return ""
 
 
-def wikipedia_text(http: httpx.Client, lang: str, title: str, chars: int = 8000) -> str:
+#: A section heading in an article's plain text ("== Composition ==").
+HEADING = re.compile(r"\n(?=={2,} [^=\n]+ ={2,}\n)")
+
+
+def _sections_first(text: str, first: tuple[str, ...]) -> str:
+    """``text`` with the opening and then the sections whose heading holds
+    one of ``first`` (lower case) ahead of the rest, so that cutting the
+    article does not cut them off."""
+    parts = HEADING.split(text)
+    head, rest = parts[0], parts[1:]
+
+    def wanted(part: str) -> bool:
+        heading = part.split("\n", 1)[0].casefold()
+        return any(word in heading for word in first)
+
+    ordered = [head, *[p for p in rest if wanted(p)], *[p for p in rest if not wanted(p)]]
+    return "\n".join(ordered)
+
+
+def wikipedia_text(
+    http: httpx.Client, lang: str, title: str, chars: int = 8000, first: tuple[str, ...] = ()
+) -> str:
     """A Wikipedia article as plain text, cut to about ``chars``; "" when
     unavailable. Longer than the opening paragraph: what a work led to is
-    usually further down ("Legacy", "Wpływ")."""
+    usually further down ("Legacy", "Wpływ"). Sections whose heading holds
+    one of ``first`` come right after the opening when the article is cut."""
     if not title:
         return ""
     try:
@@ -204,4 +227,6 @@ def wikipedia_text(http: httpx.Client, lang: str, title: str, chars: int = 8000)
         return ""
     if len(text) <= chars:
         return text
+    if first:
+        text = _sections_first(text, first)
     return text[:chars].rsplit("\n", 1)[0]

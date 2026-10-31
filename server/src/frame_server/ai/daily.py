@@ -45,7 +45,7 @@ log = logging.getLogger(__name__)
 
 KIND = "daily"
 #: Changed whenever the prompt changes, so the text is written again.
-PROMPT_VERSION = "daily-9"
+PROMPT_VERSION = "daily-10"
 #: The tile's two lines under the title (characters).
 TEASER_CHARS = 100
 #: The picture goes out this big: as large as Opus reads one, so that it
@@ -54,18 +54,21 @@ IMAGE_SIDE = 2576
 #: Wikipedia articles about the work, and the artist's opening paragraph.
 WORK_CHARS = 9000
 ARTIST_CHARS = 1500
-#: "Geometria", "Spojrzenie" and "Geometria detali" (Mateusz 2026-10-31
-#: dropped "Rytm", the model hunted for small repetitions, for the
-#: geometry of smaller things).
-MAX_VIEWS = 3
+#: "Geometria" and "Geometria detali" (Mateusz 2026-10-31 dropped "Rytm",
+#: the model hunted for small repetitions, and then "Spojrzenie").
+MAX_VIEWS = 2
+#: Article sections worth keeping when Wikipedia is cut: what it says of
+#: the composition.
+COMPOSITION_SECTIONS = ("compos", "kompozyc", "analy", "analiz", "descript", "opis")
 #: Kept in a page whose composition Claude checked over its own marks drawn
 #: on the picture (``ai.check``): what the check changed.
 CHECKED = "composition_checked"
 #: Which round of the check a page's takes went through: pages checked by
 #: an earlier one are checked once more (round 2: the great lines of
-#: "Geometria", Mateusz 2026-10-31).
+#: "Geometria"; round 3: the golden spiral, more grids, no "Spojrzenie";
+#: both asked for by Mateusz 2026-10-31).
 CHECK_ROUND = "composition_round"
-ROUND = 2
+ROUND = 3
 MAX_MARKS = 6
 MAX_LINE_POINTS = 12
 #: Points closer than this (fraction of the picture) are one.
@@ -81,17 +84,20 @@ SNAP_CORNER = 0.04
 #: The marks drawn over the picture, and how many points each takes
 #: (lines and arrows: 2 up to ``MAX_LINE_POINTS``). Older pages may hold
 #: "rhythm" marks too; their take is no longer shown.
-SHAPES = {"arrow": 2, "line": 2, "loop": 2, "triangle": 3, "rect": 2, "underline": 2}
+SHAPES = {
+    "arrow": 2, "line": 2, "loop": 2, "triangle": 3, "rect": 2, "underline": 2, "spiral": 3,
+}  # fmt: skip
 #: The shapes that run through several points.
 PATHS = ("arrow", "line")
 #: The shapes of the picture's great lines, which may run on past its
 #: edges (a big triangle's apex up in the sky, its feet beyond the frame):
 #: their points may lie this far outside it (fraction of the side).
-REACHING = ("line", "triangle")
+REACHING = ("line", "triangle", "spiral")
 REACH = 0.5
 #: The grids the app draws under a view: none, the golden section, thirds
-#: (3×3), halves (2×2).
-GRIDS = ("none", "golden", "thirds", "halves")
+#: (3×3), halves (2×2), thirds across and halves down (3×2) and the other
+#: way round (2×3).
+GRIDS = ("none", "golden", "thirds", "halves", "3x2", "2x3")
 MAX_SIMILAR = 6
 #: Fragments worth a close look ("Detale"), and their sides (fractions).
 MAX_DETAILS = 3
@@ -112,76 +118,68 @@ MONTHS = (
 #: points far better in pixels than in fractions); the server divides them.
 POINTS = """Współrzędne podajesz w pikselach \
 obrazu, który dostajesz (jego wymiary są w danych: OBRAZ), od lewego górnego rogu: x w prawo, \
-y w dół. Celuj dokładnie w rzecz, o której mowa: kółko ma środek w środku rzeczy, a róg na \
-krawędzi prostokąta, w który się ona wpisuje; linia horyzontu leży na horyzoncie i biegnie \
-wzdłuż niego; krawędź lub oś idzie po tej krawędzi lub osi; wierzchołki trójkąta leżą na \
-prawdziwych punktach formy (czubek głowy, łokieć, skraj szaty), nie obok; przekątna od rogu \
-do rogu; punkty strzałki na rzeczach, przez które idzie wzrok. Wielkie linie Geometrii mogą \
-wychodzić poza obraz (opis niżej)."""
+y w dół. Celuj dokładnie: kółko ma środek w środku rzeczy, a róg na krawędzi prostokąta, \
+w który się ona wpisuje; horyzont leży na horyzoncie; krawędź lub oś idzie po tej krawędzi \
+lub osi; wierzchołki trójkąta leżą na prawdziwych punktach formy (czubek głowy, łokieć, skraj \
+szaty), nie obok; przekątna obrazu biegnie od rogu do rogu; oko spirali leży na rzeczy, \
+w którą spirala się zwija. Linie, trójkąty i spirale mogą wychodzić poza obraz (opis niżej)."""
 
-#: How the composition is looked at: what an art historian looks for. The
-#: skeleton comes first and is looked for whole: Mateusz (2026-10-31) drew
-#: the great lines the takes missed (a pyramid from a hat down past both
-#: lower corners, an X of two diagonals through haystacks, a wedge from a
-#: mast's top out past both edges) while the model ringed single things.
+#: How the composition is looked at, as Mateusz asked (2026-10-31, with
+#: patterns: a central division, converging perspective, diagonals, golden
+#: triangles, the golden spiral on "The Great Wave", golden circles): what
+#: the sources say first, then the masses, then each pattern laid over the
+#: picture and kept only where it holds; the whole picture's skeleton
+#: first (the model used to ring single things), smaller things apart.
 COMPOSITION = """- "composition": analiza kompozycji \
-jako ujęcia ("views"), każde rysowane osobno ołówkiem na obrazie, kolejno „Geometria”, \
-„Spojrzenie” i „Geometria detali”, i żadnych innych (o świetle piszesz w "colour"). Patrz jak \
-historyk sztuki: \
-najpierw cały obraz, potem schemat. Nazywaj tylko układy, które naprawdę porządkują obraz. \
-Podpis śladu nazywa to, co ślad pokazuje („Piramida postaci”, „Horyzont”, nie „Dynamika”), \
-a tekst ujęcia twierdzi tylko to, co pokazują ślady.
-  „Geometria”: szkielet CAŁEGO obrazu, nie pojedyncze rzeczy. Odsuń się i zmruż oczy: jakie \
-wielkie linie i figury łączą naraz wiele form, przez większą część obrazu, od krawędzi do \
-krawędzi? Takie linie zwykle nie są nigdzie narysowane: wyznacza je kilka rzeczy ułożonych \
-w jednym kierunku (głowy, szczyty, krawędzie, ramiona, zbocza, maszty, cienie, skraje szat \
-i stołów), a oko je dopowiada. Szukaj kolejno:
-  * wielkiego trójkąta lub piramidy: wierzchołek to najwyższy ważny punkt (głowa, kapelusz, \
-szczyt masztu, czubek stogu, góra), a boki schodzą przez ramiona, plecy, szaty, zbocza aż do \
-dolnej krawędzi obrazu albo za nią; podstawą bywa sama dolna krawędź;
-  * litery V lub odwróconego V (klin, rozchodzące się promienie), X dwóch przekątnych \
-przecinających się w ważnym miejscu, jednej silnej przekątnej (ukośna przez kilka form, nie \
-musi biec z rogu do rogu; diagonala barokowa);
-  * osi pionowej i równowagi (symetrycznej czy asymetrycznej, gdzie leży ciężar), horyzontu \
-i poziomych pasów, planów;
-  * koła lub owalu (postacie, drzewa, chmury lub architektura ułożone w krąg, sklepienie, \
-łuk fali; rysuj jako "loop" obejmujący cały ten krąg), łuku, krzywej S, zygzaka, krzyża, układu \
-L, ramy w ramie, perspektywy \
-linearnej (horyzont i punkt zbiegu, do którego prowadzą linie).
-  Wielką linię prowadź przez środki i krawędzie form, które ją wyznaczają, i przedłużaj aż \
-do krawędzi obrazu w obie strony; jej punkty mogą leżeć poza obrazem (do połowy szerokości \
-lub wysokości za krawędzią, także ujemne), aplikacja przytnie rysunek do obrazu. Otwarty \
-trójkąt lub odwrócone V rysuj jako "line" z 3 punktami (koniec lewego boku, wierzchołek, \
-koniec prawego boku), zamknięty trójkąt jako "triangle", X jako dwie linie. Najpierw 1–3 \
-wielkie linie szkieletu, potem najwyżej dwa ślady, które je dopełniają (horyzont, oś, \
-miejsce przecięcia). Bez kółek i prostokątów wokół pojedynczych rzeczy (to robota \
-„Spojrzenia” i „Geometrii detali”), chyba że rzecz leży na siatce; wielki krąg lub owal \
-układu to co innego.
-  Siatki: złoty podział (linie 0,382 i 0,618), trójpodział, czyli siatka 3×3 (1/3 i 2/3), \
-i połowy, czyli siatka 2×2 (linie środkowe 1/2). Najciekawsze jest, gdy wielki układ krzyżuje \
-się z siatką: wierzchołek trójkąta, przecięcie przekątnych X, środek koła lub punkt, w którym \
-wielka linia przecina linię siatki, leży na jej linii albo na przecięciu dwóch linii siatki; \
-także gdy horyzont, oś postaci lub twarz leży na linii. Wtedy ustaw "grid", narysuj ten układ \
-śladem i nazwij to w tekście (np. „Wierzchołek piramidy na górnej linii trójpodziału”, \
-„Przekątne krzyżują się w środku obrazu”). Element liczy się, gdy leży do około 5% boku \
-obrazu od linii: do ok. 2% pisz „na linii”, dalej „blisko linii” albo „w pobliżu złotego \
-podziału”. Złoty podział i trójpodział leżą blisko siebie, więc wybierz siatkę, której linia \
-jest bliżej; gdy żadna nie pasuje, "grid" to "none". Nie przypisuj artyście świadomego użycia \
-złotego podziału, jeśli źródła tego nie mówią.
-  „Spojrzenie”: gdzie oko wchodzi (najsilniejszy kontrast jasnego i ciemnego, twarz, \
-najjaśniejsza lub najbardziej nasycona plama, największa forma) i którędy idzie dalej: za \
-spojrzeniami i gestami postaci, liniami prowadzącymi (droga, rzeka, krawędź, fałd, ramię), \
-zbiegającymi się liniami perspektywy, światłem i kolorem; gdzie droga się kończy albo zawraca \
-w obraz. Zwróć uwagę na repoussoir (ciemna postać, drzewo lub kotara na pierwszym planie, \
-która wpycha wzrok w głąb) i na plany: pierwszy, środkowy, dalszy. Strzałka biegnie od \
-rzeczy do rzeczy, w kolejności czytania; kółka na głównych miejscach, każde dokładnie na \
-rzeczy, którą nazywa.
-  „Geometria detali”: geometria kompozycyjna w mniejszych częściach obrazu: grupa postaci, \
-martwa natura na stole, twarz z dłońmi, budynek, łódź, drzewo. Te same figury co w szkielecie \
-całości, tylko w skali jednej rzeczy: trójkąt grupy, owal głowy i ramion, oś postaci, \
-przekątna wiosła, koło talerza, pion i poziom okna; także gdy taka figura powtarza lub \
-odwraca wielki układ albo leży na siatce. 2–4 ślady, każdy na innej rzeczy, której nazwę \
-podaje podpis, z wierzchołkami i liniami na prawdziwych krawędziach i osiach tej rzeczy. \
+jako ujęcia ("views"), każde rysowane osobno ołówkiem na obrazie: „Geometria” (układ całego \
+obrazu) i „Geometria detali” (układy w mniejszych rzeczach), i żadnych innych (o świetle \
+piszesz w "colour"). Pracuj jak historyk sztuki, po kolei:
+  1. Przeczytaj, co źródła mówią o kompozycji dzieła (Wikipedia często ma rozdział \
+„Composition” lub „Kompozycja”). Układ, który opisują, sprawdź na obrazie; jeśli się \
+zgadza, pokaż go śladami.
+  2. Zmruż oczy: gdzie leżą duże masy jasne i ciemne, główny motyw i 2–4 ważne punkty \
+(twarz, szczyt, najjaśniejsza plama, punkt zbiegu, przecięcie ważnych krawędzi).
+  3. Przyłóż do obrazu po kolei wzory i zostaw tylko te, które naprawdę pasują:
+  * siatki: złoty podział (linie w 0,382 i 0,618 boku), trójpodział 3×3 (1/3 i 2/3), podział \
+centralny 2×2 (połowy), 3×2 (pionowe linie w 1/3 i 2/3 szerokości, pozioma w połowie \
+wysokości) i 2×3 (pionowa w połowie szerokości, poziome w 1/3 i 2/3 wysokości). Siatka \
+pasuje, gdy główny motyw, horyzont, oś, wierzchołek albo przecięcie linii leży na jej linii \
+lub na przecięciu dwóch jej linii (mocny punkt), do około 5% boku;
+  * złota spirala (Fibonacciego): jej promień maleje 1,618 raza co ćwierć obrotu, jak łuki \
+w kolejnych kwadratach złotego prostokąta. Oko spirali leży zwykle na głównym motywie, często \
+na przecięciu linii złotego podziału, a łuki prowadzą przez inne ważne formy (grzbiet fali, \
+ramię, łuk drogi, krawędź chmury). Może być obrócona i większa niż obraz. Pokaż ją tylko, \
+gdy łuki naprawdę biegną po formach;
+  * przekątne: obie przekątne obrazu (z rogu do rogu, razem jako X), złote trójkąty (jedna \
+przekątna i linie do niej prostopadłe z dwóch pozostałych rogów; ich przecięcia z przekątną to \
+mocne punkty), przekątne przechodzące przez kilka form (ukośne, nie z rogu do rogu), \
+perspektywa zbieżna (linie zbiegające się w punkcie zbiegu);
+  * figury: wielki trójkąt lub piramida (wierzchołek w najwyższym ważnym punkcie, boki przez \
+ramiona, szaty, zbocza aż do dolnej krawędzi albo za nią), V i odwrócone V, koło i owal \
+(formy ułożone w krąg, sklepienie, łuk fali, złote koła wpisane w kwadraty złotego \
+prostokąta), krzywa S, oś pionowa i równowaga mas.
+  Takie linie zwykle nie są narysowane: wyznacza je kilka rzeczy ułożonych w jednym kierunku, \
+a oko je dopowiada. Prowadź je przez środki i krawędzie tych rzeczy, nie obok.
+  4. Wybierz najmocniejsze: jakiś wzór da się przyłożyć do każdego obrazu, więc nazwij tylko \
+te, które porządkują ten obraz. Najciekawsze jest, gdy figura krzyżuje się z siatką: oko \
+spirali, wierzchołek trójkąta, środek koła albo przecięcie przekątnych trafia w linię lub \
+mocny punkt siatki. Ustaw wtedy "grid" i nazwij to w tekście („Oko spirali na przecięciu \
+złotych linii”, „Wierzchołek piramidy na górnej linii trójpodziału”). Do ok. 2% boku od \
+linii pisz „na linii”, dalej „blisko linii”. Złoty podział i trójpodział leżą blisko \
+siebie, więc wybierz siatkę, której linia jest bliżej; gdy żadna nie pasuje, "grid" to \
+"none". Nie przypisuj artyście świadomego użycia złotego podziału, jeśli źródła tego nie \
+mówią.
+  „Geometria”: 2–5 śladów układu całego obrazu, najpierw najmocniejszy. Linie, trójkąty \
+i spirale mogą wychodzić poza obraz (do połowy szerokości lub wysokości za krawędzią, także \
+ujemne); aplikacja przytnie rysunek do obrazu. Otwarty trójkąt lub V rysuj jako "line" \
+z 3 punktami (koniec boku, wierzchołek, koniec drugiego boku), X jako dwie linie, złote \
+trójkąty jako przekątną i dwie prostopadłe. Bez kółek wokół pojedynczych rzeczy, chyba że \
+rzecz leży w mocnym punkcie siatki albo kółko jest wielkim kręgiem układu.
+  „Geometria detali”: te same wzory w mniejszych częściach obrazu (grupa postaci, martwa \
+natura, twarz z dłońmi, budynek, łódź, drzewo): trójkąt grupy, owal głowy i ramion, oś \
+postaci, przekątna wiosła, koło talerza, mała spirala liścia lub fali, podział okna. 2–4 \
+ślady, każdy na innej rzeczy nazwanej w podpisie, z wierzchołkami i liniami na prawdziwych \
+krawędziach i osiach tej rzeczy; także gdy taki detal powtarza lub odwraca wielki układ. \
 Pomiń to ujęcie, gdy w detalach nie ma wyraźnej geometrii.
   """
 
@@ -217,18 +215,17 @@ wyróżniał i w którym miejscu jego drogi powstało to dzieło. Bez powtarzani
 """
     + COMPOSITION
     + """
-  Każde ujęcie: "title" (1–3 słowa), "grid" ("golden", "thirds" lub "halves" tylko na \
-warunkach powyżej, aplikacja narysuje siatkę; inaczej "none"), "text" (dwa-trzy zdania, co to \
-ujęcie \
-pokazuje) i "marks": 2–5 śladów. Ślad: "shape" i "points" w pikselach: "arrow" (2–12 punktów \
-wzdłuż drogi, grot na końcu), "line" (2–12 punktów: horyzont, przekątna, oś, krawędź, \
-boki otwartego trójkąta), "loop" \
-(kółko wokół rzeczy: środek i jeden róg prostokąta, w który się wpisuje), "triangle" \
-(3 wierzchołki), "rect" (dwa przeciwległe rogi), "underline" (podkreślenie falką: początek \
-i koniec). Do każdego \
-"title" (1–3 słowa, podpis przy śladzie) i "text" (najwyżej 45 znaków, dopisek pod \
-podpisem). Kolejność śladów to kolejność czytania. Serwer narysuje ślady na obrazie \
-i sprawdzi, czy trafiają.
+  Każde ujęcie: "title" (1–3 słowa), "grid" ("golden", "thirds", "halves", "3x2" lub \
+"2x3" tylko na warunkach powyżej, aplikacja narysuje siatkę; inaczej "none"), "text" \
+(dwa-trzy zdania, co to ujęcie pokazuje) i "marks". Ślad: "shape" i "points" w pikselach: \
+"line" (2–12 punktów: przekątna, oś, horyzont, krawędź, boki otwartego trójkąta, linia \
+perspektywy), "triangle" (3 wierzchołki), "loop" (koło lub owal: środek i jeden róg \
+prostokąta, w który się wpisuje), "spiral" (złota spirala, 3 punkty: początek najszerszego \
+łuku, punkt na tym łuku mniej więcej ćwierć obrotu dalej, który wyznacza kierunek skrętu, \
+i oko spirali; serwer i aplikacja narysują z nich dokładną złotą spiralę), "rect" (dwa \
+przeciwległe rogi: rama w ramie, złoty prostokąt). Do każdego "title" (1–3 słowa, podpis \
+przy śladzie) i "text" (najwyżej 45 znaków, dopisek pod podpisem). Serwer narysuje ślady na \
+obrazie i sprawdzi, czy trafiają.
 - "colour": dwa-trzy zdania o kolorze i świetle.
 - "details": 2–3 fragmenty warte powiększenia, których w całym obrazie na telefonie nie \
 widać: twarz, dłoń, przedmiot, napis lub sygnatura, faktura farby, drobny motyw w tle. \
@@ -350,6 +347,8 @@ class Mark(BaseModel):
             return Spot(x=(a.x + b.x) / 2, y=(a.y + b.y) / 2)
         if self.shape == "triangle":
             return Spot(x=sum(p.x for p in self.points) / 3, y=sum(p.y for p in self.points) / 3)
+        if self.shape == "spiral":  # its eye
+            return self.points[-1]
         return self.points[len(self.points) // 2]
 
 
@@ -577,6 +576,10 @@ def _area(a: Spot, b: Spot, c: Spot) -> float:
     return abs((b.x - a.x) * (c.y - a.y) - (c.x - a.x) * (b.y - a.y)) / 2
 
 
+def _too_near(a: Spot, b: Spot) -> bool:
+    return max(abs(a.x - b.x), abs(a.y - b.y)) < MIN_LOOP * 2
+
+
 def _mark(raw: dict[str, Any]) -> Mark | None:
     """A mark that can be drawn and means something: a triangle that is not
     a line, a loop around something; a nearly level line drawn level, a
@@ -596,6 +599,8 @@ def _mark(raw: dict[str, Any]) -> Mark | None:
     if shape == "rect" and (
         abs(spots[0].x - spots[1].x) < SAME_SPOT or abs(spots[0].y - spots[1].y) < SAME_SPOT
     ):
+        return None
+    if shape == "spiral" and _too_near(spots[0], spots[2]):
         return None
     if shape == "loop":
         spots = [spots[0], _loop_corner(*spots)]
@@ -636,18 +641,16 @@ def _geometry(view: View) -> bool:
 
 
 def takes(views: list[View]) -> list[View]:
-    """The takes the app shows: "Geometria", "Spojrzenie", then "Geometria
-    detali" when there is one. Pages written before asked for "Spojrzenie"
-    first and for another third take ("Rytm", or one "if it made sense",
-    e.g. "Światło"): it is left out, and the two shown in today's order."""
+    """The takes the app shows: "Geometria", then "Geometria detali" when
+    there is one. Pages written before had "Spojrzenie" and a third take
+    ("Rytm", or one "if it made sense", e.g. "Światło"): left out."""
     kept: list[View] = []
     for view in views:
         marks = [m for m in view.marks if m.shape in SHAPES]
-        if marks and not view.title.casefold().startswith("rytm"):
+        if marks:
             kept.append(view if marks == view.marks else view.model_copy(update={"marks": marks}))
     found = (
         next((v for v in kept if _geometry(v)), None),
-        next((v for v in kept if not _geometry(v) and not _in_detail(v)), None),
         next((v for v in kept if _in_detail(v)), None),
     )
     return [v for v in found if v is not None]
@@ -824,13 +827,16 @@ class DailyJob(NoteJob):
         day = self.day_of(item.id)
         return text_hash(item.title, item.artist, item.date_text, day.isoformat() if day else "")
 
+    def _wiki(self, lang: str, title: str) -> str:
+        return wikipedia_text(self.http, lang, title, WORK_CHARS, COMPOSITION_SECTIONS)
+
     def context(self, item: Item) -> Context:
         facts = self.wikidata.facts(self.http, item)
         return Context(
             day=self.day_of(item.id) or date.today(),
             facts=facts,
-            wiki_pl=wikipedia_text(self.http, "pl", facts.wiki_pl, WORK_CHARS) if facts else "",
-            wiki_en=wikipedia_text(self.http, "en", facts.wiki_en, WORK_CHARS) if facts else "",
+            wiki_pl=self._wiki("pl", facts.wiki_pl) if facts else "",
+            wiki_en=self._wiki("en", facts.wiki_en) if facts else "",
             artist_wiki=(
                 wikipedia_intro(self.http, "en", item.artist)[:ARTIST_CHARS] if item.artist else ""
             ),
