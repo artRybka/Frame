@@ -89,6 +89,10 @@ class FrameSettings(BaseModel):
     # WikiArt as a source, only to test the panel with newer art; its works
     # leave the library when this is switched off.
     wikiart: bool = False
+    # Only to test the app as it will be in some years: Europeana also gives
+    # works whose authors died less than 70 years ago (still protected);
+    # they leave the library when this is switched off.
+    ignore_term: bool = False
     # The frame's name in the app; None: the name the panel reports.
     name: str | None = Field(None, max_length=40)
 

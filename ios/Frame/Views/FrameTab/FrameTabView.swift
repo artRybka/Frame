@@ -1570,6 +1570,10 @@ struct SourcesSection: View {
         Binding(get: { settings.wikiart ?? false }, set: { on in save { $0.wikiart = on } })
     }
 
+    private var ignoreTerm: Binding<Bool> {
+        Binding(get: { settings.ignoreTerm ?? false }, set: { on in save { $0.ignoreTerm = on } })
+    }
+
     private func save(_ change: (inout FrameSettings) -> Void) {
         var new = settings
         change(&new)
@@ -1607,6 +1611,18 @@ struct SourcesSection: View {
                     }
                 }
                 .tint(Theme.accent)
+                if settings.ignoreTerm != nil {
+                    Divider()
+                    Toggle(isOn: ignoreTerm) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Bez limitu 70 lat (tylko testy)")
+                            Text("Wyłącznie do testów, jak aplikacja będzie działać za kilka lat. Europeana daje wtedy także dzieła twórców zmarłych mniej niż 70 lat temu, wciąż chronione prawem autorskim. Mają w opisie „Tylko do testów” i rok, od którego będą wolne, a po wyłączeniu przełącznika znikają z biblioteki.")
+                                .font(.caption)
+                                .foregroundStyle(ignoreTerm.wrappedValue ? Theme.warn : Theme.inkSoft)
+                        }
+                    }
+                    .tint(Theme.accent)
+                }
             }
         }
     }
