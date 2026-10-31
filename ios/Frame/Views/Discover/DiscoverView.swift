@@ -42,6 +42,9 @@ struct DiscoverView: View {
             .navigationDestination(for: DailyRoute.self) { route in
                 DailyView(route: route)
             }
+            .navigationDestination(for: StudiesRoute.self) { _ in
+                StudiesGridView()
+            }
         }
         .onChange(of: model.suggestionsOpened) { path = NavigationPath() }
         // A notification of the work of the day tapped (also before this tab was first opened).

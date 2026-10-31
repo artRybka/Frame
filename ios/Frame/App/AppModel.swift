@@ -91,7 +91,8 @@ final class AppModel {
     var daily: DailyWork?
     /// Studies of works asked for on their cards, as last heard (`Studies.swift`).
     var studies: [String: StudyView] = [:]
-    /// Every work with a study, for Discover's row "Studia dzieł"; nil from older servers.
+    /// Every work with a study or a work of the day's page, for Discover's row
+    /// "Studia dzieł"; nil from older servers.
     var studyList: [StudyBrief]?
     /// The work whose card is on top: "Studium gotowe" opens its study there.
     var topCard: String?
@@ -284,7 +285,8 @@ final class AppModel {
         }
     }
 
-    /// The works with a study; an older server without the list shows no row.
+    /// The works with a study or a day's page; an older server without the
+    /// list shows no row.
     func loadStudyList(_ backend: any FrameBackend) async {
         do {
             studyList = try await backend.studies()
