@@ -8,7 +8,7 @@ import logging
 import random
 import threading
 from collections import Counter
-from collections.abc import Awaitable, Callable, Iterator
+from collections.abc import Awaitable, Callable, Iterable, Iterator
 from concurrent.futures import Future
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
@@ -77,6 +77,11 @@ POOL_MAX = 80
 SUGGESTION_SUITABILITY = 0.4
 #: Artists of the owner's taste asked for when topping up Suggestions.
 TASTE_ARTISTS = 6
+#: Artists asked for in Szukaj, the latest this many: each search counts as
+#: a work kept, at most this much for one artist.
+SEARCHED_ARTISTS_KEY = "searched_artists"
+SEARCHED_ARTISTS_KEPT = 30
+SEARCHED_ARTIST_MAX = 3
 #: The catalogue grows by this many works at a time, at most every
 #: ``CATALOGUE_EVERY`` (gently for the museums' APIs).
 CATALOGUE_BATCH = 300
@@ -391,11 +396,15 @@ class Player:
 
     def taste(self) -> list[str]:
         """Artists the owner likes, most liked first: favourites count most,
-        then works kept in the library (not the ones the server picked)."""
+        then works kept in the library (not the ones the server picked) and
+        artists lately searched for."""
         scores: Counter[str] = Counter()
         for item in self.library.query(PlaylistRules(kinds=[ItemKind.ARTWORK]))[1]:
             if item.artist:
                 scores[item.artist] += 3 * item.favorite + (not item.pooled)
+        searched = Counter(self.library.get_state(SEARCHED_ARTISTS_KEY, []))
+        for artist, times in searched.items():
+            scores[artist] += min(times, SEARCHED_ARTIST_MAX)
         return [artist for artist, score in scores.most_common(TASTE_ARTISTS) if score > 0]
 
     def _refill(self, state: PlayerState, settings: FrameSettings) -> None:
@@ -976,6 +985,24 @@ class Player:
         protected |= {i for p in self.library.playlists() for i in p.item_ids}
         protected |= set(self.library.get_state(SUGGESTIONS_KEY, []))
         return protected
+
+    def keep_searched(self, items: Iterable[Item]) -> None:
+        """Works a search showed join the catalogue in the background (as
+        the catalogue's own draws do, so not while tests run the server),
+        however they would do on e-paper: the owner chose them."""
+        settings = self.service.settings
+        if settings.scheduler and settings.catalogue_mb:
+            self.service.importer.keep_searched(items)
+
+    def searched_for(self, artists: list[str]) -> None:
+        """Artists asked for in Szukaj count towards :meth:`taste`; the
+        same search again (e.g. coming back to it) once."""
+        if not artists:
+            return
+        recent: list[str] = self.library.get_state(SEARCHED_ARTISTS_KEY, [])
+        if recent[-len(artists) :] == artists:
+            return
+        self.library.set_state(SEARCHED_ARTISTS_KEY, (recent + artists)[-SEARCHED_ARTISTS_KEPT:])
 
     def trim_catalogue(self) -> int:
         """Keep the catalogue's thumbnails within ``catalogue_mb``: works the

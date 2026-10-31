@@ -552,6 +552,51 @@ def test_museum_works_join_the_library_only_when_kept(service, monkeypatch) -> N
     assert not svc.images.thumb_path(svc.importer.remote("fake:3")).is_file()
 
 
+def test_searched_works_join_the_catalogue(service, monkeypatch) -> None:
+    from frame_server.library.museums import MUSEUMS, Museum
+    from frame_server.web import create_app
+
+    class Fake(Museum):
+        key = "fake"
+        name = "Fake Museum"
+
+        def search(self, query: str, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
+            return 3, [self.fetch(str(n)) for n in range(3)]
+
+        def fetch(self, source_id: str) -> Item:
+            url = f"https://museum.invalid/{source_id}.jpg"
+            return self._item(source_id, title=f"Sea {source_id}", image_url=url, thumb_url=url)
+
+    monkeypatch.setitem(MUSEUMS, "fake", Fake)
+    app = create_app(service.settings)
+    svc = app.state.service
+    picture = jpeg_bytes((40, 40, 200))
+    svc.images.http = lambda: httpx.Client(
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, content=picture))
+    )
+
+    def search() -> None:
+        params = {"q": "sea", "source": ["fake"]}
+        with client.stream("GET", "/api/discover/search/stream", params=params) as resp:
+            assert [line for line in resp.iter_lines() if line]
+        if (worker := svc.importer._searching) is not None:
+            worker.join(10)
+
+    with TestClient(app) as client:
+        assert svc.importer.save("fake:2") is not None  # kept by the owner before
+        search()  # the server's background work is off: nothing joins
+        assert not svc.library.has("fake:0")
+        svc.settings.scheduler = True
+        search()
+        kept = [svc.library.get(f"fake:{n}") for n in range(2)]
+        assert all(i is not None and i.pooled and i.colors for i in kept)
+        assert not svc.library.get("fake:2").pooled
+        # Each work is looked at once.
+        svc.library.delete("fake:0")
+        search()
+        assert not svc.library.has("fake:0")
+
+
 def test_auto_style_follows_the_picture(service) -> None:
     from frame_server.imaging import PRESETS
 
