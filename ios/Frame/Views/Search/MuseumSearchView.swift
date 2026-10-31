@@ -2,7 +2,8 @@ import SwiftUI
 
 /// The Szukaj tab's search: words, artists, styles, subjects, periods,
 /// techniques, colours and museums as chips, over the catalogue (at once)
-/// and the museums (each as it answers). Artists and words are the system
+/// and the museums (each as it answers), in one grid that doesn't say which
+/// is which (the user knows no "katalog"). Artists and words are the system
 /// field's tokens; museums, colours, styles, subjects, periods and techniques
 /// come from the glass groups over the field, which hide as the results
 /// scroll and come back when the field is tapped or the scrolling stops. With nothing asked yet
@@ -71,9 +72,6 @@ struct MuseumSearchView: View {
     private var asked: Bool { !rules.isEmpty || !sources.isEmpty }
 
     private var searchKey: SearchKey { SearchKey(rules: rules, sources: sources) }
-
-    /// What the museums have for the search, as far as they said.
-    private var total: Int { totals.values.reduce(0, +) }
 
     /// Museum works the catalogue doesn't hold already, in any copy.
     private var fromMuseums: [RemoteItem] {
@@ -214,27 +212,9 @@ struct MuseumSearchView: View {
                 }
                 .buttonStyle(PrimaryButtonStyle())
             }
-            if let catalogue, !catalogue.items.isEmpty {
-                Eyebrow("W katalogu · \(Names.works(catalogue.total))")
-                MasonryGrid(items: catalogue.items) { item in
-                    NavigationLink(value: item.id) {
-                        ArtCard(item: item, showsFavorite: false)
-                    }
-                    .buttonStyle(.plain)
-                    .contextMenu { QueueButton(itemID: item.id) }
-                    .overlay(alignment: .topTrailing) { heart(item) }
-                }
-            }
-            if !fromMuseums.isEmpty || asking {
-                HStack {
-                    Eyebrow("Z muzeów" + (total > 0 ? " · \(Names.works(total))" : ""))
-                    Spacer()
-                    if asking {
-                        Text("doczytuję…").font(.caption).foregroundStyle(Theme.inkSoft)
-                    }
-                }
-            }
-            museumGrid(shownFromMuseums)
+            // One grid: the server's works first, the museums' coming in
+            // under them. Where a work comes from isn't shown.
+            worksGrid(catalogue?.items ?? [], shownFromMuseums)
             // Under the works: a museum that gives up late doesn't push them down.
             if !failed.isEmpty {
                 Text("Nie odpowiedziało: " + failed.map(Names.source).joined(separator: ", "))
@@ -256,10 +236,10 @@ struct MuseumSearchView: View {
         }
     }
 
-    /// The museums' works, each with its picture from the museum.
-    private func museumGrid(_ remotes: [RemoteItem]) -> some View {
+    /// The works found, a museum's with its picture from the museum.
+    private func worksGrid(_ known: [ItemSummary], _ remotes: [RemoteItem]) -> some View {
         let thumbs = Dictionary(remotes.map { ($0.id, $0.thumb) }, uniquingKeysWith: { first, _ in first })
-        return MasonryGrid(items: remotes.map(\.item.summary)) { summary in
+        return MasonryGrid(items: known + remotes.map(\.item.summary)) { summary in
             NavigationLink(value: summary.id) {
                 ArtCard(item: summary, ref: thumbs[summary.id], showsFavorite: false)
             }
