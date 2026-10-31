@@ -350,7 +350,7 @@ struct TermFacetPanel: View {
             in: RoundedRectangle(cornerRadius: 28, style: .continuous)
         )
         .task {
-            await model.loadVocabulary()
+            await model.loadVocabulary(fresh: true)
             // Opened on an accent: show the accents.
             if facet == .color, tokens.contains(where: { $0.kind == "color" && $0.key.hasPrefix(ColorTag.accentPrefix) }),
                !tokens.contains(where: { $0.kind == "color" && ColorTag.families.contains($0.key) }) {
