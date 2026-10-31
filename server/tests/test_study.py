@@ -12,7 +12,7 @@ from typing import Any
 from fastapi.testclient import TestClient
 from PIL import Image
 from test_ai import GOOD_KEY, FakeAnthropic
-from test_daily import ANSWER, _app, _catalogue, _today_is
+from test_daily import ANSWER_PX, _app, _catalogue, _today_is, written
 
 from frame_server.ai import AiConfigUpdate
 from frame_server.ai.client import OPUS
@@ -22,7 +22,7 @@ from frame_server.service import FrameService
 
 
 def _studies(fake: FakeAnthropic) -> list[dict[str, Any]]:
-    return [p for p in fake.asked if p["model"] == OPUS]
+    return written(fake)
 
 
 def _ready(client: TestClient, item_id: str) -> dict[str, Any]:
@@ -47,7 +47,7 @@ def test_claude_writes_a_study_once_and_it_is_kept(tmp_path: Path) -> None:
     app = _app(tmp_path)
     svc: FrameService = app.state.service
     fake = FakeAnthropic(GOOD_KEY)
-    fake.answer = ANSWER
+    fake.answer = ANSWER_PX
     svc.claude.factory = lambda key: fake
     svc.ai_config.set_key(GOOD_KEY)
     svc.ai_config.update(AiConfigUpdate(pl_text=False, keywords_artworks=False, daily=False))
@@ -99,7 +99,7 @@ def test_a_new_study_on_request(tmp_path: Path) -> None:
     app = _app(tmp_path)
     svc: FrameService = app.state.service
     fake = FakeAnthropic(GOOD_KEY)
-    fake.answer = {**ANSWER, "teaser": ""}  # unusable
+    fake.answer = {**ANSWER_PX, "teaser": ""}  # unusable
     svc.claude.factory = lambda key: fake
     svc.ai_config.set_key(GOOD_KEY)
     svc.ai_config.update(AiConfigUpdate(pl_text=False, keywords_artworks=False, daily=False))
@@ -113,7 +113,7 @@ def test_a_new_study_on_request(tmp_path: Path) -> None:
             client.post("/api/study/met:1?wait=10")  # not asked again by itself
             assert len(_studies(fake)) == 1
 
-            fake.answer = ANSWER
+            fake.answer = ANSWER_PX
             client.post("/api/study/met:1?again=true&wait=10")
             assert _ready(client, "met:1")["status"] == "ready"
         finally:
@@ -125,7 +125,7 @@ def test_discover_lists_the_written_studies(tmp_path: Path) -> None:
     app = _app(tmp_path)
     svc: FrameService = app.state.service
     fake = FakeAnthropic(GOOD_KEY)
-    fake.answer = ANSWER
+    fake.answer = ANSWER_PX
     svc.claude.factory = lambda key: fake
     svc.ai_config.set_key(GOOD_KEY)
     svc.ai_config.update(AiConfigUpdate(pl_text=False, keywords_artworks=False, daily=False))
@@ -152,7 +152,7 @@ def test_discover_lists_the_works_of_the_day_too(tmp_path: Path) -> None:
     app = _app(tmp_path)
     svc: FrameService = app.state.service
     fake = FakeAnthropic(GOOD_KEY)
-    fake.answer = ANSWER
+    fake.answer = ANSWER_PX
     svc.claude.factory = lambda key: fake
     svc.ai_config.set_key(GOOD_KEY)
     svc.ai_config.update(AiConfigUpdate(pl_text=False, keywords_artworks=False))
@@ -194,7 +194,7 @@ def test_a_page_is_written_once_for_the_day_and_the_study(tmp_path: Path) -> Non
     app = _app(tmp_path)
     svc: FrameService = app.state.service
     fake = FakeAnthropic(GOOD_KEY)
-    fake.answer = ANSWER
+    fake.answer = ANSWER_PX
     svc.claude.factory = lambda key: fake
     svc.ai_config.set_key(GOOD_KEY)
     svc.ai_config.update(AiConfigUpdate(pl_text=False, keywords_artworks=False))

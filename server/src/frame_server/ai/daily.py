@@ -13,12 +13,15 @@ catalogue does not have.
 from __future__ import annotations
 
 import base64
+import copy
 import io
+import logging
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date
 from typing import TYPE_CHECKING, Any
 
+import anthropic
 import httpx
 from PIL import Image
 from pydantic import BaseModel, Field
@@ -29,21 +32,25 @@ from ..library.markup import strip_markup
 from ..library.models import Note
 from ..library.museums import client
 from ..library.wikidata import Facts, Wikidata, wikipedia_intro, wikipedia_text
-from .client import OPUS, request
+from .client import OPUS, AiUnavailable, Answer, request
 from .jobs import NoteJob, Usage, text_hash
 from .pl_text import description
+from .sketch import grid_fits
 
 if TYPE_CHECKING:
     from ..library import ImageCache, Item, Library
     from .config import AiConfigStore
 
+log = logging.getLogger(__name__)
+
 KIND = "daily"
 #: Changed whenever the prompt changes, so the text is written again.
-PROMPT_VERSION = "daily-7"
+PROMPT_VERSION = "daily-8"
 #: The tile's two lines under the title (characters).
 TEASER_CHARS = 100
-#: The picture goes out this big: enough to see the composition.
-IMAGE_SIDE = 1568
+#: The picture goes out this big: as large as Opus reads one, so that it
+#: points at things to the pixel.
+IMAGE_SIDE = 2576
 #: Wikipedia articles about the work, and the artist's opening paragraph.
 WORK_CHARS = 9000
 ARTIST_CHARS = 1500
@@ -51,8 +58,23 @@ MAX_VIEWS = 3
 #: Kept in a written page whose question asked for "Rytm" (or that got
 #: one asked alone later, ``ai.rhythm``).
 RHYTHM_ASKED = "rhythm_asked"
+#: Kept in a page whose composition Claude checked over its own marks drawn
+#: on the picture (``ai.check``): what the check changed.
+CHECKED = "composition_checked"
 MAX_MARKS = 6
 MAX_LINE_POINTS = 12
+#: A rhythm is three beats at least; two are a pair.
+RHYTHM_BEATS = 3
+#: Beats closer than this (fraction of the picture) are one.
+SAME_SPOT = 0.012
+#: A triangle smaller than this (fraction of the picture) is a line.
+MIN_TRIANGLE = 0.004
+#: A loop's half-width and half-height at least (fraction of the side).
+MIN_LOOP = 0.015
+#: A two-point line this near level (or upright) is drawn level (upright),
+#: and its ends this near opposite corners run exactly corner to corner.
+STRAIGHTEN = 0.012
+SNAP_CORNER = 0.04
 #: The marks drawn over the picture, and how many points each takes
 #: (lines, arrows and rhythms: 2 up to ``MAX_LINE_POINTS``). A rhythm has a
 #: point on each repeated thing; the app draws a beat at each.
@@ -70,8 +92,9 @@ DETAIL_MIN = 0.04
 DETAIL_MAX = 0.6
 MAX_LEGACY = 5
 SOURCES = ("obraz", "dane muzeum", "Wikidata", "Wikipedia", "wiedza ogólna")
-#: Picture, sources and an answer with thinking.
-TYPICAL = Usage(input_tokens=9000, cache_read_input_tokens=1500, output_tokens=5000)
+#: Picture, sources and an answer with thinking, then the check of the
+#: composition over the marks drawn on the picture (``ai.check``).
+TYPICAL = Usage(input_tokens=19000, cache_read_input_tokens=2500, output_tokens=8000)
 
 MONTHS = (
     "stycznia", "lutego", "marca", "kwietnia", "maja", "czerwca", "lipca", "sierpnia",
@@ -81,10 +104,53 @@ MONTHS = (
 #: The third take on the composition, "Rytm" (also asked alone of pages
 #: written before it, ``ai.rhythm``).
 RHYTHM = """Trzecie ujęcie, „Rytm”, tylko wtedy, gdy \
-obraz naprawdę ma rytmy, czyli powtórzenia, które oko czyta jak takty (szereg postaci, kolumn, \
-drzew, fal, okien, fałd, plam koloru, kresek): każdy rytm, który widać, jako ślad "rhythm" \
-z punktami na kolejnych powtórzeniach i krótkim podpisem, co się powtarza i jak (np. „pnie co \
-krok, coraz gęściej”); bez rytmów pomiń to ujęcie."""
+obraz naprawdę ma rytmy: co najmniej trzy powtórzenia podobnej rzeczy, które oko czyta jak \
+takty (szereg postaci lub głów, kolumn, łuków, drzew, fal, okien, fałd, plam koloru, kresek). \
+Każdy rytm jako ślad "rhythm" z punktem na środku każdego kolejnego powtórzenia, po kolei, \
+i krótkim podpisem, co się powtarza i jak: równo, coraz gęściej w głąb, na przemian (np. „pnie \
+co krok, coraz gęściej”). Bez rytmów pomiń to ujęcie."""
+
+#: Where the model puts its points: pixels of the picture it gets (it
+#: points far better in pixels than in fractions); the server divides them.
+POINTS = """Współrzędne podajesz w pikselach \
+obrazu, który dostajesz (jego wymiary są w danych: OBRAZ), od lewego górnego rogu: x w prawo, \
+y w dół. Celuj dokładnie w rzecz, o której mowa: kółko ma środek w środku rzeczy, a róg na \
+krawędzi prostokąta, w który się ona wpisuje; linia horyzontu leży na horyzoncie i biegnie \
+wzdłuż niego; krawędź lub oś idzie po tej krawędzi lub osi; wierzchołki trójkąta leżą na \
+prawdziwych punktach formy (czubek głowy, łokieć, skraj szaty), nie obok; punkty rytmu na \
+środku każdego powtórzenia; przekątna od rogu do rogu; punkty strzałki na rzeczach, przez \
+które idzie wzrok."""
+
+#: How the composition is looked at: what an art historian looks for.
+COMPOSITION = """- "composition": analiza kompozycji \
+jako ujęcia ("views"), każde rysowane osobno ołówkiem na obrazie, kolejno „Spojrzenie”, \
+„Geometria” i „Rytm”, i żadnych innych (o świetle piszesz w "colour"). Patrz jak historyk \
+sztuki: najpierw obraz, potem schemat. Nazywaj tylko układy, które naprawdę porządkują obraz, \
+nie takie, które da się do niego dorysować. Każdy ślad dotyczy konkretnej, widocznej rzeczy, \
+którą jego podpis nazywa („Linia ramion”, „Horyzont”, nie „Dynamika”), a tekst ujęcia \
+twierdzi tylko to, co pokazują ślady.
+  „Spojrzenie”: gdzie oko wchodzi (najsilniejszy kontrast jasnego i ciemnego, twarz, \
+najjaśniejsza lub najbardziej nasycona plama, największa forma) i którędy idzie dalej: za \
+spojrzeniami i gestami postaci, liniami prowadzącymi (droga, rzeka, krawędź, fałd, \
+ramię), zbiegającymi się liniami perspektywy, światłem i kolorem; gdzie droga się kończy albo \
+zawraca w obraz. Zwróć uwagę na repoussoir (ciemna postać, drzewo lub kotara na pierwszym \
+planie, która wpycha wzrok w głąb) i na plany: pierwszy, środkowy, dalszy. Strzałka biegnie od \
+rzeczy do rzeczy, w kolejności czytania; kółka na głównych miejscach.
+  „Geometria”: szkielet obrazu. Sprawdź oś symetrii i równowagę (symetryczną czy \
+asymetryczną, gdzie leży ciężar), główne kierunki (poziomy spokoju, piony, przekątne, \
+diagonala barokowa), figury, w które układają się główne formy (trójkąt lub piramida postaci, \
+koło lub owal, krzywa S, zygzak, krzyż, układ L), perspektywę linearną (horyzont i punkt \
+zbiegu, do którego prowadzą linie), ramę w ramie, pasy i plany. Trójkąty mogą być duże \
+i otwarte (podstawą bywa dolna krawędź obrazu, wierzchołkiem głowa lub szczyt), byle ich \
+boki wyznaczały prawdziwe formy: ramię, zbocze, skraj szaty, linię spojrzeń. Złoty podział \
+(linie 0,382 i 0,618) i trójpodział (1/3 i 2/3), gdy główny element (horyzont, oś postaci, \
+twarz, wyraźna krawędź) leży na linii lub blisko niej, do około 5% boku obrazu; narysuj wtedy \
+ten element śladem. Gdy leży dokładnie (do ok. 2%), pisz „na linii”, gdy dalej, „blisko \
+linii” albo „w pobliżu złotego podziału”. Obie siatki leżą blisko siebie, więc wybierz tę, \
+której element jest bliżej, a gdy żadna nie pasuje, "grid" to "none". Nie przypisuj \
+artyście świadomego użycia złotego podziału, jeśli źródła tego nie mówią. Przekątna to \
+linia z rogu do rogu, którą forma naprawdę wyznacza.
+  """
 
 SYSTEM = (
     """Piszesz „Dzieło dnia” do aplikacji domowej ramki z kolorowym e-papierem: \
@@ -97,12 +163,15 @@ ozdobników i bez zwrotów do czytelnika. Nazwy japońskie i chińskie w polskie
 - Fakty bierz z podanych źródeł i z obrazu. Wiedzę ogólną dopuszczasz tylko wtedy, gdy jesteś \
 jej pewien jak encyklopedia (np. słynne nawiązania do bardzo znanego dzieła). Nie wymyślaj dat, \
 cytatów, nazwisk ani okoliczności. Jeśli czegoś nie wiesz, pomiń to.
+- """
+    + POINTS
+    + """
 - "title": polski tytuł dzieła.
 - "teaser": JEDNO zdanie, najwyżej 90 znaków ze spacjami (musi się zmieścić w dwóch wierszach \
 kafelka, nie będzie skracane), które zachęci do przeczytania reszty. Bez daty i nazwiska autora \
 (aplikacja je pokazuje).
-- "focus": najważniejsze miejsce obrazu (twarz głównej postaci albo główny motyw), x i y jak \
-w kompozycji. Aplikacja kadruje wokół niego niski, szeroki pasek miniatury.
+- "focus": najważniejsze miejsce obrazu (twarz głównej postaci albo główny motyw), punkt \
+w pikselach. Aplikacja kadruje wokół niego niski, szeroki pasek miniatury.
 - "why_today": jedno zdanie, dlaczego to dzieło pasuje do podanej daty: rocznica urodzin lub \
 śmierci autora albo powstania dzieła (tylko gdy wynika z dat w źródłach i wypada dziś lub w \
 tym tygodniu), pora roku, święto. Pusty, gdy nie ma prawdziwego powodu.
@@ -112,31 +181,27 @@ dzieła, np. „Pocztówka z pielgrzymki do Fudżi”. Nie „Kontekst”, nie t
 powstało, co było w nim nowe, jak je przyjęto.
 - "artist": krótka notka o autorze, dwa-trzy zdania (najwyżej 400 znaków): kim był, czym się \
 wyróżniał i w którym miejscu jego drogi powstało to dzieło. Bez powtarzania tekstu powyżej.
-- "composition": analiza kompozycji jako 1–3 ujęcia ("views"), każde rysowane osobno \
-ołówkiem na obrazie, kolejno: „Spojrzenie” (co i w jakiej kolejności prowadzi wzrok), \
-„Geometria” i „Rytm”, i żadnych innych (o świetle piszesz w "colour"). W geometrii szukaj \
-złotego podziału (linie 0,382 i 0,618), trójpodziału, przekątnych, trójkątów, kół i owali, osi \
-symetrii. """
+"""
+    + COMPOSITION
     + RHYTHM
-    + """ Pokazuj tylko to, co naprawdę widać, \
-niczego nie naginaj; jeśli żadna siatka nie pasuje, "grid" to "none". Każde ujęcie: \
-"title" (1–3 słowa), "grid" ("golden" lub "thirds", gdy kompozycja naprawdę się na nich \
-opiera, aplikacja narysuje siatkę), "text" (dwa-trzy zdania, co to ujęcie pokazuje) i \
-"marks": 2–5 śladów. Ślad: "shape" i "points" (x i y to ułamki szerokości i wysokości obrazu \
-od lewego górnego rogu, 0–1, dokładnie na opisywanej rzeczy): "arrow" (2–12 punktów wzdłuż \
-drogi, grot na końcu), "line" (2–12 punktów: horyzont, przekątna, oś, krawędź), "loop" (kółko \
-wokół rzeczy: środek i jeden róg prostokąta, w który się wpisuje), "triangle" (3 wierzchołki), \
-"rect" (dwa przeciwległe rogi), "underline" (podkreślenie falką: początek i koniec), \
-"rhythm" (2–12 punktów, po jednym na każdym powtórzeniu, po kolei). Do \
-każdego "title" (1–3 słowa, podpis przy śladzie) i "text" (najwyżej 45 znaków, dopisek pod \
-podpisem). Kolejność śladów to kolejność czytania.
+    + """
+  Każde ujęcie: "title" (1–3 słowa), "grid" ("golden" lub "thirds" tylko na warunkach \
+powyżej, aplikacja narysuje siatkę; inaczej "none"), "text" (dwa-trzy zdania, co to ujęcie \
+pokazuje) i "marks": 2–5 śladów. Ślad: "shape" i "points" w pikselach: "arrow" (2–12 punktów \
+wzdłuż drogi, grot na końcu), "line" (2–12 punktów: horyzont, przekątna, oś, krawędź), "loop" \
+(kółko wokół rzeczy: środek i jeden róg prostokąta, w który się wpisuje), "triangle" \
+(3 wierzchołki), "rect" (dwa przeciwległe rogi), "underline" (podkreślenie falką: początek \
+i koniec), "rhythm" (3–12 punktów, po jednym na każdym powtórzeniu, po kolei). Do każdego \
+"title" (1–3 słowa, podpis przy śladzie) i "text" (najwyżej 45 znaków, dopisek pod \
+podpisem). Kolejność śladów to kolejność czytania. Serwer narysuje ślady na obrazie \
+i sprawdzi, czy trafiają.
 - "colour": dwa-trzy zdania o kolorze i świetle.
 - "details": 2–3 fragmenty warte powiększenia, których w całym obrazie na telefonie nie \
 widać: twarz, dłoń, przedmiot, napis lub sygnatura, faktura farby, drobny motyw w tle. \
 Aplikacja wytnie je z oryginału w pełnej rozdzielczości. Każdy: "title" (1–3 słowa), "text" \
 (jedno-dwa zdania, najwyżej 220 znaków: co tu widać i dlaczego warto się przyjrzeć), "x" i \
-"y" (lewy górny róg kadru) oraz "w" i "h" (szerokość i wysokość kadru), wszystko jako ułamki \
-szerokości i wysokości obrazu. Kadr ciasno wokół rzeczy: bok 10–35% szerokości obrazu, \
+"y" (lewy górny róg kadru) oraz "w" i "h" (szerokość i wysokość kadru), wszystko w pikselach \
+obrazu. Kadr ciasno wokół rzeczy: bok 10–35% szerokości obrazu, \
 proporcje w pikselach od 3:4 do 4:3. Fragmenty różne od siebie i od tego, co pokazuje \
 kompozycja.
 - "on_frame": jedno-dwa zdania, jak dzieło wypadnie na ramce. Ramka ma sześć tuszy: czarny, \
@@ -330,6 +395,8 @@ class Context:
     wiki_en: str = ""
     artist_wiki: str = ""
     candidates: list[Item] = field(default_factory=list)
+    #: The picture's size as sent, in pixels.
+    size: tuple[int, int] | None = None
 
 
 def polish_date(day: date) -> str:
@@ -350,6 +417,11 @@ def request_text(item: Item, context: Context) -> str:
         f"Data: {item.date_text}",
         f"Technika: {item.medium}",
     ]
+    if context.size:
+        lines.insert(
+            2, f"OBRAZ: {context.size[0]} × {context.size[1]} px (współrzędne w tych pikselach)"
+        )
+        lines.insert(3, "")
     if item.classification:
         lines.append(f"Rodzaj: {item.classification}")
     if item.culture:
@@ -421,13 +493,78 @@ def _dicts(value: Any) -> list[dict[str, Any]]:
     return [v for v in value if isinstance(v, dict)] if isinstance(value, list) else []
 
 
+def _distinct(spots: list[Spot]) -> list[Spot]:
+    """The points without one landing on the one before it."""
+    kept: list[Spot] = []
+    for s in spots:
+        if not kept or max(abs(s.x - kept[-1].x), abs(s.y - kept[-1].y)) > SAME_SPOT:
+            kept.append(s)
+    return kept
+
+
+def _straight(spots: list[Spot]) -> list[Spot]:
+    """A two-point line as it is meant: a diagonal from corner to corner,
+    a level horizon, an upright axis."""
+    if len(spots) != 2:
+        return spots
+    a, b = spots
+    corners = [(round(a.x), round(a.y)), (round(b.x), round(b.y))]
+    opposite = corners[0][0] != corners[1][0] and corners[0][1] != corners[1][1]
+    near = all(
+        abs(s.x - cx) <= SNAP_CORNER and abs(s.y - cy) <= SNAP_CORNER
+        for s, (cx, cy) in zip(spots, corners, strict=True)
+    )
+    if opposite and near:
+        return [Spot(x=cx, y=cy) for cx, cy in corners]
+    if abs(a.y - b.y) <= STRAIGHTEN:
+        y = (a.y + b.y) / 2
+        return [Spot(x=a.x, y=y), Spot(x=b.x, y=y)]
+    if abs(a.x - b.x) <= STRAIGHTEN:
+        x = (a.x + b.x) / 2
+        return [Spot(x=x, y=a.y), Spot(x=x, y=b.y)]
+    return spots
+
+
+def _loop_corner(centre: Spot, corner: Spot) -> Spot:
+    """A loop's corner far enough from its centre to go around something."""
+
+    def side(c: float, k: float) -> float:
+        if abs(k - c) >= MIN_LOOP:
+            return k
+        return c + MIN_LOOP if c + MIN_LOOP <= 1 else c - MIN_LOOP
+
+    return Spot(x=side(centre.x, corner.x), y=side(centre.y, corner.y))
+
+
+def _area(a: Spot, b: Spot, c: Spot) -> float:
+    return abs((b.x - a.x) * (c.y - a.y) - (c.x - a.x) * (b.y - a.y)) / 2
+
+
 def _mark(raw: dict[str, Any]) -> Mark | None:
+    """A mark that can be drawn and means something: a rhythm of three
+    beats at least, a triangle that is not a line, a loop around something;
+    a nearly level line drawn level, a diagonal from corner to corner."""
     shape, title = str(raw.get("shape") or ""), _text(raw.get("title"), 40)
     spots = [s for s in map(_spot, raw.get("points") or []) if s is not None]
+    if shape in PATHS:
+        spots = _distinct(spots)
     if shape not in SHAPES or not title or len(spots) < SHAPES[shape]:
         return None
     keep = MAX_LINE_POINTS if shape in PATHS else SHAPES[shape]
-    return Mark(shape=shape, points=spots[:keep], title=title, text=_text(raw.get("text"), 80))
+    spots = spots[:keep]
+    if shape == "rhythm" and len(spots) < RHYTHM_BEATS:
+        return None
+    if shape == "triangle" and _area(*spots) < MIN_TRIANGLE:
+        return None
+    if shape == "rect" and (
+        abs(spots[0].x - spots[1].x) < SAME_SPOT or abs(spots[0].y - spots[1].y) < SAME_SPOT
+    ):
+        return None
+    if shape == "loop":
+        spots = [spots[0], _loop_corner(*spots)]
+    if shape == "line":
+        spots = _straight(spots)
+    return Mark(shape=shape, points=spots, title=title, text=_text(raw.get("text"), 80))
 
 
 def _view(raw: dict[str, Any]) -> View | None:
@@ -436,7 +573,9 @@ def _view(raw: dict[str, Any]) -> View | None:
     if not marks or not title:
         return None
     grid = raw.get("grid") if raw.get("grid") in GRIDS else "none"
-    return View(title=title, grid=str(grid), text=_text(raw.get("text"), 600), marks=marks)
+    view = View(title=title, grid=str(grid), text=_text(raw.get("text"), 600), marks=marks)
+    # A grid drawn under a take that nothing in it lies on proves nothing.
+    return view if grid_fits(view) else view.model_copy(update={"grid": "none"})
 
 
 def _detail(raw: dict[str, Any]) -> Detail | None:
@@ -520,16 +659,73 @@ def clean(data: dict[str, Any], candidates: list[str]) -> Essay | None:
     )
 
 
-def picture_block(images: ImageCache, item: Item) -> dict[str, Any]:
-    """The work's picture, as large as the model reads it: the original when
-    it can be had, else the thumbnail."""
+def picture(images: ImageCache, item: Item, side: int = IMAGE_SIDE) -> Image.Image:
+    """The work's picture at most ``side`` pixels long: the original when it
+    can be had, else the thumbnail."""
     path, _ = images.picture(item)
     img = load_image(path.read_bytes()).convert("RGB")
-    img.thumbnail((IMAGE_SIDE, IMAGE_SIDE), Image.Resampling.LANCZOS)
+    img.thumbnail((side, side), Image.Resampling.LANCZOS)
+    return img
+
+
+def image_block(img: Image.Image) -> dict[str, Any]:
     out = io.BytesIO()
     img.save(out, "JPEG", quality=85)
     data = base64.standard_b64encode(out.getvalue()).decode("ascii")
     return {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": data}}
+
+
+def sent_size(params: dict[str, Any]) -> tuple[int, int] | None:
+    """The size of the first picture a question sends, in pixels."""
+    for block in params["messages"][0]["content"]:
+        if block.get("type") == "image":
+            raw = base64.standard_b64decode(block["source"]["data"])
+            with Image.open(io.BytesIO(raw)) as img:
+                return img.size
+    return None
+
+
+def _numbers(data: dict[str, Any]) -> list[float]:
+    """Every coordinate of an answer: the focus, the marks, the details."""
+    found: list[float] = []
+    for spot in [data.get("focus"), *_spots(data)]:
+        if isinstance(spot, dict):
+            found += [v for k in ("x", "y") if isinstance(v := spot.get(k), int | float)]
+    for d in _dicts(data.get("details")):
+        found += [v for k in ("x", "y", "w", "h") if isinstance(v := d.get(k), int | float)]
+    return found
+
+
+def _spots(data: dict[str, Any]) -> list[Any]:
+    composition = data.get("composition")
+    views = _dicts(composition.get("views")) if isinstance(composition, dict) else []
+    views += _dicts(data.get("views"))  # a rhythm's or a check's answer
+    return [p for v in views for m in _dicts(v.get("marks")) for p in m.get("points") or []]
+
+
+def _scale(raw: dict[str, Any], keys: tuple[str, ...], size: tuple[int, int]) -> None:
+    for key in keys:
+        value = raw.get(key)
+        if isinstance(value, int | float):
+            raw[key] = value / (size[0] if key in ("x", "w") else size[1])
+
+
+def to_fractions(data: dict[str, Any], size: tuple[int, int] | None) -> dict[str, Any]:
+    """The answer with its pixels made fractions of the picture's sides (as
+    the app and :func:`clean` take them). An answer already in fractions
+    (all of it within the picture's unit square) is left as it is."""
+    numbers = _numbers(data)
+    if size is None or not numbers or max(numbers) <= 1.5:
+        return data
+    data = copy.deepcopy(data)
+    if isinstance(data.get("focus"), dict):
+        _scale(data["focus"], ("x", "y"), size)
+    for spot in _spots(data):
+        if isinstance(spot, dict):
+            _scale(spot, ("x", "y"), size)
+    for d in _dicts(data.get("details")):
+        _scale(d, ("x", "y", "w", "h"), size)
+    return data
 
 
 class DailyJob(NoteJob):
@@ -587,12 +783,13 @@ class DailyJob(NoteJob):
         )
 
     def params(self, item: Item) -> dict[str, Any]:
-        context = self.context(item)
+        img = picture(self.images, item)
+        context = replace(self.context(item), size=img.size)
         text = {"type": "text", "text": request_text(item, context)}
         params = request(
             model=OPUS,
             system=self.system,
-            content=[picture_block(self.images, item), text],
+            content=[image_block(img), text],
             schema=SCHEMA,
             max_tokens=16000,
             effort="medium",
@@ -600,11 +797,36 @@ class DailyJob(NoteJob):
         params["timeout"] = 600.0  # a long answer: minutes, not the client's two
         return params
 
+    def revise(
+        self, item: Item, params: dict[str, Any], answer: Answer, ask: Callable[..., Answer]
+    ) -> Answer:
+        """The answer's pixels made fractions, and its composition checked by
+        Claude over the marks drawn on the picture (``ai.check``): a mark that
+        missed moved, one that cannot be defended left out. When the check
+        cannot be had (the month's limit, an error) the answer stays as it was."""
+        if answer.data is None:
+            return answer
+        data = to_fractions(answer.data, sent_size(params))
+        from .check import check
+
+        try:
+            data = check(self.images, item, data, ask)
+        except (AiUnavailable, anthropic.APIError) as err:
+            log.warning("composition check of %s skipped: %s", item.id, err)
+        except Exception:  # the page is paid for: never lost to its check
+            log.exception("composition check of %s failed", item.id)
+        return replace(answer, data=data)
+
     def apply(self, item: Item, note: Note) -> None:
         """Keeps the answer cleaned: what the app shows."""
         ids = [c.id for c in self.candidates(item)]
         essay = clean(note.data, ids)
-        data = {**essay.model_dump(), RHYTHM_ASKED: True} if essay is not None else {"failed": True}
+        if essay is None:
+            data: dict[str, Any] = {"failed": True}
+        else:
+            data = {**essay.model_dump(), RHYTHM_ASKED: True}
+            if CHECKED in note.data:
+                data[CHECKED] = note.data[CHECKED]
         self.library.save_note(note.model_copy(update={"data": data}))
 
     def fresh(self, item: Item, note: Note | None) -> bool:

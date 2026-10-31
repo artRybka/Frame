@@ -27,7 +27,7 @@ import queue
 import threading
 import time
 from abc import ABC, abstractmethod
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from concurrent.futures import Future
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
@@ -108,6 +108,13 @@ class NoteJob(ABC):
 
     def apply(self, item: Item, note: Note) -> None:  # noqa: B027 - optional hook
         """After a note was saved: e.g. copy what it found onto the item."""
+
+    def revise(
+        self, item: Item, params: dict[str, Any], answer: Answer, ask: Callable[..., Answer]
+    ) -> Answer:
+        """The answer before it is kept, asked about once alone (not in a
+        batch): e.g. checked by a second question (``ask(params)``)."""
+        return answer
 
     def fresh(self, item: Item, note: Note | None) -> bool:
         return (
@@ -201,7 +208,9 @@ class AiWorker:
             if job.fresh(item, note):
                 return note
             params = job.params(item)
-            return self._keep(job, item, self.claude.ask(kind, params))
+            answer = self.claude.ask(kind, params)
+            answer = job.revise(item, params, answer, lambda more: self.claude.ask(kind, more))
+            return self._keep(job, item, answer)
 
     @contextlib.contextmanager
     def _asking(self, kind: str, item_id: str) -> Iterator[None]:
