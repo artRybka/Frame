@@ -3,7 +3,8 @@ work's card ("Przygotuj studium dzieła"): the page the work of the day
 gets (``ai.daily``), without "why today".
 
 Asked only for the works the owner picked, and kept: opening it again costs
-nothing, and a new prompt does not throw a written study away.
+nothing, and a new prompt does not throw a written study away (as
+``DailyJob.fresh`` keeps any written page).
 """
 
 from __future__ import annotations
@@ -16,7 +17,6 @@ from .jobs import text_hash
 
 if TYPE_CHECKING:
     from ..library import Item
-    from ..library.models import Note
 
 KIND = "study"
 
@@ -47,15 +47,6 @@ class StudyJob(DailyJob):
 
     def source_hash(self, item: Item) -> str:
         return text_hash(item.title, item.artist, item.date_text)
-
-    def fresh(self, item: Item, note: Note | None) -> bool:
-        """A written study stays until the work's text changes; a failed one
-        until the prompt does as well."""
-        return (
-            note is not None
-            and note.source_hash == self.source_hash(item)
-            and ("teaser" in note.data or note.prompt_version == self.prompt_version)
-        )
 
     def params(self, item: Item) -> dict[str, Any]:
         self.stages[item.id] = "sources"  # the museum, Wikidata and Wikipedia first

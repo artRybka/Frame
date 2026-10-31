@@ -78,10 +78,22 @@ class Study:
             if again:
                 self.library.delete_notes(KIND, item.id)
             self._errors.pop(item.id, None)
-            future = self.ai.need_now(item.id, KIND)
+            future = self._borrowed(item) if not again else None
+            future = future or self.ai.need_now(item.id, KIND)
             if not future.done():
                 self._asking[item.id] = future
         future.add_done_callback(lambda done: self._written(item.id, done))
+        return future
+
+    def _borrowed(self, item: Item) -> Future[Note | None] | None:
+        """A work of the day already has its page: that is its study, with
+        no new question (and no new cost)."""
+        if self.job.essay(item) is not None or self.daily.job.essay(item) is None:
+            return None
+        if not self.job.take(item, self.library.note(item.id, self.daily.job.kind)):
+            return None
+        future: Future[Note | None] = Future()
+        future.set_result(self.library.note(item.id, KIND))
         return future
 
     def _written(self, item_id: str, future: Future[Note | None]) -> None:

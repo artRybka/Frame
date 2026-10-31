@@ -11,10 +11,12 @@ import pytest
 from conftest import jpeg_bytes
 from fastapi.testclient import TestClient
 
+from frame_server.daily import HISTORY_KEY
 from frame_server.library import Item, ItemKind, Playlist, PlaylistKind, PlaylistRules
 from frame_server.library.importer import Job
 from frame_server.library.museums import MUSEUMS, Discovery, Museum
 from frame_server.player import POOL_SIZE
+from frame_server.study import STATE_KEY as STUDY_KEY
 
 COLOURS = [(200, 30, 30), (30, 60, 180), (240, 200, 30), (30, 140, 60)]
 
@@ -175,14 +177,18 @@ def test_catalogue_stays_within_its_size(museums) -> None:
     player = service.player
     _wait(player.grow_catalogue())
     kept = _liked(service, "Ala")
-    shown = service.library.query(PlaylistRules(kept_only=False))[1][-1]
+    pool = service.library.query(PlaylistRules(kept_only=False))[1]
+    shown, studied, of_the_day = pool[-1], pool[-2], pool[-3]
     service.library.record_shown(shown.id)
+    # Works Claude wrote about: their texts go with them, so they stay.
+    service.library.set_state(STUDY_KEY, [studied.id])
+    service.library.set_state(HISTORY_KEY, {"2026-10-30": of_the_day.id})
     size = service.images.thumbs_size()
 
     service.settings.catalogue_mb = 0  # nothing spare may stay
     assert player.trim_catalogue() > 0
     left = {i.id for i in service.library.query()[1]}
-    assert left == {kept.id, shown.id}
+    assert left == {kept.id, shown.id, studied.id, of_the_day.id}
     assert service.images.thumbs_size() < size
     assert player.grow_catalogue() is None  # disabled
 

@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.47.0
+
+- Napisane studia dzieł i strony Dzieła dnia zostają na stałe: porządki
+  w katalogu nie usuwają już ich dzieł, a zmiana w sposobie pisania nie
+  każe Claude'owi pisać ich od nowa (ponawiane są tylko nieudane). Dzieło
+  dnia i studium tego samego dzieła mają wspólną stronę.
+- Analiza kompozycji: trzecie ujęcie „Rytm”, gdy obraz ma powtarzające się
+  motywy; linia prowadzi przez powtórzenia z akcentem przy każdym
+  i krótkim podpisem.
+- Numeracja wersji od teraz 1.x (po 0.46.1 jest 1.47.0), bo TestFlight
+  uznawał wersje 0.x za starsze niż dawne 1.0.
+
 ## 0.46.1
 
 - Artysta tygodnia i inne miejsca grupujące po artyście pomijają autorów

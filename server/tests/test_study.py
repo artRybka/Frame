@@ -11,7 +11,7 @@ from typing import Any
 from fastapi.testclient import TestClient
 from PIL import Image
 from test_ai import GOOD_KEY, FakeAnthropic
-from test_daily import ANSWER, _app, _catalogue
+from test_daily import ANSWER, _app, _catalogue, _today_is
 
 from frame_server.ai import AiConfigUpdate
 from frame_server.ai.client import OPUS
@@ -142,3 +142,46 @@ def test_discover_lists_the_written_studies(tmp_path: Path) -> None:
         assert brief["item"]["item"]["id"] == "met:1"
         assert brief["title"] == "Wielka fala w Kanagawie"
         assert brief["item"]["item"]["description"] == ""
+
+
+def test_a_page_is_written_once_for_the_day_and_the_study(tmp_path: Path) -> None:
+    """The work of the day's page is the work's study, and the other way
+    round; a new prompt keeps both: Claude is paid once per work."""
+    app = _app(tmp_path)
+    svc: FrameService = app.state.service
+    fake = FakeAnthropic(GOOD_KEY)
+    fake.answer = ANSWER
+    svc.claude.factory = lambda key: fake
+    svc.ai_config.set_key(GOOD_KEY)
+    svc.ai_config.update(AiConfigUpdate(pl_text=False, keywords_artworks=False))
+    with TestClient(app) as client:
+        _catalogue(svc)
+        _today_is(svc, "met:1")
+        svc.ai.start()
+        try:
+            assert client.get("/api/daily?wait=10").json()["written"] is True
+            assert len(_studies(fake)) == 1
+            # The day's work studied: its page, no new question.
+            client.post("/api/study/met:1?wait=10")
+            view = _ready(client, "met:1")
+            assert view["status"] == "ready" and view["work"]["why_today"] == ""
+            assert len(_studies(fake)) == 1
+
+            # A studied work picked for a day: its study, no new question.
+            client.post("/api/study/met:3?wait=10")
+            assert _ready(client, "met:3")["status"] == "ready"
+            assert len(_studies(fake)) == 2
+            _today_is(svc, "met:3")
+            work = client.get("/api/daily?wait=10").json()
+            assert work["item"]["item"]["id"] == "met:3" and work["written"] is True
+            assert work["why_today"] == ""
+            assert len(_studies(fake)) == 2
+
+            # A new prompt: the pages written stay.
+            note = svc.library.note("met:3", "daily")
+            assert note is not None
+            svc.library.save_note(note.model_copy(update={"prompt_version": "daily-0"}))
+            assert client.get("/api/daily?wait=10").json()["written"] is True
+            assert len(_studies(fake)) == 2
+        finally:
+            svc.ai.stop()

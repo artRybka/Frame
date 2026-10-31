@@ -5,7 +5,7 @@ Used by .github/workflows/testflight.yml. Standard library only (plus the
 `openssl` binary for the ES256 signature), so it runs on any runner.
 
     testflight-notes.py version
-        Print the release version from ha-addon/config.yaml (e.g. 0.46.0).
+        Print the release version from ha-addon/config.yaml (e.g. 1.47.0).
 
     testflight-notes.py notes [VERSION]
         Print that version's CHANGELOG section as plain text.
@@ -47,6 +47,10 @@ def release_version() -> str:
     # CFBundleShortVersionString: one to three dot-separated integers.
     if not re.fullmatch(r"\d+(\.\d+){0,2}", version):
         raise SystemExit(f"{version!r} is not a valid CFBundleShortVersionString")
+    # Builds before 0.46.1 went out as 1.0; TestFlight hides anything lower
+    # than the highest version it has seen instead of offering it as an update.
+    if int(version.split(".")[0]) < 1:
+        raise SystemExit(f"{version} is lower than 1.0, TestFlight would not offer it")
     return version
 
 
