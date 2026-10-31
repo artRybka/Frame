@@ -23,7 +23,14 @@ import httpx
 
 from .commons import commons_html, commons_year
 from .hosts import guard
-from .lifespan import EUROPEANA_AGENT, WIKIDATA_ENTITY, LifeDates, death_in_name, free_in_eu
+from .lifespan import (
+    EUROPEANA_AGENT,
+    TERM_YEARS,
+    WIKIDATA_ENTITY,
+    LifeDates,
+    death_in_name,
+    free_in_eu,
+)
 from .markup import VECTOR, WEB_IMAGES, commons_rendition, extension, strip_markup
 from .models import Item, ItemKind
 
@@ -63,6 +70,9 @@ class Access:
     private_use: bool = False
     #: WikiArt, only to test the panel (it shows works without licences).
     wikiart: bool = False
+    #: Only to test the app as it will be in some years: works whose authors
+    #: died less than 70 years ago count too, marked with ``TEST_LICENCE``.
+    ignore_term: bool = False
     #: Death years for the EU rule; without it only works marked free count.
     life: LifeDates | None = None
     europeana_key: str = "api2demo"
@@ -849,6 +859,11 @@ PUBLIC_MARKS = {
 }
 
 
+#: Start of the licence of works let in only while the 70-year term is
+#: switched off for tests; they leave the library with the switch.
+TEST_LICENCE = "Tylko do testów"
+
+
 def cc_name(code: str, version: str) -> str:
     return f"CC {code.upper()} {version}"
 
@@ -875,7 +890,8 @@ class Europeana(Museum):
 
     Besides works marked free it takes those whose authors died more than 70
     years ago (the EU rule): many providers still mark Kandinsky or Matisse
-    "in copyright". Without a key of its own (``FRAME_EUROPEANA_KEY``, free
+    "in copyright". With ``Access.ignore_term`` (tests only) any author's
+    death will do. Without a key of its own (``FRAME_EUROPEANA_KEY``, free
     at europeana.eu) it uses the shared demo key.
     """
 
@@ -934,6 +950,8 @@ class Europeana(Museum):
         died = self._death(d)
         if died is not None and free_in_eu(died):
             return f"Domena publiczna w UE (twórca zm. {died})"
+        if died is not None and self.access.ignore_term:
+            return f"{TEST_LICENCE}, w UE wolne od {died + TERM_YEARS + 1} (twórca zm. {died})"
         return ""
 
     def _map(self, d: dict[str, Any]) -> Item | None:

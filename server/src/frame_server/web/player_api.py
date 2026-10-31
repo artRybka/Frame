@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from .. import build_version
 from ..ai import PolishText
 from ..library import Item, ItemSummary, PlaylistRules, PlaylistSummary
+from ..library.museums import TEST_LICENCE
 from ..player import Hold, hold_from, origin_of
 from ..progress import DisplayProgress
 from ..schedule import FrameSettings
@@ -267,6 +268,13 @@ async def put_settings(settings: FrameSettings, svc: Svc) -> FrameSettings:
         for item in tests:
             svc.library.delete(item.id)
             svc.images.remove(item)
+    if old.ignore_term and not saved.ignore_term:
+        # So were the works still protected in the EU.
+        _, found = svc.library.query(PlaylistRules(sources=["europeana"]), include_excluded=True)
+        for item in found:
+            if item.license.startswith(TEST_LICENCE):
+                svc.library.delete(item.id)
+                svc.images.remove(item)
     if player.needs_restyle(old, saved):
         # The screen was turned: the picture on it is redrawn to match.
         svc.background(player.restyle())

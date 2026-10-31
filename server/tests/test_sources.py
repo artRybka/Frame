@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date
 
 import httpx
@@ -158,6 +159,22 @@ def test_europeana_takes_free_works_whatever_their_photo_licence() -> None:
         ("europeana:1~by-name", "Domena publiczna w UE (twórca zm. 1954)"),
     ]
     assert items[1].artist == "Wassily Kandinsky"
+
+
+def test_europeana_takes_protected_works_only_while_the_term_is_off_for_tests() -> None:
+    in_copyright = "http://rightsstatements.org/vocab/InC/1.0/"
+    records = [
+        _europeana_record(in_copyright, [WARHOL], id="/1/warhol"),
+        _europeana_record(in_copyright, ["Nobody, Known"], id="/1/unknown"),
+    ]
+    access = Access(life=LifeDates("key"), europeana_key="key")
+    with _europeana(records, []) as http:
+        assert Europeana(http, access=access).search("x")[1] == []
+        tests = Europeana(http, access=replace(access, ignore_term=True)).search("x")[1]
+    # Still only authors known to have died: the living stay out.
+    assert [(i.id, i.license) for i in tests] == [
+        ("europeana:1~warhol", "Tylko do testów, w UE wolne od 2058 (twórca zm. 1987)")
+    ]
 
 
 def test_europeana_leaves_slides_and_reproductions_out() -> None:
@@ -405,6 +422,32 @@ def test_wikiart_switch_lists_it_and_switching_off_removes_its_works(service) ->
         client.put("/api/settings", json=settings)
         assert not svc.library.has("wikiart:wa1") and svc.library.has("aic:1")
         assert client.get("/api/museums/wikiart/search", params={"q": "x"}).status_code == 404
+
+
+def test_switching_the_term_back_on_removes_the_protected_works(service) -> None:
+    from frame_server.web import create_app
+
+    app = create_app(service.settings)
+    svc = app.state.service
+    with TestClient(app) as client:
+        settings = client.get("/api/settings").json()
+        assert settings["ignore_term"] is False
+        settings["ignore_term"] = True
+        client.put("/api/settings", json=settings)
+        assert svc.importer.access().ignore_term
+
+        protected = "Tylko do testów, w UE wolne od 2058 (twórca zm. 1987)"
+        svc.library.upsert(
+            Item(id="europeana:1~w", source="europeana", source_id="1~w", license=protected)
+        )
+        free = "Domena publiczna w UE (twórca zm. 1954)"
+        svc.library.upsert(
+            Item(id="europeana:1~m", source="europeana", source_id="1~m", license=free)
+        )
+        settings["ignore_term"] = False
+        client.put("/api/settings", json=settings)
+        assert not svc.library.has("europeana:1~w") and svc.library.has("europeana:1~m")
+        assert not svc.importer.access().ignore_term
 
 
 def test_colours_look_deeper_and_the_stream_answers_museum_by_museum(service, monkeypatch) -> None:

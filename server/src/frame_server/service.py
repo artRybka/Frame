@@ -197,6 +197,7 @@ class FrameService:
         return Access(
             private_use=chosen.private_use,
             wikiart=chosen.wikiart,
+            ignore_term=chosen.ignore_term,
             europeana_key=config.europeana_key,
             openverse_app=app,
         )
