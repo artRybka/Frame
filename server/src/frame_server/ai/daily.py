@@ -39,7 +39,7 @@ if TYPE_CHECKING:
 
 KIND = "daily"
 #: Changed whenever the prompt changes, so the text is written again.
-PROMPT_VERSION = "daily-5"
+PROMPT_VERSION = "daily-6"
 #: The tile's two lines under the title (characters).
 TEASER_CHARS = 100
 #: The picture goes out this big: enough to see the composition.
@@ -51,8 +51,13 @@ MAX_VIEWS = 3
 MAX_MARKS = 6
 MAX_LINE_POINTS = 12
 #: The marks drawn over the picture, and how many points each takes
-#: (lines and arrows: 2 up to ``MAX_LINE_POINTS``).
-SHAPES = {"arrow": 2, "line": 2, "loop": 2, "triangle": 3, "rect": 2, "underline": 2}
+#: (lines, arrows and rhythms: 2 up to ``MAX_LINE_POINTS``). A rhythm has a
+#: point on each repeated thing; the app draws a beat at each.
+SHAPES = {
+    "arrow": 2, "line": 2, "loop": 2, "triangle": 3, "rect": 2, "underline": 2, "rhythm": 2,
+}  # fmt: skip
+#: The shapes that run through several points.
+PATHS = ("arrow", "line", "rhythm")
 #: The grids the app draws under a view: none, the golden section, thirds.
 GRIDS = ("none", "golden", "thirds")
 MAX_SIMILAR = 6
@@ -95,11 +100,14 @@ dzieła, np. „Pocztówka z pielgrzymki do Fudżi”. Nie „Kontekst”, nie t
 powstało, co było w nim nowe, jak je przyjęto.
 - "artist": krótka notka o autorze, dwa-trzy zdania (najwyżej 400 znaków): kim był, czym się \
 wyróżniał i w którym miejscu jego drogi powstało to dzieło. Bez powtarzania tekstu powyżej.
-- "composition": analiza kompozycji jako 1–3 ujęcia ("views"), każde rysowane osobno na \
-rozbielonym obrazie jak ołówkiem na kalce. Najczęściej dwa: „Spojrzenie” (co i w jakiej \
-kolejności prowadzi wzrok) i „Geometria”. W geometrii szukaj złotego podziału (linie 0,382 i \
-0,618), trójpodziału, przekątnych, trójkątów, kół i owali, osi symetrii, rytmu powtórzeń; \
-trzecie ujęcie tylko, gdy ma sens (np. „Światło”). Pokazuj tylko to, co naprawdę widać, \
+- "composition": analiza kompozycji jako 1–3 ujęcia ("views"), każde rysowane osobno \
+ołówkiem na obrazie, kolejno: „Spojrzenie” (co i w jakiej kolejności prowadzi wzrok), \
+„Geometria” i „Rytm”. W geometrii szukaj złotego podziału (linie 0,382 i 0,618), trójpodziału, \
+przekątnych, trójkątów, kół i owali, osi symetrii. Trzecie ujęcie, „Rytm”, tylko wtedy, gdy \
+obraz naprawdę ma rytmy, czyli powtórzenia, które oko czyta jak takty (szereg postaci, kolumn, \
+drzew, fal, okien, fałd, plam koloru, kresek): każdy rytm, który widać, jako ślad "rhythm" \
+z punktami na kolejnych powtórzeniach i krótkim podpisem, co się powtarza i jak (np. „pnie co \
+krok, coraz gęściej”); bez rytmów pomiń to ujęcie. Pokazuj tylko to, co naprawdę widać, \
 niczego nie naginaj; jeśli żadna siatka nie pasuje, "grid" to "none". Każde ujęcie: \
 "title" (1–3 słowa), "grid" ("golden" lub "thirds", gdy kompozycja naprawdę się na nich \
 opiera, aplikacja narysuje siatkę), "text" (dwa-trzy zdania, co to ujęcie pokazuje) i \
@@ -107,7 +115,8 @@ opiera, aplikacja narysuje siatkę), "text" (dwa-trzy zdania, co to ujęcie poka
 od lewego górnego rogu, 0–1, dokładnie na opisywanej rzeczy): "arrow" (2–12 punktów wzdłuż \
 drogi, grot na końcu), "line" (2–12 punktów: horyzont, przekątna, oś, krawędź), "loop" (kółko \
 wokół rzeczy: środek i jeden róg prostokąta, w który się wpisuje), "triangle" (3 wierzchołki), \
-"rect" (dwa przeciwległe rogi), "underline" (podkreślenie falką: początek i koniec). Do \
+"rect" (dwa przeciwległe rogi), "underline" (podkreślenie falką: początek i koniec), \
+"rhythm" (2–12 punktów, po jednym na każdym powtórzeniu, po kolei). Do \
 każdego "title" (1–3 słowa, podpis przy śladzie) i "text" (najwyżej 45 znaków, dopisek pod \
 podpisem). Kolejność śladów to kolejność czytania.
 - "colour": dwa-trzy zdania o kolorze i świetle.
@@ -405,7 +414,7 @@ def _mark(raw: dict[str, Any]) -> Mark | None:
     spots = [s for s in map(_spot, raw.get("points") or []) if s is not None]
     if shape not in SHAPES or not title or len(spots) < SHAPES[shape]:
         return None
-    keep = MAX_LINE_POINTS if shape in ("arrow", "line") else SHAPES[shape]
+    keep = MAX_LINE_POINTS if shape in PATHS else SHAPES[shape]
     return Mark(shape=shape, points=spots[:keep], title=title, text=_text(raw.get("text"), 80))
 
 
@@ -573,6 +582,34 @@ class DailyJob(NoteJob):
         essay = clean(note.data, ids)
         data = essay.model_dump() if essay is not None else {"failed": True}
         self.library.save_note(note.model_copy(update={"data": data}))
+
+    def fresh(self, item: Item, note: Note | None) -> bool:
+        """A written page stays until the work's text (or its day) changes,
+        also when the prompt changes: written once, paid for once. A failed
+        one is asked again with a new prompt."""
+        return (
+            note is not None
+            and note.source_hash == self.source_hash(item)
+            and ("teaser" in note.data or note.prompt_version == self.prompt_version)
+        )
+
+    def take(self, item: Item, note: Note | None) -> bool:
+        """Keeps another page written about the work (its study, its day's
+        page) as this job's, without "why today": the same text is never
+        paid for twice. False when ``note`` is no written page."""
+        if note is None or "teaser" not in note.data:
+            return False
+        self.library.save_note(
+            Note(
+                item_id=item.id,
+                kind=self.kind,
+                model=note.model,
+                prompt_version=self.prompt_version,
+                source_hash=self.source_hash(item),
+                data={**note.data, "why_today": ""},
+            )
+        )
+        return True
 
     def essay(self, item: Item) -> Essay | None:
         """The work's write-up, if it is up to date."""

@@ -27,6 +27,7 @@ from PIL import Image
 
 from .ai.daily import KIND, DailyJob, Detail, Essay
 from .ai.jobs import text_hash
+from .ai.study import KIND as STUDY
 from .imaging.layout import load_image
 from .library import Item, ItemKind, PlaylistRules
 from .library.artists import is_artist
@@ -207,9 +208,12 @@ class Daily:
     # -- its page ------------------------------------------------------------
 
     def ask(self, item: Item) -> Future[Note | None] | None:
-        """Asks for the work's page unless it has one (or is off)."""
+        """Asks for the work's page unless it has one (or is off); a work
+        with a study gets that, without a new question."""
         if not self.job.enabled() or self.job.essay(item) or self.job.failed(item):
             return None
+        if self.job.take(item, self.library.note(item.id, STUDY)):
+            return None  # the owner had its study written: the page is that
         return self.ai.need_now(item.id, KIND)
 
     # -- its fragments ("Detale") ----------------------------------------------

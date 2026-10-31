@@ -57,6 +57,10 @@ POLISH_SHOW_SECONDS = 25.0
 POLISH_AHEAD_SECONDS = 180.0
 #: Works picked by the server for the default rotation (ids, oldest first).
 SUGGESTIONS_KEY = "suggestions"
+#: The works with a study and the works of the day (``study.STATE_KEY``,
+#: ``daily.HISTORY_KEY``): the catalogue never deletes them.
+STUDY_KEY = "study_items"
+DAILY_KEY = "daily_history"
 #: Set once the museum works imported before the catalogue are gone.
 RESET_KEY = "library_reset"
 #: Set once the catalogue's manuscripts are gone.
@@ -973,13 +977,20 @@ class Player:
 
     def _protected(self) -> set[str]:
         """Works the catalogue must not lose: kept by the owner, shown,
-        about to be shown or picked for Suggestions."""
+        about to be shown or picked for Suggestions, and those with a page
+        Claude wrote."""
         state = self.state
         protected = {state.current_item_id or "", *state.current_group, *state.queue}
         protected |= set(state.requested)
         protected |= {i for p in self.library.playlists() for i in p.item_ids}
         protected |= set(self.library.get_state(SUGGESTIONS_KEY, []))
-        return protected
+        return protected | self._written_about()
+
+    def _written_about(self) -> set[str]:
+        """Works with a study or a work of the day's page: deleting one would
+        delete its text too, and Claude would be paid to write it again."""
+        ids = set(self.library.get_state(STUDY_KEY, []))
+        return ids | set(self.library.get_state(DAILY_KEY, {}).values())
 
     def keep_searched(self, items: Iterable[Item]) -> None:
         """Works a search showed join the catalogue in the background (as
@@ -1168,6 +1179,7 @@ class Player:
         state = self.state
         kept = {i for p in self.library.playlists() for i in p.item_ids}
         kept |= {state.current_item_id or "", *state.current_group, *state.requested}
+        kept |= self._written_about()
         gone = [
             i
             for i in self.library.query(include_excluded=True)[1]
@@ -1189,6 +1201,7 @@ class Player:
         state = self.state
         kept = {i for p in self.library.playlists() for i in p.item_ids}
         kept |= {state.current_item_id or "", *state.current_group, *state.requested}
+        kept |= self._written_about()
         gone = [
             i
             for i in map(self.library.get, spare - kept)

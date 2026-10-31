@@ -79,7 +79,7 @@ struct DailyView: View {
     let route: DailyRoute
     @State private var work: DailyWork?
     @State private var failed = false
-    @State private var take = 0
+    @State private var take = LaunchRoute.take
     @State private var sending = false
     @State private var sent: Bool?
     @State private var queueTaps = 0
