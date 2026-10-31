@@ -45,6 +45,7 @@ from ..library.themes import (
     theme_of_the_day,
     weekly_themes,
 )
+from ..library.viewer import viewer_id
 from ..library.vocabulary import (
     TECHNIQUE_KINDS,
     TERMS,
@@ -59,6 +60,7 @@ from ..player import POOL_SIZE
 from ..service import FrameService
 from .deps import require_token, service
 from .library_api import RemoteItem, RemotePage, remote_items
+from .playlists_api import summary
 
 log = logging.getLogger(__name__)
 
@@ -167,7 +169,8 @@ class MuseumHint(BaseModel):
 def _theme_playlist(
     svc: FrameService, found: Theme, playlists: list[Playlist] | None = None
 ) -> Playlist | None:
-    for playlist in svc.library.playlists() if playlists is None else playlists:
+    """The playlist made from ``found``: the asking person's or a shared one."""
+    for playlist in svc.library.playlists(viewer_id()) if playlists is None else playlists:
         if playlist.theme == found.key or fold(playlist.name) == fold(found.playlist or found.name):
             return playlist
     return None
@@ -215,8 +218,11 @@ def work_out_cards(svc: FrameService) -> dict[str, tuple[int, list[Item]]]:
             return cards  # just worked out by another request
         cards = {}
         today = date.today().isoformat()
-        mine = make_liked(svc.library, svc.player.taste())
-        for found in [*weekly_themes(svc.library, date.today()), *mine, *THEMES]:
+        mine: dict[str, Theme] = {}
+        for user in svc.users.users():  # everyone's "Bo lubisz"
+            for found in make_liked(svc.library, svc.player.taste(user.id), user.id):
+                mine.setdefault(found.key, found)
+        for found in [*weekly_themes(svc.library, date.today()), *mine.values(), *THEMES]:
             total, items = svc.library.query(found.rules(), sort="suitability")
             cards[found.key] = (total, _cover(items, f"{today}:{found.key}"))
         _cards = (time.monotonic(), cards)
@@ -290,11 +296,12 @@ def _back_row(svc: FrameService, day: date) -> SuggestionRow | None:
     """The owner's works (kept or liked) the frame has not shown for half
     a year or more."""
     since = _since(BACK_DAYS)
+    hearts = svc.library.favorites()  # the asking person's
     rules = PlaylistRules(kinds=[ItemKind.ARTWORK])
     back = [
         i
         for i in svc.library.query(rules)[1]
-        if (i.favorite or not i.pooled) and (i.last_shown_at or i.added_at or since) < since
+        if (i.id in hearts or not i.pooled) and (i.last_shown_at or i.added_at or since) < since
     ]
     if len(back) < ROW_MIN:
         return None
@@ -362,7 +369,7 @@ async def play_suggestions(svc: Svc) -> dict[str, bool]:
 
 def _theme_list(svc: FrameService) -> list[ThemeCard]:
     cards = _theme_cards(svc)
-    playlists = svc.library.playlists()
+    playlists = svc.library.playlists(viewer_id())
     # The week's themes and "Bo lubisz" once the cards have them (worked
     # out with them).
     weekly = [t for t in weekly_themes(svc.library, date.today()) if t.key in cards]
@@ -423,6 +430,7 @@ async def theme_playlist(key: str, request: ThemePlaylistRequest, svc: Svc) -> T
                 kind=PlaylistKind.SMART,
                 rules=found.rules(),
                 theme=found.key,
+                owner=viewer_id(),
             )
         )
         have = len(svc.library.playlist_items(playlist))
@@ -440,7 +448,7 @@ async def theme_playlist(key: str, request: ThemePlaylistRequest, svc: Svc) -> T
         svc.player.save_settings(settings)
         svc.player.set_hold(None)
         svc.background(svc.player.next("playlist", picks=False))  # its own first picture
-    return ThemePlaylist(playlist=svc.library.playlist_summary(playlist), job_id=job_id)
+    return ThemePlaylist(playlist=summary(svc, playlist), job_id=job_id)
 
 
 # -- words to search by ---------------------------------------------------------
@@ -735,7 +743,7 @@ async def stream_museums(
     copies = len(search.keys) != 1
     shown = shown_in(search.rules, page)
     if page == 1:
-        svc.player.searched_for(search.rules.artists)
+        svc.player.searched_for(search.rules.artists, viewer_id())
 
     loop = asyncio.get_running_loop()
     answers: asyncio.Queue[MuseumAnswer | None] = asyncio.Queue()

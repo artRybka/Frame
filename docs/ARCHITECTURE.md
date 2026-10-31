@@ -41,6 +41,9 @@ harmonogram ─▶ wybór pozycji (kolekcje, iCloud, własne; bez powtórek)
 Pełna specyfikacja: `http://<serwer>:8099/docs` (OpenAPI). Endpointy `/api/*`
 wymagają nagłówka `Authorization: Bearer <api_token>` (albo `?token=` dla
 adresów obrazów), jeśli token jest ustawiony.
+Token serwera to właściciel; telefony domowników mają własne tokeny (D15).
+Konfiguracja (ekran, źródła, AI, magazyn, kalibracja, aktualizacja serwera,
+klucz APNs) i usuwanie dzieł są tylko dla właściciela (403).
 
 | Obszar | Endpointy |
 |---|---|
@@ -57,6 +60,7 @@ adresów obrazów), jeśli token jest ustawiony.
 | Kalibracja kolorów (bez aplikacji, po E5) | `GET /api/calibration` (paleta w użyciu), `POST …/chart` (plansza na ramkę, 30 min), `POST …/measure` (multipart: `file`, `corners`), `GET …/candidates/{id}/chart.jpg`, `GET …/candidates/{id}/preview/{item}`, `POST …/apply`, `POST …/cancel`, `DELETE /api/calibration` (powrót do domyślnej) |
 | Jednorazowe zdjęcie | `POST /api/display` (multipart: `file`, `preset`, `title`, `hold`), `POST /api/device/push`, `GET /api/now`, `GET /api/previews/{id}.png` |
 | Diagnostyka | `GET /api/health`, `GET /api/presets`, `GET /api/debug/panel-requests` |
+| Domownicy (D15) | `GET /api/me` (kto to jest, rola, studia na dziś), `DELETE /api/me/device` („Odłącz ten telefon”), `POST /api/join` (bez tokenu: kod zaproszenia → token telefonu); tylko właściciel: `GET /api/users`, `POST /api/users/invites`, `DELETE /api/users/invites/{id}`, `DELETE /api/users/devices/{id}`, `PUT /api/users/settings` (limit studiów), `PUT/DELETE /api/users/{id}` |
 
 ## Rotacja
 

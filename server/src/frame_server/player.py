@@ -30,9 +30,10 @@ from .library.icloud import only_copy
 from .library.images import Unavailable
 from .library.museums import Kind
 from .library.nationality import life_years, note_years
-from .library.repo import SENT_KEY
+from .library.repo import sent_key
 from .library.style import AUTO, auto_preset
 from .library.themes import SEARCHABLE, theme_of_the_day
+from .library.viewer import OWNER_ID
 from .library.vocabulary import HIGHLIGHT, set_aside
 from .progress import Stage
 from .schedule import FrameSettings, Presentation, in_quiet_hours, next_change
@@ -116,6 +117,11 @@ def _log_failure(task: asyncio.Task[object]) -> None:
 
 def utcnow() -> datetime:
     return datetime.now(UTC)
+
+
+def searched_key(user: str) -> str:
+    """Each person's searches (the owner's under the key from before)."""
+    return SEARCHED_ARTISTS_KEY if user == OWNER_ID else f"{SEARCHED_ARTISTS_KEY}:{user}"
 
 
 class Hold(BaseModel):
@@ -318,19 +324,21 @@ class Player:
         state.queue = [i for i in state.queue if i != item_id]
         self._save_state(state)
 
-    def remember_sent(self, item: Item) -> None:
-        """A photo sent once, shown or queued, goes first in "Historia
-        przesłanych"; the playlist is made when first needed, and again if
-        the owner deleted it."""
+    def remember_sent(self, item: Item, user: str = OWNER_ID) -> None:
+        """A photo ``user`` sent once, shown or queued, goes first in their
+        own "Historia przesłanych" (Mateusz, 2026-10-31: one for each
+        person); the playlist is made when first needed, and again if they
+        deleted it."""
         if item.look is None:
             return
-        playlist_id = self.library.get_state(SENT_KEY, None)
+        key = sent_key(user)
+        playlist_id = self.library.get_state(key, None)
         playlist = self.library.playlist(playlist_id) if playlist_id is not None else None
-        if playlist is None:
-            playlist = Playlist(name=SENT_NAME, kind=PlaylistKind.MANUAL)
+        if playlist is None or playlist.owner != user:
+            playlist = Playlist(name=SENT_NAME, kind=PlaylistKind.MANUAL, owner=user)
         ids = [item.id, *(i for i in playlist.item_ids if i != item.id)]
         saved = self.library.save_playlist(playlist.model_copy(update={"item_ids": ids}))
-        self.library.set_state(SENT_KEY, saved.id)
+        self.library.set_state(key, saved.id)
 
     def dequeue(self, item_id: str) -> None:
         """Take back a pick added with ``queue_next``."""
@@ -393,15 +401,19 @@ class Player:
         cutoff = (utcnow() - timedelta(days=settings.avoid_repeat_days)).isoformat()
         return [i for i in items if not i.last_shown_at or i.last_shown_at < cutoff]
 
-    def taste(self) -> list[str]:
-        """Artists the owner likes, most liked first: favourites count most,
-        then works kept in the library (not the ones the server picked) and
-        artists lately searched for."""
+    def taste(self, user: str | None = None) -> list[str]:
+        """Artists ``user`` likes (None: the household together), most liked
+        first: favourites count most, then works kept in the library (not
+        the ones the server picked) and artists lately searched for."""
         scores: Counter[str] = Counter()
+        hearts = None if user is None else self.library.favorites(user)
         for item in self.library.query(PlaylistRules(kinds=[ItemKind.ARTWORK]))[1]:
             if is_artist(item.artist):
-                scores[item.artist] += 3 * item.favorite + (not item.pooled)
-        searched = Counter(self.library.get_state(SEARCHED_ARTISTS_KEY, []))
+                liked = item.favorite if hearts is None else item.id in hearts
+                scores[item.artist] += 3 * liked + (not item.pooled)
+        searched: Counter[str] = Counter()
+        for key in [searched_key(user)] if user is not None else self._searched_keys():
+            searched.update(self.library.get_state(key, []))
         for artist, times in searched.items():
             scores[artist] += min(times, SEARCHED_ARTIST_MAX)
         return [artist for artist, score in scores.most_common(TASTE_ARTISTS) if score > 0]
@@ -1004,15 +1016,21 @@ class Player:
         if settings.scheduler and settings.catalogue_mb:
             self.service.importer.keep_searched(items)
 
-    def searched_for(self, artists: list[str]) -> None:
-        """Artists asked for in Szukaj count towards :meth:`taste`; the
-        same search again (e.g. coming back to it) once."""
+    def searched_for(self, artists: list[str], user: str = OWNER_ID) -> None:
+        """Artists ``user`` asked for in Szukaj count towards their
+        :meth:`taste`; the same search again (e.g. coming back to it) once."""
         if not artists:
             return
-        recent: list[str] = self.library.get_state(SEARCHED_ARTISTS_KEY, [])
+        key = searched_key(user)
+        recent: list[str] = self.library.get_state(key, [])
         if recent[-len(artists) :] == artists:
             return
-        self.library.set_state(SEARCHED_ARTISTS_KEY, (recent + artists)[-SEARCHED_ARTISTS_KEPT:])
+        self.library.set_state(key, (recent + artists)[-SEARCHED_ARTISTS_KEPT:])
+
+    def _searched_keys(self) -> list[str]:
+        users = getattr(self.service, "users", None)
+        people = [u.id for u in users.users()] if users is not None else [OWNER_ID]
+        return [searched_key(u) for u in people]
 
     def trim_catalogue(self) -> int:
         """Keep the catalogue's thumbnails within ``catalogue_mb``: works the

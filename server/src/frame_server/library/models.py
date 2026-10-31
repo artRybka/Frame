@@ -5,9 +5,10 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, SerializationInfo, field_serializer, model_validator
 
 from ..imaging.layout import Crop, Fit
+from .viewer import OWNER_ID, VIEWER
 
 
 class ItemKind(StrEnum):
@@ -124,6 +125,15 @@ class Item(BaseModel):
     @property
     def file_stem(self) -> str:
         return self.id.replace(":", "_").replace("/", "_")
+
+    @field_serializer("favorite")
+    def _favorite_for_viewer(self, value: bool, info: SerializationInfo) -> bool:
+        """Stored: someone's favourite. To the app: the viewer's own heart
+        (see library.viewer)."""
+        if info.context and info.context.get("store"):
+            return value
+        viewer = VIEWER.get()
+        return value if viewer is None else viewer.likes(self.id)
 
 
 class ItemSummary(BaseModel):
@@ -247,12 +257,18 @@ class Playlist(BaseModel):
     album: AlbumSource | None = None  # album playlists
     #: The Discover theme the playlist was made from.
     theme: str | None = None
+    #: Who made it: only they change it. Others see it when ``shared``.
+    owner: str = OWNER_ID
+    shared: bool = False
     #: A smart playlist's most works (None: all that match). With more
     #: matching, a steady set is taken: favourites first, the rest drawn
     #: once for these rules and limit (`repo.limited`).
     limit: int | None = Field(default=None, ge=1)
     created_at: str = ""
     updated_at: str = ""
+
+    def visible_to(self, user_id: str) -> bool:
+        return self.shared or self.owner == user_id
 
     @property
     def is_favorites(self) -> bool:
@@ -271,6 +287,12 @@ class PlaylistSummary(BaseModel):
     album: AlbumSource | None = None
     album_sync: AlbumSync | None = None
     theme: str | None = None
+    owner: str = OWNER_ID
+    #: The owner's name, for a playlist someone else made.
+    owner_name: str = ""
+    shared: bool = False
+    #: The viewer made it (and may change it).
+    mine: bool = True
     limit: int | None = None
 
 

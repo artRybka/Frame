@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.58.0
+
+- Domownicy: właściciel zaprasza osobę w Konfiguracja → Domownicy (kod QR
+  albo link, jednorazowy, 30 min); jej telefon dostaje własny dostęp.
+  Domownik ma własne Ulubione, playlisty (przełącznik „Wspólna”, nowe
+  prywatne, dotychczasowe wspólne), Historię przesłanych i powiadomienia;
+  zmienia Harmonogram i Prezentację, budzi i usypia ramkę, zamawia studia
+  (limit dzienny u właściciela, domyślnie 5). Konfiguracja, nazwa ramki,
+  usuwanie dzieł i aktualizacja serwera tylko dla właściciela. Wymaga
+  FRAME_API_TOKEN na serwerze.
+- Szukaj: okienko grupy naprawdę wyrasta ze swojego przycisku i do niego
+  wraca (poprawka z 1.57.0 nie działała). Opis „Tylko akcent” krótszy.
+
 ## 1.57.0
 
 - Inteligentne playlisty: zamiast przełącznika „Pobieraj pasujące z muzeów”

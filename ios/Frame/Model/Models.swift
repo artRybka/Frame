@@ -253,6 +253,8 @@ struct Playlist: Codable, Hashable, Sendable {
     var album: AlbumSource?
     /// The Discover theme the playlist was made from.
     var theme: String?
+    /// "Wspólna": the household sees it too. Nil leaves it as the server has it.
+    var shared: Bool?
     /// A smart playlist's most works; nil: all that match. With more
     /// matching, the server takes a steady set, favourites first.
     var limit: Int?
@@ -280,9 +282,15 @@ struct PlaylistSummary: Codable, Identifiable, Hashable, Sendable {
     var album: AlbumSource?
     var albumSync: AlbumSync?
     var theme: String?
+    /// Who made it, from servers with people (users.py); nil from older ones.
+    var ownerName: String?
+    var shared: Bool?
+    var mine: Bool?
     var limit: Int?
 
     var isFavorites: Bool { kind == .smart && rules.favoritesOnly }
+    /// Made by this phone's person: only they change it.
+    var isMine: Bool { mine ?? true }
 
     /// The photos sent once (server: player.SENT_NAME).
     static let sentName = "Historia przesłanych"

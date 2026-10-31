@@ -8,9 +8,18 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel
 
-from ..notifications import KINDS, TEAM_ID, PushDevice, PushError, PushKey, key_id_from
+from ..notifications import (
+    KINDS,
+    OWNER_KINDS,
+    TEAM_ID,
+    PushDevice,
+    PushError,
+    PushKey,
+    key_id_from,
+)
 from ..service import FrameService
-from .deps import require_token, service
+from ..users import User
+from .deps import CurrentUser, require_owner, require_token, service
 
 router = APIRouter(
     prefix="/api/notifications", dependencies=[Depends(require_token)], tags=["notifications"]
@@ -50,43 +59,63 @@ class TestResult(BaseModel):
     error: str | None = None
 
 
-def _view(svc: FrameService, device: str | None = None) -> NotificationsView:
+def _view(svc: FrameService, user: User, device: str | None = None) -> NotificationsView:
+    """A member sees their own phones and no server news (OWNER_KINDS)."""
     notifier = svc.notifier
+    found = notifier.device(device) if device else None
+    if found is not None and not user.is_owner and found.user != user.id:
+        found = None
     return NotificationsView(
         key=notifier.key(),
-        kinds=[Kind(key=k, title=t, hint=h) for k, (t, h) in KINDS.items()],
-        device=notifier.device(device) if device else None,
-        devices=len(notifier.devices()),
+        kinds=[
+            Kind(key=k, title=t, hint=h)
+            for k, (t, h) in KINDS.items()
+            if user.is_owner or k not in OWNER_KINDS
+        ],
+        device=found,
+        devices=len([d for d in notifier.devices() if user.is_owner or d.user == user.id]),
     )
 
 
+def _own(svc: FrameService, user: User, token: str) -> None:
+    """A member changes only their own phones."""
+    found = svc.notifier.device(token)
+    if found is not None and not user.is_owner and found.user != user.id:
+        raise HTTPException(403, "to nie Twój telefon")
+
+
 @router.get("", response_model=NotificationsView)
-def get_notifications(svc: Svc, device: Annotated[str | None, Query()] = None) -> NotificationsView:
-    return _view(svc, device)
+def get_notifications(
+    svc: Svc, user: CurrentUser, device: Annotated[str | None, Query()] = None
+) -> NotificationsView:
+    return _view(svc, user, device)
 
 
 @router.put("/devices/{token}", response_model=NotificationsView)
-def put_device(token: str, update: DeviceUpdate, svc: Svc) -> NotificationsView:
+def put_device(token: str, update: DeviceUpdate, svc: Svc, user: CurrentUser) -> NotificationsView:
     """The app's device token (sent on every start, it may change) and the
-    kinds this phone wants."""
+    kinds this phone wants; the phone is the asking person's from now on
+    (a phone that joined as a member is no longer the owner's)."""
     try:
         found = svc.notifier.register(
-            token, sandbox=update.sandbox, kinds=update.kinds, name=update.name
+            token, sandbox=update.sandbox, kinds=update.kinds, name=update.name, user=user.id
         )
     except PushError as err:
         raise HTTPException(400, str(err)) from err
-    return _view(svc, found.token)
+    return _view(svc, user, found.token)
 
 
 @router.delete("/devices/{token}", response_model=NotificationsView)
-def delete_device(token: str, svc: Svc) -> NotificationsView:
+def delete_device(token: str, svc: Svc, user: CurrentUser) -> NotificationsView:
+    _own(svc, user, token)
     svc.notifier.forget(token)
-    return _view(svc)
+    return _view(svc, user)
 
 
 @router.put("/key", response_model=NotificationsView)
 async def put_key(
     svc: Svc,
+    user: Annotated[User, Depends(require_owner)],
     file: Annotated[UploadFile, File()],
     key_id: Annotated[str | None, Form()] = None,
     team_id: Annotated[str | None, Form()] = None,
@@ -103,18 +132,23 @@ async def put_key(
         svc.notifier.save_key(pem, found, team_id or TEAM_ID)
     except PushError as err:
         raise HTTPException(400, str(err)) from err
-    return _view(svc, device)
+    return _view(svc, user, device)
 
 
 @router.delete("/key", response_model=NotificationsView)
-def delete_key(svc: Svc, device: Annotated[str | None, Query()] = None) -> NotificationsView:
+def delete_key(
+    svc: Svc,
+    user: Annotated[User, Depends(require_owner)],
+    device: Annotated[str | None, Query()] = None,
+) -> NotificationsView:
     svc.notifier.delete_key()
-    return _view(svc, device)
+    return _view(svc, user, device)
 
 
 @router.post("/test", response_model=TestResult)
-async def test(request: TestRequest, svc: Svc) -> TestResult:
+async def test(request: TestRequest, svc: Svc, user: CurrentUser) -> TestResult:
     """A notification to this phone now; Apple's answer if it fails."""
+    _own(svc, user, request.device)
     notifier = svc.notifier
     if notifier.key() is None:
         raise HTTPException(409, NO_KEY)

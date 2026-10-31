@@ -28,6 +28,14 @@ final class AppModel {
     /// before the server answered.
     private(set) var serverPath: ServerRoute.Kind?
 
+    /// Who this phone is on the server; nil before it answered (and from
+    /// older servers): taken as the owner (`isOwner`).
+    var me: Me?
+    /// An invitation opened from its link or QR code, waiting for "Dołącz".
+    var invitation: Invitation?
+    /// This phone's own token stopped working ("Odbierz dostęp").
+    var accessLost = false
+
     var player: PlayerView?
     /// "Teraz" as the last launch left it (`NowCache`): shown at once, until
     /// the server answers; nil on a first launch, a new server or the demo.
@@ -183,6 +191,7 @@ final class AppModel {
         serverUpdate = nil
         aiSettings = nil
         notificationSettings = nil
+        me = nil
         playlists = []
         playlistDetails = [:]
         facets = .empty
@@ -219,6 +228,22 @@ final class AppModel {
         let playlists = Task { try? await backend.playlists() }
         let facets = Task { try? await backend.facets() }
         let panelConfig = Task { try? await backend.panelConfig() }
+        let me = Task { () -> Result<Me, Error> in
+            do { return .success(try await backend.me()) } catch { return .failure(error) }
+        }
+        switch await me.value {
+        case let .success(found):
+            self.me = found
+            accessLost = false
+        case let .failure(error):
+            if case let BackendError.http(status, _) = error, status == 401 {
+                connection = .failed("Serwer nie przyjmuje tego telefonu. Poproś o nowe zaproszenie albo wpisz token serwera w Konfiguracji.")
+                self.me = nil
+                accessLost = true
+                return
+            }
+            self.me = nil  // an older server: no people, the owner
+        }
         self.player = await player.value
         if self.player?.progress?.active == true { trackProgress() }
         self.status = await status.value

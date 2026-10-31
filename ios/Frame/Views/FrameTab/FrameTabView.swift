@@ -58,9 +58,9 @@ struct FrameTabView: View {
                     Button {
                         showingConnection = true
                     } label: {
-                        Image(systemName: "gearshape")
+                        Image(systemName: model.isOwner ? "gearshape" : "person.crop.circle")
                     }
-                    .accessibilityLabel("Konfiguracja ekranu i serwera")
+                    .accessibilityLabel(model.isOwner ? "Konfiguracja ekranu i serwera" : "Mój dostęp")
                 }
                 if let draft, draft != model.settings {
                     ToolbarItem(placement: .confirmationAction) {
@@ -89,7 +89,10 @@ struct FrameTabView: View {
             }
             // In a task of its own: SwiftUI cancels the refresh's task when the
             // view changes under it ("Sprawdzam…"), and the requests with it.
-            .sheet(isPresented: $showingConnection) { ConnectionSettingsView() }
+            .sheet(isPresented: $showingConnection) {
+                // A household member has no Konfiguracja (server: users.py).
+                if model.isOwner { ConnectionSettingsView() } else { MyAccessView() }
+            }
             .refreshable { await Task { await refresh() }.value }
             .onAppear {
                 follow(model.settings)
@@ -221,13 +224,16 @@ struct FrameTabView: View {
                             .font(.serif(26, weight: .semibold))
                             .foregroundStyle(Theme.ink)
                             .multilineTextAlignment(.leading)
-                        Image(systemName: "pencil")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(Theme.inkSoft)
+                        if model.isOwner {
+                            Image(systemName: "pencil")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(Theme.inkSoft)
+                        }
                     }
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("\(frameName), zmień nazwę")
+                .disabled(!model.isOwner)  // the frame's name is the owner's
+                .accessibilityLabel(model.isOwner ? "\(frameName), zmień nazwę" : frameName)
                 Text(connectionText)
                     .font(.subheadline)
                     .foregroundStyle(connectionColor)
@@ -466,7 +472,7 @@ struct FrameTabView: View {
     private var serverTile: some View {
         let state = server
         return Button {
-            guard let update = model.serverUpdate, update.updater, !update.addon else {
+            guard model.isOwner, let update = model.serverUpdate, update.updater, !update.addon else {
                 showingConnection = true
                 return
             }
@@ -517,7 +523,7 @@ struct FrameTabView: View {
     /// What a tap on the Serwer tile does: update (the blue arrow), look
     /// for an update, or open the settings where the app cannot update it.
     private var serverBadge: TileBadge {
-        guard let update = model.serverUpdate, update.updater, !update.addon else {
+        guard model.isOwner, let update = model.serverUpdate, update.updater, !update.addon else {
             return TileBadge(systemImage: "chevron.right")
         }
         if model.updatingServer || checkingUpdate || update.busy {
@@ -1190,7 +1196,7 @@ struct PresentationSection: View {
                 pool = try await model.backend.items(query).items.map(\.id)
             }
             // Photos sent once are not in the library's lists, only in theirs.
-            if photo, let sent = model.playlists.first(where: { $0.name == PlaylistSummary.sentName }) {
+            if photo, let sent = model.playlists.first(where: { $0.name == PlaylistSummary.sentName && $0.isMine }) {
                 pool += (try? await model.backend.playlist(id: sent.id).itemIds) ?? []
             }
         } catch {
@@ -1692,6 +1698,7 @@ struct ConnectionSettingsView: View {
                         PanelAppSection(app: app)
                     }
                     ServerSection()
+                    HouseholdSection()
                     NotificationsSection()
                     if let settings = model.settings {
                         SourcesSection(settings: settings)

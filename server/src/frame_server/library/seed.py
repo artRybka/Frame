@@ -13,6 +13,7 @@ import httpx
 from .importer import Importer, Job
 from .models import Playlist, PlaylistKind, PlaylistRules
 from .repo import Library
+from .viewer import OWNER_ID
 
 log = logging.getLogger(__name__)
 
@@ -267,7 +268,10 @@ def seed_playlists(importer: Importer) -> None:
     library = importer.library
     if not library.playlists():
         for playlist in DEFAULT_PLAYLISTS:
-            library.save_playlist(playlist.model_copy(update={"kind": PlaylistKind.SMART}))
+            shared = not playlist.rules.favorites_only  # the starters: for everyone
+            library.save_playlist(
+                playlist.model_copy(update={"kind": PlaylistKind.SMART, "shared": shared})
+            )
     ensure_favorites(library)
     _turquoise_blues(library)
 
@@ -285,11 +289,12 @@ def _turquoise_blues(library: Library) -> None:
     library.set_state(BLUES_KEY, True)
 
 
-def ensure_favorites(library: Library) -> None:
-    """ "Ulubione" is always there, even with no hearts yet: brings it back
-    when a library has none (e.g. deleted before it couldn't be)."""
-    if not any(p.is_favorites for p in library.playlists()):
-        library.save_playlist(FAVORITES.model_copy())
+def ensure_favorites(library: Library, user_id: str = OWNER_ID) -> None:
+    """ "Ulubione" is always there for everyone, even with no hearts yet:
+    brings it back when a person has none (e.g. deleted before it couldn't
+    be)."""
+    if not any(p.is_favorites and p.owner == user_id for p in library.playlists()):
+        library.save_playlist(FAVORITES.model_copy(update={"owner": user_id}))
 
 
 def import_queries(importer: Importer, queries: list[Query], job: Job) -> None:

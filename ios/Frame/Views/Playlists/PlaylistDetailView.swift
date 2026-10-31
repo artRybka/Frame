@@ -57,6 +57,13 @@ struct PlaylistDetailView: View {
                 if removingItems {
                     Button("Gotowe") { withAnimation { removingItems = false } }
                         .fontWeight(.semibold)
+                } else if summary?.isMine == false {
+                    // Someone else's shared playlist: played, not changed.
+                    if let name = summary?.ownerName, !name.isEmpty {
+                        Text("Playlista: \(name)")
+                            .font(.caption)
+                            .foregroundStyle(Theme.inkSoft)
+                    }
                 } else {
                     Menu {
                         Button("Edytuj", systemImage: "slider.horizontal.3") { editing = playlistBody() }
@@ -249,7 +256,7 @@ struct PlaylistDetailView: View {
         return Playlist(
             id: summary.id, name: summary.name, description: summary.description, kind: summary.kind,
             rules: summary.rules, itemIds: detail?.itemIds ?? [], album: summary.album,
-            theme: summary.theme, limit: summary.limit
+            theme: summary.theme, shared: summary.shared, limit: summary.limit
         )
     }
 

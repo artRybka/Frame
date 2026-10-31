@@ -72,6 +72,13 @@ struct RootView: View {
             default: break
             }
         }
+        // An invitation to the frame opened from its QR code or link.
+        .sheet(item: Binding(
+            get: { model.invitation },
+            set: { model.invitation = $0 }
+        )) { invitation in
+            JoinView(invitation: invitation)
+        }
         // A study ready, opened from its card at the bottom.
         .sheet(isPresented: Binding(
             get: { model.studySheet != nil },
