@@ -192,6 +192,20 @@ def test_colour_tags_go_by_area() -> None:
     assert not has_colours(wide, ["accent:blue"])  # blue, not a blue accent
 
 
+def test_colour_and_accent_must_both_fit() -> None:
+    blue_with_red = ["blue", "cool", "accent:red"]
+    blue_plain = ["blue", "cool"]
+    red_on_brown = ["brown", "warm", "accent:red"]
+    # Within a group any one will do...
+    assert has_colours(blue_plain, ["blue", "green"])
+    assert has_colours(blue_with_red, ["accent:red", "accent:yellow"])
+    # ...but a colour (or mood) and an accent both have to fit.
+    assert has_colours(blue_with_red, ["blue", "accent:red"])
+    assert has_colours(blue_with_red, ["cool", "accent:red"])
+    assert not has_colours(blue_plain, ["blue", "accent:red"])
+    assert not has_colours(red_on_brown, ["blue", "accent:red"])
+
+
 def test_yellowed_paper_is_not_warm() -> None:
     _, tags, _ = analyse(_etching([(238, 226, 198)]))
     assert "warm" not in tags and not any(t.startswith("accent:") for t in tags)

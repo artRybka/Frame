@@ -285,10 +285,16 @@ def colour_tags(
 
 
 def has_colours(tags: list[str], wanted: list[str]) -> bool:
-    """Whether a picture with ``tags`` has any of the ``wanted`` colours,
-    accents and moods. A colour and its accent exclude each other: "red
-    accents" are pictures where red is only an accent."""
-    return bool(set(tags) & set(wanted))
+    """Whether a picture with ``tags`` fits the ``wanted`` colours, moods
+    and accents. Colours and moods are one group, accents another: any one
+    of a group will do, but both groups must fit, so blue (or cool) with a
+    red accent asks for blue pictures with something red. A colour and its
+    accent exclude each other: "red accents" are pictures where red is
+    only an accent."""
+    have = set(tags)
+    accents = {w for w in wanted if w.startswith(ACCENT_TAG)}
+    rest = set(wanted) - accents
+    return (not rest or bool(have & rest)) and (not accents or bool(have & accents))
 
 
 def _swatch(lab: np.ndarray, weight: float, accent: bool = False) -> ColorSwatch:

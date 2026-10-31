@@ -145,7 +145,11 @@ actor DemoBackend: FrameBackend {
         }
         if !rules.styles.isEmpty && !overlaps(item.styles, rules.styles) { return false }
         if !rules.subjects.isEmpty && !overlaps(item.subjects, rules.subjects) { return false }
-        if !rules.colors.isEmpty && Set(item.colorTags).isDisjoint(with: rules.colors) { return false }
+        // As the server: colours and moods one group, accents another, both must fit.
+        let accents = rules.colors.filter { $0.hasPrefix(ColorTag.accentPrefix) }
+        let mainColors = rules.colors.filter { !$0.hasPrefix(ColorTag.accentPrefix) }
+        if !mainColors.isEmpty && Set(item.colorTags).isDisjoint(with: mainColors) { return false }
+        if !accents.isEmpty && Set(item.colorTags).isDisjoint(with: accents) { return false }
         if !rules.terms.isEmpty && !DemoDiscover.matches(item, terms: rules.terms) { return false }
         if let from = rules.yearFrom, (item.year ?? Int.min) < from { return false }
         if let to = rules.yearTo, (item.year ?? Int.max) > to { return false }
