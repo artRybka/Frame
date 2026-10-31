@@ -17,6 +17,9 @@
   kolumnami.
 - Grupa „Na ten tydzień” w Odkrywaj i Propozycjach nazywa się teraz
   „Dziś dla Ciebie”.
+- Ramka nie budzi się już o 03:00 na kilka minut: przed każdym snem
+  z pobudką aplikacja ramki przesuwa dzienne odświeżanie ekranu Samsunga na
+  godzinę tej pobudki.
 
 ## 1.56.0
 
