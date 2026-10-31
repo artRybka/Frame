@@ -16,6 +16,7 @@ from starlette.concurrency import run_in_threadpool
 from ..ai.daily import Detail
 from ..library import Item
 from ..library.markup import strip_markup
+from ..notifications import PushError
 from ..service import FrameService
 from ..study import PENDING, Status
 from .daily_api import DailyWork, page
@@ -130,6 +131,28 @@ async def prepare_study(
         with contextlib.suppress(Exception):
             await asyncio.wait_for(asyncio.shield(asyncio.wrap_future(future)), wait)
     return await run_in_threadpool(_view, svc, item)
+
+
+class StudyActivityToken(BaseModel):
+    """A Live Activity following a study, as iOS gave its push token."""
+
+    token: str
+    sandbox: bool = False
+
+
+@router.put("/study/{item_id}/activity", status_code=204)
+async def follow_study(item_id: str, body: StudyActivityToken, svc: Svc) -> None:
+    """The Lock Screen card following the work's study: each step is pushed
+    to it (without an APNs key it moves on only while the app is open).
+    Where the study is now goes to it at once."""
+    try:
+        activity = svc.notifier.follow_study(item_id, body.token, sandbox=body.sandbox)
+    except PushError as err:
+        raise HTTPException(400, str(err)) from err
+    status, error = await run_in_threadpool(svc.study.status, svc.library.get(item_id))
+    # Not on its way here ("none"): the server lost it.
+    step = "stopped" if status == "none" else status
+    await svc.notifier.push_study(item_id, step, error, only=activity.token)
 
 
 @router.get("/study/{item_id}/detail")

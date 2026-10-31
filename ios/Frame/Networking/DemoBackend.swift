@@ -824,6 +824,10 @@ actor DemoBackend: FrameBackend {
         return try await study(itemID: itemID, wait: 0)
     }
 
+    /// The demo has no server to push the study's steps: the app moves
+    /// the card on while it runs.
+    func followStudy(itemID: String, activityToken: String, sandbox: Bool) async throws {}
+
     func themePlaylist(key: String, play: Bool) async throws -> ThemePlaylist {
         guard let theme = DemoDiscover.themes.first(where: { $0.key == key }) else {
             throw BackendError.notFound

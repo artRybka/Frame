@@ -7,6 +7,7 @@ import WidgetKit
 struct FrameWidgetsBundle: WidgetBundle {
     var body: some Widget {
         SendActivityWidget()
+        StudyActivityWidget()
     }
 }
 
@@ -191,7 +192,7 @@ private struct CompactMark: View {
 }
 
 /// The app's colours (`Theme`), for the extension.
-private enum Palette {
+enum Palette {
     static let paper = dynamic(light: 0xF5F1EA, dark: 0x1D1B19)
     static let ink = dynamic(light: 0x1D1B18, dark: 0xF1ECE4)
     static let inkSoft = dynamic(light: 0x6E675E, dark: 0xA79F94)
@@ -221,12 +222,12 @@ private enum Palette {
         return state.label
     }
 
-    private static func dynamic(light: UInt32, dark: UInt32) -> Color {
+    static func dynamic(light: UInt32, dark: UInt32) -> Color {
         Color(uiColor: UIColor { $0.userInterfaceStyle == .dark ? UIColor(hex: dark) : UIColor(hex: light) })
     }
 }
 
-private extension UIColor {
+extension UIColor {
     convenience init(hex: UInt32) {
         self.init(
             red: CGFloat((hex >> 16) & 0xFF) / 255,
@@ -237,7 +238,7 @@ private extension UIColor {
     }
 }
 
-private extension Color {
+extension Color {
     init(hex: UInt32) {
         self.init(uiColor: UIColor(hex: hex))
     }

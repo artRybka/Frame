@@ -1440,6 +1440,12 @@ struct StudyView: Codable, Hashable, Sendable {
     var isPending: Bool { Self.pending.contains(status) }
 }
 
+/// `PUT /api/study/{id}/activity`: the Lock Screen card's push token.
+struct StudyActivityToken: Codable, Hashable, Sendable {
+    var token: String
+    var sandbox: Bool
+}
+
 /// An idea for a playlist, `GET /api/themes`: browsed live from the
 /// museums, or made into a smart playlist with its rules.
 struct ArtTheme: Codable, Hashable, Sendable, Identifiable {
