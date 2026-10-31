@@ -39,7 +39,7 @@ if TYPE_CHECKING:
 
 KIND = "daily"
 #: Changed whenever the prompt changes, so the text is written again.
-PROMPT_VERSION = "daily-4"
+PROMPT_VERSION = "daily-5"
 #: The tile's two lines under the title (characters).
 TEASER_CHARS = 100
 #: The picture goes out this big: enough to see the composition.
@@ -96,7 +96,7 @@ powstało, co było w nim nowe, jak je przyjęto.
 - "artist": krótka notka o autorze, dwa-trzy zdania (najwyżej 400 znaków): kim był, czym się \
 wyróżniał i w którym miejscu jego drogi powstało to dzieło. Bez powtarzania tekstu powyżej.
 - "composition": analiza kompozycji jako 1–3 ujęcia ("views"), każde rysowane osobno na \
-rozbielonym obrazie jak ołówkiem na kalce. Najczęściej dwa: „Droga oka” (co i w jakiej \
+rozbielonym obrazie jak ołówkiem na kalce. Najczęściej dwa: „Spojrzenie” (co i w jakiej \
 kolejności prowadzi wzrok) i „Geometria”. W geometrii szukaj złotego podziału (linie 0,382 i \
 0,618), trójpodziału, przekątnych, trójkątów, kół i owali, osi symetrii, rytmu powtórzeń; \
 trzecie ujęcie tylko, gdy ma sens (np. „Światło”). Pokazuj tylko to, co naprawdę widać, \

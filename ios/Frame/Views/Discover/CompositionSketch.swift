@@ -3,7 +3,7 @@ import SwiftUI
 /// One take on the composition as pencil on tracing paper: the picture
 /// washed out (darkened in dark mode, with the pencil white), the marks drawn
 /// over it with a number beside each, and their labels under the picture in
-/// two columns: a hand-written title and a line in the app's font under it.
+/// two columns, all hand-written: a title and a line under it.
 struct CompositionSketch: View {
     let item: RemoteItem
     let aspect: CGFloat
@@ -94,7 +94,7 @@ struct CompositionSketch: View {
                     .minimumScaleFactor(0.8)
                 if !entry.mark.text.isEmpty {
                     Text(entry.mark.text)
-                        .font(.caption)
+                        .font(.hand(18))
                         .foregroundStyle(Theme.inkSoft)
                         .fixedSize(horizontal: false, vertical: true)
                 }

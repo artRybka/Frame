@@ -18,7 +18,7 @@ from frame_server.ai import AiConfigUpdate
 from frame_server.ai.client import OPUS
 from frame_server.ai.daily import clean, short
 from frame_server.config import Settings
-from frame_server.daily import of_season, round_anniversary
+from frame_server.daily import HISTORY_KEY, of_season, round_anniversary
 from frame_server.library import Item, ItemKind
 from frame_server.service import FrameService
 from frame_server.web import create_app
@@ -43,7 +43,7 @@ ANSWER: dict[str, Any] = {
     "composition": {
         "views": [
             {
-                "title": "Droga oka",
+                "title": "Spojrzenie",
                 "grid": "none",
                 "text": "Oko biegnie łukiem fali do Fudżi.",
                 "marks": [
@@ -159,6 +159,11 @@ def _catalogue(service: FrameService) -> None:
     _add(service, "met:4", title="The Harvesters", artist="Pieter Bruegel", year=1565)
 
 
+def _today_is(service: FrameService, item_id: str) -> None:
+    """Today's pick made, so the page tests do not hang on the date."""
+    service.library.set_state(HISTORY_KEY, {date.today().isoformat(): item_id})
+
+
 @pytest.fixture
 def offline(service: FrameService) -> FrameService:
     service.daily.job._http = _offline()
@@ -202,7 +207,7 @@ def test_an_answer_is_cleaned() -> None:
     assert essay.focus is not None and (essay.focus.x, essay.focus.y) == (0.64, 1.0)
     assert essay.headline == "Pocztówka z pielgrzymki"
     views = essay.composition.views
-    assert [v.title for v in views] == ["Droga oka", "Geometria"]  # an empty take goes
+    assert [v.title for v in views] == ["Spojrzenie", "Geometria"]  # an empty take goes
     assert [m.title for m in views[0].marks] == ["Łuk fali", "Fudżi"]
     assert (views[0].marks[1].points[1].x, views[0].marks[1].points[1].y) == (1.0, 0.0)
     assert views[1].grid == "none"  # not a grid the app draws
@@ -233,6 +238,7 @@ def test_without_a_key_the_page_shows_what_the_museum_says(tmp_path: Path) -> No
     app = _app(tmp_path)
     with TestClient(app) as client:
         _catalogue(app.state.service)  # after the start, which tidies the library
+        _today_is(app.state.service, "met:1")
         work = client.get("/api/daily").json()
         assert work["item"]["item"]["id"] == "met:1"
         assert work["title"] == "Under the Wave off Kanagawa"
@@ -260,6 +266,7 @@ def test_claude_writes_the_page(tmp_path: Path) -> None:
     svc.ai_config.update(AiConfigUpdate(pl_text=False, keywords_artworks=False))
     with TestClient(app) as client:
         _catalogue(svc)
+        _today_is(svc, "met:1")
         svc.ai.start()
         try:
             work = client.get("/api/daily?wait=10").json()
@@ -271,7 +278,7 @@ def test_claude_writes_the_page(tmp_path: Path) -> None:
         assert work["headline"] == "Pocztówka z pielgrzymki"
         assert work["artist"].startswith("Katsushika Hokusai, malarz")
         assert work["focus"] == {"x": 0.64, "y": 1.0}
-        assert [v["title"] for v in work["composition"]["views"]] == ["Droga oka", "Geometria"]
+        assert [v["title"] for v in work["composition"]["views"]] == ["Spojrzenie", "Geometria"]
         assert work["composition"]["views"][0]["marks"][0]["shape"] == "arrow"
         assert [(s["item"]["item"]["id"], s["why"]) for s in work["similar"]] == [
             ("met:2", "ta sama seria")

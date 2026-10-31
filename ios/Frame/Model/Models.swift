@@ -1289,7 +1289,7 @@ struct DailyWork: Codable, Hashable, Sendable {
         var text: String
     }
 
-    /// One take on the composition ("Droga oka", "Geometria"): its marks and
+    /// One take on the composition ("Spojrzenie", "Geometria"): its marks and
     /// a grid under them ("none", "golden", "thirds").
     struct Take: Codable, Hashable, Sendable {
         var title: String
@@ -1313,7 +1313,7 @@ struct DailyWork: Codable, Hashable, Sendable {
                 Mark(shape: "loop", points: [Spot(x: point.x, y: point.y), Spot(x: point.x + 0.05, y: point.y + 0.04)], title: point.title, text: point.text)
             }
             let paths = lines.map { Mark(shape: "line", points: $0.points, title: "", text: "") }
-            return [Take(title: "Droga oka", grid: "none", text: "", marks: loops + paths)]
+            return [Take(title: "Spojrzenie", grid: "none", text: "", marks: loops + paths)]
         }
     }
 

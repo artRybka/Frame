@@ -709,7 +709,7 @@ actor DemoBackend: FrameBackend {
             composition: .init(
                 views: [
                     .init(
-                        title: "Droga oka",
+                        title: "Spojrzenie",
                         grid: "none",
                         text: "Oko wchodzi łukiem fali od lewego dolnego rogu, spada w „pazury” i ląduje na małej, nieruchomej Fudżi.",
                         marks: [
