@@ -7,7 +7,7 @@
 | Serwer ramki | Python 3.12+, FastAPI, numpy, numba, Pillow | `server/` |
 | Add-on Home Assistant (HA Green) | Docker (Debian slim), `host_network` | `ha-addon/` |
 | Kontener (Synology) | ten sam obraz, `docker-compose`, sieć hosta | `deploy/synology/` |
-| Aplikacja iOS | SwiftUI, iOS 17+, XcodeGen | `ios/` |
+| Aplikacja iOS | SwiftUI, iOS 26+, XcodeGen | `ios/` |
 | Ekran | Samsung EM32DX, oryginalny firmware | — |
 
 ## Przepływ: wysłanie obrazu

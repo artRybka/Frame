@@ -2,8 +2,10 @@ import SwiftUI
 
 /// The Szukaj tab's search: words, artists, styles, subjects, periods,
 /// techniques, colours and museums as chips, over the catalogue (at once)
-/// and the museums (each as it answers). Museums, colours, styles, subjects,
-/// periods and techniques come from the bar under the field; with nothing asked yet
+/// and the museums (each as it answers). Artists and words are the system
+/// field's tokens; museums, colours, styles, subjects, periods and techniques
+/// come from the glass groups over the field, which hide as the results
+/// scroll and come back when the field is tapped. With nothing asked yet
 /// the icon's squares play, and at the end of the results they ask the
 /// museums for more when pulled. Coming back from a work finds the results
 /// as they were. The heart on a tile puts the work in Ulubione (a museum's
@@ -36,7 +38,10 @@ struct MuseumSearchView: View {
     @State private var editing: Playlist?
     /// Whether the playlist made from the search fetches the museums' works.
     @State private var fetchForPlaylist = false
-    @State private var typing = false
+    @State private var lookup = TermLookup()
+    @FocusState private var fieldFocused: Bool
+    /// The groups over the field: hidden while scrolling the results.
+    @State private var groupsShown = true
     /// Where the squares start, from the top of the scrolled content.
     @State private var squaresTop: CGFloat = 0
 
@@ -75,15 +80,42 @@ struct MuseumSearchView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            TermSearchField(
-                tokens: tokens, museums: museums, colors: ColorTag.families + ColorTag.moods, typing: $typing
-            )
-            if asked {
-                resultsView
-            } else if !typing {
-                idle
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                if lookup.typing {
+                    TermSuggestions(lookup: lookup, tokens: tokens)
+                }
+                if asked {
+                    resultsView
+                } else if !lookup.typing {
+                    idle
+                }
             }
+            .padding(.horizontal, Theme.gutter)
+            .padding(.bottom, SearchView.bottomPadding)
+            .coordinateSpace(.named(SearchView.content))
+        }
+        .scrollDismissesKeyboard(.immediately)
+        .hidesOnScroll($groupsShown)
+        .background(Theme.paper)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if groupsShown {
+                TermFacetBar(
+                    tokens: tokens, museums: museums, colors: ColorTag.families + ColorTag.moods,
+                    opening: { fieldFocused = false }
+                )
+                .padding(.horizontal, Theme.gutter)
+                .padding(.bottom, 8)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .termSearch(lookup, tokens: tokens, focused: $fieldFocused)
+        // Tapping the field brings the groups back, as does asking nothing.
+        .onChange(of: fieldFocused) { _, focused in
+            if focused, !groupsShown { withAnimation(.snappy) { groupsShown = true } }
+        }
+        .onChange(of: asked) { _, asked in
+            if !asked, !groupsShown { withAnimation(.snappy) { groupsShown = true } }
         }
         .task {
             await model.loadVocabulary()
@@ -144,12 +176,15 @@ struct MuseumSearchView: View {
 
     private var resultsView: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(summary)
-                    .font(.serif(17, weight: .medium))
-                    .foregroundStyle(Theme.ink)
-                Spacer()
-                if searching || asking { ProgressView().controlSize(.small) }
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(summary)
+                        .font(.serif(17, weight: .medium))
+                        .foregroundStyle(Theme.ink)
+                    Spacer()
+                    if searching || asking { ProgressView().controlSize(.small) }
+                }
+                TokenSummary(tokens: tokens.wrappedValue)
             }
             if asked {
                 Button {

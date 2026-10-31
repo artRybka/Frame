@@ -23,6 +23,7 @@ from .models import Item, ItemKind
 from .museums import Kind
 
 TermKind = Literal["style", "subject", "period", "technique", "tag"]
+Region = Literal["europe", "poland", "east-asia"]
 #: discovery kinds (museums.Kind) of techniques that museums can filter by.
 TECHNIQUE_KINDS: dict[str, Kind] = {
     "technique:painting": "painting",
@@ -52,6 +53,12 @@ class Term:
     words: tuple[str, ...] = ()
     year_from: int | None = None
     year_to: int | None = None
+    #: A named period's group in the app's Epoka sheet ("europe", "poland",
+    #: "east-asia"); the pieces of the time line have none.
+    region: Region | None = None
+    #: A period of one country's history (a key of :data:`PLACES`): its
+    #: works must come from there too, or "Edo" would catch Rembrandt.
+    place: str | None = None
 
     @property
     def kind(self) -> TermKind:
@@ -78,6 +85,44 @@ def _t(key: str, name: str, *words: str) -> Term:
 
 def _p(key: str, name: str, year_from: int | None, year_to: int | None) -> Term:
     return Term(key, name, year_from=year_from, year_to=year_to)
+
+
+def _named(
+    key: str, name: str, year_from: int, year_to: int, region: Region, place: str | None = None
+) -> Term:
+    return Term(key, name, year_from=year_from, year_to=year_to, region=region, place=place)
+
+
+#: Where a work comes from, for the periods of one country: the word to ask
+#: museums with, and what its author's bio, culture, museum or style says.
+#: Never the title ("The Polish Rider" is Rembrandt's).
+PLACES: dict[str, tuple[str, re.Pattern[str]]] = {
+    "poland": (
+        "polish",
+        re.compile(
+            r"\b(polish|poland|polsk\w*|polen|polnisch\w*|pologne|polonais\w*|muzeum|"
+            r"warsaw|warszaw\w*|cracow|krak[oó]w\w*|krakau|pozna[nń]\w*|wroc[lł]aw\w*|"
+            r"gda[nń]sk\w*|l[oó]d[zź]\w*|lw[oó]w\w*|lviv|wilno|young poland)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    "japan": (
+        "japanese",
+        re.compile(r"\b(japan\w*|japon\w*|nippon|ukiyo-?e|ukiyoe|shin[- ]?hanga)\b", re.IGNORECASE),
+    ),
+    "china": (
+        "chinese",
+        re.compile(
+            r"\b(china|chinese|chiny|chi[nń]sk\w*|chinesisch\w*|chinois\w*)\b", re.IGNORECASE
+        ),
+    ),
+}
+#: Styles that tell the place on their own.
+_PLACE_TERMS = {
+    "poland": ("style:young-poland",),
+    "japan": ("style:ukiyo-e", "style:shin-hanga"),
+    "china": (),
+}
 
 
 TERMS: list[Term] = [
@@ -266,7 +311,7 @@ TERMS: list[Term] = [
     _t("subject:history", "Historia i bitwy", "battle*", "war", "soldier*", "cavalry"),
     _t("subject:hunting", "Polowanie", "hunt*"),
     _t("subject:theatre", "Teatr i aktorzy", "kabuki", "actor*", "theater", "theatre"),
-    # Periods
+    # Periods: the pieces of the time line, one after another
     _p("period:medieval", "Średniowiecze", None, 1399),
     _p("period:15c", "XV wiek", 1400, 1499),
     _p("period:16c", "XVI wiek", 1500, 1599),
@@ -274,14 +319,35 @@ TERMS: list[Term] = [
     _p("period:18c", "XVIII wiek", 1700, 1799),
     _p("period:1800-1850", "1800–1850", 1800, 1849),
     _p("period:1850-1900", "1850–1900", 1850, 1899),
-    _p("period:belle-epoque", "Belle Époque", 1880, 1914),
     _p("period:1900-1930", "1900–1930", 1900, 1930),
+    _p("period:1930-1945", "1930–1945", 1930, 1944),
     # Later works are free in Poland 70 years after their author's death
     # (lifespan.py), so the last period ends with this year's free deaths
     # and grows by a year every January (once the server restarts).
-    _p("period:interwar", "Międzywojnie", 1918, 1939),
-    _p("period:1930-1945", "1930–1945", 1930, 1944),
     _p("period:post-1945", f"1945–{last_free_year()}", 1945, last_free_year()),
+    # Named periods across them. Renesans, Barok, Romantyzm or Młoda Polska
+    # are styles already. Europe's are years only; Poland's, Japan's and
+    # China's need the place too.
+    _named("period:thirty-years-war", "Wojna trzydziestoletnia", 1618, 1648, "europe"),
+    _named("period:enlightenment", "Oświecenie", 1715, 1789, "europe"),
+    _named("period:napoleonic", "Epoka napoleońska", 1799, 1815, "europe"),
+    _named("period:biedermeier", "Biedermeier", 1815, 1848, "europe"),
+    _named("period:victorian", "Epoka wiktoriańska", 1837, 1901, "europe"),
+    _named("period:belle-epoque", "Belle Époque", 1880, 1914, "europe"),
+    _named("period:great-war", "Wielka Wojna", 1914, 1918, "europe"),
+    _named("period:interwar", "Międzywojnie", 1918, 1939, "europe"),
+    _named("period:twenties", "Lata dwudzieste", 1920, 1929, "europe"),
+    _named("period:ww2", "II wojna światowa", 1939, 1945, "europe"),
+    _named("period:pl-golden-age", "Złoty wiek", 1506, 1572, "poland", "poland"),
+    _named("period:pl-saxon", "Czasy saskie", 1697, 1763, "poland", "poland"),
+    _named("period:pl-stanislaus", "Czasy stanisławowskie", 1764, 1795, "poland", "poland"),
+    _named("period:pl-partitions", "Zabory", 1795, 1918, "poland", "poland"),
+    _named("period:pl-second-republic", "II Rzeczpospolita", 1918, 1939, "poland", "poland"),
+    _named("period:edo", "Edo", 1603, 1868, "east-asia", "japan"),
+    _named("period:meiji", "Meiji", 1868, 1912, "east-asia", "japan"),
+    _named("period:taisho", "Taishō", 1912, 1926, "east-asia", "japan"),
+    _named("period:ming", "Ming", 1368, 1644, "east-asia", "china"),
+    _named("period:qing", "Qing", 1644, 1912, "east-asia", "china"),
     # Techniques
     _t(
         "technique:painting",
@@ -599,11 +665,23 @@ def term_matches(found: Term, item: Item, text: str | None = None) -> bool:
             return False
         if found.year_from is not None and item.year < found.year_from:
             return False
-        return found.year_to is None or item.year <= found.year_to
+        if found.year_to is not None and item.year > found.year_to:
+            return False
+        return found.place is None or from_place(item, found.place)
     if found.key in item.terms:
         return True
     pattern = found.pattern
     return pattern is not None and bool(pattern.search(text if text is not None else _text(item)))
+
+
+def from_place(item: Item, place: str) -> bool:
+    """The work comes from ``place`` (a key of :data:`PLACES`), as its
+    author's bio, its culture, museum or styles say."""
+    if any(key in item.terms for key in _PLACE_TERMS[place]):
+        return True
+    pattern = PLACES[place][1]
+    text = " ".join((item.artist_bio, item.culture, item.museum, *item.styles))
+    return bool(pattern.search(text))
 
 
 def grouped(keys: list[str]) -> dict[str, list[Term]]:
@@ -662,6 +740,11 @@ def museum_queries(keys: list[str], limit: int = 6) -> list[str]:
     checked against every term anyway."""
     groups = grouped(keys)
     words = [[t.query for t in groups[k] if t.query] for k in ("style", "subject") if k in groups]
+    # Periods of one country each ("Edo"): their country's word, since the
+    # years alone bring mostly other places' works.
+    periods = groups.get("period", [])
+    if periods and all(p.place for p in periods):
+        words.append(sorted({PLACES[p.place][0] for p in periods if p.place}))
     words = [w for w in words if w]
     if not words:
         return []

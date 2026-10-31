@@ -9,19 +9,19 @@ enum LaunchRoute {
     /// "end", "composition", "details", "legacy": a long page opens scrolled
     /// there; "studies": Discover at "Studia dzieł".
     static let scroll = UserDefaults.standard.string(forKey: "scroll")
-    /// The composition's take shown first (CI screenshots of "Rytm").
+    /// The composition's take shown first (CI screenshots of the later takes).
     static let take = UserDefaults.standard.integer(forKey: "take")
 }
 
 struct RootView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.scenePhase) private var scenePhase
-    @State private var tab = Tab.initial
+    @State private var tab = Screen.initial
 
-    enum Tab: Hashable {
+    enum Screen: Hashable {
         case now, discover, search, playlists, frame
 
-        static var initial: Tab {
+        static var initial: Screen {
             switch LaunchRoute.screen {
             case "discover", "discover-group", "daily", "detail", "original": .discover
             case "museums", "search", "search-picker", "search-colors", "search-styles": .search
@@ -33,22 +33,14 @@ struct RootView: View {
     }
 
     var body: some View {
+        // Szukaj is the system search tab: on its own at the bottom, the
+        // other tabs fold into one as its glass field opens.
         TabView(selection: $tab) {
-            NowView()
-                .tabItem { Label("Teraz", systemImage: "photo.artframe") }
-                .tag(Tab.now)
-            DiscoverView()
-                .tabItem { Label("Odkrywaj", systemImage: "square.grid.2x2") }
-                .tag(Tab.discover)
-            SearchView()
-                .tabItem { Label("Szukaj", systemImage: "magnifyingglass") }
-                .tag(Tab.search)
-            PlaylistsView()
-                .tabItem { Label("Playlisty", systemImage: "rectangle.stack") }
-                .tag(Tab.playlists)
-            FrameTabView()
-                .tabItem { Label("Ramka", systemImage: "slider.horizontal.3") }
-                .tag(Tab.frame)
+            Tab("Teraz", systemImage: "photo.artframe", value: Screen.now) { NowView() }
+            Tab("Odkrywaj", systemImage: "square.grid.2x2", value: Screen.discover) { DiscoverView() }
+            Tab("Playlisty", systemImage: "rectangle.stack", value: Screen.playlists) { PlaylistsView() }
+            Tab("Ramka", systemImage: "slider.horizontal.3", value: Screen.frame) { FrameTabView() }
+            Tab("Szukaj", systemImage: "magnifyingglass", value: Screen.search, role: .search) { SearchView() }
         }
         // Cards and the send bar, in a window above the app (over sheets too).
         .background { NoticeWindowInstaller(model: model) }

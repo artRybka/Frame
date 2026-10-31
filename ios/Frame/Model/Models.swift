@@ -1301,8 +1301,8 @@ struct DailyWork: Codable, Hashable, Sendable {
         var text: String
     }
 
-    /// One take on the composition ("Spojrzenie", "Geometria"): its marks and
-    /// a grid under them ("none", "golden", "thirds").
+    /// One take on the composition ("Geometria", "Spojrzenie", "Geometria detali"): its marks and
+    /// a grid under them ("none", "golden", "thirds", "halves").
     struct Take: Codable, Hashable, Sendable {
         var title: String
         var grid: String
@@ -1472,6 +1472,9 @@ struct TermInfo: Codable, Hashable, Sendable, Identifiable {
     var words: [String] = []
     var yearFrom: Int?
     var yearTo: Int?
+    /// Named periods: their group in Epoka ("europe", "poland", "east-asia");
+    /// the pieces of the time line have none.
+    var region: String?
     var id: String { key }
 }
 
@@ -1495,9 +1498,9 @@ struct MuseumHint: Codable, Sendable {
     var failed: [String]?
 }
 
-/// One chip of a search or of a smart playlist's rules.
-/// The owner's own works, "Moje" under the search field's "+": terms the
-/// server knows although they are not in its vocabulary (no museum has them).
+/// The owner's own works, the "Moje" group of older apps: terms the server
+/// knows although they are not in its vocabulary (no museum has them). Older
+/// playlists keep them, shown in the search field; new ones can't pick them.
 struct MineTerm: Sendable, Identifiable {
     let key: String
     let name: String
@@ -1511,6 +1514,7 @@ struct MineTerm: Sendable, Identifiable {
     static func named(_ key: String) -> MineTerm? { all.first { $0.key == key } }
 }
 
+/// One chip of a search or of a smart playlist's rules.
 struct SearchToken: Hashable, Sendable, Identifiable {
     /// artist | word | style | subject | period | technique | mine | museum
     /// | color (the last two in Discover's search only), or for rules of
