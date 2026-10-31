@@ -21,6 +21,7 @@ from .daily import Daily
 from .device import MdcClient, MdcConnectionError, MdcError, wol
 from .imaging import Palette, RenderSettings, get_palette, render, render_multi
 from .imaging.pipeline import encode_image
+from .later import LaterWorks
 from .library import ImageCache, Importer, Library
 from .library.commons import repair_library
 from .library.museums import Access, europeana_mirrors
@@ -187,6 +188,9 @@ class FrameService:
             DailyJob(self.library, self.images, self.ai_config),
         )
         self.ai.register(self.daily.job)
+        # What the pages say a work led to, looked up in the museums and on Wikipedia.
+        self.later = LaterWorks(self.library, lambda q, n: self.importer.search_all(q, n))
+        self.daily.later = self.later
         # Studies of any work, asked for on its card.
         self.study = Study(self.daily, self.ai, StudyJob(self.library, self.images, self.ai_config))
         self.ai.register(self.study.job)

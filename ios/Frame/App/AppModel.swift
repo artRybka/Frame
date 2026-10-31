@@ -83,6 +83,8 @@ final class AppModel {
     var daily: DailyWork?
     /// Studies of works asked for on their cards, as last heard (`Studies.swift`).
     var studies: [String: StudyView] = [:]
+    /// Every work with a study, for Discover's row "Pod lupą"; nil from older servers.
+    var studyList: [StudyBrief]?
     /// The work whose card is on top: "Studium gotowe" opens its study there.
     var topCard: String?
     /// A study to open: pushed on its card when that is on top, else in a sheet.
@@ -249,7 +251,8 @@ final class AppModel {
         async let rows = loadSuggestionRows(backend)
         async let themes = loadThemes(backend)
         async let daily: Void = loadDaily(backend)
-        let (gotRows, gotThemes, _) = await (rows, themes, daily)
+        async let studyRow: Void = loadStudyList(backend)
+        let (gotRows, gotThemes, _, _) = await (rows, themes, daily, studyRow)
         guard gotRows, gotThemes else { return }
         discoverLoadedAt = Date()
         if !demoMode, let suggestionRows, let themes = self.themes {
@@ -264,6 +267,19 @@ final class AppModel {
         } catch {
             if suggestionRows == nil { show(error) }  // else the last ones stay
             return false
+        }
+    }
+
+    /// The works with a study; an older server without the list shows no row.
+    func loadStudyList(_ backend: any FrameBackend) async {
+        do {
+            studyList = try await backend.studies()
+        } catch {
+            if case BackendError.notFound = error {
+                studyList = nil
+            } else if case let BackendError.http(status, _) = error, status == 404 {
+                studyList = nil
+            }
         }
     }
 

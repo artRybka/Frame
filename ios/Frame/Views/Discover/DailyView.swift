@@ -2,8 +2,8 @@ import SwiftUI
 
 /// The work of the day at the top of Propozycje: a band of the picture
 /// (cropped around the place Claude named, else what draws the eye), its
-/// title and one sentence written to fit two lines; the whole tile opens its
-/// page. Kept low, so the themes start right below it.
+/// title and one sentence written to fit two lines, an arrow in the corner;
+/// the whole tile opens its page. Kept low, so the themes start right below it.
 struct DailyTile: View {
     let work: DailyWork
 
@@ -35,24 +35,24 @@ struct DailyTile: View {
                         .foregroundStyle(Theme.ink)
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
-                    HStack(alignment: .firstTextBaseline, spacing: 10) {
-                        Text(byline)
-                            .font(.caption)
-                            .foregroundStyle(Theme.inkSoft)
-                            .lineLimit(1)
+                    Text(byline)
+                        .font(.caption)
+                        .foregroundStyle(Theme.inkSoft)
+                        .lineLimit(1)
+                    HStack(alignment: .lastTextBaseline, spacing: 10) {
+                        Text(work.teaser)
+                            .font(.serif(14))
+                            .foregroundStyle(Theme.ink.opacity(0.85))
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.9)
+                            .multilineTextAlignment(.leading)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                        Text("Czytaj dalej ›")
-                            .font(.caption.weight(.semibold))
+                        Image(systemName: "arrow.right")
+                            .font(.system(size: 14, weight: .semibold))
                             .foregroundStyle(Theme.accent)
-                            .fixedSize()
+                            .accessibilityHidden(true)
                     }
-                    Text(work.teaser)
-                        .font(.serif(14))
-                        .foregroundStyle(Theme.ink.opacity(0.85))
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.9)
-                        .multilineTextAlignment(.leading)
-                        .padding(.top, 4)
+                    .padding(.top, 4)
                 }
                 .padding(.horizontal, 12)
                 .padding(.top, 10)
@@ -100,7 +100,10 @@ struct DailyView: View {
         .background(Theme.paper)
         .navigationTitle(route.study == nil ? "Dzieło dnia" : "Studium dzieła")
         .navigationBarTitleDisplayMode(.inline)
-        .task(id: route) { await load() }
+        .task(id: route) {
+            await load()
+            await followLegacy()
+        }
         .onAppear {
             if let id = route.study { model.studyOpened(itemID: id) }
         }
@@ -147,6 +150,25 @@ struct DailyView: View {
                 }
                 return
             }
+        }
+    }
+
+    /// The later works' pictures and links, looked up by the server once
+    /// the page is written: asked for again a few times while they are.
+    private func followLegacy() async {
+        for _ in 0..<6 {
+            guard work?.legacyPending == true else { return }
+            try? await Task.sleep(for: .seconds(5))
+            if Task.isCancelled { return }
+            let fresh: DailyWork?
+            if let id = route.study {
+                fresh = try? await model.backend.study(itemID: id, wait: 0).work
+            } else {
+                fresh = try? await model.backend.daily(day: route.day, wait: 0)
+            }
+            guard let fresh else { return }
+            work = fresh
+            if route.day == nil, route.study == nil { model.daily = fresh }
         }
     }
 
@@ -207,7 +229,7 @@ struct DailyView: View {
                 section("Detale") { self.details(work, details) }.id("details")
             }
             if !work.similar.isEmpty { section("Podobne dzieła") { similar(work.similar) } }
-            if !work.legacy.isEmpty { section("Co z niego wyrosło") { legacy(work.legacy) } }
+            if !work.legacy.isEmpty { section("Co z niego wyrosło") { legacy(work.legacy) }.id("legacy") }
             if !work.previous.isEmpty { section("Poprzednie dzieła dnia") { previous(work.previous) } }
             section("Na Twojej ramce") { onFrame(work) }
             footer(work).id("end")
@@ -337,8 +359,9 @@ struct DailyView: View {
             .fixedSize(horizontal: false, vertical: true)
     }
 
-    /// The takes as pencil on tracing paper, one at a time: "Spojrzenie",
-    /// "Geometria"; the take's summary under it in the page's own type.
+    /// The takes as pencil over the picture in full colour, one at a time:
+    /// "Spojrzenie", "Geometria"; the take's summary under it in the page's
+    /// own type.
     private func compositionSection(_ work: DailyWork, _ takes: [DailyWork.Take]) -> some View {
         let shown = takes[min(take, takes.count - 1)]
         return section("Analiza kompozycji") {
@@ -462,8 +485,9 @@ struct DailyView: View {
         }
     }
 
-    /// Later works on a line through time, each with its picture when the
-    /// catalogue has it.
+    /// Later works on a line through time, each with its picture when one
+    /// was found (the catalogue's or a museum's copy opens its card, a
+    /// Wikipedia picture its article) and a link to its Wikipedia article.
     private func legacy(_ entries: [DailyWork.Legacy]) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(entries.enumerated()), id: \.offset) { index, entry in
@@ -494,20 +518,49 @@ struct DailyView: View {
                                 .overlay(alignment: .leading) { Rectangle().fill(Theme.accent).frame(width: 3) }
                                 .fixedSize(horizontal: false, vertical: true)
                         }
-                        HStack(alignment: .top, spacing: 10) {
-                            if let later = entry.item {
-                                NavigationLink(value: later.id) {
-                                    ArtImage(ref: later.thumb, fallback: later.thumbFallback, placeholder: later.item.placeholderColor, maxPixel: 300)
-                                        .frame(width: 64, height: 78)
-                                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                        HStack(alignment: .top, spacing: 12) {
+                            laterPicture(entry)
+                            VStack(alignment: .leading, spacing: 6) {
+                                prose(entry.text, size: 15)
+                                if let link = entry.link.flatMap(URL.init(string:)) {
+                                    Link(destination: link) {
+                                        HStack(spacing: 3) {
+                                            Text("Wikipedia")
+                                            Image(systemName: "arrow.up.right").imageScale(.small)
+                                        }
+                                        .font(.footnote.weight(.semibold))
+                                        .foregroundStyle(Theme.accent)
+                                    }
+                                    .accessibilityLabel("\(entry.linkTitle ?? entry.who) w Wikipedii")
                                 }
-                                .buttonStyle(.plain)
                             }
-                            prose(entry.text, size: 15)
                         }
                     }
                     .padding(.bottom, 16)
                 }
+            }
+        }
+    }
+
+    /// The later work's picture: a copy in the catalogue or a museum opens
+    /// its card, Wikipedia's picture its article; nothing when none was found.
+    @ViewBuilder
+    private func laterPicture(_ entry: DailyWork.Legacy) -> some View {
+        if let later = entry.item {
+            NavigationLink(value: later.id) {
+                ArtImage(ref: later.thumb, fallback: later.thumbFallback, placeholder: later.item.placeholderColor, maxPixel: 300)
+                    .frame(width: 72, height: 88)
+                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+            }
+            .buttonStyle(.plain)
+        } else if let picture = entry.picture.flatMap(URL.init(string:)) {
+            let thumb = ArtImage(ref: .url(picture), placeholder: Theme.mat, maxPixel: 300)
+                .frame(width: 72, height: 88)
+                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+            if let link = entry.link.flatMap(URL.init(string:)) {
+                Link(destination: link) { thumb }.buttonStyle(.plain)
+            } else {
+                thumb
             }
         }
     }

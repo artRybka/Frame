@@ -81,6 +81,8 @@ protocol FrameBackend: Sendable {
     /// The work's study as far as it is; waits up to `wait` seconds for one
     /// on its way to get a step further.
     func study(itemID: String, wait: Int) async throws -> StudyView
+    /// Every work with a study, the last asked for first.
+    func studies() async throws -> [StudyBrief]
     /// Asks Claude for the work's study (`again`: a new one, though there is one).
     func prepareStudy(itemID: String, again: Bool) async throws -> StudyView
     /// The smart playlist made from a theme (made now if there is none);

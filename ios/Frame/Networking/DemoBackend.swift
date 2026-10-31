@@ -36,7 +36,7 @@ actor DemoBackend: FrameBackend {
     private var demoServerVersion = "0.35.0"
     private var originalsLimitMb: Int?
     /// Studies asked for, and when: "written" a few seconds later.
-    private var studies: [String: Date] = [:]
+    private var askedStudies: [String: Date] = [:]
     private var aiValue = AiSettings(
         keySet: false, keyTail: nil, keyFromApp: false, plText: true, keywordsArtworks: true,
         keywordsPhotos: true, daily: true, monthlyLimitUsd: 5, spentUsd: 0,
@@ -749,8 +749,15 @@ actor DemoBackend: FrameBackend {
             similar: similar,
             legacy: [
                 .init(year: "1888", who: "Vincent van Gogh", title: "List do Thea", text: "Van Gogh pisze bratu o fali Hokusaia.", quote: "Te fale to szpony, łódź jest w nie złapana, czuje się to.", item: nil),
-                .init(year: "1897–1903", who: "Camille Claudel", title: "Fala", text: "Trzy kąpiące się kobiety pod falą z onyksu.", quote: "", item: nil),
-                .init(year: "1905", who: "Claude Debussy", title: "Morze", text: "Fala Hokusaia na okładce pierwszego wydania partytury.", quote: "", item: nil),
+                .init(
+                    year: "1897–1903", who: "Camille Claudel", title: "Fala", text: "Trzy kąpiące się kobiety pod falą z onyksu.", quote: "", item: nil,
+                    link: "https://en.wikipedia.org/wiki/Camille_Claudel", linkTitle: "Camille Claudel"
+                ),
+                .init(
+                    year: "1905", who: "Claude Debussy", title: "Morze", text: "Fala Hokusaia na okładce pierwszego wydania partytury.", quote: "", item: nil,
+                    link: "https://en.wikipedia.org/wiki/La_mer_(Debussy)", linkTitle: "La mer (Debussy)",
+                    picture: "https://upload.wikimedia.org/wikipedia/commons/thumb/a/af/Debussy_-_La_Mer_-_The_great_wave_of_Kanaga_from_Hokusai.jpg/330px-Debussy_-_La_Mer_-_The_great_wave_of_Kanaga_from_Hokusai.jpg"
+                ),
             ],
             sources: ["obraz", "Wikipedia"],
             model: "claude-opus-5-5",
@@ -759,7 +766,7 @@ actor DemoBackend: FrameBackend {
     }
 
     func study(itemID: String, wait: Int) async throws -> StudyView {
-        guard let asked = studies[itemID] else {
+        guard let asked = askedStudies[itemID] else {
             return StudyView(status: "none", error: "", work: nil, costUsd: 0.14)
         }
         let elapsed = Date().timeIntervalSince(asked)
@@ -789,8 +796,17 @@ actor DemoBackend: FrameBackend {
         return StudyView(status: "ready", error: "", work: work, costUsd: 0.14)
     }
 
+    /// The ones asked for (the last first), then a few the demo has written.
+    func studies() async throws -> [StudyBrief] {
+        let asked = askedStudies.filter { Date().timeIntervalSince($0.value) >= 6 }.sorted { $0.value > $1.value }.map { $0.key }
+        let ids = asked + ["aic:24645", "aic:14620", "aic:64818", "aic:87008", "aic:2914"].filter { !asked.contains($0) }
+        return ids.compactMap { id in
+            items.first { $0.id == id }.map { StudyBrief(item: RemoteItem(item: $0, inLibrary: true), title: $0.title) }
+        }
+    }
+
     func prepareStudy(itemID: String, again: Bool) async throws -> StudyView {
-        if again || studies[itemID] == nil { studies[itemID] = Date() }
+        if again || askedStudies[itemID] == nil { askedStudies[itemID] = Date() }
         return try await study(itemID: itemID, wait: 0)
     }
 

@@ -416,15 +416,10 @@ struct ItemDetailView: View {
                     Button {
                         prepareStudy(item, again: failed)
                     } label: {
-                        Label(failed ? "Spróbuj ponownie" : "Przygotuj studium dzieła", systemImage: "text.book.closed")
+                        Label(failed ? "Spróbuj ponownie" : "Przygotuj studium dzieła", systemImage: "sparkles")
                     }
                     if failed, !state.error.isEmpty {
                         studyNote(state.error, color: Theme.bad)
-                    } else {
-                        studyNote(
-                            "Claude opisze okoliczności powstania, autora, kompozycję, kolor i detale, jak w Dziele dnia. "
-                                + "Trwa to 1–3 minuty\(Self.cost(state.costUsd)). Studium zostaje na serwerze."
-                        )
                     }
                 }
             }
@@ -446,12 +441,6 @@ struct ItemDetailView: View {
             .font(.footnote)
             .foregroundStyle(color)
             .fixedSize(horizontal: false, vertical: true)
-    }
-
-    /// ", około 0,14 USD z limitu na Claude’a"; nothing when unknown.
-    private static func cost(_ usd: Double) -> String {
-        guard usd > 0 else { return "" }
-        return ", około " + String(format: "%.2f", usd).replacingOccurrences(of: ".", with: ",") + " USD z limitu na Claude’a"
     }
 
     private func polishOrigin(_ polish: PolishText) -> some View {
