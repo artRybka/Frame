@@ -11,6 +11,7 @@ import SwiftUI
 /// as the old picture going over to the new one.
 struct NowView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showingSend = LaunchRoute.screen == "send"
     @State private var path = NavigationPath()
     /// The picture browsed to; nil is the one on the frame.
@@ -32,21 +33,37 @@ struct NowView: View {
     @State private var swapPlan: (url: String, plan: SwapPlan)?
     /// The bar's fraction when the panel began its redraw.
     @State private var redrawFrom: Double?
+    /// A first launch, with nothing kept from before: the icon's squares in
+    /// the empty frame, then the picture appearing as the e-paper draws it.
+    @State private var intro: Intro?
+    @State private var introChecked = false
+    @State private var introPlan: SwapPlan?
+    @State private var introProgress = 0.0
+
+    enum Intro {
+        case waiting, revealing
+    }
 
     struct Browsed: Equatable {
         let summary: ItemSummary
         let offset: Int  // where it was when browsed to: −n back, +n ahead
     }
 
-    private var current: NowShowing? { model.player?.current }
+    /// The server's, or until it answers, the last launch's.
+    private var player: PlayerView? { model.player ?? model.remembered?.player }
+    /// "Teraz" as the last launch left it, while the server is asked: shown,
+    /// but nothing to browse, crop or send yet.
+    private var stale: Bool { model.player == nil && model.remembered != nil }
+
+    private var current: NowShowing? { player?.current }
     private var item: Item? { current?.item }
-    private var history: [ItemSummary] { model.player?.history ?? [] }  // newest first
-    private var upcoming: [ItemSummary] { model.player?.upcoming ?? [] }
+    private var history: [ItemSummary] { player?.history ?? [] }  // newest first
+    private var upcoming: [ItemSummary] { player?.upcoming ?? [] }
 
     /// The picture on the frame, as the server has it, is not on the panel:
     /// sent and never downloaded, waiting for it to wake, or on its way.
     private var undelivered: Delivery? {
-        guard offset == 0, let delivery = model.player?.delivery, !delivery.isShown else { return nil }
+        guard offset == 0, let delivery = player?.delivery, !delivery.isShown else { return nil }
         return delivery
     }
 
@@ -102,7 +119,7 @@ struct NowView: View {
     /// What the panel shows, as far as the server knows; nil while a
     /// picture is on its way and the server no longer says.
     private var panelShows: NowShowing? {
-        if let onFrame = model.player?.delivery?.onFrame { return onFrame }
+        if let onFrame = player?.delivery?.onFrame { return onFrame }
         return inFlight ? nil : current
     }
 
@@ -123,6 +140,10 @@ struct NowView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 22) {
                         hero
+                        if intro == .waiting, model.player == nil, !connectionFailed {
+                            Greeting()
+                                .transition(.opacity)
+                        }
                         if let progress = model.displayProgress {
                             DisplayProgressBar(progress: progress)
                                 .frame(maxWidth: model.isPortrait ? 420 : .infinity)
@@ -157,10 +178,10 @@ struct NowView: View {
                             }
                         }
                         if !upcoming.isEmpty {
-                            Strip(title: "Następne", items: upcoming, queued: Set(model.player?.queued ?? []))
+                            Strip(title: "Następne", items: upcoming, queued: Set(player?.queued ?? []))
                         }
                         if !history.isEmpty {
-                            Strip(title: "Ostatnio na ramce", items: history, marks: model.player?.historyMarks ?? [:])
+                            Strip(title: "Ostatnio na ramce", items: history, marks: player?.historyMarks ?? [:])
                         }
                     }
                     .pageWidth()
@@ -168,12 +189,18 @@ struct NowView: View {
                     .padding(.top, 4)
                     .padding(.bottom, 40)
                     .animation(.easeInOut, value: model.displayProgress == nil)
+                    .animation(.easeInOut(duration: 0.4), value: model.player == nil)
                 }
                 .refreshable { await Task { await model.refreshAll() }.value }
                 // CI screenshots: `-screen history` shows "Ostatnio na ramce".
                 .defaultScrollAnchor(LaunchRoute.screen == "history" ? .bottom : .top)
             }
             .toolbar {
+                if stale {
+                    ToolbarItem(placement: .topBarLeading) {
+                        RefreshPill(failed: model.connection != .unknown) { await model.refreshAll() }
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         showingSend = true
@@ -241,9 +268,22 @@ struct NowView: View {
                 if let next = upcoming.first, next.id == first { browsed = Browsed(summary: next, offset: 1) }
             }
             .task(id: browsed?.summary.id) { await loadDetails() }
-            .task(id: draftKey) { await loadFraming() }
+            .task(id: stale ? "" : draftKey) { await loadFraming() }
             // Once the picture looked at is in, and again with a new presentation.
-            .task(id: heroReady ? draftKey : "") { await prefetchNeighbours() }
+            .task(id: heroReady && !stale ? draftKey : "") { await prefetchNeighbours() }
+            .onAppear {
+                guard !introChecked else { return }
+                introChecked = true
+                // CI screenshots go straight to the screen they show.
+                if model.player == nil, model.remembered == nil, LaunchRoute.screen.isEmpty { intro = .waiting }
+            }
+            .onChange(of: loadedHero) { _, ref in
+                if let ref { Task { await heroLoaded(ref) } }
+            }
+            .onChange(of: model.player == nil) { _, missing in
+                // Nothing on the frame yet: no picture to wait for.
+                if !missing, intro == .waiting, model.player?.current == nil { finishIntro() }
+            }
         }
     }
 
@@ -294,11 +334,26 @@ struct NowView: View {
             Spacer(minLength: 2)
             FramedArtwork(
                 ref: heroRef, aspectRatio: aspect,
-                placeholder: shownItem?.placeholderColor ?? browsed?.summary.placeholderColor ?? Theme.mat
+                placeholder: shownItem?.placeholderColor ?? browsed?.summary.placeholderColor ?? Theme.mat,
+                // The last launch's picture to the fresh one; a swap ends on
+                // its own picture instead.
+                crossfade: swapPlan?.url != current?.previewUrl
             ) {
                 if let swapOverlay {
                     // The bar is asked once a second: glide between answers.
                     swapOverlay.animation(.linear(duration: 1), value: swapOverlay.progress)
+                }
+                if let intro {
+                    ZStack {
+                        Theme.matWhite
+                        if intro == .waiting {
+                            IntroSquares(failed: connectionFailed) { await model.refreshAll() }
+                                .transition(.opacity)
+                        } else if let introPlan {
+                            FrameSwap(plan: introPlan, progress: introProgress)
+                        }
+                    }
+                    .transition(.opacity)
                 }
             }
             .environment(\.artImageLoaded) { ref in
@@ -307,7 +362,7 @@ struct NowView: View {
             }
             .contentShape(Rectangle())
             .onTapGesture {
-                if canCrop, !sending { cropping = true }
+                if canCrop, !sending, !stale { cropping = true }
             }
             .accessibilityAddTraits(canCrop ? .isButton : [])
             .accessibilityHint(Text(canCrop ? "Otwiera kadrowanie na całym ekranie" : ""))
@@ -316,13 +371,15 @@ struct NowView: View {
             // keeps its view, so the swap ends without a blink.
             .id(offset == 0 ? "now" : selectedID ?? "")
             .overlay {
-                if heroRef == nil, model.connection != .connected {
+                if heroRef == nil, model.connection == .unknown, intro == nil {
                     ProgressView()
                 }
             }
             .overlay {
                 // Servers that report no progress: a spinner instead of the bar.
-                if model.displayProgress == nil, offset == 0, model.working || model.player?.busy == true {
+                if intro != nil {
+                    EmptyView()
+                } else if model.displayProgress == nil, offset == 0, model.working || player?.busy == true {
                     LoadingBadge(text: "Przygotowuję obraz…")
                 } else if heroLoading {
                     LoadingBadge(text: "Wczytuję podgląd…")
@@ -352,8 +409,8 @@ struct NowView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(PressableStyle())
-        .disabled(!enabled || inFlight)
-        .opacity(inFlight ? 0 : enabled ? 1 : 0.2)
+        .disabled(!enabled || inFlight || stale || intro != nil)
+        .opacity(inFlight ? 0 : enabled && !stale && intro == nil ? 1 : 0.2)
         .animation(.easeInOut(duration: 0.3), value: inFlight)
         .accessibilityLabel(direction < 0 ? "Poprzedni" : "Następny")
     }
@@ -427,7 +484,7 @@ struct NowView: View {
         VStack(spacing: 4) {
             HStack(spacing: 8) {
                 Text(scheduleLine)
-                if model.player?.hold != nil {
+                if player?.hold != nil {
                     Button("Odepnij") { Task { await model.releaseHold() } }
                         .fontWeight(.semibold)
                 }
@@ -565,7 +622,7 @@ struct NowView: View {
         if offset == 0, let undelivered, undelivered.missedWakeAt == nil {
             return When.countdown(undelivered.asleepUntilAt)
         }
-        guard offset == 1, let player = model.player else { return nil }
+        guard offset == 1, let player = player else { return nil }
         if let hold = player.hold {
             return hold.forever ? "po odpięciu" : When.schedule(hold.until)
         }
@@ -574,7 +631,7 @@ struct NowView: View {
 
     /// For a picture back in the history: who put it on the frame, and when.
     private var browsedMark: Text? {
-        guard offset < 0, let id = browsed?.summary.id, let mark = model.player?.historyMarks?[id],
+        guard offset < 0, let id = browsed?.summary.id, let mark = player?.historyMarks?[id],
               let when = When.past(mark.at)
         else { return nil }
         return ShownMarkLabel.text(mark: mark, when: when)
@@ -586,7 +643,7 @@ struct NowView: View {
     }
 
     private var scheduleLine: String {
-        guard let player = model.player else { return " " }
+        guard let player = player else { return " " }
         if let hold = player.hold {
             if hold.forever { return "Przypięty na stałe" }
             if let until = When.schedule(hold.until) { return "Przypięty do: \(until)" }
@@ -607,7 +664,6 @@ struct NowView: View {
         guard offset == 0, let device = model.status?.device, device.powerState == "deep_sleep",
               let wake = When.date(device.wakeAt), let at = When.schedule(device.wakeAt)
         else { return nil }
-        let player = model.player
         if player?.hold == nil, let next = When.date(player?.nextChangeAt),
            wake.timeIntervalSince(next) > -60 {
             return nil  // it wakes for the change itself
@@ -646,6 +702,41 @@ struct NowView: View {
 
     static let swapStyle = SwapStyle.raster
 
+    private var connectionFailed: Bool {
+        if case .failed = model.connection { return true }
+        return false
+    }
+
+    /// The picture on the frame is in: kept for the next launch, and on a
+    /// first launch drawn in as the e-paper draws it.
+    private func heroLoaded(_ ref: ImageRef) async {
+        guard ref == heroRef, offset == 0, case let .path(url) = ref, let fresh = model.player,
+              url == fresh.current?.previewUrl
+        else { return }
+        var image: UIImage?
+        if let request = model.backend.request(for: ref) {
+            image = await ImageLoader.shared.cached(for: request, maxPixel: NowCache.maxPixel)
+        }
+        if let image { model.rememberNow(image: image) }
+        guard intro == .waiting else { return }
+        guard let image, !reduceMotion,
+              let plan = SwapPlan(image: image, portrait: model.isPortrait, style: Self.swapStyle)
+        else { return finishIntro() }
+        introPlan = plan
+        introProgress = 0
+        withAnimation(.easeOut(duration: 0.3)) { intro = .revealing }
+        // In place at 0 first, so the raster has somewhere to move from.
+        try? await Task.sleep(for: .milliseconds(60))
+        withAnimation(.easeInOut(duration: 2.2)) { introProgress = 1 }
+        try? await Task.sleep(for: .seconds(2.3))
+        finishIntro()
+    }
+
+    /// The raster at its end is the picture itself, so it can fade away.
+    private func finishIntro() {
+        withAnimation(.easeOut(duration: 0.4)) { intro = nil }
+    }
+
     private func loadDetails() async {
         guard let id = browsed?.summary.id, details[id] == nil else { return }
         if let loaded = try? await model.backend.item(id: id) { details[id] = loaded }
@@ -655,7 +746,7 @@ struct NowView: View {
     private func loadFraming() async {
         let key = draftKey
         draft = FramingDraft(key: "")
-        guard let id = selectedID else { return }
+        guard !stale, let id = selectedID else { return }
         let orientation = model.settings?.orientation ?? "landscape"
         guard let loaded = await FramingDraft.load(model.backend, itemID: id, orientation: orientation, key: key),
               key == draftKey
@@ -694,7 +785,7 @@ struct NowView: View {
         let change = draft.key == draftKey ? draft.change : nil
         guard await model.present(itemID: id, offset: offset, framing: change) else { return }
         await model.followPlayer()
-        if browsed?.summary.id == model.player?.current?.item?.id { browsed = nil }
+        if browsed?.summary.id == player?.current?.item?.id { browsed = nil }
         if change != nil {
             draft = FramingDraft()
             await loadFraming()  // as saved now
@@ -778,6 +869,100 @@ struct LoadingBadge: View {
         .background(.black.opacity(0.45), in: RoundedRectangle(cornerRadius: 14))
         .allowsHitTesting(false)
         .transition(.opacity)
+    }
+}
+
+/// "Teraz" from the last launch while the server is asked; without the
+/// server, "Bez połączenia", and a tap tries again.
+struct RefreshPill: View {
+    let failed: Bool
+    let retry: () async -> Void
+    @State private var retrying = false
+
+    private var offline: Bool { failed && !retrying }
+
+    var body: some View {
+        Button {
+            Task {
+                retrying = true
+                await retry()
+                retrying = false
+            }
+        } label: {
+            HStack(spacing: 7) {
+                if offline {
+                    Image(systemName: "wifi.slash")
+                } else {
+                    ProgressView().controlSize(.small)
+                }
+                Text(offline ? "Bez połączenia" : "Odświeżam…")
+                    .fixedSize()
+            }
+            .font(.footnote.weight(.medium))
+            .foregroundStyle(Theme.inkSoft)
+            .padding(.horizontal, 12)
+            .frame(height: 34)
+            .background(.ultraThinMaterial, in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .disabled(!offline)
+        .accessibilityLabel(offline ? "Bez połączenia z serwerem" : "Odświeżam")
+        .accessibilityHint(Text(offline ? "Próbuje ponownie połączyć się z serwerem" : ""))
+    }
+}
+
+/// A first launch: the app icon's squares at play in the empty frame while
+/// the server is asked, or why nothing comes, with a way to try again.
+struct IntroSquares: View {
+    let failed: Bool
+    let retry: () async -> Void
+    @State private var retrying = false
+
+    var body: some View {
+        VStack(spacing: 8) {
+            if failed && !retrying {
+                Image(systemName: "wifi.exclamationmark")
+                    .font(.title2)
+                    .foregroundStyle(Theme.inkSoft)
+                Text("Serwer nie odpowiada")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Theme.ink)
+                Button("Spróbuj ponownie") {
+                    Task {
+                        retrying = true
+                        await retry()
+                        retrying = false
+                    }
+                }
+                .font(.footnote.weight(.semibold))
+            } else {
+                SquaresAnimation(inScreenMiddle: false, tapForNext: false)
+                    .frame(width: 150, height: 86)
+                Text("Łączę z ramką…")
+                    .font(.footnote.weight(.medium))
+                    .foregroundStyle(Theme.inkSoft)
+            }
+        }
+        .multilineTextAlignment(.center)
+        .padding(12)
+    }
+}
+
+/// Under the empty frame on a first launch, by the time of day.
+struct Greeting: View {
+    var body: some View {
+        let hour = Calendar.current.component(.hour, from: .now)
+        VStack(spacing: 6) {
+            Text((5 ..< 18).contains(hour) ? "Dzień dobry" : "Dobry wieczór")
+                .font(.serif(22, weight: .semibold))
+                .foregroundStyle(Theme.ink)
+            Text("Za chwilę zobaczysz, co wisi na ścianie.")
+                .font(.subheadline)
+                .foregroundStyle(Theme.inkSoft)
+        }
+        .multilineTextAlignment(.center)
+        .frame(maxWidth: .infinity)
+        .padding(.top, 14)
     }
 }
 

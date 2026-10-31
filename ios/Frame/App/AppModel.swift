@@ -1,6 +1,7 @@
 import Foundation
 import Network
 import Observation
+import UIKit
 
 /// App-wide state: connection, what the frame shows, its status and settings.
 @MainActor
@@ -28,6 +29,11 @@ final class AppModel {
     private(set) var serverPath: ServerRoute.Kind?
 
     var player: PlayerView?
+    /// "Teraz" as the last launch left it (`NowCache`): shown at once, until
+    /// the server answers; nil on a first launch, a new server or the demo.
+    private(set) var remembered: NowCache.Remembered?
+    /// The preview whose picture is saved with it.
+    @ObservationIgnored private var rememberedImageURL: String?
     var status: StatusView?
     var settings: FrameSettings?
     /// How the server reaches the panel; nil before it is loaded or on an older server.
@@ -126,6 +132,7 @@ final class AppModel {
         demoMode = demo
         backend = DemoBackend()
         connect(demo: demo, url: url, remote: remote, token: token)
+        restoreNow()
         restoreDiscover()
         watchNetwork()
         PushCenter.shared.onToken = { [weak self] token in
@@ -175,13 +182,15 @@ final class AppModel {
         playlistDetails = [:]
         facets = .empty
         vocabulary = []
+        restoreNow()
         restoreDiscover()
         await refreshAll()
     }
 
     var currentItem: Item? { player?.current?.item }
 
-    var isPortrait: Bool { settings?.orientation == "portrait" }
+    /// As last seen, until the settings are in: the frame on "Teraz" keeps its shape.
+    var isPortrait: Bool { (settings?.orientation ?? remembered?.orientation) == "portrait" }
 
     // MARK: Loading
 
@@ -212,10 +221,52 @@ final class AppModel {
         self.playlists = await playlists.value ?? []
         self.facets = await facets.value ?? .empty
         self.panelConfig = await panelConfig.value
+        rememberNow()
         // The APNs token goes to the server on every start (registerPush).
         if !demoMode { Task { await PushCenter.shared.registerIfAllowed() } }
         // Ready before Discover is opened.
         Task { await refreshDiscover() }
+    }
+
+    // MARK: "Teraz" from the last launch
+
+    /// The last "Teraz" of this server, with its picture ready for the hero.
+    /// What was on its way then is not known now: the picture, its queue and
+    /// history only.
+    private func restoreNow() {
+        guard !demoMode, var saved = NowCache.load(server: serverURL) else {
+            remembered = nil
+            rememberedImageURL = nil
+            return
+        }
+        saved.snapshot.player.delivery = nil
+        saved.snapshot.player.progress = nil
+        saved.snapshot.player.busy = false
+        saved.snapshot.player.lastError = nil
+        remembered = saved
+        rememberedImageURL = saved.image == nil ? nil : saved.snapshot.imageURL
+        if let image = saved.image, let url = saved.snapshot.imageURL,
+           let request = backend.request(for: .path(url)) {
+            Task { await ImageLoader.shared.remember(image, for: request, maxPixel: NowCache.maxPixel) }
+        }
+    }
+
+    /// Keeps "Teraz" for the next launch; `image` is the picture on the
+    /// frame, once "Teraz" has loaded it.
+    func rememberNow(image: UIImage? = nil) {
+        guard !demoMode, let player else { return }
+        var image = image
+        if image != nil {
+            // Saved already: only the queue and history are new.
+            if rememberedImageURL == player.current?.previewUrl { image = nil }
+            rememberedImageURL = player.current?.previewUrl
+        }
+        let snapshot = NowCache.Snapshot(
+            player: player,
+            orientation: settings?.orientation ?? remembered?.orientation ?? "landscape",
+            imageURL: rememberedImageURL
+        )
+        NowCache.save(snapshot, image: image, server: serverURL)
     }
 
     // MARK: Server address

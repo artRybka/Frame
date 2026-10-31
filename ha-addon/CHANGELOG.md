@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.54.0
+
+- Teraz startuje tak, jak go zostawiono: ostatni obraz od razu, z pigułką
+  „Odświeżam…” (albo „Bez połączenia”, by spróbować ponownie), dopóki serwer
+  nie odpowie; nowszy obraz pojawia się płynnie. Przy pierwszym uruchomieniu
+  w pustej ramce grają kwadraty z ikony aplikacji z powitaniem pod spodem.
+
 ## 1.53.0
 
 - Odkrywaj: Motyw dnia jako pierwszy kafelek w „Na ten tydzień”; zamiast
