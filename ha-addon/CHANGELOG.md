@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.55.1
+
+- Szukaj: siatka dzieł nie znika i nie skacze przy przewijaniu.
+- Szukaj i ręczne playlisty: jedna lista dzieł bez podziału na katalog
+  i muzea; teksty Odkrywaj bez słowa „katalog”.
+
 ## 1.55.0
 
 - Przygotowanie studium dzieła na ekranie blokady i w Dynamic Island (Live
