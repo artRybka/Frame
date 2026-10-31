@@ -685,6 +685,11 @@ actor DemoBackend: FrameBackend {
         let previous: [DailyWork.Brief] = [(1, "aic:14620"), (2, "aic:64818")].compactMap { ago, id in
             found(id).map { DailyWork.Brief(day: iso(ago), item: RemoteItem(item: $0, inLibrary: true), title: $0.title) }
         }
+        let cuts: [(String, String, Double, Double, Double, Double)] = [
+            ("Pazury piany", "Grzbiet fali rozpada się w drobne, zakrzywione palce piany, zawieszone nad łodziami tuż przed uderzeniem.", 0.415, 0.12, 0.2, 0.3),
+            ("Wioślarze", "Ośmiu wioślarzy wtulonych w burtę łodzi. Twarze to kilka kresek, a cała łódź jest ledwie dłuższa niż grzbiet fali.", 0.6, 0.74, 0.24, 0.24),
+            ("Tytuł i sygnatura", "W prostokątnym kartuszu tytuł serii i obrazu; obok podpis: „z pędzla Hokusaia, zmienione imię Iitsu”.", 0.012, 0.06, 0.115, 0.29),
+        ]
         typealias Spot = DailyWork.Spot
         return DailyWork(
             day: day ?? iso(0),
@@ -704,7 +709,7 @@ actor DemoBackend: FrameBackend {
             composition: .init(
                 views: [
                     .init(
-                        title: "Droga oka",
+                        title: "Spojrzenie",
                         grid: "none",
                         text: "Oko wchodzi łukiem fali od lewego dolnego rogu, spada w „pazury” i ląduje na małej, nieruchomej Fudżi.",
                         marks: [
@@ -735,6 +740,9 @@ actor DemoBackend: FrameBackend {
                 lines: []
             ),
             colour: "Dwa błękity, pruski i jaśniejszy, rysują wodę; papier zostaje bielą piany.",
+            details: cuts.map { title, text, x, y, w, h in
+                DailyWork.Detail(title: title, text: text, x: x, y: y, w: w, h: h, image: "/demo/detail/\(wave.id)?x=\(x)&y=\(y)&w=\(w)&h=\(h)")
+            },
             onFrame: "Pasuje bardzo dobrze: błękit i biel to czyste tusze ramki. Beżowe niebo zamieni się w drobny raster.",
             similar: similar,
             legacy: [
@@ -1088,6 +1096,8 @@ actor DemoBackend: FrameBackend {
         case let .image(id): url = Self.bundled(id) ?? imageURLs[id]?.image ?? imageURLs[id]?.thumb
         case let .framePreview(id, settings, framing, _):
             url = framed(id, settings, trying: framing) ?? Self.bundled(id) ?? imageURLs[id]?.thumb
+        case let .path(path) where path.hasPrefix("/demo/detail/"):
+            url = Self.detail(path)
         case let .path(path):
             // "/demo/<id>?<presentation key>"; the key only makes the path change.
             let id = String(path.dropFirst("/demo/".count).prefix { $0 != "?" })
@@ -1113,6 +1123,25 @@ actor DemoBackend: FrameBackend {
     }
 
     /// Resources/DemoImages/<stem>.jpg
+    /// "/demo/detail/<id>?x=&y=&w=&h=": a fragment of the work of the day,
+    /// cut from the bundled picture as the server cuts it from the original.
+    private static func detail(_ path: String) -> URL? {
+        guard let parts = URLComponents(string: path) else { return nil }
+        let id = String(parts.path.dropFirst("/demo/detail/".count))
+        func value(_ name: String) -> Double { Double(parts.queryItems?.first { $0.name == name }?.value ?? "") ?? 0 }
+        let out = FileManager.default.temporaryDirectory
+            .appendingPathComponent("demo-detail-\(DemoFraming.stem(id))-\(value("x"))-\(value("y")).jpg")
+        if FileManager.default.fileExists(atPath: out.path) { return out }
+        guard let source = bundled(id), let image = UIImage(contentsOfFile: source.path)?.cgImage else { return nil }
+        let width = Double(image.width), height = Double(image.height)
+        let box = CGRect(x: value("x") * width, y: value("y") * height, width: value("w") * width, height: value("h") * height)
+        guard let cut = image.cropping(to: box.integral),
+              let data = UIImage(cgImage: cut).jpegData(compressionQuality: 0.9)
+        else { return nil }
+        try? data.write(to: out)
+        return out
+    }
+
     private static func bundled(_ id: String) -> URL? {
         if let url = Bundle.main.url(forResource: DemoFraming.stem(id), withExtension: "jpg") { return url }
         let upload = DemoFraming.uploadURL(id)

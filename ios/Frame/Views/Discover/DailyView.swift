@@ -89,7 +89,7 @@ struct DailyView: View {
                 page
             }
             .onChange(of: work?.day) {
-                guard let target = LaunchRoute.scroll else { return }  // CI screenshots: "composition", "end"
+                guard let target = LaunchRoute.scroll else { return }  // CI screenshots: "composition", "details", "end"
                 Task {
                     try? await Task.sleep(for: .seconds(1))
                     proxy.scrollTo(target, anchor: target == "end" ? .bottom : .top)
@@ -172,6 +172,9 @@ struct DailyView: View {
                     if !work.item.item.colors.isEmpty { PaletteStrip(swatches: work.item.item.colors, height: 26, cornerRadius: 6) }
                     if !work.colour.isEmpty { prose(work.colour) }
                 }
+            }
+            if let details = work.details, !details.isEmpty {
+                section("Detale") { self.details(work, details) }.id("details")
             }
             if !work.similar.isEmpty { section("Podobne dzieła") { similar(work.similar) } }
             if !work.legacy.isEmpty { section("Co z niego wyrosło") { legacy(work.legacy) } }
@@ -304,8 +307,8 @@ struct DailyView: View {
             .fixedSize(horizontal: false, vertical: true)
     }
 
-    /// The takes as pencil on tracing paper, one at a time: "1 · Droga oka",
-    /// "2 · Geometria".
+    /// The takes as pencil on tracing paper, one at a time: "Spojrzenie",
+    /// "Geometria"; the take's summary under it hand-written too.
     private func compositionSection(_ work: DailyWork, _ takes: [DailyWork.Take]) -> some View {
         let shown = takes[min(take, takes.count - 1)]
         return section("Analiza kompozycji") {
@@ -316,7 +319,7 @@ struct DailyView: View {
                         Button {
                             withAnimation(.easeInOut(duration: 0.2)) { take = index }
                         } label: {
-                            Text("\(index + 1) · \(each.title)")
+                            Text(each.title)
                                 .font(.caption.weight(.semibold))
                                 .padding(.horizontal, 11)
                                 .padding(.vertical, 6)
@@ -330,8 +333,45 @@ struct DailyView: View {
             }
             CompositionSketch(item: work.item, aspect: aspect(work.item.item), take: shown)
                 .padding(.top, 4)
-            if !shown.text.isEmpty { prose(shown.text, size: 15) }
+            if !shown.text.isEmpty {
+                Text(shown.text)
+                    .font(.hand(21))
+                    .foregroundStyle(Theme.ink.opacity(0.9))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
+    }
+
+    /// Fragments cut from the original, side by side to swipe through (the
+    /// next one peeks in from the right), each with its title and a line or two.
+    private func details(_ work: DailyWork, _ details: [DailyWork.Detail]) -> some View {
+        let item = work.item.item
+        let whole = aspect(item)
+        return ScrollView(.horizontal, showsIndicators: false) {
+            HStack(alignment: .top, spacing: 12) {
+                ForEach(details, id: \.image) { detail in
+                    let shape = max(0.75, min(1.34, whole * detail.w / max(detail.h, 0.01)))
+                    let width = max(236, 250 * shape)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Color.clear
+                            .frame(width: width, height: 250)
+                            .overlay {
+                                ArtImage(ref: .path(detail.image), placeholder: item.placeholderColor, maxPixel: 1200)
+                            }
+                            .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                            .padding(.bottom, 5)
+                        Text(detail.title)
+                            .font(.serif(16, weight: .semibold))
+                            .foregroundStyle(Theme.ink)
+                        if !detail.text.isEmpty { prose(detail.text, size: 15) }
+                    }
+                    .frame(width: width, alignment: .leading)
+                }
+            }
+            .scrollTargetLayout()
+        }
+        .scrollTargetBehavior(.viewAligned)
+        .scrollClipDisabled()
     }
 
     /// How the work fares on the frame, then the buttons to show or queue it.

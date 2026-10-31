@@ -1293,7 +1293,7 @@ struct DailyWork: Codable, Hashable, Sendable {
         var text: String
     }
 
-    /// One take on the composition ("Droga oka", "Geometria"): its marks and
+    /// One take on the composition ("Spojrzenie", "Geometria"): its marks and
     /// a grid under them ("none", "golden", "thirds").
     struct Take: Codable, Hashable, Sendable {
         var title: String
@@ -1317,13 +1317,26 @@ struct DailyWork: Codable, Hashable, Sendable {
                 Mark(shape: "loop", points: [Spot(x: point.x, y: point.y), Spot(x: point.x + 0.05, y: point.y + 0.04)], title: point.title, text: point.text)
             }
             let paths = lines.map { Mark(shape: "line", points: $0.points, title: "", text: "") }
-            return [Take(title: "Droga oka", grid: "none", text: "", marks: loops + paths)]
+            return [Take(title: "Spojrzenie", grid: "none", text: "", marks: loops + paths)]
         }
     }
 
     struct Similar: Codable, Hashable, Sendable {
         var item: RemoteItem
         var why: String
+    }
+
+    /// A fragment worth a close look ("Detale"): a box on the picture
+    /// (fractions, from the top left) and its cut from the original.
+    struct Detail: Codable, Hashable, Sendable {
+        var title: String
+        var text: String
+        var x: Double
+        var y: Double
+        var w: Double
+        var h: Double
+        /// Server path of the cut.
+        var image: String
     }
 
     /// A later work, artist or movement that drew on this one.
@@ -1364,6 +1377,8 @@ struct DailyWork: Codable, Hashable, Sendable {
     var artist: String?
     var composition: Composition?
     var colour: String
+    /// Nil from 0.42 servers.
+    var details: [Detail]?
     var onFrame: String
     var similar: [Similar]
     var legacy: [Legacy]
