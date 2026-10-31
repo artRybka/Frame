@@ -85,6 +85,9 @@ protocol FrameBackend: Sendable {
     func studies() async throws -> [StudyBrief]
     /// Asks Claude for the work's study (`again`: a new one, though there is one).
     func prepareStudy(itemID: String, again: Bool) async throws -> StudyView
+    /// The push token of the Lock Screen card following the work's study:
+    /// the server pushes each step to it.
+    func followStudy(itemID: String, activityToken: String, sandbox: Bool) async throws
     /// The smart playlist made from a theme (made now if there is none);
     /// `play` also puts it on the frame.
     func themePlaylist(key: String, play: Bool) async throws -> ThemePlaylist

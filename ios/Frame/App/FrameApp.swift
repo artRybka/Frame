@@ -19,6 +19,13 @@ struct FrameApp: App {
             RootView()
                 .environment(model)
                 .tint(Theme.accent)
+                // A tap on a Lock Screen card ("Studium gotowe"): where it points,
+                // as for a notification.
+                .onOpenURL { url in
+                    let route = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+                        .queryItems?.first { $0.name == "route" }?.value
+                    if let route { PushCenter.shared.open(route) }
+                }
         }
     }
 }

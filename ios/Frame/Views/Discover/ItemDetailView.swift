@@ -57,21 +57,30 @@ struct ItemDetailView: View {
     }
 
     var body: some View {
-        ScrollView {
-            // One over the other while the work fades in over its placeholder.
-            ZStack(alignment: .top) {
-                if let item {
-                    loaded(item)
-                        .transition(.opacity)
-                } else {
-                    loading
-                        .transition(.opacity)
+        ScrollViewReader { proxy in
+            ScrollView {
+                // One over the other while the work fades in over its placeholder.
+                ZStack(alignment: .top) {
+                    if let item {
+                        loaded(item)
+                            .transition(.opacity)
+                    } else {
+                        loading
+                            .transition(.opacity)
+                    }
+                }
+                // Full width from the first frame, also before the work is here:
+                // a lone spinner made the page (and its paper) a narrow strip.
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .animation(.easeOut(duration: 0.3), value: item == nil)
+            }
+            .onChange(of: polish) {
+                guard LaunchRoute.screen == "detail", LaunchRoute.scroll == "about", polish != nil else { return }  // CI screenshots
+                Task {
+                    try? await Task.sleep(for: .seconds(1))
+                    proxy.scrollTo("about", anchor: .top)
                 }
             }
-            // Full width from the first frame, also before the work is here:
-            // a lone spinner made the page (and its paper) a narrow strip.
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .animation(.easeOut(duration: 0.3), value: item == nil)
         }
         .paperPage()
         .navigationBarTitleDisplayMode(.inline)
@@ -362,11 +371,8 @@ struct ItemDetailView: View {
             VStack(alignment: .leading, spacing: 10) {
                 Eyebrow("O dziele")
                 if !text.isEmpty {
-                    Text(text)
-                        .font(.serif(17))
-                        .lineSpacing(5)
-                        .foregroundStyle(Theme.ink.opacity(0.9))
-                        .textSelection(.enabled)
+                    // Not Text: it cut long notes short with "…".
+                    ReadingText(text: text)
                 } else if showOriginal {
                     Text("Muzeum nie podaje opisu.")
                         .font(.subheadline)
@@ -382,6 +388,7 @@ struct ItemDetailView: View {
                 }
                 if let polish { polishOrigin(polish) }
             }
+            .id("about")
         }
     }
 

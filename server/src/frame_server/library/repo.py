@@ -36,7 +36,7 @@ from .models import (
     PlaylistRules,
     PlaylistSummary,
 )
-from .vocabulary import artist_matches, matches_terms, object_category, set_aside
+from .vocabulary import artist_matches, is_postal, matches_terms, object_category, set_aside
 
 #: Item fields that tell copies of a work apart or choose between them.
 WORK_FIELDS = frozenset(
@@ -123,8 +123,11 @@ def matches(item: Item, rules: PlaylistRules, listed: Collection[str] = ()) -> b
         return False
     # Photographs, sculpture, crafts and manuscripts are found only when
     # asked for, even those the owner kept: Monet's bust is no Monet.
+    # Stamps never: Athens 2004's coins are no still life.
     category = object_category(item)
     if category is not None and category not in rules.terms and _searches(rules):
+        return False
+    if _searches(rules) and is_postal(item):
         return False
     if rules.favorites_only and not item.favorite:
         return False

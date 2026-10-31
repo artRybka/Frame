@@ -82,6 +82,7 @@ struct RootView: View {
         .task {
             await model.refreshAll()
             await model.settleLiveActivity()  // one left from before the app was closed
+            await model.settleStudyActivities()
             await model.offerServerUpdate()  // the app was updated, the server not yet
         }
         .task {
@@ -109,6 +110,7 @@ struct RootView: View {
                 Task {
                     await model.recheckServer()
                     await model.settleLiveActivity()
+                    await model.settleStudyActivities()
                 }
             }
         }

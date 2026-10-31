@@ -11,6 +11,11 @@ reach the frame, a new picture on the frame, a new server version, and the
 work of the day at 8:30. The events come from the rest of the server
 (``Notifier.battery``, ``ended``, ``shown``); the clock-driven ones from
 ``watch``.
+
+A study being written is followed on the Lock Screen and in the Dynamic
+Island (a Live Activity the app starts): the app leaves the activity's own
+push token here (``Notifier.follow_study``) and each step of the study is
+pushed to it (``Notifier.study_step``), so it moves on with the app closed.
 """
 
 from __future__ import annotations
@@ -45,6 +50,8 @@ log = logging.getLogger(__name__)
 # The Apple Developer team and the app's bundle id (ios/project.yml).
 TEAM_ID = "3MQRJF4A9D"
 TOPIC = "com.artrybka.frame"
+# Pushes to Live Activities go to the app's topic with this ending.
+LIVE_SUFFIX = ".push-type.liveactivity"
 HOSTS = {False: "https://api.push.apple.com", True: "https://api.sandbox.push.apple.com"}
 
 # What the app can switch, in its order, with the texts of its toggles.
@@ -90,6 +97,15 @@ DAILY_KEY = "push_daily_day"
 UPDATE_KEY = "push_update_version"
 WEEK_SENT_KEY = "push_week_artist"
 BIRTHDAY_SENT_KEY = "push_birthday_day"
+STUDY_ACTIVITIES_KEY = "push_study_activities"
+
+# A study's Live Activity: with no word for this long it says to open the app.
+STUDY_STALE = timedelta(minutes=15)
+# Once over, how long it stays on the Lock Screen: ready (a tap opens it),
+# or why not.
+STUDY_READY_FOR = timedelta(hours=1)
+STUDY_FAILED_FOR = timedelta(minutes=15)
+STUDY_ON_WAY = ("waiting", "sources", "writing", "details")
 
 # APNs answers meaning the token is no good any more.
 GONE = {"BadDeviceToken", "Unregistered", "DeviceTokenNotForTopic"}
@@ -117,6 +133,15 @@ class PushDevice(BaseModel):
     added_at: str = ""
     last_sent_at: str | None = None
     last_error: str | None = None
+
+
+class StudyActivity(BaseModel):
+    """A study followed on a phone's Lock Screen: its Live Activity's token."""
+
+    item_id: str
+    token: str
+    sandbox: bool = False
+    added_at: str = ""
 
 
 @dataclass
@@ -202,11 +227,13 @@ class Apns:
         sandbox: bool,
         collapse: str | None = None,
         expires: datetime | None = None,
+        live: bool = False,
     ) -> Sent:
+        """``live``: to a Live Activity's token, not to the app's."""
         headers = {
             "authorization": f"bearer {self.token()}",
-            "apns-topic": self.topic,
-            "apns-push-type": "alert",
+            "apns-topic": self.topic + LIVE_SUFFIX if live else self.topic,
+            "apns-push-type": "liveactivity" if live else "alert",
             "apns-priority": "10",
         }
         if collapse:
@@ -498,10 +525,124 @@ class Notifier:
         self.notify(
             "study",
             "Studium gotowe",
-            f"„{title}”: można czytać." if title else "Można czytać.",
+            _ready_body(title),
             route=f"study/{item_id}",
             collapse=f"study-{item_id}"[:64],
         )
+
+    # -- studies on the Lock Screen (Live Activity) ----------------------------
+
+    def study_activities(self, item_id: str | None = None) -> list[StudyActivity]:
+        stored = self.library.get_state(STUDY_ACTIVITIES_KEY, [])
+        found = [StudyActivity.model_validate(a) for a in stored]
+        return [a for a in found if item_id is None or a.item_id == item_id]
+
+    def _save_activities(self, activities: list[StudyActivity]) -> None:
+        self.library.set_state(STUDY_ACTIVITIES_KEY, [a.model_dump() for a in activities])
+
+    def follow_study(self, item_id: str, token: str, *, sandbox: bool) -> StudyActivity:
+        """The token of the Live Activity following ``item_id``'s study (it
+        may change while the activity runs: the newest replaces the old)."""
+        token = token.strip().lower()
+        if not _TOKEN.match(token):
+            raise PushError("nieprawidłowy token Live Activity")
+        kept = [a for a in self.study_activities() if a.token != token]
+        activity = StudyActivity(item_id=item_id, token=token, sandbox=sandbox, added_at=_now())
+        self._save_activities([*kept, activity])
+        return activity
+
+    def unfollow_study(self, token: str) -> None:
+        self._forget_activities({token.lower()})
+
+    def study_step(self, item_id: str, status: str, error: str = "", title: str = "") -> None:
+        """A step of a study asked for (study.py): to its Live Activities;
+        "ready" also as "Studium gotowe", on the Lock Screen card when there
+        is one (it lights the screen up), as a notification otherwise."""
+        followed = bool(self.study_activities(item_id))
+        if status == "ready" and not followed:
+            self.study_ready(item_id, title)
+        elif followed:
+            self._spawn(self._study_step(item_id, status, error, title))
+
+    async def _study_step(self, item_id: str, status: str, error: str, title: str) -> None:
+        alert = None
+        if status == "ready" and self.wanted("study"):
+            alert = ("Studium gotowe", _ready_body(title))
+        results = await self.push_study(item_id, status, error, alert=alert)
+        if alert and not any(sent.ok for sent in results.values()):
+            await self.send(
+                "study", *alert, route=f"study/{item_id}", collapse=f"study-{item_id}"[:64]
+            )
+
+    async def push_study(
+        self,
+        item_id: str,
+        status: str,
+        error: str = "",
+        *,
+        alert: tuple[str, str] | None = None,
+        only: str | None = None,
+        now: datetime | None = None,
+    ) -> dict[str, Sent]:
+        """The study's step to the Live Activities following it (``only``:
+        that one). Under way it moves them on; over ("ready", "failed", or
+        "stopped" when the server lost it) it ends them, and they are
+        forgotten here."""
+        activities = [
+            a for a in self.study_activities(item_id) if only is None or a.token == only.lower()
+        ]
+        over = status not in STUDY_ON_WAY
+        apns = self.apns()
+        if apns is None or not activities:
+            if over and activities:  # no key (any more): nothing will reach them
+                self._forget_activities({a.token for a in activities})
+            return {}
+        now = now or datetime.now(UTC)
+        aps: dict[str, Any] = {
+            "timestamp": int(now.timestamp()),
+            "event": "end" if over else "update",
+            "content-state": {"status": status, "error": error},
+        }
+        if over:
+            keep = STUDY_READY_FOR if status == "ready" else STUDY_FAILED_FOR
+            aps["dismissal-date"] = int((now + keep).timestamp())
+        else:
+            aps["stale-date"] = int((now + STUDY_STALE).timestamp())
+        if alert:
+            aps["alert"] = {"title": alert[0], "body": short(alert[1]), "sound": "default"}
+        payload = {"aps": aps}
+        results: dict[str, Sent] = {}
+        async with apns.client() as client:
+            for activity in activities:
+                sent = await apns.send(
+                    client, activity.token, payload, sandbox=activity.sandbox, live=True
+                )
+                if sent.reason == "BadDeviceToken":
+                    other = await apns.send(
+                        client, activity.token, payload, sandbox=not activity.sandbox, live=True
+                    )
+                    if other.ok:
+                        sent = other
+                results[activity.token] = sent
+                if not sent.ok:
+                    log.warning(
+                        "APNs study %s to …%s: %s", status, activity.token[-6:], sent.reason
+                    )
+        gone = {
+            token
+            for token, sent in results.items()
+            if over or (sent.reason in GONE and sent.status in (400, 410))
+        }
+        self._forget_activities(gone)
+        return results
+
+    def _forget_activities(self, tokens: set[str]) -> None:
+        if tokens:
+            self._save_activities([a for a in self.study_activities() if a.token not in tokens])
+
+
+def _ready_body(title: str) -> str:
+    return f"„{title}”: można czytać." if title else "Można czytać."
 
 
 # -- the clock ----------------------------------------------------------------
@@ -655,9 +796,31 @@ async def birthday_tick(service: FrameService, now: datetime | None = None) -> i
     return len(born_today[:BIRTHDAYS_MAX])
 
 
+async def settle_studies(service: FrameService) -> int:
+    """On start: Live Activities of studies the server was writing when it
+    stopped end, saying so (or ready, if it got that far); how many."""
+    notifier = service.notifier
+    ended = 0
+    for item_id in dict.fromkeys(a.item_id for a in notifier.study_activities()):
+        item = service.library.get(item_id)
+        status, error = service.study.status(item)
+        if status in STUDY_ON_WAY:
+            continue
+        if status in ("ready", "failed"):
+            await notifier.push_study(item_id, status, error)
+        else:
+            await notifier.push_study(item_id, "stopped")
+        ended += 1
+    return ended
+
+
 async def watch(service: FrameService) -> None:
     """The clock-driven notifications, a look a minute."""
     service.notifier.bind(asyncio.get_running_loop())
+    try:
+        await settle_studies(service)
+    except Exception:
+        log.exception("study activities")
     await asyncio.sleep(30)
     last_update = last_births = datetime.min.replace(tzinfo=UTC)
     while True:

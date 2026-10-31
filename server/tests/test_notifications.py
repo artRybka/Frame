@@ -312,9 +312,102 @@ def test_a_written_study_is_told(service) -> None:
         (kind, body, kw.get("route"))
     )
     item = _work(service, "met:7", title="Ul", artist="Claude Monet")
-    assert service.study.on_ready is not None
-    service.study.on_ready(item)
+    assert service.study.on_step is not None
+    service.study.on_step(item, "writing", "")  # nothing follows it on the Lock Screen
+    service.study.on_step(item, "ready", "")
     assert told == [("study", "„Ul”: można czytać.", "study/met:7")]
+
+
+LIVE = "ef" * 40
+
+
+def _step(notifier: Notifier, *args: str) -> None:
+    async def run() -> None:
+        notifier.study_step(*args)
+        await asyncio.sleep(0)
+        if notifier._tasks:
+            await asyncio.gather(*notifier._tasks)
+
+    asyncio.run(run())
+
+
+def test_a_study_moves_on_on_the_lock_screen(notifier: Notifier, apple: FakeApple) -> None:
+    notifier.register(PHONE, sandbox=False)
+    notifier.follow_study("met:7", LIVE.upper(), sandbox=False)
+    _step(notifier, "met:7", "writing")
+    _, token, headers, payload = apple.sent[-1]
+    assert token == LIVE
+    assert headers["apns-topic"] == "com.artrybka.frame.push-type.liveactivity"
+    assert headers["apns-push-type"] == "liveactivity"
+    aps = payload["aps"]
+    assert aps["event"] == "update"  # type: ignore[index]
+    assert aps["content-state"] == {"status": "writing", "error": ""}  # type: ignore[index]
+    assert aps["stale-date"] > aps["timestamp"]  # type: ignore[index, operator]
+    assert "alert" not in aps  # type: ignore[operator]
+
+    # Ready: the Lock Screen card says so and lights up, no second notification.
+    _step(notifier, "met:7", "ready", "", "Ul")
+    assert len(apple.sent) == 2
+    _, token, _, payload = apple.sent[-1]
+    aps = payload["aps"]
+    assert token == LIVE and aps["event"] == "end"  # type: ignore[index]
+    assert aps["content-state"]["status"] == "ready"  # type: ignore[index]
+    assert aps["dismissal-date"] - aps["timestamp"] == 3600  # type: ignore[index, operator]
+    assert aps["alert"]["body"] == "„Ul”: można czytać."  # type: ignore[index]
+    assert notifier.study_activities() == []
+
+
+def test_a_lost_lock_screen_card_falls_back_to_the_notification(
+    notifier: Notifier, apple: FakeApple
+) -> None:
+    notifier.register(PHONE, sandbox=False)
+    notifier.follow_study("met:7", LIVE, sandbox=False)
+    apple.answers[("api.push.apple.com", LIVE)] = (410, "Unregistered")
+    _step(notifier, "met:7", "ready", "", "Ul")
+    assert [(t, h["apns-push-type"]) for _, t, h, _ in apple.sent] == [
+        (LIVE, "liveactivity"),
+        (PHONE, "alert"),
+    ]
+    assert apple.sent[-1][3]["route"] == "study/met:7"
+    assert notifier.study_activities() == []
+
+
+def test_a_failed_study_ends_the_card_quietly(notifier: Notifier, apple: FakeApple) -> None:
+    notifier.register(PHONE, sandbox=False)
+    notifier.follow_study("met:7", LIVE, sandbox=True)
+    _step(notifier, "met:7", "failed", "Claude nie napisał studium tego dzieła.")
+    ((host, _, _, payload),) = apple.sent
+    assert host == "api.sandbox.push.apple.com"
+    aps = payload["aps"]
+    assert aps["event"] == "end" and "alert" not in aps  # type: ignore[index, operator]
+    assert aps["content-state"]["error"] == "Claude nie napisał studium tego dzieła."  # type: ignore[index]
+
+
+def test_the_app_leaves_the_card_s_token(tmp_path: Path) -> None:
+    apple = FakeApple()
+    with _client(tmp_path) as client:
+        notifier: Notifier = client.app.state.service.notifier  # type: ignore[attr-defined]
+        notifier.transport = httpx.MockTransport(apple)
+        notifier.save_key(_pem(), "ABCDE12345")
+        bad = client.put("/api/study/met:7/activity", json={"token": "nope"})
+        assert bad.status_code == 400
+        put = client.put("/api/study/met:7/activity", json={"token": LIVE, "sandbox": False})
+        assert put.status_code == 204
+        # Not on its way (no Claude key here): the card hears why, at once, and ends.
+        ((_, token, _, payload),) = apple.sent
+        assert token == LIVE
+        assert payload["aps"]["event"] == "end"  # type: ignore[index]
+        assert payload["aps"]["content-state"]["status"] == "off"  # type: ignore[index]
+        assert notifier.study_activities() == []
+
+
+def test_cards_of_studies_lost_in_a_restart_end(
+    notifier: Notifier, apple: FakeApple, service
+) -> None:
+    notifier.follow_study("met:7", LIVE, sandbox=False)
+    assert asyncio.run(notifications.settle_studies(service)) == 1
+    assert apple.sent[0][3]["aps"]["content-state"]["status"] == "stopped"  # type: ignore[index]
+    assert notifier.study_activities() == []
 
 
 def test_the_artist_of_the_week_goes_out_on_monday_at_nine(

@@ -130,6 +130,9 @@ def test_europeana_takes_works_free_in_the_eu() -> None:
         "contentTier:(2 OR 3 OR 4)",
         '-PROVIDER:"OpenUp!"',  # botany: roses named "Claude Monet"
         '-DATA_PROVIDER:"Ajuntament de Girona"',  # photographs called paintings
+        '-DATA_PROVIDER:"Philatelic Postal Museum"',  # stamps called prints
+        '-what:(stamp OR "postage stamp" OR "postal services" OR coin OR coins OR medal '
+        "OR medals OR banknote OR banknotes)",
         "what:(painting OR drawing OR print OR poster)",  # no medals or stamps
     ]
 
@@ -178,6 +181,29 @@ def test_europeana_takes_protected_works_only_while_the_term_is_off_for_tests() 
     ]
 
 
+def test_europeana_leaves_stamps_and_coins_out() -> None:
+    """Stamps sheets and coins come as "Print" too; their types and concepts
+    give them away (Athens 2004 stamps of ancient coins: "still life")."""
+    free = "http://creativecommons.org/publicdomain/mark/1.0/"
+    stamps = {"en": ["Print", "Olympic Games", "Stamp", "Postage stamp", "Postal services"]}
+    records = [
+        _europeana_record(free, [], id="/1/painting"),
+        _europeana_record(
+            free,
+            [],
+            id="/1592/stamps",
+            dcTypeLangAware={"def": ["http://data.europeana.eu/concept/2535"], "el": ["ΦΠΗΚ"]},
+            edmConceptPrefLabelLangAware=stamps,
+            dataProvider=["Philatelic Postal Museum"],
+        ),
+        _europeana_record(free, [], id="/1/coins", edmConceptPrefLabelLangAware={"en": ["Coin"]}),
+        _europeana_record(free, [], id="/1/proof", dcTypeLangAware={"en": ["Banknote"]}),
+    ]
+    with _europeana(records, []) as http:
+        items = Europeana(http).search("Olympic")[1]
+    assert [i.id for i in items] == ["europeana:1~painting"]
+
+
 def test_europeana_leaves_slides_and_reproductions_out() -> None:
     free = "http://creativecommons.org/publicdomain/mark/1.0/"
     slide = {"def": ["http://vocab.getty.edu/aat/300128371"]}
@@ -209,7 +235,7 @@ def test_europeana_discovery_and_fetch() -> None:
     assert item is not None and item.license == "CC0 1.0"
     discover, fetch = sent[0].url.params, sent[1].url.params
     assert discover["query"] == "cubism"
-    assert discover.get_list("qf")[4:] == ["what:painting", "YEAR:[* TO 1955]"]
+    assert discover.get_list("qf")[6:] == ["what:painting", "YEAR:[* TO 1955]"]
     assert fetch["query"] == 'europeana_id:"/2048047/Clasate_e91c"'
 
     # Browsing with nothing asked: openly licensed images only.

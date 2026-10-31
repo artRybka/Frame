@@ -1301,8 +1301,8 @@ struct DailyWork: Codable, Hashable, Sendable {
         var text: String
     }
 
-    /// One take on the composition ("Geometria", "Spojrzenie", "Geometria detali"): its marks and
-    /// a grid under them ("none", "golden", "thirds", "halves").
+    /// One take on the composition ("Geometria", "Geometria detali"): its marks and a
+    /// grid under them ("none", "golden", "thirds", "halves", "3x2", "2x3").
     struct Take: Codable, Hashable, Sendable {
         var title: String
         var grid: String
@@ -1438,6 +1438,12 @@ struct StudyView: Codable, Hashable, Sendable {
     static let pending: Set<String> = ["waiting", "sources", "writing", "details"]
 
     var isPending: Bool { Self.pending.contains(status) }
+}
+
+/// `PUT /api/study/{id}/activity`: the Lock Screen card's push token.
+struct StudyActivityToken: Codable, Hashable, Sendable {
+    var token: String
+    var sandbox: Bool
 }
 
 /// An idea for a playlist, `GET /api/themes`: browsed live from the

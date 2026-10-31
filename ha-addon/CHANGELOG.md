@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.55.0
+
+- Przygotowanie studium dzieła na ekranie blokady i w Dynamic Island (Live
+  Activity): trzy kroki, serwer przesuwa kartę pushem także przy zamkniętej
+  aplikacji, na koniec stuknięcie otwiera studium. „Studium gotowe”
+  przychodzi po wycięciu detali.
+- Analiza kompozycji: tylko Geometria i Geometria detali (bez Spojrzenia),
+  złota spirala rysowana dokładnie, siatki 3×2 i 2×3 obok złotego podziału,
+  3×3 i 2×2, złote trójkąty; zapisane studia i Dzieła dnia poprawione raz
+  w tle (ok. 0,10 USD za stronę).
+- Notka „O dziele” i „Czytaj więcej” na Teraz pokazują się w całości, bez
+  urwania wielokropkiem; tekst da się zaznaczyć.
+- Wyszukiwanie i katalog nie pokazują już znaczków, monet ani rzeczy
+  pocztowych z Europeany (np. arkusz Ateny 2004 jako martwa natura).
+- Szukaj: przy otwartej klawiaturze grupy stoją wyżej, z wyraźnym odstępem
+  od pola szukania.
+
 ## 1.54.0
 
 - Teraz startuje tak, jak go zostawiono: ostatni obraz od razu, z pigułką

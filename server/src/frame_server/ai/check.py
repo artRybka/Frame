@@ -51,12 +51,12 @@ if TYPE_CHECKING:
     from ..library import ImageCache, Item
 
 KIND = "check"
-PROMPT_VERSION = "check-2"
+PROMPT_VERSION = "check-3"
 #: The pages checked.
 PAGES = (DAILY, STUDY)
 #: How long the list of pages wanting a check is kept between looks.
 PAGES_SECONDS = 30.0
-#: Up to four pictures of 1568 px and the takes; corrected takes with thinking.
+#: Up to three pictures of 1568 px and the takes; corrected takes with thinking.
 TYPICAL = Usage(input_tokens=10000, cache_read_input_tokens=1500, output_tokens=4000)
 
 #: The pictures go out this big: one clean and one per take, so smaller
@@ -66,65 +66,62 @@ MAX_CHANGES = 20
 
 SYSTEM = """Sprawdzasz analizę kompozycji dzieła, którą inny autor narysował ołówkiem na \
 obrazie do aplikacji domowej ramki. Dostajesz obraz bez śladów, a potem każde ujęcie na tym \
-samym obrazie z narysowanymi śladami: różowe linie, strzałki, kółka, trójkąty i ramki, numer \
-śladu w białym kółku przy jego początku; niebieskie linie to siatka ujęcia (złoty podział lub \
-trójpodział 3×3 lub połowy 2×2), gdy ją ma. Dalej ujęcia jako dane, ze współrzędnymi w pikselach \
-obrazu (wymiary \
-są w danych: OBRAZ, od lewego górnego rogu, x w prawo, y w dół), i pomiary serwera. Ujęcia to \
-„Geometria” (szkielet całego obrazu), „Spojrzenie” (droga oka) i „Geometria detali” \
-(figury w mniejszych rzeczach).
+samym obrazie z narysowanymi śladami: różowe linie, trójkąty, koła, spirale i ramki, numer \
+śladu w białym kółku przy jego początku (przy spirali obok jej oka); niebieskie linie to \
+siatka ujęcia, gdy ją ma. Dalej ujęcia jako dane, ze współrzędnymi w pikselach obrazu \
+(wymiary są w danych: OBRAZ, od lewego górnego rogu, x w prawo, y w dół), i pomiary serwera. \
+Ujęcia to „Geometria” (układ całego obrazu) i „Geometria detali” (układy w mniejszych \
+rzeczach).
 
-Najpierw sam spójrz na obraz bez śladów, z daleka, jak historyk sztuki: jakie wielkie linie \
-i figury porządkują cały obraz? Wielki trójkąt lub piramida (wierzchołek w najwyższym ważnym \
-punkcie: głowa, kapelusz, szczyt masztu, czubek stogu; boki przez ramiona, szaty, zbocza aż do \
-dolnej krawędzi albo za nią), odwrócone V lub klin, X dwóch przekątnych, silna przekątna przez \
-kilka form, oś, horyzont, łuk, wielkie koło lub owal, w które układają się formy, S. Takie linie \
-zwykle nie są narysowane: wyznacza je kilka \
-rzeczy ułożonych w jednym kierunku, a oko je dopowiada. Są zasadne, gdy kilka ważnych form \
-naprawdę leży na nich albo wzdłuż nich, i mogą biec daleko poza obraz.
+Najpierw sam spójrz na obraz bez śladów, z daleka, jak historyk sztuki, i przyłóż do niego \
+wzory: siatki (złoty podział 0,382 i 0,618; 3×3; 2×2; 3×2, czyli pionowe w 1/3 i 2/3 \
+i pozioma w połowie; 2×3, czyli pionowa w połowie i poziome w 1/3 i 2/3), złotą spiralę \
+(promień maleje 1,618 raza co ćwierć obrotu; oko na głównym motywie, łuki po ważnych \
+formach; może być obrócona i większa niż obraz), przekątne obrazu, złote trójkąty (przekątna \
+i prostopadłe do niej z pozostałych rogów), przekątne przechodzące przez kilka form, \
+perspektywę zbieżną, wielki trójkąt lub piramidę, V, koło i owal, krzywą S, oś. Takie linie \
+zwykle nie są narysowane: wyznacza je kilka rzeczy ułożonych w jednym kierunku. Są zasadne, \
+gdy kilka ważnych form naprawdę leży na nich albo wzdłuż nich.
 
 Potem sprawdź każdy ślad:
-- „Geometria”: czy pokazuje ten szkielet. Gdy brakuje głównej wielkiej linii lub figury, którą \
-widzisz, dodaj ją (to jedyny wypadek, gdy dodajesz ślad bez wzmianki w tekście; dopisz ją do \
-tekstu). Drobną figurę wokół jednej rzeczy zastąp wielką linią albo usuń. Linię, która \
-skraca się przed krawędzią, choć jej kierunek biegnie dalej, przedłuż do krawędzi lub za nią; \
-punkty poza obrazem są dozwolone (do połowy boku za krawędzią, także ujemne), nie przycinaj \
-ich. Otwarty trójkąt lub odwrócone V to "line" z 3 punktami (koniec boku, wierzchołek, koniec \
-drugiego boku), X to dwie linie. Linia ma biec przez formy, które ją wyznaczają, a nie obok \
-nich: przesuń ją, gdy mija je o więcej niż ich szerokość. Siatka zostaje, gdy kluczowy \
-element leży na jej linii lub blisko niej (pomiary podają odległości w ułamkach boku: do ok. \
-0,02 to „na linii”, do ok. 0,05 „blisko linii”, dalej siatka nie pasuje), a tekst mówi o tym \
-tak, jak jest.
-- Siatka: najciekawsze jest, gdy wielki układ krzyżuje się ze złotym podziałem, siatką 3×3 \
-lub 2×2 (wierzchołek, przecięcie przekątnych, środek koła na linii siatki lub na przecięciu \
-jej linii); pomiary podają położenie wierzchołków i przecięć śladów. Gdy tak jest, a ujęcie \
-nie ma siatki albo ma inną, ustaw właściwą ("golden", "thirds", "halves") i dopisz to do \
+- „Geometria”: czy pokazuje najmocniejszy układ całego obrazu. Gdy brakuje głównego układu, \
+który widzisz (także spirali, przekątnej czy złotych trójkątów), dodaj go i dopisz do \
+tekstu. Drobną figurę wokół jednej rzeczy zastąp wielkim układem albo usuń. Linię, która \
+kończy się przed krawędzią, choć jej kierunek biegnie dalej, przedłuż do krawędzi lub za nią; \
+punkty poza obrazem są dozwolone (do połowy boku za krawędzią, także ujemne). Linia ma biec \
+przez formy, które ją wyznaczają, a nie obok nich: przesuń ją, gdy mija je o więcej niż ich \
+szerokość. Spirala ma oko na rzeczy, w którą się zwija, a łuki (pomiary podają, gdzie leżą \
+kolejne ćwierć obroty) po prawdziwych formach; przesuń jej początek, punkt kierunku lub oko, \
+gdy łuki mijają formy, albo usuń ją, gdy żadne położenie nie pasuje.
+- Siatka: zostaje, gdy kluczowy element leży na jej linii lub blisko niej (pomiary podają \
+odległości w ułamkach boku: do ok. 0,02 to „na linii”, do ok. 0,05 „blisko linii”, dalej \
+siatka nie pasuje). Najciekawsze jest, gdy oko spirali, wierzchołek, środek koła albo \
+przecięcie przekątnych (pomiary podają przecięcia śladów) trafia w linię lub mocny punkt \
+siatki: wtedy ustaw właściwą ("golden", "thirds", "halves", "3x2", "2x3") i dopisz to do \
 tekstu.
 - „Geometria detali”: czy figury leżą na prawdziwych krawędziach i osiach rzeczy, które \
 nazywają podpisy. Gdy obrazowi brakuje tego ujęcia, a w mniejszych rzeczach widać wyraźną \
-geometrię (trójkąt grupy, owal głowy, koło talerza, oś postaci), dodaj je na końcu.
-- „Spojrzenie”: czy kółko obejmuje rzecz, którą nazywa jego podpis (nie obok, nie połowę), \
-a strzałka przechodzi przez rzeczy w kolejności, o której mówi tekst.
+geometrię (trójkąt grupy, owal głowy, koło talerza, oś postaci, mała spirala), dodaj je na \
+końcu.
 
 Popraw: przesuń punkty tego, co chybia, celując dokładnie; usuń ślad, którego nie da się \
 obronić; ustaw "grid" na "none", gdy nic na siatce ani blisko niej nie leży; popraw "text" \
 ujęcia i podpisy, gdy twierdzą coś, czego obraz nie potwierdza (np. złoty podział, którego \
-nie ma). Ujęcie bez żadnego zasadnego śladu pomiń. Innych nowych ujęć nie dodawaj. Co poprawne, \
+nie ma). Ujęcie bez żadnego zasadnego śladu pomiń. Innych ujęć nie dodawaj. Co poprawne, \
 zostaw bez zmian: te same współrzędne, te same słowa.
 
-Kształty i ich punkty: "arrow" (2–12 punktów wzdłuż drogi wzroku, grot na końcu), "line" \
-(2–12 punktów: horyzont, przekątna, oś, krawędź, bok wielkiego trójkąta), "loop" (kółko, \
-koło lub owal: środek i jeden róg prostokąta, w który się wpisuje), "triangle" (3 wierzchołki, \
-może \
-wychodzić poza obraz), "rect" (dwa przeciwległe rogi), "underline" (falka pod rzeczą: początek \
-i koniec). Forma jak w oryginale, naturalną polszczyzną: "title" ujęcia 1–3 słowa, "text" \
-dwa-trzy zdania, podpis śladu ("title") 1–3 słowa, dopisek ("text") najwyżej 45 znaków; \
-2–5 śladów w ujęciu; kolejność śladów to kolejność czytania.
+Kształty i ich punkty: "line" (2–12 punktów: przekątna, oś, horyzont, krawędź, boki \
+otwartego trójkąta, linia perspektywy), "triangle" (3 wierzchołki, może wychodzić poza \
+obraz), "loop" (koło lub owal: środek i jeden róg prostokąta, w który się wpisuje), "spiral" \
+(złota spirala: początek najszerszego łuku, punkt na nim mniej więcej ćwierć obrotu dalej, \
+który wyznacza kierunek skrętu, i oko), "rect" (dwa przeciwległe rogi). Forma jak \
+w oryginale, naturalną polszczyzną: "title" ujęcia 1–3 słowa, "text" dwa-trzy zdania, \
+podpis śladu ("title") 1–3 słowa, dopisek ("text") najwyżej 45 znaków; 2–5 śladów \
+w ujęciu, najpierw najmocniejszy.
 
-Zwróć zachowane ujęcia w tej samej kolejności (nowe na końcu) ("views", współrzędne w pikselach) \
-i "changes": \
-krótkie notatki, co zmieniłeś i dlaczego (np. „Geometria: dodana piramida od kapelusza po \
-dolne rogi”); pusta lista, gdy wszystko było dobrze."""
+Zwróć zachowane ujęcia w tej samej kolejności (nowe na końcu; "views", współrzędne \
+w pikselach) i "changes": krótkie notatki, co zmieniłeś i dlaczego (np. „Geometria: dodana \
+spirala z okiem na grzbiecie fali”); pusta lista, gdy wszystko było dobrze."""
 
 SCHEMA = _object(
     views=_list(

@@ -24,9 +24,11 @@ from frame_server.ai.daily import (
     takes,
     to_fractions,
 )
-from frame_server.ai.sketch import draw, grid_fits, measure, measures
+from frame_server.ai.sketch import PHI, draw, grid_fits, measure, measures
+from frame_server.ai.sketch import spiral as sketch_spiral
 from frame_server.ai.study import KIND as STUDY
 from frame_server.library.models import Note
+from frame_server.library.wikidata import _sections_first
 from frame_server.service import FrameService
 
 
@@ -78,6 +80,10 @@ def test_great_lines_run_past_the_edges() -> None:
     assert all(0 <= p.x <= 1 for p in loop.points)
 
 
+def _mark_raw(mark: Any) -> dict[str, Any]:
+    return {"shape": mark.shape, "points": [p.model_dump() for p in mark.points]}
+
+
 def _take(grid: str, *marks: dict[str, Any]) -> View:
     view = _view({"title": "Geometria", "grid": grid, "text": "", "marks": list(marks)})
     assert view is not None
@@ -122,6 +128,43 @@ def test_the_server_measures_what_the_eye_cannot() -> None:
     assert found.startswith("Przecięcie śladów 1 i 2 w (500, 400)") and "połowa: o 0.000" in found
 
 
+def test_a_golden_spiral() -> None:
+    spiral = _drawn("spiral", (1.3, 0.47), (0.75, 0.93), (0.4, 0.35))  # it may start outside
+    assert spiral is not None and spiral.anchor() == spiral.points[-1]  # its eye
+    assert _drawn("spiral", (0.4, 0.35), (0.5, 0.5), (0.41, 0.36)) is None  # around nothing
+    text = measure(spiral, (1000, 600))
+    assert text.startswith("oko w (400, 210") and "zgodnie z ruchem wskazówek zegara" in text
+    assert text.endswith("zaczyna się poza obrazem")
+    flipped = _drawn("spiral", (1.3, 0.47), (0.75, 0.1), (0.4, 0.35))
+    assert "przeciwnie do wskazówek zegara" in measure(flipped, (1000, 600))
+    # Every quarter turn its radius shrinks by φ.
+    path = sketch_spiral((1000.0, 0.0), (0.0, 1000.0), (0.0, 0.0))
+    quarter = next(p for p in path if p[0] <= 1e-6 and p[1] > 0)
+    assert abs(quarter[1] - 1000 / PHI) < 1
+    eye = _take("golden", {**_mark_raw(spiral), "title": "Spirala"})
+    assert eye.grid == "golden"  # its eye lies on the section (0.4 ≈ 0.382)
+
+
+def test_more_grids() -> None:
+    column = {"shape": "line", "points": _points((0.335, 0.1), (0.335, 0.9)), "title": "Oś"}
+    assert _take("3x2", column).grid == "3x2"  # a third across
+    assert _take("2x3", column).grid == "none"  # the half across only
+    level = {"shape": "line", "points": _points((0.0, 0.5), (1.0, 0.5)), "title": "Horyzont"}
+    assert _take("3x2", level).grid == "3x2" and _take("2x3", level).grid == "none"
+
+
+def test_the_pictures_own_lines() -> None:
+    size = (1600, 1000)
+    diagonal = measure(_drawn("line", (0.0, 1.0), (1.0, 0.0)), size)
+    assert "biegnie po przekątnej obrazu" in diagonal
+    # From the top left corner at right angles to the other diagonal: in
+    # pixels along (1000, 1600), here to (300, 480).
+    golden = measure(_drawn("line", (0.0, 0.0), (0.1875, 0.48)), size)
+    assert "złoty trójkąt" in golden
+    rabatment = measure(_drawn("line", (0.625, 0.1), (0.625, 0.9)), size)
+    assert "linii rabatu" in rabatment
+
+
 def test_the_takes_come_in_order() -> None:
     def take(title: str) -> View:
         view = _view(
@@ -133,9 +176,9 @@ def test_the_takes_come_in_order() -> None:
     shown = takes(
         [take("Geometria detali"), take("Spojrzenie"), take("Światło"), take("Geometria")]
     )
-    assert [v.title for v in shown] == ["Geometria", "Spojrzenie", "Geometria detali"]
-    old = takes([take("Spojrzenie"), take("Geometria"), take("Światło")])
-    assert [v.title for v in old] == ["Geometria", "Spojrzenie"]  # an old third take stays out
+    assert [v.title for v in shown] == ["Geometria", "Geometria detali"]
+    old = takes([take("Spojrzenie"), take("Geometria"), take("Rytm")])
+    assert [v.title for v in old] == ["Geometria"]  # no "Spojrzenie" any more
 
 
 def test_the_marks_are_drawn_on_the_picture() -> None:
@@ -148,7 +191,7 @@ def test_the_marks_are_drawn_on_the_picture() -> None:
 
 
 CHECKED_TAKE = {
-    "title": "Spojrzenie",
+    "title": "Geometria detali",
     "grid": "none",
     "text": "Oko biegnie łukiem fali do Fudżi.",
     "marks": [
@@ -178,12 +221,12 @@ def test_claude_checks_the_takes_over_its_marks(service: FrameService) -> None:
     (params,) = asked
     assert params["system"][0]["text"] == CHECK_SYSTEM
     content = params["messages"][0]["content"]
-    assert [b["type"] for b in content].count("image") == 3  # clean, Spojrzenie, Geometria
+    assert [b["type"] for b in content].count("image") == 3  # clean, Geometria, Geometria detali
     text = content[-1]["text"]
     assert "OBRAZ: 900 × 600 px" in text and "Pomiary serwera:" in text
     assert "loop „Fudżi”" in text and "(576, 396)" in text  # its points in pixels
     views = checked["composition"]["views"]
-    assert [v["title"] for v in views] == ["Spojrzenie"]
+    assert [v["title"] for v in views] == ["Geometria detali"]
     assert views[0]["marks"][0]["points"][0] == {"x": 0.66, "y": 0.7}
     assert checked[CHECKED] == ["Spojrzenie, ślad 2: kółko na szczycie"]
     assert checked["teaser"] == data["teaser"]  # the rest of the page as it was
@@ -233,7 +276,7 @@ def test_old_pages_are_checked_once(service: FrameService) -> None:
     # Shown as today: "Geometria" first, no "Rytm".
     essay = service.study.essay(item)
     assert essay is not None
-    assert [v.title for v in essay.composition.views] == ["Geometria", "Spojrzenie"]
+    assert [v.title for v in essay.composition.views] == ["Geometria", "Geometria detali"]
     job._pages = (0.0, set())
     assert job.wanted(item)
     params = job.params(item)
@@ -253,7 +296,7 @@ def test_old_pages_are_checked_once(service: FrameService) -> None:
     page = service.library.note("met:1", STUDY)
     assert page is not None and page.data[CHECKED] == ["kółko na szczycie"]
     views = page.data["composition"]["views"]
-    assert [v["title"] for v in views] == ["Spojrzenie"]
+    assert [v["title"] for v in views] == ["Geometria detali"]
     assert views[0]["marks"][0]["points"][0] == {"x": 0.66, "y": 0.7}
     assert page.data["teaser"] == clean(ANSWER, []).teaser  # type: ignore[union-attr]
     assert not job.wanted(item)  # once
@@ -264,3 +307,10 @@ def test_old_pages_are_checked_once(service: FrameService) -> None:
     service.library.save_note(page.model_copy(update={"data": first}))
     job._pages = (0.0, set())
     assert job.wanted(item)
+
+
+def test_what_wikipedia_says_of_the_composition_comes_first() -> None:
+    text = "Intro.\n\n== History ==\n" + "x" * 500 + "\n\n== Composition ==\nA pyramid.\n"
+    found = _sections_first(text, ("compos",))
+    assert found.index("== Composition ==") < found.index("== History ==")
+    assert found.startswith("Intro.")

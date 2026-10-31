@@ -62,16 +62,28 @@ def test_claude_writes_a_study_once_and_it_is_kept(tmp_path: Path) -> None:
             client.post("/api/library/items/met:3/describe")
             assert client.get("/api/study/met:3").json()["status"] == "none"
 
+            steps: list[str] = []
+            svc.study.on_step = lambda item, status, error: steps.append(status)
             client.post("/api/study/met:1?wait=10")
             view = _ready(client, "met:1")
         finally:
             svc.ai.stop()
         assert view["status"] == "ready", view
+        # Each step told (the Lock Screen card), "ready" once the fragments are cut.
+        for _ in range(40):  # told just after the status says so
+            if steps[-1:] == ["ready"]:
+                break
+            time.sleep(0.05)
+        assert steps[-3:] == ["writing", "details", "ready"], steps
+        assert set(steps) <= {"waiting", "sources", "writing", "details", "ready"}
         work = view["work"]
         assert work["written"] is True and work["model"] == OPUS
         assert work["title"] == "Wielka fala w Kanagawie"
         assert work["why_today"] == "" and work["day"] == "" and work["previous"] == []
-        assert [v["title"] for v in work["composition"]["views"]] == ["Geometria", "Spojrzenie"]
+        assert [v["title"] for v in work["composition"]["views"]] == [
+            "Geometria",
+            "Geometria detali",
+        ]
         assert [(s["item"]["item"]["id"], s["why"]) for s in work["similar"]] == [
             ("met:2", "ta sama seria")
         ]
@@ -107,9 +119,12 @@ def test_a_new_study_on_request(tmp_path: Path) -> None:
         _catalogue(svc)
         svc.ai.start()
         try:
+            steps: list[tuple[str, str]] = []
+            svc.study.on_step = lambda item, status, error: steps.append((status, error))
             client.post("/api/study/met:1?wait=10")
             failed = _ready(client, "met:1")
             assert failed["status"] == "failed" and failed["error"]
+            assert steps[-1] == ("failed", failed["error"])
             client.post("/api/study/met:1?wait=10")  # not asked again by itself
             assert len(_studies(fake)) == 1
 

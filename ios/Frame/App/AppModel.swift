@@ -79,6 +79,8 @@ final class AppModel {
     let notices = Notices()
     /// The send bar on the Lock Screen and in the Dynamic Island.
     let liveActivity = SendLiveActivity()
+    /// Studies being written, there too (`Studies.swift`).
+    let studyActivity = StudyLiveActivity()
     var working = false
     /// A tap on the Sieć tile (the check) found the frame asleep and is
     /// waking it.
@@ -137,6 +139,9 @@ final class AppModel {
         watchNetwork()
         PushCenter.shared.onToken = { [weak self] token in
             Task { await self?.registerPush(token) }
+        }
+        studyActivity.onToken = { [weak self] itemID, token in
+            await self?.followStudyOnLockScreen(itemID: itemID, token: token)
         }
     }
 

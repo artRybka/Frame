@@ -204,8 +204,12 @@ class FrameService:
         # Studies of any work, asked for on its card.
         self.study = Study(self.daily, self.ai, StudyJob(self.library, self.images, self.ai_config))
         self.ai.register(self.study.job)
-        self.study.on_ready = lambda item: self.notifier.study_ready(
-            item.id, notifications.item_title(self, item)
+        # Its steps on the Lock Screen, and "Studium gotowe" at the end.
+        self.study.on_step = lambda item, status, error: self.notifier.study_step(
+            item.id,
+            status,
+            error,
+            notifications.item_title(self, item) if status == "ready" else "",
         )
         # Favourite artists' birthdays, for the notifications.
         self.births = Births(self.library)

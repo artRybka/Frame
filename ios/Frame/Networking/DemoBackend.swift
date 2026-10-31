@@ -385,8 +385,28 @@ actor DemoBackend: FrameBackend {
         return item
     }
 
+    /// A long note, as the language model writes one (400–900 characters),
+    /// so the card shows "O dziele" in full in the demo screenshots.
     func polish(itemID: String, wait: Int) async throws -> PolishView {
-        PolishView(status: "off", text: nil)  // no language model in the demo
+        guard let item = items.first(where: { $0.id == itemID }) else { return PolishView(status: "off", text: nil) }
+        let note = """
+        Pierwszy plan zajmuje stół przykryty białym obrusem, na którym stoją kosz z owocami, \
+        ciemna butelka i talerz z podłużnymi ciastkami. Obrus układa się w ostre, geometryczne \
+        płaszczyzny, w których biel łączy się z błękitem i szarością. Owoce są modelowane osobnymi \
+        plamami czerwieni, zieleni, żółci i pomarańczu, bez gładkich przejść. Perspektywa nie jest \
+        jednolita: blat stołu zdaje się unosić ku górze, a kosz po lewej jest pochylony, jakby każdy \
+        przedmiot oglądano z innego miejsca. W lewym dolnym rogu fałdy obrusu opadają ku krawędzi \
+        stołu i zamykają kompozycję.
+
+        Tło jest spokojne i ciepłe, z brązami i ochrą położonymi szerokimi pociągnięciami pędzla. \
+        Dzięki temu jasne owoce i biel tkaniny wysuwają się do przodu, a cała scena nabiera ciężaru. \
+        To ostatnie zdanie notki kończy się tutaj.
+        """
+        let text = PolishText(
+            title: item.title, frame: note, full: note, medium: item.medium, date: item.dateText,
+            artistNote: item.artistBio, written: "note", sources: ["dane muzeum", "obraz"]
+        )
+        return PolishView(status: "ready", text: text)
     }
 
     func describe(itemID: String, wait: Int) async throws -> SeenView {
@@ -714,28 +734,12 @@ actor DemoBackend: FrameBackend {
                     .init(
                         title: "Geometria",
                         grid: "golden",
-                        text: "Grzywa fali jest wierzchołkiem wielkiej, otwartej piramidy, której boki schodzą poza dolną krawędź. Linie złotego podziału przecinają się tuż przy szczycie Fudżi.",
+                        text: "Złota spirala zwija się w grzywę fali, a jej łuki biegną po grzbiecie wody. Grzywa jest też wierzchołkiem wielkiej, otwartej piramidy, a linie złotego podziału przecinają się tuż przy szczycie Fudżi.",
                         marks: [
+                            .init(shape: "spiral", points: [Spot(x: 0.97, y: 0.47), Spot(x: 0.75, y: 0.93), Spot(x: 0.4, y: 0.35)], title: "Złota spirala", text: "oko w zawijającej się grzywie"),
                             .init(shape: "line", points: [Spot(x: -0.05, y: 0.95), Spot(x: 0.3, y: 0.09), Spot(x: 0.9, y: 1.1)], title: "Piramida fali", text: "od grzywy w dół, poza ramę"),
                             .init(shape: "loop", points: [Spot(x: 0.3, y: 0.48), Spot(x: 0.566, y: 0.866)], title: "Koło", text: "grzbiet fali i dolina zamykają krąg"),
                             .init(shape: "loop", points: [Spot(x: 0.618, y: 0.618), Spot(x: 0.64, y: 0.65)], title: "Złoty punkt", text: "linie φ przecinają się przy szczycie"),
-                        ]
-                    ),
-                    .init(
-                        title: "Spojrzenie",
-                        grid: "none",
-                        text: "Oko wchodzi łukiem fali od lewego dolnego rogu, spada w „pazury” i ląduje na małej, nieruchomej Fudżi.",
-                        marks: [
-                            .init(shape: "arrow", points: [
-                                Spot(x: 0.03, y: 0.6), Spot(x: 0.08, y: 0.33), Spot(x: 0.17, y: 0.17), Spot(x: 0.3, y: 0.09),
-                                Spot(x: 0.42, y: 0.1), Spot(x: 0.52, y: 0.2), Spot(x: 0.565, y: 0.35),
-                            ], title: "Łuk fali", text: "grzywa rozpada się w „pazury”"),
-                            .init(shape: "loop", points: [Spot(x: 0.64, y: 0.645), Spot(x: 0.71, y: 0.71)], title: "Fudżi", text: "najmniejsza, a najważniejsza"),
-                            .init(shape: "line", points: [
-                                Spot(x: 0.27, y: 0.64), Spot(x: 0.31, y: 0.57), Spot(x: 0.34, y: 0.52), Spot(x: 0.37, y: 0.57), Spot(x: 0.41, y: 0.64),
-                            ], title: "Rym kształtów", text: "mała fala ma sylwetkę góry"),
-                            .init(shape: "underline", points: [Spot(x: 0.39, y: 0.94), Spot(x: 0.71, y: 0.94)], title: "Łodzie", text: "dają skalę fali"),
-                            .init(shape: "line", points: [Spot(x: 0.46, y: 0.725), Spot(x: 0.7, y: 0.72), Spot(x: 0.97, y: 0.715)], title: "Horyzont", text: "nisko, po zachodniemu"),
                         ]
                     ),
                     .init(
@@ -821,6 +825,10 @@ actor DemoBackend: FrameBackend {
         if again || askedStudies[itemID] == nil { askedStudies[itemID] = Date() }
         return try await study(itemID: itemID, wait: 0)
     }
+
+    /// The demo has no server to push the study's steps: the app moves
+    /// the card on while it runs.
+    func followStudy(itemID: String, activityToken: String, sandbox: Bool) async throws {}
 
     func themePlaylist(key: String, play: Bool) async throws -> ThemePlaylist {
         guard let theme = DemoDiscover.themes.first(where: { $0.key == key }) else {

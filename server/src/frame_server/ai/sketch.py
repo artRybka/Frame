@@ -24,8 +24,18 @@ if TYPE_CHECKING:
 GOLDEN = (0.382, 0.618)
 THIRDS = (1 / 3, 2 / 3)
 HALVES = (0.5,)
-#: The grid lines of each grid a take may lie on ("2×2" is the halves).
-CUTS: dict[str, tuple[float, ...]] = {"golden": GOLDEN, "thirds": THIRDS, "halves": HALVES}
+#: The grid lines of each grid a take may lie on: across the width (x) and
+#: down the height (y). "3x2" is thirds across and halves down.
+CUTS: dict[str, tuple[tuple[float, ...], tuple[float, ...]]] = {
+    "golden": (GOLDEN, GOLDEN),
+    "thirds": (THIRDS, THIRDS),
+    "halves": (HALVES, HALVES),
+    "3x2": (THIRDS, HALVES),
+    "2x3": (HALVES, THIRDS),
+}
+#: A golden spiral's radius shrinks by φ every quarter turn.
+PHI = (1 + math.sqrt(5)) / 2
+SPIRAL_GROWTH = math.log(PHI) / (math.pi / 2)
 #: How near a thing has to lie to a grid line to be "on" it, and to be
 #: near enough for the grid to stay (fractions of the side).
 ON_LINE = 0.02
@@ -59,9 +69,38 @@ def _loop_box(mark: Mark, size: tuple[int, int]) -> tuple[float, float, float, f
     return cx - rx, cy - ry, cx + rx, cy + ry
 
 
+def spiral(
+    start: tuple[float, float], through: tuple[float, float], eye: tuple[float, float]
+) -> list[tuple[float, float]]:
+    """A golden spiral in pixels from ``start`` into its ``eye``, turning the
+    way ``through`` lies from the line between them (as the app draws it)."""
+    dx, dy = start[0] - eye[0], start[1] - eye[1]
+    radius = math.hypot(dx, dy)
+    if radius < 2:
+        return []
+    cross = dx * (through[1] - eye[1]) - dy * (through[0] - eye[0])
+    turn = -1.0 if cross < 0 else 1.0
+    angle = math.atan2(dy, dx)
+    end = math.log(radius / 1.5) / SPIRAL_GROWTH
+    steps = max(int(end / (math.pi / 12)), 2)
+    found = []
+    for step in range(steps + 1):
+        theta = end * step / steps
+        r = radius * math.exp(-SPIRAL_GROWTH * theta)
+        found.append(
+            (
+                eye[0] + r * math.cos(angle + turn * theta),
+                eye[1] + r * math.sin(angle + turn * theta),
+            )
+        )
+    return found
+
+
 def _strokes(mark: Mark, size: tuple[int, int]) -> list[list[tuple[float, float]]]:
     """The mark's polylines in pixels (a loop is drawn apart)."""
     points = [_xy(p, size) for p in mark.points]
+    if mark.shape == "spiral" and len(points) == 3:
+        return [spiral(*points)]
     if mark.shape == "triangle":
         return [[*points, points[0]]]
     if mark.shape == "rect":
@@ -84,6 +123,9 @@ def _number_spot(mark: Mark, size: tuple[int, int], radius: float) -> tuple[floa
     if mark.shape == "loop":
         _x0, y0, x1, _ = _loop_box(mark, size)
         spot = (x1 + radius * 0.6, y0 - radius * 0.6)
+    elif mark.shape == "spiral":
+        x, y = _xy(mark.points[-1], size)
+        spot = (x + radius * 1.3, y - radius * 1.3)
     elif mark.shape in ("arrow", "line", "underline"):
         x, y = _xy(mark.points[0], size)
         spot = (x - radius * 1.2, y - radius * 1.2)
@@ -103,10 +145,15 @@ def draw(picture: Image.Image, view: View) -> Image.Image:
     size = img.size
     pen = max(2, round(max(size) / 450))
     canvas = ImageDraw.Draw(img)
-    for cut in CUTS.get(view.grid, ()):
-        x, y = cut * size[0], cut * size[1]
-        canvas.line([(x, 0), (x, size[1])], fill=GRID, width=max(1, pen // 2))
-        canvas.line([(0, y), (size[0], y)], fill=GRID, width=max(1, pen // 2))
+    across, down = CUTS.get(view.grid, ((), ()))
+    for cut in across:
+        canvas.line(
+            [(cut * size[0], 0), (cut * size[0], size[1])], fill=GRID, width=max(1, pen // 2)
+        )
+    for cut in down:
+        canvas.line(
+            [(0, cut * size[1]), (size[0], cut * size[1])], fill=GRID, width=max(1, pen // 2)
+        )
     for mark in view.marks:
         if mark.shape == "loop":
             box = _loop_box(mark, size)
@@ -163,6 +210,8 @@ def _corner(spot: Spot) -> str | None:
 def measure(mark: Mark, size: tuple[int, int]) -> str:
     """What the server measures of one mark, in a line of Polish."""
     points = mark.points
+    if mark.shape == "spiral" and len(points) == 3:
+        return _spiral_measure(mark, size)
     if mark.shape == "line" and len(points) == 3:  # an open triangle, a wedge
         arms = [_degrees(points[1], p, size) for p in (points[0], points[2])]
         a = mark.points[1]
@@ -186,12 +235,87 @@ def measure(mark: Mark, size: tuple[int, int]) -> str:
             parts.append(f"jeden koniec w rogu ({next(e for e in ends if e)})")
         else:
             parts.append("żaden koniec nie leży w rogu")
+        parts += _armature(a, b, size)
         if _outside(points):
             parts.append("biegnie poza obraz")
         return ", ".join(parts)
     centre = mark.anchor()
     text = f"środek: x {_nearest(centre.x)}, y {_nearest(centre.y)}"
     return text + (", wychodzi poza obraz" if _outside(points) else "")
+
+
+CORNERS = {
+    "lewego górnego": (0.0, 0.0),
+    "prawego górnego": (1.0, 0.0),
+    "lewego dolnego": (0.0, 1.0),
+    "prawego dolnego": (1.0, 1.0),
+}
+
+
+def _armature(a: Spot, b: Spot, size: tuple[int, int]) -> list[str]:
+    """How a line lies against the picture's own lines: its diagonals, the
+    lines from the other corners at right angles to them (golden
+    triangles) and the sides of the squares on its short sides (rabatment)."""
+    w, h = size
+    ax, ay, bx, by = a.x * w, a.y * h, b.x * w, b.y * h
+    length = math.hypot(bx - ax, by - ay)
+    if length < 1:
+        return []
+    degrees = math.degrees(math.atan2(-(by - ay), bx - ax)) % 180
+    diagonal = math.degrees(math.atan2(h, w))
+    reach = NEAR_CORNER * math.hypot(w, h)
+
+    def off(angle: float) -> float:
+        return min(abs(degrees - angle) % 180, 180 - abs(degrees - angle) % 180)
+
+    def through() -> str | None:
+        for name, (cx, cy) in CORNERS.items():
+            gap = abs((bx - ax) * (ay - cy * h) - (ax - cx * w) * (by - ay)) / length
+            if gap <= reach:
+                return name
+        return None
+
+    found: list[str] = []
+    corner = through()
+    if min(off(diagonal), off(180 - diagonal)) <= LEVEL_DEGREES:
+        side = min(off(diagonal), off(180 - diagonal))
+        found.append(
+            f"biegnie po przekątnej obrazu (o {side:.0f}°)"
+            if corner
+            else f"równolegle do przekątnej obrazu (o {side:.0f}°)"
+        )
+    elif min(off(90 + diagonal), off(90 - diagonal)) <= LEVEL_DEGREES and corner:
+        side = min(off(90 + diagonal), off(90 - diagonal))
+        found.append(f"prostopadle do przekątnej z rogu {corner} (złoty trójkąt, o {side:.0f}°)")
+    if abs(degrees - 90) <= LEVEL_DEGREES and w > h:
+        x = (a.x + b.x) / 2
+        if min(abs(x - h / w), abs(x - (1 - h / w))) <= ON_LINE:
+            found.append("na linii rabatu (bok kwadratu z krótszego boku obrazu)")
+    if min(degrees, 180 - degrees) <= LEVEL_DEGREES and h > w:
+        y = (a.y + b.y) / 2
+        if min(abs(y - w / h), abs(y - (1 - w / h))) <= ON_LINE:
+            found.append("na linii rabatu (bok kwadratu z krótszego boku obrazu)")
+    return found
+
+
+def _spiral_measure(mark: Mark, size: tuple[int, int]) -> str:
+    start, through, eye = (_xy(p, size) for p in mark.points)
+    path = spiral(start, through, eye)
+    turns = math.log(math.hypot(start[0] - eye[0], start[1] - eye[1]) / 1.5) / (
+        SPIRAL_GROWTH * 2 * math.pi
+    )
+    cross = (start[0] - eye[0]) * (through[1] - eye[1]) - (start[1] - eye[1]) * (
+        through[0] - eye[0]
+    )
+    way = "zgodnie z ruchem wskazówek zegara" if cross >= 0 else "przeciwnie do wskazówek zegara"
+    quarter = max(1, round(len(path) / max(turns * 4, 1)))
+    marks = ", ".join(f"({x:.0f}, {y:.0f})" for x, y in path[quarter : quarter * 5 : quarter])
+    e = mark.points[-1]
+    text = (
+        f"oko w ({_px(e, size)}: x {_nearest(e.x)}, y {_nearest(e.y)}), skręca {way}, "
+        f"kolejne ćwierć obroty w {marks}"
+    )
+    return text + (", zaczyna się poza obrazem" if _outside(mark.points[:1]) else "")
 
 
 def _degrees(a: Spot, b: Spot, size: tuple[int, int]) -> float:
@@ -252,7 +376,7 @@ def key_points(view: View) -> list[tuple[float, float]]:
         points = mark.points
         if mark.shape == "triangle" or (mark.shape == "line" and len(points) == 3):
             spots += [(p.x, p.y) for p in points if 0 <= p.x <= 1 and 0 <= p.y <= 1]
-        if mark.shape in ("loop", "rect", "triangle"):
+        if mark.shape in ("loop", "rect", "triangle", "spiral"):
             centre = mark.anchor()
             spots.append((centre.x, centre.y))
     return spots + [(x, y) for _, _, x, y in crossings(view)]
@@ -271,17 +395,22 @@ def measures(view: View, size: tuple[int, int]) -> list[str]:
 def grid_fits(view: View) -> bool:
     """Whether something of the view lies on or near a line of its grid: a
     level or upright line, a loop's or frame's middle, a triangle's or a
-    wedge's corner, two lines' crossing."""
-    cuts = CUTS.get(view.grid, ())
-    if not cuts:
+    wedge's corner, a spiral's eye, two lines' crossing."""
+    across, down = CUTS.get(view.grid, ((), ()))
+    if not across and not down:
         return True
-    places: list[float] = []
+    xs: list[float] = []
+    ys: list[float] = []
     for mark in view.marks:
         if mark.shape in ("line", "underline") and len(mark.points) == 2:
             a, b = mark.points
             if abs(a.y - b.y) <= 0.02:
-                places.append((a.y + b.y) / 2)
+                ys.append((a.y + b.y) / 2)
             if abs(a.x - b.x) <= 0.02:
-                places.append((a.x + b.x) / 2)
-    places += [v for spot in key_points(view) for v in spot]
-    return any(abs(value - cut) <= NEAR_LINE for value in places for cut in cuts)
+                xs.append((a.x + b.x) / 2)
+    for x, y in key_points(view):
+        xs.append(x)
+        ys.append(y)
+    return any(abs(x - cut) <= NEAR_LINE for x in xs for cut in across) or any(
+        abs(y - cut) <= NEAR_LINE for y in ys for cut in down
+    )
