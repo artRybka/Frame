@@ -165,3 +165,42 @@ def test_aic_never_asks_a_picture_wider_than_it_is() -> None:
     assert middle.image_url.endswith("/abc/full/full/0/default.jpg")
     wide = aic._map(record(6679))
     assert wide is not None and wide.image_url.endswith("/abc/full/1686,/0/default.jpg")
+
+
+def test_a_met_object_that_does_not_load_leaves_the_others() -> None:
+    guard, _ = _guard()
+    search = "https://collectionapi.metmuseum.org/public/collection/v1.1/search"
+    obj = {
+        "objectID": 2,
+        "title": "Kept",
+        "isPublicDomain": True,
+        "primaryImageSmall": "https://images/small.jpg",
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if url.startswith(search):
+            return httpx.Response(200, json={"total": 2, "objectIDs": [1, 2]})
+        if url.endswith("/objects/1"):
+            return httpx.Response(502)
+        return httpx.Response(200, json=obj)
+
+    with httpx.Client(transport=httpx.MockTransport(handler), event_hooks=guard.hooks()) as http:
+        total, items = MetropolitanMuseum(http).search("x")
+    assert total == 2 and [i.title for i in items] == ["Kept"]
+
+
+def test_a_walled_met_fails_the_whole_page() -> None:
+    guard, _ = _guard()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "/search" in str(request.url):
+            return httpx.Response(200, json={"total": 2, "objectIDs": [1, 2]})
+        return httpx.Response(403, headers=IMPERVA)
+
+    transport = httpx.MockTransport(handler)
+    with (
+        httpx.Client(transport=transport, event_hooks=guard.hooks()) as http,
+        pytest.raises(Resting),
+    ):
+        MetropolitanMuseum(http).search("x")
