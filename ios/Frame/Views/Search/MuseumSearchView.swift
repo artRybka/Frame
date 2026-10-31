@@ -108,7 +108,7 @@ struct MuseumSearchView: View {
             if groupsShown {
                 TermFacetBar(
                     tokens: tokens, museums: museums, colors: ColorTag.families + ColorTag.moods,
-                    focus: $fieldFocused, panelHeight: height * 0.6
+                    focus: $fieldFocused, panelHeight: height * TermFacetBar.panelShare
                 )
                 .padding(.horizontal, Theme.gutter)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
