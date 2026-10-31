@@ -12,6 +12,9 @@
 - Szukaj: okienko grupy zamyka się z powrotem do swojego przycisku (a nie do
   „Techniki”) i może być wyższe, więc Epoka mieści więcej okresów bez
   przewijania.
+- Szukaj: muzeum, które nie odpowiada (np. The Met), jest pomijane po cichu,
+  bez napisu „Nie odpowiedziało”; siatka dzieł z mniejszymi dziurami między
+  kolumnami.
 
 ## 1.56.0
 
