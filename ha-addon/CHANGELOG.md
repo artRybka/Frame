@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.47.0
+## 1.47.0
 
 - Napisane studia dzieł i strony Dzieła dnia zostają na stałe: porządki
   w katalogu nie usuwają już ich dzieł, a zmiana w sposobie pisania nie
@@ -9,6 +9,8 @@
 - Analiza kompozycji: trzecie ujęcie „Rytm”, gdy obraz ma powtarzające się
   motywy; linia prowadzi przez powtórzenia z akcentem przy każdym
   i krótkim podpisem.
+- Numeracja wersji od teraz 1.x (po 0.46.1 jest 1.47.0), bo TestFlight
+  uznawał wersje 0.x za starsze niż dawne 1.0.
 
 ## 0.46.1
 
