@@ -6,6 +6,10 @@
   Activity): trzy kroki, serwer przesuwa kartę pushem także przy zamkniętej
   aplikacji, na koniec stuknięcie otwiera studium. „Studium gotowe”
   przychodzi po wycięciu detali.
+- Analiza kompozycji: tylko Geometria i Geometria detali (bez Spojrzenia),
+  złota spirala rysowana dokładnie, siatki 3×2 i 2×3 obok złotego podziału,
+  3×3 i 2×2, złote trójkąty; zapisane studia i Dzieła dnia poprawione raz
+  w tle (ok. 0,10 USD za stronę).
 
 ## 1.54.0
 
