@@ -21,8 +21,10 @@ from ..library.models import Note
 from .client import OPUS, Answer, request
 from .daily import (
     _POINT,
+    CHECK_ROUND,
     CHECKED,
     GRIDS,
+    ROUND,
     SHAPES,
     View,
     _composition,
@@ -54,8 +56,8 @@ PROMPT_VERSION = "check-2"
 PAGES = (DAILY, STUDY)
 #: How long the list of pages wanting a check is kept between looks.
 PAGES_SECONDS = 30.0
-#: Four pictures of 1568 px and the takes; corrected takes with thinking.
-TYPICAL = Usage(input_tokens=8000, cache_read_input_tokens=1200, output_tokens=3000)
+#: Up to four pictures of 1568 px and the takes; corrected takes with thinking.
+TYPICAL = Usage(input_tokens=10000, cache_read_input_tokens=1500, output_tokens=4000)
 
 #: The pictures go out this big: one clean and one per take, so smaller
 #: than the page's, still enough to see where a mark lies.
@@ -66,15 +68,18 @@ SYSTEM = """Sprawdzasz analizę kompozycji dzieła, którą inny autor narysowa�
 obrazie do aplikacji domowej ramki. Dostajesz obraz bez śladów, a potem każde ujęcie na tym \
 samym obrazie z narysowanymi śladami: różowe linie, strzałki, kółka, trójkąty i ramki, numer \
 śladu w białym kółku przy jego początku; niebieskie linie to siatka ujęcia (złoty podział lub \
-trójpodział), gdy ją ma. Dalej ujęcia jako dane, ze współrzędnymi w pikselach obrazu (wymiary \
-są w danych: OBRAZ, od lewego górnego rogu, x w prawo, y w dół), i pomiary serwera. Ujęcia są \
-dwa: „Geometria” (szkielet całego obrazu) i „Spojrzenie” (droga oka).
+trójpodział 3×3 lub połowy 2×2), gdy ją ma. Dalej ujęcia jako dane, ze współrzędnymi w pikselach \
+obrazu (wymiary \
+są w danych: OBRAZ, od lewego górnego rogu, x w prawo, y w dół), i pomiary serwera. Ujęcia to \
+„Geometria” (szkielet całego obrazu), „Spojrzenie” (droga oka) i „Geometria detali” \
+(figury w mniejszych rzeczach).
 
 Najpierw sam spójrz na obraz bez śladów, z daleka, jak historyk sztuki: jakie wielkie linie \
 i figury porządkują cały obraz? Wielki trójkąt lub piramida (wierzchołek w najwyższym ważnym \
 punkcie: głowa, kapelusz, szczyt masztu, czubek stogu; boki przez ramiona, szaty, zbocza aż do \
 dolnej krawędzi albo za nią), odwrócone V lub klin, X dwóch przekątnych, silna przekątna przez \
-kilka form, oś, horyzont, łuk, owal, S. Takie linie zwykle nie są narysowane: wyznacza je kilka \
+kilka form, oś, horyzont, łuk, wielkie koło lub owal, w które układają się formy, S. Takie linie \
+zwykle nie są narysowane: wyznacza je kilka \
 rzeczy ułożonych w jednym kierunku, a oko je dopowiada. Są zasadne, gdy kilka ważnych form \
 naprawdę leży na nich albo wzdłuż nich, i mogą biec daleko poza obraz.
 
@@ -90,24 +95,34 @@ nich: przesuń ją, gdy mija je o więcej niż ich szerokość. Siatka zostaje, 
 element leży na jej linii lub blisko niej (pomiary podają odległości w ułamkach boku: do ok. \
 0,02 to „na linii”, do ok. 0,05 „blisko linii”, dalej siatka nie pasuje), a tekst mówi o tym \
 tak, jak jest.
+- Siatka: najciekawsze jest, gdy wielki układ krzyżuje się ze złotym podziałem, siatką 3×3 \
+lub 2×2 (wierzchołek, przecięcie przekątnych, środek koła na linii siatki lub na przecięciu \
+jej linii); pomiary podają położenie wierzchołków i przecięć śladów. Gdy tak jest, a ujęcie \
+nie ma siatki albo ma inną, ustaw właściwą ("golden", "thirds", "halves") i dopisz to do \
+tekstu.
+- „Geometria detali”: czy figury leżą na prawdziwych krawędziach i osiach rzeczy, które \
+nazywają podpisy. Gdy obrazowi brakuje tego ujęcia, a w mniejszych rzeczach widać wyraźną \
+geometrię (trójkąt grupy, owal głowy, koło talerza, oś postaci), dodaj je na końcu.
 - „Spojrzenie”: czy kółko obejmuje rzecz, którą nazywa jego podpis (nie obok, nie połowę), \
 a strzałka przechodzi przez rzeczy w kolejności, o której mówi tekst.
 
 Popraw: przesuń punkty tego, co chybia, celując dokładnie; usuń ślad, którego nie da się \
 obronić; ustaw "grid" na "none", gdy nic na siatce ani blisko niej nie leży; popraw "text" \
 ujęcia i podpisy, gdy twierdzą coś, czego obraz nie potwierdza (np. złoty podział, którego \
-nie ma). Ujęcie bez żadnego zasadnego śladu pomiń. Nie dodawaj nowych ujęć. Co poprawne, \
+nie ma). Ujęcie bez żadnego zasadnego śladu pomiń. Innych nowych ujęć nie dodawaj. Co poprawne, \
 zostaw bez zmian: te same współrzędne, te same słowa.
 
 Kształty i ich punkty: "arrow" (2–12 punktów wzdłuż drogi wzroku, grot na końcu), "line" \
-(2–12 punktów: horyzont, przekątna, oś, krawędź, bok wielkiego trójkąta), "loop" (kółko: \
-środek rzeczy i jeden róg prostokąta, w który się wpisuje), "triangle" (3 wierzchołki, może \
+(2–12 punktów: horyzont, przekątna, oś, krawędź, bok wielkiego trójkąta), "loop" (kółko, \
+koło lub owal: środek i jeden róg prostokąta, w który się wpisuje), "triangle" (3 wierzchołki, \
+może \
 wychodzić poza obraz), "rect" (dwa przeciwległe rogi), "underline" (falka pod rzeczą: początek \
 i koniec). Forma jak w oryginale, naturalną polszczyzną: "title" ujęcia 1–3 słowa, "text" \
 dwa-trzy zdania, podpis śladu ("title") 1–3 słowa, dopisek ("text") najwyżej 45 znaków; \
 2–5 śladów w ujęciu; kolejność śladów to kolejność czytania.
 
-Zwróć zachowane ujęcia w tej samej kolejności ("views", współrzędne w pikselach) i "changes": \
+Zwróć zachowane ujęcia w tej samej kolejności (nowe na końcu) ("views", współrzędne w pikselach) \
+i "changes": \
 krótkie notatki, co zmieniłeś i dlaczego (np. „Geometria: dodana piramida od kapelusza po \
 dolne rogi”); pusta lista, gdy wszystko było dobrze."""
 
@@ -142,8 +157,10 @@ def _px(view: View, size: tuple[int, int]) -> list[str]:
 
 
 def wants_check(note: Note | None) -> bool:
-    """A written page with takes, never checked."""
-    if note is None or "teaser" not in note.data or CHECKED in note.data:
+    """A written page with takes, not checked by this round of the check."""
+    if note is None or "teaser" not in note.data:
+        return False
+    if CHECKED in note.data and note.data.get(CHECK_ROUND, 1) >= ROUND:
         return False
     return bool(page_views(note.data))
 
@@ -208,15 +225,17 @@ def check(
     answer = ask(params)
     found = corrected(to_fractions(answer.data, sent_size(params)) if answer.data else None)
     if found is None:  # asked once all the same
-        return {**data, CHECKED: []}
+        return {**data, CHECKED: [], CHECK_ROUND: ROUND}
     kept, changes = found
-    return {**data, "composition": {"views": [v.model_dump() for v in kept]}, CHECKED: changes}
+    drawn = [v.model_dump() for v in kept]
+    return {**data, "composition": {"views": drawn}, CHECKED: changes, CHECK_ROUND: ROUND}
 
 
 class CheckJob(NoteJob):
     """The check asked alone of pages written before it (kept for good, so a
     new prompt never reaches them): their takes corrected over their marks
-    drawn on the picture, the rest of the page as it was. Once per page."""
+    drawn on the picture, the rest of the page as it was. Once per page
+    and round of the check (:data:`ROUND`)."""
 
     kind = KIND
     model = OPUS
@@ -271,7 +290,7 @@ class CheckJob(NoteJob):
             if not wants_check(page):
                 continue
             assert page is not None
-            data = {**page.data, CHECKED: found[1] if found else []}
+            data = {**page.data, CHECKED: found[1] if found else [], CHECK_ROUND: ROUND}
             if found:
                 data["composition"] = _composition(found[0]).model_dump()
             self.library.save_note(page.model_copy(update={"data": data}))

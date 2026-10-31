@@ -740,6 +740,15 @@ actor DemoBackend: FrameBackend {
                             .init(shape: "line", points: [Spot(x: 0.46, y: 0.725), Spot(x: 0.7, y: 0.72), Spot(x: 0.97, y: 0.715)], title: "Horyzont", text: "nisko, po zachodniemu"),
                         ]
                     ),
+                    .init(
+                        title: "Geometria detali",
+                        grid: "none",
+                        text: "Fudżi to mały, równy trójkąt, który powtarza w dolinie kształt wielkiej fali. Łodzie układają się w łuk wzdłuż grzbietu wody.",
+                        marks: [
+                            .init(shape: "triangle", points: [Spot(x: 0.58, y: 0.72), Spot(x: 0.645, y: 0.61), Spot(x: 0.71, y: 0.72)], title: "Szczyt Fudżi", text: "mały trójkąt w dolinie fal"),
+                            .init(shape: "loop", points: [Spot(x: 0.55, y: 0.86), Spot(x: 0.72, y: 0.95)], title: "Łuk łodzi", text: "trzy łodzie na jednym grzbiecie"),
+                        ]
+                    ),
                 ],
                 points: [],
                 lines: []

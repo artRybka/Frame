@@ -54,18 +54,24 @@ IMAGE_SIDE = 2576
 #: Wikipedia articles about the work, and the artist's opening paragraph.
 WORK_CHARS = 9000
 ARTIST_CHARS = 1500
-#: "Geometria" and "Spojrzenie" (Mateusz 2026-10-31 dropped "Rytm": the
-#: model hunted for small repetitions).
-MAX_VIEWS = 2
+#: "Geometria", "Spojrzenie" and "Geometria detali" (Mateusz 2026-10-31
+#: dropped "Rytm", the model hunted for small repetitions, for the
+#: geometry of smaller things).
+MAX_VIEWS = 3
 #: Kept in a page whose composition Claude checked over its own marks drawn
 #: on the picture (``ai.check``): what the check changed.
 CHECKED = "composition_checked"
+#: Which round of the check a page's takes went through: pages checked by
+#: an earlier one are checked once more (round 2: the great lines of
+#: "Geometria", Mateusz 2026-10-31).
+CHECK_ROUND = "composition_round"
+ROUND = 2
 MAX_MARKS = 6
 MAX_LINE_POINTS = 12
 #: Points closer than this (fraction of the picture) are one.
 SAME_SPOT = 0.012
 #: A triangle smaller than this (fraction of the picture) is a line.
-MIN_TRIANGLE = 0.004
+MIN_TRIANGLE = 0.0015
 #: A loop's half-width and half-height at least (fraction of the side).
 MIN_LOOP = 0.015
 #: A two-point line this near level (or upright) is drawn level (upright),
@@ -83,8 +89,9 @@ PATHS = ("arrow", "line")
 #: their points may lie this far outside it (fraction of the side).
 REACHING = ("line", "triangle")
 REACH = 0.5
-#: The grids the app draws under a view: none, the golden section, thirds.
-GRIDS = ("none", "golden", "thirds")
+#: The grids the app draws under a view: none, the golden section, thirds
+#: (3×3), halves (2×2).
+GRIDS = ("none", "golden", "thirds", "halves")
 MAX_SIMILAR = 6
 #: Fragments worth a close look ("Detale"), and their sides (fractions).
 MAX_DETAILS = 3
@@ -94,7 +101,7 @@ MAX_LEGACY = 5
 SOURCES = ("obraz", "dane muzeum", "Wikidata", "Wikipedia", "wiedza ogólna")
 #: Picture, sources and an answer with thinking, then the check of the
 #: composition over the marks drawn on the picture (``ai.check``).
-TYPICAL = Usage(input_tokens=19000, cache_read_input_tokens=2500, output_tokens=8000)
+TYPICAL = Usage(input_tokens=19000, cache_read_input_tokens=2500, output_tokens=9000)
 
 MONTHS = (
     "stycznia", "lutego", "marca", "kwietnia", "maja", "czerwca", "lipca", "sierpnia",
@@ -118,8 +125,9 @@ wychodzić poza obraz (opis niżej)."""
 #: lower corners, an X of two diagonals through haystacks, a wedge from a
 #: mast's top out past both edges) while the model ringed single things.
 COMPOSITION = """- "composition": analiza kompozycji \
-jako ujęcia ("views"), każde rysowane osobno ołówkiem na obrazie, kolejno „Geometria” \
-i „Spojrzenie”, i żadnych innych (o świetle piszesz w "colour"). Patrz jak historyk sztuki: \
+jako ujęcia ("views"), każde rysowane osobno ołówkiem na obrazie, kolejno „Geometria”, \
+„Spojrzenie” i „Geometria detali”, i żadnych innych (o świetle piszesz w "colour"). Patrz jak \
+historyk sztuki: \
 najpierw cały obraz, potem schemat. Nazywaj tylko układy, które naprawdę porządkują obraz. \
 Podpis śladu nazywa to, co ślad pokazuje („Piramida postaci”, „Horyzont”, nie „Dynamika”), \
 a tekst ujęcia twierdzi tylko to, co pokazują ślady.
@@ -136,7 +144,9 @@ przecinających się w ważnym miejscu, jednej silnej przekątnej (ukośna przez
 musi biec z rogu do rogu; diagonala barokowa);
   * osi pionowej i równowagi (symetrycznej czy asymetrycznej, gdzie leży ciężar), horyzontu \
 i poziomych pasów, planów;
-  * łuku, koła lub owalu, krzywej S, zygzaka, krzyża, układu L, ramy w ramie, perspektywy \
+  * koła lub owalu (postacie, drzewa, chmury lub architektura ułożone w krąg, sklepienie, \
+łuk fali; rysuj jako "loop" obejmujący cały ten krąg), łuku, krzywej S, zygzaka, krzyża, układu \
+L, ramy w ramie, perspektywy \
 linearnej (horyzont i punkt zbiegu, do którego prowadzą linie).
   Wielką linię prowadź przez środki i krawędzie form, które ją wyznaczają, i przedłużaj aż \
 do krawędzi obrazu w obie strony; jej punkty mogą leżeć poza obrazem (do połowy szerokości \
@@ -145,13 +155,18 @@ trójkąt lub odwrócone V rysuj jako "line" z 3 punktami (koniec lewego boku, w
 koniec prawego boku), zamknięty trójkąt jako "triangle", X jako dwie linie. Najpierw 1–3 \
 wielkie linie szkieletu, potem najwyżej dwa ślady, które je dopełniają (horyzont, oś, \
 miejsce przecięcia). Bez kółek i prostokątów wokół pojedynczych rzeczy (to robota \
-„Spojrzenia”), chyba że rzecz leży na siatce. Złoty podział (linie 0,382 i 0,618) \
-i trójpodział (1/3 i 2/3), gdy główny \
-element (horyzont, oś postaci, twarz, wierzchołek, przecięcie przekątnych, wyraźna krawędź) \
-leży na linii lub blisko niej, do około 5% boku obrazu; narysuj wtedy ten element śladem. Gdy \
-leży dokładnie (do ok. 2%), pisz „na linii”, gdy dalej, „blisko linii” albo „w pobliżu \
-złotego podziału”. Obie siatki leżą blisko siebie, więc wybierz tę, której element jest \
-bliżej, a gdy żadna nie pasuje, "grid" to "none". Nie przypisuj artyście świadomego użycia \
+„Spojrzenia” i „Geometrii detali”), chyba że rzecz leży na siatce; wielki krąg lub owal \
+układu to co innego.
+  Siatki: złoty podział (linie 0,382 i 0,618), trójpodział, czyli siatka 3×3 (1/3 i 2/3), \
+i połowy, czyli siatka 2×2 (linie środkowe 1/2). Najciekawsze jest, gdy wielki układ krzyżuje \
+się z siatką: wierzchołek trójkąta, przecięcie przekątnych X, środek koła lub punkt, w którym \
+wielka linia przecina linię siatki, leży na jej linii albo na przecięciu dwóch linii siatki; \
+także gdy horyzont, oś postaci lub twarz leży na linii. Wtedy ustaw "grid", narysuj ten układ \
+śladem i nazwij to w tekście (np. „Wierzchołek piramidy na górnej linii trójpodziału”, \
+„Przekątne krzyżują się w środku obrazu”). Element liczy się, gdy leży do około 5% boku \
+obrazu od linii: do ok. 2% pisz „na linii”, dalej „blisko linii” albo „w pobliżu złotego \
+podziału”. Złoty podział i trójpodział leżą blisko siebie, więc wybierz siatkę, której linia \
+jest bliżej; gdy żadna nie pasuje, "grid" to "none". Nie przypisuj artyście świadomego użycia \
 złotego podziału, jeśli źródła tego nie mówią.
   „Spojrzenie”: gdzie oko wchodzi (najsilniejszy kontrast jasnego i ciemnego, twarz, \
 najjaśniejsza lub najbardziej nasycona plama, największa forma) i którędy idzie dalej: za \
@@ -161,6 +176,13 @@ w obraz. Zwróć uwagę na repoussoir (ciemna postać, drzewo lub kotara na pier
 która wpycha wzrok w głąb) i na plany: pierwszy, środkowy, dalszy. Strzałka biegnie od \
 rzeczy do rzeczy, w kolejności czytania; kółka na głównych miejscach, każde dokładnie na \
 rzeczy, którą nazywa.
+  „Geometria detali”: geometria kompozycyjna w mniejszych częściach obrazu: grupa postaci, \
+martwa natura na stole, twarz z dłońmi, budynek, łódź, drzewo. Te same figury co w szkielecie \
+całości, tylko w skali jednej rzeczy: trójkąt grupy, owal głowy i ramion, oś postaci, \
+przekątna wiosła, koło talerza, pion i poziom okna; także gdy taka figura powtarza lub \
+odwraca wielki układ albo leży na siatce. 2–4 ślady, każdy na innej rzeczy, której nazwę \
+podaje podpis, z wierzchołkami i liniami na prawdziwych krawędziach i osiach tej rzeczy. \
+Pomiń to ujęcie, gdy w detalach nie ma wyraźnej geometrii.
   """
 
 SYSTEM = (
@@ -195,8 +217,9 @@ wyróżniał i w którym miejscu jego drogi powstało to dzieło. Bez powtarzani
 """
     + COMPOSITION
     + """
-  Każde ujęcie: "title" (1–3 słowa), "grid" ("golden" lub "thirds" tylko na warunkach \
-powyżej, aplikacja narysuje siatkę; inaczej "none"), "text" (dwa-trzy zdania, co to ujęcie \
+  Każde ujęcie: "title" (1–3 słowa), "grid" ("golden", "thirds" lub "halves" tylko na \
+warunkach powyżej, aplikacja narysuje siatkę; inaczej "none"), "text" (dwa-trzy zdania, co to \
+ujęcie \
 pokazuje) i "marks": 2–5 śladów. Ślad: "shape" i "points" w pikselach: "arrow" (2–12 punktów \
 wzdłuż drogi, grot na końcu), "line" (2–12 punktów: horyzont, przekątna, oś, krawędź, \
 boki otwartego trójkąta), "loop" \
@@ -604,21 +627,30 @@ def _detail(raw: dict[str, Any]) -> Detail | None:
     return Detail(title=title, text=_text(raw.get("text"), 300), x=x, y=y, w=w, h=h)
 
 
+def _in_detail(view: View) -> bool:
+    return "detal" in view.title.casefold()
+
+
 def _geometry(view: View) -> bool:
-    return view.title.casefold().startswith("geometr")
+    return view.title.casefold().startswith("geometr") and not _in_detail(view)
 
 
 def takes(views: list[View]) -> list[View]:
-    """The takes the app shows: "Geometria", then "Spojrzenie". Pages written
-    before asked for "Spojrzenie" first and a third take ("Rytm", or one
-    "if it made sense", e.g. "Światło"): it is left out, and the two shown
-    in today's order."""
+    """The takes the app shows: "Geometria", "Spojrzenie", then "Geometria
+    detali" when there is one. Pages written before asked for "Spojrzenie"
+    first and for another third take ("Rytm", or one "if it made sense",
+    e.g. "Światło"): it is left out, and the two shown in today's order."""
     kept: list[View] = []
     for view in views:
         marks = [m for m in view.marks if m.shape in SHAPES]
         if marks and not view.title.casefold().startswith("rytm"):
             kept.append(view if marks == view.marks else view.model_copy(update={"marks": marks}))
-    return sorted(kept[:MAX_VIEWS], key=lambda v: not _geometry(v))
+    found = (
+        next((v for v in kept if _geometry(v)), None),
+        next((v for v in kept if not _geometry(v) and not _in_detail(v)), None),
+        next((v for v in kept if _in_detail(v)), None),
+    )
+    return [v for v in found if v is not None]
 
 
 def _composition(views: list[View]) -> Composition:
@@ -848,8 +880,9 @@ class DailyJob(NoteJob):
             data: dict[str, Any] = {"failed": True}
         else:
             data = essay.model_dump()
-            if CHECKED in note.data:
-                data[CHECKED] = note.data[CHECKED]
+            for key in (CHECKED, CHECK_ROUND):
+                if key in note.data:
+                    data[key] = note.data[key]
         self.library.save_note(note.model_copy(update={"data": data}))
 
     def fresh(self, item: Item, note: Note | None) -> bool:
