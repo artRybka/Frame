@@ -5,7 +5,9 @@ updater.py), a second container of the same image with the Docker socket and
 no network. They share data/update/: the server leaves a request there
 (``request.json``, "check" or "update") and the helper answers in
 ``status.json``: what the `frame` container runs, what the registry has, and
-how the last update went.
+how the last update went. A check asked from the app the server answers
+itself, from the registry (registry.py), in ``registry.json``: no need to
+wait for the helper to pull the image.
 """
 
 from __future__ import annotations
@@ -63,6 +65,26 @@ class UpdaterStatus(BaseModel):
         return bool(self.running and self.latest and self.latest.id != self.running.id)
 
 
+class RegistryCheck(BaseModel):
+    """registry.json, written only by the server: what the tag pointed at
+    when the app last asked."""
+
+    checked_at: str
+    latest: ImageInfo
+
+
+def newer(latest: ImageInfo | None, running: ImageInfo | None, version: str) -> bool:
+    """A different release than this server is out. By version, since the
+    helper notes what runs only at its checks (every few hours): a server
+    rebuilt in Container Manager meanwhile already runs the newest image,
+    though the helper still has the old one down."""
+    if latest is None:
+        return False
+    if latest.version:
+        return latest.version != version
+    return running is not None and latest.id != running.id
+
+
 class ServerUpdateView(BaseModel):
     """GET /api/server/update."""
 
@@ -98,6 +120,7 @@ class UpdateFolder:
         self.folder = folder
         self.status_file = folder / "status.json"
         self.request_file = folder / "request.json"
+        self.registry_file = folder / "registry.json"
 
     def status(self) -> UpdaterStatus | None:
         try:
@@ -107,6 +130,15 @@ class UpdateFolder:
 
     def save_status(self, status: UpdaterStatus) -> None:
         _write(self.status_file, status.model_dump_json(indent=2))
+
+    def registry(self) -> RegistryCheck | None:
+        try:
+            return RegistryCheck.model_validate_json(self.registry_file.read_text())
+        except (OSError, ValidationError):
+            return None
+
+    def save_registry(self, check: RegistryCheck) -> None:
+        _write(self.registry_file, check.model_dump_json(indent=2))
 
     def request(self, action: Action) -> None:
         stamp = datetime.now(UTC).isoformat(timespec="seconds")
@@ -137,24 +169,30 @@ class UpdateFolder:
             return ServerUpdateView(
                 version=build_version(), addon=ADDON_OPTIONS.is_file(), updater=False
             )
-        latest = status.latest
+        latest, checked_at = status.latest, status.checked_at
+        state, error = status.state, status.error
+        # Whichever looked last: the helper's pull or the server's question.
+        seen = self.registry()
+        if seen is not None and (
+            checked_at is None
+            or datetime.fromisoformat(seen.checked_at) >= datetime.fromisoformat(checked_at)
+        ):
+            latest, checked_at = seen.latest, seen.checked_at
+            if state == "failed":  # an older failure; last_update keeps its story
+                state, error = "idle", None
         version = build_version()
-        # The helper notes what runs at its checks (every few hours): the
-        # server rebuilt in Container Manager meanwhile already runs the
-        # newest image, though the helper still has the old one down.
-        current = latest is not None and latest.version == version
         return ServerUpdateView(
             version=version,
             updater=True,
-            state=status.state,
-            update_available=status.update_available and not current,
+            state=state,
+            update_available=newer(latest, status.running, version),
             latest_version=latest.version if latest else None,
             latest_revision=latest.revision if latest else None,
             updating_from=(
-                status.running.version if status.state == "updating" and status.running else None
+                status.running.version if state == "updating" and status.running else None
             ),
-            checked_at=status.checked_at,
-            error=status.error,
+            checked_at=checked_at,
+            error=error,
             last_update=status.last_update,
             pending=self.pending(),
         )
