@@ -932,7 +932,6 @@ private struct EditorSearch: ViewModifier {
     func body(content: Content) -> some View {
         if enabled {
             content
-                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     if groupsShown {
                         TermFacetBar(
@@ -943,6 +942,8 @@ private struct EditorSearch: ViewModifier {
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
                 }
+                // Measured outside the groups' inset: an open group grows it.
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
                 .termSearch(lookup, tokens: tokens, focused: focused, pickedFromMuseums: pickedFromMuseums)
                 .toolbar {
                     DefaultToolbarItem(kind: .search, placement: .bottomBar)

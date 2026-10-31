@@ -99,7 +99,6 @@ struct MuseumSearchView: View {
         }
         .scrollDismissesKeyboard(.immediately)
         .hidesOnScroll($groupsShown)
-        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
         .background(Theme.paper)
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if groupsShown {
@@ -111,6 +110,8 @@ struct MuseumSearchView: View {
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
+        // Measured outside the groups' inset: an open group grows it.
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
         .termSearch(lookup, tokens: tokens, focused: $fieldFocused)
         // Tapping the field brings the groups back, as does asking nothing.
         .onChange(of: fieldFocused) { _, focused in
