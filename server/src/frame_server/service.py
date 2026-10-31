@@ -41,6 +41,7 @@ from .status import StatusMonitor
 from .storage import StorageStore
 from .store import ContentInfo, ContentStore
 from .study import Study
+from .users import Users
 
 log = logging.getLogger(__name__)
 
@@ -158,6 +159,8 @@ class FrameService:
         self.library = Library(settings.data_dir / "library.db")
         if repaired := repair_library(self.library):
             log.info("repaired stored text and links of %d items", repaired)
+        # The owner (the server's token) and household members.
+        self.users = Users(self.library, settings.api_token)
         # Before anything reads the panel's address: the app's values win.
         self.panel_config = PanelConfigStore(settings, self.library)
         self.images = ImageCache(settings.data_dir / "library", museum_client)

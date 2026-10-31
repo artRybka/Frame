@@ -37,10 +37,11 @@ from ..library.models import Framing
 from ..library.museums import MUSEUMS, Discovery, Kind
 from ..library.repo import SortKey
 from ..library.seed import PACKS, import_queries, pack
+from ..library.viewer import viewer_id
 from ..player import hold_from
 from ..schedule import FrameSettings
 from ..service import FrameService
-from .deps import require_token, service
+from .deps import require_owner, require_token, service
 
 router = APIRouter(prefix="/api", dependencies=[Depends(require_token)], tags=["library"])
 Svc = Annotated[FrameService, Depends(service)]
@@ -295,7 +296,12 @@ async def patch_item(item_id: str, patch: ItemPatch, svc: Svc) -> Item:
         if item.look is None:
             raise HTTPException(422, "only a photo sent once has a look of its own")
         changes["look"] = patch.look
-    updated = svc.library.update(item_id, **changes)
+    liked = changes.pop("favorite", None)
+    if liked is not None:  # the asking person's own heart
+        svc.library.set_favorite(viewer_id(), item.id, liked)
+        changes.setdefault("favorite", liked)  # for the player below
+    stored = {k: v for k, v in changes.items() if k != "favorite"}
+    updated = svc.library.update(item.id, **stored) if stored else svc.library.get(item.id)
     assert updated is not None
     if changes.keys() & {"favorite", "excluded"}:
         svc.player.item_changed(item_id)  # e.g. a new favourite joins Ulubione playing now
@@ -308,7 +314,7 @@ async def patch_item(item_id: str, patch: ItemPatch, svc: Svc) -> Item:
     return updated
 
 
-@router.delete("/library/items/{item_id}")
+@router.delete("/library/items/{item_id}", dependencies=[Depends(require_owner)])
 def delete_item(item_id: str, svc: Svc) -> dict[str, bool]:
     item = _item(svc, item_id)
     svc.library.delete(item_id)
@@ -625,7 +631,7 @@ async def queue_item(item_id: str, svc: Svc) -> dict[str, Any]:
 def _remember_sent(svc: FrameService, item: Item) -> None:
     """A photo sent once joins "Historia przesłanych" and gets its keywords
     ahead of the background."""
-    svc.player.remember_sent(item)
+    svc.player.remember_sent(item, viewer_id())
     if item.look is not None:
         svc.ai.need_now(item.id, KEYWORDS)
 

@@ -39,6 +39,7 @@ from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
 from pydantic import BaseModel
 
 from .births import search_name
+from .library.viewer import OWNER_ID
 
 if TYPE_CHECKING:
     from .library import Item, Library
@@ -68,6 +69,8 @@ KINDS: dict[str, tuple[str, str]] = {
 # The kinds of the first release: a phone registered then gets the later
 # ones switched on as they come (``PushDevice.seen``).
 FIRST_KINDS = ["battery", "send_failed", "changed", "server_update", "daily"]
+#: Told only to the owner's phones: a member does not run the server.
+OWNER_KINDS = frozenset({"server_update"})
 
 BATTERY_LOW = 20
 # Told once below ``BATTERY_LOW``; again only after charging or this level.
@@ -130,6 +133,8 @@ class PushDevice(BaseModel):
     #: The kinds there were when it last chose (None: the first release's).
     seen: list[str] | None = None
     name: str = ""
+    #: Whose phone: their hearts make the birthdays (users.py).
+    user: str = OWNER_ID
     added_at: str = ""
     last_sent_at: str | None = None
     last_error: str | None = None
@@ -339,7 +344,13 @@ class Notifier:
         return next((d for d in self.devices() if d.token == token.lower()), None)
 
     def register(
-        self, token: str, *, sandbox: bool, kinds: list[str] | None = None, name: str = ""
+        self,
+        token: str,
+        *,
+        sandbox: bool,
+        kinds: list[str] | None = None,
+        name: str = "",
+        user: str = OWNER_ID,
     ) -> PushDevice:
         token = token.strip().lower()
         if not _TOKEN.match(token):
@@ -350,6 +361,7 @@ class Notifier:
             found = PushDevice(token=token, sandbox=sandbox, added_at=_now(), seen=list(KINDS))
             devices.append(found)
         found.sandbox = sandbox
+        found.user = user  # a phone that joined as someone else is theirs now
         if kinds is not None:
             found.kinds = [k for k in KINDS if k in kinds]
             found.seen = list(KINDS)
@@ -361,8 +373,14 @@ class Notifier:
     def forget(self, token: str) -> None:
         self._save([d for d in self.devices() if d.token != token.lower()])
 
-    def wanted(self, kind: str) -> bool:
-        return self.key() is not None and any(kind in d.kinds for d in self.devices())
+    def wanted(self, kind: str, user: str | None = None) -> bool:
+        return self.key() is not None and any(
+            kind in d.kinds and (user is None or d.user == user) for d in self.devices()
+        )
+
+    def people(self, kind: str) -> list[str]:
+        """Whose phones want ``kind``."""
+        return sorted({d.user for d in self.devices() if kind in d.kinds})
 
     # -- sending -------------------------------------------------------------
 
@@ -413,10 +431,12 @@ class Notifier:
         collapse: str | None = None,
         expires: datetime | None = None,
         only: str | None = None,
+        user: str | None = None,
     ) -> dict[str, Sent]:
         """To every phone that wants ``kind`` (``only``: that one, whatever
-        it wants); a token APNs says is gone is forgotten. A token from
-        the other environment (a build from Xcode) is tried there too."""
+        it wants; ``user``: only that person's); a token APNs says is gone is
+        forgotten. A token from the other environment (a build from Xcode)
+        is tried there too."""
         apns = self.apns()
         if apns is None:
             return {}
@@ -424,7 +444,13 @@ class Notifier:
         if only is not None:
             targets = [d for d in devices if d.token == only.lower()]
         else:
-            targets = [d for d in devices if kind in d.kinds]
+            targets = [
+                d
+                for d in devices
+                if kind in d.kinds
+                and (user is None or d.user == user)
+                and (kind not in OWNER_KINDS or d.user == OWNER_ID)
+            ]
         payload: dict[str, Any] = {
             "aps": {"alert": {"title": title, "body": short(body)}, "sound": "default"},
             "kind": kind,
@@ -780,20 +806,24 @@ async def birthday_tick(service: FrameService, now: datetime | None = None) -> i
         return 0
     if not notifier.wanted("birthday"):
         return 0
-    favourites = await asyncio.to_thread(service.births.favourites)
     notifier.library.set_state(BIRTHDAY_SENT_KEY, day.isoformat())
-    born_today = service.births.today(day, [a for a, _ in favourites.most_common()])
-    for artist, born in born_today[:BIRTHDAYS_MAX]:
-        years = day.year - born.year
-        await notifier.send(
-            "birthday",
-            f"Urodziny: {search_name(artist)}",
-            f"{years}. rocznica urodzin (ur. {born.day}.{born.month:02d}.{born.year}). "
-            f"W Twoich ulubionych: {works(favourites[artist])}.",
-            route=f"artist/{artist}",
-            collapse=f"birthday-{artist}"[:64],
-        )
-    return len(born_today[:BIRTHDAYS_MAX])
+    told = 0
+    for user in notifier.people("birthday"):  # each from their own hearts
+        favourites = await asyncio.to_thread(service.births.favourites, user)
+        born_today = service.births.today(day, [a for a, _ in favourites.most_common()])
+        for artist, born in born_today[:BIRTHDAYS_MAX]:
+            years = day.year - born.year
+            await notifier.send(
+                "birthday",
+                f"Urodziny: {search_name(artist)}",
+                f"{years}. rocznica urodzin (ur. {born.day}.{born.month:02d}.{born.year}). "
+                f"W Twoich ulubionych: {works(favourites[artist])}.",
+                route=f"artist/{artist}",
+                collapse=f"birthday-{artist}"[:64],
+                user=user,
+            )
+            told += 1
+    return told
 
 
 async def settle_studies(service: FrameService) -> int:

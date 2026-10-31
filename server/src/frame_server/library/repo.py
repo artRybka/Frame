@@ -36,6 +36,7 @@ from .models import (
     PlaylistRules,
     PlaylistSummary,
 )
+from .viewer import OWNER_ID, STORE, viewer_id
 from .vocabulary import artist_matches, is_postal, matches_terms, object_category, set_aside
 
 #: Item fields that tell copies of a work apart or choose between them.
@@ -43,8 +44,16 @@ WORK_FIELDS = frozenset(
     {"kind", "source", "title", "artist", "year", "width", "height", "url", "image_url", "pooled"}
 )
 
-#: The playlist "Historia przesłanych" (see ``Player.remember_sent``).
+#: The playlist "Historia przesłanych" (see ``Player.remember_sent``); one
+#: for each person (the owner's under the key from before, ``sent_key``).
 SENT_KEY = "sent_photos_playlist"
+#: Hearts were moved from ``Item.favorite`` to the owner's in ``favorites``.
+FAVORITES_MOVED_KEY = "favorites_moved"
+
+
+def sent_key(user_id: str) -> str:
+    return SENT_KEY if user_id == OWNER_ID else f"{SENT_KEY}:{user_id}"
+
 
 SortKey = Literal["recent", "title", "artist", "year", "random", "suitability", "shown"]
 
@@ -67,6 +76,12 @@ CREATE TABLE IF NOT EXISTS ai_notes (
     data TEXT NOT NULL,
     created_at TEXT NOT NULL,
     PRIMARY KEY (item_id, kind)
+);
+CREATE TABLE IF NOT EXISTS favorites (
+    user_id TEXT NOT NULL,
+    item_id TEXT NOT NULL,
+    added_at TEXT NOT NULL,
+    PRIMARY KEY (user_id, item_id)
 );
 """
 
@@ -109,16 +124,21 @@ def _searches(rules: PlaylistRules) -> bool:
     )
 
 
-def _is_mine(item: Item, mine: list[str], listed: Collection[str]) -> bool:
-    """``item`` is one of the owner's works ``mine`` asks for (either)."""
-    return (MINE_FAVORITES in mine and item.favorite) or (
-        MINE_PLAYLISTS in mine and item.id in listed
-    )
+def _is_mine(item: Item, mine: list[str], listed: Collection[str], liked: bool) -> bool:
+    """``item`` is one of the person's works ``mine`` asks for (either)."""
+    return (MINE_FAVORITES in mine and liked) or (MINE_PLAYLISTS in mine and item.id in listed)
 
 
-def matches(item: Item, rules: PlaylistRules, listed: Collection[str] = ()) -> bool:
+def matches(
+    item: Item,
+    rules: PlaylistRules,
+    listed: Collection[str] = (),
+    favorites: Collection[str] | None = None,
+) -> bool:
     """Whether ``item`` fits ``rules``; ``listed`` are the works on the
-    owner's playlists, for ``mine:playlists``."""
+    person's playlists, for ``mine:playlists``, ``favorites`` their hearts
+    (None: anyone's, the stored ``Item.favorite``)."""
+    liked = item.favorite if favorites is None else item.id in favorites
     if item.excluded or item.id in rules.exclude_ids:
         return False
     # Photographs, sculpture, crafts and manuscripts are found only when
@@ -129,10 +149,10 @@ def matches(item: Item, rules: PlaylistRules, listed: Collection[str] = ()) -> b
         return False
     if _searches(rules) and is_postal(item):
         return False
-    if rules.favorites_only and not item.favorite:
+    if rules.favorites_only and not liked:
         return False
     mine = [t for t in rules.terms if t in MINE]
-    if mine and not _is_mine(item, mine, listed):
+    if mine and not _is_mine(item, mine, listed, liked):
         return False
     if rules.kept_only and item.pooled and not item.favorite:
         return False
@@ -202,8 +222,10 @@ class Library:
         self._works: Works | None = None  # the items grouped by work
         self._conn: sqlite3.Connection | None = None
         self._depth = 0  # nested _db() blocks share the outermost transaction
+        self._favorites: dict[str, set[str]] | None = None
         with self._db() as db:
             db.executescript(SCHEMA)
+        self._move_favorites()
 
     @contextmanager
     def _db(self) -> Iterator[sqlite3.Connection]:
@@ -231,6 +253,7 @@ class Library:
             except BaseException:
                 self._items = None  # the cache may hold rolled back changes
                 self._works = None
+                self._favorites = None
                 raise
             finally:
                 self._depth -= 1
@@ -294,9 +317,11 @@ class Library:
             with self._db() as db:
                 db.execute(
                     "INSERT OR REPLACE INTO items (id, data) VALUES (?, ?)",
-                    (item.id, item.model_dump_json()),
+                    (item.id, item.model_dump_json(context=STORE)),
                 )
             self._all()[item.id] = item
+            if existing is None and item.favorite:  # brought in liked: the asker's heart
+                self.set_favorite(viewer_id(), item.id, True)
             if existing is None and self._works is not None:
                 self._works.add(item)
             else:
@@ -304,6 +329,18 @@ class Library:
             return item
 
     def update(self, item_id: str, **changes: Any) -> Item | None:
+        """``favorite``: the heart of whoever is asking (the owner in the
+        background), see :meth:`set_favorite`."""
+        if "favorite" in changes:
+            with self._lock:
+                liked = bool(changes.pop("favorite"))
+                if self.set_favorite(viewer_id(), item_id, liked) is None:
+                    return None
+                if not changes:
+                    return self.get(item_id)
+        return self._update(item_id, **changes)
+
+    def _update(self, item_id: str, **changes: Any) -> Item | None:
         with self._lock:
             item = self.get(item_id)
             if item is None:
@@ -311,7 +348,8 @@ class Library:
             updated = item.model_copy(update=changes)
             with self._db() as db:
                 db.execute(
-                    "UPDATE items SET data = ? WHERE id = ?", (updated.model_dump_json(), item_id)
+                    "UPDATE items SET data = ? WHERE id = ?",
+                    (updated.model_dump_json(context=STORE), item_id),
                 )
             self._all()[item_id] = updated
             if WORK_FIELDS & changes.keys():
@@ -325,9 +363,84 @@ class Library:
             with self._db() as db:
                 db.execute("DELETE FROM items WHERE id = ?", (item_id,))
                 db.execute("DELETE FROM ai_notes WHERE item_id = ?", (item_id,))
+                db.execute("DELETE FROM favorites WHERE item_id = ?", (item_id,))
             del self._all()[item_id]
+            for hearts in (self._favorites or {}).values():
+                hearts.discard(item_id)
             self._works = None
             return True
+
+    # -- hearts, one set for each person -------------------------------------
+
+    def _move_favorites(self) -> None:
+        """Once: the hearts from before there were people become the
+        owner's."""
+        if self.get_state(FAVORITES_MOVED_KEY):
+            return
+        with self._db() as db:
+            stamp = now_iso()
+            db.executemany(
+                "INSERT OR IGNORE INTO favorites (user_id, item_id, added_at) VALUES (?, ?, ?)",
+                [(OWNER_ID, i.id, stamp) for i in self._all().values() if i.favorite],
+            )
+            self.set_state(FAVORITES_MOVED_KEY, True)
+        self._favorites = None
+
+    def _hearts(self) -> dict[str, set[str]]:
+        with self._lock:
+            if self._favorites is None:
+                with self._db() as db:
+                    rows = db.execute("SELECT user_id, item_id FROM favorites").fetchall()
+                hearts: dict[str, set[str]] = {}
+                for user_id, item_id in rows:
+                    hearts.setdefault(user_id, set()).add(item_id)
+                self._favorites = hearts
+            return self._favorites
+
+    def favorites(self, user_id: str | None = None) -> frozenset[str]:
+        """The works ``user_id`` likes (default: whoever is asking)."""
+        return frozenset(self._hearts().get(user_id or viewer_id(), ()))
+
+    def likes(self, user_id: str, item_id: str) -> bool:
+        return item_id in self._hearts().get(user_id, ())
+
+    def fans(self) -> dict[str, frozenset[str]]:
+        """Everyone's hearts, by person."""
+        return {u: frozenset(ids) for u, ids in self._hearts().items()}
+
+    def set_favorite(self, user_id: str, item_id: str, liked: bool) -> Item | None:
+        """``user_id``'s heart on ``item_id``; the stored ``Item.favorite``
+        says whether anyone likes it (what keeps it in the library)."""
+        with self._lock:
+            if item_id not in self._all():
+                return None
+            hearts = self._hearts()
+            with self._db() as db:
+                if liked:
+                    db.execute(
+                        "INSERT OR IGNORE INTO favorites (user_id, item_id, added_at)"
+                        " VALUES (?, ?, ?)",
+                        (user_id, item_id, now_iso()),
+                    )
+                    hearts.setdefault(user_id, set()).add(item_id)
+                else:
+                    db.execute(
+                        "DELETE FROM favorites WHERE user_id = ? AND item_id = ?",
+                        (user_id, item_id),
+                    )
+                    hearts.get(user_id, set()).discard(item_id)
+                anyone = any(item_id in ids for ids in hearts.values())
+                return self._update(item_id, favorite=anyone)
+
+    def forget_person(self, user_id: str) -> None:
+        """A person removed from the server: their hearts go."""
+        with self._lock, self._db() as db:
+            ids = self._hearts().pop(user_id, set())
+            db.execute("DELETE FROM favorites WHERE user_id = ?", (user_id,))
+            hearts = self._hearts()
+            for item_id in ids:
+                if item_id in self._all() and not any(item_id in h for h in hearts.values()):
+                    self._update(item_id, favorite=False)
 
     def works(self) -> Works:
         """The library's items grouped by work: copies of one work from
@@ -357,11 +470,17 @@ class Library:
         limit: int | None = None,
         seed: int = 0,
         include_excluded: bool = False,
+        user: str | None = None,
     ) -> tuple[int, list[Item]]:
+        """``user``: whose hearts and playlists "Ulubione" and "Moje" mean
+        (default: whoever is asking, the owner in the background)."""
         rules = rules or PlaylistRules()
+        user = user or viewer_id()
         # Spare copies of a work stay out, unless a source is asked for.
         spare = set() if include_excluded or rules.sources else self.spare_copies()
-        listed = self.listed() if MINE_PLAYLISTS in rules.terms else set()
+        listed = self.listed(user) if MINE_PLAYLISTS in rules.terms else set()
+        mine = rules.favorites_only or any(t in MINE for t in rules.terms)
+        hearts = self.favorites(user) if mine else None
 
         # Photographs and pages of manuscripts the server picked only when
         # asked for (photographs never).
@@ -371,8 +490,9 @@ class Library:
             if not include_excluded and item.pooled and set_aside(item, rules.terms):
                 return False
             if include_excluded and item.excluded:
-                return matches(item.model_copy(update={"excluded": False}), rules, listed)
-            return matches(item, rules, listed)
+                unexcluded = item.model_copy(update={"excluded": False})
+                return matches(unexcluded, rules, listed, hearts)
+            return matches(item, rules, listed, hearts)
 
         items = [i for i in self._all().values() if selected(i)]
         if not include_excluded:
@@ -400,19 +520,28 @@ class Library:
 
     # -- playlists ----------------------------------------------------------
 
-    def playlists(self) -> list[Playlist]:
+    def _playlist_of(self, playlist_id: int, data: str) -> Playlist:
+        playlist = Playlist.model_validate_json(data).model_copy(update={"id": playlist_id})
+        if '"owner"' not in data:
+            # From before there were people: the owner's, and shared
+            # (Mateusz, 2026-10-31), but "Historia przesłanych".
+            mine_only = playlist_id == self.get_state(SENT_KEY, None)
+            playlist = playlist.model_copy(update={"owner": OWNER_ID, "shared": not mine_only})
+        return playlist
+
+    def playlists(self, user: str | None = None) -> list[Playlist]:
+        """All playlists, or those ``user`` sees (theirs and shared ones)."""
         with self._db() as db:
             rows = db.execute("SELECT id, data FROM playlists ORDER BY id").fetchall()
-        return [
-            Playlist.model_validate_json(data).model_copy(update={"id": pid}) for pid, data in rows
-        ]
+        found = [self._playlist_of(pid, data) for pid, data in rows]
+        return found if user is None else [p for p in found if p.visible_to(user)]
 
     def playlist(self, playlist_id: int) -> Playlist | None:
         with self._db() as db:
             row = db.execute("SELECT data FROM playlists WHERE id = ?", (playlist_id,)).fetchone()
         if row is None:
             return None
-        return Playlist.model_validate_json(row[0]).model_copy(update={"id": playlist_id})
+        return self._playlist_of(playlist_id, row[0])
 
     def save_playlist(self, playlist: Playlist) -> Playlist:
         stamp = now_iso()
@@ -438,11 +567,14 @@ class Library:
             cur = db.execute("DELETE FROM playlists WHERE id = ?", (playlist_id,))
         return cur.rowcount > 0
 
-    def listed(self) -> set[str]:
-        """The works on the owner's playlists but "Ulubione" (which has its
-        own term), smart ones that ask for these themselves left out."""
+    def listed(self, user: str | None = None) -> set[str]:
+        """The works on ``user``'s own playlists but "Ulubione" (which has
+        its own term), smart ones that ask for these themselves left out."""
+        user = user or viewer_id()
         ids: set[str] = set()
         for playlist in self.playlists():
+            if playlist.owner != user:
+                continue
             smart = playlist.kind == PlaylistKind.SMART
             if playlist.is_favorites or (smart and MINE_PLAYLISTS in playlist.rules.terms):
                 continue
@@ -460,7 +592,7 @@ class Library:
                     if i in all_items and not all_items[i].excluded and i not in skip
                 ]
             )
-        return dedupe(self.query(playlist.rules, sort=sort)[1])
+        return dedupe(self.query(playlist.rules, sort=sort, user=playlist.owner)[1])
 
     def playlist_summary(self, playlist: Playlist) -> PlaylistSummary:
         items = self.playlist_items(playlist, sort="suitability")
@@ -476,6 +608,9 @@ class Library:
             album=playlist.album,
             album_sync=self.album_sync(playlist.id),
             theme=playlist.theme,
+            owner=playlist.owner,
+            shared=playlist.shared,
+            mine=playlist.owner == viewer_id(),
         )
 
     def album_sync(self, playlist_id: int) -> AlbumSync | None:
@@ -507,11 +642,18 @@ class Library:
             db.execute("DELETE FROM kv WHERE key = ?", (key,))
 
     def sent_photo_ids(self) -> set[str]:
-        """Photos sent once that were shown or queued: those in "Historia
-        przesłanych"."""
-        playlist_id = self.get_state(SENT_KEY, None)
-        playlist = self.playlist(playlist_id) if playlist_id is not None else None
-        return set(playlist.item_ids) if playlist is not None else set()
+        """Photos sent once that were shown or queued: those in anyone's
+        "Historia przesłanych"."""
+        ids: set[str] = set()
+        with self._db() as db:
+            rows = db.execute(
+                "SELECT value FROM kv WHERE key = ? OR key LIKE ?", (SENT_KEY, f"{SENT_KEY}:%")
+            ).fetchall()
+        for (value,) in rows:
+            playlist = self.playlist(json.loads(value))
+            if playlist is not None:
+                ids.update(playlist.item_ids)
+        return ids
 
     # -- notes from a language model (ai) -----------------------------------
 

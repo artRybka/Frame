@@ -25,6 +25,7 @@ from .models import Item, ItemKind, PlaylistRules
 from .nationality import artist_note
 from .repo import Library
 from .seed import MORE_POLISH_PAINTERS, PACKS, POLISH_PAINTERS
+from .viewer import OWNER_ID, viewer_id
 from .vocabulary import (
     HIGHLIGHT,
     TERMS,
@@ -593,7 +594,8 @@ def theme(key: str, library: Library | None = None) -> Theme:
     found = BY_KEY.get(key) or _weekly.get(key)
     if found is None and library is not None:
         weekly_themes(library, date.today())
-        found = _weekly.get(key) or next((t for t in liked(library) if t.key == key), None)
+        mine = [*liked(library), *liked(library, OWNER_ID)]
+        found = _weekly.get(key) or next((t for t in mine if t.key == key), None)
     if found is None:
         raise KeyError(f"unknown theme {key!r}")
     return found
@@ -915,8 +917,13 @@ def _listed(names: list[str]) -> str:
     return names[0] if len(names) == 1 else f"{', '.join(names[:-1])} i {names[-1]}"
 
 
-def make_liked(library: Library, taste: list[str]) -> list[Theme]:
-    """A card for each artist the owner likes (``taste``, most liked first):
+def liked_key(user: str) -> str:
+    """Each person's "Bo lubisz" (the owner's under the key from before)."""
+    return LIKED_KEY if user == OWNER_ID else f"{LIKED_KEY}:{user}"
+
+
+def make_liked(library: Library, taste: list[str], user: str = OWNER_ID) -> list[Theme]:
+    """A card for each artist ``user`` likes (``taste``, most liked first):
     the artists of the first theme naming them, the ones with the most works
     in the catalogue, browsed in the museums like the theme. Remembered in
     ``library``, so a card opened after a restart is still found."""
@@ -955,13 +962,14 @@ def make_liked(library: Library, taste: list[str]) -> list[Theme]:
                 playlist=f"Bo lubisz: {artist}",
             )
         )
-    library.set_state(LIKED_KEY, [asdict(t) for t in made])
+    library.set_state(liked_key(user), [asdict(t) for t in made])
     return made
 
 
-def liked(library: Library) -> list[Theme]:
-    """The cards of "Bo lubisz" as last made."""
-    return [_theme_from(t) for t in library.get_state(LIKED_KEY, [])]
+def liked(library: Library, user: str | None = None) -> list[Theme]:
+    """``user``'s cards of "Bo lubisz" as last made (default: the asking
+    person's)."""
+    return [_theme_from(t) for t in library.get_state(liked_key(user or viewer_id()), [])]
 
 
 def browse_theme(

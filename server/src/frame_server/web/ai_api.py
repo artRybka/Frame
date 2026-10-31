@@ -13,9 +13,9 @@ from ..ai import AiConfigUpdate, AiUnavailable, KeyRejected, Progress
 from ..ai.keywords import KIND as KEYWORDS
 from ..ai.pl_text import KIND as PL_TEXT
 from ..service import FrameService
-from .deps import require_token, service
+from .deps import require_owner, service
 
-router = APIRouter(prefix="/api/ai", dependencies=[Depends(require_token)], tags=["ai"])
+router = APIRouter(prefix="/api/ai", dependencies=[Depends(require_owner)], tags=["ai"])
 Svc = Annotated[FrameService, Depends(service)]
 
 

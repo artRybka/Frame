@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from ..service import FrameService
 from ..updates import ServerUpdateView, UpdateFolder
-from .deps import require_token, service
+from .deps import require_owner, require_token, service
 
 router = APIRouter(
     prefix="/api/server/update", dependencies=[Depends(require_token)], tags=["server"]
@@ -29,7 +29,7 @@ def get_update(svc: Svc) -> ServerUpdateView:
     return _folder(svc).view()
 
 
-@router.post("/check", response_model=ServerUpdateView)
+@router.post("/check", response_model=ServerUpdateView, dependencies=[Depends(require_owner)])
 def check(svc: Svc) -> ServerUpdateView:
     """The helper pulls the image now instead of in a few hours."""
     folder = _folder(svc)
@@ -40,7 +40,7 @@ def check(svc: Svc) -> ServerUpdateView:
     return folder.view()
 
 
-@router.post("", response_model=ServerUpdateView)
+@router.post("", response_model=ServerUpdateView, dependencies=[Depends(require_owner)])
 def update(svc: Svc) -> ServerUpdateView:
     """The helper recreates the server's container on the newest image: the
     server goes away for about a minute and comes back as the new version."""

@@ -19,7 +19,8 @@ from ..library import (
 from ..library.duplicates import Works
 from ..library.icloud import album_token
 from ..service import FrameService
-from .deps import require_token, service
+from ..users import User
+from .deps import CurrentUser, require_token, service
 
 router = APIRouter(prefix="/api", dependencies=[Depends(require_token)], tags=["playlists"])
 Svc = Annotated[FrameService, Depends(service)]
@@ -49,11 +50,28 @@ class AlbumCheck(BaseModel):
     count: int
 
 
-def _playlist(svc: FrameService, playlist_id: int) -> Playlist:
+def _playlist(svc: FrameService, playlist_id: int, user: User) -> Playlist:
+    """A playlist ``user`` sees: theirs or a shared one."""
     playlist = svc.library.playlist(playlist_id)
-    if playlist is None:
+    if playlist is None or not playlist.visible_to(user.id):
         raise HTTPException(404, f"no playlist {playlist_id}")
     return playlist
+
+
+def _own(svc: FrameService, playlist_id: int, user: User) -> Playlist:
+    """A playlist ``user`` may change: only its maker does."""
+    playlist = _playlist(svc, playlist_id, user)
+    if playlist.owner != user.id:
+        raise HTTPException(403, "to playlista innej osoby")
+    return playlist
+
+
+def summary(svc: FrameService, playlist: Playlist) -> PlaylistSummary:
+    """As the app shows it: with its maker's name when someone else made it."""
+    found = svc.library.playlist_summary(playlist)
+    if not found.mine:
+        found.owner_name = svc.users.name_of(playlist.owner)
+    return found
 
 
 #: A smart playlist's detail lists this many works at most (its count is all).
@@ -78,9 +96,11 @@ def _checked(playlist: Playlist) -> Playlist:
 
 
 def _only_favorites(svc: FrameService, playlist: Playlist) -> bool:
-    """Whether this is the one "Ulubione" playlist, which always stays."""
+    """Whether this is its maker's one "Ulubione" playlist, which always stays."""
     return playlist.is_favorites and not any(
-        p.is_favorites for p in svc.library.playlists() if p.id != playlist.id
+        p.is_favorites and p.owner == playlist.owner
+        for p in svc.library.playlists()
+        if p.id != playlist.id
     )
 
 
@@ -89,20 +109,21 @@ def _detail(svc: FrameService, playlist: Playlist) -> PlaylistDetail:
     if playlist.kind == PlaylistKind.SMART:
         items = items[:DETAIL_LIMIT]  # e.g. one made before empty rules were refused
     return PlaylistDetail(
-        playlist=svc.library.playlist_summary(playlist),
+        playlist=summary(svc, playlist),
         item_ids=playlist.item_ids,
         items=[ItemSummary.of(i) for i in items],
     )
 
 
 @router.get("/playlists", response_model=list[PlaylistSummary])
-def list_playlists(svc: Svc) -> list[PlaylistSummary]:
-    return [svc.library.playlist_summary(p) for p in svc.library.playlists()]
+def list_playlists(svc: Svc, user: CurrentUser) -> list[PlaylistSummary]:
+    """The asking person's playlists and the shared ones of others."""
+    return [summary(svc, p) for p in svc.library.playlists(user.id)]
 
 
 @router.post("/playlists", response_model=PlaylistDetail)
-def create_playlist(playlist: Playlist, svc: Svc) -> PlaylistDetail:
-    playlist = _checked(playlist)
+def create_playlist(playlist: Playlist, svc: Svc, user: CurrentUser) -> PlaylistDetail:
+    playlist = _checked(playlist).model_copy(update={"owner": user.id})
     if playlist.kind == PlaylistKind.ALBUM:
         playlist = playlist.model_copy(update={"item_ids": []})
     saved = svc.library.save_playlist(playlist.model_copy(update={"id": None}))
@@ -131,14 +152,18 @@ def preview_rules(rules: PlaylistRules, svc: Svc) -> RulesPreview:
 
 
 @router.get("/playlists/{playlist_id}", response_model=PlaylistDetail)
-def get_playlist(playlist_id: int, svc: Svc) -> PlaylistDetail:
-    return _detail(svc, _playlist(svc, playlist_id))
+def get_playlist(playlist_id: int, svc: Svc, user: CurrentUser) -> PlaylistDetail:
+    return _detail(svc, _playlist(svc, playlist_id, user))
 
 
 @router.put("/playlists/{playlist_id}", response_model=PlaylistDetail)
-def update_playlist(playlist_id: int, playlist: Playlist, svc: Svc) -> PlaylistDetail:
-    existing = _playlist(svc, playlist_id)
-    playlist = _checked(playlist)
+def update_playlist(
+    playlist_id: int, playlist: Playlist, svc: Svc, user: CurrentUser
+) -> PlaylistDetail:
+    existing = _own(svc, playlist_id, user)
+    # An app from before "Wspólna" sends no ``shared``: the playlist stays as it is.
+    shared = playlist.shared if "shared" in playlist.model_fields_set else existing.shared
+    playlist = _checked(playlist).model_copy(update={"owner": existing.owner, "shared": shared})
     if _only_favorites(svc, existing):
         # It may be renamed and narrowed, but stays the hearts' playlist.
         rules = playlist.rules.model_copy(update={"favorites_only": True})
@@ -162,8 +187,8 @@ def update_playlist(playlist_id: int, playlist: Playlist, svc: Svc) -> PlaylistD
 
 
 @router.delete("/playlists/{playlist_id}")
-def delete_playlist(playlist_id: int, svc: Svc) -> dict[str, bool]:
-    if _only_favorites(svc, _playlist(svc, playlist_id)):
+def delete_playlist(playlist_id: int, svc: Svc, user: CurrentUser) -> dict[str, bool]:
+    if _only_favorites(svc, _own(svc, playlist_id, user)):
         raise HTTPException(409, "Ulubione zostają zawsze")
     settings = svc.player.settings
     if settings.playlist_id == playlist_id:
@@ -175,8 +200,8 @@ def delete_playlist(playlist_id: int, svc: Svc) -> dict[str, bool]:
 
 
 @router.post("/playlists/{playlist_id}/items", response_model=PlaylistDetail)
-def add_items(playlist_id: int, body: ItemIds, svc: Svc) -> PlaylistDetail:
-    playlist = _playlist(svc, playlist_id)
+def add_items(playlist_id: int, body: ItemIds, svc: Svc, user: CurrentUser) -> PlaylistDetail:
+    playlist = _own(svc, playlist_id, user)
     if playlist.kind != PlaylistKind.MANUAL:
         raise HTTPException(400, "items can only be added to manual playlists")
 
@@ -198,10 +223,10 @@ def add_items(playlist_id: int, body: ItemIds, svc: Svc) -> PlaylistDetail:
 
 
 @router.delete("/playlists/{playlist_id}/items/{item_id}", response_model=PlaylistDetail)
-def remove_item(playlist_id: int, item_id: str, svc: Svc) -> PlaylistDetail:
+def remove_item(playlist_id: int, item_id: str, svc: Svc, user: CurrentUser) -> PlaylistDetail:
     """Take one work out of a playlist. A smart or album playlist remembers it
     as an exception; clearing ``rules.exclude_ids`` brings it back."""
-    playlist = _playlist(svc, playlist_id)
+    playlist = _own(svc, playlist_id, user)
     if playlist.kind == PlaylistKind.MANUAL:
         ids = [i for i in playlist.item_ids if i != item_id]
         update: dict[str, Any] = {"item_ids": ids}
@@ -217,23 +242,23 @@ def remove_item(playlist_id: int, item_id: str, svc: Svc) -> PlaylistDetail:
 
 
 @router.post("/playlists/{playlist_id}/sync")
-def sync_album(playlist_id: int, svc: Svc) -> dict[str, Any]:
+def sync_album(playlist_id: int, svc: Svc, user: CurrentUser) -> dict[str, Any]:
     """Sync an album playlist with its album now; returns the job."""
-    playlist = _playlist(svc, playlist_id)
+    playlist = _playlist(svc, playlist_id, user)
     if playlist.kind != PlaylistKind.ALBUM:
         raise HTTPException(400, "only album playlists sync")
     return {"job_id": svc.albums.start_sync(playlist_id).id}
 
 
 @router.get("/playlists/{playlist_id}/sync", response_model=AlbumSync | None)
-def last_sync(playlist_id: int, svc: Svc) -> AlbumSync | None:
-    _playlist(svc, playlist_id)
+def last_sync(playlist_id: int, svc: Svc, user: CurrentUser) -> AlbumSync | None:
+    _playlist(svc, playlist_id, user)
     return svc.library.album_sync(playlist_id)
 
 
 @router.post("/playlists/{playlist_id}/play", status_code=202)
-async def play(playlist_id: int, svc: Svc) -> dict[str, Any]:
-    if _only_favorites(svc, _playlist(svc, playlist_id)):
+async def play(playlist_id: int, svc: Svc, user: CurrentUser) -> dict[str, Any]:
+    if _only_favorites(svc, _playlist(svc, playlist_id, user)):
         raise HTTPException(409, "Ulubione zostają zawsze")
     settings = svc.player.settings
     settings.playlist_id = playlist_id

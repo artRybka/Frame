@@ -20,8 +20,9 @@ from ..library.markup import strip_markup
 from ..notifications import PushError
 from ..service import FrameService
 from ..study import PENDING, Status
+from ..users import User
 from .daily_api import DailyWork, page
-from .deps import require_token, service
+from .deps import CurrentUser, require_token, service
 from .library_api import RemoteItem, remote_items
 from .library_api import _work as find_work
 
@@ -39,9 +40,11 @@ class StudyView(BaseModel):
     work: DailyWork | None = None
     #: What a study costs, about (USD).
     cost_usd: float = 0.0
+    #: Studies a household member may still order today (None: no limit).
+    studies_left: int | None = None
 
 
-def _view(svc: FrameService, item: Item | None) -> StudyView:
+def _view(svc: FrameService, item: Item | None, user: User | None = None) -> StudyView:
     status, error = svc.study.status(item)
     work = None
     if item is not None and status in ("ready", "details"):
@@ -56,7 +59,10 @@ def _view(svc: FrameService, item: Item | None) -> StudyView:
         essay = svc.daily.job.essay(item) if today else None
         work = work.model_copy(update={"why_today": essay.why_today if essay else ""})
     cost = svc.study.job.estimate_usd(1, batch=False)
-    return StudyView(status=status, error=error, work=work, cost_usd=round(cost, 2))
+    left = svc.users.studies_left(user, date.today()) if user is not None else None
+    return StudyView(
+        status=status, error=error, work=work, cost_usd=round(cost, 2), studies_left=left
+    )
 
 
 class StudyBrief(BaseModel):
@@ -107,19 +113,20 @@ async def _wait(svc: FrameService, item: Item | None, wait: float) -> None:
 
 @router.get("/study/{item_id}", response_model=StudyView)
 async def study(
-    item_id: str, svc: Svc, wait: Annotated[float, Query(ge=0, le=60)] = 0
+    item_id: str, svc: Svc, user: CurrentUser, wait: Annotated[float, Query(ge=0, le=60)] = 0
 ) -> StudyView:
     """The work's study, if there is one; ``wait``: seconds to wait for one
     on its way to get a step further."""
     item = svc.library.get(item_id)
     await _wait(svc, item, wait)
-    return await run_in_threadpool(_view, svc, item)
+    return await run_in_threadpool(_view, svc, item, user)
 
 
 @router.post("/study/{item_id}", response_model=StudyView)
 async def prepare_study(
     item_id: str,
     svc: Svc,
+    user: CurrentUser,
     again: bool = False,
     wait: Annotated[float, Query(ge=0, le=60)] = 0,
 ) -> StudyView:
@@ -128,13 +135,21 @@ async def prepare_study(
     item = await find_work(svc, item_id)
     if not svc.study.job.enabled():
         raise HTTPException(409, "Claude jest wyłączony: dodaj klucz API w Konfiguracji.")
+    status, _ = await run_in_threadpool(svc.study.status, svc.library.get(item_id))
+    new = again or status in ("none", "failed")
+    today = date.today()
+    if new and svc.users.studies_left(user, today) == 0:
+        limit = svc.users.study_limit()
+        raise HTTPException(429, f"Na dziś to już {limit} studiów. Kolejne jutro.")
     if svc.library.get(item_id) is None:  # a museum work only looked at: pooled
         item = await run_in_threadpool(svc.importer.add, item.model_copy(update={"pooled": True}))
     future = await run_in_threadpool(svc.study.ask, item, again)
+    if new and future is not None:
+        svc.users.ordered_study(user, today)
     if future is not None and wait:
         with contextlib.suppress(Exception):
             await asyncio.wait_for(asyncio.shield(asyncio.wrap_future(future)), wait)
-    return await run_in_threadpool(_view, svc, item)
+    return await run_in_threadpool(_view, svc, item, user)
 
 
 class StudyActivityToken(BaseModel):

@@ -10,9 +10,9 @@ from starlette.concurrency import run_in_threadpool
 
 from ..service import FrameService
 from ..storage import StorageUpdate, StorageView
-from .deps import require_token, service
+from .deps import require_owner, service
 
-router = APIRouter(prefix="/api/library", dependencies=[Depends(require_token)], tags=["library"])
+router = APIRouter(prefix="/api/library", dependencies=[Depends(require_owner)], tags=["library"])
 Svc = Annotated[FrameService, Depends(service)]
 
 
