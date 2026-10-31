@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.52.1
+
+- Poprawki szklanego Szukaj: grupy przy klawiaturze stoją nad polem, a nie
+  za nim; znowu wyższe grupy na całą szerokość 3 × 2 z nazwą nad wyborem;
+  grupa otwiera się jako szklane okienko nad polem zamiast arkusza;
+  „Wyczyść wybory” nad grupami; schowane grupy wracają chwilę po zatrzymaniu
+  przewijania; Epoka pobiera okresy od nowa po aktualizacji serwera; koniec
+  białego ekranu z wąskim paskiem podczas pisania.
+
 ## 1.52.0
 
 - Szklane Szukaj (iOS 26): systemowa karta wyszukiwania z polem na dole; nad
