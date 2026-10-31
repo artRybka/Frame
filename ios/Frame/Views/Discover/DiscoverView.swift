@@ -6,6 +6,7 @@ struct DiscoverView: View {
     @Environment(AppModel.self) private var model
     @State private var path = NavigationPath()
     @State private var dailyShown = 0
+    @State private var themeShown = 0
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -47,6 +48,19 @@ struct DiscoverView: View {
             }
         }
         .onChange(of: model.suggestionsOpened) { path = NavigationPath() }
+        // The artist of the week from a notification: its theme, loaded if need be.
+        .onChange(of: model.themeOpenings, initial: true) { _, count in
+            guard count > themeShown, let key = model.themeOpened else { return }
+            themeShown = count
+            Task {
+                if model.themes?.contains(where: { $0.key == key }) != true {
+                    await model.refreshDiscover(force: true)
+                }
+                guard let theme = model.themes?.first(where: { $0.key == key }) else { return }
+                path = NavigationPath()
+                path.append(theme)
+            }
+        }
         // A notification of the work of the day tapped (also before this tab was first opened).
         .onChange(of: model.dailyOpened, initial: true) { _, count in
             guard count > dailyShown else { return }
