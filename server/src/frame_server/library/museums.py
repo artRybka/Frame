@@ -32,7 +32,7 @@ from .lifespan import (
     death_in_name,
     free_in_eu,
 )
-from .markup import VECTOR, WEB_IMAGES, commons_rendition, extension, strip_markup
+from .markup import VECTOR, WEB_IMAGES, clean_title, commons_rendition, extension
 from .models import Item, ItemKind
 
 log = logging.getLogger(__name__)
@@ -155,7 +155,7 @@ class Museum(ABC):
     def _item(self, source_id: str, **fields: Any) -> Item:
         for key in ("title", "artist"):
             if key in fields:
-                fields[key] = strip_markup(fields[key])
+                fields[key] = clean_title(fields[key])
         return Item(
             id=f"{self.key}:{source_id}",
             kind=ItemKind.ARTWORK,

@@ -5,12 +5,18 @@ import httpx
 from frame_server.library import Item, Library
 from frame_server.library.commons import (
     REPAIR_STATE_KEY,
+    REPAIR_VERSION,
     commons_html,
     commons_plain,
     commons_year,
     repair_library,
 )
-from frame_server.library.markup import commons_rendition, strip_markup
+from frame_server.library.markup import (
+    clean_title,
+    commons_rendition,
+    strip_language_prefix,
+    strip_markup,
+)
 from frame_server.library.museums import Openverse, WikimediaCommons
 
 TITLE_HTML = (
@@ -90,6 +96,19 @@ def test_markup_left_in_short_fields() -> None:
     assert strip_markup("") == ""
 
 
+def test_titles_lose_language_prefixes() -> None:
+    assert strip_language_prefix("en:Night Windows") == "Night Windows"
+    assert strip_language_prefix(":fr:Le Pont de l'Europe") == "Le Pont de l'Europe"
+    assert strip_language_prefix("w:de:Der Wanderer") == "Der Wanderer"
+    assert strip_language_prefix("zh-hant:山水") == "山水"
+    assert clean_title('<a href="https://en.wikipedia.org/wiki/X">en:Night Windows</a>') == (
+        "Night Windows"
+    )
+    # Not a language code, a space after the colon, or nothing after it: kept.
+    for text in ("Op. 3: Nokturn", "re: list", "XV:Portret", "abcd:Studium", "en:", "Etiuda"):
+        assert strip_language_prefix(text) == text
+
+
 def test_plain_repair() -> None:
     assert commons_plain(STORED_TITLE, title=True) == "Żniwiarka"
     assert commons_plain(STORED_DATE) == "1879"
@@ -138,6 +157,33 @@ def test_wikimedia_import_cleans_markup() -> None:
     assert sent[0].url.params["iiextmetadatalanguage"] == "pl"
 
 
+def test_wikimedia_import_drops_language_prefix() -> None:
+    # A Commons title written as a bare interwiki link shows its target.
+    link = (
+        '<a href="https://en.wikipedia.org/wiki/Night_Windows" class="extiw">en:Night Windows</a>'
+    )
+    page = {
+        "pageid": 9,
+        "title": "File:Night Windows by Edward Hopper.jpg",
+        "imageinfo": [
+            {
+                "url": "https://upload/full.jpg",
+                "extmetadata": {
+                    "ObjectName": {"value": link},
+                    "LicenseShortName": {"value": "Public domain"},
+                },
+            }
+        ],
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"query": {"pages": {"9": page}}})
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http:
+        _, items = WikimediaCommons(http).search("Category:Paintings by Edward Hopper")
+    assert items[0].title == "Night Windows"
+
+
 def test_repair_stored_items(tmp_path) -> None:
     lib = Library(tmp_path / "lib.db")
     broken = Item(
@@ -160,10 +206,13 @@ def test_repair_stored_items(tmp_path) -> None:
         thumb_url="https://api.openverse.org/v1/images/1/thumb/",
         width=610,
     )
-    for item in (broken, other, wikidata, tagged, drawing):
+    prefixed = Item(id="wmc:9", source="wmc", source_id="9", title="en:Night Windows")
+    linked = Item(id="openverse:2", source="openverse", source_id="2", title=":fr:Le Pont")
+    photo = Item(id="upload:1", source="upload", source_id="", title="pl:moja notatka")
+    for item in (broken, other, wikidata, tagged, drawing, prefixed, linked, photo):
         lib.upsert(item)
 
-    assert repair_library(lib) == 4
+    assert repair_library(lib) == 6
     fixed = lib.get("wmc:7")
     assert fixed is not None
     assert (fixed.title, fixed.date_text, fixed.year) == ("Żniwiarka", "1879", 1879)
@@ -173,7 +222,10 @@ def test_repair_stored_items(tmp_path) -> None:
     assert lib.get("europeana:1").title == "Pejzaż"
     assert lib.get("openverse:1").image_url == commons_rendition(svg, 3840)
     assert lib.get("openverse:1").thumb_url.endswith("/500px-Mondrian_SVG_kleeblatt.svg.png")
-    assert lib.get_state(REPAIR_STATE_KEY) == 2
+    assert lib.get("wmc:9").title == "Night Windows"
+    assert lib.get("openverse:2").title == "Le Pont"
+    assert lib.get("upload:1").title == photo.title
+    assert lib.get_state(REPAIR_STATE_KEY) == REPAIR_VERSION
 
     # Runs once: later imports are already clean.
     lib.update("wmc:7", title=STORED_TITLE)

@@ -18,7 +18,14 @@ from collections.abc import Sequence
 from html.parser import HTMLParser
 from typing import TYPE_CHECKING
 
-from .markup import VECTOR, commons_rendition, drop_tags, extension, strip_markup
+from .markup import (
+    VECTOR,
+    commons_rendition,
+    drop_tags,
+    extension,
+    strip_language_prefix,
+    strip_markup,
+)
 
 if TYPE_CHECKING:
     from .models import Item
@@ -203,15 +210,21 @@ def commons_year(text: str) -> int | None:
 
 # Bump when the cleaning rules change, so stored items are cleaned again.
 # 2: markup left in titles of any source (Wikidata's edit icon), SVG links.
-REPAIR_VERSION = 2
+# 3: language prefixes in titles of any source ("en:Night Windows").
+REPAIR_VERSION = 3
 REPAIR_STATE_KEY = "commons_text_repair"
+# The household's own photos: their captions are left as they were typed.
+OWN_SOURCES = frozenset({"upload", "icloud"})
 
 
 def _repairs(item: Item) -> dict[str, object]:
     fixes: dict[str, object] = {}
     for key in ("title", "artist"):
         value: str = getattr(item, key)
-        if "<" in value and (clean := strip_markup(value)) != value:
+        clean = strip_markup(value) if "<" in value else value
+        if item.source not in OWN_SOURCES:
+            clean = strip_language_prefix(clean)
+        if clean != value:
             fixes[key] = clean
     drawing = item.source in ("wmc", "openverse") and extension(item.image_url) in VECTOR
     if drawing and (image_url := commons_rendition(item.image_url, 3840, item.width)):
@@ -219,7 +232,7 @@ def _repairs(item: Item) -> dict[str, object]:
         fixes["thumb_url"] = commons_rendition(item.image_url, 500, item.width)
     if item.source != "wmc":
         return fixes
-    title = commons_plain(str(fixes.get("title", item.title)), title=True)
+    title = strip_language_prefix(commons_plain(str(fixes.get("title", item.title)), title=True))
     if title and title != item.title:
         fixes["title"] = title
     date_text = commons_plain(item.date_text)
