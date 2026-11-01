@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.67.4
+
+- Playlisty: kafelki w siatce wyrównane do góry (bez wiersza „Wspólna” nie
+  opadają), a moje „Ulubione” zawsze pierwsze, obok „Propozycje”.
+
 ## 1.67.3
 
 - Ikony grup (Epoka, Styl, Temat, Muzeum) prostsze, jedną kreską jak Technika,
