@@ -1,7 +1,9 @@
 # Changelog
 
-## 1.68.1
+## 1.69.0
 
+- Przy użytku prywatnym Rijksmuseum i SMK w Kopenhadze także pokazują dzieła
+  wciąż chronione prawem autorskim (np. Karel Appel, Picasso, Asger Jorn).
 - Playlisty: wszystkie kafelki mają równą wysokość (nic nie skacze przy
   przewijaniu), „Wspólna” po prawej w wierszu z liczbą dzieł, bez nagłówka
   „Kolekcje”.
