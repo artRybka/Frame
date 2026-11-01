@@ -245,6 +245,8 @@ class FrameService:
             ignore_term=chosen.ignore_term,
             europeana_key=config.europeana_key,
             openverse_app=app,
+            smithsonian_key=config.smithsonian_key or "",
+            data_dir=config.data_dir,
         )
 
     @property

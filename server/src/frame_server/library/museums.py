@@ -17,6 +17,7 @@ import time
 from abc import ABC, abstractmethod
 from collections.abc import Iterator
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, ClassVar, Literal
 from urllib.parse import quote, unquote, urlsplit
 
@@ -81,6 +82,10 @@ class Access:
     europeana_key: str = "api2demo"
     #: Openverse app credentials (client id, secret); anonymous without them.
     openverse_app: tuple[str, str] | None = None
+    #: Smithsonian Open Access key (api.data.gov); the source is off without it.
+    smithsonian_key: str = ""
+    #: Where sources keep downloaded indexes (the National Gallery of Art's).
+    data_dir: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -116,6 +121,11 @@ class Museum(ABC):
     testing: ClassVar[bool] = False
     #: Marks its most important works and can be asked for only those.
     highlights: ClassVar[bool] = False
+
+    @classmethod
+    def offered(cls, access: Access) -> bool:
+        """Whether the owner's choices and keys let this source answer."""
+        return not cls.testing or access.wikiart
 
     def __init__(
         self, http: httpx.Client, private_use: bool = False, access: Access | None = None
@@ -1426,6 +1436,14 @@ class WikiArt(Museum):
         return self._map(body) if isinstance(body, dict) else None
 
 
+# Collections added later live in modules of their own (they build on the
+# classes above).
+from .muza import NationalMuseumKrakow, NationalMuseumWarsaw  # noqa: E402
+from .nga import NationalGalleryOfArt  # noqa: E402
+from .smithsonian import Smithsonian  # noqa: E402
+from .vam import VictoriaAndAlbert  # noqa: E402
+from .yale import YaleMuseums  # noqa: E402
+
 MUSEUMS: dict[str, type[Museum]] = {
     m.key: m
     for m in (
@@ -1433,6 +1451,12 @@ MUSEUMS: dict[str, type[Museum]] = {
         ClevelandMuseum,
         MetropolitanMuseum,
         Rijksmuseum,
+        NationalGalleryOfArt,
+        NationalMuseumWarsaw,
+        NationalMuseumKrakow,
+        YaleMuseums,
+        Smithsonian,
+        VictoriaAndAlbert,
         WikimediaCommons,
         Europeana,
         Openverse,
@@ -1443,8 +1467,9 @@ MUSEUMS: dict[str, type[Museum]] = {
 
 
 def available(access: Access) -> dict[str, type[Museum]]:
-    """The sources on offer: test-only ones just while switched on."""
-    return {k: m for k, m in MUSEUMS.items() if not m.testing or access.wikiart}
+    """The sources on offer: test-only ones just while switched on, those
+    needing a key just with one."""
+    return {k: m for k, m in MUSEUMS.items() if m.offered(access)}
 
 
 def museum(key: str, http: httpx.Client, access: Access | bool = False) -> Museum:
