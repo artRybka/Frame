@@ -16,6 +16,7 @@ from frame_server.library.vocabulary import (
     artist_matches,
     category_fits,
     is_copy,
+    is_grey_copy,
     is_grey_painting,
     is_manuscript,
     is_photograph,
@@ -200,6 +201,44 @@ def test_paintings_without_colour_are_copies() -> None:
     assert not any(is_grey_painting(i) for i in (coloured, unknown, etching))
 
 
+def test_black_and_white_photos_of_art_archives_are_copies() -> None:
+    """Foto Marburg's old prints on a catalogue card ("La Berceuse, Bildnis
+    der Madame Roulin", Neg.-Nr. typed below) are copies whatever the work;
+    its colour photographs, and museums' own grey prints, stay."""
+    marburg = "German Documentation Center for Art History - Marburg Picture Index"
+
+    def archive(n: int, **fields) -> Item:
+        return Item(
+            id=f"europeana:199~{n}",
+            source="europeana",
+            source_id=f"199~{n}",
+            credit=marburg,
+            **fields,
+        )
+
+    berceuse = archive(1, title="La Berceuse, Bildnis der Madame Roulin", tint_spread=0.0)
+    drawing = archive(
+        2, title="Kartoffelfeld in den Dünen", classification="Drawing", tint_spread=0.0
+    )
+    assert all(is_grey_copy(i) and is_copy(i) and set_aside(i) for i in (berceuse, drawing))
+    colour = archive(3, title="La Berceuse / Madame Roulin", tint_spread=0.027)
+    unknown = archive(4, title="La Berceuse / Madame Roulin")
+    assert not is_copy(colour) and not is_copy(unknown)
+    etching = _work(5, title="Melencolia I", classification="Print", tint_spread=0.0)
+    assert not is_grey_copy(etching) and not is_copy(etching)
+    grey_oil = _work(6, title="Babie lato", classification="Painting", tint_spread=0.002)
+    assert is_grey_copy(grey_oil)
+    # Kept, it stays in the library and the favourites, but no search finds it.
+    berceuse.favorite = True
+    berceuse.artist = "Vincent van Gogh"
+    assert matches(berceuse, PlaylistRules(favorites_only=True))
+    assert not matches(berceuse, PlaylistRules(artists=["Vincent van Gogh"]))
+    assert matches(
+        colour.model_copy(update={"artist": "Vincent van Gogh"}),
+        PlaylistRules(artists=["Vincent van Gogh"]),
+    )
+
+
 def test_stamps_are_never_pictures() -> None:
     athens = Item(
         id="europeana:1592~76122",
@@ -241,13 +280,23 @@ def test_catalogue_leaves_manuscripts_out(museums) -> None:  # noqa: F811
             update={"id": "europeana:1592~6", "source": "europeana", "source_id": "1592~6"}
         )
     )
+    marburg = library.upsert(
+        _work(
+            7,
+            title="La Berceuse",
+            credit="German Documentation Center for Art History - Marburg Picture Index",
+            tint_spread=0.0,
+            pooled=True,
+        ).model_copy(update={"id": "europeana:199~7", "source": "europeana", "source_id": "199~7"})
+    )
     assert {i.id for i in library.query()[1]} == {kept.id, painting.id}
     asked = library.query(PlaylistRules(terms=["technique:manuscripts"]))[1]
     assert {i.id for i in asked} == {page.id, kept.id}
 
-    assert service.player.drop_set_aside() == 4
+    assert service.player.drop_set_aside() == 5
     assert library.get(page.id) is None and library.get(photo.id) is None
     assert library.get(plate.id) is None and library.get(stamps.id) is None
+    assert library.get(marburg.id) is None
     assert library.get(kept.id) is not None
     assert service.player.drop_set_aside() == 0  # once
 
