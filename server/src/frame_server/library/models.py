@@ -284,6 +284,9 @@ class PlaylistSummary(BaseModel):
     rules: PlaylistRules
     item_count: int
     cover_item_ids: list[str]
+    #: The main colour of each cover work, in the same order: the app's glow
+    #: behind "Teraz prezentowane".
+    cover_colors: list[ColorSwatch] = Field(default_factory=list)
     album: AlbumSource | None = None
     album_sync: AlbumSync | None = None
     theme: str | None = None

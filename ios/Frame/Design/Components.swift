@@ -592,46 +592,6 @@ struct PaletteStrip: View {
 }
 
 /// Soft background tinted by the current picture's palette.
-struct AmbientBackground: View {
-    let swatches: [ColorSwatch]
-
-    var body: some View {
-        ZStack {
-            Theme.paper
-            PaperGlow(swatches: swatches)
-        }
-        .ignoresSafeArea()
-        .animation(.easeInOut(duration: 0.8), value: swatches)
-    }
-}
-
-/// A picture's colours blurred into the paper from the top, fading to plain
-/// paper at the bottom: behind "Teraz" and the top of Odkrywaj.
-struct PaperGlow: View {
-    let swatches: [ColorSwatch]
-    var strength = 0.45
-
-    var body: some View {
-        let colors = swatches.prefix(3).compactMap { Color(hexString: $0.hex) }
-        ZStack {
-            if !colors.isEmpty {
-                LinearGradient(
-                    colors: colors.map { $0.opacity(strength) } + [Theme.paper.opacity(0)],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                .blur(radius: 60)
-                .saturation(0.8)
-            }
-            LinearGradient(
-                colors: [.clear, Theme.paper.opacity(0.85), Theme.paper],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        }
-    }
-}
-
 struct EmptyStateView: View {
     let title: String
     let message: String

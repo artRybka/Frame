@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.61.0
+
+- Ta sama, spokojniejsza poświata kolorów na Teraz, w Odkrywaj i w
+  Playlistach (z okładki aktywnej playlisty).
+
 ## 1.60.0
 
 - Szukaj: podpowiedzi pojawiają się od razu przy każdej literze, a serwer

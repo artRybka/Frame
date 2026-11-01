@@ -30,6 +30,7 @@ from .models import (
     MINE_FAVORITES,
     MINE_PLAYLISTS,
     AlbumSync,
+    ColorSwatch,
     Facets,
     FacetValue,
     Item,
@@ -220,6 +221,16 @@ def sort_items(items: list[Item], sort: SortKey, seed: int = 0) -> list[Item]:
         random.Random(seed).shuffle(shuffled)
         return shuffled
     return sorted(items, key=lambda i: i.added_at, reverse=True)
+
+
+def cover_colors(items: list[Item]) -> list[ColorSwatch]:
+    """The main (heaviest, not accent) colour of each cover work."""
+    found: list[ColorSwatch] = []
+    for item in items:
+        main = [c for c in item.colors if not c.accent]
+        if main:
+            found.append(max(main, key=lambda c: c.weight))
+    return found
 
 
 class Library:
@@ -670,6 +681,7 @@ class Library:
             rules=playlist.rules,
             item_count=len(items),
             cover_item_ids=[i.id for i in items[:4]],
+            cover_colors=cover_colors(items[:4]),
             album=playlist.album,
             album_sync=self.album_sync(playlist.id),
             theme=playlist.theme,

@@ -105,6 +105,30 @@ def test_playlists_and_state(tmp_path) -> None:
     assert lib.get("test:1").show_count == 1  # type: ignore[union-attr]
 
 
+def test_a_playlist_sends_the_main_colour_of_each_cover_work(tmp_path) -> None:
+    from frame_server.library.models import ColorSwatch
+
+    lib = Library(tmp_path / "lib.db")
+    lib.upsert(
+        _item(
+            1,
+            colors=[
+                ColorSwatch(hex="#202a60", weight=0.3),
+                ColorSwatch(hex="#c8b890", weight=0.6),
+                ColorSwatch(hex="#e03020", weight=0.9, accent=True),
+            ],
+        )
+    )
+    lib.upsert(_item(2))  # not analysed yet: no colour
+    lib.upsert(_item(3, colors=[ColorSwatch(hex="#406030", weight=1.0)]))
+    picks = lib.save_playlist(
+        Playlist(name="Picks", kind=PlaylistKind.MANUAL, item_ids=["test:3", "test:2", "test:1"])
+    )
+    summary = lib.playlist_summary(picks)
+    assert summary.cover_item_ids == ["test:3", "test:2", "test:1"]
+    assert [c.hex for c in summary.cover_colors] == ["#406030", "#c8b890"]
+
+
 def test_a_smart_playlist_keeps_a_steady_set_within_its_limit(tmp_path) -> None:
     lib = Library(tmp_path / "lib.db")
     for n in range(30):

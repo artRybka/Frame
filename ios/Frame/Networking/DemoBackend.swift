@@ -203,7 +203,9 @@ actor DemoBackend: FrameBackend {
         return PlaylistSummary(
             id: playlist.id ?? 0, name: playlist.name, description: playlist.description,
             kind: playlist.kind, rules: playlist.rules, itemCount: list.count,
-            coverItemIds: list.prefix(4).map(\.id), album: playlist.album,
+            coverItemIds: list.prefix(4).map(\.id),
+            coverColors: list.prefix(4).compactMap { $0.colors.max { $0.weight < $1.weight } },
+            album: playlist.album,
             albumSync: playlist.album.map { _ in
                 AlbumSync(
                     at: ISO8601DateFormatter().string(from: .now.addingTimeInterval(-1800)),
