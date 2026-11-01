@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.69.4
+
+- Karta dzieła: polski tytuł i opis od razu, gdy już były po polsku; z
+  oryginału łagodne przenikanie zamiast nagłej podmiany.
+
 ## 1.69.3
 
 - Karta dzieła: gdy studium jest gotowe, „Otwórz studium” stoi na całą
