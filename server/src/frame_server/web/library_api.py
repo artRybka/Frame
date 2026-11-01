@@ -81,6 +81,9 @@ class RemoteItem(BaseModel):
     #: In a search's later answers: the worse copy, shown before, that this
     #: one takes the place of.
     replaces: str | None = None
+    #: Width / height, also when the museum gives no size (measured on the
+    #: thumbnail, see ``Importer.measure``); None when not known yet.
+    aspect: float | None = None
 
 
 def remote_items(svc: FrameService, items: list[Item], copies: bool = True) -> list[RemoteItem]:
@@ -106,7 +109,13 @@ def remote_items(svc: FrameService, items: list[Item], copies: bool = True) -> l
             item = item.model_copy(update={"favorite": own.favorite})
         found.setdefault(
             item.id,
-            RemoteItem(item=item, in_library=own is not None, work=work_key(item), twin=twin),
+            RemoteItem(
+                item=item,
+                in_library=own is not None,
+                work=work_key(item),
+                twin=twin,
+                aspect=svc.importer.known_aspect(item),
+            ),
         )
     return list(found.values())
 

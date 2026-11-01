@@ -91,7 +91,7 @@ struct SuggestionRowGridView: View {
                         .font(.serif(17))
                         .foregroundStyle(Theme.inkSoft)
                 }
-                MasonryGrid(items: items.map(\.item.summary)) { summary in
+                MasonryGrid(items: items.map(\.summary)) { summary in
                     NavigationLink(value: summary.id) {
                         ArtCard(item: summary, ref: items.first { $0.id == summary.id }?.thumb)
                     }

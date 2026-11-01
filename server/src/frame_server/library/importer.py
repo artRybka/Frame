@@ -10,6 +10,7 @@ import threading
 from collections import OrderedDict
 from collections.abc import Callable, Iterable, Iterator
 from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import wait as wait_for
 from dataclasses import dataclass, field, replace
 from itertools import chain, zip_longest
 
@@ -71,6 +72,11 @@ SPREAD_MEMO = 20_000
 SEARCHED_QUEUE = 400
 #: Works a search showed that were taken or left out, not looked at again.
 SEARCHED_MEMO = 5_000
+#: How long a search's answer waits for the shapes of works whose museum
+#: gives no size (Europeana, the Met, the Rijksmuseum...), measured on their
+#: thumbnails; those not measured by then come as landscape and are known
+#: the next time.
+ASPECT_SECONDS = 2.5
 
 
 def small_thumb(item: Item) -> str:
@@ -151,6 +157,9 @@ class Importer:
         self._spreads: OrderedDict[str, float] = OrderedDict()
         #: Colour tags of works looked at in search results, by id.
         self._tags: OrderedDict[str, list[str]] = OrderedDict()
+        #: Width / height of works whose source gave no size, from their
+        #: thumbnails, by id.
+        self._aspects: OrderedDict[str, float] = OrderedDict()
         #: Works a search showed, on their way into the catalogue.
         self._searched: OrderedDict[str, Item] = OrderedDict()
         self._searched_seen: OrderedDict[str, None] = OrderedDict()
@@ -251,6 +260,7 @@ class Importer:
         try:
             with self.cache.sample(small_thumb(item)) as img:
                 spread = tint_spread(img)
+                self._remember_aspect(item, img)
         except (httpx.HTTPError, OSError, ValueError) as err:
             log.info("no thumbnail of %s to look at: %s", item.id, err)
             return None
@@ -275,6 +285,7 @@ class Importer:
             with self.cache.sample(small_thumb(item)) as img:
                 spread = tint_spread(img)
                 _, tags, _ = analyse(img, self.palette, spread)
+                self._remember_aspect(item, img)
         except (httpx.HTTPError, OSError, ValueError) as err:
             log.info("no thumbnail of %s to look at: %s", item.id, err)
             return None
@@ -285,6 +296,70 @@ class Importer:
                 while len(memo) > SPREAD_MEMO:
                     memo.popitem(last=False)
         return tags
+
+    def _remember_aspect(self, item: Item, img: Image.Image) -> None:
+        width, height = img.size
+        if (item.width and item.height) or not width or not height:
+            return
+        with self._remote_lock:
+            self._aspects[item.id] = width / height
+            self._aspects.move_to_end(item.id)
+            while len(self._aspects) > SPREAD_MEMO:
+                self._aspects.popitem(last=False)
+
+    def known_aspect(self, item: Item) -> float | None:
+        """``item``'s width / height without asking anyone: from its source's
+        size, the library's copy, a thumbnail looked at before or the one
+        kept here; None when none of them knows."""
+        if item.width and item.height:
+            return item.width / item.height
+        stored = self.library.get(item.id)
+        if stored is not None and stored.width and stored.height:
+            return stored.width / stored.height
+        with self._remote_lock:
+            if item.id in self._aspects:
+                return self._aspects[item.id]
+        path = self.cache.thumb_path(item)
+        if path.is_file():
+            try:
+                with Image.open(path) as img:  # the header only
+                    self._remember_aspect(item, img)
+            except OSError:
+                return None
+            with self._remote_lock:
+                return self._aspects.get(item.id)
+        return None
+
+    def aspect_of(self, item: Item) -> float | None:
+        """Like :meth:`known_aspect`, measuring a small thumbnail when need
+        be; None when it cannot be had."""
+        known = self.known_aspect(item)
+        if known is not None or not item.thumb_url:
+            return known
+        try:
+            with self.cache.sample(small_thumb(item), urgent=True) as img:
+                self._remember_aspect(item, img)
+        except (httpx.HTTPError, OSError, ValueError) as err:
+            log.info("no thumbnail of %s to measure: %s", item.id, err)
+            return None
+        with self._remote_lock:
+            return self._aspects.get(item.id)
+
+    def measure(self, items: Iterable[Item], seconds: float = ASPECT_SECONDS) -> None:
+        """Measure the shapes of ``items`` whose museum gives no size, for
+        at most ``seconds``: the app lays out its grid by them, so a work
+        shown as landscape would be cropped. Those not measured in time are
+        left for later (the next page, the same search again)."""
+        unknown = [i for i in items if self.known_aspect(i) is None and i.thumb_url]
+        if not unknown:
+            return
+        pool = ThreadPoolExecutor(min(len(unknown), 8))
+        try:
+            futures = [pool.submit(self.aspect_of, i) for i in unknown]
+            wait_for(futures, timeout=seconds)
+        finally:
+            # The late ones go on into the memo; those not started don't.
+            pool.shutdown(wait=False, cancel_futures=True)
 
     def in_colors(self, items: list[Item], colors: list[str]) -> list[Item]:
         """``items`` that fit ``colors`` (colour, accent or mood tags, as

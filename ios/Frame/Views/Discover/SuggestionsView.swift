@@ -445,7 +445,7 @@ struct SuggestionRowView: View {
                 LazyHStack(alignment: .top, spacing: 14) {
                     ForEach(row.items) { remote in
                         NavigationLink(value: remote.id) {
-                            ArtCard(item: remote.item.summary, ref: remote.thumb)
+                            ArtCard(item: remote.summary, ref: remote.thumb)
                                 .frame(width: 150)
                         }
                         .buttonStyle(.plain)
@@ -498,7 +498,7 @@ struct ThemeView: View {
                     .font(.serif(17))
                     .foregroundStyle(Theme.inkSoft)
                 actions
-                MasonryGrid(items: items.map(\.item.summary)) { summary in
+                MasonryGrid(items: items.map(\.summary)) { summary in
                     NavigationLink(value: summary.id) {
                         ArtCard(item: summary, ref: items.first { $0.id == summary.id }?.thumb)
                     }

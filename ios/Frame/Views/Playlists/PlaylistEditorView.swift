@@ -626,7 +626,7 @@ struct PlaylistEditorView: View {
         let byID = Dictionary(remotes.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let known = preview?.items ?? []
         if !known.isEmpty || !remotes.isEmpty {
-            MasonryGrid(items: known + remotes.map(\.item.summary)) { item in
+            MasonryGrid(items: known + remotes.map(\.summary)) { item in
                 let remote = byID[item.id]
                 card(item, remote: remote)
                     .opacity(remote == nil ? 1 : 0.55)
@@ -646,7 +646,7 @@ struct PlaylistEditorView: View {
         let byID = Dictionary(remotes.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let known = preview?.items ?? []
         if !known.isEmpty || !remotes.isEmpty {
-            MasonryGrid(items: known + remotes.map(\.item.summary)) { item in
+            MasonryGrid(items: known + remotes.map(\.summary)) { item in
                 card(item, remote: byID[item.id])
             }
         } else if preview != nil, !askingMuseums {
