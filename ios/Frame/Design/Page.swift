@@ -25,10 +25,12 @@ extension View {
     /// Odkrywaj (the study of the day) and Playlisty (what the frame shows).
     /// `lift` is how far the page is scrolled (`glowLift`): the glow goes up
     /// with what it belongs to, and stays put when the page is pulled down.
-    func paperPage(glow swatches: [ColorSwatch], lift: CGFloat = 0) -> some View {
+    /// `colours`: how many of `swatches` glow (a picture's first three; a
+    /// playlist's cover sends one per work).
+    func paperPage(glow swatches: [ColorSwatch], lift: CGFloat = 0, colours: Int = 3) -> some View {
         frame(maxWidth: .infinity, maxHeight: .infinity)
             .background {
-                PaperGlowBackground(swatches: swatches, lift: lift)
+                PaperGlowBackground(swatches: Array(swatches.prefix(colours)), lift: lift)
                     .allowsHitTesting(false)
             }
     }
@@ -63,6 +65,7 @@ enum PageGlow {
 
 /// The paper and the glow over the whole screen, under the bars.
 struct PaperGlowBackground: View {
+    /// A picture's first three colours glow (`paperPage` may let more through).
     let swatches: [ColorSwatch]
     var lift: CGFloat = 0
 
@@ -85,7 +88,7 @@ private struct PageGlowLayer: View {
     let swatches: [ColorSwatch]
 
     var body: some View {
-        let colors = swatches.prefix(3).compactMap { Color(hexString: $0.hex) }
+        let colors = swatches.prefix(4).compactMap { Color(hexString: $0.hex) }
         if !colors.isEmpty {
             LinearGradient(colors: colors.map { $0.opacity(PageGlow.strength) }, startPoint: .top, endPoint: .bottom)
                 // Wider and taller than the layer, so the blur does not pale its sides and top.

@@ -19,11 +19,14 @@ struct PlaylistsView: View {
     /// The frame plays Propozycje: no playlist.
     private var suggestionsActive: Bool { model.settings != nil && model.settings?.playlistId == nil }
 
-    /// The colours of the picture on the frame glow behind "Teraz
-    /// prezentowane", as in Teraz; none without that card.
+    /// The cover of "Teraz prezentowane" glows behind it, as the picture
+    /// does in Teraz: the main colour of each of its (up to) four works.
     private var glow: [ColorSwatch] {
-        guard active != nil || suggestionsActive else { return [] }
-        return model.currentItem?.colors ?? []
+        if let active { return active.coverColors ?? [] }
+        guard suggestionsActive else { return [] }
+        return model.suggestionCover.prefix(4).compactMap { work in
+            work.item.colors.max { $0.weight < $1.weight }
+        }
     }
 
     var body: some View {
@@ -75,7 +78,7 @@ struct PlaylistsView: View {
                 .padding(.bottom, 40)
             }
             .glowLift($scrolled)
-            .paperPage(glow: glow, lift: scrolled)
+            .paperPage(glow: glow, lift: scrolled, colours: 4)
             .navigationTitle("Playlisty")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {

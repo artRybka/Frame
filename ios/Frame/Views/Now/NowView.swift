@@ -137,7 +137,7 @@ struct NowView: View {
         NavigationStack(path: $path) {
             ZStack {
                 // Stays put while the texts below scroll: it belongs to the hero.
-                PaperGlowBackground(swatches: shownItem?.colors ?? browsed?.summary.colors ?? [])
+                PaperGlowBackground(swatches: Array((shownItem?.colors ?? browsed?.summary.colors ?? []).prefix(3)))
                 ScrollView {
                     VStack(alignment: .leading, spacing: 22) {
                         hero
