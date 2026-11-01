@@ -176,7 +176,7 @@ struct ArtCard: View {
                         .font(.serif(15, weight: .medium))
                         .foregroundStyle(Theme.ink)
                         .lineLimit(2)
-                    Text(item.artist.isEmpty ? Names.source(item.source) : item.artist)
+                    Text(item.artist.isEmpty ? Names.source(item.source) : Names.artist(item.artist))
                         .font(.caption)
                         .foregroundStyle(Theme.inkSoft)
                         .lineLimit(1)

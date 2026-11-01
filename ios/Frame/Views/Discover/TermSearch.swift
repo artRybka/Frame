@@ -164,7 +164,7 @@ private struct TermSearch: ViewModifier {
     func body(content: Content) -> some View {
         content
             .searchable(text: $lookup.text, tokens: fieldTokens, prompt: Text(prompt)) { token in
-                Label(token.name, systemImage: token.icon)
+                Label(token.shownName, systemImage: token.icon)
             }
             .textInputAutocapitalization(.never)
             .autocorrectionDisabled()
@@ -198,7 +198,7 @@ struct TermSuggestions: View {
             }
             ForEach(lookup.hits) { hit in
                 row(
-                    icon: hit.token.icon, title: hit.name, kind: kindName(of: hit),
+                    icon: hit.token.icon, title: hit.token.kind == "artist" ? Names.artist(hit.name) : hit.name, kind: kindName(of: hit),
                     detail: hit.detail, count: lookup.uncounted.contains(hit.id) ? nil : hit.count
                 ) { pick(hit.token, fromMuseums: false) }
             }
@@ -214,7 +214,7 @@ struct TermSuggestions: View {
                         .padding(.horizontal, 12)
                         .padding(.top, 12)
                     ForEach(hint.artists) { artist in
-                        row(icon: "building.columns", title: artist.name, kind: "Artysta z muzeów",
+                        row(icon: "building.columns", title: Names.artist(artist.name), kind: "Artysta z muzeów",
                             detail: "", count: nil) { pick(artist.token, fromMuseums: true) }
                     }
                     row(icon: "building.columns", title: "„\(lookup.trimmed)” w muzeach", kind: "Słowo",
@@ -303,7 +303,7 @@ struct TokenSummary: View {
                                 .fill(ColorTag.color(token.key))
                                 .frame(width: 8, height: 8)
                         }
-                        Text(token.name).lineLimit(1)
+                        Text(token.shownName).lineLimit(1)
                     }
                     .font(.caption2.weight(.medium))
                     .foregroundStyle(Theme.inkSoft)
@@ -313,7 +313,7 @@ struct TokenSummary: View {
                 }
             }
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Szukasz: " + tokens.map(\.name).joined(separator: ", "))
+            .accessibilityLabel("Szukasz: " + tokens.map(\.shownName).joined(separator: ", "))
         }
     }
 }

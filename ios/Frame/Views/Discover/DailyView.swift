@@ -8,7 +8,7 @@ struct DailyTile: View {
     let work: DailyWork
 
     private var byline: String {
-        [work.item.item.artist, work.item.item.dateText].filter { !$0.isEmpty }.joined(separator: " · ")
+        [Names.artist(work.item.item.artist), work.item.item.dateText].filter { !$0.isEmpty }.joined(separator: " · ")
     }
 
     var body: some View {
@@ -215,7 +215,7 @@ struct DailyView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
                     .padding(.top, 6)
                 if let peek {
-                    let byline = [peek.item.artist, peek.item.dateText].filter { !$0.isEmpty }.joined(separator: " · ")
+                    let byline = [Names.artist(peek.item.artist), peek.item.dateText].filter { !$0.isEmpty }.joined(separator: " · ")
                     VStack(alignment: .leading, spacing: 4) {
                         Text(peek.title.isEmpty ? "Bez tytułu" : peek.title)
                             .font(.serif(26, weight: .semibold))
@@ -419,7 +419,7 @@ struct DailyView: View {
 
     private func header(_ work: DailyWork) -> some View {
         let item = work.item.item
-        let byline = [item.artist, item.dateText].filter { !$0.isEmpty }.joined(separator: " · ")
+        let byline = [Names.artist(item.artist), item.dateText].filter { !$0.isEmpty }.joined(separator: " · ")
         let where_ = [item.medium, item.museum].filter { !$0.isEmpty }.joined(separator: " · ")
         return VStack(alignment: .leading, spacing: 4) {
             Text(work.title)
@@ -628,7 +628,7 @@ struct DailyView: View {
                             .foregroundStyle(Theme.ink)
                             .lineLimit(2)
                             .multilineTextAlignment(.leading)
-                        Text([work.item.item.artist, work.item.item.dateText].filter { !$0.isEmpty }.joined(separator: ", "))
+                        Text([Names.artist(work.item.item.artist), work.item.item.dateText].filter { !$0.isEmpty }.joined(separator: ", "))
                             .font(.caption)
                             .foregroundStyle(Theme.inkSoft)
                             .lineLimit(1)
@@ -668,7 +668,7 @@ struct DailyView: View {
                         Text(entry.year)
                             .font(.caption.weight(.bold))
                             .foregroundStyle(Theme.vermilion)
-                        Text(entry.title.isEmpty ? entry.who : "\(entry.who), „\(entry.title)”")
+                        Text(entry.title.isEmpty ? Names.artist(entry.who) : "\(Names.artist(entry.who)), „\(entry.title)”")
                             .font(.serif(16, weight: .semibold))
                             .foregroundStyle(Theme.ink)
                             .fixedSize(horizontal: false, vertical: true)

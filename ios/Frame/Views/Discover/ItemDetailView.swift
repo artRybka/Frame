@@ -235,7 +235,7 @@ struct ItemDetailView: View {
                 .fixedSize(horizontal: false, vertical: true)
             if !summary.artist.isEmpty {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text(summary.artist).font(.serif(19)).foregroundStyle(Theme.ink)
+                    Text(Names.artist(summary.artist)).font(.serif(19)).foregroundStyle(Theme.ink)
                     Image(systemName: "magnifyingglass")
                         .font(.footnote.weight(.semibold))
                         .foregroundStyle(Theme.inkSoft)
@@ -597,7 +597,7 @@ struct ItemDetailView: View {
                     model.artistSearch = item.artist
                 } label: {
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text(item.artist).font(.serif(19)).foregroundStyle(Theme.ink)
+                        Text(Names.artist(item.artist)).font(.serif(19)).foregroundStyle(Theme.ink)
                         Image(systemName: "magnifyingglass")
                             .font(.footnote.weight(.semibold))
                             .foregroundStyle(Theme.inkSoft)
