@@ -3,35 +3,58 @@ import SwiftUI
 /// What the words typed in the system search field could mean: styles,
 /// subjects, periods, techniques and artists with how many works the
 /// catalogue has, and when the catalogue has little, what the museums have.
+///
+/// Every letter shows something at once, from what the app already knows:
+/// what was found for the letters before and still fits, the vocabulary's
+/// terms that start like the words, and the words themselves. The server's
+/// answer (with the counts) replaces it a moment later; the museums, slow,
+/// come last.
 @MainActor
 @Observable
 final class TermLookup {
     var text = ""
     private(set) var hits: [TermHit] = []
+    /// Hits of the guess whose count the server has not told yet.
+    private(set) var uncounted: Set<String> = []
     private(set) var hint: MuseumHint?
     private(set) var askingMuseums = false
+    /// The server's answers by the words typed: a letter taken back shows
+    /// its answer again without asking.
+    @ObservationIgnored private var answers: [String: [TermHit]] = [:]
 
     var trimmed: String { text.trimmingCharacters(in: .whitespaces) }
     var typing: Bool { !trimmed.isEmpty }
 
     /// Below this many works in the catalogue the museums are asked too.
     private static let few = 6
+    /// How many suggestions the guess shows (the server's answer has up to 11).
+    private static let guessed = 10
 
-    func lookUp(_ backend: any FrameBackend) async {
+    func lookUp(_ backend: any FrameBackend, vocabulary: [TermInfo] = []) async {
         let words = trimmed
         hint = nil
         guard !words.isEmpty else {
             hits = []
+            uncounted = []
             return
         }
-        try? await Task.sleep(for: .milliseconds(220))  // debounce typing
-        guard !Task.isCancelled else { return }
-        do {
-            hits = try await backend.terms(words)
-        } catch is CancellationError {
-            return
-        } catch {
-            hits = []
+        if let known = answers[words] {
+            hits = known
+            uncounted = []
+        } else {
+            guess(words, vocabulary: vocabulary)
+            try? await Task.sleep(for: .milliseconds(120))  // debounce typing
+            guard !Task.isCancelled else { return }
+            do {
+                let found = try await backend.terms(words)
+                if answers.count > 200 { answers.removeAll() }
+                answers[words] = found
+                hits = found
+                uncounted = []
+            } catch {
+                // Cut short by the next letter, or no answer: the guess stays.
+                return
+            }
         }
         // Museums only when the catalogue knows little: they answer slowly.
         let best = hits.filter { $0.kind != "word" }.map(\.count).max() ?? 0
@@ -43,11 +66,51 @@ final class TermLookup {
         hint = try? await backend.museumHint(words)
     }
 
+    /// Shows at once what the app knows for `words`.
+    private func guess(_ words: String, vocabulary: [TermInfo]) {
+        let wanted = Self.fold(words)
+        // Counts of artists and terms do not depend on the words typed.
+        var guess = hits.filter { hit in
+            hit.kind != "word" && (Self.fold(hit.name).contains(wanted) || Self.fold(hit.detail).contains(wanted))
+        }
+        var fresh: Set<String> = []
+        for info in vocabulary where guess.count < Self.guessed && Self.startsLike(info, wanted) {
+            guard !guess.contains(where: { $0.kind == info.kind && $0.key == info.key }) else { continue }
+            let hit = TermHit(
+                kind: info.kind, key: info.key, name: info.name,
+                detail: info.words.prefix(3).map { $0.replacingOccurrences(of: "*", with: "") }
+                    .joined(separator: ", ")
+            )
+            guess.append(hit)
+            fresh.insert(hit.id)
+        }
+        let word = TermHit(kind: "word", key: words, name: words)
+        guess.append(word)
+        fresh.insert(word.id)
+        hits = guess
+        uncounted = fresh
+    }
+
+    /// The term's name, a word of it or one of its museum words starts like
+    /// `wanted` (as the server suggests them).
+    private static func startsLike(_ info: TermInfo, _ wanted: String) -> Bool {
+        let name = fold(info.name)
+        let names = [name] + name.split(separator: " ").map(String.init)
+        let words = info.words.map { fold($0.replacingOccurrences(of: "*", with: "")) }
+        return (names + words).contains { $0.hasPrefix(wanted) }
+    }
+
+    static func fold(_ text: String) -> String {
+        text.replacingOccurrences(of: "ł", with: "l").replacingOccurrences(of: "Ł", with: "L")
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
+    }
+
     /// Puts a chip in and empties the field.
     func pick(_ token: SearchToken, into tokens: Binding<[SearchToken]>) {
         if !tokens.wrappedValue.contains(token) { tokens.wrappedValue.append(token) }
         text = ""
         hits = []
+        uncounted = []
         hint = nil
     }
 
@@ -56,7 +119,8 @@ final class TermLookup {
     func typed() -> (token: SearchToken, fromMuseums: Bool)? {
         let words = trimmed
         guard !words.isEmpty else { return nil }
-        let fromMuseums = hits.first { $0.kind == "word" }.map { $0.count == 0 } ?? false
+        let word = hits.first { $0.kind == "word" && !uncounted.contains($0.id) }
+        let fromMuseums = word.map { $0.count == 0 } ?? false
         return (SearchToken(kind: "word", key: words, name: words), fromMuseums)
     }
 }
@@ -107,7 +171,7 @@ private struct TermSearch: ViewModifier {
                 lookup.pick(typed.token, into: $tokens)
                 if typed.fromMuseums { pickedFromMuseums() }
             }
-            .task(id: lookup.trimmed) { await lookup.lookUp(model.backend) }
+            .task(id: lookup.trimmed) { await lookup.lookUp(model.backend, vocabulary: model.vocabulary) }
     }
 }
 
@@ -132,7 +196,7 @@ struct TermSuggestions: View {
             ForEach(lookup.hits) { hit in
                 row(
                     icon: hit.token.icon, title: hit.name, kind: hit.token.kindName,
-                    detail: hit.detail, count: hit.count
+                    detail: hit.detail, count: lookup.uncounted.contains(hit.id) ? nil : hit.count
                 ) { pick(hit.token, fromMuseums: false) }
             }
             if lookup.askingMuseums {

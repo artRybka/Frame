@@ -29,12 +29,12 @@ from .viewer import OWNER_ID, viewer_id
 from .vocabulary import (
     HIGHLIGHT,
     TERMS,
-    _text,
     artist_matches,
     fold,
     museum_queries,
     set_aside,
     term_matches,
+    text_of,
 )
 
 log = logging.getLogger(__name__)
@@ -801,7 +801,7 @@ def _mixes(items: list[Item], rng: random.Random, history: set[str]) -> list[The
     ]
     pairs: Counter[tuple[str, str]] = Counter()
     for item in items:
-        text = _text(item)
+        text = text_of(item)
         has = [t.key for t in subjects if term_matches(t, item, text)]
         if not has:
             continue

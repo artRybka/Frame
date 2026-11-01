@@ -9,9 +9,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import random
 import sqlite3
 import threading
+import time
 import weakref
 from collections import Counter
 from collections.abc import Collection, Iterable, Iterator
@@ -37,10 +39,16 @@ from .models import (
     PlaylistRules,
     PlaylistSummary,
 )
+from .term_index import TermIndex
 from .viewer import OWNER_ID, STORE, viewer_id
 from .vocabulary import artist_matches, is_postal, matches_terms, object_category, set_aside
 
 #: Item fields that tell copies of a work apart or choose between them.
+log = logging.getLogger(__name__)
+
+#: Seconds between rebuilds of the suggestions' index while the library changes.
+TERM_INDEX_EVERY = 10.0
+
 WORK_FIELDS = frozenset(
     {"kind", "source", "title", "artist", "year", "width", "height", "url", "image_url", "pooled"}
 )
@@ -224,6 +232,12 @@ class Library:
         self._conn: sqlite3.Connection | None = None
         self._depth = 0  # nested _db() blocks share the outermost transaction
         self._favorites: dict[str, set[str]] | None = None
+        #: Goes up with every change of an item (for the suggestions' index).
+        self._version = 0
+        self._term_index: TermIndex | None = None
+        self._term_index_lock = threading.Lock()
+        self._term_index_building = False
+        self._term_index_built_at = 0.0
         with self._db() as db:
             db.executescript(SCHEMA)
         self._move_favorites()
@@ -254,6 +268,7 @@ class Library:
             except BaseException:
                 self._items = None  # the cache may hold rolled back changes
                 self._works = None
+                self._version += 1
                 self._favorites = None
                 raise
             finally:
@@ -321,6 +336,7 @@ class Library:
                     (item.id, item.model_dump_json(context=STORE)),
                 )
             self._all()[item.id] = item
+            self._version += 1
             if existing is None and item.favorite:  # brought in liked: the asker's heart
                 self.set_favorite(viewer_id(), item.id, True)
             if existing is None and self._works is not None:
@@ -353,6 +369,7 @@ class Library:
                     (updated.model_dump_json(context=STORE), item_id),
                 )
             self._all()[item_id] = updated
+            self._version += 1
             if WORK_FIELDS & changes.keys():
                 self._works = None
             return updated
@@ -366,6 +383,7 @@ class Library:
                 db.execute("DELETE FROM ai_notes WHERE item_id = ?", (item_id,))
                 db.execute("DELETE FROM favorites WHERE item_id = ?", (item_id,))
             del self._all()[item_id]
+            self._version += 1
             for hearts in (self._favorites or {}).values():
                 hearts.discard(item_id)
             self._works = None
@@ -450,6 +468,49 @@ class Library:
             if self._works is None:
                 self._works = Works(self._all().values())
             return self._works
+
+    def term_index(self) -> TermIndex:
+        """The catalogue as searches see it, for the suggestions while typing.
+
+        Built once; when the library has changed since, it answers on while
+        a new one is built in the background (at most every
+        :data:`TERM_INDEX_EVERY` seconds), so that typing never waits for
+        the catalogue: a count may be a few seconds old."""
+        with self._term_index_lock:
+            index = self._term_index
+            if index is None:
+                index = self._term_index = self._build_term_index()
+                return index
+            stale = index.version != self._version
+            due = time.monotonic() - self._term_index_built_at >= TERM_INDEX_EVERY
+            if stale and due and not self._term_index_building:
+                self._term_index_building = True
+                threading.Thread(
+                    target=self._rebuild_term_index, name="term-index", daemon=True
+                ).start()
+            return index
+
+    def _build_term_index(self) -> TermIndex:
+        with self._lock:
+            version = self._version
+            items = list(self._all().values())
+            works = self.works()
+            spare = works.spare()
+            groups = {i.id: g for i in items if (g := works.group_index(i.id)) is not None}
+        index = TermIndex(items, spare, groups, version, lambda rules: self.query(rules)[0])
+        self._term_index_built_at = time.monotonic()
+        return index
+
+    def _rebuild_term_index(self) -> None:
+        try:
+            index = self._build_term_index()
+            with self._term_index_lock:
+                self._term_index = index
+        except Exception:
+            log.exception("term index: rebuild failed")
+        finally:
+            with self._term_index_lock:
+                self._term_index_building = False
 
     def spare_copies(self) -> set[str]:
         """Works the server added again from a less reliable source, or of
