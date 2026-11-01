@@ -498,6 +498,42 @@ def is_grey_painting(item: Item, spread: float | None = None) -> bool:
     return spread is not None and spread < GREY_PAINTING_SPREAD and is_painting(item)
 
 
+#: Europeana's providers whose pictures are photographs of works taken by an
+#: art history photo archive, not the museums' own scans: Bildarchiv Foto
+#: Marburg (half of them old black-and-white prints on a catalogue card with
+#: the negative number typed below) and Brussels' KIK-IRPA. Their colour
+#: photographs are good; a black-and-white one is a copy whatever the work,
+#: since the paper, chalk or ink colours of a drawing or print are lost too.
+#: As ``Item.credit`` names them.
+ART_PHOTO_ARCHIVES = frozenset(
+    {
+        "German Documentation Center for Art History - Marburg Picture Index",
+        "Royal Institute for Cultural Heritage",
+    }
+)
+
+
+def is_art_archive_photo(item: Item) -> bool:
+    """A photograph of a work from an art history photo archive."""
+    return item.source == "europeana" and item.credit in ART_PHOTO_ARCHIVES
+
+
+def may_be_grey_copy(item: Item) -> bool:
+    """A work whose picture, if it has no colour, is a black-and-white copy:
+    a painting, or anything an art photo archive has. (Real prints and
+    drawings are often colourless; their museums' scans stay.)"""
+    return is_painting(item) or is_art_archive_photo(item)
+
+
+def is_grey_copy(item: Item, spread: float | None = None) -> bool:
+    """A black-and-white copy of a work (:func:`may_be_grey_copy` with a
+    picture of no colour). ``spread`` stands in for the item's own
+    ``tint_spread`` when given."""
+    if spread is None:
+        spread = item.tint_spread
+    return spread is not None and spread < GREY_PAINTING_SPREAD and may_be_grey_copy(item)
+
+
 def is_painting(item: Item) -> bool:
     """A museum work its museum calls a painting (by type or material)."""
     return item.kind == ItemKind.ARTWORK and _is_painting(item.classification, item.medium)
@@ -540,14 +576,14 @@ def is_postal(item: Item) -> bool:
 
 def is_copy(item: Item) -> bool:
     """A reproduction of a work in print or on a slide, a photograph
-    Openverse has from Flickr or one from a photo archive, a stamp: never
-    what the frame looks for."""
+    Openverse has from Flickr or one from a photo archive, a stamp, a
+    black-and-white photograph of a work: never what the frame looks for."""
     return (
         (is_photograph(item) and item.source == "openverse")
         or is_archive_photo(item)
         or is_postal(item)
         or is_reproduction(item)
-        or is_grey_painting(item)
+        or is_grey_copy(item)
     )
 
 
