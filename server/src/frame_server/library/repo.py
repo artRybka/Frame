@@ -321,11 +321,22 @@ class Library:
                     self._items[item.id] = item
             return self._items
 
+    def _snapshot(self) -> list[Item]:
+        """The items as they are now, safe to go through while another
+        thread adds or removes some (iterating the cache itself then fails
+        with "dictionary changed size during iteration")."""
+        with self._lock:
+            return list(self._all().values())
+
+    def _snapshot_by_id(self) -> dict[str, Item]:
+        with self._lock:
+            return dict(self._all())
+
     def count(self) -> int:
         return len(self._all())
 
     def all_items(self) -> list[Item]:
-        return list(self._all().values())
+        return self._snapshot()
 
     def get(self, item_id: str) -> Item | None:
         return self._all().get(item_id)
@@ -441,14 +452,17 @@ class Library:
 
     def favorites(self, user_id: str | None = None) -> frozenset[str]:
         """The works ``user_id`` likes (default: whoever is asking)."""
-        return frozenset(self._hearts().get(user_id or viewer_id(), ()))
+        user_id = user_id or viewer_id()
+        with self._lock:  # a heart given meanwhile would change the set
+            return frozenset(self._hearts().get(user_id, ()))
 
     def likes(self, user_id: str, item_id: str) -> bool:
         return item_id in self._hearts().get(user_id, ())
 
     def fans(self) -> dict[str, frozenset[str]]:
         """Everyone's hearts, by person."""
-        return {u: frozenset(ids) for u, ids in self._hearts().items()}
+        with self._lock:
+            return {u: frozenset(ids) for u, ids in self._hearts().items()}
 
     def set_favorite(self, user_id: str, item_id: str, liked: bool) -> Item | None:
         """``user_id``'s heart on ``item_id``; the stored ``Item.favorite``
@@ -579,7 +593,7 @@ class Library:
                 return matches(unexcluded, rules, listed, hearts)
             return matches(item, rules, listed, hearts)
 
-        items = [i for i in self._all().values() if selected(i)]
+        items = [i for i in self._snapshot() if selected(i)]
         if not include_excluded:
             # Copies the owner kept of one work: the best of those asked for
             # stands for them.
@@ -589,7 +603,7 @@ class Library:
         return len(items), items[offset:end]
 
     def facets(self) -> Facets:
-        items = [i for i in self._all().values() if not i.excluded]
+        items = [i for i in self._snapshot() if not i.excluded]
 
         def top(counter: Counter[str], limit: int = 60) -> list[FacetValue]:
             return [FacetValue(value=v, count=c) for v, c in counter.most_common(limit) if v]
@@ -668,7 +682,7 @@ class Library:
 
     def playlist_items(self, playlist: Playlist, sort: SortKey = "recent") -> list[Item]:
         if playlist.kind != PlaylistKind.SMART:
-            all_items = self._all()
+            all_items = self._snapshot_by_id()
             skip = set(playlist.rules.exclude_ids)  # album photos taken out
             return dedupe(
                 [
