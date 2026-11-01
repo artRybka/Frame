@@ -6,6 +6,8 @@
   „wielka fala”, „góra Fuji”), oznaczone w aplikacji jako „Słowo kluczowe”.
 - Ponowne stuknięcie w „Teraz” na pasku wraca do obrazu, który jest na
   ramce, i przewija stronę na górę.
+- Poświata kolorów jest krótsza (zostaje u góry strony), a do tego pojawia
+  się też na ekranie playlisty, na karcie dzieła i w studium.
 - „Inne prace artysty” w studium bez powtórzeń: ta sama praca z innego
   źródła (także pod tytułem w innym języku) i kopie studiowanego dzieła są
   pomijane.
