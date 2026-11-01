@@ -237,20 +237,14 @@ struct MuseumSearchView: View {
                 )
             }
             if !asking, !next.isEmpty {
-                // The end's room: the icon's squares while the museums are
-                // asked for more, nothing to read or pull.
-                ZStack {
-                    if loadingMore {
-                        SquaresAnimation(inScreenMiddle: false, tapForNext: false)
-                            .transition(.opacity)
-                    }
-                }
-                .frame(height: 96)
-                .frame(maxWidth: .infinity)
-                .animation(.easeOut(duration: 0.25), value: loadingMore)
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel("Doczytuję")
-                .accessibilityHidden(!loadingMore)
+                // The end: the icon's squares as long as a museum may still
+                // have more (also while one hasn't answered and waits to be
+                // asked again), nothing to read or pull.
+                SquaresAnimation(inScreenMiddle: false, tapForNext: false)
+                    .frame(height: 96)
+                    .frame(maxWidth: .infinity)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("Doczytuję")
             }
         }
     }
@@ -335,21 +329,32 @@ struct MuseumSearchView: View {
     }
 
     /// Asks the museums for their next pages while the results' end is near,
-    /// again and again until it isn't (a page can bring few new works). A
-    /// page that brought nothing waits for the next scroll, so that a museum
-    /// that doesn't answer isn't asked over and over.
+    /// again and again until it isn't (a page can bring few new works). When
+    /// a round brought nothing (a museum that didn't answer), the next waits
+    /// a while, so that the squares at the end keep their word without
+    /// asking a museum that is down over and over.
     @MainActor
-    private func moreIfNeeded() {
+    private func moreIfNeeded(after pause: Duration = .zero) {
         guard nearEnd, asked, !asking, !loadingMore, !next.isEmpty, let key = searched else { return }
         loadingMore = true
         Task { @MainActor in
+            if pause > .zero { try? await Task.sleep(for: pause) }
+            guard key == searched, nearEnd, !next.isEmpty else {
+                loadingMore = false
+                moreIfNeeded()
+                return
+            }
             let found = results.count
             let pages = next
             await loadMore(key)
             loadingMore = false
-            if key != searched || results.count != found || next != pages { moreIfNeeded() }
+            let moved = key != searched || results.count != found || next != pages
+            moreIfNeeded(after: moved ? .zero : Self.retryPause)
         }
     }
+
+    /// How long a round that brought nothing waits before the next.
+    private static let retryPause: Duration = .seconds(10)
 
     /// The next page of each museum that has more.
     @MainActor
