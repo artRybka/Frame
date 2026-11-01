@@ -18,6 +18,7 @@ from PIL import Image
 from ..fsutil import own_files
 from ..imaging.layout import load_image
 from .hosts import Resting, walled
+from .markup import commons_rendition
 from .models import Item
 
 log = logging.getLogger(__name__)
@@ -44,12 +45,21 @@ FAILED_FOR = 1800.0
 #: museum, a web page in its place) is left out of lists before it is
 #: tried again: museums put pictures back, or move them.
 GONE_FOR = 7 * 86400.0
+#: Commons originals wider than this come as Commons' own rendition of this
+#: width: a museum's scan can be 100 MB and 200 megapixels, far more than
+#: the frame's 2560 px, and too large for Pillow to open at all.
+COMMONS_WIDTH = 3840
 
 
 class Unavailable(OSError):
     """The original cannot be had from anywhere: the host refuses programs
     (a "verify you are human" page), the file is gone, or it was tried
     lately and failed."""
+
+
+class TooLarge(OSError):
+    """A picture with more pixels than Pillow opens (a decompression bomb
+    to it): the thumbnail stands in for it."""
 
 
 class Gone(Unavailable):
@@ -92,6 +102,15 @@ def _missing(err: Exception) -> bool:
             return True
         return resp.status_code in (400, 401, 403) and not walled(resp)
     return not isinstance(err, httpx.HTTPError)
+
+
+def _display_copy(item: Item) -> str:
+    """The address of ``item``'s original, or of Commons' smaller rendition
+    of it when the file is far larger than the frame needs."""
+    url = item.image_url
+    if item.width and item.width > COMMONS_WIDTH:
+        return commons_rendition(url, COMMONS_WIDTH, item.width) or url
+    return url
 
 
 class ImageCache:
@@ -158,7 +177,10 @@ class ImageCache:
                     self.sleep(_retry_after(resp, attempt))
                     continue
                 resp.raise_for_status()
-                return load_image(resp.content)
+                try:
+                    return load_image(resp.content)
+                except Image.DecompressionBombError as err:
+                    raise TooLarge(f"{url}: {err}") from err
         raise AssertionError("unreachable")
 
     def sample(self, url: str) -> Image.Image:
@@ -182,7 +204,8 @@ class ImageCache:
 
     def _addresses(self, item: Item, thumb: bool) -> list[str]:
         mirrors = self.mirrors.get(item.source)
-        first = [item.thumb_url, item.image_url] if thumb else [item.image_url or item.thumb_url]
+        image_url = _display_copy(item)
+        first = [item.thumb_url, image_url] if thumb else [image_url or item.thumb_url]
         urls = [*first, *(mirrors(item, thumb) if mirrors else [])]
         return list(dict.fromkeys(u for u in urls if u))
 

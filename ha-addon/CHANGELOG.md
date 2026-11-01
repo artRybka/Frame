@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.66.0
+
+- Przy „Użytku prywatnym” Muzea Narodowe w Warszawie i Krakowie pokazują też
+  dzieła wciąż chronione prawem autorskim (np. Andrzej Wróblewski); puste
+  wyniki z tych muzeów nie są już błędem.
+- Klucz Smithsonian w Konfiguracja → Źródła dzieł znowu się zapisuje (zamiast
+  „Smithsonian teraz nie odpowiada”); to samo sprawdzanie poprawione dla
+  Europeany.
+- Podgląd „Na ramce” i pełny ekran wczytują się także dla bardzo dużych
+  skanów z Wikimedia Commons (serwer bierze kopię 3840 px).
+
 ## 1.65.0
 
 - Klucze źródeł dzieł wpisuje się w aplikacji: Konfiguracja → Źródła dzieł

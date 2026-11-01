@@ -201,6 +201,72 @@ def test_original_refused_everywhere_is_unavailable_for_a_while(tmp_path: Path) 
     assert not cache.unavailable(item)
 
 
+COMMONS_ORIGINAL = (
+    "https://upload.wikimedia.org/wikipedia/commons/4/4c/"
+    "Le_Gar%C3%A7on_au_gilet_rouge%2C_par_Paul_C%C3%A9zanne%2C_National_Gallery_of_Art.jpg"
+)
+
+
+def _commons_scan(width: int) -> Item:
+    return Item(
+        id="wmc:149057",
+        source="wmc",
+        source_id="149057",
+        title="Le Garçon au gilet rouge",
+        image_url=COMMONS_ORIGINAL,
+        thumb_url=COMMONS_ORIGINAL.replace("/4/4c/", "/thumb/4/4c/") + "/500px-x.jpg",
+        width=width,
+        height=width * 5 // 4,
+    )
+
+
+def test_a_huge_commons_scan_comes_as_commons_rendition(tmp_path: Path) -> None:
+    """A 100 MB, 200-megapixel museum scan: Commons' 3840 px copy is
+    downloaded instead, for the card, the preview and the frame alike."""
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(str(request.url))
+        return httpx.Response(200, content=_jpeg())
+
+    cache = ImageCache(tmp_path, lambda: httpx.Client(transport=httpx.MockTransport(handler)))
+    # As the Commons API gives its links now.
+    linked = COMMONS_ORIGINAL + "?utm_source=commons.wikimedia.org&utm_content=original"
+    huge = _commons_scan(12560).model_copy(update={"image_url": linked})
+    assert cache.ensure_image(huge).is_file()
+    assert len(seen) == 1
+    assert "/thumb/4/4c/" in seen[0] and "/3840px-" in seen[0]
+    # A file the frame's size is downloaded as it is.
+    seen.clear()
+    small = _commons_scan(2536).model_copy(update={"id": "wmc:149054", "source_id": "149054"})
+    cache.ensure_image(small)
+    assert seen == [COMMONS_ORIGINAL]
+
+
+def test_a_picture_too_large_to_open_falls_back_to_the_thumbnail(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Pillow refuses to open it (a decompression bomb to it): the preview
+    and the full screen get the thumbnail instead of an error."""
+    from frame_server.library.images import Unavailable
+
+    monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 100)  # every picture "too large"
+    big = _jpeg()
+    out = io.BytesIO()
+    Image.new("RGB", (8, 6), (200, 80, 40)).save(out, "JPEG")
+    small = out.getvalue()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=small if "500px" in str(request.url) else big)
+
+    cache = ImageCache(tmp_path, lambda: httpx.Client(transport=httpx.MockTransport(handler)))
+    item = _commons_scan(3000)
+    path, original = cache.picture(item, urgent=True)
+    assert path == cache.thumb_path(item) and not original
+    with pytest.raises(Unavailable):  # not downloaded again for a while
+        cache.ensure_image(item)
+
+
 def test_host_down_is_not_remembered(tmp_path: Path) -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(503)
