@@ -54,6 +54,41 @@ def test_query_filters_and_facets(tmp_path) -> None:
     assert all(f.value != "Someone" for f in facets.artists)
 
 
+def test_lists_survive_works_added_while_they_are_read(tmp_path, monkeypatch) -> None:
+    """Playlists and Odkrywaj went 500 ("dictionary changed size during
+    iteration") when an import added a work while a list was being read."""
+    import threading
+
+    from frame_server.library import repo
+
+    lib = Library(tmp_path / "lib.db")
+    for n in range(5):
+        lib.upsert(_item(n))
+    lib.set_favorite("owner", "test:0", True)
+    added = iter(range(100, 200))
+    real_matches = repo.matches
+
+    def matches_while_importing(*args, **kwargs):
+        # Another thread adds a work and a heart in the middle of the read.
+        n = next(added)
+
+        def write() -> None:
+            lib.upsert(_item(n))
+            lib.set_favorite("owner", f"test:{n}", True)
+
+        writer = threading.Thread(target=write)
+        writer.start()
+        writer.join()
+        return real_matches(*args, **kwargs)
+
+    monkeypatch.setattr(repo, "matches", matches_while_importing)
+    assert lib.query()[0] == 5
+    liked = lib.save_playlist(
+        Playlist(name="Liked", kind=PlaylistKind.SMART, rules=PlaylistRules(favorites_only=True))
+    )
+    assert "test:0" in {i.id for i in lib.playlist_items(liked)}
+
+
 def test_upsert_keeps_user_state(tmp_path) -> None:
     lib = Library(tmp_path / "lib.db")
     lib.upsert(_item(1))
