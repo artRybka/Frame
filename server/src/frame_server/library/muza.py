@@ -20,7 +20,7 @@ from urllib.parse import quote
 
 from .lifespan import free_in_eu
 from .models import Item
-from .museums import Discovery, Museum, _person, strip_html
+from .museums import PRIVATE_LICENCE, Discovery, Museum, _person, strip_html
 
 
 class MuzaMuseum(Museum):
@@ -36,7 +36,7 @@ class MuzaMuseum(Museum):
     types: ClassVar[dict[str, tuple[int, ...]]]
     page_size = 100
     #: What a work still in copyright is marked with (``private_use`` only).
-    private_licence = "Prawa autorskie w mocy (użytek prywatny)"
+    private_licence = PRIVATE_LICENCE
 
     #: The kind of work an object type is, in the words other sources use.
     classifications: ClassVar[dict[str, str]] = {

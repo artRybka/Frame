@@ -1622,7 +1622,7 @@ struct SourcesSection: View {
                         Text("Użytek prywatny")
                         Text(
                             privateUse.wrappedValue
-                                ? "Z Wikimedia Commons, Europeany i Openverse także dzieła na wolnych licencjach (np. CC BY-SA), z podanym autorem. Muzea Narodowe w Warszawie i Krakowie oraz V&A także prace wciąż chronione prawem autorskim, tylko do oglądania w domu."
+                                ? "Z Wikimedia Commons, Europeany i Openverse także dzieła na wolnych licencjach (np. CC BY-SA), z podanym autorem. Muzea Narodowe w Warszawie i Krakowie, Rijksmuseum, SMK i V&A także prace wciąż chronione prawem autorskim, tylko do oglądania w domu."
                                 : "Tylko dzieła w domenie publicznej (CC0). Opisy w oryginale, po angielsku."
                         )
                         .font(.caption)

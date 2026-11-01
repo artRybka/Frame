@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.69.0
+
+- Przy użytku prywatnym Rijksmuseum i SMK w Kopenhadze także pokazują dzieła
+  wciąż chronione prawem autorskim (np. Karel Appel, Picasso, Asger Jorn).
+- Europeana nie pokazuje już starych czarno-białych zdjęć obrazów z kartą
+  katalogową (Bildarchiv Foto Marburg, KIK-IRPA); kolorowe zdjęcia tych archiwów
+  i czarno-białe grafiki z muzeów zostają.
+- Playlisty: wszystkie kafelki mają równą wysokość (nic nie skacze przy
+  przewijaniu), „Wspólna” po prawej w wierszu z liczbą dzieł, bez nagłówka
+  „Kolekcje”.
+
 ## 1.68.0
 
 - Słabe obrazy dzieł (mała rozdzielczość, mocno ściśnięty plik) podmieniane

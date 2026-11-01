@@ -518,6 +518,34 @@ def test_rijksmuseum_skips_works_without_open_image() -> None:
     assert Rijksmuseum(httpx.Client())._map(closed) is None
 
 
+def test_rijksmuseum_takes_works_in_copyright_for_private_use() -> None:
+    from frame_server.library.museums import PRIVATE_LICENCE
+
+    carrier = RIJKS_OBJECT["subject_of"][0]["digitally_carried_by"][0]
+    protected = {
+        **RIJKS_OBJECT,
+        "subject_of": [
+            {
+                "digitally_carried_by": [
+                    {
+                        **carrier,
+                        "referred_to_by": [
+                            {"content": "https://rightsstatements.org/vocab/InC/1.0/"}
+                        ],
+                    }
+                ]
+            }
+        ],
+    }
+    assert Rijksmuseum(httpx.Client())._map(protected) is None
+    item = Rijksmuseum(httpx.Client(), private_use=True)._map(protected)
+    assert item is not None and item.license == PRIVATE_LICENCE
+    assert item.image_url == "https://iiif.micr.io/QkOGy/full/max/0/default.jpg"
+    # A public-domain picture keeps its own mark.
+    free = Rijksmuseum(httpx.Client(), private_use=True)._map(RIJKS_OBJECT)
+    assert free is not None and free.license == "Public Domain Mark 1.0"
+
+
 def test_search_many_walks_pages(tmp_path) -> None:
     from frame_server.library.importer import Importer
 

@@ -42,7 +42,15 @@ from .models import (
 )
 from .term_index import TermIndex
 from .viewer import OWNER_ID, STORE, viewer_id
-from .vocabulary import artist_matches, is_postal, matches_terms, object_category, set_aside
+from .vocabulary import (
+    artist_matches,
+    is_art_archive_photo,
+    is_grey_copy,
+    is_postal,
+    matches_terms,
+    object_category,
+    set_aside,
+)
 
 #: Item fields that tell copies of a work apart or choose between them.
 log = logging.getLogger(__name__)
@@ -153,11 +161,14 @@ def matches(
         return False
     # Photographs, sculpture, crafts and manuscripts are found only when
     # asked for, even those the owner kept: Monet's bust is no Monet.
-    # Stamps never: Athens 2004's coins are no still life.
+    # Stamps never: Athens 2004's coins are no still life. Nor Foto
+    # Marburg's black-and-white prints on a catalogue card.
     category = object_category(item)
     if category is not None and category not in rules.terms and _searches(rules):
         return False
-    if _searches(rules) and is_postal(item):
+    if _searches(rules) and (
+        is_postal(item) or (is_art_archive_photo(item) and is_grey_copy(item))
+    ):
         return False
     if rules.favorites_only and not liked:
         return False

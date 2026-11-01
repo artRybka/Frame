@@ -2,7 +2,8 @@
 
 Only works free to show are returned: public domain / CC0, public domain in
 the EU (author dead for more than 70 years), and with ``private_use`` also
-works under free licences. Every museum maps its records onto :class:`Item`
+works under free licences and works still in copyright whose museum publishes
+full pictures of them (``PRIVATE_LICENCE``). Every museum maps its records onto :class:`Item`
 (without colours; those are computed from the thumbnail at import time).
 """
 
@@ -731,7 +732,9 @@ class Rijksmuseum(Museum):
         return str((english or values or [{}])[0].get("@value", ""))
 
     def _image(self, d: dict[str, Any]) -> tuple[str, str]:
-        """IIIF base of the public-domain image and its licence, if any."""
+        """IIIF base of the public-domain image and its licence, if any; with
+        ``private_use`` also of one still in copyright ("InC")."""
+        protected = ""
         for subject in d.get("subject_of") or []:
             for carrier in subject.get("digitally_carried_by") or []:
                 rights = [r.get("content", "") for r in carrier.get("referred_to_by") or []]
@@ -740,8 +743,13 @@ class Rijksmuseum(Museum):
                 )
                 for point in carrier.get("access_point") or []:
                     url = point.get("id", "")
-                    if licence and "iiif" in url:
+                    if "iiif" not in url:
+                        continue
+                    if licence:
                         return re.sub(r"/full/.*$", "", url), licence
+                    protected = protected or re.sub(r"/full/.*$", "", url)
+        if protected and self.private_use:
+            return protected, PRIVATE_LICENCE
         return "", ""
 
     def _page_url(self, d: dict[str, Any]) -> str:
@@ -900,6 +908,10 @@ PUBLIC_MARKS = {
 #: Start of the licence of works let in only while the 70-year term is
 #: switched off for tests; they leave the library with the switch.
 TEST_LICENCE = "Tylko do testów"
+#: Works still in copyright whose pictures their museum publishes itself, let
+#: in with ``private_use``: the frame is seen at home only, and Polish law
+#: lets one copy such pictures for personal use (art. 23).
+PRIVATE_LICENCE = "Prawa autorskie w mocy (użytek prywatny)"
 
 
 def cc_name(code: str, version: str) -> str:
@@ -959,6 +971,21 @@ class Europeana(Museum):
     objects = re.compile(
         r"\b(stamps?|postage|postal|philatel\w*|postmarks?|envelopes?|coins?|medals?|"
         r"bank ?notes?|numismat\w*)\b",
+        re.IGNORECASE,
+    )
+    #: Concept labels that name a work's type, for records whose type comes
+    #: as a vocabulary link only (the German Digital Library's: "paintings
+    #: (visual works)", "Art of painting", "Drawing").
+    type_concepts = re.compile(
+        r"\b(paintings?|drawings?|prints?|posters?|watercolou?rs?|sketch\w*|studies)\b",
+        re.IGNORECASE,
+    )
+    #: Concept labels that name its materials and techniques ("oil paint
+    #: (paint)", "canvas (textile material)"); subjects ("Farm") are left out.
+    medium_concepts = re.compile(
+        r"\b(oil|tempera|canvas|panel|wood|oak|paper|cardboard|parchment|ink|chalk|graphite|"
+        r"pencils?|charcoal|pastel|gouache|watercolou?r|silver ?points?|etching|engraving|"
+        r"woodcut|lithograph\w*|mezzotint|aquatint|copper|fresco|acrylic)\b",
         re.IGNORECASE,
     )
     #: Aggregators of natural history, not art: OpenUp! brings botanical
@@ -1028,6 +1055,10 @@ class Europeana(Museum):
         licence = self._licence(d)
         if not licence:
             return None
+        classification = kinds[0] if kinds else ""
+        if not classification:
+            classification = next((c for c in concepts if self.type_concepts.search(c)), "")
+        medium = ", ".join(c for c in concepts if self.medium_concepts.search(c))
         if "/thumbnail/" in preview and "size=" not in preview:
             preview += "&size=w400"
         # Labels by language; "def" mixes in authority URIs.
@@ -1046,7 +1077,8 @@ class Europeana(Museum):
             artist=_person(names[0]) if names else "",
             date_text=year,
             year=int(year) if year.isdigit() else None,
-            classification=kinds[0] if kinds else "",
+            classification=classification,
+            medium=medium,
             credit=_first(d.get("dataProvider")),
             license=licence,
             url=_first(d.get("guid")) or f"https://www.europeana.eu/item{record}",
@@ -1247,14 +1279,21 @@ class Openverse(Museum):
 
 class StatensMuseum(Museum):
     """Statens Museum for Kunst, Copenhagen: an open API without a key.
-    Only works in the public domain (the Danish Golden Age, Hammershøi, the
-    Skagen painters); answers in English where it has English."""
+    Works in the public domain (the Danish Golden Age, Hammershøi, the
+    Skagen painters) and, with ``private_use``, those still in copyright it
+    shows in full (Picasso, Nolde, Jorn); answers in English where it has
+    English."""
 
     key = "smk"
     name = "Statens Museum for Kunst"
     api = "https://api.smk.dk/api/v1"
     #: Works offered: public domain with a picture.
-    filters = "[public_domain:true],[has_image:true]"
+    public_filters = "[public_domain:true],[has_image:true]"
+
+    @property
+    def filters(self) -> str:
+        return "[has_image:true]" if self.private_use else self.public_filters
+
     #: ``object_names`` with ``lang=en``; other kinds are not drawn.
     names: ClassVar[dict[str, str]] = {
         "painting": "painting",
@@ -1266,7 +1305,8 @@ class StatensMuseum(Museum):
 
     def _map(self, d: dict[str, Any]) -> Item | None:
         iiif = d.get("image_iiif_id")
-        if not d.get("public_domain") or not iiif or not d.get("object_number"):
+        public = bool(d.get("public_domain"))
+        if not (public or self.private_use) or not iiif or not d.get("object_number"):
             return None
         titles = [t for t in d.get("titles") or [] if t.get("title")]
         english = [t for t in titles if t.get("language") == self.english]
@@ -1298,7 +1338,7 @@ class StatensMuseum(Museum):
             subjects=[],
             culture="Danish" if made.get("creator_nationality") == "Danish" else "",
             credit=self.name,
-            license="Public Domain Mark 1.0",
+            license="Public Domain Mark 1.0" if public else PRIVATE_LICENCE,
             url=d.get("frontend_url") or "",
             description=strip_html(" ".join(d.get("content_description") or [])),
             image_url=f"{iiif}/full/!2560,2560/0/default.jpg",

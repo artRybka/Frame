@@ -20,6 +20,7 @@ from frame_server.library.museums import (
     available,
     museum,
 )
+from frame_server.library.vocabulary import is_painting
 
 MATISSE = "http://data.europeana.eu/agent/60593"
 WARHOL = "http://data.europeana.eu/agent/1"
@@ -223,6 +224,34 @@ def test_europeana_leaves_slides_and_reproductions_out() -> None:
     with _europeana(records, []) as http:
         items = Europeana(http).search("Chełmoński")[1]
     assert [i.id for i in items] == ["europeana:1~painting"]
+
+
+def test_europeana_type_and_medium_from_concepts() -> None:
+    """The German Digital Library gives types as links only; the concepts
+    name them, so a grey photograph of a painting is known as one."""
+    free = "http://creativecommons.org/publicdomain/mark/1.0/"
+    concepts = [
+        "oil paint (paint)",
+        "Farm",
+        "paintings (visual works)",
+        "canvas (textile material)",
+    ]
+    records = [
+        _europeana_record(
+            free,
+            [],
+            id="/199/item_VH52",
+            dcTypeLangAware={"def": ["http://vocab.getty.edu/aat/300033618"]},
+            edmConceptPrefLabelLangAware={"en": concepts},
+        ),
+        _europeana_record(free, [], id="/1/print", dcTypeLangAware={"en": ["print"]}),
+    ]
+    with _europeana(records, []) as http:
+        oil, print_ = Europeana(http).search("La Berceuse")[1]
+    assert oil.classification == "paintings (visual works)"
+    assert oil.medium == "oil paint (paint), canvas (textile material)"
+    assert is_painting(oil)
+    assert print_.classification == "print" and print_.medium == ""
 
 
 def test_europeana_discovery_and_fetch() -> None:

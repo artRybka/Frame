@@ -37,8 +37,8 @@ from .repo import Library, matches, now_iso
 from .vocabulary import (
     HIGHLIGHT,
     is_copy,
-    is_grey_painting,
-    is_painting,
+    is_grey_copy,
+    may_be_grey_copy,
     museum_kind,
     museum_queries,
     set_aside,
@@ -299,16 +299,19 @@ class Importer:
         ]
 
     def without_grey(self, items: list[Item]) -> list[Item]:
-        """``items`` without black-and-white copies of paintings, for the
+        """``items`` without black-and-white copies of paintings and old
+        photographs from art photo archives (:func:`is_grey_copy`), for the
         sources that have many (:data:`GREY_PRONE`)."""
-        suspects = [i for i in items if i.source in GREY_PRONE and i.thumb_url and is_painting(i)]
+        suspects = [
+            i for i in items if i.source in GREY_PRONE and i.thumb_url and may_be_grey_copy(i)
+        ]
         if not suspects:
             return items
         with ThreadPoolExecutor(min(len(suspects), 8)) as pool:
             found = pool.map(self.spread_of, suspects)
             spreads = {i.id: spread for i, spread in zip(suspects, found, strict=True)}
         return [
-            i for i in items if i.id not in spreads or not is_grey_painting(i, spread=spreads[i.id])
+            i for i in items if i.id not in spreads or not is_grey_copy(i, spread=spreads[i.id])
         ]
 
     def import_one(self, source: str, source_id: str) -> Item | None:
@@ -604,7 +607,7 @@ class Importer:
                     job.failed += 1
                     continue
                 # Black-and-white copies of paintings only show once analysed.
-                if is_grey_painting(analysed) or not after(analysed):
+                if is_grey_copy(analysed) or not after(analysed):
                     self.cache.remove(item)
                     job.skipped += 1
                     continue
