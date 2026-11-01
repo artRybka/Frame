@@ -598,7 +598,6 @@ struct PlaylistEditorView: View {
                         .font(.serif(17, weight: .medium))
                         .foregroundStyle(preview?.count == 0 && fromMuseums.isEmpty && !askingMuseums ? Theme.bad : Theme.ink)
                         .contentTransition(.numericText())
-                    if preview == nil || askingMuseums { ProgressView().controlSize(.small) }
                     Spacer()
                     if playlist.kind == .manual, !playlist.itemIds.isEmpty {
                         Button {
@@ -622,6 +621,10 @@ struct PlaylistEditorView: View {
                 manualPreview
             } else {
                 smartPreview
+            }
+            // Waiting, as in Szukaj: the squares under what has come.
+            if preview == nil || askingMuseums {
+                SearchWaiting()
             }
         }
     }
