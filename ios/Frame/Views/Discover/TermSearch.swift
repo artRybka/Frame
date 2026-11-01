@@ -270,7 +270,88 @@ struct GroupPanelOpen: PreferenceKey {
     static func reduce(value: inout Bool, nextValue: () -> Bool) { value = value || nextValue() }
 }
 
+extension View {
+    /// While words are typed in the field: what they could mean, in a panel
+    /// right over the field (where the groups are), the page dimmed and
+    /// standing still under it. (Put over the page's top, the suggestions
+    /// pushed the scrolled results down and were off the screen themselves.)
+    /// A tap on the page puts the keyboard away with the panel; the words
+    /// stay in the field and come back with it.
+    func termSuggestions(
+        _ lookup: TermLookup,
+        tokens: Binding<[SearchToken]>,
+        focused: FocusState<Bool>.Binding,
+        pickedFromMuseums: @escaping () -> Void = {}
+    ) -> some View {
+        modifier(SuggestionsPanel(
+            lookup: lookup, tokens: tokens, focused: focused, pickedFromMuseums: pickedFromMuseums
+        ))
+    }
+}
+
+extension TermLookup {
+    /// The suggestions' panel is over the field (the groups make way for it).
+    func suggesting(_ focused: Bool) -> Bool { typing && focused }
+}
+
+private struct SuggestionsPanel: ViewModifier {
+    let lookup: TermLookup
+    @Binding var tokens: [SearchToken]
+    var focused: FocusState<Bool>.Binding
+    let pickedFromMuseums: () -> Void
+    /// The suggestions' own height: the panel is as tall, up to the room
+    /// over the field, and scrolls beyond it.
+    @State private var listHeight: CGFloat = 44
+
+    private var shown: Bool { lookup.suggesting(focused.wrappedValue) }
+
+    private static let shape = RoundedRectangle(cornerRadius: 20, style: .continuous)
+
+    func body(content: Content) -> some View {
+        content.overlay {
+            ZStack(alignment: .bottom) {
+                if shown {
+                    Theme.paper.opacity(0.72)
+                        .ignoresSafeArea()
+                        .contentShape(Rectangle())
+                        .onTapGesture(perform: putKeyboardAway)
+                        .accessibilityHidden(true)
+                        .transition(.opacity)
+                    VStack(spacing: 0) {
+                        Spacer(minLength: 12)
+                        ScrollView {
+                            TermSuggestions(lookup: lookup, tokens: $tokens, pickedFromMuseums: pickedFromMuseums)
+                                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { listHeight = $0 }
+                        }
+                        .scrollBounceBehavior(.basedOnSize)
+                        .frame(maxHeight: listHeight)
+                        .background(Theme.card, in: Self.shape)
+                        .clipShape(Self.shape)
+                        .overlay(Self.shape.strokeBorder(Theme.hairline))
+                        .shadow(color: .black.opacity(0.12), radius: 16, y: 6)
+                        // Before the spacer: all the room it needs.
+                        .layoutPriority(1)
+                    }
+                    .padding(.horizontal, Theme.gutter)
+                    // Where the groups' bar ends over the keyboard.
+                    .padding(.bottom, TermFacetBar.overField)
+                    .transition(.opacity.combined(with: .offset(y: 12)))
+                }
+            }
+            .animation(.easeOut(duration: 0.18), value: shown)
+        }
+    }
+
+    /// As in `TermSearch`: SwiftUI's focus alone doesn't always take the
+    /// system field's keyboard.
+    private func putKeyboardAway() {
+        focused.wrappedValue = false
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+}
+
 /// While typing: what the words could mean, a tap puts it in as a chip.
+/// Shown in the panel over the field (`termSuggestions`).
 struct TermSuggestions: View {
     let lookup: TermLookup
     @Binding var tokens: [SearchToken]
@@ -325,9 +406,8 @@ struct TermSuggestions: View {
                     .padding(12)
             }
         }
+        .padding(.vertical, 4)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.card, in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.hairline))
     }
 
     private func row(
