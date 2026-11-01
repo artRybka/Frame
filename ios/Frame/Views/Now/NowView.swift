@@ -136,7 +136,8 @@ struct NowView: View {
     var body: some View {
         NavigationStack(path: $path) {
             ZStack {
-                AmbientBackground(swatches: shownItem?.colors ?? browsed?.summary.colors ?? [])
+                // Stays put while the texts below scroll: it belongs to the hero.
+                PaperGlowBackground(swatches: Array((shownItem?.colors ?? browsed?.summary.colors ?? []).prefix(3)))
                 ScrollView {
                     VStack(alignment: .leading, spacing: 22) {
                         hero

@@ -279,6 +279,8 @@ struct PlaylistSummary: Codable, Identifiable, Hashable, Sendable {
     var rules: PlaylistRules
     var itemCount: Int
     var coverItemIds: [String]
+    /// The main colour of each cover work; nil from older servers.
+    var coverColors: [ColorSwatch]? = nil
     var album: AlbumSource?
     var albumSync: AlbumSync?
     var theme: String?
