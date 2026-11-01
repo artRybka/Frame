@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.69.1
+
+- Playlisty: przy wspólnych playlistach sama ikona dwóch osób, bez napisu
+  „Wspólna”.
+
 ## 1.69.0
 
 - Przy użytku prywatnym Rijksmuseum i SMK w Kopenhadze także pokazują dzieła
