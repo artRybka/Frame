@@ -93,6 +93,7 @@ jobs:
             capture search-picker 8 "search-picker-$appearance"
             capture search-colors 8 "search-colors-$appearance"
             capture search-styles 8 "search-styles-$appearance"
+            capture search-chosen 8 "search-chosen-$appearance"
             capture send 8 "send-$appearance"
             capture browse 14 "browse-$appearance"
             capture history 16 "history-$appearance"

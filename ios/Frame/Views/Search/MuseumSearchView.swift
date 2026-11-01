@@ -127,6 +127,10 @@ struct MuseumSearchView: View {
             if LaunchRoute.screen == "museums", rules.isEmpty {
                 rules.artists = ["Utagawa Hiroshige"]
             }
+            // CI screenshots: a group's choice alone, the X next to the field.
+            if ["search-chosen", "search-colors"].contains(LaunchRoute.screen), rules.colors.isEmpty {
+                rules.colors = ["blue"]
+            }
         }
         .task(id: searchKey) {
             let key = searchKey
