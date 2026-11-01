@@ -42,6 +42,8 @@ struct ItemDetailView: View {
     /// the model's, while one is followed, wins.
     @State private var study: StudyView?
     @State private var studyTaps = 0
+    /// How far the page is scrolled, for the glow at the top.
+    @State private var scrolled: CGFloat = 0
 
     enum Sent { case done, failed }
 
@@ -74,6 +76,7 @@ struct ItemDetailView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .animation(.easeOut(duration: 0.3), value: item == nil)
             }
+            .glowLift($scrolled)
             .onChange(of: polish) {
                 guard LaunchRoute.screen == "detail", LaunchRoute.scroll == "about", polish != nil else { return }  // CI screenshots
                 Task {
@@ -82,7 +85,7 @@ struct ItemDetailView: View {
                 }
             }
         }
-        .paperPage()
+        .paperPage(glow: item?.colors ?? [], lift: scrolled)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if let item {

@@ -13,6 +13,8 @@ struct PlaylistDetailView: View {
     @State private var starting = false
     /// The first load failed: a retry instead of the skeleton.
     @State private var failed = false
+    /// How far the page is scrolled, for the glow at the top.
+    @State private var scrolled: CGFloat = 0
 
     /// The works as last loaded; nil until the first load.
     private var detail: PlaylistDetail? { model.playlistDetails[playlistID] }
@@ -50,7 +52,9 @@ struct PlaylistDetailView: View {
             .padding(.bottom, 40)
             .animation(.easeOut(duration: 0.3), value: detail == nil)
         }
-        .paperPage()
+        .glowLift($scrolled)
+        // Its cover's four works glow at the top, as its card does in Playlisty.
+        .paperPage(glow: summary?.coverColors ?? [], lift: scrolled, colours: 4)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
