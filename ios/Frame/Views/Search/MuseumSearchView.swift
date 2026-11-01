@@ -128,7 +128,7 @@ struct MuseumSearchView: View {
                 rules.artists = ["Utagawa Hiroshige"]
             }
             // CI screenshots: a group's choice alone, the X next to the field.
-            if ["search-chosen", "search-colors", "search-colors-close"].contains(LaunchRoute.screen), rules.colors.isEmpty {
+            if ["search-chosen", "search-colors"].contains(LaunchRoute.screen), rules.colors.isEmpty {
                 rules.colors = ["blue"]
             }
         }

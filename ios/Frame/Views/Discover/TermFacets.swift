@@ -208,7 +208,7 @@ struct TermFacetBar: View {
     private static var launched: TermFacet? {
         switch LaunchRoute.screen {
         case "search-picker": .period
-        case "search-colors", "search-colors-close": .color
+        case "search-colors": .color
         case "search-styles": .style
         default: nil
         }
@@ -266,13 +266,7 @@ struct TermFacetBar: View {
         .onChange(of: focus.wrappedValue) { _, focused in
             if focused, open != nil { close() }
         }
-        .task {
-            await model.loadVocabulary()
-            if LaunchRoute.screen == "search-colors-close" {  // TMP recording
-                try? await Task.sleep(for: .seconds(6))
-                close()
-            }
-        }
+        .task { await model.loadVocabulary() }
     }
 
     /// How the glass stretches: a little give at the end, like the system's.
