@@ -65,12 +65,8 @@ struct PlaylistsView: View {
                         }
                         .buttonStyle(.plain)
                     }
-                    SectionHeader(
-                        title: "Kolekcje",
-                        subtitle: "Propozycje, dzieła według artystów, stylów i kolorów oraz albumy iCloud"
-                    )
-                    // Top-aligned: a card without the "Wspólna" line is shorter, and
-                    // centred in its row its cover would sit lower than its neighbour's.
+                    // Every card is as tall as the others (`CardCaption`): rows of
+                    // different heights made the lazy grid jump while scrolling.
                     LazyVGrid(columns: Self.columns, spacing: 22) {
                         NavigationLink(value: SuggestionsRoute()) {
                             SuggestionsCard(works: model.suggestionCover, isActive: suggestionsActive)
@@ -357,7 +353,7 @@ struct PlaylistCard: View {
                     }
                 }
                 .shadow(color: .black.opacity(0.12), radius: 10, y: 6)
-            VStack(alignment: .leading, spacing: 3) {
+            CardCaption {
                 Text(playlist.name)
                     .font(.serif(16, weight: .semibold))
                     .foregroundStyle(Theme.ink)
@@ -366,21 +362,47 @@ struct PlaylistCard: View {
                     if let icon = playlist.kind.icon {
                         Image(systemName: icon).font(.caption2)
                     }
-                    Text(playlist.countText)
+                    Text(playlist.countText).layoutPriority(1)
+                    Spacer(minLength: 6)
+                    if let sharing {
+                        Label(sharing, systemImage: "person.2")
+                            .font(.caption2)
+                            .lineLimit(1)
+                    }
                 }
                 .font(.caption)
                 .foregroundStyle(Theme.inkSoft)
-                if !playlist.isMine, let owner = playlist.ownerName, !owner.isEmpty {
-                    // Someone else's, shared with the household.
-                    Label(owner, systemImage: "person.2")
-                        .font(.caption2)
-                        .foregroundStyle(Theme.inkSoft)
-                } else if playlist.isMine, playlist.shared == true {
-                    Label("Wspólna", systemImage: "person.2")
-                        .font(.caption2)
-                        .foregroundStyle(Theme.inkSoft)
-                }
             }
+        }
+    }
+
+    /// Right of the count: whose it is when someone else shares it with the
+    /// household, "Wspólna" when I do; nothing for my private ones.
+    private var sharing: String? {
+        if !playlist.isMine, let owner = playlist.ownerName, !owner.isEmpty { return owner }
+        if playlist.isMine, playlist.shared == true { return "Wspólna" }
+        return nil
+    }
+}
+
+/// The name and count under a card in the playlists grid, always as tall as
+/// a two-line name plus the count: every card in the grid has one height, so
+/// the lazy grid does not jump when rows load while scrolling.
+struct CardCaption<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("A\nA").font(.serif(16, weight: .semibold))
+                Text("A").font(.caption)
+            }
+            .hidden()
+            .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 3) {
+                content
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 }
@@ -415,7 +437,7 @@ struct SuggestionsCard: View {
                         .padding(8)
                 }
                 .shadow(color: .black.opacity(0.12), radius: 10, y: 6)
-            VStack(alignment: .leading, spacing: 3) {
+            CardCaption {
                 Text("Propozycje")
                     .font(.serif(16, weight: .semibold))
                     .foregroundStyle(Theme.ink)
@@ -479,7 +501,7 @@ struct NewPlaylistTile: View {
                     }
                     .foregroundStyle(Theme.inkSoft)
                 }
-            Text(" ").font(.serif(16))
+            CardCaption {}
         }
     }
 }
