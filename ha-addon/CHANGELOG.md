@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.67.1
+
+- Szukaj: ikona Tematu jak na szkicu (szczyt i słońce), w tej samej wielkości
+  co pozostałe.
+
 ## 1.67.0
 
 - Szukaj: ikony przy grupach; po wyborze pastylka pokazuje ikonę i wybraną
