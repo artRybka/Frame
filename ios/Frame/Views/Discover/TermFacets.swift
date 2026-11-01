@@ -20,22 +20,18 @@ enum TermFacet: String, CaseIterable, Identifiable, Sendable {
     }
 
     /// The group's symbol on its button, the same as its chips' in the
-    /// suggestions (`SearchToken.icon`); Kolor has its own three ink dots
-    /// (`InkDots`) instead.
+    /// suggestions (`SearchToken.icon`); Kolor (`InkDots`) and Temat
+    /// (`LandscapeMark`) have their own drawings instead.
     var symbol: String? {
         switch self {
         case .technique: "scribble.variable"
         case .period: "calendar"
         case .style: "paintpalette"
         case .color: nil
-        case .subject: "mountain.2"
+        case .subject: nil
         case .museum: "building.columns"
         }
     }
-
-    /// The symbol is much wider than tall (Temat's landscape) and is drawn
-    /// smaller to look the same size as the rest.
-    var wideSymbol: Bool { self == .subject }
 
     /// Whether the group holds the chip.
     func holds(_ token: SearchToken) -> Bool {
@@ -309,11 +305,11 @@ struct TermFacetBar: View {
                         }
                     }
                 } else if let symbol = facet.symbol {
-                    // The landscape is twice as wide as the others: a smaller
-                    // size makes it look as big as the calendar next to it.
                     Image(systemName: symbol)
-                        .font((facet.wideSymbol ? Font.caption2 : .subheadline).weight(on ? .semibold : .regular))
+                        .font(.subheadline.weight(on ? .semibold : .regular))
                         .imageScale(.small)
+                } else if facet == .subject {
+                    LandscapeMark(bold: on)
                 } else {
                     InkDots()
                 }
@@ -854,5 +850,39 @@ struct InkDots: View {
             Circle().fill(Theme.iconSquares[1]).frame(width: size, height: size)
         }
         .accessibilityHidden(true)
+    }
+}
+
+/// Temat's mark: one peak, a smaller one and the sun, drawn like a symbol of
+/// the text's size. The system's `mountain.2` is twice as wide as tall and
+/// never looked like the other groups' symbols.
+struct LandscapeMark: View {
+    var bold = false
+    @ScaledMetric(relativeTo: .subheadline) private var size: CGFloat = 15
+
+    var body: some View {
+        Landscape()
+            .stroke(style: StrokeStyle(lineWidth: size * (bold ? 0.11 : 0.085), lineCap: .round, lineJoin: .round))
+            .frame(width: size, height: size)
+            .accessibilityHidden(true)
+    }
+
+    /// On a 24-point grid: the peaks over a ground line, the sun top right.
+    private struct Landscape: Shape {
+        func path(in rect: CGRect) -> Path {
+            let unit = min(rect.width, rect.height) / 24
+            func point(_ x: CGFloat, _ y: CGFloat) -> CGPoint {
+                CGPoint(x: rect.minX + x * unit, y: rect.minY + y * unit)
+            }
+            var path = Path()
+            path.move(to: point(2.5, 19.5))
+            path.addLine(to: point(9, 9))
+            path.addLine(to: point(12.6, 14.6))
+            path.addLine(to: point(15.5, 11))
+            path.addLine(to: point(21.5, 19.5))
+            path.closeSubpath()
+            path.addEllipse(in: CGRect(origin: point(15.7, 3.7), size: CGSize(width: 3.6 * unit, height: 3.6 * unit)))
+            return path
+        }
     }
 }
