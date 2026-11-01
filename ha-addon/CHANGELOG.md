@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.70.1
+
+- Ramka budzi się dla obrazu wysłanego tuż po „Sprawdź stan”: serwer
+  czeka z sygnałem budzenia, aż ramka naprawdę zaśnie, a aplikacja na
+  ramce sama pyta o obraz, gdy kilka minut po uśpieniu dalej działa.
+
 ## 1.70.0
 
 - Studium dzieła: gotowe studium otwiera się od tekstu, a listy (Podobne,

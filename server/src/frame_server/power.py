@@ -41,6 +41,10 @@ WAKE_LOOK = timedelta(seconds=190)
 # boot), it starts the app over MDC (0xC7 81 01).
 WAKE_STEP = timedelta(seconds=15)
 APP_GRACE = timedelta(seconds=30)
+# Woken just after it went down, the panel answers within seconds and the
+# app asks at its next heartbeat (15 s): the look lasts at least this after
+# the wait for a panel going down.
+WAKE_AFTER_DOWN = timedelta(seconds=45)
 # The launcher installs (or restarts) the app and it asks within this.
 INSTALL_LOOK = timedelta(seconds=90)
 # A wake closer than this is not worth a sleep, and a change due within it
@@ -292,12 +296,21 @@ class PowerManager:
         app = self.service.app
         loop = asyncio.get_running_loop()
         since = app.contacts
+        # Told to sleep moments ago (a status check), the panel is still up:
+        # magic packets then wake it seconds after it goes down, too soon for
+        # the app to notice it slept, and it never asked again (2026-11-01, a
+        # picture sent right after "Sprawdź stan"). They wait until it is down
+        # for sure; within the usual look, so "Obudź ramkę" does not time out.
+        down = app.down_in(datetime.now(UTC)) if wol else 0.0
+        look = max(WAKE_LOOK.total_seconds(), down + WAKE_AFTER_DOWN.total_seconds())
+        deadline = loop.time() + look
+        if down and await app.wait_for_contact(down, since=since):
+            return True, False
         burst = (
             asyncio.create_task(self.service.panel.wake(seconds=WAKE_BURST_SECONDS))
             if wol
             else None
         )
-        deadline = loop.time() + WAKE_LOOK.total_seconds()
         up_at: float | None = None
         started = False
         try:
