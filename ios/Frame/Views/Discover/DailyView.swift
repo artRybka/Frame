@@ -402,7 +402,7 @@ struct DailyView: View {
             pictureBox(aspect(work.item.item))
                 .overlay {
                     ArtImage(
-                        ref: work.item.inLibrary ? .image(work.item.id) : work.item.thumb,
+                        ref: work.item.inLibrary ? work.item.item.originalRef : work.item.thumb,
                         fallback: .thumb(work.item.id),
                         placeholder: work.item.item.placeholderColor,
                         maxPixel: 1600,

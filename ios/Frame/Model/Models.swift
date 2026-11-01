@@ -57,6 +57,15 @@ struct Item: Codable, Identifiable, Hashable, Sendable {
     /// A photo sent once from the camera roll ("Zdjęcie na ramkę"): shown
     /// with its own look, and never in a list or a rotation.
     var look: Look? = nil
+    /// A sharper copy of the picture from another source, shown in place
+    /// of the museum's own (the server found it when the card was opened).
+    var sharper: SharperCopy? = nil
+
+    /// The display-size original: the sharper copy's under its own address
+    /// (the one before stays in the caches under the plain one).
+    var originalRef: ImageRef {
+        sharper.map { .original(id, version: $0.itemId) } ?? .image(id)
+    }
 
     var summary: ItemSummary {
         ItemSummary(
@@ -95,6 +104,26 @@ struct PolishView: Codable, Hashable, Sendable {
 }
 
 /// What the model saw in a work or photo, for its card.
+/// Another source's copy of a work's picture, sharper than its own.
+struct SharperCopy: Codable, Hashable, Sendable {
+    var url: String
+    /// The copy's id ("wmc:123"): the picture's version.
+    var itemId: String
+    var source: String
+    /// Where the copy comes from ("Wikimedia Commons").
+    var museum: String
+    var width: Int
+    var height: Int
+}
+
+/// A sharper copy of a work's picture, looked for as its card opens:
+/// "found" (`sharper` says which), "looking" (ask again), "none", "fine"
+/// (its own is good), "off" (photos, own works).
+struct SharperView: Codable, Hashable, Sendable {
+    var status: String
+    var sharper: SharperCopy?
+}
+
 struct SeenView: Codable, Hashable, Sendable {
     /// As in PolishView.
     var status: String

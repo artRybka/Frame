@@ -337,6 +337,7 @@ class Library:
                         "framing": existing.framing,
                         "keywords": existing.keywords,
                         "terms": existing.terms,
+                        "sharper": existing.sharper,
                     }
                 )
             elif not item.added_at:

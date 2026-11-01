@@ -70,6 +70,19 @@ class Framing(BaseModel):
         return data
 
 
+class SharperCopy(BaseModel):
+    """Another source's copy of the same picture, sharper than the work's own
+    (``frame_server.sharper``): shown, sent to the frame and cut into details
+    in its place; the work keeps its own texts."""
+
+    url: str  # the copy's display-size address
+    item_id: str  # the copy's id ("wmc:123"): the version the app asks by
+    source: str
+    museum: str = ""  # where the copy is from, as the card names it
+    width: int
+    height: int
+
+
 class Item(BaseModel):
     """One picture the frame can show."""
 
@@ -121,6 +134,9 @@ class Item(BaseModel):
     #: A photo sent once from the camera roll: shown with its own look, on
     #: its own or from the queue, and never part of a list or a rotation.
     look: Look | None = None
+    #: A sharper copy of the picture from another source, shown in place of
+    #: the work's own.
+    sharper: SharperCopy | None = None
 
     @property
     def file_stem(self) -> str:

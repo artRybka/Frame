@@ -12,6 +12,7 @@ different prints by one artist leave a handful.
 from __future__ import annotations
 
 import logging
+import math
 import threading
 from collections import OrderedDict
 from pathlib import Path
@@ -39,11 +40,21 @@ RATIO = 0.75
 SLACK = 6.0
 #: Pictures whose keypoints are kept in memory.
 REMEMBERED = 256
+#: One picture in place of another (:meth:`Likeness.whole`): many more
+#: matches than :data:`SAME`, ...
+WHOLE_MATCHES = 40
+#: ... the one laid over the other covering it (intersection over union of
+#: the two frames), ...
+WHOLE_COVER = 0.88
+#: ... and turned by no more than this (degrees).
+WHOLE_TURN = 2.0
 
 
 class Keypoints(NamedTuple):
     points: Any  # float32 (n, 2)
     descriptors: Any  # uint8 (n, 32)
+    #: The picture's size where the points were found.
+    size: tuple[int, int] = (SIDE, SIDE)
 
 
 def keypoints(path: Path) -> Keypoints | None:
@@ -59,23 +70,51 @@ def keypoints(path: Path) -> Keypoints | None:
     found, descriptors = orb.detectAndCompute(np.asarray(img), None)
     if descriptors is None or len(found) < SAME:
         return None
-    return Keypoints(np.array([k.pt for k in found], dtype=np.float32), descriptors)
+    points = np.array([k.pt for k in found], dtype=np.float32)
+    return Keypoints(points, descriptors, img.size)
 
 
-def matches(a: Keypoints, b: Keypoints) -> int:
-    """How many of the keypoints match under one mapping of ``a`` onto ``b``."""
+def mapping(a: Keypoints, b: Keypoints) -> tuple[int, Any]:
+    """How many of the keypoints match under one mapping of ``a`` onto ``b``
+    (a shift, a scale and a turn), and that mapping (2×3; None with too few
+    matches)."""
     import cv2
 
     pairs = cv2.BFMatcher(cv2.NORM_HAMMING).knnMatch(a.descriptors, b.descriptors, k=2)
     good = [p[0] for p in pairs if len(p) == 2 and p[0].distance < RATIO * p[1].distance]
     if len(good) < SAME:
-        return len(good)
+        return len(good), None
     src = a.points[[m.queryIdx for m in good]]
     dst = b.points[[m.trainIdx for m in good]]
-    _, inliers = cv2.estimateAffinePartial2D(
+    found, inliers = cv2.estimateAffinePartial2D(
         src, dst, method=cv2.RANSAC, ransacReprojThreshold=SLACK
     )
-    return 0 if inliers is None else int(inliers.sum())
+    return (0, None) if inliers is None else (int(inliers.sum()), found)
+
+
+def matches(a: Keypoints, b: Keypoints) -> int:
+    """How many of the keypoints match under one mapping of ``a`` onto ``b``."""
+    return mapping(a, b)[0]
+
+
+def cover(a: Keypoints, b: Keypoints, found: Any) -> float:
+    """How well ``a``'s frame laid over ``b`` by ``found`` covers ``b``'s:
+    intersection over union of the two; 1.0 for the same picture with the
+    same edges, far less for a detail of it or a page it is printed on."""
+    width, height = a.size
+    corners = np.array([[0, 0, 1], [width, 0, 1], [width, height, 1], [0, height, 1]], float)
+    laid = corners @ np.asarray(found, float).T
+    left, top = laid.min(axis=0)
+    right, bottom = laid.max(axis=0)
+    bw, bh = b.size
+    inside = max(0.0, min(right, bw) - max(left, 0.0)) * max(0.0, min(bottom, bh) - max(top, 0.0))
+    union = (right - left) * (bottom - top) + bw * bh - inside
+    return float(inside / union) if union > 0 else 0.0
+
+
+def turn(found: Any) -> float:
+    """How far ``found`` turns a picture, in degrees."""
+    return abs(math.degrees(math.atan2(float(found[1][0]), float(found[0][0]))))
 
 
 class Likeness:
@@ -119,3 +158,20 @@ class Likeness:
             return False
         kb = self._keypoints(b)
         return kb is not None and matches(ka, kb) >= SAME
+
+    def whole(self, a: Item, b: Item) -> bool:
+        """``b`` is ``a``'s picture whole, fit to stand in for it: one
+        picture by many matches, neither turned nor a detail of the other,
+        nor printed on a page or a slide with more around it."""
+        ka = self._keypoints(a)
+        kb = self._keypoints(b) if ka is not None else None
+        if ka is None or kb is None:
+            return False
+        count, found = mapping(ka, kb)
+        if count < WHOLE_MATCHES or found is None:
+            return False
+        overlap, angle = cover(ka, kb, found), turn(found)
+        log.info(
+            "%s over %s: %d matches, cover %.2f, turned %.1f°", a.id, b.id, count, overlap, angle
+        )
+        return overlap >= WHOLE_COVER and angle <= WHOLE_TURN

@@ -55,7 +55,7 @@ struct CompositionSketch: View {
         box
             .overlay {
                 ArtImage(
-                    ref: item.inLibrary ? .image(item.id) : item.thumb,
+                    ref: item.inLibrary ? item.item.originalRef : item.thumb,
                     fallback: .thumb(item.id),
                     placeholder: item.item.placeholderColor,
                     maxPixel: 1600

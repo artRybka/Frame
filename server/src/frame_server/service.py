@@ -38,6 +38,7 @@ from .player import Player
 from .power import INSTALL_LOOK, WAKE_BURST_SECONDS, PowerManager
 from .progress import ProgressTracker, Stage
 from .rendered import RenderCache, Rendered, render_key
+from .sharper import Sharper
 from .source_keys import SourceKeys
 from .status import StatusMonitor
 from .storage import StorageStore
@@ -220,6 +221,10 @@ class FrameService:
             self.library, lambda q, n: self.importer.search_all(q, n), self.images
         )
         # Studies of any work, asked for on its card.
+        # Sharper copies of works whose own picture is poor: looked for when
+        # a card opens, and for the work of the day before its page.
+        self.sharper = Sharper(self.library, self.importer, self.images, copies.file)
+        self.daily.sharper = self.sharper
         self.study = Study(self.daily, self.ai, StudyJob(self.library, self.images, self.ai_config))
         self.ai.register(self.study.job)
         # Its steps on the Lock Screen, and "Studium gotowe" at the end.

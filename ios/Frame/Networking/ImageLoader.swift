@@ -397,7 +397,7 @@ extension ImageRef {
     /// The library work whose picture this is, for the server's own copies.
     var itemID: String? {
         switch self {
-        case let .thumb(id), let .image(id): id
+        case let .thumb(id), let .image(id), let .original(id, _): id
         default: nil
         }
     }
