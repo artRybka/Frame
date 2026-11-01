@@ -50,15 +50,19 @@ enum PageGlow {
     /// Opacity of the colours at the top (1.57.0 had 0.38 under a paper
     /// veil, 1.58.2 0.6: too faint, then too strong).
     static let strength = 0.48
-    /// From the top of the screen (under the bars) to where the glow is gone.
-    static let height: CGFloat = 760
+    /// From the top of the screen (under the bars) to where the glow is
+    /// gone: about the first card under the title (1.58.2 had 900, 1.59 760,
+    /// both too spread out).
+    static let height: CGFloat = 520
+    /// How much the colours are smeared (Teraz had 60 on the whole screen).
+    static let blur: CGFloat = 40
     /// How the glow thins out downwards: no step anywhere, nothing left at the end.
     static let fade: [Gradient.Stop] = [
         .init(color: .black, location: 0),
-        .init(color: .black.opacity(0.85), location: 0.25),
-        .init(color: .black.opacity(0.5), location: 0.5),
-        .init(color: .black.opacity(0.2), location: 0.72),
-        .init(color: .black.opacity(0.05), location: 0.9),
+        .init(color: .black.opacity(0.8), location: 0.3),
+        .init(color: .black.opacity(0.4), location: 0.58),
+        .init(color: .black.opacity(0.12), location: 0.8),
+        .init(color: .black.opacity(0.02), location: 0.93),
         .init(color: .clear, location: 1),
     ]
 }
@@ -94,7 +98,7 @@ private struct PageGlowLayer: View {
                 // Wider and taller than the layer, so the blur does not pale its sides and top.
                 .padding(.horizontal, -90)
                 .padding(.top, -90)
-                .blur(radius: 60)
+                .blur(radius: PageGlow.blur)
                 .mask(LinearGradient(stops: PageGlow.fade, startPoint: .top, endPoint: .bottom))
         }
     }

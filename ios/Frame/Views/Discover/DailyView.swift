@@ -92,6 +92,8 @@ struct DailyView: View {
     @State private var card: Item?
     @State private var addingToPlaylist = false
     @State private var savingPhoto = false
+    /// How far the page is scrolled, for the glow at the top.
+    @State private var scrolled: CGFloat = 0
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -103,6 +105,7 @@ struct DailyView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .animation(.easeOut(duration: 0.3), value: work == nil)
             }
+            .glowLift($scrolled)
             .onChange(of: work) { _, work in
                 if let work { DailyPeeks.keep(work, for: route) }
             }
@@ -114,7 +117,7 @@ struct DailyView: View {
                 }
             }
         }
-        .paperPage()
+        .paperPage(glow: work?.item.item.colors ?? card?.colors ?? [], lift: scrolled)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { pageWidth = $0 }
         .navigationTitle("Studium dzieła")
         .navigationBarTitleDisplayMode(.inline)
