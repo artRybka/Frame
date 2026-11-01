@@ -28,14 +28,10 @@ enum TermFacet: String, CaseIterable, Identifiable, Sendable {
         case .period: "calendar"
         case .style: "paintpalette"
         case .color: nil
-        case .subject: "mountain.2"
+        case .subject: "tree"
         case .museum: "building.columns"
         }
     }
-
-    /// The symbol is much wider than tall (Temat's landscape) and is drawn
-    /// smaller to look the same size as the rest.
-    var wideSymbol: Bool { self == .subject }
 
     /// Whether the group holds the chip.
     func holds(_ token: SearchToken) -> Bool {
@@ -329,10 +325,8 @@ struct TermFacetBar: View {
                         }
                     }
                 } else if let symbol = facet.symbol {
-                    // The landscape is twice as wide as the others: a smaller
-                    // size makes it look as big as the calendar next to it.
                     Image(systemName: symbol)
-                        .font((facet.wideSymbol ? Font.caption2 : .subheadline).weight(on ? .semibold : .regular))
+                        .font(.subheadline.weight(on ? .semibold : .regular))
                         .imageScale(.small)
                 } else {
                     InkDots()
