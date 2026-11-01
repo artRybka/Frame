@@ -33,6 +33,10 @@ enum TermFacet: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
+    /// The symbol is much wider than tall (Temat's landscape) and is drawn
+    /// smaller to look the same size as the rest.
+    var wideSymbol: Bool { self == .subject }
+
     /// Whether the group holds the chip.
     func holds(_ token: SearchToken) -> Bool {
         switch self {
@@ -325,8 +329,10 @@ struct TermFacetBar: View {
                         }
                     }
                 } else if let symbol = facet.symbol {
+                    // The landscape is twice as wide as the others: a smaller
+                    // size makes it look as big as the calendar next to it.
                     Image(systemName: symbol)
-                        .font(.subheadline.weight(on ? .semibold : .regular))
+                        .font((facet.wideSymbol ? Font.caption2 : .subheadline).weight(on ? .semibold : .regular))
                         .imageScale(.small)
                 } else {
                     InkDots()
