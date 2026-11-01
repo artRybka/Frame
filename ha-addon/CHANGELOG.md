@@ -1,7 +1,11 @@
 # Changelog
 
-## 1.70.1
+## 1.71.0
 
+- Odkrywaj: propozycja (motyw) zamiast „Wczytuję…” pokazuje kwadraciki i
+  wczytuje dzieła stopniowo, w miarę jak odpowiadają muzea; kolejne dochodzą
+  przy przewijaniu.
+- Playlisty i Odkrywaj nie kończą się błędem, gdy w tle dochodzą nowe dzieła.
 - Ramka budzi się dla obrazu wysłanego tuż po „Sprawdź stan”: serwer
   czeka z sygnałem budzenia, aż ramka naprawdę zaśnie, a aplikacja na
   ramce sama pyta o obraz, gdy kilka minut po uśpieniu dalej działa.
