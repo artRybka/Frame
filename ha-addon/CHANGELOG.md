@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.61.1
+
+- Szukaj: okienka grup są ze szkła, które płynnie rozciąga się z przycisku
+  w okienko i chowa się z powrotem do przycisku.
+
 ## 1.61.0
 
 - Ta sama, spokojniejsza poświata kolorów na Teraz, w Odkrywaj i w
