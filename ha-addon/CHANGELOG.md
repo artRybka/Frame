@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.71.1
+
+- Okienko podpowiedzi w Szukaj jest szklane, jak otwarta grupa.
+
 ## 1.71.0
 
 - Odkrywaj: propozycja (motyw) zamiast „Wczytuję…” pokazuje kwadraciki i
