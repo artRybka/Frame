@@ -243,6 +243,7 @@ struct QueueButton: View {
 /// while scrolling (the results jumped back) and could lose its cards
 /// altogether (an empty screen) until scrolled again.
 struct MasonryGrid<Content: View>: View {
+    @Environment(AppModel.self) private var model
     let items: [ItemSummary]
     var columns = 2
     var spacing: CGFloat = 16
@@ -341,7 +342,9 @@ struct MasonryGrid<Content: View>: View {
 
     var body: some View {
         LazyVStack(alignment: .leading, spacing: spacing + 6) {
-            ForEach(Self.blocks(items, columns: columns, columnWidth: columnWidth)) { block in
+            // Works with no picture anywhere: an empty tile helps nobody.
+            let shown = model.missingPictures.isEmpty ? items : items.filter { !model.missingPictures.contains($0.id) }
+            ForEach(Self.blocks(shown, columns: columns, columnWidth: columnWidth)) { block in
                 switch block {
                 case .columns(let buckets):
                     HStack(alignment: .top, spacing: spacing) {

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import json
 import logging
 import os
 import threading
@@ -16,7 +17,7 @@ from PIL import Image
 
 from ..fsutil import own_files
 from ..imaging.layout import load_image
-from .hosts import Resting
+from .hosts import Resting, walled
 from .models import Item
 
 log = logging.getLogger(__name__)
@@ -27,7 +28,7 @@ IMAGE_MAX = 2560
 THUMB_SPARE = 500
 #: Downloads at once from one host. Commons answers more than two parallel
 #: media requests with 429; museum CDNs throttle bursts too.
-HOST_LIMITS = {"upload.wikimedia.org": 2}
+HOST_LIMITS = {"upload.wikimedia.org": 2, "commons.wikimedia.org": 2}
 HOST_LIMIT = 4
 #: Extra downloads at once for what the owner looks at now (the card's
 #: original, a preview), so it never waits for the background's; hosts with
@@ -39,12 +40,21 @@ ATTEMPTS = 3
 #: How long an original that could not be downloaded is not asked for
 #: again: every preview and every turn in the queue would wait for it.
 FAILED_FOR = 1800.0
+#: How long a work whose picture every address refuses (gone from the
+#: museum, a web page in its place) is left out of lists before it is
+#: tried again: museums put pictures back, or move them.
+GONE_FOR = 7 * 86400.0
 
 
 class Unavailable(OSError):
     """The original cannot be had from anywhere: the host refuses programs
     (a "verify you are human" page), the file is gone, or it was tried
     lately and failed."""
+
+
+class Gone(Unavailable):
+    """No picture of the work at all: every address refused even the
+    thumbnail. The work is left out of lists for :data:`GONE_FOR`."""
 
 
 def _save_jpeg(img: Image.Image, path: Path, max_side: int, quality: int) -> None:
@@ -72,6 +82,18 @@ def _refused(err: Exception) -> bool:
     return not isinstance(err, httpx.HTTPError)  # read, but not as a picture
 
 
+def _missing(err: Exception) -> bool:
+    """Whether the address has no picture of the work for good: gone (404,
+    410), refused by the server itself (not by a bot wall, which forgets
+    us), or something else than a picture in its place."""
+    if isinstance(err, httpx.HTTPStatusError):
+        resp = err.response
+        if resp.status_code in (404, 410):
+            return True
+        return resp.status_code in (400, 401, 403) and not walled(resp)
+    return not isinstance(err, httpx.HTTPError)
+
+
 class ImageCache:
     def __init__(self, root: Path, http: Callable[[], httpx.Client]) -> None:
         self.thumbs = root / "thumbs"
@@ -81,12 +103,18 @@ class ImageCache:
         self.http = http
         #: Sources whose originals need more than a plain download (by source).
         self.fetchers: dict[str, Callable[[Item], bytes]] = {}
-        #: Other addresses of an original, tried when its own fails (by
-        #: source): an aggregator's copy of a museum's file.
-        self.mirrors: dict[str, Callable[[Item], list[str]]] = {}
+        #: Other addresses of a picture, tried when its own fail (by source):
+        #: an aggregator's copy of a museum's file. Called with the item and
+        #: whether a thumbnail will do.
+        self.mirrors: dict[str, Callable[[Item, bool], list[str]]] = {}
         #: When an original last failed to download (by item id).
         self._failed: dict[str, float] = {}
         self.clock: Callable[[], float] = time.monotonic
+        #: Works with no picture anywhere, and since when (wall clock, so it
+        #: lasts across restarts; by item id).
+        self.wall: Callable[[], float] = time.time
+        self._gone_path = root / "gone.json"
+        self._gone: dict[str, float] = self._load_gone()
         self._locks: dict[str, threading.Lock] = {}
         self._gates: dict[str, HostGate] = {}
         self._guard = threading.Lock()
@@ -138,25 +166,102 @@ class ImageCache:
         return self._download(url)
 
     def ensure_thumb(self, item: Item, urgent: bool = False) -> Path:
+        """The thumbnail, downloaded if need be. When its own address fails,
+        the original's and the mirrors' are tried; when every one refuses
+        for good, the work is gone (:class:`Gone`) for a while."""
         path = self.thumb_path(item)
         if path.is_file():
             return path
         with self._lock(f"t:{item.id}"):
             if not path.is_file():
                 local = self.image_path(item)
-                img = (
-                    load_image(local) if local.is_file() else self._download(item.thumb_url, urgent)
-                )
+                img = load_image(local) if local.is_file() else self._thumbnail(item, urgent)
                 _save_jpeg(img, path, THUMB_MAX, 85)
+        self._forget_gone(item)
         return path
+
+    def _addresses(self, item: Item, thumb: bool) -> list[str]:
+        mirrors = self.mirrors.get(item.source)
+        first = [item.thumb_url, item.image_url] if thumb else [item.image_url or item.thumb_url]
+        urls = [*first, *(mirrors(item, thumb) if mirrors else [])]
+        return list(dict.fromkeys(u for u in urls if u))
+
+    def _thumbnail(self, item: Item, urgent: bool) -> Image.Image:
+        urls = self._addresses(item, thumb=True)
+        refused = True
+        for n, url in enumerate(urls, 1):
+            try:
+                return self._download(url, urgent)
+            except (httpx.HTTPError, OSError) as err:
+                refused = refused and _missing(err)
+                if n < len(urls):
+                    log.info("thumbnail of %s from %s failed: %s; next address", item.id, url, err)
+                    continue
+                if not refused:
+                    raise
+                self._mark_gone(item)
+                raise Gone(f"no picture of {item.id} anywhere: {err}") from err
+        self._mark_gone(item)
+        raise Gone(f"no address for a picture of {item.id}")
+
+    # Works with no picture
+
+    def _load_gone(self) -> dict[str, float]:
+        try:
+            data = json.loads(self._gone_path.read_text())
+        except (OSError, ValueError):
+            return {}
+        if not isinstance(data, dict):
+            return {}
+        return {str(k): float(v) for k, v in data.items() if isinstance(v, int | float)}
+
+    def _save_gone(self) -> None:
+        with contextlib.suppress(OSError):
+            tmp = self._gone_path.with_suffix(".tmp")
+            tmp.write_text(json.dumps(self._gone))
+            tmp.replace(self._gone_path)
+
+    def _mark_gone(self, item: Item) -> None:
+        with self._guard:
+            self._gone[item.id] = self.wall()
+            self._save_gone()
+        log.warning("no picture of %s anywhere; left out of lists for a while", item.id)
+
+    def _forget_gone(self, item: Item) -> None:
+        if item.id not in self._gone:
+            return
+        with self._guard:
+            if self._gone.pop(item.id, None) is not None:
+                self._save_gone()
+
+    def gone(self, item_id: str) -> bool:
+        """Whether no address had a picture of the work lately: it is left
+        out of lists, and tried again after :data:`GONE_FOR`."""
+        return item_id in self.gone_ids()
+
+    def gone_ids(self) -> set[str]:
+        """The works with no picture anywhere, as :meth:`gone`."""
+        with self._guard:
+            since = self.wall() - GONE_FOR
+            stale = [k for k, at in self._gone.items() if at < since]
+            for key in stale:
+                del self._gone[key]
+            if stale:
+                self._save_gone()
+            return set(self._gone)
 
     def has_image(self, item: Item) -> bool:
         return self.image_path(item).is_file()
 
     def unavailable(self, item: Item) -> bool:
-        """Whether the original failed to download lately (and is not here)."""
+        """Whether the original failed to download lately (and is not here),
+        or the work has no picture anywhere."""
+        if self.has_image(item):
+            return False
+        if self.gone(item.id):
+            return True
         failed = self._failed.get(item.id)
-        if failed is None or self.has_image(item):
+        if failed is None:
             return False
         if self.clock() - failed > FAILED_FOR:
             self._failed.pop(item.id, None)
@@ -183,14 +288,14 @@ class ImageCache:
                 img = self._original(item, urgent)
                 self._failed.pop(item.id, None)
                 _save_jpeg(img, path, IMAGE_MAX, 92)
+        self._forget_gone(item)
         return path
 
     def _original(self, item: Item, urgent: bool) -> Image.Image:
         fetch = self.fetchers.get(item.source)
         if fetch is not None:
             return load_image(fetch(item))
-        mirrors = self.mirrors.get(item.source)
-        urls = [item.image_url or item.thumb_url, *(mirrors(item) if mirrors else [])]
+        urls = self._addresses(item, thumb=False)
         refused = True
         for n, url in enumerate(urls, 1):
             try:

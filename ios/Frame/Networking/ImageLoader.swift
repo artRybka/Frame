@@ -246,6 +246,12 @@ private actor HostGate {
 
 /// A picture from the library or the server, with a soft placeholder in the
 /// artwork's own dominant colour while it loads.
+///
+/// One that did not load tries again on its own a few times while it is on
+/// screen (a museum's image server turns the frame's server away for a
+/// while); a tap on it tries again at once, with every other picture on
+/// screen that failed. A work the server has no picture of anywhere (410)
+/// is told to the model, and grids leave it out.
 struct ArtImage: View {
     @Environment(AppModel.self) private var model
     @Environment(\.artImageLoaded) private var loaded
@@ -266,9 +272,23 @@ struct ArtImage: View {
     /// place at once ("Teraz" from the last launch, then the fresh one).
     var crossfade = false
 
+    /// Pauses before the picture is asked for again on its own.
+    static let retryDelays: [Duration] = [.seconds(4), .seconds(15), .seconds(45)]
+
     @State private var image: UIImage?
+    /// The ref `image` was loaded for.
+    @State private var shownRef: ImageRef?
     @State private var focus: UnitPoint = .center
     @State private var failed = false
+
+    /// Failed, and shows it: a clear placeholder lies over another picture
+    /// (the card's original over the tile's thumbnail), which speaks for it.
+    private var retries: Bool { failed && placeholder != .clear }
+
+    private struct Round: Hashable {
+        let ref: ImageRef
+        let retries: Int
+    }
 
     var body: some View {
         ZStack {
@@ -285,23 +305,61 @@ struct ArtImage: View {
                 Rectangle()
                     .fill(placeholder.gradient)
                     .overlay {
-                        if failed {
-                            Image(systemName: "photo")
+                        if retries {
+                            Image(systemName: "arrow.clockwise")
                                 .font(.title2)
                                 .foregroundStyle(.secondary)
+                                .accessibilityLabel("Obraz się nie wczytał")
+                                .accessibilityHint("Dotknij, aby spróbować ponownie")
                         }
                     }
+                    .contentShape(Rectangle())
+                    .onTapGesture { model.retryPictures() }
+                    .allowsHitTesting(retries)
             }
         }
         .animation(.easeOut(duration: 0.35), value: image != nil)
-        .task(id: ref) {
+        .task(id: Round(ref: ref, retries: model.pictureRetries)) {
             await load()
         }
     }
 
+    private enum Outcome {
+        case loaded, failed, missing, cancelled
+    }
+
     private func load() async {
         let ref = ref
+        // Another round of retries: a picture already here stays.
+        if image != nil, shownRef == ref { return }
         failed = false
+        var told = false
+        for delay in [Duration.zero] + Self.retryDelays {
+            if delay > .zero {
+                try? await Task.sleep(for: delay)
+            }
+            if Task.isCancelled { return }
+            let outcome = await attempt(ref)
+            switch outcome {
+            case .loaded:
+                failed = false
+                loaded(ref)
+                return
+            case .cancelled:
+                return
+            case .failed, .missing:
+                failed = image == nil
+                if !told {
+                    told = true
+                    loaded(ref)  // gave up for now: the screen stops waiting
+                }
+                if outcome == .missing { return }
+            }
+        }
+    }
+
+    private func attempt(_ ref: ImageRef) async -> Outcome {
+        var missing = false
         for candidate in [ref, fallback].compactMap({ $0 }) {
             guard let request = model.backend.request(for: candidate) else { continue }
             do {
@@ -312,7 +370,7 @@ struct ArtImage: View {
                     // The placeholder stays until the crop is known, so the
                     // picture fades in already framed instead of sliding.
                     let point = await SubjectFocus.shared.point(in: loaded, key: request.url?.absoluteString ?? "")
-                    if Task.isCancelled { return }
+                    if Task.isCancelled { return .cancelled }
                     focus = point
                 }
                 if crossfade, image != nil, image !== loaded {
@@ -320,13 +378,28 @@ struct ArtImage: View {
                 } else {
                     image = loaded
                 }
-                break
+                shownRef = ref
+                return .loaded
             } catch {
-                if Task.isCancelled { return }
+                if Task.isCancelled { return .cancelled }
+                if case let .http(status, _) = error as? BackendError, status == 410,
+                   let id = candidate.itemID {
+                    model.pictureMissing(id)
+                    missing = true
+                }
             }
         }
-        failed = image == nil
-        if !Task.isCancelled { loaded(ref) }
+        return missing ? .missing : .failed
+    }
+}
+
+extension ImageRef {
+    /// The library work whose picture this is, for the server's own copies.
+    var itemID: String? {
+        switch self {
+        case let .thumb(id), let .image(id): id
+        default: nil
+        }
     }
 }
 

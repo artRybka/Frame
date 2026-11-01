@@ -11,7 +11,7 @@ import httpx
 import pytest
 from PIL import Image
 
-from frame_server.library.images import HostGate, ImageCache
+from frame_server.library.images import GONE_FOR, Gone, HostGate, ImageCache
 from frame_server.library.models import Item
 
 
@@ -76,7 +76,7 @@ def test_missing_thumbnail_is_not_retried(tmp_path: Path) -> None:
         return httpx.Response(404)
 
     cache = ImageCache(tmp_path, lambda: httpx.Client(transport=httpx.MockTransport(handler)))
-    with pytest.raises(httpx.HTTPStatusError):
+    with pytest.raises(Gone):
         cache.ensure_thumb(_item(3))
     assert calls == 1
 
@@ -210,3 +210,129 @@ def test_host_down_is_not_remembered(tmp_path: Path) -> None:
     with pytest.raises(httpx.HTTPStatusError):
         cache.ensure_image(_item(5))
     assert not cache.unavailable(_item(5))
+
+
+def _aic(n: int) -> Item:
+    iiif = f"https://www.artic.edu/iiif/2/id{n}"
+    return Item(
+        id=f"aic:{n}",
+        source="aic",
+        source_id=str(n),
+        title=f"Work {n}",
+        image_url=f"{iiif}/full/1686,/0/default.jpg",
+        thumb_url=f"{iiif}/full/600,/0/default.jpg",
+    )
+
+
+def _challenge(request: httpx.Request) -> httpx.Response:
+    """Cloudflare's "Just a moment..." page, as the AIC's image server gives it."""
+    return httpx.Response(
+        403,
+        headers={"server": "cloudflare", "cf-mitigated": "challenge", "content-type": "text/html"},
+        text="<title>Just a moment...</title>",
+        request=request,
+    )
+
+
+def test_a_thumbnail_refused_by_the_museum_comes_from_a_copy(tmp_path: Path) -> None:
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url.host)
+        if request.url.host == "www.artic.edu":
+            return _challenge(request)
+        return httpx.Response(200, content=_jpeg())
+
+    cache = ImageCache(tmp_path, lambda: httpx.Client(transport=httpx.MockTransport(handler)))
+    cache.mirrors["aic"] = lambda item, thumb: [
+        f"https://commons.wikimedia.org/{item.source_id}?thumb={thumb}"
+    ]
+    assert cache.ensure_thumb(_aic(1)).is_file()
+    assert seen == ["www.artic.edu", "www.artic.edu", "commons.wikimedia.org"]
+    assert not cache.gone("aic:1")
+
+
+def test_a_bot_wall_does_not_make_a_work_gone(tmp_path: Path) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return _challenge(request)
+
+    cache = ImageCache(tmp_path, lambda: httpx.Client(transport=httpx.MockTransport(handler)))
+    with pytest.raises(httpx.HTTPStatusError) as caught:
+        cache.ensure_thumb(_aic(2))
+    assert not isinstance(caught.value, Gone)
+    assert not cache.gone("aic:2")
+
+
+def test_a_work_with_no_picture_anywhere_is_gone_for_a_while(tmp_path: Path) -> None:
+    answer = [httpx.Response(404)]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return answer[0]
+
+    def make() -> ImageCache:
+        cache = ImageCache(tmp_path, lambda: httpx.Client(transport=httpx.MockTransport(handler)))
+        cache.wall = lambda: now[0]
+        return cache
+
+    now = [1_000_000.0]
+    cache = make()
+    item = _aic(3)
+    with pytest.raises(Gone):
+        cache.ensure_thumb(item)
+    assert cache.gone(item.id) and cache.unavailable(item)
+    # Remembered across a restart, and left out of the frame's queue.
+    again = make()
+    assert again.gone(item.id)
+    with pytest.raises(Gone):
+        again.picture(item)
+    # Asked again after a while; a picture found ends it.
+    now[0] += GONE_FOR + 1
+    assert not again.gone(item.id)
+    answer[0] = httpx.Response(200, content=_jpeg())
+    assert again.ensure_thumb(item).is_file()
+    assert not again.gone(item.id)
+
+
+def test_the_commons_copy_is_found_through_wikidata() -> None:
+    from frame_server.library.wikidata import CommonsCopies
+
+    asked: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        params = request.url.params
+        asked.append(params.get("action", ""))
+        if params.get("action") == "query":
+            hits = [{"title": "Q1"}] if "P4610=3" in params["srsearch"] else []
+            return httpx.Response(200, json={"query": {"search": hits}})
+        file = {"mainsnak": {"datavalue": {"value": "Corot - Bathing Nymphs.jpg"}}}
+        return httpx.Response(200, json={"entities": {"Q1": {"claims": {"P18": [file]}}}})
+
+    copies = CommonsCopies(lambda: httpx.Client(transport=httpx.MockTransport(handler)))
+    assert copies(_aic(3), True) == [
+        "https://commons.wikimedia.org/wiki/Special:FilePath/Corot%20-%20Bathing%20Nymphs.jpg?width=960"
+    ]
+    assert copies(_aic(3))[0].endswith("?width=2560")  # remembered: not asked again
+    assert asked == ["query", "wbgetentities"]
+    assert copies(_aic(4)) == []  # Wikidata has no copy
+    assert copies(_aic(4)) == []
+    assert asked == ["query", "wbgetentities", "query"]
+
+
+def test_works_with_no_picture_are_left_out_of_lists(service) -> None:
+    from fastapi.testclient import TestClient
+
+    from frame_server.web import create_app
+    from frame_server.web.library_api import remote_items
+
+    app = create_app(service.settings)
+    svc = app.state.service
+    gone, kept = _aic(5), _aic(6)
+    svc.images._mark_gone(gone)
+    assert [r.item.id for r in remote_items(svc, [gone, kept])] == [kept.id]
+    with TestClient(app) as client:
+        svc.library.upsert(gone)
+        svc.library.upsert(kept)
+        page = client.get("/api/library/items", params={"source": "aic"}).json()
+        assert [i["id"] for i in page["items"]] == [kept.id] and page["total"] == 1
+        # The app is told, and leaves the tile out at once.
+        assert client.get(f"/api/library/items/{gone.id}/thumb").status_code == 410
