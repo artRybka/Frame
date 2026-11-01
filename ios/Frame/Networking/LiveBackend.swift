@@ -238,6 +238,46 @@ struct LiveBackend: FrameBackend {
         try await get("/api/themes/\(key)", query: [URLQueryItem(name: "page", value: String(page))])
     }
 
+    func themeLines(key: String, page: Int) async throws -> AsyncThrowingStream<ThemeLine, Error> {
+        let query = [URLQueryItem(name: "page", value: String(page))]
+        let (bytes, response) = try await stream(request("/api/themes/\(key)/stream", query: query))
+        guard let http = response as? HTTPURLResponse else { throw BackendError.invalidResponse }
+        if http.statusCode == 404 {
+            // A server from before the stream (or a theme that is gone): a page at once.
+            bytes.task.cancel()
+            let found = try await themePage(key: key, page: page)
+            let lines = [
+                ThemeLine(items: found.items),
+                ThemeLine(end: true, more: found.more, nextPage: found.nextPage ?? page + 1),
+            ]
+            return AsyncThrowingStream { continuation in
+                for line in lines { continuation.yield(line) }
+                continuation.finish()
+            }
+        }
+        guard (200 ..< 300).contains(http.statusCode) else {
+            bytes.task.cancel()
+            throw BackendError.http(status: http.statusCode, body: "")
+        }
+        let mark = Absence.shared.mark()
+        return AsyncThrowingStream { continuation in
+            let reading = Task {
+                do {
+                    let decoder = Self.decoder()
+                    for try await line in bytes.lines where !line.isEmpty {
+                        continuation.yield(try decoder.decode(ThemeLine.self, from: Data(line.utf8)))
+                    }
+                    continuation.finish()
+                } catch where Absence.shared.interrupted(error, since: mark) {
+                    continuation.finish()  // the app went away mid-answer: what came is kept
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in reading.cancel() }
+        }
+    }
+
     func themePlaylist(key: String, play: Bool) async throws -> ThemePlaylist {
         try await send("/api/themes/\(key)/playlist", method: "POST", body: ["play": play])
     }

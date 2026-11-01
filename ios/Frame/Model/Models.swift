@@ -1683,6 +1683,17 @@ struct ArtThemePage: Codable, Sendable {
     var nextPage: Int?
 }
 
+/// A line of `GET /api/themes/<key>/stream`: one museum search's works as
+/// it answers; the last line (`end`) says whether there is more.
+struct ThemeLine: Codable, Sendable {
+    var items: [RemoteItem] = []
+    var end = false
+    var more = false
+    var nextPage: Int?
+    /// Every search asked failed (on the last line).
+    var failed = false
+}
+
 struct RemotePage: Codable, Sendable {
     let total: Int
     let items: [RemoteItem]

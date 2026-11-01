@@ -884,6 +884,22 @@ final class FrameAPITests: XCTestCase {
         XCTAssertNil(page.items[0].thumbFallback)
     }
 
+    func testThemeStreamsInLines() async throws {
+        let json = #"{"items":[],"end":true,"more":true,"next_page":5,"failed":false}"#
+        let last = try LiveBackend.decoder().decode(ThemeLine.self, from: Data(json.utf8))
+        XCTAssertTrue(last.end && last.more && !last.failed)
+        XCTAssertEqual(last.nextPage, 5)
+
+        let demo = DemoBackend()
+        let theme = try XCTUnwrap(try await demo.themes().first)
+        let page = try await demo.themePage(key: theme.key, page: 1)
+        var lines: [ThemeLine] = []
+        for try await line in try await demo.themeLines(key: theme.key, page: 1) { lines.append(line) }
+        XCTAssertEqual(lines.last?.end, true)
+        XCTAssertEqual(lines.flatMap(\.items).map(\.id), page.items.map(\.id))
+        XCTAssertEqual(lines.count, (page.items.count + 3) / 4 + 1)  // a few works at a time
+    }
+
     func testMuseumThumbnailFallsBackToTheServer() async throws {
         let demo = DemoBackend()
         let themes = try await demo.themes()

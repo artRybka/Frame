@@ -716,6 +716,25 @@ actor DemoBackend: FrameBackend {
         return ArtThemePage(items: page == 1 ? remote(works(theme)) : [], more: false)
     }
 
+    /// The demo's theme in a few lines, as if museums answered one by one.
+    func themeLines(key: String, page: Int) async throws -> AsyncThrowingStream<ThemeLine, Error> {
+        let found = try await themePage(key: key, page: page)
+        let lines: [ThemeLine] = stride(from: 0, to: found.items.count, by: 4).map {
+            ThemeLine(items: Array(found.items[$0 ..< min($0 + 4, found.items.count)]))
+        } + [ThemeLine(end: true, more: found.more)]
+        return AsyncThrowingStream { continuation in
+            let answering = Task {
+                for line in lines {
+                    try? await Task.sleep(for: .milliseconds(300))
+                    guard !Task.isCancelled else { break }
+                    continuation.yield(line)
+                }
+                continuation.finish()
+            }
+            continuation.onTermination = { _ in answering.cancel() }
+        }
+    }
+
     /// The demo has one work of the day: drawn again, it is the same.
     func dailyAgain() async throws -> DailyWork.Brief {
         let work = try await daily(day: nil, wait: 0)
