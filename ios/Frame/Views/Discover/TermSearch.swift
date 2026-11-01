@@ -180,6 +180,7 @@ private struct TermSearch: ViewModifier {
             }
             // The X: off with the words and every group's choices too.
             .onChange(of: presented) { _, presented in
+                print("XDBG \(Date().timeIntervalSince1970) presented=\(presented) focused=\(focused.wrappedValue) quiet=\(quiet)")
                 guard !presented else { return }
                 lookup.text = ""
                 if !tokens.isEmpty { withAnimation(.snappy) { tokens = [] } }
@@ -200,8 +201,8 @@ private struct TermSearch: ViewModifier {
                 if !open { openForX() }
             }
             .onChange(of: focused.wrappedValue) { _, focused in
+                print("XDBG \(Date().timeIntervalSince1970) focused=\(focused) quiet=\(quiet) presented=\(presented)")
                 guard focused, quiet else { return }
-                quiet = false
                 self.focused.wrappedValue = false
             }
             .textInputAutocapitalization(.never)
@@ -217,12 +218,13 @@ private struct TermSearch: ViewModifier {
 
     /// Opens the search for a group's choice, without the keyboard.
     private func openForX() {
+        print("XDBG \(Date().timeIntervalSince1970) openForX grouped=\(grouped) presented=\(presented) panel=\(panelOpen)")
         guard grouped, !presented, !panelOpen else { return }
         quiet = true
         presented = true
         // Only the focus the opening brings: a later tap keeps its keyboard.
         Task {
-            try? await Task.sleep(for: .milliseconds(700))
+            try? await Task.sleep(for: .milliseconds(2000))
             quiet = false
         }
     }
