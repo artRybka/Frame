@@ -1,7 +1,10 @@
 """Other works by a study's artist ("Inne prace artysty"), at the end of the
 page: the catalogue's first, the owner's favourites ahead, in an order kept
 for the work; when the catalogue has too few, the museums are asked once
-for the artist and what they have is kept with the work.
+for the artist and what they have is kept with the work. Each work comes
+once: copies of it from other sources, under a title in another language
+too, are told by their pictures (:mod:`.library.likeness`); none is a copy
+of the work the page is about.
 """
 
 from __future__ import annotations
@@ -17,11 +20,14 @@ import httpx
 
 from .library import Item, ItemKind, PlaylistRules
 from .library.artists import is_artist
+from .library.duplicates import same_work
+from .library.likeness import Likeness
 from .library.models import Note
 from .library.vocabulary import artist_matches, fold, is_photograph
 
 if TYPE_CHECKING:
     from .library import Library
+    from .library.images import ImageCache
 
 log = logging.getLogger(__name__)
 
@@ -44,8 +50,11 @@ class ArtistWorks:
         self,
         library: Library,
         search: Callable[[str, int], tuple[int, list[Item], list[str]]],
+        images: ImageCache | None = None,
     ) -> None:
         self.library = library
+        self.images = images
+        self.likeness = Likeness(images) if images is not None else None
         #: Every museum at once: ``Importer.search_all``.
         self.search = search
         self._lock = threading.Lock()
@@ -53,8 +62,9 @@ class ArtistWorks:
 
     def works(self, item: Item, skip: set[str] | None = None) -> list[Item]:
         """Up to :data:`SHOWN` other works by ``item``'s artist, none of
-        ``skip`` (ids shown elsewhere on the page) nor a title twice; none
-        for an unknown or anonymous artist."""
+        ``skip`` (ids shown elsewhere on the page), nor a work twice or the
+        work itself in another copy; none for an unknown or anonymous
+        artist."""
         if not is_artist(item.artist):
             return []
         rules = PlaylistRules(kinds=[ItemKind.ARTWORK], artists=[item.artist])
@@ -63,6 +73,7 @@ class ArtistWorks:
         picked: list[Item] = []
         skip = skip or set()
         titles = {_key(item)}
+        seen = [item]
         for other in [*found, *self.from_museums(item.id)]:
             if len(picked) == SHOWN:
                 break
@@ -75,11 +86,20 @@ class ArtistWorks:
                 or not other.artist
                 or not artist_matches(other.artist, [item.artist])
                 or _key(other) in titles
+                or any(self.copies(other, s) for s in seen)
             ):
                 continue
             titles.add(_key(other))
+            seen.append(other)
             picked.append(other)
         return picked
+
+    def copies(self, a: Item, b: Item) -> bool:
+        """``a`` and ``b`` are one work: by the catalogue's rules (title,
+        artist, year, shape, address) or by their pictures."""
+        if same_work(a, b):
+            return True
+        return self.likeness is not None and self.likeness.same(a, b)
 
     @staticmethod
     def _seed(item: Item) -> int:
@@ -134,6 +154,12 @@ class ArtistWorks:
             if h.id != item.id and h.artist and artist_matches(h.artist, [item.artist])
         ]
         rng.shuffle(found)
+        if self.images is not None:
+            for hit in found:  # the app shows them anyway; here to compare
+                try:
+                    self.images.ensure_thumb(hit)
+                except Exception as err:  # told apart by title only
+                    log.info("thumbnail of %s: %s", hit.id, err)
         self.library.save_note(
             Note(
                 item_id=item.id,
