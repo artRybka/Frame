@@ -1564,8 +1564,8 @@ private struct OrientationPill: View {
     }
 }
 
-/// Konfiguracja: switches for fun, kept on this phone (artists' first
-/// names in Polish, `NameStyle`).
+/// Switches for fun, kept on this phone (artists' first names in Polish,
+/// `NameStyle`): in Konfiguracja and in a household member's "Mój dostęp".
 struct FunSection: View {
     var body: some View {
         @Bindable var style = NameStyle.shared
