@@ -121,7 +121,7 @@ struct DailyView: View {
         .toolbar {
             if let card {
                 ItemToolbar(
-                    model: model, item: card, changed: { card = $0 },
+                    model: model, item: card, changed: { self.card = $0 },
                     addingToPlaylist: $addingToPlaylist, savingPhoto: $savingPhoto
                 )
             }
