@@ -58,6 +58,9 @@ log = logging.getLogger(__name__)
 #: Seconds between rebuilds of the suggestions' index while the library changes.
 TERM_INDEX_EVERY = 10.0
 
+#: A regrouping of the works this slow is logged: the library waits for it.
+SLOW_WORKS = 1.0
+
 WORK_FIELDS = frozenset(
     {"kind", "source", "title", "artist", "year", "width", "height", "url", "image_url", "pooled"}
 )
@@ -503,7 +506,11 @@ class Library:
         several sources together, the best copy first."""
         with self._lock:
             if self._works is None:
+                started = time.monotonic()
                 self._works = Works(self._all().values())
+                took = time.monotonic() - started
+                if took >= SLOW_WORKS:  # every library call waited meanwhile
+                    log.info("works regrouped in %.1f s (%d items)", took, len(self._all()))
             return self._works
 
     def term_index(self) -> TermIndex:

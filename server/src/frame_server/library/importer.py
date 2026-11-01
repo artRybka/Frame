@@ -19,6 +19,7 @@ from PIL import Image
 from ..imaging.palette import Palette
 from .colors import analyse, has_colours, tint_spread
 from .duplicates import dedupe, rank
+from .hosts import as_asked
 from .images import ImageCache
 from .lifespan import LifeDates
 from .models import Item, ItemKind, Look, PhotoInfo, PlaylistRules
@@ -293,7 +294,7 @@ class Importer:
         if not colors or not items:
             return items
         with ThreadPoolExecutor(min(len(items), 16)) as pool:
-            found = list(pool.map(self.color_tags_of, items))
+            found = list(pool.map(as_asked(self.color_tags_of), items))
         return [
             i for i, tags in zip(items, found, strict=True) if tags and has_colours(tags, colors)
         ]
@@ -308,7 +309,7 @@ class Importer:
         if not suspects:
             return items
         with ThreadPoolExecutor(min(len(suspects), 8)) as pool:
-            found = pool.map(self.spread_of, suspects)
+            found = pool.map(as_asked(self.spread_of), suspects)
             spreads = {i.id: spread for i, spread in zip(suspects, found, strict=True)}
         return [
             i for i in items if i.id not in spreads or not is_grey_copy(i, spread=spreads[i.id])
@@ -329,7 +330,7 @@ class Importer:
     ) -> tuple[int, list[Item], list[str]]:
         keys = keys or self.sources()
         with ThreadPoolExecutor(len(keys)) as pool:
-            futures = {k: pool.submit(ask, k) for k in keys}
+            futures = {k: pool.submit(as_asked(ask), k) for k in keys}
         found: list[list[Item]] = []
         failed: list[str] = []
         total = 0

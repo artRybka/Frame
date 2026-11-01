@@ -3,12 +3,24 @@ left alone for a while (the AIC's Cloudflare, the Met's Imperva)."""
 
 from __future__ import annotations
 
+import itertools
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import httpx
 import pytest
 
-from frame_server.library.hosts import REST, HostGuard, Resting, walled
+from frame_server.library.hosts import (
+    REST,
+    HostGuard,
+    Resting,
+    as_asked,
+    is_urgent,
+    urgently,
+    walled,
+)
 from frame_server.library.images import ImageCache
 from frame_server.library.models import Item, ItemKind
 from frame_server.library.museums import ArtInstituteChicago, MetropolitanMuseum
@@ -204,3 +216,44 @@ def test_a_walled_met_fails_the_whole_page() -> None:
         pytest.raises(Resting),
     ):
         MetropolitanMuseum(http).search("x")
+
+
+def test_what_the_owner_waits_for_goes_before_the_background() -> None:
+    """A theme opened in the app does not wait behind a burst of imports:
+    an urgent request takes the next turn at the host, the others follow
+    in order, still spaced out."""
+    guard = HostGuard({"api.artic.edu": 0.15})
+    order: list[str] = []
+    times: list[float] = []
+
+    def send(name: str, urgent: bool) -> None:
+        request = httpx.Request("GET", AIC_SEARCH)
+        if urgent:
+            with urgently():
+                guard.before(request)
+        else:
+            guard.before(request)
+        order.append(name)
+        times.append(time.monotonic())
+
+    send("first", False)  # the host was just asked
+    background = [threading.Thread(target=send, args=(f"import {n}", False)) for n in range(1, 4)]
+    for thread in background:
+        thread.start()
+        time.sleep(0.02)  # in this order
+    owner = threading.Thread(target=send, args=("theme", True))
+    owner.start()
+    for thread in [*background, owner]:
+        thread.join(5)
+    assert order == ["first", "theme", "import 1", "import 2", "import 3"]
+    gaps = [b - a for a, b in itertools.pairwise(times)]
+    assert min(gaps) >= 0.14  # still paced
+
+
+def test_urgency_follows_work_into_worker_threads() -> None:
+    with ThreadPoolExecutor(1) as pool:
+        assert pool.submit(as_asked(is_urgent)).result() is False
+        with urgently():
+            assert pool.submit(as_asked(is_urgent)).result() is True
+            assert pool.submit(is_urgent).result() is False  # not passed on by itself
+    assert is_urgent() is False

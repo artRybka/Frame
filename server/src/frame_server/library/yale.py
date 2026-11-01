@@ -17,7 +17,7 @@ from typing import Any, ClassVar
 
 import httpx
 
-from .hosts import Resting
+from .hosts import Resting, as_asked
 from .models import Item
 from .museums import Discovery, Museum
 
@@ -143,7 +143,7 @@ class YaleMuseums(Museum):
         records = [o["id"] for o in body.get("orderedItems") or [] if o.get("id")]
         items: list[Item] = []
         with ThreadPoolExecutor(4) as pool:
-            for result in pool.map(self._safe, records):
+            for result in pool.map(as_asked(self._safe), records):
                 if isinstance(result, Resting):
                     raise result
                 if isinstance(result, Item):

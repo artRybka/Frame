@@ -17,7 +17,7 @@ from PIL import Image
 
 from ..fsutil import own_files
 from ..imaging.layout import load_image
-from .hosts import Resting, walled
+from .hosts import Resting, is_urgent, urgently, walled
 from .markup import commons_rendition
 from .models import Item
 
@@ -176,8 +176,10 @@ class ImageCache:
         """A few downloads per host at a time, ``urgent`` ones first; throttled
         ones are tried again after the wait the host asks for (a few seconds
         at most)."""
+        urgent = urgent or is_urgent()
         gate = self._gate(urlsplit(url).hostname or "")
-        with gate.turn(urgent), self.http() as http:
+        asking = urgently() if urgent else contextlib.nullcontext()
+        with gate.turn(urgent), asking, self.http() as http:
             for attempt in range(1, ATTEMPTS + 1):
                 try:
                     resp = http.get(url)

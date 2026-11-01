@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import random
 import time
 from collections.abc import Iterator
@@ -231,7 +232,8 @@ def test_clean_start_deletes_the_old_museum_works(service) -> None:
     assert service.player.reset_library() == 0  # once
 
 
-def test_discover_endpoints(museums) -> None:
+def test_discover_endpoints(museums, caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.INFO, logger="frame_server.web.discover_api")
     from frame_server.web import create_app, discover_api
 
     service = museums
@@ -253,6 +255,9 @@ def test_discover_endpoints(museums) -> None:
         assert found and all(line["items"] and not line["end"] for line in found)
         assert last["end"] and last["more"] and not last["failed"]
         assert last["next_page"] == 1 + discover_api.THEME_BATCH
+        # Each round in the log, with its times (what the app waited for).
+        said = [r.getMessage() for r in caplog.records if r.name == discover_api.log.name]
+        assert any(m.startswith("theme impressionism, pages 1-4: ") for m in said)
         assert client.get("/api/themes/nope/stream").status_code == 404
 
         rows = client.get("/api/suggestions").json()
