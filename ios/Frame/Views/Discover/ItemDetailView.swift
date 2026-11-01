@@ -24,8 +24,13 @@ struct ItemDetailView: View {
     @State private var savingPhoto = false
     /// Polish title and texts, once the server has them ("Polskie tytuły i
     /// opisy" in the settings); the museum's own while they are written.
+    /// Ones already seen (on "Teraz", on a visit before) are there from the
+    /// first frame, so nothing is swapped.
     @State private var polish: PolishText?
     @State private var polishWaiting = false
+    /// The tile it was opened from showed a Polish title: the card waits the
+    /// moment the Polish texts take, rather than show the museum's first.
+    @State private var holding = false
     @State private var showOriginal = false
     /// What the model saw in the picture (keywords), once it has looked.
     @State private var seen: [String] = []
@@ -58,12 +63,23 @@ struct ItemDetailView: View {
         case frame = "Na ramce"
     }
 
+    init(itemID: String) {
+        self.itemID = itemID
+        let known = ItemPeeks.polish[itemID]
+        _item = State(initialValue: ItemPeeks.cards[itemID])
+        _polish = State(initialValue: known)
+        _holding = State(initialValue: known == nil && ItemPeeks.tiles[itemID]?.summary.titlePl != nil)
+    }
+
+    /// The work's card, rather than its placeholder.
+    private var showsCard: Bool { item != nil && !holding }
+
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
                 // One over the other while the work fades in over its placeholder.
                 ZStack(alignment: .top) {
-                    if let item {
+                    if let item, !holding {
                         loaded(item)
                             .transition(.opacity)
                     } else {
@@ -74,7 +90,7 @@ struct ItemDetailView: View {
                 // Full width from the first frame, also before the work is here:
                 // a lone spinner made the page (and its paper) a narrow strip.
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .animation(.easeOut(duration: 0.3), value: item == nil)
+                .animation(.easeOut(duration: 0.3), value: showsCard)
             }
             .glowLift($scrolled)
             .onChange(of: polish) {
@@ -145,9 +161,16 @@ struct ItemDetailView: View {
         loadFailed = false
         if item == nil { item = ItemPeeks.cards[itemID] }
         do {
-            item = try await model.backend.item(id: itemID)
+            let fresh = try await model.backend.item(id: itemID)
+            if holding, let view = try? await model.backend.polish(itemID: itemID, wait: 0) {
+                // Written already (it was on the frame): the card opens with it.
+                showPolish(view, animated: false)
+            }
+            item = fresh
+            holding = false
             if LaunchRoute.screen == "original" { opened = .original }  // CI screenshots
         } catch {
+            holding = false
             if item == nil {
                 loadFailed = true
                 model.show(error)
@@ -230,7 +253,7 @@ struct ItemDetailView: View {
     private func peekTitle(_ summary: ItemSummary) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Eyebrow(Names.source(summary.source), color: Theme.vermilion)
-            Text(summary.title.isEmpty ? "Bez tytułu" : summary.title)
+            Text(nonEmpty(polish?.title) ?? (summary.shownTitle.isEmpty ? "Bez tytułu" : summary.shownTitle))
                 .font(.serif(30, weight: .semibold))
                 .foregroundStyle(Theme.ink)
                 .fixedSize(horizontal: false, vertical: true)
@@ -242,8 +265,9 @@ struct ItemDetailView: View {
                         .foregroundStyle(Theme.inkSoft)
                 }
             }
-            if !summary.dateText.isEmpty {
-                Text(summary.dateText).font(.subheadline).foregroundStyle(Theme.inkSoft)
+            let date = nonEmpty(polish?.date) ?? summary.dateText
+            if !date.isEmpty {
+                Text(date).font(.subheadline).foregroundStyle(Theme.inkSoft)
             }
         }
     }
@@ -342,17 +366,33 @@ struct ItemDetailView: View {
     /// (a few seconds, half a minute for a note from the picture) is waited
     /// for a few times. Without a key or with the switch off: nothing.
     private func loadPolish() async {
-        polish = nil
         showOriginal = false
         for attempt in 0..<4 {
             guard let view = try? await model.backend.polish(itemID: itemID, wait: attempt == 0 ? 20 : 30),
                   !Task.isCancelled
             else { break }
-            polish = view.text
-            polishWaiting = view.status == "waiting"
-            if !polishWaiting { break }
+            showPolish(view)
+            if view.status != "waiting" { break }
         }
-        polishWaiting = false
+        if polishWaiting {
+            withAnimation(.easeInOut) { polishWaiting = false }
+        }
+    }
+
+    /// Takes the server's answer, kept for the next visit. Polish texts
+    /// that come while the museum's are on the card fade in over them
+    /// (opened from search, say), with no jump.
+    private func showPolish(_ view: PolishView, animated: Bool = true) {
+        let waiting = view.status == "waiting"
+        // Being written again: the texts on the card stay meanwhile.
+        let text = view.text ?? (waiting ? polish : nil)
+        ItemPeeks.keep(text, for: itemID)
+        let busy = waiting && text == nil
+        guard text != polish || busy != polishWaiting else { return }
+        withAnimation(animated ? .easeInOut(duration: 0.6) : nil) {
+            polish = text
+            polishWaiting = busy
+        }
     }
 
     /// When the work's picture is poor, the server looks for a sharper copy
@@ -611,6 +651,8 @@ struct ItemDetailView: View {
                 .font(.serif(30, weight: .semibold))
                 .foregroundStyle(Theme.ink)
                 .fixedSize(horizontal: false, vertical: true)
+                // The museum's title fades into the Polish one.
+                .contentTransition(.opacity)
             if !item.artist.isEmpty {
                 // Their other works, on Discover's search.
                 Button {
@@ -630,10 +672,12 @@ struct ItemDetailView: View {
             let bio = nonEmpty(shownPolish?.artistNote) ?? item.artistBio
             if !bio.isEmpty {
                 Text(bio).font(.subheadline).foregroundStyle(Theme.inkSoft)
+                    .contentTransition(.opacity)
             }
             let date = nonEmpty(shownPolish?.date) ?? item.dateText
             if !date.isEmpty {
                 Text(date).font(.subheadline).foregroundStyle(Theme.inkSoft)
+                    .contentTransition(.opacity)
             }
         }
     }
@@ -794,6 +838,7 @@ struct ItemDetailView: View {
                 Text(label).foregroundStyle(Theme.inkSoft)
                 Spacer(minLength: 16)
                 Text(value).multilineTextAlignment(.trailing).foregroundStyle(Theme.ink)
+                    .contentTransition(.opacity)
             }
             .font(.subheadline)
         }
@@ -881,6 +926,9 @@ enum ItemPeeks {
 
     private(set) static var tiles: [String: Tile] = [:]
     private(set) static var cards: [String: Item] = [:]
+    /// Polish texts already seen (on "Teraz", on the card before), so the
+    /// card shows them from its first frame instead of swapping them in.
+    private(set) static var polish: [String: PolishText] = [:]
 
     static func remember(_ summary: ItemSummary, thumb: ImageRef) {
         if tiles.count > 3000 { tiles.removeAll() }
@@ -890,6 +938,12 @@ enum ItemPeeks {
     static func keep(_ item: Item) {
         if cards.count > 200 { cards.removeAll() }
         cards[item.id] = item
+    }
+
+    /// The work's Polish texts; nil forgets them (switched off).
+    static func keep(_ text: PolishText?, for id: String) {
+        if polish.count > 300 { polish.removeAll() }
+        polish[id] = text
     }
 }
 
