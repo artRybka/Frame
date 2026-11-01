@@ -178,6 +178,9 @@ struct TermFacetBar: View {
     /// Where each group's button is on the screen: its panel grows out of it
     /// and shrinks back into it.
     @State private var frames: [TermFacet: CGRect] = [:]
+    /// The open group's glass has grown out of its button (false while it
+    /// grows and shrinks back).
+    @State private var grown = false
 
     /// Over the keyboard the system field floats above the bar's usual place
     /// (the keyboard's top): the bar rises over the field.
@@ -214,7 +217,7 @@ struct TermFacetBar: View {
     var body: some View {
         ZStack(alignment: .bottom) {
             GlassEffectContainer(spacing: 8) {
-                if open == nil {
+                if !grown {
                     VStack(alignment: .trailing, spacing: 8) {
                         if grouped {
                             Button {
@@ -241,32 +244,50 @@ struct TermFacetBar: View {
                             }
                         }
                     }
-                    .transition(.opacity)
                 }
             }
-            // Outside the buttons' glass container: in it the panel's glass
-            // was melted out of the first button ("Technika") whatever group
-            // it was. It grows out of its own button's place instead.
+            // The panel's glass is its own, outside the buttons' container:
+            // in it, the system's morph melted the panel out of the first
+            // button ("Technika") whatever group it was, glassEffectID or
+            // not. Here the glass itself stretches out of the tapped button
+            // and back into it (PanelGlass).
             if let open {
                 TermFacetPanel(
-                    facet: open, tokens: $tokens, museums: museums, colors: colors, maxHeight: panelHeight
-                ) {
-                    withAnimation(Self.motion) { self.open = nil }
+                    facet: open, tokens: $tokens, museums: museums, colors: colors, maxHeight: panelHeight,
+                    close: close
+                )
+                // The words come in once the glass has grown, and go first.
+                .animation(grown ? .easeIn(duration: 0.22).delay(0.12) : .easeOut(duration: 0.1)) {
+                    $0.opacity(grown ? 1 : 0)
                 }
-                .transition(GrowFrom(source: frames[open]))
-                .zIndex(1)
+                .background { PanelGlass(source: frames[open], grown: grown) }
+                .allowsHitTesting(grown)
+                // Another group tapped while one shrinks: a new panel.
+                .id(open)
+                .onAppear { withAnimation(Self.motion) { grown = true } }
             }
         }
         .frame(maxWidth: .infinity, alignment: .trailing)
         .padding(.bottom, focus.wrappedValue ? Self.overField : 8)
         .onChange(of: focus.wrappedValue) { _, focused in
-            if focused, open != nil { withAnimation(Self.motion) { open = nil } }
+            if focused, open != nil { close() }
         }
         .task { await model.loadVocabulary() }
     }
 
-    /// How a group opens and closes.
-    static let motion = Animation.smooth(duration: 0.4)
+    /// How the glass stretches: a little give at the end, like the system's.
+    static let motion = Animation.bouncy(duration: 0.45, extraBounce: 0.05)
+
+    /// The glass shrinks back into the button; then the panel goes.
+    private func close() {
+        guard open != nil else { return }
+        withAnimation(Self.motion) {
+            grown = false
+        } completion: {
+            // Not when another group opened meanwhile.
+            if !grown { open = nil }
+        }
+    }
 
     private func button(_ facet: TermFacet) -> some View {
         let picked = tokens.filter(facet.holds)
@@ -274,7 +295,7 @@ struct TermFacetBar: View {
         let on = value != nil
         return Button {
             focus.wrappedValue = false
-            withAnimation(Self.motion) { open = facet }
+            open = facet
         } label: {
             VStack(spacing: 1) {
                 if let value {
@@ -317,32 +338,41 @@ struct TermFacetBar: View {
     }
 }
 
-/// A group's panel coming out of its button: from the button's place and
-/// width, fading in, to its own; and back the same way when it closes.
-struct GrowFrom: Transition {
-    /// The button on the screen (nil: the panel just fades).
+/// An open group's glass: grown, the panel's whole rounded rectangle; not
+/// grown, the tapped button's capsule in its place on the screen. Animated
+/// between the two, the glass stretches out of the button and back.
+struct PanelGlass: View {
+    /// The button on the screen (nil: the glass grows from the middle).
     var source: CGRect?
+    var grown: Bool
 
-    func body(content: Content, phase: TransitionPhase) -> some View {
-        let shown = phase.isIdentity
-        let source = source
-        return content
-            .visualEffect { effect, proxy in
-                let frame = proxy.frame(in: .global)
-                var scale: CGFloat = 1
-                var shift = CGSize.zero
-                if !shown, let source, frame.width > 0 {
-                    scale = max(source.width / frame.width, 0.05)
-                    shift = CGSize(width: source.midX - frame.midX, height: source.midY - frame.midY)
+    var body: some View {
+        GeometryReader { proxy in
+            let panel = proxy.frame(in: .global)
+            let from = source ?? CGRect(x: panel.midX - 30, y: panel.maxY - 44, width: 60, height: 44)
+            let rect = grown
+                ? CGRect(origin: .zero, size: proxy.size)
+                : CGRect(x: from.minX - panel.minX, y: from.minY - panel.minY, width: from.width, height: from.height)
+            Color.clear
+                .glassEffect(
+                    Glass.regular.tint(Theme.paper.opacity(grown ? 0.55 : 0.2)),
+                    in: RoundedRectangle(cornerRadius: grown ? 28 : from.height / 2, style: .continuous)
+                )
+                .frame(width: rect.width, height: rect.height)
+                .offset(x: rect.minX, y: rect.minY)
+                // Over the button it would veil the button's name: it
+                // shows at once when it leaves the button, and goes as it
+                // lands back on it.
+                // (Its own timing for the fade only, not for the stretch.)
+                .animation(grown ? .easeOut(duration: 0.08) : .easeIn(duration: 0.16).delay(0.2)) {
+                    $0.opacity(grown ? 1 : 0)
                 }
-                return effect.scaleEffect(scale).offset(shift)
-            }
-            .opacity(shown ? 1 : 0)
+        }
     }
 }
 
-/// One group's glass panel over the search field, as tall as what it holds
-/// (longer groups scroll inside it).
+/// What an open group holds, over the search field, as tall as what it
+/// holds (longer groups scroll inside it); its glass is PanelGlass.
 struct TermFacetPanel: View {
     @Environment(AppModel.self) private var model
     let facet: TermFacet
@@ -388,10 +418,6 @@ struct TermFacetPanel: View {
             .scrollDismissesKeyboard(.interactively)
             .frame(height: min(height, max(maxHeight - Self.header, 160)))
         }
-        .glassEffect(
-            Glass.regular.tint(Theme.paper.opacity(0.55)),
-            in: RoundedRectangle(cornerRadius: 28, style: .continuous)
-        )
         .task {
             await model.loadVocabulary(fresh: true)
             // Opened on an accent: show the accents.
