@@ -33,6 +33,7 @@ from .ai.study import KIND as STUDY
 from .imaging.layout import load_image
 from .library import Item, ItemKind, PlaylistRules
 from .library.artists import is_artist
+from .library.images import display_copy
 from .library.models import Note
 from .library.vocabulary import artist_matches, is_photograph
 
@@ -41,6 +42,7 @@ if TYPE_CHECKING:
     from .later import LaterWorks
     from .library import Library
     from .player import Player
+    from .sharper import Sharper
 
 log = logging.getLogger(__name__)
 
@@ -119,6 +121,9 @@ class Daily:
         #: Told of a work whose page is written (it becomes its study); set
         #: by ``frame_server.study``.
         self.on_written: Callable[[Item], object] | None = None
+        #: Looks for a sharper copy of the day's work before its page is
+        #: written; set by the service.
+        self.sharper: Sharper | None = None
 
     # -- the days ----------------------------------------------------------
 
@@ -276,7 +281,10 @@ class Daily:
     # -- its fragments ("Detale") ----------------------------------------------
 
     def detail_path(self, item: Item, box: Detail) -> Path:
-        key = text_hash(f"{box.x:.4f}", f"{box.y:.4f}", f"{box.w:.4f}", f"{box.h:.4f}")[:10]
+        parts = [f"{box.x:.4f}", f"{box.y:.4f}", f"{box.w:.4f}", f"{box.h:.4f}"]
+        if item.sharper is not None:  # cut from a sharper copy: another file, another address
+            parts.append(item.sharper.item_id)
+        key = text_hash(*parts)[:10]
         return self.details_dir / f"{item.file_stem}-{key}.jpg"
 
     def detail(self, item: Item, index: int, essay: Essay | None = None) -> Path | None:
@@ -318,9 +326,10 @@ class Daily:
         """The museum's file as it is (the cached original is cut down to
         the panel's size); the cached one when the museum's cannot be had."""
         images = self.job.images
-        if item.image_url and item.source not in images.fetchers:
+        url = display_copy(item)
+        if url and (item.sharper is not None or item.source not in images.fetchers):
             try:
-                return images.sample(item.image_url)
+                return images.sample(url)
             except (httpx.HTTPError, OSError) as err:
                 log.info("full size of %s failed: %s; the cached original", item.id, err)
         path, _ = images.picture(item, urgent=True)
@@ -330,6 +339,10 @@ class Daily:
         self.adopt_all()
         item = self.pick(day or date.today())
         if item is not None:
+            if self.sharper is not None:
+                # The page, its details and the frame from the sharper copy.
+                self.sharper.look(item)
+                item = self.library.get(item.id) or item
             self.ask(item)
             essay = self.job.essay(item)
             if self.later is not None and essay and self.later.missing(item.id, essay.legacy):

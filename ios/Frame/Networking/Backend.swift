@@ -4,6 +4,9 @@ import Foundation
 enum ImageRef: Hashable, Sendable {
     case thumb(String)  // library item id
     case image(String)  // display-size original
+    /// The display-size original from a sharper copy (`Item.sharper`);
+    /// `version` (the copy's id) keeps it apart from the one before.
+    case original(String, version: String)
     /// Simulated look on the e-paper panel, framed with `settings` (saved or
     /// still being edited); nil means the server's saved settings. `framing`
     /// tries crops not saved yet. Without `ownLook` a photo sent once is
@@ -37,6 +40,9 @@ protocol FrameBackend: Sendable {
     /// everything else (keywords, Polish texts); waits up to `wait` seconds
     /// for the keywords.
     func describe(itemID: String, wait: Int) async throws -> SeenView
+    /// The card opened: when the work's picture is poor, the server looks
+    /// for a sharper copy in other sources; waits up to `wait` seconds.
+    func sharpen(itemID: String, wait: Int) async throws -> SharperView
     func setFavorite(id: String, _ favorite: Bool) async throws -> Item
     func setExcluded(id: String, _ excluded: Bool) async throws -> Item
     func show(itemID: String, hold: HoldSpec) async throws

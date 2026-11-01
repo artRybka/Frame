@@ -675,6 +675,16 @@ class WikimediaCommons(Museum):
         page = pages.get(source_id)
         return self._map(page) if page else None
 
+    def file(self, name: str) -> Item | None:
+        """The work in the file ``name`` ("Hokusai Great Wave.jpg", as
+        Wikidata's P18 names it); None when Commons has no such file or it
+        is no work of art to show."""
+        resp = self.http.get(self.api, params=self._params(titles=f"File:{name}"))
+        resp.raise_for_status()
+        pages = resp.json().get("query", {}).get("pages", {})
+        page = next((p for p in pages.values() if "pageid" in p), None)
+        return self._map(page) if page else None
+
 
 class Rijksmuseum(Museum):
     """Rijksmuseum's Linked Art API (no key needed).

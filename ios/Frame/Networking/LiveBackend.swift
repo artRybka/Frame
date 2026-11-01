@@ -81,6 +81,15 @@ struct LiveBackend: FrameBackend {
         )
     }
 
+    func sharpen(itemID: String, wait: Int) async throws -> SharperView {
+        var req = request(
+            "/api/library/items/\(escape(itemID))/sharpen", method: "POST",
+            query: [URLQueryItem(name: "wait", value: String(wait))]
+        )
+        req.timeoutInterval = TimeInterval(wait + 30)
+        return try await perform(req)
+    }
+
     func describe(itemID: String, wait: Int) async throws -> SeenView {
         var req = request(
             "/api/library/items/\(escape(itemID))/describe", method: "POST",
@@ -556,6 +565,8 @@ struct LiveBackend: FrameBackend {
         switch image {
         case let .thumb(id): req = request("/api/library/items/\(escape(id))/thumb")
         case let .image(id): req = request("/api/library/items/\(escape(id))/image")
+        case let .original(id, version):
+            req = request("/api/library/items/\(escape(id))/image", query: [URLQueryItem(name: "v", value: version)])
         case let .framePreview(id, settings, framing, ownLook):
             var query = framingQuery(settings)
             if !ownLook { query.append(URLQueryItem(name: "own_look", value: "false")) }

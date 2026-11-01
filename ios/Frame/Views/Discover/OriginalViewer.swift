@@ -82,7 +82,7 @@ struct OriginalViewer: View {
             image = thumb
         }
         for maxPixel: CGFloat in [1800, 4096] {
-            guard let request = model.backend.request(for: .image(item.id)) else { break }
+            guard let request = model.backend.request(for: item.originalRef) else { break }
             if let loaded = try? await ImageLoader.shared.image(for: request, maxPixel: maxPixel, priority: .high) {
                 image = loaded
             }

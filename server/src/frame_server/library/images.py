@@ -49,6 +49,9 @@ GONE_FOR = 7 * 86400.0
 #: width: a museum's scan can be 100 MB and 200 megapixels, far more than
 #: the frame's 2560 px, and too large for Pillow to open at all.
 COMMONS_WIDTH = 3840
+#: Where :meth:`ImageCache._download` leaves the size of the file it read,
+#: in the picture's ``info``.
+BYTES = "frame_bytes"
 
 
 class Unavailable(OSError):
@@ -104,9 +107,17 @@ def _missing(err: Exception) -> bool:
     return not isinstance(err, httpx.HTTPError)
 
 
-def _display_copy(item: Item) -> str:
+def display_copy(item: Item) -> str:
     """The address of ``item``'s original, or of Commons' smaller rendition
-    of it when the file is far larger than the frame needs."""
+    of it when the file is far larger than the frame needs; a sharper copy
+    from another source (``item.sharper``) instead, when it has one."""
+    if item.sharper is not None:
+        return item.sharper.url
+    return own_copy(item)
+
+
+def own_copy(item: Item) -> str:
+    """:func:`display_copy` of the work's own source, never another's."""
     url = item.image_url
     if item.width and item.width > COMMONS_WIDTH:
         return commons_rendition(url, COMMONS_WIDTH, item.width) or url
@@ -134,6 +145,10 @@ class ImageCache:
         self.wall: Callable[[], float] = time.time
         self._gone_path = root / "gone.json"
         self._gone: dict[str, float] = self._load_gone()
+        #: Pictures as their sources gave them, before they were cut down to
+        #: the frame's size: [width, height, bytes] (by item id).
+        self._sizes_path = root / "sizes.json"
+        self._sizes: dict[str, list[int]] = self._load_sizes()
         self._locks: dict[str, threading.Lock] = {}
         self._gates: dict[str, HostGate] = {}
         self._guard = threading.Lock()
@@ -178,9 +193,11 @@ class ImageCache:
                     continue
                 resp.raise_for_status()
                 try:
-                    return load_image(resp.content)
+                    img = load_image(resp.content)
                 except Image.DecompressionBombError as err:
                     raise TooLarge(f"{url}: {err}") from err
+                img.info[BYTES] = len(resp.content)
+                return img
         raise AssertionError("unreachable")
 
     def sample(self, url: str) -> Image.Image:
@@ -204,8 +221,10 @@ class ImageCache:
 
     def _addresses(self, item: Item, thumb: bool) -> list[str]:
         mirrors = self.mirrors.get(item.source)
-        image_url = _display_copy(item)
+        image_url = own_copy(item)
         first = [item.thumb_url, image_url] if thumb else [image_url or item.thumb_url]
+        if item.sharper is not None and not thumb:  # the sharper copy first, the own after
+            first.insert(0, item.sharper.url)
         urls = [*first, *(mirrors(item, thumb) if mirrors else [])]
         return list(dict.fromkeys(u for u in urls if u))
 
@@ -226,6 +245,48 @@ class ImageCache:
                 raise Gone(f"no picture of {item.id} anywhere: {err}") from err
         self._mark_gone(item)
         raise Gone(f"no address for a picture of {item.id}")
+
+    # Sizes of the pictures as their sources gave them
+
+    def _load_sizes(self) -> dict[str, list[int]]:
+        try:
+            data = json.loads(self._sizes_path.read_text())
+        except (OSError, ValueError):
+            return {}
+        if not isinstance(data, dict):
+            return {}
+        return {
+            str(k): [int(n) for n in v]
+            for k, v in data.items()
+            if isinstance(v, list) and len(v) == 3 and all(isinstance(n, int) for n in v)
+        }
+
+    def _remember_size(self, item: Item, img: Image.Image) -> None:
+        width, height = img.size
+        size = [width, height, int(img.info.get(BYTES) or 0)]
+        with self._guard:
+            self._sizes[item.id] = size
+            with contextlib.suppress(OSError):
+                tmp = self._sizes_path.with_suffix(".tmp")
+                tmp.write_text(json.dumps(self._sizes))
+                tmp.replace(self._sizes_path)
+
+    def source_size(self, item: Item) -> tuple[int, int, int] | None:
+        """The original as its source gave it: (width, height, bytes; 0 when
+        not known), for one downloaded here; None when it is not here."""
+        path = self.image_path(item)
+        if not path.is_file():
+            return None
+        with self._guard:
+            known = self._sizes.get(item.id)
+        if known is not None:
+            return known[0], known[1], known[2]
+        try:  # downloaded before sizes were kept: its own size, cut down
+            with Image.open(path) as img:
+                width, height = img.size
+        except OSError:
+            return None
+        return width, height, 0
 
     # Works with no picture
 
@@ -311,13 +372,28 @@ class ImageCache:
                 img = self._original(item, urgent)
                 self._failed.pop(item.id, None)
                 _save_jpeg(img, path, IMAGE_MAX, 92)
+                self._remember_size(item, img)
+        self._forget_gone(item)
+        return path
+
+    def adopt(self, item: Item, img: Image.Image) -> Path:
+        """Keep ``img`` (a sharper copy, :mod:`frame_server.sharper`) as the
+        work's original."""
+        path = self.image_path(item)
+        with self._lock(f"i:{item.id}"):
+            _save_jpeg(img, path, IMAGE_MAX, 92)
+            self._remember_size(item, img)
+            self._failed.pop(item.id, None)
         self._forget_gone(item)
         return path
 
     def _original(self, item: Item, urgent: bool) -> Image.Image:
         fetch = self.fetchers.get(item.source)
-        if fetch is not None:
-            return load_image(fetch(item))
+        if fetch is not None and item.sharper is None:
+            data = fetch(item)
+            img = load_image(data)
+            img.info[BYTES] = len(data)
+            return img
         urls = self._addresses(item, thumb=False)
         refused = True
         for n, url in enumerate(urls, 1):
@@ -402,6 +478,8 @@ class ImageCache:
     def remove(self, item: Item) -> None:
         self.thumb_path(item).unlink(missing_ok=True)
         self.image_path(item).unlink(missing_ok=True)
+        with self._guard:
+            self._sizes.pop(item.id, None)
 
 
 class HostGate:
