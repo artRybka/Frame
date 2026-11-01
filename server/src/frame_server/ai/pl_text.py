@@ -12,7 +12,9 @@ models keep writing "holenderski" for "Dutch".
 
 from __future__ import annotations
 
+import json
 import re
+import threading
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -254,10 +256,27 @@ def untranslated(text: str) -> bool:
     return foreign >= 3 and foreign > polish
 
 
+def polish_title(raw: Any, facts: Facts | None) -> str:
+    """The Polish title as shown: an established one from Wikidata first,
+    else the model's; "" when there is none."""
+    title = (facts.title_pl if facts and facts.title_pl else "") or _plain(raw)
+    # The frame wraps three lines, then cuts.
+    return strip_language_prefix(_plain(title, TITLE_MAX + 40)) if title else ""
+
+
+#: The title in an answer still being written: the schema puts it first, so
+#: it is whole long before the texts are.
+_TITLE_SO_FAR = re.compile(r'(?:^|[{,])\s*"title"\s*:\s*"((?:[^"\\]|\\.)*)"')
+#: Read this far without a title: the answer is not the expected one.
+_HEAD_MAX = 4000
+#: Titles kept ahead of their texts, at most.
+_EARLY_MAX = 500
+
+
 def clean(data: dict[str, Any], item: Item, facts: Facts | None) -> PolishText | None:
     """A model's answer made safe to show; ``None`` when it is unusable."""
     written = written_for(item)
-    title = (facts.title_pl if facts and facts.title_pl else "") or _plain(data.get("title"))
+    title = polish_title(data.get("title"), facts)
     frame = frame_text(_plain(data.get("frame")))
     full = _paragraphs(data.get("full"))
     if untranslated(frame):
@@ -272,9 +291,7 @@ def clean(data: dict[str, Any], item: Item, facts: Facts | None) -> PolishText |
         note = fix_note(_plain(data.get("artist_note"), SHORT_MAX), gender)
     sources = [s for s in data.get("sources") or [] if s in SOURCES] if written == "note" else []
     return PolishText(
-        title=strip_language_prefix(
-            _plain(title, TITLE_MAX + 40)
-        ),  # the frame wraps three lines, then cuts
+        title=title,
         frame=frame,
         full=full,
         medium=_plain(data.get("medium"), SHORT_MAX) if item.medium else "",
@@ -290,6 +307,8 @@ class PlTextJob(NoteJob):
     model = HAIKU  # translations; notes ask SONNET (model_for)
     prompt_version = PROMPT_VERSION
     typical = TRANSLATION_USAGE
+    #: The title is shown on the card as soon as it is written (``early_title``).
+    streams = True
 
     def __init__(
         self,
@@ -302,6 +321,11 @@ class PlTextJob(NoteJob):
         super().__init__(library, images, config)
         self.wikidata = wikidata or Wikidata()
         self._http = http
+        self._lock = threading.Lock()
+        #: Answers being written, until their title is whole.
+        self._heads: dict[str, str] = {}
+        #: Titles written ahead of their texts.
+        self._titles: dict[str, str] = {}
 
     @property
     def http(self) -> httpx.Client:
@@ -358,6 +382,9 @@ class PlTextJob(NoteJob):
         )
 
     def params(self, item: Item) -> dict[str, Any]:
+        with self._lock:  # asked (again): read from the start
+            self._heads.pop(item.id, None)
+            self._titles.pop(item.id, None)
         written = written_for(item)
         text = {"type": "text", "text": request_text(item, self.context(item))}
         if written == "translation":
@@ -381,6 +408,42 @@ class PlTextJob(NoteJob):
         text = clean(note.data, item, self.facts(item))
         data = text.model_dump() if text is not None else {"failed": True}
         self.library.save_note(note.model_copy(update={"data": data}))
+        with self._lock:
+            self._titles.pop(item.id, None)
+
+    def partial(self, item: Item, piece: str) -> None:
+        """Picks the title out of the answer as it is written (a second or
+        two in, the texts take several more), for the card to show first."""
+        with self._lock:
+            if item.id in self._titles:
+                return
+            head = self._heads.get(item.id, "") + piece
+            self._heads[item.id] = head
+        facts = self.facts(item)
+        raw = ""
+        if not (facts and facts.title_pl):
+            match = _TITLE_SO_FAR.search(head)
+            if match is None:
+                if len(head) > _HEAD_MAX:
+                    with self._lock:
+                        self._titles[item.id] = ""  # none to come: stop reading
+                        self._heads.pop(item.id, None)
+                return
+            try:
+                raw = json.loads(f'"{match.group(1)}"')
+            except ValueError:
+                return
+        title = polish_title(raw, facts)
+        with self._lock:
+            self._heads.pop(item.id, None)
+            if len(self._titles) > _EARLY_MAX:
+                self._titles.clear()
+            self._titles[item.id] = title
+
+    def early_title(self, item_id: str) -> str | None:
+        """The Polish title of texts still being written, once it is."""
+        with self._lock:
+            return self._titles.get(item_id) or None
 
     def text(self, item: Item) -> PolishText | None:
         """The item's Polish texts, if they are switched on and up to date."""

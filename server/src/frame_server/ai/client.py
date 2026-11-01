@@ -194,11 +194,24 @@ class Claude:
         except anthropic.PermissionDeniedError as err:
             raise KeyRejected("the key may not use Claude models") from err
 
-    def ask(self, kind: str, params: dict[str, Any]) -> Answer:
-        """One question now (``params`` from :func:`request`)."""
+    def ask(
+        self, kind: str, params: dict[str, Any], on_text: Callable[[str], None] | None = None
+    ) -> Answer:
+        """One question now (``params`` from :func:`request`). With
+        ``on_text``, the answer is streamed and each piece of its text is
+        passed on as it comes (e.g. a title before the rest is written)."""
         self.check_budget()
         try:
-            message = self.client().messages.create(**params)
+            if on_text is None:
+                message = self.client().messages.create(**params)
+            else:
+                with self.client().messages.stream(**params) as stream:
+                    for piece in stream.text_stream:
+                        try:
+                            on_text(piece)
+                        except Exception:  # only a head start: never the answer's end
+                            log.exception("%s: reading the answer as it came failed", kind)
+                    message = stream.get_final_message()
         except anthropic.AuthenticationError as err:
             raise KeyRejected("Anthropic did not accept the key") from err
         return self.answer(kind, params["model"], message, batch=False)

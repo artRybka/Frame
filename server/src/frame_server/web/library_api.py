@@ -223,18 +223,28 @@ async def get_item(item_id: str, svc: Svc) -> Item:
 class PolishView(BaseModel):
     """A work's Polish texts for its card. ``status``: "ready"; "waiting"
     (being written, ask again); "none" (the model could not); "off" (no key,
-    switched off, or no museum work)."""
+    switched off, or no museum work). While "waiting", ``title`` is the
+    Polish title once the model has written it, ahead of the texts."""
 
     status: Literal["ready", "waiting", "none", "off"]
     text: PolishText | None = None
+    title: str | None = None
+
+
+#: How often a wait looks for a title written ahead of the texts.
+EARLY_POLL = 0.2
 
 
 @router.get("/library/items/{item_id}/polish", response_model=PolishView)
 async def item_polish(
-    item_id: str, svc: Svc, wait: Annotated[float, Query(ge=0, le=60)] = 0
+    item_id: str,
+    svc: Svc,
+    wait: Annotated[float, Query(ge=0, le=60)] = 0,
+    early: bool = False,
 ) -> PolishView:
     """The work's Polish title and texts, asked for now if it has none;
-    ``wait``: seconds to wait for them."""
+    ``wait``: seconds to wait for them. ``early``: the wait ends as soon as
+    the title is written, so the card shows it before the texts."""
     job = svc.pl_text
     item = await _work(svc, item_id)
     if not job.enabled() or not job.applies(item):
@@ -245,16 +255,28 @@ async def item_polish(
         item = await run_in_threadpool(svc.importer.add, item.model_copy(update={"pooled": True}))
     future = svc.ai.need_now(item_id, PL_TEXT)
     if wait:
+        written = asyncio.wrap_future(future)
+        loop = asyncio.get_running_loop()
+        until = loop.time() + wait
         try:
-            await asyncio.wait_for(asyncio.shield(asyncio.wrap_future(future)), wait)
-        except TimeoutError:
-            pass
+            while (left := until - loop.time()) > 0:
+                if early and job.early_title(item_id):
+                    break
+                try:
+                    await asyncio.wait_for(
+                        asyncio.shield(written), min(left, EARLY_POLL) if early else left
+                    )
+                    break
+                except TimeoutError:
+                    continue
         except Exception:  # the model is unavailable: the card stays in English
             return PolishView(status="none")
     if (text := job.text(item)) is not None:
         return PolishView(status="ready", text=text)
     done = future.done() or job.fresh(item, svc.library.note(item_id, PL_TEXT))
-    return PolishView(status="none" if done else "waiting")
+    if done:
+        return PolishView(status="none")
+    return PolishView(status="waiting", title=job.early_title(item_id))
 
 
 class SeenView(BaseModel):

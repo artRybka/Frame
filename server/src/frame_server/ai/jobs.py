@@ -109,6 +109,13 @@ class NoteJob(ABC):
     def apply(self, item: Item, note: Note) -> None:  # noqa: B027 - optional hook
         """After a note was saved: e.g. copy what it found onto the item."""
 
+    #: Whether answers asked one at a time are streamed to :meth:`partial`.
+    streams = False
+
+    def partial(self, item: Item, piece: str) -> None:  # noqa: B027 - optional hook
+        """A piece of the answer's text as it is written (``streams`` only):
+        e.g. a title shown before the rest is ready."""
+
     def revise(
         self, item: Item, params: dict[str, Any], answer: Answer, ask: Callable[..., Answer]
     ) -> Answer:
@@ -208,7 +215,12 @@ class AiWorker:
             if job.fresh(item, note):
                 return note
             params = job.params(item)
-            answer = self.claude.ask(kind, params)
+            if job.streams:
+                answer = self.claude.ask(
+                    kind, params, on_text=lambda piece: job.partial(item, piece)
+                )
+            else:
+                answer = self.claude.ask(kind, params)
             answer = job.revise(item, params, answer, lambda more: self.claude.ask(kind, more))
             return self._keep(job, item, answer)
 
