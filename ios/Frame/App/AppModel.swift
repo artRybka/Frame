@@ -80,6 +80,12 @@ final class AppModel {
     /// (Szukaj's, after the work's card liked it).
     private(set) var hearts: [String: Bool] = [:]
     var facets = Facets.empty
+    /// Works the server found no picture of anywhere (it answered 410):
+    /// grids leave them out until the app starts again.
+    private(set) var missingPictures: Set<String> = []
+    /// Goes up when the owner taps a picture that did not load: every
+    /// picture on screen that failed tries again.
+    private(set) var pictureRetries = 0
     /// Styles, subjects, periods and techniques to search by, with Polish names.
     var vocabulary: [TermInfo] = []
     var connection = Connection.unknown
@@ -1200,6 +1206,19 @@ final class AppModel {
     /// An error on a card; a request cut short is no news.
     func show(_ error: Error) {
         notices.fail(error)
+    }
+
+    // MARK: Pictures that did not load
+
+    /// The server has no picture of the work anywhere: grids leave it out.
+    func pictureMissing(_ itemID: String) {
+        guard !missingPictures.contains(itemID) else { return }
+        missingPictures.insert(itemID)
+    }
+
+    /// Every picture on screen that failed tries again (a tap on one of them).
+    func retryPictures() {
+        pictureRetries += 1
     }
 }
 

@@ -891,7 +891,7 @@ def cc_name(code: str, version: str) -> str:
 EUROPEANA_UNREACHABLE = frozenset({"sammlung.belvedere.at", "www.dropbox.com", "dropbox.com"})
 
 
-def europeana_mirrors(item: Item) -> list[str]:
+def europeana_mirrors(item: Item, thumb: bool = False) -> list[str]:
     """Europeana's media proxy for the original: Europeana's servers fetch
     the provider's file, which some providers (the Mauritshuis, behind
     Cloudflare) refuse to send to programs like this one."""
