@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.69.7
+
+- Studium dzieła: obraz nie miga przy wejściu; najpierw miniatura, na nią
+  płynnie wchodzi pełny obraz.
+
 ## 1.69.6
 
 - Karta dzieła i „Teraz”: bez ikony lupy przy autorze; stuknięcie w imię i
