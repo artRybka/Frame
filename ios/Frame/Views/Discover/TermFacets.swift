@@ -162,7 +162,8 @@ enum PeriodAxis {
 /// The groups over the search field: six glass buttons, three to a row
 /// across the width; a picked group turns blue and shows what it holds under
 /// its name. A tapped group grows into its glass panel in the same place,
-/// over the field; "Wyczyść wybory" takes every group's chips off.
+/// over the field. The X next to the field (`termSearch`) takes every
+/// group's chips off along with the words.
 struct TermFacetBar: View {
     @Environment(AppModel.self) private var model
     @Binding var tokens: [SearchToken]
@@ -211,36 +212,14 @@ struct TermFacetBar: View {
 
     private var periods: [TermInfo] { model.vocabulary.filter { $0.kind == "period" } }
 
-    /// Chips the groups hold (not the field's artists and words).
-    private var grouped: Bool { tokens.contains { !TermFacet.inField($0) } }
-
     var body: some View {
         ZStack(alignment: .bottom) {
             GlassEffectContainer(spacing: 8) {
                 if !grown {
-                    VStack(alignment: .trailing, spacing: 8) {
-                        if grouped {
-                            Button {
-                                withAnimation(.snappy) {
-                                    tokens.removeAll { token in TermFacet.allCases.contains { $0.holds(token) } }
-                                }
-                            } label: {
-                                Label("Wyczyść wybory", systemImage: "xmark")
-                                    .font(.footnote.weight(.semibold))
-                                    .foregroundStyle(Theme.ink)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 6)
-                                    .contentShape(Capsule())
-                                    .glassEffect(.regular.interactive(), in: .capsule)
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityHint("Usuwa wybory we wszystkich grupach")
-                        }
-                        Grid(horizontalSpacing: 8, verticalSpacing: 8) {
-                            ForEach(Array(stride(from: 0, to: facets.count, by: 3)), id: \.self) { start in
-                                GridRow {
-                                    ForEach(facets[start ..< min(start + 3, facets.count)]) { facet in button(facet) }
-                                }
+                    Grid(horizontalSpacing: 8, verticalSpacing: 8) {
+                        ForEach(Array(stride(from: 0, to: facets.count, by: 3)), id: \.self) { start in
+                            GridRow {
+                                ForEach(facets[start ..< min(start + 3, facets.count)]) { facet in button(facet) }
                             }
                         }
                     }

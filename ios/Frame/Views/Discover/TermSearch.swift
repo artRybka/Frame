@@ -152,6 +152,11 @@ private struct TermSearch: ViewModifier {
     var focused: FocusState<Bool>.Binding
     let prompt: String
     let pickedFromMuseums: () -> Void
+    /// The search is open: the system's round X stands next to the field.
+    @State private var presented = false
+
+    /// Something is picked in the groups (not only in the field).
+    private var grouped: Bool { tokens.contains { !TermFacet.inField($0) } }
 
     /// The chips the field shows; the groups' ones are on the bar.
     private var fieldTokens: Binding<[SearchToken]> {
@@ -163,8 +168,25 @@ private struct TermSearch: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .searchable(text: $lookup.text, tokens: fieldTokens, prompt: Text(prompt)) { token in
+            .searchable(
+                text: $lookup.text, tokens: fieldTokens, isPresented: $presented, prompt: Text(prompt)
+            ) { token in
                 Label(token.shownName, systemImage: token.icon)
+            }
+            // The X: off with the words and every group's choices too.
+            .onChange(of: presented) { _, presented in
+                guard !presented else { return }
+                lookup.text = ""
+                if !tokens.isEmpty { withAnimation(.snappy) { tokens = [] } }
+            }
+            // A group's choice alone opens the search too, so that its X is
+            // there; with nothing left anywhere it closes again.
+            .onChange(of: grouped, initial: true) { _, grouped in
+                if grouped, !presented {
+                    presented = true
+                } else if !grouped, presented, !focused.wrappedValue, lookup.text.isEmpty, tokens.isEmpty {
+                    presented = false
+                }
             }
             .textInputAutocapitalization(.never)
             .autocorrectionDisabled()
