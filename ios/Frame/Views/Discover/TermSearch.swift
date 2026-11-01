@@ -5,7 +5,8 @@ import SwiftUI
 /// catalogue has, and when the catalogue has little, what the museums have.
 ///
 /// Every letter shows something at once, from what the app already knows:
-/// what was found for the letters before and still fits, the vocabulary's
+/// what was found for the letters before and still fits (artists, terms and
+/// the works' keywords such as „wielka fala”), the vocabulary's
 /// terms that start like the words, and the words themselves. The server's
 /// answer (with the counts) replaces it a moment later; the museums, slow,
 /// come last.
@@ -70,10 +71,12 @@ final class TermLookup {
     private func guess(_ words: String, vocabulary: [TermInfo]) {
         let wanted = Self.fold(words)
         // Counts of artists and terms do not depend on the words typed.
-        var guess = hits.filter { hit in
-            hit.kind != "word" && (Self.fold(hit.name).contains(wanted) || Self.fold(hit.detail).contains(wanted))
+        // (The last hit is the words typed before: never carried.)
+        let before = hits.last?.kind == "word" ? hits.dropLast() : hits[...]
+        var guess = before.filter { hit in
+            Self.fold(hit.name).contains(wanted) || Self.fold(hit.detail).contains(wanted)
         }
-        var fresh: Set<String> = []
+        var fresh = uncounted.intersection(guess.map(\.id))
         for info in vocabulary where guess.count < Self.guessed && Self.startsLike(info, wanted) {
             guard !guess.contains(where: { $0.kind == info.kind && $0.key == info.key }) else { continue }
             let hit = TermHit(
@@ -195,7 +198,7 @@ struct TermSuggestions: View {
             }
             ForEach(lookup.hits) { hit in
                 row(
-                    icon: hit.token.icon, title: hit.name, kind: hit.token.kindName,
+                    icon: hit.token.icon, title: hit.name, kind: kindName(of: hit),
                     detail: hit.detail, count: lookup.uncounted.contains(hit.id) ? nil : hit.count
                 ) { pick(hit.token, fromMuseums: false) }
             }
@@ -271,6 +274,12 @@ struct TermSuggestions: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+
+    /// A word the works were described with ("wielka fala"), apart from
+    /// the words typed.
+    private func kindName(of hit: TermHit) -> String {
+        hit.kind == "word" && hit.key != lookup.trimmed ? "Słowo kluczowe" : hit.token.kindName
     }
 
     private func pick(_ token: SearchToken, fromMuseums: Bool) {

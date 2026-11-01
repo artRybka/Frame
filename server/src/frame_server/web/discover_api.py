@@ -473,20 +473,28 @@ def vocabulary() -> list[TermInfo]:
 
 
 def _term_hits(svc: FrameService, text: str, limit: int) -> list[TermHit]:
+    """Artists, the works' keywords ("wielka fala"), the vocabulary's terms
+    and the typed words last (always there: the app's Return puts them in)."""
     index = svc.library.term_index()
+    words = text.strip()
     hits = [
         TermHit(kind="artist", key=name, name=name, count=count)
-        for name, count in index.artists(text, limit=5)
+        for name, count in index.artists(text, limit=4)
     ]
-    for found in suggest(text, limit=limit):
+    hits += [
+        TermHit(kind="word", key=phrase, name=phrase, count=index.word_count(phrase))
+        for phrase in index.phrases(text, limit=3)
+        if fold(phrase) != fold(words)
+    ]
+    for found in suggest(text, limit=max(limit - len(hits), 3)):
         detail = ", ".join(w.rstrip("*") for w in found.words[:3])
         kind = "period" if found.kind == "years" else found.kind
         count = index.term_count(found.key)
         hits.append(TermHit(kind=kind, key=found.key, name=found.name, detail=detail, count=count))
-    words = text.strip()
+    hits = hits[:limit]
     if words:
         hits.append(TermHit(kind="word", key=words, name=words, count=index.word_count(words)))
-    return hits[: limit + 1]
+    return hits
 
 
 @router.get("/terms", response_model=list[TermHit])
