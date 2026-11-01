@@ -181,6 +181,7 @@ private struct TermSearch: ViewModifier {
             // The X: off with the words and every group's choices too.
             .onChange(of: presented) { _, presented in
                 fputs("XDBG \(Date().timeIntervalSince1970) presented=\(presented) focused=\(focused.wrappedValue) quiet=\(quiet)\n", stderr)
+                if presented, quiet { putKeyboardAway() }
                 guard !presented else { return }
                 lookup.text = ""
                 if !tokens.isEmpty { withAnimation(.snappy) { tokens = [] } }
@@ -203,7 +204,7 @@ private struct TermSearch: ViewModifier {
             .onChange(of: focused.wrappedValue) { _, focused in
                 fputs("XDBG \(Date().timeIntervalSince1970) focused=\(focused) quiet=\(quiet) presented=\(presented)\n", stderr)
                 guard focused, quiet else { return }
-                self.focused.wrappedValue = false
+                putKeyboardAway()
             }
             .textInputAutocapitalization(.never)
             .autocorrectionDisabled()
@@ -224,9 +225,21 @@ private struct TermSearch: ViewModifier {
         presented = true
         // Only the focus the opening brings: a later tap keeps its keyboard.
         Task {
-            try? await Task.sleep(for: .milliseconds(2000))
+            for _ in 0 ..< 4 {
+                try? await Task.sleep(for: .milliseconds(150))
+                if focused.wrappedValue { putKeyboardAway() }
+            }
+            try? await Task.sleep(for: .milliseconds(900))
             quiet = false
         }
+    }
+
+    /// The field's focus off, also where SwiftUI's focus alone doesn't
+    /// take it (the system keeps the field it focused when opening).
+    private func putKeyboardAway() {
+        fputs("XDBG \(Date().timeIntervalSince1970) putKeyboardAway\n", stderr)
+        focused.wrappedValue = false
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
 }
 
