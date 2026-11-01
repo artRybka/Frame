@@ -4,6 +4,8 @@
 
 - Playlisty: kafelki w siatce wyrównane do góry (bez wiersza „Wspólna” nie
   opadają), a moje „Ulubione” zawsze pierwsze, obok „Propozycje”.
+- Szukaj i edytor playlisty: stuknięcie poza otwartym okienkiem grupy działa
+  jak „Gotowe”.
 
 ## 1.67.3
 
