@@ -16,6 +16,23 @@ struct PlaylistsView: View {
         return model.playlists.first { $0.id == id } ?? model.player?.playlist.flatMap { $0.id == id ? $0 : nil }
     }
 
+    /// Two columns, each card pinned to the top of its row.
+    private static let columns = [
+        GridItem(.flexible(), spacing: 16, alignment: .top),
+        GridItem(.flexible(), spacing: 16, alignment: .top),
+    ]
+
+    /// The collections as the server lists them, with my "Ulubione" first,
+    /// next to "Propozycje".
+    private var ordered: [PlaylistSummary] {
+        guard let index = model.playlists.firstIndex(where: { $0.isFavorites && $0.isMine }) else {
+            return model.playlists
+        }
+        var list = model.playlists
+        list.insert(list.remove(at: index), at: 0)
+        return list
+    }
+
     /// The frame plays Propozycje: no playlist.
     private var suggestionsActive: Bool { model.settings != nil && model.settings?.playlistId == nil }
 
@@ -52,13 +69,15 @@ struct PlaylistsView: View {
                         title: "Kolekcje",
                         subtitle: "Propozycje, dzieła według artystów, stylów i kolorów oraz albumy iCloud"
                     )
-                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 16), GridItem(.flexible(), spacing: 16)], spacing: 22) {
+                    // Top-aligned: a card without the "Wspólna" line is shorter, and
+                    // centred in its row its cover would sit lower than its neighbour's.
+                    LazyVGrid(columns: Self.columns, spacing: 22) {
                         NavigationLink(value: SuggestionsRoute()) {
                             SuggestionsCard(works: model.suggestionCover, isActive: suggestionsActive)
                         }
                         .buttonStyle(.plain)
                         .contextMenu { suggestionsMenu }
-                        ForEach(model.playlists) { playlist in
+                        ForEach(ordered) { playlist in
                             NavigationLink(value: playlist.id) {
                                 PlaylistCard(playlist: playlist, isActive: playlist.id == active?.id)
                             }
