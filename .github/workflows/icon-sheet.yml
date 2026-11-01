@@ -1,0 +1,25 @@
+name: icon-sheet
+
+# Renders the SF Symbols the iOS app uses to PNGs (tools/icon-sheet) and
+# commits them back to the branch, for the icon overview in the project
+# files. Only on this working branch; never part of a release.
+on:
+  push:
+    branches: [claude/project-thread-47dkyh]
+    paths: ["tools/icon-sheet/symbols.txt", "tools/icon-sheet/render.swift", ".github/workflows/icon-sheet.yml"]
+
+permissions:
+  contents: write
+
+jobs:
+  render:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift tools/icon-sheet/render.swift tools/icon-sheet tools/icon-sheet/png
+      - run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          git add tools/icon-sheet/png
+          git commit -m "Render SF Symbols for the icon sheet"
+          git push
