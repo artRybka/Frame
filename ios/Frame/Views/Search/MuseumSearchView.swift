@@ -206,7 +206,6 @@ struct MuseumSearchView: View {
                         .font(.serif(17, weight: .medium))
                         .foregroundStyle(Theme.ink)
                     Spacer()
-                    if searching || asking { ProgressView().controlSize(.small) }
                 }
                 TokenSummary(tokens: tokens.wrappedValue)
             }
@@ -229,22 +228,19 @@ struct MuseumSearchView: View {
             // One grid: the server's works first, the museums' coming in
             // under them. Where a work comes from isn't shown.
             worksGrid(catalogue?.items ?? [], shownFromMuseums)
-            if !searching, !asking, catalogue?.items.isEmpty ?? true, fromMuseums.isEmpty {
+            // Only once nothing more can come.
+            if !searching, !asking, next.isEmpty, catalogue?.items.isEmpty ?? true, fromMuseums.isEmpty {
                 EmptyStateView(
                     title: "Nic tu nie ma",
                     message: "Usuń któryś z chipów albo poszukaj innymi słowami.",
                     systemImage: "magnifyingglass"
                 )
             }
-            if !asking, !next.isEmpty {
-                // The end: the icon's squares as long as a museum may still
-                // have more (also while one hasn't answered and waits to be
-                // asked again), nothing to read or pull.
-                SquaresAnimation(inScreenMiddle: false, tapForNext: false)
-                    .frame(height: 96)
-                    .frame(maxWidth: .infinity)
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel("Doczytuję")
+            if searching || asking || !next.isEmpty {
+                // The squares say "waiting" (Mateusz): while the search is
+                // asked, and after as long as a museum may still have more,
+                // also one that hasn't answered and waits to be asked again.
+                SearchWaiting()
             }
         }
     }
