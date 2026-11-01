@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.58.2
+
+- Poświata w Odkrywaj bez ostrej krawędzi, sięga dalej i ma mocniejsze
+  kolory.
+
 ## 1.58.1
 
 - Miniatury w studium (Inne prace artysty, Podobne dzieła, Dalsze losy)
