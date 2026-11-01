@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import random
 import time
 from collections.abc import Iterator
@@ -245,6 +246,14 @@ def test_discover_endpoints(museums) -> None:
         page = client.get("/api/themes/impressionism", params={"page": 1}).json()
         assert page["items"] and page["more"]
         assert client.get("/api/themes/nope").status_code == 404
+        # The same as the museums answer: a line per search, then the end.
+        with client.stream("GET", "/api/themes/impressionism/stream") as resp:
+            lines = [json.loads(line) for line in resp.iter_lines() if line]
+        *found, last = lines
+        assert found and all(line["items"] and not line["end"] for line in found)
+        assert last["end"] and last["more"] and not last["failed"]
+        assert last["next_page"] == 1 + discover_api.THEME_BATCH
+        assert client.get("/api/themes/nope/stream").status_code == 404
 
         rows = client.get("/api/suggestions").json()
         assert [r["key"] for r in rows] == ["theme"]  # nothing picked yet

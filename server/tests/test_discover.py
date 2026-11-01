@@ -412,7 +412,14 @@ def test_discover_does_not_wait_for_slow_work(museums, monkeypatch) -> None:  # 
 def test_theme_pages_pass_over_searches_that_find_nothing() -> None:
     import httpx
 
-    from frame_server.library.themes import Theme, browse_theme, theme
+    from frame_server.library.themes import (
+        Theme,
+        batch_of,
+        browse_theme,
+        page_after,
+        search_page,
+        theme,
+    )
 
     class Museums:
         """Nothing for the first two searches, one failing, works after."""
@@ -450,6 +457,17 @@ def test_theme_pages_pass_over_searches_that_find_nothing() -> None:
     # Every museum down: an error, not an empty theme.
     with pytest.raises(httpx.HTTPError):
         browse_theme(Museums({}, failing={"A", "B", "C"}), found, 1, 24)  # type: ignore[arg-type]
+
+    # The stream asks a few pages at once, within a round of searches.
+    assert batch_of(found, 1, 4) == [1, 2, 3]
+    assert batch_of(found, 2, 1) == [2]
+    assert batch_of(found, 5, 4) == [5, 6]
+    fake = Museums({"C": 30})
+    assert search_page(fake, found, 6, 24)[1] == 30  # type: ignore[arg-type]
+    assert [len(search_page(fake, found, p, 24)[0]) for p in (3, 6)] == [24, 6]  # type: ignore[arg-type]
+    assert page_after(found, 2, 0, 24) == 3
+    assert page_after(found, 3, 30, 24) == 4
+    assert page_after(found, 6, 30, 24) is None
 
     # Polish painters are looked for in the national museums in Warsaw and
     # Kraków first, then on Commons.

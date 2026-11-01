@@ -37,11 +37,14 @@ from ..library.themes import (
     GROUPS,
     THEMES,
     Theme,
+    batch_of,
     browse_theme,
     day_reason,
     liked,
     make_liked,
     new_artist_of_the_week,
+    page_after,
+    search_page,
     theme,
     theme_of_the_day,
     weekly_themes,
@@ -69,6 +72,9 @@ router = APIRouter(prefix="/api", dependencies=[Depends(require_token)], tags=["
 Svc = Annotated[FrameService, Depends(service)]
 
 ROW_SIZE = 24
+#: A theme's stream asks this many of its searches at once, each one's
+#: works sent as it answers.
+THEME_BATCH = 4
 #: Theme covers and counts are worked out again (in the background) after
 #: this many seconds.
 CARDS_TTL = 600.0
@@ -123,6 +129,18 @@ class ThemePage(BaseModel):
     more: bool
     #: The page to ask for next: searches that found nothing are skipped.
     next_page: int | None = None
+
+
+class ThemeLine(BaseModel):
+    """A line of ``/themes/{key}/stream``: one search's works as it
+    answers; the last line (``end``) says whether there is more."""
+
+    items: list[RemoteItem] = []
+    end: bool = False
+    more: bool = False
+    next_page: int | None = None
+    #: Every search asked failed (on the last line).
+    failed: bool = False
 
 
 class ThemePlaylistRequest(BaseModel):
@@ -444,6 +462,81 @@ async def theme_page(key: str, svc: Svc, page: Annotated[int, Query(ge=1)] = 1) 
     return ThemePage(
         items=remote_items(svc, items), more=following is not None, next_page=following
     )
+
+
+@router.get("/themes/{key}/stream")
+async def stream_theme(
+    key: str, svc: Svc, page: Annotated[int, Query(ge=1)] = 1
+) -> StreamingResponse:
+    """Like ``/themes/{key}``, as the museums answer: several of the
+    theme's searches asked at once (:data:`THEME_BATCH`), a
+    :class:`ThemeLine` with each one's works as it comes, then a last line
+    with the page to ask for next."""
+    found = await run_in_threadpool(_theme, key, svc)
+    if not found.searches():  # the catalogue: one page at once
+        items, following = await run_in_threadpool(
+            browse_theme, svc.importer, found, page, ROW_SIZE
+        )
+
+        async def once() -> AsyncIterator[str]:
+            yield ThemeLine(items=remote_items(svc, items)).model_dump_json() + "\n"
+            last = ThemeLine(end=True, more=following is not None, next_page=following)
+            yield last.model_dump_json() + "\n"
+
+        return StreamingResponse(once(), media_type="application/x-ndjson")
+
+    pages = batch_of(found, page, THEME_BATCH)
+    loop = asyncio.get_running_loop()
+    #: Works as they come; True or False when a search is over (answered or not).
+    lines_: asyncio.Queue[ThemeLine | bool] = asyncio.Queue()
+    #: How many works the last page's search has (whether a round follows).
+    last_total = [0]
+    #: Set when the app stops listening.
+    gone = threading.Event()
+
+    def ask(at: int) -> None:
+        ok = False
+        try:
+            items, total = search_page(svc.importer, found, at, ROW_SIZE)
+            ok = True
+            if at == pages[-1]:
+                last_total[0] = total
+            if items and not gone.is_set():
+                line = ThemeLine(items=remote_items(svc, items))
+                loop.call_soon_threadsafe(lines_.put_nowait, line)
+        except (httpx.HTTPError, ValueError) as err:
+            log.warning("theme %s: page %d failed: %s", key, at, err)
+        except Exception:
+            log.exception("theme %s: page %d failed", key, at)
+        finally:
+            loop.call_soon_threadsafe(lines_.put_nowait, ok)
+
+    async def lines() -> AsyncIterator[str]:
+        asking = [asyncio.ensure_future(run_in_threadpool(ask, at)) for at in pages]
+        answered = False
+        try:
+            left = len(asking)
+            while left:
+                line = await lines_.get()
+                if isinstance(line, bool):
+                    left -= 1
+                    answered |= line
+                else:
+                    yield line.model_dump_json() + "\n"
+            following = page_after(found, pages[-1], last_total[0], ROW_SIZE)
+            last = ThemeLine(
+                end=True,
+                more=following is not None,
+                next_page=following,
+                failed=not answered,
+            )
+            yield last.model_dump_json() + "\n"
+        finally:
+            gone.set()
+            for task in asking:
+                task.cancel()
+
+    return StreamingResponse(lines(), media_type="application/x-ndjson")
 
 
 @router.post("/themes/{key}/playlist", response_model=ThemePlaylist)
