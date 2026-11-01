@@ -22,15 +22,33 @@ actor ImageLoader {
         var waiting: Set<UUID>
     }
 
-    private let cache = NSCache<NSString, UIImage>()
+    private let cache = Memory.shared.cache
     private var inflight: [String: Download] = [:]
 
-    init() {
-        cache.totalCostLimit = 160 * 1024 * 1024
+    /// The pictures in memory, readable without waiting for the loader.
+    private final class Memory: @unchecked Sendable {
+        static let shared = Memory()
+        /// NSCache is safe to use from any thread.
+        let cache = NSCache<NSString, UIImage>()
+
+        private init() {
+            cache.totalCostLimit = 160 * 1024 * 1024
+        }
+    }
+
+    private static func key(_ request: URLRequest, _ maxPixel: CGFloat) -> String {
+        "\(request.url?.absoluteString ?? "")#\(Int(maxPixel))"
+    }
+
+    /// The picture loaded for `request` at `maxPixel`, if it is in memory,
+    /// right now: a screen opened over another that showed it (a study over
+    /// the work's card) starts with it instead of fading it in again.
+    nonisolated static func inMemory(for request: URLRequest, maxPixel: CGFloat) -> UIImage? {
+        Memory.shared.cache.object(forKey: key(request, maxPixel) as NSString)
     }
 
     func image(for request: URLRequest, maxPixel: CGFloat, priority: Priority = .normal) async throws -> UIImage {
-        let key = "\(request.url?.absoluteString ?? "")#\(Int(maxPixel))"
+        let key = Self.key(request, maxPixel)
         if let cached = cache.object(forKey: key as NSString) { return cached }
         let waiter = UUID()
         let task: Task<UIImage, Error>
@@ -69,7 +87,7 @@ actor ImageLoader {
     /// A picture kept from before (the last launch's "Teraz"), as if it had
     /// just been loaded for `request` at `maxPixel`.
     func remember(_ image: UIImage, for request: URLRequest, maxPixel: CGFloat) {
-        let key = "\(request.url?.absoluteString ?? "")#\(Int(maxPixel))"
+        let key = Self.key(request, maxPixel)
         guard cache.object(forKey: key as NSString) == nil else { return }
         let cost = Int(image.size.width * image.size.height * image.scale * image.scale * 4)
         cache.setObject(image, forKey: key as NSString, cost: cost)
@@ -77,7 +95,7 @@ actor ImageLoader {
 
     /// The picture loaded for `request` at `maxPixel`, if it is in memory.
     func cached(for request: URLRequest, maxPixel: CGFloat) -> UIImage? {
-        cache.object(forKey: "\(request.url?.absoluteString ?? "")#\(Int(maxPixel))" as NSString)
+        cache.object(forKey: Self.key(request, maxPixel) as NSString)
     }
 
     private func finish(_ key: String, task: Task<UIImage, Error>) {
@@ -290,12 +308,22 @@ struct ArtImage: View {
         let retries: Int
     }
 
+    /// The picture loaded, else one already in memory for `ref`: shown from
+    /// the first frame, not faded in from the placeholder (which blinked
+    /// a picture the screen before had shown). Not where the subject is
+    /// still to be found: it would slide once found.
+    private var shown: UIImage? {
+        if let image { return image }
+        guard !subjectFocus || focusPoint != nil, let request = model.backend.request(for: ref) else { return nil }
+        return ImageLoader.inMemory(for: request, maxPixel: maxPixel)
+    }
+
     var body: some View {
         ZStack {
-            if let image, subjectFocus || focusPoint != nil, contentMode == .fill {
-                FocusedFill(image: image, focus: focus)
+            if let image = shown, subjectFocus || focusPoint != nil, contentMode == .fill {
+                FocusedFill(image: image, focus: focusPoint ?? focus)
                     .transition(.opacity)
-            } else if let image {
+            } else if let image = shown {
                 Image(uiImage: image)
                     .resizable()
                     .aspectRatio(contentMode: contentMode)
