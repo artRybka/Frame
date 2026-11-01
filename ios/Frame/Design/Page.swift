@@ -103,3 +103,52 @@ private struct PageGlowLayer: View {
         }
     }
 }
+
+extension PageGlow {
+    @MainActor private static var fromThumbs: [String: [ColorSwatch]] = [:]
+
+    /// The colours of a picture's thumbnail already in memory (the tile's it
+    /// was opened from), top, middle and bottom: the glow from the first
+    /// frame when the work's own colours are not known yet. Empty when the
+    /// thumbnail is not in memory.
+    @MainActor
+    static func colours(of ref: ImageRef, backend: any FrameBackend, maxPixel: CGFloat = 700) -> [ColorSwatch] {
+        guard let request = backend.request(for: ref), let key = request.url?.absoluteString else { return [] }
+        if let known = fromThumbs[key] { return known }
+        guard let image = ImageLoader.inMemory(for: request, maxPixel: maxPixel)?.cgImage else { return [] }
+        let found = bands(of: image)
+        if fromThumbs.count > 200 { fromThumbs.removeAll() }
+        fromThumbs[key] = found
+        return found
+    }
+
+    /// The average colour of the picture's top, middle and bottom thirds.
+    private static func bands(of image: CGImage) -> [ColorSwatch] {
+        let width = 8, height = 24
+        var pixels = [UInt8](repeating: 0, count: width * height * 4)
+        let drawn = pixels.withUnsafeMutableBytes { buffer -> Bool in
+            guard let context = CGContext(
+                data: buffer.baseAddress, width: width, height: height, bitsPerComponent: 8,
+                bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
+            ) else { return false }
+            context.interpolationQuality = .medium
+            context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+            return true
+        }
+        guard drawn else { return [] }
+        let rows = height / 3
+        return (0 ..< 3).map { band in
+            var sum = [0, 0, 0]
+            for y in band * rows ..< (band + 1) * rows {
+                for x in 0 ..< width {
+                    let at = (y * width + x) * 4
+                    for c in 0 ..< 3 { sum[c] += Int(pixels[at + c]) }
+                }
+            }
+            let count = rows * width
+            let hex = sum.map { String(format: "%02X", $0 / count) }.joined()
+            return ColorSwatch(hex: "#" + hex, weight: 1.0 / 3)
+        }
+    }
+}

@@ -87,6 +87,10 @@ class DailyWork(BaseModel):
     model: str = ""
     #: Left empty: the days before are no longer listed under the page.
     previous: list[DailyBrief] = []
+    #: Without the lists under the text (similar, later and other works by
+    #: the artist), which take a while: asked for the text first, the page
+    #: opens with it and asks again for the rest.
+    partial: bool = False
 
 
 def _light(svc: FrameService, item: Item) -> RemoteItem:
@@ -150,14 +154,20 @@ def page(
     day: str,
     writing: bool,
     url: Callable[[int, Detail], str],
+    lists: bool = True,
 ) -> DailyWork:
     """The work's page as ``job`` wrote it (the work of the day, or a study
     of it), the museum's text while there is none; ``url``: where the app
-    gets each fragment."""
+    gets each fragment. Without ``lists``: the text alone, at once (each
+    list looks through the whole catalogue, seconds on a NAS)."""
     essay = job.essay(item)
     museum = _museum_text(svc, item)
-    candidates = svc.daily.candidates(item)
-    if essay is not None:
+    candidates = svc.daily.candidates(item) if lists else []
+    similar: list[SimilarWork]
+    legacy: list[LegacyWork]
+    if not lists:
+        similar, legacy = [], []
+    elif essay is not None:
         by_id = {c.id: c for c in candidates}
         similar = [
             SimilarWork(item=_light(svc, by_id[s.id]), why=s.why)
@@ -179,8 +189,8 @@ def page(
         for n, box in enumerate(essay.details if essay else [])
     ]
     shown = {s.item.item.id for s in similar}
-    by_artist = svc.artists.works(item, shown)
-    looking = svc.artists.look_soon(item, len(by_artist))
+    by_artist = svc.artists.works(item, shown) if lists else []
+    looking = lists and svc.artists.look_soon(item, len(by_artist))
     note = svc.library.note(item.id, job.kind) if essay else None
     return DailyWork(
         day=day,
@@ -203,9 +213,10 @@ def page(
         similar=similar,
         legacy=legacy,
         by_artist=[_light(svc, other) for other in by_artist],
-        legacy_pending=bool(essay and svc.later.look_soon(item, essay.legacy)) or looking,
+        legacy_pending=bool(lists and essay and svc.later.look_soon(item, essay.legacy)) or looking,
         sources=essay.sources if essay else [],
         model=note.model if note else "",
+        partial=not lists,
     )
 
 

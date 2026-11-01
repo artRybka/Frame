@@ -117,7 +117,7 @@ struct DailyView: View {
                 }
             }
         }
-        .paperPage(glow: work?.item.item.colors ?? card?.colors ?? [], lift: scrolled)
+        .paperPage(glow: glow, lift: scrolled)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { pageWidth = $0 }
         .navigationTitle("Studium dzieła")
         .navigationBarTitleDisplayMode(.inline)
@@ -182,6 +182,16 @@ struct DailyView: View {
             .frame(maxWidth: .infinity)
             .padding(.top, 80)
         }
+    }
+
+    /// The colours glowing at the top: those of the tile or card it was
+    /// opened from until the page is here, so the glow is there from the
+    /// first frame instead of coming in with the page (a blink at the top).
+    private var glow: [ColorSwatch] {
+        for colors in [work?.item.item.colors, card?.colors, peek?.item.colors] {
+            if let colors, !colors.isEmpty { return colors }
+        }
+        return peek.map { PageGlow.colours(of: $0.thumb, backend: model.backend) } ?? []
     }
 
     // MARK: Loading
@@ -302,16 +312,19 @@ struct DailyView: View {
         }
     }
 
-    /// A study, as the card last heard it, then fresh; one still on its way
-    /// (its card at the bottom says how far) is waited for.
+    /// A study, as the card last heard it (or as last seen), then fresh;
+    /// one still on its way (its card at the bottom says how far) is waited
+    /// for. The text first, which the server has at once; the lists under
+    /// it (similar works, what it led to, other works by the artist), which
+    /// take it a few seconds, with the next answer.
     private func loadStudy(_ id: String) async {
-        if let shown = model.studies[id]?.work { work = shown }
+        if let shown = model.studies[id]?.work ?? DailyPeeks.studies[id] { work = shown }
         for attempt in 0..<12 {
             do {
-                let view = try await model.backend.study(itemID: id, wait: attempt == 0 ? 0 : 25)
+                let view = try await model.backend.study(itemID: id, wait: attempt == 0 ? 0 : 25, lists: false)
                 if let fresh = view.work {
-                    work = fresh
-                    return
+                    show(fresh)
+                    break
                 }
                 guard view.isPending else { break }
             } catch {
@@ -319,7 +332,36 @@ struct DailyView: View {
                 break
             }
         }
-        if work == nil { failed = true }
+        guard work != nil else {
+            failed = true
+            return
+        }
+        // A server from before the text came apart sends the whole page.
+        guard work?.partial == true else { return }
+        do {
+            if let whole = try await model.backend.study(itemID: id, wait: 0).work { work = whole }
+        } catch {
+            if !error.isCancellation { work?.partial = nil }  // no lists, and no spinner for them
+        }
+    }
+
+    /// The page's text, fresh; the lists already on the page stay until
+    /// the fresh ones come.
+    private func show(_ fresh: DailyWork) {
+        guard fresh.partial == true, let shown = work, shown.item.id == fresh.item.id, shown.partial != true else {
+            work = fresh
+            return
+        }
+        var merged = fresh
+        merged.similar = shown.similar
+        merged.legacy = shown.legacy
+        merged.byArtist = shown.byArtist
+        work = merged
+    }
+
+    /// Whether the lists under the text are still to come.
+    private func listsComing(_ work: DailyWork) -> Bool {
+        work.partial == true && work.similar.isEmpty && work.legacy.isEmpty && (work.byArtist ?? []).isEmpty
     }
 
     @ViewBuilder
@@ -361,6 +403,15 @@ struct DailyView: View {
             if !work.legacy.isEmpty { section("Dalsze losy") { legacy(work.legacy) }.id("legacy") }
             if let others = work.byArtist, !others.isEmpty {
                 section("Inne prace artysty") { byArtist(others) }.id("artist")
+            }
+            if listsComing(work) {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text("Wczytuję podobne i inne prace artysty…")
+                        .font(.footnote)
+                        .foregroundStyle(Theme.inkSoft)
+                }
+                .transition(.opacity)
             }
             section("Na Twojej ramce") { onFrame(work) }
             footer(work).id("end")
@@ -802,11 +853,17 @@ enum DailyPeeks {
     }
 
     private(set) static var days: [String: DailyWork] = [:]
+    /// Studies seen whole, by their work: one opens again at once.
+    private(set) static var studies: [String: DailyWork] = [:]
 
     static func keep(_ work: DailyWork, for route: DailyRoute) {
         if route.study == nil, !work.day.isEmpty {
             if days.count > 60 { days.removeAll() }
             days[work.day] = work
+        }
+        if let id = route.study, work.partial != true, work.item.id == id {
+            if studies.count > 60 { studies.removeAll() }
+            studies[id] = work
         }
     }
 }

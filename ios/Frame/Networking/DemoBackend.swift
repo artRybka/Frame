@@ -811,7 +811,7 @@ actor DemoBackend: FrameBackend {
         )
     }
 
-    func study(itemID: String, wait: Int) async throws -> StudyView {
+    func study(itemID: String, wait: Int, lists: Bool) async throws -> StudyView {
         guard let asked = askedStudies[itemID] else {
             return StudyView(status: "none", error: "", work: nil, costUsd: 0.14)
         }
@@ -839,6 +839,12 @@ actor DemoBackend: FrameBackend {
             work.legacy = []
             work.similar = []
             work.byArtist = byArtist(item, skip: [])
+        }
+        if !lists {
+            work.similar = []
+            work.legacy = []
+            work.byArtist = []
+            work.partial = true
         }
         return StudyView(status: "ready", error: "", work: work, costUsd: 0.14)
     }
@@ -872,7 +878,7 @@ actor DemoBackend: FrameBackend {
 
     func prepareStudy(itemID: String, again: Bool) async throws -> StudyView {
         if again || askedStudies[itemID] == nil { askedStudies[itemID] = Date() }
-        return try await study(itemID: itemID, wait: 0)
+        return try await study(itemID: itemID, wait: 0, lists: true)
     }
 
     /// The demo has no server to push the study's steps: the app moves
