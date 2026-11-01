@@ -54,7 +54,7 @@ jobs:
             rec=$!
             sleep 2
             xcrun simctl launch --stdout="$PWD/shots/$route.log" --stderr="$PWD/shots/$route.err" "$UDID" com.artrybka.frame -demo YES -screen "$route"
-            sleep 12
+            sleep 24
             kill -INT $rec; wait $rec || true
           done
           xcrun simctl terminate "$UDID" com.artrybka.frame || true

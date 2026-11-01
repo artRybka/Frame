@@ -180,7 +180,7 @@ private struct TermSearch: ViewModifier {
             }
             // The X: off with the words and every group's choices too.
             .onChange(of: presented) { _, presented in
-                print("XDBG \(Date().timeIntervalSince1970) presented=\(presented) focused=\(focused.wrappedValue) quiet=\(quiet)")
+                fputs("XDBG \(Date().timeIntervalSince1970) presented=\(presented) focused=\(focused.wrappedValue) quiet=\(quiet)\n", stderr)
                 guard !presented else { return }
                 lookup.text = ""
                 if !tokens.isEmpty { withAnimation(.snappy) { tokens = [] } }
@@ -201,7 +201,7 @@ private struct TermSearch: ViewModifier {
                 if !open { openForX() }
             }
             .onChange(of: focused.wrappedValue) { _, focused in
-                print("XDBG \(Date().timeIntervalSince1970) focused=\(focused) quiet=\(quiet) presented=\(presented)")
+                fputs("XDBG \(Date().timeIntervalSince1970) focused=\(focused) quiet=\(quiet) presented=\(presented)\n", stderr)
                 guard focused, quiet else { return }
                 self.focused.wrappedValue = false
             }
@@ -218,7 +218,7 @@ private struct TermSearch: ViewModifier {
 
     /// Opens the search for a group's choice, without the keyboard.
     private func openForX() {
-        print("XDBG \(Date().timeIntervalSince1970) openForX grouped=\(grouped) presented=\(presented) panel=\(panelOpen)")
+        fputs("XDBG \(Date().timeIntervalSince1970) openForX grouped=\(grouped) presented=\(presented) panel=\(panelOpen)\n", stderr)
         guard grouped, !presented, !panelOpen else { return }
         quiet = true
         presented = true
