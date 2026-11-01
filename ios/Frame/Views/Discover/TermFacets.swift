@@ -19,20 +19,6 @@ enum TermFacet: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
-    /// The group's symbol on its button, the same as its chips' in the
-    /// suggestions (`SearchToken.icon`); Kolor (`InkDots`) and Temat
-    /// (`LandscapeMark`) have their own drawings instead.
-    var symbol: String? {
-        switch self {
-        case .technique: "scribble.variable"
-        case .period: "calendar"
-        case .style: "paintpalette"
-        case .color: nil
-        case .subject: nil
-        case .museum: "building.columns"
-        }
-    }
-
     /// Whether the group holds the chip.
     func holds(_ token: SearchToken) -> Bool {
         switch self {
@@ -304,14 +290,10 @@ struct TermFacetBar: View {
                                 .overlay(Circle().strokeBorder(.white.opacity(0.7), lineWidth: 1))
                         }
                     }
-                } else if let symbol = facet.symbol {
-                    Image(systemName: symbol)
+                } else {
+                    GroupMark(kind: facet.rawValue, bold: on)
                         .font(.subheadline.weight(on ? .semibold : .regular))
                         .imageScale(.small)
-                } else if facet == .subject {
-                    LandscapeMark(bold: on)
-                } else {
-                    InkDots()
                 }
                 Text(value ?? facet.title)
                     .font(.subheadline.weight(on ? .semibold : .medium))
@@ -602,7 +584,7 @@ struct TermFacetPanel: View {
                     toggle(row.kind, row.key, row.name)
                 } label: {
                     HStack(spacing: 10) {
-                        Image(systemName: row.icon)
+                        GroupMark(kind: row.kind, symbol: row.icon, side: 17)
                             .font(.subheadline)
                             .foregroundStyle(Theme.accent)
                             .frame(width: 22)
@@ -834,55 +816,5 @@ private struct Bracket: Shape {
         path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
         path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
         return path
-    }
-}
-
-/// Kolor's mark: three of the frame's inks (blue, red, yellow) as dots, the
-/// way the app's icon has its squares.
-struct InkDots: View {
-    var body: some View {
-        let size: CGFloat = 7
-        VStack(spacing: -1.5) {
-            HStack(spacing: -1.5) {
-                Circle().fill(Theme.iconSquares[2]).frame(width: size, height: size)
-                Circle().fill(Theme.iconSquares[0]).frame(width: size, height: size)
-            }
-            Circle().fill(Theme.iconSquares[1]).frame(width: size, height: size)
-        }
-        .accessibilityHidden(true)
-    }
-}
-
-/// Temat's mark: one peak, a smaller one and the sun, drawn like a symbol of
-/// the text's size. The system's `mountain.2` is twice as wide as tall and
-/// never looked like the other groups' symbols.
-struct LandscapeMark: View {
-    var bold = false
-    @ScaledMetric(relativeTo: .subheadline) private var size: CGFloat = 15
-
-    var body: some View {
-        Landscape()
-            .stroke(style: StrokeStyle(lineWidth: size * (bold ? 0.11 : 0.085), lineCap: .round, lineJoin: .round))
-            .frame(width: size, height: size)
-            .accessibilityHidden(true)
-    }
-
-    /// On a 24-point grid: the peaks over a ground line, the sun top right.
-    private struct Landscape: Shape {
-        func path(in rect: CGRect) -> Path {
-            let unit = min(rect.width, rect.height) / 24
-            func point(_ x: CGFloat, _ y: CGFloat) -> CGPoint {
-                CGPoint(x: rect.minX + x * unit, y: rect.minY + y * unit)
-            }
-            var path = Path()
-            path.move(to: point(2.5, 19.5))
-            path.addLine(to: point(9, 9))
-            path.addLine(to: point(12.6, 14.6))
-            path.addLine(to: point(15.5, 11))
-            path.addLine(to: point(21.5, 19.5))
-            path.closeSubpath()
-            path.addEllipse(in: CGRect(origin: point(15.7, 3.7), size: CGSize(width: 3.6 * unit, height: 3.6 * unit)))
-            return path
-        }
     }
 }
