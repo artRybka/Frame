@@ -45,6 +45,8 @@ struct MuseumSearchView: View {
     @State private var height: CGFloat = 760
     /// Where the squares start, from the top of the scrolled content.
     @State private var squaresTop: CGFloat = 0
+    /// Where the results are scrolled to: back to the top for a new search.
+    @State private var position = ScrollPosition(edge: .top)
 
     /// The rules' chips, then the colours' and the museums'.
     private var tokens: Binding<[SearchToken]> {
@@ -84,13 +86,12 @@ struct MuseumSearchView: View {
 
     var body: some View {
         ScrollView {
+            // The suggestions are over the field (`termSuggestions`), not
+            // here: the results stay put while words are typed.
             VStack(alignment: .leading, spacing: 16) {
-                if lookup.typing {
-                    TermSuggestions(lookup: lookup, tokens: tokens)
-                }
                 if asked {
                     resultsView
-                } else if !lookup.typing {
+                } else {
                     idle
                 }
             }
@@ -101,6 +102,7 @@ struct MuseumSearchView: View {
             .padding(.bottom, SearchView.bottomPadding)
             .coordinateSpace(.named(SearchView.content))
         }
+        .scrollPosition($position)
         .scrollDismissesKeyboard(.immediately)
         .hidesOnScroll($groupsShown)
         // Before the end shows, so the next works are mostly there already.
@@ -120,13 +122,15 @@ struct MuseumSearchView: View {
                 focus: $fieldFocused, panelHeight: height * TermFacetBar.panelShare
             )
             .padding(.horizontal, Theme.gutter)
-            .opacity(groupsShown ? 1 : 0)
+            // While typing the suggestions take their place (keeping the room).
+            .opacity(groupsShown && !lookup.suggesting(fieldFocused) ? 1 : 0)
             .offset(y: groupsShown ? 0 : 48)
             .allowsHitTesting(groupsShown)
             .accessibilityHidden(!groupsShown)
         }
         // Measured outside the groups' inset: an open group grows it.
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
+        .termSuggestions(lookup, tokens: tokens, focused: $fieldFocused)
         .termSearch(lookup, tokens: tokens, focused: $fieldFocused)
         // Tapping the field brings the groups back, as does asking nothing.
         .onChange(of: fieldFocused) { _, focused in
@@ -154,6 +158,9 @@ struct MuseumSearchView: View {
             try? await Task.sleep(for: .milliseconds(150))
             guard !Task.isCancelled else { return }
             searched = key
+            // Something else asked: its results from their top, not from
+            // where the last ones were scrolled to.
+            withAnimation(.snappy) { position.scrollTo(edge: .top) }
             loader?.cancel()
             // Not tied to this view's task: it goes on while a work is open.
             loader = Task { await search(key) }

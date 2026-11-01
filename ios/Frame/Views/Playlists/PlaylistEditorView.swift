@@ -160,10 +160,6 @@ struct PlaylistEditorView: View {
                     groupsShown: groupsShown && !nameFocused && !descriptionFocused,
                     museums: museums
                 ))
-                // Typing: up to the suggestions.
-                .onChange(of: lookup.typing) { _, typing in
-                    if typing { withAnimation(.snappy) { scroller.scrollTo(Self.searchID, anchor: .top) } }
-                }
                 .onChange(of: showChosen) {
                     withAnimation(.snappy) { scroller.scrollTo(Self.chosenID, anchor: .top) }
                 }
@@ -248,8 +244,6 @@ struct PlaylistEditorView: View {
     private static let content = "playlist.editor.content"
     /// The name fields, to scroll up to.
     private static let nameID = "playlist.editor.name"
-    /// The search's part, with the suggestions while typing.
-    private static let searchID = "playlist.editor.search"
     /// A manual playlist's works.
     private static let chosenID = "playlist.editor.chosen"
 
@@ -257,17 +251,13 @@ struct PlaylistEditorView: View {
     /// only" of the seeded playlist count as asked).
     private var asked: Bool { !searched.wrappedValue.isEmpty }
 
-    /// While typing, what the words could mean; (smart) whether to fetch
-    /// from the museums, a word on how groups combine, and the squares until
-    /// something is asked, then the works. The field and its groups are at
-    /// the bottom of the sheet.
+    /// (Smart) whether to fetch from the museums, a word on how groups
+    /// combine, and the squares until something is asked, then the works.
+    /// The field and its groups are at the bottom of the sheet.
     private var search: some View {
         VStack(alignment: .leading, spacing: 14) {
             if playlist.kind == .manual {
                 Eyebrow("Dodaj dzieła")
-            }
-            if lookup.typing {
-                TermSuggestions(lookup: lookup, tokens: tokens)
             }
             if playlist.kind == .smart {
                 if rulesMissing, playlist.rules.isEmpty {
@@ -281,15 +271,14 @@ struct PlaylistEditorView: View {
                 }
                 limitRow
             }
-            if !lookup.typing {
-                if asked {
-                    previewSection
-                } else {
-                    idle
-                }
+            // The suggestions are over the field (`termSuggestions`): the
+            // works stay put while words are typed.
+            if asked {
+                previewSection
+            } else {
+                idle
             }
         }
-        .id(Self.searchID)
     }
 
     private var idle: some View {
@@ -960,11 +949,14 @@ private struct EditorSearch: ViewModifier {
                             focus: focused, panelHeight: height * TermFacetBar.panelShare
                         )
                         .padding(.horizontal, Theme.gutter)
+                        // While typing the suggestions take their place.
+                        .opacity(lookup.suggesting(focused.wrappedValue) ? 0 : 1)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
                 }
                 // Measured outside the groups' inset: an open group grows it.
                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
+                .termSuggestions(lookup, tokens: tokens, focused: focused)
                 .termSearch(lookup, tokens: tokens, focused: focused)
                 .toolbar {
                     DefaultToolbarItem(kind: .search, placement: .bottomBar)
