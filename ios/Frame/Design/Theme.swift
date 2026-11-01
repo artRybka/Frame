@@ -248,6 +248,7 @@ enum Names {
         case "mnk": "Muzeum Narodowe w Krakowie"
         case "yale": "Yale"
         case "si": "Smithsonian"
+        case "paris": "Paris Musées"
         case "vam": "Victoria and Albert Museum"
         case "wikiart": "WikiArt"
         case "upload": "Własne"

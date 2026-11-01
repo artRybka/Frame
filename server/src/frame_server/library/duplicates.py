@@ -38,6 +38,7 @@ RANKS = {
     "mnk": 0,
     "yale": 0,
     "si": 0,
+    "paris": 0,
     "vam": 0,
     "europeana": 1,
     "wmc": 2,

@@ -168,6 +168,10 @@ protocol FrameBackend: Sendable {
     /// The server checks the key with Anthropic before keeping it.
     func saveAiKey(_ key: String) async throws -> AiSettings
     func deleteAiKey() async throws -> AiSettings
+    /// Keys of art sources; the server checks a key with its source before keeping it.
+    func sourceKeys() async throws -> [SourceKey]
+    func saveSourceKey(_ source: String, key: String) async throws -> [SourceKey]
+    func deleteSourceKey(_ source: String) async throws -> [SourceKey]
     func keywordsEstimate() async throws -> AiEstimate
     /// Keywords for the whole library through Anthropic's batches (within a day).
     func describeLibrary() async throws -> AiStarted
