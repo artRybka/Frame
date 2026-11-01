@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.64.0
+
+- Nowe źródła dzieł: Muzeum Narodowe w Warszawie i w Krakowie, National
+  Gallery of Art, Yale, Smithsonian (z kluczem API w opcji
+  `smithsonian_key`, inaczej ukryte) i V&A (tylko przy „Użytek prywatny”).
+  Polskie motywy najpierw pytają muzea narodowe. NGA przy pierwszym użyciu
+  pobiera lokalny indeks (~230 MB, odświeżany co tydzień).
+
 ## 1.63.0
 
 - Konfiguracja → Odkrywaj: „Wylosuj inne” zmienia Studium dnia, a

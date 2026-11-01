@@ -402,9 +402,12 @@ def test_theme_pages_pass_over_searches_that_find_nothing() -> None:
     with pytest.raises(httpx.HTTPError):
         browse_theme(Museums({}, failing={"A", "B", "C"}), found, 1, 24)  # type: ignore[arg-type]
 
-    # Polish painters are looked for on Commons, where they are.
-    assert all(source == "wmc" for source, _ in theme("young-poland").searches())
-    assert all(source == "wmc" for source, _ in theme("polish-landscape").searches())
+    # Polish painters are looked for in the national museums in Warsaw and
+    # Kraków first, then on Commons.
+    for key in ("young-poland", "polish-landscape"):
+        sources = [source for source, _ in theme(key).searches()]
+        assert set(sources) == {"mnw", "mnk", "wmc"}
+        assert sources[:2] == ["mnw", "mnk"]
 
 
 def test_periods_reach_the_last_year_free_in_the_eu() -> None:
