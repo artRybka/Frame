@@ -112,11 +112,40 @@ final class Notices {
 
     // MARK: Errors
 
+    /// While the server restarts as part of its update, and a short while
+    /// after it is back (requests sent while it was away end late), a lost
+    /// connection is a step of the update, not an error.
+    @ObservationIgnored private var serverAwaySince: Date?
+    @ObservationIgnored private var serverBackAt: Date?
+    static let serverBackGrace: TimeInterval = 20
+
+    func serverRestarting(_ restarting: Bool, now: Date = .now) {
+        if restarting {
+            serverAwaySince = now
+            serverBackAt = nil
+        } else if serverAwaySince != nil {
+            serverAwaySince = nil
+            serverBackAt = now
+        }
+    }
+
+    func expectsServerAway(now: Date = .now) -> Bool {
+        if serverAwaySince != nil { return true }
+        guard let back = serverBackAt else { return false }
+        return now.timeIntervalSince(back) < Self.serverBackGrace
+    }
+
     /// An error, said in Polish with the server's words under it; a request
-    /// cut short (a pull to refresh let go, a view gone) is no news.
+    /// cut short (a pull to refresh let go, a view gone) is no news, nor is
+    /// the server gone for a moment while it updates.
     func fail(_ error: Error, in card: Notice.ID? = nil) {
         guard !error.isCancellation else {
             if let card { drop(card) }
+            return
+        }
+        if error.isServerAway, expectsServerAway() {
+            // Something asked of the server just then: say why, not "error".
+            if let card { end(card, .info, "Serwer właśnie się aktualizuje", "Spróbuj ponownie za chwilę.") }
             return
         }
         let (title, detail) = Self.words(for: error)
@@ -211,5 +240,23 @@ final class Notices {
     private func announce(_ notice: Notice) {
         let text = [notice.title, notice.detail].compactMap { $0 }.joined(separator: ". ")
         AccessibilityNotification.Announcement(text).post()
+    }
+}
+
+extension Error {
+    /// The server could not be reached or cut the answer short: what a
+    /// restart looks like from the phone (not the phone's own Wi-Fi gone).
+    var isServerAway: Bool {
+        if let error = self as? URLError {
+            switch error.code {
+            case .cannotConnectToHost, .networkConnectionLost, .timedOut, .cannotFindHost,
+                 .dnsLookupFailed, .badServerResponse, .zeroByteResource:
+                return true
+            default:
+                return false
+            }
+        }
+        if case .invalidResponse? = self as? BackendError { return true }
+        return false
     }
 }

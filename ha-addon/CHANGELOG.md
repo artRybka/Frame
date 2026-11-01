@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.69.2
+
+- Aktualizacja serwera z aplikacji: chwilowa utrata połączenia przy restarcie
+  jest pokazywana jako etap aktualizacji, a nie błąd.
+
 ## 1.69.1
 
 - Playlisty: przy wspólnych playlistach sama ikona dwóch osób, bez napisu
