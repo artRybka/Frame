@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.60.0
+
+- Szukaj: podpowiedzi pojawiają się od razu przy każdej literze, a serwer
+  liczy je w ułamku sekundy (indeks haseł zamiast przeglądania całej
+  biblioteki); lista nie znika już na chwilę do „Szukam…”.
+
 ## 1.59.0
 
 - Serce i menu „…” w prawym górnym rogu studium dzieła, jak na karcie
