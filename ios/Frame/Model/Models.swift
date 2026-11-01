@@ -101,6 +101,8 @@ struct PolishView: Codable, Hashable, Sendable {
     /// could not); "off" (no key, switched off, or no museum work).
     var status: String
     var text: PolishText?
+    /// While "waiting": the Polish title, once written, ahead of the texts.
+    var title: String? = nil
 }
 
 /// What the model saw in a work or photo, for its card.

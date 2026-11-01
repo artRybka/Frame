@@ -411,7 +411,7 @@ actor DemoBackend: FrameBackend {
 
     /// A long note, as the language model writes one (400–900 characters),
     /// so the card shows "O dziele" in full in the demo screenshots.
-    func polish(itemID: String, wait: Int) async throws -> PolishView {
+    func polish(itemID: String, wait: Int, early: Bool) async throws -> PolishView {
         guard let item = items.first(where: { $0.id == itemID }) else { return PolishView(status: "off", text: nil) }
         let note = """
         Pierwszy plan zajmuje stół przykryty białym obrusem, na którym stoją kosz z owocami, \

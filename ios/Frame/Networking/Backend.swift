@@ -35,7 +35,9 @@ protocol FrameBackend: Sendable {
     func item(id: String) async throws -> Item
     /// The work's Polish title and texts, asked for now if it has none;
     /// waits up to `wait` seconds for them.
-    func polish(itemID: String, wait: Int) async throws -> PolishView
+    /// `early`: the wait ends as soon as the Polish title is written, so
+    /// the card shows it before the texts.
+    func polish(itemID: String, wait: Int, early: Bool) async throws -> PolishView
     /// The card opened: the server asks the model about this item ahead of
     /// everything else (keywords, Polish texts); waits up to `wait` seconds
     /// for the keywords.
@@ -244,5 +246,12 @@ enum BackendError: LocalizedError {
         case .notFound: return "Nie znaleziono"
         case .interrupted: return "Przerwane, gdy aplikacja była w tle"
         }
+    }
+}
+
+extension FrameBackend {
+    /// The work's Polish texts, waited for whole.
+    func polish(itemID: String, wait: Int) async throws -> PolishView {
+        try await polish(itemID: itemID, wait: wait, early: false)
     }
 }

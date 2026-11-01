@@ -3,6 +3,8 @@ frame and the app's card."""
 
 from __future__ import annotations
 
+import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -502,6 +504,7 @@ def test_the_card_asks_for_polish_texts(tmp_path: Path) -> None:
         assert client.get("/api/library/items/met:1/polish").json() == {
             "status": "off",
             "text": None,
+            "title": None,
         }
         svc.ai_config.set_key(GOOD_KEY)
         clients.setdefault(GOOD_KEY, FakeAnthropic(GOOD_KEY)).answer = PL_ANSWER
@@ -510,3 +513,50 @@ def test_the_card_asks_for_polish_texts(tmp_path: Path) -> None:
         assert view["status"] == "ready"
         assert view["text"]["title"] == "Burza śnieżna"
         assert client.get("/api/ai").json()["pl_text_progress"]["done"] == 1
+
+
+def test_the_title_is_picked_out_of_the_answer_as_it_is_written(
+    service: FrameService, fake: FakeAnthropic
+) -> None:
+    item = _add(service, "met:1", description=DESCRIPTION)
+    job = service.pl_text
+    job.params(item)
+    for piece in ['{"tit', 'le": "Burza ', 'śnieżna \\"', 'nad morzem\\""']:
+        assert job.early_title("met:1") is None
+        job.partial(item, piece)
+    assert job.early_title("met:1") == 'Burza śnieżna "nad morzem"'
+    job.partial(item, ', "frame": "Parowiec')  # the rest changes nothing
+    assert job.early_title("met:1") == 'Burza śnieżna "nad morzem"'
+
+
+def test_the_card_gets_the_title_before_the_texts(tmp_path: Path) -> None:
+    app = create_app(
+        Settings(data_dir=tmp_path, seed_library=False, scheduler=False, public_host="127.0.0.1")
+    )
+    svc: FrameService = app.state.service
+    clients: dict[str, FakeAnthropic] = {}
+    svc.claude.factory = lambda key: clients.setdefault(key, FakeAnthropic(key))
+    _offline(svc)
+    svc.ai_config.set_key(GOOD_KEY)
+    fake = clients.setdefault(GOOD_KEY, FakeAnthropic(GOOD_KEY))
+    fake.answer = PL_ANSWER
+    fake.held = threading.Event()
+    fake.held_after = 5  # '{"title": "Burza śnieżna", ...' is whole by then
+    url = "/api/library/items/met:1/polish"
+    with TestClient(app) as client:
+        _add(svc, "met:1", description=DESCRIPTION)
+        svc.ai.start()
+        try:
+            started = time.monotonic()
+            view = client.get(f"{url}?wait=10&early=true").json()
+            assert time.monotonic() - started < 5
+            assert view == {"status": "waiting", "text": None, "title": "Burza śnieżna"}
+            # Without "early" the wait is for the texts, as before.
+            fake.held.set()
+            view = client.get(f"{url}?wait=10").json()
+            assert view["status"] == "ready"
+            assert view["text"]["title"] == "Burza śnieżna"
+            assert view["title"] is None
+        finally:
+            fake.held.set()
+            svc.ai.stop()

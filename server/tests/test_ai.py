@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import threading
 import time
+from collections.abc import Iterator
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -65,8 +67,14 @@ class FakeAnthropic:
         self.stop = "end_turn"
         self.batches: dict[str, list[dict[str, Any]]] = {}
         self.ended = False
+        #: Streamed answers come in pieces this long; ``held`` stops a stream
+        #: after its first ``held_after`` pieces until it is set.
+        self.piece = 7
+        self.held: threading.Event | None = None
+        self.held_after = 0
         self.messages = SimpleNamespace(
             create=self._create,
+            stream=self._stream,
             batches=SimpleNamespace(
                 create=self._create_batch, retrieve=self._retrieve, results=self._results
             ),
@@ -81,6 +89,20 @@ class FakeAnthropic:
     def _create(self, **params: Any) -> SimpleNamespace:
         self.asked.append(params)
         return _message(self.answer, self.stop)
+
+    @contextlib.contextmanager
+    def _stream(self, **params: Any) -> Iterator[SimpleNamespace]:
+        message = self._create(**params)
+        text = message.content[0].text
+        pieces = [text[i : i + self.piece] for i in range(0, len(text), self.piece)]
+
+        def text_stream() -> Iterator[str]:
+            for n, piece in enumerate(pieces):
+                if self.held is not None and n == self.held_after:
+                    self.held.wait(10)
+                yield piece
+
+        yield SimpleNamespace(text_stream=text_stream(), get_final_message=lambda: message)
 
     def _create_batch(self, requests: list[dict[str, Any]]) -> SimpleNamespace:
         batch_id = f"batch_{len(self.batches) + 1}"
