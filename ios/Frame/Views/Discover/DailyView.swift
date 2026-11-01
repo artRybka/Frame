@@ -147,12 +147,25 @@ struct DailyView: View {
 
     @ViewBuilder
     private var page: some View {
-        if let work {
-            content(work)
-                .padding(.horizontal, Theme.gutter)
-                .padding(.bottom, 40)
-                .transition(.opacity)
-        } else if failed {
+        if work != nil || !failed {
+            // The picture stays put while the page fades in under it: the
+            // placeholder's thumbnail and the page's picture, faded one over
+            // the other, blinked it.
+            VStack(alignment: .leading, spacing: 14) {
+                picture(work)
+                ZStack(alignment: .top) {
+                    if let work {
+                        content(work)
+                            .transition(.opacity)
+                    } else {
+                        loading
+                            .transition(.opacity)
+                    }
+                }
+            }
+            .padding(.horizontal, Theme.gutter)
+            .padding(.bottom, 40)
+        } else {
             VStack(spacing: 16) {
                 EmptyStateView(
                     title: "Nie ma jeszcze studium",
@@ -168,11 +181,6 @@ struct DailyView: View {
             }
             .frame(maxWidth: .infinity)
             .padding(.top, 80)
-        } else {
-            loading
-                .padding(.horizontal, Theme.gutter)
-                .padding(.bottom, 40)
-                .transition(.opacity)
         }
     }
 
@@ -195,25 +203,13 @@ struct DailyView: View {
         return nil
     }
 
-    /// The page before it is here, laid out as it will be: the picture and
-    /// title when known, else quiet shapes, and the text's place breathing.
+    /// The page under the picture before it is here, laid out as it will
+    /// be: the title when known, else quiet shapes, and the text's place
+    /// breathing.
     private var loading: some View {
         let peek = peek
         return VStack(alignment: .leading, spacing: 26) {
-            VStack(alignment: .leading, spacing: 14) {
-                pictureBox(peek.map { aspect($0.item) } ?? 1.5)
-                    .overlay {
-                        if let peek {
-                            ArtImage(
-                                ref: peek.thumb, fallback: peek.fallback, placeholder: peek.item.placeholderColor,
-                                maxPixel: 700, priority: .high
-                            )
-                        } else {
-                            Rectangle().fill(Theme.mat).breathing()
-                        }
-                    }
-                    .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
-                    .padding(.top, 6)
+            Group {
                 if let peek {
                     let byline = [Names.artist(peek.item.artist), peek.item.dateText].filter { !$0.isEmpty }.joined(separator: " · ")
                     VStack(alignment: .leading, spacing: 4) {
@@ -330,7 +326,6 @@ struct DailyView: View {
     private func content(_ work: DailyWork) -> some View {
         VStack(alignment: .leading, spacing: 26) {
             VStack(alignment: .leading, spacing: 14) {
-                picture(work)
                 header(work)
                 if !work.whyToday.isEmpty { whyToday(work.whyToday) }
                 if work.writing {
@@ -394,27 +389,60 @@ struct DailyView: View {
     }
 
     /// The picture on the page's whole width; tapping it opens it on the
-    /// whole screen to zoom into, as on the work's card.
-    private func picture(_ work: DailyWork) -> some View {
-        Button {
-            zoomed = true
-        } label: {
-            pictureBox(aspect(work.item.item))
-                .overlay {
+    /// whole screen to zoom into, as on the work's card. Before the page is
+    /// here, the thumbnail of the tile or card it was opened from; the
+    /// original, once the page is, fades in over it (as on the card, and
+    /// from memory at once when the card showed it).
+    private func picture(_ work: DailyWork?) -> some View {
+        let peek = peek
+        let under = peek?.thumb ?? work?.item.thumb
+        let underFallback = peek != nil ? peek?.fallback : work?.item.thumbFallback
+        let item = work?.item.item ?? peek?.item
+        return pictureBox(item.map { aspect($0) } ?? 1.5)
+            .overlay {
+                if let under {
                     ArtImage(
-                        ref: work.item.inLibrary ? work.item.item.originalRef : work.item.thumb,
+                        ref: under, fallback: underFallback, placeholder: item?.placeholderColor ?? Theme.mat,
+                        maxPixel: 700, priority: .high
+                    )
+                } else {
+                    Rectangle().fill(Theme.mat).breathing()
+                }
+            }
+            .overlay {
+                if let work {
+                    ArtImage(
+                        ref: work.item.inLibrary ? originalRef(work) : work.item.thumb,
                         fallback: .thumb(work.item.id),
-                        placeholder: work.item.item.placeholderColor,
-                        maxPixel: 1600,
-                        priority: .high
+                        placeholder: .clear,
+                        maxPixel: Self.originalPixels,
+                        priority: .high,
+                        crossfade: true
                     )
                 }
-                .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
-                .contentShape(Rectangle())
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+            .contentShape(Rectangle())
+            .onTapGesture {
+                if work != nil { zoomed = true }
+            }
+            .accessibilityAddTraits(work != nil ? .isButton : [])
+            .accessibilityHint(Text(work != nil ? "Otwiera obraz na całym ekranie" : ""))
+            .padding(.top, 6)
+    }
+
+    /// As the work's card asks for its original, so the one it showed is
+    /// the one in memory here.
+    private static let originalPixels: CGFloat = 1800
+
+    /// The work's original; the sharper copy its card found since the study
+    /// was written, too, so the study shows the picture the card did.
+    private func originalRef(_ work: DailyWork) -> ImageRef {
+        let item = work.item.item
+        if item.sharper == nil, let card = ItemPeeks.cards[item.id] ?? self.card, card.id == item.id, card.sharper != nil {
+            return card.originalRef
         }
-        .buttonStyle(.plain)
-        .accessibilityHint(Text("Otwiera obraz na całym ekranie"))
-        .padding(.top, 6)
+        return item.originalRef
     }
 
     private func header(_ work: DailyWork) -> some View {
