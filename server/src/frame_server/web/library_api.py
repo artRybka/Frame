@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hashlib
 from pathlib import Path
 from typing import Annotated, Any, Literal
@@ -34,7 +35,7 @@ from ..library import Facets, Item, ItemKind, ItemSummary, Job, Look, PhotoInfo,
 from ..library.duplicates import work_key
 from ..library.images import Gone
 from ..library.importer import ALL
-from ..library.models import Framing
+from ..library.models import Framing, SharperCopy
 from ..library.museums import MUSEUMS, Discovery, Kind
 from ..library.repo import SortKey
 from ..library.seed import PACKS, import_queries, pack
@@ -295,6 +296,34 @@ async def describe_item(
     return SeenView(status="none" if future.done() else "waiting")
 
 
+class SharperView(BaseModel):
+    """A sharper copy of the work's picture, for its card. ``status``:
+    "found" (``sharper`` says which: the app asks for the picture again by
+    its ``item_id``); "looking" (ask again); "none" (no source has a better
+    one); "fine" (the work's own is good); "off" (photos, own works)."""
+
+    status: Literal["looking", "found", "none", "fine", "off"]
+    sharper: SharperCopy | None = None
+
+
+@router.post("/library/items/{item_id}/sharpen", response_model=SharperView)
+async def sharpen_item(
+    item_id: str, svc: Svc, wait: Annotated[float, Query(ge=0, le=60)] = 0
+) -> SharperView:
+    """The card opened: when the work's picture is poor, other sources are
+    asked for a sharper copy of it in the background. ``wait``: seconds to
+    wait for the answer."""
+    item = await _work(svc, item_id)
+    future = svc.sharper.soon(item)
+    if wait:
+        with contextlib.suppress(TimeoutError):
+            await asyncio.wait_for(asyncio.shield(asyncio.wrap_future(future)), wait)
+    status = future.result() if future.done() else "looking"
+    stored = svc.library.get(item_id)
+    copy = (stored or item).sharper
+    return SharperView(status="found" if copy is not None else status, sharper=copy)
+
+
 @router.patch("/library/items/{item_id}", response_model=Item)
 async def patch_item(item_id: str, patch: ItemPatch, svc: Svc) -> Item:
     item = await _work(svc, item_id, save=True)
@@ -412,8 +441,11 @@ async def item_preview(
     render_settings = svc.player.render_settings(item, frame_settings)
     board = svc.player.preview_board(item, frame_settings)  # MULTI: with the photos beside it
     ids = ",".join(i.id for i in board)
+    # A sharper copy of a picture since: another preview.
+    copies = ",".join(shown.sharper.item_id for shown in board if shown.sharper is not None)
+    shape = render_settings.model_dump_json() + svc.palette.name
     key = hashlib.sha1(
-        (PREVIEW_KIND + render_settings.model_dump_json() + svc.palette.name + ids).encode(),
+        (PREVIEW_KIND + shape + ids + copies).encode(),
         usedforsecurity=False,
     ).hexdigest()[:12]
     path = svc.images.thumbs.parent / "previews" / f"{item.file_stem}-{key}.jpg"

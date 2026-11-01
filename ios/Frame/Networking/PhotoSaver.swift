@@ -29,13 +29,17 @@ enum PhotoSaver {
     /// Where the picture can come from, largest first.
     static func sources(for item: Item, backend: any FrameBackend) -> [URLRequest] {
         var sources: [URLRequest] = []
+        // A sharper copy from another source first: larger than the museum's own.
+        if let sharper = item.sharper, let url = URL(string: sharper.url), url.scheme == "https" {
+            sources.append(URLRequest(url: url, timeoutInterval: 120))
+        }
         // A photo's address (an iCloud album's) expires; its server copy is the original.
         if item.kind == .artwork, let url = URL(string: item.imageUrl),
            url.scheme == "https" || url.scheme == "http"
         {
             sources.append(URLRequest(url: url, timeoutInterval: 120))
         }
-        if let server = backend.request(for: .image(item.id)) { sources.append(server) }
+        if let server = backend.request(for: item.originalRef) { sources.append(server) }
         return sources
     }
 

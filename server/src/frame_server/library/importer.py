@@ -22,7 +22,17 @@ from .duplicates import dedupe, rank
 from .images import ImageCache
 from .lifespan import LifeDates
 from .models import Item, ItemKind, Look, PhotoInfo, PlaylistRules
-from .museums import MUSEUMS, Access, Discovery, Kind, Museum, available, client, museum
+from .museums import (
+    MUSEUMS,
+    Access,
+    Discovery,
+    Kind,
+    Museum,
+    WikimediaCommons,
+    available,
+    client,
+    museum,
+)
 from .repo import Library, matches, now_iso
 from .vocabulary import (
     HIGHLIGHT,
@@ -343,6 +353,15 @@ class Importer:
         )
         self.remember(mixed)
         return total, mixed, failed
+
+    def commons_file(self, name: str) -> Item | None:
+        """The work in the Commons file ``name`` (a museum work's picture
+        on Wikidata), not added to the library."""
+        with self.http() as http:
+            found = WikimediaCommons(http, access=self.access()).file(name)
+        if found is not None:
+            self.remember([found])
+        return found
 
     def copy_of(self, item: Item) -> Item | None:
         """The library's copy of ``item``'s work from another source, unless

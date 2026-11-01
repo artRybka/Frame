@@ -433,6 +433,10 @@ actor DemoBackend: FrameBackend {
         return PolishView(status: "ready", text: text)
     }
 
+    func sharpen(itemID: String, wait: Int) async throws -> SharperView {
+        SharperView(status: "off", sharper: nil)
+    }
+
     func describe(itemID: String, wait: Int) async throws -> SeenView {
         SeenView(status: "off", words: [])
     }
@@ -1276,7 +1280,7 @@ actor DemoBackend: FrameBackend {
         let url: URL?
         switch image {
         case let .thumb(id): url = Self.bundled(id) ?? imageURLs[id]?.thumb
-        case let .image(id): url = Self.bundled(id) ?? imageURLs[id]?.image ?? imageURLs[id]?.thumb
+        case let .image(id), let .original(id, _): url = Self.bundled(id) ?? imageURLs[id]?.image ?? imageURLs[id]?.thumb
         case let .framePreview(id, settings, framing, _):
             url = framed(id, settings, trying: framing) ?? Self.bundled(id) ?? imageURLs[id]?.thumb
         case let .path(path) where path.hasPrefix("/demo/detail/"):

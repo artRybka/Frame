@@ -770,6 +770,22 @@ final class FrameAPITests: XCTestCase {
         XCTAssertEqual(preview.url?.path, "/api/previews/X.png")
     }
 
+    func testASharperCopyIsAskedForUnderItsOwnAddress() throws {
+        // POST /api/library/items/<id>/sharpen (tests/test_sharper.py).
+        let json = """
+        {"status": "found", "sharper": {"url": "https://upload.wikimedia.org/a.jpg", "item_id": "wmc:9",
+         "source": "wmc", "museum": "Wikimedia Commons", "width": 3600, "height": 2400}}
+        """
+        let view = try LiveBackend.decoder().decode(SharperView.self, from: Data(json.utf8))
+        let copy = try XCTUnwrap(view.sharper)
+        XCTAssertEqual(copy.itemId, "wmc:9")
+        let api = LiveBackend(baseURL: URL(string: "http://frame.local:8099")!, token: "secret")
+        let request = try XCTUnwrap(api.request(for: .original("aic:4760", version: copy.itemId)))
+        XCTAssertEqual(request.url?.path, "/api/library/items/aic:4760/image")
+        XCTAssertEqual(request.url?.query, "v=wmc:9")
+        XCTAssertEqual(ImageRef.original("aic:4760", version: "wmc:9").itemID, "aic:4760")
+    }
+
     func testRequestsFollowTheServerAddressInUse() throws {
         let home = try XCTUnwrap(URL(string: "http://192.0.2.10:8099"))
         let remote = try XCTUnwrap(URL(string: "http://nas.tail0.ts.net:8099/"))
@@ -892,6 +908,13 @@ final class FrameAPITests: XCTestCase {
         let sources = PhotoSaver.sources(for: item, backend: demo).map(\.url)
         XCTAssertEqual(sources.first, URL(string: item.imageUrl))
         XCTAssertEqual(sources.last, demo.request(for: .image(item.id))?.url)
+        // A sharper copy from another source goes first: larger than the museum's own.
+        item.sharper = SharperCopy(
+            url: "https://upload.wikimedia.org/a.jpg", itemId: "wmc:9", source: "wmc",
+            museum: "Wikimedia Commons", width: 3600, height: 2400
+        )
+        XCTAssertEqual(PhotoSaver.sources(for: item, backend: demo).first?.url, URL(string: "https://upload.wikimedia.org/a.jpg"))
+        item.sharper = nil
         item.kind = .photo  // an iCloud photo's address expires: the server's copy only
         XCTAssertEqual(PhotoSaver.sources(for: item, backend: demo).count, 1)
         item.artist = "Vincent van Gogh"

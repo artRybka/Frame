@@ -97,6 +97,7 @@ struct ItemDetailView: View {
         }
         .task(id: itemID) { await load() }
         .task(id: described) { await loadSeen() }
+        .task(id: described) { await sharpen() }
         .task(id: view == .frame ? draftKey : "") { await loadFraming() }
         .onChange(of: item) { _, item in
             if let item { ItemPeeks.keep(item) }
@@ -354,6 +355,23 @@ struct ItemDetailView: View {
         polishWaiting = false
     }
 
+    /// When the work's picture is poor, the server looks for a sharper copy
+    /// in other sources (half a minute or so); one found takes the
+    /// picture's place on the card, as it fades in.
+    private func sharpen() async {
+        guard let id = described, id == itemID, item?.kind == .artwork, item?.sharper == nil else { return }
+        for attempt in 0..<4 {
+            guard let view = try? await model.backend.sharpen(itemID: id, wait: attempt == 0 ? 25 : 30),
+                  !Task.isCancelled, id == itemID
+            else { return }
+            if let copy = view.sharper {
+                item?.sharper = copy
+                return
+            }
+            if view.status != "looking" { return }
+        }
+    }
+
     /// Waits for the keywords asked for as the card opened.
     private func loadSeen() async {
         seen = []
@@ -494,9 +512,11 @@ struct ItemDetailView: View {
                 if view == .original {
                     // The tile's thumbnail, already loaded, under the
                     // original until it is here.
+                    // A sharper copy, found while the card is open, fades in
+                    // over the museum's own.
                     ArtImage(
-                        ref: .image(item.id), fallback: .thumb(item.id), placeholder: .clear,
-                        maxPixel: 1800, contentMode: .fit, priority: .high
+                        ref: item.originalRef, fallback: .thumb(item.id), placeholder: .clear,
+                        maxPixel: 1800, contentMode: .fit, priority: .high, crossfade: true
                     )
                         .background {
                             ArtImage(
@@ -743,6 +763,10 @@ struct ItemDetailView: View {
             fact("Rodzaj", item.classification)
             fact("Pochodzenie", item.culture)
             fact("Kolekcja", item.museum)
+            if let sharper = item.sharper {
+                // The museum's own picture was poor: where the sharper one is from.
+                fact("Zdjęcie dzieła", "\(sharper.museum.isEmpty ? sharper.source : sharper.museum), \(sharper.width)×\(sharper.height) px")
+            }
             fact("Licencja", item.license)
             if let score = item.suitability {
                 HStack {
