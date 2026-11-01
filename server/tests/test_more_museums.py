@@ -318,3 +318,116 @@ def test_the_va_only_with_private_use() -> None:
         sent[1].url.params["year_made_to"] == "1899"
         and sent[1].url.params["q_object_type"] == "print"
     )
+
+
+PARIS_WORK = {
+    "entityId": "151109",
+    "title": "Les Petites Baigneuses",
+    "absolutePath": "/fr/petit-palais/oeuvres/les-petites-baigneuses",
+    "fieldOeuvreAuteurs": [{"entity": {"fieldAuteurAuteur": {"entity": {
+        "name": "Courbet, Gustave",
+        "fieldPipDateNaissance": {"startYear": 1819},
+        "fieldPipDateDeces": {"startYear": 1877},
+    }}}}],
+    "fieldVisuels": [{"entity": {
+        "publicUrl": "https://www.parismuseescollections.paris.fr/sites/default/files/a.jpg",
+        "vignette": "https://www.parismuseescollections.paris.fr/sites/default/files/styles/t/a.jpg",
+        "fieldImageLibre": True,
+    }}],
+    "fieldDateProduction": {"startYear": 1849, "century": "19e siècle"},
+    "fieldOeuvreTypesObjet": [{"entity": {"name": "Peinture"}}],
+    "fieldMateriauxTechnique": [{"entity": {"name": "Huile sur toile"}}],
+    "fieldOeuvreThemeRepresente": [{"entity": {"name": "baigneuse"}}],
+    "fieldMusee": {"entity": {"name": "Petit Palais"}},
+}  # fmt: skip
+
+
+def test_paris_musees_needs_a_token_and_takes_free_pictures() -> None:
+    from frame_server.library.paris import ParisMusees
+
+    assert "paris" not in available(Access())
+    assert "paris" in available(Access(paris_token="t"))
+    sent: list[httpx.Request] = []
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        sent.append(request)
+        closed = {**PARIS_WORK, "entityId": "2", "fieldVisuels": [{"entity": {
+            "publicUrl": "https://x/b.jpg", "fieldImageLibre": False}}]}  # fmt: skip
+        found = {"count": 2, "entities": [PARIS_WORK, closed, None]}
+        return httpx.Response(200, json={"data": {"nodeQuery": found}})
+
+    with httpx.Client(transport=httpx.MockTransport(answer)) as http:
+        assert ParisMusees(http).search("Baigneuses") == (0, [])  # no token, nothing asked
+        paris = ParisMusees(http, access=Access(paris_token="t"))
+        total, items = paris.search('Baig"neuses')
+        paris.discover(Discovery(kind="painting", year_from=1800, year_to=1899))
+        assert paris.discover(Discovery(style="Impressionism")) == (0, [])
+    assert total == 2 and [i.id for i in items] == ["paris:151109"]
+    item = items[0]
+    assert item.artist == "Gustave Courbet"
+    assert item.artist_bio == "1819–1877" and item.year == 1849
+    assert item.museum == "Petit Palais" and item.license == "CC0 1.0"
+    assert item.url.startswith("https://www.parismuseescollections.paris.fr/fr/petit-palais/")
+    assert item.thumb_url.endswith("/styles/t/a.jpg")
+    assert len(sent) == 2 and sent[0].headers["auth-token"] == "t"
+    query = json.loads(sent[0].content)["query"]
+    assert '"%Baig neuses%"' in query and "field_image_libre" in query
+    assert 'operator: GREATER_THAN_OR_EQUAL, value: "1800"' in json.loads(sent[1].content)["query"]
+
+
+def test_source_keys_are_checked_kept_and_never_sent_back(tmp_path: Path) -> None:
+    from fastapi.testclient import TestClient
+
+    from frame_server.config import Settings
+    from frame_server.source_keys import KeyRejected
+    from frame_server.web.app import create_app
+
+    app = create_app(
+        Settings(data_dir=tmp_path, seed_library=False, scheduler=False, public_host="127.0.0.1")
+    )
+    svc = app.state.service
+    good = "si-key-good-1234"
+
+    def check(source: str, key: str, http: object = None) -> None:
+        if key != good:
+            raise KeyRejected("no")
+
+    svc.source_keys.check = check
+    with TestClient(app) as client:
+        views = {v["source"]: v for v in client.get("/api/sources/keys").json()}
+        assert set(views) == {"si", "paris", "europeana"}
+        assert views["si"]["key_set"] is False and views["si"]["signup"].startswith("https://")
+        assert "si" not in svc.importer.sources()
+
+        assert client.put("/api/sources/keys/si", json={"key": "wrong"}).status_code == 400
+        assert client.put("/api/sources/keys/nope", json={"key": good}).status_code == 404
+        resp = client.put("/api/sources/keys/si", json={"key": f" {good} "})
+        assert resp.status_code == 200 and good not in resp.text
+        si = next(v for v in resp.json() if v["source"] == "si")
+        assert si["key_tail"] == "1234" and si["key_from_app"] is True
+        assert svc._access().smithsonian_key == good and "si" in svc.importer.sources()
+
+        resp = client.delete("/api/sources/keys/si")
+        assert next(v for v in resp.json() if v["source"] == "si")["key_set"] is False
+        assert "si" not in svc.importer.sources()
+
+
+def test_a_source_key_is_asked_of_its_service() -> None:
+    from frame_server.source_keys import KeyRejected, KeyUnchecked, SourceKeys
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        key = request.headers.get("auth-token") or request.url.params.get("api_key")
+        if key == "down":
+            return httpx.Response(503)
+        return httpx.Response(200 if key == "good" else 403, json={})
+
+    keys = SourceKeys.__new__(SourceKeys)
+    with httpx.Client(transport=httpx.MockTransport(answer)) as http:
+        for source in ("si", "paris"):
+            keys.check(source, "good", http)
+            for bad, error in (("bad", KeyRejected), ("down", KeyUnchecked)):
+                try:
+                    keys.check(source, bad, http)
+                except error:
+                    continue
+                raise AssertionError((source, bad))

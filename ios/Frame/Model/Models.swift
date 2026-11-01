@@ -865,6 +865,23 @@ struct AiKeyUpdate: Encodable, Sendable {
     var key: String
 }
 
+/// A source's key or token (Konfiguracja → Źródła dzieł). The server checks
+/// it with the source before keeping it and sends back only its last characters.
+struct SourceKey: Codable, Hashable, Sendable, Identifiable {
+    var source: String
+    var name: String
+    /// What the source brings and what happens without a key.
+    var about: String
+    /// Where a free key is made.
+    var signup: String
+    var keySet: Bool
+    var keyTail: String?
+    /// Saved in the app, not taken from frame.env.
+    var keyFromApp: Bool
+
+    var id: String { source }
+}
+
 /// What "Opisz bibliotekę" would ask about, and about what it costs.
 struct AiEstimate: Codable, Hashable, Sendable {
     var items: Int

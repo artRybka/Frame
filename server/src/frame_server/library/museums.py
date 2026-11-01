@@ -84,6 +84,8 @@ class Access:
     openverse_app: tuple[str, str] | None = None
     #: Smithsonian Open Access key (api.data.gov); the source is off without it.
     smithsonian_key: str = ""
+    #: Paris Musées token (an account of one's own); the source is off without it.
+    paris_token: str = ""
     #: Where sources keep downloaded indexes (the National Gallery of Art's).
     data_dir: Path | None = None
 
@@ -1440,6 +1442,7 @@ class WikiArt(Museum):
 # classes above).
 from .muza import NationalMuseumKrakow, NationalMuseumWarsaw  # noqa: E402
 from .nga import NationalGalleryOfArt  # noqa: E402
+from .paris import ParisMusees  # noqa: E402
 from .smithsonian import Smithsonian  # noqa: E402
 from .vam import VictoriaAndAlbert  # noqa: E402
 from .yale import YaleMuseums  # noqa: E402
@@ -1456,6 +1459,7 @@ MUSEUMS: dict[str, type[Museum]] = {
         NationalMuseumKrakow,
         YaleMuseums,
         Smithsonian,
+        ParisMusees,
         VictoriaAndAlbert,
         WikimediaCommons,
         Europeana,
