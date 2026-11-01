@@ -33,6 +33,7 @@ from ..imaging.layout import (
 from ..imaging.pipeline import RenderSettings, encode_image, plan_for, render_original
 from ..library import Facets, Item, ItemKind, ItemSummary, Job, Look, PhotoInfo, PlaylistRules
 from ..library.duplicates import work_key
+from ..library.hosts import urgent_call
 from ..library.images import Gone
 from ..library.importer import ALL
 from ..library.models import Framing, SharperCopy
@@ -162,7 +163,7 @@ async def _work(
     likes or otherwise keeps one. ``threads``: where a museum is asked."""
     lookup = svc.importer.save if save else svc.importer.resolve
     try:
-        item = await to_thread.run_sync(lookup, item_id, limiter=threads)
+        item = await to_thread.run_sync(urgent_call(lookup), item_id, limiter=threads)
     except httpx.HTTPError as err:
         raise HTTPException(502, f"{item_id}: {err}") from err
     if item is None:
@@ -384,7 +385,9 @@ def delete_item(item_id: str, svc: Svc) -> dict[str, bool]:
 async def item_thumb(item_id: str, svc: Svc) -> FileResponse:
     item = await _work(svc, item_id, threads=THUMB_THREADS)
     try:
-        path = await to_thread.run_sync(svc.images.ensure_thumb, item, limiter=THUMB_THREADS)
+        path = await to_thread.run_sync(
+            urgent_call(svc.images.ensure_thumb), item, limiter=THUMB_THREADS
+        )
     except Gone as err:  # the app leaves the work out
         raise HTTPException(410, f"no picture anywhere: {err}") from err
     except (httpx.HTTPError, OSError) as err:
@@ -758,11 +761,13 @@ async def museum_search(
     """One museum, or ``all`` of them (``limit`` results from each)."""
     failed: list[str] = []
     if source == ALL:
-        total, items, failed = await run_in_threadpool(svc.importer.search_all, q, limit or 8, page)
+        total, items, failed = await run_in_threadpool(
+            urgent_call(svc.importer.search_all), q, limit or 8, page
+        )
     elif source in svc.importer.sources():
         try:
             total, items = await run_in_threadpool(
-                svc.importer.search, source, q, limit or 24, page
+                urgent_call(svc.importer.search), source, q, limit or 24, page
             )
         except httpx.HTTPError as err:
             raise HTTPException(502, f"{source}: {err}") from err
