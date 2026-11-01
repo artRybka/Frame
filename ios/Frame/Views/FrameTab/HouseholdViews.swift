@@ -349,6 +349,7 @@ struct MyAccessView: View {
                         }
                     }
                     NotificationsSection()
+                    FunSection()
                     Button("Odłącz ten telefon", role: .destructive) { confirmLeave = true }
                         .frame(maxWidth: .infinity)
                 }
