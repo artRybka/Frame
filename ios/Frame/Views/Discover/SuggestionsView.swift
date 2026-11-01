@@ -217,7 +217,7 @@ struct ThemeCard: View {
         VStack(alignment: .leading, spacing: 0) {
             cover
             VStack(alignment: .leading, spacing: 4) {
-                Text(theme.name)
+                Text(Names.theme(theme))
                     .font(.serif(15, weight: .semibold))
                     .foregroundStyle(Theme.ink)
                     .lineLimit(2, reservesSpace: true)
@@ -400,7 +400,7 @@ struct StudyCard: View {
                     .lineLimit(2, reservesSpace: true)
                     .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
-                Text(study.item.item.artist)
+                Text(Names.artist(study.item.item.artist))
                     .font(.caption)
                     .foregroundStyle(Theme.inkSoft)
                     .lineLimit(1)
@@ -524,7 +524,7 @@ struct ThemeView: View {
             .padding(.bottom, 32)
         }
         .paperPage()
-        .navigationTitle(theme.name)
+        .navigationTitle(Names.theme(theme))
         .navigationBarTitleDisplayMode(.inline)
         .task {
             playlistID = theme.playlistId

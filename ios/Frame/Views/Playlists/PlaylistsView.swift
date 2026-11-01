@@ -471,7 +471,7 @@ struct RulesSummary: View {
 
     var body: some View {
         FlowLayout(spacing: 6) {
-            ForEach(rules.artists, id: \.self) { TagLabel(text: $0) }
+            ForEach(rules.artists, id: \.self) { TagLabel(text: Names.artist($0)) }
             ForEach(rules.styles, id: \.self) { TagLabel(text: $0) }
             ForEach(rules.subjects, id: \.self) { TagLabel(text: "#\($0)") }
             ForEach(rules.colors, id: \.self) { TagLabel(text: ColorTag.name($0), swatch: ColorTag.color($0)) }

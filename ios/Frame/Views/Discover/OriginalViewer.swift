@@ -56,7 +56,7 @@ struct OriginalViewer: View {
             Text(item.title.isEmpty ? "Bez tytułu" : item.title)
                 .font(.serif(19, weight: .semibold))
                 .lineLimit(2)
-            let line = [item.artist, item.dateText].filter { !$0.isEmpty }.joined(separator: " · ")
+            let line = [Names.artist(item.artist), item.dateText].filter { !$0.isEmpty }.joined(separator: " · ")
             if !line.isEmpty {
                 Text(line).font(.footnote).opacity(0.75)
             }

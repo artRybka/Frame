@@ -1564,6 +1564,28 @@ private struct OrientationPill: View {
     }
 }
 
+/// Konfiguracja: switches for fun, kept on this phone (artists' first
+/// names in Polish, `NameStyle`).
+struct FunSection: View {
+    var body: some View {
+        @Bindable var style = NameStyle.shared
+        VStack(alignment: .leading, spacing: 16) {
+            SectionHeader(title: "Dla zabawy", subtitle: "Tylko w aplikacji na tym telefonie")
+            Card {
+                Toggle(isOn: $style.polishFirstNames) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Polskie imiona artystów")
+                        Text("Paul Cézanne jako Paweł Cézanne, Vincent van Gogh jako Wincenty van Gogh, Hieronymus Bosch jako Hieronim Bosch. Zmieniają się tylko imiona, nazwiska zostają.")
+                            .font(.caption)
+                            .foregroundStyle(Theme.inkSoft)
+                    }
+                }
+                .tint(Theme.accent)
+            }
+        }
+    }
+}
+
 /// Konfiguracja: where the server takes art from. Saved as soon as switched.
 struct SourcesSection: View {
     @Environment(AppModel.self) private var model
@@ -1710,6 +1732,7 @@ struct ConnectionSettingsView: View {
                     if let ai = model.aiSettings {
                         AiSection(settings: ai)
                     }
+                    FunSection()
                 }
                 .pageWidth()
                 .padding(.horizontal, Theme.gutter)
