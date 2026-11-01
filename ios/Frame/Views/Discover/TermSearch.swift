@@ -157,7 +157,8 @@ private struct TermSearch: ViewModifier {
     /// A group's panel is open over the field (`TermFacetBar` says so).
     @State private var panelOpen = false
     /// The search was opened for the X, not by a tap on the field: opening
-    /// it focuses the field, and that keyboard goes straight back down.
+    /// it focuses the field (also again a moment later), and that keyboard
+    /// goes straight back down.
     @State private var quiet = false
 
     /// Something is picked in the groups (not only in the field).
@@ -180,7 +181,6 @@ private struct TermSearch: ViewModifier {
             }
             // The X: off with the words and every group's choices too.
             .onChange(of: presented) { _, presented in
-                fputs("XDBG \(Date().timeIntervalSince1970) presented=\(presented) focused=\(focused.wrappedValue) quiet=\(quiet)\n", stderr)
                 if presented, quiet { putKeyboardAway() }
                 guard !presented else { return }
                 lookup.text = ""
@@ -202,7 +202,6 @@ private struct TermSearch: ViewModifier {
                 if !open { openForX() }
             }
             .onChange(of: focused.wrappedValue) { _, focused in
-                fputs("XDBG \(Date().timeIntervalSince1970) focused=\(focused) quiet=\(quiet) presented=\(presented)\n", stderr)
                 guard focused, quiet else { return }
                 putKeyboardAway()
             }
@@ -219,17 +218,17 @@ private struct TermSearch: ViewModifier {
 
     /// Opens the search for a group's choice, without the keyboard.
     private func openForX() {
-        fputs("XDBG \(Date().timeIntervalSince1970) openForX grouped=\(grouped) presented=\(presented) panel=\(panelOpen)\n", stderr)
         guard grouped, !presented, !panelOpen else { return }
         quiet = true
         presented = true
-        // Only the focus the opening brings: a later tap keeps its keyboard.
+        // Only the focus the opening brings (the system focuses the field
+        // again a moment later): a later tap keeps its keyboard.
         Task {
             for _ in 0 ..< 4 {
                 try? await Task.sleep(for: .milliseconds(150))
                 if focused.wrappedValue { putKeyboardAway() }
             }
-            try? await Task.sleep(for: .milliseconds(900))
+            try? await Task.sleep(for: .milliseconds(400))
             quiet = false
         }
     }
@@ -237,7 +236,6 @@ private struct TermSearch: ViewModifier {
     /// The field's focus off, also where SwiftUI's focus alone doesn't
     /// take it (the system keeps the field it focused when opening).
     private func putKeyboardAway() {
-        fputs("XDBG \(Date().timeIntervalSince1970) putKeyboardAway\n", stderr)
         focused.wrappedValue = false
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
