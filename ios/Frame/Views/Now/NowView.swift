@@ -1031,6 +1031,7 @@ struct ArtworkInfo: View {
                     .lineLimit(3)
                     .minimumScaleFactor(0.75)
                     .multilineTextAlignment(.leading)
+                    .contentTransition(.opacity)
             }
             .buttonStyle(.plain)
             .accessibilityHint(Text("Otwiera kartę dzieła"))
@@ -1101,6 +1102,12 @@ struct ArtworkInfo: View {
             }
         }
         .task(id: item.id) { await loadPolish() }
+        // The card opened from here shows the work and its Polish texts at
+        // once, as they are here, with no swap from the museum's.
+        .onAppear { ItemPeeks.keep(item) }
+        .onChange(of: shown, initial: true) { _, text in
+            if let text { ItemPeeks.keep(text, for: item.id) }
+        }
     }
 
     /// The work's Polish texts, when the player did not bring them: at once
@@ -1208,6 +1215,9 @@ struct Strip: View {
                             }
                         }
                         .buttonStyle(.plain)
+                        // The card opened from here starts with this tile's
+                        // (Polish) title.
+                        .onAppear { ItemPeeks.remember(item, thumb: .thumb(item.id)) }
                         .contextMenu {
                             if queued.contains(item.id) {
                                 Button("Usuń z kolejki", systemImage: "minus.circle", role: .destructive) {
