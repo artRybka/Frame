@@ -27,10 +27,10 @@ from fastapi import (
     Response,
     UploadFile,
 )
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, PlainTextResponse
 from starlette.concurrency import run_in_threadpool
 
-from .. import build_version, notifications
+from .. import build_version, logbuffer, notifications
 from ..config import Settings
 from ..device import MdcError
 from ..imaging import PRESETS, RenderSettings, Strategy
@@ -407,5 +407,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/debug/panel-requests", dependencies=[Depends(require_owner)])
     def panel_requests() -> list[dict[str, object]]:
         return [asdict(r) for r in service.store.recent_requests]
+
+    log_buffer = logbuffer.install()
+
+    @app.get(
+        "/api/debug/log", dependencies=[Depends(require_owner)], response_class=PlainTextResponse
+    )
+    def recent_log(lines: int = 500, grep: str | None = None) -> str:
+        """The server's last log records, oldest first (since its start, at
+        most ``logbuffer.KEEP``), for a look from outside the NAS."""
+        return "\n".join(log_buffer.lines(min(lines, logbuffer.KEEP), grep)) + "\n"
 
     return app

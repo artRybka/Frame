@@ -5,6 +5,8 @@
 - Ramka budzi się dla obrazu wysłanego tuż po „Sprawdź stan”: serwer
   czeka z sygnałem budzenia, aż ramka naprawdę zaśnie, a aplikacja na
   ramce sama pyta o obraz, gdy kilka minut po uśpieniu dalej działa.
+- Serwer: ostatnie wpisy logu pod `/api/debug/log` (tylko z tokenem
+  właściciela), do diagnozy bez otwierania Container Managera.
 
 ## 1.70.0
 
