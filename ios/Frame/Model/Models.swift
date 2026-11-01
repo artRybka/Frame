@@ -1486,6 +1486,9 @@ struct ArtTheme: Codable, Hashable, Sendable, Identifiable {
     var playlistId: Int?
     var rules: PlaylistRules?
     var id: String { key }
+
+    /// The artist of the week's key starts with it (`library/themes.py`).
+    static let weekArtistPrefix = "week-artist-"
 }
 
 /// `POST /api/themes/{key}/playlist`

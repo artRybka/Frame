@@ -117,6 +117,8 @@ def test_a_member_has_no_konfiguracja(tmp_path: Path) -> None:
             ("post", "/api/users/invites"),
             ("delete", "/api/library/items/upload:1"),
             ("get", "/api/debug/panel-requests"),
+            ("post", "/api/daily/again"),
+            ("post", "/api/themes/week-artist/again"),
         ]:
             answer = client.request(method, path, headers=member, json={})
             assert answer.status_code == 403, (method, path, answer.status_code)

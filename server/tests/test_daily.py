@@ -247,6 +247,24 @@ def test_an_artist_waits_a_month_and_a_work_a_year(offline: FrameService) -> Non
     assert found is not None and {found.id} == hokusai
 
 
+def test_the_work_of_the_day_drawn_again(offline: FrameService) -> None:
+    _catalogue(offline)
+    first = offline.daily.pick(DAY)
+    assert first is not None
+    second = offline.daily.again(DAY)
+    # Another work by another artist; the day keeps it.
+    assert second is not None and second.artist != first.artist
+    assert offline.daily.pick(DAY) == second
+    assert offline.daily.history() == {DAY.isoformat(): second.id}
+    third = offline.daily.again(DAY)
+    assert third is not None and third.artist not in {first.artist, second.artist}
+    # Nothing left: the day keeps the last one.
+    assert offline.daily.again(DAY) is None
+    assert offline.daily.pick(DAY) == third
+    # The next day draws as usual.
+    assert offline.daily.skipped(DAY + timedelta(days=1)) == []
+
+
 def test_the_season_and_round_anniversaries() -> None:
     snow = Item(id="a:1", source="a", source_id="1", title="Snow at Louveciennes")
     assert of_season(snow, date(2026, 1, 10)) and not of_season(snow, date(2026, 7, 10))
@@ -326,6 +344,21 @@ def test_without_a_key_the_page_shows_what_the_museum_says(tmp_path: Path) -> No
         tomorrow = (date.today() + timedelta(days=1)).isoformat()
         assert client.get(f"/api/daily?day={tomorrow}").status_code == 400
         assert client.get("/api/daily?day=2001-01-01").status_code == 404
+
+
+def test_konfiguracja_draws_another_work_of_the_day(tmp_path: Path) -> None:
+    app = _app(tmp_path)
+    with TestClient(app) as client:
+        _catalogue(app.state.service)
+        _today_is(app.state.service, "met:1")
+        answer = client.post("/api/daily/again")
+        assert answer.status_code == 200
+        drawn = answer.json()
+        assert drawn["day"] == date.today().isoformat()
+        assert drawn["item"]["item"]["id"] not in {"met:1", "met:2"}  # not Hokusai again
+        assert client.get("/api/daily").json()["item"]["item"]["id"] == drawn["item"]["item"]["id"]
+        assert client.post("/api/daily/again").status_code == 200
+        assert client.post("/api/daily/again").status_code == 409
 
 
 def test_claude_writes_the_page(tmp_path: Path) -> None:

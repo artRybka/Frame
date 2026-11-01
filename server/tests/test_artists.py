@@ -11,7 +11,15 @@ import pytest
 from frame_server.library import Item, ItemKind
 from frame_server.library.artists import is_artist
 from frame_server.library.duplicates import artist_words
-from frame_server.library.themes import WEEK_KEY, WEEKLY, Theme, week_of, weekly_themes
+from frame_server.library.themes import (
+    WEEK_KEY,
+    WEEKLY,
+    Theme,
+    artist_of_the_week,
+    new_artist_of_the_week,
+    week_of,
+    weekly_themes,
+)
 
 
 @pytest.mark.parametrize(
@@ -111,6 +119,27 @@ def test_artist_of_the_week_is_someone(service) -> None:
     assert [t.name for t in artists] == ["Theodore Robinson"]
 
 
+def test_the_artist_of_the_week_drawn_again(service) -> None:
+    library = service.library
+    with library.batch():
+        for n, artist in enumerate(["Theodore Robinson", "Mary Cassatt", "Childe Hassam"]):
+            for k in range(14):
+                library.upsert(_work(100 * n + k, artist))
+    day = date(2026, 11, 2)
+    first = artist_of_the_week(library, day)
+    assert first is not None
+    second = new_artist_of_the_week(library, day)
+    assert second is not None and second.name != first.name
+    assert second.description.startswith("Artysta tygodnia.")
+    # Kept for the week, in the artist's place.
+    assert artist_of_the_week(library, day) == second
+    assert [t for t in weekly_themes(library, day) if t.artists] == [second]
+    third = new_artist_of_the_week(library, day)
+    assert third is not None and third.name not in {first.name, second.name}
+    assert new_artist_of_the_week(library, day) is None  # nobody left
+    assert artist_of_the_week(library, day) == third
+
+
 def test_a_week_made_with_a_nameless_artist_gets_another(service) -> None:
     library = service.library
     _fill(library)
@@ -177,3 +206,31 @@ def test_girona_photo_archive_is_set_aside() -> None:
     )
     other = photo.model_copy(update={"id": "europeana:2048047~x", "source_id": "2048047~x"})
     assert set_aside(photo) and not set_aside(other)
+
+
+def test_konfiguracja_draws_another_artist_of_the_week(service) -> None:
+    from fastapi.testclient import TestClient
+
+    from frame_server.web import create_app, discover_api
+
+    app = create_app(service.settings)
+    app.state.service = service
+    discover_api._cards = (0.0, {})
+    with TestClient(app) as client:
+        library = service.library
+        with library.batch():
+            for n, artist in enumerate(["Theodore Robinson", "Mary Cassatt"]):
+                for k in range(14):
+                    library.upsert(_work(100 * n + k, artist))
+        first = artist_of_the_week(library, date.today())
+        assert first is not None
+        cards = client.get("/api/themes").json()
+        assert first.key in [c["key"] for c in cards]
+        answer = client.post("/api/themes/week-artist/again")
+        assert answer.status_code == 200
+        card = answer.json()
+        assert card["name"] != first.name and card["count"] == 14 and card["cover"]
+        # Discover shows it at once, in the old one's place.
+        keys = [c["key"] for c in client.get("/api/themes").json()]
+        assert card["key"] in keys and first.key not in keys
+        assert client.post("/api/themes/week-artist/again").status_code == 409

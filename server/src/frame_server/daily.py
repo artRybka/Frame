@@ -45,6 +45,9 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 HISTORY_KEY = "daily_history"
+#: Works set aside by hand for a day ("Wylosuj inne" in Konfiguracja):
+#: {"day": ISO date, "items": [ids]}; only today's are kept.
+SKIPPED_KEY = "daily_skipped"
 #: Days kept; a work is not picked again within a year.
 KEEP_DAYS = 400
 REPEAT_DAYS = 365
@@ -149,21 +152,54 @@ class Daily:
                 )
             return found
 
-    def choose(self, day: date) -> Item | None:
+    def again(self, day: date) -> Item | None:
+        """Another work for ``day`` instead of the one picked (the owner's
+        "Wylosuj inne" in Konfiguracja): none set aside that day comes back.
+        None when the catalogue has nothing else; the day keeps its work."""
+        with self._lock:
+            current = self.item(day)
+            skipped = self.skipped(day)
+            if current is not None and current.id not in skipped:
+                skipped.append(current.id)
+            found = self.choose(day, skipped)
+            if found is None:
+                return None
+            self.library.set_state(SKIPPED_KEY, {"day": day.isoformat(), "items": skipped})
+            history = self.history()
+            history[day.isoformat()] = found.id
+            self.library.set_state(HISTORY_KEY, dict(sorted(history.items())))
+            log.info("work of %s drawn again: %s instead of %s", day, found.id, current)
+            return found
+
+    def skipped(self, day: date) -> list[str]:
+        """The works set aside for ``day`` by hand."""
+        stored = self.library.get_state(SKIPPED_KEY, {})
+        return list(stored.get("items") or []) if stored.get("day") == day.isoformat() else []
+
+    def choose(self, day: date, skipped: list[str] | None = None) -> Item | None:
+        """The work for ``day``; ``skipped``: works set aside for it by hand
+        (each one drawn again makes another draw)."""
+        skipped = skipped if skipped is not None else self.skipped(day)
         history = self.history()
         recent = {
             i for d, i in history.items() if d >= (day - timedelta(days=REPEAT_DAYS)).isoformat()
         }
+        recent |= set(skipped)
         artists_cutoff = (day - timedelta(days=ARTIST_DAYS)).isoformat()
         recent_artists = [
             item.artist
             for d, i in history.items()
             if artists_cutoff <= d < day.isoformat() and (item := self.library.get(i)) is not None
         ]
+        # Drawn again: another artist too.
+        recent_artists += [
+            item.artist for i in skipped if (item := self.library.get(i)) is not None
+        ]
         # Any work of the catalogue: no e-paper threshold (it left out
         # Rembrandt and Vermeer).
         rules = PlaylistRules(kinds=[ItemKind.ARTWORK])
-        drawn = self.library.query(rules, sort="random", seed=day.toordinal(), limit=POOL)[1]
+        seed = day.toordinal() + 1_000_003 * len(skipped)
+        drawn = self.library.query(rules, sort="random", seed=seed, limit=POOL)[1]
         pool = [
             i
             for i in drawn
@@ -176,7 +212,7 @@ class Daily:
         ]
         if not pool:
             return None
-        rng = random.Random(day.toordinal())
+        rng = random.Random(seed)
         taste = self.player.taste()
         return max(pool, key=lambda i: score(i, day, taste, rng))
 

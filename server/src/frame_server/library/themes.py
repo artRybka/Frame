@@ -897,6 +897,50 @@ def weekly_themes(library: Library, day: date) -> list[Theme]:
         return themes
 
 
+ARTIST_PREFIX = "week-artist-"
+
+
+def artist_of_the_week(library: Library, day: date) -> Theme | None:
+    """The artist of ``day``'s week; None when the catalogue has none."""
+    return next((t for t in weekly_themes(library, day) if t.key.startswith(ARTIST_PREFIX)), None)
+
+
+def new_artist_of_the_week(library: Library, day: date) -> Theme | None:
+    """Another artist of the week for ``day``'s week, drawn now (the owner's
+    "Wylosuj innego" in Konfiguracja); the week's other themes stay. None
+    when the catalogue has no other artist fit for it (the week keeps its)."""
+    weekly_themes(library, day)  # this week's made first
+    week = week_of(day)
+    with _weekly_lock:
+        stored: dict[str, Any] = library.get_state(WEEK_KEY, {})
+        themes = [replace(_theme_from(t), group=WEEKLY) for t in stored.get("themes") or []]
+        history: list[str] = stored.get("history") or []
+        old = next((t for t in themes if t.key.startswith(ARTIST_PREFIX)), None)
+        items = library.query(PlaylistRules(kinds=[ItemKind.ARTWORK]))[1]
+        rng = random.Random(f"{week}:{len(history)}")
+        found = _artist_of_the_week(items, rng, set(history) | ({old.key} if old else set()))
+        if found is None:
+            return None
+        themes = [found] + [t for t in themes if t is not old]
+        library.set_state(
+            WEEK_KEY,
+            {
+                "week": week,
+                "themes": [asdict(t) for t in themes],
+                # The one set aside stays in it: not drawn again for a while.
+                "history": [*history, found.key][-WEEKLY_REPEAT * (WEEKLY_MIXES + 1) :],
+            },
+        )
+        _weekly[found.key] = found
+        log.info(
+            "artist of %s drawn again: %s instead of %s",
+            week,
+            found.name,
+            old.name if old else "none",
+        )
+        return found
+
+
 # -- "Bo lubisz" -----------------------------------------------------------------
 
 #: The cards of "Bo lubisz" as last made: a list of themes.
