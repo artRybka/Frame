@@ -91,8 +91,10 @@ protocol FrameBackend: Sendable {
     /// only), as its card in Discover. 409: nobody else fits.
     func weekArtistAgain() async throws -> ArtTheme
     /// The work's study as far as it is; waits up to `wait` seconds for one
-    /// on its way to get a step further.
-    func study(itemID: String, wait: Int) async throws -> StudyView
+    /// on its way to get a step further. Without `lists`: its page without
+    /// the lists under the text (`DailyWork.partial`), which the server
+    /// needs a while for: the text at once, the lists asked for next.
+    func study(itemID: String, wait: Int, lists: Bool) async throws -> StudyView
     /// Every work with a study, the last asked for first.
     func studies() async throws -> [StudyBrief]
     /// Asks Claude for the work's study (`again`: a new one, though there is one).
@@ -209,6 +211,13 @@ protocol FrameBackend: Sendable {
     func removePerson(id: String) async throws -> People
     func renamePerson(id: String, name: String) async throws -> People
     func savePeopleSettings(_ settings: PeopleSettings) async throws -> People
+}
+
+extension FrameBackend {
+    /// The work's study with its whole page.
+    func study(itemID: String, wait: Int) async throws -> StudyView {
+        try await study(itemID: itemID, wait: wait, lists: true)
+    }
 }
 
 extension FrameBackend {

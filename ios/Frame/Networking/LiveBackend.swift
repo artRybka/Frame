@@ -214,8 +214,10 @@ struct LiveBackend: FrameBackend {
         return try await perform(req)
     }
 
-    func study(itemID: String, wait: Int) async throws -> StudyView {
-        var req = request("/api/study/\(escape(itemID))", query: [URLQueryItem(name: "wait", value: String(wait))])
+    func study(itemID: String, wait: Int, lists: Bool) async throws -> StudyView {
+        var query = [URLQueryItem(name: "wait", value: String(wait))]
+        if !lists { query.append(URLQueryItem(name: "lists", value: "false")) }
+        var req = request("/api/study/\(escape(itemID))", query: query)
         req.timeoutInterval = TimeInterval(wait + 30)
         return try await perform(req)
     }

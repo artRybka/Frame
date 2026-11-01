@@ -93,6 +93,18 @@ def test_claude_writes_a_study_once_and_it_is_kept(tmp_path: Path) -> None:
         assert cut.status_code == 200
         assert Image.open(io.BytesIO(cut.content)).size == (270, 240)
         assert client.get("/api/study/met:1/detail?n=5").status_code == 404
+        assert work["partial"] is False
+
+        # The text first: the same page without its lists, for the app to
+        # open with while it asks for the rest.
+        text = client.get("/api/study/met:1?lists=false").json()
+        assert text["status"] == "ready"
+        first = text["work"]
+        assert first["partial"] is True
+        assert first["similar"] == [] and first["legacy"] == [] and first["by_artist"] == []
+        assert first["legacy_pending"] is False
+        for key in ("title", "context", "artist", "composition", "colour", "details", "teaser"):
+            assert first[key] == work[key], key
 
         (asked,) = _studies(fake)
         assert "studium" in asked["system"][0]["text"]

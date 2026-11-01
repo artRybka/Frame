@@ -1464,6 +1464,10 @@ struct DailyWork: Codable, Hashable, Sendable {
     /// The later works' copies (or the artist's other works) are being
     /// looked up in the museums now.
     var legacyPending: Bool?
+    /// The page without the lists under its text (similar works, what it
+    /// led to, other works by the artist): asked for the text first, which
+    /// the server has at once; the lists come with the next answer.
+    var partial: Bool? = nil
 }
 
 /// A work with a study or a work of the day's page, `GET /api/studies`:

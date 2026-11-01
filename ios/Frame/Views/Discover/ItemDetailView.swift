@@ -74,6 +74,16 @@ struct ItemDetailView: View {
     /// The work's card, rather than its placeholder.
     private var showsCard: Bool { item != nil && !holding }
 
+    /// The colours glowing at the top: the tile's from the first frame (its
+    /// thumbnail's when it knew none), so the glow does not come in only
+    /// once the work is here (a blink at the top of the page).
+    private var glow: [ColorSwatch] {
+        if let colors = item?.colors, !colors.isEmpty { return colors }
+        let tile = ItemPeeks.tiles[itemID]
+        if let colors = tile?.summary.colors, !colors.isEmpty { return colors }
+        return PageGlow.colours(of: tile?.thumb ?? .thumb(itemID), backend: model.backend)
+    }
+
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
@@ -101,7 +111,7 @@ struct ItemDetailView: View {
                 }
             }
         }
-        .paperPage(glow: item?.colors ?? [], lift: scrolled)
+        .paperPage(glow: glow, lift: scrolled)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if let item {
@@ -187,7 +197,8 @@ struct ItemDetailView: View {
     /// Whether the work has a study; one on its way (asked before the app
     /// was closed) is followed on a card at the bottom.
     private func loadStudy() async {
-        guard let found = try? await model.backend.study(itemID: itemID, wait: 0) else { return }
+        // Only where it is: the page's lists would keep the server busy.
+        guard let found = try? await model.backend.study(itemID: itemID, wait: 0, lists: false) else { return }
         study = found
         if found.isPending, let item {
             let name = title(item)

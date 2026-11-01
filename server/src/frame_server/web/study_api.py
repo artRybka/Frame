@@ -44,7 +44,9 @@ class StudyView(BaseModel):
     studies_left: int | None = None
 
 
-def _view(svc: FrameService, item: Item | None, user: User | None = None) -> StudyView:
+def _view(
+    svc: FrameService, item: Item | None, user: User | None = None, lists: bool = True
+) -> StudyView:
     status, error = svc.study.status(item)
     work = None
     if item is not None and status in ("ready", "details"):
@@ -53,7 +55,7 @@ def _view(svc: FrameService, item: Item | None, user: User | None = None) -> Stu
             v = svc.daily.detail_path(item, box).stem.rsplit("-", 1)[-1]
             return f"/api/study/{quote(item.id, safe='')}/detail?n={n}&v={v}"
 
-        work = page(svc, item, svc.study.job, day="", writing=False, url=detail_url)
+        work = page(svc, item, svc.study.job, day="", writing=False, url=detail_url, lists=lists)
         # "Why today" on the day the work is the study of the day only.
         today = svc.daily.day_of(item.id) == date.today()
         essay = svc.daily.job.essay(item) if today else None
@@ -113,13 +115,19 @@ async def _wait(svc: FrameService, item: Item | None, wait: float) -> None:
 
 @router.get("/study/{item_id}", response_model=StudyView)
 async def study(
-    item_id: str, svc: Svc, user: CurrentUser, wait: Annotated[float, Query(ge=0, le=60)] = 0
+    item_id: str,
+    svc: Svc,
+    user: CurrentUser,
+    wait: Annotated[float, Query(ge=0, le=60)] = 0,
+    lists: bool = True,
 ) -> StudyView:
     """The work's study, if there is one; ``wait``: seconds to wait for one
-    on its way to get a step further."""
+    on its way to get a step further. ``lists=false``: the page without the
+    lists under its text (``DailyWork.partial``), at once; the app asks for
+    them next."""
     item = svc.library.get(item_id)
     await _wait(svc, item, wait)
-    return await run_in_threadpool(_view, svc, item, user)
+    return await run_in_threadpool(_view, svc, item, user, lists)
 
 
 @router.post("/study/{item_id}", response_model=StudyView)
