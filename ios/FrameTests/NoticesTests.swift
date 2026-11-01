@@ -65,4 +65,38 @@ final class NoticesTests: XCTestCase {
         XCTAssertEqual(Notices.words(for: URLError(.cannotConnectToHost)).0, "Brak połączenia z serwerem")
         XCTAssertEqual(Notices.words(for: BackendError.interrupted).0, "Przerwane, gdy aplikacja była w tle")
     }
+
+    func testServerGoneDuringItsUpdateIsNoError() {
+        let notices = Notices()
+        let start = Date.now
+        notices.serverRestarting(true, now: start)
+        notices.fail(URLError(.cannotConnectToHost))
+        XCTAssertTrue(notices.items.isEmpty)
+        // Asked for something just then: said as a step of the update.
+        let card = notices.begin("Zapisuję playlistę")
+        notices.fail(URLError(.networkConnectionLost), in: card)
+        XCTAssertEqual(notices.items.first?.kind, .info)
+        XCTAssertEqual(notices.items.first?.title, "Serwer właśnie się aktualizuje")
+        // Other errors still show.
+        notices.fail(BackendError.http(status: 500, body: ""))
+        XCTAssertEqual(notices.items.last?.title, "Błąd na serwerze")
+    }
+
+    func testServerAwayIsForgivenOnlyShortlyAfterItCameBack() {
+        let notices = Notices()
+        let start = Date.now
+        notices.serverRestarting(true, now: start)
+        notices.serverRestarting(false, now: start)
+        XCTAssertTrue(notices.expectsServerAway(now: start.addingTimeInterval(5)))
+        XCTAssertFalse(notices.expectsServerAway(now: start.addingTimeInterval(Notices.serverBackGrace + 1)))
+        XCTAssertFalse(Notices().expectsServerAway())
+    }
+
+    func testOnlyAnUnreachableServerCountsAsAway() {
+        XCTAssertTrue(URLError(.cannotConnectToHost).isServerAway)
+        XCTAssertTrue(URLError(.timedOut).isServerAway)
+        XCTAssertTrue(BackendError.invalidResponse.isServerAway)
+        XCTAssertFalse(URLError(.notConnectedToInternet).isServerAway)
+        XCTAssertFalse(BackendError.http(status: 502, body: "").isServerAway)
+    }
 }

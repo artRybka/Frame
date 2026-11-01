@@ -945,20 +945,30 @@ final class AppModel {
         }
         updatingServer = true
         updatingServerFrom = before.version
+        // From here on the server goes away for a while: other requests that
+        // fail meanwhile are part of the update, not errors on screen.
+        notices.serverRestarting(true)
         defer {
             updatingServer = false
             updatingServerFrom = nil
+            notices.serverRestarting(false)
         }
         var wentAway = false
         let deadline = Date.now.addingTimeInterval(300)
         while Date.now < deadline {
             try? await Task.sleep(for: .seconds(3))
             guard let view = try? await backend.serverUpdate() else {
+                if !wentAway {
+                    notices.update(card, detail: "Serwer uruchamia się ponownie, to potrwa chwilę.")
+                }
                 wentAway = true
                 continue
             }
             serverUpdate = view
-            if view.busy { continue }
+            if view.busy {
+                if wentAway { notices.update(card, detail: "Serwer wrócił, sprawdzam, czy działa.") }
+                continue
+            }
             if view.state == "failed" {
                 notices.end(card, .error, "Aktualizacja serwera się nie udała", view.error)
                 return
