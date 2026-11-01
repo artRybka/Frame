@@ -220,15 +220,18 @@ private struct TermSearch: ViewModifier {
     private func openForX() {
         guard grouped, !presented, !panelOpen else { return }
         quiet = true
+        // The field gets an empty keyboard while it opens: with the real
+        // one coming up and going down twice the field flew up and back.
+        SearchFieldKeyboard.empty(true)
         presented = true
         // Only the focus the opening brings (the system focuses the field
         // again a moment later): a later tap keeps its keyboard.
         Task {
-            for _ in 0 ..< 4 {
+            for _ in 0 ..< 6 {
                 try? await Task.sleep(for: .milliseconds(150))
                 if focused.wrappedValue { putKeyboardAway() }
             }
-            try? await Task.sleep(for: .milliseconds(400))
+            SearchFieldKeyboard.empty(false)
             quiet = false
         }
     }
@@ -238,6 +241,25 @@ private struct TermSearch: ViewModifier {
     private func putKeyboardAway() {
         focused.wrappedValue = false
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+}
+
+/// The system search fields' keyboard: none (an empty input view) while the
+/// search opens for the X, the usual one again after.
+@MainActor
+private enum SearchFieldKeyboard {
+    static func empty(_ on: Bool) {
+        for case let scene as UIWindowScene in UIApplication.shared.connectedScenes {
+            for window in scene.windows { visit(window, on: on) }
+        }
+    }
+
+    private static func visit(_ view: UIView, on: Bool) {
+        if let field = view as? UISearchTextField {
+            field.inputView = on ? UIView(frame: .zero) : nil
+            if field.isFirstResponder { field.reloadInputViews() }
+        }
+        for subview in view.subviews { visit(subview, on: on) }
     }
 }
 

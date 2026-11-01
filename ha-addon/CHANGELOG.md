@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.67.2
+
+- Szukaj: pole nie podskakuje, gdy po wyborze z grupy pojawia się X.
+
 ## 1.67.1
 
 - Szukaj: ikona Tematu jak na szkicu (szczyt i słońce), w tej samej wielkości
