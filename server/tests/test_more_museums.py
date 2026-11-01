@@ -77,6 +77,50 @@ def test_national_museums_take_public_domain_pictures() -> None:
     assert "filter[types][]=116729" not in discover  # paintings only
 
 
+def test_national_museums_give_protected_works_for_private_use() -> None:
+    sent: list[str] = []
+    wroblewski = {
+        **MNW_OBJECT,
+        "id": 448343,
+        "title": "Matki",
+        "authors": [{"name": "Wróblewski, Andrzej (1927-1957)", "role": "malarz"}],
+    }
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        sent.append(unquote(str(request.url)))
+        if "/object/" in request.url.path:
+            rights = [{"id": 504, "name": "licencja na użytkowanie, PRAWA AUTORSKIE W MOCY"}]
+            return httpx.Response(200, json={"data": {**wroblewski, "copyrights": rights}})
+        page = {"totalItemsCount": 2, "currentPage": 1}
+        items = [MNW_OBJECT, wroblewski]
+        return httpx.Response(200, json={"data": {"paginatorDetails": page, "items": items}})
+
+    with httpx.Client(transport=httpx.MockTransport(answer)) as http:
+        NationalMuseumWarsaw(http).search("Wróblewski")
+        found = NationalMuseumWarsaw(http).fetch("448343")
+        home = NationalMuseumWarsaw(http, private_use=True)
+        total, items = home.search("Andrzej Wróblewski")
+        mine = home.fetch("448343")
+    # Without private use the museum is asked for public domain only.
+    assert "filter[copyrights][]=500" in sent[0] and found is None
+    assert "filter[copyrights]" not in sent[2]
+    assert total == 2 and [i.title for i in items] == ["Portret matki artysty", "Matki"]
+    assert items[0].license == "Public Domain Mark 1.0"  # Malczewski died in 1929
+    assert items[1].license == NationalMuseumWarsaw.private_licence
+    assert mine is not None and mine.license == NationalMuseumWarsaw.private_licence
+
+
+def test_national_museums_find_nothing_without_failing() -> None:
+    # Muza answers a search with no results 404 "NO_RESULTS_FOR_GIVEN_QUERY".
+    def answer(request: httpx.Request) -> httpx.Response:
+        body = {"data": None, "status": 404, "message": "NO_RESULTS_FOR_GIVEN_QUERY"}
+        return httpx.Response(404, json=body)
+
+    with httpx.Client(transport=httpx.MockTransport(answer)) as http:
+        assert NationalMuseumKrakow(http).search("Andrzej Wróblewski") == (0, [])
+        assert NationalMuseumWarsaw(http).discover(Discovery(kind="painting")) == (0, [])
+
+
 def test_polish_dates_and_words() -> None:
     assert MuzaMuseum._year("lata 80. XIX w.") == 1880
     assert MuzaMuseum._year("koniec XIX w.") == 1890

@@ -1613,7 +1613,7 @@ struct SourcesSection: View {
         VStack(alignment: .leading, spacing: 16) {
             SectionHeader(title: "Źródła dzieł")
             Card {
-                Text("Muzea, Wikimedia Commons, Europeana i Openverse dają dzieła wolne do pokazywania: domenę publiczną (w UE 70 lat po śmierci twórcy), a przy użytku prywatnym także licencje Creative Commons.")
+                Text("Muzea, Wikimedia Commons, Europeana i Openverse dają dzieła wolne do pokazywania: domenę publiczną (w UE 70 lat po śmierci twórcy), a przy użytku prywatnym także licencje Creative Commons i prace chronione z muzeów, które je udostępniają.")
                     .font(.caption)
                     .foregroundStyle(Theme.inkSoft)
                 Divider()
@@ -1622,7 +1622,7 @@ struct SourcesSection: View {
                         Text("Użytek prywatny")
                         Text(
                             privateUse.wrappedValue
-                                ? "Z Wikimedia Commons, Europeany i Openverse także dzieła na wolnych licencjach (np. CC BY-SA), z podanym autorem. Muzea nadal dają tylko domenę publiczną."
+                                ? "Z Wikimedia Commons, Europeany i Openverse także dzieła na wolnych licencjach (np. CC BY-SA), z podanym autorem. Muzea Narodowe w Warszawie i Krakowie oraz V&A także prace wciąż chronione prawem autorskim, tylko do oglądania w domu."
                                 : "Tylko dzieła w domenie publicznej (CC0). Opisy w oryginale, po angielsku."
                         )
                         .font(.caption)
