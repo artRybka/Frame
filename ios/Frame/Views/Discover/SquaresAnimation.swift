@@ -283,3 +283,17 @@ private extension Array where Element == PlayingSquare {
     /// From the first square's left edge to the last one's right edge.
     var width: Double { Double(count) * SquareGame.side + Double(count - 1) * SquareGame.gap }
 }
+
+/// Waiting on a search: the icon's squares in a small box, nothing to read.
+/// Shown for as long as more may come; gone only once nothing more will.
+struct SearchWaiting: View {
+    var height: CGFloat = 96
+
+    var body: some View {
+        SquaresAnimation(inScreenMiddle: false, tapForNext: false)
+            .frame(height: height)
+            .frame(maxWidth: .infinity)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Szukam")
+    }
+}

@@ -282,11 +282,7 @@ struct TermSuggestions: View {
         VStack(alignment: .leading, spacing: 0) {
             if lookup.hits.isEmpty, lookup.hint == nil, !lookup.askingMuseums {
                 // Asking the catalogue (the words are still being typed).
-                HStack(spacing: 8) {
-                    ProgressView().controlSize(.small)
-                    Text("Szukam…").font(.subheadline).foregroundStyle(Theme.inkSoft)
-                }
-                .padding(12)
+                SearchWaiting(height: 72)
             }
             ForEach(lookup.hits) { hit in
                 row(
@@ -295,11 +291,7 @@ struct TermSuggestions: View {
                 ) { pick(hit.token, fromMuseums: false) }
             }
             if lookup.askingMuseums {
-                HStack(spacing: 8) {
-                    ProgressView().controlSize(.small)
-                    Text("Pytam muzea…").font(.subheadline).foregroundStyle(Theme.inkSoft)
-                }
-                .padding(12)
+                SearchWaiting(height: 72)
             } else if let hint = lookup.hint, hint.total > 0 {
                 VStack(alignment: .leading, spacing: 0) {
                     Eyebrow("W muzeach: \(Names.works(hint.total))", color: Theme.accent)
