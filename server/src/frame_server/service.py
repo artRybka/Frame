@@ -30,6 +30,7 @@ from .library import ImageCache, Importer, Library
 from .library.commons import repair_library
 from .library.museums import Access, europeana_mirrors
 from .library.museums import client as museum_client
+from .library.wikidata import PROPERTIES, CommonsCopies
 from .notifications import Notifier
 from .panel_app import POLL, PanelApp
 from .panel_config import PanelConfigStore
@@ -165,6 +166,12 @@ class FrameService:
         self.panel_config = PanelConfigStore(settings, self.library)
         self.images = ImageCache(settings.data_dir / "library", museum_client)
         self.images.mirrors["europeana"] = europeana_mirrors
+        # The museums' pictures as Commons keeps them, when a museum's image
+        # server turns us away (the AIC's IIIF behind a Cloudflare challenge).
+        copies = CommonsCopies(lambda: self.images.http())
+        for source in PROPERTIES:
+            if source != "wikiart":
+                self.images.mirrors[source] = copies
         # Before the player trims or grows the catalogue: the app's limit wins.
         self.storage = StorageStore(settings, self.library, self.images, self.store)
         self.importer = Importer(
@@ -206,7 +213,9 @@ class FrameService:
         self.later = LaterWorks(self.library, lambda q, n: self.importer.search_all(q, n))
         self.daily.later = self.later
         # Other works by a study's artist, from the museums when the catalogue has too few.
-        self.artists = ArtistWorks(self.library, lambda q, n: self.importer.search_all(q, n))
+        self.artists = ArtistWorks(
+            self.library, lambda q, n: self.importer.search_all(q, n), self.images
+        )
         # Studies of any work, asked for on its card.
         self.study = Study(self.daily, self.ai, StudyJob(self.library, self.images, self.ai_config))
         self.ai.register(self.study.job)

@@ -32,6 +32,7 @@ from ..imaging.layout import (
 from ..imaging.pipeline import RenderSettings, encode_image, plan_for, render_original
 from ..library import Facets, Item, ItemKind, ItemSummary, Job, Look, PhotoInfo, PlaylistRules
 from ..library.duplicates import work_key
+from ..library.images import Gone
 from ..library.importer import ALL
 from ..library.models import Framing
 from ..library.museums import MUSEUMS, Discovery, Kind
@@ -86,9 +87,13 @@ def remote_items(svc: FrameService, items: list[Item], copies: bool = True) -> l
     them (and whether the owner likes them). With ``copies`` (results from
     several sources) a work the library holds from another source comes as
     the library's copy, unless this one is from a more reliable source than a
-    copy only the server added."""
+    copy only the server added. Works with no picture anywhere are left out
+    (``ImageCache.gone``)."""
     found: dict[str, RemoteItem] = {}
+    gone = svc.images.gone_ids()
     for item in items:
+        if item.id in gone:
+            continue
         twin: str | None = None
         if copies and not svc.library.has(item.id):
             if copy := svc.importer.copy_of(item):
@@ -197,6 +202,8 @@ def list_items(
         sources=source or [],
         favorites_only=favorites,
         kept_only=kept,
+        # Works with no picture anywhere: an empty tile helps nobody.
+        exclude_ids=sorted(svc.images.gone_ids()),
     )
     total, items = svc.library.query(rules, sort=sort, offset=offset, limit=limit, seed=seed)
     return ItemPage(total=total, items=[ItemSummary.of(i) for i in items])
@@ -327,6 +334,8 @@ async def item_thumb(item_id: str, svc: Svc) -> FileResponse:
     item = await _work(svc, item_id, threads=THUMB_THREADS)
     try:
         path = await to_thread.run_sync(svc.images.ensure_thumb, item, limiter=THUMB_THREADS)
+    except Gone as err:  # the app leaves the work out
+        raise HTTPException(410, f"no picture anywhere: {err}") from err
     except (httpx.HTTPError, OSError) as err:
         raise HTTPException(502, f"thumbnail unavailable: {err}") from err
     return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "max-age=86400"})
@@ -340,6 +349,8 @@ async def item_image(item_id: str, svc: Svc) -> FileResponse:
         path, original = await to_thread.run_sync(
             svc.images.picture, item, True, limiter=SHOWN_THREADS
         )
+    except Gone as err:  # the app leaves the work out
+        raise HTTPException(410, f"no picture anywhere: {err}") from err
     except (httpx.HTTPError, OSError) as err:
         raise HTTPException(502, f"image unavailable: {err}") from err
     # Without the original, its thumbnail: asked for again next time.

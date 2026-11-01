@@ -15,6 +15,7 @@ from __future__ import annotations
 import re
 import threading
 from bisect import bisect_left
+from collections import Counter
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 
@@ -80,6 +81,9 @@ class TermIndex:
         #: The terms works were given (Item.terms): which works have each.
         self._given: dict[str, list[int]] = {}
         by_artist: dict[str, set[object]] = {}
+        #: Keywords (the model's, in English and Polish) and the museums'
+        #: subjects: folded phrase -> its spellings and works.
+        by_phrase: dict[str, tuple[Counter[str], set[object]]] = {}
         for item in items:
             if not searchable(item, spare):
                 continue
@@ -95,11 +99,28 @@ class TermIndex:
             if item.artist and is_artist(item.artist):
                 works_of = by_artist.setdefault(item.artist, set())
                 works_of.add(entry.work if entry.work is not None else item.id)
+            for phrase in {p.strip() for p in (*item.keywords, *item.subjects) if p.strip()}:
+                spellings, works_with = by_phrase.setdefault(fold(phrase), (Counter(), set()))
+                spellings[phrase] += 1
+                works_with.add(entry.work if entry.work is not None else item.id)
         self._sorted_words = sorted(self._words)
         #: (folded name, name, how many works), most works first.
         self._artists = sorted(
             ((fold(name), name, len(found)) for name, found in by_artist.items()),
             key=lambda a: (-a[2], a[1]),
+        )
+        #: (folded phrase, its words, the commonest spelling, how many
+        #: works), most works first.
+        self._phrases = sorted(
+            (
+                (folded, folded.split(), spellings.most_common(1)[0][0], len(found))
+                for folded, (spellings, found) in by_phrase.items()
+            ),
+            key=lambda p: (-p[3], p[0]),
+        )
+        #: (a word of a phrase, the phrase's place above), in order.
+        self._phrase_words = sorted(
+            (word, n) for n, phrase in enumerate(self._phrases) for word in set(phrase[1])
         )
         self._counts: dict[str, int] = {}
         self._lock = threading.Lock()
@@ -119,6 +140,33 @@ class TermIndex:
                 if len(found) == limit:
                     break
         return found
+
+    def phrases(self, text: str, limit: int = 4) -> list[str]:
+        """Keywords and subjects of the works ("wielka fala", "Mount Fuji")
+        that start like ``text`` or have a word starting so; those starting
+        so first, then those of the most works."""
+        wanted = fold(text.strip())
+        if len(wanted) < 2:
+            return []
+        first = wanted.split()[0]
+        found: set[int] = set()
+        at = bisect_left(self._phrase_words, (first,))
+        while at < len(self._phrase_words) and self._phrase_words[at][0].startswith(first):
+            found.add(self._phrase_words[at][1])
+            at += 1
+        starts: list[str] = []
+        inside: list[str] = []
+        for n in sorted(found):
+            folded, _, spelling, _ = self._phrases[n]
+            if folded == wanted:
+                continue  # the typed words' own row says it
+            if folded.startswith(wanted):
+                starts.append(spelling)
+            elif f" {wanted}" in f" {folded}":
+                inside.append(spelling)
+            if len(starts) == limit:
+                break
+        return (starts + inside)[:limit]
 
     def term_count(self, key: str) -> int:
         """How many works ``query(PlaylistRules(terms=[key]))`` finds."""

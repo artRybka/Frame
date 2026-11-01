@@ -26,6 +26,8 @@ PACE = {
     "www.artic.edu": 0.25,
     "collectionapi.metmuseum.org": 0.25,
     "images.metmuseum.org": 0.25,
+    # Asked for the Commons copy of a picture a museum refused.
+    "www.wikidata.org": 0.5,
 }
 #: How long a host that turned us away is not asked; doubled each time it
 #: still does, up to REST_MAX, and forgotten once it answers again.

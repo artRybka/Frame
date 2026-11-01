@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import random
 import time
+from types import SimpleNamespace
 
 from frame_server.library import Item, ItemKind, PlaylistRules
 from frame_server.library import repo as repo_module
 from frame_server.library.repo import Library
 from frame_server.library.vocabulary import TERMS
+from frame_server.web.discover_api import _term_hits
 
 WORDS = [
     "sea",
@@ -105,3 +107,36 @@ def test_a_changed_catalogue_is_counted_again_in_the_background(tmp_path, monkey
     after = lib.term_index()
     assert after is not before
     assert after.word_count("rain") == before.word_count("rain") + 1
+
+
+def test_keywords_and_subjects_are_suggested(tmp_path) -> None:
+    lib = Library(tmp_path / "lib.db")
+    wave = {"title": "Under the Wave off Kanagawa", "artist": "Katsushika Hokusai"}
+    lib.upsert(
+        Item(id="met:1", source="met", source_id="1", keywords=["wielka fala", "góra fuji"], **wave)
+    )
+    lib.upsert(
+        Item(
+            id="aic:2",
+            source="aic",
+            source_id="2",
+            title="Red Fuji",
+            keywords=["góra fuji", "niebo"],
+            subjects=["Mount Fuji"],
+        )
+    )
+    lib.upsert(Item(id="aic:3", source="aic", source_id="3", title="Waves", keywords=["fala"]))
+    index = lib.term_index()
+    # Phrases starting so first, then those with a word starting so; the commonest first.
+    assert index.phrases("fuj") == ["góra fuji", "Mount Fuji"]
+    assert index.phrases("gora") == ["góra fuji"]
+    assert index.phrases("wielka f") == ["wielka fala"]
+    assert index.phrases("fal") == ["fala", "wielka fala"]
+    assert index.phrases("fala") == ["wielka fala"]  # "fala" itself is the typed words' row
+    assert index.phrases("f") == []
+
+    # In /api/terms: words to search by, counted like typed words, before the typed ones.
+    hits = _term_hits(SimpleNamespace(library=lib), "fuj", 10)  # type: ignore[arg-type]
+    words = [(h.name, h.count) for h in hits if h.kind == "word"]
+    assert words == [("góra fuji", 2), ("Mount Fuji", 1), ("fuj", 2)]
+    assert hits[0].name == "góra fuji" and hits[-1].name == "fuj"

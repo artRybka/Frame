@@ -32,10 +32,22 @@ struct RootView: View {
         }
     }
 
+    /// The tab bar's selection; Teraz tapped again while open goes back to
+    /// the picture on the frame.
+    private var tabSelection: Binding<Screen> {
+        Binding(
+            get: { tab },
+            set: { selected in
+                if selected == .now, tab == .now { model.nowTabTapped += 1 }
+                tab = selected
+            }
+        )
+    }
+
     var body: some View {
         // Szukaj is the system search tab: on its own at the bottom, the
         // other tabs fold into one as its glass field opens.
-        TabView(selection: $tab) {
+        TabView(selection: tabSelection) {
             Tab("Teraz", systemImage: "photo.artframe", value: Screen.now) { NowView() }
             Tab("Odkrywaj", systemImage: "square.grid.2x2", value: Screen.discover) { DiscoverView() }
             Tab("Playlisty", systemImage: "rectangle.stack", value: Screen.playlists) { PlaylistsView() }

@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import re
 import threading
+from collections import OrderedDict
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import quote, urlsplit
@@ -230,3 +232,60 @@ def wikipedia_text(
     if first:
         text = _sections_first(text, first)
     return text[:chars].rsplit("\n", 1)[0]
+
+
+#: Widths of a Commons copy: a grid's thumbnail, the card's and the frame's original.
+COPY_THUMB_WIDTH = 960
+COPY_WIDTH = 2560
+#: Works whose Commons copy is remembered (found or not).
+COPIES_KEPT = 4000
+
+
+class CommonsCopies:
+    """The museum's picture as Wikimedia Commons keeps it (the work's P18
+    on Wikidata): another address for a museum whose image server turns
+    programs away (the Art Institute of Chicago behind Cloudflare)."""
+
+    def __init__(self, http: Callable[[], httpx.Client]) -> None:
+        self.http = http
+        self._known: OrderedDict[str, str] = OrderedDict()
+        self._lock = threading.Lock()
+
+    def __call__(self, item: Item, thumb: bool = False) -> list[str]:
+        name = self.file(item)
+        if not name:
+            return []
+        width = COPY_THUMB_WIDTH if thumb else COPY_WIDTH
+        return [
+            "https://commons.wikimedia.org/wiki/Special:FilePath/"
+            + quote(name, safe="")
+            + f"?width={width}"
+        ]
+
+    def file(self, item: Item) -> str:
+        """The Commons file name of the work's picture; "" when Wikidata
+        has none (remembered) or did not answer (asked again next time)."""
+        with self._lock:
+            if item.id in self._known:
+                self._known.move_to_end(item.id)
+                return self._known[item.id]
+        ref = record_id(item)
+        if ref is None:
+            return ""
+        try:
+            with self.http() as http:
+                qid = Wikidata._find(http, *ref)
+                claims = Wikidata._entities(http, [qid], "claims").get(qid, {}) if qid else {}
+        except (httpx.HTTPError, ValueError, KeyError):
+            return ""
+        name = ""
+        for claim in (claims.get("claims") or {}).get("P18") or []:
+            value = claim.get("mainsnak", {}).get("datavalue", {}).get("value")
+            if isinstance(value, str) and value:
+                name = value
+                break
+        with self._lock:
+            self._known[item.id] = name
+            while len(self._known) > COPIES_KEPT:
+                self._known.popitem(last=False)
+        return name

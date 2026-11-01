@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.62.0
+
+- Szukaj: podpowiedzi obejmują też słowa kluczowe i tematy dzieł (np.
+  „wielka fala”, „góra Fuji”), oznaczone w aplikacji jako „Słowo kluczowe”.
+- Ponowne stuknięcie w „Teraz” na pasku wraca do obrazu, który jest na
+  ramce, i przewija stronę na górę.
+- Poświata kolorów jest krótsza (zostaje u góry strony), a do tego pojawia
+  się też na ekranie playlisty, na karcie dzieła i w studium.
+- Puste obrazy dzieł: gdy muzeum odmawia, serwer bierze kopię z Wikimedia
+  Commons; obrazy same ponawiają wczytywanie, dotknięcie wczytuje je od
+  razu, a dzieła bez obrazu znikają z list.
+- „Inne prace artysty” w studium bez powtórzeń: ta sama praca z innego
+  źródła (także pod tytułem w innym języku) i kopie studiowanego dzieła są
+  pomijane.
+
 ## 1.61.1
 
 - Szukaj: okienka grup są ze szkła, które płynnie rozciąga się z przycisku
