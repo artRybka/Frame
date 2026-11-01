@@ -4,7 +4,10 @@ Both run the same collection site with a JSON API behind it (no key, not
 documented): ``api/search/Object/page/<n>?filter[...]`` and
 ``api/object/<id>``. Each object carries the museum's own rights statement;
 only those it marks "Domena publiczna" are asked for. Titles and texts are
-Polish. Pictures: ``upload/multimedia/<path>.<ext>`` is the original
+Polish. With ``private_use`` (the frame is seen at home only) works still
+in copyright come too (Wróblewski, Nowosielski): the museums publish their
+pictures themselves, and Polish law lets one copy them for personal use
+(art. 23); they are marked as such. Pictures: ``upload/multimedia/<path>.<ext>`` is the original
 (4000–6000 px), ``upload/cache/multimedia_big/`` a 1024 px copy.
 """
 
@@ -15,6 +18,7 @@ from functools import cache
 from typing import Any, ClassVar
 from urllib.parse import quote
 
+from .lifespan import free_in_eu
 from .models import Item
 from .museums import Discovery, Museum, _person, strip_html
 
@@ -31,6 +35,8 @@ class MuzaMuseum(Museum):
     #: Object types (ids of the museum's dictionary) asked for each kind.
     types: ClassVar[dict[str, tuple[int, ...]]]
     page_size = 100
+    #: What a work still in copyright is marked with (``private_use`` only).
+    private_licence = "Prawa autorskie w mocy (użytek prywatny)"
 
     #: The kind of work an object type is, in the words other sources use.
     classifications: ClassVar[dict[str, str]] = {
@@ -99,17 +105,22 @@ class MuzaMuseum(Museum):
         path, ext = image.get("filePath") or "", image.get("extension") or ""
         if not path or ext.lower() not in ("jpg", "jpeg", "png") or not d.get("id"):
             return None
-        rights = d.get("copyrights")
-        if rights is not None:
-            checked = any(r.get("id") == self.public_domain for r in rights)
-        if not checked:
-            return None
-        file = f"{path}.{ext}"
         authors = d.get("authors") or []
         makers = [a for a in authors if a.get("role") not in ("wydawca", "wydawnictwo")]
         maker = (makers or authors or [{}])[0]
         name = str(maker.get("name") or "")
         life = re.search(r"\(([^)]*\d{4}[^)]*)\)\s*$", name)
+        rights = d.get("copyrights")
+        if rights is not None:
+            checked = any(r.get("id") == self.public_domain for r in rights)
+        elif self.private_use:
+            # Searched without the rights filter, and search results do not
+            # say: free when the author died long enough ago.
+            died = re.findall(r"\d{4}", life.group(1)) if life else []
+            checked = len(died) > 1 and free_in_eu(int(died[-1]))
+        if not checked and not self.private_use:
+            return None
+        file = f"{path}.{ext}"
         dates = " ".join(str(c.get("name") or "") for c in d.get("createDates") or [])
         types = [str(t.get("name") or "") for t in d.get("types") or []]
         kind = next((self.classifications[t] for t in types if t in self.classifications), "")
@@ -133,7 +144,7 @@ class MuzaMuseum(Museum):
             subjects=[str(t.get("name") or "") for t in d.get("tags") or [] if t.get("name")][:12],
             culture=next((p for p in places if p and p != "nieznane"), ""),
             credit=f"{self.name}, {d['inventoryNumber']}" if d.get("inventoryNumber") else "",
-            license="Public Domain Mark 1.0",
+            license="Public Domain Mark 1.0" if checked else self.private_licence,
             url=f"{self.site}/{d['id']}",
             highlight=bool(d.get("masterpieces")),
             description=description,
@@ -142,11 +153,15 @@ class MuzaMuseum(Museum):
         )
 
     def _get(self, filters: list[str], limit: int, page: int) -> tuple[int, list[Item]]:
-        query = "&".join(
-            [*filters, f"filter[copyrights][]={self.public_domain}", "filter[formFeature][]=3"]
-        )
+        if not self.private_use:
+            filters = [*filters, f"filter[copyrights][]={self.public_domain}"]
+        query = "&".join([*filters, "filter[formFeature][]=3"])
         # The filters go in the URL as they are (``params`` would replace them).
         resp = self.http.get(f"{self.api}/search/Object/page/{page}?{query}&maxPerPage={limit}")
+        if resp.status_code == 404:
+            # How Muza says "nothing found" ("NO_RESULTS_FOR_GIVEN_QUERY"),
+            # not that the museum is down.
+            return 0, []
         resp.raise_for_status()
         data = resp.json().get("data") or {}
         items = [i for d in data.get("items") or [] if (i := self._map(d))]
