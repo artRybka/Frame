@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.69.8
+
+- Wyszukiwanie: animowane kwadraciki to znak czekania (wyniki, podpowiedzi,
+  edytor playlisty); znikają dopiero, gdy nic więcej nie przyjdzie.
+
 ## 1.69.7
 
 - Studium dzieła: obraz nie miga przy wejściu; najpierw miniatura, na nią
