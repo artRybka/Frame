@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.71.2
+
+- Zestawy z Odkrywaj nie czekają już w kolejce do muzeów za importem w tle;
+  serwer zapisuje w logu czasy każdej rundy zestawu.
+- Miniatury w Szukaj i Odkrywaj w swoich proporcjach, także z muzeów, które
+  nie podają wymiarów.
+
 ## 1.71.1
 
 - Okienko podpowiedzi w Szukaj jest szklane, jak otwarta grupa.
