@@ -7,8 +7,9 @@ import SwiftUI
 /// field's tokens; museums, colours, styles, subjects, periods and techniques
 /// come from the glass groups over the field, which hide as the results
 /// scroll and come back when the field is tapped or the scrolling stops. With nothing asked yet
-/// the icon's squares play, and at the end of the results they ask the
-/// museums for more when pulled. Coming back from a work finds the results
+/// the icon's squares play. The museums are asked for more on their own as
+/// the results scroll towards their end, the squares playing at the bottom,
+/// over the groups, while they answer. Coming back from a work finds the results
 /// as they were. The heart on a tile puts the work in Ulubione (a museum's
 /// work joins the library with it).
 struct MuseumSearchView: View {
@@ -27,6 +28,8 @@ struct MuseumSearchView: View {
     /// The museums are still answering.
     @State private var asking = false
     @State private var loadingMore = false
+    /// The results' end is less than a screen away: time to ask for more.
+    @State private var nearEnd = false
     /// What the results are for, so that coming back from a work doesn't
     /// search again; the search goes on while a work is open.
     @State private var searched: SearchKey?
@@ -100,16 +103,27 @@ struct MuseumSearchView: View {
         }
         .scrollDismissesKeyboard(.immediately)
         .hidesOnScroll($groupsShown)
+        // Before the end shows, so the next works are mostly there already.
+        .onScrollGeometryChange(for: Bool.self) { geometry in
+            geometry.contentSize.height - geometry.visibleRect.maxY < geometry.containerSize.height
+        } action: { _, near in
+            nearEnd = near
+            moreIfNeeded()
+        }
         .paperPage()
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            if groupsShown {
-                TermFacetBar(
-                    tokens: tokens, museums: museums, colors: ColorTag.families + ColorTag.moods,
-                    focus: $fieldFocused, panelHeight: height * TermFacetBar.panelShare
-                )
-                .padding(.horizontal, Theme.gutter)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
+            // Hidden, the groups keep their room: the results' end (and the
+            // squares there) stays above them when they come back. (Taken
+            // out, they gave it up, and coming back covered the end.)
+            TermFacetBar(
+                tokens: tokens, museums: museums, colors: ColorTag.families + ColorTag.moods,
+                focus: $fieldFocused, panelHeight: height * TermFacetBar.panelShare
+            )
+            .padding(.horizontal, Theme.gutter)
+            .opacity(groupsShown ? 1 : 0)
+            .offset(y: groupsShown ? 0 : 48)
+            .allowsHitTesting(groupsShown)
+            .accessibilityHidden(!groupsShown)
         }
         // Measured outside the groups' inset: an open group grows it.
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
@@ -121,6 +135,8 @@ struct MuseumSearchView: View {
         .onChange(of: asked) { _, asked in
             if !asked, !groupsShown { withAnimation(.snappy) { groupsShown = true } }
         }
+        // A first page shorter than the screen asks for the next at once.
+        .onChange(of: asking) { moreIfNeeded() }
         .task {
             await model.loadVocabulary()
             if museums.isEmpty { museums = (try? await model.backend.museums()) ?? [] }
@@ -221,9 +237,20 @@ struct MuseumSearchView: View {
                 )
             }
             if !asking, !next.isEmpty {
-                PullForMore(loading: loadingMore) {
-                    Task { await loadMore() }
+                // The end's room: the icon's squares while the museums are
+                // asked for more, nothing to read or pull.
+                ZStack {
+                    if loadingMore {
+                        SquaresAnimation(inScreenMiddle: false, tapForNext: false)
+                            .transition(.opacity)
+                    }
                 }
+                .frame(height: 96)
+                .frame(maxWidth: .infinity)
+                .animation(.easeOut(duration: 0.25), value: loadingMore)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Doczytuję")
+                .accessibilityHidden(!loadingMore)
             }
         }
     }
@@ -307,12 +334,26 @@ struct MuseumSearchView: View {
         }
     }
 
+    /// Asks the museums for their next pages while the results' end is near,
+    /// again and again until it isn't (a page can bring few new works). A
+    /// page that brought nothing waits for the next scroll, so that a museum
+    /// that doesn't answer isn't asked over and over.
+    @MainActor
+    private func moreIfNeeded() {
+        guard nearEnd, asked, !asking, !loadingMore, !next.isEmpty, let key = searched else { return }
+        loadingMore = true
+        Task { @MainActor in
+            let found = results.count
+            let pages = next
+            await loadMore(key)
+            loadingMore = false
+            if key != searched || results.count != found || next != pages { moreIfNeeded() }
+        }
+    }
+
     /// The next page of each museum that has more.
     @MainActor
-    private func loadMore() async {
-        guard let key = searched else { return }
-        loadingMore = true
-        defer { loadingMore = false }
+    private func loadMore(_ key: SearchKey) async {
         // Museums looked through for colours stop at different pages.
         let byPage = Dictionary(grouping: next.keys.sorted()) { next[$0] ?? 1 }
         await withTaskGroup(of: Void.self) { group in
