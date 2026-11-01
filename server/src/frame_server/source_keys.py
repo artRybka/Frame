@@ -34,8 +34,10 @@ class KeyUnchecked(Exception):
     """The service did not answer, so the key could not be checked."""
 
 
-def _get(url: str, param: str) -> Callable[[httpx.Client, str], httpx.Response]:
-    return lambda http, key: http.get(url, params={param: key})
+def _get(url: str, param: str, **query: str) -> Callable[[httpx.Client, str], httpx.Response]:
+    # All in ``params``: httpx drops a query string already in the URL when
+    # given ``params``, and the search then fails without its words (400).
+    return lambda http, key: http.get(url, params={**query, param: key})
 
 
 def _paris(http: httpx.Client, key: str) -> httpx.Response:
@@ -65,7 +67,9 @@ SOURCES: tuple[KeyedSource, ...] = (
         signup="https://api.data.gov/signup/",
         about="Muzea sztuki Smithsonian (sztuka amerykańska, portrety, sztuka Azji), "
         "obrazy CC0. Bez klucza to źródło jest wyłączone.",
-        ask=_get("https://api.si.edu/openaccess/api/v1.0/search?q=painting&rows=1", "api_key"),
+        ask=_get(
+            "https://api.si.edu/openaccess/api/v1.0/search", "api_key", q="painting", rows="1"
+        ),
     ),
     KeyedSource(
         key="paris",
@@ -80,7 +84,9 @@ SOURCES: tuple[KeyedSource, ...] = (
         name="Europeana",
         signup="https://pro.europeana.eu/page/get-api",
         about="Bez własnego klucza Europeana działa na wspólnym kluczu demo z niższymi limitami.",
-        ask=_get("https://api.europeana.eu/record/v2/search.json?query=painting&rows=1", "wskey"),
+        ask=_get(
+            "https://api.europeana.eu/record/v2/search.json", "wskey", query="painting", rows="1"
+        ),
     ),
 )
 BY_KEY = {s.key: s for s in SOURCES}
@@ -126,7 +132,8 @@ class SourceKeys:
                 client.close()
         if resp.status_code in (401, 403):
             raise KeyRejected(f"{spec.name} did not accept the key")
-        if resp.status_code != 200:
+        # Over the hour's limit (api.data.gov): the key itself is known.
+        if resp.status_code not in (200, 429):
             raise KeyUnchecked(f"{spec.name} answered {resp.status_code}")
 
     def set(self, source: str, key: str | None) -> None:

@@ -416,6 +416,8 @@ def test_a_source_key_is_asked_of_its_service() -> None:
     from frame_server.source_keys import KeyRejected, KeyUnchecked, SourceKeys
 
     def answer(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and not request.url.params.get("q"):
+            return httpx.Response(400)  # the search asked without its words
         key = request.headers.get("auth-token") or request.url.params.get("api_key")
         if key == "down":
             return httpx.Response(503)
