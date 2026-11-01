@@ -415,23 +415,39 @@ struct ItemDetailView: View {
         }
     }
 
+    /// The work's study as last heard of: from the card at the bottom
+    /// (asked in this session) or from the server.
+    private var studyState: StudyView? { model.studies[itemID] ?? study }
+
+    /// Whether the study is written: "Otwórz studium" then sits under the
+    /// frame buttons instead of under "O dziele".
+    private var studyReady: Bool { studyState?.status == "ready" }
+
+    /// "Otwórz studium" under the frame buttons; held: "Przygotuj od nowa".
+    private func openStudyButton(_ item: Item) -> some View {
+        Button {
+            showStudy()
+        } label: {
+            Label("Otwórz studium", systemImage: "sparkles")
+        }
+        .buttonStyle(ActionButtonStyle())
+        .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .contextMenu {
+            Button("Przygotuj od nowa", systemImage: "arrow.clockwise") { prepareStudy(item, again: true) }
+        }
+        .sensoryFeedback(.impact(weight: .light), trigger: studyTaps)
+        .transition(.opacity)
+    }
+
     /// "Przygotuj studium dzieła" under "O dziele": Claude writes the work
     /// of the day's page for this work; the card at the bottom follows it
-    /// and opens it once ready. A study made is kept: "Otwórz studium".
+    /// and opens it once ready. A study made is kept, and "Otwórz studium"
+    /// moves up under the frame buttons (`actions`).
     @ViewBuilder
     private func studySection(_ item: Item) -> some View {
-        if let state = model.studies[itemID] ?? study, state.status != "off" {
+        if let state = studyState, state.status != "off", state.status != "ready" {
             VStack(alignment: .leading, spacing: 8) {
-                if state.status == "ready" {
-                    Button {
-                        showStudy()
-                    } label: {
-                        Label("Otwórz studium", systemImage: "sparkles")
-                    }
-                    .contextMenu {
-                        Button("Przygotuj od nowa", systemImage: "arrow.clockwise") { prepareStudy(item, again: true) }
-                    }
-                } else if state.isPending {
+                if state.isPending {
                     Button {} label: {
                         Label {
                             Text("Przygotowuję studium…")
@@ -647,14 +663,19 @@ struct ItemDetailView: View {
         return text
     }
 
-    /// The two ways onto the frame, side by side: now, or next. Keeping it
-    /// (favourite, playlist, hiding it) is in the navigation bar.
+    /// The two ways onto the frame, side by side: now, or next; under them
+    /// "Otwórz studium" once the work has a study. Keeping it (favourite,
+    /// playlist, hiding it) is in the navigation bar.
     private func actions(_ item: Item) -> some View {
-        HStack(spacing: 12) {
-            showButton
-            queueButton(item)
+        VStack(spacing: 12) {
+            HStack(spacing: 12) {
+                showButton
+                queueButton(item)
+            }
+            if studyReady { openStudyButton(item) }
         }
         .labelStyle(ActionLabelStyle())
+        .animation(.easeInOut(duration: 0.2), value: studyReady)
     }
 
     /// "Pokaż na ramce": until the next change on a tap, longer when held.
