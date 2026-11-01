@@ -41,6 +41,7 @@ from ..library.themes import (
     day_reason,
     liked,
     make_liked,
+    new_artist_of_the_week,
     theme,
     theme_of_the_day,
     weekly_themes,
@@ -58,7 +59,7 @@ from ..library.vocabulary import (
 )
 from ..player import POOL_SIZE
 from ..service import FrameService
-from .deps import require_token, service
+from .deps import require_owner, require_token, service
 from .library_api import RemoteItem, RemotePage, remote_items
 from .playlists_api import summary
 
@@ -398,6 +399,36 @@ def _theme(key: str, svc: FrameService) -> Theme:
         return theme(key, svc.library)
     except KeyError as err:
         raise HTTPException(404, str(err)) from err
+
+
+def _new_artist(svc: FrameService) -> ThemeCard | None:
+    """Another artist of the week, with its card worked out at once (the
+    other cards stay as they are)."""
+    global _cards
+    found = new_artist_of_the_week(svc.library, date.today())
+    if found is None:
+        return None
+    total, items = svc.library.query(found.rules(), sort="suitability")
+    cover = _cover(items, f"{date.today().isoformat()}:{found.key}")
+    with _cards_lock:
+        stamp, cards = _cards
+        _cards = (stamp, {**cards, found.key: (total, cover)})
+    playlists = svc.library.playlists(viewer_id())
+    return _card(svc, found, {found.key: (total, cover)}, playlists)
+
+
+@router.post(
+    "/themes/week-artist/again",
+    response_model=ThemeCard,
+    dependencies=[Depends(require_owner)],
+)
+async def week_artist_again(svc: Svc) -> ThemeCard:
+    """Another artist of the week, drawn now (Konfiguracja → "Wylosuj
+    innego"); 409 when the catalogue has no other artist fit for it."""
+    card = await run_in_threadpool(_new_artist, svc)
+    if card is None:
+        raise HTTPException(409, "no other artist for this week")
+    return card
 
 
 @router.get("/themes/{key}", response_model=ThemePage)

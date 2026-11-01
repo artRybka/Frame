@@ -78,6 +78,12 @@ protocol FrameBackend: Sendable {
     /// The work of the day (`day`: a past one, "2026-10-30"); waits up to
     /// `wait` seconds for Claude's page being written.
     func daily(day: String?, wait: Int) async throws -> DailyWork
+    /// Another work of the day for today, drawn now (Konfiguracja, the
+    /// owner only); its page is asked for at once. 409: nothing else fits.
+    func dailyAgain() async throws -> DailyWork.Brief
+    /// Another artist of the week, drawn now (Konfiguracja, the owner
+    /// only), as its card in Discover. 409: nobody else fits.
+    func weekArtistAgain() async throws -> ArtTheme
     /// The work's study as far as it is; waits up to `wait` seconds for one
     /// on its way to get a step further.
     func study(itemID: String, wait: Int) async throws -> StudyView

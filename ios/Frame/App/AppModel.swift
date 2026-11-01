@@ -1044,6 +1044,48 @@ final class AppModel {
         await loadAiSettings()
     }
 
+    // MARK: Drawn again (Konfiguracja)
+
+    /// The artist of the week as Discover last loaded it.
+    var weekArtist: ArtTheme? {
+        themes?.first { $0.key.hasPrefix(ArtTheme.weekArtistPrefix) }
+    }
+
+    /// Another study of the day for today, drawn by the server now;
+    /// Discover shows it at once.
+    func drawDailyAgain() async {
+        do {
+            let drawn = try await backend.dailyAgain()
+            notices.done("Nowe Studium dnia", drawn.title)
+            await refreshDiscover(force: true)
+        } catch {
+            showDrawn(error, nothingLeft: "Na dziś nie ma innego dzieła", "Wszystkie pasujące były już Studium dnia w ostatnim roku.")
+        }
+    }
+
+    /// Another artist of the week, drawn by the server now; Discover shows
+    /// them at once.
+    func drawWeekArtistAgain() async {
+        do {
+            let drawn = try await backend.weekArtistAgain()
+            notices.done("Nowy Artysta tygodnia", drawn.name)
+            await refreshDiscover(force: true)
+        } catch {
+            showDrawn(error, nothingLeft: "Nie ma innego artysty na ten tydzień", "Żaden inny nie ma w bibliotece co najmniej 12 dzieł albo był już niedawno.")
+        }
+    }
+
+    private func showDrawn(_ error: Error, nothingLeft: String, _ detail: String) {
+        switch error {
+        case BackendError.http(status: 409, body: _):
+            notices.info(nothingLeft, detail)
+        case BackendError.http(status: 404, body: _), BackendError.notFound:
+            notices.warn("Serwer tego jeszcze nie umie", "Zaktualizuj serwer w Konfiguracji.")
+        default:
+            show(error)
+        }
+    }
+
     private func checkPanel(saved: String) async {
         guard panelConfig?.host != nil, panelConfig?.pinSet == true else {
             await refreshStatus(live: false)
