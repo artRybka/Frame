@@ -38,16 +38,28 @@ struct ReadingText: UIViewRepresentable {
         let ink = UIColor(cgColor: color.resolve(in: environment).cgColor)
         view.tintColor = UIColor(cgColor: Theme.accent.resolve(in: environment).cgColor)
         let shown = Shown(text: text, size: size, lineSpacing: lineSpacing, ink: ink)
-        guard context.coordinator.shown != shown else { return }
+        let before = context.coordinator.shown
+        guard before != shown else { return }
         context.coordinator.shown = shown
         let base = UIFont.systemFont(ofSize: size)
         let font = base.fontDescriptor.withDesign(.serif).map { UIFont(descriptor: $0, size: size) } ?? base
         let paragraph = NSMutableParagraphStyle()
         paragraph.lineSpacing = lineSpacing
-        view.attributedText = NSAttributedString(
+        let attributed = NSAttributedString(
             string: text,
             attributes: [.font: font, .foregroundColor: ink, .paragraphStyle: paragraph]
         )
+        let transaction = context.transaction
+        if let before, before.text != text, transaction.animation != nil, !transaction.disablesAnimations {
+            // Another text in an animated change (the Polish one arriving,
+            // "Pokaż oryginał"): it fades in over the one before.
+            UIView.transition(
+                with: view, duration: 0.5, options: [.transitionCrossDissolve, .allowUserInteraction],
+                animations: { view.attributedText = attributed }
+            )
+        } else {
+            view.attributedText = attributed
+        }
         view.invalidateIntrinsicContentSize()
     }
 
