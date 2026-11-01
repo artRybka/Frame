@@ -214,6 +214,22 @@ def test_statens_museum_for_kunst() -> None:
     assert len(sent) == 3  # no request for posters
 
 
+def test_statens_museum_for_kunst_for_private_use() -> None:
+    from frame_server.library.museums import PRIVATE_LICENCE
+
+    sent: list[httpx.Request] = []
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        sent.append(request)
+        closed = {**SMK_RECORD, "object_number": "KMS7288", "public_domain": False}
+        return httpx.Response(200, json={"found": 2, "items": [SMK_RECORD, closed]})
+
+    with httpx.Client(transport=httpx.MockTransport(answer)) as http:
+        _, items = StatensMuseum(http, private_use=True).search("Picasso", limit=2)
+    assert sent[0].url.params["filters"] == "[has_image:true]"
+    assert [i.license for i in items] == ["Public Domain Mark 1.0", PRIVATE_LICENCE]
+
+
 def test_a_full_catalogue_still_takes_in_new_works(museums) -> None:  # noqa: F811
     service = museums
     player = service.player
