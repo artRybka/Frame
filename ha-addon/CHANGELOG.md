@@ -7,6 +7,7 @@
   zanim go zapisze. Opcja dodatku `smithsonian_key` i zmienna
   `FRAME_SMITHSONIAN_KEY` z 1.64.0 znikają.
 - Nowe źródło: Paris Musées (z kluczem).
+- Polskie imiona artystów także u domowników (Mój dostęp → Dla zabawy).
 
 ## 1.64.0
 
