@@ -39,12 +39,15 @@ log = logging.getLogger(__name__)
 
 #: Pseudo source: every museum at once.
 ALL = "all"
-#: Museums asked for works by the artists the owner likes.
-TASTE_SOURCES = ("aic", "cma", "met", "rijks", "europeana", "smk")
-#: Museums that draw random paintings for variety.
-DRAW_SOURCES = ("aic", "cma", "met", "rijks", "europeana", "smk")
+#: Museums asked for works by the artists the owner likes (those on offer).
+TASTE_SOURCES = (
+    *("aic", "cma", "met", "rijks", "europeana", "smk"),
+    *("nga", "mnw", "mnk", "yale", "si"),
+)
+#: Museums that draw random paintings for variety (those on offer).
+DRAW_SOURCES = TASTE_SOURCES
 #: Museums that can be asked for their most important works.
-HIGHLIGHT_SOURCES = ("met", "cma")
+HIGHLIGHT_SOURCES = ("met", "cma", "mnw", "mnk")
 #: Museum works seen in search results, kept in memory so that opening one
 #: needs no second request.
 REMOTE_MEMO = 500
@@ -499,17 +502,20 @@ class Importer:
             def source(key: str) -> Museum:
                 return museum(key, http, self.access())
 
-            streams = [_search_stream(source(s), a) for a in artists for s in TASTE_SOURCES]
-            streams += [_search_stream(source(s), q) for s, q in queries]
+            # Sources needing a key or a download are left out without them.
+            offered = set(self.sources())
+            taste = [s for s in TASTE_SOURCES if s in offered]
+            draw = [s for s in DRAW_SOURCES if s in offered]
+            streams = [_search_stream(source(s), a) for a in artists for s in taste]
+            streams += [_search_stream(source(s), q) for s, q in queries if s in offered]
             streams += [
-                source(s).random_draw(Discovery(kind=kind), rng)
-                for kind in kinds
-                for s in DRAW_SOURCES
+                source(s).random_draw(Discovery(kind=kind), rng) for kind in kinds for s in draw
             ]
             streams += [
                 source(s).random_draw(Discovery(kind=kind, highlight=True), rng)
                 for kind in highlights
                 for s in HIGHLIGHT_SOURCES
+                if s in offered
             ]
             rng.shuffle(streams)
             self._take(

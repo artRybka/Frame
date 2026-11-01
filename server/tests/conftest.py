@@ -19,6 +19,15 @@ def jpeg_bytes(color: tuple[int, int, int], size: tuple[int, int] = (320, 240)) 
     return buf.getvalue()
 
 
+@pytest.fixture(autouse=True)
+def _no_gallery_downloads(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The National Gallery of Art's index is downloaded (~230 MB) on first
+    use; tests that want one build it from fake files themselves."""
+    from frame_server.library import nga
+
+    monkeypatch.setattr(nga.INDEX, "ready", lambda path: path.is_file())
+
+
 @pytest.fixture
 def service(tmp_path: Path):
     from frame_server.config import Settings

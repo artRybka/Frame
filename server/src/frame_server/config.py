@@ -55,6 +55,9 @@ class Settings(BaseSettings):
     # Openverse app credentials; without them 200 anonymous requests a day.
     openverse_client_id: str | None = None
     openverse_client_secret: str | None = None
+    # Smithsonian Open Access (free key from api.data.gov/signup); the
+    # Smithsonian's art museums are a source only with it.
+    smithsonian_key: str | None = None
     # Claude (Anthropic API) for keywords and Polish texts; a key saved in
     # the app wins over this one.
     anthropic_api_key: str | None = None

@@ -103,6 +103,12 @@ def _pack_queries(key: str) -> tuple[tuple[str, str], ...]:
     return tuple((source, query) for source, query, _ in found.queries)
 
 
+def _national(artists: tuple[str, ...] | list[str]) -> tuple[tuple[str, str], ...]:
+    """The national museums in Warsaw and Kraków, asked for each painter
+    (they hold most of Polish painting, with Polish titles)."""
+    return tuple((source, name) for name in artists for source in ("mnw", "mnk"))
+
+
 def _commons(artists: tuple[str, ...]) -> tuple[tuple[str, str], ...]:
     """Commons categories of painters the big museums hardly have (Polish
     ones: Chicago, Cleveland and the Met find nothing for Wyspiański)."""
@@ -502,7 +508,7 @@ THEMES: list[Theme] = [
         "Chełmoński, Malczewski, Boznańska, Matejko i 20 kolejnych malarzy.",
         POLISH,
         artists=tuple(POLISH_PAINTERS + MORE_POLISH_PAINTERS),
-        queries=_pack_queries("polish"),
+        queries=(*_national(POLISH_PAINTERS), *_pack_queries("polish")),
     ),
     Theme(
         "young-poland",
@@ -510,7 +516,7 @@ THEMES: list[Theme] = [
         "Wyspiański, Mehoffer, Malczewski, Boznańska, Stanisławski, Weiss.",
         POLISH,
         artists=YOUNG_POLAND,
-        queries=_commons(YOUNG_POLAND),
+        queries=(*_national(YOUNG_POLAND), *_commons(YOUNG_POLAND)),
     ),
     Theme(
         "polish-landscape",
@@ -518,7 +524,7 @@ THEMES: list[Theme] = [
         "Chełmoński, Stanisławski, Fałat, Ruszczyc, Stabrowski.",
         POLISH,
         artists=POLISH_LANDSCAPE,
-        queries=_commons(POLISH_LANDSCAPE),
+        queries=(*_national(POLISH_LANDSCAPE), *_commons(POLISH_LANDSCAPE)),
     ),
     Theme(
         "polish-interwar",
@@ -527,6 +533,7 @@ THEMES: list[Theme] = [
         POLISH,
         artists=POLISH_INTERWAR,
         queries=(
+            *_national(POLISH_INTERWAR),
             *_commons(POLISH_INTERWAR),
             *(("europeana", a) for a in POLISH_INTERWAR),
         ),
