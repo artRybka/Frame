@@ -154,6 +154,11 @@ private struct TermSearch: ViewModifier {
     let pickedFromMuseums: () -> Void
     /// The search is open: the system's round X stands next to the field.
     @State private var presented = false
+    /// A group's panel is open over the field (`TermFacetBar` says so).
+    @State private var panelOpen = false
+    /// The search was opened for the X, not by a tap on the field: opening
+    /// it focuses the field, and that keyboard goes straight back down.
+    @State private var quiet = false
 
     /// Something is picked in the groups (not only in the field).
     private var grouped: Bool { tokens.contains { !TermFacet.inField($0) } }
@@ -180,13 +185,24 @@ private struct TermSearch: ViewModifier {
                 if !tokens.isEmpty { withAnimation(.snappy) { tokens = [] } }
             }
             // A group's choice alone opens the search too, so that its X is
-            // there; with nothing left anywhere it closes again.
+            // there (once its panel has closed: the keyboard the opening
+            // brings would close the panel); with nothing left anywhere it
+            // closes again.
             .onChange(of: grouped, initial: true) { _, grouped in
-                if grouped, !presented {
-                    presented = true
-                } else if !grouped, presented, !focused.wrappedValue, lookup.text.isEmpty, tokens.isEmpty {
+                if grouped {
+                    openForX()
+                } else if presented, !focused.wrappedValue, lookup.text.isEmpty, tokens.isEmpty {
                     presented = false
                 }
+            }
+            .onPreferenceChange(GroupPanelOpen.self) { open in panelOpen = open }
+            .onChange(of: panelOpen) { _, open in
+                if !open { openForX() }
+            }
+            .onChange(of: focused.wrappedValue) { _, focused in
+                guard focused, quiet else { return }
+                quiet = false
+                self.focused.wrappedValue = false
             }
             .textInputAutocapitalization(.never)
             .autocorrectionDisabled()
@@ -198,6 +214,25 @@ private struct TermSearch: ViewModifier {
             }
             .task(id: lookup.trimmed) { await lookup.lookUp(model.backend, vocabulary: model.vocabulary) }
     }
+
+    /// Opens the search for a group's choice, without the keyboard.
+    private func openForX() {
+        guard grouped, !presented, !panelOpen else { return }
+        quiet = true
+        presented = true
+        // Only the focus the opening brings: a later tap keeps its keyboard.
+        Task {
+            try? await Task.sleep(for: .milliseconds(700))
+            quiet = false
+        }
+    }
+}
+
+/// Whether a group's panel is open over the field: `TermFacetBar` tells the
+/// search under it.
+struct GroupPanelOpen: PreferenceKey {
+    static let defaultValue = false
+    static func reduce(value: inout Bool, nextValue: () -> Bool) { value = value || nextValue() }
 }
 
 /// While typing: what the words could mean, a tap puts it in as a chip.

@@ -247,6 +247,7 @@ struct TermFacetBar: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .trailing)
+        .preference(key: GroupPanelOpen.self, value: open != nil)
         .padding(.bottom, focus.wrappedValue ? Self.overField : 8)
         .onChange(of: focus.wrappedValue) { _, focused in
             if focused, open != nil { close() }
