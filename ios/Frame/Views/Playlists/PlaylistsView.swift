@@ -364,10 +364,14 @@ struct PlaylistCard: View {
                     }
                     Text(playlist.countText).layoutPriority(1)
                     Spacer(minLength: 6)
-                    if let sharing {
-                        Label(sharing, systemImage: "person.2")
+                    if let owner = sharedBy {
+                        Label(owner, systemImage: "person.2")
                             .font(.caption2)
                             .lineLimit(1)
+                    } else if playlist.isMine, playlist.shared == true {
+                        Image(systemName: "person.2")
+                            .font(.caption2)
+                            .accessibilityLabel("Wspólna")
                     }
                 }
                 .font(.caption)
@@ -377,10 +381,10 @@ struct PlaylistCard: View {
     }
 
     /// Right of the count: whose it is when someone else shares it with the
-    /// household, "Wspólna" when I do; nothing for my private ones.
-    private var sharing: String? {
+    /// household; my own shared ones get the two-people icon alone (no
+    /// "Wspólna" text), my private ones nothing.
+    private var sharedBy: String? {
         if !playlist.isMine, let owner = playlist.ownerName, !owner.isEmpty { return owner }
-        if playlist.isMine, playlist.shared == true { return "Wspólna" }
         return nil
     }
 }
