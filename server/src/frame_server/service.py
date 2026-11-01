@@ -206,7 +206,9 @@ class FrameService:
         self.later = LaterWorks(self.library, lambda q, n: self.importer.search_all(q, n))
         self.daily.later = self.later
         # Other works by a study's artist, from the museums when the catalogue has too few.
-        self.artists = ArtistWorks(self.library, lambda q, n: self.importer.search_all(q, n))
+        self.artists = ArtistWorks(
+            self.library, lambda q, n: self.importer.search_all(q, n), self.images
+        )
         # Studies of any work, asked for on its card.
         self.study = Study(self.daily, self.ai, StudyJob(self.library, self.images, self.ai_config))
         self.ai.register(self.study.job)

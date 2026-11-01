@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import io
+import random
 import time
 from datetime import date, timedelta
 from pathlib import Path
@@ -13,7 +14,7 @@ import httpx
 import pytest
 from conftest import jpeg_bytes
 from fastapi.testclient import TestClient
-from PIL import Image
+from PIL import Image, ImageDraw, ImageOps
 from test_ai import GOOD_KEY, FakeAnthropic
 
 from frame_server.ai import AiConfigUpdate
@@ -443,6 +444,75 @@ def test_too_few_by_the_artist_asks_the_museums_once(offline: FrameService) -> N
     # Asked once, also when the museums have too few.
     assert offline.artists.look_soon(item, 2) is False
     assert asked == ["Katsushika Hokusai"]
+
+
+def _print(seed: int) -> Image.Image:
+    """A made-up print: shapes in many tones, different for each seed."""
+    rng = random.Random(seed)
+    img = Image.new("RGB", (900, 600), (235, 225, 200))
+    draw = ImageDraw.Draw(img)
+    for _ in range(160):
+        x, y = rng.randrange(900), rng.randrange(600)
+        w, h = rng.randrange(10, 120), rng.randrange(10, 120)
+        tone = tuple(rng.randrange(256) for _ in range(3))
+        shape = draw.ellipse if rng.random() < 0.5 else draw.rectangle
+        shape((x, y, x + w, y + h), fill=tone, outline=(20, 20, 20))
+    return img
+
+
+def _copy_of(img: Image.Image) -> Image.Image:
+    """The same print photographed elsewhere: greyer paper, a margin, a crop."""
+    tinted = Image.blend(img, Image.new("RGB", img.size, (150, 150, 150)), 0.25)
+    cropped = tinted.crop((30, 0, 870, 580))
+    return ImageOps.expand(cropped, border=40, fill=(200, 200, 195)).resize((640, 460))
+
+
+def _picture(service: FrameService, item_id: str, img: Image.Image) -> None:
+    item = service.library.get(item_id) or Item(
+        id=item_id, source=item_id.split(":")[0], source_id=item_id
+    )
+    path = service.images.thumb_path(item)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    img.save(path, "JPEG", quality=85)
+
+
+def test_one_picture_is_told_whatever_its_title(tmp_path: Path) -> None:
+    from frame_server.library.likeness import SAME, keypoints, matches
+
+    def points(img: Image.Image, name: str) -> Any:
+        path = tmp_path / f"{name}.jpg"
+        img.save(path, "JPEG")
+        found = keypoints(path)
+        assert found is not None
+        return found
+
+    wave = points(_print(1), "a")
+    assert matches(wave, points(_copy_of(_print(1)), "b")) >= SAME
+    assert matches(wave, points(_print(2), "c")) < SAME
+    plain = tmp_path / "plain.jpg"
+    plain.write_bytes(jpeg_bytes((40, 70, 140), (900, 600)))
+    assert keypoints(plain) is None  # nothing to go by: no opinion
+
+
+def test_other_works_leave_out_copies_from_other_sources(offline: FrameService) -> None:
+    """The Great Wave from Commons under its Polish title, and the Met's
+    under another English one, are the studied work: not "other works"."""
+    _catalogue(offline)
+    _add(offline, "wmc:wave", title="Wielka fala w Kanagawie", artist="Katsushika Hokusai")
+    _add(offline, "aic:wave", title="The Great Wave off Kanagawa", artist="Hokusai")
+    _add(offline, "aic:wind", title="Fine Wind, Clear Morning", artist="Katsushika Hokusai")
+    _add(offline, "wmc:wind", title="Czerwona Fudżi", artist="Katsushika Hokusai")
+    _picture(offline, "met:1", _print(1))
+    _picture(offline, "met:2", _print(2))
+    _picture(offline, "wmc:wave", _copy_of(_print(1)))
+    _picture(offline, "aic:wave", _copy_of(_print(1)).rotate(0.5))
+    _picture(offline, "aic:wind", _print(20))
+    _picture(offline, "wmc:wind", _copy_of(_print(20)))
+    item = offline.library.get("met:1")
+    assert item is not None
+    ids = {w.id for w in offline.artists.works(item)}
+    # Not the work itself in any copy; another work once.
+    assert ids in ({"met:2", "aic:wind"}, {"met:2", "wmc:wind"})
 
 
 def test_the_day_page_is_the_works_study(tmp_path: Path) -> None:
