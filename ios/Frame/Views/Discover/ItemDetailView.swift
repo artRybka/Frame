@@ -85,7 +85,12 @@ struct ItemDetailView: View {
         .paperPage()
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            if let item { itemToolbar(item) }
+            if let item {
+                ItemToolbar(
+                    model: model, item: item, changed: { self.item = $0 },
+                    addingToPlaylist: $showingPlaylists, savingPhoto: $savingPhoto
+                )
+            }
         }
         .task(id: itemID) { await load() }
         .task(id: described) { await loadSeen() }
@@ -696,57 +701,6 @@ struct ItemDetailView: View {
         .disabled(next || saving || sending)
         .sensoryFeedback(.impact(weight: .light), trigger: queueTaps)
         .sensoryFeedback(.success, trigger: next) { _, now in now }
-    }
-
-    /// Favourite and the rest of the picture's options, top right.
-    @ToolbarContentBuilder
-    private func itemToolbar(_ item: Item) -> some ToolbarContent {
-        ToolbarItemGroup(placement: .topBarTrailing) {
-            Button {
-                // At once: a museum's work joins the library first, which
-                // takes the server a while.
-                let favorite = !item.favorite
-                self.item?.favorite = favorite
-                Task {
-                    if let updated = await model.setFavorite(item.id, favorite) {
-                        self.item = updated
-                    } else if self.item?.id == item.id {
-                        self.item?.favorite = !favorite
-                    }
-                }
-            } label: {
-                Image(systemName: item.favorite ? "heart.fill" : "heart")
-                    .foregroundStyle(item.favorite ? Theme.vermilion : Theme.ink)
-                    .contentTransition(.symbolEffect(.replace))
-            }
-            .accessibilityLabel(item.favorite ? "Usuń z ulubionych" : "Dodaj do ulubionych")
-            Menu {
-                Button("Dodaj do playlisty", systemImage: "text.badge.plus") { showingPlaylists = true }
-                Button(item.excluded ? "Pokazuj ponownie" : "Nie pokazuj na ramce", systemImage: "eye.slash") {
-                    Task {
-                        if let updated = await model.setExcluded(item.id, !item.excluded) {
-                            self.item = updated
-                        }
-                    }
-                }
-                if let url = URL(string: item.url), !item.url.isEmpty {
-                    Divider()
-                    Link(destination: url) { Label("Otwórz w muzeum", systemImage: "safari") }
-                }
-                // Last, under the museum link.
-                Button("Zapisz w Zdjęciach", systemImage: "square.and.arrow.down") {
-                    savingPhoto = true
-                    Task {
-                        await model.saveToPhotos(item)
-                        savingPhoto = false
-                    }
-                }
-                .disabled(savingPhoto)
-            } label: {
-                Image(systemName: "ellipsis.circle").foregroundStyle(Theme.ink)
-            }
-            .accessibilityLabel("Więcej")
-        }
     }
 
     private func palette(_ item: Item) -> some View {
