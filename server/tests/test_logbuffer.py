@@ -31,6 +31,23 @@ def test_the_owner_reads_the_recent_log(tmp_path: Path) -> None:
         assert last.strip().endswith("Exception in ASGI application")
 
 
+def test_the_log_survives_uvicorns_logging_setup(tmp_path: Path) -> None:
+    """uvicorn configures its loggers (``dictConfig``) after the app is made,
+    which drops their handlers: the app attaches the buffer again as it
+    starts, so failed requests still reach it."""
+    import logging.config
+
+    import uvicorn.config
+
+    settings = Settings(data_dir=tmp_path, seed_library=False, scheduler=False, api_token="secret")
+    app = create_app(settings)
+    logging.config.dictConfig(uvicorn.config.LOGGING_CONFIG)
+    with TestClient(app) as client:
+        logging.getLogger("uvicorn.error").error("Exception after uvicorn's setup")
+        text = client.get("/api/debug/log", headers=OWNER).text
+        assert text.count("Exception after uvicorn's setup") == 1
+
+
 def test_a_record_through_two_loggers_is_kept_once() -> None:
     buffer = logbuffer.LogBuffer(keep=3)
     record = logging.LogRecord("x", logging.INFO, __file__, 1, "once", None, None)

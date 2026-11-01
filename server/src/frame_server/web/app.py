@@ -108,6 +108,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         tasks = []
+        logbuffer.install()  # again: uvicorn's logging setup dropped it
         service.notifier.bind(asyncio.get_running_loop())
         if settings.scheduler:
             tasks = [

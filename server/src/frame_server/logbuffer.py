@@ -50,13 +50,18 @@ _buffer: LogBuffer | None = None
 
 
 def install() -> LogBuffer:
-    """The process's buffer, attached once: to the root logger (the
-    server's own records) and to uvicorn's error logger (failed requests,
-    which uvicorn keeps from the root). Not its access log: the panel's
-    requests are logged by the server already."""
+    """The process's buffer, attached to the root logger (the server's own
+    records) and to uvicorn's error logger (failed requests, which uvicorn
+    keeps from the root). Not its access log: the panel's requests are
+    logged by the server already.
+
+    Called again once the server runs: uvicorn sets up its loggers with
+    ``dictConfig`` after the app is made, which drops the handlers they had,
+    so the buffer is attached wherever it is missing."""
     global _buffer
     if _buffer is None:
         _buffer = LogBuffer()
-        logging.getLogger().addHandler(_buffer)
-        logging.getLogger("uvicorn.error").addHandler(_buffer)
+    for logger in (logging.getLogger(), logging.getLogger("uvicorn.error")):
+        if _buffer not in logger.handlers:
+            logger.addHandler(_buffer)
     return _buffer
