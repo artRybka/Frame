@@ -3,6 +3,8 @@
 ## 1.71.1
 
 - Okienko podpowiedzi w Szukaj jest szklane, jak otwarta grupa.
+- Aplikacja na przytomnej ramce pyta serwer co 10 s zamiast co 20 s, więc
+  wysłany obraz dociera szybciej.
 
 ## 1.71.0
 

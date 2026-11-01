@@ -218,7 +218,7 @@ def test_charger_stays_awake_and_a_change_is_waited_for(tmp_path: Path) -> None:
     now = _at("2026-10-28T12:00")
     _next_change(service, _at("2026-10-28T19:00"))
     answer = service.app.answer(AppHello(charging=True), now=now)
-    assert answer.action == "stay" and answer.wait_s == 20
+    assert answer.action == "stay" and answer.wait_s == 10
     assert not service.app.asleep()
 
     # "Uśpij ramkę": it sleeps at its next question, even on the charger.
@@ -261,7 +261,7 @@ def test_a_waiting_picture_goes_out_at_the_wake(tmp_path: Path) -> None:
 async def test_push_to_an_awake_app(tmp_path: Path) -> None:
     service = _service(tmp_path)
     _next_change(service, datetime.now(UTC) + timedelta(hours=5))
-    service.app.answer(AppHello(charging=True))  # on the charger, asking every 20 s
+    service.app.answer(AppHello(charging=True))  # on the charger, asking every 10 s
 
     task = asyncio.create_task(service.push_current(wait=5))
     await asyncio.sleep(0.2)
@@ -346,7 +346,7 @@ async def test_the_server_starts_the_app_when_the_panel_does_not_run_it(
         await service.power.tick(now + timedelta(minutes=5))
         assert panel.received[-1] == (CMD_CONTENT_DOWNLOAD, b"\x81\x01")
 
-        # It runs, on the charger, asking every 20 s ... then falls silent:
+        # It runs, on the charger, asking every 10 s ... then falls silent:
         # restarted a few times, then only now and then (most likely unplugged).
         panel.received.clear()
         app.answer(AppHello(reason="start", build="2.0.0", charging=True), now=now)

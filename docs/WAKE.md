@@ -554,7 +554,7 @@ Mateusza).** Ramka w czuwaniu (IoT_Synology), „Obudź ramkę” od razu mówi�
 pobudkę” (kafelek Obraz). Serwer uznawał aplikację za obudzoną tylko dlatego,
 że nie kazał jej spać (`asleep` w stanie), i wtedy nie wysyłał ani jednego
 pakietu WoL, ani przy „Obudź ramkę”, ani przy wysyłce obrazu. Tak bywa, gdy
-ramka zasypia sama: aplikacja na ładowarce dostaje `stay` i pyta co 20 s, a po
+ramka zasypia sama: aplikacja na ładowarce dostaje `stay` i pyta co 10 s, a po
 odłączeniu zasilacza ramka zasypia od razu (E8), bez `goToSleep` aplikacji;
 ostatni odczyt baterii zostawał przy tym „100 %, ładuje się”. Od 0.32:
 

@@ -70,7 +70,7 @@ log = logging.getLogger(__name__)
 APP_KEY = "panel_app"
 WIDGET = "Frame"
 # On the charger the app stays awake and asks this often.
-POLL = timedelta(seconds=20)
+POLL = timedelta(seconds=10)
 # A change is being prepared: ask again after this.
 RETRY = timedelta(seconds=15)
 # The panel's alarm reaches a week ahead at most (604800 s).
@@ -146,7 +146,7 @@ BACKOFF_MAX = timedelta(hours=1)
 # boots afresh at its next alarm or the button, which a sleep with the
 # Wi-Fi off always ends in (E16), and the server starts the app then.
 DOWN_AFTER_REINSTALL = timedelta(minutes=10)
-# Awake, the app is heard from at least this often: a question every 20 s on
+# Awake, the app is heard from at least this often: a question every 10 s on
 # the charger, a minute at most while it waits, progress reports during a
 # long download. Silent longer it may well be asleep after all (unplugged,
 # the panel sleeps at once, E8), so "Obudź ramkę" and a picture wake it.

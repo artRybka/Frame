@@ -109,7 +109,7 @@ z nagłówkiem CORS, bo strona aplikacji ma pochodzenie `file://`):
 |---|---|---|
 | `GET /panel/app/sssp_config.xml`, `GET /panel/app/Frame.wgt` | launcher przy przełączeniu na Custom i czasem przy usypianiu | wersja i rozmiar paczki, paczka podpisana na Macu |
 | `GET /panel/app/app.js` | przy każdym starcie aplikacji | logika aplikacji z `window.FRAME_CODE` (wersja) |
-| `GET /panel/next?reason=start\|resume\|wake\|poll\|retry&build=&code=&screen=&battery=&charging=` | start, wznowienie po śnie, co 20 s przy ładowarce | `action` (`sleep` / `stay` / `wait`), `image`, `file_id`, `wake_at`, `wake_ms`, `standby` (`ON`/`OFF`), `wait_s`, `code` |
+| `GET /panel/next?reason=start\|resume\|wake\|poll\|retry&build=&code=&screen=&battery=&charging=` | start, wznowienie po śnie, co 10 s przy ładowarce | `action` (`sleep` / `stay` / `wait`), `image`, `file_id`, `wake_at`, `wake_ms`, `standby` (`ON`/`OFF`), `wait_s`, `code` |
 | `GET /panel/images/<plik>` | gdy obraz się zmienił | obraz jak dla manifestu; pobranie oznacza dostarczenie |
 | `POST /panel/report` (`text/plain`, JSON z `event`) | `shown`, `sleep` (budzik, standby), `error` | `{}` |
 
