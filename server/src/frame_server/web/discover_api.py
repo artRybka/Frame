@@ -460,6 +460,7 @@ async def theme_page(key: str, svc: Svc, page: Annotated[int, Query(ge=1)] = 1) 
         )
     except (httpx.HTTPError, ValueError) as err:
         raise HTTPException(502, f"{key}: {err}") from err
+    await run_in_threadpool(svc.importer.measure, items)
     return ThemePage(
         items=remote_items(svc, items), more=following is not None, next_page=following
     )
@@ -511,6 +512,7 @@ async def stream_theme(
             if at == pages[-1]:
                 last_total[0] = total
             if items and not gone.is_set():
+                svc.importer.measure(items)
                 line = ThemeLine(items=remote_items(svc, items))
                 sent[at] = len(line.items)
                 loop.call_soon_threadsafe(lines_.put_nowait, line)
@@ -790,6 +792,8 @@ class MuseumSearch:
                 for i in importer.in_colors(items, colors)
                 if self.spec.fits(i) and category_fits(i, rules.terms)
             ]
+            # The app lays its grid out by the works' shapes.
+            importer.measure(found)
             fitting += len(found)
             # Totals of several artists' searches don't add up page by page.
             done = not items or (not rules.artists and 0 < count <= round_ * asked)

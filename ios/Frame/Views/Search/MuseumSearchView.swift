@@ -255,7 +255,7 @@ struct MuseumSearchView: View {
     /// The works found, a museum's with its picture from the museum.
     private func worksGrid(_ known: [ItemSummary], _ remotes: [RemoteItem]) -> some View {
         let thumbs = Dictionary(remotes.map { ($0.id, $0.thumb) }, uniquingKeysWith: { first, _ in first })
-        return MasonryGrid(items: known + remotes.map(\.item.summary)) { summary in
+        return MasonryGrid(items: known + remotes.map(\.summary)) { summary in
             NavigationLink(value: summary.id) {
                 ArtCard(item: summary, ref: thumbs[summary.id], showsFavorite: false)
             }

@@ -557,6 +557,9 @@ def test_colours_look_deeper_and_the_stream_answers_museum_by_museum(service, mo
         openverse = by_source["openverse"]
         assert [len(a["items"]) for a in openverse] == [0, 0, 24]
         assert openverse[-1]["next"] == 4 and openverse[-1]["total"] == 1000
+        # Shapes from the thumbnails looked at for colours: no size from the museum.
+        assert all(r["item"]["width"] is None for r in openverse[-1]["items"])
+        assert all(r["aspect"] == 1.0 for r in openverse[-1]["items"])
         europeana = by_source["europeana"]
         assert len(europeana) == discover_api.COLOR_PAGES
         assert all(not a["items"] for a in europeana)

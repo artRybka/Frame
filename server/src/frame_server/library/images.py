@@ -202,9 +202,9 @@ class ImageCache:
                 return img
         raise AssertionError("unreachable")
 
-    def sample(self, url: str) -> Image.Image:
+    def sample(self, url: str, urgent: bool = False) -> Image.Image:
         """A picture downloaded to be looked at, not kept."""
-        return self._download(url)
+        return self._download(url, urgent)
 
     def ensure_thumb(self, item: Item, urgent: bool = False) -> Path:
         """The thumbnail, downloaded if need be. When its own address fails,

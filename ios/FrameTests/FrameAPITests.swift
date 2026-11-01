@@ -915,6 +915,24 @@ final class FrameAPITests: XCTestCase {
         XCTAssertNil(RemoteItem(item: item, inLibrary: false).thumbFallback)
     }
 
+    func testMeasuredShapeOfAWorkWithoutSizeReachesTheGrid() async throws {
+        let demo = DemoBackend()
+        let themes = try await demo.themes()
+        let theme = try XCTUnwrap(themes.first)
+        let page = try await demo.themePage(key: theme.key, page: 1)
+        var item = try XCTUnwrap(page.items.first).item
+        item.width = nil
+        item.height = nil
+        var remote = RemoteItem(item: item, inLibrary: false)
+        XCTAssertEqual(remote.summary.aspectRatio, 4.0 / 3.0, accuracy: 0.001)  // not known: landscape
+        remote.aspect = 0.5
+        XCTAssertEqual(remote.summary.aspectRatio, 0.5, accuracy: 0.001)
+        item.width = 300
+        item.height = 100
+        remote.item = item
+        XCTAssertEqual(remote.summary.aspectRatio, 3, accuracy: 0.001)  // the museum's own size first
+    }
+
     func testSavingToPhotosPrefersTheMuseumsImage() async throws {
         let demo = DemoBackend()
         let themes = try await demo.themes()
