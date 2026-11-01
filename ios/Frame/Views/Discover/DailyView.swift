@@ -88,6 +88,10 @@ struct DailyView: View {
     /// The page's width: the picture takes all of it, whatever loads first.
     @State private var pageWidth: CGFloat = 0
     @State private var zoomed = false
+    /// The work as its card has it, for the heart and "…" top right.
+    @State private var card: Item?
+    @State private var addingToPlaylist = false
+    @State private var savingPhoto = false
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -114,9 +118,21 @@ struct DailyView: View {
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { pageWidth = $0 }
         .navigationTitle("Studium dzieła")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if let card {
+                ItemToolbar(
+                    model: model, item: card, changed: { self.card = $0 },
+                    addingToPlaylist: $addingToPlaylist, savingPhoto: $savingPhoto
+                )
+            }
+        }
         .task(id: route) {
             await load()
             await followLegacy()
+        }
+        .task(id: work?.item.id) { await loadCard() }
+        .sheet(isPresented: $addingToPlaylist) {
+            if let card { AddToPlaylistSheet(item: card) }
         }
         .onAppear {
             if let id = route.study { model.studyOpened(itemID: id) }
@@ -237,6 +253,14 @@ struct DailyView: View {
             return
         }
         await loadDay()
+    }
+
+    /// The work for the heart and "…": the page's copy at once, then the
+    /// server's (the page's may be from before a heart was given).
+    private func loadCard() async {
+        guard let work else { return }
+        if card?.id != work.item.id { card = work.item.item }
+        if let fresh = try? await model.backend.item(id: work.item.id) { card = fresh }
     }
 
     /// Today's as Discover has it (another day's as last seen), then fresh;

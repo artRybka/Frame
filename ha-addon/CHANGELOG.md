@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.59.0
+
+- Serce i menu „…” w prawym górnym rogu studium dzieła, jak na karcie
+  dzieła (Dodaj do playlisty, Nie pokazuj na ramce, Otwórz w muzeum, Zapisz
+  w Zdjęciach).
+
 ## 1.58.2
 
 - Poświata w Odkrywaj bez ostrej krawędzi, sięga dalej i ma mocniejsze
