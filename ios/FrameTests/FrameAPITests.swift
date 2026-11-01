@@ -891,7 +891,8 @@ final class FrameAPITests: XCTestCase {
         XCTAssertEqual(last.nextPage, 5)
 
         let demo = DemoBackend()
-        let theme = try XCTUnwrap(try await demo.themes().first)
+        let themes = try await demo.themes()
+        let theme = try XCTUnwrap(themes.first)
         let page = try await demo.themePage(key: theme.key, page: 1)
         var lines: [ThemeLine] = []
         for try await line in try await demo.themeLines(key: theme.key, page: 1) { lines.append(line) }
