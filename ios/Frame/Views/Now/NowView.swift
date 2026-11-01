@@ -1044,13 +1044,8 @@ struct ArtworkInfo: View {
                         Button {
                             model.artistSearch = item.artist
                         } label: {
-                            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                                Text(Names.artist(item.artist)).font(.serif(18)).foregroundStyle(Theme.ink)
-                                Image(systemName: "magnifyingglass")
-                                    .font(.footnote.weight(.semibold))
-                                    .foregroundStyle(Theme.inkSoft)
-                            }
-                            .multilineTextAlignment(.leading)
+                            Text(Names.artist(item.artist)).font(.serif(18)).foregroundStyle(Theme.ink)
+                                .multilineTextAlignment(.leading)
                         }
                         .buttonStyle(.plain)
                         .accessibilityHint(Text("Szuka innych dzieł tego autora"))
