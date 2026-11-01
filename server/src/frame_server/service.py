@@ -37,6 +37,7 @@ from .player import Player
 from .power import INSTALL_LOOK, WAKE_BURST_SECONDS, PowerManager
 from .progress import ProgressTracker, Stage
 from .rendered import RenderCache, Rendered, render_key
+from .source_keys import SourceKeys
 from .status import StatusMonitor
 from .storage import StorageStore
 from .store import ContentInfo, ContentStore
@@ -167,6 +168,8 @@ class FrameService:
         self.images.mirrors["europeana"] = europeana_mirrors
         # Before the player trims or grows the catalogue: the app's limit wins.
         self.storage = StorageStore(settings, self.library, self.images, self.store)
+        # Keys of art sources, entered in the app.
+        self.source_keys = SourceKeys(settings, self.library)
         self.importer = Importer(
             self.library,
             self.images,
@@ -226,7 +229,7 @@ class FrameService:
 
     def _access(self) -> Access:
         """What the owner lets art sources return, and their credentials."""
-        chosen, config = self.player.settings, self.settings
+        chosen, config, keys = self.player.settings, self.settings, self.source_keys
         app = None
         if config.openverse_client_id and config.openverse_client_secret:
             app = (config.openverse_client_id, config.openverse_client_secret)
@@ -234,9 +237,10 @@ class FrameService:
             private_use=chosen.private_use,
             wikiart=chosen.wikiart,
             ignore_term=chosen.ignore_term,
-            europeana_key=config.europeana_key,
+            europeana_key=keys.get("europeana") or config.europeana_key,
             openverse_app=app,
-            smithsonian_key=config.smithsonian_key or "",
+            smithsonian_key=keys.get("si") or "",
+            paris_token=keys.get("paris") or "",
             data_dir=config.data_dir,
         )
 

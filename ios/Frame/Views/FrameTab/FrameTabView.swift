@@ -1630,6 +1630,72 @@ struct SourcesSection: View {
                     }
                     .tint(Theme.accent)
                 }
+                ForEach(model.sourceKeys) { source in
+                    Divider()
+                    SourceKeyRow(source: source)
+                }
+            }
+        }
+    }
+}
+
+/// A source's key or token: what it brings, the saved key's last characters,
+/// a field for a new one (checked by the server with the source), where to get one.
+struct SourceKeyRow: View {
+    @Environment(AppModel.self) private var model
+    let source: SourceKey
+    @State private var key = ""
+    @State private var saving = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(source.name).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.ink)
+                Spacer()
+                if source.keySet, let tail = source.keyTail {
+                    Label("…\(tail)", systemImage: "checkmark.circle.fill")
+                        .font(.subheadline.monospaced())
+                        .foregroundStyle(Theme.good)
+                }
+            }
+            Text(source.about)
+                .font(.caption)
+                .foregroundStyle(Theme.inkSoft)
+                .fixedSize(horizontal: false, vertical: true)
+            SecureField(source.keySet ? "zapisany · wpisz nowy, by zmienić" : "klucz API", text: $key)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+            HStack {
+                Button {
+                    Task {
+                        saving = true
+                        if await model.saveSourceKey(source, key: key) { key = "" }
+                        saving = false
+                    }
+                } label: {
+                    HStack {
+                        Text("Zapisz i sprawdź")
+                        if saving { ProgressView() }
+                    }
+                }
+                .fontWeight(.semibold)
+                .disabled(key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || saving)
+                Spacer()
+                if let url = URL(string: source.signup) {
+                    Link("Załóż klucz", destination: url)
+                        .font(.subheadline)
+                }
+            }
+            if source.keySet && !source.keyFromApp {
+                Text("Klucz z frame.env. Zapisany tutaj będzie miał pierwszeństwo.")
+                    .font(.caption)
+                    .foregroundStyle(Theme.inkSoft)
+            }
+            if source.keyFromApp {
+                Button("Usuń klucz", role: .destructive) {
+                    Task { await model.deleteSourceKey(source) }
+                }
+                .font(.subheadline)
             }
         }
     }
@@ -1721,6 +1787,7 @@ struct ConnectionSettingsView: View {
             .task { await model.loadPanelApp() }
             .task { await model.loadServerUpdate() }
             .task { await model.loadAiSettings() }
+            .task { await model.loadSourceKeys() }
             .navigationTitle("Konfiguracja")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

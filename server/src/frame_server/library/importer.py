@@ -44,8 +44,9 @@ TASTE_SOURCES = (
     *("aic", "cma", "met", "rijks", "europeana", "smk"),
     *("nga", "mnw", "mnk", "yale", "si"),
 )
-#: Museums that draw random paintings for variety (those on offer).
-DRAW_SOURCES = TASTE_SOURCES
+#: Museums that draw random paintings for variety (those on offer). Paris
+#: Musées searches titles only, so it is not asked for artists.
+DRAW_SOURCES = (*TASTE_SOURCES, "paris")
 #: Museums that can be asked for their most important works.
 HIGHLIGHT_SOURCES = ("met", "cma", "mnw", "mnk")
 #: Museum works seen in search results, kept in memory so that opening one

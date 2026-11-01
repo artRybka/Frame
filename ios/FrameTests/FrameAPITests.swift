@@ -642,6 +642,21 @@ final class FrameAPITests: XCTestCase {
         XCTAssertTrue(config.fromApp)
     }
 
+    func testSourceKeysFromServer() throws {
+        let json = #"""
+        [{"source": "si", "name": "Smithsonian", "about": "Muzea sztuki.",
+          "signup": "https://api.data.gov/signup/", "key_set": true, "key_tail": "1234",
+          "key_from_app": true},
+         {"source": "paris", "name": "Paris Musées", "about": "Paryż.",
+          "signup": "https://apicollections.parismusees.paris.fr/user/register",
+          "key_set": false, "key_tail": null, "key_from_app": false}]
+        """#
+        let keys = try LiveBackend.decoder().decode([SourceKey].self, from: Data(json.utf8))
+        XCTAssertEqual(keys.map(\.id), ["si", "paris"])
+        XCTAssertEqual(keys[0].keyTail, "1234")
+        XCTAssertFalse(keys[1].keySet)
+    }
+
     func testAiSettingsFromServerAndPartialUpdates() throws {
         let json = #"""
         {"key_set": true, "key_tail": "abcd", "key_from_app": true, "pl_text": true,

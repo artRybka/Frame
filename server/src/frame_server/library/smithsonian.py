@@ -3,7 +3,7 @@
 The Smithsonian American Art Museum, the National Portrait Gallery, the
 National Museum of Asian Art (Freer and Sackler), the Hirshhorn and Cooper
 Hewitt answer through one API at api.si.edu. It needs a free api.data.gov
-key (1000 requests an hour; ``FRAME_SMITHSONIAN_KEY``); without one the
+key (1000 requests an hour), entered in the app; without one the
 source is not offered. Only pictures marked CC0 are taken; they come from
 the IDS image server in any size.
 """

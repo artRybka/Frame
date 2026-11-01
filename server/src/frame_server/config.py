@@ -50,14 +50,12 @@ class Settings(BaseSettings):
     # Background rotation and status polling (off in some tests).
     scheduler: bool = True
     palette: str | None = None  # built-in palette name or path to a calibrated JSON
-    # Europeana's shared demo key works; a free key of one's own has higher limits.
+    # Europeana's shared demo key works; a free key of one's own has higher
+    # limits. A key saved in the app (Konfiguracja → Źródła dzieł) wins.
     europeana_key: str = "api2demo"
     # Openverse app credentials; without them 200 anonymous requests a day.
     openverse_client_id: str | None = None
     openverse_client_secret: str | None = None
-    # Smithsonian Open Access (free key from api.data.gov/signup); the
-    # Smithsonian's art museums are a source only with it.
-    smithsonian_key: str | None = None
     # Claude (Anthropic API) for keywords and Polish texts; a key saved in
     # the app wins over this one.
     anthropic_api_key: str | None = None

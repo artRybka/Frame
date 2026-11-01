@@ -498,6 +498,16 @@ struct LiveBackend: FrameBackend {
 
     func deleteAiKey() async throws -> AiSettings { try await send("/api/ai/key", method: "DELETE") }
 
+    func sourceKeys() async throws -> [SourceKey] { try await get("/api/sources/keys") }
+
+    func saveSourceKey(_ source: String, key: String) async throws -> [SourceKey] {
+        try await send("/api/sources/keys/\(source)", method: "PUT", body: AiKeyUpdate(key: key))
+    }
+
+    func deleteSourceKey(_ source: String) async throws -> [SourceKey] {
+        try await send("/api/sources/keys/\(source)", method: "DELETE")
+    }
+
     func keywordsEstimate() async throws -> AiEstimate { try await get("/api/ai/keywords/estimate") }
 
     func describeLibrary() async throws -> AiStarted {

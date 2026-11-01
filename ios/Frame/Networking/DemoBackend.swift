@@ -37,6 +37,23 @@ actor DemoBackend: FrameBackend {
     private var originalsLimitMb: Int?
     /// Studies asked for, and when: "written" a few seconds later.
     private var askedStudies: [String: Date] = [:]
+    private var sourceKeyValues = [
+        SourceKey(
+            source: "si", name: "Smithsonian",
+            about: "Muzea sztuki Smithsonian (sztuka amerykańska, portrety, sztuka Azji), obrazy CC0. Bez klucza to źródło jest wyłączone.",
+            signup: "https://api.data.gov/signup/", keySet: false, keyTail: nil, keyFromApp: false
+        ),
+        SourceKey(
+            source: "paris", name: "Paris Musées",
+            about: "14 muzeów miasta Paryża (Petit Palais, Carnavalet, Victor Hugo), obrazy CC0. Token: Mon compte → Auth Tokens. Bez niego to źródło jest wyłączone.",
+            signup: "https://apicollections.parismusees.paris.fr/user/register", keySet: false, keyTail: nil, keyFromApp: false
+        ),
+        SourceKey(
+            source: "europeana", name: "Europeana",
+            about: "Bez własnego klucza Europeana działa na wspólnym kluczu demo z niższymi limitami.",
+            signup: "https://pro.europeana.eu/page/get-api", keySet: false, keyTail: nil, keyFromApp: false
+        ),
+    ]
     private var aiValue = AiSettings(
         keySet: false, keyTail: nil, keyFromApp: false, plText: true, keywordsArtworks: true,
         keywordsPhotos: true, daily: true, monthlyLimitUsd: 5, spentUsd: 0,
@@ -1168,6 +1185,26 @@ actor DemoBackend: FrameBackend {
     }
 
     func aiSettings() async throws -> AiSettings { aiValue }
+
+    func sourceKeys() async throws -> [SourceKey] { sourceKeyValues }
+
+    func saveSourceKey(_ source: String, key: String) async throws -> [SourceKey] {
+        if let i = sourceKeyValues.firstIndex(where: { $0.source == source }) {
+            sourceKeyValues[i].keySet = true
+            sourceKeyValues[i].keyTail = String(key.trimmingCharacters(in: .whitespaces).suffix(4))
+            sourceKeyValues[i].keyFromApp = true
+        }
+        return sourceKeyValues
+    }
+
+    func deleteSourceKey(_ source: String) async throws -> [SourceKey] {
+        if let i = sourceKeyValues.firstIndex(where: { $0.source == source }) {
+            sourceKeyValues[i].keySet = false
+            sourceKeyValues[i].keyTail = nil
+            sourceKeyValues[i].keyFromApp = false
+        }
+        return sourceKeyValues
+    }
 
     func saveAiSettings(_ update: AiSettingsUpdate) async throws -> AiSettings {
         if let value = update.plText { aiValue.plText = value }

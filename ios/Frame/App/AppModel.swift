@@ -61,6 +61,8 @@ final class AppModel {
     /// Claude's settings, spending and progress; loaded when Konfiguracja
     /// opens, nil on an older server.
     var aiSettings: AiSettings?
+    /// Keys of art sources; loaded when Konfiguracja opens, empty on an older server.
+    var sourceKeys: [SourceKey] = []
     /// Notifications on this phone as the server has them; loaded when
     /// Konfiguracja opens, nil on an older server.
     var notificationSettings: NotificationSettings?
@@ -190,6 +192,7 @@ final class AppModel {
         libraryStorage = nil
         serverUpdate = nil
         aiSettings = nil
+        sourceKeys = []
         notificationSettings = nil
         me = nil
         playlists = []
@@ -1019,6 +1022,38 @@ final class AppModel {
             return
         }
         notices.done("Usunięto klucz")
+    }
+
+    func loadSourceKeys() async {
+        sourceKeys = (try? await backend.sourceKeys()) ?? []
+    }
+
+    /// True when the source accepted the key and the server kept it.
+    func saveSourceKey(_ source: SourceKey, key: String) async -> Bool {
+        do {
+            sourceKeys = try await backend.saveSourceKey(source.source, key: key)
+        } catch BackendError.http(400, _) {
+            notices.fail("Klucz odrzucony", "\(source.name) go nie przyjmuje. Sprawdź, czy skopiowano go w całości.")
+            return false
+        } catch BackendError.http(502, _) {
+            notices.fail("\(source.name) teraz nie odpowiada", "Klucz nie został zapisany. Spróbuj za chwilę.")
+            return false
+        } catch {
+            show(error)
+            return false
+        }
+        notices.done("Klucz zapisany", source.name)
+        return true
+    }
+
+    func deleteSourceKey(_ source: SourceKey) async {
+        do {
+            sourceKeys = try await backend.deleteSourceKey(source.source)
+        } catch {
+            show(error)
+            return
+        }
+        notices.done("Usunięto klucz", source.name)
     }
 
     func keywordsEstimate() async -> AiEstimate? {

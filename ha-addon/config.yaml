@@ -24,7 +24,6 @@ options:
   europeana_key: ""
   openverse_client_id: ""
   openverse_client_secret: ""
-  smithsonian_key: ""
   anthropic_api_key: ""
 schema:
   device_host: str?
@@ -38,5 +37,4 @@ schema:
   europeana_key: password?
   openverse_client_id: str?
   openverse_client_secret: password?
-  smithsonian_key: password?
   anthropic_api_key: password?
