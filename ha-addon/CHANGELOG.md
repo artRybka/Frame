@@ -4,6 +4,8 @@
 
 - Szukaj: ikony przy grupach; po wyborze pastylka pokazuje ikonę i wybraną
   wartość w jednej linii. Temat ma pejzaż także w podpowiedziach.
+- Szukaj: X obok pola czyści też wybory z grup (zamiast „Wyczyść wybory”),
+  także w edytorze playlisty.
 
 ## 1.66.0
 
