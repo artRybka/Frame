@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.62.0
+
+- Szukaj: podpowiedzi obejmują też słowa kluczowe i tematy dzieł (np.
+  „wielka fala”, „góra Fuji”), oznaczone w aplikacji jako „Słowo kluczowe”.
+- Ponowne stuknięcie w „Teraz” na pasku wraca do obrazu, który jest na
+  ramce, i przewija stronę na górę.
+- „Inne prace artysty” w studium bez powtórzeń: ta sama praca z innego
+  źródła (także pod tytułem w innym języku) i kopie studiowanego dzieła są
+  pomijane.
+
 ## 1.61.1
 
 - Szukaj: okienka grup są ze szkła, które płynnie rozciąga się z przycisku
