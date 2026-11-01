@@ -73,9 +73,14 @@ struct OriginalViewer: View {
         .allowsHitTesting(false)
     }
 
-    /// The copy the detail screen already shows first, then a sharper one
-    /// to zoom into.
+    /// The tile's thumbnail at once (in memory already, so the screen is
+    /// never a lone spinner while the original comes), then the copy the
+    /// detail screen shows, then a sharper one to zoom into.
     private func load() async {
+        if let request = model.backend.request(for: ItemPeeks.tiles[item.id]?.thumb ?? .thumb(item.id)),
+           let thumb = try? await ImageLoader.shared.image(for: request, maxPixel: 700, priority: .high) {
+            image = thumb
+        }
         for maxPixel: CGFloat in [1800, 4096] {
             guard let request = model.backend.request(for: .image(item.id)) else { break }
             if let loaded = try? await ImageLoader.shared.image(for: request, maxPixel: maxPixel, priority: .high) {

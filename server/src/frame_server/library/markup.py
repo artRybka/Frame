@@ -72,8 +72,10 @@ WEB_IMAGES = frozenset({"jpg", "jpeg", "png", "gif", "webp"})
 VECTOR = frozenset({"svg", "pdf", "djvu"})
 #: Widths Commons renders copies at; any other width is refused (400).
 COMMONS_WIDTHS = (500, 960, 1280, 1920, 3840)
+#: A Commons original; the API adds a query (``?utm_source=...``) to its links.
 _COMMONS_FILE = re.compile(
-    r"^(https://upload\.wikimedia\.org/wikipedia/commons)/([0-9a-f]/[0-9a-f]{2})/([^/?#]+)$"
+    r"^(https://upload\.wikimedia\.org/wikipedia/commons)/([0-9a-f]/[0-9a-f]{2})/([^/?#]+)"
+    r"(?:\?[^#]*)?$"
 )
 
 
