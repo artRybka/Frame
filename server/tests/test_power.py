@@ -289,12 +289,43 @@ async def test_no_magic_packets_while_the_panel_goes_down(
 
     # It asks while going down (the launcher restarted it): no packets at all.
     sent.clear()
+    app.awake_until = None  # the look's window is over
     assert app.answer(BATTERY).action == "sleep"
     task = asyncio.create_task(service.power.wake_now(sleep_after=True))
     await asyncio.sleep(0.2)
     app.answer(BATTERY)
     result = await task
     assert result.woke and sent == []
+
+
+async def test_a_status_check_keeps_the_frame_up_for_a_picture(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """2026-11-01: a picture sent right after "Sprawdź stan" had to wait for
+    the panel to go down and be woken again. The look keeps it up a while."""
+    monkeypatch.setattr(power, "WAKE_LOOK", timedelta(seconds=2))
+    service = FrameService(_settings(tmp_path, _closed_port()))
+    app = service.app
+
+    async def wake(seconds: int = 0) -> bool:
+        return True
+
+    monkeypatch.setattr(service.panel, "wake", wake)
+    _asleep(service, deep=False)
+    task = asyncio.create_task(service.power.wake_now(sleep_after=True))
+    await asyncio.sleep(0.3)
+    now = datetime.now(UTC)
+    answer = app.answer(BATTERY, now=now)
+    assert answer.action == "stay" and answer.wait_s == 10
+    assert (await task).woke
+    assert app.answer(BATTERY, now=now + timedelta(seconds=90)).action == "stay"
+    assert app.answer(BATTERY, now=now + timedelta(minutes=3)).action == "sleep"
+
+    # No answer: no window for a question later on.
+    app.answer(BATTERY, now=datetime.now(UTC) - timedelta(minutes=10))
+    result = await service.power.wake_now(sleep_after=True)
+    assert result.sent and not result.woke
+    assert app.answer(BATTERY).action == "sleep"
 
 
 async def test_wake_starts_a_hung_app(
