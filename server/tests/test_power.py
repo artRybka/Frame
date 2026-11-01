@@ -14,6 +14,7 @@ import pytest
 import trustme
 from fake_panel import FakePanel
 
+from frame_server import panel_app as panel_app_module
 from frame_server import power
 from frame_server import status as status_module
 from frame_server.config import Settings
@@ -248,6 +249,52 @@ async def test_a_sleep_in_the_network_found_off_the_wifi(
     assert service.app.deep_asleep()
     result = await service.power.wake_now()
     assert not result.sent and result.deep_sleep and result.wifi_lost
+
+
+async def test_no_magic_packets_while_the_panel_goes_down(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """2026-11-01: a picture sent right after "Sprawdź stan" put the app to
+    sleep. Magic packets sent while the panel was still going down woke it
+    seconds after it went down, too soon for the app to notice, and it never
+    asked again. The packets wait until the panel is down for sure."""
+    # Noted to the second: down 1.5 to 2.5 s after the answer.
+    monkeypatch.setattr(panel_app_module, "GOING_DOWN", timedelta(seconds=2.5))
+    monkeypatch.setattr(power, "WAKE_LOOK", timedelta(seconds=0.3))
+    monkeypatch.setattr(power, "WAKE_AFTER_DOWN", timedelta(seconds=1))
+    service = FrameService(_settings(tmp_path, _closed_port()))
+    app = service.app
+    sent: list[int] = []
+
+    async def wake(seconds: int = 0) -> bool:
+        sent.append(seconds)
+        return True
+
+    monkeypatch.setattr(service.panel, "wake", wake)
+    _asleep(service, deep=False)
+
+    # Told to sleep just now: no packets yet; the look outlasts the wait.
+    assert app.answer(BATTERY).action == "sleep"
+    task = asyncio.create_task(service.power.wake_now(sleep_after=True))
+    await asyncio.sleep(0.4)
+    assert sent == [] and not task.done()
+    for _ in range(30):
+        await asyncio.sleep(0.1)
+        if sent:
+            break
+    assert sent == [power.WAKE_BURST_SECONDS] and not task.done()
+    app.answer(BATTERY)
+    result = await task
+    assert result.sent and result.woke
+
+    # It asks while going down (the launcher restarted it): no packets at all.
+    sent.clear()
+    assert app.answer(BATTERY).action == "sleep"
+    task = asyncio.create_task(service.power.wake_now(sleep_after=True))
+    await asyncio.sleep(0.2)
+    app.answer(BATTERY)
+    result = await task
+    assert result.woke and sent == []
 
 
 async def test_wake_starts_a_hung_app(

@@ -217,7 +217,7 @@ class AppState(BaseModel):
 class AppHello(BaseModel):
     """What the app says when it asks (all optional: old builds say less)."""
 
-    reason: str = "start"  # start, resume, wake, poll, retry
+    reason: str = "start"  # start, resume, wake, poll, retry, late, up
     build: str | None = None
     code: str | None = None
     screen: str | None = None
@@ -559,7 +559,7 @@ class PanelApp:
                 "image": f"{service.settings.base_url()}{self.image_path(content)}",
                 "title": content.title,
             }
-        if self._resting(now):
+        if self._resting(now, still_up=hello.reason == "up"):
             return self._rest(now, common)
         if self.restart_requested:
             self.restart_requested = False
@@ -643,9 +643,10 @@ class PanelApp:
         state = self.state
         return (state.off or state.rest_until is not None) and state.rested_at is None
 
-    def _resting(self, now: datetime) -> bool:
+    def _resting(self, now: datetime, still_up: bool = False) -> bool:
         """Whether this question gets the rest's sleep: asked for and not
-        over yet, and the app does not ask because of the button."""
+        over yet, and the app does not ask because of the button
+        (``still_up``: it asks because the panel never went down)."""
         state = self.state
         if not (state.off or state.rest_until):
             return False
@@ -655,7 +656,7 @@ class PanelApp:
         ):
             self.end_rest("its end")
             return False
-        if state.rested_at is None:
+        if state.rested_at is None or still_up:
             return True
         if now - datetime.fromisoformat(state.rested_at) < REST_SETTLE:
             return True  # restarted by the launcher as it went to sleep
@@ -1193,11 +1194,17 @@ class PanelApp:
     def _going_down(self, now: datetime) -> bool:
         """Told to sleep moments ago: its JS still runs towards goToSleep(),
         or the panel is not down yet."""
-        slept = self.state.slept_at
-        if slept is not None and now - datetime.fromisoformat(slept) < GOING_DOWN:
-            return True
-        reported = self._sleep_reported
-        return reported is not None and now - reported < DOWN_AFTER_REPORT
+        return self.down_in(now) > 0
+
+    def down_in(self, now: datetime) -> float:
+        """Seconds until a panel told to sleep is down for sure
+        (``GOING_DOWN``, ``DOWN_AFTER_REPORT``); 0 when it is not going down."""
+        ends: list[datetime] = []
+        if (slept := self.state.slept_at) is not None:
+            ends.append(datetime.fromisoformat(slept) + GOING_DOWN)
+        if (reported := self._sleep_reported) is not None:
+            ends.append(reported + DOWN_AFTER_REPORT)
+        return max([0.0] + [(end - now).total_seconds() for end in ends])
 
     async def _reinstall(self) -> bool:
         """The app does not start though the panel acknowledges every start:

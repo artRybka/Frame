@@ -52,6 +52,12 @@
   // A question with no answer this long (a request that never ended): ask
   // again instead of waiting for it forever.
   var STUCK_MS = 2 * 60000;
+  // Still running this long after goToSleep() (JS runs on up to ~130 s while
+  // the panel goes down, E16): the panel stayed up, or magic packets woke it
+  // again seconds after it went down, a gap too short to notice (2026-11-01,
+  // a picture sent right after a status check: silent until the button).
+  // Ask again instead of waiting for a wake that already happened.
+  var STILL_UP_MS = 4 * 60000;
 
   var ep = (typeof webapis !== "undefined" && webapis.epaper) ? webapis.epaper : null;
   var busy = false;
@@ -63,6 +69,7 @@
   var drawnAt = 0;  // the last change of the screen
   var loadedAt = Date.now();
   var wifiAt = 0;
+  var sleptAt = 0;  // goToSleep() called and no question since
 
   function saved(key, value) {
     try {
@@ -231,6 +238,7 @@
   }
 
   function ask(reason) {
+    sleptAt = 0;
     if (busy) return;
     busy = true;
     busySince = Date.now();
@@ -469,6 +477,7 @@
     report("sleep", r, function () {
       last = Date.now();
       if (!ep) return;
+      sleptAt = Date.now();
       var s = call(function () { return ep.goToSleep(); });
       if (!s.ok) report("error", { message: "goToSleep failed", detail: s.error });
     });
@@ -485,6 +494,8 @@
     if (gap > ASLEEP_GAP_MS) {
       var alarm = ep ? call(function () { return ep.isScheduledPlayBootReason(); }) : null;
       ask(alarm && alarm.ok && Number(alarm.value) === 1 ? "wake" : "resume");
+    } else if (sleptAt && now - sleptAt > STILL_UP_MS) {
+      ask("up");
     }
   }
 

@@ -463,23 +463,33 @@ struct SuggestionRowView: View {
     }
 }
 
-/// A theme browsed page by page, from the museums (or the catalogue), with
+/// A theme browsed from the museums (or the catalogue), its works shown as
+/// each museum answers and more asked for while the end is near, with
 /// buttons that make it a playlist.
 struct ThemeView: View {
     @Environment(AppModel.self) private var model
     let theme: ArtTheme
     @State private var items: [RemoteItem] = []
-    @State private var page = 0
+    /// The page to ask for next.
+    @State private var page = 1
     @State private var more = true
     @State private var loading = false
-    @State private var failed = false
+    /// Rounds in a row in which no museum answered.
+    @State private var failures = 0
+    /// Less than a screen to the end: the next works are asked for.
+    @State private var nearEnd = true
+    /// On screen (not left, nor under a work opened from it): asking goes on.
+    @State private var shown = false
     @State private var playlistID: Int?
     @State private var busy = false
     /// "Pokaż na ramce" on its way: a spinner on it.
     @State private var playing = false
 
-    /// Pages that found nothing are followed by themselves, this many at most.
-    private static let emptyPagesInARow = 6
+    /// After this many rounds in a row with no museum answering, the app
+    /// stops asking until "Spróbuj ponownie".
+    private static let failuresToStop = 3
+    /// How long a round no museum answered waits before the next.
+    private static let retryPause: Duration = .seconds(10)
 
     var body: some View {
         ScrollView {
@@ -503,40 +513,48 @@ struct ThemeView: View {
                     )
                 }
                 if more {
-                    Button {
-                        Task { await loadMore() }
-                    } label: {
-                        HStack(spacing: 8) {
-                            if loading { ProgressView().controlSize(.small) }
-                            Text(moreLabel)
+                    if stopped {
+                        Button {
+                            failures = 0
+                            moreIfNeeded()
+                        } label: {
+                            Text("Spróbuj ponownie")
+                                .font(.subheadline.weight(.semibold))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .background(Theme.card, in: RoundedRectangle(cornerRadius: 12))
+                                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.hairline))
                         }
-                        .font(.subheadline.weight(.semibold))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(Theme.card, in: RoundedRectangle(cornerRadius: 12))
-                        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.hairline))
+                    } else {
+                        // The squares say "waiting", as in Szukaj: for as
+                        // long as the museums may have more.
+                        SearchWaiting()
                     }
-                    .disabled(loading)
                 }
             }
             .pageWidth()
             .padding(.horizontal, Theme.gutter)
             .padding(.bottom, 32)
         }
+        // Before the end shows, so the next works are mostly there already.
+        .onScrollGeometryChange(for: Bool.self) { geometry in
+            geometry.contentSize.height - geometry.visibleRect.maxY < geometry.containerSize.height
+        } action: { _, near in
+            nearEnd = near
+            moreIfNeeded()
+        }
         .paperPage()
         .navigationTitle(Names.theme(theme))
         .navigationBarTitleDisplayMode(.inline)
-        .task {
-            playlistID = theme.playlistId
-            if items.isEmpty { await loadMore() }
+        .task { playlistID = theme.playlistId }
+        .onAppear {
+            shown = true
+            moreIfNeeded()
         }
+        .onDisappear { shown = false }
     }
 
-    private var moreLabel: String {
-        if loading { return items.isEmpty ? "Wczytuję…" : "Wczytuję więcej…" }
-        if failed { return "Spróbuj ponownie" }
-        return items.isEmpty ? "Wczytaj" : "Więcej"
-    }
+    private var stopped: Bool { failures >= Self.failuresToStop && !loading }
 
     private var actions: some View {
         HStack(spacing: 10) {
@@ -582,22 +600,48 @@ struct ThemeView: View {
         if let id = await ThemeActions.makePlaylist(theme, play: play, model: model) { playlistID = id }
     }
 
-    private func loadMore() async {
-        guard !loading else { return }
+    /// Asks for the next works while the end is near, round after round
+    /// (a round can bring nothing new); a round no museum answered waits a
+    /// while before the next.
+    @MainActor
+    private func moreIfNeeded(after pause: Duration = .zero) {
+        guard shown, nearEnd, more, !loading, failures < Self.failuresToStop else { return }
         loading = true
-        failed = false
-        defer { loading = false }
-        do {
-            for _ in 0 ..< Self.emptyPagesInARow {
-                let found = try await model.backend.themePage(key: theme.key, page: page + 1)
-                items = items.adding(found.items)
-                page = (found.nextPage ?? page + 2) - 1
-                more = found.more
-                if !found.items.isEmpty || !more { break }
+        Task { @MainActor in
+            if pause > .zero { try? await Task.sleep(for: pause) }
+            guard shown, nearEnd else {
+                loading = false
+                return  // asked again on coming back or scrolling down
             }
+            let answered = await loadMore()
+            loading = false
+            if answered {
+                failures = 0
+            } else {
+                failures += 1
+            }
+            moreIfNeeded(after: answered ? .zero : Self.retryPause)
+        }
+    }
+
+    /// The next round of the theme's searches, its works shown as each
+    /// museum answers. False when no museum did.
+    @MainActor
+    private func loadMore() async -> Bool {
+        do {
+            for try await line in try await model.backend.themeLines(key: theme.key, page: page) {
+                items = items.adding(line.items)
+                if line.end {
+                    if line.failed { return false }
+                    more = line.more
+                    if let next = line.nextPage { page = next } else { more = false }
+                    return true
+                }
+            }
+            return false  // cut off before the end: asked again
         } catch {
-            failed = !error.isCancellation
-            model.show(error)
+            if !error.isCancellation, failures + 1 >= Self.failuresToStop { model.show(error) }
+            return false
         }
     }
 }

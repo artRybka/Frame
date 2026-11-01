@@ -83,6 +83,9 @@ protocol FrameBackend: Sendable {
     func suggestions() async throws -> [SuggestionRow]
     func themes() async throws -> [ArtTheme]
     func themePage(key: String, page: Int) async throws -> ArtThemePage
+    /// The same from `page`, several of the theme's searches at once, each
+    /// one's works as it answers, then a last line with the page that follows.
+    func themeLines(key: String, page: Int) async throws -> AsyncThrowingStream<ThemeLine, Error>
     /// The work of the day (`day`: a past one, "2026-10-30"); waits up to
     /// `wait` seconds for Claude's page being written.
     func daily(day: String?, wait: Int) async throws -> DailyWork

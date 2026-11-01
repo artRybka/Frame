@@ -120,6 +120,7 @@ def test_a_member_has_no_konfiguracja(tmp_path: Path) -> None:
             ("post", "/api/users/invites"),
             ("delete", "/api/library/items/upload:1"),
             ("get", "/api/debug/panel-requests"),
+            ("get", "/api/debug/log"),
             ("post", "/api/daily/again"),
             ("post", "/api/themes/week-artist/again"),
         ]:

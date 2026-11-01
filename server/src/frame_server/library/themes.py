@@ -1035,32 +1035,56 @@ def browse_theme(
     that finds nothing (or fails) is passed over for the next one, for
     ``wait`` seconds at most. Returns the works and the page to ask for
     next, None after the last."""
-    searches = found.searches()
-    if not searches:
+    if not found.searches():
         items, more = browse_catalogue(importer.library, found, page, limit)
         return items, page + 1 if more else None
-    count = len(searches)
     started = time.monotonic()
     failed: httpx.HTTPError | ValueError | None = None
     answered = False
     while True:
-        source, query = searches[(page - 1) % count]
-        round_ = (page - 1) // count + 1
         kept: list[Item] = []
         total = 0
         try:
-            total, items = importer.search(source, query, limit=limit, page=round_)
-            kept = [i for i in items if not set_aside(i)]
+            kept, total = search_page(importer, found, page, limit)
             answered = True
         except (httpx.HTTPError, ValueError) as err:
-            log.warning("theme %s: asking %s for %r failed: %s", found.key, source, query, err)
+            log.warning("theme %s: page %d failed: %s", found.key, page, err)
             failed = err
-        following = page + 1 if page % count != 0 or round_ * limit < total else None
+        following = page_after(found, page, total, limit)
         if kept or following is None or time.monotonic() - started >= wait:
             if not kept and not answered and failed is not None:
                 raise failed  # every museum asked failed: say so
             return kept, following
         page = following
+
+
+def search_page(
+    importer: Importer, found: Theme, page: int, limit: int = 24
+) -> tuple[list[Item], int]:
+    """The museum search of one page of a theme (with searches): its works,
+    without those set aside, and how many the search has in all. Raises
+    when the museum fails."""
+    searches = found.searches()
+    source, query = searches[(page - 1) % len(searches)]
+    round_ = (page - 1) // len(searches) + 1
+    total, items = importer.search(source, query, limit=limit, page=round_)
+    return [i for i in items if not set_aside(i)], total
+
+
+def page_after(found: Theme, page: int, total: int, limit: int = 24) -> int | None:
+    """The page after ``page`` of a theme with searches, whose search has
+    ``total`` works; None when it was the last."""
+    count = len(found.searches())
+    round_ = (page - 1) // count + 1
+    return page + 1 if page % count != 0 or round_ * limit < total else None
+
+
+def batch_of(found: Theme, page: int, size: int) -> list[int]:
+    """Pages of a theme with searches asked at once from ``page``: up to
+    ``size``, not past the last search of a round (whether another round
+    follows is known only from the last one)."""
+    count = len(found.searches())
+    return list(range(page, page + min(size, count - (page - 1) % count)))
 
 
 def browse_catalogue(

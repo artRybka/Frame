@@ -17,6 +17,10 @@ Uwagi:
   Port 8099 nie może być zajęty przez inną usługę.
 - Dane (biblioteka, bieżący obraz, podglądy, log zapytań ekranu)
   trafiają do `./data`. Warto objąć ten folder kopią zapasową (Hyper Backup).
+- Ostatnie wpisy logu serwera (od jego startu, do 5000) da się czytać przez
+  API: `GET /api/debug/log?lines=500&grep=…` z tokenem z `frame.env`
+  (`Authorization: Bearer …`), np. przy diagnozie z komputera w domu. Pełny
+  log jest w *Container Manager → Kontener → frame → Dziennik*.
 - Obraz `ghcr.io/artrybka/frame` publikuje GitHub Actions po każdym scaleniu
   do `main` (`.github/workflows/publish.yml`). Pakiet jest publiczny, więc NAS
   pobiera go bez logowania.

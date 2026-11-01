@@ -723,6 +723,24 @@ def test_deep_sleep_for_hours_ends_at_its_time_or_with_the_button(tmp_path: Path
     assert answer.wake_at == _at("2026-10-29T16:00").isoformat()
 
 
+def test_a_panel_that_never_went_down_does_not_end_a_rest(tmp_path: Path) -> None:
+    """The app asks again ("up") when it still runs minutes after
+    goToSleep(): the panel did not go down, which is not the button."""
+    service = _service(tmp_path)
+    app = service.app
+    now = _at("2026-10-28T12:00")
+    _next_change(service, _at("2026-10-28T19:00"))
+    app.request_rest(now, now + timedelta(hours=10))
+    assert app.answer(BATTERY, now=now).action == "sleep"
+    still_up = AppHello(reason="up", build="2.0.0", battery=80, charging=False)
+    answer = app.answer(still_up, now=now + timedelta(minutes=7))
+    assert answer.action == "sleep" and answer.standby == "OFF"
+    assert app.state.rest_until is not None
+    # The button later on: the rest is over.
+    app.answer(BATTERY, now=now + timedelta(hours=1))
+    assert app.state.rest_until is None
+
+
 def test_switched_off_sleeps_without_an_alarm_even_on_the_charger(tmp_path: Path) -> None:
     service = _service(tmp_path)
     app = service.app
