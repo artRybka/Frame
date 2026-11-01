@@ -39,6 +39,8 @@ struct NowView: View {
     @State private var introChecked = false
     @State private var introPlan: SwapPlan?
     @State private var introProgress = 0.0
+    /// Scrolled back to the top when Teraz is tapped again in the tab bar.
+    @State private var scroll = ScrollPosition()
 
     enum Intro {
         case waiting, revealing
@@ -195,6 +197,15 @@ struct NowView: View {
                 .refreshable { await Task { await model.refreshAll() }.value }
                 // CI screenshots: `-screen history` shows "Ostatnio na ramce".
                 .defaultScrollAnchor(LaunchRoute.screen == "history" ? .bottom : .top)
+                .scrollPosition($scroll)
+                // Teraz tapped again in the tab bar: back to the picture on
+                // the frame, at the top, like the "Teraz" button.
+                .onChange(of: model.nowTabTapped) {
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        browsed = nil
+                        scroll.scrollTo(edge: .top)
+                    }
+                }
             }
             .toolbar {
                 if stale {

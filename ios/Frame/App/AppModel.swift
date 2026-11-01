@@ -66,6 +66,9 @@ final class AppModel {
     var notificationSettings: NotificationSettings?
     /// Bumped to open Discover on the work of the day (a notification tapped).
     var dailyOpened = 0
+    /// Bumped when the Teraz tab is tapped while already open: back to the
+    /// picture on the frame, like the "Teraz" button.
+    var nowTabTapped = 0
     /// A theme to open in Discover (the artist of the week, from a notification).
     var themeOpened: String?
     var themeOpenings = 0
