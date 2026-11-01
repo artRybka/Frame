@@ -240,7 +240,7 @@ enum BackendError: LocalizedError {
     }
 }
 
-extension Backend {
+extension FrameBackend {
     /// The work's Polish texts, waited for whole.
     func polish(itemID: String, wait: Int) async throws -> PolishView {
         try await polish(itemID: itemID, wait: wait, early: false)
