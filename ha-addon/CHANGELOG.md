@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.69.6
+
+- Karta dzieła i „Teraz”: bez ikony lupy przy autorze; stuknięcie w imię i
+  nazwisko dalej otwiera Szukaj z jego dziełami.
+
 ## 1.69.5
 
 - Szukaj: kolejne wyniki doczytują się same podczas przewijania, bez

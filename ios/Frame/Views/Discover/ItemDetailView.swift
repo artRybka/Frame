@@ -258,12 +258,7 @@ struct ItemDetailView: View {
                 .foregroundStyle(Theme.ink)
                 .fixedSize(horizontal: false, vertical: true)
             if !summary.artist.isEmpty {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text(Names.artist(summary.artist)).font(.serif(19)).foregroundStyle(Theme.ink)
-                    Image(systemName: "magnifyingglass")
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(Theme.inkSoft)
-                }
+                Text(Names.artist(summary.artist)).font(.serif(19)).foregroundStyle(Theme.ink)
             }
             let date = nonEmpty(polish?.date) ?? summary.dateText
             if !date.isEmpty {
@@ -674,13 +669,8 @@ struct ItemDetailView: View {
                 Button {
                     model.artistSearch = item.artist
                 } label: {
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text(Names.artist(item.artist)).font(.serif(19)).foregroundStyle(Theme.ink)
-                        Image(systemName: "magnifyingglass")
-                            .font(.footnote.weight(.semibold))
-                            .foregroundStyle(Theme.inkSoft)
-                    }
-                    .multilineTextAlignment(.leading)
+                    Text(Names.artist(item.artist)).font(.serif(19)).foregroundStyle(Theme.ink)
+                        .multilineTextAlignment(.leading)
                 }
                 .buttonStyle(.plain)
                 .accessibilityHint(Text("Szuka innych dzieł tego autora"))
