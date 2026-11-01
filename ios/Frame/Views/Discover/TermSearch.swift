@@ -305,13 +305,15 @@ private struct SuggestionsPanel: ViewModifier {
 
     private var shown: Bool { lookup.suggesting(focused.wrappedValue) }
 
-    private static let shape = RoundedRectangle(cornerRadius: 20, style: .continuous)
+    /// As an open group's panel (PanelGlass, grown).
+    private static let shape = RoundedRectangle(cornerRadius: 28, style: .continuous)
 
     func body(content: Content) -> some View {
         content.overlay {
             ZStack(alignment: .bottom) {
                 if shown {
-                    Theme.paper.opacity(0.72)
+                    // Light enough for the glass to show the page through.
+                    Theme.paper.opacity(0.4)
                         .ignoresSafeArea()
                         .contentShape(Rectangle())
                         .onTapGesture(perform: putKeyboardAway)
@@ -321,14 +323,16 @@ private struct SuggestionsPanel: ViewModifier {
                         Spacer(minLength: 12)
                         ScrollView {
                             TermSuggestions(lookup: lookup, tokens: $tokens, pickedFromMuseums: pickedFromMuseums)
+                                // Off the glass's rounder corners.
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 6)
                                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { listHeight = $0 }
                         }
                         .scrollBounceBehavior(.basedOnSize)
                         .frame(maxHeight: listHeight)
-                        .background(Theme.card, in: Self.shape)
                         .clipShape(Self.shape)
-                        .overlay(Self.shape.strokeBorder(Theme.hairline))
-                        .shadow(color: .black.opacity(0.12), radius: 16, y: 6)
+                        // The same glass as an open group's panel.
+                        .glassEffect(Glass.regular.tint(Theme.paper.opacity(0.55)), in: Self.shape)
                         // Before the spacer: all the room it needs.
                         .layoutPriority(1)
                     }

@@ -241,13 +241,15 @@ class PowerManager:
         one, and started over MDC when the panel is up and it still does not
         ask.
 
-        ``sleep_after`` ("Sprawdź stan"): woken only to be looked at, so it
-        is not kept awake."""
+        ``sleep_after`` ("Sprawdź stan"): woken to be looked at, so it is
+        kept up only briefly (``LOOK_AWAKE``), for a picture sent right after."""
         service, app = self.service, self.service.app
         now = datetime.now(UTC)
         if app.deep_asleep():
             return self._deep_result()
-        if not sleep_after:
+        if sleep_after:
+            app.look(now)
+        else:
             app.keep_awake(now)
         if not app.active:
             return await self._install()
@@ -257,6 +259,8 @@ class PowerManager:
             return WakeResult(sent=False, woke=False, problem="no_mac", reason="no MAC address set")
         woke, started = await self.reach()
         log.info("Wake-on-LAN for the frame's app: %s", "it asked" if woke else "no answer")
+        if not woke:
+            app.look_over()
         return WakeResult(
             sent=True,
             woke=woke,

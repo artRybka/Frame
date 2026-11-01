@@ -70,7 +70,7 @@ log = logging.getLogger(__name__)
 APP_KEY = "panel_app"
 WIDGET = "Frame"
 # On the charger the app stays awake and asks this often.
-POLL = timedelta(seconds=20)
+POLL = timedelta(seconds=10)
 # A change is being prepared: ask again after this.
 RETRY = timedelta(seconds=15)
 # The panel's alarm reaches a week ahead at most (604800 s).
@@ -93,6 +93,12 @@ KICK_AFTER = timedelta(seconds=60)
 KICK_EVERY = timedelta(minutes=2)
 # "Obudź ramkę" keeps the woken app awake (asking every ``POLL``) this long.
 KEEP_AWAKE = timedelta(minutes=10)
+# "Sprawdź stan" keeps it up this long after it asks: a picture sent right
+# after the look gets there at its next question, with no wait for the panel
+# to go down and no Wake-on-LAN (2026-11-01). The look's question counts
+# within ``LOOK_FOR``.
+LOOK_AWAKE = timedelta(minutes=2)
+LOOK_FOR = timedelta(minutes=4)
 # "Głęboki sen": the frame sleeps with the Wi-Fi off for up to this long.
 REST_MAX = timedelta(days=3)
 # Resting, the app asks again: a wake this close around an alarm set before
@@ -146,7 +152,7 @@ BACKOFF_MAX = timedelta(hours=1)
 # boots afresh at its next alarm or the button, which a sleep with the
 # Wi-Fi off always ends in (E16), and the server starts the app then.
 DOWN_AFTER_REINSTALL = timedelta(minutes=10)
-# Awake, the app is heard from at least this often: a question every 20 s on
+# Awake, the app is heard from at least this often: a question every 10 s on
 # the charger, a minute at most while it waits, progress reports during a
 # long download. Silent longer it may well be asleep after all (unplugged,
 # the panel sleeps at once, E8), so "Obudź ramkę" and a picture wake it.
@@ -282,6 +288,7 @@ class PanelApp:
         self.contacts = 0  # questions so far, to wait for the next one
         self.heard_at: datetime | None = None  # the last question or report
         self.awake_until: datetime | None = None
+        self._look_until: datetime | None = None  # "Sprawdź stan" waits for a question
         self.sleep_requested = False
         self.restart_requested = False
         self._kicked: datetime | None = None
@@ -570,6 +577,11 @@ class PanelApp:
             return self._reboot(package.version, now, common)
         if power.change_due(now):
             return self._awake(NextAnswer(action="wait", wait_s=_s(RETRY), **common))
+        if self._look_until is not None:
+            if now < self._look_until and not self.sleep_requested:
+                until = now + LOOK_AWAKE
+                self.awake_until = max(self.awake_until or until, until)
+            self._look_until = None
         awake = self.awake_until is not None and now < self.awake_until
         charger = service.status.status.power_source == "ac"
         if not self.sleep_requested and (awake or charger):
@@ -897,6 +909,19 @@ class PanelApp:
             return False
         except MdcError:
             return True  # it answered, and something else went wrong
+
+    def look(self, now: datetime) -> None:
+        """ "Sprawdź stan": up ``LOOK_AWAKE`` from the app's next question
+        (or now, when it is awake already); not a wake, a rest goes on."""
+        if self.awake(now):
+            until = now + LOOK_AWAKE
+            self.awake_until = max(self.awake_until or until, until)
+        else:
+            self._look_until = now + LOOK_FOR
+
+    def look_over(self) -> None:
+        """The look found no app to ask: no window for a later question."""
+        self._look_until = None
 
     def keep_awake(self, now: datetime) -> None:
         self.end_rest("woken from the app")

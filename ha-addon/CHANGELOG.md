@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.71.1
+
+- Okienko podpowiedzi w Szukaj jest szklane, jak otwarta grupa.
+- Aplikacja na przytomnej ramce pyta serwer co 10 s zamiast co 20 s, więc
+  wysłany obraz dociera szybciej.
+- Po „Sprawdź stan” ramka nie zasypia od razu, tylko czeka jeszcze 2 minuty.
+  Obraz wysłany w tym czasie dociera od razu, bez budzenia.
+
 ## 1.71.0
 
 - Odkrywaj: propozycja (motyw) zamiast „Wczytuję…” pokazuje kwadraciki i
