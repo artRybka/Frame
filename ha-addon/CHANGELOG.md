@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.67.3
+
+- Ikony grup (Epoka, Styl, Temat, Muzeum) prostsze, jedną kreską jak Technika,
+  w całej aplikacji.
+
 ## 1.67.2
 
 - Szukaj: pole nie podskakuje, gdy po wyborze z grupy pojawia się X.

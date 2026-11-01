@@ -290,7 +290,7 @@ struct TermSuggestions: View {
             }
             ForEach(lookup.hits) { hit in
                 row(
-                    icon: hit.token.icon, title: hit.token.kind == "artist" ? Names.artist(hit.name) : hit.name, kind: kindName(of: hit),
+                    mark: hit.token.kind, icon: hit.token.icon, title: hit.token.kind == "artist" ? Names.artist(hit.name) : hit.name, kind: kindName(of: hit),
                     detail: hit.detail, count: lookup.uncounted.contains(hit.id) ? nil : hit.count
                 ) { pick(hit.token, fromMuseums: false) }
             }
@@ -306,10 +306,10 @@ struct TermSuggestions: View {
                         .padding(.horizontal, 12)
                         .padding(.top, 12)
                     ForEach(hint.artists) { artist in
-                        row(icon: "building.columns", title: Names.artist(artist.name), kind: "Artysta z muzeów",
+                        row(mark: "museum", icon: "building.columns", title: Names.artist(artist.name), kind: "Artysta z muzeów",
                             detail: "", count: nil) { pick(artist.token, fromMuseums: true) }
                     }
-                    row(icon: "building.columns", title: "„\(lookup.trimmed)” w muzeach", kind: "Słowo",
+                    row(mark: "museum", icon: "building.columns", title: "„\(lookup.trimmed)” w muzeach", kind: "Słowo",
                         detail: "", count: nil) {
                         pick(SearchToken(kind: "word", key: lookup.trimmed, name: lookup.trimmed), fromMuseums: true)
                     }
@@ -339,11 +339,12 @@ struct TermSuggestions: View {
     }
 
     private func row(
-        icon: String, title: String, kind: String, detail: String, count: Int?, action: @escaping () -> Void
+        mark tokenKind: String, icon: String, title: String, kind: String, detail: String, count: Int?,
+        action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
             HStack(spacing: 10) {
-                Image(systemName: icon)
+                GroupMark(kind: tokenKind, symbol: icon, side: 17)
                     .font(.subheadline)
                     .foregroundStyle(Theme.accent)
                     .frame(width: 22)

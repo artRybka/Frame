@@ -1084,7 +1084,11 @@ struct ArtworkInfo: View {
             }
             HStack {
                 if !item.museum.isEmpty {
-                    Label(item.museum, systemImage: "building.columns")
+                    Label {
+                        Text(item.museum)
+                    } icon: {
+                        GroupMark(kind: "museum", side: 13)
+                    }
                         .font(.caption)
                         .foregroundStyle(Theme.inkSoft)
                         .lineLimit(1)
