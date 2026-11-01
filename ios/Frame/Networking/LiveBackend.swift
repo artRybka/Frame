@@ -74,11 +74,10 @@ struct LiveBackend: FrameBackend {
 
     func item(id: String) async throws -> Item { try await get("/api/library/items/\(escape(id))") }
 
-    func polish(itemID: String, wait: Int) async throws -> PolishView {
-        try await get(
-            "/api/library/items/\(escape(itemID))/polish",
-            query: [URLQueryItem(name: "wait", value: String(wait))]
-        )
+    func polish(itemID: String, wait: Int, early: Bool) async throws -> PolishView {
+        var query = [URLQueryItem(name: "wait", value: String(wait))]
+        if early { query.append(URLQueryItem(name: "early", value: "true")) }
+        return try await get("/api/library/items/\(escape(itemID))/polish", query: query)
     }
 
     func sharpen(itemID: String, wait: Int) async throws -> SharperView {
@@ -214,8 +213,10 @@ struct LiveBackend: FrameBackend {
         return try await perform(req)
     }
 
-    func study(itemID: String, wait: Int) async throws -> StudyView {
-        var req = request("/api/study/\(escape(itemID))", query: [URLQueryItem(name: "wait", value: String(wait))])
+    func study(itemID: String, wait: Int, lists: Bool) async throws -> StudyView {
+        var query = [URLQueryItem(name: "wait", value: String(wait))]
+        if !lists { query.append(URLQueryItem(name: "lists", value: "false")) }
+        var req = request("/api/study/\(escape(itemID))", query: query)
         req.timeoutInterval = TimeInterval(wait + 30)
         return try await perform(req)
     }

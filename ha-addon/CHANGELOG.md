@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.70.0
+
+- Studium dzieła: gotowe studium otwiera się od tekstu, a listy (Podobne,
+  Dalsze losy, Inne prace artysty) dochodzą chwilę później; studium obejrzane
+  raz otwiera się od razu. Poświata u góry karty i studium jest od pierwszej
+  klatki, z kolorów miniatury.
+- Karta dzieła: polski tytuł pojawia się od razu, opis dochodzi chwilę później.
+- Szukaj i edytor playlisty: podpowiedzi podczas pisania w okienku nad polem,
+  a wyniki pod nim stoją w miejscu; nowe wyszukiwanie przewija wyniki na górę.
+
 ## 1.69.8
 
 - Wyszukiwanie: animowane kwadraciki to znak czekania (wyniki, podpowiedzi,

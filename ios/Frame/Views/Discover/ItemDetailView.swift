@@ -28,6 +28,9 @@ struct ItemDetailView: View {
     /// first frame, so nothing is swapped.
     @State private var polish: PolishText?
     @State private var polishWaiting = false
+    /// The Polish title, written ahead of the texts: on the card while
+    /// "O dziele" is still being translated.
+    @State private var earlyTitle: String?
     /// The tile it was opened from showed a Polish title: the card waits the
     /// moment the Polish texts take, rather than show the museum's first.
     @State private var holding = false
@@ -74,6 +77,16 @@ struct ItemDetailView: View {
     /// The work's card, rather than its placeholder.
     private var showsCard: Bool { item != nil && !holding }
 
+    /// The colours glowing at the top: the tile's from the first frame (its
+    /// thumbnail's when it knew none), so the glow does not come in only
+    /// once the work is here (a blink at the top of the page).
+    private var glow: [ColorSwatch] {
+        if let colors = item?.colors, !colors.isEmpty { return colors }
+        let tile = ItemPeeks.tiles[itemID]
+        if let colors = tile?.summary.colors, !colors.isEmpty { return colors }
+        return PageGlow.colours(of: tile?.thumb ?? .thumb(itemID), backend: model.backend)
+    }
+
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
@@ -101,7 +114,7 @@ struct ItemDetailView: View {
                 }
             }
         }
-        .paperPage(glow: item?.colors ?? [], lift: scrolled)
+        .paperPage(glow: glow, lift: scrolled)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if let item {
@@ -187,7 +200,8 @@ struct ItemDetailView: View {
     /// Whether the work has a study; one on its way (asked before the app
     /// was closed) is followed on a card at the bottom.
     private func loadStudy() async {
-        guard let found = try? await model.backend.study(itemID: itemID, wait: 0) else { return }
+        // Only where it is: the page's lists would keep the server busy.
+        guard let found = try? await model.backend.study(itemID: itemID, wait: 0, lists: false) else { return }
         study = found
         if found.isPending, let item {
             let name = title(item)
@@ -360,14 +374,22 @@ struct ItemDetailView: View {
     /// Asks the server for the work's Polish texts; one being written now
     /// (a few seconds, half a minute for a note from the picture) is waited
     /// for a few times. Without a key or with the switch off: nothing.
+    /// The title comes first: the server answers as soon as it is written,
+    /// the texts are waited for after it.
     private func loadPolish() async {
         showOriginal = false
-        for attempt in 0..<4 {
-            guard let view = try? await model.backend.polish(itemID: itemID, wait: attempt == 0 ? 20 : 30),
-                  !Task.isCancelled
+        var waits = 0
+        while waits < 4 {
+            let early = polish == nil && earlyTitle == nil
+            guard let view = try? await model.backend.polish(
+                itemID: itemID, wait: waits == 0 ? 20 : 30, early: early
+            ),
+                !Task.isCancelled
             else { break }
             showPolish(view)
             if view.status != "waiting" { break }
+            // A round that brought the title is not one of the waits.
+            if !(early && earlyTitle != nil) { waits += 1 }
         }
         if polishWaiting {
             withAnimation(.easeInOut) { polishWaiting = false }
@@ -376,17 +398,20 @@ struct ItemDetailView: View {
 
     /// Takes the server's answer, kept for the next visit. Polish texts
     /// that come while the museum's are on the card fade in over them
-    /// (opened from search, say), with no jump.
+    /// (opened from search, say), with no jump: the title alone first, while
+    /// "O dziele" is still being translated, then the rest.
     private func showPolish(_ view: PolishView, animated: Bool = true) {
         let waiting = view.status == "waiting"
         // Being written again: the texts on the card stay meanwhile.
         let text = view.text ?? (waiting ? polish : nil)
         ItemPeeks.keep(text, for: itemID)
         let busy = waiting && text == nil
-        guard text != polish || busy != polishWaiting else { return }
+        let title = busy ? nonEmpty(view.title) ?? earlyTitle : nil
+        guard text != polish || busy != polishWaiting || title != earlyTitle else { return }
         withAnimation(animated ? .easeInOut(duration: 0.6) : nil) {
             polish = text
             polishWaiting = busy
+            earlyTitle = title
         }
     }
 
@@ -689,7 +714,8 @@ struct ItemDetailView: View {
     }
 
     private func title(_ item: Item) -> String {
-        nonEmpty(shownPolish?.title) ?? (item.title.isEmpty ? "Bez tytułu" : item.title)
+        nonEmpty(shownPolish?.title) ?? (showOriginal ? nil : earlyTitle)
+            ?? (item.title.isEmpty ? "Bez tytułu" : item.title)
     }
 
     private func nonEmpty(_ text: String?) -> String? {

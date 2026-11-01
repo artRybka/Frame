@@ -411,7 +411,7 @@ actor DemoBackend: FrameBackend {
 
     /// A long note, as the language model writes one (400–900 characters),
     /// so the card shows "O dziele" in full in the demo screenshots.
-    func polish(itemID: String, wait: Int) async throws -> PolishView {
+    func polish(itemID: String, wait: Int, early: Bool) async throws -> PolishView {
         guard let item = items.first(where: { $0.id == itemID }) else { return PolishView(status: "off", text: nil) }
         let note = """
         Pierwszy plan zajmuje stół przykryty białym obrusem, na którym stoją kosz z owocami, \
@@ -811,7 +811,7 @@ actor DemoBackend: FrameBackend {
         )
     }
 
-    func study(itemID: String, wait: Int) async throws -> StudyView {
+    func study(itemID: String, wait: Int, lists: Bool) async throws -> StudyView {
         guard let asked = askedStudies[itemID] else {
             return StudyView(status: "none", error: "", work: nil, costUsd: 0.14)
         }
@@ -839,6 +839,12 @@ actor DemoBackend: FrameBackend {
             work.legacy = []
             work.similar = []
             work.byArtist = byArtist(item, skip: [])
+        }
+        if !lists {
+            work.similar = []
+            work.legacy = []
+            work.byArtist = []
+            work.partial = true
         }
         return StudyView(status: "ready", error: "", work: work, costUsd: 0.14)
     }
@@ -872,7 +878,7 @@ actor DemoBackend: FrameBackend {
 
     func prepareStudy(itemID: String, again: Bool) async throws -> StudyView {
         if again || askedStudies[itemID] == nil { askedStudies[itemID] = Date() }
-        return try await study(itemID: itemID, wait: 0)
+        return try await study(itemID: itemID, wait: 0, lists: true)
     }
 
     /// The demo has no server to push the study's steps: the app moves
