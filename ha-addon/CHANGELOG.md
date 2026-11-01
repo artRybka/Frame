@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.68.0
+
+- Słabe obrazy dzieł (mała rozdzielczość, mocno ściśnięty plik) podmieniane
+  w tle na ostrzejszą kopię tego samego obrazu z innego źródła (Commons,
+  muzea), na karcie dzieła i przy Studium dnia; nigdy detal, strona albumu
+  ani czarno-biała reprodukcja.
+
 ## 1.67.4
 
 - Playlisty: kafelki w siatce wyrównane do góry (bez wiersza „Wspólna” nie
