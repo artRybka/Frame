@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.65.0
+
+- Klucze źródeł dzieł wpisuje się w aplikacji: Konfiguracja → Źródła dzieł
+  (Smithsonian, Paris Musées, Europeana). Serwer sprawdza klucz w źródle,
+  zanim go zapisze. Opcja dodatku `smithsonian_key` i zmienna
+  `FRAME_SMITHSONIAN_KEY` z 1.64.0 znikają.
+- Nowe źródło: Paris Musées (z kluczem).
+
 ## 1.64.0
 
 - Nowe źródła dzieł: Muzeum Narodowe w Warszawie i w Krakowie, National
