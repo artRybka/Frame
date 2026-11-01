@@ -19,6 +19,20 @@ enum TermFacet: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
+    /// The group's symbol on its button, the same as its chips' in the
+    /// suggestions (`SearchToken.icon`); Kolor has its own three ink dots
+    /// (`InkDots`) instead.
+    var symbol: String? {
+        switch self {
+        case .technique: "scribble.variable"
+        case .period: "calendar"
+        case .style: "paintpalette"
+        case .color: nil
+        case .subject: "mountain.2"
+        case .museum: "building.columns"
+        }
+    }
+
     /// Whether the group holds the chip.
     func holds(_ token: SearchToken) -> Bool {
         switch self {
@@ -297,32 +311,30 @@ struct TermFacetBar: View {
             focus.wrappedValue = false
             open = facet
         } label: {
-            VStack(spacing: 1) {
-                if let value {
-                    Text(facet.title.uppercased())
-                        .font(.system(size: 9, weight: .semibold))
-                        .tracking(0.6)
-                        .opacity(0.75)
-                    HStack(spacing: 4) {
-                        if facet == .color {
-                            let swatches = picked.map(\.key).filter { !ColorTag.moods.contains($0) }
-                            ForEach(Array(swatches.prefix(3)), id: \.self) { tag in
-                                Circle()
-                                    .fill(ColorTag.color(tag))
-                                    .frame(width: 8, height: 8)
-                                    .overlay(Circle().strokeBorder(.white.opacity(0.7), lineWidth: 1))
-                            }
+            // Picked, the symbol stands for the group's name: "✎ Olej +1";
+            // Kolor shows the picked colours' dots instead.
+            HStack(spacing: 5) {
+                let swatches = facet == .color ? picked.map(\.key).filter { !ColorTag.moods.contains($0) } : []
+                if !swatches.isEmpty {
+                    HStack(spacing: 3) {
+                        ForEach(Array(swatches.prefix(3)), id: \.self) { tag in
+                            Circle()
+                                .fill(ColorTag.color(tag))
+                                .frame(width: 8, height: 8)
+                                .overlay(Circle().strokeBorder(.white.opacity(0.7), lineWidth: 1))
                         }
-                        Text(value)
-                            .font(.subheadline.weight(.semibold))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.75)
                     }
+                } else if let symbol = facet.symbol {
+                    Image(systemName: symbol)
+                        .font(.subheadline.weight(on ? .semibold : .regular))
+                        .imageScale(.small)
                 } else {
-                    Text(facet.title)
-                        .font(.subheadline.weight(.medium))
-                        .lineLimit(1)
+                    InkDots()
                 }
+                Text(value ?? facet.title)
+                    .font(.subheadline.weight(on ? .semibold : .medium))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
             }
             .padding(.horizontal, 8)
             .frame(maxWidth: .infinity, minHeight: 44)
@@ -840,5 +852,21 @@ private struct Bracket: Shape {
         path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
         path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
         return path
+    }
+}
+
+/// Kolor's mark: three of the frame's inks (blue, red, yellow) as dots, the
+/// way the app's icon has its squares.
+struct InkDots: View {
+    var body: some View {
+        let size: CGFloat = 7
+        VStack(spacing: -1.5) {
+            HStack(spacing: -1.5) {
+                Circle().fill(Theme.iconSquares[2]).frame(width: size, height: size)
+                Circle().fill(Theme.iconSquares[0]).frame(width: size, height: size)
+            }
+            Circle().fill(Theme.iconSquares[1]).frame(width: size, height: size)
+        }
+        .accessibilityHidden(true)
     }
 }
