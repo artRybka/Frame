@@ -392,6 +392,10 @@ def test_works_with_no_picture_are_left_out_of_lists(service) -> None:
 
     app = create_app(service.settings)
     svc = app.state.service
+    # Every address answers 404, as AIC does for a work it no longer has;
+    # the live site sometimes answers with a bot wall instead (502, not 410).
+    missing = httpx.MockTransport(lambda request: httpx.Response(404))
+    svc.images.http = lambda: httpx.Client(transport=missing)
     gone, kept = _aic(5), _aic(6)
     svc.images._mark_gone(gone)
     assert [r.item.id for r in remote_items(svc, [gone, kept])] == [kept.id]
