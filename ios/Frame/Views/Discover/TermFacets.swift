@@ -19,6 +19,24 @@ enum TermFacet: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
+    /// The group's symbol on its button, the same as its chips' in the
+    /// suggestions (`SearchToken.icon`); Kolor has its own three ink dots
+    /// (`InkDots`) instead.
+    var symbol: String? {
+        switch self {
+        case .technique: "scribble.variable"
+        case .period: "calendar"
+        case .style: "paintpalette"
+        case .color: nil
+        case .subject: "mountain.2"
+        case .museum: "building.columns"
+        }
+    }
+
+    /// The symbol is much wider than tall (Temat's landscape) and is drawn
+    /// smaller to look the same size as the rest.
+    var wideSymbol: Bool { self == .subject }
+
     /// Whether the group holds the chip.
     func holds(_ token: SearchToken) -> Bool {
         switch self {
@@ -162,7 +180,8 @@ enum PeriodAxis {
 /// The groups over the search field: six glass buttons, three to a row
 /// across the width; a picked group turns blue and shows what it holds under
 /// its name. A tapped group grows into its glass panel in the same place,
-/// over the field; "Wyczyść wybory" takes every group's chips off.
+/// over the field. The X next to the field (`termSearch`) takes every
+/// group's chips off along with the words.
 struct TermFacetBar: View {
     @Environment(AppModel.self) private var model
     @Binding var tokens: [SearchToken]
@@ -211,36 +230,14 @@ struct TermFacetBar: View {
 
     private var periods: [TermInfo] { model.vocabulary.filter { $0.kind == "period" } }
 
-    /// Chips the groups hold (not the field's artists and words).
-    private var grouped: Bool { tokens.contains { !TermFacet.inField($0) } }
-
     var body: some View {
         ZStack(alignment: .bottom) {
             GlassEffectContainer(spacing: 8) {
                 if !grown {
-                    VStack(alignment: .trailing, spacing: 8) {
-                        if grouped {
-                            Button {
-                                withAnimation(.snappy) {
-                                    tokens.removeAll { token in TermFacet.allCases.contains { $0.holds(token) } }
-                                }
-                            } label: {
-                                Label("Wyczyść wybory", systemImage: "xmark")
-                                    .font(.footnote.weight(.semibold))
-                                    .foregroundStyle(Theme.ink)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 6)
-                                    .contentShape(Capsule())
-                                    .glassEffect(.regular.interactive(), in: .capsule)
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityHint("Usuwa wybory we wszystkich grupach")
-                        }
-                        Grid(horizontalSpacing: 8, verticalSpacing: 8) {
-                            ForEach(Array(stride(from: 0, to: facets.count, by: 3)), id: \.self) { start in
-                                GridRow {
-                                    ForEach(facets[start ..< min(start + 3, facets.count)]) { facet in button(facet) }
-                                }
+                    Grid(horizontalSpacing: 8, verticalSpacing: 8) {
+                        ForEach(Array(stride(from: 0, to: facets.count, by: 3)), id: \.self) { start in
+                            GridRow {
+                                ForEach(facets[start ..< min(start + 3, facets.count)]) { facet in button(facet) }
                             }
                         }
                     }
@@ -268,6 +265,7 @@ struct TermFacetBar: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .trailing)
+        .preference(key: GroupPanelOpen.self, value: open != nil)
         .padding(.bottom, focus.wrappedValue ? Self.overField : 8)
         .onChange(of: focus.wrappedValue) { _, focused in
             if focused, open != nil { close() }
@@ -297,32 +295,32 @@ struct TermFacetBar: View {
             focus.wrappedValue = false
             open = facet
         } label: {
-            VStack(spacing: 1) {
-                if let value {
-                    Text(facet.title.uppercased())
-                        .font(.system(size: 9, weight: .semibold))
-                        .tracking(0.6)
-                        .opacity(0.75)
-                    HStack(spacing: 4) {
-                        if facet == .color {
-                            let swatches = picked.map(\.key).filter { !ColorTag.moods.contains($0) }
-                            ForEach(Array(swatches.prefix(3)), id: \.self) { tag in
-                                Circle()
-                                    .fill(ColorTag.color(tag))
-                                    .frame(width: 8, height: 8)
-                                    .overlay(Circle().strokeBorder(.white.opacity(0.7), lineWidth: 1))
-                            }
+            // Picked, the symbol stands for the group's name: "✎ Olej +1";
+            // Kolor shows the picked colours' dots instead.
+            HStack(spacing: 5) {
+                let swatches = facet == .color ? picked.map(\.key).filter { !ColorTag.moods.contains($0) } : []
+                if !swatches.isEmpty {
+                    HStack(spacing: 3) {
+                        ForEach(Array(swatches.prefix(3)), id: \.self) { tag in
+                            Circle()
+                                .fill(ColorTag.color(tag))
+                                .frame(width: 8, height: 8)
+                                .overlay(Circle().strokeBorder(.white.opacity(0.7), lineWidth: 1))
                         }
-                        Text(value)
-                            .font(.subheadline.weight(.semibold))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.75)
                     }
+                } else if let symbol = facet.symbol {
+                    // The landscape is twice as wide as the others: a smaller
+                    // size makes it look as big as the calendar next to it.
+                    Image(systemName: symbol)
+                        .font((facet.wideSymbol ? Font.caption2 : .subheadline).weight(on ? .semibold : .regular))
+                        .imageScale(.small)
                 } else {
-                    Text(facet.title)
-                        .font(.subheadline.weight(.medium))
-                        .lineLimit(1)
+                    InkDots()
                 }
+                Text(value ?? facet.title)
+                    .font(.subheadline.weight(on ? .semibold : .medium))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
             }
             .padding(.horizontal, 8)
             .frame(maxWidth: .infinity, minHeight: 44)
@@ -840,5 +838,21 @@ private struct Bracket: Shape {
         path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
         path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
         return path
+    }
+}
+
+/// Kolor's mark: three of the frame's inks (blue, red, yellow) as dots, the
+/// way the app's icon has its squares.
+struct InkDots: View {
+    var body: some View {
+        let size: CGFloat = 7
+        VStack(spacing: -1.5) {
+            HStack(spacing: -1.5) {
+                Circle().fill(Theme.iconSquares[2]).frame(width: size, height: size)
+                Circle().fill(Theme.iconSquares[0]).frame(width: size, height: size)
+            }
+            Circle().fill(Theme.iconSquares[1]).frame(width: size, height: size)
+        }
+        .accessibilityHidden(true)
     }
 }

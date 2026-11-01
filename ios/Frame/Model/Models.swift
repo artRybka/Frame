@@ -1594,7 +1594,7 @@ struct SearchToken: Hashable, Sendable, Identifiable {
         switch kind {
         case "artist": "person"
         case "style", "legacy-style": "paintpalette"
-        case "subject", "legacy-subject": "tag"
+        case "subject", "legacy-subject": "mountain.2"
         case "period": "calendar"
         case "technique": "scribble.variable"
         case "tag": "star"
