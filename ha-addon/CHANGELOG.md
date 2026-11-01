@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.68.1
+
+- Playlisty: wszystkie kafelki mają równą wysokość (nic nie skacze przy
+  przewijaniu), „Wspólna” po prawej w wierszu z liczbą dzieł, bez nagłówka
+  „Kolekcje”.
+
 ## 1.68.0
 
 - Słabe obrazy dzieł (mała rozdzielczość, mocno ściśnięty plik) podmieniane
