@@ -7,6 +7,8 @@ struct PlaylistsView: View {
     @State private var path = NavigationPath()
     /// The playlist whose deletion waits for a yes.
     @State private var deleting: PlaylistSummary?
+    /// How far the page is scrolled, for the glow of the card on top.
+    @State private var scrolled: CGFloat = 0
 
     private var active: PlaylistSummary? {
         guard let id = model.settings?.playlistId else { return nil }
@@ -16,6 +18,13 @@ struct PlaylistsView: View {
 
     /// The frame plays Propozycje: no playlist.
     private var suggestionsActive: Bool { model.settings != nil && model.settings?.playlistId == nil }
+
+    /// The colours of the picture on the frame glow behind "Teraz
+    /// prezentowane", as in Teraz; none without that card.
+    private var glow: [ColorSwatch] {
+        guard active != nil || suggestionsActive else { return [] }
+        return model.currentItem?.colors ?? []
+    }
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -65,7 +74,8 @@ struct PlaylistsView: View {
                 .padding(.horizontal, Theme.gutter)
                 .padding(.bottom, 40)
             }
-            .paperPage()
+            .glowLift($scrolled)
+            .paperPage(glow: glow, lift: scrolled)
             .navigationTitle("Playlisty")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {

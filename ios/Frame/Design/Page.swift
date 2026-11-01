@@ -21,40 +21,61 @@ extension View {
             .background(Theme.paper.ignoresSafeArea())
     }
 
-    /// The paper with a picture's colours glowing at the top, as behind
-    /// "Teraz", over the first screen. `lift` is how far the page is
-    /// scrolled: the glow goes up with what it belongs to, and stays put
-    /// when the page is pulled down.
+    /// The paper with a picture's colours glowing at the top: Teraz,
+    /// Odkrywaj (the study of the day) and Playlisty (what the frame shows).
+    /// `lift` is how far the page is scrolled (`glowLift`): the glow goes up
+    /// with what it belongs to, and stays put when the page is pulled down.
     func paperPage(glow swatches: [ColorSwatch], lift: CGFloat = 0) -> some View {
         frame(maxWidth: .infinity, maxHeight: .infinity)
             .background {
-                ZStack(alignment: .top) {
-                    Theme.paper
-                    PageGlowLayer(swatches: swatches)
-                        .frame(height: PageGlow.height)
-                        .offset(y: -max(0, lift))
-                        .animation(.easeInOut(duration: 0.8), value: swatches)
-                }
-                .ignoresSafeArea()
-                .allowsHitTesting(false)
+                PaperGlowBackground(swatches: swatches, lift: lift)
+                    .allowsHitTesting(false)
             }
+    }
+
+    /// Keeps `lift` at how far this ScrollView is scrolled, for
+    /// `paperPage(glow:lift:)`. Clamped, so scrolling past the glow redraws nothing.
+    func glowLift(_ lift: Binding<CGFloat>) -> some View {
+        onScrollGeometryChange(for: CGFloat.self) { geometry in
+            min(max(geometry.contentOffset.y + geometry.contentInsets.top, 0), PageGlow.height)
+        } action: { _, offset in
+            lift.wrappedValue = offset
+        }
     }
 }
 
 enum PageGlow {
-    /// Opacity of the colours at the top ("Teraz" has 0.45, under a paper veil).
-    static let strength = 0.6
+    /// Opacity of the colours at the top (1.57.0 had 0.38 under a paper
+    /// veil, 1.58.2 0.6: too faint, then too strong).
+    static let strength = 0.48
     /// From the top of the screen (under the bars) to where the glow is gone.
-    static let height: CGFloat = 900
+    static let height: CGFloat = 760
     /// How the glow thins out downwards: no step anywhere, nothing left at the end.
     static let fade: [Gradient.Stop] = [
         .init(color: .black, location: 0),
-        .init(color: .black.opacity(0.9), location: 0.25),
-        .init(color: .black.opacity(0.6), location: 0.5),
-        .init(color: .black.opacity(0.28), location: 0.72),
-        .init(color: .black.opacity(0.08), location: 0.9),
+        .init(color: .black.opacity(0.85), location: 0.25),
+        .init(color: .black.opacity(0.5), location: 0.5),
+        .init(color: .black.opacity(0.2), location: 0.72),
+        .init(color: .black.opacity(0.05), location: 0.9),
         .init(color: .clear, location: 1),
     ]
+}
+
+/// The paper and the glow over the whole screen, under the bars.
+struct PaperGlowBackground: View {
+    let swatches: [ColorSwatch]
+    var lift: CGFloat = 0
+
+    var body: some View {
+        ZStack(alignment: .top) {
+            Theme.paper
+            PageGlowLayer(swatches: swatches)
+                .frame(height: PageGlow.height)
+                .offset(y: -max(0, lift))
+                .animation(.easeInOut(duration: 0.8), value: swatches)
+        }
+        .ignoresSafeArea()
+    }
 }
 
 /// The picture's colours, blurred and fading out downwards. The fade is a

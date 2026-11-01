@@ -20,12 +20,7 @@ struct DiscoverView: View {
                         .padding(.top, 8)
                         .padding(.bottom, 32)
                 }
-                // Clamped, so scrolling further down the page redraws nothing.
-                .onScrollGeometryChange(for: CGFloat.self) { geometry in
-                    min(max(geometry.contentOffset.y + geometry.contentInsets.top, 0), PageGlow.height)
-                } action: { _, offset in
-                    scrolled = offset
-                }
+                .glowLift($scrolled)
                 .onChange(of: model.studyList?.count) {
                     guard LaunchRoute.screen == "discover", LaunchRoute.scroll == "studies" else { return }  // CI screenshots
                     Task {
