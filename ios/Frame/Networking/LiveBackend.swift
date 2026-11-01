@@ -193,6 +193,10 @@ struct LiveBackend: FrameBackend {
 
     func themes() async throws -> [ArtTheme] { try await get("/api/themes") }
 
+    func dailyAgain() async throws -> DailyWork.Brief { try await send("/api/daily/again", method: "POST") }
+
+    func weekArtistAgain() async throws -> ArtTheme { try await send("/api/themes/week-artist/again", method: "POST") }
+
     func daily(day: String?, wait: Int) async throws -> DailyWork {
         var query = [URLQueryItem(name: "wait", value: String(wait))]
         if let day { query.append(URLQueryItem(name: "day", value: day)) }

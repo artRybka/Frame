@@ -21,7 +21,7 @@ from ..library import Item, PlaylistRules
 from ..library.markup import strip_markup
 from ..library.vocabulary import artist_matches
 from ..service import FrameService
-from .deps import require_token, service
+from .deps import require_owner, require_token, service
 from .library_api import RemoteItem, remote_items
 
 router = APIRouter(prefix="/api", dependencies=[Depends(require_token)], tags=["discover"])
@@ -247,3 +247,17 @@ async def daily_detail(
     if path is None:
         raise HTTPException(404, "no such fragment")
     return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "max-age=604800"})
+
+
+@router.post("/daily/again", response_model=DailyBrief, dependencies=[Depends(require_owner)])
+async def daily_again(svc: Svc) -> DailyBrief:
+    """Another work of the day for today, drawn now (Konfiguracja → "Wylosuj
+    inne"); its page is asked for at once. 409 when the catalogue has no
+    other work fit for it."""
+    today = date.today()
+    item = await run_in_threadpool(svc.daily.again, today)
+    if item is None:
+        raise HTTPException(409, "no other work for today")
+    await run_in_threadpool(svc.daily.ask, item)
+    title = await run_in_threadpool(_title, svc, item, svc.daily.job.essay(item))
+    return DailyBrief(day=today.isoformat(), item=_light(svc, item), title=title)

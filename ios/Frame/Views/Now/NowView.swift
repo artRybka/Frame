@@ -830,7 +830,7 @@ struct OnFrameNote: View {
                         .foregroundStyle(Theme.ink)
                         .lineLimit(2)
                     if let artist = showing.item?.artist, !artist.isEmpty {
-                        Text(artist)
+                        Text(Names.artist(artist))
                             .font(.subheadline)
                             .foregroundStyle(Theme.inkSoft)
                             .lineLimit(1)
@@ -1044,7 +1044,7 @@ struct ArtworkInfo: View {
                             model.artistSearch = item.artist
                         } label: {
                             HStack(alignment: .firstTextBaseline, spacing: 6) {
-                                Text(item.artist).font(.serif(18)).foregroundStyle(Theme.ink)
+                                Text(Names.artist(item.artist)).font(.serif(18)).foregroundStyle(Theme.ink)
                                 Image(systemName: "magnifyingglass")
                                     .font(.footnote.weight(.semibold))
                                     .foregroundStyle(Theme.inkSoft)

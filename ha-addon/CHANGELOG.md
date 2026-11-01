@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.63.0
+
+- Konfiguracja → Odkrywaj: „Wylosuj inne” zmienia Studium dnia, a
+  „Wylosuj innego” Artystę tygodnia (tylko właściciel).
+- Polskie imiona artystów dla zabawy (Konfiguracja → Dla zabawy): Paweł
+  Cézanne, Wincenty van Gogh, Hieronim Bosch; nazwiska i wyszukiwanie bez
+  zmian.
+
 ## 1.62.0
 
 - Szukaj: podpowiedzi obejmują też słowa kluczowe i tematy dzieł (np.

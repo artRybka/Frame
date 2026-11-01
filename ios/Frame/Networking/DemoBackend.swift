@@ -695,6 +695,20 @@ actor DemoBackend: FrameBackend {
         return ArtThemePage(items: page == 1 ? remote(works(theme)) : [], more: false)
     }
 
+    /// The demo has one work of the day: drawn again, it is the same.
+    func dailyAgain() async throws -> DailyWork.Brief {
+        let work = try await daily(day: nil, wait: 0)
+        return DailyWork.Brief(day: work.day, item: work.item, title: work.title)
+    }
+
+    /// The demo's one artist of the week, as drawn again.
+    func weekArtistAgain() async throws -> ArtTheme {
+        guard let artist = try await themes().first(where: { $0.key.hasPrefix(ArtTheme.weekArtistPrefix) }) else {
+            throw BackendError.notFound
+        }
+        return artist
+    }
+
     func daily(day: String?, wait: Int) async throws -> DailyWork {
         func found(_ id: String) -> Item? { items.first { $0.id == id } }
         guard let wave = found("aic:24645") ?? items.max(by: { ($0.suitability ?? 0) < ($1.suitability ?? 0) }) else {
