@@ -387,7 +387,8 @@ async def themes(svc: Svc) -> list[ThemeCard]:
 
 def warm_up(svc: FrameService) -> None:
     """Work out what Discover opens with, so its first visit after a start
-    does not wait for it."""
+    does not wait for it; the suggestions while typing first."""
+    svc.library.term_index()
     work_out_cards(svc)
     _suggestion_rows(svc)
 
@@ -472,24 +473,19 @@ def vocabulary() -> list[TermInfo]:
 
 
 def _term_hits(svc: FrameService, text: str, limit: int) -> list[TermHit]:
-    wanted = fold(text.strip())
-    library = svc.library
-    hits: list[TermHit] = []
-    artists: Counter[str] = Counter()
-    for item in library.query()[1]:
-        if wanted in fold(item.artist) and is_artist(item.artist):
-            artists[item.artist] += 1
-    for name, count in artists.most_common(5):
-        hits.append(TermHit(kind="artist", key=name, name=name, count=count))
+    index = svc.library.term_index()
+    hits = [
+        TermHit(kind="artist", key=name, name=name, count=count)
+        for name, count in index.artists(text, limit=5)
+    ]
     for found in suggest(text, limit=limit):
         detail = ", ".join(w.rstrip("*") for w in found.words[:3])
-        count = library.query(PlaylistRules(terms=[found.key]))[0]
         kind = "period" if found.kind == "years" else found.kind
+        count = index.term_count(found.key)
         hits.append(TermHit(kind=kind, key=found.key, name=found.name, detail=detail, count=count))
     words = text.strip()
     if words:
-        count = library.query(PlaylistRules(query=words))[0]
-        hits.append(TermHit(kind="word", key=words, name=words, count=count))
+        hits.append(TermHit(kind="word", key=words, name=words, count=index.word_count(words)))
     return hits[: limit + 1]
 
 
