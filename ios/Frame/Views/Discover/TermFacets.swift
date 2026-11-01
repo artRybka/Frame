@@ -240,6 +240,8 @@ struct TermFacetBar: View {
                     $0.opacity(grown ? 1 : 0)
                 }
                 .background { PanelGlass(source: frames[open], grown: grown) }
+                // A tap between the chips stays in the panel, not outside it.
+                .contentShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
                 .allowsHitTesting(grown)
                 // Another group tapped while one shrinks: a new panel.
                 .id(open)
@@ -247,6 +249,19 @@ struct TermFacetBar: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .trailing)
+        // A tap anywhere outside the open group is its "Gotowe". The layer
+        // lies under the panel (which keeps its own taps, contentShape) and
+        // reaches far past the bar, over the page above it; the system
+        // search field and tab bar stay on top of it.
+        .background {
+            if grown {
+                Color.clear
+                    .contentShape(Rectangle())
+                    .frame(width: Self.outside, height: Self.outside)
+                    .onTapGesture(perform: close)
+                    .accessibilityHidden(true)
+            }
+        }
         .preference(key: GroupPanelOpen.self, value: open != nil)
         .padding(.bottom, focus.wrappedValue ? Self.overField : 8)
         .onChange(of: focus.wrappedValue) { _, focused in
@@ -254,6 +269,9 @@ struct TermFacetBar: View {
         }
         .task { await model.loadVocabulary() }
     }
+
+    /// The side of the tap-outside layer: more than any screen, around the bar.
+    private static let outside: CGFloat = 4000
 
     /// How the glass stretches: a little give at the end, like the system's.
     static let motion = Animation.bouncy(duration: 0.45, extraBounce: 0.05)
