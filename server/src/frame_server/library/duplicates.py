@@ -302,6 +302,10 @@ class Works:
                 return index
         return None
 
+    def group_index(self, item_id: str) -> int | None:
+        """The group ``item_id`` is in, if it is grouped here."""
+        return self._group.get(item_id)
+
     def add(self, item: Item) -> int:
         """Put ``item`` in its group (a new one if none fits); returns the group."""
         index = self.group_of(item)

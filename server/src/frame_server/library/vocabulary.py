@@ -628,7 +628,8 @@ def term(key: str) -> Term | None:
     return Term(key, name, year_from=start, year_to=end)
 
 
-def _text(item: Item) -> str:
+def text_of(item: Item) -> str:
+    """What terms are looked for in."""
     return " ".join(
         (
             item.title,
@@ -692,7 +693,7 @@ def term_matches(found: Term, item: Item, text: str | None = None) -> bool:
     if found.key in item.terms:
         return True
     pattern = found.pattern
-    return pattern is not None and bool(pattern.search(text if text is not None else _text(item)))
+    return pattern is not None and bool(pattern.search(text if text is not None else text_of(item)))
 
 
 def from_place(item: Item, place: str) -> bool:
@@ -727,7 +728,7 @@ def matches_terms(item: Item, keys: list[str]) -> bool:
     groups = _grouped(tuple(keys))
     if not groups:
         return True
-    text = _text(item)
+    text = text_of(item)
     return all(any(term_matches(t, item, text) for t in terms) for terms in groups.values())
 
 
