@@ -243,7 +243,9 @@ def test_the_catalogue_takes_in_museum_highlights(museums, monkeypatch) -> None:
 
         return Starred
 
-    for key in ("met", "cma"):
+    from frame_server.library.importer import HIGHLIGHT_SOURCES
+
+    for key in HIGHLIGHT_SOURCES:
         monkeypatch.setitem(MUSEUMS, key, starred(MUSEUMS[key]))
     # Taken in before museums' highlights were kept: marked when met again.
     old = library.upsert(Item(id="met:Star-0", source="met", source_id="Star-0"))

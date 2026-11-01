@@ -10,6 +10,7 @@ the IDS image server in any size.
 
 from __future__ import annotations
 
+import re
 from typing import Any, ClassVar
 
 from .models import Item
@@ -17,7 +18,7 @@ from .museums import Access, Discovery, Museum
 
 IDS = "https://ids.si.edu/ids/deliveryService"
 #: Art museums asked (the rest of the Smithsonian is science and history).
-UNITS = ("SAAM", "NPG", "FSG", "HMSG", "CHNDM", "NMAfA")
+UNITS = ("SAAM", "NPG", "FSG", "HMSG", "CHNDM", "NMAfA")  # FSG finds nothing yet
 
 
 class Smithsonian(Museum):
@@ -75,20 +76,23 @@ class Smithsonian(Museum):
         )
         indexed = content.get("indexedStructured") or {}
         names = self._free(content, "name", "Artist") or self._free(content, "name")
-        artist = names[0] if names else ""
+        artist, bio = names[0] if names else "", ""
+        # "Thomas Eakins, 25 Jul 1844 - 25 Jun 1916", "Wilhelm Funk, born Hanover 1866"
+        dated = re.match(r"^(.*?),\s*((?:born\b|\d|active\b|ca\.).*\d{4}.*)$", artist)
+        if dated:
+            artist, bio = dated.group(1), dated.group(2)
         dates = self._free(content, "date")
         decades = indexed.get("date") or []
-        year = next(
-            (int(d[:4]) for d in [*dates, *decades] if d[:4].isdigit()),
-            None,
-        )
+        found = [m for d in [*dates, *decades] if (m := re.search(r"\d{4}", str(d)))]
+        year = int(found[0].group(0)) if found else None
         unit = str(row.get("unitCode") or about.get("unit_code") or "")
         title = (about.get("title") or {}).get("content") or row.get("title") or ""
-        width = resource.get("width")
+        width = resource.get("width") or picture.get("width")
         return self._item(
             str(row["id"]),
             title=str(title),
             artist=artist,
+            artist_bio=bio,
             date_text=dates[0] if dates else "",
             year=year,
             medium=", ".join(self._free(content, "physicalDescription", "Medium")),
@@ -104,7 +108,9 @@ class Smithsonian(Museum):
             image_url=f"{IDS}?id={picture['idsId']}&max=2560",
             thumb_url=f"{IDS}?id={picture['idsId']}&max=600",
             width=int(width) if width else None,
-            height=int(resource["height"]) if resource.get("height") else None,
+            height=int(height)
+            if (height := resource.get("height") or picture.get("height"))
+            else None,
         )
 
     def _item(self, source_id: str, **fields: Any) -> Item:
