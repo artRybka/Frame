@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.69.3
+
+- Karta dzieła: gdy studium jest gotowe, „Otwórz studium” stoi na całą
+  szerokość pod „Pokaż na ramce” i „Dodaj do kolejki”.
+
 ## 1.69.2
 
 - Aktualizacja serwera z aplikacji: chwilowa utrata połączenia przy restarcie
