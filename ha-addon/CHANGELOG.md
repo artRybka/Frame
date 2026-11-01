@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.69.5
+
+- Szukaj: kolejne wyniki doczytują się same podczas przewijania, bez
+  przeciągania; w trakcie na dole bawią się kwadraciki, nad grupami.
+
 ## 1.69.4
 
 - Karta dzieła: polski tytuł i opis od razu, gdy już były po polsku; z
