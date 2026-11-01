@@ -253,7 +253,7 @@ struct ItemDetailView: View {
                 Button("Spróbuj ponownie", systemImage: "arrow.clockwise") {
                     Task { await load() }
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(ActionButtonStyle(wide: false))
                 .frame(maxWidth: .infinity)
             } else {
                 ProgressView().frame(maxWidth: .infinity)

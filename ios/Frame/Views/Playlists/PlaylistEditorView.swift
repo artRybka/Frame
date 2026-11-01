@@ -130,7 +130,7 @@ struct PlaylistEditorView: View {
                                         .foregroundStyle(Theme.inkSoft)
                                 }
                             }
-                            .tint(Theme.accent)
+                            .tint(Theme.ink)
                         }
 
                         switch playlist.kind {
@@ -358,14 +358,14 @@ struct PlaylistEditorView: View {
         if let limit = playlist.limit, matching > limit {
             var note = AttributedString("Pasuje \(matching), playlista weźmie ")
             var taken = AttributedString("\(limit)")
-            taken.foregroundColor = Theme.accent
+            taken.foregroundColor = Theme.ink
             note += taken + AttributedString(": najpierw ulubione, reszta losowo.")
             return note
         }
         if missing > 0 {
             var note = AttributedString(matching == 0 ? "Jeszcze nic nie pasuje. " : "Pasuje \(matching). ")
             var asked = AttributedString(matching == 0 ? "\(missing) dobiorę z muzeów" : "Brakujące \(missing) dobiorę z muzeów")
-            asked.foregroundColor = Theme.accent
+            asked.foregroundColor = Theme.ink
             note += asked + AttributedString(" w tle po zapisaniu.")
             return note
         }
@@ -423,7 +423,7 @@ struct PlaylistEditorView: View {
             if !photos.isEmpty {
                 Text("\(Names.photos(photos.count)) trafi do biblioteki i do tej playlisty po zapisaniu.")
                     .font(.subheadline.weight(.medium))
-                    .foregroundStyle(Theme.accent)
+                    .foregroundStyle(Theme.ink)
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 4), spacing: 6) {
                     ForEach(photos) { photo in
                         Color.clear
@@ -507,7 +507,7 @@ struct PlaylistEditorView: View {
                                 Text(order.title).foregroundStyle(Theme.ink)
                                 Spacer()
                                 if album.order == order {
-                                    Image(systemName: "checkmark").foregroundStyle(Theme.accent)
+                                    Image(systemName: "checkmark").foregroundStyle(Theme.ink)
                                 }
                             }
                             .padding(.vertical, 12)
@@ -555,7 +555,7 @@ struct PlaylistEditorView: View {
                     systemImage: "checkmark.circle.fill"
                 )
                 .font(.footnote.weight(.medium))
-                .foregroundStyle(Theme.accent)
+                .foregroundStyle(Theme.ink)
             case .failure:
                 Label("Nie udało się otworzyć albumu. Sprawdź, czy link jest pełny, a witryna publiczna włączona.",
                       systemImage: "exclamationmark.triangle")
@@ -594,7 +594,7 @@ struct PlaylistEditorView: View {
                         } label: {
                             Label("Wybrane · \(playlist.itemIds.count)", systemImage: "checkmark.circle")
                                 .font(.footnote.weight(.semibold))
-                                .foregroundStyle(Theme.accent)
+                                .foregroundStyle(Theme.ink)
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 5)
                                 .glassEffect(.regular.interactive(), in: .capsule)
@@ -685,7 +685,7 @@ struct PlaylistEditorView: View {
                 }
             }
             .frame(width: 32, height: 32)
-            .background(added ? Theme.accent : .black.opacity(0.45), in: Circle())
+            .background(added ? Theme.good : .black.opacity(0.45), in: Circle())
             .overlay(Circle().strokeBorder(.white.opacity(0.8), lineWidth: 1.5))
             .padding(6)
             .contentShape(Rectangle())

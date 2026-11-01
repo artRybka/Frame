@@ -379,7 +379,7 @@ struct TermSuggestions: View {
                 SearchWaiting(height: 72)
             } else if let hint = lookup.hint, hint.total > 0 {
                 VStack(alignment: .leading, spacing: 0) {
-                    Eyebrow("W muzeach: \(Names.works(hint.total))", color: Theme.accent)
+                    Eyebrow("W muzeach: \(Names.works(hint.total))", color: Theme.vermilion)
                         .padding(.horizontal, 12)
                         .padding(.top, 12)
                     ForEach(hint.artists) { artist in
@@ -422,7 +422,7 @@ struct TermSuggestions: View {
             HStack(spacing: 10) {
                 GroupMark(kind: tokenKind, symbol: icon, side: 17)
                     .font(.subheadline)
-                    .foregroundStyle(Theme.accent)
+                    .foregroundStyle(Theme.ink)
                     .frame(width: 22)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(title).font(.body).foregroundStyle(Theme.ink).lineLimit(1)

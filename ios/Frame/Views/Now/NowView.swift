@@ -166,7 +166,7 @@ struct NowView: View {
                                 .transition(.opacity)
                         }
                         if offset == 0, let device = model.status?.device, let pending = modePendingText(device) {
-                            NoticeRow(icon: "clock.arrow.circlepath", color: Theme.accent, text: pending)
+                            NoticeRow(icon: "clock.arrow.circlepath", color: Theme.inkSoft, text: pending)
                         }
                         if let shownItem {
                             ArtworkInfo(item: shownItem, polish: offset == 0 ? heroShowing?.polish : nil)
@@ -854,7 +854,7 @@ struct FrameAsleepNote: View {
             HStack(alignment: .top, spacing: 14) {
                 Image(systemName: off ? "power" : "moon.zzz")
                     .font(.title2)
-                    .foregroundStyle(Theme.accent)
+                    .foregroundStyle(Theme.inkSoft)
                     .frame(width: 32)
                 VStack(alignment: .leading, spacing: 4) {
                     Eyebrow(off ? "Ramka wyłączona" : "Ramka śpi")
@@ -1063,22 +1063,32 @@ struct ArtworkInfo: View {
                     .padding(.vertical, 4)
             }
             if !about.isEmpty {
-                if expanded {
-                    // Not Text: it cut long notes short with "…" (ReadingText).
-                    ReadingText(text: about, size: 16, lineSpacing: 4, color: Theme.ink.opacity(0.88))
-                } else {
-                    Text(about)
-                        .font(.serif(16))
-                        .lineSpacing(4)
-                        .foregroundStyle(Theme.ink.opacity(0.88))
-                        .lineLimit(5)
+                // The arrow sits right under the text: it opens and closes it.
+                VStack(alignment: .leading, spacing: 2) {
+                    if expanded {
+                        // Not Text: it cut long notes short with "…" (ReadingText).
+                        ReadingText(text: about, size: 16, lineSpacing: 4, color: Theme.ink.opacity(0.88))
+                    } else {
+                        Text(about)
+                            .font(.serif(16))
+                            .lineSpacing(4)
+                            .foregroundStyle(Theme.ink.opacity(0.88))
+                            .lineLimit(5)
+                    }
+                    Button {
+                        withAnimation(.easeInOut) { expanded.toggle() }
+                    } label: {
+                        Image(systemName: expanded ? "chevron.up" : "chevron.down")
+                            .font(.body.weight(.semibold))
+                            .foregroundStyle(Theme.ink)
+                            .frame(width: 32, height: 28, alignment: .leading)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(expanded ? "Zwiń" : "Czytaj więcej")
                 }
-                Button(expanded ? "Zwiń" : "Czytaj więcej") {
-                    withAnimation(.easeInOut) { expanded.toggle() }
-                }
-                .font(.subheadline.weight(.semibold))
             }
-            HStack {
+            HStack(alignment: .center, spacing: 12) {
                 if !item.museum.isEmpty {
                     Label {
                         Text(item.museum)
@@ -1087,13 +1097,18 @@ struct ArtworkInfo: View {
                     }
                         .font(.caption)
                         .foregroundStyle(Theme.inkSoft)
-                        .lineLimit(1)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                Spacer()
+                Spacer(minLength: 0)
                 NavigationLink(value: item.id) {
-                    Text("Szczegóły")
-                        .font(.subheadline.weight(.semibold))
+                    HStack(spacing: 6) {
+                        Text("Szczegóły").labelButtonType()
+                        Image(systemName: "arrow.right").font(.caption.weight(.semibold))
+                    }
                 }
+                .buttonStyle(ActionButtonStyle(prominent: true, wide: false, compact: true))
+                .layoutPriority(1)
             }
         }
         .task(id: item.id) { await loadPolish() }
@@ -1245,7 +1260,7 @@ struct ShownMarkLabel: View {
 
     static func text(mark: ShownMark, when: String) -> Text {
         let icon = Text(Image(systemName: mark.fromSchedule ? "clock" : "iphone"))
-            .foregroundStyle(mark.fromSchedule ? Theme.accent : Theme.vermilion)
+            .foregroundStyle(mark.fromSchedule ? Theme.ink : Theme.vermilion)
         return Text("\(icon) \(Text(when).foregroundStyle(Theme.inkSoft))")
     }
 }

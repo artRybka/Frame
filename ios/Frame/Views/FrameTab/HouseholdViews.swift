@@ -15,7 +15,7 @@ struct JoinView: View {
                 VStack(alignment: .leading, spacing: 22) {
                     Image(systemName: "photo.artframe")
                         .font(.system(size: 44))
-                        .foregroundStyle(Theme.accent)
+                        .foregroundStyle(Theme.ink)
                         .frame(maxWidth: .infinity)
                         .padding(.top, 24)
                     Text(headline)
@@ -42,12 +42,10 @@ struct JoinView: View {
                     } label: {
                         HStack {
                             Text("Dołącz")
-                            if joining { ProgressView().tint(.white) }
+                            if joining { ProgressView().tint(Theme.paper) }
                         }
-                        .frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
+                    .buttonStyle(PrimaryButtonStyle())
                     .disabled(joining)
                 }
                 .pageWidth()
@@ -176,7 +174,7 @@ struct HouseholdSection: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Image(systemName: person.isOwner ? "person.crop.circle.badge.checkmark" : "person.crop.circle")
-                    .foregroundStyle(Theme.accent)
+                    .foregroundStyle(Theme.inkSoft)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(person.isOwner ? "\(person.name) (Ty)" : person.name)
                         .font(.subheadline.weight(.semibold))

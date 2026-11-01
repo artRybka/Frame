@@ -322,7 +322,7 @@ struct TermFacetBar: View {
             .frame(maxWidth: .infinity, minHeight: 44)
             .foregroundStyle(on ? Theme.paper : Theme.ink)
             .contentShape(Capsule())
-            .glassEffect(on ? Glass.regular.tint(Theme.accent).interactive() : Glass.regular.interactive(), in: .capsule)
+            .glassEffect(on ? Glass.regular.tint(Theme.ink).interactive() : Glass.regular.interactive(), in: .capsule)
             .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frames[facet] = $0 }
         }
         .buttonStyle(.plain)
@@ -393,7 +393,7 @@ struct TermFacetPanel: View {
                 Spacer()
                 Button("Gotowe", action: close).fontWeight(.semibold)
             }
-            .tint(Theme.accent)
+            .tint(Theme.ink)
             .padding(.horizontal, 18)
             .frame(height: Self.header)
             ScrollView {
@@ -604,12 +604,12 @@ struct TermFacetPanel: View {
                     HStack(spacing: 10) {
                         GroupMark(kind: row.kind, symbol: row.icon, side: 17)
                             .font(.subheadline)
-                            .foregroundStyle(Theme.accent)
+                            .foregroundStyle(Theme.ink)
                             .frame(width: 22)
                         Text(row.name).font(.body).foregroundStyle(Theme.ink)
                         Spacer()
                         Image(systemName: on ? "checkmark.circle.fill" : "circle")
-                            .foregroundStyle(on ? Theme.accent : Theme.hairline)
+                            .foregroundStyle(on ? Theme.ink : Theme.hairline)
                             .font(.title3)
                     }
                     .padding(.horizontal, 12)

@@ -1,8 +1,9 @@
 import SwiftUI
 import UIKit
 
-/// Gallery look: warm paper, ink-black type, Prussian blue (Hokusai's Berlin
-/// blue) as the accent and vermilion (the artist's seal) for highlights.
+/// Gallery look: warm paper, ink-black type and controls (buttons, switches,
+/// selections, charts), and vermilion (the artist's seal) as the one colour
+/// for highlights. There is no blue accent any more (D1, 2026-11-01).
 enum Theme {
     static let paper = Color(light: 0xF5F1EA, dark: 0x121110)
     static let card = Color(light: 0xFFFDF9, dark: 0x1D1B19)
@@ -11,7 +12,6 @@ enum Theme {
     static let ink = Color(light: 0x1D1B18, dark: 0xF1ECE4)
     static let inkSoft = Color(light: 0x6E675E, dark: 0xA79F94)
     static let hairline = Color(light: 0xDDD5C8, dark: 0x34302B)
-    static let accent = Color(light: 0x23466B, dark: 0x9DBCE0)
     static let vermilion = Color(light: 0xB8432F, dark: 0xE58A6F)
     /// The frame around the panel: white, like the real one.
     static let moulding = Color(light: 0xFFFFFF, dark: 0xE6E2DA)

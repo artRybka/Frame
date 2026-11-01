@@ -231,9 +231,11 @@ struct ThemeCard: View {
                 Spacer(minLength: 4)
                 HStack {
                     if theme.playlistId != nil {
-                        Label("Masz", systemImage: "checkmark")
+                        // Only the tick, where "+ Playlista" was.
+                        Image(systemName: "checkmark")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(Theme.good)
+                            .accessibilityLabel("Masz tę playlistę")
                     } else {
                         Button {
                             Task {
@@ -247,7 +249,7 @@ struct ThemeCard: View {
                                 Text("Playlista")
                             }
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(Theme.accent)
+                            .foregroundStyle(Theme.ink)
                         }
                         .buttonStyle(.plain)
                         .disabled(making)

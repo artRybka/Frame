@@ -241,12 +241,13 @@ struct SuggestionsPage: View {
                 .font(.serif(17))
                 .foregroundStyle(Theme.inkSoft)
             if isActive {
+                // A state, not a button: outlined in vermilion, like a label button.
                 Label("Teraz prezentowane na ramce", systemImage: "photo.artframe")
-                    .font(.headline)
+                    .labelStyle(ActionLabelStyle())
                     .foregroundStyle(Theme.vermilion)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 15)
-                    .background(Theme.vermilion.opacity(0.1), in: RoundedRectangle(cornerRadius: 14))
+                    .background(LabelButton.shape.strokeBorder(Theme.vermilion, lineWidth: 1))
             } else {
                 Button {
                     Task {
@@ -435,7 +436,7 @@ struct SuggestionsCard: View {
                 .overlay(alignment: .bottomTrailing) {
                     Image(systemName: "sparkles")
                         .font(.footnote.weight(.semibold))
-                        .foregroundStyle(Theme.accent)
+                        .foregroundStyle(Theme.inkSoft)
                         .frame(width: 30, height: 30)
                         .background(Theme.paper.opacity(0.85), in: Circle())
                         .padding(8)
