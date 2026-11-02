@@ -5,6 +5,8 @@
 - Szukaj: menu po przytrzymaniu kafelka wyniku ma obok „Dodaj do kolejki”
   także „Ukryj dzieło”. Ukryte dzieło od razu znika z wyników (razem z
   kopiami z innych muzeów) i trafia do karty „Ukryte” w Playlistach.
+- Kopie dzieła: po wyborze innej kopii komunikat „Zdjęcie podmienione”
+  jest samą informacją, bez guzika „Cofnij”, i znika po chwili.
 
 ## 1.79.6
 
