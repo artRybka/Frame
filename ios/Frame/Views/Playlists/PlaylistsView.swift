@@ -533,6 +533,7 @@ struct RulesSummary: View {
             if let to = rules.yearTo { TagLabel(text: "do \(String(to))") }
             if rules.favoritesOnly { TagLabel(text: "♥ ulubione") }
             ForEach(rules.sources, id: \.self) { TagLabel(text: Names.source($0)) }
+            ForEach(rules.excludeSources, id: \.self) { TagLabel(text: "bez \(Names.source($0))") }
         }
     }
 }

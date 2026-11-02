@@ -198,6 +198,10 @@ class PlaylistRules(BaseModel):
     colors: list[str] = Field(default_factory=list)
     kinds: list[ItemKind] = Field(default_factory=list)
     sources: list[str] = Field(default_factory=list)
+    #: Museums left out: every source but these ("wszystkie poza Yale"),
+    #: so that a museum added later comes in on its own. Like
+    #: ``exclude_ids``, an exception: alone it is no rule.
+    exclude_sources: list[str] = Field(default_factory=list)
     year_from: int | None = None
     year_to: int | None = None
     favorites_only: bool = False

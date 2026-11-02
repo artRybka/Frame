@@ -333,11 +333,18 @@ class Works:
                 self._by_link[link].append(index)
         return index
 
-    def spare(self) -> set[str]:
+    def spare(self, skip: Iterable[str] = ()) -> set[str]:
         """Ids of needless copies: works the server added (``pooled``) of
         which the owner kept another copy, or the server holds one from a
-        more reliable source. Copies the owner kept all stay."""
-        return {i.id for group in self.groups for i in group[1:] if i.pooled}
+        more reliable source. Copies the owner kept all stay. Copies from
+        the sources ``skip`` don't count: the next copy takes their place."""
+        left_out = set(skip)
+        return {
+            i.id
+            for group in self.groups
+            for i in [i for i in group if i.source not in left_out][1:]
+            if i.pooled
+        }
 
     def once(self, items: list[Item]) -> list[Item]:
         """``items`` (grouped here) with each work once: of its copies among

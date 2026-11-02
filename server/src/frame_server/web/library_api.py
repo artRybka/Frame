@@ -193,6 +193,7 @@ def list_items(
     year_from: Annotated[int | None, Query(ge=0, le=2100)] = None,
     year_to: Annotated[int | None, Query(ge=0, le=2100)] = None,
     source: Annotated[list[str] | None, Query()] = None,
+    skip: Annotated[list[str] | None, Query()] = None,
     favorites: bool = False,
     kept: bool = False,
     sort: SortKey = "recent",
@@ -211,6 +212,7 @@ def list_items(
         year_from=year_from,
         year_to=year_to,
         sources=source or [],
+        exclude_sources=skip or [],
         favorites_only=favorites,
         kept_only=kept,
         # Works with no picture anywhere: an empty tile helps nobody.

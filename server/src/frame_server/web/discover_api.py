@@ -746,6 +746,17 @@ class MuseumSearch:
     #: The museums chosen; none means all of them.
     keys: list[str]
     limit: int
+    #: Museums left out ("all but Yale"); none chosen, all the others.
+    skip: tuple[str, ...] = ()
+
+    def asked(self, offered: list[str]) -> list[str]:
+        """The museums to ask: those chosen or, none chosen, every one on
+        offer; without those left out. Empty when nothing is asked, or every
+        museum is left out."""
+        if self.empty:
+            return []
+        keys = self.keys or offered
+        return [k for k in keys if k not in self.skip]
 
     @property
     def empty(self) -> bool:
@@ -822,6 +833,7 @@ def museum_search(
     year_to: int | None,
     source: list[str] | None,
     limit: int,
+    skip: list[str] | None = None,
 ) -> MuseumSearch:
     keys = [s for s in dict.fromkeys(source or []) if s != ALL]
     offered = svc.importer.sources()
@@ -830,7 +842,9 @@ def museum_search(
     rules = rules_from(q, artist, term, color, year_from, year_to)
     start, end = span(rules)
     spec = Discovery(year_from=start, year_to=end, kind=museum_kind(rules.terms))
-    return MuseumSearch(rules=rules, spec=spec, keys=keys, limit=limit)
+    # Museums left out need not be on offer (any more): they just stay out.
+    left_out = tuple(dict.fromkeys(skip or []))
+    return MuseumSearch(rules=rules, spec=spec, keys=keys, limit=limit, skip=left_out)
 
 
 Artists = Annotated[list[str] | None, Query()]
@@ -852,17 +866,20 @@ async def search_museums(
     year_from: Year = None,
     year_to: Year = None,
     source: Sources = None,
+    skip: Sources = None,
     page: Page = 1,
     limit: Limit = 8,
 ) -> MuseumAnswer:
     """The museums' works for what Discover's search asks (``limit`` from
-    each museum; every museum, or those of ``source``): their own search for
-    words, artists, styles and subjects, else works of the periods and
-    technique; with ``color``, those whose thumbnails have the colours."""
-    search = museum_search(svc, q, artist, term, color, year_from, year_to, source, limit)
-    if search.empty:
+    each museum; every museum, or those of ``source``, without those of
+    ``skip``): their own search for words, artists, styles and subjects,
+    else works of the periods and technique; with ``color``, those whose
+    thumbnails have the colours."""
+    search = museum_search(svc, q, artist, term, color, year_from, year_to, source, limit, skip)
+    # With none left out, no keys still means every museum.
+    keys = search.asked(svc.importer.sources()) if search.skip else search.keys
+    if search.empty or (search.skip and not keys):
         return MuseumAnswer(source=ALL, total=0, items=[])
-    keys = search.keys
     total, items, failed, next_ = await run_in_threadpool(urgent_call(search.ask), svc, keys, page)
     if keys and len(failed) == len(keys):
         raise HTTPException(502, f"{', '.join(failed)} did not answer")
@@ -885,6 +902,7 @@ async def stream_museums(
     year_from: Year = None,
     year_to: Year = None,
     source: Sources = None,
+    skip: Sources = None,
     page: Page = 1,
     limit: Limit = 8,
 ) -> StreamingResponse:
@@ -892,8 +910,8 @@ async def stream_museums(
     :class:`MuseumAnswer` per museum page (JSON lines), with colours several
     pages of each museum. A work comes once, from whichever museum answers
     first, unless a more reliable one brings it later (``replaces``)."""
-    search = museum_search(svc, q, artist, term, color, year_from, year_to, source, limit)
-    keys = [] if search.empty else search.keys or svc.importer.sources()
+    search = museum_search(svc, q, artist, term, color, year_from, year_to, source, limit, skip)
+    keys = search.asked(svc.importer.sources())
     copies = len(search.keys) != 1
     shown = shown_in(search.rules, page)
     if page == 1:

@@ -54,12 +54,14 @@ struct MuseumSearchView: View {
             get: {
                 var tokens = rules.tokens(names: model.termNames)
                 tokens += rules.colors.map { SearchToken(kind: "color", key: $0, name: ColorTag.name($0)) }
-                tokens += sources.map { SearchToken(kind: "museum", key: $0, name: museumName($0)) }
+                tokens += sources.map { SearchToken.museum($0, name: museumName($0)) }
+                tokens += rules.excludeSources.map { SearchToken.museum($0, name: museumName($0), out: true) }
                 return tokens
             },
             set: { tokens in
                 rules.setTokens(tokens)
                 rules.colors = tokens.filter { $0.kind == "color" }.map(\.key)
+                rules.excludeSources = tokens.filter { $0.kind == SearchToken.museumOut }.map(\.key)
                 sources = tokens.filter { $0.kind == "museum" }.map(\.key)
             }
         )
@@ -150,6 +152,11 @@ struct MuseumSearchView: View {
             // CI screenshots: a group's choice alone, the X next to the field.
             if ["search-chosen", "search-colors"].contains(LaunchRoute.screen), rules.colors.isEmpty {
                 rules.colors = ["blue"]
+            }
+            // CI screenshots: every museum but the Met, with a colour.
+            if LaunchRoute.screen == "search-museums", rules.excludeSources.isEmpty {
+                rules.colors = ["blue"]
+                rules.excludeSources = ["met"]
             }
         }
         .task(id: searchKey) {

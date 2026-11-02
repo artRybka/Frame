@@ -156,6 +156,7 @@ actor DemoBackend: FrameBackend {
         }
         if !rules.kinds.isEmpty && !rules.kinds.contains(item.kind) { return false }
         if !rules.sources.isEmpty && !rules.sources.contains(item.source) { return false }
+        if rules.excludeSources.contains(item.source) { return false }
         if !rules.artists.isEmpty && !DemoDiscover.artistMatches(item.artist, rules.artists) { return false }
         func overlaps(_ a: [String], _ b: [String]) -> Bool {
             Set(a.map { $0.lowercased() }).intersection(b.map { $0.lowercased() }).isEmpty == false
@@ -399,7 +400,7 @@ actor DemoBackend: FrameBackend {
         let rules = PlaylistRules(
             query: query.text, artists: query.artists, styles: query.styles, subjects: query.subjects,
             terms: query.terms, colors: query.colors, kinds: query.kinds, sources: query.sources,
-            yearFrom: query.yearFrom,
+            excludeSources: query.excludeSources, yearFrom: query.yearFrom,
             yearTo: query.yearTo, favoritesOnly: query.favoritesOnly
         )
         let listed = listed(for: rules)
@@ -977,7 +978,8 @@ actor DemoBackend: FrameBackend {
     func museumAnswers(_ rules: PlaylistRules, sources: [String], page: Int) async throws
         -> AsyncThrowingStream<MuseumAnswer, Error>
     {
-        let keys = sources.isEmpty ? try await museums().map(\.key) : sources
+        let keys = (sources.isEmpty ? try await museums().map(\.key) : sources)
+            .filter { !rules.excludeSources.contains($0) }
         let found = page == 1 ? items.filter { Self.matches($0, rules) } : []
         let answers = keys.map { key in
             let mine = found.filter { $0.source == key }
