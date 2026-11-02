@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.79.4
+
+- Przytrzymanie tytułu, nazwiska autora i obrazu (karta dzieła, studium,
+  tytuł i autor także w Teraz): telefon postukuje coraz szybciej aż do
+  zamiany zamiast jednego stuknięcia, a tekst powiększa się mniej.
+  Przytrzymanie obrazu otwiera go na całym ekranie; zwykłe stuknięcie
+  dalej działa.
+
 ## 1.79.3
 
 - Przełączniki w ciemnym trybie: włączony przełącznik ma ciepły, szary
