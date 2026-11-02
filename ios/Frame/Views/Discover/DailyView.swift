@@ -48,12 +48,7 @@ struct DailyTile: View {
                             .multilineTextAlignment(.leading)
                             .frame(maxWidth: .infinity, alignment: .leading)
                         // Only a hint: the whole card opens the study.
-                        Image(systemName: "arrow.right")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(Theme.paper)
-                            .frame(width: 30, height: 30)
-                            .background(LabelButton.shape.fill(Theme.ink))
-                            .accessibilityHidden(true)
+                        CardArrow()
                     }
                     .padding(.top, 4)
                 }

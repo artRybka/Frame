@@ -56,7 +56,8 @@ struct PlaylistsView: View {
                         }
                         .buttonStyle(.plain)
                     } else if let active {
-                        NowPlayingCard(playlist: active)  // someone else's, not shared
+                        // Someone else's, not shared: nothing to open, so no arrow.
+                        NowPlayingCard(playlist: active, opens: false)
                     } else if suggestionsActive {
                         NavigationLink(value: SuggestionsRoute()) {
                             NowPlayingCard(title: "Propozycje", subtitle: "dobór z Odkrywaj") {
@@ -294,6 +295,8 @@ extension PlaylistKind {
 struct NowPlayingCard<Cover: View>: View {
     let title: String
     let subtitle: String
+    /// Whether the card opens a page; only then it carries the arrow.
+    var opens = true
     @ViewBuilder let cover: Cover
 
     var body: some View {
@@ -316,7 +319,9 @@ struct NowPlayingCard<Cover: View>: View {
                     .foregroundStyle(Theme.inkSoft)
             }
             Spacer(minLength: 0)
-            Image(systemName: "chevron.right").foregroundStyle(Theme.inkSoft)
+            if opens {
+                CardArrow()
+            }
         }
         .padding(16)
         .background(Theme.card, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
@@ -327,8 +332,8 @@ struct NowPlayingCard<Cover: View>: View {
 }
 
 extension NowPlayingCard where Cover == Collage {
-    init(playlist: PlaylistSummary) {
-        self.init(title: playlist.name, subtitle: playlist.countText) {
+    init(playlist: PlaylistSummary, opens: Bool = true) {
+        self.init(title: playlist.name, subtitle: playlist.countText, opens: opens) {
             Collage(itemIDs: playlist.coverItemIds, title: playlist.name)
         }
     }
