@@ -990,7 +990,7 @@ struct ArtworkInfo: View {
             }
             // The title opens the work's card, like "Szczegóły" below; held,
             // it shows the museum's own until held again.
-            let original = TitlePeekNote.original(item.title, shown: title)
+            let original = OriginalTitle.of(item.title, shown: title)
             Text(peeking ? original ?? title : title)
                 .font(.serif(28, weight: .semibold))
                 .foregroundStyle(Theme.ink)
@@ -1004,24 +1004,15 @@ struct ArtworkInfo: View {
                 .titlePeek(enabled: original != nil, peeking: $peeking) { open?() }
                 .accessibilityAddTraits(.isButton)
                 .accessibilityHint(Text("Otwiera kartę dzieła"))
-            if peeking, original != nil {
-                TitlePeekNote(source: item.source)
-                    .padding(.top, -4)
-            }
             if item.kind == .photo {
                 PhotoFacts(item: item)
             } else {
                 VStack(alignment: .leading, spacing: 3) {
                     if !item.artist.isEmpty {
                         // Their other works, on Discover's search.
-                        Button {
-                            model.artistSearch = item.artist
-                        } label: {
-                            Text(Names.artist(item.artist)).font(.serif(18)).foregroundStyle(Theme.ink)
-                                .multilineTextAlignment(.leading)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityHint(Text("Szuka innych dzieł tego autora"))
+                        Text(Names.artist(item.artist)).font(.serif(18)).foregroundStyle(Theme.ink)
+                            .multilineTextAlignment(.leading)
+                            .artistPress { model.artistSearch = item.artist }
                     }
                     if !artistNote.isEmpty {
                         Text(artistNote).font(.subheadline).foregroundStyle(Theme.inkSoft)

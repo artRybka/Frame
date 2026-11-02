@@ -742,7 +742,7 @@ struct ItemDetailView: View {
         VStack(alignment: .leading, spacing: 6) {
             Eyebrow(Names.source(item.source), color: Theme.vermilion)
             let shown = title(item)
-            let original = TitlePeekNote.original(item.title, shown: shown)
+            let original = OriginalTitle.of(item.title, shown: shown)
             Text(peeking ? original ?? shown : shown)
                 .font(.serif(30, weight: .semibold))
                 .foregroundStyle(Theme.ink)
@@ -751,19 +751,11 @@ struct ItemDetailView: View {
                 .contentTransition(.opacity)
                 // Held: the museum's own, until held again.
                 .titlePeek(enabled: original != nil, peeking: $peeking)
-            if peeking, original != nil {
-                TitlePeekNote(source: item.source)
-            }
             if !item.artist.isEmpty {
                 // Their other works, on Discover's search.
-                Button {
-                    model.artistSearch = item.artist
-                } label: {
-                    Text(Names.artist(item.artist)).font(.serif(19)).foregroundStyle(Theme.ink)
-                        .multilineTextAlignment(.leading)
-                }
-                .buttonStyle(.plain)
-                .accessibilityHint(Text("Szuka innych dzieł tego autora"))
+                Text(Names.artist(item.artist)).font(.serif(19)).foregroundStyle(Theme.ink)
+                    .multilineTextAlignment(.leading)
+                    .artistPress { model.artistSearch = item.artist }
             }
             let bio = nonEmpty(shownPolish?.artistNote) ?? item.artistBio
             if !bio.isEmpty {
