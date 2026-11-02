@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.79.7
+
+- Kopie dzieła: po wyborze innej kopii komunikat „Zdjęcie podmienione”
+  jest samą informacją, bez guzika „Cofnij”, i znika po chwili.
+
 ## 1.79.6
 
 - Obraz na karcie dzieła i w studium: przy przytrzymaniu rośnie wyraźniej,

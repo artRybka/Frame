@@ -156,16 +156,16 @@ struct ItemDetailView: View {
             if let item { AddToPlaylistSheet(item: item, beforeAdding: saveCrop) }
         }
         .sheet(isPresented: $findingCopies) {
-            if let item { CopiesSheet(item: item) { copyPicked($0, before: item) } }
+            if let item { CopiesSheet(item: item) { copyPicked($0) } }
         }
     }
 
     // MARK: Copies
 
     /// A copy picked in "Szukaj lepszej kopii": the card fades to it. On the
-    /// frame now, the frame can show it at once; otherwise the pick can be
-    /// taken back.
-    private func copyPicked(_ updated: Item, before: Item) {
+    /// frame now, the frame can show it at once; otherwise a short note that
+    /// goes by itself (another copy is one more pick in the same sheet).
+    private func copyPicked(_ updated: Item) {
         withAnimation(.easeInOut(duration: 0.4)) { item = updated }
         pictureSize = updated.sharper.map { ($0.width, $0.height) }
         let id = itemID
@@ -177,13 +177,7 @@ struct ItemDetailView: View {
                 }
             )
         } else {
-            let back = before.sharper?.itemId ?? before.id
-            model.notices.info(
-                "Zdjęcie podmienione", nil,
-                action: Notice.Action(label: "Cofnij") {
-                    Task { await restorePicture(to: back) }
-                }
-            )
+            model.notices.info("Zdjęcie podmienione")
         }
     }
 
