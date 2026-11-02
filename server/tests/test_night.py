@@ -210,3 +210,28 @@ def test_discover_keeps_its_cards_and_rows_while_the_catalogue_stays(museums, mo
     library.update(work.id, favorite=True)
     assert not discover_api._cards_stale(service, discover_api._cards[0])
     assert discover_api._cards_stale(service, 0.0)
+
+
+def test_the_frames_next_pictures_get_sharper_copies_at_night(service, monkeypatch) -> None:
+    from concurrent.futures import Future
+
+    from test_player import _add
+
+    monkeypatch.setattr(night, "_last_used", time.monotonic() - 3600)
+    works = [_add(service, n, (40 * n, 40, 200), "Ala") for n in range(1, 4)]
+    known = {works[0].id}
+    monkeypatch.setattr(
+        service.sharper, "status", lambda item: "fine" if item.id in known else None
+    )
+    looked: list[str] = []
+
+    def soon(item):
+        looked.append(item.id)
+        done: Future[str] = Future()
+        done.set_result("fine")
+        return done
+
+    monkeypatch.setattr(service.sharper, "soon", soon)
+    (task,) = [t for t in night.tasks(service) if t.name == "sharper"]
+    assert task.run(Night(threading.Event(), time.monotonic() + 30)) == 2
+    assert set(looked) == {works[1].id, works[2].id}

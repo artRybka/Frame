@@ -20,6 +20,7 @@ import logging
 import threading
 import time
 from collections.abc import Callable
+from concurrent.futures import TimeoutError as FutureTimeout
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from datetime import time as clock
@@ -45,6 +46,10 @@ CATCH_UP_AFTER = 300.0
 CATCH_UP_FOR = timedelta(hours=2)
 #: The night last worked through (its date: the day it began).
 DONE_KEY = "night_done"
+#: Sharper copies are looked for, at night, for this many next pictures.
+SHARPER_AHEAD = 20
+#: One look for a sharper copy takes this long at most (seconds).
+SHARPER_WAIT = 600.0
 
 #: When the app last asked the server something (time.monotonic()).
 _last_used = float("-inf")
@@ -107,7 +112,6 @@ class NightQueue:
         self.tasks = tasks
         self._now = now or (lambda: datetime.now(self.tz()))
         self._stop = threading.Event()
-        self.running = False
 
     def tz(self) -> ZoneInfo:
         return self.service.player.settings.tz()
@@ -156,22 +160,18 @@ class NightQueue:
     def work(self, night_of: date, seconds: float) -> Night:
         """Every task once, while there is time; tonight is then done."""
         night = Night(self._stop, time.monotonic() + seconds, busy=lambda: self.service.player.busy)
-        self.running = True
         started = time.monotonic()
-        try:
-            for task in self.tasks:
-                if not night.quiet():
-                    log.info("night: %s and the rest left for the next night", task.name)
-                    break
-                began = time.monotonic()
-                try:
-                    task.run(night)
-                except Exception:
-                    log.exception("night: %s failed", task.name)
-                night.took[task.name] = took = time.monotonic() - began
-                log.info("night: %s in %.1f s", task.name, took)
-        finally:
-            self.running = False
+        for task in self.tasks:
+            if not night.quiet():
+                log.info("night: %s and the rest left for the next night", task.name)
+                break
+            began = time.monotonic()
+            try:
+                task.run(night)
+            except Exception:
+                log.exception("night: %s failed", task.name)
+            night.took[task.name] = took = time.monotonic() - began
+            log.info("night: %s in %.1f s", task.name, took)
         if not self._stop.is_set():
             self.service.library.set_state(DONE_KEY, night_of.isoformat())
             log.info("night: done in %.0f s", time.monotonic() - started)
@@ -206,6 +206,21 @@ def tasks(service: FrameService) -> list[NightTask]:
     def frame_line(night: Night) -> None:
         player.catch_up()
 
+    def sharper(night: Night) -> int:
+        """The frame's next pictures from sharper copies, where there are."""
+        looked = 0
+        for item in player.upcoming(SHARPER_AHEAD):
+            if service.sharper.status(item) is not None:
+                continue  # known
+            if not night.quiet():
+                break
+            try:
+                service.sharper.soon(item).result(SHARPER_WAIT)
+            except FutureTimeout:
+                break  # a museum this slow: the rest another night
+            looked += 1
+        return looked
+
     def themes(night: Night) -> None:
         discover_api.work_out_cards(service, force=True)
 
@@ -221,6 +236,7 @@ def tasks(service: FrameService) -> list[NightTask]:
         NightTask("daily", daily),
         NightTask("playlists", playlists),
         NightTask("frame line", frame_line),
+        NightTask("sharper", sharper),
         NightTask("themes", themes),
         NightTask("suggestions", suggestions),
     ]

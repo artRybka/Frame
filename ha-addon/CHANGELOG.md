@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.78.0
+
+- Nocna kolejka prac serwera: to, co zmienia katalog albo przegląda go w
+  całości, serwer robi nocą (1:30–6:00 wg strefy ramki), po jednym
+  zadaniu, czekając, gdy ktoś używa aplikacji albo ramka dostaje obraz.
+  W nocy: porządki pamięci (dotąd po każdej zmianie obrazu), wymiana
+  dzieł pełnego katalogu (dotąd co 6 h) i arcydzieła muzeów, grupowanie
+  kopii i podpowiedzi wyszukiwania, indeks NGA, urodziny ulubionych
+  artystów, Dzieło dnia z listami, liczby playlist, nowe dzieła w
+  kolejce ramki, ostrzejsze kopie dla 20 następnych obrazów, karty
+  motywów i wiersze Odkrywaj. Noc opuszczona (NAS wyłączony) nadrabia
+  się kilka minut po starcie. Log mówi, ile trwało każde zadanie
+  (`/api/debug/log?grep=night`).
+- W dzień: Teraz nie przegląda całej playlisty przy każdym otwarciu,
+  karty motywów Odkrywaj są ważne do zmiany katalogu (nie 10 minut),
+  Propozycje do zmiany biblioteki, a przegląd notatek AI w tle odbywa się
+  po zmianach, nie co minutę. Szukanie w muzeach, opisy otwieranych dzieł,
+  ostrzejsza kopia przy otwarciu karty, studia i Analiza kompozycji
+  działają jak dotąd. Katalog, który jeszcze się zapełnia, rośnie też
+  w dzień.
+
 ## 1.76.1
 
 - Playlisty widać od razu po uruchomieniu aplikacji (z poprzedniego razu,
@@ -7,7 +28,7 @@
   inteligentnej playlisty przez cały katalog (na NAS po sekundzie lub
   więcej na playlistę): liczby dzieł i okładki pamięta, a gdy w tle
   przybywają dzieła, przelicza playlistę, gdy ktoś ją otwiera, i wszystkie
-  w nocy (o 3:00). Zmieniona playlista albo serduszko liczą się od razu.
+  w nocy. Zmieniona playlista albo serduszko liczą się od razu.
   Wymaga zaktualizowanego serwera.
 
 ## 1.76.0

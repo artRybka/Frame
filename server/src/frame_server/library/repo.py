@@ -322,6 +322,8 @@ class Library:
         #: Goes up when an item joins or leaves the catalogue, or is hidden
         #: or shown again (not with every change, e.g. a picture shown).
         self._catalogue_version = 0
+        #: Goes up when a language model's note is kept or forgotten.
+        self.notes_version = 0
         #: Smart playlists' counts and covers as last worked out, by id.
         self._counted: dict[int, _Counted] = {}
         #: A smart playlist's count and cover may be shown as last worked
@@ -992,6 +994,7 @@ class Library:
                     note.created_at,
                 ),
             )
+        self.notes_version += 1
         return note
 
     def delete_notes(self, kind: str, item_id: str | None = None) -> int:
@@ -1003,6 +1006,7 @@ class Library:
                 cur = db.execute(
                     "DELETE FROM ai_notes WHERE kind = ? AND item_id = ?", (kind, item_id)
                 )
+        self.notes_version += 1
         return cur.rowcount
 
     # -- history ------------------------------------------------------------

@@ -415,3 +415,27 @@ def test_what_the_app_needs_now_never_waits_for_the_background(
     finally:
         release.set()
         service.ai.stop()
+
+
+def test_the_background_looks_again_only_after_a_change(
+    service: FrameService, fake: FakeAnthropic, monkeypatch
+) -> None:
+    looks: list[int] = []
+    real = service.ai.sweep
+    monkeypatch.setattr(service.ai, "sweep", lambda: looks.append(1) or real())
+
+    def minute_later() -> None:
+        service.ai._next_sweep = 0.0
+        service.ai.tick()
+
+    minute_later()
+    minute_later()
+    assert len(looks) == 1  # nothing found, nothing changed: no second look
+    _add(service, "met:new")
+    minute_later()
+    assert len(looks) == 2  # a new item: looked at once
+    service.ai._swept_at -= 3600  # and now and then anyway
+    while not service.ai._queue.empty():
+        service.ai._do(service.ai._queue.get())
+    minute_later()
+    assert len(looks) == 3
