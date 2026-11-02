@@ -274,6 +274,34 @@ def same_work(a: Item, b: Item) -> bool:
     return True
 
 
+#: The fields grouping looks at (:func:`same_work`, :func:`origin`,
+#: :func:`preference`): a change of another one leaves the groups as they are.
+GROUPING_FIELDS = frozenset(
+    {
+        "kind",
+        "source",
+        "source_id",
+        "title",
+        "artist",
+        "year",
+        "width",
+        "height",
+        "url",
+        "image_url",
+        "pooled",
+    }
+)
+
+
+def regroups(old: Item, new: Item) -> bool:
+    """Whether ``old`` becoming ``new`` may change the groups. Only works
+    of art are grouped: anything else (an album photo with a fresh signed
+    link) stays alone in its group whatever it says."""
+    if old.kind != ItemKind.ARTWORK and new.kind != ItemKind.ARTWORK:
+        return False
+    return any(getattr(old, f) != getattr(new, f) for f in GROUPING_FIELDS)
+
+
 def preference(item: Item) -> tuple[bool, int]:
     """Sort key, best copy first: kept by the owner, then the most
     reliable source."""
@@ -333,11 +361,46 @@ class Works:
                 self._by_link[link].append(index)
         return index
 
-    def spare(self) -> set[str]:
+    def replace(self, item: Item) -> bool:
+        """The grouped copy of ``item`` swapped for this one, in its place;
+        only for a change :func:`regroups` lets through. False when ``item``
+        is not grouped here."""
+        index = self._group.get(item.id)
+        if index is None:
+            return False
+        group = self.groups[index]
+        for n, held in enumerate(group):
+            if held.id == item.id:
+                group[n] = item
+                return True
+        return False
+
+    def remove(self, item_id: str) -> bool:
+        """``item_id`` taken out when it is alone in its group: the other
+        groups are what they would be without it. False (nothing changed)
+        when it has copies: they may have been grouped through it, and only
+        grouping them again tells."""
+        index = self._group.get(item_id)
+        if index is None:
+            return True
+        if len(self.groups[index]) != 1:
+            return False
+        self.groups[index] = []  # the other groups keep their numbers
+        del self._group[item_id]
+        return True
+
+    def spare(self, skip: Iterable[str] = ()) -> set[str]:
         """Ids of needless copies: works the server added (``pooled``) of
         which the owner kept another copy, or the server holds one from a
-        more reliable source. Copies the owner kept all stay."""
-        return {i.id for group in self.groups for i in group[1:] if i.pooled}
+        more reliable source. Copies the owner kept all stay. Copies from
+        the sources ``skip`` don't count: the next copy takes their place."""
+        left_out = set(skip)
+        return {
+            i.id
+            for group in self.groups
+            for i in [i for i in group if i.source not in left_out][1:]
+            if i.pooled
+        }
 
     def once(self, items: list[Item]) -> list[Item]:
         """``items`` (grouped here) with each work once: of its copies among
@@ -347,7 +410,11 @@ class Works:
             index = self._group.get(item.id)
             if index is None:
                 continue
-            place = next(n for n, i in enumerate(self.groups[index]) if i.id == item.id)
+            group = self.groups[index]
+            # None: taken out meanwhile (``remove``, from another thread).
+            place = next((n for n, i in enumerate(group) if i.id == item.id), None)
+            if place is None:
+                continue
             if index not in kept or place < kept[index][0]:
                 kept[index] = (place, item.id)
         best = {item_id for _, item_id in kept.values()}

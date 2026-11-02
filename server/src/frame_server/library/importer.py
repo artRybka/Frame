@@ -535,6 +535,7 @@ class Importer:
         sources = [s for s in rules.sources if s in offered] or [
             s for s in offered if not MUSEUMS[s].testing
         ]
+        sources = [s for s in sources if s not in rules.exclude_sources]
         # Colours and suitability are only known once the thumbnail is in.
         cheap = rules.model_copy(update={"colors": [], "min_suitability": None})
         highlight = HIGHLIGHT in rules.terms
@@ -780,5 +781,5 @@ class Importer:
             finally:
                 job.finished = True
 
-        threading.Thread(target=run, name=f"job-{job.id}", daemon=True).start()
+        threading.Thread(target=run, name=f"job-{description}", daemon=True).start()
         return job

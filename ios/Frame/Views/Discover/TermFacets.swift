@@ -27,7 +27,7 @@ enum TermFacet: String, CaseIterable, Identifiable, Sendable {
         case .style: token.kind == "style" || token.kind == "legacy-style"
         case .color: token.kind == "color"
         case .subject: token.kind == "subject" || token.kind == "legacy-subject"
-        case .museum: token.kind == "museum"
+        case .museum: token.kind == "museum" || token.kind == SearchToken.museumOut
         }
     }
 
@@ -195,6 +195,7 @@ struct TermFacetBar: View {
         switch LaunchRoute.screen {
         case "search-picker": .period
         case "search-colors": .color
+        case "search-museums": .museum
         case "search-styles": .style
         default: nil
         }
@@ -378,6 +379,9 @@ struct TermFacetPanel: View {
 
     @State private var filter = ""
     @State private var accents = false
+    /// Museums: the picked ones are left out ("Wykluczone"), with none
+    /// picked yet (with some, their kind says it).
+    @State private var leaveOut = false
     /// How tall the group's content is.
     @State private var height: CGFloat = 280
 
@@ -424,7 +428,7 @@ struct TermFacetPanel: View {
 
     private var footnote: String {
         switch facet {
-        case .museum: "Bez wybranych pytam wszystkie muzea. Wybrane: tylko je."
+        case .museum: "Nic nie wybrane: pytam wszystkie muzea."
         case .color: "Wśród kolorów i nastrojów wystarczy jeden z wybranych, wśród akcentów też. Kolor i akcent muszą pasować razem: Błękit z akcentem czerwieni to niebieskie obrazy z czymś czerwonym."
         default: "Wybierz dowolnie wiele: wystarczy, że dzieło pasuje do jednego z nich."
         }
@@ -582,8 +586,56 @@ struct TermFacetPanel: View {
 
     // MARK: Museums
 
+    /// "Wybrane" (false) or "Wykluczone" (true): what the picked
+    /// museums mean. Switched with museums picked, they keep being picked
+    /// and mean the other thing.
+    private var museumsOut: Binding<Bool> {
+        Binding(
+            get: {
+                if tokens.contains(where: { $0.kind == SearchToken.museumOut }) { return true }
+                if tokens.contains(where: { $0.kind == "museum" }) { return false }
+                return leaveOut
+            },
+            set: { out in
+                leaveOut = out
+                withAnimation(.snappy) {
+                    tokens = tokens.map { token in
+                        guard facet.holds(token) else { return token }
+                        return SearchToken.museum(token.key, name: museumName(token.key), out: out)
+                    }
+                }
+            }
+        )
+    }
+
+    private func museumName(_ key: String) -> String {
+        museums.first { $0.key == key }?.name ?? Names.source(key)
+    }
+
     private var museumList: some View {
-        checkList(museums.map { CheckRow(kind: "museum", key: $0.key, name: $0.name, icon: "building.columns") })
+        let out = museumsOut.wrappedValue
+        let count = tokens.filter(facet.holds).count
+        return VStack(alignment: .leading, spacing: 14) {
+            Picker("Które muzea", selection: museumsOut) {
+                Text(!out && count > 0 ? "Wybrane · \(count)" : "Wybrane").tag(false)
+                Text(out && count > 0 ? "Wykluczone · \(count)" : "Wykluczone").tag(true)
+            }
+            .pickerStyle(.segmented)
+            Text(out
+                ? "Pytam wszystkie muzea oprócz zaznaczonych."
+                : "Pytam tylko zaznaczone muzea.")
+                .font(.footnote)
+                .foregroundStyle(Theme.inkSoft)
+            checkList(
+                museums.map {
+                    CheckRow(
+                        kind: out ? SearchToken.museumOut : "museum", key: $0.key, name: $0.name,
+                        icon: "building.columns"
+                    )
+                },
+                out: out
+            )
+        }
     }
 
     private struct CheckRow: Identifiable {
@@ -594,23 +646,29 @@ struct TermFacetPanel: View {
         var id: String { key }
     }
 
-    private func checkList(_ rows: [CheckRow]) -> some View {
+    /// The rows to pick; `out`: picked ones are left out (a minus, the name
+    /// struck through), not asked alone (a tick).
+    private func checkList(_ rows: [CheckRow], out: Bool = false) -> some View {
         VStack(spacing: 0) {
             ForEach(rows) { row in
                 let on = picked(row.kind, row.key)
                 Button {
-                    toggle(row.kind, row.key, row.name)
+                    toggle(row.kind, row.key, SearchToken.museum(row.key, name: row.name, out: out).name)
                 } label: {
                     HStack(spacing: 10) {
                         GroupMark(kind: row.kind, symbol: row.icon, side: 17)
                             .font(.subheadline)
-                            .foregroundStyle(Theme.ink)
+                            .foregroundStyle(on && out ? Theme.inkSoft : Theme.ink)
                             .frame(width: 22)
-                        Text(row.name).font(.body).foregroundStyle(Theme.ink)
+                        Text(row.name)
+                            .font(.body)
+                            .strikethrough(on && out, color: Theme.inkSoft)
+                            .foregroundStyle(on && out ? Theme.inkSoft : Theme.ink)
                         Spacer()
-                        Image(systemName: on ? "checkmark.circle.fill" : "circle")
-                            .foregroundStyle(on ? Theme.ink : Theme.hairline)
+                        Image(systemName: on ? (out ? "minus.circle.fill" : "checkmark.circle.fill") : "circle")
+                            .foregroundStyle(on ? (out ? Theme.vermilion : Theme.ink) : Theme.hairline)
                             .font(.title3)
+                            .contentTransition(.symbolEffect(.replace))
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 10)
@@ -618,6 +676,7 @@ struct TermFacetPanel: View {
                 }
                 .buttonStyle(.plain)
                 .sensoryFeedback(.selection, trigger: on)
+                .accessibilityLabel(on && out ? "\(row.name), wykluczone" : row.name)
                 .accessibilityAddTraits(on ? .isSelected : [])
                 if row.id != rows.last?.id {
                     Divider().overlay(Theme.hairline).padding(.leading, 44)

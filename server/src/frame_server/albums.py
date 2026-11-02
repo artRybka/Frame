@@ -95,13 +95,17 @@ class Albums:
         held = {i for p in self.library.playlists() for i in p.item_ids}
         state = self.service.player.state
         held |= {state.current_item_id or "", *state.current_group}
-        gone = 0
-        for item in self.library.query(include_excluded=True)[1]:
-            if item.source == "icloud" and item.id not in held:
+        gone = [
+            i
+            for i in self.library.query(include_excluded=True)[1]
+            if i.source == "icloud" and i.id not in held
+        ]
+        with self.library.batch():
+            for item in gone:
                 self.library.delete(item.id)
-                self.service.images.remove(item)
-                gone += 1
-        return gone
+        for item in gone:
+            self.service.images.remove(item)
+        return len(gone)
 
     def deleted(self, playlist_id: int) -> None:
         """An album playlist went: so do its sync record and its photos."""

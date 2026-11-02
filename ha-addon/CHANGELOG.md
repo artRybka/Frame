@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.74.0
+
+- Szukaj: w grupie Muzeum przełącznik „Wybrane / Wykluczone” pozwala
+  przeszukać wszystkie muzea oprócz wybranych (np. bez Yale). Playlista
+  utworzona z takiego wyszukiwania też pomija te muzea, a muzea dodane później
+  same do niej wejdą. Wymaga zaktualizowanego serwera.
+- Serwer po starcie nie przelicza w kółko całej biblioteki przy synchronizacji
+  albumu iCloud: aplikacja nie czeka już na niego kilkudziesięciu sekund po
+  aktualizacji.
+
 ## 1.73.4
 
 - Studium dzieła: podgląd „Na Twojej ramce” znów pokazuje całą ramkę w jej

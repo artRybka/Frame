@@ -383,13 +383,17 @@ struct PlaylistEditorView: View {
                 return rules.wrappedValue.tokens(names: model.termNames)
                     + rules.wrappedValue.colors.map { SearchToken(kind: "color", key: $0, name: ColorTag.name($0)) }
                     + rules.wrappedValue.sources.filter { keys.contains($0) }.map {
-                        SearchToken(kind: "museum", key: $0, name: museumName($0))
+                        SearchToken.museum($0, name: museumName($0))
+                    }
+                    + rules.wrappedValue.excludeSources.map {
+                        SearchToken.museum($0, name: museumName($0), out: true)
                     }
             },
             set: { tokens in
                 let keys = Set(museums.map(\.key))
                 rules.wrappedValue.setTokens(tokens)
                 rules.wrappedValue.colors = tokens.filter { $0.kind == "color" }.map(\.key)
+                rules.wrappedValue.excludeSources = tokens.filter { $0.kind == SearchToken.museumOut }.map(\.key)
                 rules.wrappedValue.sources = rules.wrappedValue.sources.filter { !keys.contains($0) }
                     + tokens.filter { $0.kind == "museum" }.map(\.key)
             }
@@ -715,6 +719,9 @@ struct PlaylistEditorView: View {
         ]
         if !rules.sources.isEmpty, museums.isDisjoint(with: rules.sources) {
             return "Reguły nie dopuszczają żadnego muzeum."
+        }
+        if museums.isSubset(of: rules.excludeSources) {
+            return "Wszystkie muzea są wykluczone."
         }
         return nil
     }

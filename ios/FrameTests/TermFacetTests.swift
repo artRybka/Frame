@@ -76,4 +76,16 @@ final class TermFacetTests: XCTestCase {
         XCTAssertNil(TermFacet.subject.value(tokens, periods: periods))
         XCTAssertEqual(tokens.filter(TermFacet.inField).map(\.name), ["Hiroshige"])
     }
+
+    func testMuseumsLeftOutSayBez() {
+        let tokens = [
+            SearchToken.museum("yale", name: "Yale", out: true),
+            SearchToken.museum("met", name: "The Metropolitan Museum of Art", out: true),
+        ]
+        XCTAssertEqual(tokens.map(\.kind), [SearchToken.museumOut, SearchToken.museumOut])
+        XCTAssertTrue(tokens.allSatisfy(TermFacet.museum.holds))
+        XCTAssertTrue(tokens.filter(TermFacet.inField).isEmpty)
+        XCTAssertEqual(TermFacet.museum.label(tokens, periods: periods), "Muzeum: bez Yale +1")
+        XCTAssertEqual(SearchToken.museum("yale", name: "Yale").name, "Yale")
+    }
 }

@@ -1130,7 +1130,19 @@ final class FrameAPITests: XCTestCase {
         let rules = try LiveBackend.decoder().decode(PlaylistRules.self, from: Data(json.utf8))
         XCTAssertEqual(rules.artists, ["Ala"])
         XCTAssertEqual(rules.excludeIds, [])
+        XCTAssertEqual(rules.excludeSources, [])
         XCTAssertTrue(PlaylistRules(excludeIds: ["x"]).isEmpty)
+        // Museums left out alone are no rule either.
+        XCTAssertTrue(PlaylistRules(excludeSources: ["yale"]).isEmpty)
+    }
+
+    func testMuseumsLeftOutGoToTheServerAsSkip() throws {
+        let encoder = JSONEncoder()
+        encoder.keyEncodingStrategy = .convertToSnakeCase
+        let json = try XCTUnwrap(String(data: encoder.encode(PlaylistRules(excludeSources: ["yale"])), encoding: .utf8))
+        XCTAssertTrue(json.contains(#""exclude_sources":["yale"]"#))
+        let query = LibraryQuery(rules: PlaylistRules(excludeSources: ["yale"]))
+        XCTAssertEqual(query.excludeSources, ["yale"])
     }
 
     func testDemoBackendUsesBundledImages() throws {
@@ -1473,6 +1485,15 @@ final class FrameAPITests: XCTestCase {
             sources.append(answer.source)
         }
         XCTAssertEqual(sources, ["aic", "met"])
+
+        // Every museum but the ones left out.
+        var rest: [String] = []
+        let rules = PlaylistRules(excludeSources: ["met"])
+        for try await answer in try await demo.museumAnswers(rules, sources: [], page: 1) {
+            rest.append(answer.source)
+        }
+        XCTAssertFalse(rest.isEmpty)
+        XCTAssertFalse(rest.contains("met"))
     }
 
     func testDescriptionKeepsWholeSentences() {
