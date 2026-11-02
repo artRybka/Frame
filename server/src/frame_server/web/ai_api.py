@@ -152,6 +152,8 @@ class Compose(BaseModel):
 
     rework: bool | list[str]
     waiting: list[str] = []
+    #: Asked, but the answer gave no take; let them again to ask once more.
+    failed: list[str] = []
     done: list[str] = []
 
 
@@ -168,7 +170,12 @@ def _compose(svc: FrameService) -> Compose:
         for item_id, note in svc.library.notes(kind).items()
         if "teaser" in note.data and note.data.get(CHECK_ROUND, 1) >= ROUND
     }
-    return Compose(rework=job.rework(), waiting=sorted(job.waiting()), done=sorted(done))
+    return Compose(
+        rework=job.rework(),
+        waiting=sorted(job.waiting()),
+        done=sorted(done),
+        failed=sorted(job.failed()),
+    )
 
 
 @router.get("/composition", response_model=Compose)

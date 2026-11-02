@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.75.1
+
+- Analiza kompozycji: praca, przy której odpowiedź modelu nie dała ujęcia,
+  nie czeka już w nieskończoność. Odpowiedź zostaje zapisana do wglądu,
+  `GET /api/ai/composition` pokazuje takie prace w `failed`, a ponowne
+  wskazanie ich w `PUT` pyta jeszcze raz. Ujęcie podpisane inaczej niż
+  „Analiza kompozycji” też się liczy.
+- Bez rytmu sprzętów (stołki, krzesła, butelki): model może o nim napisać,
+  ale go nie rysuje. Runda 5: strony z pierwszej próby można przerobić
+  jeszcze raz.
+
 ## 1.75.0
 
 - Studium dzieła: nowa „Analiza kompozycji”, jedno ujęcie zamiast „Geometrii”
