@@ -4,9 +4,9 @@
 
 - Studium dzieła: podgląd „Na Twojej ramce” znów pokazuje całą ramkę w jej
   kształcie, a nie biały pasek z małym obrazkiem.
-- Playlisty: karta „Teraz prezentowane” ma tę samą strzałkę w czarnym
-  kwadracie co studium dnia w Odkrywaj; cudza playlista, której nie da się
-  otworzyć, nie ma strzałki.
+- Playlisty: karta „Teraz prezentowane” ma w prawym dolnym rogu tę samą
+  strzałkę w czarnym kwadracie co studium dnia w Odkrywaj; cudza playlista,
+  której nie da się otworzyć, nie ma strzałki.
 
 ## 1.73.3
 

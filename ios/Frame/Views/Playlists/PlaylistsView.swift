@@ -320,7 +320,9 @@ struct NowPlayingCard<Cover: View>: View {
             }
             Spacer(minLength: 0)
             if opens {
+                // In the bottom corner, as on the study of the day (as tall as the cover).
                 CardArrow()
+                    .frame(height: 112, alignment: .bottom)
             }
         }
         .padding(16)
