@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.79.8
+
+- Szukaj lepszej kopii: arkusz „Kopie dzieła” nie czeka już w nieskończoność
+  na Paris Musées i Openverse. Ich wyszukiwarki odpowiadają czasem dopiero
+  po minucie, więc po 20 s takie źródło jest oznaczone jako bez odpowiedzi,
+  a lista się kończy. Serwer czeka na nie dalej w tle i zapamiętuje
+  odpowiedź, więc przy następnym otwarciu ich kopie są od razu.
+- Paris Musées szuka kopii po samym tytule dzieła. Wcześniej szukał tytułu
+  razem z nazwiskiem artysty, czego w tytułach nie ma, więc nigdy nic nie
+  znajdował.
 ## 1.79.7
 
 - Szukaj: menu po przytrzymaniu kafelka wyniku ma obok „Dodaj do kolejki”
