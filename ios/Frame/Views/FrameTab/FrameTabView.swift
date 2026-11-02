@@ -193,7 +193,9 @@ struct FrameTabView: View {
     /// it over MDC and, if it sleeps, whether it is still on the Wi-Fi. Not
     /// again within half a minute. What the server already knows shows
     /// first: a frame it knows asleep is "Czuwanie" at once, not after MDC
-    /// gave up on it (2026-11-02).
+    /// gave up on it (2026-11-02). Such a frame is not asked at all: MDC
+    /// and the Wi-Fi look took up to half a minute and told nothing new,
+    /// and `followFrame` sees it wake (2026-11-02).
     private func look() {
         guard !refreshing, device?.configured == true else { return }
         if let lastLook, Date.now.timeIntervalSince(lastLook) < 30 { return }
@@ -202,6 +204,8 @@ struct FrameTabView: View {
             refreshing = true
             defer { refreshing = false }
             await model.followStatus()
+            let known = model.status?.device.powerState
+            guard known != "standby", known != "deep_sleep" else { return }
             await model.refreshStatus(live: true)
         }
     }
