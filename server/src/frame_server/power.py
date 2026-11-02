@@ -105,6 +105,7 @@ class PowerManager:
     def publish_status(self) -> None:
         """What the app's status shows of the power state."""
         app = self.service.app
+        app.note_down(datetime.now(UTC))  # told to sleep and down by now
         status = self.service.status.status
         status.pending_push = self.state.pending_push
         status.panel_app = app.active
