@@ -17,7 +17,7 @@ from ..progress import DisplayProgress
 from ..schedule import FrameSettings
 from ..service import FrameService
 from ..status import DeviceStatus
-from ..store import ContentInfo
+from ..store import ContentInfo, preview_url
 from ..users import User
 from .deps import CurrentUser, require_token, service
 from .playlists_api import summary
@@ -120,7 +120,7 @@ def _now_showing(svc: FrameService, content: ContentInfo) -> NowShowing:
         description=content.description,
         source=content.source,
         created=content.created,
-        preview_url=f"/api/previews/{content.file_id}.png",
+        preview_url=preview_url(content.file_id),
         item=item,
         polish=svc.pl_text.text(item) if item else None,
     )

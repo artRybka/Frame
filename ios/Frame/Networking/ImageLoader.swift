@@ -30,13 +30,43 @@ actor ImageLoader {
         static let shared = Memory()
         /// NSCache is safe to use from any thread.
         let cache = NSCache<NSString, UIImage>()
+        private let lock = NSLock()
+        private var addresses: [String] = []
 
         private init() {
             cache.totalCostLimit = 160 * 1024 * 1024
         }
+
+        /// The frame server's addresses (at home, away), without a trailing slash.
+        var servers: [String] {
+            get { lock.withLock { addresses } }
+            set { lock.withLock { addresses = newValue } }
+        }
     }
 
+    /// The frame server's addresses: a picture of the server's is the same
+    /// one whichever of them it came from, so the last launch's "Teraz",
+    /// remembered under the address at home, is found away from home too.
+    nonisolated static func sameServer(_ addresses: [URL]) {
+        Memory.shared.servers = addresses.map {
+            let text = $0.absoluteString
+            return text.hasSuffix("/") ? String(text.dropLast()) : text
+        }
+    }
+
+    /// What the picture is kept under in memory: the server's own pictures
+    /// by their path, not by the address they were asked at.
     private static func key(_ request: URLRequest, _ maxPixel: CGFloat) -> String {
+        var url = request.url?.absoluteString ?? ""
+        if let server = Memory.shared.servers.first(where: { url.hasPrefix($0 + "/") }) {
+            url = "server:" + url.dropFirst(server.count)
+        }
+        return "\(url)#\(Int(maxPixel))"
+    }
+
+    /// What a download is shared under: the address too, so a picture asked
+    /// again at the other address does not wait for one that went nowhere.
+    private static func downloadKey(_ request: URLRequest, _ maxPixel: CGFloat) -> String {
         "\(request.url?.absoluteString ?? "")#\(Int(maxPixel))"
     }
 
@@ -48,8 +78,9 @@ actor ImageLoader {
     }
 
     func image(for request: URLRequest, maxPixel: CGFloat, priority: Priority = .normal) async throws -> UIImage {
-        let key = Self.key(request, maxPixel)
-        if let cached = cache.object(forKey: key as NSString) { return cached }
+        let memoryKey = Self.key(request, maxPixel)
+        if let cached = cache.object(forKey: memoryKey as NSString) { return cached }
+        let key = Self.downloadKey(request, maxPixel)
         let waiter = UUID()
         let task: Task<UIImage, Error>
         if var running = inflight[key] {
@@ -80,7 +111,7 @@ actor ImageLoader {
         }
         finish(key, task: task)
         let cost = Int(image.size.width * image.size.height * image.scale * image.scale * 4)
-        cache.setObject(image, forKey: key as NSString, cost: cost)
+        cache.setObject(image, forKey: memoryKey as NSString, cost: cost)
         return image
     }
 
@@ -306,6 +337,8 @@ struct ArtImage: View {
     private struct Round: Hashable {
         let ref: ImageRef
         let retries: Int
+        /// A new address of the server: asked there again.
+        let switches: Int
     }
 
     /// The picture loaded, else one already in memory for `ref`: shown from
@@ -347,7 +380,7 @@ struct ArtImage: View {
             }
         }
         .animation(.easeOut(duration: 0.35), value: image != nil)
-        .task(id: Round(ref: ref, retries: model.pictureRetries)) {
+        .task(id: Round(ref: ref, retries: model.pictureRetries, switches: model.serverSwitches)) {
             await load()
         }
     }

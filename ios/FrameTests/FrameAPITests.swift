@@ -847,6 +847,30 @@ final class FrameAPITests: XCTestCase {
         XCTAssertFalse(ServerRoute.unreachable(URLError(.cancelled)))
     }
 
+    /// "Teraz" remembered at home shows away from home at once: the server's
+    /// pictures are kept by their path, whichever address they came from.
+    func testServerPicturesAreTheSameAtEitherAddress() async throws {
+        let home = try XCTUnwrap(URL(string: "http://192.0.2.11:8099"))
+        let remote = try XCTUnwrap(URL(string: "http://nas.tail1.ts.net:8099/"))
+        ImageLoader.sameServer([home, remote])
+        defer { ImageLoader.sameServer([]) }
+        let atHome = LiveBackend(route: ServerRoute(home: home, remote: remote), token: nil)
+        let away = LiveBackend(route: ServerRoute(home: home, remote: remote, active: .remote), token: nil)
+        let path = "/api/previews/same-at-both.jpg"
+        let saved = try XCTUnwrap(atHome.request(for: .path(path)))
+        let asked = try XCTUnwrap(away.request(for: .path(path)))
+        XCTAssertNotEqual(saved.url, asked.url)
+
+        let picture = UIGraphicsImageRenderer(size: CGSize(width: 4, height: 4)).image { _ in }
+        await ImageLoader.shared.remember(picture, for: saved, maxPixel: 1600)
+        XCTAssertTrue(ImageLoader.inMemory(for: asked, maxPixel: 1600) === picture)
+        let found = try await ImageLoader.shared.image(for: asked, maxPixel: 1600, priority: .high)
+        XCTAssertTrue(found === picture)
+        // Somewhere else's picture of the same path is not the server's.
+        let elsewhere = URLRequest(url: try XCTUnwrap(URL(string: "https://example.org\(path)")))
+        XCTAssertNil(ImageLoader.inMemory(for: elsewhere, maxPixel: 1600))
+    }
+
     func testRequestsCutShortByTheBackgroundAreNotServerErrors() async {
         let absence = Absence()
         let timedOut = URLError(.timedOut)

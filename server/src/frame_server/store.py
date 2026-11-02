@@ -11,6 +11,7 @@ picture published while the panel slept or did not answer is not on it yet.
 from __future__ import annotations
 
 import asyncio
+import io
 import json
 import logging
 import time
@@ -19,12 +20,31 @@ from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
+from PIL import Image
+
 from .device.manifest import Manifest, ManifestItem, new_file_id
 from .fsutil import own_files
 
 log = logging.getLogger(__name__)
 
 KEEP_IMAGES = 20
+# The app's preview goes as a JPEG: a 1280 px PNG of a painting is 1-2 MB,
+# seconds away from home (Tailscale) for what "Teraz" shows first.
+PREVIEW_JPEG_QUALITY = 88
+
+
+def preview_url(file_id: str) -> str:
+    """Where the app asks for the preview of ``file_id``."""
+    return f"/api/previews/{file_id}.jpg"
+
+
+def _jpeg(png: bytes) -> bytes:
+    img = Image.open(io.BytesIO(png))
+    if img.mode != "RGB":
+        img = img.convert("RGB")
+    out = io.BytesIO()
+    img.save(out, "JPEG", quality=PREVIEW_JPEG_QUALITY, optimize=True)
+    return out.getvalue()
 
 
 @dataclass
@@ -115,6 +135,7 @@ class ContentStore:
         (self.images / name).write_bytes(image)
         if preview_png is not None:
             (self.previews / f"{file_id}.png").write_bytes(preview_png)
+            (self.previews / f"{file_id}.jpg").write_bytes(_jpeg(preview_png))
         info = ContentInfo(
             file_id=file_id,
             file_name=name,
@@ -141,6 +162,7 @@ class ContentStore:
                 continue
             old.unlink(missing_ok=True)
             (self.previews / f"{old.stem}.png").unlink(missing_ok=True)
+            (self.previews / f"{old.stem}.jpg").unlink(missing_ok=True)
             (self.app_images / f"{old.stem}.jpg").unlink(missing_ok=True)
 
     def image_path(self, name: str) -> Path | None:
@@ -159,6 +181,25 @@ class ContentStore:
     def preview_path(self, file_id: str) -> Path | None:
         path = self.previews / f"{Path(file_id).name}.png"
         return path if path.is_file() else None
+
+    def preview_jpeg_path(self, file_id: str) -> Path | None:
+        """The preview as a JPEG; made once from the PNG of a picture
+        published before there were JPEGs."""
+        path = self.previews / f"{Path(file_id).name}.jpg"
+        if path.is_file():
+            return path
+        png = self.preview_path(file_id)
+        if png is None:
+            return None
+        try:
+            data = _jpeg(png.read_bytes())
+        except (OSError, ValueError) as err:
+            log.warning("cannot make a JPEG of %s: %s", png.name, err)
+            return None
+        tmp = path.with_name(f"{path.stem}.{time.monotonic_ns()}.tmp")
+        tmp.write_bytes(data)
+        tmp.replace(path)
+        return path
 
     def manifest(self, base_url: str) -> Manifest | None:
         info = self.current()

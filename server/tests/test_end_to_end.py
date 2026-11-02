@@ -122,7 +122,7 @@ async def test_display_flow(tmp_path: Path, server_ssl: ssl.SSLContext) -> None:
             now = (await client.get("/api/now", headers=headers)).json()
             assert now["file_id"] == body["content"]["file_id"]
             preview = await client.get(now["preview_url"], headers=headers)
-            assert preview.headers["content-type"] == "image/png"
+            assert preview.headers["content-type"] == "image/jpeg"
 
             log = (await client.get("/api/debug/panel-requests", headers=headers)).json()
             assert [r["path"] for r in log][-2:] == [
