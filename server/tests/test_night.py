@@ -141,3 +141,72 @@ def test_birthdays_are_looked_up_at_night(service, monkeypatch) -> None:
     kept = births_at_night(service, Night(threading.Event(), time.monotonic() + 30))
     assert kept == len(artists)
     assert [len(b) for b in asked] == [BIRTHS_BATCH, 3]
+
+
+def test_a_picture_shown_leaves_the_catalogue_as_it_was(service) -> None:
+    from frame_server.library import Item, ItemKind
+
+    library = service.library
+    work = library.upsert(Item(id="cma:1", source="cma", source_id="1", kind=ItemKind.ARTWORK))
+    stamp = library.catalogue_stamp()
+    library.update(work.id, last_shown_at="2026-11-02T10:00:00+00:00")
+    assert library.catalogue_stamp() == stamp
+    library.update(work.id, excluded=True)  # "Ukryj dzieło"
+    assert library.catalogue_stamp() != stamp
+
+
+async def test_teraz_does_not_go_through_the_playlist_at_every_look(service, monkeypatch) -> None:
+    from datetime import UTC, datetime
+
+    from test_player import _add
+
+    from frame_server.library import Playlist, PlaylistRules
+
+    works = [_add(service, n, (40 * n, 40, 200), "Ala") for n in range(1, 5)]
+    lately = datetime.now(UTC).isoformat(timespec="seconds")
+    for item in works[:3]:
+        service.library.update(item.id, favorite=True, last_shown_at=lately)
+    playlist = service.library.save_playlist(
+        Playlist(name="Ulubione", rules=PlaylistRules(favorites_only=True))
+    )
+    player = service.player
+    player.at_night = True
+    settings = player.settings
+    settings.playlist_id = playlist.id
+    player.save_settings(settings)
+    await player.next()
+    player.upcoming(8)
+    looked: list[int] = []
+    real = player.candidates
+    monkeypatch.setattr(player, "candidates", lambda s=None: looked.append(1) or real(s))
+    player.upcoming(8)
+    player.upcoming(8)
+    assert looked == []  # nothing changed: the line as it is
+    service.library.update(works[3].id, favorite=True)  # a heart: looked at once
+    assert player.upcoming(8)[0].id == works[3].id
+    assert looked
+
+
+def test_discover_keeps_its_cards_and_rows_while_the_catalogue_stays(museums, monkeypatch) -> None:  # noqa: F811
+    from frame_server.library import Item, ItemKind
+    from frame_server.web import discover_api
+
+    service = museums
+    library = service.library
+    discover_api._cards = (0.0, {})
+    discover_api._rows.clear()
+    discover_api._theme_rows.clear()
+    cards = discover_api.work_out_cards(service)
+    discover_api.suggestion_rows(service)  # the museums' row of the day comes in
+    rows = discover_api.suggestion_rows(service)
+    discover_api._cards = (0.0, cards)  # older than CARDS_TTL
+    assert not discover_api._cards_stale(service, 0.0)
+    assert discover_api.suggestion_rows(service) is rows
+    work = library.upsert(Item(id="cma:9", source="cma", source_id="9", kind=ItemKind.ARTWORK))
+    assert discover_api._cards_stale(service, 0.0)
+    assert discover_api.suggestion_rows(service) is not rows
+    assert discover_api.work_out_cards(service) is not cards
+    # Hearts alone: worked out again only once the cards are old enough.
+    library.update(work.id, favorite=True)
+    assert not discover_api._cards_stale(service, discover_api._cards[0])
+    assert discover_api._cards_stale(service, 0.0)

@@ -61,7 +61,7 @@ from ..library.vocabulary import (
     set_aside,
     suggest,
 )
-from ..player import POOL_SIZE
+from ..player import POOL_SIZE, SUGGESTIONS_KEY
 from ..service import FrameService
 from .deps import require_owner, require_token, service
 from .library_api import RemoteItem, RemotePage, remote_items
@@ -100,6 +100,10 @@ _theme_rows: dict[date, list[Item]] = {}
 _day_fetch: tuple[float, threading.Thread | None] = (0.0, None)
 #: (when, the count, new works and cover by theme key)
 _cards: tuple[float, dict[str, tuple[int, list[Item]]]] = (0.0, {})
+#: What the cards were worked out from (:func:`_cards_key`).
+_cards_from: tuple[object, ...] = ()
+#: Discover's rows as last worked out, by viewer: (what from, the rows).
+_rows: dict[str, tuple[tuple[object, ...], list[SuggestionRow]]] = {}
 #: One worker on the cards at a time.
 _cards_lock = threading.Lock()
 
@@ -226,15 +230,34 @@ def _since(days: int) -> str:
     return (datetime.now(UTC) - timedelta(days=days)).isoformat(timespec="seconds")
 
 
-def work_out_cards(svc: FrameService) -> dict[str, tuple[int, list[Item]]]:
+def _cards_key(svc: FrameService) -> tuple[object, ...]:
+    """The cards stay as worked out while this stays: the day (covers and
+    the week's themes), the catalogue's works, everyone's hearts ("Bo
+    lubisz"). A picture shown or a work described does not change it."""
+    return (date.today(), *svc.library.catalogue_stamp())
+
+
+def _cards_stale(svc: FrameService, stamp: float) -> bool:
+    """Worked out from another catalogue or day; after hearts only, at
+    most every ``CARDS_TTL`` (each heart would mean the whole round)."""
+    key = _cards_key(svc)
+    if key == _cards_from:
+        return False
+    hearts_only = key[:2] == _cards_from[:2]
+    return not hearts_only or time.monotonic() - stamp >= CARDS_TTL
+
+
+def work_out_cards(svc: FrameService, force: bool = False) -> dict[str, tuple[int, list[Item]]]:
     """Every theme's count and cover: a query of the whole
-    catalogue each, seconds on a NAS, so done in the background but for the
-    first time (as are the week's themes, once a week, and the cards of
-    "Bo lubisz", from the owner's taste then)."""
-    global _cards
+    catalogue each, seconds on a NAS, so done at night (``force``) and in
+    the background after the catalogue changed, but for the first time (as
+    are the week's themes, once a week, and the cards of "Bo lubisz", from
+    the owner's taste then)."""
+    global _cards, _cards_from
     with _cards_lock:
-        stamp, cards = _cards
-        if cards and time.monotonic() - stamp < CARDS_TTL:
+        _, cards = _cards
+        key = _cards_key(svc)
+        if cards and not force and key == _cards_from:
             return cards  # just worked out by another request
         cards = {}
         today = date.today().isoformat()
@@ -246,6 +269,7 @@ def work_out_cards(svc: FrameService) -> dict[str, tuple[int, list[Item]]]:
             total, items = svc.library.query(found.rules(), sort="suitability")
             cards[found.key] = (total, _cover(items, f"{today}:{found.key}"))
         _cards = (time.monotonic(), cards)
+        _cards_from = key
         return cards
 
 
@@ -255,7 +279,7 @@ def _theme_cards(svc: FrameService) -> dict[str, tuple[int, list[Item]]]:
     stamp, cards = _cards
     if not cards:
         return work_out_cards(svc)
-    if time.monotonic() - stamp >= CARDS_TTL and not _cards_lock.locked():
+    if _cards_stale(svc, stamp) and not _cards_lock.locked():
         threading.Thread(target=work_out_cards, args=(svc,), daemon=True).start()
     return cards
 
@@ -366,13 +390,32 @@ def _suggestion_rows(svc: FrameService) -> list[SuggestionRow]:
     return [row.model_copy(update={"items": _light(row.items)}) for row in rows]
 
 
+def suggestion_rows(svc: FrameService) -> list[SuggestionRow]:
+    """The rows as last worked out while the library, Propozycje and the
+    day stay as they were (worked out at night, and again after a change)."""
+    viewer = viewer_id()
+    today = date.today()
+    key = (
+        today,
+        today in _theme_rows,  # the museums' row of the day came in since
+        svc.library.stamp(),
+        tuple(svc.library.get_state(SUGGESTIONS_KEY, [])),
+    )
+    kept = _rows.get(viewer)
+    if kept is not None and kept[0] == key:
+        return kept[1]
+    rows = _suggestion_rows(svc)
+    _rows[viewer] = (key, rows)
+    return rows
+
+
 @router.get("/suggestions", response_model=list[SuggestionRow])
 async def suggestions(svc: Svc) -> list[SuggestionRow]:
     """What Discover opens with: the works the server picked for the frame,
     the theme of the day (a card of "Dziś dla Ciebie" in the app) and the
     owner's works not shown for long. Works like the ones the owner likes
     are the cards of "Bo lubisz" in ``/themes``."""
-    return await run_in_threadpool(_suggestion_rows, svc)
+    return await run_in_threadpool(suggestion_rows, svc)
 
 
 @router.post("/suggestions/play", status_code=202)
@@ -410,7 +453,7 @@ def warm_up(svc: FrameService) -> None:
     does not wait for it; the suggestions while typing first."""
     svc.library.term_index()
     work_out_cards(svc)
-    _suggestion_rows(svc)
+    suggestion_rows(svc)
 
 
 def _theme(key: str, svc: FrameService) -> Theme:

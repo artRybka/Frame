@@ -186,6 +186,7 @@ def tasks(service: FrameService) -> list[NightTask]:
     what is worked out from it."""
     from .library import nga
     from .notifications import births_at_night
+    from .web import discover_api
 
     player, library = service.player, service.library
 
@@ -195,14 +196,31 @@ def tasks(service: FrameService) -> list[NightTask]:
     def daily(night: Night) -> None:
         service.daily.tick()
 
+    def grouping(night: Night) -> None:
+        library.works()  # copies of one work together, after the turnover
+        library.term_index()  # the suggestions while typing
+
     def playlists(night: Night) -> None:
         library.recount()
+
+    def frame_line(night: Night) -> None:
+        player.catch_up()
+
+    def themes(night: Night) -> None:
+        discover_api.work_out_cards(service, force=True)
+
+    def suggestions(night: Night) -> None:
+        discover_api.suggestion_rows(service)  # the owner's
 
     return [
         NightTask("tidy", tidy),
         NightTask("catalogue", player.grow_at_night),
+        NightTask("grouping", grouping),
         NightTask("nga", lambda night: nga.refresh_at_night(service.settings.data_dir)),
         NightTask("births", lambda night: births_at_night(service, night)),
         NightTask("daily", daily),
         NightTask("playlists", playlists),
+        NightTask("frame line", frame_line),
+        NightTask("themes", themes),
+        NightTask("suggestions", suggestions),
     ]

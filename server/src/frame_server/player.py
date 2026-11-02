@@ -247,6 +247,8 @@ class Player:
         #: The catalogue was full when last measured: by day (with the
         #: night queue) the files are not counted again until the night.
         self._full = False
+        #: What the line was last checked for new works with (by day).
+        self._caught_up_from: tuple[object, ...] = ()
         self._changes = 0  # under way: from the download of the original to the push
 
     @property
@@ -459,6 +461,24 @@ class Player:
         self._refill(state, settings)
         return True
 
+    def _may_catch_up(self, settings: FrameSettings) -> bool:
+        if not self.at_night:
+            return True
+        key = (self.library.catalogue_stamp(), self.library.stamp()[1], settings.playlist_id)
+        if key == self._caught_up_from:
+            return False
+        self._caught_up_from = key
+        return True
+
+    def catch_up(self) -> bool:
+        """The night's task: works new to the rotation (the catalogue
+        turned over) come before pictures shown lately."""
+        state, settings = self.state, self.settings
+        if not self._catch_up(state, settings):
+            return False
+        self._save_state(state)
+        return True
+
     def _pop_next(
         self, state: PlayerState, settings: FrameSettings, picks: bool = True
     ) -> Item | None:
@@ -487,11 +507,16 @@ class Player:
             self._save_state(state)
 
     def upcoming(self, limit: int = 8) -> list[Item]:
+        """The next pictures. Works new to the rotation are let in when
+        they can have come: with the night queue, after works joined the
+        catalogue, someone's hearts or a playlist changed, not at every
+        look at Teraz (which went through the whole playlist each time
+        once it went round)."""
         state, settings = self.state, self.settings
         if not state.queue:
             self._refill(state, settings)
             self._save_state(state)
-        elif self._catch_up(state, settings):
+        elif self._may_catch_up(settings) and self._catch_up(state, settings):
             self._save_state(state)
         items = (self.library.get(i) for i in [*state.requested, *state.queue][:limit])
         return [i for i in items if i is not None]

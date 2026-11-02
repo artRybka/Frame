@@ -319,6 +319,9 @@ class Library:
         #: Go up with every change of a playlist, and of someone's hearts.
         self._playlists_version = 0
         self._hearts_version = 0
+        #: Goes up when an item joins or leaves the catalogue, or is hidden
+        #: or shown again (not with every change, e.g. a picture shown).
+        self._catalogue_version = 0
         #: Smart playlists' counts and covers as last worked out, by id.
         self._counted: dict[int, _Counted] = {}
         #: A smart playlist's count and cover may be shown as last worked
@@ -363,6 +366,7 @@ class Library:
                 self._items = None  # the cache may hold rolled back changes
                 self._drop_works("a rolled back write")
                 self._version += 1
+                self._catalogue_version += 1
                 self._favorites = None
                 self._hearts_version += 1
                 raise
@@ -444,6 +448,8 @@ class Library:
                 )
             self._all()[item.id] = item
             self._version += 1
+            if existing is None or existing.excluded != item.excluded:
+                self._catalogue_version += 1
             if existing is None and item.favorite:  # brought in liked: the asker's heart
                 self.set_favorite(viewer_id(), item.id, True)
             self._regroup(existing, item, "re-import")
@@ -477,6 +483,8 @@ class Library:
                 )
             self._all()[item_id] = updated
             self._version += 1
+            if item.excluded != updated.excluded:
+                self._catalogue_version += 1
             self._regroup(item, updated, "change")
             return updated
 
@@ -490,6 +498,7 @@ class Library:
                 db.execute("DELETE FROM favorites WHERE item_id = ?", (item_id,))
             del self._all()[item_id]
             self._version += 1
+            self._catalogue_version += 1
             for hearts in (self._favorites or {}).values():
                 hearts.discard(item_id)
             if self._works is None or not self._works.remove(item_id):
@@ -854,6 +863,16 @@ class Library:
 
     def _stamp(self) -> tuple[int, int, int]:
         return (self._version, self._playlists_version, self._hearts_version)
+
+    def stamp(self) -> tuple[int, int, int]:
+        """Changes with any change of the library: items, playlists, hearts."""
+        return self._stamp()
+
+    def catalogue_stamp(self) -> tuple[int, int]:
+        """Changes when works join or leave the catalogue (or are hidden),
+        and with someone's hearts; not when a work is shown or described:
+        what is worked out from the catalogue as a whole stays valid."""
+        return (self._catalogue_version, self._hearts_version)
 
     def _counts(self, playlist: Playlist) -> _Counted:
         """The playlist's count and cover: a smart one's as last worked out
