@@ -487,12 +487,34 @@ enum LabelButton {
     }
 }
 
+/// The arrow in the corner of a card that opens a page (the study of the
+/// day, "Teraz prezentowane"): only a hint, the whole card is the link.
+struct CardArrow: View {
+    var body: some View {
+        Image(systemName: "arrow.right")
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(Theme.paper)
+            .frame(width: 30, height: 30)
+            .background(LabelButton.shape.fill(Theme.ink))
+            .accessibilityHidden(true)
+    }
+}
+
 extension View {
     /// Capitals with the label buttons' letter-spacing.
     func labelButtonType() -> some View {
         font(LabelButton.font)
             .tracking(LabelButton.tracking)
             .textCase(.uppercase)
+    }
+
+    /// Options under a long press on a label button ("Pokaż na ramce" held
+    /// for longer). The lifted button keeps its nearly square corners: left
+    /// alone, the system cuts it out with its own rounder ones, and the
+    /// corners pop back when the menu closes.
+    func labelButtonMenu<MenuItems: View>(@ViewBuilder _ items: () -> MenuItems) -> some View {
+        contentShape(.contextMenuPreview, LabelButton.shape)
+            .contextMenu(menuItems: items)
     }
 }
 

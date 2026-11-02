@@ -48,12 +48,7 @@ struct DailyTile: View {
                             .multilineTextAlignment(.leading)
                             .frame(maxWidth: .infinity, alignment: .leading)
                         // Only a hint: the whole card opens the study.
-                        Image(systemName: "arrow.right")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(Theme.paper)
-                            .frame(width: 30, height: 30)
-                            .background(LabelButton.shape.fill(Theme.ink))
-                            .accessibilityHidden(true)
+                        CardArrow()
                     }
                     .padding(.top, 4)
                 }
@@ -529,7 +524,7 @@ struct DailyView: View {
             }
         }
         .buttonStyle(ActionButtonStyle(prominent: true))
-        .contextMenu {
+        .labelButtonMenu {
             ForEach(HoldSpec.allCases) { spec in
                 Button(spec.label) { Task { await show(work, spec) } }
             }
@@ -668,17 +663,18 @@ struct DailyView: View {
     }
 
     /// How the work fares on the frame, then the buttons to show or queue it.
+    /// The frame drawn as on the work's card: across the page when it hangs
+    /// landscape, beside the text when it hangs portrait.
     private func onFrame(_ work: DailyWork) -> some View {
         VStack(alignment: .leading, spacing: 14) {
-            if work.item.inLibrary || !work.onFrame.isEmpty {
-                HStack(alignment: .top, spacing: 12) {
-                    if work.item.inLibrary {
-                        ArtImage(ref: .framePreview(work.item.id), placeholder: work.item.item.placeholderColor, maxPixel: 400, contentMode: .fit)
-                            .frame(width: 96)
-                            .whiteFrame(3)
-                    }
+            if model.isPortrait {
+                HStack(alignment: .top, spacing: 14) {
+                    if work.item.inLibrary { framePreview(work, width: 0.42 * columnWidth) }
                     if !work.onFrame.isEmpty { prose(work.onFrame, size: 15) }
                 }
+            } else {
+                if work.item.inLibrary { framePreview(work, width: columnWidth) }
+                if !work.onFrame.isEmpty { prose(work.onFrame, size: 15) }
             }
             HStack(spacing: 12) {
                 showButton(work)
@@ -686,6 +682,28 @@ struct DailyView: View {
             }
             .labelStyle(ActionLabelStyle())
         }
+    }
+
+    /// The page's column, less its margins; a guess before the page is measured.
+    private var columnWidth: CGFloat {
+        pageWidth > 0 ? pageWidth - 2 * Theme.gutter : 340
+    }
+
+    /// The work framed as the frame will show it, in the frame's shape and
+    /// at a size fixed here: sized by the picture inside a row of text, it
+    /// was squeezed to a sliver of white with a small picture in it. With
+    /// the settings in the address, so a turned frame or another
+    /// presentation is a new picture, not the old one from memory.
+    private func framePreview(_ work: DailyWork, width: CGFloat) -> some View {
+        let ratio: CGFloat = model.isPortrait ? 9.0 / 16.0 : 16.0 / 9.0
+        let moulding: CGFloat = 7
+        return FramedArtwork(
+            ref: .framePreview(work.item.id, settings: model.settings),
+            aspectRatio: ratio, placeholder: work.item.item.placeholderColor, moulding: moulding
+        )
+        .frame(width: width, height: (width - 2 * moulding) / ratio + 2 * moulding)
+        .padding(.bottom, 6)  // room for the frame's shadow
+        .accessibilityLabel(Text("Podgląd na ramce"))
     }
 
     private func similar(_ works: [DailyWork.Similar]) -> some View {
