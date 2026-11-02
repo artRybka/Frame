@@ -2,7 +2,7 @@
 
 ## 1.74.0
 
-- Szukaj: w grupie Muzeum przełącznik „Tylko te / Wszystkie poza” pozwala
+- Szukaj: w grupie Muzeum przełącznik „Wybrane / Wykluczone” pozwala
   przeszukać wszystkie muzea oprócz wybranych (np. bez Yale). Playlista
   utworzona z takiego wyszukiwania też pomija te muzea, a muzea dodane później
   same do niej wejdą. Wymaga zaktualizowanego serwera.
