@@ -19,6 +19,7 @@ struct FrameApp: App {
             RootView()
                 .environment(model)
                 .tint(Theme.ink)
+                .toggleStyle(FrameSwitchStyle())
                 // A tap on a Lock Screen card ("Studium gotowe"): where it points,
                 // as for a notification.
                 .onOpenURL { url in

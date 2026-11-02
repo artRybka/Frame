@@ -19,6 +19,9 @@ enum Theme {
     static let good = Color(light: 0x3E7B56, dark: 0x7CC49A)
     static let warn = Color(light: 0xB7832A, dark: 0xE2B45E)
     static let bad = Color(light: 0xB8432F, dark: 0xE58A6F)
+    /// The track of a switch that is on: ink in the light; in the dark a warm
+    /// stone, because cream ink is as light as the white knob.
+    static let switchOn = Color(light: 0x1D1B18, dark: 0x8F8578)
 
     /// The app icon's row of squares, and the sixth that closes the frame
     /// in Discover's empty search; black turns cream in the dark, like the
@@ -49,6 +52,17 @@ extension Theme {
         let bar = UINavigationBar.appearance()
         bar.largeTitleTextAttributes = [.font: serif(.largeTitle, weight: .semibold)]
         bar.titleTextAttributes = [.font: serif(.headline, weight: .semibold)]
+    }
+}
+
+/// Every switch in the app: the system one, its track `Theme.switchOn`.
+/// Set once at the root, so a `.tint(Theme.ink)` around a switch does not
+/// reach its track.
+struct FrameSwitchStyle: ToggleStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        Toggle(configuration)
+            .toggleStyle(.switch)
+            .tint(Theme.switchOn)
     }
 }
 
