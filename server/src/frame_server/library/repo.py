@@ -24,7 +24,7 @@ from typing import Any, Literal
 
 from .artists import is_artist
 from .colors import has_colours
-from .duplicates import Works, dedupe
+from .duplicates import Works, dedupe, regroups
 from .models import (
     MINE,
     MINE_FAVORITES,
@@ -58,12 +58,9 @@ log = logging.getLogger(__name__)
 #: Seconds between rebuilds of the suggestions' index while the library changes.
 TERM_INDEX_EVERY = 10.0
 
-#: A regrouping of the works this slow is logged: the library waits for it.
+#: A regrouping of the works this slow is logged as such: the library
+#: waits for it.
 SLOW_WORKS = 1.0
-
-WORK_FIELDS = frozenset(
-    {"kind", "source", "title", "artist", "year", "width", "height", "url", "image_url", "pooled"}
-)
 
 #: The playlist "Historia przesłanych" (see ``Player.remember_sent``); one
 #: for each person (the owner's under the key from before, ``sent_key``).
@@ -256,6 +253,10 @@ class Library:
         self._lock = threading.RLock()
         self._items: dict[str, Item] | None = None
         self._works: Works | None = None  # the items grouped by work
+        #: What made the grouping go since it was last made, and how many
+        #: changes did (for the log: a regrouping holds up the library).
+        self._works_dropped_by = "start"
+        self._works_drops = 0
         self._conn: sqlite3.Connection | None = None
         self._depth = 0  # nested _db() blocks share the outermost transaction
         self._favorites: dict[str, set[str]] | None = None
@@ -294,7 +295,7 @@ class Library:
                     yield conn
             except BaseException:
                 self._items = None  # the cache may hold rolled back changes
-                self._works = None
+                self._drop_works("a rolled back write")
                 self._version += 1
                 self._favorites = None
                 raise
@@ -378,10 +379,7 @@ class Library:
             self._version += 1
             if existing is None and item.favorite:  # brought in liked: the asker's heart
                 self.set_favorite(viewer_id(), item.id, True)
-            if existing is None and self._works is not None:
-                self._works.add(item)
-            else:
-                self._works = None
+            self._regroup(existing, item, "re-import")
             return item
 
     def update(self, item_id: str, **changes: Any) -> Item | None:
@@ -401,6 +399,9 @@ class Library:
             item = self.get(item_id)
             if item is None:
                 return None
+            fields = type(item).model_fields
+            if all(k in fields and getattr(item, k) == v for k, v in changes.items()):
+                return item  # as it was: no write, nothing to group again
             updated = item.model_copy(update=changes)
             with self._db() as db:
                 db.execute(
@@ -409,8 +410,7 @@ class Library:
                 )
             self._all()[item_id] = updated
             self._version += 1
-            if WORK_FIELDS & changes.keys():
-                self._works = None
+            self._regroup(item, updated, "change")
             return updated
 
     def delete(self, item_id: str) -> bool:
@@ -425,7 +425,8 @@ class Library:
             self._version += 1
             for hearts in (self._favorites or {}).values():
                 hearts.discard(item_id)
-            self._works = None
+            if self._works is None or not self._works.remove(item_id):
+                self._drop_works(f"deletion of {item_id}")
             return True
 
     # -- hearts, one set for each person -------------------------------------
@@ -503,6 +504,28 @@ class Library:
                 if item_id in self._all() and not any(item_id in h for h in hearts.values()):
                     self._update(item_id, favorite=False)
 
+    def _regroup(self, old: Item | None, new: Item, what: str) -> None:
+        """Keep the grouping up to date with ``new`` (``old`` before): added
+        or swapped in its place when the groups stay as they are, else
+        dropped to be made again when next asked for."""
+        works = self._works
+        if old is None:
+            if works is not None:
+                works.add(new)
+        elif regroups(old, new):
+            fields = sorted(k for k in type(new).model_fields if getattr(old, k) != getattr(new, k))
+            self._drop_works(f"{what} of {new.id} ({', '.join(fields)})")
+        elif works is not None:
+            works.replace(new)
+
+    def _drop_works(self, why: str) -> None:
+        if self._works is not None:
+            self._works = None
+            self._works_dropped_by = f"{why}, in {threading.current_thread().name}"
+            self._works_drops = 0
+        else:
+            self._works_drops += 1
+
     def works(self) -> Works:
         """The library's items grouped by work: copies of one work from
         several sources together, the best copy first."""
@@ -511,8 +534,15 @@ class Library:
                 started = time.monotonic()
                 self._works = Works(self._all().values())
                 took = time.monotonic() - started
-                if took >= SLOW_WORKS:  # every library call waited meanwhile
-                    log.info("works regrouped in %.1f s (%d items)", took, len(self._all()))
+                more = self._works_drops
+                log.log(
+                    logging.INFO if took >= SLOW_WORKS else logging.DEBUG,
+                    "works regrouped in %.1f s (%d items) after %s%s",
+                    took,
+                    len(self._all()),
+                    self._works_dropped_by,
+                    f" and {more} more change(s)" if more > 0 else "",
+                )
             return self._works
 
     def term_index(self) -> TermIndex:
