@@ -362,7 +362,7 @@ final class AppModel {
                 }
                 retrying = true
                 // 1 s, 2 s, then every 3 s; sooner when the network changes.
-                let pause = Task { try? await Task.sleep(for: .seconds(min(tries, 3))) }
+                let pause = Task { _ = try? await Task.sleep(for: .seconds(min(tries, 3))) }
                 reachPause = pause
                 await pause.value
                 reachPause = nil
