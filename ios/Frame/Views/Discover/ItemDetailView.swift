@@ -40,7 +40,7 @@ struct ItemDetailView: View {
     /// moment the Polish texts take, rather than show the museum's first.
     @State private var holding = false
     @State private var showOriginal = false
-    /// The title held: the museum's own shows meanwhile ("Tytuł w oryginale").
+    /// The title held once: the museum's own shows until held again ("Tytuł w oryginale").
     @State private var peeking = false
     /// What the model saw in the picture (keywords), once it has looked.
     @State private var seen: [String] = []
@@ -749,7 +749,7 @@ struct ItemDetailView: View {
                 .fixedSize(horizontal: false, vertical: true)
                 // The museum's title fades into the Polish one.
                 .contentTransition(.opacity)
-                // Held: the museum's own, until the finger lifts.
+                // Held: the museum's own, until held again.
                 .titlePeek(enabled: original != nil, peeking: $peeking)
             if peeking, original != nil {
                 TitlePeekNote(source: item.source)
