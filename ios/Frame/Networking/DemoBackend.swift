@@ -460,6 +460,11 @@ actor DemoBackend: FrameBackend {
         try update(id) { $0.excluded = excluded }
     }
 
+    func hiddenItems() async throws -> ItemPage {
+        let hidden = items.filter(\.excluded).map(\.summary)
+        return ItemPage(total: hidden.count, items: hidden)
+    }
+
     func show(itemID: String, hold: HoldSpec) async throws {
         if let currentID { history.append(currentID) }
         currentID = itemID

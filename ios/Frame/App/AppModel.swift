@@ -81,6 +81,8 @@ final class AppModel {
     var themeOpened: String?
     var themeOpenings = 0
     var playlists: [PlaylistSummary] = []
+    /// The hidden works, for "Ukryte" at the end of Playlisty.
+    var hidden: [ItemSummary] = []
     /// Each playlist's works as last opened: shown at once when it opens
     /// again while fresh ones load.
     var playlistDetails: [Int: PlaylistDetail] = [:]
@@ -527,6 +529,7 @@ final class AppModel {
 
     func refreshPlaylists() async {
         if let value = try? await backend.playlists() { playlists = value }
+        if let value = try? await backend.hiddenItems() { hidden = value.items }
     }
 
     func refreshFacets() async {
@@ -811,10 +814,15 @@ final class AppModel {
         }
     }
 
-    /// "Nie pokazuj na ramce" and back.
+    /// "Ukryj dzieło" and back ("Przywróć dzieło", also from "Ukryte").
     func setExcluded(_ id: String, _ excluded: Bool) async -> Item? {
         do {
             let item = try await backend.setExcluded(id: id, excluded)
+            if excluded {
+                notices.done("Ukryto dzieło", "Znajdziesz je w Playlistach, w Ukrytych.")
+            } else {
+                notices.done("Przywrócono dzieło")
+            }
             libraryChanged()
             return item
         } catch {

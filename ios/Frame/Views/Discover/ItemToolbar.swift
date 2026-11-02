@@ -32,7 +32,10 @@ struct ItemToolbar: ToolbarContent {
             .accessibilityLabel(item.favorite ? "Usuń z ulubionych" : "Dodaj do ulubionych")
             Menu {
                 Button("Dodaj do playlisty", systemImage: "text.badge.plus") { addingToPlaylist = true }
-                Button(item.excluded ? "Pokazuj ponownie" : "Nie pokazuj na ramce", systemImage: "eye.slash") {
+                Button(
+                    item.excluded ? "Przywróć dzieło" : "Ukryj dzieło",
+                    systemImage: item.excluded ? "eye" : "eye.slash"
+                ) {
                     Task {
                         if let updated = await model.setExcluded(item.id, !item.excluded) {
                             changed(updated)

@@ -75,6 +75,8 @@ struct LiveBackend: FrameBackend {
 
     func item(id: String) async throws -> Item { try await get("/api/library/items/\(escape(id))") }
 
+    func hiddenItems() async throws -> ItemPage { try await get("/api/library/hidden") }
+
     func polish(itemID: String, wait: Int, early: Bool) async throws -> PolishView {
         var query = [URLQueryItem(name: "wait", value: String(wait))]
         if early { query.append(URLQueryItem(name: "early", value: "true")) }

@@ -455,7 +455,7 @@ class Player:
             item = self.library.get(state.requested.pop(0))
             if item is not None:  # asked for: shown even if left out of the rotation
                 return item
-        spare = self.library.spare_copies()
+        spare = self.library.spare_copies() | self.library.hidden().ids
         unavailable = self.service.images.unavailable
         self._catch_up(state, settings)
         for _ in range(2):
