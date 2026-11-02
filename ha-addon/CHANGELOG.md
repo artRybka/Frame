@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.79.7
+
+- Szukaj: menu po przytrzymaniu kafelka wyniku ma obok „Dodaj do kolejki”
+  także „Ukryj dzieło”. Ukryte dzieło od razu znika z wyników (razem z
+  kopiami z innych muzeów) i trafia do karty „Ukryte” w Playlistach.
+
 ## 1.79.6
 
 - Obraz na karcie dzieła i w studium: przy przytrzymaniu rośnie wyraźniej,

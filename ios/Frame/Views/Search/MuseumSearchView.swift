@@ -36,6 +36,10 @@ struct MuseumSearchView: View {
     @State private var loader: Task<Void, Never>?
     /// Works whose heart the server is still taking.
     @State private var liking: Set<String> = []
+    /// Works hidden here with "Ukryj dzieło": gone from the results at once,
+    /// back if the server refuses. The next search's answer leaves them out
+    /// itself, so it clears them.
+    @State private var hidden: Set<String> = []
     @State private var editing: Playlist?
     @State private var lookup = TermLookup()
     @FocusState private var fieldFocused: Bool
@@ -78,7 +82,14 @@ struct MuseumSearchView: View {
     /// Museum works the catalogue doesn't hold already, in any copy.
     private var fromMuseums: [RemoteItem] {
         let known = Set(catalogue?.items.map(\.id) ?? [])
-        return results.filter { !known.contains($0.id) && !known.contains($0.twin ?? "") }
+        return results.filter {
+            !known.contains($0.id) && !known.contains($0.twin ?? "") && !hidden.contains($0.id)
+        }
+    }
+
+    /// The catalogue's works found, less those hidden here.
+    private var shownCatalogue: [ItemSummary] {
+        (catalogue?.items ?? []).filter { !hidden.contains($0.id) }
     }
 
     /// The museums' works on screen: only once the catalogue has answered,
@@ -241,9 +252,9 @@ struct MuseumSearchView: View {
             }
             // One grid: the server's works first, the museums' coming in
             // under them. Where a work comes from isn't shown.
-            worksGrid(catalogue?.items ?? [], shownFromMuseums)
+            worksGrid(shownCatalogue, shownFromMuseums)
             // Only once nothing more can come.
-            if !searching, !asking, next.isEmpty, catalogue?.items.isEmpty ?? true, fromMuseums.isEmpty {
+            if !searching, !asking, next.isEmpty, shownCatalogue.isEmpty, fromMuseums.isEmpty {
                 EmptyStateView(
                     title: "Nic tu nie ma",
                     message: "Usuń któryś z chipów albo poszukaj innymi słowami.",
@@ -267,13 +278,19 @@ struct MuseumSearchView: View {
                 ArtCard(item: summary, ref: thumbs[summary.id], showsFavorite: false)
             }
             .buttonStyle(.plain)
-            .contextMenu { QueueButton(itemID: summary.id) }
+            .contextMenu {
+                QueueButton(itemID: summary.id)
+                Button("Ukryj dzieło", systemImage: "eye.slash") {
+                    Task { await hide(summary.id) }
+                }
+            }
             .overlay(alignment: .topTrailing) { heart(summary) }
         }
     }
 
     private var summary: String {
-        let inCatalogue = catalogue?.total ?? 0
+        let hiddenHere = (catalogue?.items ?? []).filter { hidden.contains($0.id) }.count
+        let inCatalogue = max(0, (catalogue?.total ?? 0) - hiddenHere)
         if (searching || asking) && inCatalogue == 0 && fromMuseums.isEmpty { return "Szukam…" }
         return Names.works(inCatalogue + fromMuseums.count) + (next.isEmpty ? "" : "+")
     }
@@ -310,7 +327,10 @@ struct MuseumSearchView: View {
         query.sources = key.sources
         do {
             let found = try await model.backend.items(query)
-            if !Task.isCancelled { catalogue = found }
+            if !Task.isCancelled {
+                catalogue = found
+                hidden = []
+            }
         } catch {
             if !Task.isCancelled, !error.isCancellation { model.show(error) }
         }
@@ -392,6 +412,22 @@ struct MuseumSearchView: View {
         }
         mark(id, favorite: item.favorite)
         if joins { await model.refreshFacets() }
+    }
+
+    /// "Ukryj dzieło" from the tile's menu: out of the results at once, and
+    /// with it the copies the catalogue's work stands for.
+    @MainActor
+    private func hide(_ id: String) async {
+        withAnimation { _ = hidden.insert(id) }
+        guard await model.setExcluded(id, true) != nil else {
+            withAnimation { _ = hidden.remove(id) }
+            return
+        }
+        // A museum's copies of the work hidden: the server leaves them out
+        // of the next answers, these ones go now.
+        let work = results.first { $0.id == id }?.work ?? ""
+        let copies = results.filter { $0.twin == id || (!work.isEmpty && $0.work == work) }.map(\.id)
+        hidden.formUnion(copies)
     }
 
     /// The tile's heart. A museum's work keeps its picture from the museum:

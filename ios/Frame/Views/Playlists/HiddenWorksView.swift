@@ -20,7 +20,7 @@ struct HiddenWorksView: View {
                 } else {
                     EmptyStateView(
                         title: "Nic nie jest ukryte",
-                        message: "Dzieło ukryjesz w jego karcie: menu ⋯, „Ukryj dzieło”.",
+                        message: "Dzieło ukryjesz w jego karcie (menu ⋯) albo przytrzymując je w Szukaj: „Ukryj dzieło”.",
                         systemImage: "eye.slash"
                     )
                 }
