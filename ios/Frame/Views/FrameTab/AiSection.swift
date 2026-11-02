@@ -143,7 +143,7 @@ struct AiSection: View {
                 Text(hint).font(.caption).foregroundStyle(Theme.inkSoft)
             }
         }
-        .tint(Theme.accent)
+        .tint(Theme.ink)
     }
 
     @ViewBuilder
@@ -161,7 +161,7 @@ struct AiSection: View {
                 }
             }
             .labelsHidden()
-            .tint(Theme.accent)
+            .tint(Theme.ink)
         }
         VStack(alignment: .leading, spacing: 6) {
             HStack {
@@ -172,7 +172,7 @@ struct AiSection: View {
                     .foregroundStyle(Theme.inkSoft)
             }
             ProgressView(value: min(settings.spentUsd / max(settings.monthlyLimitUsd, 0.01), 1))
-                .tint(settings.spentUsd >= settings.monthlyLimitUsd ? Theme.bad : Theme.accent)
+                .tint(settings.spentUsd >= settings.monthlyLimitUsd ? Theme.bad : Theme.ink)
             Text("Po przekroczeniu limitu serwer nie pyta modelu do końca miesiąca.")
                 .font(.caption)
                 .foregroundStyle(Theme.inkSoft)

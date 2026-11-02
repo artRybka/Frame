@@ -38,7 +38,7 @@ struct PlaylistDetailView: View {
                     Button("Spróbuj ponownie", systemImage: "arrow.clockwise") {
                         Task { await load() }
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(ActionButtonStyle(wide: false))
                     .frame(maxWidth: .infinity)
                     .padding(.top, 20)
                 } else if (summary?.itemCount ?? 1) > 0 {
@@ -195,12 +195,13 @@ struct PlaylistDetailView: View {
                 .padding(14)
                 .background(Theme.vermilion.opacity(0.1), in: RoundedRectangle(cornerRadius: 14))
             } else if isActive {
+                // A state, not a button: outlined in vermilion, like a label button.
                 Label("Teraz prezentowane na ramce", systemImage: "photo.fill")
-                    .font(.headline)
+                    .labelStyle(ActionLabelStyle())
                     .foregroundStyle(Theme.vermilion)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 15)
-                    .background(Theme.vermilion.opacity(0.1), in: RoundedRectangle(cornerRadius: 14))
+                    .background(LabelButton.shape.strokeBorder(Theme.vermilion, lineWidth: 1))
             } else {
                 Button {
                     Task {
@@ -414,7 +415,7 @@ struct AlbumCard: View {
             HStack(spacing: 10) {
                 Image(systemName: "icloud")
                     .font(.title3)
-                    .foregroundStyle(Theme.accent)
+                    .foregroundStyle(Theme.inkSoft)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(sync.flatMap { $0.name.isEmpty ? nil : $0.name } ?? "Album udostępniony")
                         .font(.subheadline.weight(.semibold))

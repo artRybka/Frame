@@ -109,7 +109,7 @@ struct NoticeCard: View {
         switch notice.kind {
         case .working: Theme.vermilion
         case .done: Theme.good
-        case .info: Theme.accent
+        case .info: Theme.ink
         case .warning: Theme.warn
         case .error: Theme.bad
         }
@@ -145,11 +145,13 @@ struct NoticeCard: View {
         case _ where notice.action != nil:
             HStack(spacing: 10) {
                 Text(notice.action?.label ?? "")
-                    .font(.caption.weight(.semibold))
+                    .font(.caption2.weight(.semibold))
+                    .tracking(LabelButton.tracking)
+                    .textCase(.uppercase)
                     .foregroundStyle(Theme.paper)
                     .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(Theme.accent, in: Capsule())
+                    .padding(.vertical, 6)
+                    .background(LabelButton.shape.fill(Theme.ink))
                 closeButton
             }
         case .warning, .error:

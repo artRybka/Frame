@@ -23,7 +23,7 @@ struct DisplayProgressBar: View {
                 if let origin = progress.origin {
                     Image(systemName: origin == "schedule" ? "clock" : "iphone")
                         .font(.footnote.weight(.semibold))
-                        .foregroundStyle(origin == "schedule" ? Theme.accent : Theme.vermilion)
+                        .foregroundStyle(origin == "schedule" ? Theme.ink : Theme.vermilion)
                 }
             }
             bar

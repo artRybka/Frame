@@ -18,7 +18,7 @@ struct FrameApp: App {
         WindowGroup {
             RootView()
                 .environment(model)
-                .tint(Theme.accent)
+                .tint(Theme.ink)
                 // A tap on a Lock Screen card ("Studium gotowe"): where it points,
                 // as for a notification.
                 .onOpenURL { url in

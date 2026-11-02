@@ -36,7 +36,7 @@ struct ReadingText: UIViewRepresentable {
         // Colours resolved here, so light and dark follow the page.
         let environment = context.environment
         let ink = UIColor(cgColor: color.resolve(in: environment).cgColor)
-        view.tintColor = UIColor(cgColor: Theme.accent.resolve(in: environment).cgColor)
+        view.tintColor = UIColor(cgColor: Theme.ink.resolve(in: environment).cgColor)
         let shown = Shown(text: text, size: size, lineSpacing: lineSpacing, ink: ink)
         let before = context.coordinator.shown
         guard before != shown else { return }
