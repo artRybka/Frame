@@ -28,6 +28,9 @@ Svc = Annotated[FrameService, Depends(service)]
 
 #: The text's title when only the museum speaks.
 MUSEUM_HEADLINE = "Co mówi muzeum"
+#: "Podobne dzieła" at least (when the catalogue has them): two rows of
+#: two in the app, and never a row with one.
+MIN_SIMILAR = 4
 
 
 class SimilarWork(BaseModel):
@@ -92,11 +95,13 @@ class DailyWork(BaseModel):
     partial: bool = False
 
 
-def _light(svc: FrameService, item: Item) -> RemoteItem:
+def _light(svc: FrameService, item: Item, *, bio: bool = False) -> RemoteItem:
+    """The work without its long texts; with ``bio`` the artist's line from
+    the museum stays ("Dutch, Delft 1632–1675 Delft": the app shows the
+    years under the name in "O autorze")."""
     remote = remote_items(svc, [item], copies=False, keep_hidden=True)[0]
-    return remote.model_copy(
-        update={"item": remote.item.model_copy(update={"description": "", "artist_bio": ""})}
-    )
+    light = {"description": ""} if bio else {"description": "", "artist_bio": ""}
+    return remote.model_copy(update={"item": remote.item.model_copy(update=light)})
 
 
 def _title(svc: FrameService, item: Item, essay: Essay | None) -> str:
@@ -165,20 +170,16 @@ def page(
         similar, legacy = [], []
     elif essay is not None:
         by_id = {c.id: c for c in candidates}
-        similar = [
-            SimilarWork(item=_light(svc, by_id[s.id]), why=s.why)
-            for s in essay.similar
-            if s.id in by_id
-        ]
+        chosen = [by_id[s.id] for s in essay.similar if s.id in by_id]
+        why = {s.id: s.why for s in essay.similar}
+        # Pages written before the artist's own works left the list have
+        # fewer once they go: the other candidates fill it up, to full rows.
+        wanted = max(MIN_SIMILAR, len(chosen) + len(chosen) % 2)
+        chosen += [c for c in candidates if c not in chosen][: wanted - len(chosen)]
+        similar = [SimilarWork(item=_light(svc, c), why=why.get(c.id, "")) for c in chosen]
         legacy = _legacy(svc, item, essay)
     else:
-        similar = [
-            SimilarWork(
-                item=_light(svc, c),
-                why="ten sam autor" if c.artist == item.artist else "",
-            )
-            for c in candidates[:4]
-        ]
+        similar = [SimilarWork(item=_light(svc, c), why="") for c in candidates[:MIN_SIMILAR]]
         legacy = []
     details = [
         DailyDetail(**box.model_dump(), image=url(n, box))
@@ -190,7 +191,7 @@ def page(
     note = svc.library.note(item.id, job.kind) if essay else None
     return DailyWork(
         day=day,
-        item=_light(svc, item),
+        item=_light(svc, item, bio=True),
         title=_title(svc, item, essay),
         teaser=essay.teaser if essay else short(museum, TEASER_CHARS),
         focus=essay.focus if essay else None,

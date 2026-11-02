@@ -412,7 +412,7 @@ struct DailyView: View {
                     }
                 }
             }
-            if let artist = work.artist, !artist.isEmpty { section("O autorze") { prose(artist) } }
+            if let artist = work.artist, !artist.isEmpty { author(work, artist) }
             if let takes = work.composition?.takes, !takes.isEmpty {
                 compositionSection(work, takes).id("composition")
             }
@@ -425,10 +425,10 @@ struct DailyView: View {
             if let details = work.details, !details.isEmpty {
                 section("Detale") { self.details(work, details) }.id("details")
             }
-            if !work.similar.isEmpty { section("Podobne dzieła") { similar(work.similar) } }
+            if !similarWorks(work).isEmpty { section("Podobne dzieła") { similar(similarWorks(work)) } }
             if !work.legacy.isEmpty { section("Dalsze losy") { legacy(work.legacy) }.id("legacy") }
             if let others = work.byArtist, !others.isEmpty {
-                section("Inne prace artysty") { byArtist(others) }.id("artist")
+                section("Inne prace artysty") { byArtist(Array(others.prefix(Self.byArtistShown))) }.id("artist")
             }
             if listsComing(work) {
                 HStack(spacing: 8) {
@@ -626,6 +626,41 @@ struct DailyView: View {
         }
     }
 
+    /// "O autorze" with the artist's name in it, plain and large, first
+    /// name first ("Gogh, Vincent van" is Vincent van Gogh here), and the
+    /// years of their life when the museum gives them; then the note.
+    /// Held, the name looks for their other works on Szukaj, as the line
+    /// under the title does.
+    private func author(_ work: DailyWork, _ note: String) -> some View {
+        let item = work.item.item
+        let name = Names.person(item.artist)
+        let life = Names.lifeYears(item.artistBio) ?? Names.lifeYears(item.artist)
+        return VStack(alignment: .leading, spacing: 10) {
+            if name.isEmpty {
+                Text("O autorze")
+                    .font(.serif(20, weight: .semibold))
+                    .foregroundStyle(Theme.ink)
+            } else {
+                VStack(alignment: .leading, spacing: 3) {
+                    Eyebrow("O autorze")
+                    Text(name)
+                        .font(.serif(26, weight: .semibold))
+                        .foregroundStyle(Theme.ink)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .artistPress { model.artistSearch = item.artist }
+                    if let life {
+                        Text(life)
+                            .font(.subheadline)
+                            .monospacedDigit()
+                            .foregroundStyle(Theme.inkSoft)
+                    }
+                }
+                .accessibilityElement(children: .combine)
+            }
+            prose(note)
+        }
+    }
+
     private func prose(_ text: String, size: CGFloat = 16) -> some View {
         Text(text)
             .font(.serif(size))
@@ -744,23 +779,44 @@ struct DailyView: View {
         .accessibilityLabel(Text("Podgląd na ramce"))
     }
 
+    /// "Podobne dzieła" without the artist's own works, which are under
+    /// "Inne prace artysty" (a server before 1.80 still sends them).
+    private func similarWorks(_ work: DailyWork) -> [DailyWork.Similar] {
+        let artist = work.item.item.artist
+        guard !artist.isEmpty else { return work.similar }
+        return work.similar.filter { $0.item.item.artist != artist }
+    }
+
+    /// Two to a row, as "Inne prace artysty".
+    private static let gridColumns = [GridItem(.flexible(), spacing: 12, alignment: .top), GridItem(.flexible(), spacing: 12, alignment: .top)]
+    /// "Inne prace artysty": two rows of two, as "Podobne dzieła".
+    private static let byArtistShown = 4
+
+    /// A work's picture in the two grids at the end: cropped to the tile
+    /// around its faces (or what draws the eye), not through the middle,
+    /// so a portrait keeps its head.
+    private func gridPicture(_ work: RemoteItem) -> some View {
+        Color.clear
+            .frame(height: 124)
+            .frame(maxWidth: .infinity)
+            .overlay {
+                ArtImage(
+                    ref: work.thumb,
+                    fallback: work.thumbFallback,
+                    placeholder: work.item.placeholderColor,
+                    maxPixel: 500,
+                    subjectFocus: true
+                )
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+    }
+
     private func similar(_ works: [DailyWork.Similar]) -> some View {
-        LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], alignment: .leading, spacing: 16) {
+        LazyVGrid(columns: Self.gridColumns, alignment: .leading, spacing: 16) {
             ForEach(works, id: \.item.id) { work in
                 NavigationLink(value: work.item.id) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Color.clear
-                            .frame(height: 110)
-                            .frame(maxWidth: .infinity)
-                            .overlay {
-                                ArtImage(
-                                    ref: work.item.thumb,
-                                    fallback: work.item.thumbFallback,
-                                    placeholder: work.item.item.placeholderColor,
-                                    maxPixel: 500
-                                )
-                            }
-                            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                        gridPicture(work.item)
                         Text(work.item.item.title)
                             .font(.serif(14, weight: .semibold))
                             .foregroundStyle(Theme.ink)
@@ -850,38 +906,27 @@ struct DailyView: View {
         }
     }
 
-    /// Six other works by the artist, three to a row; each opens its card.
+    /// Four other works by the artist, two to a row as "Podobne dzieła";
+    /// each opens its card.
     private func byArtist(_ works: [RemoteItem]) -> some View {
-        let columns = Array(repeating: GridItem(.flexible(), spacing: 10, alignment: .top), count: 3)
-        return LazyVGrid(columns: columns, alignment: .leading, spacing: 14) {
+        LazyVGrid(columns: Self.gridColumns, alignment: .leading, spacing: 16) {
             ForEach(works, id: \.id) { other in
                 NavigationLink(value: other.id) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Color.clear
-                            .frame(height: 104)
-                            .frame(maxWidth: .infinity)
-                            .overlay {
-                                ArtImage(
-                                    ref: other.thumb,
-                                    fallback: other.thumbFallback,
-                                    placeholder: other.item.placeholderColor,
-                                    maxPixel: 400
-                                )
-                            }
-                            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                        gridPicture(other)
                         Text(other.item.title.isEmpty ? "Bez tytułu" : other.item.title)
-                            .font(.serif(13, weight: .semibold))
+                            .font(.serif(14, weight: .semibold))
                             .foregroundStyle(Theme.ink)
                             .lineLimit(2)
                             .multilineTextAlignment(.leading)
                         if !other.item.dateText.isEmpty {
                             Text(other.item.dateText)
-                                .font(.caption2)
+                                .font(.caption)
                                 .foregroundStyle(Theme.inkSoft)
                                 .lineLimit(1)
                         }
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 }
                 .buttonStyle(.plain)
             }

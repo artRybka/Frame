@@ -12,7 +12,7 @@ from typing import Any
 from fastapi.testclient import TestClient
 from PIL import Image
 from test_ai import GOOD_KEY, FakeAnthropic
-from test_daily import ANSWER_PX, _app, _catalogue, _today_is, written
+from test_daily import ANSWER_PX, _app, _catalogue, _like, _today_is, written
 
 from frame_server.ai import AiConfigUpdate
 from frame_server.ai.client import OPUS
@@ -53,6 +53,7 @@ def test_claude_writes_a_study_once_and_it_is_kept(tmp_path: Path) -> None:
     svc.ai_config.update(AiConfigUpdate(pl_text=False, keywords_artworks=False, daily=False))
     with TestClient(app) as client:
         _catalogue(svc)
+        _like(svc)
         svc.ai.start()
         try:
             before = client.get("/api/study/met:1").json()
@@ -82,7 +83,7 @@ def test_claude_writes_a_study_once_and_it_is_kept(tmp_path: Path) -> None:
         assert work["why_today"] == "" and work["day"] == "" and work["previous"] == []
         assert [v["title"] for v in work["composition"]["views"]] == ["Analiza kompozycji"]
         assert [(s["item"]["item"]["id"], s["why"]) for s in work["similar"]] == [
-            ("met:2", "ta sama seria")
+            ("met:5", "ta sama epoka")
         ]
         details = work["details"]
         assert details[0]["image"].startswith("/api/study/met%3A1/detail?n=0&v=")

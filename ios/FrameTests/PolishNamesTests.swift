@@ -53,4 +53,39 @@ final class PolishNamesTests: XCTestCase {
         let other = ArtTheme(key: "impressionism", name: "Paul i przyjaciele", description: "")
         XCTAssertEqual(Names.theme(other), "Paul i przyjaciele")
     }
+
+    /// "O autorze": the name as a heading, first name first.
+    @MainActor
+    func testPersonReadsFirstNameFirst() {
+        let style = NameStyle.shared
+        let was = style.polishFirstNames
+        defer { style.polishFirstNames = was }
+        style.polishFirstNames = false
+        let cases: [(String, String)] = [
+            ("Gogh, Vincent van", "Vincent van Gogh"),
+            ("Hokusai, Katsushika", "Katsushika Hokusai"),
+            ("Le Nain, Louis", "Louis Le Nain"),
+            ("Kandinsky, Wassily (1866-1944)", "Wassily Kandinsky"),
+            ("Paul Cézanne, French", "Paul Cézanne"),
+            ("Claude Monet, French, 1840–1926", "Claude Monet"),
+            ("Workshop of Rubens, Peter Paul", "Workshop of Rubens, Peter Paul"),
+            ("Johannes Vermeer", "Johannes Vermeer"),
+            ("Rembrandt", "Rembrandt"),
+            ("", ""),
+        ]
+        for (name, shown) in cases {
+            XCTAssertEqual(Names.person(name), shown, name)
+        }
+        style.polishFirstNames = true
+        XCTAssertEqual(Names.person("Gogh, Vincent van"), "Wincenty van Gogh")
+    }
+
+    func testLifeYears() {
+        XCTAssertEqual(Names.lifeYears("Dutch, Delft 1632–1675 Delft"), "1632–1675")
+        XCTAssertEqual(Names.lifeYears("Japanese, 1760–1849"), "1760–1849")
+        XCTAssertEqual(Names.lifeYears("Kandinsky, Wassily (1866-1944)"), "1866–1944")
+        XCTAssertNil(Names.lifeYears("French, active 1890s"))
+        XCTAssertNil(Names.lifeYears("1900–2100"))  // not a life
+        XCTAssertNil(Names.lifeYears(""))
+    }
 }
