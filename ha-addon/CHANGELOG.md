@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.79.9
+
+- Teraz: kadrowanie otwiera się z podglądu ramki tak jak na karcie dzieła.
+  Przy przytrzymaniu telefon postukuje coraz szybciej, a podgląd lekko
+  rośnie; kadrowanie rozwija się z podglądu („pop”) i zamyka się z
+  powrotem do niego. Zwykłe stuknięcie dalej działa.
+- Kadrowanie: pozioma ramka obraca się na bok już w trakcie otwierania,
+  bez czekania. Przy zamykaniu („Zapisz kadr”, „Anuluj”) najpierw płynnie
+  wraca do poziomu, a dopiero potem kadrowanie chowa się do podglądu.
+
 ## 1.79.8
 
 - Szukaj lepszej kopii: arkusz „Kopie dzieła” nie czeka już w nieskończoność
