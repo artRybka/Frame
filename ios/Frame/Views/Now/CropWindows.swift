@@ -201,6 +201,7 @@ struct CropViewport: View {
     var placeholder: Color = Theme.mat
     @Binding var crop: Crop
 
+    @Environment(\.cropTurned) private var turned
     @State private var dragStart: Crop?
     @State private var zoomStart: Crop?
 
@@ -224,13 +225,20 @@ struct CropViewport: View {
     }
 
     private func drag(_ scale: CGFloat) -> some Gesture {
-        DragGesture(minimumDistance: 1)
+        // On the screen's axes, turned onto the picture's here: the frame
+        // may lie on its side (`cropTurned`).
+        DragGesture(minimumDistance: 1, coordinateSpace: .global)
             .onChanged { value in
                 if dragStart == nil { dragStart = crop }
                 guard let start = dragStart else { return }
+                let moved = turned
+                    // Turned a quarter clockwise: the picture's right is down
+                    // on the screen, its bottom to the left.
+                    ? CGSize(width: value.translation.height, height: -value.translation.width)
+                    : value.translation
                 var next = crop
-                next.x = start.x - value.translation.width / (imageSize.width * scale)
-                next.y = start.y - value.translation.height / (imageSize.height * scale)
+                next.x = start.x - moved.width / (imageSize.width * scale)
+                next.y = start.y - moved.height / (imageSize.height * scale)
                 crop = clamped(next)
             }
             .onEnded { _ in dragStart = nil }
@@ -275,4 +283,10 @@ private struct ThirdsGrid: View {
         }
         .allowsHitTesting(false)
     }
+}
+
+extension EnvironmentValues {
+    /// The crop windows lie a quarter turn clockwise (a landscape frame on
+    /// its side on the crop screen), so a drag is turned back onto the picture.
+    @Entry var cropTurned = false
 }

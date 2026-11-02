@@ -7,6 +7,15 @@
   kopiami z innych muzeów) i trafia do karty „Ukryte” w Playlistach.
 - Kopie dzieła: po wyborze innej kopii komunikat „Zdjęcie podmienione”
   jest samą informacją, bez guzika „Cofnij”, i znika po chwili.
+- Karta dzieła, widok „Na ramce”: podgląd reaguje jak obraz w „Oryginał”.
+  Przy przytrzymaniu telefon postukuje coraz szybciej, a podgląd lekko
+  rośnie; kadrowanie rozwija się z podglądu („pop”) zamiast wjeżdżać od
+  dołu. Zwykłe stuknięcie dalej działa. Kadrowania nie zamyka już
+  przeciągnięcie w dół, tylko „Anuluj” albo „Zapisz kadr”.
+- Kadrowanie (karta dzieła i Teraz): gdy ramka wisi w poziomie, jej
+  podgląd po otwarciu obraca się o 90° i leży bokiem na całej wysokości
+  ekranu, więc jest dużo większy. Przeciąganie obrazu działa w osiach
+  obróconej ramki.
 
 ## 1.79.6
 

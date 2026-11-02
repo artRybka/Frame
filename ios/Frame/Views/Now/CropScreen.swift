@@ -25,28 +25,41 @@ struct CropScreen: View {
     @State private var loaded: ImageRef?
     @State private var saving = false
     @State private var confirmingDiscard = false
+    /// A landscape frame lies on its side here, larger on the upright
+    /// phone; it turns once the screen is open, so it is seen to turn.
+    @State private var turned = false
 
     private var ready: Bool { draft.view?.windows.isEmpty == false }
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 14) {
-                FramedArtwork(ref: preview, aspectRatio: aspectRatio, placeholder: placeholder) {
-                    if ready, loaded != nil {
-                        CropWindows(itemID: itemID, draft: $draft)
-                            .transition(.opacity)
+                GeometryReader { geo in
+                    let turn = turned && turns(in: geo.size)
+                    // Turned, it is laid out in the space with its sides swapped.
+                    let box = turn ? CGSize(width: geo.size.height, height: geo.size.width) : geo.size
+                    FramedArtwork(ref: preview, aspectRatio: aspectRatio, placeholder: placeholder, shadow: false) {
+                        if ready, loaded != nil {
+                            CropWindows(itemID: itemID, draft: $draft)
+                                .transition(.opacity)
+                        }
                     }
-                }
-                .environment(\.artImageLoaded) { ref in
-                    guard ref == preview else { return }
-                    withAnimation(.easeOut(duration: 0.3)) { loaded = ref }
+                    .environment(\.artImageLoaded) { ref in
+                        guard ref == preview else { return }
+                        withAnimation(.easeOut(duration: 0.3)) { loaded = ref }
+                    }
+                    .environment(\.cropTurned, turn)
+                    .frame(width: box.width, height: box.height)
+                    .rotationEffect(.degrees(turn ? 90 : 0))
+                    // Cast after the turn, so it keeps falling down.
+                    .frameShadow()
+                    .frame(width: geo.size.width, height: geo.size.height)
                 }
                 .overlay {
                     if loaded != preview {
                         LoadingBadge(text: "Wczytuję podgląd…")
                     }
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .padding(.horizontal, Theme.gutter)
                 .padding(.top, 8)
 
@@ -105,15 +118,28 @@ struct CropScreen: View {
             }
         }
         .onAppear { if original == nil { original = draft } }
+        .task {
+            // After the screen has popped out of the preview (or come up).
+            try? await Task.sleep(for: .seconds(0.4))
+            withAnimation(.frameTurn) { turned = true }
+        }
         .onChange(of: draft.key) { _, _ in
             // Another picture or presentation came in under it: nothing to crop.
             dismiss()
         }
     }
 
+    /// A landscape frame turns where the space is upright, so it comes out
+    /// larger (a 16:9 frame across a phone's width is a narrow strip).
+    private func turns(in size: CGSize) -> Bool {
+        aspectRatio > 1 && size.height > size.width
+    }
+
     private var hint: String {
         guard draft.changed else {
-            return "Przesuń obraz palcem albo rozsuń dwa palce, żeby go wykadrować."
+            return turned && aspectRatio > 1
+                ? "Ramka leży bokiem, żeby była większa. Przesuń obraz palcem albo rozsuń dwa palce."
+                : "Przesuń obraz palcem albo rozsuń dwa palce, żeby go wykadrować."
         }
         return onFrame
             ? "Po zapisaniu ramka od razu pokaże nowy kadr."
