@@ -116,6 +116,11 @@ struct FrameTabView: View {
         }
     }
 
+    private func startRenaming() {
+        newName = model.settings?.name ?? ""
+        renaming = true
+    }
+
     /// What the panel calls itself (set in Samsung's own app).
     private var panelName: String { device?.name.flatMap { $0.isEmpty ? nil : $0 } ?? "Moja ramka" }
 
@@ -238,25 +243,16 @@ struct FrameTabView: View {
             .frame(width: model.isPortrait ? 108 : 150)
             VStack(alignment: .leading, spacing: 4) {
                 Eyebrow(model.settings?.name != nil ? panelName : "Samsung \(device?.model ?? "EM32DX")")
-                Button {
-                    newName = model.settings?.name ?? ""
-                    renaming = true
-                } label: {
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text(frameName)
-                            .font(.serif(26, weight: .semibold))
-                            .foregroundStyle(Theme.ink)
-                            .multilineTextAlignment(.leading)
-                        if model.isOwner {
-                            Image(systemName: "pencil")
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(Theme.inkSoft)
-                        }
+                // Held (as a title is, `PressHold`): rename the frame. The
+                // name is the owner's, so for others it is plain text.
+                Text(frameName)
+                    .font(.serif(26, weight: .semibold))
+                    .foregroundStyle(Theme.ink)
+                    .multilineTextAlignment(.leading)
+                    .pressHold(enabled: model.isOwner, action: startRenaming)
+                    .accessibilityAction(named: "Zmień nazwę") {
+                        if model.isOwner { startRenaming() }
                     }
-                }
-                .buttonStyle(.plain)
-                .disabled(!model.isOwner)  // the frame's name is the owner's
-                .accessibilityLabel(model.isOwner ? "\(frameName), zmień nazwę" : frameName)
                 Text(connectionText)
                     .font(.subheadline)
                     .foregroundStyle(connectionColor)

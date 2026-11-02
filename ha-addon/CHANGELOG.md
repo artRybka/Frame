@@ -7,6 +7,9 @@
   zamiany zamiast jednego stuknięcia, a tekst powiększa się mniej.
   Przytrzymanie obrazu otwiera go na całym ekranie; zwykłe stuknięcie
   dalej działa.
+- Zakładka Ramka: przy nazwie ramki nie ma już ołówka. Nazwę zmieniasz,
+  przytrzymując ją, tak jak tytuł dzieła: telefon postukuje, nazwa
+  delikatnie rośnie, a po chwili otwiera się okienko „Nazwa ramki”.
 
 ## 1.79.3
 
