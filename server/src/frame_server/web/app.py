@@ -43,7 +43,7 @@ from ..power import WakeResult
 from ..progress import DisplayProgress, Stage
 from ..service import FrameService, outcome_json
 from ..status import DeviceStatus
-from ..store import PanelRequest
+from ..store import PanelRequest, preview_url
 from . import (
     ai_api,
     calibration_api,
@@ -285,7 +285,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         content = service.store.current()
         if content is None:
             raise HTTPException(404)
-        return asdict(content) | {"preview_url": f"/api/previews/{content.file_id}.png"}
+        return asdict(content) | {"preview_url": preview_url(content.file_id)}
 
     @app.get("/api/previews/{file_id}.png", dependencies=auth)
     def preview(file_id: str) -> FileResponse:
@@ -293,6 +293,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if path is None:
             raise HTTPException(404)
         return FileResponse(path, media_type="image/png")
+
+    @app.get("/api/previews/{file_id}.jpg", dependencies=auth)
+    def preview_jpeg(file_id: str) -> FileResponse:
+        path = service.store.preview_jpeg_path(file_id)
+        if path is None:
+            raise HTTPException(404)
+        return FileResponse(path, media_type="image/jpeg")
 
     @app.get("/api/presets", dependencies=auth)
     def presets() -> dict[str, object]:

@@ -12,6 +12,9 @@ final class AppModel {
         static let remoteURL = "remoteServerURL"
         static let apiToken = "apiToken"
         static let demoMode = "demoMode"
+        /// The address that answered last (`ServerRoute.Kind`): the next
+        /// launch asks it first.
+        static let serverPath = "serverPath"
     }
 
     enum Connection: Equatable {
@@ -27,6 +30,9 @@ final class AppModel {
     /// Which of the server's addresses the app talks to; nil in the demo or
     /// before the server answered.
     private(set) var serverPath: ServerRoute.Kind?
+    /// Goes up when the app moves to the server's other address: pictures
+    /// still loading from the one before ask the new one instead.
+    private(set) var serverSwitches = 0
 
     /// Who this phone is on the server; nil before it answered (and from
     /// older servers): taken as the owner (`isOwner`).
@@ -168,13 +174,21 @@ final class AppModel {
         serverPath = nil
         guard !demo, let home = Self.serverAddress(url) else {
             route = nil
+            ImageLoader.sameServer(nil)
             backend = DemoBackend()
             return
         }
-        let route = ServerRoute(home: home, remote: Self.serverAddress(remote))
+        let away = Self.serverAddress(remote)
+        let last = UserDefaults.standard.string(forKey: Keys.serverPath).flatMap(ServerRoute.Kind.init(rawValue:))
+        let route = ServerRoute(home: home, remote: away, active: last ?? .home)
         route.onSwitch = { [weak self] kind in
-            Task { @MainActor in self?.serverPath = kind }
+            UserDefaults.standard.set(kind.rawValue, forKey: Keys.serverPath)
+            Task { @MainActor in
+                self?.serverPath = kind
+                self?.serverSwitches += 1
+            }
         }
+        ImageLoader.sameServer(route)
         self.route = route
         backend = LiveBackend(route: route, token: token.isEmpty ? nil : token)
     }
