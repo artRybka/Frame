@@ -857,8 +857,11 @@ struct ScheduleSection: View {
         if settings.quietStart != nil {
             HStack(spacing: 8) {
                 Text("Cisza nocna od").foregroundStyle(Theme.inkSoft)
-                DatePicker("Od", selection: time(\.quietStart, fallback: "22:00"), displayedComponents: .hourAndMinute)
-                    .labelsHidden()
+                ChangeTimeChip(
+                    label: settings.quietStart ?? "22:00",
+                    time: time(\.quietStart, fallback: "22:00"),
+                    accessibilityName: "Cisza nocna od"
+                )
                 Text("do \(settings.quietEnd ?? "—")").foregroundStyle(Theme.inkSoft)
                 Spacer(minLength: 0)
             }
@@ -944,11 +947,17 @@ struct ScheduleSection: View {
     private func checkQuietRow(_ label: String) -> some View {
         HStack(spacing: 8) {
             Text(label).foregroundStyle(Theme.inkSoft).fixedSize()
-            DatePicker("Od", selection: time(\.checkQuietStart, fallback: "22:00"), displayedComponents: .hourAndMinute)
-                .labelsHidden()
+            ChangeTimeChip(
+                label: settings.checkQuietStart ?? "22:00",
+                time: time(\.checkQuietStart, fallback: "22:00"),
+                accessibilityName: "Cisza nocna od"
+            )
             Text("do").foregroundStyle(Theme.inkSoft).fixedSize()
-            DatePicker("do", selection: time(\.checkQuietEnd, fallback: "07:00"), displayedComponents: .hourAndMinute)
-                .labelsHidden()
+            ChangeTimeChip(
+                label: settings.checkQuietEnd ?? "07:00",
+                time: time(\.checkQuietEnd, fallback: "07:00"),
+                accessibilityName: "Cisza nocna do"
+            )
             Spacer(minLength: 0)
         }
     }
@@ -1130,12 +1139,13 @@ struct TogglePill: View {
     }
 }
 
-/// One change time; tapping it opens a wheel, and "Usuń godzinę" when
-/// there is more than one.
+/// One time of day (a change, or where the quiet hours start or end);
+/// tapping it opens a wheel, and "Usuń godzinę" when there is more than one.
 struct ChangeTimeChip: View {
     let label: String
     @Binding var time: Date
     var remove: (() -> Void)?
+    var accessibilityName = "Godzina"
     @State private var editing = false
 
     var body: some View {
@@ -1151,7 +1161,7 @@ struct ChangeTimeChip: View {
                 .contentShape(LabelButton.shape)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Godzina \(label)")
+        .accessibilityLabel("\(accessibilityName) \(label)")
         .popover(isPresented: $editing) {
             VStack(spacing: 0) {
                 DatePicker("Godzina", selection: $time, displayedComponents: .hourAndMinute)
