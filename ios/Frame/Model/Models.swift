@@ -163,11 +163,15 @@ struct CopyView: Codable, Hashable, Sendable, Identifiable {
     var side: Int { max(width, height) }
     var isCurrent: Bool { role == "current" }
     var isOwn: Bool { role == "own" }
-    /// What can be picked: the same picture whole, sharper or not.
-    var choosable: Bool { !isCurrent && ["better", "warn", "worse"].contains(verdict) }
+    /// What can be picked: any copy once judged, those that do not fit too
+    /// (the owner has seen it and decides), but not one whose picture could
+    /// not be had.
+    var choosable: Bool { !isCurrent && verdict != "checking" && !notes.contains("unseen") }
+    /// The same picture whole: picked without a warning.
+    var fits: Bool { ["better", "warn", "worse"].contains(verdict) }
     /// Whether a spot of it can be set beside the picture shown now: not
-    /// another work, nor one whose picture could not be had.
-    var comparable: Bool { !notes.contains("other") && !notes.contains("unseen") }
+    /// one whose picture could not be had.
+    var comparable: Bool { !notes.contains("unseen") }
 }
 
 /// One line of the copies' answer, as the sources answer: "start"
