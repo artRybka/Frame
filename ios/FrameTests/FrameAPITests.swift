@@ -1003,7 +1003,8 @@ final class FrameAPITests: XCTestCase {
 
     func testAHiddenWorkLeavesTheLibraryForUkryte() async throws {
         let demo = DemoBackend()
-        let first = try XCTUnwrap(try await demo.items(LibraryQuery()).items.first)
+        let library = try await demo.items(LibraryQuery())
+        let first = try XCTUnwrap(library.items.first)
         let hiddenBefore = try await demo.hiddenItems().items
         XCTAssertTrue(hiddenBefore.isEmpty)
         _ = try await demo.setExcluded(id: first.id, true)
