@@ -373,16 +373,27 @@ final class AppModel {
 
     private func loadDiscover() async {
         let backend = self.backend
-        async let rows = loadSuggestionRows(backend)
-        async let themes = loadThemes(backend)
+        // The study of the day and "Studia dzieł" first: the server has
+        // them at once, but asked together with the rows (seconds of work
+        // for one Python on the NAS) they would wait for those.
         async let daily: Void = loadDaily(backend)
         async let studyRow: Void = loadStudyList(backend)
-        let (gotRows, gotThemes, _, _) = await (rows, themes, daily, studyRow)
+        _ = await (daily, studyRow)
+        async let rows = loadSuggestionRows(backend)
+        async let themes = loadThemes(backend)
+        let (gotRows, gotThemes) = await (rows, themes)
         guard gotRows, gotThemes else { return }
         discoverLoadedAt = Date()
-        if !demoMode, let suggestionRows, let themes = self.themes {
-            DiscoverCache.save(.init(rows: suggestionRows, themes: themes), server: serverURL)
-        }
+        saveDiscover()
+    }
+
+    /// Keeps Discover as it is now for the next launch.
+    private func saveDiscover() {
+        guard !demoMode, let suggestionRows, let themes else { return }
+        DiscoverCache.save(
+            .init(rows: suggestionRows, themes: themes, daily: daily, studies: studyList),
+            server: serverURL
+        )
     }
 
     private func loadSuggestionRows(_ backend: any FrameBackend) async -> Bool {
@@ -413,7 +424,17 @@ final class AppModel {
     /// without a work fit for it, shows no tile.
     private func loadDaily(_ backend: any FrameBackend) async {
         do {
-            daily = try await backend.daily(day: nil, wait: 0)
+            // The tile needs the text alone: the lists under it would take
+            // the server seconds (its page asks for the whole one).
+            var fresh = try await backend.daily(day: nil, wait: 0, lists: false)
+            if fresh.partial == true, let shown = daily, shown.partial != true,
+               shown.day == fresh.day, shown.item.id == fresh.item.id {
+                fresh.similar = shown.similar
+                fresh.legacy = shown.legacy
+                fresh.byArtist = shown.byArtist
+                fresh.partial = nil
+            }
+            daily = fresh
         } catch {
             // Offline for a moment: the last one stays.
             if case BackendError.notFound = error {
@@ -439,6 +460,9 @@ final class AppModel {
         let saved = demoMode ? nil : DiscoverCache.load(server: serverURL)
         suggestionRows = saved?.rows
         themes = saved?.themes
+        // Yesterday's study of the day is not shown for today's.
+        daily = saved?.daily.flatMap { $0.day == DailyWork.today ? $0 : nil }
+        studyList = saved?.studies
         discoverLoadedAt = nil
     }
 

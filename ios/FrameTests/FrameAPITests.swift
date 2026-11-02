@@ -291,6 +291,19 @@ final class FrameAPITests: XCTestCase {
         XCTAssertEqual(work.similar.first?.why, "ta sama seria")
         XCTAssertNil(work.legacy.first?.item)
         XCTAssertEqual(work.byArtist?.map(\.id), ["met:2"])
+        // Kept for the next launch with Discover's rows, and read back.
+        let brief = StudyBrief(item: work.item, title: work.title, day: work.day)
+        let snapshot = DiscoverCache.Snapshot(rows: [], themes: [], daily: work, studies: [brief])
+        let saved = try LiveBackend.decoder().decode(
+            DiscoverCache.Snapshot.self, from: try LiveBackend.encoder().encode(snapshot)
+        )
+        XCTAssertEqual(saved.daily, work)
+        XCTAssertEqual(saved.studies, [brief])
+        let older = try LiveBackend.decoder().decode(
+            DiscoverCache.Snapshot.self, from: Data(#"{"rows": [], "themes": []}"#.utf8)
+        )
+        XCTAssertNil(older.daily)
+        XCTAssertNil(older.studies)
         let take = try XCTUnwrap(work.composition?.takes.first)
         XCTAssertEqual(take.grid, "golden")
         XCTAssertEqual(take.marks.map(\.shape), ["loop", "arrow"])

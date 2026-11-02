@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.75.6
+
+- Odkrywaj: Studium dnia i Studia dzieł widać od razu po uruchomieniu
+  aplikacji (z poprzedniego razu, potem świeże). Kafelek dnia prosi serwer
+  tylko o tekst (dotąd serwer za każdym razem przeszukiwał cały katalog dla
+  list pod stroną, ok. 6 s na NAS, a przy starcie wstrzymywało to też inne
+  zapytania). Listy pod stroną (podobne dzieła, co z niego wyrosło, inne
+  prace artysty) serwer pamięta przez godzinę i liczy zawczasu dla dzieła
+  dnia, więc strona też otwiera się szybciej. Wymaga zaktualizowanego
+  serwera.
+
 ## 1.75.5
 
 - Ramka: znaczek na kafelku Sieć mówi, co zrobi stuknięcie: odśwież przy

@@ -17,9 +17,8 @@ from starlette.concurrency import run_in_threadpool
 from ..ai.daily import TEASER_CHARS, Composition, DailyJob, Detail, Essay, Legacy, Spot, short
 from ..ai.pl_text import description
 from ..later import entry_key
-from ..library import Item, PlaylistRules
+from ..library import Item
 from ..library.markup import strip_markup
-from ..library.vocabulary import artist_matches
 from ..service import FrameService
 from .deps import require_owner, require_token, service
 from .library_api import RemoteItem, remote_items
@@ -115,13 +114,8 @@ def _museum_text(svc: FrameService, item: Item) -> str:
 
 def _later(svc: FrameService, entry: Legacy, item: Item) -> RemoteItem | None:
     """The catalogue's copy of a later work, by its author and title."""
-    if not entry.search:
-        return None
-    hits = svc.library.query(PlaylistRules(query=entry.search), sort="suitability", limit=5)[1]
-    for hit in hits:
-        if hit.id != item.id and hit.artist and artist_matches(hit.artist, [entry.who]):
-            return _light(svc, hit)
-    return None
+    copy = svc.later.in_catalogue(item, entry)
+    return _light(svc, copy) if copy is not None else None
 
 
 def _legacy(svc: FrameService, item: Item, essay: Essay) -> list[LegacyWork]:
@@ -138,12 +132,14 @@ def _legacy(svc: FrameService, item: Item, essay: Essay) -> list[LegacyWork]:
     return works
 
 
-def _work(svc: FrameService, day: date, item: Item, writing: bool) -> DailyWork:
+def _work(svc: FrameService, day: date, item: Item, writing: bool, lists: bool = True) -> DailyWork:
     def detail_url(n: int, box: Detail) -> str:
         v = svc.daily.detail_path(item, box).stem.rsplit("-", 1)[-1]
         return f"/api/daily/detail?day={day.isoformat()}&n={n}&v={v}"
 
-    return page(svc, item, svc.daily.job, day=day.isoformat(), writing=writing, url=detail_url)
+    return page(
+        svc, item, svc.daily.job, day=day.isoformat(), writing=writing, url=detail_url, lists=lists
+    )
 
 
 def page(
@@ -225,9 +221,12 @@ async def daily(
     svc: Svc,
     day: date | None = None,
     wait: Annotated[int, Query(ge=0, le=120)] = 0,
+    lists: bool = True,
 ) -> DailyWork:
     """The work of the day (``day``: a past one), with its page as far as it
-    is written; ``wait``: seconds to wait for a page being written."""
+    is written; ``wait``: seconds to wait for a page being written.
+    ``lists=false``: without the lists under its text
+    (``DailyWork.partial``), at once: Discover's tile."""
     today = date.today()
     day = day or today
     if day > today:
@@ -244,7 +243,7 @@ async def daily(
         with contextlib.suppress(Exception):
             await asyncio.wait_for(asyncio.shield(asyncio.wrap_future(future)), wait)
     writing = future is not None and not future.done()
-    return await run_in_threadpool(_work, svc, day, item, writing)
+    return await run_in_threadpool(_work, svc, day, item, writing, lists)
 
 
 @router.get("/daily/detail")

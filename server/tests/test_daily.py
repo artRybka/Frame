@@ -342,6 +342,12 @@ def test_without_a_key_the_page_shows_what_the_museum_says(tmp_path: Path) -> No
         assert [s["item"]["item"]["id"] for s in work["similar"]] == ["met:2"]
         assert work["similar"][0]["why"] == "ten sam autor"
 
+        # Discover's tile: the text at once, without the lists under it.
+        tile = client.get("/api/daily?lists=false").json()
+        assert tile["item"]["item"]["id"] == "met:1" and tile["partial"] is True
+        assert tile["teaser"] == work["teaser"] and tile["similar"] == []
+        assert work["partial"] is False
+
         tomorrow = (date.today() + timedelta(days=1)).isoformat()
         assert client.get(f"/api/daily?day={tomorrow}").status_code == 400
         assert client.get("/api/daily?day=2001-01-01").status_code == 404

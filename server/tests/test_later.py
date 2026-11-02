@@ -56,3 +56,25 @@ def test_later_works_are_looked_up_once(service: FrameService) -> None:
     assert later.missing(item.id, [WAVE, LETTER]) == []
     assert later.look_soon(item, [WAVE, LETTER]) is False
     assert later.known(item.id) == found
+
+
+def test_the_catalogue_copy_is_looked_for_once_an_hour(service: FrameService) -> None:
+    later = LaterWorks(service.library, lambda query, limit: (0, [], []))
+    now = [0.0]
+    later.clock = lambda: now[0]
+    item = service.library.upsert(_work("met:1", "Under the Wave off Kanagawa", "Hokusai"))
+    assert later.in_catalogue(item, WAVE) is None
+    assert later.in_catalogue(item, LETTER) is None  # no search words: not looked for
+
+    # Not looked for again on every page (a second on a NAS)...
+    service.library.upsert(_work("met:8", "The Wave", "Camille Claudel"))
+    now[0] = 600.0
+    assert later.in_catalogue(item, WAVE) is None
+    # ...only once the hour is over.
+    now[0] = 3601.0
+    copy = later.in_catalogue(item, WAVE)
+    assert copy is not None and copy.id == "met:8"
+    # The copy set aside is not shown, though kept.
+    service.library.update("met:8", excluded=True)
+    now[0] = 3700.0
+    assert later.in_catalogue(item, WAVE) is None

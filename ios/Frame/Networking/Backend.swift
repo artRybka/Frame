@@ -87,8 +87,10 @@ protocol FrameBackend: Sendable {
     /// one's works as it answers, then a last line with the page that follows.
     func themeLines(key: String, page: Int) async throws -> AsyncThrowingStream<ThemeLine, Error>
     /// The work of the day (`day`: a past one, "2026-10-30"); waits up to
-    /// `wait` seconds for Claude's page being written.
-    func daily(day: String?, wait: Int) async throws -> DailyWork
+    /// `wait` seconds for Claude's page being written. Without `lists`: the
+    /// page without the lists under its text (`DailyWork.partial`), at once:
+    /// all Discover's tile needs (older servers send the whole page).
+    func daily(day: String?, wait: Int, lists: Bool) async throws -> DailyWork
     /// Another work of the day for today, drawn now (Konfiguracja, the
     /// owner only); its page is asked for at once. 409: nothing else fits.
     func dailyAgain() async throws -> DailyWork.Brief
@@ -219,6 +221,11 @@ protocol FrameBackend: Sendable {
 }
 
 extension FrameBackend {
+    /// The work of the day with its whole page.
+    func daily(day: String?, wait: Int) async throws -> DailyWork {
+        try await daily(day: day, wait: wait, lists: true)
+    }
+
     /// The work's study with its whole page.
     func study(itemID: String, wait: Int) async throws -> StudyView {
         try await study(itemID: itemID, wait: wait, lists: true)
