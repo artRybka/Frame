@@ -140,11 +140,15 @@ struct CompositionSketch: View {
 extension DailyWork.Mark {
     /// Where a remark about the mark points, as the server has it: a
     /// loop's centre, the middle of a rect or triangle, a spiral's eye, a
-    /// path's middle point.
+    /// vanishing point, a rhythm's middle beat, a path's middle point.
     var anchor: DailyWork.Spot {
         guard let first = points.first else { return DailyWork.Spot(x: 0.5, y: 0.5) }
         switch shape {
-        case "loop": return first
+        case "loop", "rays": return first
+        case "rhythm" where points.count >= 2:
+            let start = 2 * (points.count / 4)
+            let (a, b) = (points[start], points[start + 1])
+            return DailyWork.Spot(x: (a.x + b.x) / 2, y: (a.y + b.y) / 2)
         case "rect" where points.count == 2:
             return DailyWork.Spot(x: (points[0].x + points[1].x) / 2, y: (points[0].y + points[1].y) / 2)
         case "triangle" where points.count == 3:
@@ -261,12 +265,27 @@ enum Pencil {
         case "spiral" where points.count == 3:
             let line = spiral(start: points[0], through: points[1], eye: points[2])
             return line.count >= 2 ? [stroke(line, width: 2.2, seed: seed, start: 0.04, end: 0.3)] : []
-        case "rhythm" where points.count >= 2:
-            // A light line through the repeated things, a beat across it at each.
-            let line = stroke(points, width: 1.6, seed: seed, start: 0.08, end: 0.08)
-            return [line] + points.enumerated().map { index, point in
-                beat(at: point, along: points, index: index, seed: seed + index)
+        case "rhythm" where points.count >= 4:
+            // A stroke along each repeated form, all parallel, no line between them.
+            return beats(points).enumerated().map { index, beat in
+                stroke(beat, width: 2.3, seed: seed + index, start: 0.14, end: 0.14)
             }
+        case "rays" where points.count >= 3:
+            // Each ray from its far end into the vanishing point, thinning as it goes.
+            let eye = points[0]
+            return points.dropFirst().enumerated().map { index, end in
+                stroke([end, eye], width: 1.9, seed: seed + index, start: 0.05, end: 0.45)
+            }
+        case "motion" where points.count >= 2:
+            // A sweeping arrow, two speed lines trailing beside its start.
+            let line = smooth(points)
+            let tip = line[line.count - 1]
+            let from = line[max(0, line.count - 6)]
+            return [stroke(points, width: 3, seed: seed, start: 0.02, end: 0.08)]
+                + speedLines(line, gap: 6.5).enumerated().map { index, trail in
+                    stroke(trail, width: 1.5, seed: seed + 3 + index, start: 0.3, end: 0.3)
+                }
+                + head(tip: tip, from: from, width: 2.6, size: 13)
         case "arrow" where points.count >= 2:
             let line = smooth(points)
             let tip = line[line.count - 1]
@@ -305,6 +324,15 @@ enum Pencil {
         case "line":
             let end = points[points.count - 1]
             spot = CGPoint(x: end.x - 4, y: end.y - 14)
+        case "rhythm" where points.count >= 4:
+            let first = beats(points)[0]
+            let top = first.min { $0.y < $1.y }!
+            spot = CGPoint(x: top.x, y: top.y - 13)
+        case "rays" where points.count >= 2:
+            let end = points[1]
+            spot = CGPoint(x: end.x + 12, y: end.y + 12)
+        case "motion":
+            spot = CGPoint(x: first.x + 4, y: first.y - 15)
         default:
             let middle = points[points.count / 2]
             spot = CGPoint(x: middle.x, y: middle.y - 15)
@@ -402,20 +430,52 @@ enum Pencil {
         return stroke(points, width: width, seed: seed, start: 0.12, end: 0.3)
     }
 
-    /// A beat of a rhythm: a short stroke across the line at one of its
-    /// points, a little longer at the first.
-    static func beat(at point: CGPoint, along points: [CGPoint], index: Int, seed: Int) -> Path {
-        let before = points[max(index - 1, 0)]
-        let after = points[min(index + 1, points.count - 1)]
-        let dx = after.x - before.x
-        let dy = after.y - before.y
-        let length = max(hypot(dx, dy), 0.0001)
-        let half: CGFloat = index == 0 ? 8 : 6
-        let normal = CGPoint(x: -dy / length * half, y: dx / length * half)
-        return stroke(
-            [CGPoint(x: point.x - normal.x, y: point.y - normal.y), CGPoint(x: point.x + normal.x, y: point.y + normal.y)],
-            width: 2.6, seed: seed, start: 0.15, end: 0.15
-        )
+    /// A rhythm's beats: the points in pairs (a repeated form's foot and
+    /// top), each made a stroke through the pair's middle, all parallel to
+    /// their common direction and a fifth longer than the form, as the
+    /// server draws them (`ai/sketch.py`).
+    static func beats(_ points: [CGPoint]) -> [[CGPoint]] {
+        let pairs = stride(from: 0, to: points.count - 1, by: 2).map { (points[$0], points[$0 + 1]) }
+        var ux: CGFloat = 0
+        var uy: CGFloat = 0
+        for (a, b) in pairs {
+            var dx = b.x - a.x
+            var dy = b.y - a.y
+            if dy < 0 || (dy == 0 && dx < 0) { (dx, dy) = (-dx, -dy) }
+            let length = max(hypot(dx, dy), 0.0001)
+            ux += dx / length
+            uy += dy / length
+        }
+        let norm = max(hypot(ux, uy), 0.0001)
+        (ux, uy) = (ux / norm, uy / norm)
+        return pairs.map { pair in
+            let (a, b) = pair
+            let middle = CGPoint(x: (a.x + b.x) / 2, y: (a.y + b.y) / 2)
+            let half = hypot(b.x - a.x, b.y - a.y) / 2 * 1.2
+            return [
+                CGPoint(x: middle.x - ux * half, y: middle.y - uy * half),
+                CGPoint(x: middle.x + ux * half, y: middle.y + uy * half),
+            ]
+        }
+    }
+
+    /// Two short strokes beside the start of a movement's path, one on each
+    /// side, trailing it like the lines behind something moving fast.
+    static func speedLines(_ path: [CGPoint], gap: CGFloat) -> [[CGPoint]] {
+        let sides: [(side: CGFloat, from: Double, to: Double)] = [(1, 0, 0.42), (-1, 0.08, 0.34)]
+        return sides.compactMap { entry -> [CGPoint]? in
+            let side = entry.side
+            let first = Int(Double(path.count) * entry.from)
+            let last = min(max(Int(Double(path.count) * entry.to), first + 2), path.count)
+            guard last - first >= 2 else { return nil }
+            return (first..<last).map { index in
+                let before = path[max(index - 1, 0)]
+                let after = path[min(index + 1, path.count - 1)]
+                let length = max(hypot(after.x - before.x, after.y - before.y), 0.0001)
+                let normal = CGPoint(x: -(after.y - before.y) / length, y: (after.x - before.x) / length)
+                return CGPoint(x: path[index].x + side * gap * normal.x, y: path[index].y + side * gap * normal.y)
+            }
+        }
     }
 
     /// An arrowhead: two short strokes back from the tip.

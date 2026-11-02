@@ -300,6 +300,31 @@ final class FrameAPITests: XCTestCase {
             let spot = Pencil.numberSpot(for: mark, in: size)
             XCTAssertTrue((0...size.width).contains(spot.x) && (0...size.height).contains(spot.y))
         }
+        // The analysis' own marks: a rhythm (pairs), a perspective's rays, a movement.
+        let rhythm = DailyWork.Mark(
+            shape: "rhythm",
+            points: [.init(x: 0.2, y: 0.8), .init(x: 0.21, y: 0.3), .init(x: 0.4, y: 0.3), .init(x: 0.4, y: 0.8), .init(x: 0.6, y: 0.82), .init(x: 0.59, y: 0.32)],
+            title: "Rytm masztów", text: ""
+        )
+        let rays = DailyWork.Mark(
+            shape: "rays", points: [.init(x: 0.5, y: 0.45), .init(x: 0, y: 0), .init(x: 1, y: 0), .init(x: -0.2, y: 0.9)],
+            title: "Punkt zbiegu", text: ""
+        )
+        let motion = DailyWork.Mark(
+            shape: "motion", points: [.init(x: 0.9, y: 0.6), .init(x: 0.6, y: 0.65), .init(x: 0.3, y: 0.5)],
+            title: "Lot", text: ""
+        )
+        XCTAssertEqual(Pencil.paths(for: rhythm, in: size, seed: 1).count, 3)  // a stroke a beat, nothing between
+        XCTAssertEqual(Pencil.paths(for: rays, in: size, seed: 1).count, 3)
+        XCTAssertGreaterThan(Pencil.paths(for: motion, in: size, seed: 1).count, 3)  // with speed lines and a head
+        let strokes = Pencil.beats(rhythm.points.map { CGPoint(x: $0.x * 300, y: $0.y * 200) })
+        let slopes = Set(strokes.map { (($0[1].x - $0[0].x) / ($0[1].y - $0[0].y) * 1e6).rounded() })
+        XCTAssertEqual(slopes.count, 1)  // parallel
+        XCTAssertEqual(rays.anchor, rays.points[0])
+        for mark in [rhythm, rays, motion] {
+            let spot = Pencil.numberSpot(for: mark, in: size)
+            XCTAssertTrue((0...size.width).contains(spot.x) && (0...size.height).contains(spot.y))
+        }
         // 0.42 servers: the points and lines become one take.
         var old = try XCTUnwrap(work.composition)
         old.views = nil
