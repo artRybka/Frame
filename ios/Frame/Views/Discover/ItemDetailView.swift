@@ -3,8 +3,8 @@ import SwiftUI
 /// One picture: original vs. how it will look on the e-paper, its story,
 /// palette, and actions (show now, queue next, favourite, add to playlist,
 /// save to Photos).
-/// Tapping the original opens it on the whole screen; tapping the preview on
-/// "Na ramce" opens it there to be cropped.
+/// Tapping (or holding) the original opens it on the whole screen; tapping
+/// (or holding) the preview on "Na ramce" grows it into cropping.
 struct ItemDetailView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.openStudy) private var openStudy
@@ -703,9 +703,15 @@ struct ItemDetailView: View {
                     onFrame: model.player?.current?.item?.id == item.id,
                     draft: $draft, save: saveFromCropScreen
                 )
+                .navigationTransition(.zoom(sourceID: Self.cropSource, in: zoomSpace))
+                // A drag down crops: it must not close the screen past "Anuluj".
+                .interactiveDismissDisabled()
             }
         }
     }
+
+    /// The "Na ramce" preview cropping grows out of.
+    private static let cropSource = "crop"
 
     /// The picture as the frame will show it; a tap opens it on the crop
     /// screen once its crop is loaded.
@@ -713,21 +719,26 @@ struct ItemDetailView: View {
         let ref = previewRef
         return FramedArtwork(
             ref: ref, aspectRatio: model.isPortrait ? 9.0 / 16.0 : 16.0 / 9.0,
-            placeholder: item.placeholderColor, moulding: 7
-        )
+            placeholder: item.placeholderColor, moulding: 7, shadow: false
+        ) {
+            EmptyView()
+        }
         .environment(\.artImageLoaded) { loaded in
             guard loaded == previewRef else { return }
             withAnimation(.easeOut(duration: 0.3)) { loadedPreview = loaded }
         }
+        // Cropping grows out of it ("pop"), as the whole picture does out of "Oryginał".
+        .matchedTransitionSource(id: Self.cropSource, in: zoomSpace) {
+            $0.clipShape(RoundedRectangle(cornerRadius: 2))
+        }
+        .frameShadow()
         .overlay {
             if loadedPreview != ref {
                 LoadingBadge(text: "Wczytuję podgląd…")
             }
         }
-        .contentShape(Rectangle())
-        .onTapGesture {
-            if cropping { opened = .crop }
-        }
+        // Tap or hold (the phone taps closer and closer), like the picture.
+        .picturePress(enabled: cropping) { opened = .crop }
         .accessibilityAddTraits(cropping ? .isButton : [])
         .accessibilityHint(Text(cropping ? "Otwiera kadrowanie na całym ekranie" : ""))
     }
