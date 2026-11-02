@@ -60,7 +60,7 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 KIND = "composition"
-PROMPT_VERSION = "composition-3"
+PROMPT_VERSION = "composition-4"
 #: The pages it is written into.
 PAGES = (DAILY, STUDY)
 #: The works whose pages written before may be written again: ``True`` for
@@ -166,9 +166,13 @@ rzecz z tekstu. Kształty:
   "line" (2–12 punktów): horyzont, podział, oś, krawędź, przekątna, boki otwartego trójkąta lub \
 V (3 punkty: koniec boku, wierzchołek, koniec drugiego boku), krzywa S lub zygzak przez \
 kolejne formy. Może wychodzić poza obraz do połowy boku. Krawędzie, które zbiegają się w \
-perspektywie (klin budynku, ulicy, stołu), rysuj jako "rays" do ich punktu zbiegu, nie jako \
-łamaną "line", która wraca tą samą drogą. Klin lub V bez punktu zbiegu (klin wody między \
-dwoma brzegami) to "line" z 3 punktami: koniec boku, wierzchołek, koniec drugiego boku.
+perspektywie, rysuj jako "rays" do ich punktu zbiegu, gdy leży on w obrazie albo najwyżej pół \
+boku poza nim. Gdy punkt zbiegu leży dalej (klin budynku wsunięty w ulicę, długi stół \
+widziany z ukosa), narysuj klin dwiema osobnymi "line", po jednej na każdą zbiegającą się \
+krawędź (np. gzyms i cokół), każda od krawędzi obrazu do miejsca, gdzie forma się kończy: \
+klin jest głównym układem i zawsze ma swój ślad, a aplikacja rysuje proste linie z ostrymi \
+końcami. Klin lub V bez perspektywy (klin wody między dwoma brzegami) to "line" z 3 punktami: \
+koniec boku, wierzchołek, koniec drugiego boku.
   "triangle" (3 wierzchołki): zamknięty trójkąt układu, może wychodzić poza obraz.
   "loop" (środek i róg prostokąta, w który się wpisuje): wielki krąg lub owal układu, owal masy, \
 łuk sklepienia; wokół pojedynczej rzeczy tylko, gdy jest dominantą albo przeciwwagą.
