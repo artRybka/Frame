@@ -265,10 +265,13 @@ class BatteryLog:
 
     def since_reading(self, now: datetime, mean: np.ndarray) -> tuple[list[float], float] | None:
         """The last reading on battery and the percent used since, by what
-        the panel has done meanwhile at the costs ``mean``."""
+        the panel has done meanwhile at the costs ``mean``; only while it
+        sleeps, when nothing new is read."""
         last = self._last
         if last is None or now.timestamp() < last[0]:
             return None
+        if self.activity.mode not in ("standby", "deep"):
+            return None  # awake, the panel reads its battery itself
         done = np.array(self.activity.at(now)) - np.array(last[2:])
         return last, float(np.clip(done, 0.0, None) @ mean)
 

@@ -134,3 +134,13 @@ def test_the_last_reading_outlives_a_restart() -> None:
     plan = day_plan(FrameSettings(), START, 0.05)
     again = BatteryLog(store)  # type: ignore[arg-type]
     assert again.estimate(60, True, plan, now=START + timedelta(hours=12)).level is not None
+
+
+def test_awake_the_reading_holds() -> None:
+    """Thought awake, the panel reads its own battery: no estimate, even
+    when the server last heard from it long ago."""
+    log = BatteryLog(None)
+    log.track(START, "awake")
+    log.note(START, 80, True)
+    plan = day_plan(FrameSettings(), START, 0.05)
+    assert log.estimate(80, True, plan, now=START + timedelta(days=5)).level is None
