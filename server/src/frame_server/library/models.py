@@ -198,6 +198,9 @@ class PlaylistRules(BaseModel):
     colors: list[str] = Field(default_factory=list)
     kinds: list[ItemKind] = Field(default_factory=list)
     sources: list[str] = Field(default_factory=list)
+    #: Museums left out: every source but these ("wszystkie poza Yale"),
+    #: so that a museum added later comes in on its own.
+    exclude_sources: list[str] = Field(default_factory=list)
     year_from: int | None = None
     year_to: int | None = None
     favorites_only: bool = False
@@ -218,6 +221,7 @@ class PlaylistRules(BaseModel):
             or self.colors
             or self.kinds
             or self.sources
+            or self.exclude_sources
             or self.year_from is not None
             or self.year_to is not None
             or self.favorites_only

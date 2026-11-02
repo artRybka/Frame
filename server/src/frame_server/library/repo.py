@@ -184,6 +184,8 @@ def matches(
         return False
     if rules.sources and item.source not in rules.sources:
         return False
+    if item.source in rules.exclude_sources:
+        return False
     if rules.artists and not artist_matches(item.artist, rules.artists):
         return False
     if rules.styles and not _fold(item.styles) & _fold(rules.styles):
@@ -556,10 +558,11 @@ class Library:
             with self._term_index_lock:
                 self._term_index_building = False
 
-    def spare_copies(self) -> set[str]:
+    def spare_copies(self, skip: Iterable[str] = ()) -> set[str]:
         """Works the server added again from a less reliable source, or of
-        which the owner kept another copy."""
-        return self.works().spare()
+        which the owner kept another copy; with the copies of the sources
+        ``skip`` left out, the next copy of their works is the one shown."""
+        return self.works().spare(skip)
 
     def twin(self, item: Item) -> Item | None:
         """The library's best copy of ``item``'s work, when that is another
@@ -583,7 +586,9 @@ class Library:
         rules = rules or PlaylistRules()
         user = user or viewer_id()
         # Spare copies of a work stay out, unless a source is asked for.
-        spare = set() if include_excluded or rules.sources else self.spare_copies()
+        spare = (
+            set() if include_excluded or rules.sources else self.spare_copies(rules.exclude_sources)
+        )
         listed = self.listed(user) if MINE_PLAYLISTS in rules.terms else set()
         mine = rules.favorites_only or any(t in MINE for t in rules.terms)
         hearts = self.favorites(user) if mine else None

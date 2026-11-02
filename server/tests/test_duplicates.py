@@ -143,6 +143,11 @@ def test_library_hides_copies_the_server_added(tmp_path) -> None:
     # The owner keeps the Openverse copy: now that one is the work's copy.
     lib.update("openverse:1", pooled=False)
     assert lib.spare_copies() == {"met:2", "wmc:3", "aic:5"}
+
+    # Every source but Europeana: the next copy of its work takes its place.
+    rest = lib.query(PlaylistRules(exclude_sources=["europeana"]))[1]
+    assert {i.id for i in rest} == {"openverse:1", "aic:5"}
+    assert lib.query(PlaylistRules(exclude_sources=["openverse"]))[1][0].id != "openverse:1"
     # Both copies kept by the owner: the catalogue lists the work once, in
     # the copy from the more reliable source.
     lib.update("met:2", pooled=False)
@@ -236,6 +241,15 @@ def test_filling_takes_each_work_once_from_the_best_source(service, monkeypatch)
     assert spare <= {"openverse:0", "wmc:0", "wmc:1", "openverse:1"}
     assert service.player.drop_spare_copies() == len(spare)
     assert {i.id for i in service.library.query(include_excluded=True)[1]} == visible
+
+
+def test_filling_leaves_out_museums_asked_to(service, monkeypatch) -> None:
+    _sources(monkeypatch)
+    monkeypatch.setattr(service.importer, "_analysed", lambda item: item)
+    job = Job(id="j", description="fill")
+    rules = PlaylistRules(artists=["Claude Monet"], exclude_sources=["aic"])
+    service.importer.fill(rules, 10, job, pooled=True)
+    assert job.item_ids and not any(i.startswith("aic:") for i in job.item_ids)
 
 
 def test_a_playlist_gets_a_work_once(service) -> None:
@@ -395,6 +409,35 @@ def test_streamed_search_shows_each_work_once(service, monkeypatch) -> None:
         # Commons' Poplars in place of Openverse's, shown on the page before.
         assert sorted(works) == ["aic:0", "aic:1", "wmc:2"]
         assert works["wmc:2"]["replaces"] == "openverse:1"
+
+
+def test_search_leaves_out_museums_asked_to(service, monkeypatch) -> None:
+    """Every museum but those left out ("wszystkie poza Yale")."""
+    from frame_server.web import create_app
+
+    _sources(monkeypatch)
+    app = create_app(service.settings)
+    params = {"q": "Monet", "limit": 4, "skip": ["aic"]}
+    with TestClient(app) as client:
+        with client.stream("GET", "/api/discover/search/stream", params=params) as resp:
+            lines = [json.loads(line) for line in resp.iter_lines() if line]
+        assert sorted({line["source"] for line in lines}) == ["openverse", "wmc"]
+        assert all(not r["item"]["id"].startswith("aic:") for li in lines for r in li["items"])
+        found = client.get("/api/discover/search", params=params).json()
+        assert found["items"] and all(r["item"]["source"] != "aic" for r in found["items"])
+        # Every museum left out: nothing to ask.
+        every = {**params, "skip": ["aic", "openverse", "wmc"]}
+        assert client.get("/api/discover/search/stream", params=every).text == ""
+        assert client.get("/api/discover/search", params=every).json()["total"] == 0
+        # Left out alone asks nothing, as no museum chosen does.
+        assert client.get("/api/discover/search", params={"skip": ["aic"]}).json()["total"] == 0
+
+        # The catalogue leaves them out too.
+        library = app.state.service.library
+        library.upsert(_work("aic", 9, title="Haystacks", artist="Claude Monet"))
+        library.upsert(_work("wmc", 8, title="Poplars", artist="Claude Monet"))
+        listed = client.get("/api/library/items", params={"skip": ["aic"]}).json()
+        assert [i["id"] for i in listed["items"]] == ["wmc:8"]
 
 
 def test_a_smart_playlist_needs_a_rule(service) -> None:
