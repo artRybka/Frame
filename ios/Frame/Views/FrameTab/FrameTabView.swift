@@ -296,7 +296,7 @@ struct FrameTabView: View {
     @ViewBuilder private var appNotice: some View {
         if let device, device.configured {
             if let pending = modePendingText(device) {
-                NoticeRow(icon: "clock.arrow.circlepath", color: Theme.accent, text: pending)
+                NoticeRow(icon: "clock.arrow.circlepath", color: Theme.inkSoft, text: pending)
             }
             if let expires = device.certificatesExpireAt {
                 NoticeRow(
@@ -453,7 +453,7 @@ struct FrameTabView: View {
         case "online":
             return ("wifi", Theme.good, "Online", ssid)
         case "standby":
-            return ("moon.zzz", Theme.accent, "Czuwanie", ssid)
+            return ("moon.zzz", Theme.inkSoft, "Czuwanie", ssid)
         case "deep_sleep":
             return ("wifi.slash", Theme.inkSoft, "Bez Wi-Fi", ssid)
         case "offline":
@@ -498,7 +498,7 @@ struct FrameTabView: View {
                         .foregroundStyle(Theme.ink)
                     VStack(alignment: .leading, spacing: 1) {
                         Text(state.note)
-                            .foregroundStyle(state.color == Theme.accent ? Theme.accent : Theme.inkSoft)
+                            .foregroundStyle(state.color == Theme.ink ? Theme.ink : Theme.inkSoft)
                         if let detail = state.detail {
                             Text(detail).foregroundStyle(Theme.inkSoft)
                         }
@@ -551,14 +551,14 @@ struct FrameTabView: View {
             // stay up: by then `version` is the new one.
             let from = update.updatingFrom ?? model.updatingServerFrom ?? version
             let detail = version == update.latestVersion ? "sprawdzam, czy działa" : "wróci za minutę"
-            return ("arrow.triangle.2.circlepath", Theme.accent, "\(from) → \(latest)", "aktualizuję", detail, true)
+            return ("arrow.triangle.2.circlepath", Theme.ink, "\(from) → \(latest)", "aktualizuję", detail, true)
         }
         if checkingUpdate || update.state == "checking" || update.pending == "check" {
             return ("arrow.triangle.2.circlepath", Theme.inkSoft, version, "sprawdzam…", nil, true)
         }
         let checked = When.ago(update.checkedAt).map { "sprawdzono \($0)" }
         if update.offersUpdate {
-            return ("arrow.down.circle.fill", Theme.accent, version, "jest \(latest)", nil, false)
+            return ("arrow.down.circle.fill", Theme.ink, version, "jest \(latest)", nil, false)
         }
         if update.state == "failed" {
             return ("exclamationmark.triangle", Theme.warn, version, "nie udało się", checked, false)
@@ -656,7 +656,7 @@ struct TileBadge: View {
 
     var body: some View {
         ZStack {
-            Circle().fill(prominent ? Theme.accent : Theme.mat)
+            Circle().fill(prominent ? Theme.ink : Theme.mat)
             if working {
                 ProgressView().controlSize(.small)
             } else {
@@ -776,7 +776,7 @@ struct ScheduleSection: View {
                     quietHours
                 }
             }
-            .tint(Theme.accent)
+            .tint(Theme.ink)
         }
     }
 
@@ -838,7 +838,7 @@ struct ScheduleSection: View {
             // After "Zapisz": the sleeping frame switches only when it wakes.
             if let device = model.status?.device, device.modePending == settings.powerMode,
                let pending = modePendingText(device) {
-                NoticeRow(icon: "clock.arrow.circlepath", color: Theme.accent, text: pending)
+                NoticeRow(icon: "clock.arrow.circlepath", color: Theme.inkSoft, text: pending)
             }
         }
     }
@@ -958,9 +958,13 @@ struct ScheduleSection: View {
                             settings.changeTimes + [Self.nextFreeTime(after: settings.changeTimes)]
                         )
                     } label: {
-                        Image(systemName: "plus.circle").font(.title3)
+                        Image(systemName: "plus")
+                            .font(.footnote.weight(.bold))
+                            .foregroundStyle(Theme.paper)
+                            .frame(width: 30, height: 30)
+                            .background(Circle().fill(Theme.ink))
                     }
-                    .buttonStyle(.borderless)
+                    .buttonStyle(PressableStyle())
                     .accessibilityLabel("Dodaj godzinę")
                 }
             }
@@ -1057,18 +1061,20 @@ struct TogglePill: View {
 
     var body: some View {
         Button { isOn.toggle() } label: {
+            // Like the label buttons: outlined when off, filled with ink when on.
             HStack(spacing: 6) {
-                Image(systemName: systemImage).font(.subheadline.weight(.semibold))
+                Image(systemName: systemImage).font(.footnote.weight(.semibold))
                 Text(title)
-                    .font(.subheadline.weight(.medium))
+                    .labelButtonType()
                     .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+                    .minimumScaleFactor(0.75)
             }
             .frame(maxWidth: .infinity)
             .padding(.horizontal, 8)
-            .padding(.vertical, 9)
-            .foregroundStyle(isOn ? Theme.accent : Theme.ink)
-            .background(isOn ? Theme.accent.opacity(0.17) : Theme.mat, in: Capsule())
+            .padding(.vertical, 13)
+            .foregroundStyle(LabelButton.foreground(isOn))
+            .background(LabelButton.background(isOn))
+            .contentShape(LabelButton.shape)
             .opacity(isEnabled ? 1 : 0.42)
         }
         .buttonStyle(.plain)
@@ -1088,16 +1094,15 @@ struct ChangeTimeChip: View {
 
     var body: some View {
         Button { editing = true } label: {
+            // Outlined like a label button, filled while its wheel is open.
             Text(label)
+                .font(.body.weight(.medium))
                 .monospacedDigit()
-                .padding(.horizontal, 13)
+                .padding(.horizontal, 14)
                 .padding(.vertical, 8)
-                .foregroundStyle(Theme.ink)
-                .background(Theme.mat, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .strokeBorder(Theme.accent, lineWidth: editing ? 2 : 0)
-                )
+                .foregroundStyle(LabelButton.foreground(editing))
+                .background(LabelButton.background(editing))
+                .contentShape(LabelButton.shape)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Godzina \(label)")
@@ -1326,7 +1331,7 @@ struct PresentationSection: View {
                     Toggle("Podpis na ramce", isOn: presentation.label)
                 }
             }
-            .tint(Theme.accent)
+            .tint(Theme.ink)
         }
     }
 }
@@ -1375,7 +1380,7 @@ struct FitOption: View {
     }
 
     @ViewBuilder private var miniature: some View {
-        let art = Theme.accent.opacity(0.75)
+        let art = Theme.inkSoft.opacity(0.6)
         switch fit {
         case "fill":
             Rectangle().fill(art)
@@ -1416,7 +1421,7 @@ extension View {
     func selectionRing(_ selected: Bool) -> some View {
         overlay(
             RoundedRectangle(cornerRadius: 3)
-                .strokeBorder(selected ? Theme.accent : .clear, lineWidth: 2)
+                .strokeBorder(selected ? Theme.ink : .clear, lineWidth: 2)
                 .padding(-5)
         )
     }
@@ -1477,7 +1482,7 @@ struct MatSwatch: View {
                     )
                     .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Theme.inkSoft.opacity(0.35), lineWidth: 0.75))
                     .padding(3)
-                    .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(selected ? Theme.accent : .clear, lineWidth: 2))
+                    .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(selected ? Theme.ink : .clear, lineWidth: 2))
                 Text(Self.title(name))
                     .font(.caption2.weight(.medium))
                     .lineLimit(1)
@@ -1492,75 +1497,37 @@ struct MatSwatch: View {
     }
 }
 
-/// How the frame hangs, above its preview. A portrait frame is the panel
-/// turned 90° to the right; the preview turns with the same spring.
+/// How the frame hangs, above its preview: a switch like "Tryb pracy". A
+/// portrait frame is the panel turned 90° to the right; the preview turns
+/// with the same spring.
 struct OrientationPicker: View {
     @Binding var settings: FrameSettings
-    @Namespace private var pills
 
-    private func turn(portrait: Bool) {
-        withAnimation(.frameTurn) {
-            settings.orientation = portrait ? "portrait" : "landscape"
-            if portrait { settings.rotation = 90 }
-        }
+    private var orientation: Binding<String> {
+        Binding(
+            get: { settings.orientation == "portrait" ? "portrait" : "landscape" },
+            set: { value in
+                withAnimation(.frameTurn) {
+                    settings.orientation = value
+                    if value == "portrait" { settings.rotation = 90 }
+                }
+            }
+        )
     }
 
     var body: some View {
-        Card(padding: 10) {
-            HStack(spacing: 8) {
-                OrientationPill(title: "Pozioma", portrait: false, selected: settings.orientation == "landscape",
-                                namespace: pills) {
-                    turn(portrait: false)
+        Card {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Orientacja").foregroundStyle(Theme.ink)
+                Picker("Orientacja", selection: orientation) {
+                    Text("Pozioma").tag("landscape")
+                    Text("Pionowa").tag("portrait")
                 }
-                OrientationPill(title: "Pionowa", portrait: true, selected: settings.orientation == "portrait",
-                                namespace: pills) {
-                    turn(portrait: true)
-                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .sensoryFeedback(.selection, trigger: settings.orientation)
             }
         }
-    }
-}
-
-/// A frame hanging one way or the other, to pick: a pill like the
-/// schedule's, led by a small frame of that shape. The highlight slides
-/// from one to the other.
-private struct OrientationPill: View {
-    let title: String
-    let portrait: Bool
-    let selected: Bool
-    let namespace: Namespace.ID
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 8) {
-                RoundedRectangle(cornerRadius: 1.5)
-                    .strokeBorder(lineWidth: 1.75)
-                    .frame(width: portrait ? 11 : 18, height: portrait ? 18 : 11)
-                    .frame(width: 18, height: 18)
-                Text(title)
-                    .font(.subheadline.weight(.medium))
-                    .lineLimit(1)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 9)
-            .foregroundStyle(selected ? Theme.accent : Theme.ink)
-            .background {
-                if selected {
-                    Capsule()
-                        .fill(Theme.accent.opacity(0.17))
-                        .matchedGeometryEffect(id: "selected", in: namespace)
-                } else {
-                    Capsule().fill(Theme.mat)
-                }
-            }
-            .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
-        .sensoryFeedback(.selection, trigger: selected)
-        .accessibilityLabel(title)
-        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
 
@@ -1580,7 +1547,7 @@ struct FunSection: View {
                             .foregroundStyle(Theme.inkSoft)
                     }
                 }
-                .tint(Theme.accent)
+                .tint(Theme.ink)
             }
         }
     }
@@ -1629,7 +1596,7 @@ struct SourcesSection: View {
                         .foregroundStyle(Theme.inkSoft)
                     }
                 }
-                .tint(Theme.accent)
+                .tint(Theme.ink)
                 Divider()
                 Toggle(isOn: wikiart) {
                     VStack(alignment: .leading, spacing: 2) {
@@ -1639,7 +1606,7 @@ struct SourcesSection: View {
                             .foregroundStyle(Theme.inkSoft)
                     }
                 }
-                .tint(Theme.accent)
+                .tint(Theme.ink)
                 if settings.ignoreTerm != nil {
                     Divider()
                     Toggle(isOn: ignoreTerm) {
@@ -1650,7 +1617,7 @@ struct SourcesSection: View {
                                 .foregroundStyle(ignoreTerm.wrappedValue ? Theme.warn : Theme.inkSoft)
                         }
                     }
-                    .tint(Theme.accent)
+                    .tint(Theme.ink)
                 }
                 ForEach(model.sourceKeys) { source in
                     Divider()
@@ -2059,7 +2026,7 @@ struct ServerSection: View {
                         Text("Przykładowe dzieła bez serwera").font(.caption).foregroundStyle(Theme.inkSoft)
                     }
                 }
-                .tint(Theme.accent)
+                .tint(Theme.ink)
                 if !model.demoMode {
                     Divider()
                     AddressField(title: "W domu", prompt: "http://homeassistant.local:8099", text: $model.serverURL)
@@ -2195,7 +2162,7 @@ private struct ServerUpdateRow: View {
         } else if update.offersUpdate {
             Text("Dostępna wersja \(update.latestVersion ?? "nowsza")")
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(Theme.accent)
+                .foregroundStyle(Theme.ink)
         } else if let checked = When.ago(update.checkedAt) {
             caption("Aktualna, sprawdzono \(checked)")
         }
@@ -2315,7 +2282,7 @@ private struct LimitRow: View {
                     .foregroundStyle(Theme.inkSoft)
             }
             ProgressView(value: min(fill, 1))
-                .tint(fill > 1.02 ? Theme.bad : Theme.accent)
+                .tint(fill > 1.02 ? Theme.bad : Theme.ink)
                 .accessibilityLabel("\(title): zajęte \(Int((fill * 100).rounded())) procent limitu")
             HStack {
                 Text("Maksymalnie").font(.subheadline).foregroundStyle(Theme.ink)
@@ -2327,7 +2294,7 @@ private struct LimitRow: View {
                     }
                 }
                 .labelsHidden()
-                .tint(Theme.accent)
+                .tint(Theme.ink)
             }
         }
     }
@@ -2362,7 +2329,7 @@ struct WakeStrip: View {
         VStack(alignment: .leading, spacing: 4) {
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
-                    Capsule().fill(Theme.accent.opacity(0.18)).frame(height: 8)
+                    Capsule().fill(Theme.ink.opacity(0.14)).frame(height: 8)
                     ForEach(quietSpans, id: \.0) { start, end in
                         Stripes()
                             .frame(width: x(end - start, geo.size.width), height: 8)
@@ -2377,7 +2344,7 @@ struct WakeStrip: View {
                     }
                     ForEach(changes, id: \.self) { minutes in
                         RoundedRectangle(cornerRadius: 3)
-                            .fill(Theme.accent)
+                            .fill(Theme.ink)
                             .frame(width: 9, height: 14)
                             .offset(x: x(minutes, geo.size.width) - 4.5)
                     }
@@ -2430,7 +2397,7 @@ struct WakeStrip: View {
     }
 
     @ViewBuilder private var wakeLegend: some View {
-        legend(Theme.accent, checks.isEmpty ? "pobudka i zmiana" : "zmiana")
+        legend(Theme.ink, checks.isEmpty ? "pobudka i zmiana" : "zmiana")
         if !checks.isEmpty { legend(Theme.vermilion, "sprawdzenie") }
     }
 
@@ -2441,7 +2408,7 @@ struct WakeStrip: View {
                 Text("cisza nocna")
             }
         }
-        legend(Theme.accent.opacity(0.18), "głęboki sen")
+        legend(Theme.ink.opacity(0.14), "głęboki sen")
     }
 
     /// The quiet hours as spans within the day (two when they cross midnight).

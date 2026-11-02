@@ -31,6 +31,7 @@ from ..library import (
 )
 from ..library.artists import is_artist
 from ..library.duplicates import Shown
+from ..library.hosts import urgent_call
 from ..library.importer import ALL, span
 from ..library.museums import Discovery, Kind
 from ..library.themes import (
@@ -455,10 +456,11 @@ async def theme_page(key: str, svc: Svc, page: Annotated[int, Query(ge=1)] = 1) 
     found = await run_in_threadpool(_theme, key, svc)
     try:
         items, following = await run_in_threadpool(
-            browse_theme, svc.importer, found, page, ROW_SIZE
+            urgent_call(browse_theme), svc.importer, found, page, ROW_SIZE
         )
     except (httpx.HTTPError, ValueError) as err:
         raise HTTPException(502, f"{key}: {err}") from err
+    await run_in_threadpool(svc.importer.measure, items)
     return ThemePage(
         items=remote_items(svc, items), more=following is not None, next_page=following
     )
@@ -472,6 +474,7 @@ async def stream_theme(
     theme's searches asked at once (:data:`THEME_BATCH`), a
     :class:`ThemeLine` with each one's works as it comes, then a last line
     with the page to ask for next."""
+    asked = time.monotonic()
     found = await run_in_threadpool(_theme, key, svc)
     if not found.searches():  # the catalogue: one page at once
         items, following = await run_in_threadpool(
@@ -494,15 +497,24 @@ async def stream_theme(
     #: Set when the app stops listening.
     gone = threading.Event()
 
+    #: Works sent, by page, and when the first search began (for the log).
+    sent: dict[int, int] = {}
+    started: dict[str, float] = {}
+
     def ask(at: int) -> None:
         ok = False
         try:
+            if gone.is_set():
+                return  # the app left before this search's turn
+            started.setdefault("at", time.monotonic())
             items, total = search_page(svc.importer, found, at, ROW_SIZE)
             ok = True
             if at == pages[-1]:
                 last_total[0] = total
             if items and not gone.is_set():
+                svc.importer.measure(items)
                 line = ThemeLine(items=remote_items(svc, items))
+                sent[at] = len(line.items)
                 loop.call_soon_threadsafe(lines_.put_nowait, line)
         except (httpx.HTTPError, ValueError) as err:
             log.warning("theme %s: page %d failed: %s", key, at, err)
@@ -512,7 +524,7 @@ async def stream_theme(
             loop.call_soon_threadsafe(lines_.put_nowait, ok)
 
     async def lines() -> AsyncIterator[str]:
-        asking = [asyncio.ensure_future(run_in_threadpool(ask, at)) for at in pages]
+        asking = [asyncio.ensure_future(run_in_threadpool(urgent_call(ask), at)) for at in pages]
         answered = False
         try:
             left = len(asking)
@@ -531,6 +543,16 @@ async def stream_theme(
                 failed=not answered,
             )
             yield last.model_dump_json() + "\n"
+            log.info(
+                "theme %s, pages %d-%d: %s works in %.1f s (searches from %.1f s)%s",
+                key,
+                pages[0],
+                pages[-1],
+                "+".join(str(sent.get(at, 0)) for at in pages),
+                time.monotonic() - asked,
+                started.get("at", asked) - asked,
+                "" if answered else ", no museum answered",
+            )
         finally:
             gone.set()
             for task in asking:
@@ -636,7 +658,9 @@ async def terms_in_museums(svc: Svc, q: str) -> MuseumHint:
     words = q.strip()
     if not words:
         return MuseumHint(total=0, artists=[], items=[])
-    total, items, failed = await run_in_threadpool(svc.importer.search_all, words, 8, 1)
+    total, items, failed = await run_in_threadpool(
+        urgent_call(svc.importer.search_all), words, 8, 1
+    )
     items = [i for i in items if not set_aside(i)]
     wanted = fold(words)
     names: Counter[str] = Counter(
@@ -768,6 +792,8 @@ class MuseumSearch:
                 for i in importer.in_colors(items, colors)
                 if self.spec.fits(i) and category_fits(i, rules.terms)
             ]
+            # The app lays its grid out by the works' shapes.
+            importer.measure(found)
             fitting += len(found)
             # Totals of several artists' searches don't add up page by page.
             done = not items or (not rules.artists and 0 < count <= round_ * asked)
@@ -837,7 +863,7 @@ async def search_museums(
     if search.empty:
         return MuseumAnswer(source=ALL, total=0, items=[])
     keys = search.keys
-    total, items, failed, next_ = await run_in_threadpool(search.ask, svc, keys, page)
+    total, items, failed, next_ = await run_in_threadpool(urgent_call(search.ask), svc, keys, page)
     if keys and len(failed) == len(keys):
         raise HTTPException(502, f"{', '.join(failed)} did not answer")
     return MuseumAnswer(
@@ -902,7 +928,7 @@ async def stream_museums(
             loop.call_soon_threadsafe(answers.put_nowait, None)
 
     async def lines() -> AsyncIterator[str]:
-        asking = [asyncio.ensure_future(run_in_threadpool(ask, k)) for k in keys]
+        asking = [asyncio.ensure_future(run_in_threadpool(urgent_call(ask), k)) for k in keys]
         try:
             left = len(asking)
             while left:
@@ -932,7 +958,9 @@ async def browse(
     """Works of a period, style and kind from every museum that can filter
     that way, interleaved (``limit`` from each)."""
     spec = Discovery(year_from=year_from, year_to=year_to, style=style, kind=kind)
-    total, items, failed = await run_in_threadpool(svc.importer.discover_all, spec, limit, page)
+    total, items, failed = await run_in_threadpool(
+        urgent_call(svc.importer.discover_all), spec, limit, page
+    )
     asked = [key for key, value in TECHNIQUE_KINDS.items() if value == kind]
     items = [i for i in items if spec.fits(i) and not set_aside(i, asked)]
     return RemotePage(total=total, items=remote_items(svc, items), failed=failed)

@@ -38,7 +38,7 @@ struct NotificationsSection: View {
                                     Text(kind.hint).font(.caption).foregroundStyle(Theme.inkSoft)
                                 }
                             }
-                            .tint(Theme.accent)
+                            .tint(Theme.ink)
                         }
                     } else {
                         Divider()

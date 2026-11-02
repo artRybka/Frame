@@ -4,14 +4,22 @@ host whose bot wall turned us away left alone for a while.
 The Art Institute of Chicago sits behind Cloudflare, the Met behind Imperva.
 Both turn an address that sends bursts of requests away with 403 for every
 request, the polite ones too, and keep doing so while the requests go on.
+
+What the owner waits for (a theme opened in the app, a search, a card's
+picture) is asked :func:`urgently`: it takes the next free turn at a host
+before the background's requests still waiting (imports, sharper copies),
+which can be dozens at the AIC's one request a second.
 """
 
 from __future__ import annotations
 
+import contextlib
+import heapq
+import itertools
 import logging
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from typing import Any
 
 import httpx
@@ -33,6 +41,38 @@ PACE = {
 #: still does, up to REST_MAX, and forgotten once it answers again.
 REST = 15 * 60.0
 REST_MAX = 4 * 3600.0
+
+_asking = threading.local()
+
+
+@contextlib.contextmanager
+def urgently() -> Iterator[None]:
+    """Requests this thread sends meanwhile go before the background's."""
+    before = is_urgent()
+    _asking.urgent = True
+    try:
+        yield
+    finally:
+        _asking.urgent = before
+
+
+def is_urgent() -> bool:
+    return bool(getattr(_asking, "urgent", False))
+
+
+def urgent_call[**P, T](fn: Callable[P, T]) -> Callable[P, T]:
+    """``fn`` asked :func:`urgently`, wherever it runs (a worker thread)."""
+
+    def call(*args: P.args, **kwargs: P.kwargs) -> T:
+        with urgently():
+            return fn(*args, **kwargs)
+
+    return call
+
+
+def as_asked[**P, T](fn: Callable[P, T]) -> Callable[P, T]:
+    """``fn``, to run in another thread as urgently as in this one."""
+    return urgent_call(fn) if is_urgent() else fn
 
 
 class Resting(httpx.TransportError):
@@ -64,6 +104,10 @@ class HostGuard:
         self._lock = threading.Lock()
         #: When the next request to a host may go (by host).
         self._next: dict[str, float] = {}
+        #: Requests waiting for their turn (by host): (0 urgent / 1 not, order).
+        self._waiting: dict[str, list[tuple[int, int]]] = {}
+        self._turns = threading.Condition(self._lock)
+        self._order = itertools.count()
         #: Until when a host is left alone, and for how long it was (by host).
         self._resting: dict[str, tuple[float, float]] = {}
 
@@ -83,12 +127,45 @@ class HostGuard:
         pace = self.pace.get(host)
         if not pace:
             return
-        with self._lock:
-            now = self.clock()
-            at = max(now, self._next.get(host, 0.0))
-            self._next[host] = at + pace
-        if at > now:
-            self.sleep(at - now)
+        self._turn(host, pace)
+        wait = self.resting(host)
+        if wait:  # walled while this one waited its turn
+            raise Resting(
+                f"{host} turned us away; not asked for {wait / 60:.0f} min", request=request
+            )
+
+    def _turn(self, host: str, pace: float) -> None:
+        """Waits until this request may go to ``host``: ``pace`` seconds
+        after the one before, urgent ones first, the rest in order."""
+        ticket = (0 if is_urgent() else 1, next(self._order))
+        with self._turns:
+            heapq.heappush(self._waiting.setdefault(host, []), ticket)
+        try:
+            while True:
+                with self._turns:
+                    waiting = self._waiting[host]
+                    if waiting[0] != ticket:
+                        # Woken when the first in line goes, or a minute on.
+                        self._turns.wait(60.0)
+                        continue
+                    now = self.clock()
+                    at = self._next.get(host, 0.0)
+                    if now >= at:
+                        heapq.heappop(waiting)
+                        self._next[host] = now + pace
+                        self._turns.notify_all()
+                        return
+                # First in line: sleeps until the host may be asked (an
+                # urgent one coming meanwhile goes first, this one after).
+                self.sleep(at - now)
+        except BaseException:
+            with self._turns:
+                waiting = self._waiting[host]
+                if ticket in waiting:
+                    waiting.remove(ticket)
+                    heapq.heapify(waiting)
+                self._turns.notify_all()
+            raise
 
     def after(self, response: httpx.Response) -> None:
         host = response.request.url.host

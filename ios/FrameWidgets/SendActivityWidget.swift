@@ -25,7 +25,7 @@ struct SendActivityWidget: Widget {
             let state = context.state
             return DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
-                    Image(systemName: "photo.artframe")
+                    Image(systemName: "photo.fill")
                         .font(.title2)
                         .foregroundStyle(Palette.islandTint(state))
                         .padding(.leading, 4)
@@ -54,7 +54,7 @@ struct SendActivityWidget: Widget {
                     .padding(.horizontal, 4)
                 }
             } compactLeading: {
-                Image(systemName: "photo.artframe")
+                Image(systemName: "photo.fill")
                     .foregroundStyle(Palette.islandTint(state))
             } compactTrailing: {
                 CompactMark(state: state)
@@ -104,7 +104,7 @@ private struct LockScreenCard: View {
         if state.isDone { return "checkmark.circle.fill" }
         if state.isFailed { return "xmark.circle.fill" }
         if state.isWaiting { return "moon.zzz.fill" }
-        return "photo.artframe"
+        return "photo.fill"
     }
 
     private var phases: some View {

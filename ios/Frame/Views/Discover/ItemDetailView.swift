@@ -241,7 +241,7 @@ struct ItemDetailView: View {
                 TitleSkeleton()
             }
             HStack(spacing: 12) {
-                Button {} label: { Label("Pokaż na ramce", systemImage: "photo.artframe") }
+                Button {} label: { Label("Pokaż na ramce", systemImage: "photo.fill") }
                     .buttonStyle(ActionButtonStyle(prominent: true))
                 Button {} label: { Label("Dodaj do kolejki", systemImage: QueueButton.symbol) }
                     .buttonStyle(ActionButtonStyle())
@@ -253,7 +253,7 @@ struct ItemDetailView: View {
                 Button("Spróbuj ponownie", systemImage: "arrow.clockwise") {
                     Task { await load() }
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(ActionButtonStyle(wide: false))
                 .frame(maxWidth: .infinity)
             } else {
                 ProgressView().frame(maxWidth: .infinity)
@@ -751,7 +751,7 @@ struct ItemDetailView: View {
                 if sending {
                     ProgressView().tint(Theme.paper)
                 } else {
-                    Image(systemName: sent == .done ? "checkmark" : "photo.artframe")
+                    Image(systemName: sent == .done ? "checkmark" : "photo.fill")
                         .contentTransition(.symbolEffect(.replace))
                 }
             }

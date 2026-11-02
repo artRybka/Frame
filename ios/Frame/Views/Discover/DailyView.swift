@@ -39,7 +39,7 @@ struct DailyTile: View {
                         .font(.caption)
                         .foregroundStyle(Theme.inkSoft)
                         .lineLimit(1)
-                    HStack(alignment: .lastTextBaseline, spacing: 10) {
+                    HStack(alignment: .bottom, spacing: 10) {
                         Text(work.teaser)
                             .font(.serif(14))
                             .foregroundStyle(Theme.ink.opacity(0.85))
@@ -47,9 +47,12 @@ struct DailyTile: View {
                             .minimumScaleFactor(0.9)
                             .multilineTextAlignment(.leading)
                             .frame(maxWidth: .infinity, alignment: .leading)
+                        // Only a hint: the whole card opens the study.
                         Image(systemName: "arrow.right")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(Theme.accent)
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Theme.paper)
+                            .frame(width: 30, height: 30)
+                            .background(LabelButton.shape.fill(Theme.ink))
                             .accessibilityHidden(true)
                     }
                     .padding(.top, 4)
@@ -172,12 +175,12 @@ struct DailyView: View {
                     message: route.study == nil
                         ? "Serwer nie ma studium na ten dzień."
                         : "Przygotuj je na karcie dzieła, pod opisem.",
-                    systemImage: "photo.artframe"
+                    systemImage: "photo.fill"
                 )
                 Button("Spróbuj ponownie", systemImage: "arrow.clockwise") {
                     Task { await load() }
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(ActionButtonStyle(wide: false))
             }
             .frame(maxWidth: .infinity)
             .padding(.top, 80)
@@ -521,7 +524,7 @@ struct DailyView: View {
                 if sending {
                     ProgressView().tint(Theme.paper)
                 } else {
-                    Image(systemName: sent == true ? "checkmark" : "photo.artframe")
+                    Image(systemName: sent == true ? "checkmark" : "photo.fill")
                 }
             }
         }
@@ -714,10 +717,10 @@ struct DailyView: View {
                         if !work.why.isEmpty {
                             Text(work.why)
                                 .font(.caption2.weight(.semibold))
-                                .foregroundStyle(Theme.accent)
+                                .foregroundStyle(Theme.vermilion)
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
-                                .background(Theme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 5))
+                                .background(Theme.vermilion.opacity(0.12), in: RoundedRectangle(cornerRadius: 5))
                         }
                     }
                     .frame(maxHeight: .infinity, alignment: .top)
@@ -756,7 +759,7 @@ struct DailyView: View {
                                 .font(.serif(15).italic())
                                 .foregroundStyle(Theme.ink.opacity(0.9))
                                 .padding(.leading, 9)
-                                .overlay(alignment: .leading) { Rectangle().fill(Theme.accent).frame(width: 3) }
+                                .overlay(alignment: .leading) { Rectangle().fill(Theme.vermilion).frame(width: 3) }
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                         HStack(alignment: .top, spacing: 12) {

@@ -231,9 +231,11 @@ struct ThemeCard: View {
                 Spacer(minLength: 4)
                 HStack {
                     if theme.playlistId != nil {
-                        Label("Masz", systemImage: "checkmark")
+                        // Only the tick, where "+ Playlista" was.
+                        Image(systemName: "checkmark")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(Theme.good)
+                            .accessibilityLabel("Masz tę playlistę")
                     } else {
                         Button {
                             Task {
@@ -247,7 +249,7 @@ struct ThemeCard: View {
                                 Text("Playlista")
                             }
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(Theme.accent)
+                            .foregroundStyle(Theme.ink)
                         }
                         .buttonStyle(.plain)
                         .disabled(making)
@@ -445,7 +447,7 @@ struct SuggestionRowView: View {
                 LazyHStack(alignment: .top, spacing: 14) {
                     ForEach(row.items) { remote in
                         NavigationLink(value: remote.id) {
-                            ArtCard(item: remote.item.summary, ref: remote.thumb)
+                            ArtCard(item: remote.summary, ref: remote.thumb)
                                 .frame(width: 150)
                         }
                         .buttonStyle(.plain)
@@ -498,7 +500,7 @@ struct ThemeView: View {
                     .font(.serif(17))
                     .foregroundStyle(Theme.inkSoft)
                 actions
-                MasonryGrid(items: items.map(\.item.summary)) { summary in
+                MasonryGrid(items: items.map(\.summary)) { summary in
                     NavigationLink(value: summary.id) {
                         ArtCard(item: summary, ref: items.first { $0.id == summary.id }?.thumb)
                     }
@@ -567,7 +569,7 @@ struct ThemeView: View {
                     if playing {
                         ProgressView().tint(Theme.paper)
                     } else {
-                        Image(systemName: "photo.artframe")
+                        Image(systemName: "photo.fill")
                     }
                 }
             }

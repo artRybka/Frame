@@ -148,13 +148,19 @@ struct ItemSummary: Codable, Identifiable, Hashable, Sendable {
     var suitability: Double?
     /// The Polish title, in "Teraz" once the work has one.
     var titlePl: String?
+    /// Width / height when the museum gives no size: the server measures it
+    /// on the thumbnail (`RemoteItem.aspect`).
+    var aspect: Double? = nil
 
     /// The title "Teraz" shows: Polish when there is one.
     var shownTitle: String { titlePl ?? title }
 
     /// Width / height, defaulting to landscape when unknown.
     var aspectRatio: Double {
-        guard let width, let height, width > 0, height > 0 else { return 4.0 / 3.0 }
+        guard let width, let height, width > 0, height > 0 else {
+            if let aspect, aspect > 0 { return aspect }
+            return 4.0 / 3.0
+        }
         return Double(width) / Double(height)
     }
 }
@@ -1282,7 +1288,18 @@ struct RemoteItem: Codable, Hashable, Sendable, Identifiable {
     /// In a search's later answers: the worse copy, come before, that this
     /// one takes the place of.
     var replaces: String? = nil
+    /// Width / height, also when the museum gives no size (the server
+    /// measures the thumbnail); nil when not known yet.
+    var aspect: Double? = nil
     var id: String { item.id }
+
+    /// The tile's summary, with the measured shape: without it every work
+    /// of a museum that gives no size would come as landscape.
+    var summary: ItemSummary {
+        var summary = item.summary
+        summary.aspect = aspect
+        return summary
+    }
 
     /// The same work, maybe from another source (copies' years differ by
     /// two at most).

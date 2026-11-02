@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.72.0
+
+- Nowy wygląd przycisków w całej aplikacji: jak etykiety muzealne
+  (prostokątne, wersaliki, atrament albo kontur). Niebieski akcent zniknął.
+- Zestawy z Odkrywaj nie czekają już w kolejce do muzeów za importem w tle;
+  serwer zapisuje w logu czasy każdej rundy zestawu.
+- Miniatury w Szukaj i Odkrywaj w swoich proporcjach, także z muzeów, które
+  nie podają wymiarów.
+- Nowa ikonka „Teraz” i „na ramce”: pełny obraz zamiast obrazu w ramce, w
+  zakładce, przyciskach „Pokaż na ramce” i „Prezentuj na ramce” oraz w Live
+  Activity.
+- Strona pod szklanym okienkiem podpowiedzi nie jest już rozbielona.
+
 ## 1.71.1
 
 - Okienko podpowiedzi w Szukaj jest szklane, jak otwarta grupa.

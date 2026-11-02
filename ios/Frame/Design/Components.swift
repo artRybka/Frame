@@ -464,32 +464,71 @@ struct PressableStyle: ButtonStyle {
     }
 }
 
+/// The look of every button that does something, like a museum wall label:
+/// nearly square corners, capitals with a little letter-spacing, and ink.
+/// A prominent one is filled with ink, the other only outlined; nothing in
+/// the app is blue any more.
+enum LabelButton {
+    static let corner: CGFloat = 4
+    static let shape = RoundedRectangle(cornerRadius: corner, style: .continuous)
+    static let font = Font.caption.weight(.semibold)
+    static let tracking: CGFloat = 1.2
+
+    /// Ink on paper, or paper on ink when filled (cream on black in the dark).
+    static func foreground(_ filled: Bool) -> Color { filled ? Theme.paper : Theme.ink }
+
+    @ViewBuilder
+    static func background(_ filled: Bool) -> some View {
+        if filled {
+            shape.fill(Theme.ink)
+        } else {
+            shape.strokeBorder(Theme.ink, lineWidth: 1)
+        }
+    }
+}
+
+extension View {
+    /// Capitals with the label buttons' letter-spacing.
+    func labelButtonType() -> some View {
+        font(LabelButton.font)
+            .tracking(LabelButton.tracking)
+            .textCase(.uppercase)
+    }
+}
+
 /// Wide filled call-to-action.
 struct PrimaryButtonStyle: ButtonStyle {
-    var color: Color = Theme.accent
-
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.headline)
-            .foregroundStyle(Theme.paper)  // dark text on the lighter dark-mode accent
+            .labelButtonType()
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
+            .foregroundStyle(LabelButton.foreground(true))
             .frame(maxWidth: .infinity)
+            .padding(.horizontal, 10)
             .padding(.vertical, 15)
-            .background(color, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .background(LabelButton.background(true))
+            .contentShape(LabelButton.shape)
             .opacity(configuration.isPressed ? 0.85 : 1)
             .scaleEffect(configuration.isPressed ? 0.98 : 1)
     }
 }
 
+/// Wide outlined button, for the second of two.
 struct SecondaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.headline)
-            .foregroundStyle(Theme.ink)
+            .labelButtonType()
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
+            .foregroundStyle(LabelButton.foreground(false))
             .frame(maxWidth: .infinity)
+            .padding(.horizontal, 10)
             .padding(.vertical, 15)
-            .background(Theme.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Theme.hairline))
-            .opacity(configuration.isPressed ? 0.85 : 1)
+            .background(LabelButton.background(false))
+            .contentShape(LabelButton.shape)
+            .opacity(configuration.isPressed ? 0.6 : 1)
+            .scaleEffect(configuration.isPressed ? 0.98 : 1)
     }
 }
 
@@ -506,35 +545,38 @@ struct ActionLabelStyle: LabelStyle {
         } else {
             HStack(spacing: 7) {
                 configuration.icon
+                    .font(.footnote.weight(.semibold))
                 configuration.title
+                    .labelButtonType()
                     .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+                    .minimumScaleFactor(0.75)
             }
-            .font(.subheadline.weight(.semibold))
         }
     }
 }
 
 /// One of two actions sharing a row, like "Pokaż na ramce" and "Dodaj do
-/// kolejki": filled when prominent, else on a card; a narrow one is as wide
-/// as its label. With only its icon, it is a narrow one of three ("Teraz",
-/// "Pomiń").
+/// kolejki": filled with ink when prominent, else outlined; a narrow one is
+/// as wide as its label. With only its icon, it is a narrow one of three
+/// ("Teraz", "Pomiń"). A compact one is a small button inside a card, like
+/// "Szczegóły".
 struct ActionButtonStyle: ButtonStyle {
     var prominent = false
     var wide = true
     var iconOnly = false
+    var compact = false
 
     func makeBody(configuration: Configuration) -> some View {
-        let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
-        return configuration.label
+        configuration.label
             .labelStyle(ActionLabelStyle(iconOnly: iconOnly))
-            .foregroundStyle(prominent ? Theme.paper : Theme.ink)  // dark text on the lighter dark-mode accent
+            .foregroundStyle(LabelButton.foreground(prominent))
             .frame(maxWidth: wide ? .infinity : nil)
-            .frame(width: iconOnly ? 54 : nil)
-            .padding(.horizontal, wide || iconOnly ? 0 : 18)
-            .padding(.vertical, 14)
-            .background(prominent ? Theme.accent : Theme.card, in: shape)
-            .overlay(shape.strokeBorder(prominent ? Color.clear : Theme.hairline))
+            .frame(width: iconOnly ? (compact ? 32 : 54) : nil)
+            .padding(.horizontal, wide || iconOnly ? 0 : (compact ? 12 : 18))
+            .padding(.vertical, compact ? 8 : 14)
+            .background(LabelButton.background(prominent))
+            .contentShape(LabelButton.shape)
+            .opacity(configuration.isPressed && !prominent ? 0.6 : 1)
             .scaleEffect(configuration.isPressed ? 0.97 : 1)
             .animation(.spring(response: 0.25, dampingFraction: 0.7), value: configuration.isPressed)
     }
@@ -598,7 +640,7 @@ struct PaletteStrip: View {
 struct EmptyStateView: View {
     let title: String
     let message: String
-    var systemImage = "photo.artframe"
+    var systemImage = "photo.fill"
 
     var body: some View {
         VStack(spacing: 12) {

@@ -320,7 +320,7 @@ struct SendSheet: View {
             Button {
                 Task { await show() }
             } label: {
-                Label("Pokaż na ramce", systemImage: "photo.artframe")
+                Label("Pokaż na ramce", systemImage: "photo.fill")
             }
             .buttonStyle(ActionButtonStyle(prominent: true))
             Button {

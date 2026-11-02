@@ -272,7 +272,7 @@ struct GroupPanelOpen: PreferenceKey {
 
 extension View {
     /// While words are typed in the field: what they could mean, in a panel
-    /// right over the field (where the groups are), the page dimmed and
+    /// right over the field (where the groups are), the page as it is and
     /// standing still under it. (Put over the page's top, the suggestions
     /// pushed the scrolled results down and were off the screen themselves.)
     /// A tap on the page puts the keyboard away with the panel; the words
@@ -312,8 +312,9 @@ private struct SuggestionsPanel: ViewModifier {
         content.overlay {
             ZStack(alignment: .bottom) {
                 if shown {
-                    // Light enough for the glass to show the page through.
-                    Theme.paper.opacity(0.4)
+                    // The page stays as it is under the glass; a tap on it
+                    // still puts the panel away.
+                    Color.clear
                         .ignoresSafeArea()
                         .contentShape(Rectangle())
                         .onTapGesture(perform: putKeyboardAway)
@@ -379,7 +380,7 @@ struct TermSuggestions: View {
                 SearchWaiting(height: 72)
             } else if let hint = lookup.hint, hint.total > 0 {
                 VStack(alignment: .leading, spacing: 0) {
-                    Eyebrow("W muzeach: \(Names.works(hint.total))", color: Theme.accent)
+                    Eyebrow("W muzeach: \(Names.works(hint.total))", color: Theme.vermilion)
                         .padding(.horizontal, 12)
                         .padding(.top, 12)
                     ForEach(hint.artists) { artist in
@@ -422,7 +423,7 @@ struct TermSuggestions: View {
             HStack(spacing: 10) {
                 GroupMark(kind: tokenKind, symbol: icon, side: 17)
                     .font(.subheadline)
-                    .foregroundStyle(Theme.accent)
+                    .foregroundStyle(Theme.ink)
                     .frame(width: 22)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(title).font(.body).foregroundStyle(Theme.ink).lineLimit(1)

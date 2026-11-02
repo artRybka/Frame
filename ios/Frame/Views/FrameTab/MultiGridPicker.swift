@@ -141,13 +141,13 @@ private struct GridOption: View {
                                 x: rect.minX / frame.width * size.width, y: rect.minY / frame.height * size.height,
                                 width: rect.width / frame.width * size.width, height: rect.height / frame.height * size.height
                             )
-                            context.fill(Path(square), with: .color(Theme.accent.opacity(0.75)))
+                            context.fill(Path(square), with: .color(Theme.ink.opacity(0.75)))
                         }
                     }
                     if grid == nil {
                         Image(systemName: "sparkles")
                             .font(.subheadline)
-                            .foregroundStyle(Theme.accent.opacity(0.75))
+                            .foregroundStyle(Theme.ink.opacity(0.75))
                     }
                 }
                 .aspectRatio(1, contentMode: .fit)  // square, as the framing icons

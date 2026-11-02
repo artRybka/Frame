@@ -33,6 +33,7 @@ from ..imaging.layout import (
 from ..imaging.pipeline import RenderSettings, encode_image, plan_for, render_original
 from ..library import Facets, Item, ItemKind, ItemSummary, Job, Look, PhotoInfo, PlaylistRules
 from ..library.duplicates import work_key
+from ..library.hosts import urgent_call
 from ..library.images import Gone
 from ..library.importer import ALL
 from ..library.models import Framing, SharperCopy
@@ -81,6 +82,9 @@ class RemoteItem(BaseModel):
     #: In a search's later answers: the worse copy, shown before, that this
     #: one takes the place of.
     replaces: str | None = None
+    #: Width / height, also when the museum gives no size (measured on the
+    #: thumbnail, see ``Importer.measure``); None when not known yet.
+    aspect: float | None = None
 
 
 def remote_items(svc: FrameService, items: list[Item], copies: bool = True) -> list[RemoteItem]:
@@ -106,7 +110,13 @@ def remote_items(svc: FrameService, items: list[Item], copies: bool = True) -> l
             item = item.model_copy(update={"favorite": own.favorite})
         found.setdefault(
             item.id,
-            RemoteItem(item=item, in_library=own is not None, work=work_key(item), twin=twin),
+            RemoteItem(
+                item=item,
+                in_library=own is not None,
+                work=work_key(item),
+                twin=twin,
+                aspect=svc.importer.known_aspect(item),
+            ),
         )
     return list(found.values())
 
@@ -162,7 +172,7 @@ async def _work(
     likes or otherwise keeps one. ``threads``: where a museum is asked."""
     lookup = svc.importer.save if save else svc.importer.resolve
     try:
-        item = await to_thread.run_sync(lookup, item_id, limiter=threads)
+        item = await to_thread.run_sync(urgent_call(lookup), item_id, limiter=threads)
     except httpx.HTTPError as err:
         raise HTTPException(502, f"{item_id}: {err}") from err
     if item is None:
@@ -384,7 +394,9 @@ def delete_item(item_id: str, svc: Svc) -> dict[str, bool]:
 async def item_thumb(item_id: str, svc: Svc) -> FileResponse:
     item = await _work(svc, item_id, threads=THUMB_THREADS)
     try:
-        path = await to_thread.run_sync(svc.images.ensure_thumb, item, limiter=THUMB_THREADS)
+        path = await to_thread.run_sync(
+            urgent_call(svc.images.ensure_thumb), item, limiter=THUMB_THREADS
+        )
     except Gone as err:  # the app leaves the work out
         raise HTTPException(410, f"no picture anywhere: {err}") from err
     except (httpx.HTTPError, OSError) as err:
@@ -758,11 +770,13 @@ async def museum_search(
     """One museum, or ``all`` of them (``limit`` results from each)."""
     failed: list[str] = []
     if source == ALL:
-        total, items, failed = await run_in_threadpool(svc.importer.search_all, q, limit or 8, page)
+        total, items, failed = await run_in_threadpool(
+            urgent_call(svc.importer.search_all), q, limit or 8, page
+        )
     elif source in svc.importer.sources():
         try:
             total, items = await run_in_threadpool(
-                svc.importer.search, source, q, limit or 24, page
+                urgent_call(svc.importer.search), source, q, limit or 24, page
             )
         except httpx.HTTPError as err:
             raise HTTPException(502, f"{source}: {err}") from err
