@@ -127,6 +127,9 @@ class Museum(ABC):
     testing: ClassVar[bool] = False
     #: Marks its most important works and can be asked for only those.
     highlights: ClassVar[bool] = False
+    #: The language its search understands: Polish words typed in Szukaj
+    #: are translated for the others (``Wording``).
+    language: ClassVar[str] = "en"
 
     @classmethod
     def offered(cls, access: Access) -> bool:

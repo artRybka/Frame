@@ -35,6 +35,7 @@ class MuzaMuseum(Museum):
     #: Object types (ids of the museum's dictionary) asked for each kind.
     types: ClassVar[dict[str, tuple[int, ...]]]
     page_size = 100
+    language: ClassVar[str] = "pl"
     #: What a work still in copyright is marked with (``private_use`` only).
     private_licence = PRIVATE_LICENCE
 

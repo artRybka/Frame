@@ -16,6 +16,7 @@ from PIL import Image
 from . import notifications
 from .ai import AiConfigStore, AiWorker, Claude, DailyJob, KeywordsJob, PlTextJob
 from .ai.composition import ComposeJob
+from .ai.search_words import SearchWords
 from .ai.study import StudyJob
 from .albums import Albums
 from .artist_works import ArtistWorks
@@ -203,6 +204,9 @@ class FrameService:
         # The language model: keywords and Polish texts; idle without a key.
         self.ai_config = AiConfigStore(settings, self.library)
         self.claude = Claude(self.ai_config, self.library)
+        # Polish words typed in Szukaj, in English for the museums abroad.
+        self.search_words = SearchWords(self.library, self.claude, self.ai_config)
+        self.importer.translate = self.search_words.wording
         self.ai = AiWorker(self.library, self.images, self.claude, self.ai_config)
         self.ai.register(KeywordsJob(self.library, self.images, self.ai_config))
         self.pl_text = PlTextJob(self.library, self.images, self.ai_config)

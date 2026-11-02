@@ -891,13 +891,15 @@ async def museum_search(
     """One museum, or ``all`` of them (``limit`` results from each)."""
     failed: list[str] = []
     if source == ALL:
+        texts = await run_in_threadpool(svc.importer.typed, q)
         total, items, failed = await run_in_threadpool(
-            urgent_call(svc.importer.search_all), q, limit or 8, page
+            urgent_call(svc.importer.search_all), texts, limit or 8, page
         )
     elif source in svc.importer.sources():
+        texts = await run_in_threadpool(svc.importer.typed, q, [source])
         try:
             total, items = await run_in_threadpool(
-                urgent_call(svc.importer.search), source, q, limit or 24, page
+                urgent_call(svc.importer.search), source, texts[source], limit or 24, page
             )
         except httpx.HTTPError as err:
             raise HTTPException(502, f"{source}: {err}") from err
