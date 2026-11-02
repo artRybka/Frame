@@ -239,9 +239,13 @@ class Importer:
         )
 
     def search(
-        self, source: str, query: str, limit: int = 24, page: int = 1
+        self, source: str, query: str, limit: int = 24, page: int = 1, wait: float | None = None
     ) -> tuple[int, list[Item]]:
+        """``limit`` works from ``source``; ``wait``: seconds the source may
+        take to answer, when not the client's own."""
         with self.http() as http:
+            if wait is not None:
+                http.timeout = httpx.Timeout(wait)
             total, items = museum(source, http, self.access()).search(query, limit=limit, page=page)
         items = self.without_grey([i for i in items if not is_copy(i)])
         self.remember(items)

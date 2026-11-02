@@ -18,9 +18,10 @@ import io
 import logging
 import math
 import threading
+import time
 from collections import OrderedDict
 from collections.abc import Callable, Iterable
-from concurrent.futures import Future, ThreadPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, as_completed, wait
 from typing import TYPE_CHECKING, Literal
 
 import httpx
@@ -45,6 +46,18 @@ log = logging.getLogger(__name__)
 HITS = 12
 #: Copies whose pictures are downloaded to be measured, at most, per look.
 MEASURED = 6
+#: Seconds the sources have to answer; one still silent then is told as
+#: failed. Its search goes on in the background (Openverse can take a minute,
+#: Paris Musées longer) for up to LATE seconds, and what it finds is kept for
+#: the next look (KEPT_ANSWERS).
+ANSWER = 20.0
+LATE = 90.0
+#: How long a source's answer to one query is kept, in seconds, and how many.
+KEPT_FOR = 6 * 3600.0
+KEPT_ANSWERS = 200
+#: Sources whose search looks for the whole query in the title alone: asked
+#: for the title only, the artist is checked on what they find.
+TITLE_ONLY = ("paris",)
 #: Copies judged at once (thumbnails downloaded, keypoints compared).
 JUDGES = 4
 #: The close-up's side, in pixels of the picture at the frame's scale.
@@ -141,8 +154,11 @@ class Copies:
         #: The sources asked, and one source's results for a query.
         self.sources: Callable[[], list[str]] = importer.sources
         self.search_in: Callable[[str, str, int], list[Item]] = lambda key, query, n: (
-            importer.search(key, query, n)[1]
+            importer.search(key, query, n, wait=LATE)[1]
         )
+        self.answer = ANSWER
+        #: Sources' answers by (source, query): when, and the works found.
+        self._answers: OrderedDict[tuple[str, str], tuple[float, list[Item]]] = OrderedDict()
         self._kept: OrderedDict[str, Image.Image] = OrderedDict()
         self._lock = threading.Lock()
 
@@ -187,36 +203,72 @@ class Copies:
             else:
                 emit(CopyLine(kind="copy", copy=view))
 
-        query = f"{stored.title[:80]} {surname(stored.artist)}".strip()
-        with (
-            ThreadPoolExecutor(max(1, len(keys)) + 1, "copies-ask") as asking,
-            ThreadPoolExecutor(JUDGES, "copies-judge") as judging,
-        ):
-            asked: dict[Future[list[Item]], str] = {
-                asking.submit(self.known, stored): "",
-                **{asking.submit(self.search_in, k, query, HITS): k for k in keys if query},
-            }
-            judged: list[Future[None]] = []
-            for future in as_completed(asked):
-                key = asked[future]
-                failed = False
-                try:
-                    hits = future.result()
-                except Exception as err:  # one source's failure costs no other's copies
-                    log.info("copies of %s from %s: %s", stored.id, key or "known", err)
-                    hits, failed = [], True
-                hits = [h for h in hits if not key or self.sharper._by_artist(stored, h)]
-                new = fresh(hits)
-                for copy in new:
-                    emit(CopyLine(kind="copy", copy=self.view(copy, quality, "checking")))
-                    judged.append(judging.submit(judge, copy))
-                if key:
-                    emit(CopyLine(kind="source", source=key, found=len(new), failed=failed))
-                if gone.is_set():
-                    break
-            for done in as_completed(judged):
-                done.result()
+        def answered(key: str, future: Future[list[Item]]) -> None:
+            failed = False
+            try:
+                hits = future.result()
+            except Exception as err:  # one source's failure costs no other's copies
+                log.info("copies of %s from %s: %s", stored.id, key or "known", err)
+                hits, failed = [], True
+            hits = [h for h in hits if not key or self.sharper._by_artist(stored, h)]
+            new = fresh(hits)
+            for copy in new:
+                emit(CopyLine(kind="copy", copy=self.view(copy, quality, "checking")))
+                judged.append(judging.submit(judge, copy))
+            if key:
+                emit(CopyLine(kind="source", source=key, found=len(new), failed=failed))
+
+        title = stored.title[:80].strip()
+        query = f"{title} {surname(stored.artist)}".strip()
+        judged: list[Future[None]] = []
+        # Not a ``with``: leaving it would wait for a source that does not answer.
+        asking = ThreadPoolExecutor(max(1, len(keys)) + 1, "copies-ask")
+        try:
+            with ThreadPoolExecutor(JUDGES, "copies-judge") as judging:
+                asked: dict[Future[list[Item]], str] = {asking.submit(self.known, stored): ""}
+                for key in keys:
+                    if text := title if key in TITLE_ONLY else query:
+                        asked[asking.submit(self._ask, key, text)] = key
+                waiting = set(asked)
+                deadline = time.monotonic() + self.answer
+                while waiting and not gone.is_set():
+                    left = deadline - time.monotonic()
+                    done, waiting = wait(waiting, max(left, 0.0), FIRST_COMPLETED)
+                    for future in done:
+                        answered(asked[future], future)
+                    if not done:  # the time is up: the rest are told as silent
+                        for future in waiting:
+                            key = asked[future]
+                            log.info(
+                                "copies of %s from %s: no answer in %.0f s",
+                                stored.id,
+                                key or "known",
+                                self.answer,
+                            )
+                            if key:
+                                emit(CopyLine(kind="source", source=key, failed=True))
+                        break
+                for verdict in as_completed(judged):
+                    verdict.result()
+        finally:
+            asking.shutdown(wait=False, cancel_futures=True)
         emit(CopyLine(kind="end"))
+
+    def _ask(self, key: str, query: str) -> list[Item]:
+        """``key``'s works for ``query``: kept from an earlier look (a source
+        too slow then has answered since), else asked."""
+        now = time.monotonic()
+        with self._lock:
+            kept = self._answers.get((key, query))
+            if kept is not None and now - kept[0] < KEPT_FOR:
+                return list(kept[1])
+        found = self.search_in(key, query, HITS)
+        with self._lock:
+            self._answers[(key, query)] = (time.monotonic(), list(found))
+            self._answers.move_to_end((key, query))
+            while len(self._answers) > KEPT_ANSWERS:
+                self._answers.popitem(last=False)
+        return found
 
     def known(self, item: Item) -> list[Item]:
         """Copies known without a search: the work's Commons file and the
