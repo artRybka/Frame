@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.79.4
+
+- Zakładka Ramka: przy nazwie ramki nie ma już ołówka. Nazwę zmieniasz,
+  przytrzymując ją, tak jak tytuł dzieła: telefon lekko stuka, nazwa
+  delikatnie rośnie, a po chwili otwiera się okienko „Nazwa ramki”.
+
 ## 1.79.3
 
 - Przełączniki w ciemnym trybie: włączony przełącznik ma ciepły, szary
