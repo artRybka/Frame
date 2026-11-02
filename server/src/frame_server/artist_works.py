@@ -78,6 +78,9 @@ class ArtistWorks:
         found.sort(key=lambda i: not i.favorite)  # stable: the order drawn stays
         picked: list[Item] = []
         skip = skip or set()
+        # The pool is kept an hour: a work hidden since ("Ukryj dzieło"),
+        # its copies here and at museums too, is left out all the same.
+        hidden = self.library.hidden()
         titles = {_key(item)}
         seen = [item]
         for other in [*found, *self.from_museums(item.id)]:
@@ -88,6 +91,7 @@ class ArtistWorks:
                 or other.id in skip
                 or other.look is not None
                 or other.excluded
+                or other in hidden
                 or is_photograph(other)
                 or not other.artist
                 or not artist_matches(other.artist, [item.artist])
