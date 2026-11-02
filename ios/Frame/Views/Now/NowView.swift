@@ -211,11 +211,6 @@ struct NowView: View {
                 }
             }
             .toolbar {
-                if stale {
-                    ToolbarItem(placement: .topBarLeading) {
-                        RefreshPill(failed: model.connection != .unknown) { await model.refreshAll() }
-                    }
-                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         showingSend = true
@@ -229,6 +224,8 @@ struct NowView: View {
                     .accessibilityLabel("Wyślij zdjęcie na ramkę")
                 }
             }
+            // The first launch's squares say it themselves.
+            .serverLinkBadge(hidden: model.player == nil && model.remembered == nil, stale: stale)
             .toolbarTitleDisplayMode(.inline)
             .navigationDestination(for: String.self) { id in
                 ItemDetailView(itemID: id)
@@ -891,45 +888,6 @@ struct LoadingBadge: View {
     }
 }
 
-/// "Teraz" from the last launch while the server is asked; without the
-/// server, "Bez połączenia", and a tap tries again.
-struct RefreshPill: View {
-    let failed: Bool
-    let retry: () async -> Void
-    @State private var retrying = false
-
-    private var offline: Bool { failed && !retrying }
-
-    var body: some View {
-        Button {
-            Task {
-                retrying = true
-                await retry()
-                retrying = false
-            }
-        } label: {
-            HStack(spacing: 7) {
-                if offline {
-                    Image(systemName: "wifi.slash")
-                } else {
-                    ProgressView().controlSize(.small)
-                }
-                Text(offline ? "Bez połączenia" : "Odświeżam…")
-                    .fixedSize()
-            }
-            .font(.footnote.weight(.medium))
-            .foregroundStyle(Theme.inkSoft)
-            .padding(.horizontal, 12)
-            .frame(height: 34)
-            .background(.ultraThinMaterial, in: Capsule())
-        }
-        .buttonStyle(.plain)
-        .disabled(!offline)
-        .accessibilityLabel(offline ? "Bez połączenia z serwerem" : "Odświeżam")
-        .accessibilityHint(Text(offline ? "Próbuje ponownie połączyć się z serwerem" : ""))
-    }
-}
-
 /// A first launch: the app icon's squares at play in the empty frame while
 /// the server is asked, or why nothing comes, with a way to try again.
 struct IntroSquares: View {
@@ -997,7 +955,7 @@ struct ArtworkInfo: View {
     @State private var asked: PolishText?
     @State private var expanded = false
     @State private var favorite: Bool?
-    /// The title held: the museum's own shows meanwhile ("Tytuł w oryginale").
+    /// The title held once: the museum's own shows until held again ("Tytuł w oryginale").
     @State private var peeking = false
 
     private var shown: PolishText? { asked ?? polish }
@@ -1031,12 +989,12 @@ struct ArtworkInfo: View {
                 .accessibilityLabel("Ulubione")
             }
             // The title opens the work's card, like "Szczegóły" below; held,
-            // it shows the museum's own until the finger lifts.
+            // it shows the museum's own until held again.
             let original = TitlePeekNote.original(item.title, shown: title)
             Text(peeking ? original ?? title : title)
                 .font(.serif(28, weight: .semibold))
                 .foregroundStyle(Theme.ink)
-                // A long title from the museum shows whole while held.
+                // A long title from the museum shows whole.
                 .lineLimit(peeking ? nil : 3)
                 .minimumScaleFactor(peeking ? 1 : 0.75)
                 .multilineTextAlignment(.leading)

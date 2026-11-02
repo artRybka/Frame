@@ -101,6 +101,7 @@ struct PlaylistsView: View {
             .glowLift($scrolled)
             .paperPage(glow: glow, lift: scrolled, colours: 4)
             .navigationTitle("Playlisty")
+            .serverLinkBadge()
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {

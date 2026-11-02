@@ -1,10 +1,11 @@
 import SwiftUI
 
-/// "Tytuł w oryginale": a Polish title, held for a moment, shows the
-/// museum's own for as long as the finger stays, with a light tap of the
-/// haptics, fading both ways like the Polish title does as it arrives.
-/// A quick tap keeps doing what it did (Teraz: opens the card). Nothing
-/// on screen tells about it.
+/// "Tytuł w oryginale": a Polish title, held for a moment, turns into the
+/// museum's own and stays so once the finger lifts (held, the finger
+/// covered the very title it showed); held again, it is Polish again.
+/// A light tap of the haptics each way; the titles fade like the Polish
+/// one does as it arrives. A new picture or card starts Polish. A quick
+/// tap keeps doing what it did (Teraz: opens the card).
 struct TitlePeek: ViewModifier {
     /// There is another title to show: without one, holding does nothing.
     let enabled: Bool
@@ -20,13 +21,9 @@ struct TitlePeek: ViewModifier {
             .onTapGesture { onTap?() }
             .onLongPressGesture(minimumDuration: 0.3, maximumDistance: 24) {
                 guard enabled else { return }
-                withAnimation(Self.fade) { peeking = true }
-            } onPressingChanged: { pressing in
-                guard !pressing, peeking else { return }
-                withAnimation(Self.fade) { peeking = false }
+                withAnimation(Self.fade) { peeking.toggle() }
             }
-            .sensoryFeedback(.impact(weight: .light), trigger: peeking) { _, now in now }
-            // VoiceOver cannot hold: the action switches until asked back.
+            .sensoryFeedback(.impact(weight: .light), trigger: peeking)
             .accessibilityActions {
                 if enabled {
                     Button(peeking ? "Pokaż tytuł po polsku" : "Pokaż tytuł oryginalny") {
