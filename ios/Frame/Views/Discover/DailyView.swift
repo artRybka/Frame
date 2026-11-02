@@ -494,10 +494,7 @@ struct DailyView: View {
                 }
             }
             .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
-            .contentShape(Rectangle())
-            .onTapGesture {
-                if work != nil { zoomed = true }
-            }
+            .picturePress(enabled: work != nil) { zoomed = true }
             .accessibilityAddTraits(work != nil ? .isButton : [])
             .accessibilityHint(Text(work != nil ? "Otwiera obraz na całym ekranie" : ""))
             .padding(.top, 6)

@@ -661,8 +661,7 @@ struct ItemDetailView: View {
                         .aspectRatio(CGFloat(aspect(item)), contentMode: .fit)
                         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                         .shadow(color: .black.opacity(0.22), radius: 16, y: 12)
-                        .contentShape(Rectangle())
-                        .onTapGesture { opened = .original }
+                        .picturePress { opened = .original }
                         .accessibilityAddTraits(.isButton)
                         .accessibilityHint(Text("Otwiera obraz na całym ekranie"))
                 } else {
