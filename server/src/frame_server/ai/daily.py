@@ -67,10 +67,12 @@ CHECKED = "composition_checked"
 #: Which round of the composition a page's take went through (round 2: the
 #: great lines of "Geometria"; round 3: the golden spiral, more grids, no
 #: "Spojrzenie", both asked for by Mateusz 2026-10-31; round 4: the analysis
-#: asked apart, ``ai.composition``, 2026-11-02). Pages of an earlier round
-#: are written again by ``ai.composition.ComposeJob`` as the owner lets it.
+#: asked apart, ``ai.composition``, 2026-11-02; round 5: no rhythms of
+#: furniture or of a few trees, after the first real analyses). Pages of an
+#: earlier round are written again by ``ai.composition.ComposeJob`` as the
+#: owner lets it.
 CHECK_ROUND = "composition_round"
-ROUND = 4
+ROUND = 5
 #: Kept in a page that came back without some of what every page has (see
 #: :func:`missing`) though it was asked for twice: what it lacks. A page
 #: without it that lacks them all was written before the second question

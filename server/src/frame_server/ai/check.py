@@ -20,6 +20,7 @@ from .daily import (
     CHECK_ROUND,
     CHECKED,
     ROUND,
+    TAKE,
     VIEW,
     View,
     _dicts,
@@ -60,8 +61,8 @@ owal, krzywa S, perspektywa zbieżna, klin, pasy), duże wyraźne rytmy, otwarta
 Potem sprawdź każdy ślad:
 - Czy pokazuje coś, co ten obraz naprawdę porządkuje, wyznaczone przez konkretne formy. \
 Ślad naciągnięty (wzór przyłożony na siłę, linia przez puste pole, rytm z kilku form, które \
-tylko przypadkiem stoją obok siebie, spirala przez puste niebo) usuń i popraw tekst. Lepiej \
-mniej i pewnie.
+tylko przypadkiem stoją obok siebie, rytm sprzętów czy przedmiotów, np. stołków, krzeseł, \
+butelek, spirala przez puste niebo) usuń i popraw tekst. Lepiej mniej i pewnie.
 - Czy trafia: linia biegnie przez formy, które ją wyznaczają, a nie obok nich (przesuń ją, \
 gdy mija je o więcej niż ich szerokość) i kończy się tam, gdzie one (albo biegnie dalej, gdy \
 dalej biegnie forma; punkty poza obrazem są dozwolone, do połowy boku); kreska rytmu idzie \
@@ -141,12 +142,25 @@ def page_views(data: dict[str, Any]) -> list[View]:
     return takes([v for v in map(_view, raw) if v is not None])
 
 
+def answer_views(data: dict[str, Any]) -> list[View]:
+    """The take of a model's answer (the analysis or its check), whatever
+    title it gave it: the one :func:`takes` picks, else its first usable
+    view, named :data:`TAKE`. (Only the
+    exact title used to count, so "Analiza kompozycji: Trouville" lost a
+    paid answer.)"""
+    composition = data.get("composition")
+    raw = composition.get("views") if isinstance(composition, dict) else data.get("views")
+    views = [v for v in map(_view, _dicts(raw)) if v is not None]
+    found = takes(views) or views[:1]
+    return [found[0].model_copy(update={"title": TAKE})] if found else []
+
+
 def corrected(data: dict[str, Any] | None) -> tuple[list[View], list[str]] | None:
     """The takes a check gave back (its answer in fractions already) and
     what it changed; None when it is unusable."""
     if data is None:
         return None
-    kept = takes([v for v in map(_view, _dicts(data.get("views"))) if v is not None])
+    kept = answer_views(data)
     if not kept:
         return None
     changes = [_text(c, 200) for c in data.get("changes") or [] if _text(c)][:MAX_CHANGES]
