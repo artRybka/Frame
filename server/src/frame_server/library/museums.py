@@ -87,6 +87,9 @@ class Access:
     smithsonian_key: str = ""
     #: Paris Musées token (an account of one's own); the source is off without it.
     paris_token: str = ""
+    #: WikiArt API keys (access code, secret code); without them WikiArt's
+    #: free limit is shared with everyone who asks without keys.
+    wikiart_keys: tuple[str, str] | None = None
     #: Where sources keep downloaded indexes (the National Gallery of Art's).
     data_dir: Path | None = None
 
@@ -1403,6 +1406,30 @@ class WikiArt(Museum):
     licence = "Tylko do testów ramki (WikiArt)"
     #: (search, page) -> token that asks for that page.
     _tokens: ClassVar[dict[tuple[str, int], str]] = {}
+    #: Session keys by access code: (key, when it was given). WikiArt gives
+    #: ten sessions an hour; one is used for SESSION seconds.
+    _sessions: ClassVar[dict[str, tuple[str, float]]] = {}
+    _session_lock: ClassVar[threading.Lock] = threading.Lock()
+    SESSION = 50 * 60.0
+
+    def _session(self, fresh: bool = False) -> str | None:
+        """A session key from the owner's API keys; None without keys."""
+        keys = self.access.wikiart_keys
+        if not keys:
+            return None
+        access, secret = keys
+        with self._session_lock:
+            session, since = self._sessions.get(access, ("", 0.0))
+            if fresh or not session or time.monotonic() - since > self.SESSION:
+                resp = self.http.get(
+                    f"{self.api}/login", params={"accessCode": access, "secretCode": secret}
+                )
+                resp.raise_for_status()
+                session = str(resp.json().get("SessionKey") or "")
+                if not session:
+                    raise httpx.HTTPError("WikiArt gave no session")
+                self._sessions[access] = (session, time.monotonic())
+            return session
 
     def _map(self, d: dict[str, Any]) -> Item | None:
         image = str(d.get("image") or "")
@@ -1444,7 +1471,13 @@ class WikiArt(Museum):
                     return [], False
             params["paginationToken"] = token
         endpoint = "PaintingSearch" if term else "MostViewedPaintings"
+        session = self._session()
+        if session:
+            params["authSessionKey"] = session
         resp = self.http.get(f"{self.api}/{endpoint}", params=params)
+        if session and resp.status_code == 500 and "session" in resp.text.lower():
+            params["authSessionKey"] = self._session(fresh=True) or ""  # it ran out
+            resp = self.http.get(f"{self.api}/{endpoint}", params=params)
         resp.raise_for_status()
         body = resp.json()
         more = bool(body.get("hasMore")) and bool(body.get("paginationToken"))

@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.80.0
+
+- Szukaj lepszej kopii: arkusz „Kopie dzieła” pokazuje wszystko, co
+  znalazły źródła. Dotąd biała pastylka (np. „Wikimedia Commons · 6”)
+  mówiła, że coś się znalazło, ale znalezione dzieła o podobnym tytule,
+  które okazywały się innym obrazem, znikały bez śladu. Teraz są w „Nie
+  pasują” z oznaczeniem „Inne dzieło”, a stuknięcie otwiera ich stronę
+  w źródle. Kopie, których nie dało się pobrać do porównania, mają
+  oznaczenie „Nie udało się porównać”.
+- „Nie pasują” rozwija się samo, gdy nic lepszego się nie znalazło.
+- Szukaj w Paris Musées: każde wpisane słowo może pasować do tytułu albo
+  do autora, więc „Monet” czy „Nymphéas Monet” znajdują dzieła Moneta.
+  Dotąd Paris szukał wpisanego tekstu tylko w tytułach.
+- Konfiguracja → Źródła dzieł: pole na klucze WikiArt (Access code i Secret
+  code połączone dwukropkiem). Bez nich WikiArt korzysta ze wspólnego
+  darmowego limitu i często odmawia.
+
 ## 1.79.9
 
 - Teraz: kadrowanie otwiera się z podglądu ramki tak jak na karcie dzieła.
@@ -20,6 +37,7 @@
 - Paris Musées szuka kopii po samym tytule dzieła. Wcześniej szukał tytułu
   razem z nazwiskiem artysty, czego w tytułach nie ma, więc nigdy nic nie
   znajdował.
+
 ## 1.79.7
 
 - Szukaj: menu po przytrzymaniu kafelka wyniku ma obok „Dodaj do kolejki”

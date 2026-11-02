@@ -53,11 +53,29 @@ def _names(values: Any) -> list[str]:
     return out
 
 
+#: The author's name, from a work (a ``nodeQuery`` filter's path).
+AUTHOR = "field_oeuvre_auteurs.entity.field_auteur_auteur.entity.name"
+#: Words of a search asked for at most: each is one more join on their side.
+WORDS = 4
+
+
+def _words(text: str) -> list[str]:
+    """The longest words of a search (at least three letters; "de", "la"
+    would match everything), in their order, at most WORDS."""
+    words = list(dict.fromkeys(w for w in re.findall(r"[\w'’-]+", text) if len(w) >= 3))
+    kept = set(sorted(words, key=len, reverse=True)[:WORDS])
+    return [w for w in words if w in kept]
+
+
 def _string(value: str) -> str:
     return '"' + value.replace("\\", " ").replace('"', " ") + '"'
 
 
 class ParisMusees(Museum):
+    #: Whether the API lets a search look at authors' names (it said no
+    #: once: titles only until the server restarts).
+    _by_author: ClassVar[bool] = True
+
     key = "paris"
     name = "Paris Musées"
     api = "https://apicollections.parismusees.paris.fr/graphql"
@@ -129,28 +147,40 @@ class ParisMusees(Museum):
         return super()._item(source_id, **fields).model_copy(update={"museum": museum})
 
     def _query(self, conditions: list[str], limit: int, page: int) -> tuple[int, list[Item]]:
+        return self._found(self._ask(conditions, limit, page) or {})
+
+    def _found(self, found: dict[str, Any]) -> tuple[int, list[Item]]:
+        items = [i for d in found.get("entities") or [] if (i := self._map(d))]
+        return int(found.get("count") or len(items)), items
+
+    def _ask(
+        self, conditions: list[str], limit: int, page: int, groups: list[str] | None = None
+    ) -> dict[str, Any] | None:
+        """The ``nodeQuery`` answer; None when the API refused the query."""
         token = self.access.paris_token
         if not token:
-            return 0, []
+            return {}
         base = [
             '{field: "type", value: "oeuvre"}',
             '{field: "status", value: "1"}',
             '{field: "field_visuels.entity.field_image_libre", value: "1"}',
         ]
+        nested = f", groups: [{', '.join(groups)}]" if groups else ""
         query = (
             "{ nodeQuery("
             f"offset: {(page - 1) * limit}, limit: {limit}, "
-            f"filter: {{conditions: [{', '.join([*base, *conditions])}]}}"
+            f"filter: {{conjunction: AND, conditions: [{', '.join([*base, *conditions])}]{nested}}}"
             f") {{ {FIELDS} }} }}"
         )
         resp = self.http.post(self.api, json={"query": query}, headers={"auth-token": token})
         resp.raise_for_status()
         body = resp.json()
+        found = (body.get("data") or {}).get("nodeQuery")
         if body.get("errors"):
             log.warning("Paris Musées: %s", body["errors"][0].get("message"))
-        found = (body.get("data") or {}).get("nodeQuery") or {}
-        items = [i for d in found.get("entities") or [] if (i := self._map(d))]
-        return int(found.get("count") or len(items)), items
+            if found is None:
+                return None
+        return found or {}
 
     @staticmethod
     def _types(names: tuple[str, ...]) -> str:
@@ -158,12 +188,30 @@ class ParisMusees(Museum):
         return f'{{field: "field_oeuvre_types_objet.entity.name", operator: IN, value: [{values}]}}'
 
     def search(self, query: str, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
+        """Works whose title or author holds each word of ``query`` ("Monet",
+        "nymphéas monet"); while the API refuses to look at authors, the
+        whole query in the title, as before."""
         conditions = [self._types(self.pictures)]
-        if query.strip():
-            conditions.insert(
-                0, f'{{field: "title", operator: LIKE, value: {_string(f"%{query.strip()}%")}}}'
-            )
-        return self._query(conditions, limit, page)
+        text = query.strip()
+        if not text:
+            return self._query(conditions, limit, page)
+        words = _words(text)
+        if words and ParisMusees._by_author:
+            groups = [
+                "{conjunction: OR, conditions: ["
+                f'{{field: "title", operator: LIKE, value: {_string(f"%{w}%")}}}, '
+                f'{{field: "{AUTHOR}", operator: LIKE, value: {_string(f"%{w}%")}}}'
+                "]}"
+                for w in words
+            ]
+            found = self._ask(conditions, limit, page, groups)
+            if found is not None:
+                return self._found(found)
+            # Not a field it lets us filter by: titles only from now on.
+            log.warning("Paris Musées: no search by author; titles only")
+            ParisMusees._by_author = False
+        title = f'{{field: "title", operator: LIKE, value: {_string(f"%{text}%")}}}'
+        return self._query([title, *conditions], limit, page)
 
     def discover(self, spec: Discovery, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
         # Styles are not named in the records; nor are highlights.

@@ -103,7 +103,10 @@ def test_every_copy_is_listed_with_its_verdict(app: Any) -> None:
     copies = _final(lines)
     current = copies.pop(own.id)
     assert current["role"] == "current" and current["width"] == 1686
-    assert set(copies) == {"wmc:1", "wmc:2", "wmc:3", "wmc:5"}  # another work is dropped
+    # Everything a source found is told, another work too (only to look at).
+    assert set(copies) == {"wmc:1", "wmc:2", "wmc:3", "wmc:4", "wmc:5"}
+    assert copies["wmc:4"]["verdict"] == "off" and copies["wmc:4"]["notes"] == ["other"]
+    assert not any(line["kind"] == "drop" for line in lines)
     best = copies["wmc:1"]
     assert best["verdict"] == "better" and best["measured"]
     assert best["width"] == 3600 and best["gain"] == round(2560 / 1686, 2)

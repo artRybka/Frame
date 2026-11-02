@@ -151,7 +151,8 @@ struct CopyView: Codable, Hashable, Sendable, Identifiable {
     /// "off" (a detail, a grey plate…: only to look at), "checking".
     var verdict: String
     /// Why: "whole", "colours", "fragment", "page", "turned", "grey",
-    /// "coloured", "colour-off", "reproduction".
+    /// "coloured", "colour-off", "reproduction", "other" (another work with
+    /// a like title), "unseen" (its thumbnail could not be had).
     var notes: [String]
     /// "current" (shown now), "own" (the work's own, while a copy stands
     /// in for it), "copy".
@@ -164,6 +165,9 @@ struct CopyView: Codable, Hashable, Sendable, Identifiable {
     var isOwn: Bool { role == "own" }
     /// What can be picked: the same picture whole, sharper or not.
     var choosable: Bool { !isCurrent && ["better", "warn", "worse"].contains(verdict) }
+    /// Whether a spot of it can be set beside the picture shown now: not
+    /// another work, nor one whose picture could not be had.
+    var comparable: Bool { !notes.contains("other") && !notes.contains("unseen") }
 }
 
 /// One line of the copies' answer, as the sources answer: "start"
