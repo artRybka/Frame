@@ -53,6 +53,14 @@ struct AiSection: View {
                         value: daily
                     ) { AiSettingsUpdate(daily: $0) }
                 }
+                if let searchWords = settings.searchWords {
+                    Divider()
+                    toggle(
+                        "Tłumaczenie słów w Szukaj",
+                        hint: "Polskie słowa idą do muzeów zagranicznych po angielsku, np. gitara jako guitar (Haiku).",
+                        value: searchWords
+                    ) { AiSettingsUpdate(searchWords: $0) }
+                }
                 Divider()
                 spending
                 Divider()

@@ -694,6 +694,11 @@ async def terms(svc: Svc, q: str, limit: Annotated[int, Query(ge=1, le=20)] = 10
     return await run_in_threadpool(_term_hits, svc, q, limit)
 
 
+#: How long the museums' hint, asked while typing, waits for the words'
+#: translation (a later answer serves the next one).
+HINT_TRANSLATE_SECONDS = 2.5
+
+
 @router.get("/terms/museums", response_model=MuseumHint)
 async def terms_in_museums(svc: Svc, q: str) -> MuseumHint:
     """What the museums have for ``q``: how many works, the artists among
@@ -701,8 +706,9 @@ async def terms_in_museums(svc: Svc, q: str) -> MuseumHint:
     words = q.strip()
     if not words:
         return MuseumHint(total=0, artists=[], items=[])
+    texts = await run_in_threadpool(svc.importer.typed, words, None, HINT_TRANSLATE_SECONDS)
     total, items, failed = await run_in_threadpool(
-        urgent_call(svc.importer.search_all), words, 8, 1
+        urgent_call(svc.importer.search_all), texts, 8, 1
     )
     items = [i for i in items if not set_aside(i)]
     wanted = fold(words)
@@ -736,12 +742,14 @@ def rules_from(
     )
 
 
-def museum_text(rules: PlaylistRules, page: int) -> str:
-    """What to ask the museums: the words, an artist (one per page, in
-    turns) and the styles and subjects."""
+def museum_text(rules: PlaylistRules, page: int, words: str | None = None) -> str:
+    """What to ask the museums: the words (``words``: as one museum's
+    language has them), an artist (one per page, in turns) and the styles
+    and subjects."""
     artist = rules.artists[(page - 1) % len(rules.artists)] if rules.artists else ""
     topics = museum_queries(rules.terms)[:1]
-    return " ".join(w for w in (rules.query.strip(), artist, *topics) if w)
+    typed = rules.query.strip() if words is None else words
+    return " ".join(w for w in (typed, artist, *topics) if w)
 
 
 #: With colours asked, museum pages of this many works are looked at, until
@@ -832,12 +840,16 @@ class MuseumSearch:
         started = time.monotonic()
         total = fitting = 0
         at: int | None = page
+        # The words typed, in each museum's language ("gitara": "guitar").
+        named = keys or importer.sources()
+        typed = importer.typed(rules.query, named) if rules.query.strip() else {}
         while at is not None and left > 0:
             text = museum_text(rules, at)
             # Several artists take turns, so each page asks for one of them.
             round_ = (at - 1) // len(rules.artists) + 1 if rules.artists else at
             if text:
-                count, items, failed = importer.search_all(text, asked, round_, keys)
+                texts = {k: museum_text(rules, at, typed.get(k)) for k in named}
+                count, items, failed = importer.search_all(texts, asked, round_, keys)
             else:
                 count, items, failed = importer.discover_all(self.spec, asked, at, keys)
             total = total or count
