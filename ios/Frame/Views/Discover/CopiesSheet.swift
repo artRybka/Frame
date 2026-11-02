@@ -18,7 +18,8 @@ struct CopiesSheet: View {
     @State private var answered: [String: Int?] = [:]
     @State private var done = false
     @State private var failed = false
-    @State private var showOff = false
+    /// "Nie pasują" opened or closed by hand; nil until then.
+    @State private var showOff: Bool?
     @State private var path: [CopyView] = []
 
     private var current: CopyView? { copies.first(where: \.isCurrent) }
@@ -202,10 +203,14 @@ struct CopiesSheet: View {
         .padding(.vertical, 12)
     }
 
+    /// "Nie pasują" opens by itself when it holds all a search found.
+    private var offOpen: Bool { showOff ?? (better.isEmpty && others.isEmpty && checking.isEmpty) }
+
     private var offSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        let open = offOpen
+        return VStack(alignment: .leading, spacing: 10) {
             Button {
-                withAnimation(.snappy) { showOff.toggle() }
+                withAnimation(.snappy) { showOff = !open }
             } label: {
                 HStack {
                     Eyebrow("Nie pasują · \(off.count)")
@@ -213,19 +218,29 @@ struct CopiesSheet: View {
                     Image(systemName: "chevron.down")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(Theme.inkSoft)
-                        .rotationEffect(.degrees(showOff ? 180 : 0))
+                        .rotationEffect(.degrees(open ? 180 : 0))
                 }
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .padding(.top, 8)
             .overlay(alignment: .top) { Rectangle().fill(Theme.hairline).frame(height: 1) }
-            if showOff {
+            if open {
                 ForEach(off) { copy in
-                    NavigationLink(value: copy) {
-                        CopyRow(copy: copy, work: item, chevron: true).opacity(0.6)
+                    if copy.comparable {
+                        NavigationLink(value: copy) {
+                            CopyRow(copy: copy, work: item, chevron: true).opacity(0.6)
+                        }
+                        .buttonStyle(.plain)
+                    } else if let page = URL(string: copy.url), !copy.url.isEmpty {
+                        // Another work: nothing to compare, its page at the source.
+                        Link(destination: page) {
+                            CopyRow(copy: copy, work: item, chevron: true).opacity(0.6)
+                        }
+                        .buttonStyle(.plain)
+                    } else {
+                        CopyRow(copy: copy, work: item).opacity(0.6)
                     }
-                    .buttonStyle(.plain)
                 }
             }
         }
@@ -422,6 +437,8 @@ struct CopyRow: View {
         case "grey": CopyTag.Tag(text: "Czarno-biała", tone: .bad)
         case "coloured": CopyTag.Tag(text: "Pokolorowana", tone: .bad)
         case "reproduction": CopyTag.Tag(text: "Reprodukcja", tone: .bad)
+        case "other": CopyTag.Tag(text: "Inne dzieło", tone: .bad)
+        case "unseen": CopyTag.Tag(text: "Nie udało się porównać", tone: .bad)
         default: nil
         }
     }

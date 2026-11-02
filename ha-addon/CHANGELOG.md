@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.79.9
+
+- Szukaj lepszej kopii: arkusz „Kopie dzieła” pokazuje wszystko, co
+  znalazły źródła. Dotąd biała pastylka (np. „Wikimedia Commons · 6”)
+  mówiła, że coś się znalazło, ale znalezione dzieła o podobnym tytule,
+  które okazywały się innym obrazem, znikały bez śladu. Teraz są w „Nie
+  pasują” z oznaczeniem „Inne dzieło”, a stuknięcie otwiera ich stronę
+  w źródle. Kopie, których nie dało się pobrać do porównania, mają
+  oznaczenie „Nie udało się porównać”.
+- „Nie pasują” rozwija się samo, gdy nic lepszego się nie znalazło.
+
 ## 1.79.8
 
 - Szukaj lepszej kopii: arkusz „Kopie dzieła” nie czeka już w nieskończoność

@@ -75,9 +75,11 @@ class CopyView(BaseModel):
     ``verdict``: "better" (sharper on the frame, the same picture whole in
     its colours), "warn" (sharper, but its colours differ), "worse" (the
     same picture, not sharper), "off" (a detail, a page around it, a grey
-    plate, a reproduction: only to look at), "checking" (being compared).
-    ``notes``: why, as codes the app names: "whole", "colours", "fragment",
-    "page", "turned", "grey", "coloured", "colour-off", "reproduction".
+    plate, a reproduction, another work: only to look at), "checking"
+    (being compared). ``notes``: why, as codes the app names: "whole",
+    "colours", "fragment", "page", "turned", "grey", "coloured",
+    "colour-off", "reproduction", "other" (another picture: the same title,
+    another work), "unseen" (its thumbnail could not be had).
     ``role``: "current" (the picture shown now), "own" (the work's own
     picture, while a copy stands in for it), "copy"."""
 
@@ -104,7 +106,7 @@ class CopyView(BaseModel):
 class CopyLine(BaseModel):
     """One line of the answer, as it comes (JSON lines): "start" (the
     sources asked), "copy" (a copy, new or judged: the app replaces it by
-    ``item_id``), "drop" (a copy that is another picture after all),
+    ``item_id``), "drop" (a copy that could not be judged at all),
     "source" (a source has answered: how many copies, or that it failed),
     "end"."""
 
@@ -193,6 +195,7 @@ class Copies:
         def judge(copy: Item) -> None:
             if gone.is_set():
                 return
+            view: CopyView | None
             try:
                 view = self.judge(stored, copy, quality, measured, lock)
             except Exception:
@@ -372,18 +375,20 @@ class Copies:
         current: Quality,
         measured: list[int] | None = None,
         lock: threading.Lock | None = None,
-    ) -> CopyView | None:
+    ) -> CopyView:
         """``copy`` judged against ``item``'s picture (``current``: the one
-        shown now); None when it is another picture altogether."""
+        shown now). What a source found is always told: another picture
+        altogether (the same title, another work) is "off" with "other", one
+        whose thumbnail could not be had "off" with "unseen"."""
         try:
             own_thumb = self.images.ensure_thumb(item)
             copy_thumb = self.images.ensure_thumb(copy)
         except (httpx.HTTPError, OSError) as err:
             log.info("thumbnails of %s and %s: %s", item.id, copy.id, err)
-            return None
+            return self._off(copy, current, "unseen")
         fit = self.likeness.fit(item, copy)
         if fit is None:
-            return None
+            return self._off(copy, current, "other")
         notes: list[str] = []
         off = False
         if fit.whole:
@@ -423,6 +428,11 @@ class Copies:
         else:
             view.verdict = "warn" if colours else "better"
         view.notes = notes
+        return view
+
+    def _off(self, copy: Item, current: Quality, note: str) -> CopyView:
+        view = self.view(copy, current, "off")
+        view.notes = [note]
         return view
 
     @staticmethod
