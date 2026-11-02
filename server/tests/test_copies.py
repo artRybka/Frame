@@ -5,6 +5,8 @@ from __future__ import annotations
 import base64
 import io
 import json
+import threading
+import time
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -16,6 +18,7 @@ from PIL import Image, ImageOps
 from test_sharper import OWN, OWN_THUMB, Web, _copy, _detail, _jpeg, _offer, _own, _print, _serve
 
 from frame_server.config import Settings
+from frame_server.library.duplicates import surname
 from frame_server.service import FrameService
 from frame_server.web.app import create_app
 
@@ -108,6 +111,56 @@ def test_every_copy_is_listed_with_its_verdict(app: Any) -> None:
     assert copies["wmc:2"]["verdict"] == "off" and "fragment" in copies["wmc:2"]["notes"]
     assert copies["wmc:3"]["verdict"] == "off" and "grey" in copies["wmc:3"]["notes"]
     assert copies["wmc:5"]["verdict"] == "worse"
+
+
+def test_a_silent_source_is_told_as_failed_in_time(app: Any) -> None:
+    client, service, web, hits = app
+    own = _own(service)
+    painting = _print(1, (3600, 2400))
+    sharper, late = _copy(1), _copy(6)
+    _offer(web, sharper, painting)
+    _offer(web, late, painting)
+    hits[:] = [sharper]
+    asked = service.copies.search_in
+    hanging = threading.Event()
+    queries: dict[str, list[str]] = {}
+
+    def search_in(key: str, query: str, n: int) -> list[Any]:
+        queries.setdefault(key, []).append(query)
+        if key == "openverse":
+            hanging.wait(30)  # as Openverse, a minute for one search
+            service.importer.remember([late])
+            return [late]
+        return list(asked(key, query, n))
+
+    service.copies.sources = lambda: ["wmc", "openverse", "paris"]
+    service.copies.search_in = search_in
+    service.copies.answer = 0.5
+    try:
+        started = time.monotonic()
+        lines = _lines(client, own.id)
+        assert time.monotonic() - started < 10
+    finally:
+        hanging.set()
+    sources = {line["source"]: line for line in lines if line["kind"] == "source"}
+    assert sources["openverse"]["failed"] and not sources["wmc"]["failed"]
+    assert lines[-1]["kind"] == "end"
+    assert set(_final(lines)) == {own.id, "wmc:1"}  # the others' copies are judged
+    assert _final(lines)["wmc:1"]["verdict"] == "better"
+    # Paris Musées looks for the whole query in titles: only the title is asked.
+    assert queries["paris"] == [own.title]
+    assert queries["wmc"] == [f"{own.title} {surname(own.artist)}"]
+
+    # Openverse answered after all: the next look has its copy at once.
+    for _ in range(100):
+        if any(key == "openverse" for key, _ in service.copies._answers):
+            break
+        time.sleep(0.05)
+    lines = _lines(client, own.id)
+    sources = {line["source"]: line for line in lines if line["kind"] == "source"}
+    assert not sources["openverse"]["failed"] and sources["openverse"]["found"] == 1
+    assert "wmc:6" in _final(lines)
+    assert len(queries["openverse"]) == 1 and len(queries["wmc"]) == 1  # kept, not asked again
 
 
 def test_the_owner_picks_a_copy_and_goes_back(app: Any) -> None:
