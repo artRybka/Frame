@@ -198,6 +198,10 @@ struct PlaylistRules: Codable, Hashable, Sendable {
     var colors: [String] = []
     var kinds: [ItemKind] = []
     var sources: [String] = []
+    /// Museums left out: every one but these ("wszystkie poza Yale"), so a
+    /// museum added later comes in on its own. Like `excludeIds`, alone it
+    /// is no rule.
+    var excludeSources: [String] = []
     var yearFrom: Int?
     var yearTo: Int?
     var favoritesOnly: Bool = false
@@ -205,7 +209,8 @@ struct PlaylistRules: Codable, Hashable, Sendable {
     /// Works taken out of a smart playlist although they match its rules.
     var excludeIds: [String] = []
 
-    /// Whether there are no rules; exceptions (`excludeIds`) don't count.
+    /// Whether there are no rules; exceptions (`excludeIds`,
+    /// `excludeSources`) don't count.
     var isEmpty: Bool {
         query.isEmpty && artists.isEmpty && styles.isEmpty && subjects.isEmpty && terms.isEmpty
             && colors.isEmpty
@@ -229,6 +234,7 @@ extension PlaylistRules {
         colors = try c.decode([String].self, forKey: .colors)
         kinds = try c.decode([ItemKind].self, forKey: .kinds)
         sources = try c.decode([String].self, forKey: .sources)
+        excludeSources = try c.decodeIfPresent([String].self, forKey: .excludeSources) ?? []  // older servers
         yearFrom = try c.decodeIfPresent(Int.self, forKey: .yearFrom)
         yearTo = try c.decodeIfPresent(Int.self, forKey: .yearTo)
         favoritesOnly = try c.decode(Bool.self, forKey: .favoritesOnly)
@@ -1626,8 +1632,8 @@ struct MineTerm: Sendable, Identifiable {
 /// One chip of a search or of a smart playlist's rules.
 struct SearchToken: Hashable, Sendable, Identifiable {
     /// artist | word | style | subject | period | technique | mine | museum
-    /// | color (the last two in Discover's search only), or for rules of
-    /// older playlists: legacy-style | legacy-subject (museum facet values).
+    /// | museum-out (a museum left out) | color, or for rules of older
+    /// playlists: legacy-style | legacy-subject (museum facet values).
     let kind: String
     let key: String
     let name: String
@@ -1643,6 +1649,7 @@ struct SearchToken: Hashable, Sendable, Identifiable {
         case "tag": "Wyróżnienie"
         case "mine": "Moje"
         case "museum": "Muzeum"
+        case SearchToken.museumOut: "Bez muzeum"
         case "color": "Kolor"
         default: "Słowo"
         }
@@ -1657,10 +1664,22 @@ struct SearchToken: Hashable, Sendable, Identifiable {
         case "technique": "scribble.variable"
         case "tag": "star"
         case "mine": MineTerm.named(key)?.icon ?? "person.crop.circle"
-        case "museum": "building.columns"
+        case "museum", SearchToken.museumOut: "building.columns"
         case "color": "circle.fill"
         default: "text.magnifyingglass"
         }
+    }
+}
+
+extension SearchToken {
+    /// The kind of a museum left out: every museum but it is asked
+    /// ("wszystkie poza Yale").
+    static let museumOut = "museum-out"
+
+    /// A museum's chip: asked alone (with the others picked) or left out
+    /// ("bez Yale").
+    static func museum(_ key: String, name: String, out: Bool = false) -> SearchToken {
+        SearchToken(kind: out ? museumOut : "museum", key: key, name: out ? "bez \(name)" : name)
     }
 }
 
@@ -1799,6 +1818,8 @@ struct LibraryQuery: Hashable, Sendable {
     /// Terms of the server's vocabulary, as in `PlaylistRules.terms`.
     var terms: [String] = []
     var sources: [String] = []
+    /// Sources left out, as in `PlaylistRules.excludeSources`.
+    var excludeSources: [String] = []
     var yearFrom: Int?
     var yearTo: Int?
     var favoritesOnly = false
@@ -1823,6 +1844,7 @@ struct LibraryQuery: Hashable, Sendable {
         kinds = rules.kinds
         terms = rules.terms
         sources = rules.sources
+        excludeSources = rules.excludeSources
         yearFrom = rules.yearFrom
         yearTo = rules.yearTo
         self.sort = sort

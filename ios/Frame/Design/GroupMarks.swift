@@ -42,7 +42,7 @@ struct GroupMark: View {
             case "period": self = .calendar
             case "style", "legacy-style": self = .palette
             case "subject", "legacy-subject": self = .landscape
-            case "museum": self = .museum
+            case "museum", SearchToken.museumOut: self = .museum
             default: return nil
             }
         }
