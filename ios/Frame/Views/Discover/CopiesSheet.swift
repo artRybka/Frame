@@ -74,9 +74,10 @@ struct CopiesSheet: View {
                 }
                 .padding(.horizontal, Theme.gutter)
                 .padding(.bottom, 30)
+                .pageWidth()
                 .animation(.snappy, value: copies)
             }
-            .background(Theme.paper)
+            .paperPage()
             .navigationTitle("Kopie dzieła")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -531,8 +532,9 @@ struct CopyCompare: View {
             }
             .padding(.horizontal, Theme.gutter)
             .padding(.bottom, 30)
+            .pageWidth()
         }
-        .background(Theme.paper)
+        .paperPage()
         .navigationTitle(CopyRow.place(copy))
         .navigationBarTitleDisplayMode(.inline)
         .task { await load(x: nil, y: nil) }

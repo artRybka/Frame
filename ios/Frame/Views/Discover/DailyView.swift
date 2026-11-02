@@ -128,9 +128,9 @@ struct DailyView: View {
                     findingCopies: $findingCopies,
                     keepOwn: {
                         Task {
-                            guard let id = card?.id else { return }
+                            let id = card.id
                             do {
-                                card = try await model.backend.chooseCopy(itemID: id, copyID: id)
+                                self.card = try await model.backend.chooseCopy(itemID: id, copyID: id)
                                 model.notices.done("Przywrócono zdjęcie muzeum")
                             } catch {
                                 model.show(error)
