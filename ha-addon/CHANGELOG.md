@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.72.1
+
+- Studium dnia nie zostaje w połowie puste: gdy Claude odda opis bez analizy
+  kompozycji, koloru, detali albo oceny na ramce, serwer pyta drugi raz.
+  Zapisane wcześniej takie studium uzupełnia się samo.
+
 ## 1.72.0
 
 - Nowy wygląd przycisków w całej aplikacji: jak etykiety muzealne
