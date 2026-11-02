@@ -30,13 +30,15 @@ from fastapi import (
 from fastapi.responses import FileResponse, PlainTextResponse
 from starlette.concurrency import run_in_threadpool
 
-from .. import build_version, logbuffer, notifications
+from .. import build_version, logbuffer, night, notifications
 from ..config import Settings
 from ..device import MdcError
 from ..imaging import PRESETS, RenderSettings, Strategy
 from ..imaging.layout import load_image
 from ..library.seed import seed_playlists
 from ..library.style import AUTO, preset_for_photo
+from ..night import NightQueue
+from ..night import tasks as night_tasks
 from ..panel_app import CODE_VERSION, WIDGET, AppHello, NextAnswer, app_code
 from ..player import hold_from
 from ..power import WakeResult
@@ -67,6 +69,8 @@ log = logging.getLogger(__name__)
 # The panel reports download progress (and failures) here, at the root of the
 # content server, whatever path the manifest came from.
 PROGRESS_PATH = "/content-transfer-progress"
+#: Requests that are not someone using the app (the night's work goes on).
+NOT_USE = ("/api/health", "/api/debug/")
 
 
 def _photo_preset(data: bytes) -> str:
@@ -108,7 +112,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         tasks = []
-        recount_stop = threading.Event()
         logbuffer.install()  # again: uvicorn's logging setup dropped it
         service.notifier.bind(asyncio.get_running_loop())
         if settings.scheduler:
@@ -129,15 +132,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if settings.seed_library:
             service.player.top_up()  # Suggestions come from museums, as needed
         if settings.scheduler:
+            # Heavy work at night, one task at a time (night.py): the
+            # catalogue turns over and the cache is tidied then, not by day.
+            service.night = NightQueue(service, night_tasks(service))
+            service.player.at_night = True
+            threading.Thread(target=service.night.run, name="night", daemon=True).start()
             # Playlisty open with the counts last worked out while the
-            # catalogue grows: each counted afresh when opened, all at night.
+            # catalogue changes: each counted afresh when opened, all at
+            # night, and once now (the counts are not kept over a restart).
             service.library.counts_may_lag = True
-            threading.Thread(
-                target=service.library.recount_nightly,
-                args=(recount_stop,),
-                name="playlist-counts",
-                daemon=True,
-            ).start()
+            recount = threading.Timer(60.0, service.library.recount)
+            recount.daemon = True
+            recount.start()
             # Discover's first visit then finds its themes worked out.
             threading.Thread(target=discover_api.warm_up, args=(service,), daemon=True).start()
             threading.Thread(target=service.daily.run, name="daily", daemon=True).start()
@@ -146,7 +152,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             task.cancel()
         service.ai.stop()
         service.daily.stop()
-        recount_stop.set()
+        if service.night is not None:
+            service.night.stop()
         service.library.close()
 
     app = FastAPI(title="Frame", version=build_version(), lifespan=lifespan)
@@ -172,6 +179,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.middleware("http")
     async def log_panel_requests(request: Request, call_next):
+        if request.url.path.startswith("/api/") and not request.url.path.startswith(NOT_USE):
+            night.used()  # the night's work waits while the app is in use
         response = await call_next(request)
         if request.url.path.startswith("/panel/"):
             # The Frame app's page is a file:// origin.

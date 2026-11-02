@@ -32,6 +32,7 @@ from .library.commons import repair_library
 from .library.museums import Access, europeana_mirrors
 from .library.museums import client as museum_client
 from .library.wikidata import PROPERTIES, CommonsCopies
+from .night import NightQueue
 from .notifications import Notifier
 from .panel_app import POLL, PanelApp
 from .panel_config import PanelConfigStore
@@ -243,6 +244,9 @@ class FrameService:
         # lets it) and for pages left without one.
         self.compose = ComposeJob(self.daily.job)
         self.ai.register(self.compose)
+
+        #: Heavy work at night, while the server runs its background.
+        self.night: NightQueue | None = None
 
         self._tasks: set[asyncio.Task[object]] = set()
 
