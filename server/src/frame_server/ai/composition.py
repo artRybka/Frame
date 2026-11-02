@@ -167,7 +167,8 @@ rzecz z tekstu. Kształty:
 V (3 punkty: koniec boku, wierzchołek, koniec drugiego boku), krzywa S lub zygzak przez \
 kolejne formy. Może wychodzić poza obraz do połowy boku. Krawędzie, które zbiegają się w \
 perspektywie (klin budynku, ulicy, stołu), rysuj jako "rays" do ich punktu zbiegu, nie jako \
-łamaną "line", która wraca tą samą drogą.
+łamaną "line", która wraca tą samą drogą. Klin lub V bez punktu zbiegu (klin wody między \
+dwoma brzegami) to "line" z 3 punktami: koniec boku, wierzchołek, koniec drugiego boku.
   "triangle" (3 wierzchołki): zamknięty trójkąt układu, może wychodzić poza obraz.
   "loop" (środek i róg prostokąta, w który się wpisuje): wielki krąg lub owal układu, owal masy, \
 łuk sklepienia; wokół pojedynczej rzeczy tylko, gdy jest dominantą albo przeciwwagą.
@@ -192,8 +193,11 @@ rzeczy do rzeczy.
 na warunkach z punktu 10; początek może leżeć w dowolnym kierunku od oka, więc spiralę \
 obracasz tak, by jej łuki szły po formie.
   Czytelność: każdy ślad ma swoją drogę. Dwa ślady nie biegną po tej samej krawędzi ani tuż \
-obok siebie (np. bok klina i dolny bok prostokąta okna na tym samym parapecie): zostaw ten, \
-który mówi więcej, a drugą rzecz nazwij w tekście. Strzałka otwartości idzie przez formę, \
+obok siebie (np. bok klina i dolny bok prostokąta okna na tym samym parapecie, pion narożnika \
+na boku klina): zostaw ten, który mówi więcej, a drugą rzecz nazwij w tekście. Jedna rzecz ma \
+jeden ślad: nie otaczaj kółkiem tego, przez co biegnie już inna linia (łódź i jej maszt), i \
+nie dorysowuj linii po rzeczy tylko po to, żeby pokazać, że leży na linii siatki: siatka to \
+widać, a tekst to mówi. Strzałka otwartości idzie przez formę, \
 której nie zajmuje inny ślad, i jest długa (co najmniej jedna piąta boku), nie krótki \
 zaczep przy krawędzi. Mniej śladów, które czytają się od razu, jest lepsze niż sześć, które \
 się plączą.
