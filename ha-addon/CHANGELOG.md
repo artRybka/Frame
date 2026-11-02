@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.79.3
+
+- Przełączniki w ciemnym trybie: włączony przełącznik ma ciepły, szary
+  tor zamiast kremowego, więc biała gałka znowu się od niego odcina. W
+  jasnym trybie bez zmian.
+
 ## 1.79.2
 
 - Tytuł w oryginale: bez dopisku „Tytuł z muzeum”, także w studium dzieła.
