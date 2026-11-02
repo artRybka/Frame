@@ -413,7 +413,9 @@ aplikacji, obraz został bez mrugnięcia. Teraz:
   sprawdzenia aż do następnej zmiany (`wakes_ms` w odpowiedzi `/panel/next`,
   najwyżej 12, przy „co godzinę” resztę ustawi po ostatnim z nich; budziki
   się sumują, a te już ustawione aplikacja pamięta
-  i nie ustawia drugi raz) i skraca automatyczne uśpienie do 5 minut
+  i nie ustawia drugi raz, ale tylko do najbliższego snu: pobudka kasuje
+  budziki, więc po każdym śnie i przy starcie aplikacja zapomina o nich,
+  2026-11-02) i skraca automatyczne uśpienie do 5 minut
   (`setAutoSleepTime("5MIN")`; poprzednią wartość przywraca przy starcie);
 - przy budziku serwer uruchamia aplikację przez MDC tylko wtedy, gdy jest
   coś nowego (obraz inny niż ten, który aplikacja zgłosiła jako pokazany,

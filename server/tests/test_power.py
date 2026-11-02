@@ -166,6 +166,47 @@ async def test_a_silent_app_is_not_taken_for_awake(
     assert app.awake()
 
 
+async def test_a_lost_alarm_is_made_up_for_over_the_network(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """2026-11-02: asleep in the network until the change at 07:00, the
+    panel did not wake (the alarm was set before a wake and gone with it). The
+    server only tried MDC every 2 minutes, which a panel in standby does not
+    answer, and the new picture waited for the button. A minute after the
+    alarm the panel gets magic packets, once for that alarm."""
+    monkeypatch.setattr(power, "WAKE_LOOK", timedelta(seconds=0.3))
+    service = FrameService(_settings(tmp_path, _closed_port()))
+    app = service.app
+    sent: list[int] = []
+
+    async def wake(seconds: int = 0) -> bool:
+        sent.append(seconds)
+        return True
+
+    monkeypatch.setattr(service.panel, "wake", wake)
+    service.player.save_settings(
+        FrameSettings(change_times=["07:00"], quiet_start=None, power_mode="online")
+    )
+    told = datetime.now(UTC) - timedelta(minutes=20)
+    state = service.player.state
+    state.next_change_at = (told + timedelta(minutes=15)).isoformat(timespec="seconds")
+    service.player._save_state(state)
+    answer = app.answer(BATTERY, now=told)
+    assert answer.action == "sleep" and answer.standby == "ON"
+    alarm = app.wakes_at(told)
+    assert alarm == told.replace(microsecond=0) + timedelta(minutes=15)
+
+    await service.power.tick(alarm + timedelta(seconds=30))  # still waking
+    await asyncio.sleep(0.2)
+    assert sent == []
+    await service.power.tick(alarm + timedelta(seconds=70))
+    await asyncio.sleep(0.5)
+    assert sent == [power.WAKE_BURST_SECONDS]
+    await service.power.tick(alarm + timedelta(minutes=4))
+    await asyncio.sleep(0.5)
+    assert sent == [power.WAKE_BURST_SECONDS]
+
+
 @pytest.mark.parametrize(
     ("unplugged", "on_network", "power_state"),
     [

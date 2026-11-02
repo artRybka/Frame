@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.73.2
+
+- Studium: dopiski przy „Podobnych dziełach” to cicha kursywa z cienką kreską
+  z lewej zamiast cynobrowej plakietki.
+- Teraz: zwinięty opis na karcie „Dzieło” kończy się na pełnym zdaniu, a nie
+  na urwanym słowie z „…”.
+- Ramka nie przesypia zmiany obrazu, gdy zgubi budzik: aplikacja ustawia
+  budziki od nowa po każdym śnie, a gdy ramka i tak nie wstanie, serwer minutę
+  później budzi ją przez sieć. Nowa paczka aplikacji instaluje się na ramce
+  sama.
+
 ## 1.73.1
 
 - Ramka: orientacja to sam przełącznik z ikonkami poziomej i pionowej ramki,

@@ -292,6 +292,8 @@ class PanelApp:
         self.sleep_requested = False
         self.restart_requested = False
         self._kicked: datetime | None = None
+        self._woken_for: str | None = None  # the alarm woken for over the network
+        self._alarm_wake: asyncio.Task[None] | None = None
         self._nudged: datetime | None = None
         self._looked: datetime | None = None  # for the button in a rest
         self._silent_kicks = 0
@@ -1021,7 +1023,28 @@ class PanelApp:
         after_alarm = wake is not None and wake + KICK_AFTER <= now
         if after_alarm and (self._kicked is None or now - self._kicked >= KICK_EVERY):
             self._kicked = now
-            await self._kick()
+            if not await self._kick() and state.standby and rung != self._woken_for:
+                self._wake_after_alarm(rung)
+
+    def _wake_after_alarm(self, rung: str | None) -> None:
+        """Asleep in the network, the panel did not wake at its alarm: the
+        alarm was gone (2026-11-02, 07:00 and 07:04 set before a wake, neither
+        rang; the server only tried MDC every 2 min and the frame slept on
+        with a new picture waiting). Wake-on-LAN, once for each alarm."""
+        if not self.service.settings.device_mac:
+            return
+        if self._alarm_wake is not None and not self._alarm_wake.done():
+            return
+        self._woken_for = rung
+        log.warning("the frame did not wake at its alarm at %s: waking it over the network", rung)
+
+        async def wake() -> None:
+            try:
+                await self.service.power.reach()
+            except MdcError as err:
+                log.info("could not wake the frame after its alarm: %s", err)
+
+        self._alarm_wake = asyncio.create_task(wake())
 
     def _rung(self, now: datetime) -> datetime | None:
         """The last alarm at or before ``now``, when the app has to run for

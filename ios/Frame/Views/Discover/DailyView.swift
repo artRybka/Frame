@@ -715,12 +715,19 @@ struct DailyView: View {
                             .foregroundStyle(Theme.inkSoft)
                             .lineLimit(1)
                         if !work.why.isEmpty {
+                            // A quiet note, like a pencilled line beside a
+                            // museum label: italic serif in soft ink behind
+                            // a thin rule, no colour and no chip.
                             Text(work.why)
-                                .font(.caption2.weight(.semibold))
-                                .foregroundStyle(Theme.vermilion)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(Theme.vermilion.opacity(0.12), in: RoundedRectangle(cornerRadius: 5))
+                                .font(.serif(13).italic())
+                                .foregroundStyle(Theme.inkSoft)
+                                .multilineTextAlignment(.leading)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .padding(.leading, 7)
+                                .overlay(alignment: .leading) {
+                                    Rectangle().fill(Theme.hairline).frame(width: 1.5)
+                                }
+                                .padding(.top, 2)
                         }
                     }
                     .frame(maxHeight: .infinity, alignment: .top)
