@@ -956,6 +956,9 @@ struct AiSettings: Codable, Hashable, Sendable {
     var keywordsPhotos: Bool
     /// Discover's work of the day written by Claude; nil from older servers.
     var daily: Bool?
+    /// Polish words typed in Szukaj translated for the museums abroad; nil
+    /// from older servers.
+    var searchWords: Bool?
     var monthlyLimitUsd: Double
     /// This month.
     var spentUsd: Double
@@ -972,6 +975,7 @@ struct AiSettingsUpdate: Encodable, Sendable {
     var keywordsArtworks: Bool?
     var keywordsPhotos: Bool?
     var daily: Bool?
+    var searchWords: Bool?
     var monthlyLimitUsd: Double?
 }
 

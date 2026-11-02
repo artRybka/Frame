@@ -30,6 +30,8 @@ class AiConfig(BaseModel):
     keywords_photos: bool = True
     #: Discover's work of the day: its story and composition (Opus, once a day).
     daily: bool = True
+    #: Polish words typed in Szukaj translated for the museums abroad (Haiku).
+    search_words: bool = True
     #: Nothing more is asked once this month's cost reaches it.
     monthly_limit_usd: float = Field(5.0, ge=0, le=1000)
 
@@ -41,6 +43,7 @@ class AiConfigUpdate(BaseModel):
     keywords_artworks: bool | None = None
     keywords_photos: bool | None = None
     daily: bool | None = None
+    search_words: bool | None = None
     monthly_limit_usd: float | None = Field(None, ge=0, le=1000)
 
 
@@ -86,6 +89,8 @@ class AiConfigStore:
             return config.keywords_artworks or config.keywords_photos
         if kind == "daily":
             return config.daily
+        if kind == "search_words":
+            return config.search_words
         return True
 
     def update(self, update: AiConfigUpdate) -> AiConfig:

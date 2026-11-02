@@ -63,6 +63,7 @@ class ParisMusees(Museum):
     api = "https://apicollections.parismusees.paris.fr/graphql"
     #: About 1000 requests a day per token: few, full pages.
     page_size = 100
+    language: ClassVar[str] = "fr"
 
     @classmethod
     def offered(cls, access: Access) -> bool:

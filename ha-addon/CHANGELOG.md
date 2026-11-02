@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.80.0
+
+- Szukaj: polskie słowa trafiają do muzeów zagranicznych po angielsku.
+  „gitara” idzie do Met, Rijksmuseum, NGA i reszty jako „guitar”, do Paris
+  Musées jako „guitare”, a do muzeów w Warszawie i Krakowie dalej po
+  polsku. Nazwiska, tytuły i słowa wpisane po angielsku zostają bez zmian.
+- Tłumaczenie bierze najpierw to, co serwer już zna (polskie nazwy stylów i
+  tematów, słowa kluczowe opisanych dzieł), a nowe słowa raz tłumaczy Haiku
+  i je zapamiętuje. Pierwsze wyszukanie nowego słowa może potrwać sekundę
+  dłużej.
+- Konfiguracja → Model językowy: nowy przełącznik „Tłumaczenie słów w
+  Szukaj” (domyślnie włączony).
+
 ## 1.79.8
 
 - Szukaj lepszej kopii: arkusz „Kopie dzieła” nie czeka już w nieskończoność

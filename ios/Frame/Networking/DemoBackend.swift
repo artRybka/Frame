@@ -56,7 +56,7 @@ actor DemoBackend: FrameBackend {
     ]
     private var aiValue = AiSettings(
         keySet: false, keyTail: nil, keyFromApp: false, plText: true, keywordsArtworks: true,
-        keywordsPhotos: true, daily: true, monthlyLimitUsd: 5, spentUsd: 0,
+        keywordsPhotos: true, daily: true, searchWords: true, monthlyLimitUsd: 5, spentUsd: 0,
         keywordsProgress: .init(done: 0, waiting: 0, refused: 0, batchItems: 0, batchDone: 0, preparing: false),
         plTextProgress: nil, error: nil
     )
@@ -1272,6 +1272,7 @@ actor DemoBackend: FrameBackend {
         if let value = update.keywordsArtworks { aiValue.keywordsArtworks = value }
         if let value = update.keywordsPhotos { aiValue.keywordsPhotos = value }
         if let value = update.daily { aiValue.daily = value }
+        if let value = update.searchWords { aiValue.searchWords = value }
         if let value = update.monthlyLimitUsd { aiValue.monthlyLimitUsd = value }
         return aiValue
     }
