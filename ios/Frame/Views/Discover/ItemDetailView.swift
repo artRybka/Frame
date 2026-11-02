@@ -491,8 +491,7 @@ struct ItemDetailView: View {
             Label("Otwórz studium", systemImage: "sparkles")
         }
         .buttonStyle(ActionButtonStyle())
-        .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .contextMenu {
+        .labelButtonMenu {
             Button("Przygotuj od nowa", systemImage: "arrow.clockwise") { prepareStudy(item, again: true) }
         }
         .sensoryFeedback(.impact(weight: .light), trigger: studyTaps)
@@ -757,8 +756,7 @@ struct ItemDetailView: View {
             }
         }
         .buttonStyle(ActionButtonStyle(prominent: true))
-        .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .contextMenu {
+        .labelButtonMenu {
             ForEach(HoldSpec.allCases) { spec in
                 Button(spec.label) {
                     Task { await show(spec) }

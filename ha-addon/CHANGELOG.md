@@ -7,6 +7,8 @@
 - Playlisty: karta „Teraz prezentowane” ma w prawym dolnym rogu tę samą
   strzałkę w czarnym kwadracie co studium dnia w Odkrywaj; cudza playlista,
   której nie da się otworzyć, nie ma strzałki.
+- Przytrzymany przycisk „Pokaż na ramce” (i „Otwórz studium”) zachowuje
+  kształt etykiety, bez zaokrąglonych rogów.
 
 ## 1.73.3
 
