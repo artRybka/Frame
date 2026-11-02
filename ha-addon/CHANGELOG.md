@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.73.4
+
+- Studium dzieła: podgląd „Na Twojej ramce” znów pokazuje całą ramkę w jej
+  kształcie, a nie biały pasek z małym obrazkiem.
+
 ## 1.73.3
 
 - Harmonogram: godziny ciszy nocnej mają ten sam obwiedziony wygląd co
