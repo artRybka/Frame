@@ -11,6 +11,19 @@
   pierwsze. Przytrzymaj dzieło (albo otwórz jego kartę), by je przywrócić.
   Wymaga zaktualizowanego serwera.
 
+## 1.75.6
+
+- Analiza kompozycji: główny układ zawsze ma swój ślad. Klin, którego punkt
+  zbiegu leży daleko poza obrazem (bar w „Nocnych markach”), rysuje się
+  dwiema prostymi po zbiegających się krawędziach; w 1.75.4 porządkowanie
+  czytelności usuwało go zamiast tego, co go dublowało. Runda 7.
+
+## 1.75.5
+
+- Ramka: znaczek na kafelku Sieć mówi, co zrobi stuknięcie: odśwież przy
+  Online, słońce przy Czuwaniu (stuknięcie budzi), „i” przy głębokim śnie
+  i poza Wi-Fi.
+
 ## 1.75.4
 
 - Podgląd na „Teraz” i inne obrazy nie wiszą już poza domem (Tailscale):
