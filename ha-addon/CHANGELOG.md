@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.78.1
+
+- Playlisty: nowa okładka karty „Ukryte”. Zamiast wyszarzonego kolażu
+  ukryte dzieła leżą pod kremową bibułą, jak grafika w teczce: kolory
+  prześwitują, szczegółów nie widać. W rogu naklejka z przekreślonym okiem.
+
 ## 1.78.0
 
 - Wskaźnik połączenia z serwerem jest teraz w lewym górnym rogu każdej
