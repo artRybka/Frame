@@ -14,6 +14,7 @@ struct SearchView: View {
         NavigationStack(path: $path) {
             MuseumSearchView()
                 .navigationTitle("Szukaj")
+                .serverLinkBadge()
                 .navigationDestination(for: String.self) { id in
                     ItemDetailView(itemID: id)
                 }

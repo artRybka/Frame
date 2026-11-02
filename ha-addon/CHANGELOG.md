@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.78.0
+
+- Wskaźnik połączenia z serwerem jest teraz w lewym górnym rogu każdej
+  zakładki, nie tylko w „Teraz”. Podczas łączenia to samo kręcące się
+  kółko, bez napisu „Odświeżam”; „Bez połączenia” pojawia się dopiero,
+  gdy serwer naprawdę nie odpowiada, a stuknięcie próbuje ponownie.
+- „Bez połączenia” nie miga już przy łączeniu przez Tailscale: aplikacja
+  próbuje przez 20 sekund (od razu ponownie, gdy zmieni się sieć, np. gdy
+  Tailscale wstanie), zamiast poddawać się po pierwszej próbie, i nie
+  pokazuje go, gdy serwer już odpowiedział, a „Teraz” jeszcze się wczytuje.
+  Tylko aplikacja, serwer bez zmian.
+
 ## 1.77.1
 
 - Playlisty widać od razu po uruchomieniu aplikacji (z poprzedniego razu,

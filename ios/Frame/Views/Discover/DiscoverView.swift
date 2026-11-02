@@ -33,6 +33,7 @@ struct DiscoverView: View {
             // The colours of the study of the day glow behind its card, as in "Teraz".
             .paperPage(glow: model.daily?.item.item.colors ?? [], lift: scrolled)
             .navigationTitle("Odkrywaj")
+            .serverLinkBadge()
             .navigationDestination(for: String.self) { id in
                 ItemDetailView(itemID: id)
             }

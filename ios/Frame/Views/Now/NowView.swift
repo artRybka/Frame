@@ -211,11 +211,6 @@ struct NowView: View {
                 }
             }
             .toolbar {
-                if stale {
-                    ToolbarItem(placement: .topBarLeading) {
-                        RefreshPill(failed: model.connection != .unknown) { await model.refreshAll() }
-                    }
-                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         showingSend = true
@@ -229,6 +224,8 @@ struct NowView: View {
                     .accessibilityLabel("Wyślij zdjęcie na ramkę")
                 }
             }
+            // The first launch's squares say it themselves.
+            .serverLinkBadge(hidden: model.player == nil && model.remembered == nil, stale: stale)
             .toolbarTitleDisplayMode(.inline)
             .navigationDestination(for: String.self) { id in
                 ItemDetailView(itemID: id)
@@ -888,45 +885,6 @@ struct LoadingBadge: View {
         .background(.black.opacity(0.45), in: RoundedRectangle(cornerRadius: 14))
         .allowsHitTesting(false)
         .transition(.opacity)
-    }
-}
-
-/// "Teraz" from the last launch while the server is asked; without the
-/// server, "Bez połączenia", and a tap tries again.
-struct RefreshPill: View {
-    let failed: Bool
-    let retry: () async -> Void
-    @State private var retrying = false
-
-    private var offline: Bool { failed && !retrying }
-
-    var body: some View {
-        Button {
-            Task {
-                retrying = true
-                await retry()
-                retrying = false
-            }
-        } label: {
-            HStack(spacing: 7) {
-                if offline {
-                    Image(systemName: "wifi.slash")
-                } else {
-                    ProgressView().controlSize(.small)
-                }
-                Text(offline ? "Bez połączenia" : "Odświeżam…")
-                    .fixedSize()
-            }
-            .font(.footnote.weight(.medium))
-            .foregroundStyle(Theme.inkSoft)
-            .padding(.horizontal, 12)
-            .frame(height: 34)
-            .background(.ultraThinMaterial, in: Capsule())
-        }
-        .buttonStyle(.plain)
-        .disabled(!offline)
-        .accessibilityLabel(offline ? "Bez połączenia z serwerem" : "Odświeżam")
-        .accessibilityHint(Text(offline ? "Próbuje ponownie połączyć się z serwerem" : ""))
     }
 }
 
