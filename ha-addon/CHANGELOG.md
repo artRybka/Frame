@@ -12,7 +12,8 @@
 - Kropki nastroju są czytelniejsze: Ciepłe to gradient od morelowego do
   ceglastej czerwieni, Chłodne od bladego błękitu do niebieskiego, Żywe
   świecąca czerwień, Stonowane szarawy beż w szarą zieleń, Kolorowe koło
-  barw. Te same kropki są przy kolorach na karcie dzieła, w polu
+  barw. Nastroje stoją parami, para w wierszu: Ciepłe i Chłodne, Żywe i
+  Stonowane, Kolorowe i Monochromia, Ciemne i Jasne. Te same kropki są przy kolorach na karcie dzieła, w polu
   wyszukiwania, w regułach playlist i na pastylce „Kolor” po wyborze
   nastroju.
 

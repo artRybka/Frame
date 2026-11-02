@@ -536,10 +536,16 @@ struct TermFacetPanel: View {
             if !moods.isEmpty {
                 VStack(alignment: .leading, spacing: 10) {
                     Eyebrow("Nastrój")
-                    FlowLayout(spacing: 8) {
-                        ForEach(moods, id: \.self) { mood in
-                            Chip(title: ColorTag.name(mood), colorTag: mood, selected: picked("color", mood)) {
-                                toggle("color", mood, ColorTag.name(mood))
+                    // In pairs, one pair a row: Ciepłe–Chłodne, Żywe–Stonowane,
+                    // Kolorowe–Monochromia, Ciemne–Jasne.
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(Array(stride(from: 0, to: moods.count, by: 2)), id: \.self) { start in
+                            HStack(spacing: 8) {
+                                ForEach(moods[start ..< min(start + 2, moods.count)], id: \.self) { mood in
+                                    Chip(title: ColorTag.name(mood), colorTag: mood, selected: picked("color", mood)) {
+                                        toggle("color", mood, ColorTag.name(mood))
+                                    }
+                                }
                             }
                         }
                     }
