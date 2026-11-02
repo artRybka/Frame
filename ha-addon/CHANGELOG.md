@@ -6,7 +6,9 @@
   serwer zapisuje w logu czasy każdej rundy zestawu.
 - Miniatury w Szukaj i Odkrywaj w swoich proporcjach, także z muzeów, które
   nie podają wymiarów.
-- Zakładka „Teraz” ma nową ikonkę: pełny obraz zamiast obrazu w ramce.
+- Nowa ikonka „Teraz” i „na ramce”: pełny obraz zamiast obrazu w ramce, w
+  zakładce, przyciskach „Pokaż na ramce” i „Prezentuj na ramce” oraz w Live
+  Activity.
 
 ## 1.71.1
 
