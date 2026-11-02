@@ -172,7 +172,7 @@ struct DailyView: View {
                     message: route.study == nil
                         ? "Serwer nie ma studium na ten dzień."
                         : "Przygotuj je na karcie dzieła, pod opisem.",
-                    systemImage: "photo.artframe"
+                    systemImage: "photo.fill"
                 )
                 Button("Spróbuj ponownie", systemImage: "arrow.clockwise") {
                     Task { await load() }
@@ -521,7 +521,7 @@ struct DailyView: View {
                 if sending {
                     ProgressView().tint(Theme.paper)
                 } else {
-                    Image(systemName: sent == true ? "checkmark" : "photo.artframe")
+                    Image(systemName: sent == true ? "checkmark" : "photo.fill")
                 }
             }
         }

@@ -598,7 +598,7 @@ struct PaletteStrip: View {
 struct EmptyStateView: View {
     let title: String
     let message: String
-    var systemImage = "photo.artframe"
+    var systemImage = "photo.fill"
 
     var body: some View {
         VStack(spacing: 12) {

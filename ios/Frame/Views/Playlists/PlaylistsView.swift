@@ -166,7 +166,7 @@ extension PlaylistsView {
     @ViewBuilder
     private func menu(_ playlist: PlaylistSummary) -> some View {
         if playlist.id != active?.id {
-            Button("Prezentuj na ramce", systemImage: "photo.artframe") {
+            Button("Prezentuj na ramce", systemImage: "photo.fill") {
                 Task { await model.play(playlist) }
             }
             .disabled(playlist.itemCount == 0)
@@ -180,7 +180,7 @@ extension PlaylistsView {
     @ViewBuilder
     private var suggestionsMenu: some View {
         if !suggestionsActive {
-            Button("Prezentuj na ramce", systemImage: "photo.artframe") {
+            Button("Prezentuj na ramce", systemImage: "photo.fill") {
                 Task { await model.playSuggestions() }
             }
         }
@@ -241,7 +241,7 @@ struct SuggestionsPage: View {
                 .font(.serif(17))
                 .foregroundStyle(Theme.inkSoft)
             if isActive {
-                Label("Teraz prezentowane na ramce", systemImage: "photo.artframe")
+                Label("Teraz prezentowane na ramce", systemImage: "photo.fill")
                     .font(.headline)
                     .foregroundStyle(Theme.vermilion)
                     .frame(maxWidth: .infinity)
@@ -261,7 +261,7 @@ struct SuggestionsPage: View {
                         if starting {
                             ProgressView().tint(Theme.paper)
                         } else {
-                            Image(systemName: "photo.artframe")
+                            Image(systemName: "photo.fill")
                         }
                     }
                 }
@@ -302,7 +302,7 @@ struct NowPlayingCard<Cover: View>: View {
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 6) {
-                    Image(systemName: "photo.artframe")
+                    Image(systemName: "photo.fill")
                     Eyebrow("Teraz prezentowane", color: Theme.vermilion)
                 }
                 .foregroundStyle(Theme.vermilion)

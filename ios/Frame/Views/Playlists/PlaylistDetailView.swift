@@ -195,7 +195,7 @@ struct PlaylistDetailView: View {
                 .padding(14)
                 .background(Theme.vermilion.opacity(0.1), in: RoundedRectangle(cornerRadius: 14))
             } else if isActive {
-                Label("Teraz prezentowane na ramce", systemImage: "photo.artframe")
+                Label("Teraz prezentowane na ramce", systemImage: "photo.fill")
                     .font(.headline)
                     .foregroundStyle(Theme.vermilion)
                     .frame(maxWidth: .infinity)
@@ -215,7 +215,7 @@ struct PlaylistDetailView: View {
                         if starting {
                             ProgressView().tint(Theme.paper)
                         } else {
-                            Image(systemName: "photo.artframe")
+                            Image(systemName: "photo.fill")
                         }
                     }
                 }

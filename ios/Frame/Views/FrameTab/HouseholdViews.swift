@@ -13,7 +13,7 @@ struct JoinView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
-                    Image(systemName: "photo.artframe")
+                    Image(systemName: "photo.fill")
                         .font(.system(size: 44))
                         .foregroundStyle(Theme.accent)
                         .frame(maxWidth: .infinity)
