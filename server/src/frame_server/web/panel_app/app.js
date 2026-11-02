@@ -238,6 +238,7 @@
   }
 
   function ask(reason) {
+    if (sleptAt) saved("alarms", null);  // down and up again since: gone
     sleptAt = 0;
     if (busy) return;
     busy = true;
@@ -397,7 +398,13 @@
   }
 
   // The panel's alarm, in its local time. Alarms add up and cannot be
-  // cancelled: one already set for that moment is not set again.
+  // cancelled: one already set for that moment is not set again. Only
+  // within one awake period: a wake drops the panel's alarms (2026-11-02,
+  // 07:00 kept from before two wakes was "already set", and neither it nor
+  // 07:04 set just before a wake rang). Forgotten at every start and after
+  // every sleep, so each sleep sets its own.
+  saved("alarms", null);
+
   function arm(ms) {
     var now = Date.now();
     var armed = (saved("alarms") || []).filter(function (t) { return t > now; });
