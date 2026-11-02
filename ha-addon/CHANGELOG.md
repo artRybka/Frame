@@ -1,7 +1,9 @@
 # Changelog
 
-## 1.71.2
+## 1.72.0
 
+- Nowy wygląd przycisków w całej aplikacji: jak etykiety muzealne
+  (prostokątne, wersaliki, atrament albo kontur). Niebieski akcent zniknął.
 - Zestawy z Odkrywaj nie czekają już w kolejce do muzeów za importem w tle;
   serwer zapisuje w logu czasy każdej rundy zestawu.
 - Miniatury w Szukaj i Odkrywaj w swoich proporcjach, także z muzeów, które
