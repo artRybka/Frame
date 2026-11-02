@@ -321,6 +321,14 @@ final class FrameAPITests: XCTestCase {
         let slopes = Set(strokes.map { (($0[1].x - $0[0].x) / ($0[1].y - $0[0].y) * 1e6).rounded() })
         XCTAssertEqual(slopes.count, 1)  // parallel
         XCTAssertEqual(rays.anchor, rays.points[0])
+        // A wedge keeps its corners: a stroke a side, not one curve swinging wide.
+        let wedge = [CGPoint(x: 300, y: 40), CGPoint(x: 100, y: 55), CGPoint(x: 98, y: 140), CGPoint(x: 300, y: 160)]
+        XCTAssertEqual(Pencil.corners(wedge).count, 3)
+        XCTAssertEqual(Pencil.corners([CGPoint(x: 0, y: 0), CGPoint(x: 100, y: 10), CGPoint(x: 200, y: 0)]).count, 1)
+        let wedgeMark = DailyWork.Mark(
+            shape: "line", points: wedge.map { .init(x: $0.x / 300, y: $0.y / 200) }, title: "Klin", text: ""
+        )
+        XCTAssertEqual(Pencil.paths(for: wedgeMark, in: size, seed: 1).count, 3)
         for mark in [rhythm, rays, motion] {
             let spot = Pencil.numberSpot(for: mark, in: size)
             XCTAssertTrue((0...size.width).contains(spot.x) && (0...size.height).contains(spot.y))
@@ -845,6 +853,61 @@ final class FrameAPITests: XCTestCase {
         XCTAssertFalse(ServerRoute.neverArrived(URLError(.timedOut)))
         XCTAssertTrue(ServerRoute.unreachable(URLError(.timedOut)))
         XCTAssertFalse(ServerRoute.unreachable(URLError(.cancelled)))
+    }
+
+    /// "Teraz" remembered at home shows away from home at once: the server's
+    /// pictures are kept by their path, whichever address they came from.
+    func testServerPicturesAreTheSameAtEitherAddress() async throws {
+        let home = try XCTUnwrap(URL(string: "http://192.0.2.11:8099"))
+        let remote = try XCTUnwrap(URL(string: "http://nas.tail1.ts.net:8099/"))
+        ImageLoader.sameServer(ServerRoute(home: home, remote: remote))
+        defer { ImageLoader.sameServer(nil) }
+        let atHome = LiveBackend(route: ServerRoute(home: home, remote: remote), token: nil)
+        let away = LiveBackend(route: ServerRoute(home: home, remote: remote, active: .remote), token: nil)
+        let path = "/api/previews/same-at-both.jpg"
+        let saved = try XCTUnwrap(atHome.request(for: .path(path)))
+        let asked = try XCTUnwrap(away.request(for: .path(path)))
+        XCTAssertNotEqual(saved.url, asked.url)
+
+        let picture = UIGraphicsImageRenderer(size: CGSize(width: 4, height: 4)).image { _ in }
+        await ImageLoader.shared.remember(picture, for: saved, maxPixel: 1600)
+        XCTAssertTrue(ImageLoader.inMemory(for: asked, maxPixel: 1600) === picture)
+        let found = try await ImageLoader.shared.image(for: asked, maxPixel: 1600, priority: .high)
+        XCTAssertTrue(found === picture)
+        // Somewhere else's picture of the same path is not the server's.
+        let elsewhere = URLRequest(url: try XCTUnwrap(URL(string: "https://example.org\(path)")))
+        XCTAssertNil(ImageLoader.inMemory(for: elsewhere, maxPixel: 1600))
+    }
+
+    /// A GET left waiting at the home address goes to the other one as soon
+    /// as the app moves there, instead of waiting for the home one to time out.
+    func testRequestsWaitingAtAnAddressLeftFollowTheServer() async throws {
+        let home = try XCTUnwrap(URL(string: "http://192.0.2.12:8099"))
+        let remote = try XCTUnwrap(URL(string: "http://nas.tail2.ts.net:8099"))
+        let route = ServerRoute(home: home, remote: remote)
+        let request = URLRequest(url: home.appending(path: "api/previews/x.jpg"))
+        XCTAssertTrue(route.serves(request))
+        XCTAssertFalse(route.serves(URLRequest(url: try XCTUnwrap(URL(string: "https://example.org/x.jpg")))))
+
+        let started = Date.now
+        let answer = Task {
+            try await route.follow(request) { sent -> String in
+                if sent.url?.host == "192.0.2.12" { try await Task.sleep(for: .seconds(60)) }
+                return sent.url?.absoluteString ?? ""
+            }
+        }
+        try await Task.sleep(for: .milliseconds(200))
+        route.use(.remote)
+        let url = try await answer.value
+        XCTAssertEqual(url, "http://nas.tail2.ts.net:8099/api/previews/x.jpg")
+        XCTAssertLessThan(Date.now.timeIntervalSince(started), 5)
+
+        // A write goes once, where it was meant to.
+        var write = request
+        write.httpMethod = "POST"
+        route.use(.home)
+        let posted = try await route.follow(write) { $0.url?.host ?? "" }
+        XCTAssertEqual(posted, "192.0.2.12")
     }
 
     func testRequestsCutShortByTheBackgroundAreNotServerErrors() async {

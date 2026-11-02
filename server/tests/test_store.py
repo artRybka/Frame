@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import io
 import os
 from pathlib import Path
 
+from PIL import Image
+
 from frame_server.fsutil import own_dirs, own_files
-from frame_server.store import KEEP_IMAGES, ContentStore
+from frame_server.store import KEEP_IMAGES, ContentStore, preview_url
 
 
 def _nas_litter(directory: Path) -> None:
@@ -42,3 +45,31 @@ def test_own_entries(tmp_path: Path) -> None:
     assert sorted(p.name for p in own_files(tmp_path)) == ["a.jpg", "b.png"]
     assert [p.name for p in own_files(tmp_path, "*.jpg")] == ["a.jpg"]
     assert sorted(p.name for p in own_dirs(tmp_path)) == ["0123456789ab", "dir.jpg"]
+
+
+def _png(size: tuple[int, int] = (64, 36)) -> bytes:
+    out = io.BytesIO()
+    Image.new("RGBA", size, (90, 110, 60, 255)).save(out, "PNG")
+    return out.getvalue()
+
+
+def test_preview_goes_as_a_jpeg(tmp_path: Path) -> None:
+    store = ContentStore(tmp_path)
+    info = store.publish(b"png", ext="png", preview_png=_png())
+    assert preview_url(info.file_id) == f"/api/previews/{info.file_id}.jpg"
+    path = store.preview_jpeg_path(info.file_id)
+    assert path is not None and path.read_bytes()[:2] == b"\xff\xd8"
+    with Image.open(path) as img:
+        assert img.size == (64, 36) and img.mode == "RGB"
+    assert store.preview_path(info.file_id) is not None  # older apps ask for the PNG
+
+    # Published before there were JPEGs: made once from the PNG.
+    path.unlink()
+    again = store.preview_jpeg_path(info.file_id)
+    assert again == path and again.is_file()
+    assert store.preview_jpeg_path("nothing") is None
+    assert store.preview_jpeg_path("../current") is None
+
+    for _ in range(KEEP_IMAGES + 1):
+        store.publish(b"png", ext="png", preview_png=_png())
+    assert not path.exists()  # pruned with its picture
