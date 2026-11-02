@@ -48,7 +48,7 @@ struct RootView: View {
         // Szukaj is the system search tab: on its own at the bottom, the
         // other tabs fold into one as its glass field opens.
         TabView(selection: tabSelection) {
-            Tab("Teraz", systemImage: "photo.artframe", value: Screen.now) { NowView() }
+            Tab("Teraz", systemImage: "photo.fill", value: Screen.now) { NowView() }
             Tab("Odkrywaj", systemImage: "square.grid.2x2", value: Screen.discover) { DiscoverView() }
             Tab("Playlisty", systemImage: "rectangle.stack", value: Screen.playlists) { PlaylistsView() }
             Tab("Ramka", systemImage: "slider.horizontal.3", value: Screen.frame) { FrameTabView() }
