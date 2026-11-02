@@ -93,6 +93,8 @@ struct DailyView: View {
     @State private var findingCopies = false
     /// How far the page is scrolled, for the glow at the top.
     @State private var scrolled: CGFloat = 0
+    /// The title held once: the museum's own shows until held again ("Tytuł w oryginale").
+    @State private var peeking = false
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -519,12 +521,21 @@ struct DailyView: View {
         let item = work.item.item
         let byline = [Names.artist(item.artist), item.dateText].filter { !$0.isEmpty }.joined(separator: " · ")
         let where_ = [item.medium, item.museum].filter { !$0.isEmpty }.joined(separator: " · ")
+        let original = OriginalTitle.of(item.title, shown: work.title)
         return VStack(alignment: .leading, spacing: 4) {
-            Text(work.title)
+            Text(peeking ? original ?? work.title : work.title)
                 .font(.serif(26, weight: .semibold))
                 .foregroundStyle(Theme.ink)
                 .fixedSize(horizontal: false, vertical: true)
-            if !byline.isEmpty { Text(byline).font(.subheadline).foregroundStyle(Theme.ink) }
+                .contentTransition(.opacity)
+                // Held: the museum's own, until held again.
+                .titlePeek(enabled: original != nil, peeking: $peeking)
+            if !byline.isEmpty {
+                Text(byline).font(.subheadline).foregroundStyle(Theme.ink)
+                    // Their other works, on Szukaj.
+                    .artistPress { model.artistSearch = item.artist }
+                    .allowsHitTesting(!item.artist.isEmpty)
+            }
             if !where_.isEmpty { Text(where_).font(.caption).foregroundStyle(Theme.inkSoft) }
         }
     }

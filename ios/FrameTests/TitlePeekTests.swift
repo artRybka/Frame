@@ -6,20 +6,15 @@ import XCTest
 final class TitlePeekTests: XCTestCase {
     func testDifferentTitleIsShown() {
         XCTAssertEqual(
-            TitlePeekNote.original("Young Woman with a Water Pitcher", shown: "Młoda kobieta z dzbanem"),
+            OriginalTitle.of("Young Woman with a Water Pitcher", shown: "Młoda kobieta z dzbanem"),
             "Young Woman with a Water Pitcher"
         )
     }
 
     func testSameOrEmptyTitleShowsNothing() {
         // Polish museums: the Polish title is the museum's.
-        XCTAssertNil(TitlePeekNote.original("Bitwa pod Grunwaldem", shown: "Bitwa pod Grunwaldem"))
-        XCTAssertNil(TitlePeekNote.original("nighthawks ", shown: "Nighthawks"))
-        XCTAssertNil(TitlePeekNote.original("  ", shown: "Bez tytułu"))
-    }
-
-    func testNoteNamesNonMuseumSources() {
-        XCTAssertEqual(TitlePeekNote.text("met"), "Tytuł z muzeum")
-        XCTAssertEqual(TitlePeekNote.text("wmc"), "Tytuł ze źródła, Wikimedia Commons")
+        XCTAssertNil(OriginalTitle.of("Bitwa pod Grunwaldem", shown: "Bitwa pod Grunwaldem"))
+        XCTAssertNil(OriginalTitle.of("nighthawks ", shown: "Nighthawks"))
+        XCTAssertNil(OriginalTitle.of("  ", shown: "Bez tytułu"))
     }
 }
