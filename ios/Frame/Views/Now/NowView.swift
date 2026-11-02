@@ -22,6 +22,8 @@ struct NowView: View {
     /// asks for them by name, as the one cached from before shows the old crop.
     @State private var applied: [String: FramingCrops] = [:]
     @State private var cropping = false
+    /// The preview cropping grows out of ("pop").
+    @Namespace private var zoomSpace
     @State private var sending = false
     @State private var routed = false
     /// The hero picture last loaded: cropping waits for it, so a half-loaded
@@ -245,6 +247,9 @@ struct NowView: View {
                         onFrame: offset == 0,
                         draft: $draft, save: saveCrop
                     )
+                    .navigationTransition(.zoom(sourceID: "crop", in: zoomSpace))
+                    // A drag down crops: it must not close the screen past "Anuluj".
+                    .interactiveDismissDisabled()
                 }
             }
             .onChange(of: canCrop) { _, can in
@@ -351,6 +356,7 @@ struct NowView: View {
             FramedArtwork(
                 ref: heroRef, aspectRatio: aspect,
                 placeholder: shownItem?.placeholderColor ?? browsed?.summary.placeholderColor ?? Theme.mat,
+                shadow: false,
                 // The last launch's picture to the fresh one; a swap ends on
                 // its own picture instead.
                 crossfade: swapPlan?.url != current?.previewUrl
@@ -376,10 +382,13 @@ struct NowView: View {
                 guard ref == heroRef else { return }
                 withAnimation(.easeOut(duration: 0.3)) { loadedHero = ref }
             }
-            .contentShape(Rectangle())
-            .onTapGesture {
-                if canCrop, !sending, !stale { cropping = true }
+            // Cropping grows out of it, as on the artwork card.
+            .matchedTransitionSource(id: "crop", in: zoomSpace) {
+                $0.clipShape(RoundedRectangle(cornerRadius: 2))
             }
+            .frameShadow()
+            // Tap or hold (the phone taps closer and closer), like the picture on the card.
+            .picturePress(enabled: canCrop && !sending && !stale) { cropping = true }
             .accessibilityAddTraits(canCrop ? .isButton : [])
             .accessibilityHint(Text(canCrop ? "Otwiera kadrowanie na całym ekranie" : ""))
             .accessibilityValue(Text(redrawing ? "Ramka zmienia obraz" : ""))
