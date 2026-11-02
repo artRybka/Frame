@@ -1533,11 +1533,11 @@ struct OrientationPicker: View {
     /// template image (the control tints it like its own titles).
     private func segment(_ title: String, portrait: Bool) -> some View {
         let traits = UITraitCollection(preferredContentSizeCategory: UIContentSizeCategory(typeSize))
-        let font = UIFont.preferredFont(forTextStyle: .subheadline, compatibleWith: traits).withWeight(.medium)
+        let font = UIFont.preferredFont(forTextStyle: .footnote, compatibleWith: traits).withWeight(.medium)
         let text = NSAttributedString(string: title, attributes: [.font: font, .foregroundColor: UIColor.black])
         let textSize = text.size()
-        let frame = portrait ? CGSize(width: 9, height: 14) : CGSize(width: 15, height: 10)
-        let gap: CGFloat = 7
+        let frame = portrait ? CGSize(width: 8.5, height: 13) : CGSize(width: 14, height: 9)
+        let gap: CGFloat = 6
         let size = CGSize(width: ceil(frame.width + gap + textSize.width), height: ceil(max(frame.height, textSize.height)))
         let image = UIGraphicsImageRenderer(size: size).image { _ in
             let box = CGRect(x: 0.75, y: (size.height - frame.height) / 2 + 0.75,
