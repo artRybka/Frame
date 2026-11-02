@@ -794,23 +794,14 @@ actor DemoBackend: FrameBackend {
             composition: .init(
                 views: [
                     .init(
-                        title: "Geometria",
+                        title: "Analiza kompozycji",
                         grid: "golden",
-                        text: "Złota spirala zwija się w grzywę fali, a jej łuki biegną po grzbiecie wody. Grzywa jest też wierzchołkiem wielkiej, otwartej piramidy, a linie złotego podziału przecinają się tuż przy szczycie Fudżi.",
+                        text: "Kompozycja otwarta i dynamiczna: wielka fala wchodzi w obraz z lewej i jej podstawę tnie dolna krawędź, więc woda trwa dalej poza kadrem. Grzywa zwija się po złotej spirali, a fala przewala się w prawo, nad łodziami. Trzy łodzie leżą w równym rytmie skosów, równoległych do siebie. W dolinie, na przecięciu linii złotego podziału, stoi mała, nieruchoma Fudżi: jedyny spokojny punkt w ruchu wody.",
                         marks: [
                             .init(shape: "spiral", points: [Spot(x: 0.97, y: 0.47), Spot(x: 0.75, y: 0.93), Spot(x: 0.4, y: 0.35)], title: "Złota spirala", text: "oko w zawijającej się grzywie"),
-                            .init(shape: "line", points: [Spot(x: -0.05, y: 0.95), Spot(x: 0.3, y: 0.09), Spot(x: 0.9, y: 1.1)], title: "Piramida fali", text: "od grzywy w dół, poza ramę"),
-                            .init(shape: "loop", points: [Spot(x: 0.3, y: 0.48), Spot(x: 0.566, y: 0.866)], title: "Koło", text: "grzbiet fali i dolina zamykają krąg"),
-                            .init(shape: "loop", points: [Spot(x: 0.618, y: 0.618), Spot(x: 0.64, y: 0.65)], title: "Złoty punkt", text: "linie φ przecinają się przy szczycie"),
-                        ]
-                    ),
-                    .init(
-                        title: "Geometria detali",
-                        grid: "none",
-                        text: "Fudżi to mały, równy trójkąt, który powtarza w dolinie kształt wielkiej fali. Łodzie układają się w łuk wzdłuż grzbietu wody.",
-                        marks: [
-                            .init(shape: "triangle", points: [Spot(x: 0.58, y: 0.72), Spot(x: 0.645, y: 0.61), Spot(x: 0.71, y: 0.72)], title: "Szczyt Fudżi", text: "mały trójkąt w dolinie fal"),
-                            .init(shape: "loop", points: [Spot(x: 0.55, y: 0.86), Spot(x: 0.72, y: 0.95)], title: "Łuk łodzi", text: "trzy łodzie na jednym grzbiecie"),
+                            .init(shape: "motion", points: [Spot(x: 0.08, y: 0.55), Spot(x: 0.2, y: 0.2), Spot(x: 0.4, y: 0.12), Spot(x: 0.52, y: 0.3)], title: "Przewalająca się fala", text: "grzywa leci nad łodzie"),
+                            .init(shape: "rhythm", points: [Spot(x: 0.04, y: 0.8), Spot(x: 0.3, y: 0.62), Spot(x: 0.4, y: 0.76), Spot(x: 0.6, y: 0.64), Spot(x: 0.66, y: 0.92), Spot(x: 0.86, y: 0.8)], title: "Rytm łodzi", text: "trzy równoległe skosy"),
+                            .init(shape: "loop", points: [Spot(x: 0.618, y: 0.618), Spot(x: 0.66, y: 0.67)], title: "Fudżi", text: "na przecięciu linii φ"),
                         ]
                     ),
                 ],

@@ -15,7 +15,7 @@ from PIL import Image
 
 from . import notifications
 from .ai import AiConfigStore, AiWorker, Claude, DailyJob, KeywordsJob, PlTextJob
-from .ai.check import CheckJob
+from .ai.composition import ComposeJob
 from .ai.study import StudyJob
 from .albums import Albums
 from .artist_works import ArtistWorks
@@ -236,8 +236,10 @@ class FrameService:
         )
         # Favourite artists' birthdays, for the notifications.
         self.births = Births(self.library)
-        # The composition checked over its marks, for pages written before that.
-        self.ai.register(CheckJob(self.library, self.images, self.ai_config))
+        # The composition written again for pages written before (as the owner
+        # lets it) and for pages left without one.
+        self.compose = ComposeJob(self.daily.job)
+        self.ai.register(self.compose)
 
         self._tasks: set[asyncio.Task[object]] = set()
 

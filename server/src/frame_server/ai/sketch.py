@@ -12,6 +12,7 @@ runs corner to corner.
 from __future__ import annotations
 
 import io
+import itertools
 import math
 from typing import TYPE_CHECKING
 
@@ -44,6 +45,9 @@ NEAR_LINE = 0.05
 NEAR_CORNER = 0.04
 #: A line within this many degrees of level or upright counts as level or upright.
 LEVEL_DEGREES = 4.0
+
+#: A rhythm's strokes are drawn this much longer than the forms they stand on.
+STRETCH = 1.2
 
 INK = (255, 0, 170)
 EDGE = (255, 255, 255)
@@ -96,11 +100,83 @@ def spiral(
     return found
 
 
+def beats(points: list[tuple[float, float]]) -> list[list[tuple[float, float]]]:
+    """A rhythm's strokes: one along each repeated form (a pair of points),
+    all parallel to their common direction and a little longer than the
+    forms (as the app draws them: straightened, no line between them)."""
+    pairs = [(points[n], points[n + 1]) for n in range(0, len(points) - 1, 2)]
+    ux = uy = 0.0
+    for (ax, ay), (bx, by) in pairs:
+        dx, dy = bx - ax, by - ay
+        if dy < 0 or (dy == 0 and dx < 0):  # every one pointing the same way
+            dx, dy = -dx, -dy
+        length = math.hypot(dx, dy) or 1.0
+        ux, uy = ux + dx / length, uy + dy / length
+    norm = math.hypot(ux, uy) or 1.0
+    ux, uy = ux / norm, uy / norm
+    found = []
+    for (ax, ay), (bx, by) in pairs:
+        mx, my = (ax + bx) / 2, (ay + by) / 2
+        half = math.hypot(bx - ax, by - ay) / 2 * STRETCH
+        found.append([(mx - ux * half, my - uy * half), (mx + ux * half, my + uy * half)])
+    return found
+
+
+def smooth(points: list[tuple[float, float]], samples: int = 10) -> list[tuple[float, float]]:
+    """A Catmull-Rom curve through the points (as the app draws a path)."""
+    if len(points) < 3:
+        return points
+    found = []
+    for n in range(len(points) - 1):
+        p0, p1 = points[max(n - 1, 0)], points[n]
+        p2, p3 = points[n + 1], points[min(n + 2, len(points) - 1)]
+        for step in range(samples):
+            t = step / samples
+            found.append(
+                tuple(
+                    0.5
+                    * (
+                        2 * p1[k]
+                        + (p2[k] - p0[k]) * t
+                        + (2 * p0[k] - 5 * p1[k] + 4 * p2[k] - p3[k]) * t * t
+                        + (3 * p1[k] - p0[k] - 3 * p2[k] + p3[k]) * t**3
+                    )
+                    for k in (0, 1)
+                )
+            )
+    found.append(points[-1])
+    return found  # type: ignore[return-value]
+
+
+def speed_lines(path: list[tuple[float, float]], gap: float) -> list[list[tuple[float, float]]]:
+    """Two short strokes beside the start of a movement's path, trailing it."""
+    found = []
+    for side, a, b in ((1.0, 0.0, 0.45), (-1.0, 0.08, 0.38)):
+        first = int(len(path) * a)
+        last = max(int(len(path) * b), first + 2)
+        line = []
+        for n in range(first, min(last, len(path))):
+            (x0, y0), (x1, y1) = path[max(n - 1, 0)], path[min(n + 1, len(path) - 1)]
+            angle = math.atan2(y1 - y0, x1 - x0) + math.pi / 2
+            dx, dy = side * gap * math.cos(angle), side * gap * math.sin(angle)
+            line.append((path[n][0] + dx, path[n][1] + dy))
+        if len(line) >= 2:
+            found.append(line)
+    return found
+
+
 def _strokes(mark: Mark, size: tuple[int, int]) -> list[list[tuple[float, float]]]:
     """The mark's polylines in pixels (a loop is drawn apart)."""
     points = [_xy(p, size) for p in mark.points]
     if mark.shape == "spiral" and len(points) == 3:
         return [spiral(*points)]
+    if mark.shape == "rhythm":
+        return beats(points)
+    if mark.shape == "rays":
+        return [[end, points[0]] for end in points[1:]]
+    if mark.shape == "motion":
+        path = smooth(points)
+        return [path, *speed_lines(path, max(2, round(max(size) / 450)) * 5)]
     if mark.shape == "triangle":
         return [[*points, points[0]]]
     if mark.shape == "rect":
@@ -126,8 +202,14 @@ def _number_spot(mark: Mark, size: tuple[int, int], radius: float) -> tuple[floa
     elif mark.shape == "spiral":
         x, y = _xy(mark.points[-1], size)
         spot = (x + radius * 1.3, y - radius * 1.3)
-    elif mark.shape in ("arrow", "line", "underline"):
+    elif mark.shape in ("arrow", "line", "underline", "motion"):
         x, y = _xy(mark.points[0], size)
+        spot = (x - radius * 1.2, y - radius * 1.2)
+    elif mark.shape == "rays":
+        x, y = _xy(mark.points[1], size)
+        spot = (x - radius * 1.2, y - radius * 1.2)
+    elif mark.shape == "rhythm":
+        (x, y), _ = beats([_xy(p, size) for p in mark.points])[0]
         spot = (x - radius * 1.2, y - radius * 1.2)
     else:
         a = mark.anchor()
@@ -160,13 +242,13 @@ def draw(picture: Image.Image, view: View) -> Image.Image:
             canvas.ellipse(box, outline=EDGE, width=pen + 2)
             canvas.ellipse(box, outline=INK, width=pen)
             continue
-        for line in _strokes(mark, size):
+        for n, line in enumerate(_strokes(mark, size)):
             if len(line) < 2:
                 continue
             canvas.line(line, fill=EDGE, width=pen + 2, joint="curve")
             canvas.line(line, fill=INK, width=pen, joint="curve")
-            if mark.shape == "arrow":
-                head = _arrow_head(line, pen * 6)
+            if mark.shape == "arrow" or (mark.shape == "motion" and n == 0):
+                head = _arrow_head(line, pen * (9 if mark.shape == "motion" else 6))
                 canvas.line(head, fill=EDGE, width=pen + 2)
                 canvas.line(head, fill=INK, width=pen)
     radius = max(9.0, max(size) / 70)
@@ -220,7 +302,17 @@ def measure(mark: Mark, size: tuple[int, int]) -> str:
             f"ramiona pod kątem {arms[0]:.0f}° i {arms[1]:.0f}°"
         )
         return text + (", biegnie poza obraz" if _outside(points) else "")
-    if mark.shape in ("line", "arrow", "underline") and len(points) >= 2:
+    if mark.shape == "rhythm":
+        return _rhythm_measure(mark, size)
+    if mark.shape == "rays":
+        eye = points[0]
+        text = (
+            f"punkt zbiegu ({_px(eye, size)}: x {_nearest(eye.x)}, y {_nearest(eye.y)}), "
+            f"{_many(len(points) - 1, 'promienie', 'promieni')} pod kątem "
+            + ", ".join(f"{_degrees(eye, p, size):.0f}°" for p in points[1:])
+        )
+        return text + (", wychodzi poza obraz" if _outside(points) else "")
+    if mark.shape in ("line", "arrow", "underline", "motion") and len(points) >= 2:
         a, b = points[0], points[-1]
         degrees = _degrees(a, b, size) % 180
         parts = [f"kąt {degrees:.0f}°"]
@@ -296,6 +388,28 @@ def _armature(a: Spot, b: Spot, size: tuple[int, int]) -> list[str]:
         if min(abs(y - w / h), abs(y - (1 - w / h))) <= ON_LINE:
             found.append("na linii rabatu (bok kwadratu z krótszego boku obrazu)")
     return found
+
+
+def _many(count: int, few: str, many: str) -> str:
+    """A count in Polish: 2–4 (22–24, …) take one form, the rest another."""
+    return f"{count} {few if count % 10 in (2, 3, 4) and count % 100 not in (12, 13, 14) else many}"
+
+
+def _rhythm_measure(mark: Mark, size: tuple[int, int]) -> str:
+    """A rhythm's beats: how many, where they stand, how far apart."""
+    strokes = beats([_xy(p, size) for p in mark.points])
+    middles = [((a[0] + b[0]) / 2, (a[1] + b[1]) / 2) for a, b in strokes]
+    lengths = [math.hypot(b[0] - a[0], b[1] - a[1]) / STRETCH for a, b in strokes]
+    gaps = [math.hypot(q[0] - p[0], q[1] - p[1]) for p, q in itertools.pairwise(middles)]
+    (ax, ay), (bx, by) = strokes[0]
+    degrees = math.degrees(math.atan2(-(by - ay), bx - ax)) % 180
+    return (
+        f"{_many(len(strokes), 'kreski', 'kresek')} pod kątem {degrees:.0f}°, środki w "
+        + " ".join(f"({x:.0f}, {y:.0f})" for x, y in middles)
+        + f", długości {', '.join(f'{v:.0f}' for v in lengths)} px, odstępy "
+        + ", ".join(f"{v:.0f}" for v in gaps)
+        + " px"
+    )
 
 
 def _spiral_measure(mark: Mark, size: tuple[int, int]) -> str:
@@ -379,6 +493,8 @@ def key_points(view: View) -> list[tuple[float, float]]:
         if mark.shape in ("loop", "rect", "triangle", "spiral"):
             centre = mark.anchor()
             spots.append((centre.x, centre.y))
+        if mark.shape == "rays" and 0 <= points[0].x <= 1 and 0 <= points[0].y <= 1:
+            spots.append((points[0].x, points[0].y))
     return spots + [(x, y) for _, _, x, y in crossings(view)]
 
 

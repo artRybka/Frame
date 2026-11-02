@@ -4,7 +4,8 @@ fragments worth a close look, how it fares on the frame, which of the
 catalogue's works are like it and what it led to later.
 
 One question a day (Opus sees a picture far better than the others), from
-the picture itself and what the museum, Wikidata and Wikipedia say. The
+the picture itself and what the museum, Wikidata and Wikipedia say; the
+composition is a question of its own (``ai.composition``), asked after it. The
 server picks the work (``frame_server.daily``) and the works like it; the
 model only says why each one is like it, so it never names a work the
 catalogue does not have.
@@ -45,7 +46,7 @@ log = logging.getLogger(__name__)
 
 KIND = "daily"
 #: Changed whenever the prompt changes, so the text is written again.
-PROMPT_VERSION = "daily-10"
+PROMPT_VERSION = "daily-11"
 #: The tile's two lines under the title (characters).
 TEASER_CHARS = 100
 #: The picture goes out this big: as large as Opus reads one, so that it
@@ -54,21 +55,22 @@ IMAGE_SIDE = 2576
 #: Wikipedia articles about the work, and the artist's opening paragraph.
 WORK_CHARS = 9000
 ARTIST_CHARS = 1500
-#: "Geometria" and "Geometria detali" (Mateusz 2026-10-31 dropped "Rytm",
-#: the model hunted for small repetitions, and then "Spojrzenie").
-MAX_VIEWS = 2
+#: The one take on the composition the app shows (Mateusz 2026-11-02:
+#: no "Geometria detali" any more, and not called "Geometria").
+TAKE = "Analiza kompozycji"
 #: Article sections worth keeping when Wikipedia is cut: what it says of
 #: the composition.
 COMPOSITION_SECTIONS = ("compos", "kompozyc", "analy", "analiz", "descript", "opis")
 #: Kept in a page whose composition Claude checked over its own marks drawn
 #: on the picture (``ai.check``): what the check changed.
 CHECKED = "composition_checked"
-#: Which round of the check a page's takes went through: pages checked by
-#: an earlier one are checked once more (round 2: the great lines of
-#: "Geometria"; round 3: the golden spiral, more grids, no "Spojrzenie";
-#: both asked for by Mateusz 2026-10-31).
+#: Which round of the composition a page's take went through (round 2: the
+#: great lines of "Geometria"; round 3: the golden spiral, more grids, no
+#: "Spojrzenie", both asked for by Mateusz 2026-10-31; round 4: the analysis
+#: asked apart, ``ai.composition``, 2026-11-02). Pages of an earlier round
+#: are written again by ``ai.composition.ComposeJob`` as the owner lets it.
 CHECK_ROUND = "composition_round"
-ROUND = 3
+ROUND = 4
 #: Kept in a page that came back without some of what every page has (see
 #: :func:`missing`) though it was asked for twice: what it lacks. A page
 #: without it that lacks them all was written before the second question
@@ -76,6 +78,10 @@ ROUND = 3
 INCOMPLETE = "incomplete"
 MAX_MARKS = 6
 MAX_LINE_POINTS = 12
+#: A rhythm's beats (a pair of points each) and a perspective's rays.
+MAX_BEATS = 12
+MIN_BEATS = 3
+MAX_RAYS = 8
 #: Points closer than this (fraction of the picture) are one.
 SAME_SPOT = 0.012
 #: A triangle smaller than this (fraction of the picture) is a line.
@@ -86,18 +92,25 @@ MIN_LOOP = 0.015
 #: and its ends this near opposite corners run exactly corner to corner.
 STRAIGHTEN = 0.012
 SNAP_CORNER = 0.04
-#: The marks drawn over the picture, and how many points each takes
-#: (lines and arrows: 2 up to ``MAX_LINE_POINTS``). Older pages may hold
-#: "rhythm" marks too; their take is no longer shown.
+#: The marks drawn over the picture, and how many points each takes at
+#: least (lines, arrows and motion: up to ``MAX_LINE_POINTS``). A "rhythm"
+#: is a pair of points per repeated form, its foot and top: the app draws a
+#: stroke along each, parallel to the others, and no line between them
+#: (Mateusz 2026-11-02). "rays" are a vanishing point and the far ends of
+#: the edges running into it; "motion" a movement in the picture (a
+#: flight, a swing), drawn as a sweeping arrow with speed lines. Old pages'
+#: rhythms (one point per form) were in a take no longer shown.
 SHAPES = {
     "arrow": 2, "line": 2, "loop": 2, "triangle": 3, "rect": 2, "underline": 2, "spiral": 3,
+    "rhythm": 2 * MIN_BEATS, "rays": 3, "motion": 2,
 }  # fmt: skip
 #: The shapes that run through several points.
-PATHS = ("arrow", "line")
+PATHS = ("arrow", "line", "motion")
 #: The shapes of the picture's great lines, which may run on past its
-#: edges (a big triangle's apex up in the sky, its feet beyond the frame):
-#: their points may lie this far outside it (fraction of the side).
-REACHING = ("line", "triangle", "spiral")
+#: edges (a big triangle's apex up in the sky, its feet beyond the frame, a
+#: vanishing point above the picture): their points may lie this far
+#: outside it (fraction of the side).
+REACHING = ("line", "triangle", "spiral", "rays")
 REACH = 0.5
 #: The grids the app draws under a view: none, the golden section, thirds
 #: (3×3), halves (2×2), thirds across and halves down (3×2) and the other
@@ -110,9 +123,9 @@ DETAIL_MIN = 0.04
 DETAIL_MAX = 0.6
 MAX_LEGACY = 5
 SOURCES = ("obraz", "dane muzeum", "Wikidata", "Wikipedia", "wiedza ogólna")
-#: Picture, sources and an answer with thinking, then the check of the
-#: composition over the marks drawn on the picture (``ai.check``).
-TYPICAL = Usage(input_tokens=19000, cache_read_input_tokens=2500, output_tokens=9000)
+#: Picture, sources and an answer with thinking (the composition is asked
+#: apart, ``ai.composition``, and counted there).
+TYPICAL = Usage(input_tokens=17000, cache_read_input_tokens=2500, output_tokens=6000)
 
 MONTHS = (
     "stycznia", "lutego", "marca", "kwietnia", "maja", "czerwca", "lipca", "sierpnia",
@@ -123,70 +136,7 @@ MONTHS = (
 #: points far better in pixels than in fractions); the server divides them.
 POINTS = """Współrzędne podajesz w pikselach \
 obrazu, który dostajesz (jego wymiary są w danych: OBRAZ), od lewego górnego rogu: x w prawo, \
-y w dół. Celuj dokładnie: kółko ma środek w środku rzeczy, a róg na krawędzi prostokąta, \
-w który się ona wpisuje; horyzont leży na horyzoncie; krawędź lub oś idzie po tej krawędzi \
-lub osi; wierzchołki trójkąta leżą na prawdziwych punktach formy (czubek głowy, łokieć, skraj \
-szaty), nie obok; przekątna obrazu biegnie od rogu do rogu; oko spirali leży na rzeczy, \
-w którą spirala się zwija. Linie, trójkąty i spirale mogą wychodzić poza obraz (opis niżej)."""
-
-#: How the composition is looked at, as Mateusz asked (2026-10-31, with
-#: patterns: a central division, converging perspective, diagonals, golden
-#: triangles, the golden spiral on "The Great Wave", golden circles): what
-#: the sources say first, then the masses, then each pattern laid over the
-#: picture and kept only where it holds; the whole picture's skeleton
-#: first (the model used to ring single things), smaller things apart.
-COMPOSITION = """- "composition": analiza kompozycji \
-jako ujęcia ("views"), każde rysowane osobno ołówkiem na obrazie: „Geometria” (układ całego \
-obrazu) i „Geometria detali” (układy w mniejszych rzeczach), i żadnych innych (o świetle \
-piszesz w "colour"). Pracuj jak historyk sztuki, po kolei:
-  1. Przeczytaj, co źródła mówią o kompozycji dzieła (Wikipedia często ma rozdział \
-„Composition” lub „Kompozycja”). Układ, który opisują, sprawdź na obrazie; jeśli się \
-zgadza, pokaż go śladami.
-  2. Zmruż oczy: gdzie leżą duże masy jasne i ciemne, główny motyw i 2–4 ważne punkty \
-(twarz, szczyt, najjaśniejsza plama, punkt zbiegu, przecięcie ważnych krawędzi).
-  3. Przyłóż do obrazu po kolei wzory i zostaw tylko te, które naprawdę pasują:
-  * siatki: złoty podział (linie w 0,382 i 0,618 boku), trójpodział 3×3 (1/3 i 2/3), podział \
-centralny 2×2 (połowy), 3×2 (pionowe linie w 1/3 i 2/3 szerokości, pozioma w połowie \
-wysokości) i 2×3 (pionowa w połowie szerokości, poziome w 1/3 i 2/3 wysokości). Siatka \
-pasuje, gdy główny motyw, horyzont, oś, wierzchołek albo przecięcie linii leży na jej linii \
-lub na przecięciu dwóch jej linii (mocny punkt), do około 5% boku;
-  * złota spirala (Fibonacciego): jej promień maleje 1,618 raza co ćwierć obrotu, jak łuki \
-w kolejnych kwadratach złotego prostokąta. Oko spirali leży zwykle na głównym motywie, często \
-na przecięciu linii złotego podziału, a łuki prowadzą przez inne ważne formy (grzbiet fali, \
-ramię, łuk drogi, krawędź chmury). Może być obrócona i większa niż obraz. Pokaż ją tylko, \
-gdy łuki naprawdę biegną po formach;
-  * przekątne: obie przekątne obrazu (z rogu do rogu, razem jako X), złote trójkąty (jedna \
-przekątna i linie do niej prostopadłe z dwóch pozostałych rogów; ich przecięcia z przekątną to \
-mocne punkty), przekątne przechodzące przez kilka form (ukośne, nie z rogu do rogu), \
-perspektywa zbieżna (linie zbiegające się w punkcie zbiegu);
-  * figury: wielki trójkąt lub piramida (wierzchołek w najwyższym ważnym punkcie, boki przez \
-ramiona, szaty, zbocza aż do dolnej krawędzi albo za nią), V i odwrócone V, koło i owal \
-(formy ułożone w krąg, sklepienie, łuk fali, złote koła wpisane w kwadraty złotego \
-prostokąta), krzywa S, oś pionowa i równowaga mas.
-  Takie linie zwykle nie są narysowane: wyznacza je kilka rzeczy ułożonych w jednym kierunku, \
-a oko je dopowiada. Prowadź je przez środki i krawędzie tych rzeczy, nie obok.
-  4. Wybierz najmocniejsze: jakiś wzór da się przyłożyć do każdego obrazu, więc nazwij tylko \
-te, które porządkują ten obraz. Najciekawsze jest, gdy figura krzyżuje się z siatką: oko \
-spirali, wierzchołek trójkąta, środek koła albo przecięcie przekątnych trafia w linię lub \
-mocny punkt siatki. Ustaw wtedy "grid" i nazwij to w tekście („Oko spirali na przecięciu \
-złotych linii”, „Wierzchołek piramidy na górnej linii trójpodziału”). Do ok. 2% boku od \
-linii pisz „na linii”, dalej „blisko linii”. Złoty podział i trójpodział leżą blisko \
-siebie, więc wybierz siatkę, której linia jest bliżej; gdy żadna nie pasuje, "grid" to \
-"none". Nie przypisuj artyście świadomego użycia złotego podziału, jeśli źródła tego nie \
-mówią.
-  „Geometria”: 2–5 śladów układu całego obrazu, najpierw najmocniejszy. Linie, trójkąty \
-i spirale mogą wychodzić poza obraz (do połowy szerokości lub wysokości za krawędzią, także \
-ujemne); aplikacja przytnie rysunek do obrazu. Otwarty trójkąt lub V rysuj jako "line" \
-z 3 punktami (koniec boku, wierzchołek, koniec drugiego boku), X jako dwie linie, złote \
-trójkąty jako przekątną i dwie prostopadłe. Bez kółek wokół pojedynczych rzeczy, chyba że \
-rzecz leży w mocnym punkcie siatki albo kółko jest wielkim kręgiem układu.
-  „Geometria detali”: te same wzory w mniejszych częściach obrazu (grupa postaci, martwa \
-natura, twarz z dłońmi, budynek, łódź, drzewo): trójkąt grupy, owal głowy i ramion, oś \
-postaci, przekątna wiosła, koło talerza, mała spirala liścia lub fali, podział okna. 2–4 \
-ślady, każdy na innej rzeczy nazwanej w podpisie, z wierzchołkami i liniami na prawdziwych \
-krawędziach i osiach tej rzeczy; także gdy taki detal powtarza lub odwraca wielki układ. \
-Pomiń to ujęcie, gdy w detalach nie ma wyraźnej geometrii.
-  """
+y w dół. Celuj dokładnie."""
 
 SYSTEM = (
     """Piszesz „Dzieło dnia” do aplikacji domowej ramki z kolorowym e-papierem: \
@@ -218,19 +168,7 @@ powstało, co było w nim nowe, jak je przyjęto.
 - "artist": krótka notka o autorze, dwa-trzy zdania (najwyżej 400 znaków): kim był, czym się \
 wyróżniał i w którym miejscu jego drogi powstało to dzieło. Bez powtarzania tekstu powyżej.
 """
-    + COMPOSITION
-    + """
-  Każde ujęcie: "title" (1–3 słowa), "grid" ("golden", "thirds", "halves", "3x2" lub \
-"2x3" tylko na warunkach powyżej, aplikacja narysuje siatkę; inaczej "none"), "text" \
-(dwa-trzy zdania, co to ujęcie pokazuje) i "marks". Ślad: "shape" i "points" w pikselach: \
-"line" (2–12 punktów: przekątna, oś, horyzont, krawędź, boki otwartego trójkąta, linia \
-perspektywy), "triangle" (3 wierzchołki), "loop" (koło lub owal: środek i jeden róg \
-prostokąta, w który się wpisuje), "spiral" (złota spirala, 3 punkty: początek najszerszego \
-łuku, punkt na tym łuku mniej więcej ćwierć obrotu dalej, który wyznacza kierunek skrętu, \
-i oko spirali; serwer i aplikacja narysują z nich dokładną złotą spiralę), "rect" (dwa \
-przeciwległe rogi: rama w ramie, złoty prostokąt). Do każdego "title" (1–3 słowa, podpis \
-przy śladzie) i "text" (najwyżej 45 znaków, dopisek pod podpisem). Serwer narysuje ślady na \
-obrazie i sprawdzi, czy trafiają.
+    + """- Analizy kompozycji tu nie piszesz: robi ją osobne pytanie.
 - "colour": dwa-trzy zdania o kolorze i świetle.
 - "details": 2–3 fragmenty warte powiększenia, których w całym obrazie na telefonie nie \
 widać: twarz, dłoń, przedmiot, napis lub sygnatura, faktura farby, drobny motyw w tle. \
@@ -238,8 +176,7 @@ Aplikacja wytnie je z oryginału w pełnej rozdzielczości. Każdy: "title" (1�
 (jedno-dwa zdania, najwyżej 220 znaków: co tu widać i dlaczego warto się przyjrzeć), "x" i \
 "y" (lewy górny róg kadru) oraz "w" i "h" (szerokość i wysokość kadru), wszystko w pikselach \
 obrazu. Kadr ciasno wokół rzeczy: bok 10–35% szerokości obrazu, \
-proporcje w pikselach od 3:4 do 4:3. Fragmenty różne od siebie i od tego, co pokazuje \
-kompozycja.
+proporcje w pikselach od 3:4 do 4:3. Fragmenty różne od siebie.
 - "on_frame": jedno-dwa zdania, jak dzieło wypadnie na ramce. Ramka ma sześć tuszy: czarny, \
 biały, czerwony, żółty, niebieski, zielony; pozostałe barwy, beże i pastele składa z \
 drobnego rastra tych tuszy. Ocena serwera (0–1) jest w danych.
@@ -272,6 +209,20 @@ def _list(items: dict[str, Any]) -> dict[str, Any]:
 
 
 _POINT = _object(x={"type": "number"}, y={"type": "number"})
+#: One take on the composition as the model gives it (``ai.composition``, ``ai.check``).
+VIEW = _object(
+    title=_str(),
+    grid={"type": "string", "enum": list(GRIDS)},
+    text=_str(),
+    marks=_list(
+        _object(
+            shape={"type": "string", "enum": list(SHAPES)},
+            points=_list(_POINT),
+            title=_str(),
+            text=_str(),
+        )
+    ),
+)
 
 SCHEMA = _object(
     title=_str(),
@@ -281,23 +232,6 @@ SCHEMA = _object(
     headline=_str(),
     context=_list(_str()),
     artist=_str(),
-    composition=_object(
-        views=_list(
-            _object(
-                title=_str(),
-                grid={"type": "string", "enum": list(GRIDS)},
-                text=_str(),
-                marks=_list(
-                    _object(
-                        shape={"type": "string", "enum": list(SHAPES)},
-                        points=_list(_POINT),
-                        title=_str(),
-                        text=_str(),
-                    )
-                ),
-            )
-        ),
-    ),
     colour=_str(),
     details=_list(
         _object(
@@ -352,8 +286,11 @@ class Mark(BaseModel):
             return Spot(x=(a.x + b.x) / 2, y=(a.y + b.y) / 2)
         if self.shape == "triangle":
             return Spot(x=sum(p.x for p in self.points) / 3, y=sum(p.y for p in self.points) / 3)
-        if self.shape == "spiral":  # its eye
-            return self.points[-1]
+        if self.shape in ("spiral", "rays"):  # its eye, its vanishing point
+            return self.points[-1] if self.shape == "spiral" else self.points[0]
+        if self.shape == "rhythm":  # the middle beat's middle
+            a, b = self.points[2 * (len(self.points) // 4) : 2 * (len(self.points) // 4) + 2]
+            return Spot(x=(a.x + b.x) / 2, y=(a.y + b.y) / 2)
         return self.points[len(self.points) // 2]
 
 
@@ -585,20 +522,42 @@ def _too_near(a: Spot, b: Spot) -> bool:
     return max(abs(a.x - b.x), abs(a.y - b.y)) < MIN_LOOP * 2
 
 
+def _beats(spots: list[Spot]) -> list[Spot]:
+    """A rhythm's points as pairs (a form's foot and top), without a pair
+    that is a dot."""
+    pairs = [(spots[n], spots[n + 1]) for n in range(0, len(spots) - 1, 2)]
+    kept = [p for p in pairs if max(abs(p[0].x - p[1].x), abs(p[0].y - p[1].y)) > SAME_SPOT]
+    return [s for pair in kept[:MAX_BEATS] for s in pair]
+
+
+def _rays(spots: list[Spot]) -> list[Spot]:
+    """A vanishing point and the far ends of its rays, without an end on
+    the point itself or on the end before it."""
+    eye, ends = spots[0], _distinct(spots[1:])
+    far = [e for e in ends if max(abs(e.x - eye.x), abs(e.y - eye.y)) > MIN_LOOP * 2]
+    return [eye, *far[:MAX_RAYS]]
+
+
 def _mark(raw: dict[str, Any]) -> Mark | None:
     """A mark that can be drawn and means something: a triangle that is not
     a line, a loop around something; a nearly level line drawn level, a
-    diagonal from corner to corner. The picture's great lines may run on
-    past its edges. Old pages' rhythms are no longer drawn."""
+    diagonal from corner to corner; a rhythm of three beats at least. The
+    picture's great lines may run on past its edges."""
     shape, title = str(raw.get("shape") or ""), _text(raw.get("title"), 40)
     reach = REACH if shape in REACHING else 0.0
     spots = [s for s in (_spot(p, reach) for p in raw.get("points") or []) if s is not None]
     if shape in PATHS:
         spots = _distinct(spots)
+    elif shape == "rhythm":
+        spots = _beats(spots)
+    elif shape == "rays" and spots:
+        spots = _rays(spots)
     if shape not in SHAPES or not title or len(spots) < SHAPES[shape]:
         return None
-    keep = MAX_LINE_POINTS if shape in PATHS else SHAPES[shape]
-    spots = spots[:keep]
+    if shape in PATHS:
+        spots = spots[:MAX_LINE_POINTS]
+    elif shape not in ("rhythm", "rays"):
+        spots = spots[: SHAPES[shape]]
     if shape == "triangle" and _area(*spots) < MIN_TRIANGLE:
         return None
     if shape == "rect" and (
@@ -620,7 +579,7 @@ def _view(raw: dict[str, Any]) -> View | None:
     if not marks or not title:
         return None
     grid = raw.get("grid") if raw.get("grid") in GRIDS else "none"
-    view = View(title=title, grid=str(grid), text=_text(raw.get("text"), 600), marks=marks)
+    view = View(title=title, grid=str(grid), text=_text(raw.get("text"), 1000), marks=marks)
     # A grid drawn under a take that nothing in it lies on proves nothing.
     return view if grid_fits(view) else view.model_copy(update={"grid": "none"})
 
@@ -646,19 +605,20 @@ def _geometry(view: View) -> bool:
 
 
 def takes(views: list[View]) -> list[View]:
-    """The takes the app shows: "Geometria", then "Geometria detali" when
-    there is one. Pages written before had "Spojrzenie" and a third take
-    ("Rytm", or one "if it made sense", e.g. "Światło"): left out."""
-    kept: list[View] = []
-    for view in views:
-        marks = [m for m in view.marks if m.shape in SHAPES]
-        if marks:
-            kept.append(view if marks == view.marks else view.model_copy(update={"marks": marks}))
-    found = (
-        next((v for v in kept if _geometry(v)), None),
-        next((v for v in kept if _in_detail(v)), None),
+    """The one take the app shows, called :data:`TAKE`: the analysis, or on
+    a page written before it, its "Geometria" (the whole picture's lines).
+    Such a page's "Geometria detali", "Spojrzenie" and third take ("Rytm",
+    "Światło") are left out, and so are its old rhythms (a point per form,
+    in a take no longer shown)."""
+    whole = next((v for v in views if v.title == TAKE), None) or next(
+        (v for v in views if _geometry(v)), None
     )
-    return [v for v in found if v is not None]
+    if whole is None:
+        return []
+    if whole.title != TAKE:
+        marks = [m for m in whole.marks if m.shape != "rhythm"]
+        whole = whole.model_copy(update={"title": TAKE, "marks": marks})
+    return [whole] if whole.marks else []
 
 
 def _composition(views: list[View]) -> Composition:
@@ -727,11 +687,13 @@ def clean(data: dict[str, Any], candidates: list[str]) -> Essay | None:
 #: frame. Claude once (2026-11-02, Hopper's "Nighthawks") answered with the
 #: text and the note about the artist and left all of these empty.
 WHOLE = ("composition", "colour", "details", "on_frame")
+#: What the page's own question answers of it (the composition is asked apart).
+ANSWERED = ("colour", "details", "on_frame")
 
 
-def missing(data: dict[str, Any]) -> list[str]:
-    """What of :data:`WHOLE` a page (or a model's answer in fractions)
-    lacks, as the app would show it."""
+def missing(data: dict[str, Any], parts: tuple[str, ...] = WHOLE) -> list[str]:
+    """What of ``parts`` a page (or a model's answer in fractions) lacks,
+    as the app would show it."""
     found = data.get("composition")
     raw: dict[str, Any] = found if isinstance(found, dict) else {}
     views = takes([v for v in map(_view, _dicts(raw.get("views"))) if v is not None])
@@ -741,7 +703,7 @@ def missing(data: dict[str, Any]) -> list[str]:
         "details": any(d is not None for d in map(_detail, _dicts(data.get("details")))),
         "on_frame": bool(_text(data.get("on_frame"))),
     }
-    return [part for part in WHOLE if not has[part]]
+    return [part for part in parts if not has[part]]
 
 
 def unfinished(data: dict[str, Any]) -> bool:
@@ -844,6 +806,9 @@ class DailyJob(NoteJob):
         self.day_of: Callable[[str], date | None] = lambda item_id: None
         #: The catalogue's works like a work, for the model to choose from.
         self.candidates: Callable[[Item], list[Item]] = lambda item: []
+        #: What the sources say of each work being asked about, kept from
+        #: the page's question for its composition's (``ai.composition``).
+        self._sources: dict[str, Context] = {}
 
     @property
     def http(self) -> httpx.Client:
@@ -866,7 +831,8 @@ class DailyJob(NoteJob):
     def _wiki(self, lang: str, title: str) -> str:
         return wikipedia_text(self.http, lang, title, WORK_CHARS, COMPOSITION_SECTIONS)
 
-    def context(self, item: Item) -> Context:
+    def sources(self, item: Item) -> Context:
+        """What Wikidata and Wikipedia say of the work and its artist."""
         facts = self.wikidata.facts(self.http, item)
         return Context(
             day=self.day_of(item.id) or date.today(),
@@ -876,12 +842,15 @@ class DailyJob(NoteJob):
             artist_wiki=(
                 wikipedia_intro(self.http, "en", item.artist)[:ARTIST_CHARS] if item.artist else ""
             ),
-            candidates=self.candidates(item),
         )
+
+    def context(self, item: Item) -> Context:
+        return replace(self.sources(item), candidates=self.candidates(item))
 
     def params(self, item: Item) -> dict[str, Any]:
         img = picture(self.images, item)
         context = replace(self.context(item), size=img.size)
+        self._sources[item.id] = context
         text = {"type": "text", "text": request_text(item, context)}
         params = request(
             model=OPUS,
@@ -897,17 +866,19 @@ class DailyJob(NoteJob):
     def revise(
         self, item: Item, params: dict[str, Any], answer: Answer, ask: Callable[..., Answer]
     ) -> Answer:
-        """The answer's pixels made fractions, and its composition checked by
-        Claude over the marks drawn on the picture (``ai.check``): a mark that
-        missed moved, one that cannot be defended left out. When the check
-        cannot be had (the month's limit, an error) the answer stays as it was.
+        """The answer's pixels made fractions, and its composition asked for
+        apart (``ai.composition``: written, then checked by Claude over the
+        marks drawn on the picture). When the composition cannot be had
+        (the month's limit, an error) the page is kept without it, and the
+        background asks for it later (``ComposeJob``).
 
         An answer without some of what every page has (:func:`missing`) is
         asked for once more, and the fuller of the two is kept."""
+        context = self._sources.pop(item.id, None)
         if answer.data is None:
             return answer
         data = to_fractions(answer.data, sent_size(params))
-        if lacking := missing(data):
+        if lacking := missing(data, ANSWERED):
             log.warning("page of %s came back without %s: asked again", item.id, ", ".join(lacking))
             try:
                 again = ask(params)
@@ -916,19 +887,20 @@ class DailyJob(NoteJob):
             else:
                 answer = replace(answer, cost_usd=answer.cost_usd + again.cost_usd)
                 fresh = to_fractions(again.data, sent_size(params)) if again.data else None
-                if fresh is not None and len(missing(fresh)) < len(lacking):
+                if fresh is not None and len(missing(fresh, ANSWERED)) < len(lacking):
                     data = fresh
-            if lacking := missing(data):
+            if lacking := missing(data, ANSWERED):
                 log.warning("page of %s kept without %s", item.id, ", ".join(lacking))
                 data = {**data, INCOMPLETE: lacking}
-        from .check import check
+        from .composition import compose
 
+        data = {**data, "composition": {"views": []}}
         try:
-            data = check(self.images, item, data, ask)
+            data.update(compose(self.images, item, context or self.sources(item), ask))
         except (AiUnavailable, anthropic.APIError) as err:
-            log.warning("composition check of %s skipped: %s", item.id, err)
-        except Exception:  # the page is paid for: never lost to its check
-            log.exception("composition check of %s failed", item.id)
+            log.warning("composition of %s not asked: %s", item.id, err)
+        except Exception:  # the page is paid for: never lost to its composition
+            log.exception("composition of %s failed", item.id)
         return replace(answer, data=data)
 
     def apply(self, item: Item, note: Note) -> None:

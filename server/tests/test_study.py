@@ -80,10 +80,7 @@ def test_claude_writes_a_study_once_and_it_is_kept(tmp_path: Path) -> None:
         assert work["written"] is True and work["model"] == OPUS
         assert work["title"] == "Wielka fala w Kanagawie"
         assert work["why_today"] == "" and work["day"] == "" and work["previous"] == []
-        assert [v["title"] for v in work["composition"]["views"]] == [
-            "Geometria",
-            "Geometria detali",
-        ]
+        assert [v["title"] for v in work["composition"]["views"]] == ["Analiza kompozycji"]
         assert [(s["item"]["item"]["id"], s["why"]) for s in work["similar"]] == [
             ("met:2", "ta sama seria")
         ]

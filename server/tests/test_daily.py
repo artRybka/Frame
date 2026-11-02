@@ -19,7 +19,7 @@ from test_ai import GOOD_KEY, FakeAnthropic, _message
 
 from frame_server.ai import AiConfigUpdate
 from frame_server.ai.client import OPUS
-from frame_server.ai.daily import INCOMPLETE, clean, missing, short, unfinished
+from frame_server.ai.daily import INCOMPLETE, TAKE, clean, missing, short, unfinished
 from frame_server.ai.study import KIND as STUDY
 from frame_server.config import Settings
 from frame_server.daily import HISTORY_KEY, of_season, round_anniversary
@@ -157,13 +157,14 @@ def pixels(answer: dict[str, Any], size: tuple[int, int] = SIZE) -> dict[str, An
 ANSWER_PX = pixels(ANSWER)
 
 
+def composing(params: dict[str, Any]) -> bool:
+    """A question about the composition: its analysis, or its check."""
+    return params["system"][0]["text"].startswith(("Sprawdzasz", "Piszesz „Analizę"))
+
+
 def written(fake: FakeAnthropic) -> list[dict[str, Any]]:
-    """The questions that wrote a page (not the checks of its composition)."""
-    return [
-        p
-        for p in fake.asked
-        if p["model"] == OPUS and not p["system"][0]["text"].startswith("Sprawdzasz")
-    ]
+    """The questions that wrote a page (not its composition)."""
+    return [p for p in fake.asked if p["model"] == OPUS and not composing(p)]
 
 
 def _offline() -> httpx.Client:
@@ -281,10 +282,9 @@ def test_an_answer_is_cleaned() -> None:
     assert essay.focus is not None and (essay.focus.x, essay.focus.y) == (0.64, 1.0)
     assert essay.headline == "Pocztówka z pielgrzymki"
     views = essay.composition.views
-    # An empty take goes; "Geometria" comes first, whatever the answer's order.
-    assert [v.title for v in views] == ["Geometria", "Geometria detali"]
-    assert [m.title for m in views[1].marks] == ["Łuk fali", "Fudżi"]
-    assert (views[1].marks[1].points[1].x, views[1].marks[1].points[1].y) == (1.0, 0.0)
+    # One take: an empty one and "Geometria detali" go, "Geometria" is the analysis.
+    assert [v.title for v in views] == [TAKE]
+    assert [m.title for m in views[0].marks] == ["Kartusz"]
     assert views[0].grid == "none"  # not a grid the app draws
     # Drawn by 0.42 apps as numbered points and lines.
     points = essay.composition.points
@@ -300,7 +300,7 @@ def test_an_answer_is_cleaned() -> None:
     assert short("Bardzo długie zdanie " * 10, 40) == "Bardzo długie zdanie Bardzo długie…"
 
 
-def test_rhythms_are_no_longer_shown() -> None:
+def test_old_rhythms_are_no_longer_shown() -> None:
     beats = [{"x": 0.1 * n, "y": 0.5} for n in range(1, 10)]
     rhythm = {
         "title": "Rytm",
@@ -311,7 +311,7 @@ def test_rhythms_are_no_longer_shown() -> None:
     composition = {"views": [*ANSWER["composition"]["views"], rhythm]}
     essay = clean({**ANSWER, "composition": composition}, [])
     assert essay is not None
-    assert [v.title for v in essay.composition.views] == ["Geometria", "Geometria detali"]
+    assert [v.title for v in essay.composition.views] == [TAKE]
 
 
 def _app(tmp_path: Path) -> Any:
@@ -384,11 +384,8 @@ def test_claude_writes_the_page(tmp_path: Path) -> None:
         assert work["headline"] == "Pocztówka z pielgrzymki"
         assert work["artist"].startswith("Katsushika Hokusai, malarz")
         assert work["focus"] == {"x": 0.64, "y": 1.0}
-        assert [v["title"] for v in work["composition"]["views"]] == [
-            "Geometria",
-            "Geometria detali",
-        ]
-        assert work["composition"]["views"][1]["marks"][0]["shape"] == "arrow"
+        assert [v["title"] for v in work["composition"]["views"]] == [TAKE]
+        assert work["composition"]["views"][0]["marks"][0]["shape"] == "rect"
         assert [(s["item"]["item"]["id"], s["why"]) for s in work["similar"]] == [
             ("met:2", "ta sama seria")
         ]
@@ -408,11 +405,14 @@ def test_claude_writes_the_page(tmp_path: Path) -> None:
         assert "OBRAZ: 900 × 600 px" in content[1]["text"]  # the pixels it points in
         assert "met:2 | Katsushika Hokusai" in content[1]["text"]  # the works to choose from
         assert asked["timeout"] > 120
-        # Its composition checked over the marks drawn on the picture: the
-        # clean picture, then each take drawn.
-        (check,) = [p for p in fake.asked if p not in written(fake)]
+        assert "Analizy kompozycji tu nie piszesz" in asked["system"][0]["text"]
+        # Its composition asked apart, then checked over the marks drawn on
+        # the picture: the clean picture, then the take drawn.
+        analysis, check = [p for p in fake.asked if p not in written(fake)]
+        assert analysis["system"][0]["text"].startswith("Piszesz „Analizę kompozycji”")
+        assert analysis["messages"][0]["content"][0]["type"] == "image"
         images = [b for b in check["messages"][0]["content"] if b["type"] == "image"]
-        assert len(images) == 1 + len(work["composition"]["views"])
+        assert len(images) == 2
 
         # Asked once: the page is kept.
         client.get("/api/daily")
@@ -613,8 +613,7 @@ def _answers(fake: FakeAnthropic, *pages: dict[str, Any]) -> None:
 
     def create(**params: Any) -> Any:
         fake.asked.append(params)
-        checking = params["system"][0]["text"].startswith("Sprawdzasz")
-        page = left[0] if checking or len(left) == 1 else left.pop(0)
+        page = left[0] if composing(params) or len(left) == 1 else left.pop(0)
         return _message(page)
 
     fake.messages.create = create
@@ -658,10 +657,7 @@ def test_a_half_written_page_is_asked_for_again(tmp_path: Path) -> None:
         finally:
             svc.ai.stop()
         assert work["written"] is True and _whole(work)
-        assert [v["title"] for v in work["composition"]["views"]] == [
-            "Geometria",
-            "Geometria detali",
-        ]
+        assert [v["title"] for v in work["composition"]["views"]] == [TAKE]
         assert len(written(fake)) == 2
         note = svc.library.note("met:1", "daily")
         assert note is not None and INCOMPLETE not in note.data
@@ -682,7 +678,7 @@ def test_a_page_half_written_twice_is_kept_as_it_is(tmp_path: Path) -> None:
         assert work["written"] is True and work["context"] and not _whole(work)
         note = svc.library.note("met:1", "daily")
         assert note is not None
-        assert note.data[INCOMPLETE] == ["composition", "colour", "details", "on_frame"]
+        assert note.data[INCOMPLETE] == ["colour", "details", "on_frame"]
         # Asked twice, and not again: no question each time the page opens.
         client.get("/api/daily")
         assert len(written(fake)) == 2
