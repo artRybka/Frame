@@ -74,12 +74,15 @@ początek, punkt kierunku lub oko (spiralę można obrócić), albo ją usuń.
 jeden ślad (nie kółko wokół łodzi i linia po jej maszcie), a numery nie lądują na sobie; gdy \
 tak jest, zostaw ten, który mówi więcej (albo przesuń drugi na jego własną formę). Łamana, \
 która krąży zygzakiem po kilku krawędziach, to zwykle klin: zostaw 3 punkty (koniec boku, \
-wierzchołek, koniec drugiego boku). Krawędzie zbiegające się w perspektywie, narysowane jako \
-łamana tam i z powrotem, zamień na "rays" do ich punktu zbiegu. Strzałka otwartości jest \
+wierzchołek, koniec drugiego boku). Krawędzie zbiegające się w perspektywie: "rays", gdy \
+punkt zbiegu leży w obrazie lub do pół boku poza nim, inaczej dwie osobne "line" po tych \
+krawędziach. Strzałka otwartości jest \
 długa (co najmniej jedna piąta boku) i idzie przez formę, której nie zajmuje inny ślad; \
 krótki zaczep przy krawędzi usuń.
 - Gdy brakuje głównego układu, wyraźnego podziału albo dużego rytmu, które widzisz, dodaj go \
-i dopisz do tekstu.
+i dopisz do tekstu. Układ, który tekst nazywa najmocniejszym (np. klin, piramida, przekątna), \
+musi mieć swój ślad, i to pierwszy; porządkując czytelność, nie usuwaj go, tylko to, co go \
+dubluje.
 - Siatka zostaje, gdy kluczowy element leży na jej linii lub blisko niej (pomiary podają \
 odległości w ułamkach boku: do ok. 0,02 to „na linii”, do ok. 0,05 „blisko linii”, dalej \
 siatka nie pasuje): wtedy ustaw właściwą ("golden", "thirds", "halves", "3x2", "2x3"); \
