@@ -997,7 +997,7 @@ struct ArtworkInfo: View {
     @State private var asked: PolishText?
     @State private var expanded = false
     @State private var favorite: Bool?
-    /// The title held: the museum's own shows meanwhile ("Tytuł w oryginale").
+    /// The title held once: the museum's own shows until held again ("Tytuł w oryginale").
     @State private var peeking = false
 
     private var shown: PolishText? { asked ?? polish }
@@ -1031,12 +1031,12 @@ struct ArtworkInfo: View {
                 .accessibilityLabel("Ulubione")
             }
             // The title opens the work's card, like "Szczegóły" below; held,
-            // it shows the museum's own until the finger lifts.
+            // it shows the museum's own until held again.
             let original = TitlePeekNote.original(item.title, shown: title)
             Text(peeking ? original ?? title : title)
                 .font(.serif(28, weight: .semibold))
                 .foregroundStyle(Theme.ink)
-                // A long title from the museum shows whole while held.
+                // A long title from the museum shows whole.
                 .lineLimit(peeking ? nil : 3)
                 .minimumScaleFactor(peeking ? 1 : 0.75)
                 .multilineTextAlignment(.leading)

@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.77.2
+
+- Tytuł w oryginale: przytrzymanie polskiego tytułu przełącza go na tytuł
+  z muzeum, który zostaje po puszczeniu palca (wcześniej palec zasłaniał
+  go przez cały czas, gdy był widoczny). Kolejne przytrzymanie wraca do
+  polskiego; nowy obraz albo karta zaczyna po polsku.
+
 ## 1.77.1
 
 - Playlisty widać od razu po uruchomieniu aplikacji (z poprzedniego razu,
