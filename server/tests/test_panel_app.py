@@ -1142,3 +1142,54 @@ def test_content_json_from_another_computer_is_not_the_panel_leaving(tmp_path: P
         svc.settings.device_host = "testclient"
         assert client.get("/panel/content.json").status_code == 200
         assert not svc.app.active
+
+
+def test_a_sleep_without_its_report_shows_once_the_panel_is_down(tmp_path: Path) -> None:
+    """2026-11-02: told to sleep, the app reports it just before goToSleep()
+    and the status says "Czuwanie" at once. Should the report not come, the
+    status no longer says "Online" until a look gives up on the panel: once
+    it is down for sure, it sleeps as far as the app shows."""
+    service = _service(tmp_path)
+    _no_quiet_hours(service)
+    app = service.app
+    asked = datetime.now(UTC)
+    _next_change(service, asked + timedelta(hours=3))
+    hello = AppHello(reason="wake", build="1.0.0", battery=80, charging=False)
+    assert app.answer(hello, now=asked).action == "sleep"
+    status = service.status.status
+    assert status.power_state == "online"
+    # Still going down: it may answer for a while.
+    app.note_down(asked + timedelta(minutes=1))
+    assert status.power_state == "online"
+    app.note_down(asked + timedelta(minutes=4))
+    assert status.power_state == "standby"
+    assert app.silent_since(asked + timedelta(minutes=10)) is None
+
+
+def test_a_panel_found_up_after_its_sleep_stays_online(tmp_path: Path) -> None:
+    """The button woke it and a look found it up (the app not started yet):
+    "Online" from after the sleep is the truth."""
+    service = _service(tmp_path)
+    _no_quiet_hours(service)
+    app = service.app
+    asked = datetime.now(UTC)
+    _next_change(service, asked + timedelta(hours=3))
+    hello = AppHello(reason="wake", build="1.0.0", battery=80, charging=False)
+    assert app.answer(hello, now=asked).action == "sleep"
+    status = service.status.status
+    status.last_seen = (asked + timedelta(minutes=8)).isoformat(timespec="seconds")
+    app.note_down(asked + timedelta(minutes=10))
+    assert status.power_state == "online"
+
+
+def test_the_sleep_report_shows_at_once(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    _no_quiet_hours(service)
+    app = service.app
+    now = datetime.now(UTC)
+    _next_change(service, now + timedelta(hours=3))
+    hello = AppHello(reason="wake", build="1.0.0", battery=80, charging=False)
+    assert app.answer(hello, now=now).action == "sleep"
+    app.report("sleep", {"why": "plan"})
+    service.power.publish_status()
+    assert service.status.status.power_state == "standby"

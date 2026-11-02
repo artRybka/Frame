@@ -446,6 +446,15 @@ final class AppModel {
         }
     }
 
+    /// What the server knows of the frame right now, the frame not asked:
+    /// at once, unlike a look (MDC gives up on a sleeping frame after 10 s).
+    /// Quiet when the server does not answer: the Ramka tab follows the
+    /// frame with it while open.
+    func followStatus() async {
+        guard let value = try? await backend.status(refresh: false) else { return }
+        status = value
+    }
+
     /// A tap on the Ramka tab's Sieć tile. A frame the server knows to be
     /// asleep in the network is woken at once, only to be looked at (it goes
     /// back to sleep); when the server is not sure (it last saw the frame

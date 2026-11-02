@@ -100,6 +100,7 @@ struct FrameTabView: View {
                 Task { await model.loadServerUpdate() }
             }
             .onChange(of: model.settings) { _, new in follow(new) }
+            .task { await followFrame() }
             .alert("Nazwa ramki", isPresented: $renaming) {
                 TextField(panelName, text: $newName)
                     .textInputAutocapitalization(.sentences)
@@ -180,6 +181,7 @@ struct FrameTabView: View {
         if checking {
             await model.checkStatus()
         } else {
+            await model.followStatus()  // a sleep the server knows of shows at once
             await model.refreshStatus(live: true)
         }
         self.checking = false  // the tile shows what it found; the rest loads behind
@@ -189,7 +191,9 @@ struct FrameTabView: View {
 
     /// Opening the tab looks at the frame without waking it: the server asks
     /// it over MDC and, if it sleeps, whether it is still on the Wi-Fi. Not
-    /// again within half a minute.
+    /// again within half a minute. What the server already knows shows
+    /// first: a frame it knows asleep is "Czuwanie" at once, not after MDC
+    /// gave up on it (2026-11-02).
     private func look() {
         guard !refreshing, device?.configured == true else { return }
         if let lastLook, Date.now.timeIntervalSince(lastLook) < 30 { return }
@@ -197,9 +201,23 @@ struct FrameTabView: View {
         Task {
             refreshing = true
             defer { refreshing = false }
+            await model.followStatus()
             await model.refreshStatus(live: true)
         }
     }
+
+    /// While the tab is open, what the server knows every few seconds (the
+    /// frame not asked): the frame going to sleep ("Uśpij ramkę", after
+    /// "Sprawdź stan", by its plan) shows on the Sieć tile as it reports it.
+    private func followFrame() async {
+        while !Task.isCancelled {
+            try? await Task.sleep(for: .seconds(Self.followEvery))
+            guard !Task.isCancelled else { return }
+            if !refreshing, device?.configured == true { await model.followStatus() }
+        }
+    }
+
+    private static let followEvery: Double = 10
 
     // MARK: Device
 
