@@ -2,9 +2,10 @@
 
 ## 1.79.3
 
-- Playlisty, karta „Ukryte”: bibuła rozmywa cały kolaż naraz i mocniej.
-  Dotąd każdy obraz rozmywał się osobno, więc szwy między nimi zostawały
-  ostre; teraz widać same kolory ukrytych dzieł, bez kształtów.
+- Playlisty, karta „Ukryte”: ukryte dzieła leżą teraz za szronionym
+  szkłem z drobnym ziarnem, rozmyte mocniej i jako całość. Dotąd każdy
+  obraz rozmywał się osobno, więc szwy między nimi zostawały ostre; teraz
+  widać same kolory, bez kształtów.
 
 ## 1.79.2
 

@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Playlists: what the frame presents now and all collections, smart and manual.
 struct PlaylistsView: View {
@@ -513,15 +514,14 @@ struct SuggestionsCover: View {
 }
 
 /// "Ukryte", the last card in Playlisty: the works hidden with "Ukryj
-/// dzieło" under cream tissue paper, as a print kept in a folder; their
-/// colours show through, the details don't. A sticker with a crossed-out
-/// eye in the corner.
+/// dzieło" behind frosted glass: their colours show through, the details
+/// don't. A sticker with a crossed-out eye in the corner.
 struct HiddenCard: View {
     let items: [ItemSummary]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            TissueCover(itemIDs: items.prefix(4).map(\.id))
+            FrostedCover(itemIDs: items.prefix(4).map(\.id))
                 .aspectRatio(1, contentMode: .fit)
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .overlay(alignment: .bottomTrailing) {
@@ -548,9 +548,10 @@ struct HiddenCard: View {
     }
 }
 
-/// A collage under a sheet of tissue paper with one soft crease; with no
-/// works, the bare sheet on the mat.
-struct TissueCover: View {
+/// A collage behind frosted glass: blurred as one picture, under a thin
+/// cream sheet with a fine grain like sandblasted glass; with no works,
+/// the bare frosted sheet on the mat.
+struct FrostedCover: View {
     let itemIDs: [String]
     @Environment(\.colorScheme) private var scheme
 
@@ -565,22 +566,50 @@ struct TissueCover: View {
                     .drawingGroup()
                     .blur(radius: 16, opaque: true)
             }
-            Theme.paper.opacity(scheme == .dark ? 0.58 : 0.62)
-            GeometryReader { geo in
-                LinearGradient(
-                    colors: [.clear, .white.opacity(0.55), .clear],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
-                .frame(width: geo.size.width * 1.3, height: 1)
-                .shadow(color: .black.opacity(0.05), radius: 0, y: 1)
-                .rotationEffect(.degrees(-14))
-                .position(x: geo.size.width / 2, y: geo.size.height * 0.58)
-                .opacity(scheme == .dark ? 0.35 : 1)
-            }
+            Theme.paper.opacity(scheme == .dark ? 0.45 : 0.48)
+            Image(uiImage: FrostGrain.tile)
+                .resizable(resizingMode: .tile)
+                .interpolation(.none)
+                .blendMode(.overlay)
+                .opacity(0.6)
         }
         .accessibilityHidden(true)
     }
+}
+
+/// Grey noise around mid-grey, tiled over a picture in overlay mode: it
+/// lightens and darkens point by point without tinting, like the grain of
+/// sandblasted glass. Seeded, so every card has the same grain.
+enum FrostGrain {
+    static let tile: UIImage = {
+        let side = 128
+        var state: UInt64 = 0x9E37_79B9_7F4A_7C15
+        let pixels = (0 ..< side * side).map { _ -> UInt8 in
+            // xorshift64*: cheap and the same on every launch.
+            state ^= state >> 12
+            state ^= state << 25
+            state ^= state >> 27
+            let value = (state &* 0x2545_F491_4F6C_DD1D) >> 56
+            return UInt8(68 + value * 120 / 255)
+        }
+        guard
+            let provider = CGDataProvider(data: Data(pixels) as CFData),
+            let image = CGImage(
+                width: side,
+                height: side,
+                bitsPerComponent: 8,
+                bitsPerPixel: 8,
+                bytesPerRow: side,
+                space: CGColorSpaceCreateDeviceGray(),
+                bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue),
+                provider: provider,
+                decode: nil,
+                shouldInterpolate: false,
+                intent: .defaultIntent
+            )
+        else { return UIImage() }
+        return UIImage(cgImage: image, scale: 2, orientation: .up)
+    }()
 }
 
 struct NewPlaylistTile: View {
