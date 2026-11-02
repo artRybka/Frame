@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.73.2
+
+- Studium: dopiski przy „Podobnych dziełach” to cicha kursywa z cienką kreską
+  z lewej zamiast cynobrowej plakietki.
+
 ## 1.73.1
 
 - Ramka: orientacja to sam przełącznik z ikonkami poziomej i pionowej ramki,
