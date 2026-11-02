@@ -40,6 +40,7 @@ from .schedule import FrameSettings, Presentation, in_quiet_hours, next_change
 
 if TYPE_CHECKING:
     from .ai import PolishText
+    from .night import Night
     from .service import FrameService
 
 log = logging.getLogger(__name__)
@@ -107,6 +108,10 @@ CATALOGUE_TURNOVER = 60
 CATALOGUE_TURNOVER_EVERY = timedelta(hours=6)
 #: When a full catalogue last took works in.
 TURNOVER_KEY = "catalogue_turnover"
+#: At night a full catalogue takes in a day's works at once ...
+NIGHT_TURNOVER = CATALOGUE_TURNOVER * 4
+#: ... and one still filling up at most this many batches.
+NIGHT_BATCHES = 6
 # How long a due change may keep the panel from its night sleep.
 CHANGE_GRACE = timedelta(minutes=3)
 
@@ -236,6 +241,12 @@ class Player:
         self.library = service.library
         self._lock = asyncio.Lock()
         self._trimming = threading.Lock()  # after a change and after a new limit at once
+        #: The catalogue turns over and the cache is tidied at night
+        #: (:mod:`frame_server.night`); set when the server runs its background.
+        self.at_night = False
+        #: The catalogue was full when last measured: by day (with the
+        #: night queue) the files are not counted again until the night.
+        self._full = False
         self._changes = 0  # under way: from the download of the original to the push
 
     @property
@@ -900,7 +911,7 @@ class Player:
             except (httpx.HTTPError, OSError, ValueError) as err:
                 log.info("prefetch of %s failed: %s", item.id, err)
         try:
-            await run_in_threadpool(self.trim_cache)
+            await run_in_threadpool(self.trim_cache, not self.at_night)
         except OSError as err:
             log.warning("trimming the image cache failed: %s", err)
         self.top_up()
@@ -1075,29 +1086,37 @@ class Player:
             highlights=CATALOGUE_HIGHLIGHTS,
         )
 
-    def grow_catalogue(self) -> Job | None:
+    def grow_catalogue(self, night: bool = False) -> Job | None:
         """Add a batch of museum works to the catalogue while its thumbnails
         take less than ``catalogue_mb``; themes and random draws of every
-        kind, so the app can browse widely and filter by colour."""
+        kind, so the app can browse widely and filter by colour. With the
+        night queue (:attr:`at_night`), a full catalogue turns over only at
+        night (``night``), a day's works at once; by day it only fills up."""
         importer = self.service.importer
         limit = self.service.settings.catalogue_mb * 1024 * 1024
         if not limit or any(
             job.description == "catalogue" and not job.finished for job in importer.jobs.values()
         ):
             return None
-        full = self.service.images.thumbs_size() >= limit
+        if self._full and self.at_night and not night:
+            return None
+        full = self._full = self.service.images.thumbs_size() >= limit
+        if full and self.at_night and not night:
+            return None
         # "Arcydzieła muzeów" needs the museums' highlights in the catalogue,
         # which works taken in before 0.42 never say they are: asked for on
         # their own, once a day, while the catalogue has too few.
         tried = self.library.get_state(HIGHLIGHTS_KEY, "")
         highlights = (
-            not tried or utcnow() - datetime.fromisoformat(tried) >= CATALOGUE_HIGHLIGHT_EVERY
+            night
+            or not tried
+            or utcnow() - datetime.fromisoformat(tried) >= CATALOGUE_HIGHLIGHT_EVERY
         )
         turnover = True
         if full:
             self.trim_catalogue()
             turned = self.library.get_state(TURNOVER_KEY, "")
-            turnover = (
+            turnover = night or (
                 not turned or utcnow() - datetime.fromisoformat(turned) >= CATALOGUE_TURNOVER_EVERY
             )
             if not turnover and not highlights:
@@ -1114,7 +1133,7 @@ class Player:
                 self._add_highlights(job)
             if turnover:
                 importer.collect(
-                    CATALOGUE_TURNOVER if full else CATALOGUE_BATCH,
+                    (NIGHT_TURNOVER if night else CATALOGUE_TURNOVER) if full else CATALOGUE_BATCH,
                     job,
                     queries=queries,
                     kinds=CATALOGUE_KINDS,
@@ -1124,6 +1143,25 @@ class Player:
                 self.trim_catalogue()
 
         return importer.start_job("catalogue", grow)
+
+    def grow_at_night(self, night: Night) -> int:
+        """The night's task: a full catalogue turns over (a day's works at
+        once), one still filling up takes in batches while the night lasts.
+        How many batches."""
+        batches = 0
+        while batches < NIGHT_BATCHES and night.quiet():
+            job = self.grow_catalogue(night=True)
+            full = self._full
+            if job is None:
+                break
+            batches += 1
+            while not job.finished:  # in its own thread, gently for the museums
+                if not night.sleep(5.0):
+                    return batches
+            log.info("night: catalogue took in %d works", len(job.item_ids))
+            if full:
+                break
+        return batches
 
     def rescore(self) -> int:
         """Once per ``SCORE_VERSION``: analyse the library's pictures again
@@ -1253,14 +1291,16 @@ class Player:
         suggestions = self.library.get_state(SUGGESTIONS_KEY, [])
         self.library.set_state(SUGGESTIONS_KEY, [i for i in suggestions if i not in ids])
 
-    def trim_cache(self) -> int:
+    def trim_cache(self, whole: bool = True) -> int:
         """Delete the least recently used museum originals over the size
-        limit (the current picture and the next ones stay) and thumbnails
-        of works browsed but not kept."""
+        limit (the current picture and the next ones stay); ``whole``: also
+        spare copies of works, the catalogue over its limit and thumbnails
+        of works browsed but not kept (at night, and when a limit is
+        lowered; after each change only without the night queue)."""
         with self._trimming:
-            return self._trim_cache()
+            return self._trim_cache(whole)
 
-    def _trim_cache(self) -> int:
+    def _trim_cache(self, whole: bool) -> int:
         state = self.state
         soon = {state.current_item_id, *state.current_group, *state.requested}
         soon |= set(state.queue[:PREFETCH])
@@ -1270,8 +1310,10 @@ class Player:
         kept = {i for p in self.library.playlists() for i in p.item_ids}
         last = [i for i in items if i.favorite or i.id in kept]
         limit = self.service.settings.image_cache_mb * 1024 * 1024
-        gone = self.drop_spare_copies() + self.trim_catalogue()
-        gone += self.service.images.prune_thumbs(self.library.query(include_excluded=True)[1])
+        gone = 0
+        if whole:
+            gone = self.drop_spare_copies() + self.trim_catalogue()
+            gone += self.service.images.prune_thumbs(self.library.query(include_excluded=True)[1])
         pruned = self.service.images.prune(limit, keep, own=own, last=last)
         if gone or pruned:
             self.service.storage.forget()

@@ -43,6 +43,7 @@ from .library.viewer import OWNER_ID
 
 if TYPE_CHECKING:
     from .library import Item, Library
+    from .night import Night
     from .service import FrameService
     from .store import ContentInfo
 
@@ -795,6 +796,22 @@ async def births_tick(service: FrameService) -> int:
     return await asyncio.to_thread(births.look_up, missing)
 
 
+def births_at_night(service: FrameService, night: Night) -> int:
+    """Birthdays of every favourite artist not yet known (the night's
+    task; without the night queue, :func:`births_tick` asks a few an hour)."""
+    births = service.births
+    if not service.notifier.wanted("birthday"):
+        return 0
+    artists = [a for a, _ in births.favourites().most_common()]
+    missing = births.missing(artists)
+    kept = 0
+    for start in range(0, len(missing), BIRTHS_BATCH):
+        if not night.quiet():
+            break
+        kept += births.look_up(missing[start : start + BIRTHS_BATCH])
+    return kept
+
+
 async def birthday_tick(service: FrameService, now: datetime | None = None) -> int:
     """Today's birthdays of the favourite works' artists, at 10:00; how many."""
     notifier = service.notifier
@@ -862,7 +879,7 @@ async def watch(service: FrameService) -> None:
             if now - last_update >= UPDATE_EVERY:
                 last_update = now
                 await update_tick(service)
-            if now - last_births >= BIRTHS_EVERY:
+            if service.night is None and now - last_births >= BIRTHS_EVERY:
                 last_births = now
                 await births_tick(service)
         except Exception:

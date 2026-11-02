@@ -18,7 +18,7 @@ import weakref
 from collections import Counter
 from collections.abc import Collection, Iterable, Iterator
 from contextlib import contextmanager
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal, NamedTuple
 
@@ -57,8 +57,6 @@ log = logging.getLogger(__name__)
 
 #: Seconds between rebuilds of the suggestions' index while the library changes.
 TERM_INDEX_EVERY = 10.0
-#: The hour (server's time) the smart playlists are counted afresh.
-RECOUNT_HOUR = 3
 
 
 class _Counted(NamedTuple):
@@ -890,7 +888,7 @@ class Library:
 
     def recount(self) -> None:
         """Every smart playlist counted afresh where the library changed
-        since (at night, and once after a start)."""
+        since (the night's task, and once after a start)."""
         for playlist in self.playlists():
             if playlist.kind != PlaylistKind.SMART or playlist.id is None:
                 continue
@@ -898,21 +896,6 @@ class Library:
                 kept = self._counted.get(playlist.id)
             if kept is None or kept.stamp != self._stamp():
                 self.playlist_items(playlist)
-
-    def recount_nightly(self, stop: threading.Event, first: float = 60.0) -> None:
-        """:meth:`recount` ``first`` seconds after the start, then every
-        night at :data:`RECOUNT_HOUR`."""
-        wait = first
-        while not stop.wait(wait):
-            try:
-                self.recount()
-            except Exception:
-                log.exception("playlist counts")
-            now = datetime.now()
-            night = now.replace(hour=RECOUNT_HOUR, minute=0, second=0, microsecond=0)
-            if night <= now:
-                night += timedelta(days=1)
-            wait = (night - now).total_seconds()
 
     def album_sync(self, playlist_id: int) -> AlbumSync | None:
         data = self.get_state(f"album_sync:{playlist_id}")
