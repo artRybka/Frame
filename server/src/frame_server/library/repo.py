@@ -18,9 +18,9 @@ import weakref
 from collections import Counter
 from collections.abc import Collection, Iterable, Iterator
 from contextlib import contextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, NamedTuple
 
 from .artists import is_artist
 from .colors import has_colours
@@ -57,6 +57,34 @@ log = logging.getLogger(__name__)
 
 #: Seconds between rebuilds of the suggestions' index while the library changes.
 TERM_INDEX_EVERY = 10.0
+#: The hour (server's time) the smart playlists are counted afresh.
+RECOUNT_HOUR = 3
+
+
+class _Counted(NamedTuple):
+    """A smart playlist's count and cover as worked out (a search through
+    the whole catalogue, a second or more on a NAS)."""
+
+    #: The playlist as it was then (its rules, its limit...).
+    key: str
+    #: The library then: items, playlists, hearts (:meth:`Library._stamp`).
+    stamp: tuple[int, int, int]
+    total: int
+    cover: list[str]
+    colors: list[ColorSwatch]
+
+
+def _cover(items: list[Item]) -> tuple[list[str], list[ColorSwatch]]:
+    """A playlist's cover: its four most suitable works, and their colours."""
+    best = sort_items(items, "suitability")[:4]
+    return [i.id for i in best], cover_colors(best)
+
+
+def _personal(playlist: Playlist) -> bool:
+    """Made of someone's hearts or playlists: counted afresh once those
+    change, not shown as they were."""
+    return playlist.rules.favorites_only or any(t in MINE for t in playlist.rules.terms)
+
 
 #: A regrouping of the works this slow is logged as such: the library
 #: waits for it.
@@ -290,6 +318,18 @@ class Library:
         self._favorites: dict[str, set[str]] | None = None
         #: Goes up with every change of an item (for the suggestions' index).
         self._version = 0
+        #: Go up with every change of a playlist, and of someone's hearts.
+        self._playlists_version = 0
+        self._hearts_version = 0
+        #: Smart playlists' counts and covers as last worked out, by id.
+        self._counted: dict[int, _Counted] = {}
+        #: A smart playlist's count and cover may be shown as last worked
+        #: out while the catalogue changed since (the server adding works in
+        #: the background): counted afresh when it is opened and at night
+        #: (Mateusz, 2026-11-02); set when the server runs its background.
+        #: A playlist changed is counted at once, and one of hearts once
+        #: they change.
+        self.counts_may_lag = False
         self._term_index: TermIndex | None = None
         self._term_index_lock = threading.Lock()
         self._term_index_building = False
@@ -326,6 +366,7 @@ class Library:
                 self._drop_works("a rolled back write")
                 self._version += 1
                 self._favorites = None
+                self._hearts_version += 1
                 raise
             finally:
                 self._depth -= 1
@@ -472,6 +513,7 @@ class Library:
             )
             self.set_state(FAVORITES_MOVED_KEY, True)
         self._favorites = None
+        self._hearts_version += 1
 
     def _hearts(self) -> dict[str, set[str]]:
         with self._lock:
@@ -519,6 +561,7 @@ class Library:
                         (user_id, item_id),
                     )
                     hearts.get(user_id, set()).discard(item_id)
+                self._hearts_version += 1
                 anyone = any(item_id in ids for ids in hearts.values())
                 return self._update(item_id, favorite=anyone)
 
@@ -526,6 +569,7 @@ class Library:
         """A person removed from the server: their hearts go."""
         with self._lock, self._db() as db:
             ids = self._hearts().pop(user_id, set())
+            self._hearts_version += 1
             db.execute("DELETE FROM favorites WHERE user_id = ?", (user_id,))
             hearts = self._hearts()
             for item_id in ids:
@@ -749,11 +793,15 @@ class Library:
                     "UPDATE playlists SET data = ? WHERE id = ?",
                     (playlist.model_dump_json(exclude={"id"}), playlist.id),
                 )
+        self._playlists_version += 1
         return playlist
 
     def delete_playlist(self, playlist_id: int) -> bool:
         with self._db() as db:
             cur = db.execute("DELETE FROM playlists WHERE id = ?", (playlist_id,))
+        self._playlists_version += 1
+        with self._lock:
+            self._counted.pop(playlist_id, None)
         return cur.rowcount > 0
 
     def listed(self, user: str | None = None) -> set[str]:
@@ -778,23 +826,25 @@ class Library:
             return dedupe(
                 [all_items[i] for i in playlist.item_ids if i in all_items and i not in skip]
             )
+        stamp = self._stamp()
         items = dedupe(self.query(playlist.rules, sort=sort, user=playlist.owner)[1])
-        if not playlist.limit:
-            return items
-        return limited(items, playlist, self.favorites(playlist.owner))
+        if playlist.limit:
+            items = limited(items, playlist, self.favorites(playlist.owner))
+        self._keep_count(playlist, stamp, items)
+        return items
 
     def playlist_summary(self, playlist: Playlist) -> PlaylistSummary:
-        items = self.playlist_items(playlist, sort="suitability")
         assert playlist.id is not None
+        counted = self._counts(playlist)
         return PlaylistSummary(
             id=playlist.id,
             name=playlist.name,
             description=playlist.description,
             kind=playlist.kind,
             rules=playlist.rules,
-            item_count=len(items),
-            cover_item_ids=[i.id for i in items[:4]],
-            cover_colors=cover_colors(items[:4]),
+            item_count=counted.total,
+            cover_item_ids=counted.cover,
+            cover_colors=counted.colors,
             album=playlist.album,
             album_sync=self.album_sync(playlist.id),
             theme=playlist.theme,
@@ -803,6 +853,66 @@ class Library:
             mine=playlist.owner == viewer_id(),
             limit=playlist.limit,
         )
+
+    def _stamp(self) -> tuple[int, int, int]:
+        return (self._version, self._playlists_version, self._hearts_version)
+
+    def _counts(self, playlist: Playlist) -> _Counted:
+        """The playlist's count and cover: a smart one's as last worked out
+        while nothing changed since; with :attr:`counts_may_lag`, also after
+        the catalogue changed (counted afresh when the playlist is opened,
+        and every night: :meth:`recount`)."""
+        if playlist.kind != PlaylistKind.SMART or playlist.id is None:
+            items = self.playlist_items(playlist)
+            return _Counted("", self._stamp(), len(items), *_cover(items))
+        stamp = self._stamp()
+        with self._lock:
+            kept = self._counted.get(playlist.id)
+        if kept is not None and kept.key == playlist.model_dump_json():
+            if kept.stamp == stamp:
+                return kept
+            if self.counts_may_lag and (not _personal(playlist) or kept.stamp[1:] == stamp[1:]):
+                return kept
+        self.playlist_items(playlist)  # counts it
+        with self._lock:
+            return self._counted[playlist.id]
+
+    def _keep_count(
+        self, playlist: Playlist, stamp: tuple[int, int, int], items: list[Item]
+    ) -> None:
+        """A smart playlist's works as just found: its count and cover for
+        Playlisty."""
+        if playlist.id is None:
+            return
+        counted = _Counted(playlist.model_dump_json(), stamp, len(items), *_cover(items))
+        with self._lock:
+            self._counted[playlist.id] = counted
+
+    def recount(self) -> None:
+        """Every smart playlist counted afresh where the library changed
+        since (at night, and once after a start)."""
+        for playlist in self.playlists():
+            if playlist.kind != PlaylistKind.SMART or playlist.id is None:
+                continue
+            with self._lock:
+                kept = self._counted.get(playlist.id)
+            if kept is None or kept.stamp != self._stamp():
+                self.playlist_items(playlist)
+
+    def recount_nightly(self, stop: threading.Event, first: float = 60.0) -> None:
+        """:meth:`recount` ``first`` seconds after the start, then every
+        night at :data:`RECOUNT_HOUR`."""
+        wait = first
+        while not stop.wait(wait):
+            try:
+                self.recount()
+            except Exception:
+                log.exception("playlist counts")
+            now = datetime.now()
+            night = now.replace(hour=RECOUNT_HOUR, minute=0, second=0, microsecond=0)
+            if night <= now:
+                night += timedelta(days=1)
+            wait = (night - now).total_seconds()
 
     def album_sync(self, playlist_id: int) -> AlbumSync | None:
         data = self.get_state(f"album_sync:{playlist_id}")

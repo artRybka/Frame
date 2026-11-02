@@ -108,6 +108,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         tasks = []
+        recount_stop = threading.Event()
         logbuffer.install()  # again: uvicorn's logging setup dropped it
         service.notifier.bind(asyncio.get_running_loop())
         if settings.scheduler:
@@ -128,6 +129,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if settings.seed_library:
             service.player.top_up()  # Suggestions come from museums, as needed
         if settings.scheduler:
+            # Playlisty open with the counts last worked out while the
+            # catalogue grows: each counted afresh when opened, all at night.
+            service.library.counts_may_lag = True
+            threading.Thread(
+                target=service.library.recount_nightly,
+                args=(recount_stop,),
+                name="playlist-counts",
+                daemon=True,
+            ).start()
             # Discover's first visit then finds its themes worked out.
             threading.Thread(target=discover_api.warm_up, args=(service,), daemon=True).start()
             threading.Thread(target=service.daily.run, name="daily", daemon=True).start()
@@ -136,6 +146,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             task.cancel()
         service.ai.stop()
         service.daily.stop()
+        recount_stop.set()
         service.library.close()
 
     app = FastAPI(title="Frame", version=build_version(), lifespan=lifespan)

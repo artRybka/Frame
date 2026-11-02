@@ -12,21 +12,41 @@ enum DiscoverCache {
         var studies: [StudyBrief]? = nil
     }
 
-    private static func file(for server: String) -> URL? {
+    static func load(server: String) -> Snapshot? { CacheFile.load(Snapshot.self, "discover", server: server) }
+
+    static func save(_ snapshot: Snapshot, server: String) { CacheFile.save(snapshot, "discover", server: server) }
+}
+
+/// The playlists as last loaded from a server, so Playlisty (and the
+/// playlist's name on "Teraz") show at once on the next launch while the
+/// server counts their works afresh.
+enum PlaylistsCache {
+    static func load(server: String) -> [PlaylistSummary]? {
+        CacheFile.load([PlaylistSummary].self, "playlists", server: server)
+    }
+
+    static func save(_ playlists: [PlaylistSummary], server: String) {
+        CacheFile.save(playlists, "playlists", server: server)
+    }
+}
+
+/// A screen kept per server in Caches, as the server sent it.
+enum CacheFile {
+    private static func url(_ name: String, server: String) -> URL? {
         guard !server.isEmpty,
               let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
         else { return nil }
-        let name = String(server.map { $0.isLetter || $0.isNumber ? $0 : "_" })
-        return dir.appendingPathComponent("discover-\(name).json")
+        let host = String(server.map { $0.isLetter || $0.isNumber ? $0 : "_" })
+        return dir.appendingPathComponent("\(name)-\(host).json")
     }
 
-    static func load(server: String) -> Snapshot? {
-        guard let url = file(for: server), let data = try? Data(contentsOf: url) else { return nil }
-        return try? LiveBackend.decoder().decode(Snapshot.self, from: data)
+    static func load<T: Decodable>(_ type: T.Type, _ name: String, server: String) -> T? {
+        guard let url = url(name, server: server), let data = try? Data(contentsOf: url) else { return nil }
+        return try? LiveBackend.decoder().decode(T.self, from: data)
     }
 
-    static func save(_ snapshot: Snapshot, server: String) {
-        guard let url = file(for: server), let data = try? LiveBackend.encoder().encode(snapshot) else {
+    static func save<T: Encodable>(_ value: T, _ name: String, server: String) {
+        guard let url = url(name, server: server), let data = try? LiveBackend.encoder().encode(value) else {
             return
         }
         try? data.write(to: url, options: .atomic)
