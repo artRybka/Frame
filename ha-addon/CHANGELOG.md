@@ -4,6 +4,10 @@
 
 - Studium: dopiski przy „Podobnych dziełach” to cicha kursywa z cienką kreską
   z lewej zamiast cynobrowej plakietki.
+- Ramka nie przesypia zmiany obrazu, gdy zgubi budzik: aplikacja ustawia
+  budziki od nowa po każdym śnie, a gdy ramka i tak nie wstanie, serwer minutę
+  później budzi ją przez sieć. Nowa paczka aplikacji instaluje się na ramce
+  sama.
 
 ## 1.73.1
 
