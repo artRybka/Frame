@@ -5,13 +5,16 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import hashlib
+import logging
+import threading
+from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
 import httpx
 from anyio import CapacityLimiter, to_thread
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field, ValidationError
 from starlette.concurrency import run_in_threadpool
 
@@ -19,6 +22,7 @@ from ..ai import PolishText
 from ..ai.keywords import KIND as KEYWORDS
 from ..ai.keywords import polish_words
 from ..ai.pl_text import KIND as PL_TEXT
+from ..copies import CopyLine, Spot
 from ..fsutil import own_files
 from ..imaging.layout import (
     WHOLE,
@@ -46,6 +50,7 @@ from ..schedule import FrameSettings
 from ..service import FrameService
 from .deps import require_owner, require_token, service
 
+log = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", dependencies=[Depends(require_token)], tags=["library"])
 Svc = Annotated[FrameService, Depends(service)]
 
@@ -350,6 +355,10 @@ class SharperView(BaseModel):
 
     status: Literal["looking", "found", "none", "fine", "off"]
     sharper: SharperCopy | None = None
+    #: The picture shown now as its source gave it (0: not downloaded yet),
+    #: for "Zdjęcie dzieła" on the card.
+    width: int = 0
+    height: int = 0
 
 
 @router.post("/library/items/{item_id}/sharpen", response_model=SharperView)
@@ -367,7 +376,103 @@ async def sharpen_item(
     status = future.result() if future.done() else "looking"
     stored = svc.library.get(item_id)
     copy = (stored or item).sharper
-    return SharperView(status="found" if copy is not None else status, sharper=copy)
+    size = svc.images.source_size(stored or item) or (0, 0, 0)
+    return SharperView(
+        status="found" if copy is not None else status,
+        sharper=copy,
+        width=size[0],
+        height=size[1],
+    )
+
+
+@router.get("/library/items/{item_id}/copies")
+async def item_copies(item_id: str, svc: Svc) -> StreamingResponse:
+    """Every copy of the work's picture the sources have ("Szukaj lepszej
+    kopii"), as they answer: :class:`CopyLine` per line (JSON lines)."""
+    item = await _work(svc, item_id)
+    if item.kind != ItemKind.ARTWORK or item.look is not None:
+        raise HTTPException(422, "only a museum work has copies elsewhere")
+    loop = asyncio.get_running_loop()
+    lines: asyncio.Queue[CopyLine | None] = asyncio.Queue()
+    gone = threading.Event()
+
+    def emit(line: CopyLine) -> None:
+        loop.call_soon_threadsafe(lines.put_nowait, line)
+
+    def look() -> None:
+        try:
+            svc.copies.look(item, emit, gone)
+        except Exception:
+            log.exception("copies of %s", item.id)
+            emit(CopyLine(kind="end"))
+        finally:
+            loop.call_soon_threadsafe(lines.put_nowait, None)
+
+    async def answer() -> AsyncIterator[str]:
+        task = asyncio.ensure_future(run_in_threadpool(urgent_call(look)))
+        try:
+            while (line := await lines.get()) is not None:
+                yield line.model_dump_json(by_alias=True, exclude_none=True) + "\n"
+        finally:
+            gone.set()
+            task.cancel()
+
+    return StreamingResponse(answer(), media_type="application/x-ndjson")
+
+
+class CopyPick(BaseModel):
+    #: The copy's id, or the work's own to go back to its own picture.
+    item_id: str
+
+
+@router.put("/library/items/{item_id}/copy", response_model=Item)
+async def choose_copy(item_id: str, pick: CopyPick, svc: Svc) -> Item:
+    """The owner's pick for the work's picture: a copy from another source,
+    or (its own id) the work's own. The work keeps its id, texts, hearts,
+    playlists and crops; the frame shows the new picture from its next
+    change."""
+    item = await _work(svc, item_id)
+    if item.kind != ItemKind.ARTWORK or item.look is not None:
+        raise HTTPException(422, "only a museum work has copies elsewhere")
+    try:
+        return await run_in_threadpool(urgent_call(svc.copies.choose), item, pick.item_id)
+    except LookupError as err:
+        raise HTTPException(404, f"no copy {pick.item_id!r}") from err
+    except ValueError as err:
+        raise HTTPException(422, str(err)) from err
+    except (httpx.HTTPError, OSError) as err:
+        raise HTTPException(502, f"copy unavailable: {err}") from err
+
+
+@router.delete("/library/items/{item_id}/copy", response_model=Item)
+async def keep_own_picture(item_id: str, svc: Svc) -> Item:
+    """Back to the work's own picture; no copy is looked for again."""
+    item = await _work(svc, item_id)
+    return await run_in_threadpool(svc.sharper.keep_own, item)
+
+
+@router.get("/library/items/{item_id}/copies/{copy_id}/spot", response_model=Spot)
+async def copy_spot(
+    item_id: str,
+    copy_id: str,
+    svc: Svc,
+    x: Annotated[float | None, Query(ge=0, le=1)] = None,
+    y: Annotated[float | None, Query(ge=0, le=1)] = None,
+) -> Spot:
+    """One spot of the picture shown now and of the copy, side by side at
+    the frame's scale (``x``, ``y``: its centre; the most detailed spot when
+    not given)."""
+    item = await _work(svc, item_id)
+    try:
+        return await run_in_threadpool(urgent_call(svc.copies.compare), item, copy_id, x, y)
+    except LookupError as err:
+        raise HTTPException(404, f"no copy {copy_id!r}") from err
+    except ValueError as err:
+        raise HTTPException(422, str(err)) from err
+    except Gone as err:
+        raise HTTPException(410, str(err)) from err
+    except (httpx.HTTPError, OSError) as err:
+        raise HTTPException(502, f"picture unavailable: {err}") from err
 
 
 @router.patch("/library/items/{item_id}", response_model=Item)
