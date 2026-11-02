@@ -1,7 +1,8 @@
 import SwiftUI
 import UIKit
 
-/// The original on a dark screen of its own: pinch or double-tap to look
+/// The original on a dark screen of its own, opened filling the screen:
+/// pinch out or double-tap to see it whole, pinch or double-tap to look
 /// closer, drag to look around, tap to hide the caption.
 struct OriginalViewer: View {
     @Environment(AppModel.self) private var model
@@ -92,8 +93,9 @@ struct OriginalViewer: View {
     }
 }
 
-/// A picture in a scroll view: pinch to zoom, drag around, double-tap to zoom
-/// in on a spot and back out, single tap for `onTap`.
+/// A picture in a scroll view, shown filling the view (centred, the sides
+/// that do not fit off screen): pinch to zoom, drag around, double-tap to
+/// see it whole and to zoom back in on a spot, single tap for `onTap`.
 struct ZoomableImage: UIViewRepresentable {
     let image: UIImage
     var onTap: () -> Void = {}
@@ -111,6 +113,8 @@ final class ZoomScrollView: UIScrollView, UIScrollViewDelegate {
     var onTap: () -> Void = {}
     /// The bounds the picture was last fitted to.
     private var fitted: CGSize = .zero
+    /// The zoom at which the picture covers the whole view; it opens there.
+    private var fillScale: CGFloat = 1
 
     init() {
         super.init(frame: .zero)
@@ -160,8 +164,13 @@ final class ZoomScrollView: UIScrollView, UIScrollViewDelegate {
         let scale = min(bounds.width / size.width, bounds.height / size.height)
         imageView.frame = CGRect(x: 0, y: 0, width: size.width * scale, height: size.height * scale)
         contentSize = imageView.frame.size
+        let fill = max(bounds.width / imageView.frame.width, bounds.height / imageView.frame.height)
+        fillScale = min(maximumZoomScale, max(minimumZoomScale, fill))
+        zoomScale = fillScale
         centre()
-        contentOffset = CGPoint(x: -contentInset.left, y: -contentInset.top)
+        // The middle of the picture in the middle of the view.
+        contentOffset = CGPoint(x: (contentSize.width - bounds.width) / 2,
+                                y: (contentSize.height - bounds.height) / 2)
     }
 
     /// Keeps a picture smaller than the screen in its middle.
@@ -184,7 +193,9 @@ final class ZoomScrollView: UIScrollView, UIScrollViewDelegate {
             return
         }
         let point = gesture.location(in: imageView)
-        let scale = min(maximumZoomScale, 3)
+        // Back to filling the screen, or closer when the picture already
+        // fills it whole.
+        let scale = fillScale > minimumZoomScale * 1.15 ? fillScale : min(maximumZoomScale, 3)
         let size = CGSize(width: bounds.width / scale, height: bounds.height / scale)
         zoom(to: CGRect(x: point.x - size.width / 2, y: point.y - size.height / 2,
                         width: size.width, height: size.height), animated: true)
