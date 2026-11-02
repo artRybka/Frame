@@ -208,8 +208,9 @@ def test_discover_keeps_its_cards_and_rows_while_the_catalogue_stays(museums, mo
     assert discover_api.work_out_cards(service) is not cards
     # Hearts alone: worked out again only once the cards are old enough.
     library.update(work.id, favorite=True)
-    assert not discover_api._cards_stale(service, discover_api._cards[0])
-    assert discover_api._cards_stale(service, 0.0)
+    stamp = discover_api._cards[0]
+    assert not discover_api._cards_stale(service, stamp)
+    assert discover_api._cards_stale(service, stamp - discover_api.CARDS_TTL)
 
 
 def test_the_frames_next_pictures_get_sharper_copies_at_night(service, monkeypatch) -> None:
