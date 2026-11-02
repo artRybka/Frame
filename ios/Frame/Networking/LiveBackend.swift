@@ -30,7 +30,13 @@ struct LiveBackend: FrameBackend {
 
     // MARK: Player & status
 
-    func health() async throws -> Health { try await get("/api/health") }
+    /// Short: `AppModel` tries again (and asks for the address anew) when
+    /// it does not answer, rather than waiting a minute on one try.
+    func health() async throws -> Health {
+        var req = request("/api/health")
+        req.timeoutInterval = 12
+        return try await perform(req)
+    }
 
     func status(refresh: Bool) async throws -> StatusView {
         try await get("/api/status", query: [URLQueryItem(name: "refresh", value: refresh ? "true" : "false")])

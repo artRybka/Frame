@@ -21,6 +21,12 @@ final class AppModel {
         case unknown, connected, failed(String)
     }
 
+    /// The badge at the top of each tab: a spinner while the app reaches the
+    /// server, "Bez połączenia" once it surely did not, nothing otherwise.
+    enum ServerLink: Equatable {
+        case online, connecting, offline
+    }
+
     var serverURL: String
     /// Optional second address used away from home, e.g. the NAS in Tailscale.
     var remoteURL: String
@@ -102,6 +108,14 @@ final class AppModel {
     /// Styles, subjects, periods and techniques to search by, with Polish names.
     var vocabulary: [TermInfo] = []
     var connection = Connection.unknown
+    /// `refreshAll()`s under way that started without a connection: until
+    /// they are through, the app is still connecting.
+    private var firstLoads = 0
+    /// A try to reach the server did not get through, the next is on its way.
+    private var retrying = false
+    /// The app is reaching the server: its address, its health and, the
+    /// first time, what the frame shows.
+    var connecting: Bool { firstLoads > 0 || retrying }
     /// The cards at the bottom of the screen (`NoticeStack`).
     let notices = Notices()
     /// The send bar on the Lock Screen and in the Dynamic Island.
@@ -147,6 +161,11 @@ final class AppModel {
     private let network = NWPathMonitor()
     private var networkSeen: String?
     private var networkSettle: Task<Void, Never>?
+    /// The pause before the next try to reach the server: cut short when
+    /// the network changes (the VPN came up).
+    private var reachPause: Task<Void, Never>?
+    /// A try to reach the server under way: later callers wait for it.
+    private var reaching: Task<Bool, Never>?
 
     init() {
         let defaults = UserDefaults.standard
@@ -208,6 +227,7 @@ final class AppModel {
         UserDefaults.standard.set(demoMode, forKey: Keys.demoMode)
         KeychainStore.write(Keys.apiToken, value: apiToken)
         connect(demo: demoMode, url: serverURL, remote: remoteURL, token: apiToken)
+        connection = .unknown
         player = nil
         status = nil
         displayProgress = nil
@@ -236,19 +256,22 @@ final class AppModel {
 
     // MARK: Loading
 
+    var serverLink: ServerLink {
+        if connecting { return .connecting }
+        switch connection {
+        case .connected: return .online
+        case .unknown: return .connecting  // before the first try
+        case .failed: return accessLost ? .online : .offline  // the server answered, it said no
+        }
+    }
+
     func refreshAll() async {
-        if let route, route.hasRemote, await route.resolve() == nil {
-            connection = .failed("Serwer nie odpowiada pod żadnym adresem. Poza domem włącz Tailscale.")
-            return
-        }
-        do {
-            _ = try await backend.health()
-            connection = .connected
-            serverPath = route?.active
-        } catch {
-            if !error.isCancellation { connection = .failed(error.localizedDescription) }
-            return
-        }
+        // Already connected (pull to refresh, back from the background): no
+        // spinner unless the server does not answer.
+        let first = connection != .connected
+        if first { firstLoads += 1 }
+        defer { if first { firstLoads -= 1 } }
+        guard await reachServer() else { return }
         let backend = self.backend
         let player = Task { try? await backend.player() }
         let status = Task { try? await backend.status(refresh: false) }
@@ -284,6 +307,85 @@ final class AppModel {
         if !demoMode { Task { await PushCenter.shared.registerIfAllowed() } }
         // Ready before Discover is opened.
         Task { await refreshDiscover() }
+    }
+
+    // MARK: Reaching the server
+
+    /// How long the app keeps trying before it says "Bez połączenia": away
+    /// from home the VPN (Tailscale) often comes up only after the app has
+    /// started, and its first packets take seconds.
+    static let reachPatience: Duration = .seconds(20)
+
+    private enum Reach {
+        case reached, cancelled
+        /// The server answered, with an error: trying again will not help.
+        case refused(String)
+        /// Nothing answered (yet).
+        case unreachable(String)
+    }
+
+    /// Finds the server's address and asks its health, again and again for
+    /// `reachPatience` when nothing answers; true once it did. Calls made
+    /// meanwhile share the same try.
+    private func reachServer() async -> Bool {
+        if let running = reaching { return await running.value }
+        let task = Task { await reachServerNow() }
+        reaching = task
+        let reached = await task.value
+        if reaching == task { reaching = nil }
+        return reached
+    }
+
+    private func reachServerNow() async -> Bool {
+        defer {
+            retrying = false
+            reachPause = nil
+        }
+        let start = ContinuousClock.now
+        var tries = 0
+        while true {
+            switch await reachOnce() {
+            case .reached:
+                connection = .connected
+                serverPath = route?.active
+                return true
+            case .cancelled:
+                return false
+            case let .refused(message):
+                connection = .failed(message)
+                return false
+            case let .unreachable(message):
+                tries += 1
+                guard start.duration(to: .now) < Self.reachPatience else {
+                    connection = .failed(message)
+                    return false
+                }
+                retrying = true
+                // 1 s, 2 s, then every 3 s; sooner when the network changes.
+                let pause = Task { _ = try? await Task.sleep(for: .seconds(min(tries, 3))) }
+                reachPause = pause
+                await pause.value
+                reachPause = nil
+                if Task.isCancelled { return false }
+            }
+        }
+    }
+
+    private func reachOnce() async -> Reach {
+        if let route, route.hasRemote, await route.resolve() == nil {
+            if Task.isCancelled { return .cancelled }
+            return .unreachable("Serwer nie odpowiada pod żadnym adresem. Poza domem włącz Tailscale.")
+        }
+        do {
+            _ = try await backend.health()
+            return .reached
+        } catch {
+            if Task.isCancelled { return .cancelled }
+            // A 4xx is the server's answer; a 5xx may be a proxy in front of
+            // a server still starting.
+            if case let BackendError.http(status, _) = error, status < 500 { return .refused(error.localizedDescription) }
+            return .unreachable(error.localizedDescription)
+        }
     }
 
     // MARK: "Teraz" from the last launch
@@ -331,8 +433,13 @@ final class AppModel {
 
     /// Back in the app or on another network: checks which of the server's
     /// addresses answers now, and reloads when that changed or the server
-    /// was out of reach.
+    /// was out of reach (then with the spinner, as at launch).
     func recheckServer() async {
+        // Out of reach before: maybe not any more.
+        if case .failed = connection, !accessLost, !connecting {
+            await refreshAll()
+            return
+        }
         guard let route, route.hasRemote, connection != .unknown else { return }
         let before = route.active
         guard let found = await route.resolve() else { return }
@@ -355,6 +462,11 @@ final class AppModel {
         networkSettle = Task {
             try? await Task.sleep(for: .seconds(1.5))
             guard !Task.isCancelled else { return }
+            // Waiting to try the server again: the next try goes now.
+            if let reachPause {
+                reachPause.cancel()
+                return
+            }
             await recheckServer()
         }
     }

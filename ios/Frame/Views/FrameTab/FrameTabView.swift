@@ -53,6 +53,7 @@ struct FrameTabView: View {
             }
             .paperPage()
             .navigationTitle("Ramka")
+            .serverLinkBadge()
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -2171,6 +2172,20 @@ struct ServerSection: View {
 
     @ViewBuilder
     private var connectionLine: some View {
+        if model.connecting {
+            HStack(spacing: 8) {
+                ProgressView().controlSize(.small)
+                Text("Łączę z serwerem…")
+            }
+            .font(.subheadline)
+            .foregroundStyle(Theme.inkSoft)
+        } else {
+            connectionResult
+        }
+    }
+
+    @ViewBuilder
+    private var connectionResult: some View {
         switch model.connection {
         case .connected:
             Label(connectedText, systemImage: "checkmark.circle.fill")
