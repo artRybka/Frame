@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.79.2
+
+- Tytuł w oryginale: bez dopisku „Tytuł z muzeum”, także w studium dzieła.
+  Gdy zaczynasz naciskać tytuł, telefon lekko stuka, a tytuł delikatnie
+  się powiększa; po przytrzymaniu przełącza się z mocniejszym stuknięciem.
+- Nazwisko autora (karta dzieła, Teraz, studium) odpowiada na nacisk tak
+  samo; dociśnięcie, jak stuknięcie, otwiera Szukaj z jego dziełami.
+
 ## 1.79.1
 
 - Playlisty: nowa okładka karty „Ukryte”. Zamiast wyszarzonego kolażu
