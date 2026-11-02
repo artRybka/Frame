@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.75.1
+
+- Karta dzieła i studium: obraz na całym ekranie otwiera się powiększony,
+  wypełniając ekran; podwójne stuknięcie pokazuje całe dzieło.
+
 ## 1.75.0
 
 - Studium dzieła: nowa „Analiza kompozycji”, jedno ujęcie zamiast „Geometrii”
