@@ -9,6 +9,7 @@
 - Nowa ikonka „Teraz” i „na ramce”: pełny obraz zamiast obrazu w ramce, w
   zakładce, przyciskach „Pokaż na ramce” i „Prezentuj na ramce” oraz w Live
   Activity.
+- Strona pod szklanym okienkiem podpowiedzi nie jest już rozbielona.
 
 ## 1.71.1
 
