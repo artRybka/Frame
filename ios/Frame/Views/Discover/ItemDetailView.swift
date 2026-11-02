@@ -3,8 +3,8 @@ import SwiftUI
 /// One picture: original vs. how it will look on the e-paper, its story,
 /// palette, and actions (show now, queue next, favourite, add to playlist,
 /// save to Photos).
-/// Tapping the original opens it on the whole screen; tapping the preview on
-/// "Na ramce" opens it there to be cropped.
+/// Tapping (or holding) the original opens it on the whole screen; tapping
+/// (or holding) the preview on "Na ramce" grows it into cropping.
 struct ItemDetailView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.openStudy) private var openStudy
@@ -156,16 +156,16 @@ struct ItemDetailView: View {
             if let item { AddToPlaylistSheet(item: item, beforeAdding: saveCrop) }
         }
         .sheet(isPresented: $findingCopies) {
-            if let item { CopiesSheet(item: item) { copyPicked($0, before: item) } }
+            if let item { CopiesSheet(item: item) { copyPicked($0) } }
         }
     }
 
     // MARK: Copies
 
     /// A copy picked in "Szukaj lepszej kopii": the card fades to it. On the
-    /// frame now, the frame can show it at once; otherwise the pick can be
-    /// taken back.
-    private func copyPicked(_ updated: Item, before: Item) {
+    /// frame now, the frame can show it at once; otherwise a short note that
+    /// goes by itself (another copy is one more pick in the same sheet).
+    private func copyPicked(_ updated: Item) {
         withAnimation(.easeInOut(duration: 0.4)) { item = updated }
         pictureSize = updated.sharper.map { ($0.width, $0.height) }
         let id = itemID
@@ -177,13 +177,7 @@ struct ItemDetailView: View {
                 }
             )
         } else {
-            let back = before.sharper?.itemId ?? before.id
-            model.notices.info(
-                "Zdjęcie podmienione", nil,
-                action: Notice.Action(label: "Cofnij") {
-                    Task { await restorePicture(to: back) }
-                }
-            )
+            model.notices.info("Zdjęcie podmienione")
         }
     }
 
@@ -703,9 +697,15 @@ struct ItemDetailView: View {
                     onFrame: model.player?.current?.item?.id == item.id,
                     draft: $draft, save: saveFromCropScreen
                 )
+                .navigationTransition(.zoom(sourceID: Self.cropSource, in: zoomSpace))
+                // A drag down crops: it must not close the screen past "Anuluj".
+                .interactiveDismissDisabled()
             }
         }
     }
+
+    /// The "Na ramce" preview cropping grows out of.
+    private static let cropSource = "crop"
 
     /// The picture as the frame will show it; a tap opens it on the crop
     /// screen once its crop is loaded.
@@ -713,21 +713,26 @@ struct ItemDetailView: View {
         let ref = previewRef
         return FramedArtwork(
             ref: ref, aspectRatio: model.isPortrait ? 9.0 / 16.0 : 16.0 / 9.0,
-            placeholder: item.placeholderColor, moulding: 7
-        )
+            placeholder: item.placeholderColor, moulding: 7, shadow: false
+        ) {
+            EmptyView()
+        }
         .environment(\.artImageLoaded) { loaded in
             guard loaded == previewRef else { return }
             withAnimation(.easeOut(duration: 0.3)) { loadedPreview = loaded }
         }
+        // Cropping grows out of it ("pop"), as the whole picture does out of "Oryginał".
+        .matchedTransitionSource(id: Self.cropSource, in: zoomSpace) {
+            $0.clipShape(RoundedRectangle(cornerRadius: 2))
+        }
+        .frameShadow()
         .overlay {
             if loadedPreview != ref {
                 LoadingBadge(text: "Wczytuję podgląd…")
             }
         }
-        .contentShape(Rectangle())
-        .onTapGesture {
-            if cropping { opened = .crop }
-        }
+        // Tap or hold (the phone taps closer and closer), like the picture.
+        .picturePress(enabled: cropping) { opened = .crop }
         .accessibilityAddTraits(cropping ? .isButton : [])
         .accessibilityHint(Text(cropping ? "Otwiera kadrowanie na całym ekranie" : ""))
     }
