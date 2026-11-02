@@ -46,7 +46,10 @@ protocol FrameBackend: Sendable {
     /// for a sharper copy in other sources; waits up to `wait` seconds.
     func sharpen(itemID: String, wait: Int) async throws -> SharperView
     func setFavorite(id: String, _ favorite: Bool) async throws -> Item
+    /// "Ukryj dzieło" and back: a hidden work is never shown, listed or found.
     func setExcluded(id: String, _ excluded: Bool) async throws -> Item
+    /// The hidden works ("Ukryte" at the end of Playlisty), the last hidden first.
+    func hiddenItems() async throws -> ItemPage
     func show(itemID: String, hold: HoldSpec) async throws
     /// "Dodaj do kolejki": the work goes on the frame at the next change,
     /// before the rest of the queue (a museum work joins the library).

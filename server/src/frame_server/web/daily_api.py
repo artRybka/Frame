@@ -94,7 +94,7 @@ class DailyWork(BaseModel):
 
 
 def _light(svc: FrameService, item: Item) -> RemoteItem:
-    remote = remote_items(svc, [item], copies=False)[0]
+    remote = remote_items(svc, [item], copies=False, keep_hidden=True)[0]
     return remote.model_copy(
         update={"item": remote.item.model_copy(update={"description": "", "artist_bio": ""})}
     )

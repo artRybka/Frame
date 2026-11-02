@@ -1001,6 +1001,22 @@ final class FrameAPITests: XCTestCase {
         XCTAssertEqual(lines.count, (page.items.count + 3) / 4 + 1)  // a few works at a time
     }
 
+    func testAHiddenWorkLeavesTheLibraryForUkryte() async throws {
+        let demo = DemoBackend()
+        let library = try await demo.items(LibraryQuery())
+        let first = try XCTUnwrap(library.items.first)
+        let hiddenBefore = try await demo.hiddenItems().items
+        XCTAssertTrue(hiddenBefore.isEmpty)
+        _ = try await demo.setExcluded(id: first.id, true)
+        let hidden = try await demo.hiddenItems().items.map(\.id)
+        XCTAssertEqual(hidden, [first.id])
+        let listed = try await demo.items(LibraryQuery()).items.map(\.id)
+        XCTAssertFalse(listed.contains(first.id))
+        _ = try await demo.setExcluded(id: first.id, false)
+        let after = try await demo.hiddenItems().items
+        XCTAssertTrue(after.isEmpty)
+    }
+
     func testMuseumThumbnailFallsBackToTheServer() async throws {
         let demo = DemoBackend()
         let themes = try await demo.themes()

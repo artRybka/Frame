@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.76.0
+
+- „Nie pokazuj na ramce” nazywa się teraz „Ukryj dzieło” (z powrotem
+  „Przywróć dzieło”). Ukryte dzieło znika zewsząd: z ramki, playlist,
+  kolejki, Propozycji, Odkrywaj, Dzieła dnia i wyszukiwania, także w
+  muzeach, razem z jego kopiami z innych muzeów. „Pokaż na ramce” wprost
+  dalej działa.
+- Na końcu Playlist nowa karta „Ukryte”: ukryte dzieła, ostatnio ukryte
+  pierwsze. Przytrzymaj dzieło (albo otwórz jego kartę), by je przywrócić.
+  Wymaga zaktualizowanego serwera.
+
 ## 1.75.6
 
 - Analiza kompozycji: główny układ zawsze ma swój ślad. Klin, którego punkt

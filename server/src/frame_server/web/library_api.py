@@ -38,7 +38,7 @@ from ..library.images import Gone
 from ..library.importer import ALL
 from ..library.models import Framing, SharperCopy
 from ..library.museums import MUSEUMS, Discovery, Kind
-from ..library.repo import SortKey
+from ..library.repo import Hidden, SortKey, now_iso
 from ..library.seed import PACKS, import_queries, pack
 from ..library.viewer import viewer_id
 from ..player import hold_from
@@ -87,17 +87,21 @@ class RemoteItem(BaseModel):
     aspect: float | None = None
 
 
-def remote_items(svc: FrameService, items: list[Item], copies: bool = True) -> list[RemoteItem]:
+def remote_items(
+    svc: FrameService, items: list[Item], copies: bool = True, keep_hidden: bool = False
+) -> list[RemoteItem]:
     """Works found for the app, each once, marked whether the library holds
     them (and whether the owner likes them). With ``copies`` (results from
     several sources) a work the library holds from another source comes as
     the library's copy, unless this one is from a more reliable source than a
     copy only the server added. Works with no picture anywhere are left out
-    (``ImageCache.gone``)."""
+    (``ImageCache.gone``), and so are hidden works and their copies
+    ("Ukryj dzieło"), unless ``keep_hidden``."""
     found: dict[str, RemoteItem] = {}
     gone = svc.images.gone_ids()
+    hidden = Hidden() if keep_hidden else svc.library.hidden()
     for item in items:
-        if item.id in gone:
+        if item.id in gone or item in hidden:
             continue
         twin: str | None = None
         if copies and not svc.library.has(item.id):
@@ -220,6 +224,14 @@ def list_items(
     )
     total, items = svc.library.query(rules, sort=sort, offset=offset, limit=limit, seed=seed)
     return ItemPage(total=total, items=[ItemSummary.of(i) for i in items])
+
+
+@router.get("/library/hidden", response_model=ItemPage)
+def hidden_items(svc: Svc) -> ItemPage:
+    """The works hidden in the app ("Ukryte" at the end of Playlists), the
+    last hidden first."""
+    items = svc.library.hidden_items()
+    return ItemPage(total=len(items), items=[ItemSummary.of(i) for i in items])
 
 
 @router.get("/library/facets", response_model=Facets)
@@ -371,6 +383,8 @@ async def patch_item(item_id: str, patch: ItemPatch, svc: Svc) -> Item:
         svc.library.set_favorite(viewer_id(), item.id, liked)
         changes.setdefault("favorite", liked)  # for the player below
     stored = {k: v for k, v in changes.items() if k != "favorite"}
+    if "excluded" in stored and stored["excluded"] != item.excluded:
+        stored["excluded_at"] = now_iso() if stored["excluded"] else None
     updated = svc.library.update(item.id, **stored) if stored else svc.library.get(item.id)
     assert updated is not None
     if changes.keys() & {"favorite", "excluded"}:

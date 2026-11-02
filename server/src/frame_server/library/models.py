@@ -122,7 +122,10 @@ class Item(BaseModel):
     # colors.tint_spread: ~0 when the picture has no colour of its own.
     tint_spread: float | None = None
     favorite: bool = False
+    #: Hidden in the app ("Ukryj dzieło"): never shown, listed or found, but
+    #: in Playlists' "Ukryte"; ``excluded_at`` when (newest first there).
     excluded: bool = False
+    excluded_at: str | None = None
     #: Added by the server for a rotation (Suggestions, a smart playlist), not
     #: kept by the owner; unshown ones are cleaned up after a while.
     pooled: bool = False
