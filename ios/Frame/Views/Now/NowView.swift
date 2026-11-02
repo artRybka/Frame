@@ -530,7 +530,7 @@ struct NowView: View {
                     if sending {
                         ProgressView().tint(Theme.paper)
                     } else {
-                        Image(systemName: "photo.artframe")
+                        Image(systemName: "photo.fill")
                     }
                 }
             }

@@ -567,7 +567,7 @@ struct ThemeView: View {
                     if playing {
                         ProgressView().tint(Theme.paper)
                     } else {
-                        Image(systemName: "photo.artframe")
+                        Image(systemName: "photo.fill")
                     }
                 }
             }
