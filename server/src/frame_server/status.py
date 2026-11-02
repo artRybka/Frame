@@ -269,13 +269,19 @@ class StatusMonitor:
         """The app drew a picture: the costliest thing it does."""
         self.battery.drew()
 
-    def estimate_battery(self, plan: Callable[[float], list[float]]) -> None:
+    def estimate_battery(
+        self, plan: Callable[[float], list[float]], now: datetime | None = None
+    ) -> None:
         """How long the battery lasts at ``plan`` (a day's totals for the
-        hours a wake keeps the panel up)."""
+        hours a wake keeps the panel up), and its level ``now`` while the
+        panel sleeps and reads nothing (``BatteryEstimate.level``)."""
         status = self.status
         on_battery = status.power_source == "battery" and not status.charging
         estimate = self.battery.estimate(
-            status.battery_level, on_battery, plan(self.battery.activity.awake_per_wake())
+            status.battery_level,
+            on_battery,
+            plan(self.battery.activity.awake_per_wake()),
+            now=now or datetime.now(UTC),
         )
         status.battery = estimate
         status.battery_per_day = estimate.per_day if on_battery else None

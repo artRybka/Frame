@@ -610,6 +610,18 @@ final class FrameAPITests: XCTestCase {
         XCTAssertEqual(BatteryText.count(1, one: "zmiana", few: "zmiany", many: "zmian"), "1 zmiana")
     }
 
+    func testBatteryEstimatedWhileAsleepDecodes() throws {
+        let json = #"{"configured": true, "battery_level": 80, "battery": {"per_day":10.0,"days":7.8,"full_days":10.0,"full_days_low":8.0,"full_days_high":12.0,"hours_measured":40.0,"readings":20,"costs":{"standby_per_day":12.0,"deep_per_day":0.12,"per_wake":0.25,"per_change":0.3,"learnt":[0.7,0.0,0.3,0.2]},"day":{"standby_hours":15.0,"deep_hours":9.0,"wakes":2.0,"changes":1.0,"standby_cost":7.5,"deep_cost":0.04,"wakes_cost":0.5,"changes_cost":0.3},"level":78,"read_level":80,"read_at":"2026-11-02T00:10:00+00:00"}}"#
+        let status = try LiveBackend.decoder().decode(DeviceStatus.self, from: Data(json.utf8))
+        let battery = try XCTUnwrap(status.battery)
+        XCTAssertEqual(battery.level, 78)
+        XCTAssertEqual(battery.readLevel, 80)
+        XCTAssertNotNil(When.date(battery.readAt))
+        // An older server: no estimate.
+        let older = #"{"per_day":10.0,"full_days":10.0,"full_days_low":8.0,"full_days_high":12.0,"hours_measured":0.0,"readings":0,"costs":{"standby_per_day":12.0,"deep_per_day":0.12,"per_wake":0.25,"per_change":0.3,"learnt":[0,0,0,0]},"day":{"standby_hours":15.0,"deep_hours":9.0,"wakes":2.0,"changes":1.0,"standby_cost":7.5,"deep_cost":0.04,"wakes_cost":0.5,"changes_cost":0.3}}"#
+        XCTAssertNil(try LiveBackend.decoder().decode(BatteryEstimate.self, from: Data(older.utf8)).level)
+    }
+
     func testProgressPhasesAndLabels() {
         var progress = DisplayProgress(stage: "refreshing", phase: "displaying", active: true,
                                        title: "", fraction: 0.8, secondsLeft: 150)
