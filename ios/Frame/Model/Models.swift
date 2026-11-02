@@ -1500,6 +1500,13 @@ struct DailyWork: Codable, Hashable, Sendable {
     /// led to, other works by the artist): asked for the text first, which
     /// the server has at once; the lists come with the next answer.
     var partial: Bool? = nil
+
+    /// Today as `day` names it, "2026-11-02" (the phone's day, the server's
+    /// in the same house).
+    static var today: String {
+        let parts = Calendar.current.dateComponents([.year, .month, .day], from: Date())
+        return String(format: "%04d-%02d-%02d", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0)
+    }
 }
 
 /// A work with a study or a work of the day's page, `GET /api/studies`:

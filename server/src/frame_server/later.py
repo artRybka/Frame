@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 import re
 import threading
+import time
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
@@ -18,7 +19,7 @@ import httpx
 from pydantic import BaseModel
 
 from .ai.jobs import text_hash
-from .library import Item
+from .library import Item, PlaylistRules
 from .library.models import Note
 from .library.vocabulary import artist_matches, fold
 
@@ -32,6 +33,9 @@ KIND = "later"
 VERSION = "later-2"
 #: Results asked from each museum for one later work.
 MUSEUM_HITS = 4
+#: Seconds a later work's copy in the catalogue, once looked for (through
+#: the whole catalogue, a second on a NAS), is kept for the page opened again.
+CATALOGUE_FOR = 3600.0
 #: Title words this short say nothing ("the", "of", "la").
 WORD_MIN = 4
 
@@ -71,6 +75,37 @@ class LaterWorks:
         self.search = search
         self._lock = threading.Lock()
         self._looking: set[str] = set()
+        self._catalogue: dict[tuple[str, str, str], tuple[float, str | None]] = {}
+        #: Seconds since some start: tests move it on.
+        self.clock: Callable[[], float] = time.monotonic
+
+    def in_catalogue(self, item: Item, entry: Legacy) -> Item | None:
+        """The catalogue's copy of a later work, by its author and title;
+        looked for again after :data:`CATALOGUE_FOR`, not on every page."""
+        if not entry.search:
+            return None
+        key = (item.id, entry.search, entry.who)
+        now = self.clock()
+        with self._lock:
+            kept = self._catalogue.get(key)
+        if kept is not None and now - kept[0] < CATALOGUE_FOR:
+            found = self.library.get(kept[1]) if kept[1] else None
+            if kept[1] is None or (found is not None and not found.excluded):
+                return found
+        hits = self.library.query(PlaylistRules(query=entry.search), sort="suitability", limit=5)[1]
+        copy = next(
+            (
+                hit
+                for hit in hits
+                if hit.id != item.id and hit.artist and artist_matches(hit.artist, [entry.who])
+            ),
+            None,
+        )
+        with self._lock:
+            kept_all = self._catalogue.items()
+            self._catalogue = {k: v for k, v in kept_all if now - v[0] < CATALOGUE_FOR}
+            self._catalogue[key] = (now, copy.id if copy else None)
+        return copy
 
     def known(self, item_id: str) -> dict[str, LaterLink]:
         """What was found for the later works of ``item_id``'s pages, by

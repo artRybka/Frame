@@ -12,6 +12,7 @@ from __future__ import annotations
 import logging
 import random
 import threading
+import time
 import zlib
 from collections.abc import Callable
 from typing import TYPE_CHECKING
@@ -39,6 +40,9 @@ SHOWN = 6
 POOL = 200
 #: Results asked from each museum when the catalogue has too few.
 MUSEUM_HITS = 8
+#: Seconds the catalogue's works by an artist, once looked through (the
+#: whole catalogue, a second on a NAS), are kept for the page opened again.
+POOL_FOR = 3600.0
 
 
 def _key(item: Item) -> str:
@@ -59,6 +63,9 @@ class ArtistWorks:
         self.search = search
         self._lock = threading.Lock()
         self._looking: set[str] = set()
+        self._pools: dict[tuple[str, str], tuple[float, list[str]]] = {}
+        #: Seconds since some start: tests move it on.
+        self.clock: Callable[[], float] = time.monotonic
 
     def works(self, item: Item, skip: set[str] | None = None) -> list[Item]:
         """Up to :data:`SHOWN` other works by ``item``'s artist, none of
@@ -67,8 +74,7 @@ class ArtistWorks:
         artist."""
         if not is_artist(item.artist):
             return []
-        rules = PlaylistRules(kinds=[ItemKind.ARTWORK], artists=[item.artist])
-        found = self.library.query(rules, sort="random", seed=self._seed(item), limit=POOL)[1]
+        found = self._pool(item)
         found.sort(key=lambda i: not i.favorite)  # stable: the order drawn stays
         picked: list[Item] = []
         skip = skip or set()
@@ -93,6 +99,23 @@ class ArtistWorks:
             seen.append(other)
             picked.append(other)
         return picked
+
+    def _pool(self, item: Item) -> list[Item]:
+        """The catalogue's works by the artist, in the order drawn for the
+        work; looked through again after :data:`POOL_FOR` (the works
+        themselves are read fresh: hearts, works set aside)."""
+        key = (item.id, item.artist)
+        now = self.clock()
+        with self._lock:
+            kept = self._pools.get(key)
+        if kept is not None and now - kept[0] < POOL_FOR:
+            return [work for i in kept[1] if (work := self.library.get(i)) is not None]
+        rules = PlaylistRules(kinds=[ItemKind.ARTWORK], artists=[item.artist])
+        found = self.library.query(rules, sort="random", seed=self._seed(item), limit=POOL)[1]
+        with self._lock:
+            self._pools = {k: v for k, v in self._pools.items() if now - v[0] < POOL_FOR}
+            self._pools[key] = (now, [i.id for i in found])
+        return found
 
     def copies(self, a: Item, b: Item) -> bool:
         """``a`` and ``b`` are one work: by the catalogue's rules (title,
