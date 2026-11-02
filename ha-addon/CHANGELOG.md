@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.75.2
+
+- Ramka: gdy serwer wie, że ramka śpi (Czuwanie), zakładka Ramka nie pyta
+  jej od nowa, więc kółko na kafelku Sieć nie kręci się kilkadziesiąt sekund.
+
 ## 1.75.1
 
 - Karta dzieła i studium: obraz na całym ekranie otwiera się powiększony,
