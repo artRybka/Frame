@@ -1065,16 +1065,13 @@ struct ArtworkInfo: View {
             if !about.isEmpty {
                 // The arrow sits right under the text: it opens and closes it.
                 VStack(alignment: .leading, spacing: 2) {
-                    if expanded {
-                        // Not Text: it cut long notes short with "…" (ReadingText).
-                        ReadingText(text: about, size: 16, lineSpacing: 4, color: Theme.ink.opacity(0.88))
-                    } else {
-                        Text(about)
-                            .font(.serif(16))
-                            .lineSpacing(4)
-                            .foregroundStyle(Theme.ink.opacity(0.88))
-                            .lineLimit(5)
-                    }
+                    // Not Text: it cut long notes short with "…" (ReadingText).
+                    // Folded, it ends on the last full sentence that fits.
+                    ReadingText(
+                        text: about, size: 16, lineSpacing: 4, color: Theme.ink.opacity(0.88),
+                        lines: expanded ? nil : 5
+                    )
+                    .id(expanded)
                     Button {
                         withAnimation(.easeInOut) { expanded.toggle() }
                     } label: {
