@@ -10,6 +10,12 @@
   w źródle. Kopie, których nie dało się pobrać do porównania, mają
   oznaczenie „Nie udało się porównać”.
 - „Nie pasują” rozwija się samo, gdy nic lepszego się nie znalazło.
+- Szukaj w Paris Musées: każde wpisane słowo może pasować do tytułu albo
+  do autora, więc „Monet” czy „Nymphéas Monet” znajdują dzieła Moneta.
+  Dotąd Paris szukał wpisanego tekstu tylko w tytułach.
+- Konfiguracja → Źródła dzieł: pole na klucze WikiArt (Access code i Secret
+  code połączone dwukropkiem). Bez nich WikiArt korzysta ze wspólnego
+  darmowego limitu i często odmawia.
 
 ## 1.79.8
 

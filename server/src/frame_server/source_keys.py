@@ -23,6 +23,7 @@ if TYPE_CHECKING:
 
 STATE_KEY = "source_keys"
 PARIS_API = "https://apicollections.parismusees.paris.fr/graphql"
+WIKIART_LOGIN = "https://www.wikiart.org/en/Api/2/login"
 KEY_TAIL = 4
 
 
@@ -46,6 +47,18 @@ def _paris(http: httpx.Client, key: str) -> httpx.Response:
         " { count } }"
     )
     return http.post(PARIS_API, json={"query": query}, headers={"auth-token": key})
+
+
+def _wikiart(http: httpx.Client, key: str) -> httpx.Response:
+    """WikiArt's two codes, "access:secret": a session asked with them.
+    WikiArt says 500 to a wrong pair; told here as refused."""
+    access, _, secret = key.partition(":")
+    if not access or not secret:
+        return httpx.Response(401)
+    resp = http.get(WIKIART_LOGIN, params={"accessCode": access, "secretCode": secret})
+    if resp.status_code == 500 and "invalid" in resp.text.lower():
+        return httpx.Response(401)
+    return resp
 
 
 @dataclass(frozen=True)
@@ -87,6 +100,15 @@ SOURCES: tuple[KeyedSource, ...] = (
         ask=_get(
             "https://api.europeana.eu/record/v2/search.json", "wskey", query="painting", rows="1"
         ),
+    ),
+    KeyedSource(
+        key="wikiart",
+        name="WikiArt",
+        signup="https://www.wikiart.org/en/App/GetApi",
+        about="Tylko do testów ramki. Wpisz Access code i Secret code połączone dwukropkiem, "
+        "np. abc123:xyz789 (konto na wikiart.org → API → Obtain your keys). Bez kluczy "
+        "WikiArt dzieli darmowy limit ze wszystkimi i często odmawia.",
+        ask=_wikiart,
     ),
 )
 BY_KEY = {s.key: s for s in SOURCES}

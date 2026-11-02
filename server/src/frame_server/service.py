@@ -256,6 +256,10 @@ class FrameService:
         app = None
         if config.openverse_client_id and config.openverse_client_secret:
             app = (config.openverse_client_id, config.openverse_client_secret)
+        wikiart = None
+        if (codes := keys.get("wikiart")) and ":" in codes:
+            access, _, secret = codes.partition(":")
+            wikiart = (access, secret)
         return Access(
             private_use=chosen.private_use,
             wikiart=chosen.wikiart,
@@ -264,6 +268,7 @@ class FrameService:
             openverse_app=app,
             smithsonian_key=keys.get("si") or "",
             paris_token=keys.get("paris") or "",
+            wikiart_keys=wikiart,
             data_dir=config.data_dir,
         )
 
