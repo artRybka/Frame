@@ -42,6 +42,8 @@ struct ItemDetailView: View {
     @State private var showOriginal = false
     /// The title held once: the museum's own shows until held again ("Tytuł w oryginale").
     @State private var peeking = false
+    /// The picture the whole-screen viewer grows out of.
+    @Namespace private var zoomSpace
     /// What the model saw in the picture (keywords), once it has looked.
     @State private var seen: [String] = []
     /// The item the server was asked about, out of turn, as the card opened.
@@ -660,6 +662,10 @@ struct ItemDetailView: View {
                         }
                         .aspectRatio(CGFloat(aspect(item)), contentMode: .fit)
                         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        // The whole screen grows out of it ("pop").
+                        .matchedTransitionSource(id: item.id, in: zoomSpace) {
+                            $0.clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        }
                         .shadow(color: .black.opacity(0.22), radius: 16, y: 12)
                         .picturePress { opened = .original }
                         .accessibilityAddTraits(.isButton)
@@ -688,6 +694,7 @@ struct ItemDetailView: View {
             switch screen {
             case .original:
                 OriginalViewer(item: item)
+                    .navigationTransition(.zoom(sourceID: item.id, in: zoomSpace))
             case .crop:
                 CropScreen(
                     itemID: item.id, preview: previewRef,

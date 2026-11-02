@@ -95,6 +95,8 @@ struct DailyView: View {
     @State private var scrolled: CGFloat = 0
     /// The title held once: the museum's own shows until held again ("Tytuł w oryginale").
     @State private var peeking = false
+    /// The picture the whole-screen viewer grows out of.
+    @Namespace private var zoomSpace
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -162,7 +164,10 @@ struct DailyView: View {
             if let id = route.study { model.studyOpened(itemID: id) }
         }
         .fullScreenCover(isPresented: $zoomed) {
-            if let work { OriginalViewer(item: work.item.item) }
+            if let work {
+                OriginalViewer(item: work.item.item)
+                    .navigationTransition(.zoom(sourceID: "picture", in: zoomSpace))
+            }
         }
     }
 
@@ -494,6 +499,10 @@ struct DailyView: View {
                 }
             }
             .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+            // The whole screen grows out of it ("pop").
+            .matchedTransitionSource(id: "picture", in: zoomSpace) {
+                $0.clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+            }
             .picturePress(enabled: work != nil) { zoomed = true }
             .accessibilityAddTraits(work != nil ? .isButton : [])
             .accessibilityHint(Text(work != nil ? "Otwiera obraz na całym ekranie" : ""))

@@ -89,7 +89,7 @@ extension View {
     /// A picture that opens on the whole screen: a tap, or a hold that
     /// answers like a title does.
     func picturePress(enabled: Bool = true, open: @escaping () -> Void) -> some View {
-        pressHold(enabled: enabled, grow: 1.015, anchor: .center, onTap: { if enabled { open() } }, action: open)
+        pressHold(enabled: enabled, grow: 1.05, anchor: .center, onTap: { if enabled { open() } }, action: open)
     }
 
     /// "Tytuł w oryginale": a Polish title, held, turns into the source's
