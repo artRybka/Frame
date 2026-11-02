@@ -5,6 +5,10 @@
 - Przełączniki w ciemnym trybie: włączony przełącznik ma ciepły, szary
   tor zamiast kremowego, więc biała gałka znowu się od niego odcina. W
   jasnym trybie bez zmian.
+- Playlisty, karta „Ukryte”: ukryte dzieła leżą teraz za szronionym
+  szkłem z drobnym ziarnem, rozmyte mocniej i jako całość. Dotąd każdy
+  obraz rozmywał się osobno, więc szwy między nimi zostawały ostre; teraz
+  widać same kolory, bez kształtów.
 
 ## 1.79.2
 
