@@ -375,18 +375,16 @@ private extension ClosedRange where Bound == Double {
 struct Chip: View {
     let title: String
     var systemImage: String?
-    var swatch: Color?
+    /// A colour or mood tag whose dot leads the title.
+    var colorTag: String?
     var selected = false
     var action: () -> Void
 
     var body: some View {
         Button(action: action) {
             HStack(spacing: 6) {
-                if let swatch {
-                    Circle()
-                        .fill(swatch)
-                        .frame(width: 12, height: 12)
-                        .overlay(Circle().strokeBorder(Theme.inkSoft.opacity(0.4), lineWidth: 0.75))
+                if let colorTag {
+                    ColorTagDot(tag: colorTag)
                 }
                 if let systemImage {
                     Image(systemName: systemImage).font(.caption.weight(.semibold))
@@ -407,15 +405,13 @@ struct Chip: View {
 /// Static tag (no action).
 struct TagLabel: View {
     let text: String
-    var swatch: Color?
+    /// A colour or mood tag whose dot leads the text.
+    var colorTag: String?
 
     var body: some View {
         HStack(spacing: 5) {
-            if let swatch {
-                Circle()
-                    .fill(swatch)
-                    .frame(width: 9, height: 9)
-                    .overlay(Circle().strokeBorder(Theme.inkSoft.opacity(0.4), lineWidth: 0.75))
+            if let colorTag {
+                ColorTagDot(tag: colorTag, size: 9)
             }
             Text(text)
         }

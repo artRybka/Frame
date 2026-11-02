@@ -14,6 +14,19 @@
 - Inne prace artysty: cztery prace, po dwie w rzędzie jak w Podobnych
   dziełach. W obu siatkach miniatury są kadrowane wokół twarzy, nie przez
   środek.
+- Szukaj, arkusz „Kolor”: nowy nastrój „Kolorowe” dla dzieł w barwach,
+  bez czarno-białych, monochromatycznych i dwutonowych. Dzieło jest
+  kolorowe, gdy widać na nim co najmniej trzy odległe barwy (z czerwieni,
+  żółci, zieleni, błękitu i fioletu), każdą choćby wielkości akcentu.
+  Serwer po aktualizacji raz przelicza kolory biblioteki.
+- Przygaszone, ale barwne obrazy (np. El Greco) nie dostają już tagu
+  „Monochromia”.
+- Kropki nastroju są czytelniejsze: Ciepłe to gradient od morelowego do
+  ceglastej czerwieni, Chłodne od bladego błękitu do niebieskiego, Żywe
+  świecąca czerwień, Stonowane szarawy beż w szarą zieleń, Kolorowe koło
+  barw. Te same kropki są przy kolorach na karcie dzieła, w polu
+  wyszukiwania, w regułach playlist i na pastylce „Kolor” po wyborze
+  nastroju.
 
 ## 1.81.0
 

@@ -469,9 +469,7 @@ struct TokenSummary: View {
                 ForEach(tokens) { token in
                     HStack(spacing: 4) {
                         if token.kind == "color" {
-                            Circle()
-                                .fill(ColorTag.color(token.key))
-                                .frame(width: 8, height: 8)
+                            ColorTagDot(tag: token.key, size: 8, stroke: nil)
                         }
                         Text(token.shownName).lineLimit(1)
                     }
