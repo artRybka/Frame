@@ -46,7 +46,10 @@ protocol FrameBackend: Sendable {
     /// for a sharper copy in other sources; waits up to `wait` seconds.
     func sharpen(itemID: String, wait: Int) async throws -> SharperView
     func setFavorite(id: String, _ favorite: Bool) async throws -> Item
+    /// "Ukryj dzieło" and back: a hidden work is never shown, listed or found.
     func setExcluded(id: String, _ excluded: Bool) async throws -> Item
+    /// The hidden works ("Ukryte" at the end of Playlisty), the last hidden first.
+    func hiddenItems() async throws -> ItemPage
     func show(itemID: String, hold: HoldSpec) async throws
     /// "Dodaj do kolejki": the work goes on the frame at the next change,
     /// before the rest of the queue (a museum work joins the library).
@@ -87,8 +90,10 @@ protocol FrameBackend: Sendable {
     /// one's works as it answers, then a last line with the page that follows.
     func themeLines(key: String, page: Int) async throws -> AsyncThrowingStream<ThemeLine, Error>
     /// The work of the day (`day`: a past one, "2026-10-30"); waits up to
-    /// `wait` seconds for Claude's page being written.
-    func daily(day: String?, wait: Int) async throws -> DailyWork
+    /// `wait` seconds for Claude's page being written. Without `lists`: the
+    /// page without the lists under its text (`DailyWork.partial`), at once:
+    /// all Discover's tile needs (older servers send the whole page).
+    func daily(day: String?, wait: Int, lists: Bool) async throws -> DailyWork
     /// Another work of the day for today, drawn now (Konfiguracja, the
     /// owner only); its page is asked for at once. 409: nothing else fits.
     func dailyAgain() async throws -> DailyWork.Brief
@@ -219,6 +224,11 @@ protocol FrameBackend: Sendable {
 }
 
 extension FrameBackend {
+    /// The work of the day with its whole page.
+    func daily(day: String?, wait: Int) async throws -> DailyWork {
+        try await daily(day: day, wait: wait, lists: true)
+    }
+
     /// The work's study with its whole page.
     func study(itemID: String, wait: Int) async throws -> StudyView {
         try await study(itemID: itemID, wait: wait, lists: true)

@@ -80,7 +80,7 @@ class StudyBrief(BaseModel):
 
 def _briefs(svc: FrameService) -> list[StudyBrief]:
     written = svc.study.written()
-    remote = remote_items(svc, [item for item, _, _ in written], copies=False)
+    remote = remote_items(svc, [item for item, _, _ in written], copies=False, keep_hidden=True)
     return [
         StudyBrief(
             item=r.model_copy(update={"item": _plain(r.item)}),

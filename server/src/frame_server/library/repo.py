@@ -246,6 +246,34 @@ def cover_colors(items: list[Item]) -> list[ColorSwatch]:
     return found
 
 
+class Hidden:
+    """The works hidden in the app (:meth:`Library.hidden`): ``ids`` are the
+    hidden items and the library's other copies of their works, ``groups``
+    those works in ``works``."""
+
+    def __init__(
+        self,
+        ids: set[str] | None = None,
+        groups: set[int] | None = None,
+        works: Works | None = None,
+    ) -> None:
+        self.ids = ids or set()
+        self.groups = groups or set()
+        self.works = works
+
+    def __bool__(self) -> bool:
+        return bool(self.ids)
+
+    def __contains__(self, item: Item) -> bool:
+        """Whether ``item`` (also one found at a museum, not in the library)
+        is a hidden work or a copy of one."""
+        if item.id in self.ids:
+            return True
+        if not self.groups or self.works is None:
+            return False
+        return self.works.group_of(item) in self.groups
+
+
 class Library:
     def __init__(self, path: Path) -> None:
         self.path = path
@@ -594,6 +622,23 @@ class Library:
         ``skip`` left out, the next copy of their works is the one shown."""
         return self.works().spare(skip)
 
+    def hidden(self) -> Hidden:
+        """The works hidden in the app ("Ukryj dzieło"): the hidden items and
+        every copy of their works, here or at a museum."""
+        ids = {i.id for i in self._snapshot() if i.excluded}
+        if not ids:
+            return Hidden()
+        works = self.works()
+        groups = {g for i in ids if (g := works.group_index(i)) is not None}
+        ids |= {c.id for g in groups for c in works.groups[g]}
+        return Hidden(ids, groups, works)
+
+    def hidden_items(self) -> list[Item]:
+        """The items hidden in the app, the last hidden first (the list
+        "Ukryte" in Playlists)."""
+        items = [i for i in self._snapshot() if i.excluded and i.look is None]
+        return sorted(items, key=lambda i: i.excluded_at or "", reverse=True)
+
     def twin(self, item: Item) -> Item | None:
         """The library's best copy of ``item``'s work, when that is another
         item."""
@@ -622,11 +667,14 @@ class Library:
         listed = self.listed(user) if MINE_PLAYLISTS in rules.terms else set()
         mine = rules.favorites_only or any(t in MINE for t in rules.terms)
         hearts = self.favorites(user) if mine else None
+        hidden = Hidden() if include_excluded else self.hidden()
 
         # Photographs and pages of manuscripts the server picked only when
         # asked for (photographs never).
         def selected(item: Item) -> bool:
             if item.id in spare or item.look is not None:  # photos sent once: never listed
+                return False
+            if item.id in hidden.ids:  # another copy of a hidden work too
                 return False
             if not include_excluded and item.pooled and set_aside(item, rules.terms):
                 return False
@@ -725,13 +773,10 @@ class Library:
     def playlist_items(self, playlist: Playlist, sort: SortKey = "recent") -> list[Item]:
         if playlist.kind != PlaylistKind.SMART:
             all_items = self._snapshot_by_id()
-            skip = set(playlist.rules.exclude_ids)  # album photos taken out
+            # Album photos taken out, and hidden works.
+            skip = set(playlist.rules.exclude_ids) | self.hidden().ids
             return dedupe(
-                [
-                    all_items[i]
-                    for i in playlist.item_ids
-                    if i in all_items and not all_items[i].excluded and i not in skip
-                ]
+                [all_items[i] for i in playlist.item_ids if i in all_items and i not in skip]
             )
         items = dedupe(self.query(playlist.rules, sort=sort, user=playlist.owner)[1])
         if not playlist.limit:

@@ -460,6 +460,11 @@ actor DemoBackend: FrameBackend {
         try update(id) { $0.excluded = excluded }
     }
 
+    func hiddenItems() async throws -> ItemPage {
+        let hidden = items.filter(\.excluded).map(\.summary)
+        return ItemPage(total: hidden.count, items: hidden)
+    }
+
     func show(itemID: String, hold: HoldSpec) async throws {
         if let currentID { history.append(currentID) }
         currentID = itemID
@@ -754,7 +759,7 @@ actor DemoBackend: FrameBackend {
         return artist
     }
 
-    func daily(day: String?, wait: Int) async throws -> DailyWork {
+    func daily(day: String?, wait: Int, lists: Bool) async throws -> DailyWork {
         func found(_ id: String) -> Item? { items.first { $0.id == id } }
         guard let wave = found("aic:24645") ?? items.max(by: { ($0.suitability ?? 0) < ($1.suitability ?? 0) }) else {
             throw BackendError.notFound

@@ -1,11 +1,15 @@
 import Foundation
 
 /// Discover's opening screen as last loaded from a server, kept in Caches so
-/// the next launch shows it at once while fresh rows and themes load.
+/// the next launch shows it at once while fresh rows and themes load: the
+/// study of the day (its tile; only on its day) and "Studia dzieł" too.
 enum DiscoverCache {
     struct Snapshot: Codable {
         var rows: [SuggestionRow]
         var themes: [ArtTheme]
+        /// Missing in snapshots from before 1.75.6.
+        var daily: DailyWork? = nil
+        var studies: [StudyBrief]? = nil
     }
 
     private static func file(for server: String) -> URL? {

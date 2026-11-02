@@ -291,6 +291,19 @@ final class FrameAPITests: XCTestCase {
         XCTAssertEqual(work.similar.first?.why, "ta sama seria")
         XCTAssertNil(work.legacy.first?.item)
         XCTAssertEqual(work.byArtist?.map(\.id), ["met:2"])
+        // Kept for the next launch with Discover's rows, and read back.
+        let brief = StudyBrief(item: work.item, title: work.title, day: work.day)
+        let snapshot = DiscoverCache.Snapshot(rows: [], themes: [], daily: work, studies: [brief])
+        let saved = try LiveBackend.decoder().decode(
+            DiscoverCache.Snapshot.self, from: try LiveBackend.encoder().encode(snapshot)
+        )
+        XCTAssertEqual(saved.daily, work)
+        XCTAssertEqual(saved.studies, [brief])
+        let older = try LiveBackend.decoder().decode(
+            DiscoverCache.Snapshot.self, from: Data(#"{"rows": [], "themes": []}"#.utf8)
+        )
+        XCTAssertNil(older.daily)
+        XCTAssertNil(older.studies)
         let take = try XCTUnwrap(work.composition?.takes.first)
         XCTAssertEqual(take.grid, "golden")
         XCTAssertEqual(take.marks.map(\.shape), ["loop", "arrow"])
@@ -999,6 +1012,22 @@ final class FrameAPITests: XCTestCase {
         XCTAssertEqual(lines.last?.end, true)
         XCTAssertEqual(lines.flatMap(\.items).map(\.id), page.items.map(\.id))
         XCTAssertEqual(lines.count, (page.items.count + 3) / 4 + 1)  // a few works at a time
+    }
+
+    func testAHiddenWorkLeavesTheLibraryForUkryte() async throws {
+        let demo = DemoBackend()
+        let library = try await demo.items(LibraryQuery())
+        let first = try XCTUnwrap(library.items.first)
+        let hiddenBefore = try await demo.hiddenItems().items
+        XCTAssertTrue(hiddenBefore.isEmpty)
+        _ = try await demo.setExcluded(id: first.id, true)
+        let hidden = try await demo.hiddenItems().items.map(\.id)
+        XCTAssertEqual(hidden, [first.id])
+        let listed = try await demo.items(LibraryQuery()).items.map(\.id)
+        XCTAssertFalse(listed.contains(first.id))
+        _ = try await demo.setExcluded(id: first.id, false)
+        let after = try await demo.hiddenItems().items
+        XCTAssertTrue(after.isEmpty)
     }
 
     func testMuseumThumbnailFallsBackToTheServer() async throws {

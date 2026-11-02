@@ -87,6 +87,11 @@ struct PlaylistsView: View {
                             NewPlaylistTile()
                         }
                         .buttonStyle(.plain)
+                        // Last: the works hidden with "Ukryj dzieło".
+                        NavigationLink(value: HiddenRoute()) {
+                            HiddenCard(items: model.hidden)
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
                 .pageWidth()
@@ -111,6 +116,9 @@ struct PlaylistsView: View {
             }
             .navigationDestination(for: SuggestionsRoute.self) { _ in
                 SuggestionsPage(path: $path)
+            }
+            .navigationDestination(for: HiddenRoute.self) { _ in
+                HiddenWorksView()
             }
             .navigationDestination(for: String.self) { id in
                 ItemDetailView(itemID: id)
@@ -203,6 +211,9 @@ extension Playlist: Identifiable {}
 
 /// Opens Propozycje within Playlisty, pushed like a playlist.
 struct SuggestionsRoute: Hashable {}
+
+/// Opens "Ukryte" within Playlisty.
+struct HiddenRoute: Hashable {}
 
 /// Propozycje opened from their tile: a header like a playlist's, with
 /// "Prezentuj na ramce", over the same themes and rows as in Discover.
@@ -497,6 +508,41 @@ struct SuggestionsCover: View {
         } else {
             Theme.mat
         }
+    }
+}
+
+/// "Ukryte", the last card in Playlisty: the works hidden with "Ukryj
+/// dzieło", greyed, with a crossed-out eye.
+struct HiddenCard: View {
+    let items: [ItemSummary]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Collage(itemIDs: items.prefix(4).map(\.id), title: "Ukryte")
+                .aspectRatio(1, contentMode: .fit)
+                .saturation(0.25)
+                .opacity(items.isEmpty ? 1 : 0.75)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(alignment: .bottomTrailing) {
+                    Image(systemName: "eye.slash")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(Theme.inkSoft)
+                        .frame(width: 30, height: 30)
+                        .background(Theme.paper.opacity(0.85), in: Circle())
+                        .padding(8)
+                }
+                .shadow(color: .black.opacity(0.12), radius: 10, y: 6)
+            CardCaption {
+                Text("Ukryte")
+                    .font(.serif(16, weight: .semibold))
+                    .foregroundStyle(Theme.ink)
+                Text(items.isEmpty ? "brak" : Names.works(items.count))
+                    .font(.caption)
+                    .foregroundStyle(Theme.inkSoft)
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityHint("Otwiera ukryte dzieła, które można przywrócić")
     }
 }
 

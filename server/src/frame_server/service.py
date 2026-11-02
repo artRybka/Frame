@@ -220,6 +220,7 @@ class FrameService:
         self.artists = ArtistWorks(
             self.library, lambda q, n: self.importer.search_all(q, n), self.images
         )
+        self.daily.artists = self.artists
         # Studies of any work, asked for on its card.
         # Sharper copies of works whose own picture is poor: looked for when
         # a card opens, and for the work of the day before its page.

@@ -504,3 +504,38 @@ def test_a_smart_playlist_needs_a_rule(service) -> None:
         assert len(detail["items"]) == DETAIL_LIMIT
         assert detail["playlist"]["item_count"] == DETAIL_LIMIT + 5
         assert client.delete(f"/api/playlists/{everything}").json() == {"deleted": True}
+
+
+def test_a_hidden_work_is_gone_everywhere_but_ukryte(service) -> None:
+    from frame_server.web import create_app
+
+    app = create_app(service.settings)
+    svc = app.state.service
+    with TestClient(app) as client:
+        for item in (_work("met", 1), _work("aic", 3, title="Irises")):
+            svc.library.upsert(item)
+        svc.library.upsert(_work("wmc", 2, pooled=True))  # the server's copy of met:1
+        playlist = client.post(
+            "/api/playlists", json={"name": "Wybór", "kind": "manual", "item_ids": ["met:1"]}
+        ).json()["playlist"]["id"]
+        client.post(f"/api/playlists/{playlist}/items", json={"item_ids": ["aic:3"]})
+
+        hidden = client.patch("/api/library/items/met:1", json={"excluded": True}).json()
+        assert hidden["excluded"] and hidden["excluded_at"]
+        page = client.get("/api/library/hidden").json()
+        assert [i["id"] for i in page["items"]] == ["met:1"]
+        # Not on the playlist, not in the library, its copies neither...
+        listed = client.get(f"/api/playlists/{playlist}").json()["items"]
+        assert [i["id"] for i in listed] == ["aic:3"]
+        found = client.get("/api/library/items").json()["items"]
+        assert [i["id"] for i in found] == ["aic:3"]
+        # ...nor at a museum, the same work from another one included.
+        at_museums = [_work("met", 1), _work("rijks", 9), _work("aic", 3, title="Irises")]
+        assert [r.item.id for r in remote_items(svc, at_museums)] == ["aic:3"]
+
+        back = client.patch("/api/library/items/met:1", json={"excluded": False}).json()
+        assert not back["excluded"] and back["excluded_at"] is None
+        assert client.get("/api/library/hidden").json()["items"] == []
+        listed = client.get(f"/api/playlists/{playlist}").json()["items"]
+        assert [i["id"] for i in listed] == ["met:1", "aic:3"]
+        assert len(remote_items(svc, at_museums)) == 2  # met:1 and its copy are one work

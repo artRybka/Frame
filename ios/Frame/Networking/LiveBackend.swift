@@ -75,6 +75,8 @@ struct LiveBackend: FrameBackend {
 
     func item(id: String) async throws -> Item { try await get("/api/library/items/\(escape(id))") }
 
+    func hiddenItems() async throws -> ItemPage { try await get("/api/library/hidden") }
+
     func polish(itemID: String, wait: Int, early: Bool) async throws -> PolishView {
         var query = [URLQueryItem(name: "wait", value: String(wait))]
         if early { query.append(URLQueryItem(name: "early", value: "true")) }
@@ -206,9 +208,10 @@ struct LiveBackend: FrameBackend {
 
     func weekArtistAgain() async throws -> ArtTheme { try await send("/api/themes/week-artist/again", method: "POST") }
 
-    func daily(day: String?, wait: Int) async throws -> DailyWork {
+    func daily(day: String?, wait: Int, lists: Bool) async throws -> DailyWork {
         var query = [URLQueryItem(name: "wait", value: String(wait))]
         if let day { query.append(URLQueryItem(name: "day", value: day)) }
+        if !lists { query.append(URLQueryItem(name: "lists", value: "false")) }
         var req = request("/api/daily", query: query)
         req.timeoutInterval = TimeInterval(wait + 30)
         return try await perform(req)
