@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.78.1
+
+- Tytuł w oryginale: przytrzymanie polskiego tytułu przełącza go na tytuł
+  z muzeum, który zostaje po puszczeniu palca (wcześniej palec zasłaniał
+  go przez cały czas, gdy był widoczny). Kolejne przytrzymanie wraca do
+  polskiego; nowy obraz albo karta zaczyna po polsku.
+
 ## 1.78.0
 
 - Wskaźnik połączenia z serwerem jest teraz w lewym górnym rogu każdej
