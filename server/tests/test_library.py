@@ -296,6 +296,32 @@ def test_yellowed_paper_is_not_warm() -> None:
     assert "warm" not in tags and not any(t.startswith("accent:") for t in tags)
 
 
+def test_colourful_needs_several_hues_far_apart() -> None:
+    def print_with(*inks: tuple[tuple[int, int, int], int]) -> Image.Image:
+        # Ink on old paper, with patches of ``inks`` (colour, rows of 200).
+        pixels = np.empty((200, 200, 3), np.uint8)
+        pixels[:] = (232, 222, 196)
+        pixels[::5] = (40, 34, 30)
+        row = 20
+        for colour, rows in inks:
+            pixels[row : row + rows, 40:160] = colour
+            row += rows + 10
+        return Image.fromarray(pixels)
+
+    red, blue, green = (170, 40, 35), (40, 70, 160), (60, 120, 60)
+    brown = (110, 70, 40)
+    # A Madonna's red and blue with green grass: a few percent each will do.
+    _, madonna, _ = analyse(print_with((red, 8), (blue, 8), (green, 8)))
+    assert "colorful" in madonna and "monochrome" not in madonna
+    # Black and white, sepia on old paper and a two-tone print are not.
+    _, etching, _ = analyse(_etching([(238, 226, 198)]))
+    _, two_tone, _ = analyse(print_with((blue, 40), (brown, 40)))
+    _, chalk, _ = analyse(print_with((red, 60)))
+    for tags in (etching, two_tone, chalk):
+        assert "colorful" not in tags
+    assert has_colours(madonna, ["colorful"]) and not has_colours(two_tone, ["colorful"])
+
+
 def test_monochrome_pictures_have_no_accents() -> None:
     swatches, _, _ = analyse(_etching([(238, 226, 198)]))
     assert swatches and not any(s.accent for s in swatches)

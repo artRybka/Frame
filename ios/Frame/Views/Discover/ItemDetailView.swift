@@ -897,7 +897,7 @@ struct ItemDetailView: View {
             if !item.colorTags.isEmpty {
                 FlowLayout(spacing: 6) {
                     ForEach(item.colorTags, id: \.self) { tag in
-                        TagLabel(text: ColorTag.name(tag), swatch: ColorTag.color(tag))
+                        TagLabel(text: ColorTag.name(tag), colorTag: tag)
                     }
                 }
             }
