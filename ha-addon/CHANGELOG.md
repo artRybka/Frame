@@ -14,6 +14,11 @@
   nadpisuje wyboru. „Przywróć zdjęcie muzeum” w menu i w arkuszu. Serwer:
   `GET /api/library/items/<id>/copies` (strumień), `…/copies/<kopia>/spot`,
   `PUT`/`DELETE …/copy`. Wymaga zaktualizowanego serwera.
+- Tytuł w oryginale: przytrzymaj polski tytuł na karcie dzieła albo w
+  „Teraz”, a po chwili (z lekką wibracją) przeniknie w tytuł podany przez
+  muzeum, z dopiskiem „Tytuł z muzeum”. Po puszczeniu wraca polski. Długi
+  tytuł muzeum pokazuje się na ten czas cały; stuknięcie tytułu w „Teraz”
+  dalej otwiera kartę.
 
 ## 1.76.0
 

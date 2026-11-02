@@ -40,6 +40,8 @@ struct ItemDetailView: View {
     /// moment the Polish texts take, rather than show the museum's first.
     @State private var holding = false
     @State private var showOriginal = false
+    /// The title held: the museum's own shows meanwhile ("Tytuł w oryginale").
+    @State private var peeking = false
     /// What the model saw in the picture (keywords), once it has looked.
     @State private var seen: [String] = []
     /// The item the server was asked about, out of turn, as the card opened.
@@ -739,12 +741,19 @@ struct ItemDetailView: View {
     private func titleBlock(_ item: Item) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Eyebrow(Names.source(item.source), color: Theme.vermilion)
-            Text(title(item))
+            let shown = title(item)
+            let original = TitlePeekNote.original(item.title, shown: shown)
+            Text(peeking ? original ?? shown : shown)
                 .font(.serif(30, weight: .semibold))
                 .foregroundStyle(Theme.ink)
                 .fixedSize(horizontal: false, vertical: true)
                 // The museum's title fades into the Polish one.
                 .contentTransition(.opacity)
+                // Held: the museum's own, until the finger lifts.
+                .titlePeek(enabled: original != nil, peeking: $peeking)
+            if peeking, original != nil {
+                TitlePeekNote(source: item.source)
+            }
             if !item.artist.isEmpty {
                 // Their other works, on Discover's search.
                 Button {
