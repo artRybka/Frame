@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.77.1
+
+- Playlisty widać od razu po uruchomieniu aplikacji (z poprzedniego razu,
+  potem świeże). Serwer nie przelicza już przy każdym otwarciu każdej
+  inteligentnej playlisty przez cały katalog (na NAS po sekundzie lub
+  więcej na playlistę): liczby dzieł i okładki pamięta, a gdy w tle
+  przybywają dzieła, przelicza playlistę, gdy ktoś ją otwiera, i wszystkie
+  w nocy (o 3:00). Zmieniona playlista albo serduszko liczą się od razu.
+  Wymaga zaktualizowanego serwera.
+
 ## 1.77.0
 
 - „Szukaj lepszej kopii” w menu „…” karty dzieła i w wierszu „Zdjęcie

@@ -873,3 +873,45 @@ def test_starter_blues_take_turquoise_once(tmp_path) -> None:
     lib.save_playlist(blues.model_copy())  # the owner set it back
     _turquoise_blues(lib)
     assert lib.playlist(blues.id).rules.colors == ["blue"]  # type: ignore[arg-type,union-attr]
+
+
+def test_playlist_counts_lag_behind_the_catalogue_only(tmp_path) -> None:
+    """Playlisty does not wait for every smart playlist to look through the
+    catalogue again after the server added works: the last counts, fresh
+    ones once a playlist is opened, and all at night. A changed playlist,
+    or hearts, are counted at once."""
+    lib = Library(tmp_path / "lib.db")
+    lib.counts_may_lag = True
+    lib.upsert(_item(1, artist="Claude Monet"))
+    monet = lib.save_playlist(
+        Playlist(
+            name="Monet", kind=PlaylistKind.SMART, rules=PlaylistRules(artists=["Claude Monet"])
+        )
+    )
+    liked = lib.save_playlist(
+        Playlist(name="Ulubione", kind=PlaylistKind.SMART, rules=PlaylistRules(favorites_only=True))
+    )
+    assert lib.playlist_summary(monet).item_count == 1
+    assert lib.playlist_summary(liked).item_count == 0
+
+    lib.upsert(_item(2, artist="Claude Monet"))
+    assert lib.playlist_summary(monet).item_count == 1  # as last counted...
+    assert len(lib.playlist_items(monet, sort="artist")) == 2  # ...till opened
+    summary = lib.playlist_summary(monet)
+    assert summary.item_count == 2 and summary.cover_item_ids == ["test:1", "test:2"]
+
+    lib.upsert(_item(3, artist="Claude Monet"))
+    assert lib.playlist_summary(monet).item_count == 2
+    lib.recount()  # at night
+    assert lib.playlist_summary(monet).item_count == 3
+
+    lib.update("test:2", favorite=True)
+    assert lib.playlist_summary(liked).item_count == 1  # hearts: at once
+    narrower = lib.save_playlist(
+        monet.model_copy(update={"rules": PlaylistRules(artists=["Nobody"])})
+    )
+    assert lib.playlist_summary(narrower).item_count == 0  # its own change: at once
+
+    lib.counts_may_lag = False  # tests and a server without its background: always fresh
+    lib.upsert(_item(4, artist="Nobody"))
+    assert lib.playlist_summary(narrower).item_count == 1

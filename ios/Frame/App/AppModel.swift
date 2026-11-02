@@ -276,7 +276,7 @@ final class AppModel {
         if self.player?.progress?.active == true { trackProgress() }
         self.status = await status.value
         self.settings = await settings.value
-        self.playlists = await playlists.value ?? []
+        if let found = await playlists.value { setPlaylists(found) }  // else the last ones stay
         self.facets = await facets.value ?? .empty
         self.panelConfig = await panelConfig.value
         rememberNow()
@@ -466,6 +466,7 @@ final class AppModel {
         daily = saved?.daily.flatMap { $0.day == DailyWork.today ? $0 : nil }
         studyList = saved?.studies
         discoverLoadedAt = nil
+        playlists = (demoMode ? nil : PlaylistsCache.load(server: serverURL)) ?? []
     }
 
     func refreshPlayer() async {
@@ -552,8 +553,14 @@ final class AppModel {
     )
 
     func refreshPlaylists() async {
-        if let value = try? await backend.playlists() { playlists = value }
+        if let value = try? await backend.playlists() { setPlaylists(value) }
         if let value = try? await backend.hiddenItems() { hidden = value.items }
+    }
+
+    /// The playlists as the server sent them, kept for the next launch.
+    private func setPlaylists(_ value: [PlaylistSummary]) {
+        playlists = value
+        if !demoMode { PlaylistsCache.save(value, server: serverURL) }
     }
 
     func refreshFacets() async {
