@@ -1,6 +1,7 @@
 """The composition's marks: where they land and whether they hold. Points in
 the picture's pixels, marks that mean something, a grid only under a take
-that lies on it, and a check by Claude over the marks drawn on the picture."""
+that lies on it, the analysis asked apart, a check by Claude over the marks
+drawn on the picture, and pages written before written again."""
 
 from __future__ import annotations
 
@@ -9,14 +10,16 @@ from typing import Any
 from PIL import Image
 from test_daily import ANSWER, SIZE, _catalogue, pixels
 
-from frame_server.ai.check import KIND as CHECK
 from frame_server.ai.check import SYSTEM as CHECK_SYSTEM
-from frame_server.ai.check import CheckJob, check
+from frame_server.ai.check import check
 from frame_server.ai.client import Answer
+from frame_server.ai.composition import BEFORE, KIND, REWORK_KEY, ComposeJob, compose
+from frame_server.ai.composition import SYSTEM as COMPOSITION_SYSTEM
 from frame_server.ai.daily import (
     CHECK_ROUND,
     CHECKED,
     ROUND,
+    TAKE,
     View,
     _mark,
     _view,
@@ -24,7 +27,7 @@ from frame_server.ai.daily import (
     takes,
     to_fractions,
 )
-from frame_server.ai.sketch import PHI, draw, grid_fits, measure, measures
+from frame_server.ai.sketch import PHI, beats, draw, grid_fits, measure, measures
 from frame_server.ai.sketch import spiral as sketch_spiral
 from frame_server.ai.study import KIND as STUDY
 from frame_server.library.models import Note
@@ -53,7 +56,7 @@ def test_pixels_become_fractions_and_fractions_stay() -> None:
 
 
 def test_marks_that_mean_nothing_go() -> None:
-    assert _drawn("rhythm", (0.1, 0.5), (0.2, 0.5), (0.3, 0.5)) is None  # no longer drawn
+    assert _drawn("rhythm", (0.1, 0.5), (0.2, 0.5), (0.3, 0.5)) is None  # an old one: no pairs
     assert _drawn("triangle", (0.1, 0.1), (0.5, 0.5), (0.9, 0.9)) is None  # a line
     assert _drawn("rect", (0.2, 0.2), (0.2, 0.6)) is None
     loop = _drawn("loop", (0.5, 0.5), (0.5, 0.5))  # around nothing: made a small loop
@@ -165,20 +168,65 @@ def test_the_pictures_own_lines() -> None:
     assert "linii rabatu" in rabatment
 
 
-def test_the_takes_come_in_order() -> None:
-    def take(title: str) -> View:
-        view = _view(
-            {"title": title, "grid": "none", "text": "", "marks": [CHECKED_TAKE["marks"][0]]}
-        )
+def test_a_rhythm_is_a_stroke_along_each_form() -> None:
+    # Three masts, foot and top each (one given top first): parallel strokes.
+    masts = _drawn(
+        "rhythm", (0.2, 0.8), (0.21, 0.3), (0.4, 0.3), (0.4, 0.8), (0.6, 0.82), (0.59, 0.32)
+    )
+    assert masts is not None and len(masts.points) == 6
+    strokes = beats([(p.x * 1000, p.y * 1000) for p in masts.points])
+    assert len(strokes) == 3
+    directions = {round((b[0] - a[0]) / (b[1] - a[1]), 6) for a, b in strokes}
+    assert len(directions) == 1  # parallel
+    (a, b) = strokes[1]
+    assert b[1] - a[1] > 500  # a little longer than the mast (500 px)
+    assert _drawn("rhythm", (0.2, 0.8), (0.2, 0.3), (0.4, 0.3), (0.4, 0.8)) is None  # two: echo
+    dot = _drawn("rhythm", (0.2, 0.8), (0.2, 0.3), (0.4, 0.3), (0.4, 0.3), (0.5, 0.3), (0.5, 0.8))
+    assert dot is None  # a pair that is a dot is no beat
+    text = measure(masts, (1000, 1000))
+    assert text.startswith("3 kreski pod kątem 9") and "odstępy" in text
+
+
+def test_rays_run_into_a_vanishing_point() -> None:
+    rays = _drawn("rays", (0.5, 0.45), (0.0, 0.0), (1.0, 0.0), (0.5, 0.46), (-0.2, 0.9))
+    assert rays is not None
+    # The point kept first, an end on it left out; ends may lie outside.
+    assert [(p.x, p.y) for p in rays.points] == [(0.5, 0.45), (0.0, 0.0), (1.0, 0.0), (-0.2, 0.9)]
+    assert rays.anchor() == rays.points[0]
+    text = measure(rays, (1000, 500))
+    assert text.startswith("punkt zbiegu (500, 225") and "3 promienie" in text
+    assert _drawn("rays", (0.5, 0.45), (0.0, 0.0)) is None  # one ray is a line
+    # A vanishing point on the golden section keeps the grid.
+    assert (
+        _take(
+            "golden", {**_mark_raw(_drawn("rays", (0.38, 0.4), (0, 0), (1, 0))), "title": "Zbieg"}
+        ).grid
+        == "golden"
+    )
+
+
+def test_a_movement_is_drawn_with_speed_lines() -> None:
+    flight = _drawn("motion", (0.9, 0.6), (0.6, 0.65), (0.3, 0.5))
+    assert flight is not None and len(flight.points) == 3
+    picture = Image.new("RGB", (300, 200), (40, 70, 140))
+    view = View(title=TAKE, marks=[flight])
+    drawn = draw(picture, view)
+    assert drawn.getpixel((90, 100)) != (40, 70, 140)  # the arrow's tip
+    assert "kąt" in measure(flight, (300, 200))
+
+
+def test_one_take_is_shown() -> None:
+    def take(title: str, *marks: dict[str, Any]) -> View:
+        raw = {"title": title, "grid": "none", "text": "", "marks": list(marks)}
+        view = _view({**raw, "marks": list(marks) or [CHECKED_TAKE["marks"][0]]})
         assert view is not None
         return view
 
-    shown = takes(
-        [take("Geometria detali"), take("Spojrzenie"), take("Światło"), take("Geometria")]
-    )
-    assert [v.title for v in shown] == ["Geometria", "Geometria detali"]
-    old = takes([take("Spojrzenie"), take("Geometria"), take("Rytm")])
-    assert [v.title for v in old] == ["Geometria"]  # no "Spojrzenie" any more
+    old = takes([take("Geometria detali"), take("Spojrzenie"), take("Światło"), take("Geometria")])
+    assert [v.title for v in old] == [TAKE]  # "Geometria", called as the analysis
+    assert takes([take("Spojrzenie"), take("Rytm")]) == []
+    new = take(TAKE, {"shape": "line", "points": _points((0, 0.5), (1, 0.5)), "title": "Pas"})
+    assert takes([take("Geometria"), new]) == [new]
 
 
 def test_the_marks_are_drawn_on_the_picture() -> None:
@@ -191,7 +239,7 @@ def test_the_marks_are_drawn_on_the_picture() -> None:
 
 
 CHECKED_TAKE = {
-    "title": "Geometria detali",
+    "title": TAKE,
     "grid": "none",
     "text": "Oko biegnie łukiem fali do Fudżi.",
     "marks": [
@@ -221,12 +269,12 @@ def test_claude_checks_the_takes_over_its_marks(service: FrameService) -> None:
     (params,) = asked
     assert params["system"][0]["text"] == CHECK_SYSTEM
     content = params["messages"][0]["content"]
-    assert [b["type"] for b in content].count("image") == 3  # clean, Geometria, Geometria detali
+    assert [b["type"] for b in content].count("image") == 2  # clean, and the take drawn
     text = content[-1]["text"]
     assert "OBRAZ: 900 × 600 px" in text and "Pomiary serwera:" in text
-    assert "loop „Fudżi”" in text and "(576, 396)" in text  # its points in pixels
+    assert "rect „Kartusz”" in text and "(90, 60)" in text  # its points in pixels
     views = checked["composition"]["views"]
-    assert [v["title"] for v in views] == ["Geometria detali"]
+    assert [v["title"] for v in views] == [TAKE]
     assert views[0]["marks"][0]["points"][0] == {"x": 0.66, "y": 0.7}
     assert checked[CHECKED] == ["Spojrzenie, ślad 2: kółko na szczycie"]
     assert checked["teaser"] == data["teaser"]  # the rest of the page as it was
@@ -239,8 +287,65 @@ def test_claude_checks_the_takes_over_its_marks(service: FrameService) -> None:
     assert check(service.images, item, {"teaser": "x"}, refuse) == {"teaser": "x"}
 
 
+ANALYSIS = {
+    "composition": {
+        "views": [
+            {
+                "title": TAKE,
+                "grid": "none",
+                "text": "Kompozycja otwarta: fala tnie lewą krawędź.",
+                "marks": [
+                    {
+                        "shape": "rhythm",
+                        "points": _points(
+                            (0.2, 0.8), (0.2, 0.4), (0.4, 0.8), (0.4, 0.4), (0.6, 0.8), (0.6, 0.4)
+                        ),
+                        "title": "Rytm łodzi",
+                        "text": "trzy łodzie",
+                    }
+                ],
+            }
+        ]
+    }
+}
+
+
+def test_the_analysis_is_asked_apart_and_checked(service: FrameService) -> None:
+    _catalogue(service)
+    item = service.library.get("met:1")
+    assert item is not None
+    asked: list[dict[str, Any]] = []
+
+    def ask(params: dict[str, Any]) -> Answer:
+        asked.append(params)
+        if params["system"][0]["text"] == CHECK_SYSTEM:
+            reply = {"views": [CHECKED_TAKE], "changes": ["kółko na szczycie"]}
+            return Answer(pixels(reply), False, 0.05, "o")
+        return Answer(pixels(ANALYSIS), False, 0.2, "o")
+
+    found = compose(service.images, item, service.daily.job.sources(item), ask)
+    first, second = asked
+    assert first["system"][0]["text"] == COMPOSITION_SYSTEM
+    assert first["output_config"]["effort"] == "high"
+    assert "OBRAZ: 900 × 600 px" in first["messages"][0]["content"][1]["text"]
+    assert second["system"][0]["text"] == CHECK_SYSTEM
+    assert "rhythm „Rytm łodzi”" in second["messages"][0]["content"][-1]["text"]
+    assert found[CHECKED] == ["kółko na szczycie"] and found[CHECK_ROUND] == ROUND
+    assert [v["title"] for v in found["composition"]["views"]] == [TAKE]
+    # An unusable analysis gives the page nothing.
+    assert (
+        compose(
+            service.images,
+            item,
+            service.daily.job.sources(item),
+            lambda p: Answer(None, True, 0.0, "o"),
+        )
+        == {}
+    )
+
+
 def _old_page(service: FrameService, **extra: Any) -> None:
-    """A study written before the check: its takes as they were drawn."""
+    """A study written before: its takes as the old prompt drew them."""
     essay = clean(ANSWER, [])
     assert essay is not None
     item = service.library.get("met:1")
@@ -252,41 +357,39 @@ def _old_page(service: FrameService, **extra: Any) -> None:
             model="claude-opus",
             prompt_version="study-1/daily-7",
             source_hash=service.study.job.source_hash(item),
-            data={**essay.model_dump(), **extra},
+            data={**essay.model_dump(), CHECK_ROUND: 3, **extra},
         )
     )
 
 
-def test_old_pages_are_checked_once(service: FrameService) -> None:
+def test_old_pages_are_written_again_as_the_owner_lets_them(service: FrameService) -> None:
     _catalogue(service)
-    job = service.ai.jobs[CHECK]
-    assert isinstance(job, CheckJob)
+    job = service.ai.jobs[KIND]
+    assert isinstance(job, ComposeJob)
     item = service.library.get("met:1")
     assert item is not None
-    beats = _points((0.1, 0.5), (0.2, 0.5), (0.3, 0.5))
-    rhythm = {"shape": "rhythm", "points": beats, "title": "Fale"}
     _old_page(service)
-    page = service.library.note("met:1", STUDY)
-    assert page is not None
-    views = [*page.data["composition"]["views"], {**CHECKED_TAKE, "title": "Rytm"}]
-    views[-1]["marks"] = [rhythm]
-    service.library.save_note(
-        page.model_copy(update={"data": {**page.data, "composition": {"views": views}}})
-    )
-    # Shown as today: "Geometria" first, no "Rytm".
+    old = service.library.note("met:1", STUDY)
+    assert old is not None
+    # Shown as today, under the new name, until written again.
     essay = service.study.essay(item)
-    assert essay is not None
-    assert [v.title for v in essay.composition.views] == ["Geometria", "Geometria detali"]
-    job._pages = (0.0, set())
+    assert essay is not None and [v.title for v in essay.composition.views] == [TAKE]
+    assert not job.wanted(item)  # not let yet
+    job.let(["met:2"])
+    assert not job.wanted(item)
+    job.let(["met:1"])
     assert job.wanted(item)
+    assert service.library.get_state(REWORK_KEY) == ["met:1"]
     params = job.params(item)
-    assert params["system"][0]["text"] == CHECK_SYSTEM
+    assert params["system"][0]["text"] == COMPOSITION_SYSTEM
 
-    reply = {"views": [CHECKED_TAKE], "changes": ["kółko na szczycie"]}
-    answer = job.revise(item, params, Answer(pixels(reply), False, 0.05, "o"), lambda p: None)  # type: ignore[arg-type,return-value]
+    def ask(more: dict[str, Any]) -> Answer:
+        return Answer(None, True, 0.0, "o")  # the check refused: the take stays
+
+    answer = job.revise(item, params, Answer(pixels(ANALYSIS), False, 0.2, "o"), ask)
     note = Note(
         item_id="met:1",
-        kind=CHECK,
+        kind=KIND,
         model="o",
         prompt_version=job.prompt_version,
         source_hash=job.source_hash(item),
@@ -294,18 +397,23 @@ def test_old_pages_are_checked_once(service: FrameService) -> None:
     )
     job.apply(item, service.library.save_note(note))
     page = service.library.note("met:1", STUDY)
-    assert page is not None and page.data[CHECKED] == ["kółko na szczycie"]
+    assert page is not None and page.data[CHECK_ROUND] == ROUND
     views = page.data["composition"]["views"]
-    assert [v["title"] for v in views] == ["Geometria detali"]
-    assert views[0]["marks"][0]["points"][0] == {"x": 0.66, "y": 0.7}
-    assert page.data["teaser"] == clean(ANSWER, []).teaser  # type: ignore[union-attr]
+    assert [v["title"] for v in views] == [TAKE]
+    assert views[0]["marks"][0]["shape"] == "rhythm"
+    assert page.data[BEFORE] == old.data["composition"]  # kept to go back to
+    assert page.data["teaser"] == old.data["teaser"]  # the rest of the page as it was
     assert not job.wanted(item)  # once
-    assert page.data[CHECK_ROUND] == ROUND
 
-    # A page checked by the first round is checked once more.
-    first = {k: v for k, v in page.data.items() if k != CHECK_ROUND}
-    service.library.save_note(page.model_copy(update={"data": first}))
-    job._pages = (0.0, set())
+    # A page left without its composition gets it unasked.
+    _old_page(service, composition={"views": []})
+    job.let([])
+    assert job.wanted(item)
+    # All of them, once let.
+    _old_page(service)
+    job.let([])
+    assert not job.wanted(item)
+    job.let(True)
     assert job.wanted(item)
 
 
@@ -314,3 +422,19 @@ def test_what_wikipedia_says_of_the_composition_comes_first() -> None:
     found = _sections_first(text, ("compos",))
     assert found.index("== Composition ==") < found.index("== History ==")
     assert found.startswith("Intro.")
+
+
+def test_the_owner_lets_pages_be_written_again(tmp_path: Any) -> None:
+    from fastapi.testclient import TestClient
+    from test_daily import _app
+
+    app = _app(tmp_path)
+    svc: FrameService = app.state.service
+    with TestClient(app) as client:
+        _catalogue(svc)
+        _old_page(svc)
+        shown = client.get("/api/ai/composition").json()
+        assert shown == {"rework": [], "waiting": [], "done": []}
+        shown = client.put("/api/ai/composition", json={"rework": ["met:1"]}).json()
+        assert shown["rework"] == ["met:1"] and shown["waiting"] == ["met:1"]
+        assert client.put("/api/ai/composition", json={"rework": True}).json()["rework"] is True

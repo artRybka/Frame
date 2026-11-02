@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.75.0
+
+- Studium dzieła: nowa „Analiza kompozycji”, jedno ujęcie zamiast „Geometrii”
+  i „Geometrii detali”. Claude pisze ją osobnym, dokładniejszym pytaniem:
+  masy i równowaga, podziały, jeden główny układ, duże wyraźne rytmy, czy
+  kompozycja jest otwarta czy zamknięta i co układ robi dla tematu; siatki
+  tylko jako pomiar. Tekst ma 4–6 zdań.
+- Nowe ślady na obrazie: rytm jako równoległe kreski przy każdej powtarzanej
+  formie (bez łączącej linii), linie zbiegu perspektywy i ruch jako
+  zamaszysta strzałka ze smugami.
+- Zapisane studia dostają nową analizę w tle, gdy właściciel na to pozwoli
+  (`PUT /api/ai/composition`); poprzednia zostaje zachowana w stronie.
+
 ## 1.74.0
 
 - Szukaj: w grupie Muzeum przełącznik „Wybrane / Wykluczone” pozwala

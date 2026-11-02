@@ -10,6 +10,8 @@ from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 
 from ..ai import AiConfigUpdate, AiUnavailable, KeyRejected, Progress
+from ..ai.composition import PAGES
+from ..ai.daily import CHECK_ROUND, ROUND
 from ..ai.keywords import KIND as KEYWORDS
 from ..ai.pl_text import KIND as PL_TEXT
 from ..service import FrameService
@@ -142,3 +144,42 @@ async def pl_text_library(svc: Svc) -> Started:
     except AiUnavailable as err:
         raise HTTPException(409, str(err)) from err
     return Started(items=items)
+
+
+class Compose(BaseModel):
+    """The works whose pages written before get their composition written
+    again (``True``: all), which still wait for it and which have it."""
+
+    rework: bool | list[str]
+    waiting: list[str] = []
+    done: list[str] = []
+
+
+class ComposeUpdate(BaseModel):
+    rework: bool | list[str]
+
+
+def _compose(svc: FrameService) -> Compose:
+    job = svc.compose
+    job.forget()
+    done = {
+        item_id
+        for kind in PAGES
+        for item_id, note in svc.library.notes(kind).items()
+        if "teaser" in note.data and note.data.get(CHECK_ROUND, 1) >= ROUND
+    }
+    return Compose(rework=job.rework(), waiting=sorted(job.waiting()), done=sorted(done))
+
+
+@router.get("/composition", response_model=Compose)
+async def get_compose(svc: Svc) -> Compose:
+    return await run_in_threadpool(_compose, svc)
+
+
+@router.put("/composition", response_model=Compose)
+async def put_compose(update: ComposeUpdate, svc: Svc) -> Compose:
+    """Lets the analysis of the composition be written again for the pages
+    of these works (or all): first a few to look at, then the rest."""
+    svc.compose.let(update.rework if update.rework is True else list(update.rework or []))
+    svc.ai.wake()
+    return await run_in_threadpool(_compose, svc)

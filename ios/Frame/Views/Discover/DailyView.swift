@@ -596,9 +596,9 @@ struct DailyView: View {
             .fixedSize(horizontal: false, vertical: true)
     }
 
-    /// The takes as pencil over the picture in full colour, one at a time:
-    /// "Geometria", "Geometria detali"; the take's summary under it in the page's
-    /// own type.
+    /// The take as pencil over the picture in full colour ("Analiza
+    /// kompozycji"; chips to switch only when an older server sends more
+    /// than one); the take's text under it in the page's own type.
     private func compositionSection(_ work: DailyWork, _ takes: [DailyWork.Take]) -> some View {
         let shown = takes[min(take, takes.count - 1)]
         return section("Analiza kompozycji") {
