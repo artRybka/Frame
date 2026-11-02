@@ -1528,39 +1528,41 @@ struct MatSwatch: View {
         }
     }
 
-    /// Tints in a ring, muted or deep: the mat takes its colour from each picture.
-    private var fill: AnyShapeStyle {
-        let ring: [UInt32]
-        switch name {
-        case "picture": ring = [0xE8C9C0, 0xEADCC0, 0xD3DEC8, 0xC6D6DE, 0xD6CBDD, 0xE8C9C0]
-        case "picture_dark": ring = [0x45302D, 0x403628, 0x2D3A31, 0x2B3444, 0x382F40, 0x45302D]
-        default: return AnyShapeStyle(Self.color(name))
-        }
-        return AnyShapeStyle(AngularGradient(colors: ring.map { Color(hex: $0) }, center: .center))
-    }
+    /// "Jasne" and "Ciemne" take their colour from each picture: a stand-in
+    /// tint with the three Spectra inks on it, like the Kolor dots in Szukaj.
+    private var fromPicture: Bool { name == "picture" || name == "picture_dark" }
 
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 6) {
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(fill)
-                    .frame(width: 40, height: 30)
+            VStack(spacing: 8) {
+                // A round sample of the board, like a framer's colour chip.
+                Circle()
+                    .fill(Self.color(name))
+                    .overlay(Circle().strokeBorder(Theme.inkSoft.opacity(0.45), lineWidth: 0.75))
+                    .overlay {
+                        if fromPicture {
+                            HStack(spacing: 2.5) {
+                                ForEach([0, 1, 2], id: \.self) { ink in
+                                    Circle().fill(Theme.iconSquares[ink]).frame(width: 5.5, height: 5.5)
+                                }
+                            }
+                        }
+                    }
+                    .frame(width: 32, height: 32)
                     .overlay(
-                        // The window cut at 45°: a light inner edge.
-                        RoundedRectangle(cornerRadius: 2)
-                            .strokeBorder(.white.opacity(name == "white" ? 0 : 0.8), lineWidth: 1.5)
-                            .padding(8)
+                        Circle()
+                            .strokeBorder(selected ? Theme.ink : .clear, lineWidth: 2)
+                            .padding(-4)
                     )
-                    .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Theme.inkSoft.opacity(0.35), lineWidth: 0.75))
-                    .padding(3)
-                    .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(selected ? Theme.ink : .clear, lineWidth: 2))
+                    .padding(.top, 4)  // room for the ring
                 Text(Self.title(name))
                     .font(.caption2.weight(.medium))
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
-                    .foregroundStyle(selected ? Theme.ink : Theme.inkSoft)
+                    .foregroundStyle(Theme.ink)
             }
             .frame(maxWidth: .infinity)  // six in one row
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Passe-partout \(Self.title(name).lowercased())")

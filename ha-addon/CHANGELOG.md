@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.79.5
+
+- Passe-partout (zakładka Ramka i wysyłanie zdjęcia): kolory kartonu to
+  teraz okrągłe próbki zamiast zaokrąglonych prostokątów. Jasne i Ciemne,
+  które biorą odcień z obrazu, mają zamiast tęczy trzy kropki farb, jak
+  pastylka Kolor w Szukaj. Wybrany kolor otacza obwódka, a podpisy są
+  wszystkie w kolorze tekstu, jak w Kadrowaniu.
+
 ## 1.79.4
 
 - Przytrzymanie tytułu, nazwiska autora i obrazu (karta dzieła, studium,
