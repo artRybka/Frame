@@ -379,7 +379,7 @@ struct TermFacetPanel: View {
 
     @State private var filter = ""
     @State private var accents = false
-    /// Museums: the picked ones are left out ("Wszystkie poza"), with none
+    /// Museums: the picked ones are left out ("Wykluczone"), with none
     /// picked yet (with some, their kind says it).
     @State private var leaveOut = false
     /// How tall the group's content is.
@@ -586,7 +586,7 @@ struct TermFacetPanel: View {
 
     // MARK: Museums
 
-    /// "Tylko te" (false) or "Wszystkie poza" (true): what the picked
+    /// "Wybrane" (false) or "Wykluczone" (true): what the picked
     /// museums mean. Switched with museums picked, they keep being picked
     /// and mean the other thing.
     private var museumsOut: Binding<Bool> {
@@ -617,8 +617,8 @@ struct TermFacetPanel: View {
         let count = tokens.filter(facet.holds).count
         return VStack(alignment: .leading, spacing: 14) {
             Picker("Które muzea", selection: museumsOut) {
-                Text(!out && count > 0 ? "Tylko te · \(count)" : "Tylko te").tag(false)
-                Text(out && count > 0 ? "Wszystkie poza · \(count)" : "Wszystkie poza").tag(true)
+                Text(!out && count > 0 ? "Wybrane · \(count)" : "Wybrane").tag(false)
+                Text(out && count > 0 ? "Wykluczone · \(count)" : "Wykluczone").tag(true)
             }
             .pickerStyle(.segmented)
             Text(out
