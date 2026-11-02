@@ -6,6 +6,7 @@
   serwer zapisuje w logu czasy każdej rundy zestawu.
 - Miniatury w Szukaj i Odkrywaj w swoich proporcjach, także z muzeów, które
   nie podają wymiarów.
+- Zakładka „Teraz” ma nową ikonkę: pełny obraz zamiast obrazu w ramce.
 
 ## 1.71.1
 
