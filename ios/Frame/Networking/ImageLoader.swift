@@ -31,35 +31,40 @@ actor ImageLoader {
         /// NSCache is safe to use from any thread.
         let cache = NSCache<NSString, UIImage>()
         private let lock = NSLock()
-        private var addresses: [String] = []
+        private var server: ServerRoute?
 
         private init() {
             cache.totalCostLimit = 160 * 1024 * 1024
         }
 
-        /// The frame server's addresses (at home, away), without a trailing slash.
-        var servers: [String] {
-            get { lock.withLock { addresses } }
-            set { lock.withLock { addresses = newValue } }
+        /// The frame server's addresses (at home, away) and the one in use.
+        var route: ServerRoute? {
+            get { lock.withLock { server } }
+            set { lock.withLock { server = newValue } }
         }
     }
 
     /// The frame server's addresses: a picture of the server's is the same
     /// one whichever of them it came from, so the last launch's "Teraz",
-    /// remembered under the address at home, is found away from home too.
-    nonisolated static func sameServer(_ addresses: [URL]) {
-        Memory.shared.servers = addresses.map {
-            let text = $0.absoluteString
-            return text.hasSuffix("/") ? String(text.dropLast()) : text
-        }
+    /// remembered under the address at home, is found away from home too;
+    /// and one still loading from an address the app has left is asked at
+    /// the other one.
+    nonisolated static func sameServer(_ route: ServerRoute?) {
+        Memory.shared.route = route
     }
+
+    private static var route: ServerRoute? { Memory.shared.route }
 
     /// What the picture is kept under in memory: the server's own pictures
     /// by their path, not by the address they were asked at.
     private static func key(_ request: URLRequest, _ maxPixel: CGFloat) -> String {
         var url = request.url?.absoluteString ?? ""
-        if let server = Memory.shared.servers.first(where: { url.hasPrefix($0 + "/") }) {
-            url = "server:" + url.dropFirst(server.count)
+        if let route {
+            let servers = [route.home, route.remote].compactMap { $0?.absoluteString }
+                .map { $0.hasSuffix("/") ? String($0.dropLast()) : $0 }
+            if let server = servers.first(where: { url.hasPrefix($0 + "/") }) {
+                url = "server:" + url.dropFirst(server.count)
+            }
         }
         return "\(url)#\(Int(maxPixel))"
     }
@@ -185,10 +190,12 @@ actor ImageLoader {
     }
 
     private static func fetch(_ request: URLRequest, session: URLSession) async throws -> Data {
+        var request = request
         var attempt = 1
+        var looked = false
         while true {
             do {
-                let (data, response) = try await session.data(for: request)
+                let (data, response) = try await send(request, session: session)
                 let status = (response as? HTTPURLResponse)?.statusCode ?? 200
                 if (200 ..< 300).contains(status) { return data }
                 guard retryStatus.contains(status), attempt < attempts else {
@@ -196,10 +203,23 @@ actor ImageLoader {
                 }
                 try await Task.sleep(for: .seconds(retryDelay(response, attempt: attempt)))
             } catch let error as URLError where error.code != .cancelled && attempt < attempts {
+                // The server's address did not answer: the other one, once.
+                if !looked, let route, route.hasRemote, route.serves(request), ServerRoute.unreachable(error),
+                   await route.resolve() != nil, let moved = route.rebased(request) {
+                    looked = true
+                    request = moved
+                    continue
+                }
                 try await Task.sleep(for: .seconds(attempt))
             }
             attempt += 1
         }
+    }
+
+    /// The server's pictures follow it to its other address mid-download.
+    private static func send(_ request: URLRequest, session: URLSession) async throws -> (Data, URLResponse) {
+        guard let route else { return try await session.data(for: request) }
+        return try await route.follow(request) { try await session.data(for: $0) }
     }
 
     /// What the host asked for in Retry-After, else a growing pause; a few

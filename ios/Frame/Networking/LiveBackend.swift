@@ -709,7 +709,10 @@ struct LiveBackend: FrameBackend {
     /// is back, if nothing can happen twice; otherwise it ends as
     /// `BackendError.interrupted`, not as a server that did not answer.
     private func load(_ req: URLRequest) async throws -> (Data, URLResponse) {
-        try await again(req) { try await reach($0) { try await URLSession.shared.data(for: $0) } }
+        let route = self.route
+        return try await again(req) { req in
+            try await reach(req) { try await route.follow($0) { try await URLSession.shared.data(for: $0) } }
+        }
     }
 
     /// Like `load`, for a response read as it comes.

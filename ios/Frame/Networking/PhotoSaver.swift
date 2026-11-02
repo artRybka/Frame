@@ -62,7 +62,7 @@ enum PhotoSaver {
         for source in sources(for: item, backend: backend) {
             if Task.isCancelled { throw CancellationError() }
             do {
-                let (data, type) = try await download(source)
+                let (data, type) = try await download(source, route: (backend as? LiveBackend)?.route)
                 let name = "\(fileName(for: item)).\(type.preferredFilenameExtension ?? "jpg")"
                 // From memory, not a file: Photos refuses a file whose name has
                 // no extension, and the download's file has none.
@@ -81,8 +81,13 @@ enum PhotoSaver {
     }
 
     /// The picture's bytes and type, if it is one Photos takes.
-    private static func download(_ request: URLRequest) async throws -> (Data, UTType) {
-        let (file, response) = try await URLSession.shared.download(for: request)
+    private static func download(_ request: URLRequest, route: ServerRoute?) async throws -> (Data, UTType) {
+        // The server's copy follows it to its other address mid-download.
+        let fetch: @Sendable (URLRequest) async throws -> (URL, URLResponse) = {
+            try await URLSession.shared.download(for: $0)
+        }
+        let fetched = if let route { try await route.follow(request, fetch) } else { try await fetch(request) }
+        let (file, response) = fetched
         defer { try? FileManager.default.removeItem(at: file) }
         let status = (response as? HTTPURLResponse)?.statusCode ?? 200
         guard (200 ..< 300).contains(status) else {

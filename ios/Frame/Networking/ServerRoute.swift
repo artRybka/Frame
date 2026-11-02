@@ -49,14 +49,21 @@ final class ServerRoute: @unchecked Sendable {
             return task
         }
         let found = await task.value
-        let switched: Kind? = lock.withLock {
+        lock.withLock {
             if resolving == task { resolving = nil }
-            guard let found, found != kind else { return nil }
-            kind = found
-            return found
         }
-        if let switched { onSwitch?(switched) }
+        if let found { use(found) }
         return found
+    }
+
+    /// Moves to the `found` address, if it is not the one in use.
+    func use(_ found: Kind) {
+        let switched: Bool = lock.withLock {
+            guard found != kind, remote != nil else { return false }
+            kind = found
+            return true
+        }
+        if switched { onSwitch?(found) }
     }
 
     private enum Probe {
@@ -125,9 +132,56 @@ final class ServerRoute: @unchecked Sendable {
         return nil
     }
 
+    /// Whether the request goes to one of the server's addresses (not, say,
+    /// to a museum).
+    func serves(_ request: URLRequest) -> Bool {
+        guard let url = request.url?.absoluteString else { return false }
+        return [home, remote].compactMap { $0 }.contains { url.hasPrefix(Self.prefix($0) + "/") }
+    }
+
     private static func prefix(_ url: URL) -> String {
         let text = url.absoluteString
         return text.hasSuffix("/") ? String(text.dropLast()) : text
+    }
+
+    /// Sends `request`. A GET still waiting for an address the app has left
+    /// (left home, or came back) goes again to the one in use at once,
+    /// instead of waiting for the old one to time out (up to two minutes
+    /// when the home address does not answer away from home). Writes are
+    /// sent once, wherever they were meant to go.
+    func follow<T: Sendable>(
+        _ request: URLRequest, _ send: @escaping @Sendable (URLRequest) async throws -> T
+    ) async throws -> T {
+        guard hasRemote, (request.httpMethod ?? "GET") == "GET", serves(request) else { return try await send(request) }
+        var request = rebased(request) ?? request
+        for _ in 0 ..< 3 {
+            let sent = request
+            let outcome = try await withThrowingTaskGroup(of: Followed<T>.self) { group in
+                group.addTask { .answered(try await send(sent)) }
+                group.addTask {
+                    // Still the address in use: nothing to move.
+                    while self.rebased(sent) == nil {
+                        try await Task.sleep(for: .milliseconds(400))
+                    }
+                    return .moved
+                }
+                defer { group.cancelAll() }
+                guard let first = try await group.next() else { throw CancellationError() }
+                return first
+            }
+            switch outcome {
+            case let .answered(value):
+                return value
+            case .moved:
+                request = rebased(sent) ?? sent
+            }
+        }
+        return try await send(request)
+    }
+
+    private enum Followed<T: Sendable>: Sendable {
+        case answered(T)
+        case moved
     }
 
     /// Errors that mean the address did not answer at all, as opposed to the

@@ -39,9 +39,8 @@ def preview_url(file_id: str) -> str:
 
 
 def _jpeg(png: bytes) -> bytes:
-    img = Image.open(io.BytesIO(png))
-    if img.mode != "RGB":
-        img = img.convert("RGB")
+    with Image.open(io.BytesIO(png)) as opened:
+        img = opened.convert("RGB")
     out = io.BytesIO()
     img.save(out, "JPEG", quality=PREVIEW_JPEG_QUALITY, optimize=True)
     return out.getvalue()

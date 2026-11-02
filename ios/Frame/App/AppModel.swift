@@ -174,6 +174,7 @@ final class AppModel {
         serverPath = nil
         guard !demo, let home = Self.serverAddress(url) else {
             route = nil
+            ImageLoader.sameServer(nil)
             backend = DemoBackend()
             return
         }
@@ -187,7 +188,7 @@ final class AppModel {
                 self?.serverSwitches += 1
             }
         }
-        ImageLoader.sameServer([home, away].compactMap { $0 })
+        ImageLoader.sameServer(route)
         self.route = route
         backend = LiveBackend(route: route, token: token.isEmpty ? nil : token)
     }
