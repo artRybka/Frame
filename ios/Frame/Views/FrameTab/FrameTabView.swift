@@ -1515,19 +1515,48 @@ struct OrientationPicker: View {
         )
     }
 
+    @Environment(\.dynamicTypeSize) private var typeSize
+
     var body: some View {
-        Card {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Orientacja").foregroundStyle(Theme.ink)
-                Picker("Orientacja", selection: orientation) {
-                    Text("Pozioma").tag("landscape")
-                    Text("Pionowa").tag("portrait")
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .sensoryFeedback(.selection, trigger: settings.orientation)
-            }
+        // Just the switch: the frame icons say what it sets.
+        Picker("Orientacja", selection: orientation) {
+            segment("Pozioma", portrait: false).tag("landscape")
+            segment("Pionowa", portrait: true).tag("portrait")
         }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .sensoryFeedback(.selection, trigger: settings.orientation)
+    }
+
+    /// A segment of a system segmented control shows an image or a title,
+    /// never both, so the frame icon and the word are drawn into one
+    /// template image (the control tints it like its own titles).
+    private func segment(_ title: String, portrait: Bool) -> some View {
+        let traits = UITraitCollection(preferredContentSizeCategory: UIContentSizeCategory(typeSize))
+        let font = UIFont.preferredFont(forTextStyle: .subheadline, compatibleWith: traits).withWeight(.medium)
+        let text = NSAttributedString(string: title, attributes: [.font: font, .foregroundColor: UIColor.black])
+        let textSize = text.size()
+        let frame = portrait ? CGSize(width: 9, height: 14) : CGSize(width: 15, height: 10)
+        let gap: CGFloat = 7
+        let size = CGSize(width: ceil(frame.width + gap + textSize.width), height: ceil(max(frame.height, textSize.height)))
+        let image = UIGraphicsImageRenderer(size: size).image { _ in
+            let box = CGRect(x: 0.75, y: (size.height - frame.height) / 2 + 0.75,
+                             width: frame.width - 1.5, height: frame.height - 1.5)
+            let path = UIBezierPath(roundedRect: box, cornerRadius: 1.5)
+            path.lineWidth = 1.5
+            UIColor.black.setStroke()
+            path.stroke()
+            text.draw(at: CGPoint(x: frame.width + gap, y: (size.height - textSize.height) / 2))
+        }
+        return Image(uiImage: image.withRenderingMode(.alwaysTemplate))
+            .accessibilityLabel(title)
+    }
+}
+
+private extension UIFont {
+    func withWeight(_ weight: UIFont.Weight) -> UIFont {
+        UIFont(descriptor: fontDescriptor.addingAttributes([.traits: [UIFontDescriptor.TraitKey.weight: weight]]),
+               size: pointSize)
     }
 }
 
