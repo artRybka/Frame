@@ -13,6 +13,7 @@ import io
 import json
 import logging
 import threading
+import time
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -201,6 +202,7 @@ class Claude:
         ``on_text``, the answer is streamed and each piece of its text is
         passed on as it comes (e.g. a title before the rest is written)."""
         self.check_budget()
+        started = time.monotonic()
         try:
             if on_text is None:
                 message = self.client().messages.create(**params)
@@ -214,6 +216,15 @@ class Claude:
                     message = stream.get_final_message()
         except anthropic.AuthenticationError as err:
             raise KeyRejected("Anthropic did not accept the key") from err
+        if params["model"] == OPUS:  # the long answers (pages, their checks): how each went
+            log.info(
+                "%s answered in %.0f s: %s, %s output tokens, %d characters",
+                kind,
+                time.monotonic() - started,
+                message.stop_reason,
+                getattr(message.usage, "output_tokens", "?"),
+                len(_text(message)),
+            )
         return self.answer(kind, params["model"], message, batch=False)
 
     def answer(self, kind: str, model: str, message: Any, *, batch: bool) -> Answer:

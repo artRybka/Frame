@@ -15,15 +15,16 @@ import pytest
 from conftest import jpeg_bytes
 from fastapi.testclient import TestClient
 from PIL import Image, ImageDraw, ImageOps
-from test_ai import GOOD_KEY, FakeAnthropic
+from test_ai import GOOD_KEY, FakeAnthropic, _message
 
 from frame_server.ai import AiConfigUpdate
 from frame_server.ai.client import OPUS
-from frame_server.ai.daily import clean, short
+from frame_server.ai.daily import INCOMPLETE, clean, missing, short, unfinished
 from frame_server.ai.study import KIND as STUDY
 from frame_server.config import Settings
 from frame_server.daily import HISTORY_KEY, of_season, round_anniversary
 from frame_server.library import Item, ItemKind
+from frame_server.library.models import Note
 from frame_server.service import FrameService
 from frame_server.web import create_app
 
@@ -588,3 +589,168 @@ def test_the_day_page_is_the_works_study(tmp_path: Path) -> None:
         svc.daily.adopt_all()
         assert svc.study.requested("met:1") and svc.study.essay(svc.library.get("met:1"))  # type: ignore[arg-type]
         assert len(written(fake)) == 1
+
+
+#: An answer with the text and the note about the artist and nothing else,
+#: as Claude once gave one (Hopper's "Nighthawks", 2026-11-02).
+HALF = {
+    **ANSWER,
+    "composition": {"views": []},
+    "colour": "",
+    "details": [],
+    "on_frame": "",
+    "similar": [],
+    "legacy": [],
+    "sources": [],
+}
+HALF_PX = pixels(HALF)
+
+
+def _answers(fake: FakeAnthropic, *pages: dict[str, Any]) -> None:
+    """The pages written in turn (the last one from then on); a check of
+    the composition gets the page's answer, which it cannot use."""
+    left = list(pages)
+
+    def create(**params: Any) -> Any:
+        fake.asked.append(params)
+        checking = params["system"][0]["text"].startswith("Sprawdzasz")
+        page = left[0] if checking or len(left) == 1 else left.pop(0)
+        return _message(page)
+
+    fake.messages.create = create
+
+
+def _claude(tmp_path: Path, *pages: dict[str, Any]) -> tuple[Any, FrameService, FakeAnthropic]:
+    app = _app(tmp_path)
+    svc: FrameService = app.state.service
+    fake = FakeAnthropic(GOOD_KEY)
+    _answers(fake, *pages)
+    svc.claude.factory = lambda key: fake
+    svc.ai_config.set_key(GOOD_KEY)
+    svc.ai_config.update(AiConfigUpdate(pl_text=False, keywords_artworks=False))
+    return app, svc, fake
+
+
+def _whole(work: dict[str, Any]) -> bool:
+    return bool(work["composition"] and work["colour"] and work["details"] and work["on_frame"])
+
+
+def test_what_a_page_lacks() -> None:
+    assert missing(ANSWER) == []
+    assert missing(clean(ANSWER, []).model_dump()) == []  # type: ignore[union-attr]
+    half = clean(HALF, [])
+    assert half is not None
+    assert missing(half.model_dump()) == ["composition", "colour", "details", "on_frame"]
+    assert unfinished(half.model_dump())
+    assert not unfinished({**half.model_dump(), INCOMPLETE: ["composition"]})
+    # A page with only its details missing is whole enough to keep.
+    assert not unfinished({**ANSWER, "details": []})
+
+
+def test_a_half_written_page_is_asked_for_again(tmp_path: Path) -> None:
+    app, svc, fake = _claude(tmp_path, HALF_PX, ANSWER_PX)
+    with TestClient(app) as client:
+        _catalogue(svc)
+        _today_is(svc, "met:1")
+        svc.ai.start()
+        try:
+            work = client.get("/api/daily?wait=10").json()
+        finally:
+            svc.ai.stop()
+        assert work["written"] is True and _whole(work)
+        assert [v["title"] for v in work["composition"]["views"]] == [
+            "Geometria",
+            "Geometria detali",
+        ]
+        assert len(written(fake)) == 2
+        note = svc.library.note("met:1", "daily")
+        assert note is not None and INCOMPLETE not in note.data
+        client.get("/api/daily")
+        assert len(written(fake)) == 2
+
+
+def test_a_page_half_written_twice_is_kept_as_it_is(tmp_path: Path) -> None:
+    app, svc, fake = _claude(tmp_path, HALF_PX)
+    with TestClient(app) as client:
+        _catalogue(svc)
+        _today_is(svc, "met:1")
+        svc.ai.start()
+        try:
+            work = client.get("/api/daily?wait=10").json()
+        finally:
+            svc.ai.stop()
+        assert work["written"] is True and work["context"] and not _whole(work)
+        note = svc.library.note("met:1", "daily")
+        assert note is not None
+        assert note.data[INCOMPLETE] == ["composition", "colour", "details", "on_frame"]
+        # Asked twice, and not again: no question each time the page opens.
+        client.get("/api/daily")
+        assert len(written(fake)) == 2
+
+
+def test_a_half_written_page_from_before_is_written_again(tmp_path: Path) -> None:
+    """A day's page kept half written (and its study, a copy of it) before
+    such answers were asked for twice: written again once, the study too."""
+    app, svc, fake = _claude(tmp_path, ANSWER_PX)
+    with TestClient(app) as client:
+        _catalogue(svc)
+        _today_is(svc, "met:1")
+        item = svc.library.get("met:1")
+        assert item is not None
+        half = clean(HALF, [])
+        assert half is not None
+        for job in (svc.daily.job, svc.study.job):
+            svc.library.save_note(
+                Note(
+                    item_id="met:1",
+                    kind=job.kind,
+                    model=OPUS,
+                    prompt_version=job.prompt_version,
+                    source_hash=job.source_hash(item),
+                    data=half.model_dump(),
+                )
+            )
+        svc.library.set_state("study_items", ["met:1"])
+        assert svc.daily.job.essay(item) is None and svc.study.essay(item) is None
+        svc.ai.start()
+        try:
+            work = client.get("/api/daily?wait=10").json()
+            for _ in range(40):  # its study made of it as the question ends
+                if svc.study.essay(item) is not None:
+                    break
+                time.sleep(0.05)
+        finally:
+            svc.ai.stop()
+        assert work["written"] is True and _whole(work)
+        assert len(written(fake)) == 1
+        view = client.get("/api/study/met:1").json()
+        assert view["status"] == "ready" and _whole(view["work"])
+        assert view["work"]["why_today"] == "Jutro mija 266 lat od urodzin Hokusaia."
+
+
+def test_a_study_written_again_mends_the_days_half_page(offline: FrameService) -> None:
+    """The study asked for again while the day's page is half written: the
+    day's page becomes the study, with its own "why today"."""
+    _catalogue(offline)
+    offline.ai_config.set_key(GOOD_KEY)
+    _today_is(offline, "met:1")
+    item = offline.library.get("met:1")
+    assert item is not None
+    half = clean(HALF, [])
+    whole = clean(ANSWER, [])
+    assert half is not None and whole is not None
+    daily, study = offline.daily.job, offline.study.job
+    for job, essay in ((daily, half), (study, whole)):
+        offline.library.save_note(
+            Note(
+                item_id="met:1",
+                kind=job.kind,
+                model=OPUS,
+                prompt_version=job.prompt_version,
+                source_hash=job.source_hash(item),
+                data={**essay.model_dump(), "why_today": "Dziś" if job is daily else ""},
+            )
+        )
+    assert offline.daily.ask(item) is None  # no question: the study is the page
+    essay = daily.essay(item)
+    assert essay is not None and essay.composition.views and essay.why_today == "Dziś"

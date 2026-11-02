@@ -69,6 +69,11 @@ CHECKED = "composition_checked"
 #: both asked for by Mateusz 2026-10-31).
 CHECK_ROUND = "composition_round"
 ROUND = 3
+#: Kept in a page that came back without some of what every page has (see
+#: :func:`missing`) though it was asked for twice: what it lacks. A page
+#: without it that lacks them all was written before the second question
+#: and is asked for again once (:meth:`DailyJob.fresh`).
+INCOMPLETE = "incomplete"
 MAX_MARKS = 6
 MAX_LINE_POINTS = 12
 #: Points closer than this (fraction of the picture) are one.
@@ -717,6 +722,37 @@ def clean(data: dict[str, Any], candidates: list[str]) -> Essay | None:
     )
 
 
+#: What every page has, besides its text: the takes on its composition,
+#: its colour, the fragments worth a close look and how it fares on the
+#: frame. Claude once (2026-11-02, Hopper's "Nighthawks") answered with the
+#: text and the note about the artist and left all of these empty.
+WHOLE = ("composition", "colour", "details", "on_frame")
+
+
+def missing(data: dict[str, Any]) -> list[str]:
+    """What of :data:`WHOLE` a page (or a model's answer in fractions)
+    lacks, as the app would show it."""
+    found = data.get("composition")
+    raw: dict[str, Any] = found if isinstance(found, dict) else {}
+    views = takes([v for v in map(_view, _dicts(raw.get("views"))) if v is not None])
+    has = {
+        "composition": bool(views or _dicts(raw.get("points"))),
+        "colour": bool(_text(data.get("colour"))),
+        "details": any(d is not None for d in map(_detail, _dicts(data.get("details")))),
+        "on_frame": bool(_text(data.get("on_frame"))),
+    }
+    return [part for part in WHOLE if not has[part]]
+
+
+def unfinished(data: dict[str, Any]) -> bool:
+    """A written page without its composition, colour and note on the frame
+    that was never asked for again: one to be written once more."""
+    if "teaser" not in data or INCOMPLETE in data:
+        return False
+    lacking = missing(data)
+    return all(part in lacking for part in ("composition", "colour", "on_frame"))
+
+
 def picture(images: ImageCache, item: Item, side: int = IMAGE_SIDE) -> Image.Image:
     """The work's picture at most ``side`` pixels long: the original when it
     can be had, else the thumbnail."""
@@ -864,10 +900,27 @@ class DailyJob(NoteJob):
         """The answer's pixels made fractions, and its composition checked by
         Claude over the marks drawn on the picture (``ai.check``): a mark that
         missed moved, one that cannot be defended left out. When the check
-        cannot be had (the month's limit, an error) the answer stays as it was."""
+        cannot be had (the month's limit, an error) the answer stays as it was.
+
+        An answer without some of what every page has (:func:`missing`) is
+        asked for once more, and the fuller of the two is kept."""
         if answer.data is None:
             return answer
         data = to_fractions(answer.data, sent_size(params))
+        if lacking := missing(data):
+            log.warning("page of %s came back without %s: asked again", item.id, ", ".join(lacking))
+            try:
+                again = ask(params)
+            except (AiUnavailable, anthropic.APIError) as err:
+                log.warning("page of %s not asked again: %s", item.id, err)
+            else:
+                answer = replace(answer, cost_usd=answer.cost_usd + again.cost_usd)
+                fresh = to_fractions(again.data, sent_size(params)) if again.data else None
+                if fresh is not None and len(missing(fresh)) < len(lacking):
+                    data = fresh
+            if lacking := missing(data):
+                log.warning("page of %s kept without %s", item.id, ", ".join(lacking))
+                data = {**data, INCOMPLETE: lacking}
         from .check import check
 
         try:
@@ -886,7 +939,7 @@ class DailyJob(NoteJob):
             data: dict[str, Any] = {"failed": True}
         else:
             data = essay.model_dump()
-            for key in (CHECKED, CHECK_ROUND):
+            for key in (CHECKED, CHECK_ROUND, INCOMPLETE):
                 if key in note.data:
                     data[key] = note.data[key]
         self.library.save_note(note.model_copy(update={"data": data}))
@@ -894,20 +947,27 @@ class DailyJob(NoteJob):
     def fresh(self, item: Item, note: Note | None) -> bool:
         """A written page stays until the work's text (or its day) changes,
         also when the prompt changes: written once, paid for once. A failed
-        one is asked again with a new prompt."""
-        return (
-            note is not None
-            and note.source_hash == self.source_hash(item)
-            and ("teaser" in note.data or note.prompt_version == self.prompt_version)
-        )
+        one is asked again with a new prompt; one that came back without
+        its composition, colour and note on the frame before such answers
+        were asked for twice (:func:`unfinished`) is asked again once."""
+        if note is None or note.source_hash != self.source_hash(item):
+            return False
+        if "teaser" in note.data:
+            return not unfinished(note.data)
+        return note.prompt_version == self.prompt_version
 
     def take(self, item: Item, note: Note | None, *, keep_date: bool = False) -> bool:
         """Keeps another page written about the work (its study, its day's
-        page) as this job's, without "why today": the same text is never
-        paid for twice. False when ``note`` is no written page. ``keep_date``:
-        written when that page was (else now)."""
-        if note is None or "teaser" not in note.data:
+        page) as this job's, without "why today" (a day's page written
+        before keeps its own): the same text is never paid for twice. False
+        when ``note`` is no written page, or an unfinished one.
+        ``keep_date``: written when that page was (else now)."""
+        if note is None or "teaser" not in note.data or unfinished(note.data):
             return False
+        own = self.library.note(item.id, self.kind)
+        why = ""
+        if self.kind == KIND and own is not None and own.source_hash == self.source_hash(item):
+            why = str(own.data.get("why_today") or "")
         self.library.save_note(
             Note(
                 item_id=item.id,
@@ -915,7 +975,7 @@ class DailyJob(NoteJob):
                 model=note.model,
                 prompt_version=self.prompt_version,
                 source_hash=self.source_hash(item),
-                data={**note.data, "why_today": ""},
+                data={**note.data, "why_today": why},
                 created_at=note.created_at if keep_date else "",
             )
         )
