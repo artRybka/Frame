@@ -45,6 +45,15 @@ protocol FrameBackend: Sendable {
     /// The card opened: when the work's picture is poor, the server looks
     /// for a sharper copy in other sources; waits up to `wait` seconds.
     func sharpen(itemID: String, wait: Int) async throws -> SharperView
+    /// "Szukaj lepszej kopii": every copy of the work's picture in the
+    /// sources, as they answer.
+    func copies(itemID: String) async throws -> AsyncThrowingStream<CopyLine, Error>
+    /// The owner's pick for the work's picture: a copy, or (the work's own
+    /// id) its own picture again.
+    func chooseCopy(itemID: String, copyID: String) async throws -> Item
+    /// One spot of the picture shown now and of the copy, at the frame's
+    /// scale; the most detailed one without `x` and `y`.
+    func copySpot(itemID: String, copyID: String, x: Double?, y: Double?) async throws -> CopySpot
     func setFavorite(id: String, _ favorite: Bool) async throws -> Item
     /// "Ukryj dzieło" and back: a hidden work is never shown, listed or found.
     func setExcluded(id: String, _ excluded: Bool) async throws -> Item

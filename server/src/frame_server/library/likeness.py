@@ -112,9 +112,40 @@ def cover(a: Keypoints, b: Keypoints, found: Any) -> float:
     return float(inside / union) if union > 0 else 0.0
 
 
+def inside(a: Keypoints, b: Keypoints, found: Any) -> float:
+    """How much of ``a``'s frame laid over ``b`` by ``found`` is ``b``'s
+    picture: above 1 when ``b`` is a detail of ``a`` (``a`` reaches past its
+    edges), below 1 when ``b`` has more around ``a`` (a page, a mat)."""
+    width, height = a.size
+    scale = math.hypot(float(found[0][0]), float(found[1][0]))
+    bw, bh = b.size
+    return float(width * height * scale * scale / (bw * bh)) if bw and bh else 0.0
+
+
 def turn(found: Any) -> float:
     """How far ``found`` turns a picture, in degrees."""
     return abs(math.degrees(math.atan2(float(found[1][0]), float(found[0][0]))))
+
+
+class Fit(NamedTuple):
+    """One picture laid over another (:meth:`Likeness.fit`)."""
+
+    matches: int
+    cover: float
+    turn: float
+    #: :func:`inside`: above 1 for a detail, below 1 for a page around it.
+    inside: float
+    #: The mapping (2×3) of the first thumbnail's points onto the second's,
+    #: and the keypoints of both (their sizes: where the points are).
+    mapping: Any
+    a: Keypoints
+    b: Keypoints
+
+    @property
+    def whole(self) -> bool:
+        return (
+            self.matches >= WHOLE_MATCHES and self.cover >= WHOLE_COVER and self.turn <= WHOLE_TURN
+        )
 
 
 class Likeness:
@@ -159,19 +190,32 @@ class Likeness:
         kb = self._keypoints(b)
         return kb is not None and matches(ka, kb) >= SAME
 
+    def fit(self, a: Item, b: Item) -> Fit | None:
+        """How ``a``'s picture lies over ``b``'s, by their thumbnails; None
+        when either is missing or says too little, or they share too few
+        keypoints to tell."""
+        ka = self._keypoints(a)
+        kb = self._keypoints(b) if ka is not None else None
+        if ka is None or kb is None:
+            return None
+        count, found = mapping(ka, kb)
+        if count < SAME or found is None:
+            return None
+        return Fit(count, cover(ka, kb, found), turn(found), inside(ka, kb, found), found, ka, kb)
+
     def whole(self, a: Item, b: Item) -> bool:
         """``b`` is ``a``'s picture whole, fit to stand in for it: one
         picture by many matches, neither turned nor a detail of the other,
         nor printed on a page or a slide with more around it."""
-        ka = self._keypoints(a)
-        kb = self._keypoints(b) if ka is not None else None
-        if ka is None or kb is None:
+        fit = self.fit(a, b)
+        if fit is None:
             return False
-        count, found = mapping(ka, kb)
-        if count < WHOLE_MATCHES or found is None:
-            return False
-        overlap, angle = cover(ka, kb, found), turn(found)
         log.info(
-            "%s over %s: %d matches, cover %.2f, turned %.1f°", a.id, b.id, count, overlap, angle
+            "%s over %s: %d matches, cover %.2f, turned %.1f°",
+            a.id,
+            b.id,
+            fit.matches,
+            fit.cover,
+            fit.turn,
         )
-        return overlap >= WHOLE_COVER and angle <= WHOLE_TURN
+        return fit.whole

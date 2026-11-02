@@ -169,7 +169,10 @@ struct NowView: View {
                             NoticeRow(icon: "clock.arrow.circlepath", color: Theme.inkSoft, text: pending)
                         }
                         if let shownItem {
-                            ArtworkInfo(item: shownItem, polish: offset == 0 ? heroShowing?.polish : nil)
+                            ArtworkInfo(
+                                item: shownItem, polish: offset == 0 ? heroShowing?.polish : nil,
+                                open: { path.append(shownItem.id) }
+                            )
                                 .id(shownItem.id)
                         } else if offset == 0, let current = heroShowing {
                             Card {
@@ -989,9 +992,13 @@ struct ArtworkInfo: View {
     let item: Item
     /// As the player gave it for the picture on the frame; else asked for.
     var polish: PolishText?
+    /// Opens the work's card: a tap on the title.
+    var open: (() -> Void)?
     @State private var asked: PolishText?
     @State private var expanded = false
     @State private var favorite: Bool?
+    /// The title held: the museum's own shows meanwhile ("Tytuł w oryginale").
+    @State private var peeking = false
 
     private var shown: PolishText? { asked ?? polish }
     private var title: String {
@@ -1023,18 +1030,26 @@ struct ArtworkInfo: View {
                 }
                 .accessibilityLabel("Ulubione")
             }
-            // The title opens the work's card, like "Szczegóły" below.
-            NavigationLink(value: item.id) {
-                Text(title)
-                    .font(.serif(28, weight: .semibold))
-                    .foregroundStyle(Theme.ink)
-                    .lineLimit(3)
-                    .minimumScaleFactor(0.75)
-                    .multilineTextAlignment(.leading)
-                    .contentTransition(.opacity)
+            // The title opens the work's card, like "Szczegóły" below; held,
+            // it shows the museum's own until the finger lifts.
+            let original = TitlePeekNote.original(item.title, shown: title)
+            Text(peeking ? original ?? title : title)
+                .font(.serif(28, weight: .semibold))
+                .foregroundStyle(Theme.ink)
+                // A long title from the museum shows whole while held.
+                .lineLimit(peeking ? nil : 3)
+                .minimumScaleFactor(peeking ? 1 : 0.75)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: peeking)
+                .contentTransition(.opacity)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .titlePeek(enabled: original != nil, peeking: $peeking) { open?() }
+                .accessibilityAddTraits(.isButton)
+                .accessibilityHint(Text("Otwiera kartę dzieła"))
+            if peeking, original != nil {
+                TitlePeekNote(source: item.source)
+                    .padding(.top, -4)
             }
-            .buttonStyle(.plain)
-            .accessibilityHint(Text("Otwiera kartę dzieła"))
             if item.kind == .photo {
                 PhotoFacts(item: item)
             } else {

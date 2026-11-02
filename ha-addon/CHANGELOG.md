@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.77.0
+
+- „Szukaj lepszej kopii” w menu „…” karty dzieła i w wierszu „Zdjęcie
+  dzieła” (teraz widocznym zawsze, z rozmiarem zdjęcia): arkusz „Kopie
+  dzieła” pyta wszystkie źródła naraz i pokazuje kopie, gdy tylko
+  przychodzą. Na górze obecne zdjęcie z paskiem, ile z 2560 px ramki daje,
+  pod nim „Lepsze” od najostrzejszej na ramce, „Inne kopie” i zwinięte „Nie
+  pasują” (fragment, czarno-biała plansza, reprodukcja). Dotknięcie kopii
+  pokazuje ten sam fragment obu zdjęć w skali ramki z suwakiem „przed / po”
+  i „Użyj tej kopii”. Dzieło zostaje tym samym dziełem (serduszko,
+  playlisty, kolejka, kadr), zmienia się tylko zdjęcie; automat w tle nie
+  nadpisuje wyboru. „Przywróć zdjęcie muzeum” w menu i w arkuszu. Serwer:
+  `GET /api/library/items/<id>/copies` (strumień), `…/copies/<kopia>/spot`,
+  `PUT`/`DELETE …/copy`. Wymaga zaktualizowanego serwera.
+- Tytuł w oryginale: przytrzymaj polski tytuł na karcie dzieła albo w
+  „Teraz”, a po chwili (z lekką wibracją) przeniknie w tytuł podany przez
+  muzeum, z dopiskiem „Tytuł z muzeum”. Po puszczeniu wraca polski. Długi
+  tytuł muzeum pokazuje się na ten czas cały; stuknięcie tytułu w „Teraz”
+  dalej otwiera kartę.
+
 ## 1.76.0
 
 - „Nie pokazuj na ramce” nazywa się teraz „Ukryj dzieło” (z powrotem
