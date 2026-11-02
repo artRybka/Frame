@@ -529,7 +529,7 @@ struct DailyView: View {
             }
         }
         .buttonStyle(ActionButtonStyle(prominent: true))
-        .contextMenu {
+        .labelButtonMenu {
             ForEach(HoldSpec.allCases) { spec in
                 Button(spec.label) { Task { await show(work, spec) } }
             }
