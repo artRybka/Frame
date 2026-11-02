@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.73.1
+
+- Ramka: orientacja to sam przełącznik z ikonkami poziomej i pionowej ramki,
+  bez napisu i karty.
+
 ## 1.73.0
 
 - Bateria we śnie: kafelek pokazuje szacowany poziom (jaśniejszy łuk, szara
