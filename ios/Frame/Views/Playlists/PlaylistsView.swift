@@ -513,24 +513,25 @@ struct SuggestionsCover: View {
 }
 
 /// "Ukryte", the last card in Playlisty: the works hidden with "Ukryj
-/// dzieło", greyed, with a crossed-out eye.
+/// dzieło" under cream tissue paper, as a print kept in a folder; their
+/// colours show through, the details don't. A sticker with a crossed-out
+/// eye in the corner.
 struct HiddenCard: View {
     let items: [ItemSummary]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Collage(itemIDs: items.prefix(4).map(\.id), title: "Ukryte")
+            TissueCover(itemIDs: items.prefix(4).map(\.id))
                 .aspectRatio(1, contentMode: .fit)
-                .saturation(0.25)
-                .opacity(items.isEmpty ? 1 : 0.75)
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .overlay(alignment: .bottomTrailing) {
                     Image(systemName: "eye.slash")
                         .font(.footnote.weight(.semibold))
                         .foregroundStyle(Theme.inkSoft)
                         .frame(width: 30, height: 30)
-                        .background(Theme.paper.opacity(0.85), in: Circle())
-                        .padding(8)
+                        .background(Theme.card, in: Circle())
+                        .shadow(color: .black.opacity(0.18), radius: 1.5, y: 1)
+                        .padding(9)
                 }
                 .shadow(color: .black.opacity(0.12), radius: 10, y: 6)
             CardCaption {
@@ -544,6 +545,38 @@ struct HiddenCard: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityHint("Otwiera ukryte dzieła, które można przywrócić")
+    }
+}
+
+/// A collage under a sheet of tissue paper with one soft crease; with no
+/// works, the bare sheet on the mat.
+struct TissueCover: View {
+    let itemIDs: [String]
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        ZStack {
+            Theme.mat
+            if !itemIDs.isEmpty {
+                Collage(itemIDs: itemIDs)
+                    .saturation(0.85)
+                    .blur(radius: 5, opaque: true)
+            }
+            Theme.paper.opacity(scheme == .dark ? 0.58 : 0.62)
+            GeometryReader { geo in
+                LinearGradient(
+                    colors: [.clear, .white.opacity(0.55), .clear],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+                .frame(width: geo.size.width * 1.3, height: 1)
+                .shadow(color: .black.opacity(0.05), radius: 0, y: 1)
+                .rotationEffect(.degrees(-14))
+                .position(x: geo.size.width / 2, y: geo.size.height * 0.58)
+                .opacity(scheme == .dark ? 0.35 : 1)
+            }
+        }
+        .accessibilityHidden(true)
     }
 }
 

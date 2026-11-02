@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.79.1
+
+- Playlisty: nowa okładka karty „Ukryte”. Zamiast wyszarzonego kolażu
+  ukryte dzieła leżą pod kremową bibułą, jak grafika w teczce: kolory
+  prześwitują, szczegółów nie widać. W rogu naklejka z przekreślonym okiem.
+
 ## 1.79.0
 
 - Nocna kolejka prac serwera: to, co zmienia katalog albo przegląda go w
