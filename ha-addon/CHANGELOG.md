@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.79.6
+
+- Obraz na karcie dzieła i w studium: przy przytrzymaniu rośnie wyraźniej,
+  a widok na całym ekranie rozwija się z miniatury („pop”) zamiast
+  wjeżdżać od dołu; zamyka się z powrotem do miniatury.
+
 ## 1.79.5
 
 - Passe-partout (zakładka Ramka i wysyłanie zdjęcia): kolory kartonu to
