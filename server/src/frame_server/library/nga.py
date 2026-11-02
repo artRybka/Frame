@@ -33,6 +33,8 @@ DATA = "https://raw.githubusercontent.com/NationalGalleryOfArt/opendata/main/dat
 REFRESH_SECONDS = 7 * 24 * 3600
 #: After a failed build, the next try waits this long.
 RETRY_SECONDS = 3600
+#: The night rebuilds the index this old, before a search would.
+NIGHT_REFRESH_SECONDS = REFRESH_SECONDS - 36 * 3600
 #: Kinds left out: watercolour records of American crafts (the Index of
 #: American Design), bound volumes and the like.
 LEFT_OUT = frozenset({"Index of American Design", "Volume", "Portfolio", "Technical Material"})
@@ -152,28 +154,49 @@ class _Index:
         return path.is_file()
 
     def _start(self, path: Path) -> None:
+        if self._claim():
+            threading.Thread(
+                target=self._build, args=(path,), name="nga-index", daemon=True
+            ).start()
+
+    def _claim(self) -> bool:
         with self.lock:
             if self.building or time.time() - self.failed_at < RETRY_SECONDS:
-                return
+                return False
             self.building = True
+            return True
 
-        def run() -> None:
-            try:
-                path.parent.mkdir(parents=True, exist_ok=True)
-                started = time.monotonic()
-                with client() as http:
-                    count = build(path, http)
-                log.info("nga: %d works indexed in %.0f s", count, time.monotonic() - started)
-            except Exception:
-                log.exception("nga: building the index failed")
-                self.failed_at = time.time()
-            finally:
-                self.building = False
+    def _build(self, path: Path) -> None:
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            started = time.monotonic()
+            with client() as http:
+                count = build(path, http)
+            log.info("nga: %d works indexed in %.0f s", count, time.monotonic() - started)
+        except Exception:
+            log.exception("nga: building the index failed")
+            self.failed_at = time.time()
+        finally:
+            self.building = False
 
-        threading.Thread(target=run, name="nga-index", daemon=True).start()
+    def refresh(self, path: Path, older: float = NIGHT_REFRESH_SECONDS) -> bool:
+        """Builds an index in use again now when it is ``older`` (the
+        night's task: its weekly rebuild then never falls on a search).
+        Whether it was built."""
+        if not path.is_file() or time.time() - path.stat().st_mtime < older:
+            return False
+        if not self._claim():
+            return False
+        self._build(path)
+        return path.is_file()
 
 
 INDEX = _Index()
+
+
+def refresh_at_night(data_dir: Path) -> bool:
+    """The night's task: the index rebuilt before it gets a week old."""
+    return INDEX.refresh(data_dir / "nga" / "collection.sqlite")
 
 
 class NationalGalleryOfArt(Museum):

@@ -18,7 +18,7 @@ import weakref
 from collections import Counter
 from collections.abc import Collection, Iterable, Iterator
 from contextlib import contextmanager
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal, NamedTuple
 
@@ -57,8 +57,6 @@ log = logging.getLogger(__name__)
 
 #: Seconds between rebuilds of the suggestions' index while the library changes.
 TERM_INDEX_EVERY = 10.0
-#: The hour (server's time) the smart playlists are counted afresh.
-RECOUNT_HOUR = 3
 
 
 class _Counted(NamedTuple):
@@ -321,6 +319,11 @@ class Library:
         #: Go up with every change of a playlist, and of someone's hearts.
         self._playlists_version = 0
         self._hearts_version = 0
+        #: Goes up when an item joins or leaves the catalogue, or is hidden
+        #: or shown again (not with every change, e.g. a picture shown).
+        self._catalogue_version = 0
+        #: Goes up when a language model's note is kept or forgotten.
+        self.notes_version = 0
         #: Smart playlists' counts and covers as last worked out, by id.
         self._counted: dict[int, _Counted] = {}
         #: A smart playlist's count and cover may be shown as last worked
@@ -365,6 +368,7 @@ class Library:
                 self._items = None  # the cache may hold rolled back changes
                 self._drop_works("a rolled back write")
                 self._version += 1
+                self._catalogue_version += 1
                 self._favorites = None
                 self._hearts_version += 1
                 raise
@@ -446,6 +450,8 @@ class Library:
                 )
             self._all()[item.id] = item
             self._version += 1
+            if existing is None or existing.excluded != item.excluded:
+                self._catalogue_version += 1
             if existing is None and item.favorite:  # brought in liked: the asker's heart
                 self.set_favorite(viewer_id(), item.id, True)
             self._regroup(existing, item, "re-import")
@@ -479,6 +485,8 @@ class Library:
                 )
             self._all()[item_id] = updated
             self._version += 1
+            if item.excluded != updated.excluded:
+                self._catalogue_version += 1
             self._regroup(item, updated, "change")
             return updated
 
@@ -492,6 +500,7 @@ class Library:
                 db.execute("DELETE FROM favorites WHERE item_id = ?", (item_id,))
             del self._all()[item_id]
             self._version += 1
+            self._catalogue_version += 1
             for hearts in (self._favorites or {}).values():
                 hearts.discard(item_id)
             if self._works is None or not self._works.remove(item_id):
@@ -857,6 +866,16 @@ class Library:
     def _stamp(self) -> tuple[int, int, int]:
         return (self._version, self._playlists_version, self._hearts_version)
 
+    def stamp(self) -> tuple[int, int, int]:
+        """Changes with any change of the library: items, playlists, hearts."""
+        return self._stamp()
+
+    def catalogue_stamp(self) -> tuple[int, int]:
+        """Changes when works join or leave the catalogue (or are hidden),
+        and with someone's hearts; not when a work is shown or described:
+        what is worked out from the catalogue as a whole stays valid."""
+        return (self._catalogue_version, self._hearts_version)
+
     def _counts(self, playlist: Playlist) -> _Counted:
         """The playlist's count and cover: a smart one's as last worked out
         while nothing changed since; with :attr:`counts_may_lag`, also after
@@ -890,7 +909,7 @@ class Library:
 
     def recount(self) -> None:
         """Every smart playlist counted afresh where the library changed
-        since (at night, and once after a start)."""
+        since (the night's task, and once after a start)."""
         for playlist in self.playlists():
             if playlist.kind != PlaylistKind.SMART or playlist.id is None:
                 continue
@@ -898,21 +917,6 @@ class Library:
                 kept = self._counted.get(playlist.id)
             if kept is None or kept.stamp != self._stamp():
                 self.playlist_items(playlist)
-
-    def recount_nightly(self, stop: threading.Event, first: float = 60.0) -> None:
-        """:meth:`recount` ``first`` seconds after the start, then every
-        night at :data:`RECOUNT_HOUR`."""
-        wait = first
-        while not stop.wait(wait):
-            try:
-                self.recount()
-            except Exception:
-                log.exception("playlist counts")
-            now = datetime.now()
-            night = now.replace(hour=RECOUNT_HOUR, minute=0, second=0, microsecond=0)
-            if night <= now:
-                night += timedelta(days=1)
-            wait = (night - now).total_seconds()
 
     def album_sync(self, playlist_id: int) -> AlbumSync | None:
         data = self.get_state(f"album_sync:{playlist_id}")
@@ -990,6 +994,7 @@ class Library:
                     note.created_at,
                 ),
             )
+        self.notes_version += 1
         return note
 
     def delete_notes(self, kind: str, item_id: str | None = None) -> int:
@@ -1001,6 +1006,7 @@ class Library:
                 cur = db.execute(
                     "DELETE FROM ai_notes WHERE kind = ? AND item_id = ?", (kind, item_id)
                 )
+        self.notes_version += 1
         return cur.rowcount
 
     # -- history ------------------------------------------------------------

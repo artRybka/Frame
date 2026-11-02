@@ -52,6 +52,10 @@ BATCH_SIZE = 1000
 #: How often to look for items wanting a note, and at most how many to queue.
 SWEEP_SECONDS = 60.0
 SWEEP_ITEMS = 20
+#: A look goes through every note and item: when the last one found
+#: nothing and the library, its notes and the jobs stayed as they were, the
+#: next waits this long (2026-11-02: not a whole look every minute).
+SWEEP_IDLE_SECONDS = 900.0
 #: How often to ask whether running batches are done.
 POLL_SECONDS = 300.0
 #: After a failure that is not the item's fault (network, throttling).
@@ -179,6 +183,9 @@ class AiWorker:
         self._paused_until = 0.0
         self._next_sweep = 0.0
         self._next_poll = 0.0
+        #: What the last look found nothing in (:meth:`_sweep_key`), and when.
+        self._swept_from: tuple[object, ...] | None = None
+        self._swept_at = 0.0
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self._threads: list[threading.Thread] = []
@@ -279,6 +286,7 @@ class AiWorker:
         self._paused_until = 0.0
         self._next_sweep = 0.0
         self._next_poll = 0.0
+        self._swept_from = None
         self._skipped.clear()
         self.error = None
 
@@ -312,7 +320,11 @@ class AiWorker:
                 self.poll_batches()
             if now >= self._next_sweep and now >= self._paused_until:
                 self._next_sweep = now + SWEEP_SECONDS
-                self.sweep()
+                key = self._sweep_key()
+                if key != self._swept_from or now - self._swept_at >= SWEEP_IDLE_SECONDS:
+                    found = self.sweep()
+                    self._swept_from = None if found else key
+                    self._swept_at = now
         except AiUnavailable as err:
             self._pause(str(err))
         except anthropic.APIError as err:
@@ -350,7 +362,13 @@ class AiWorker:
         if task.future is not None:
             task.future.set_result(result)
 
+    def _sweep_key(self) -> tuple[object, ...]:
+        """While this stays, a look that found nothing would find nothing."""
+        enabled = tuple(job.enabled() for job in self.jobs.values())
+        return (self.library.stamp(), self.library.notes_version, enabled, len(self._skipped))
+
     def _pause(self, reason: str) -> None:
+        self._swept_from = None  # looked again once the pause is over
         log.warning("language model paused: %s", reason)
         self.error = reason
         self._paused_until = time.monotonic() + PAUSE_SECONDS
