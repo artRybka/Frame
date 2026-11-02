@@ -423,7 +423,7 @@ struct FrameTabView: View {
             guard !refreshing else { return }
             Task { await refresh(checking: true) }
         } label: {
-            StatusTile(title: "Sieć", badge: TileBadge(systemImage: "arrow.clockwise", working: refreshing)) {
+            StatusTile(title: "Sieć", badge: TileBadge(systemImage: networkAction.badge, working: refreshing)) {
                 VStack(alignment: .leading, spacing: 6) {
                     if busy {
                         ProgressView()
@@ -449,7 +449,21 @@ struct FrameTabView: View {
             }
         }
         .buttonStyle(.plain)
-        .accessibilityHint("Sprawdza stan ramki i budzi ją, gdy śpi w sieci")
+        .accessibilityHint(networkAction.hint)
+    }
+
+    /// What a tap on the Sieć tile will do, as `AppModel.checkStatus` does
+    /// it: ↻ checks the frame, the rising sun wakes a frame the server knows
+    /// asleep in the network (a wake costs battery), "i" only tells when a
+    /// frame the signal cannot reach will wake (2026-11-02).
+    private var networkAction: (badge: String, hint: String) {
+        guard let device, device.configured else { return ("arrow.clockwise", "Sprawdza stan ramki") }
+        if device.powerState == "deep_sleep" { return ("info", "Mówi, kiedy ramka obudzi się sama") }
+        if device.onNetwork == false { return ("info", "Ramki nie ma w sieci Wi-Fi, sygnał budzenia nie dotrze") }
+        if device.powerState == "standby" {
+            return ("sunrise", "Budzi ramkę, by sprawdzić jej stan; potem znowu zaśnie")
+        }
+        return ("arrow.clockwise", "Sprawdza stan ramki i budzi ją, gdy nie odpowiada")
     }
 
     /// The Sieć tile: what the frame is doing, as far as the server can tell
