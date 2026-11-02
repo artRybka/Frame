@@ -417,6 +417,55 @@ def test_old_pages_are_written_again_as_the_owner_lets_them(service: FrameServic
     assert job.wanted(item)
 
 
+def test_a_take_under_another_title_counts(service: FrameService) -> None:
+    _catalogue(service)
+    item = service.library.get("met:1")
+    assert item is not None
+    retitled = {"composition": {"views": [{**ANALYSIS["composition"]["views"][0]}]}}
+    retitled["composition"]["views"][0]["title"] = "Analiza kompozycji: Trouville"
+
+    def ask(params: dict[str, Any]) -> Answer:
+        if params["system"][0]["text"] == CHECK_SYSTEM:
+            reply = {"views": [{**CHECKED_TAKE, "title": "Kompozycja"}], "changes": []}
+            return Answer(pixels(reply), False, 0.05, "o")
+        return Answer(pixels(retitled), False, 0.2, "o")
+
+    found = compose(service.images, item, service.daily.job.sources(item), ask)
+    views = found["composition"]["views"]
+    assert [v["title"] for v in views] == [TAKE]
+    assert views[0]["marks"][0]["title"] == "Fudżi"  # the check's take, not lost either
+
+
+def test_an_answer_without_a_take_is_asked_again_when_let(service: FrameService) -> None:
+    _catalogue(service)
+    job = service.ai.jobs[KIND]
+    assert isinstance(job, ComposeJob)
+    item = service.library.get("met:1")
+    assert item is not None
+    _old_page(service)
+    job.let(["met:1"])
+    params = job.params(item)
+    empty = {"composition": {"views": [{"title": "Analiza kompozycji", "marks": []}]}}
+    answer = job.revise(item, params, Answer(empty, False, 0.2, "o"), lambda p: p)
+    assert answer.data is not None and answer.data["unusable"] is True
+    assert answer.data["answer"] == empty  # kept, to see why
+    note = Note(
+        item_id="met:1",
+        kind=KIND,
+        model="o",
+        prompt_version=job.prompt_version,
+        source_hash=job.source_hash(item),
+        data=answer.data,
+    )
+    job.apply(item, service.library.save_note(note))
+    job.forget()
+    # Not waiting for ever: shown as failed, and not paid for again by itself.
+    assert job.failed() == {"met:1"} and not job.wanted(item)
+    job.let(["met:1"])  # let again: asked once more
+    assert service.library.note("met:1", KIND) is None
+    assert job.failed() == set() and job.wanted(item)
+
+
 def test_what_wikipedia_says_of_the_composition_comes_first() -> None:
     text = "Intro.\n\n== History ==\n" + "x" * 500 + "\n\n== Composition ==\nA pyramid.\n"
     found = _sections_first(text, ("compos",))
@@ -434,7 +483,7 @@ def test_the_owner_lets_pages_be_written_again(tmp_path: Any) -> None:
         _catalogue(svc)
         _old_page(svc)
         shown = client.get("/api/ai/composition").json()
-        assert shown == {"rework": [], "waiting": [], "done": []}
+        assert shown == {"rework": [], "waiting": [], "failed": [], "done": []}
         shown = client.put("/api/ai/composition", json={"rework": ["met:1"]}).json()
         assert shown["rework"] == ["met:1"] and shown["waiting"] == ["met:1"]
         assert client.put("/api/ai/composition", json={"rework": True}).json()["rework"] is True

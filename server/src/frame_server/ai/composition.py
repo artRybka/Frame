@@ -17,6 +17,7 @@ question failed) gets it the same way, unasked.
 
 from __future__ import annotations
 
+import json
 import logging
 import time
 from collections.abc import Callable
@@ -27,7 +28,7 @@ import anthropic
 
 from ..library.markup import strip_markup
 from ..library.models import Note
-from .check import check, page_views
+from .check import answer_views, check, page_views
 from .client import OPUS, AiUnavailable, Answer, request
 from .daily import (
     CHECK_ROUND,
@@ -59,7 +60,7 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 KIND = "composition"
-PROMPT_VERSION = "composition-1"
+PROMPT_VERSION = "composition-2"
 #: The pages it is written into.
 PAGES = (DAILY, STUDY)
 #: The works whose pages written before may be written again: ``True`` for
@@ -119,7 +120,10 @@ okien, stolarka fasady, maszty i żagle, pnie, stojące postacie; bywa też rytm
 falujący. Drobne powtórzenia (szprosy okna, guziki, wzór tkaniny, cegły, liście) pomijasz, \
 chyba że wypełniają duży obszar i budują całość. Dwie podobne formy to echo, nie rytm. Formy, \
 które tylko przypadkiem stoją obok siebie (kilka drzew, kilka stołków), nie są rytmem: rytm \
-widać od razu, nie trzeba go szukać.
+widać od razu, nie trzeba go szukać. Szereg sprzętów i przedmiotów (stołki, krzesła, ławki, \
+butelki, naczynia, lampy) nie jest rytmem obrazu, nawet gdy stoją równo i coś znaczą: \
+wspomnij o nim w tekście, ale nie rysuj go. Rytm budują formy, które niosą konstrukcję \
+obrazu: architektura, postacie, maszty, pnie w alei, łodzie, fale.
 7. Otwarta czy zamknięta. Zamknięta: ważne formy mieszczą się w polu, krawędzie ich nie tną, \
 układ wraca do środka (kulisy po bokach, łuk, ściana w głębi równoległa do obrazu, rama w \
 ramie, piony i poziomy powtarzające krawędzie obrazu); obraz jest skończoną całością. Otwarta: \
@@ -240,7 +244,7 @@ def take(data: dict[str, Any] | None, params: dict[str, Any]) -> list[View]:
     """The take of an answer (in pixels), as the app shows it: one or none."""
     if data is None:
         return []
-    return page_views(to_fractions(data, sent_size(params)))
+    return answer_views(to_fractions(data, sent_size(params)))
 
 
 def written(
@@ -273,6 +277,12 @@ def compose(
     params = question(images, item, context)
     views = take(ask(params).data, params)
     return written(images, item, views, ask) if views else {}
+
+
+def failed(note: Note | None) -> bool:
+    """An answer that gave no take: kept (so it is not paid for again and
+    again), but let be asked once more when the owner lets the work again."""
+    return note is not None and any(note.data.get(k) for k in ("unusable", "refused", "failed"))
 
 
 def wants(note: Note | None, rework: bool | list[str]) -> bool:
@@ -308,9 +318,21 @@ class ComposeJob(NoteJob):
         return found if found is True or isinstance(found, list) else []
 
     def let(self, rework: bool | list[str]) -> None:
-        """The works whose pages may be written again (``True``: all)."""
+        """The works whose pages may be written again (``True``: all); an
+        answer that gave them no take is forgotten, so it is asked again."""
         self.library.set_state(REWORK_KEY, rework)
+        for item_id in self.failed():
+            if rework is True or (isinstance(rework, list) and item_id in rework):
+                self.library.delete_notes(KIND, item_id)
         self.forget()
+
+    def failed(self) -> set[str]:
+        """The works whose analysis (of this prompt) gave no take."""
+        return {
+            item_id
+            for item_id, note in self.library.notes(KIND).items()
+            if note.prompt_version == PROMPT_VERSION and failed(note)
+        }
 
     def forget(self) -> None:
         """The pages wanting their composition looked up afresh next time."""
@@ -327,7 +349,7 @@ class ComposeJob(NoteJob):
                 for kind in PAGES
                 for item_id, note in self.library.notes(kind).items()
                 if wants(note, rework)
-            }
+            } - self.failed()
             self._pages = (time.monotonic(), ids)
         return ids
 
@@ -345,7 +367,11 @@ class ComposeJob(NoteJob):
     ) -> Answer:
         views = take(answer.data, params)
         if not views:
-            return replace(answer, data={"unusable": True})
+            # Kept whole, to see why: the next analysis is not free.
+            log.warning(
+                "composition of %s gave no take: %s", item.id, json.dumps(answer.data)[:2000]
+            )
+            return replace(answer, data={"unusable": True, "answer": answer.data})
         return replace(answer, data=written(self.images, item, views, ask))
 
     def apply(self, item: Item, note: Note) -> None:
