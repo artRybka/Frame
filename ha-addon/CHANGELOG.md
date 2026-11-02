@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.73.3
+
+- Harmonogram: godziny ciszy nocnej mają ten sam obwiedziony wygląd co
+  godziny zmiany.
+
 ## 1.73.2
 
 - Studium: dopiski przy „Podobnych dziełach” to cicha kursywa z cienką kreską
