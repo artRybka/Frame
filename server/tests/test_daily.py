@@ -111,9 +111,9 @@ ANSWER: dict[str, Any] = {
     ],
     "on_frame": "Błękit i biel to czyste tusze ramki.",
     "similar": [
-        {"id": "met:2", "why": "ta sama seria"},
+        {"id": "met:5", "why": "ta sama epoka"},
         {"id": "met:404", "why": "nie z listy"},
-        {"id": "met:2", "why": "drugi raz"},
+        {"id": "met:5", "why": "drugi raz"},
     ],
     "legacy": [
         {
@@ -196,10 +196,30 @@ def _catalogue(service: FrameService) -> None:
         year=1831,
         description=DESCRIPTION,
         suitability=0.95,
+        terms=["style:ukiyo-e"],
     )
-    _add(service, "met:2", title="South Wind, Clear Sky", artist="Katsushika Hokusai", year=1831)
+    _add(
+        service,
+        "met:2",
+        title="South Wind, Clear Sky",
+        artist="Katsushika Hokusai",
+        year=1831,
+        terms=["style:ukiyo-e"],
+    )
     _add(service, "met:3", title="Water Lilies", artist="Claude Monet", year=1906)
     _add(service, "met:4", title="The Harvesters", artist="Pieter Bruegel", year=1565)
+
+
+def _like(service: FrameService) -> None:
+    """A work like the Great Wave by another artist ("Podobne dzieła")."""
+    _add(
+        service,
+        "met:5",
+        title="Evening Snow at Kanbara",
+        artist="Utagawa Hiroshige",
+        year=1833,
+        terms=["style:ukiyo-e"],
+    )
 
 
 def _today_is(service: FrameService, item_id: str) -> None:
@@ -276,7 +296,7 @@ def test_the_season_and_round_anniversaries() -> None:
 
 
 def test_an_answer_is_cleaned() -> None:
-    essay = clean(ANSWER, ["met:2", "met:3"])
+    essay = clean(ANSWER, ["met:5", "met:3"])
     assert essay is not None
     assert essay.teaser == "Fala z pazurami i święta góra schowana w jej dolinie."  # fits the tile
     assert essay.focus is not None and (essay.focus.x, essay.focus.y) == (0.64, 1.0)
@@ -290,7 +310,7 @@ def test_an_answer_is_cleaned() -> None:
     points = essay.composition.points
     assert [(p.title, p.x, p.y) for p in points] == [("Kartusz", 0.2, 0.3)]
     assert essay.composition.lines == []
-    assert [(s.id, s.why) for s in essay.similar] == [("met:2", "ta sama seria")]
+    assert [(s.id, s.why) for s in essay.similar] == [("met:5", "ta sama epoka")]
     # Fragments stay on the picture; one without a title or a box goes.
     assert [d.title for d in essay.details] == ["Pazury piany", "Wioślarze"]
     boat = essay.details[1]
@@ -329,6 +349,11 @@ def test_without_a_key_the_page_shows_what_the_museum_says(tmp_path: Path) -> No
     app = _app(tmp_path)
     with TestClient(app) as client:
         _catalogue(app.state.service)  # after the start, which tidies the library
+        _like(app.state.service)
+        wave = app.state.service.library.get("met:1")
+        app.state.service.library.upsert(
+            wave.model_copy(update={"artist_bio": "Japanese, 1760–1849"})
+        )
         _today_is(app.state.service, "met:1")
         work = client.get("/api/daily").json()
         assert work["item"]["item"]["id"] == "met:1"
@@ -339,8 +364,14 @@ def test_without_a_key_the_page_shows_what_the_museum_says(tmp_path: Path) -> No
         assert work["headline"] == "Co mówi muzeum" and work["artist"] == ""
         assert work["focus"] is None
         assert work["composition"] is None
-        assert [s["item"]["item"]["id"] for s in work["similar"]] == ["met:2"]
-        assert work["similar"][0]["why"] == "ten sam autor"
+        # Like it, by another artist: Hokusai's own are "Inne prace artysty".
+        assert [s["item"]["item"]["id"] for s in work["similar"]] == ["met:5"]
+        assert work["similar"][0]["why"] == ""
+        assert [w["item"]["id"] for w in work["by_artist"]] == ["met:2"]
+        # The artist's line stays on the work (the years under the name in
+        # "O autorze"), not on the works in the lists.
+        assert work["item"]["item"]["artist_bio"] == "Japanese, 1760–1849"
+        assert work["similar"][0]["item"]["item"]["artist_bio"] == ""
 
         # Discover's tile: the text at once, without the lists under it.
         tile = client.get("/api/daily?lists=false").json()
@@ -378,6 +409,7 @@ def test_claude_writes_the_page(tmp_path: Path) -> None:
     svc.ai_config.update(AiConfigUpdate(pl_text=False, keywords_artworks=False))
     with TestClient(app) as client:
         _catalogue(svc)
+        _like(svc)
         _today_is(svc, "met:1")
         svc.ai.start()
         try:
@@ -393,7 +425,7 @@ def test_claude_writes_the_page(tmp_path: Path) -> None:
         assert [v["title"] for v in work["composition"]["views"]] == [TAKE]
         assert work["composition"]["views"][0]["marks"][0]["shape"] == "rect"
         assert [(s["item"]["item"]["id"], s["why"]) for s in work["similar"]] == [
-            ("met:2", "ta sama seria")
+            ("met:5", "ta sama epoka")
         ]
         assert work["legacy"][0]["who"] == "Claude Debussy" and work["legacy"][0]["item"] is None
         details = work["details"]
@@ -409,7 +441,8 @@ def test_claude_writes_the_page(tmp_path: Path) -> None:
         content = asked["messages"][0]["content"]
         assert content[0]["type"] == "image"
         assert "OBRAZ: 900 × 600 px" in content[1]["text"]  # the pixels it points in
-        assert "met:2 | Katsushika Hokusai" in content[1]["text"]  # the works to choose from
+        assert "met:5 | Utagawa Hiroshige" in content[1]["text"]  # the works to choose from
+        assert "met:2 | Katsushika Hokusai" not in content[1]["text"]  # not the artist's own
         assert asked["timeout"] > 120
         assert "Analizy kompozycji tu nie piszesz" in asked["system"][0]["text"]
         # Its composition asked apart, then checked over the marks drawn on
@@ -446,10 +479,10 @@ def test_other_works_by_the_artist(offline: FrameService) -> None:
     assert item is not None
     works = offline.artists.works(item, {"met:2"})
     ids = [w.id for w in works]
-    assert len(ids) == 6 and ids[0] == "met:21"  # the owner's favourites first
+    assert len(ids) == 4 and ids[0] == "met:21"  # the owner's favourites first
     assert not {"met:1", "met:2"} & set(ids)  # not the work, not "Podobne dzieła"
-    assert len({w.title for w in works}) == 6
-    # The same six each time the page opens.
+    assert len({w.title for w in works}) == 4
+    # The same four each time the page opens.
     assert [w.id for w in offline.artists.works(item, {"met:2"})] == ids
     # Enough in the catalogue: the museums are not asked.
     assert offline.artists.look_soon(item, len(ids)) is False

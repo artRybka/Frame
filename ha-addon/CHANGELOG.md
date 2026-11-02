@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.82.0
+
+- Studium dzieła, „O autorze”: nad notką jest teraz wyraźnie imię i
+  nazwisko twórcy (imię pierwsze, także gdy muzeum zapisuje „Gogh, Vincent
+  van”), a pod nim lata życia, gdy muzeum je podaje. Przytrzymanie nazwiska
+  otwiera jego dzieła w Szukaj.
+- Analiza kompozycji: kreski, które biegną dalej niż obraz (wierzchołek
+  trójkąta, punkt zbiegu), nie są już ucinane na krawędzi obrazu, tylko
+  przechodzą na tło strony.
+- Podobne dzieła nie pokazują już prac tego samego artysty; te są w „Inne
+  prace artysty”.
+- Inne prace artysty: cztery prace, po dwie w rzędzie jak w Podobnych
+  dziełach. W obu siatkach miniatury są kadrowane wokół twarzy, nie przez
+  środek.
+
 ## 1.81.0
 
 - Szukaj: polskie słowa trafiają do muzeów zagranicznych po angielsku.

@@ -34,8 +34,8 @@ log = logging.getLogger(__name__)
 
 KIND = "by_artist"
 VERSION = "by-artist-1"
-#: Works shown.
-SHOWN = 6
+#: Works shown: two rows of two, as "Podobne dzieła" (Mateusz 2026-11-02).
+SHOWN = 4
 #: The catalogue's works by the artist looked among.
 POOL = 200
 #: Results asked from each museum when the catalogue has too few.
