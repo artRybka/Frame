@@ -471,6 +471,9 @@ def sync_album(importer: Importer, url: str, job: Job | None = None) -> AlbumLis
     if job is not None:
         job.total = len(photos)
     added = []
+    # Known photos' fresh details (new signed links each time), written
+    # together: one disk sync for the album, not one for each photo.
+    fresh: dict[str, dict[str, object]] = {}
     for photo in photos:
         item_id = f"icloud:{photo.guid}"
         known = library.get(item_id)
@@ -484,7 +487,7 @@ def sync_album(importer: Importer, url: str, job: Job | None = None) -> AlbumLis
             info = (known.photo or PhotoInfo()).model_copy(
                 update={"shared_at": photo.shared_at, "asset": photo.asset}
             )
-            library.update(item_id, photo=info, **details)
+            fresh[item_id] = {"photo": info, **details}
             if job is not None:
                 job.done += 1
             continue
@@ -519,6 +522,9 @@ def sync_album(importer: Importer, url: str, job: Job | None = None) -> AlbumLis
             log.warning("album photo %s failed: %s", photo.guid, err)
             if job is not None:
                 job.failed += 1
+    with library.batch():
+        for item_id, changes in fresh.items():
+            library.update(item_id, **changes)
     ids = [f"icloud:{p.guid}" for p in photos]
     return AlbumListing(album.name, [i for i in ids if library.has(i)], added)
 

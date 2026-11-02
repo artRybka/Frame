@@ -780,5 +780,5 @@ class Importer:
             finally:
                 job.finished = True
 
-        threading.Thread(target=run, name=f"job-{job.id}", daemon=True).start()
+        threading.Thread(target=run, name=f"job-{description}", daemon=True).start()
         return job

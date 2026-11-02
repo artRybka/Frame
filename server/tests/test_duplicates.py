@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 
 from fastapi.testclient import TestClient
 
@@ -159,6 +160,48 @@ def test_library_hides_copies_the_server_added(tmp_path) -> None:
     lib.update("met:2", pooled=False)
     manual = manual.model_copy(update={"item_ids": [*manual.item_ids, "met:2"]})
     assert [i.id for i in lib.playlist_items(manual)] == ["met:2", "europeana:4"]
+
+
+def test_grouping_is_kept_through_changes_that_do_not_touch_it(tmp_path, caplog) -> None:
+    lib = Library(tmp_path / "lib.db")
+    lib.upsert(_work("met", 1, pooled=True))
+    lib.upsert(_work("openverse", 2, pooled=True))
+    lib.upsert(_work("aic", 3, title="Irises", pooled=True))
+    photo = Item(id="icloud:p", kind=ItemKind.PHOTO, source="icloud", source_id="p", url="a")
+    lib.upsert(photo)
+    works = lib.works()
+    assert lib.spare_copies() == {"openverse:2"}
+
+    # An album photo's fresh signed link, a work's keywords or shows, a
+    # re-import as it was, a lone work deleted: the same grouping.
+    lib.update("icloud:p", image_url="https://cvws.icloud-content.com/new")
+    lib.update("met:1", keywords=["wheat"], show_count=3)
+    lib.upsert(_work("met", 1, pooled=True))
+    lib.delete("aic:3")
+    lib.delete("icloud:p")
+    assert lib.works() is works
+    assert lib.get("met:1").keywords == ["wheat"]  # type: ignore[union-attr]
+    assert works.best(_work("rijks", 9)) == lib.get("met:1")
+    assert {i.id for i in lib.query()[1]} == {"met:1"}
+
+    # The same values again: nothing is written.
+    version = lib._version
+    lib.update("met:1", show_count=3)
+    assert lib._version == version
+
+    # A title, or a copy of a work deleted: grouped again, and the log says why.
+    lib.update("met:1", title="Wheat Field")
+    with caplog.at_level(logging.DEBUG, logger="frame_server.library.repo"):
+        assert lib.works() is not works
+    assert "after change of met:1 (title), in MainThread" in caplog.text
+    lib.upsert(_work("rijks", 5, title="Wheat Field", pooled=True))
+    assert lib.spare_copies() == {"rijks:5"}  # added to its group
+    works = lib.works()
+    lib.delete("rijks:5")
+    lib.update("met:1", title="Cypresses")
+    with caplog.at_level(logging.DEBUG, logger="frame_server.library.repo"):
+        assert lib.works() is not works
+    assert "after deletion of rijks:5, in MainThread and 1 more change(s)" in caplog.text
 
 
 def _fake(key: str, titles: list[str]) -> type[Museum]:
