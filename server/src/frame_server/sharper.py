@@ -144,15 +144,25 @@ def tone(path: Path) -> Tone:
     return Tone(spread, (float(lab[0]), float(lab[1]), float(lab[2])))
 
 
+ColourNote = Literal["grey", "coloured", "colour-off"]
+
+
+def colour_note(own: Tone, copy: Tone) -> ColourNote | None:
+    """How ``copy``'s colours differ from ``own``'s: "grey" (a black-and-white
+    plate of a coloured work), "coloured" (a grey work coloured in),
+    "colour-off" (in other light altogether); None when they are its own."""
+    if own.spread >= GREY and copy.spread < own.spread * GREYER:
+        return "grey"
+    if own.spread < GREY and copy.spread >= max(GREY * 2, own.spread * 3):
+        return "coloured"
+    distance = float(np.linalg.norm(np.subtract(own.mean, copy.mean)))
+    return None if distance <= COLOUR_OFF else "colour-off"
+
+
 def same_colours(own: Tone, copy: Tone) -> bool:
     """``copy`` is in ``own``'s colours: not a grey copy of a coloured work,
     nor a coloured one of a grey work, nor in other light altogether."""
-    if own.spread >= GREY and copy.spread < own.spread * GREYER:
-        return False
-    if own.spread < GREY and copy.spread >= max(GREY * 2, own.spread * 3):
-        return False
-    distance = float(np.linalg.norm(np.subtract(own.mean, copy.mean)))
-    return distance <= COLOUR_OFF
+    return colour_note(own, copy) is None
 
 
 def _now() -> datetime:
@@ -210,7 +220,7 @@ class Sharper:
             status = str(note.data.get("status"))
         else:
             status, at = known
-        if status == "fine":
+        if status in ("fine", "kept"):  # "kept": the owner chose the work's own
             return "fine"
         if status == "none" and self.clock() - at < AGAIN:
             return "none"
@@ -379,10 +389,11 @@ class Sharper:
 
     # -- keeping it ----------------------------------------------------------------
 
-    def _adopt(self, item: Item, copy: Item, img: Image.Image) -> None:
+    def _adopt(self, item: Item, copy: Item, img: Image.Image, chosen: bool = False) -> Item:
         stored = self.library.get(item.id)
         if stored is None:  # a museum work only looked at: kept for a while
             stored = self.importer.add(item.model_copy(update={"pooled": True}))
+        own = self.own_size(stored)
         width, height = img.size
         sharper = SharperCopy(
             url=display_copy(copy),
@@ -391,19 +402,66 @@ class Sharper:
             museum=copy.museum,
             width=width,
             height=height,
+            chosen=chosen,
         )
         updated = self.library.update(item.id, sharper=sharper) or stored
         self.images.adopt(updated, img)
-        for old in self.details_dir.glob(f"{item.file_stem}-*.jpg"):
-            old.unlink(missing_ok=True)  # cut again from the sharper copy
-        self._remember(item, "found", copy.id)
+        self._cut_again(item)
+        self._remember(item, "chosen" if chosen else "found", copy.id, own)
         log.info(
-            "sharper copy of %s: %s (%d×%d) from %s", item.id, copy.id, width, height, copy.museum
+            "%s copy of %s: %s (%d×%d) from %s",
+            "chosen" if chosen else "sharper",
+            item.id,
+            copy.id,
+            width,
+            height,
+            copy.museum,
         )
+        return updated
 
-    def _remember(self, item: Item, status: Status, copy: str = "") -> None:
+    def choose(self, item: Item, copy: Item) -> Item:
+        """The owner's pick of ``copy`` for ``item``'s picture, in place of
+        its own or another copy; the look in the background leaves it be."""
+        img = self.images.sample(display_copy(copy), urgent=True)
+        return self._adopt(item, copy, img, chosen=True)
+
+    def keep_own(self, item: Item) -> Item:
+        """Back to the work's own picture, as the owner asked: no copy is
+        looked for again."""
+        stored = self.library.get(item.id) or item
+        own = self.own_size(stored)
+        if stored.sharper is not None:
+            stored = self.library.update(item.id, sharper=None) or stored
+            self.images.image_path(stored).unlink(missing_ok=True)  # the own downloaded again
+            self._cut_again(item)
+        self._remember(stored, "kept", "", own)
+        return stored
+
+    def own_size(self, item: Item) -> tuple[int, int, int] | None:
+        """The work's own picture as its source gave it: from the cache
+        while it holds the own, else as noted when a copy took its place."""
+        if item.sharper is None:
+            return self.images.source_size(item)
+        note = self.library.note(item.id, KIND)
+        own = note.data.get("own") if note is not None else None
+        if isinstance(own, list) and len(own) == 3:
+            return int(own[0]), int(own[1]), int(own[2])
+        return None
+
+    def _cut_again(self, item: Item) -> None:
+        for old in self.details_dir.glob(f"{item.file_stem}-*.jpg"):
+            old.unlink(missing_ok=True)  # the study's details, from the new picture
+
+    def _remember(
+        self,
+        item: Item,
+        status: Status | Literal["chosen", "kept"],
+        copy: str = "",
+        own: tuple[int, int, int] | None = None,
+    ) -> None:
+        known: Status = "found" if status == "chosen" else "fine" if status == "kept" else status
         with self._lock:
-            self._known[item.id] = (status, self.clock())
+            self._known[item.id] = (known, self.clock())
             self._known.move_to_end(item.id)
             while len(self._known) > REMEMBERED:
                 self._known.popitem(last=False)
@@ -415,6 +473,11 @@ class Sharper:
                 kind=KIND,
                 model="",
                 prompt_version=VERSION,
-                data={"status": status, "at": self.clock().isoformat(), "copy": copy},
+                data={
+                    "status": status,
+                    "at": self.clock().isoformat(),
+                    "copy": copy,
+                    **({"own": list(own)} if own is not None else {}),
+                },
             )
         )
