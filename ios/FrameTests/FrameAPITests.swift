@@ -321,6 +321,14 @@ final class FrameAPITests: XCTestCase {
         let slopes = Set(strokes.map { (($0[1].x - $0[0].x) / ($0[1].y - $0[0].y) * 1e6).rounded() })
         XCTAssertEqual(slopes.count, 1)  // parallel
         XCTAssertEqual(rays.anchor, rays.points[0])
+        // A wedge keeps its corners: a stroke a side, not one curve swinging wide.
+        let wedge = [CGPoint(x: 300, y: 40), CGPoint(x: 100, y: 55), CGPoint(x: 98, y: 140), CGPoint(x: 300, y: 160)]
+        XCTAssertEqual(Pencil.corners(wedge).count, 3)
+        XCTAssertEqual(Pencil.corners([CGPoint(x: 0, y: 0), CGPoint(x: 100, y: 10), CGPoint(x: 200, y: 0)]).count, 1)
+        let wedgeMark = DailyWork.Mark(
+            shape: "line", points: wedge.map { .init(x: $0.x / 300, y: $0.y / 200) }, title: "Klin", text: ""
+        )
+        XCTAssertEqual(Pencil.paths(for: wedgeMark, in: size, seed: 1).count, 3)
         for mark in [rhythm, rays, motion] {
             let spot = Pencil.numberSpot(for: mark, in: size)
             XCTAssertTrue((0...size.width).contains(spot.x) && (0...size.height).contains(spot.y))

@@ -6,6 +6,13 @@
   zapytania w toku przechodzą na drugi adres serwera, a aplikacja startuje
   z ostatnio działającym. Podgląd ramki przychodzi jako JPEG, ok. 5× mniejszy.
   Wymaga zaktualizowanego serwera.
+- Analiza kompozycji czytelniejsza: łamana linia (klin, zygzak) rysuje się
+  w aplikacji z ostrymi narożnikami zamiast łuku, zbiegające się krawędzie
+  model rysuje jako linie perspektywy do punktu zbiegu, dwa ślady nie
+  biegną po tej samej krawędzi, jedna rzecz ma jeden ślad (nie kółko wokół
+  łodzi i linia po jej maszcie), klin to trzy punkty zamiast zygzaka, a
+  strzałka otwartej kompozycji jest długa i ma własną drogę (uwagi Mateusza
+  do Nocnych marków, to samo w Trouville). Runda 6.
 
 ## 1.75.3
 
