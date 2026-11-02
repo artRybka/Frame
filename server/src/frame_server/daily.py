@@ -39,6 +39,7 @@ from .library.vocabulary import artist_matches, is_photograph
 
 if TYPE_CHECKING:
     from .ai import AiWorker
+    from .artist_works import ArtistWorks
     from .later import LaterWorks
     from .library import Library
     from .player import Player
@@ -118,6 +119,8 @@ class Daily:
         self.details_dir = job.images.thumbs.parent / "details"
         #: Looks up what the pages say a work led to; set by the service.
         self.later: LaterWorks | None = None
+        #: Other works by the artist ("Inne prace artysty"); set by the service.
+        self.artists: ArtistWorks | None = None
         #: Told of a work whose page is written (it becomes its study); set
         #: by ``frame_server.study``.
         self.on_written: Callable[[Item], object] | None = None
@@ -347,6 +350,18 @@ class Daily:
             essay = self.job.essay(item)
             if self.later is not None and essay and self.later.missing(item.id, essay.legacy):
                 self.later.look(item, essay.legacy)  # what it led to, with pictures
+            self.warm(item, essay)
+
+    def warm(self, item: Item, essay: Essay | None) -> None:
+        """Looks through the catalogue for the lists under the day's page
+        (works like it, the later works' copies, other works by the artist),
+        so the page opens without waiting for them."""
+        self.candidates(item)
+        if self.later is not None and essay is not None:
+            for entry in essay.legacy:
+                self.later.in_catalogue(item, entry)
+        if self.artists is not None:
+            self.artists.works(item)
 
     def run(self) -> None:
         """Picks the day's work and asks for its page, so they are ready when

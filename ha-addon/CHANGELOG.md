@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.76.0
+
+- „Nie pokazuj na ramce” nazywa się teraz „Ukryj dzieło” (z powrotem
+  „Przywróć dzieło”). Ukryte dzieło znika zewsząd: z ramki, playlist,
+  kolejki, Propozycji, Odkrywaj, Dzieła dnia i wyszukiwania, także w
+  muzeach, razem z jego kopiami z innych muzeów. „Pokaż na ramce” wprost
+  dalej działa.
+- Na końcu Playlist nowa karta „Ukryte”: ukryte dzieła, ostatnio ukryte
+  pierwsze. Przytrzymaj dzieło (albo otwórz jego kartę), by je przywrócić.
+  Wymaga zaktualizowanego serwera.
+- Odkrywaj: Studium dnia i Studia dzieł widać od razu po uruchomieniu
+  aplikacji (z poprzedniego razu, potem świeże). Kafelek dnia prosi serwer
+  tylko o tekst (dotąd serwer za każdym razem przeszukiwał cały katalog dla
+  list pod stroną, ok. 6 s na NAS, a przy starcie wstrzymywało to też inne
+  zapytania). Listy pod stroną (podobne dzieła, co z niego wyrosło, inne
+  prace artysty) serwer pamięta przez godzinę i liczy zawczasu dla dzieła
+  dnia, więc strona też otwiera się szybciej. Wymaga zaktualizowanego
+  serwera.
+
 ## 1.75.6
 
 - Analiza kompozycji: główny układ zawsze ma swój ślad. Klin, którego punkt
