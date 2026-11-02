@@ -624,6 +624,12 @@ struct BatteryEstimate: Codable, Hashable, Sendable {
     var readings: Int
     var costs: BatteryCosts
     var day: BatteryDay
+    /// Asleep the frame reads nothing and its level stands still: the level
+    /// now, estimated from what it has done since the last reading on
+    /// battery (`readLevel` at `readAt`). Nil while that reading holds.
+    var level: Int? = nil
+    var readLevel: Int? = nil
+    var readAt: String? = nil
 }
 
 /// In percent of a full battery; `learnt` 0 (still the assumption) to 1

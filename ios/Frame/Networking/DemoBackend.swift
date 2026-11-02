@@ -264,7 +264,11 @@ actor DemoBackend: FrameBackend {
                 day: BatteryDay(
                     standbyHours: 15, deepHours: 9, wakes: 2, changes: 1,
                     standbyCost: 7.8, deepCost: 0.04, wakesCost: 0.42, changesCost: 0.34
-                )
+                ),
+                // Asleep, the level is the server's estimate since the last reading.
+                level: demoAsleep ? 72 : nil,
+                readLevel: demoAsleep ? 76 : nil,
+                readAt: demoAsleep ? ISO8601DateFormatter().string(from: .now.addingTimeInterval(-5 * 3600)) : nil
             )
         )
         let server = ServerStatus(

@@ -14,7 +14,8 @@ first minute and its range narrows as the readings come in.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+import math
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Literal
 
 import numpy as np
@@ -95,6 +96,13 @@ class BatteryEstimate(BaseModel):
     readings: int
     costs: BatteryCosts
     day: BatteryDay
+    # Asleep, the panel reads nothing and its level stands still: the level
+    # now, by what it has done since the last reading on battery
+    # (``read_level`` at ``read_at``) at the costs learnt. None while that
+    # reading still holds (the panel awake, or too little time since).
+    level: int | None = None
+    read_level: int | None = None
+    read_at: str | None = None
 
 
 def _hours(delta: timedelta) -> float:
@@ -189,6 +197,11 @@ class BatteryLog:
         runs = library.get_state(RUNS_KEY, {}) if library else {}
         self.runs: list[list[list[float]]] = runs.get("runs", [])
         self._open = bool(runs.get("open", False))
+        # The last reading on battery (a row as in a run); kept between the
+        # rows of a run, which are half an hour apart at most.
+        self._last: list[float] | None = None
+        if self._open and self.runs:
+            self._last = list(self.runs[-1][-1])
         self._fit: Fit | None = None
         if library is not None and library.get_state(OLD_LOG_KEY) is not None:
             library.delete_state(OLD_LOG_KEY)
@@ -219,11 +232,13 @@ class BatteryLog:
         """A reading of the level; on the charger the run on battery ends."""
         runs = self.runs
         if not on_battery:
+            self._last = None
             if self._open:
                 self._open = False
                 self._save_runs()
             return
         row = [now.timestamp(), float(level), *self.activity.at(now)]
+        self._last = row
         run = runs[-1] if self._open and runs else None
         if run is not None and level > run[-1][1] + CHARGED:
             run = None
@@ -248,10 +263,37 @@ class BatteryLog:
             self._fit = fit(self.runs)
         return self._fit
 
-    def estimate(self, level: int | None, on_battery: bool, plan: list[float]) -> BatteryEstimate:
-        """The days ``level`` lasts at ``plan`` (a day's totals)."""
+    def since_reading(self, now: datetime, mean: np.ndarray) -> tuple[list[float], float] | None:
+        """The last reading on battery and the percent used since, by what
+        the panel has done meanwhile at the costs ``mean``; only while it
+        sleeps, when nothing new is read."""
+        last = self._last
+        if last is None or now.timestamp() < last[0]:
+            return None
+        if self.activity.mode not in ("standby", "deep"):
+            return None  # awake, the panel reads its battery itself
+        done = np.array(self.activity.at(now)) - np.array(last[2:])
+        return last, float(np.clip(done, 0.0, None) @ mean)
+
+    def estimate(
+        self,
+        level: int | None,
+        on_battery: bool,
+        plan: list[float],
+        now: datetime | None = None,
+    ) -> BatteryEstimate:
+        """The days ``level`` lasts at ``plan`` (a day's totals). With
+        ``now``, a level that stood still since the last reading on battery
+        (the panel asleep) gives way to the level estimated for ``now``."""
         model = self.fit()
         mean, cov = np.array(model.mean), np.array(model.cov)
+        guess: int | None = None
+        reading = self.since_reading(now, mean) if now is not None and on_battery else None
+        if reading is not None:
+            last, used = reading
+            estimated = max(math.floor(last[1] - used + 0.5), 0)
+            if estimated < last[1]:
+                guess = estimated
         day = np.array(plan)
         per_day = max(float(day @ mean), 0.01)
         spread = 1.28 * float(np.sqrt(max(day @ cov @ day, 0.0)))  # 80 % of the likely range
@@ -265,7 +307,8 @@ class BatteryLog:
             )
 
         full, full_low, full_high = days(100)
-        left = days(level) if on_battery and level is not None else (None, None, None)
+        now_level = guess if guess is not None else level
+        left = days(now_level) if on_battery and now_level is not None else (None, None, None)
         per_wake = mean[3] + mean[2] * self.activity.awake_per_wake()
         learnt = 1 - np.sqrt(np.diag(cov)) / PRIOR_SD
         costs = BatteryCosts(
@@ -299,6 +342,13 @@ class BatteryLog:
                 deep_cost=round(day[1] * mean[1], 2),
                 wakes_cost=round(day[3] * mean[3] + awake, 2),
                 changes_cost=round(day[4] * mean[4], 2),
+            ),
+            level=guess,
+            read_level=int(reading[0][1]) if guess is not None and reading else None,
+            read_at=(
+                datetime.fromtimestamp(reading[0][0], UTC).isoformat(timespec="seconds")
+                if guess is not None and reading
+                else None
             ),
         )
 

@@ -84,3 +84,63 @@ def test_costs_are_learnt_and_the_range_narrows() -> None:
     assert first.full_days_high - first.full_days_low > 3 * (
         later.full_days_high - later.full_days_low
     )
+
+
+def test_asleep_the_level_is_estimated_from_the_last_reading() -> None:
+    """The panel reads nothing asleep: the level goes down by what it does
+    meanwhile at the costs learnt, and a new reading takes over."""
+    log = BatteryLog(None)
+    plan = day_plan(FrameSettings(), START, log.activity.awake_per_wake())
+    log.track(START, "awake")
+    log.note(START, 80, True)
+    log.track(START + timedelta(minutes=2), "standby")
+    soon = log.estimate(80, True, plan, now=START + timedelta(minutes=5))
+    assert soon.level is None and soon.read_level is None
+    later = START + timedelta(hours=8, minutes=2)
+    asleep = log.estimate(80, True, plan, now=later)
+    standby = asleep.costs.standby_per_day / 24
+    awake = 4.0 * 2 / 60  # the prior, two minutes
+    assert asleep.level == math.floor(80 - 8 * standby - awake + 0.5)
+    assert asleep.read_level == 80 and asleep.read_at == START.isoformat()
+    assert asleep.days == pytest.approx(asleep.level / asleep.per_day, abs=0.1)
+    # Awake again: its own reading, nothing to estimate.
+    log.track(later, "awake")
+    log.note(later, 70, True)
+    assert log.estimate(70, True, plan, now=later).level is None
+    # On the charger: never.
+    log.track(later + timedelta(minutes=3), "standby")
+    log.note(later + timedelta(minutes=3), 70, False)
+    assert log.estimate(70, False, plan, now=later + timedelta(hours=8)).level is None
+
+
+def test_the_last_reading_outlives_a_restart() -> None:
+    class Store:
+        def __init__(self) -> None:
+            self.data: dict[str, object] = {}
+
+        def get_state(self, key: str, default: object = None) -> object:
+            return self.data.get(key, default)
+
+        def set_state(self, key: str, value: object) -> None:
+            self.data[key] = value
+
+        def delete_state(self, key: str) -> None:
+            self.data.pop(key, None)
+
+    store = Store()
+    log = BatteryLog(store)  # type: ignore[arg-type]
+    log.track(START, "standby")
+    log.note(START, 60, True)
+    plan = day_plan(FrameSettings(), START, 0.05)
+    again = BatteryLog(store)  # type: ignore[arg-type]
+    assert again.estimate(60, True, plan, now=START + timedelta(hours=12)).level is not None
+
+
+def test_awake_the_reading_holds() -> None:
+    """Thought awake, the panel reads its own battery: no estimate, even
+    when the server last heard from it long ago."""
+    log = BatteryLog(None)
+    log.track(START, "awake")
+    log.note(START, 80, True)
+    plan = day_plan(FrameSettings(), START, 0.05)
+    assert log.estimate(80, True, plan, now=START + timedelta(days=5)).level is None

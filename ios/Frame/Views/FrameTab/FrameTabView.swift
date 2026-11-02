@@ -346,7 +346,12 @@ struct FrameTabView: View {
                 showingBattery = device?.battery != nil
             } label: {
                 StatusTile(title: "Bateria", badge: device?.battery == nil ? nil : TileBadge(systemImage: "info")) {
-                    BatteryRing(level: device?.batteryLevel, charging: device?.charging == true, note: batteryNote)
+                    BatteryRing(
+                        level: device?.battery?.readLevel ?? device?.batteryLevel,
+                        estimated: device?.battery?.level,
+                        charging: device?.charging == true,
+                        note: batteryNote
+                    )
                 }
             }
             .buttonStyle(.plain)
@@ -605,7 +610,7 @@ struct FrameTabView: View {
     private var powerIcon: String {
         if device?.charging == true { return "bolt.fill" }
         guard device?.powerSource == "battery" else { return "powerplug.portrait" }
-        return switch device?.batteryLevel ?? 100 {
+        return switch device?.battery?.level ?? device?.batteryLevel ?? 100 {
         case ..<13: "battery.0percent"
         case ..<38: "battery.25percent"
         case ..<63: "battery.50percent"
@@ -689,22 +694,37 @@ struct TileBadge: View {
 }
 
 struct BatteryRing: View {
+    /// The last level read from the frame.
     let level: Int?
+    /// Asleep the frame reads nothing: its level now, estimated by the server
+    /// from what it has done since `level` was read. The ring then ends at the
+    /// estimate, the part used since the reading in a lighter shade, and the
+    /// number is grey instead of black.
+    var estimated: Int? = nil
     let charging: Bool
     /// Under the level: how long it lasts, "na zasilaczu"...
     let note: String
 
-    private var fraction: Double { Double(level ?? 0) / 100 }
+    private var shown: Int? { estimated.map { min($0, level ?? $0) } ?? level }
+    private var fraction: Double { Double(shown ?? 0) / 100 }
+    private var readFraction: Double { estimated == nil ? fraction : Double(level ?? 0) / 100 }
     private var color: Color {
-        guard let level else { return Theme.inkSoft }
+        guard let shown else { return Theme.inkSoft }
         if charging { return Theme.warn }
-        return level <= 15 ? Theme.bad : level <= 35 ? Theme.warn : Theme.good
+        return shown <= 15 ? Theme.bad : shown <= 35 ? Theme.warn : Theme.good
     }
 
     var body: some View {
         HStack(spacing: 14) {
             ZStack {
                 Circle().stroke(Theme.mat, lineWidth: 9)
+                // Used since the last reading, by the estimate: under the
+                // solid arc, which ends where the battery likely is now.
+                Circle()
+                    .trim(from: 0, to: readFraction)
+                    .stroke(color.opacity(0.32), style: StrokeStyle(lineWidth: 9, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                    .animation(.easeOut(duration: 0.8), value: readFraction)
                 Circle()
                     .trim(from: 0, to: fraction)
                     .stroke(color, style: StrokeStyle(lineWidth: 9, lineCap: .round))
@@ -716,13 +736,21 @@ struct BatteryRing: View {
             }
             .frame(width: 64, height: 64)
             VStack(alignment: .leading, spacing: 2) {
-                Text(level.map { "\($0)%" } ?? "—")
+                Text(shown.map { "\($0)%" } ?? "—")
                     .font(.serif(28, weight: .semibold))
                     .monospacedDigit()
-                    .foregroundStyle(Theme.ink)
+                    .foregroundStyle(estimated == nil ? Theme.ink : Theme.inkSoft)
+                    .contentTransition(.numericText())
+                    .accessibilityLabel(accessibilityLevel)
                 Text(note).font(.caption).foregroundStyle(Theme.inkSoft)
             }
         }
+    }
+
+    private var accessibilityLevel: String {
+        guard let shown else { return "brak odczytu" }
+        guard estimated != nil, let level else { return "\(shown)%" }
+        return "około \(shown)%, szacunek od ostatniego odczytu \(level)%"
     }
 }
 
