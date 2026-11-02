@@ -487,6 +487,19 @@ enum LabelButton {
     }
 }
 
+/// The arrow in the corner of a card that opens a page (the study of the
+/// day, "Teraz prezentowane"): only a hint, the whole card is the link.
+struct CardArrow: View {
+    var body: some View {
+        Image(systemName: "arrow.right")
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(Theme.paper)
+            .frame(width: 30, height: 30)
+            .background(LabelButton.shape.fill(Theme.ink))
+            .accessibilityHidden(true)
+    }
+}
+
 extension View {
     /// Capitals with the label buttons' letter-spacing.
     func labelButtonType() -> some View {
