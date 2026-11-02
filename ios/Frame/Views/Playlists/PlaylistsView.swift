@@ -558,9 +558,12 @@ struct TissueCover: View {
         ZStack {
             Theme.mat
             if !itemIDs.isEmpty {
+                // Flattened first: a blur on the collage itself falls on
+                // each picture alone and leaves the seams sharp.
                 Collage(itemIDs: itemIDs)
                     .saturation(0.85)
-                    .blur(radius: 5, opaque: true)
+                    .drawingGroup()
+                    .blur(radius: 16, opaque: true)
             }
             Theme.paper.opacity(scheme == .dark ? 0.58 : 0.62)
             GeometryReader { geo in
