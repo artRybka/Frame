@@ -60,7 +60,7 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 KIND = "composition"
-PROMPT_VERSION = "composition-2"
+PROMPT_VERSION = "composition-3"
 #: The pages it is written into.
 PAGES = (DAILY, STUDY)
 #: The works whose pages written before may be written again: ``True`` for
@@ -165,7 +165,9 @@ niczego, czego nie widać na obrazie lub w śladach.
 rzecz z tekstu. Kształty:
   "line" (2–12 punktów): horyzont, podział, oś, krawędź, przekątna, boki otwartego trójkąta lub \
 V (3 punkty: koniec boku, wierzchołek, koniec drugiego boku), krzywa S lub zygzak przez \
-kolejne formy. Może wychodzić poza obraz do połowy boku.
+kolejne formy. Może wychodzić poza obraz do połowy boku. Krawędzie, które zbiegają się w \
+perspektywie (klin budynku, ulicy, stołu), rysuj jako "rays" do ich punktu zbiegu, nie jako \
+łamaną "line", która wraca tą samą drogą.
   "triangle" (3 wierzchołki): zamknięty trójkąt układu, może wychodzić poza obraz.
   "loop" (środek i róg prostokąta, w który się wpisuje): wielki krąg lub owal układu, owal masy, \
 łuk sklepienia; wokół pojedynczej rzeczy tylko, gdy jest dominantą albo przeciwwagą.
@@ -189,6 +191,12 @@ rzeczy do rzeczy.
   "spiral" (3 punkty: początek najszerszego łuku, punkt na nim ćwierć obrotu dalej, oko): tylko \
 na warunkach z punktu 10; początek może leżeć w dowolnym kierunku od oka, więc spiralę \
 obracasz tak, by jej łuki szły po formie.
+  Czytelność: każdy ślad ma swoją drogę. Dwa ślady nie biegną po tej samej krawędzi ani tuż \
+obok siebie (np. bok klina i dolny bok prostokąta okna na tym samym parapecie): zostaw ten, \
+który mówi więcej, a drugą rzecz nazwij w tekście. Strzałka otwartości idzie przez formę, \
+której nie zajmuje inny ślad, i jest długa (co najmniej jedna piąta boku), nie krótki \
+zaczep przy krawędzi. Mniej śladów, które czytają się od razu, jest lepsze niż sześć, które \
+się plączą.
   Do każdego śladu "title" (1–3 słowa, np. „Piramida”, „Horyzont nisko”, „Rytm masztów”, „Punkt \
 zbiegu”, „Lot”, „Ucięta łódź”) i "text" (najwyżej 45 znaków)."""
 )

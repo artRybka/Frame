@@ -70,6 +70,12 @@ po osi swojej formy od jej dołu do góry; promień perspektywy po prawdziwej kr
 zbiegu, w którym spotykają się krawędzie; spirala ma oko na rzeczy, w którą się zwija, a łuki \
 (pomiary podają, gdzie leżą kolejne ćwierć obroty) po prawdziwych formach; przesuń jej \
 początek, punkt kierunku lub oko (spiralę można obrócić), albo ją usuń.
+- Czytelność: dwa ślady nie biegną po tej samej krawędzi ani tuż obok siebie, a numery nie \
+lądują na sobie; gdy tak jest, zostaw ten, który mówi więcej (albo przesuń drugi na jego \
+własną formę). Krawędzie zbiegające się w perspektywie, narysowane jako łamana tam i z \
+powrotem, zamień na "rays" do ich punktu zbiegu. Strzałka otwartości jest długa (co najmniej \
+jedna piąta boku) i idzie przez formę, której nie zajmuje inny ślad; krótki zaczep przy \
+krawędzi usuń.
 - Gdy brakuje głównego układu, wyraźnego podziału albo dużego rytmu, które widzisz, dodaj go \
 i dopisz do tekstu.
 - Siatka zostaje, gdy kluczowy element leży na jej linii lub blisko niej (pomiary podają \

@@ -287,12 +287,17 @@ enum Pencil {
                 }
                 + head(tip: tip, from: from, width: 2.6, size: 13)
         case "arrow" where points.count >= 2:
-            let line = smooth(points)
+            let pieces = corners(points)
+            let line = smooth(pieces[pieces.count - 1])
             let tip = line[line.count - 1]
             let from = line[max(0, line.count - 6)]
-            return [stroke(points, width: 2.6, seed: seed)] + head(tip: tip, from: from, width: 2.3, size: 10)
+            return pieces.enumerated().map { stroke($1, width: 2.6, seed: seed + $0) }
+                + head(tip: tip, from: from, width: 2.3, size: 10)
         default:
-            return points.count >= 2 ? [stroke(points, width: 2.2, seed: seed)] : []
+            // A wedge's or a zigzag's corners stay sharp: a curve through
+            // them swung wide into a hairpin (Nighthawks, Mateusz 2026-11-02).
+            return points.count >= 2
+                ? corners(points).enumerated().map { stroke($1, width: 2.2, seed: seed + $0) } : []
         }
     }
 
@@ -517,6 +522,24 @@ enum Pencil {
                 y: start.y + (end.y - start.y) * t + normal.y * lift
             )
         }
+    }
+
+    /// The points cut where the line turns sharply (more than `limit`
+    /// degrees), each piece to be drawn on its own: a curve keeps its gentle
+    /// bends, a wedge or a zigzag its corners. Neighbouring pieces share the
+    /// corner point.
+    static func corners(_ points: [CGPoint], limit: CGFloat = 35) -> [[CGPoint]] {
+        guard points.count > 2 else { return [points] }
+        var pieces: [[CGPoint]] = [[points[0]]]
+        for index in 1..<points.count {
+            pieces[pieces.count - 1].append(points[index])
+            guard index < points.count - 1 else { break }
+            let (a, b, c) = (points[index - 1], points[index], points[index + 1])
+            let turn = abs(atan2(c.y - b.y, c.x - b.x) - atan2(b.y - a.y, b.x - a.x))
+            let degrees = min(turn, 2 * .pi - turn) * 180 / .pi
+            if degrees > limit { pieces.append([b]) }
+        }
+        return pieces
     }
 
     /// A Catmull-Rom curve through the points, ten samples a segment.

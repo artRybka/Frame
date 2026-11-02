@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.75.4
+
+- Analiza kompozycji czytelniejsza: łamana linia (klin, zygzak) rysuje się
+  w aplikacji z ostrymi narożnikami zamiast łuku, zbiegające się krawędzie
+  model rysuje jako linie perspektywy do punktu zbiegu, dwa ślady nie
+  biegną po tej samej krawędzi, a strzałka otwartej kompozycji jest długa
+  i ma własną drogę (uwagi Mateusza do Nocnych marków). Runda 6.
+
 ## 1.75.3
 
 - Analiza kompozycji: praca, przy której odpowiedź modelu nie dała ujęcia,
