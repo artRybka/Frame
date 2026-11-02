@@ -442,6 +442,22 @@ actor DemoBackend: FrameBackend {
         SharperView(status: "off", sharper: nil)
     }
 
+    func copies(itemID: String) async throws -> AsyncThrowingStream<CopyLine, Error> {
+        AsyncThrowingStream { continuation in
+            continuation.yield(CopyLine(kind: "start", sources: []))
+            continuation.yield(CopyLine(kind: "end"))
+            continuation.finish()
+        }
+    }
+
+    func chooseCopy(itemID: String, copyID: String) async throws -> Item {
+        throw BackendError.notFound
+    }
+
+    func copySpot(itemID: String, copyID: String, x: Double?, y: Double?) async throws -> CopySpot {
+        throw BackendError.notFound
+    }
+
     func describe(itemID: String, wait: Int) async throws -> SeenView {
         SeenView(status: "off", words: [])
     }

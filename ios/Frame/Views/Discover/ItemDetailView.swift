@@ -12,6 +12,11 @@ struct ItemDetailView: View {
     @State private var item: Item?
     @State private var view = ViewMode.original
     @State private var showingPlaylists = false
+    /// "Szukaj lepszej kopii": the sheet of the picture's copies elsewhere.
+    @State private var findingCopies = false
+    /// The picture shown now as its source gave it (width, height), once
+    /// the server has told.
+    @State private var pictureSize: (Int, Int)?
     @State private var draft = FramingDraft()
     /// Crops saved here: the preview asks for them by name, as the one
     /// cached from before shows the old crop.
@@ -120,7 +125,9 @@ struct ItemDetailView: View {
             if let item {
                 ItemToolbar(
                     model: model, item: item, changed: { self.item = $0 },
-                    addingToPlaylist: $showingPlaylists, savingPhoto: $savingPhoto
+                    addingToPlaylist: $showingPlaylists, savingPhoto: $savingPhoto,
+                    findingCopies: $findingCopies, pictureSide: pictureSize.map { max($0.0, $0.1) },
+                    keepOwn: { Task { await keepOwnPicture() } }
                 )
             }
         }
@@ -143,6 +150,53 @@ struct ItemDetailView: View {
         }
         .sheet(isPresented: $showingPlaylists) {
             if let item { AddToPlaylistSheet(item: item, beforeAdding: saveCrop) }
+        }
+        .sheet(isPresented: $findingCopies) {
+            if let item { CopiesSheet(item: item) { copyPicked($0, before: item) } }
+        }
+    }
+
+    // MARK: Copies
+
+    /// A copy picked in "Szukaj lepszej kopii": the card fades to it. On the
+    /// frame now, the frame can show it at once; otherwise the pick can be
+    /// taken back.
+    private func copyPicked(_ updated: Item, before: Item) {
+        withAnimation(.easeInOut(duration: 0.4)) { item = updated }
+        pictureSize = updated.sharper.map { ($0.width, $0.height) }
+        let id = itemID
+        if model.player?.current?.item?.id == id {
+            model.notices.info(
+                "Zdjęcie podmienione", "Ramka pokaże je przy następnej zmianie.",
+                action: Notice.Action(label: "Pokaż teraz") {
+                    Task { _ = await model.show(itemID: id, hold: .untilNextChange) }
+                }
+            )
+        } else {
+            let back = before.sharper?.itemId ?? before.id
+            model.notices.info(
+                "Zdjęcie podmienione", nil,
+                action: Notice.Action(label: "Cofnij") {
+                    Task { await restorePicture(to: back) }
+                }
+            )
+        }
+    }
+
+    /// "Przywróć zdjęcie muzeum" in the menu.
+    private func keepOwnPicture() async {
+        await restorePicture(to: itemID)
+        if item?.sharper == nil { model.notices.done("Przywrócono zdjęcie muzeum") }
+    }
+
+    /// The picture as it was: the work's own (its id) or a copy before.
+    private func restorePicture(to copyID: String) async {
+        do {
+            let updated = try await model.backend.chooseCopy(itemID: itemID, copyID: copyID)
+            withAnimation(.easeInOut(duration: 0.4)) { item = updated }
+            pictureSize = updated.sharper.map { ($0.width, $0.height) }
+        } catch {
+            model.show(error)
         }
     }
 
@@ -424,6 +478,9 @@ struct ItemDetailView: View {
             guard let view = try? await model.backend.sharpen(itemID: id, wait: attempt == 0 ? 25 : 30),
                   !Task.isCancelled, id == itemID
             else { return }
+            if let width = view.width, let height = view.height, width > 0 {
+                pictureSize = (width, height)
+            }
             if let copy = view.sharper {
                 item?.sharper = copy
                 return
@@ -842,9 +899,8 @@ struct ItemDetailView: View {
             fact("Rodzaj", item.classification)
             fact("Pochodzenie", item.culture)
             fact("Kolekcja", item.museum)
-            if let sharper = item.sharper {
-                // The museum's own picture was poor: where the sharper one is from.
-                fact("Zdjęcie dzieła", "\(sharper.museum.isEmpty ? sharper.source : sharper.museum), \(sharper.width)×\(sharper.height) px")
+            if item.kind == .artwork && item.look == nil {
+                pictureFact(item)
             }
             fact("Licencja", item.license)
             if let score = item.suitability {
@@ -864,6 +920,42 @@ struct ItemDetailView: View {
                 fact("Na ramce", "\(item.showCount)×, ostatnio \(When.ago(item.lastShownAt) ?? "")")
             }
         }
+    }
+
+    /// Where the picture is from and how large it is; a tap looks for a
+    /// better copy elsewhere ("Szukaj lepszej kopii").
+    private func pictureFact(_ item: Item) -> some View {
+        let place: String
+        var size: String?
+        if let sharper = item.sharper {
+            place = sharper.museum.isEmpty ? Names.source(sharper.source) : sharper.museum
+            size = "\(sharper.width) × \(sharper.height) px"
+        } else {
+            place = item.museum.isEmpty ? Names.source(item.source) : item.museum
+            size = pictureSize.map { "\($0.0) × \($0.1) px" }
+        }
+        return Button { findingCopies = true } label: {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Zdjęcie dzieła").foregroundStyle(Theme.inkSoft)
+                Spacer(minLength: 16)
+                VStack(alignment: .trailing, spacing: 1) {
+                    Text([place, size].compactMap { $0 }.joined(separator: ", "))
+                        .multilineTextAlignment(.trailing)
+                        .foregroundStyle(Theme.ink)
+                        .contentTransition(.opacity)
+                    if item.sharper?.isChosen == true {
+                        Text("wybrane przez Ciebie").font(.caption).foregroundStyle(Theme.inkSoft)
+                    }
+                }
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Theme.inkSoft)
+            }
+            .font(.subheadline)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("Szuka lepszej kopii w innych muzeach")
     }
 
     @ViewBuilder

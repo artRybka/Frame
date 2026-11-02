@@ -21,6 +21,7 @@ from .albums import Albums
 from .artist_works import ArtistWorks
 from .births import Births
 from .config import Settings
+from .copies import Copies
 from .daily import Daily
 from .device import MdcClient, MdcConnectionError, MdcError, wol
 from .imaging import Palette, RenderSettings, get_palette, render, render_multi
@@ -225,6 +226,7 @@ class FrameService:
         # a card opens, and for the work of the day before its page.
         self.sharper = Sharper(self.library, self.importer, self.images, copies.file)
         self.daily.sharper = self.sharper
+        self.copies = Copies(self.sharper)
         self.study = Study(self.daily, self.ai, StudyJob(self.library, self.images, self.ai_config))
         self.ai.register(self.study.job)
         # Its steps on the Lock Screen, and "Studium gotowe" at the end.

@@ -90,6 +90,7 @@ struct DailyView: View {
     @State private var card: Item?
     @State private var addingToPlaylist = false
     @State private var savingPhoto = false
+    @State private var findingCopies = false
     /// How far the page is scrolled, for the glow at the top.
     @State private var scrolled: CGFloat = 0
 
@@ -123,7 +124,19 @@ struct DailyView: View {
             if let card {
                 ItemToolbar(
                     model: model, item: card, changed: { self.card = $0 },
-                    addingToPlaylist: $addingToPlaylist, savingPhoto: $savingPhoto
+                    addingToPlaylist: $addingToPlaylist, savingPhoto: $savingPhoto,
+                    findingCopies: $findingCopies,
+                    keepOwn: {
+                        Task {
+                            guard let id = card?.id else { return }
+                            do {
+                                card = try await model.backend.chooseCopy(itemID: id, copyID: id)
+                                model.notices.done("Przywrócono zdjęcie muzeum")
+                            } catch {
+                                model.show(error)
+                            }
+                        }
+                    }
                 )
             }
         }
@@ -134,6 +147,14 @@ struct DailyView: View {
         .task(id: work?.item.id) { await loadCard() }
         .sheet(isPresented: $addingToPlaylist) {
             if let card { AddToPlaylistSheet(item: card) }
+        }
+        .sheet(isPresented: $findingCopies) {
+            if let card {
+                CopiesSheet(item: card) { updated in
+                    self.card = updated
+                    model.notices.done("Zdjęcie podmienione", "Ramka pokaże je przy następnej zmianie.")
+                }
+            }
         }
         .onAppear {
             if let id = route.study { model.studyOpened(itemID: id) }

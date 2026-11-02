@@ -81,6 +81,8 @@ class SharperCopy(BaseModel):
     museum: str = ""  # where the copy is from, as the card names it
     width: int
     height: int
+    #: Picked by the owner ("Szukaj lepszej kopii"), not found by the server.
+    chosen: bool = False
 
 
 class Item(BaseModel):

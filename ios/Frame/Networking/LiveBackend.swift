@@ -90,6 +90,52 @@ struct LiveBackend: FrameBackend {
         return try await perform(req)
     }
 
+    func copies(itemID: String) async throws -> AsyncThrowingStream<CopyLine, Error> {
+        var req = request("/api/library/items/\(escape(itemID))/copies")
+        req.timeoutInterval = 120
+        let (bytes, response) = try await stream(req)
+        guard let http = response as? HTTPURLResponse else { throw BackendError.invalidResponse }
+        guard (200 ..< 300).contains(http.statusCode) else {
+            bytes.task.cancel()
+            throw BackendError.http(status: http.statusCode, body: "")
+        }
+        let mark = Absence.shared.mark()
+        return AsyncThrowingStream { continuation in
+            let reading = Task {
+                do {
+                    let decoder = Self.decoder()
+                    for try await line in bytes.lines where !line.isEmpty {
+                        continuation.yield(try decoder.decode(CopyLine.self, from: Data(line.utf8)))
+                    }
+                    continuation.finish()
+                } catch where Absence.shared.interrupted(error, since: mark) {
+                    continuation.finish()  // the app went away mid-answer: what came is kept
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in reading.cancel() }
+        }
+    }
+
+    func chooseCopy(itemID: String, copyID: String) async throws -> Item {
+        var req = request("/api/library/items/\(escape(itemID))/copy", method: "PUT")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try Self.encoder().encode(["item_id": copyID])
+        req.timeoutInterval = 120  // the copy is downloaded first
+        return try await perform(req)
+    }
+
+    func copySpot(itemID: String, copyID: String, x: Double?, y: Double?) async throws -> CopySpot {
+        var query: [URLQueryItem] = []
+        if let x, let y {
+            query = [URLQueryItem(name: "x", value: String(x)), URLQueryItem(name: "y", value: String(y))]
+        }
+        var req = request("/api/library/items/\(escape(itemID))/copies/\(escape(copyID))/spot", query: query)
+        req.timeoutInterval = 120
+        return try await perform(req)
+    }
+
     func describe(itemID: String, wait: Int) async throws -> SeenView {
         var req = request(
             "/api/library/items/\(escape(itemID))/describe", method: "POST",

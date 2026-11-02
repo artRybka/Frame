@@ -116,14 +116,79 @@ struct SharperCopy: Codable, Hashable, Sendable {
     var museum: String
     var width: Int
     var height: Int
+    /// Picked by the owner ("Szukaj lepszej kopii"), not found by the server.
+    var chosen: Bool? = nil
+
+    var isChosen: Bool { chosen == true }
 }
 
 /// A sharper copy of a work's picture, looked for as its card opens:
 /// "found" (`sharper` says which), "looking" (ask again), "none", "fine"
-/// (its own is good), "off" (photos, own works).
+/// (its own is good), "off" (photos, own works). `width` and `height`: the
+/// picture shown now, as its source gave it (when the server has it).
 struct SharperView: Codable, Hashable, Sendable {
     var status: String
     var sharper: SharperCopy?
+    var width: Int? = nil
+    var height: Int? = nil
+}
+
+/// One copy of a work's picture from another source ("Szukaj lepszej
+/// kopii"), as the server judged it.
+struct CopyView: Codable, Hashable, Sendable, Identifiable {
+    var itemId: String
+    var source: String
+    var museum: String
+    /// The copy's page at its source.
+    var url: String
+    var width: Int
+    var height: Int
+    var bits: Double?
+    var measured: Bool
+    /// How many times sharper on the frame than the picture shown now.
+    var gain: Double?
+    /// "better", "warn" (sharper, other colours), "worse" (not sharper),
+    /// "off" (a detail, a grey plate…: only to look at), "checking".
+    var verdict: String
+    /// Why: "whole", "colours", "fragment", "page", "turned", "grey",
+    /// "coloured", "colour-off", "reproduction".
+    var notes: [String]
+    /// "current" (shown now), "own" (the work's own, while a copy stands
+    /// in for it), "copy".
+    var role: String
+    var chosen: Bool
+
+    var id: String { itemId }
+    var side: Int { max(width, height) }
+    var isCurrent: Bool { role == "current" }
+    var isOwn: Bool { role == "own" }
+    /// What can be picked: the same picture whole, sharper or not.
+    var choosable: Bool { !isCurrent && ["better", "warn", "worse"].contains(verdict) }
+}
+
+/// One line of the copies' answer, as the sources answer: "start"
+/// (`sources` asked), "copy" (new or judged: replaces the one with its
+/// id), "drop" (another picture after all: `itemId`), "source" (`source`
+/// answered: `found` copies, or `failed`), "end".
+struct CopyLine: Codable, Hashable, Sendable {
+    var kind: String
+    var sources: [String]?
+    var source: String?
+    var found: Int?
+    var failed: Bool?
+    var copy: CopyView?
+    var itemId: String?
+}
+
+/// One spot of the picture shown now and of a copy, at the frame's scale
+/// (`x`, `y`: its centre; `w`, `h`: its size; fractions of the picture).
+struct CopySpot: Codable, Hashable, Sendable {
+    var x: Double
+    var y: Double
+    var w: Double
+    var h: Double
+    var current: Data
+    var copy: Data
 }
 
 struct SeenView: Codable, Hashable, Sendable {
