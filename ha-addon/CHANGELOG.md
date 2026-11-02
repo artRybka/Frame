@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.73.0
+
+- Bateria we śnie: kafelek pokazuje szacowany poziom (jaśniejszy łuk, szara
+  liczba) zamiast ostatniego odczytu, a w okienku Bateria jest linia „Teraz ok.
+  X%”. Dni do rozładowania liczą się od tego szacunku.
+- Uśpienie ramki widać od razu na kafelku Sieć w zakładce Ramka: aplikacja
+  najpierw pokazuje stan znany serwerowi, potem pyta ramkę i odświeża go co
+  10 s. Serwer uznaje ramkę za śpiącą także wtedy, gdy nie dotarł jej
+  meldunek o zaśnięciu.
+- Studium dnia nie zostaje w połowie puste: gdy Claude odda opis bez analizy
+  kompozycji, koloru, detali albo oceny na ramce, serwer pyta drugi raz.
+  Zapisane wcześniej takie studium uzupełnia się samo.
+
 ## 1.72.0
 
 - Nowy wygląd przycisków w całej aplikacji: jak etykiety muzealne

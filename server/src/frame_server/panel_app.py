@@ -333,6 +333,26 @@ class PanelApp:
         heard = self.heard_at or (datetime.fromisoformat(state.seen_at) if state.seen_at else None)
         return heard is not None and (now or datetime.now(UTC)) - heard < HEARD_EVERY
 
+    def note_down(self, now: datetime) -> None:
+        """Told to sleep and down for sure by now (``GOING_DOWN``), though no
+        "sleep" report came: the status says it sleeps, not "online" until
+        a look finds the panel gone (10 s for MDC to give up, and only when
+        someone looks). An "online" from after it went down (the button,
+        found by a look) stays."""
+        state = self.state
+        if not (state.active and state.asleep) or state.slept_at is None:
+            return
+        if self._going_down(now):
+            return
+        status = self.service.status.status
+        if status.power_state != "online":
+            return
+        down = datetime.fromisoformat(state.slept_at) + GOING_DOWN
+        if status.last_seen is not None and datetime.fromisoformat(status.last_seen) > down:
+            return
+        log.info("the frame's app went to sleep at %s without a word: asleep", state.slept_at)
+        self.service.status.note_sleep(deep=not state.standby, now=now)
+
     def silent_since(self, now: datetime) -> datetime | None:
         """The panel answered MDC at the last look, but the app has not been
         heard from for ``SILENT_AFTER``: since when. Not while it goes down
@@ -953,6 +973,7 @@ class PanelApp:
         if installed is not None and installed <= now and (seen is None or installed > seen):
             seen = installed  # just started: not silent before it had a chance to ask
         silent = seen is None or now - seen >= SILENT_AFTER
+        self.note_down(now)
         if self.wakes_at(now) != self._next_alarm:
             # An alarm rang and the panel went back to sleep: show the next.
             self._next_alarm = self.wakes_at(now)

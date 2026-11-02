@@ -105,6 +105,7 @@ class PowerManager:
     def publish_status(self) -> None:
         """What the app's status shows of the power state."""
         app = self.service.app
+        app.note_down(datetime.now(UTC))  # told to sleep and down by now
         status = self.service.status.status
         status.pending_push = self.state.pending_push
         status.panel_app = app.active
@@ -124,7 +125,7 @@ class PowerManager:
         settings = self.service.player.settings
         now = datetime.now(UTC)
         self.service.status.estimate_battery(
-            lambda awake: day_plan(settings, now, awake, rest_until=rest, off=state.off)
+            lambda awake: day_plan(settings, now, awake, rest_until=rest, off=state.off), now
         )
 
     def _off_network(self) -> None:

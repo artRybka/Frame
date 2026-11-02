@@ -20,6 +20,11 @@ struct BatteryView: View {
                         Text(rangeLine)
                             .font(.subheadline)
                             .foregroundStyle(Theme.inkSoft)
+                        if let sinceReading {
+                            Text(sinceReading)
+                                .font(.subheadline)
+                                .foregroundStyle(Theme.inkSoft)
+                        }
                     }
                     .padding(.vertical, 4)
                 }
@@ -70,6 +75,13 @@ struct BatteryView: View {
         let span = BatteryText.span(days, low: low, high: high)
         guard span.contains("–") else { return perDay }
         return "Najpewniej \(span) · \(perDay)"
+    }
+
+    /// Asleep the frame reads nothing: the level now is the server's guess.
+    private var sinceReading: String? {
+        guard onBattery, let level = estimate.level, let read = estimate.readLevel else { return nil }
+        let when = When.past(estimate.readAt).map { " (\($0))" } ?? ""
+        return "Teraz ok. \(level)%: ramka śpi i nie podaje poziomu, to szacunek od ostatniego odczytu \(read)%\(when)."
     }
 
     private var basis: String {
