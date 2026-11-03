@@ -32,6 +32,7 @@ from ..later import entry_key
 from ..library import Item
 from ..library.markup import strip_markup
 from ..service import FrameService
+from ..sizes import RealSize
 from .deps import require_owner, require_token, service
 from .library_api import RemoteItem, remote_items
 
@@ -105,6 +106,8 @@ class DailyWork(BaseModel):
     died: int | None = None
     milestones: list[Milestone] = []
     pigments: list[Pigment] = []
+    #: How big the work really is, in centimetres ("Prawdziwy rozmiar").
+    size: RealSize | None = None
     sources: list[str] = []
     model: str = ""
     #: Left empty: the days before are no longer listed under the page.
@@ -222,6 +225,8 @@ def page(
     by_artist = svc.artists.works(item, shown) if lists else []
     looking = lists and svc.artists.look_soon(item, len(by_artist))
     shown |= {w.id for w in by_artist}
+    size = svc.sizes.size(item) if lists else None
+    looking = looking or (lists and size is None and svc.sizes.look_soon(item))
     same_time = svc.daily.same_time(item, shown) if lists else []
     born, died = (
         life(item.artist_bio)
@@ -255,6 +260,7 @@ def page(
         died=died,
         milestones=essay.milestones if essay else [],
         pigments=essay.pigments if essay else [],
+        size=size,
         legacy_pending=bool(lists and essay and svc.later.look_soon(item, essay.legacy)) or looking,
         sources=essay.sources if essay else [],
         model=note.model if note else "",

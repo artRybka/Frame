@@ -445,6 +445,12 @@ struct DailyView: View {
                 }
                 .transition(.opacity)
             }
+            if let size = work.size, size.height > 0, size.width > 0 {
+                section("Prawdziwy rozmiar") {
+                    RealSizeDrawing(work: work.item, height: size.height, width: size.width, portrait: model.isPortrait)
+                        .padding(.top, 4)
+                }
+            }
             section("Na Twojej ramce") { onFrame(work) }
             footer(work).id("end")
         }

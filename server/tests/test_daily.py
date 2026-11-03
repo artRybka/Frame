@@ -17,6 +17,7 @@ from fastapi.testclient import TestClient
 from PIL import Image, ImageDraw, ImageOps
 from test_ai import GOOD_KEY, FakeAnthropic, _message
 
+from frame_server import sizes
 from frame_server.ai import AiConfigUpdate
 from frame_server.ai.client import OPUS
 from frame_server.ai.daily import INCOMPLETE, TAKE, clean, missing, short, unfinished
@@ -372,6 +373,18 @@ def test_without_a_key_the_page_shows_what_the_museum_says(tmp_path: Path) -> No
         )
         _today_is(app.state.service, "met:1")
         work = client.get("/api/daily").json()
+        assert work["size"] is None  # looked up in the background (here: nothing found)
+        app.state.service.library.save_note(
+            Note(
+                item_id="met:1",
+                kind=sizes.KIND,
+                model="",
+                prompt_version=sizes.VERSION,
+                data={"height": 25.7, "width": 37.9},
+            )
+        )
+        work = client.get("/api/daily").json()
+        assert work["size"] == {"height": 25.7, "width": 37.9}
         assert work["item"]["item"]["id"] == "met:1"
         assert work["title"] == "Under the Wave off Kanagawa"
         assert work["written"] is False and work["writing"] is False

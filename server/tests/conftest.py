@@ -28,6 +28,20 @@ def _no_gallery_downloads(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(nga.INDEX, "ready", lambda path: path.is_file())
 
 
+@pytest.fixture(autouse=True)
+def _no_real_sizes(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A study's page looks up its work's real size in the background: never
+    on the internet in tests (each museum answers 404)."""
+    import httpx
+
+    from frame_server import sizes
+
+    def offline() -> httpx.Client:
+        return httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(404)))
+
+    monkeypatch.setattr(sizes, "client", offline)
+
+
 @pytest.fixture
 def service(tmp_path: Path):
     from frame_server.config import Settings

@@ -1540,6 +1540,12 @@ struct DailyWork: Codable, Hashable, Sendable {
         var text: String
     }
 
+    /// How big the work really is, in centimetres.
+    struct RealSize: Codable, Hashable, Sendable {
+        var height: Double
+        var width: Double
+    }
+
     /// "2026-10-30".
     var day: String
     var item: RemoteItem
@@ -1588,6 +1594,9 @@ struct DailyWork: Codable, Hashable, Sendable {
     var died: Int? = nil
     var milestones: [Milestone]? = nil
     var pigments: [Pigment]? = nil
+    /// "Prawdziwy rozmiar": from the museum or Wikidata, when it has the
+    /// picture's proportions (server 1.83).
+    var size: RealSize? = nil
 
     /// Today as `day` names it, "2026-11-02" (the phone's day, the server's
     /// in the same house).

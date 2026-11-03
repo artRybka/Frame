@@ -13,6 +13,10 @@
   Studia napisane wcześniej serwer uzupełnia o linię życia i farby w tle.
 - Technika i muzeum są teraz w stopce studium, obok informacji, kto napisał
   tekst, a nie pod tytułem.
+- Nowa sekcja „Prawdziwy rozmiar” tuż przed „Na Twojej ramce”: rysunek
+  dzieła w prawdziwych wymiarach (ołówkiem) obok pustej ramki dla skali.
+  Wymiary pochodzą z muzeum albo z Wikidaty i są pokazywane tylko wtedy,
+  gdy ich proporcje zgadzają się ze zdjęciem.
 
 ## 1.80.0
 
