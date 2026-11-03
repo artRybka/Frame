@@ -11,8 +11,9 @@
 - „Kolor i światło”: farby, z których dzieło namalowano (z kółkiem barwy,
   miejscem na obrazie i zdaniem o farbie), gdy wymieniają je źródła.
   Studia napisane wcześniej serwer uzupełnia o linię życia i farby w tle.
-- Technika i muzeum są teraz w stopce studium, obok informacji, kto napisał
-  tekst, a nie pod tytułem.
+- Pod tytułem studium jest teraz sam tytuł. Imię i nazwisko twórcy jest w
+  „O autorze”, pismem odręcznym jak uwagi do kompozycji, a data, technika i
+  muzeum w stopce, obok informacji, kto napisał tekst.
 - Nowa sekcja „Prawdziwy rozmiar” tuż przed „Na Twojej ramce”: rysunek
   dzieła w prawdziwych wymiarach (ołówkiem) obok pustej ramki dla skali.
   Wymiary pochodzą z muzeum albo z Wikidaty i są pokazywane tylko wtedy,

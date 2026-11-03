@@ -247,14 +247,10 @@ struct DailyView: View {
         return VStack(alignment: .leading, spacing: 26) {
             Group {
                 if let peek {
-                    let byline = [Names.artist(peek.item.artist), peek.item.dateText].filter { !$0.isEmpty }.joined(separator: " · ")
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(peek.title.isEmpty ? "Bez tytułu" : peek.title)
-                            .font(.serif(26, weight: .semibold))
-                            .foregroundStyle(Theme.ink)
-                            .fixedSize(horizontal: false, vertical: true)
-                        if !byline.isEmpty { Text(byline).font(.subheadline).foregroundStyle(Theme.ink) }
-                    }
+                    Text(peek.title.isEmpty ? "Bez tytułu" : peek.title)
+                        .font(.serif(26, weight: .semibold))
+                        .foregroundStyle(Theme.ink)
+                        .fixedSize(horizontal: false, vertical: true)
                 } else {
                     TitleSkeleton()
                 }
@@ -414,7 +410,10 @@ struct DailyView: View {
                     }
                 }
             }
-            if let artist = work.artist, !artist.isEmpty { author(work, artist) }
+            // Also over the museum's text alone: the only place the artist is named.
+            if !(work.artist ?? "").isEmpty || !Names.person(work.item.item.artist).isEmpty {
+                author(work, work.artist ?? "")
+            }
             if let takes = work.composition?.takes, !takes.isEmpty {
                 compositionSection(work, takes).id("composition")
             }
@@ -535,25 +534,18 @@ struct DailyView: View {
         return item.originalRef
     }
 
+    /// The title alone (Mateusz 2026-11-03): the artist is named in "O
+    /// autorze", the date, medium and museum are in the footer.
     private func header(_ work: DailyWork) -> some View {
         let item = work.item.item
-        let byline = [Names.artist(item.artist), item.dateText].filter { !$0.isEmpty }.joined(separator: " · ")
         let original = OriginalTitle.of(item.title, shown: work.title)
-        return VStack(alignment: .leading, spacing: 4) {
-            Text(peeking ? original ?? work.title : work.title)
-                .font(.serif(26, weight: .semibold))
-                .foregroundStyle(Theme.ink)
-                .fixedSize(horizontal: false, vertical: true)
-                .contentTransition(.opacity)
-                // Held: the museum's own, until held again.
-                .titlePeek(enabled: original != nil, peeking: $peeking)
-            if !byline.isEmpty {
-                Text(byline).font(.subheadline).foregroundStyle(Theme.ink)
-                    // Their other works, on Szukaj.
-                    .artistPress { model.artistSearch = item.artist }
-                    .allowsHitTesting(!item.artist.isEmpty)
-            }
-        }
+        return Text(peeking ? original ?? work.title : work.title)
+            .font(.serif(26, weight: .semibold))
+            .foregroundStyle(Theme.ink)
+            .fixedSize(horizontal: false, vertical: true)
+            .contentTransition(.opacity)
+            // Held: the museum's own, until held again.
+            .titlePeek(enabled: original != nil, peeking: $peeking)
     }
 
     /// "Pokaż na ramce" (held: for longer), at the end by "Na Twojej ramce".
@@ -653,8 +645,10 @@ struct DailyView: View {
             } else {
                 VStack(alignment: .leading, spacing: 3) {
                     Eyebrow("O autorze")
+                    // In the pencil's hand, as the composition's notes
+                    // (Mateusz 2026-11-03), a little smaller than the title.
                     Text(name)
-                        .font(.serif(26, weight: .semibold))
+                        .font(.hand(25))
                         .foregroundStyle(Theme.ink)
                         .fixedSize(horizontal: false, vertical: true)
                         .artistPress { model.artistSearch = item.artist }
@@ -675,7 +669,7 @@ struct DailyView: View {
                 )
                 .padding(.vertical, 4)
             }
-            prose(note)
+            if !note.isEmpty { prose(note) }
         }
     }
 
@@ -1032,7 +1026,7 @@ struct DailyView: View {
         // Where the work and its picture come from, at the very end with
         // who wrote the text (Mateusz 2026-11-02: not under the title).
         let item = work.item.item
-        let origin = [item.medium, item.museum].filter { !$0.isEmpty }.joined(separator: " · ")
+        let origin = [item.dateText, item.medium, item.museum].filter { !$0.isEmpty }.joined(separator: " · ")
         return VStack(alignment: .leading, spacing: 10) {
             Divider()
             VStack(alignment: .leading, spacing: 6) {
