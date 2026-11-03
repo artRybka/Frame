@@ -13,8 +13,8 @@ import SwiftUI
 /// znacznie większy obraz i postać"): the work's longer side gets at least
 /// 120 points, as far as the column's width allows, but never so close that
 /// less than 80 cm of him shows from the head down. When he is then taller
-/// than the drawing, his legs go over into blur at its foot and his height
-/// line fades out.
+/// than the drawing, he is cut straight across at its foot and ends on a
+/// short pencil line fading out at both ends (variant C, 16:18).
 /// A work beside which the whole man fits anyway is drawn as before. The
 /// drawing is as tall as what is on it, with no room left under it.
 struct RealSizeDrawing: View {
@@ -53,8 +53,10 @@ struct RealSizeDrawing: View {
         var picture: CGRect
         /// The man's 180 cm, head to the sole of his right foot.
         var man: CGRect
-        /// He is taller than the drawing: his legs fade out at its foot.
+        /// He is taller than the drawing: cut off at `cut`.
         var cropped: Bool
+        /// Where he is cut off, when he is.
+        var cut: CGFloat
         /// The drawing's height.
         var height: CGFloat
     }
@@ -89,8 +91,9 @@ struct RealSizeDrawing: View {
         let cropped = manH * scale > room + 0.5
         let underWork = picture.maxY + widthLabel
         let feet = y(0) + manH * (CGFloat(manOverhang) - 1) * scale
-        let height = cropped ? max(top + room, underWork) : max(feet, underWork)
-        return Plan(scale: scale, picture: picture, man: man, cropped: cropped, height: ceil(height))
+        let cut = top + room
+        let height = cropped ? max(cut + 1, underWork) : max(feet, underWork)
+        return Plan(scale: scale, picture: picture, man: man, cropped: cropped, cut: cut, height: ceil(height))
     }
 
     var body: some View {
@@ -110,9 +113,6 @@ struct RealSizeDrawing: View {
         let heightX = picture.maxX + 10
         let widthY = picture.maxY + 9
         let pencil = Theme.ink.opacity(0.8)
-        // Cropped, his height line runs down to the drawing's foot, fading.
-        let lineEnd = plan.cropped ? plan.height : man.maxY
-        let fade: CGFloat = 70
         return ZStack(alignment: .topLeading) {
             // Holds the drawing's corner at (0, 0) for the parts placed by offset.
             Color.clear.frame(width: column, height: plan.height)
@@ -128,33 +128,49 @@ struct RealSizeDrawing: View {
             .offset(x: picture.minX, y: picture.minY)
 
             if plan.cropped {
-                // His legs are not lost: below the waist he goes over into
-                // ever stronger blur, layers under one another, the
-                // strongest at the bottom (Mateusz 2026-11-03 15:46).
-                let start = max(0, plan.height - 120) / plan.height
-                let mid = max(0, plan.height - 55) / plan.height
-                let low = max(0, plan.height - 15) / plan.height
-                layer(figure(man).blur(radius: 4.5), plan, [(start, 0), (mid, 1)])
-                layer(figure(man).blur(radius: 2), plan, [(max(0, start - 0.04), 0), (start + 0.04, 1), (mid, 1), (low, 0)])
-                layer(figure(man), plan, [(0, 1), (start, 1), (mid, 0)])
+                // Cut straight across: he ends on a short pencil line that
+                // fades out at both ends (Mateusz 2026-11-03 16:18, "C").
+                let cut = plan.cut
+                ZStack(alignment: .topLeading) {
+                    Color.clear.frame(width: column, height: cut)
+                    figure(man)
+                    Dimension(
+                        from: CGPoint(x: man.maxX + 8, y: man.minY),
+                        to: CGPoint(x: man.maxX + 8, y: cut),
+                        ticks: .start
+                    )
+                    .stroke(pencil, style: StrokeStyle(lineWidth: 1.2, lineCap: .round))
+                }
+                .frame(width: column, height: cut, alignment: .topLeading)
+                .clipped()
+                let from = man.minX - 14, to = man.maxX + 22
+                Path { path in
+                    path.move(to: CGPoint(x: from, y: cut))
+                    path.addLine(to: CGPoint(x: to, y: cut))
+                }
+                .stroke(
+                    LinearGradient(
+                        stops: [
+                            .init(color: pencil.opacity(0), location: 0),
+                            .init(color: pencil, location: 0.25),
+                            .init(color: pencil, location: 0.75),
+                            .init(color: pencil.opacity(0), location: 1),
+                        ],
+                        startPoint: UnitPoint(x: from / column, y: 0),
+                        endPoint: UnitPoint(x: to / column, y: 0)
+                    ),
+                    style: StrokeStyle(lineWidth: 1.2, lineCap: .round)
+                )
+                .frame(width: column, height: plan.height)
             } else {
                 figure(man)
+                Dimension(from: CGPoint(x: man.maxX + 8, y: man.minY), to: CGPoint(x: man.maxX + 8, y: man.maxY))
+                    .stroke(pencil, style: StrokeStyle(lineWidth: 1.2, lineCap: .round))
             }
-            // His height: cropped, it runs on to the drawing's foot, fading.
-            layer(
-                Dimension(
-                    from: CGPoint(x: man.maxX + 8, y: man.minY),
-                    to: CGPoint(x: man.maxX + 8, y: lineEnd),
-                    ticks: plan.cropped ? .start : .both
-                )
-                .stroke(pencil, style: StrokeStyle(lineWidth: 1.2, lineCap: .round)),
-                plan,
-                plan.cropped ? [(0, 1), (max(0, plan.height - fade) / plan.height, 1), (1, 0)] : [(0, 1), (1, 1)]
-            )
             pencilled("180 cm")
                 .alignmentGuide(.leading) { _ in -(man.maxX + 14) }
                 .alignmentGuide(.top) { d in
-                    -((plan.cropped ? man.minY + 0.42 * (plan.height - man.minY) : man.midY) - d.height / 2)
+                    -((plan.cropped ? (man.minY + plan.cut) / 2 : man.midY) - d.height / 2)
                 }
 
             Dimension(from: CGPoint(x: heightX, y: picture.minY), to: CGPoint(x: heightX, y: picture.maxY))
@@ -178,24 +194,6 @@ struct RealSizeDrawing: View {
             .foregroundStyle(Theme.ink.opacity(0.88))
             .frame(width: man.width, height: man.height * Self.manOverhang)
             .offset(x: man.minX, y: man.minY)
-    }
-
-    /// `content` over the whole drawing, kept to it and shown as far as the
-    /// stops say, top to bottom (location, opacity).
-    private func layer(_ content: some View, _ plan: Plan, _ stops: [(CGFloat, Double)]) -> some View {
-        ZStack(alignment: .topLeading) {
-            Color.clear.frame(width: column, height: plan.height)
-            content
-        }
-        .frame(width: column, height: plan.height, alignment: .topLeading)
-        .clipped()
-        .mask {
-            LinearGradient(
-                stops: stops.map { Gradient.Stop(color: .black.opacity($0.1), location: $0.0) },
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        }
     }
 
     private func pencilled(_ text: String) -> some View {

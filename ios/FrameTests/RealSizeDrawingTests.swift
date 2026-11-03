@@ -11,7 +11,8 @@ final class RealSizeDrawingTests: XCTestCase {
         let plan = RealSizeDrawing.plan(height: 25.7, width: 37.9, column: column)
         XCTAssertGreaterThan(plan.picture.width, 90)
         XCTAssertTrue(plan.cropped)
-        XCTAssertEqual(plan.height, ceil(10 + RealSizeDrawing.room))
+        XCTAssertEqual(plan.cut, 10 + RealSizeDrawing.room)
+        XCTAssertEqual(plan.height, ceil(plan.cut + 1))
         // His head and the work's top are in the drawing.
         XCTAssertGreaterThanOrEqual(plan.man.minY, 0)
         XCTAssertGreaterThanOrEqual(plan.picture.minY, 0)
