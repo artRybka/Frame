@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.85.4
+
+- Studium dzieła, „Na Twojej ramce”: podgląd ramki otwiera kadrowanie
+  tak jak w Teraz i na karcie dzieła. Działa stuknięcie albo przytrzymanie
+  z postukiwaniem, ramka wychodzi z podglądu i po zamknięciu wraca na
+  niego. Zapisany kadr od razu widać w podglądzie, a gdy dzieło jest
+  właśnie na ramce, ramka przerysowuje je z nowym kadrem.
+
 ## 1.85.3
 
 - Oryginały dzieł: serwer już zachowywał oryginał każdego dzieła, które
