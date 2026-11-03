@@ -88,4 +88,17 @@ final class TermFacetTests: XCTestCase {
         XCTAssertEqual(TermFacet.museum.label(tokens, periods: periods), "Muzeum: bez Yale +1")
         XCTAssertEqual(SearchToken.museum("yale", name: "Yale").name, "Yale")
     }
+
+    func testColourTagsRowsGoColoursAccentsMoods() {
+        let tags = ["light", "accent:red", "warm", "brown", "colorful", "orange", "muted", "accent:blue"]
+        XCTAssertEqual(ColorTag.rows(tags), [
+            ["orange", "brown"],
+            ["accent:red", "accent:blue"],
+            ["warm", "muted", "colorful", "light"],
+        ])
+        // Moods in pairs: Kolorowe beside Monochromia.
+        let colorful = ColorTag.moods.firstIndex(of: "colorful")!
+        XCTAssertEqual(ColorTag.moods[colorful + 1], "monochrome")
+        XCTAssertEqual(colorful % 2, 0)
+    }
 }

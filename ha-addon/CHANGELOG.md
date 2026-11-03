@@ -13,7 +13,9 @@
   ceglastej czerwieni, Chłodne od bladego błękitu do niebieskiego, Żywe
   świecąca czerwień, Stonowane szarawy beż w szarą zieleń, Kolorowe koło
   barw. Nastroje stoją parami, para w wierszu: Ciepłe i Chłodne, Żywe i
-  Stonowane, Kolorowe i Monochromia, Ciemne i Jasne. Te same kropki są przy kolorach na karcie dzieła, w polu
+  Stonowane, Kolorowe i Monochromia, Ciemne i Jasne. Na karcie dzieła
+  pod Kolorystyką etykiety idą w trzech wierszach: kolory, akcenty,
+  nastroje. Te same kropki są przy kolorach na karcie dzieła, w polu
   wyszukiwania, w regułach playlist i na pastylce „Kolor” po wyborze
   nastroju.
 

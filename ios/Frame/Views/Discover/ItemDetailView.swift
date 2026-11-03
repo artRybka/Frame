@@ -894,10 +894,16 @@ struct ItemDetailView: View {
                 }
                 .frame(height: 14)
             }
-            if !item.colorTags.isEmpty {
-                FlowLayout(spacing: 6) {
-                    ForEach(item.colorTags, id: \.self) { tag in
-                        TagLabel(text: ColorTag.name(tag), colorTag: tag)
+            // One row each, in the Kolor sheet's order: colours, accents, moods.
+            let rows = ColorTag.rows(item.colorTags).filter { !$0.isEmpty }
+            if !rows.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(rows, id: \.self) { row in
+                        FlowLayout(spacing: 6) {
+                            ForEach(row, id: \.self) { tag in
+                                TagLabel(text: ColorTag.name(tag), colorTag: tag)
+                            }
+                        }
                     }
                 }
             }
