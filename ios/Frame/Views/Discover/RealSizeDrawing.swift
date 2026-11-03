@@ -3,12 +3,10 @@ import SwiftUI
 /// "Rozmiar obrazu" (Mateusz 2026-11-02/03): the work at its real size on
 /// the left, at the column's edge, and beside it for scale a sheet of A4
 /// paper, white, with a shadow and a curled corner, "A4" printed on it in
-/// thin dark grey; for a work over 1.3 m a man's dark silhouette, 180 cm,
-/// his height pencilled beside him (the silhouette Mateusz chose,
-/// 2026-11-03). One
-/// scale, both standing on the work's bottom edge. A sheet lower than the pencilled
-/// height stands a little past its line, under its figures; else past
-/// them.
+/// thin dark grey; for a work over 1.3 m a man's dark silhouette (the one
+/// Mateusz chose), 180 cm, his height pencilled beside him. One scale, both
+/// standing on the work's bottom edge. A sheet lower than the pencilled
+/// height stands a little past its line, under its figures; else past them.
 struct RealSizeDrawing: View {
     let work: RemoteItem
     /// Centimetres.
