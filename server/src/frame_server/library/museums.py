@@ -24,7 +24,7 @@ from urllib.parse import quote, unquote, urlsplit
 
 import httpx
 
-from .commons import commons_html, commons_year
+from .commons import commons_html, commons_year, file_title
 from .hosts import Resting, guard
 from .lifespan import (
     EUROPEANA_AGENT,
@@ -34,7 +34,14 @@ from .lifespan import (
     death_in_name,
     free_in_eu,
 )
-from .markup import VECTOR, WEB_IMAGES, clean_title, commons_rendition, extension
+from .markup import (
+    VECTOR,
+    WEB_IMAGES,
+    clean_title,
+    commons_rendition,
+    extension,
+    strip_artist,
+)
 from .models import Item, ItemKind
 
 log = logging.getLogger(__name__)
@@ -175,6 +182,8 @@ class Museum(ABC):
         for key in ("title", "artist"):
             if key in fields:
                 fields[key] = clean_title(fields[key])
+        if "title" in fields:
+            fields["title"] = strip_artist(fields["title"], fields.get("artist", ""))
         return Item(
             id=f"{self.key}:{source_id}",
             kind=ItemKind.ARTWORK,
@@ -593,8 +602,11 @@ class WikimediaCommons(Museum):
         # Everything on Commons is freely licensed; attribution is kept in ``credit``.
         if not public and not (self.private_use and licence):
             return None
-        title = self._text(info, "ObjectName", title=True) or re.sub(
-            r"^File:|\.[a-zA-Z]+$", "", page.get("title", "")
+        date_text = self._text(info, "DateTimeOriginal")
+        year = commons_year(self._meta(info, "DateTimeOriginal"))
+        artist = artist_hint or self._meta(info, "Artist").split("\n")[0]
+        title = self._text(info, "ObjectName", title=True) or file_title(
+            page.get("title", ""), clean_title(artist), year
         )
         image_url = str(info.get("url", ""))
         if (ext := extension(image_url)) and ext not in WEB_IMAGES:
@@ -603,14 +615,12 @@ class WikimediaCommons(Museum):
             if not rendition and ext in VECTOR:
                 return None
             image_url = rendition or image_url
-        date_text = self._text(info, "DateTimeOriginal")
-        artist = artist_hint or self._meta(info, "Artist").split("\n")[0]
         return self._item(
             str(page["pageid"]),
             title=title,
             artist=artist,
             date_text=date_text[:40],
-            year=commons_year(self._meta(info, "DateTimeOriginal")),
+            year=year,
             classification=classification,
             license=licence,
             credit=self._meta(info, "Credit")[:200],

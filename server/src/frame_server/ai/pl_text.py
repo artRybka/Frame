@@ -22,7 +22,7 @@ import httpx
 from pydantic import BaseModel, Field
 
 from ..imaging.text import MAX_BODY, sentences
-from ..library.markup import strip_language_prefix, strip_markup
+from ..library.markup import strip_artist, strip_language_prefix, strip_markup
 from ..library.models import ItemKind, Note
 from ..library.museums import client
 from ..library.nationality import artist_note, fix_note
@@ -256,12 +256,16 @@ def untranslated(text: str) -> bool:
     return foreign >= 3 and foreign > polish
 
 
-def polish_title(raw: Any, facts: Facts | None) -> str:
+def polish_title(raw: Any, facts: Facts | None, artist: str = "") -> str:
     """The Polish title as shown: an established one from Wikidata first,
-    else the model's; "" when there is none."""
+    else the model's; "" when there is none. Without the artist's name in
+    front ("Tadeusz Makowski Skąpiec"), which a model copies from a Commons
+    file name."""
     title = (facts.title_pl if facts and facts.title_pl else "") or _plain(raw)
     # The frame wraps three lines, then cuts.
-    return strip_language_prefix(_plain(title, TITLE_MAX + 40)) if title else ""
+    if not title:
+        return ""
+    return strip_artist(strip_language_prefix(_plain(title, TITLE_MAX + 40)), artist)
 
 
 #: The title in an answer still being written: the schema puts it first, so
@@ -276,7 +280,7 @@ _EARLY_MAX = 500
 def clean(data: dict[str, Any], item: Item, facts: Facts | None) -> PolishText | None:
     """A model's answer made safe to show; ``None`` when it is unusable."""
     written = written_for(item)
-    title = polish_title(data.get("title"), facts)
+    title = polish_title(data.get("title"), facts, item.artist)
     frame = frame_text(_plain(data.get("frame")))
     full = _paragraphs(data.get("full"))
     if untranslated(frame):
@@ -433,7 +437,7 @@ class PlTextJob(NoteJob):
                 raw = json.loads(f'"{match.group(1)}"')
             except ValueError:
                 return
-        title = polish_title(raw, facts)
+        title = polish_title(raw, facts, item.artist)
         with self._lock:
             self._heads.pop(item.id, None)
             if len(self._titles) > _EARLY_MAX:
@@ -452,4 +456,7 @@ class PlTextJob(NoteJob):
         note = self.library.note(item.id, KIND)
         if not self.fresh(item, note) or note is None or "title" not in note.data:
             return None
-        return PolishText.model_validate(note.data)
+        text = PolishText.model_validate(note.data)
+        # Texts written before the name was left out of titles.
+        title = strip_artist(text.title, item.artist)
+        return text if title == text.title else text.model_copy(update={"title": title})
