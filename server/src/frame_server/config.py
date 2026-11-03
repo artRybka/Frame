@@ -39,7 +39,8 @@ class Settings(BaseSettings):
     data_dir: Path = Path("data")
     # Originals the server can download again (museums, shared albums) are a
     # cache: least recently used ones go beyond this size, those in Favourites
-    # and playlists last. Uploads are always kept and not counted.
+    # and playlists last (which are downloaded ahead, up to 90% of it:
+    # kept.py). Uploads are always kept and not counted.
     image_cache_mb: int = 3000
     # The catalogue browsed in the app: museum works with thumbnails and
     # colours, grown in the background up to this many MB of thumbnails

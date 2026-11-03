@@ -29,6 +29,7 @@ from .device import MdcClient, MdcConnectionError, MdcError, wol
 from .holders import Holders
 from .imaging import Palette, RenderSettings, get_palette, render, render_multi
 from .imaging.pipeline import encode_image
+from .kept import KeptOriginals
 from .later import LaterWorks
 from .library import ImageCache, Importer, Library
 from .library.commons import repair_library
@@ -205,6 +206,8 @@ class FrameService:
         self.progress.likely_asleep = lambda: self.status.sleeping
         self.app = PanelApp(self)
         self.player = Player(self)
+        #: Originals of Favourites and manual/album playlists, always here.
+        self.kept = KeptOriginals(self)
         self.power = PowerManager(self)
         self.albums = Albums(self)
         # The language model: keywords and Polish texts; idle without a key.

@@ -2416,7 +2416,7 @@ struct LibrarySizeSection: View {
                         defaultMb: storage.originalsDefaultMb,
                         options: [500, 1000, 2000, 3000, 5000, 10000, 20000, 50000]
                     ) { mb in await model.setLibraryLimit(originalsMb: mb) }
-                    caption("Serwer zachowuje oryginał każdego dzieła, które oglądasz (karta, cały ekran, studium) albo pokazujesz na ramce, około 1,5 MB na dzieło. Ponad limit znikają najdawniej oglądane, a te z Ulubionych i playlist na samym końcu. Usunięty serwer pobierze ponownie z muzeum lub albumu, gdy będzie potrzebny.")
+                    caption("Oryginały dzieł z Ulubionych i ręcznych playlist serwer pobiera zaraz po dodaniu, a brakujące w nocy, do 90% limitu. Zachowuje też oryginał każdego dzieła, które oglądasz (karta, cały ekran, studium) albo pokazujesz na ramce, około 1,5 MB na dzieło. Ponad limit znikają najdawniej oglądane, a te z Ulubionych i playlist na samym końcu. Usunięty serwer pobierze ponownie z muzeum lub albumu, gdy będzie potrzebny.")
                 }
                 Divider()
                 VStack(alignment: .leading, spacing: 8) {
