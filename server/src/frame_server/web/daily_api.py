@@ -15,6 +15,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 
+from ..ai.composition import SHOWN, versions
 from ..ai.daily import (
     TEASER_CHARS,
     Composition,
@@ -62,6 +63,16 @@ class DailyDetail(Detail):
     image: str
 
 
+class CompositionVersion(BaseModel):
+    """One of the analyses of the composition a page has had, for the
+    owner's pick (held header "Analiza kompozycji")."""
+
+    #: When it was made (ISO time).
+    made: str = ""
+    #: The one the page shows.
+    shown: bool = False
+
+
 class DailyBrief(BaseModel):
     day: str
     item: RemoteItem
@@ -92,6 +103,11 @@ class DailyWork(BaseModel):
     #: Left empty: read by 0.42 apps.
     facts: list[dict[str, str]] = []
     composition: Composition | None = None
+    #: Every analysis the page has had, oldest first, once the owner asked
+    #: for one anew (else empty).
+    composition_versions: list[CompositionVersion] = []
+    #: The owner asked for the analysis anew and it is being made.
+    composition_pending: bool = False
     colour: str = ""
     details: list[DailyDetail] = []
     on_frame: str = ""
@@ -239,6 +255,8 @@ def page(
         or ((essay.born, essay.died) if essay else (None, None))
     )
     note = svc.library.note(item.id, job.kind) if essay else None
+    kept = versions(note.data) if note else []
+    pick = note.data.get(SHOWN, len(kept) - 1) if note else -1
     return DailyWork(
         day=day,
         item=_light(svc, item, bio=True),
@@ -254,6 +272,11 @@ def page(
         else [p for p in museum.split("\n\n") if p],
         artist=essay.artist if essay else "",
         composition=essay.composition if essay and essay.composition.views else None,
+        composition_versions=[
+            CompositionVersion(made=str(v.get("made") or ""), shown=n == pick)
+            for n, v in enumerate(kept)
+        ],
+        composition_pending=bool(essay) and svc.compose.pending(item.id),
         colour=essay.colour if essay else "",
         details=details,
         on_frame=essay.on_frame if essay else "",
