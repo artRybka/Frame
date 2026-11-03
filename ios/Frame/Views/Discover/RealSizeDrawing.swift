@@ -1,26 +1,23 @@
 import SwiftUI
 
-/// "Prawdziwy rozmiar" (Mateusz 2026-11-02/03): the work at its real size
-/// on the left, at the column's edge, and the frame, empty, on its right
-/// for scale; one scale, centres level, as if hung side by side. The work's
-/// height and width are pencilled on the drawing; nothing else: no person,
-/// no sentence, no scale.
+/// "Rozmiar obrazu" (Mateusz 2026-11-02/03): the work at its real size on
+/// the left, at the column's edge, and a sheet of A4 paper on its right for
+/// scale, "A4" printed on it in light grey; one scale, centres level. The
+/// work's height and width are pencilled on the drawing; nothing else: no
+/// person, no sentence, no scale.
 struct RealSizeDrawing: View {
     let work: RemoteItem
     /// Centimetres.
     let height: Double
     let width: Double
-    /// As the frame hangs.
-    let portrait: Bool
 
-    /// The EM32DX: its screen and the white moulding round it, in centimetres.
-    static let screenLong = 70.8
-    static let screenShort = 39.8
-    static let moulding = 2.2
+    /// A sheet of A4, upright, in centimetres.
+    static let sheetWidth = 21.0
+    static let sheetHeight = 29.7
 
-    private static let drawingHeight: CGFloat = 236
+    private static let drawingHeight: CGFloat = 230
     private static let top: CGFloat = 10
-    private static let bottom: CGFloat = 40
+    private static let bottom: CGFloat = 34
 
     var body: some View {
         GeometryReader { geometry in
@@ -28,29 +25,21 @@ struct RealSizeDrawing: View {
         }
         .frame(height: Self.drawingHeight)
         .accessibilityElement()
-        .accessibilityLabel(Text("Prawdziwy rozmiar: \(Self.length(height)) wysokości, \(Self.length(width)) szerokości, obok Twoja ramka"))
-    }
-
-    private var frameSize: CGSize {
-        let screen = portrait
-            ? CGSize(width: Self.screenShort, height: Self.screenLong)
-            : CGSize(width: Self.screenLong, height: Self.screenShort)
-        return CGSize(width: screen.width + 2 * Self.moulding, height: screen.height + 2 * Self.moulding)
+        .accessibilityLabel(Text("Rozmiar obrazu: \(Self.length(height)) wysokości, \(Self.length(width)) szerokości, obok kartka A4"))
     }
 
     private func drawing(width column: CGFloat) -> some View {
-        let outer = frameSize
+        let sheetW = CGFloat(Self.sheetWidth), sheetH = CGFloat(Self.sheetHeight)
         let h = CGFloat(height), w = CGFloat(width)
         let gap: CGFloat = h >= 100 ? 66 : 54
         let room = Self.drawingHeight - Self.top - Self.bottom
-        let scale = min(room / max(outer.height, h), (column - gap) / (outer.width + w))
+        let scale = min(room / max(sheetH, h), (column - gap) / (sheetW + w))
         let middle = Self.top + room / 2
         let picture = CGRect(x: 0, y: middle - h * scale / 2, width: w * scale, height: h * scale)
-        let frame = CGRect(
-            x: picture.maxX + gap, y: middle - outer.height * scale / 2,
-            width: outer.width * scale, height: outer.height * scale
+        let sheet = CGRect(
+            x: picture.maxX + gap, y: middle - sheetH * scale / 2,
+            width: sheetW * scale, height: sheetH * scale
         )
-        let rim = Self.moulding * scale
         let pencil = Theme.ink.opacity(0.8)
         let heightX = picture.maxX + 10
         let widthY = picture.maxY + 9
@@ -70,16 +59,18 @@ struct RealSizeDrawing: View {
             .offset(x: picture.minX, y: picture.minY)
 
             Rectangle()
-                .fill(Theme.moulding)
+                .fill(Self.paper)
                 .overlay(Rectangle().strokeBorder(Theme.mouldingEdge, lineWidth: 0.6))
-                .shadow(color: .black.opacity(0.22), radius: 5, y: 5)
-                .frame(width: frame.width, height: frame.height)
-                .offset(x: frame.minX, y: frame.minY)
-            Rectangle()
-                .fill(Self.screen)
-                .overlay(Rectangle().strokeBorder(.black.opacity(0.08), lineWidth: 0.5))
-                .frame(width: max(frame.width - 2 * rim, 0), height: max(frame.height - 2 * rim, 0))
-                .offset(x: frame.minX + rim, y: frame.minY + rim)
+                .overlay {
+                    if sheet.width >= 14 {
+                        Text("A4")
+                            .font(.system(size: sheet.width * 0.3, weight: .semibold))
+                            .foregroundStyle(Self.print)
+                    }
+                }
+                .shadow(color: .black.opacity(0.12), radius: 3, y: 2)
+                .frame(width: sheet.width, height: sheet.height)
+                .offset(x: sheet.minX, y: sheet.minY)
 
             Dimension(from: CGPoint(x: heightX, y: picture.minY), to: CGPoint(x: heightX, y: picture.maxY))
                 .stroke(pencil, style: StrokeStyle(lineWidth: 1.2, lineCap: .round))
@@ -91,10 +82,6 @@ struct RealSizeDrawing: View {
             pencilled(Self.length(width))
                 .alignmentGuide(.leading) { d in -(picture.midX - d.width / 2) }
                 .alignmentGuide(.top) { _ in -(widthY + 6) }
-            pencilled("Twoja ramka")
-                .opacity(0.75)
-                .alignmentGuide(.leading) { d in -(min(frame.midX - d.width / 2, column - d.width)) }
-                .alignmentGuide(.top) { _ in -(frame.maxY + 6) }
         }
         .frame(width: column, height: Self.drawingHeight, alignment: .topLeading)
     }
@@ -106,8 +93,9 @@ struct RealSizeDrawing: View {
             .fixedSize()
     }
 
-    /// The frame's screen, off: a light grey, darker than its moulding.
-    private static let screen = Color(light: 0xE9E6E0, dark: 0xCFCAC1)
+    /// White paper, a little dimmed in the dark style, and its light grey print.
+    private static let paper = Color(light: 0xFFFFFF, dark: 0xE9E6E0)
+    private static let print = Color(light: 0xD6D2CB, dark: 0xBDB8AF)
 
     /// "45,7".
     static func number(_ value: Double) -> String {

@@ -1,14 +1,15 @@
-"""How big a work really is ("Prawdziwy rozmiar", the study's last section
-but the frame; Mateusz 2026-11-02): its height and width in centimetres,
-drawn next to the frame for scale.
+"""How big a work really is ("Rozmiar obrazu", the study's last section
+but the frame; Mateusz 2026-11-02/03): its height and width in
+centimetres, drawn next to a sheet of A4 for scale.
 
 Looked up once per work, in the background when its page opens: the
 museum's own record where its API says it plainly (the Met, Cleveland,
 SMK), else Wikidata's height and width (P2048, P2049) of the work its
 record links to. A size is kept only when its proportions are the
-picture's (within :data:`PROPORTION`): a museum's "Overall" of a sheet
-whose picture is a cut-out, or a frame measured in place of the canvas,
-would draw a lie. Nothing found is kept too, and not asked again.
+picture's (within :data:`PROPORTION`, 15% since Mateusz 2026-11-03): a
+museum's "Overall" of a sheet whose picture is a cut-out, or a frame
+measured in place of the canvas, would draw a lie. Nothing found is kept
+too, and not asked again.
 """
 
 from __future__ import annotations
@@ -34,9 +35,9 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 KIND = "real_size"
-VERSION = "size-1"
-#: How far the size's proportions may be from the picture's (8%).
-PROPORTION = 0.08
+VERSION = "size-2"
+#: How far the size's proportions may be from the picture's.
+PROPORTION = 0.15
 #: Sides believed, in centimetres: a miniature to a ceiling.
 SMALLEST = 1.0
 LARGEST = 2000.0

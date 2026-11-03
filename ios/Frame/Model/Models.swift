@@ -1566,12 +1566,15 @@ struct DailyWork: Codable, Hashable, Sendable {
         var text: String
     }
 
-    /// A paint the work is made with, as its sources name it.
+    /// A paint the work is made with, as its sources name it or the likely one.
     struct Pigment: Codable, Hashable, Sendable {
         var name: String
         var hex: String
         var `where`: String
         var text: String
+        /// Named by the sources; false: the likely paint for one of the
+        /// picture's colours (server 1.85); nil from a server before.
+        var sure: Bool? = nil
     }
 
     /// How big the work really is, in centimetres.
@@ -1628,6 +1631,8 @@ struct DailyWork: Codable, Hashable, Sendable {
     var died: Int? = nil
     var milestones: [Milestone]? = nil
     var pigments: [Pigment]? = nil
+    /// One or two historical events in the artist's lifetime (server 1.85).
+    var events: [Milestone]? = nil
     /// "Prawdziwy rozmiar": from the museum or Wikidata, when it has the
     /// picture's proportions (server 1.83).
     var size: RealSize? = nil

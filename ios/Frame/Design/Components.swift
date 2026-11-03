@@ -1,6 +1,17 @@
 import SwiftUI
 
 /// Small-caps label above titles, like a museum wall text.
+/// Small stars after a title whose text Claude wrote (the study's
+/// sections; Mateusz 2026-11-03: in place of a note at the end).
+struct AiMark: View {
+    var body: some View {
+        Image(systemName: "sparkles")
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundStyle(Theme.inkSoft.opacity(0.8))
+            .accessibilityLabel(Text("napisał Claude"))
+    }
+}
+
 struct Eyebrow: View {
     let text: String
     var color: Color = Theme.inkSoft
