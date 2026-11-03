@@ -127,6 +127,7 @@ def create_playlist(playlist: Playlist, svc: Svc, user: CurrentUser) -> Playlist
     if playlist.kind == PlaylistKind.ALBUM:
         playlist = playlist.model_copy(update={"item_ids": []})
     saved = svc.library.save_playlist(playlist.model_copy(update={"id": None}))
+    svc.kept.soon(saved.item_ids)  # a manual playlist's originals stay on the server
     if saved.kind == PlaylistKind.ALBUM and saved.id is not None:
         svc.albums.start_sync(saved.id)  # thumbnails of its photos, in the background
     return _detail(svc, saved)
@@ -219,7 +220,9 @@ def add_items(playlist_id: int, body: ItemIds, svc: Svc, user: CurrentUser) -> P
             ids.remove(item_id)
         elif item is not None:
             works.add(item)
-    return _detail(svc, svc.library.save_playlist(playlist.model_copy(update={"item_ids": ids})))
+    saved = svc.library.save_playlist(playlist.model_copy(update={"item_ids": ids}))
+    svc.kept.soon(ids[len(playlist.item_ids) :])  # their originals stay on the server
+    return _detail(svc, saved)
 
 
 @router.delete("/playlists/{playlist_id}/items/{item_id}", response_model=PlaylistDetail)

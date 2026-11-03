@@ -261,4 +261,6 @@ def tasks(service: FrameService) -> list[NightTask]:
         NightTask("museums", museums),
         NightTask("themes", themes),
         NightTask("suggestions", suggestions),
+        # Last: downloads, gently, in whatever time the night has left.
+        NightTask("kept originals", service.kept.at_night),
     ]
