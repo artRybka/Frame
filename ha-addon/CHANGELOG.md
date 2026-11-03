@@ -5,8 +5,11 @@
 - Studium dzieła: gwiazdka oznaczająca tekst Claude'a jest już tylko raz,
   na samym końcu karty, a nie przy każdej sekcji. Stopka nie powtarza
   daty, techniki i muzeum.
-- Legenda linii życia: tytuł dzieła tym samym pismem co pozostałe pozycje,
-  tylko na czerwono.
+- Linia życia: wszystkie chwile z życia i wydarzenia historyczne mają
+  numerki w jednej numeracji według lat (historyczne na szaro), znaczniki
+  zbyt blisko siebie rozsuwają się, żeby się nie nakładały, a kreska osi
+  biegnie za urodzeniem i śmiercią do krawędzi ekranu. W legendzie tytuł
+  dzieła tym samym pismem co pozostałe pozycje, tylko na czerwono.
 
 ## 1.85.0
 

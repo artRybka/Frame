@@ -1,12 +1,15 @@
 import SwiftUI
 
 /// The artist's life as a line, after the note in "O autorze" (Mateusz
-/// 2026-11-03: "czytelna i jednoznaczna"): "ur." and the year at its left
-/// end, "zm." and the year at its right; this work as a vermilion dot; the
-/// moments of their life as numbered rings (1, 2, 3); one or two historical
-/// events of their time as lettered squares (A, B). Under it a legend in the
-/// order of the years: each mark as on the line, its year and what it is
-/// (this work by its title in vermilion, the events in grey).
+/// 2026-11-03: "czytelna i jednoznaczna"): a ruler running to both edges of
+/// the screen, upright ticks at the birth and the death with "ur." and
+/// "zm." and their years under them; this work as a vermilion dot; the
+/// moments of their life and one or two historical events of their time
+/// as numbered rings, in one numbering by year, the events in grey. Marks
+/// too close to sit at their years are moved apart just enough not to
+/// overlap. Under it a legend in the order of the years: each mark as on
+/// the line, its year and what it is (this work by its title in vermilion,
+/// the events in grey).
 struct LifeLine: View {
     /// This work: its year and title.
     struct Work: Hashable {
@@ -25,11 +28,17 @@ struct LifeLine: View {
     private static let lineY: CGFloat = 12
     private static let height: CGFloat = 40
     private static let markSize: CGFloat = 17
+    /// Centre to centre, at least, of two marks on the line.
+    private static let spacing: CGFloat = markSize + 3
+    /// How far the line runs on past the ends: to the screen's edges, where
+    /// the scroll view clips it.
+    private static let overrun: CGFloat = 2000
 
     private enum Mark: Hashable {
         case work
-        case moment(Int)
-        case event(Int)
+        /// A moment of their life (``event`` false) or of history, and its
+        /// number among them all.
+        case numbered(Int, event: Bool)
     }
 
     private struct Entry: Hashable {
@@ -38,24 +47,22 @@ struct LifeLine: View {
         var text: String
     }
 
-    private static let letters = ["A", "B", "C"]
-
-    /// Everything on the line, by year; on the same year this work first.
+    /// Everything on the line, by year; on the same year this work first,
+    /// then their life, then history. One numbering for the moments and
+    /// the events.
     private var entries: [Entry] {
-        var all: [Entry] = []
-        if let work { all.append(Entry(year: work.year, mark: .work, text: work.title)) }
-        all += milestones.enumerated().map { Entry(year: $1.year, mark: .moment($0), text: $1.text) }
-        all += events.prefix(Self.letters.count).enumerated().map {
-            Entry(year: $1.year, mark: .event($0), text: $1.text)
+        var dated: [(year: Int, rank: Int, text: String)] = []
+        dated += milestones.map { (year: $0.year, rank: 1, text: $0.text) }
+        dated += events.prefix(3).map { (year: $0.year, rank: 2, text: $0.text) }
+        dated.sort { ($0.year, $0.rank) < ($1.year, $1.rank) }
+        var all = dated.enumerated().map { index, entry in
+            Entry(year: entry.year, mark: .numbered(index + 1, event: entry.rank == 2), text: entry.text)
         }
-        func rank(_ mark: Mark) -> Int {
-            switch mark {
-            case .work: 0
-            case .moment: 1
-            case .event: 2
-            }
+        if let work {
+            let at = all.firstIndex { $0.year >= work.year } ?? all.count
+            all.insert(Entry(year: work.year, mark: .work, text: work.title), at: at)
         }
-        return all.sorted { ($0.year, rank($0.mark)) < ($1.year, rank($1.mark)) }
+        return all
     }
 
     var body: some View {
@@ -74,7 +81,7 @@ struct LifeLine: View {
                         Text(String(entry.year))
                             .font(.caption.weight(.bold))
                             .monospacedDigit()
-                            .foregroundStyle(entry.mark == .work ? Theme.vermilion : Theme.inkSoft)
+                            .foregroundStyle(Self.yearColour(entry.mark))
                         legendText(entry)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -86,44 +93,77 @@ struct LifeLine: View {
         .accessibilityLabel(Text("Życie artysty, \(String(born))–\(String(died))"))
     }
 
+    private static func yearColour(_ mark: Mark) -> Color {
+        switch mark {
+        case .work: Theme.vermilion
+        case .numbered(_, let event): event ? Theme.inkSoft.opacity(0.75) : Theme.inkSoft
+        }
+    }
+
     private func legendText(_ entry: Entry) -> Text {
         switch entry.mark {
         case .work:
             Text(entry.text).font(.serif(15)).foregroundStyle(Theme.vermilion)
-        case .moment:
-            Text(entry.text).font(.serif(15)).foregroundStyle(Theme.ink.opacity(0.9))
-        case .event:
-            Text(entry.text).font(.serif(15)).foregroundStyle(Theme.inkSoft)
+        case .numbered(_, let event):
+            Text(entry.text).font(.serif(15)).foregroundStyle(event ? Theme.inkSoft : Theme.ink.opacity(0.9))
         }
     }
 
-    /// The mark as on the line: the work's dot, a moment's numbered ring,
-    /// an event's lettered square.
+    /// The mark as on the line: the work's dot, a numbered ring (grey for
+    /// history).
     @ViewBuilder
     private func marker(_ mark: Mark) -> some View {
         switch mark {
         case .work:
             Circle().fill(Theme.vermilion).frame(width: 13, height: 13)
-        case .moment(let index):
+        case .numbered(let number, let event):
+            let colour = event ? Theme.inkSoft.opacity(0.7) : Theme.ink.opacity(0.75)
             Circle()
                 .fill(Theme.paper)
-                .overlay(Circle().strokeBorder(Theme.ink.opacity(0.75), lineWidth: 1.3))
+                .overlay(Circle().strokeBorder(colour, lineWidth: 1.3))
                 .overlay(
-                    Text(String(index + 1))
+                    Text(String(number))
                         .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(Theme.ink)
+                        .foregroundStyle(event ? Theme.inkSoft : Theme.ink)
                 )
                 .frame(width: Self.markSize, height: Self.markSize)
-        case .event(let index):
-            RoundedRectangle(cornerRadius: 3, style: .continuous)
-                .fill(Theme.hairline)
-                .overlay(
-                    Text(Self.letters[index])
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(Theme.inkSoft)
-                )
-                .frame(width: Self.markSize - 1, height: Self.markSize - 1)
         }
+    }
+
+    /// Where each mark sits: at its year, unless that is too close to its
+    /// neighbours; then a run of marks too close together is spread evenly
+    /// around their years' middle, as little as keeps them apart, and kept
+    /// off the ends.
+    private func places(in width: CGFloat) -> [CGFloat] {
+        let wanted = entries.map { x($0.year, in: width) }
+        guard !wanted.isEmpty else { return [] }
+        let gap = Self.spacing
+        let low = Self.inset + gap / 2, high = width - Self.inset - gap / 2
+        // Runs of marks, each as (first index, count, centre).
+        var runs: [(first: Int, count: Int, centre: CGFloat)] = []
+        func start(_ run: (first: Int, count: Int, centre: CGFloat)) -> CGFloat {
+            let half = CGFloat(run.count - 1) * gap / 2
+            return min(max(run.centre - half, low), max(high - 2 * half, low))
+        }
+        for (index, at) in wanted.enumerated() {
+            runs.append((index, 1, at))
+            // Merge with the run before while they overlap.
+            while runs.count > 1 {
+                let last = runs[runs.count - 1], before = runs[runs.count - 2]
+                let beforeEnd = start(before) + CGFloat(before.count - 1) * gap
+                guard start(last) - beforeEnd < gap else { break }
+                let count = before.count + last.count
+                let mean = wanted[before.first..<(before.first + count)].reduce(0, +) / CGFloat(count)
+                runs.removeLast(2)
+                runs.append((before.first, count, mean))
+            }
+        }
+        var placed: [CGFloat] = []
+        for run in runs {
+            let first = start(run)
+            placed += (0..<run.count).map { first + CGFloat($0) * gap }
+        }
+        return placed
     }
 
     private func x(_ year: Int, in width: CGFloat) -> CGFloat {
@@ -134,10 +174,12 @@ struct LifeLine: View {
 
     private func line(width: CGFloat) -> some View {
         let y = Self.lineY
+        let placed = places(in: width)
         return ZStack(alignment: .topLeading) {
-            Capsule()
+            // Past the birth and the death to the screen's edges.
+            Rectangle()
                 .fill(Theme.inkSoft.opacity(0.45))
-                .frame(width: max(width - 2 * Self.inset, 0), height: 2)
+                .frame(width: width + 2 * Self.overrun, height: 2)
                 .position(x: width / 2, y: y)
             // The two ends: short upright ticks, as on a ruler.
             ForEach([born, died], id: \.self) { year in
@@ -146,11 +188,8 @@ struct LifeLine: View {
                     .frame(width: 2, height: 10)
                     .position(x: x(year, in: width), y: y)
             }
-            ForEach(entries.filter { $0.mark != .work }, id: \.self) { entry in
-                marker(entry.mark).position(x: x(entry.year, in: width), y: y)
-            }
-            if let work {
-                marker(.work).position(x: x(work.year, in: width), y: y)
+            ForEach(Array(entries.enumerated()), id: \.element) { index, entry in
+                marker(entry.mark).position(x: placed[index], y: y)
             }
             Text("ur. \(String(born))")
                 .font(.caption2.weight(.semibold))
