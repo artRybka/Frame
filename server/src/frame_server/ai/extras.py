@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any
 
 from ..library.models import Note
 from .client import SONNET, request
-from .daily import EXTRAS_PROPS, _object, extras, request_text
+from .daily import EVENTS_RULE, EXTRAS_PROPS, PIGMENTS_RULE, _object, extras, request_text
 from .daily import KIND as DAILY
 from .jobs import NoteJob, Usage, text_hash
 from .study import KIND as STUDY
@@ -23,7 +23,9 @@ if TYPE_CHECKING:
     from .daily import DailyJob
 
 KIND = "study_extras"
-PROMPT_VERSION = "extras-1"
+PROMPT_VERSION = "extras-3"
+#: Pages whose paints were asked for with the likely ones too (2026-11-03).
+PAINTS = 2
 #: The pages it is written into.
 PAGES = (DAILY, STUDY)
 #: How long the list of pages wanting it is kept between looks.
@@ -31,7 +33,8 @@ PAGES_SECONDS = 30.0
 #: The sources (no picture), a short answer.
 TYPICAL = Usage(input_tokens=6000, cache_read_input_tokens=1500, output_tokens=1200)
 
-SYSTEM = """Uzupełniasz stronę o dziele w aplikacji domowej ramki: linię życia autora i farby, \
+SYSTEM = (
+    """Uzupełniasz stronę o dziele w aplikacji domowej ramki: linię życia autora i farby, \
 z których dzieło powstało. Naturalna, poprawna polszczyzna, jak w dobrym polskim muzeum. Fakty \
 bierz z podanych źródeł; wiedzę ogólną dopuszczasz tylko wtedy, gdy jesteś jej pewien jak \
 encyklopedia. Nie wymyślaj dat ani faktów: jeśli czegoś nie wiesz, pomiń to.
@@ -41,19 +44,27 @@ anonimowego lub warsztatu) albo autor żyje.
 - "milestones": 2–3 ważne chwile z życia autora na jego linii życia, w porządku lat: "year" \
 (rok) i "text" (najwyżej 50 znaków, bez kropki, np. „wstępuje do gildii św. Łukasza”, „wyjazd \
 do Paryża”). Bez urodzin, śmierci i powstania tego dzieła. Pusta lista, gdy ich nie znasz.
-- "pigments": 0–4 farby (pigmenty), z których to dzieło namalowano, TYLKO gdy wymienia je \
-opis muzeum, Wikipedia albo pewna wiedza encyklopedyczna o tym konkretnym dziele (badania \
-konserwatorskie). Nie zgaduj. Każda: "name" (polska nazwa, np. „ultramaryna naturalna”), \
-"hex" (barwa samej farby, np. "#2A4FA0"), "where" (gdzie na obrazie, 2–5 słów), "text" (jedno \
-zdanie o tej farbie, najwyżej 140 znaków: skąd się brała, ile kosztowała, co w niej \
-szczególnego). Pusta lista, gdy źródła milczą."""
+Obrazu tu nie widzisz: jego kolory podaje „Kolory (analiza serwera)”.
+"""
+    + EVENTS_RULE
+    + PIGMENTS_RULE
+)
 
 SCHEMA = _object(**EXTRAS_PROPS)
 
 
 def wants(note: Note | None) -> bool:
-    """A written page from before the line of life and the paints."""
-    return note is not None and "teaser" in note.data and "milestones" not in note.data
+    """A written page from before the line of life, its historical events
+    and the paints, or without paints from before the likely ones were
+    asked for."""
+    if note is None or "teaser" not in note.data:
+        return False
+    data = note.data
+    return (
+        "milestones" not in data
+        or "events" not in data
+        or (not data.get("pigments") and data.get("paints") != PAINTS)
+    )
 
 
 class ExtrasJob(NoteJob):
@@ -102,14 +113,21 @@ class ExtrasJob(NoteJob):
         """Puts what it found in each of the work's pages wanting it (also
         nothing: an empty line of life is not asked for again)."""
         found = extras(note.data)
-        data = {
+        paints = {"pigments": [p.model_dump() for p in found["pigments"]], "paints": PAINTS}
+        events = {"events": [e.model_dump() for e in found["events"]]}
+        life = {
             "born": found["born"],
             "died": found["died"],
             "milestones": [m.model_dump() for m in found["milestones"]],
-            "pigments": [p.model_dump() for p in found["pigments"]],
         }
         for kind in PAGES:
             page = self.library.note(item.id, kind)
             if wants(page) and page is not None:
+                # A page keeps what it has: its line of life, its paints.
+                data: dict[str, Any] = dict(events)
+                if "milestones" not in page.data:
+                    data.update(life)
+                if not page.data.get("pigments"):
+                    data.update(paints)
                 self.library.save_note(page.model_copy(update={"data": {**page.data, **data}}))
         self._pages = (0.0, set())

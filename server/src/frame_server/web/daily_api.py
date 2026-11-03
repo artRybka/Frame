@@ -105,6 +105,8 @@ class DailyWork(BaseModel):
     born: int | None = None
     died: int | None = None
     milestones: list[Milestone] = []
+    #: Historical events in the artist's lifetime, on their line of life.
+    events: list[Milestone] = []
     pigments: list[Pigment] = []
     #: How big the work really is, in centimetres ("Prawdziwy rozmiar").
     size: RealSize | None = None
@@ -259,6 +261,7 @@ def page(
         born=born,
         died=died,
         milestones=essay.milestones if essay else [],
+        events=essay.events if essay else [],
         pigments=essay.pigments if essay else [],
         size=size,
         legacy_pending=bool(lists and essay and svc.later.look_soon(item, essay.legacy)) or looking,
