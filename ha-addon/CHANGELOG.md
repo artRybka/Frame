@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.92.1
+
+- Aktualizacja serwera nie usypia już ramki na ładowarce. Aplikacja na
+  ramce, która przez chwilę nie dosięgnie serwera, na ładowarce czeka
+  przytomna i pyta znowu po minucie, dwóch, najwyżej pięciu; na baterii
+  zasypia jak dotąd.
+- Ramka, która ucichła tuż przed restartem serwera, nie jest już
+  pokazywana jako „Na baterii”, bo nikt jej nie odpiął. Serwer próbuje
+  ją wtedy obudzić przez sieć.
+
 ## 1.92.0
 
 - Studium dzieła: tytuł jest na karteczce tuż pod obrazem, na jego

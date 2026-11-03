@@ -271,6 +271,57 @@ async def test_a_panel_asleep_by_itself(
     assert not service.status.status.wifi_lost
 
 
+async def test_a_frame_silent_since_the_servers_restart_was_not_unplugged(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """2026-11-03, 22:56: a server update. The app on the charger found no
+    server for ~20 s and slept until it would try again; the server, back
+    up, found it silent and not answering MDC and took it for unplugged: "Na
+    baterii", no magic packet. Silent since before the server started: the
+    charger is still in. Off the Wi-Fi (no alarm and no magic packet woke
+    it that night), but a magic packet is tried."""
+
+    async def presence(host: str) -> bool | None:
+        return True
+
+    monkeypatch.setattr(status_module, "on_network", presence)
+    monkeypatch.setattr(power, "WAKE_LOOK", timedelta(seconds=0.3))
+    service = FrameService(_settings(tmp_path, _closed_port()))
+    app = service.app
+    sent: list[int] = []
+
+    async def wake(seconds: int = 0) -> bool:
+        sent.append(seconds)
+        return True
+
+    monkeypatch.setattr(service.panel, "wake", wake)
+    seen = _at("2026-11-03T21:56:03")
+    service.status.status.power_source = "ac"
+    service.status.status.charging = True
+    assert app.answer(AppHello(charging=True), now=seen).action == "stay"
+    app.heard_at = None  # the new server has not heard it
+    app.started_at = _at("2026-11-03T21:56:53")
+    await service.power.tick(_at("2026-11-03T21:59:09"))
+    await asyncio.sleep(0.5)
+    assert app.asleep() and app.deep_asleep() and app.state.wifi_lost
+    status = service.status.status
+    assert status.power_source == "ac" and status.power_state == "deep_sleep"
+    assert status.wifi_lost
+    assert sent == [power.WAKE_BURST_SECONDS]
+    # Its own alarm for the next try is noted with the spare ones.
+    retry = seen.astimezone(UTC) + timedelta(minutes=15, seconds=30)
+    assert retry.isoformat(timespec="seconds") in app.state.wakes
+
+    # Silent with the server up all along: unplugged, as before.
+    service.status.status.power_source = "ac"
+    later = _at("2026-11-03T23:00")
+    assert app.answer(AppHello(charging=True), now=later).action == "stay"
+    app.heard_at = None
+    await service.power.tick(later + timedelta(minutes=4))
+    assert app.deep_asleep() and app.state.wifi_lost
+    assert service.status.status.power_source == "battery"
+
+
 async def test_a_sleep_in_the_network_found_off_the_wifi(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
