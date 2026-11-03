@@ -1602,6 +1602,15 @@ struct DailyWork: Codable, Hashable, Sendable {
         var sure: Bool? = nil
     }
 
+    /// One of the analyses of the composition the page has had (server
+    /// 1.88): the owner picks the one it shows.
+    struct CompositionVersion: Codable, Hashable, Sendable {
+        /// When it was made (ISO time).
+        var made: String
+        /// The one the page shows.
+        var shown: Bool
+    }
+
     /// How big the work really is, in centimetres.
     struct RealSize: Codable, Hashable, Sendable {
         var height: Double
@@ -1628,6 +1637,12 @@ struct DailyWork: Codable, Hashable, Sendable {
     /// A short note about the artist.
     var artist: String?
     var composition: Composition?
+    /// Every analysis of the composition the page has had, oldest first,
+    /// once the owner asked for one anew (else empty; nil from servers
+    /// before 1.88).
+    var compositionVersions: [CompositionVersion]? = nil
+    /// The owner asked for the analysis anew and Claude is making it.
+    var compositionPending: Bool? = nil
     var colour: String
     /// Nil from 0.42 servers.
     var details: [Detail]?
@@ -1713,6 +1728,20 @@ struct StudyView: Codable, Hashable, Sendable {
     static let pending: Set<String> = ["waiting", "sources", "writing", "details"]
 
     var isPending: Bool { Self.pending.contains(status) }
+}
+
+/// `POST`/`GET`/`PUT /api/study/{id}/composition`: the work's analysis of
+/// the composition asked for anew (the owner, held "Analiza kompozycji").
+struct CompositionAgain: Codable, Hashable, Sendable {
+    /// Claude is making it.
+    var pending: Bool
+    /// How many analyses the work's page has had.
+    var versions: Int
+}
+
+/// `PUT /api/study/{id}/composition`: which analysis the page shows.
+struct CompositionPick: Codable, Hashable, Sendable {
+    var shown: Int
 }
 
 /// `PUT /api/study/{id}/activity`: the Lock Screen card's push token.

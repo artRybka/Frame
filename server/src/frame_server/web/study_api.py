@@ -14,6 +14,8 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 
+from ..ai.composition import KIND as COMPOSITION
+from ..ai.composition import PAGES, versions
 from ..ai.daily import Detail
 from ..library import Item
 from ..library.markup import strip_markup
@@ -22,7 +24,7 @@ from ..service import FrameService
 from ..study import PENDING, Status
 from ..users import User
 from .daily_api import DailyWork, page
-from .deps import CurrentUser, require_token, service
+from .deps import CurrentUser, require_owner, require_token, service
 from .library_api import RemoteItem, remote_items
 from .library_api import _work as find_work
 
@@ -192,3 +194,61 @@ async def study_detail(
     if path is None:
         raise HTTPException(404, "no such fragment")
     return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "max-age=604800"})
+
+
+class CompositionAgain(BaseModel):
+    """Where the work's analysis of the composition asked for anew is: on
+    its way, and how many analyses its page has had (the app asks for the
+    page again once it is no longer on its way)."""
+
+    pending: bool
+    versions: int
+
+
+class CompositionPick(BaseModel):
+    #: Which of the page's analyses it shows (``DailyWork.composition_versions``).
+    shown: int
+
+
+def _again_state(svc: FrameService, item_id: str) -> CompositionAgain:
+    pages = [svc.library.note(item_id, kind) for kind in PAGES]
+    counts = [len(versions(p.data)) for p in pages if p is not None]
+    return CompositionAgain(pending=svc.compose.pending(item_id), versions=max(counts, default=0))
+
+
+@router.post(
+    "/study/{item_id}/composition",
+    response_model=CompositionAgain,
+    dependencies=[Depends(require_owner)],
+)
+async def composition_again(item_id: str, svc: Svc) -> CompositionAgain:
+    """The owner's "Wykonaj ponowną analizę" (held header "Analiza
+    kompozycji" on the work's page): the analysis asked for anew, ahead of
+    the background; the one the page shows is kept among its versions."""
+    item = svc.library.get(item_id)
+    if item is None:
+        raise HTTPException(404, "no such work")
+    if not svc.compose.enabled():
+        raise HTTPException(409, "Claude jest wyłączony: dodaj klucz API w Konfiguracji.")
+    if not await run_in_threadpool(svc.compose.again, item):
+        raise HTTPException(409, "To dzieło nie ma jeszcze studium.")
+    svc.ai.need_now(item_id, COMPOSITION)
+    return await run_in_threadpool(_again_state, svc, item_id)
+
+
+@router.get("/study/{item_id}/composition", response_model=CompositionAgain)
+async def composition_state(item_id: str, svc: Svc) -> CompositionAgain:
+    return await run_in_threadpool(_again_state, svc, item_id)
+
+
+@router.put(
+    "/study/{item_id}/composition",
+    response_model=CompositionAgain,
+    dependencies=[Depends(require_owner)],
+)
+async def composition_pick(item_id: str, pick: CompositionPick, svc: Svc) -> CompositionAgain:
+    """The owner's pick among the page's analyses: the one it shows."""
+    item = svc.library.get(item_id)
+    if item is None or not await run_in_threadpool(svc.compose.choose, item, pick.shown):
+        raise HTTPException(404, "no such analysis")
+    return await run_in_threadpool(_again_state, svc, item_id)

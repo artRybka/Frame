@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.90.0
+
+- Studium dzieła, tylko dla właściciela: przytrzymanie nagłówka „Analiza
+  kompozycji” otwiera menu z „Wykonaj ponowną analizę”. Claude analizuje
+  kompozycję od nowa (to trwa kilka minut, pod nagłówkiem widać, że
+  pracuje), a nowa analiza zastępuje pokazywaną. Poprzednie zostają: gdy
+  jest ich kilka, to samo menu pozwala wybrać, którą pokazywać. Domownicy
+  widzą zwykły nagłówek.
+
 ## 1.89.0
 
 - Tailscale wbudowany w aplikację: spoza domu Frame łączy się z serwerem

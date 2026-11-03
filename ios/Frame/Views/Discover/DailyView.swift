@@ -109,6 +109,9 @@ struct DailyView: View {
     @State private var cropHome: CGRect?
     /// Held open, the preview had grown a touch: the frame starts that size.
     @State private var cropGrow: CGFloat = 1
+    /// "Wykonaj ponowną analizę" sent: how many analyses the page had
+    /// before, to tell once the new one is here (or came to nothing).
+    @State private var analysingFrom: Int?
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -194,6 +197,7 @@ struct DailyView: View {
             }
         }
         .task(id: cropKey) { await loadFraming() }
+        .task(id: work?.compositionPending == true || analysingFrom != nil) { await followAnalysis() }
     }
 
     @ViewBuilder
@@ -761,10 +765,22 @@ struct DailyView: View {
 
     /// The take as pencil over the picture in full colour ("Analiza
     /// kompozycji"; chips to switch only when an older server sends more
-    /// than one); the take's text under it in the page's own type.
+    /// than one); the take's text under it in the page's own type. The
+    /// owner holds the title for a menu: the analysis made anew, and once
+    /// there are several, the one the page shows (Mateusz 2026-11-03).
     private func compositionSection(_ work: DailyWork, _ takes: [DailyWork.Take]) -> some View {
         let shown = takes[min(take, takes.count - 1)]
-        return section("Analiza kompozycji") {
+        return VStack(alignment: .leading, spacing: 10) {
+            compositionTitle(work)
+            if work.compositionPending == true || analysingFrom != nil {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text("Claude analizuje kompozycję od nowa…")
+                        .font(.footnote)
+                        .foregroundStyle(Theme.inkSoft)
+                }
+                .transition(.opacity)
+            }
             if takes.count > 1 {
                 HStack(spacing: 6) {
                     ForEach(Array(takes.enumerated()), id: \.offset) { index, each in
@@ -791,6 +807,111 @@ struct DailyView: View {
                 .padding(.top, 4)
             if !shown.text.isEmpty { prose(shown.text, size: 15) }
         }
+        .animation(.easeOut(duration: 0.25), value: work.compositionPending == true || analysingFrom != nil)
+    }
+
+    /// "Analiza kompozycji": for the owner, held, a menu to make it anew
+    /// and to pick among the analyses made; for the household, a title.
+    @ViewBuilder
+    private func compositionTitle(_ work: DailyWork) -> some View {
+        let title = Text("Analiza kompozycji")
+            .font(.serif(20, weight: .semibold))
+            .foregroundStyle(Theme.ink)
+        if model.isOwner, work.written, work.compositionVersions != nil {
+            title
+                .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .contextMenu { compositionMenu(work) }
+                .accessibilityAction(named: "Wykonaj ponowną analizę") { analyseAgain(work) }
+        } else {
+            title
+        }
+    }
+
+    @ViewBuilder
+    private func compositionMenu(_ work: DailyWork) -> some View {
+        let versions = work.compositionVersions ?? []
+        let busy = work.compositionPending == true || analysingFrom != nil
+        Button("Wykonaj ponowną analizę", systemImage: "arrow.clockwise") { analyseAgain(work) }
+            .disabled(busy)
+        if versions.count > 1 {
+            Section("Wersje analizy") {
+                ForEach(Array(versions.enumerated()).reversed(), id: \.offset) { index, version in
+                    let label = ["Analiza \(index + 1)", When.past(version.made)].compactMap { $0 }.joined(separator: " · ")
+                    Button {
+                        pickAnalysis(work, index)
+                    } label: {
+                        if version.shown { Label(label, systemImage: "checkmark") } else { Text(label) }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Asks the server for the analysis anew; the page shows it is on its
+    /// way (minutes: Claude looks long) and follows it (`followAnalysis`).
+    private func analyseAgain(_ work: DailyWork) {
+        let before = max((work.compositionVersions ?? []).count, 1)
+        Task {
+            do {
+                _ = try await model.backend.compositionAgain(itemID: work.item.id)
+                analysingFrom = before
+                await refreshPage()
+            } catch {
+                model.show(error)
+            }
+        }
+    }
+
+    /// The owner's pick: the page shows that analysis from now on.
+    private func pickAnalysis(_ work: DailyWork, _ index: Int) {
+        guard work.compositionVersions?.indices.contains(index) == true,
+              work.compositionVersions?[index].shown != true else { return }
+        Task {
+            do {
+                _ = try await model.backend.pickComposition(itemID: work.item.id, shown: index)
+                take = 0
+                await refreshPage()
+            } catch {
+                model.show(error)
+            }
+        }
+    }
+
+    /// While the analysis asked for anew is being made: asked after every
+    /// few seconds, the page fetched again once it is here.
+    private func followAnalysis() async {
+        guard let id = work?.item.id, work?.compositionPending == true || analysingFrom != nil else { return }
+        for _ in 0..<120 {  // ten minutes; the page says it is still on its way after
+            try? await Task.sleep(for: .seconds(5))
+            if Task.isCancelled { return }
+            guard let state = try? await model.backend.compositionState(itemID: id) else { continue }
+            guard !state.pending else { continue }
+            let before = analysingFrom
+            await refreshPage()
+            analysingFrom = nil
+            if let before {
+                if state.versions > before {
+                    model.notices.done("Nowa analiza kompozycji")
+                } else {
+                    model.notices.fail("Nie udało się wykonać analizy", "Poprzednia analiza zostaje.")
+                }
+            }
+            return
+        }
+        analysingFrom = nil
+    }
+
+    /// The page's text fetched again (the lists on it stay).
+    private func refreshPage() async {
+        let fresh: DailyWork?
+        if let id = route.study, route.day == nil || work?.day.isEmpty == true {
+            fresh = try? await model.backend.study(itemID: id, wait: 0, lists: false).work
+        } else {
+            fresh = try? await model.backend.daily(day: route.day, wait: 0, lists: false)
+        }
+        guard let fresh else { return }
+        withAnimation(.easeInOut(duration: 0.25)) { show(fresh) }
+        if route.day == nil, route.study == nil, let work { model.daily = work }
     }
 
     /// Fragments cut from the original, side by side to swipe through (the

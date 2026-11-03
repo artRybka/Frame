@@ -293,6 +293,20 @@ struct LiveBackend: FrameBackend {
         return try await perform(request("/api/study/\(escape(itemID))", method: "POST", query: query))
     }
 
+    func compositionAgain(itemID: String) async throws -> CompositionAgain {
+        try await send("/api/study/\(escape(itemID))/composition", method: "POST")
+    }
+
+    func compositionState(itemID: String) async throws -> CompositionAgain {
+        try await get("/api/study/\(escape(itemID))/composition")
+    }
+
+    func pickComposition(itemID: String, shown: Int) async throws -> CompositionAgain {
+        try await send(
+            "/api/study/\(escape(itemID))/composition", method: "PUT", body: CompositionPick(shown: shown)
+        )
+    }
+
     func followStudy(itemID: String, activityToken: String, sandbox: Bool) async throws {
         try await send(
             "/api/study/\(escape(itemID))/activity", method: "PUT",
