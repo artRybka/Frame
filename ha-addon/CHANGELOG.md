@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.82.1
+
+- Kopie dzieła: kopii z „Nie pasują” (z marginesem, sam fragment, inne
+  dzieło o podobnym tytule) też można użyć. Po stuknięciu widać porównanie
+  z obecnym zdjęciem, krótkie wyjaśnienie, czemu kopia nie pasuje,
+  i przycisk „Użyj mimo to”. Kopię z marginesem przytniesz potem
+  w Kadrowaniu.
+
 ## 1.82.0
 
 - Studium dzieła, „O autorze”: nad notką jest teraz wyraźnie imię i

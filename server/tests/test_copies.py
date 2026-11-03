@@ -200,19 +200,21 @@ def test_the_owner_picks_a_copy_and_goes_back(app: Any) -> None:
         assert max(img.size) == 1686
 
 
-def test_another_picture_is_refused(app: Any) -> None:
+def test_a_copy_that_does_not_fit_can_be_picked_all_the_same(app: Any) -> None:
     client, service, web, _ = app
     own = _own(service)
     other = _copy(4, title="Ville-d'Avray")
     _offer(web, other, _print(7, (3600, 2400)))
     service.importer.remember([other])
+    # Shown side by side at the same place, though not laid over the work.
+    spot = client.get(f"/api/library/items/{own.id}/copies/wmc:4/spot")
+    assert spot.status_code == 200 and spot.json()["copy"]
+    # The owner has seen it and decides.
     resp = client.put(f"/api/library/items/{own.id}/copy", json={"item_id": "wmc:4"})
-    assert resp.status_code == 422
+    assert resp.status_code == 200 and resp.json()["sharper"]["item_id"] == "wmc:4"
     assert (
         client.put(f"/api/library/items/{own.id}/copy", json={"item_id": "xx:1"}).status_code == 404
     )
-    stored = service.library.get(own.id)
-    assert stored is not None and stored.sharper is None
 
 
 def test_one_spot_in_both_pictures_at_the_frames_scale(app: Any) -> None:
