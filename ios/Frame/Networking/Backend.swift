@@ -129,6 +129,12 @@ protocol FrameBackend: Sendable {
     func compositionState(itemID: String) async throws -> CompositionAgain
     /// The owner's pick among the page's analyses (`DailyWork.compositionVersions`).
     func pickComposition(itemID: String, shown: Int) async throws -> CompositionAgain
+    /// The owner's "Popraw detale": each of the page's details checked over
+    /// its cut, a box that misses drawn anew (a minute or two). 409: no
+    /// key, or no page with details yet.
+    func detailsAgain(itemID: String) async throws -> DetailsAgain
+    /// Whether the details' check is still on its way, and what it moved.
+    func detailsState(itemID: String) async throws -> DetailsAgain
     /// The push token of the Lock Screen card following the work's study:
     /// the server pushes each step to it.
     func followStudy(itemID: String, activityToken: String, sandbox: Bool) async throws

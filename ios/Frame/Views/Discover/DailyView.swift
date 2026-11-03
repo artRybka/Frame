@@ -112,6 +112,9 @@ struct DailyView: View {
     /// "Wykonaj ponowną analizę" sent: how many analyses the page had
     /// before, to tell once the new one is here (or came to nothing).
     @State private var analysingFrom: Int?
+    /// "Popraw detale" sent: Claude is checking the details (until the
+    /// server says it is done).
+    @State private var mending = false
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -198,6 +201,7 @@ struct DailyView: View {
         }
         .task(id: cropKey) { await loadFraming() }
         .task(id: work?.compositionPending == true || analysingFrom != nil) { await followAnalysis() }
+        .task(id: work?.detailsPending == true || mending) { await followMending() }
     }
 
     @ViewBuilder
@@ -206,7 +210,8 @@ struct DailyView: View {
             // The picture stays put while the page fades in under it: the
             // placeholder's thumbnail and the page's picture, faded one over
             // the other, blinked it.
-            VStack(alignment: .leading, spacing: 14) {
+            // The title's slip 6 pt under the picture, its own thing.
+            VStack(alignment: .leading, spacing: 6) {
                 picture(work)
                 ZStack(alignment: .top) {
                     if let work {
@@ -276,12 +281,13 @@ struct DailyView: View {
         return VStack(alignment: .leading, spacing: 26) {
             Group {
                 if let peek {
-                    Text(peek.title.isEmpty ? "Bez tytułu" : peek.title)
-                        .font(.serif(26, weight: .semibold))
-                        .foregroundStyle(Theme.ink)
-                        .fixedSize(horizontal: false, vertical: true)
+                    // The artist alone: the date in Polish comes with the page.
+                    TitleSlip(
+                        title: peek.title.isEmpty ? "Bez tytułu" : peek.title,
+                        byline: TitleSlip.byline(peek.item, date: "")
+                    )
                 } else {
-                    TitleSkeleton()
+                    TitleSkeleton().padding(.top, 8)
                 }
             }
             VStack(alignment: .leading, spacing: 9) {
@@ -430,8 +436,9 @@ struct DailyView: View {
 
     @ViewBuilder
     private func content(_ work: DailyWork) -> some View {
-        // A little more air after each section (Mateusz 2026-11-03).
-        VStack(alignment: .leading, spacing: 36) {
+        // A little more air after each section (Mateusz 2026-11-03); a
+        // little less after the title's slip.
+        VStack(alignment: .leading, spacing: 24) {
             VStack(alignment: .leading, spacing: 14) {
                 header(work)
                 if !work.whyToday.isEmpty { whyToday(work.whyToday) }
@@ -444,61 +451,63 @@ struct DailyView: View {
                     }
                 }
             }
-            if !work.context.isEmpty {
-                section(work.headline ?? "Co mówi muzeum") {
-                    ForEach(Array(work.context.enumerated()), id: \.offset) { _, paragraph in
-                        prose(paragraph)
+            VStack(alignment: .leading, spacing: 36) {
+                if !work.context.isEmpty {
+                    section(work.headline ?? "Co mówi muzeum") {
+                        ForEach(Array(work.context.enumerated()), id: \.offset) { _, paragraph in
+                            prose(paragraph)
+                        }
                     }
                 }
-            }
-            // Also over the museum's text alone: the only place the artist is named.
-            if !(work.artist ?? "").isEmpty || !Names.person(work.item.item.artist).isEmpty {
-                author(work, work.artist ?? "").id("author")
-            }
-            if let takes = work.composition?.takes, !takes.isEmpty {
-                compositionSection(work, takes).id("composition")
-            }
-            if !work.colour.isEmpty || !work.item.item.colors.isEmpty || !(work.pigments ?? []).isEmpty {
-                section("Kolor i światło") {
-                    if !work.item.item.colors.isEmpty { PaletteStrip(swatches: work.item.item.colors, height: 26, cornerRadius: 6) }
-                    if !work.colour.isEmpty { prose(work.colour) }
-                    if let pigments = work.pigments, !pigments.isEmpty { self.pigments(pigments) }
+                // Also over the museum's text alone: the only place the artist is named.
+                if !(work.artist ?? "").isEmpty || !Names.person(work.item.item.artist).isEmpty {
+                    author(work, work.artist ?? "").id("author")
                 }
-                .id("colour")
-            }
-            if let details = work.details, !details.isEmpty {
-                section("Detale") { self.details(work, details) }.id("details")
-            }
-            // Right after "Detale", ahead of the lists (Mateusz 2026-11-03).
-            if let size = work.size, size.height > 0, size.width > 0 {
-                section("Rozmiar obrazu") {
-                    RealSizeDrawing(work: work.item, height: size.height, width: size.width, column: columnWidth)
-                        .padding(.top, 4)
+                if let takes = work.composition?.takes, !takes.isEmpty {
+                    compositionSection(work, takes).id("composition")
                 }
-                .id("size")
-                // A work studied before the sizes were looked up gets its
-                // size a moment later, once: it fades in, no jump.
-                .transition(.opacity)
-            }
-            if !similarWorks(work).isEmpty { section("Podobne dzieła") { similar(similarWorks(work)) } }
-            if !work.legacy.isEmpty { section("Dalsze losy") { legacy(work.legacy) }.id("legacy") }
-            if let others = work.byArtist, !others.isEmpty {
-                section("Inne prace artysty") { byArtist(Array(others.prefix(Self.byArtistShown))) }.id("artist")
-            }
-            if let then = work.sameTime, !then.isEmpty {
-                section("Inni w tym samym czasie") { sameTime(then) }.id("sametime")
-            }
-            if listsComing(work) {
-                HStack(spacing: 8) {
-                    ProgressView().controlSize(.small)
-                    Text("Wczytuję podobne i inne prace artysty…")
-                        .font(.footnote)
-                        .foregroundStyle(Theme.inkSoft)
+                if !work.colour.isEmpty || !work.item.item.colors.isEmpty || !(work.pigments ?? []).isEmpty {
+                    section("Kolor i światło") {
+                        if !work.item.item.colors.isEmpty { PaletteStrip(swatches: work.item.item.colors, height: 26, cornerRadius: 6) }
+                        if !work.colour.isEmpty { prose(work.colour) }
+                        if let pigments = work.pigments, !pigments.isEmpty { self.pigments(pigments) }
+                    }
+                    .id("colour")
                 }
-                .transition(.opacity)
+                if let details = work.details, !details.isEmpty {
+                    detailsSection(work, details).id("details")
+                }
+                // Right after "Detale", ahead of the lists (Mateusz 2026-11-03).
+                if let size = work.size, size.height > 0, size.width > 0 {
+                    section("Rozmiar obrazu") {
+                        RealSizeDrawing(work: work.item, height: size.height, width: size.width, column: columnWidth)
+                            .padding(.top, 4)
+                    }
+                    .id("size")
+                    // A work studied before the sizes were looked up gets its
+                    // size a moment later, once: it fades in, no jump.
+                    .transition(.opacity)
+                }
+                if !similarWorks(work).isEmpty { section("Podobne dzieła") { similar(similarWorks(work)) } }
+                if !work.legacy.isEmpty { section("Dalsze losy") { legacy(work.legacy) }.id("legacy") }
+                if let others = work.byArtist, !others.isEmpty {
+                    section("Inne prace artysty") { byArtist(Array(others.prefix(Self.byArtistShown))) }.id("artist")
+                }
+                if let then = work.sameTime, !then.isEmpty {
+                    section("Inni w tym samym czasie") { sameTime(then) }.id("sametime")
+                }
+                if listsComing(work) {
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text("Wczytuję podobne i inne prace artysty…")
+                            .font(.footnote)
+                            .foregroundStyle(Theme.inkSoft)
+                    }
+                    .transition(.opacity)
+                }
+                section("Na Twojej ramce") { onFrame(work) }
+                footer(work).id("end")
             }
-            section("Na Twojej ramce") { onFrame(work) }
-            footer(work).id("end")
         }
     }
 
@@ -581,18 +590,18 @@ struct DailyView: View {
         return item.originalRef
     }
 
-    /// The title alone (Mateusz 2026-11-03): the artist is named in "O
-    /// autorze".
+    /// The title on its slip under the picture, the artist and the date
+    /// under it (Mateusz 2026-11-03).
     private func header(_ work: DailyWork) -> some View {
         let item = work.item.item
         let original = OriginalTitle.of(item.title, shown: work.title)
-        return Text(peeking ? original ?? work.title : work.title)
-            .font(.serif(26, weight: .semibold))
-            .foregroundStyle(Theme.ink)
-            .fixedSize(horizontal: false, vertical: true)
-            .contentTransition(.opacity)
-            // Held: the museum's own, until held again.
-            .titlePeek(enabled: original != nil, peeking: $peeking)
+        return TitleSlip(
+            title: peeking ? original ?? work.title : work.title,
+            byline: TitleSlip.byline(item, date: work.date),
+            peekable: original != nil,
+            peeking: $peeking,
+            onArtist: item.artist.isEmpty ? nil : { model.artistSearch = item.artist }
+        )
     }
 
     /// "Pokaż na ramce" (held: for longer), at the end by "Na Twojej ramce".
@@ -925,6 +934,88 @@ struct DailyView: View {
         guard let fresh else { return }
         withAnimation(.easeInOut(duration: 0.25)) { show(fresh) }
         if route.day == nil, route.study == nil, let work { model.daily = work }
+    }
+
+    /// "Detale"; the owner holds the title for "Popraw detale" (Mateusz
+    /// 2026-11-03: "Na żądanie, przytrzymaniem"): Claude checks each
+    /// fragment over its cut and draws anew a box that misses.
+    private func detailsSection(_ work: DailyWork, _ details: [DailyWork.Detail]) -> some View {
+        let busy = work.detailsPending == true || mending
+        return VStack(alignment: .leading, spacing: 10) {
+            detailsTitle(work, busy: busy)
+            if busy {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text("Claude sprawdza kadry detali…")
+                        .font(.footnote)
+                        .foregroundStyle(Theme.inkSoft)
+                }
+                .transition(.opacity)
+            }
+            self.details(work, details)
+        }
+        .animation(.easeOut(duration: 0.25), value: busy)
+    }
+
+    @ViewBuilder
+    private func detailsTitle(_ work: DailyWork, busy: Bool) -> some View {
+        let title = Text("Detale")
+            .font(.serif(20, weight: .semibold))
+            .foregroundStyle(Theme.ink)
+        // Servers before 1.92.0 send no `detailsPending`: nothing to hold.
+        if model.isOwner, work.written, work.detailsPending != nil {
+            title
+                .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .contextMenu {
+                    Button("Popraw detale", systemImage: "crop") { mendDetails(work) }
+                        .disabled(busy)
+                }
+                .accessibilityAction(named: "Popraw detale") { mendDetails(work) }
+        } else {
+            title
+        }
+    }
+
+    /// Asks the server to check the details; the page shows it is on its
+    /// way and follows it (`followMending`).
+    private func mendDetails(_ work: DailyWork) {
+        Task {
+            do {
+                _ = try await model.backend.detailsAgain(itemID: work.item.id)
+                mending = true
+                await refreshPage()
+            } catch {
+                model.show(error)
+            }
+        }
+    }
+
+    /// While the details are being checked: asked after every few seconds,
+    /// the page fetched again once they are done (the fragments cut anew).
+    private func followMending() async {
+        guard let id = work?.item.id, work?.detailsPending == true || mending else { return }
+        for _ in 0..<60 {  // five minutes
+            try? await Task.sleep(for: .seconds(5))
+            if Task.isCancelled { return }
+            guard let state = try? await model.backend.detailsState(itemID: id) else { continue }
+            guard !state.pending else { continue }
+            let asked = mending
+            await refreshPage()
+            mending = false
+            if asked {
+                switch state.moved {
+                case nil:
+                    model.notices.fail("Nie udało się sprawdzić detali", "Detale zostają jak były.")
+                case let moved? where moved.isEmpty:
+                    model.notices.done("Detale są dobrze wykadrowane")
+                case let moved?:
+                    let count = BatteryText.count(Double(moved.count), one: "detal", few: "detale", many: "detali")
+                    model.notices.done("Poprawiono \(count)", moved.joined(separator: ", "))
+                }
+            }
+            return
+        }
+        mending = false
     }
 
     /// Fragments cut from the original, side by side to swipe through (the
@@ -1309,6 +1400,69 @@ enum DailyPeeks {
         if let id = route.study, work.partial != true, work.item.id == id {
             if studies.count > 60 { studies.removeAll() }
             studies[id] = work
+        }
+    }
+}
+
+/// The study's title on a slip 6 pt under the picture, as wide as it:
+/// black with white letters, cream with dark ones in the dark style; the
+/// title in the buttons' letters (plain, semibold, capitals, spaced out),
+/// under it, finer and lighter, the artist and the date (Mateusz
+/// 2026-11-03, "Tytuł na karteczce"). Held, the title turns into the
+/// museum's own; a long one (some run to 150 characters) is in plain
+/// letters, hard to read in capitals. Held, the artist looks for their other
+/// works on Szukaj, as in "O autorze".
+struct TitleSlip: View {
+    var title: String
+    var byline: String
+    var peekable = false
+    var peeking: Binding<Bool> = .constant(false)
+    var onArtist: (() -> Void)?
+
+    static let ground = Color(light: 0x111010, dark: 0xEDE8DF)
+    static let ink = Color(light: 0xFFFFFF, dark: 0x121110)
+    static let soft = Color(light: 0xF5F1EA, dark: 0x1D1B18).opacity(0.7)
+    /// Up to this many characters, the title is in capitals.
+    static let capitals = 60
+
+    /// "Katsushika Hokusai · ok. 1830–1832": first name first, then the
+    /// date the page gives (in Polish once the work's texts are), else
+    /// the museum's; "" leaves it out.
+    static func byline(_ item: Item, date: String?) -> String {
+        let date = date ?? item.dateText
+        return [Names.person(item.artist), date].filter { !$0.isEmpty }.joined(separator: " · ")
+    }
+
+    var body: some View {
+        let plain = title.count > Self.capitals
+        VStack(alignment: .leading, spacing: 5) {
+            Text(plain ? title : title.uppercased(with: Locale(identifier: "pl_PL")))
+                .font(.system(size: plain ? 14.5 : 15, weight: .semibold))
+                .tracking(plain ? 0 : 1.6)
+                .foregroundStyle(Self.ink)
+                .fixedSize(horizontal: false, vertical: true)
+                .contentTransition(.opacity)
+                // Held: the museum's own, until held again.
+                .titlePeek(enabled: peekable, peeking: peeking)
+            if !byline.isEmpty { bylineText }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Self.ground, in: RoundedRectangle(cornerRadius: LabelButton.corner, style: .continuous))
+        .animation(.easeInOut(duration: 0.3), value: title)
+    }
+
+    @ViewBuilder
+    private var bylineText: some View {
+        let text = Text(byline)
+            .font(.system(size: 13, weight: .light))
+            .foregroundStyle(Self.soft)
+            .fixedSize(horizontal: false, vertical: true)
+        if let onArtist {
+            text.artistPress(onArtist)
+        } else {
+            text
         }
     }
 }

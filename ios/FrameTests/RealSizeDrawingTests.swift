@@ -6,18 +6,27 @@ import XCTest
 final class RealSizeDrawingTests: XCTestCase {
     private let column: CGFloat = 350
 
-    func testASmallWorkIsBroughtCloseAndHisLegsFade() {
+    func testASmallWorkIsBroughtCloseWithHisBust() {
         // "Wielka fala", 25.7 × 37.9 cm: as wide as the column allows.
         let plan = RealSizeDrawing.plan(height: 25.7, width: 37.9, column: column)
         XCTAssertGreaterThan(plan.picture.width, 90)
         XCTAssertTrue(plan.cropped)
-        XCTAssertEqual(plan.cut, 10 + RealSizeDrawing.room)
+        // Cut just under his jacket, never anywhere else.
+        let shown = (plan.cut - plan.man.minY) / plan.scale
+        XCTAssertEqual(shown, CGFloat(180 - RealSizeDrawing.waist), accuracy: 0.5)
         XCTAssertEqual(plan.height, ceil(plan.cut + 1))
-        // His head and the work's top are in the drawing.
+        // His head and the work's top are in the drawing, the work above the cut.
         XCTAssertGreaterThanOrEqual(plan.man.minY, 0)
         XCTAssertGreaterThanOrEqual(plan.picture.minY, 0)
-        // Never so close that less than 80 cm of him shows.
-        XCTAssertLessThanOrEqual(plan.scale, RealSizeDrawing.room / RealSizeDrawing.leastOfHim + 0.001)
+        XCTAssertLessThan(plan.picture.maxY, plan.cut)
+    }
+
+    func testAWorkJustTooSmallForTheWholeManGetsTheBustToo() {
+        // Vermeer's "The Glass of Wine", 67.7 × 79.6 cm (Mateusz 2026-11-03
+        // 19:36: no man cut at the shins).
+        let plan = RealSizeDrawing.plan(height: 67.7, width: 79.6, column: column)
+        XCTAssertTrue(plan.cropped)
+        XCTAssertEqual((plan.cut - plan.man.minY) / plan.scale, CGFloat(180 - RealSizeDrawing.waist), accuracy: 0.5)
     }
 
     func testAWorkAboutAMetreShowsTheWholeMan() {

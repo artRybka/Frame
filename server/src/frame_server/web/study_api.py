@@ -17,6 +17,7 @@ from starlette.concurrency import run_in_threadpool
 from ..ai.composition import KIND as COMPOSITION
 from ..ai.composition import PAGES, versions
 from ..ai.daily import Detail
+from ..ai.details import KIND as MEND
 from ..library import Item
 from ..library.markup import strip_markup
 from ..notifications import PushError
@@ -252,3 +253,42 @@ async def composition_pick(item_id: str, pick: CompositionPick, svc: Svc) -> Com
     if item is None or not await run_in_threadpool(svc.compose.choose, item, pick.shown):
         raise HTTPException(404, "no such analysis")
     return await run_in_threadpool(_again_state, svc, item_id)
+
+
+class DetailsAgain(BaseModel):
+    """Where the check of the work's details asked for by the owner is: on
+    its way, and the titles of the details it drew anew (None when it came
+    to nothing; the app asks for the page again once it is done)."""
+
+    pending: bool
+    moved: list[str] | None = None
+
+
+def _mend_state(svc: FrameService, item_id: str) -> DetailsAgain:
+    pending = svc.mend.pending(item_id)
+    return DetailsAgain(pending=pending, moved=None if pending else svc.mend.moved(item_id))
+
+
+@router.post(
+    "/study/{item_id}/details",
+    response_model=DetailsAgain,
+    dependencies=[Depends(require_owner)],
+)
+async def details_again(item_id: str, svc: Svc) -> DetailsAgain:
+    """The owner's "Popraw detale" (held header "Detale" on the work's
+    page): each detail checked over its cut on the picture, a box that
+    misses drawn anew (``ai.details``), ahead of the background."""
+    item = svc.library.get(item_id)
+    if item is None:
+        raise HTTPException(404, "no such work")
+    if not svc.mend.enabled():
+        raise HTTPException(409, "Claude jest wyłączony: dodaj klucz API w Konfiguracji.")
+    if not await run_in_threadpool(svc.mend.again, item):
+        raise HTTPException(409, "To dzieło nie ma jeszcze studium z detalami.")
+    svc.ai.need_now(item_id, MEND)
+    return await run_in_threadpool(_mend_state, svc, item_id)
+
+
+@router.get("/study/{item_id}/details", response_model=DetailsAgain)
+async def details_state(item_id: str, svc: Svc) -> DetailsAgain:
+    return await run_in_threadpool(_mend_state, svc, item_id)

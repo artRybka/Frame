@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.92.0
+
+- Studium dzieła: tytuł jest na karteczce tuż pod obrazem, na jego
+  szerokość. Karteczka jest czarna z białym pismem (w ciemnym trybie
+  kremowa), tytuł wielkimi literami jak na przyciskach, a pod nim
+  cieńszym pismem imię i nazwisko autora oraz data powstania (po polsku,
+  gdy dzieło ma polskie opisy). Długi tytuł z muzeum, pokazany po
+  przytrzymaniu, jest pisany zwykłymi literami. Przytrzymanie autora
+  otwiera Szukaj. Od karteczki do pierwszej sekcji jest trochę bliżej.
+- „Rozmiar obrazu”: mężczyzna jest albo cały, od stóp, albo jako popiersie
+  ucięte tuż pod marynarką, bez wersji pośrednich. Popiersie stoi na
+  kresce przez całą szerokość ekranu, a jego wzrost, 180 cm, jest
+  podpisany przy krótkiej kreseczce na wysokości czubka głowy.
+- Studium dzieła, „Detale”: studium zapamiętuje, na której kopii zdjęcia
+  Claude zaznaczał fragmenty. Gdy dzieło ma potem inną, ostrzejszą kopię,
+  serwer dopasowuje do siebie obie kopie i wycina detale z tej lepszej,
+  trafiając w to samo miejsce obrazu.
+- Nowe studia: Claude sprawdza swoje detale na wyciętych fragmentach
+  i poprawia ramkę, która nie pokazuje tego, o czym mówi (np. tło nad
+  kapeluszem zamiast twarzy w „Automacie” Hoppera).
+- Studia napisane wcześniej: właściciel przytrzymuje nagłówek „Detale”
+  i wybiera „Popraw detale”. Claude sprawdza wtedy każdy detal na jego
+  wycinku i poprawia ramki, które chybiają; aplikacja mówi na koniec,
+  ile detali poprawiono.
+
 ## 1.91.0
 
 - Oryginały dzieł z Ulubionych (każdego domownika) oraz z ręcznych

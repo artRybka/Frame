@@ -42,6 +42,9 @@ actor DemoBackend: FrameBackend {
     /// analizę"), by work: when each was made, the one shown, and when the
     /// one on its way is "made".
     private var analyses: [String: (made: [String], shown: Int, readyAt: Date?)] = [:]
+    /// Details asked to be checked ("Popraw detale"), by work: when the
+    /// check is "done" (nothing moves in the demo).
+    private var detailChecks: [String: Date] = [:]
     private var sourceKeyValues = [
         SourceKey(
             source: "si", name: "Smithsonian",
@@ -811,6 +814,7 @@ actor DemoBackend: FrameBackend {
             day: day ?? iso(0),
             item: RemoteItem(item: wave, inLibrary: true),
             title: "Wielka fala w Kanagawie",
+            date: "ok. 1830–1832",
             teaser: "Fala z pazurami i święta góra schowana w jej dolinie.",
             focus: Spot(x: 0.3, y: 0.3),
             whyToday: "31 października mija kolejna rocznica urodzin Hokusaia (1760).",
@@ -883,6 +887,7 @@ actor DemoBackend: FrameBackend {
             }
             work.compositionPending = kept.readyAt != nil
         }
+        work.detailsPending = (detailChecks[wave.id] ?? .distantPast) > Date()
         // CI screenshots: "-realSize 210x163" draws a big work's scale.
         let asked = (UserDefaults.standard.string(forKey: "realSize") ?? "").split(separator: "x").compactMap { Double($0) }
         work.size = asked.count == 2 ? .init(height: asked[0], width: asked[1]) : .init(height: 25.7, width: 37.9)
@@ -992,6 +997,17 @@ actor DemoBackend: FrameBackend {
         kept.shown = shown
         analyses[itemID] = kept
         return analysisState(itemID)
+    }
+
+    /// The demo's check "done" a few seconds later, every box where it was.
+    func detailsAgain(itemID: String) async throws -> DetailsAgain {
+        detailChecks[itemID] = .now.addingTimeInterval(6)
+        return try await detailsState(itemID: itemID)
+    }
+
+    func detailsState(itemID: String) async throws -> DetailsAgain {
+        let pending = (detailChecks[itemID] ?? .distantPast) > Date()
+        return DetailsAgain(pending: pending, moved: pending ? nil : [])
     }
 
     /// The demo has no server to push the study's steps: the app moves

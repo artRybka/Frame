@@ -1622,6 +1622,9 @@ struct DailyWork: Codable, Hashable, Sendable {
     var item: RemoteItem
     /// The Polish title when there is one.
     var title: String
+    /// When the work was made, in Polish once its texts are ("ok.
+    /// 1830–1832"); nil from servers before 1.92.0.
+    var date: String?
     /// One sentence that fits the tile's two lines.
     var teaser: String
     /// Where the tile's band is cropped around; nil from 0.42 servers.
@@ -1643,6 +1646,9 @@ struct DailyWork: Codable, Hashable, Sendable {
     var compositionVersions: [CompositionVersion]? = nil
     /// The owner asked for the analysis anew and Claude is making it.
     var compositionPending: Bool? = nil
+    /// The owner asked for the details to be checked ("Popraw detale") and
+    /// Claude is at it (nil from servers before 1.92.0).
+    var detailsPending: Bool? = nil
     var colour: String
     /// Nil from 0.42 servers.
     var details: [Detail]?
@@ -1737,6 +1743,15 @@ struct CompositionAgain: Codable, Hashable, Sendable {
     var pending: Bool
     /// How many analyses the work's page has had.
     var versions: Int
+}
+
+/// `POST`/`GET /api/study/{id}/details`: the work's details checked over
+/// their cuts, a box that misses drawn anew (the owner, held "Detale").
+struct DetailsAgain: Codable, Hashable, Sendable {
+    /// Claude is checking them.
+    var pending: Bool
+    /// The titles of the details drawn anew; nil when the check came to nothing.
+    var moved: [String]?
 }
 
 /// `PUT /api/study/{id}/composition`: which analysis the page shows.

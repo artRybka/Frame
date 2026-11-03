@@ -10,12 +10,12 @@ import SwiftUI
 /// measures only.
 ///
 /// The scale (Mateusz 2026-11-03 15:29, "przy małych dziełach pokazuj
-/// znacznie większy obraz i postać"): the work's longer side gets at least
-/// 120 points, as far as the column's width allows, but never so close that
-/// less than 80 cm of him shows from the head down. When he is then taller
-/// than the drawing, he is cut straight across at its foot and ends on a
-/// short pencil line fading out at both ends (variant C, 16:18).
-/// A work beside which the whole man fits anyway is drawn as before. The
+/// znacznie większy obraz i postać"; 19:36, "albo ucięta w pasie, albo
+/// pełna od stóp"): the whole man and the work in the drawing's 250 points
+/// as a rule; when that leaves the work's longer side under 120 points,
+/// only his bust, cut just under his jacket on a pencil line across the
+/// screen, his height by a tick at his head, with the work as large as
+/// that and the column's width allow. Never anything in between. The
 /// drawing is as tall as what is on it, with no room left under it.
 struct RealSizeDrawing: View {
     let work: RemoteItem
@@ -67,9 +67,19 @@ struct RealSizeDrawing: View {
     private static let top: CGFloat = 10
     /// The work's longer side, at least, when the width allows.
     static let smallest: CGFloat = 120
-    /// The least of him shown, from the top of his head.
-    static let leastOfHim: CGFloat = 80
+    /// Where he is cut as a bust: just under his jacket, 750 of the
+    /// asset's units down (Mateusz 2026-11-03 19:36: cut at the waist,
+    /// under the jacket, or whole from his feet, nothing in between).
+    static let waist = 180 - 180 * 750 / manUnits
+    /// The least room between the work's foot and the cut, for its width.
+    private static let underRoom: CGFloat = 32
     private static let gap: CGFloat = 66
+    /// How far the line he is cut on runs past the column: to the screen's
+    /// edges, where the scroll view clips it.
+    private static let overrun: CGFloat = 2000
+    /// Just right of his cap, across his width, where the tick by his head
+    /// starts.
+    private static let headRight: CGFloat = 0.66
     /// His pencilled height needs room on his right.
     private static let labelRoom: CGFloat = 56
     /// The width's line and its pencilled number under the work.
@@ -83,15 +93,20 @@ struct RealSizeDrawing: View {
         let across = max(0.01, (column - gap - labelRoom) / (w + manW))
         let whole = min(room / tallest, across)
         let wanted = smallest / max(h, w, 1)
-        let scale = min(across, max(whole, min(wanted, room / leastOfHim)))
+        // A bust when the whole man leaves the work too small, the work
+        // hangs above his waist with room for its width under it, and the
+        // bust brings it noticeably closer.
+        let waist = CGFloat(Self.waist)
+        let bust = min(across, room / (tallest - waist))
+        let cropped = wanted > whole && bust > whole * 1.15 && (lift - waist) * bust >= underRoom
+        let scale = cropped ? bust : whole
         // Centimetres above the floor to points down from the drawing's top.
         func y(_ cm: CGFloat) -> CGFloat { top + (tallest - cm) * scale }
         let picture = CGRect(x: 0, y: y(lift + h), width: w * scale, height: h * scale)
         let man = CGRect(x: picture.maxX + gap, y: y(manH), width: manW * scale, height: manH * scale)
-        let cropped = manH * scale > room + 0.5
         let underWork = picture.maxY + widthLabel
         let feet = y(0) + manH * (CGFloat(manOverhang) - 1) * scale
-        let cut = top + room
+        let cut = y(waist)
         let height = cropped ? max(cut + 1, underWork) : max(feet, underWork)
         return Plan(scale: scale, picture: picture, man: man, cropped: cropped, cut: cut, height: ceil(height))
     }
@@ -128,50 +143,41 @@ struct RealSizeDrawing: View {
             .offset(x: picture.minX, y: picture.minY)
 
             if plan.cropped {
-                // Cut straight across: he ends on a short pencil line that
-                // fades out at both ends (Mateusz 2026-11-03 16:18, "C").
+                // Cut straight across: he ends on a pencil line running the
+                // screen's whole width, and his height is written by a short
+                // tick at the top of his head (Mateusz 2026-11-03 16:18, "C";
+                // 19:05, his sketch).
                 let cut = plan.cut
                 ZStack(alignment: .topLeading) {
                     Color.clear.frame(width: column, height: cut)
                     figure(man)
-                    Dimension(
-                        from: CGPoint(x: man.maxX + 8, y: man.minY),
-                        to: CGPoint(x: man.maxX + 8, y: cut),
-                        ticks: .start
-                    )
-                    .stroke(pencil, style: StrokeStyle(lineWidth: 1.2, lineCap: .round))
                 }
                 .frame(width: column, height: cut, alignment: .topLeading)
                 .clipped()
-                let from = man.minX - 14, to = man.maxX + 22
                 Path { path in
-                    path.move(to: CGPoint(x: from, y: cut))
-                    path.addLine(to: CGPoint(x: to, y: cut))
+                    path.move(to: CGPoint(x: -Self.overrun, y: cut))
+                    path.addLine(to: CGPoint(x: column + Self.overrun, y: cut))
                 }
-                .stroke(
-                    LinearGradient(
-                        stops: [
-                            .init(color: pencil.opacity(0), location: 0),
-                            .init(color: pencil, location: 0.25),
-                            .init(color: pencil, location: 0.75),
-                            .init(color: pencil.opacity(0), location: 1),
-                        ],
-                        startPoint: UnitPoint(x: from / column, y: 0),
-                        endPoint: UnitPoint(x: to / column, y: 0)
-                    ),
-                    style: StrokeStyle(lineWidth: 1.2, lineCap: .round)
-                )
+                .stroke(pencil, style: StrokeStyle(lineWidth: 1.2, lineCap: .round))
                 .frame(width: column, height: plan.height)
+                let tick = man.minX + Self.headRight * man.width
+                Path { path in
+                    path.move(to: CGPoint(x: tick, y: man.minY))
+                    path.addLine(to: CGPoint(x: tick + 30, y: man.minY))
+                }
+                .stroke(pencil, style: StrokeStyle(lineWidth: 1.2, lineCap: .round))
+                .frame(width: column, height: plan.height)
+                pencilled("180 cm")
+                    .alignmentGuide(.leading) { _ in -(tick + 36) }
+                    .alignmentGuide(.top) { d in -(man.minY - d.height / 2) }
             } else {
                 figure(man)
                 Dimension(from: CGPoint(x: man.maxX + 8, y: man.minY), to: CGPoint(x: man.maxX + 8, y: man.maxY))
                     .stroke(pencil, style: StrokeStyle(lineWidth: 1.2, lineCap: .round))
+                pencilled("180 cm")
+                    .alignmentGuide(.leading) { _ in -(man.maxX + 14) }
+                    .alignmentGuide(.top) { d in -(man.midY - d.height / 2) }
             }
-            pencilled("180 cm")
-                .alignmentGuide(.leading) { _ in -(man.maxX + 14) }
-                .alignmentGuide(.top) { d in
-                    -((plan.cropped ? (man.minY + plan.cut) / 2 : man.midY) - d.height / 2)
-                }
 
             Dimension(from: CGPoint(x: heightX, y: picture.minY), to: CGPoint(x: heightX, y: picture.maxY))
                 .stroke(pencil, style: StrokeStyle(lineWidth: 1.2, lineCap: .round))
@@ -219,13 +225,10 @@ struct RealSizeDrawing: View {
     }
 }
 
-/// A pencil dimension line with a short tick at each end (or only at its
-/// start, when it runs on out of the drawing).
+/// A pencil dimension line with a short tick at each end.
 private struct Dimension: Shape {
-    enum Ticks { case both, start }
     let from: CGPoint
     let to: CGPoint
-    var ticks: Ticks = .both
 
     func path(in rect: CGRect) -> Path {
         var path = Path()
@@ -233,7 +236,7 @@ private struct Dimension: Shape {
         path.addLine(to: to)
         let tick: CGFloat = 4
         let vertical = from.x == to.x
-        for end in ticks == .both ? [from, to] : [from] {
+        for end in [from, to] {
             if vertical {
                 path.move(to: CGPoint(x: end.x - tick, y: end.y))
                 path.addLine(to: CGPoint(x: end.x + tick, y: end.y))
