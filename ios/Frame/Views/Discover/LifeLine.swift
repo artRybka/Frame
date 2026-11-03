@@ -115,7 +115,8 @@ struct LifeLine: View {
     private func marker(_ mark: Mark) -> some View {
         switch mark {
         case .work:
-            Circle().fill(Theme.vermilion).frame(width: 13, height: 13)
+            // As big as the numbered rings (Mateusz 2026-11-03).
+            Circle().fill(Theme.vermilion).frame(width: Self.markSize, height: Self.markSize)
         case .numbered(let number, let event):
             let colour = event ? Theme.inkSoft.opacity(0.7) : Theme.ink.opacity(0.75)
             Circle()

@@ -17,10 +17,20 @@ from fastapi.testclient import TestClient
 from PIL import Image, ImageDraw, ImageOps
 from test_ai import GOOD_KEY, FakeAnthropic, _message
 
+from frame_server import daily as daily_module
 from frame_server import sizes
 from frame_server.ai import AiConfigUpdate
 from frame_server.ai.client import OPUS
-from frame_server.ai.daily import INCOMPLETE, TAKE, clean, missing, short, unfinished
+from frame_server.ai.daily import (
+    INCOMPLETE,
+    TAKE,
+    Pigment,
+    clean,
+    missing,
+    short,
+    unfinished,
+    vary_hedges,
+)
 from frame_server.ai.study import KIND as STUDY
 from frame_server.config import Settings
 from frame_server.daily import HISTORY_KEY, of_season, round_anniversary
@@ -839,8 +849,11 @@ def test_a_study_written_again_mends_the_days_half_page(offline: FrameService) -
     assert essay is not None and essay.composition.views and essay.why_today == "Dziś"
 
 
-def test_works_made_at_the_same_time(offline: FrameService) -> None:
+def test_works_made_at_the_same_time(
+    offline: FrameService, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Made within five years of the work, by others, from other countries first."""
+    monkeypatch.setattr(daily_module, "SAME_TIME", 3)
     wave = _add(
         offline, "met:1", title="The Great Wave", artist="Katsushika Hokusai",
         artist_bio="Japanese, 1760–1849", year=1831,
@@ -1012,3 +1025,21 @@ def test_boxes_of_a_page_from_before_are_mended(offline: FrameService) -> None:
     offline.library.save_note(note.model_copy(update={"data": {**page, BOXES: BOXES_VERSION}}))
     essay = job.essay(item)
     assert essay is not None and essay.details[0].x == 0.5
+
+
+def test_the_likely_paints_do_not_all_start_the_same() -> None:
+    """Mateusz 2026-11-03: not „Najpewniej” at every paint, synonyms in turn."""
+    paints = [
+        Pigment(name="ochra", hex="#B0903F", text="Najpewniej ochra, tania ziemia.", sure=False),
+        Pigment(name="ultramaryna", hex="#2A4FA0", text="Z lapis lazuli, droga.", sure=True),
+        Pigment(name="umbra", hex="#6B4A2B", text="Najpewniej umbra, ziemny pigment.", sure=False),
+        Pigment(name="biel", hex="#EEEEE6", text="najpewniej, biel ołowiana.", sure=False),
+        Pigment(name="czerń", hex="#111111", text="Czerń kostna, z palonych kości.", sure=False),
+    ]
+    texts = [p.text for p in vary_hedges(paints)]
+    assert texts[0] == "Najpewniej ochra, tania ziemia."
+    assert texts[1] == "Z lapis lazuli, droga."
+    assert texts[2] == "Prawdopodobnie umbra, ziemny pigment."
+    assert texts[3] == "Zapewne biel ołowiana."
+    assert texts[4] == "Czerń kostna, z palonych kości."
+    assert paints[2].text.startswith("Najpewniej")  # the page's own copy is left as it was

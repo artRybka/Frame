@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.87.0
+
+- „Rozmiar obrazu”: obok dzieła dla skali zawsze stoi ciemna sylwetka
+  mężczyzny, 180 cm (od czubka głowy do podeszwy stopy z tyłu), z wzrostem
+  dopisanym ołówkiem obok. Mniejsze dzieła wiszą jak w muzeum: linia jego
+  wzroku przecina je na 2/3 wysokości; większe stoją na podłodze, na linii
+  jego prawej stopy. Bez linii podłogi i linii wzroku; dzieło bez cienkiej
+  obwódki. Sekcja stoi teraz zaraz po „Detale”.
+- Rysunek z wymiarami nie znika już na chwilę przy przełączaniu zakładek:
+  wymiary przychodzą razem z tekstem studium.
+- Studium dzieła: przy farbach niepewnych na zmianę „Najpewniej”,
+  „Prawdopodobnie”, „Zapewne”, „Przypuszczalnie” (także w studiach
+  napisanych wcześniej); większy odstęp po każdej sekcji; „Inni w tym
+  samym czasie” pokazuje do 10 dzieł w jednym wierszu przewijanym w bok;
+  czerwona kropka dzieła na linii życia jest wielkości kółek z numerkami.
+
 ## 1.86.2
 
 - Karta dzieła: gdy otwiera się od razu z polskim tytułem, po sekundzie
