@@ -84,6 +84,9 @@ class DailyWork(BaseModel):
     item: RemoteItem
     #: The Polish title when there is one.
     title: str
+    #: When the work was made: in Polish once its texts are, else the
+    #: museum's words (the line under the title's slip).
+    date: str = ""
     teaser: str = ""
     #: Where the tile's band is cropped around (fractions of the picture).
     focus: Spot | None = None
@@ -164,6 +167,12 @@ def _title(svc: FrameService, item: Item, essay: Essay | None) -> str:
         return essay.title
     polish = svc.pl_text.text(item)
     return polish.title if polish else strip_markup(item.title)
+
+
+def _date(svc: FrameService, item: Item) -> str:
+    """When the work was made, in Polish once its texts are ("ok. 1830–1832")."""
+    polish = svc.pl_text.text(item)
+    return polish.date if polish and polish.date else item.date_text
 
 
 def _museum_text(svc: FrameService, item: Item) -> str:
@@ -261,6 +270,7 @@ def page(
         day=day,
         item=_light(svc, item, bio=True),
         title=_title(svc, item, essay),
+        date=_date(svc, item),
         teaser=essay.teaser if essay else short(museum, TEASER_CHARS),
         focus=essay.focus if essay else None,
         why_today=essay.why_today if essay else "",

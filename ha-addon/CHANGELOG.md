@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.92.0
+
+- Studium dzieła: tytuł jest na karteczce tuż pod obrazem, na jego
+  szerokość. Karteczka jest czarna z białym pismem (w ciemnym trybie
+  kremowa), tytuł wielkimi literami jak na przyciskach, a pod nim
+  cieńszym pismem imię i nazwisko autora oraz data powstania (po polsku,
+  gdy dzieło ma polskie opisy). Długi tytuł z muzeum, pokazany po
+  przytrzymaniu, jest pisany zwykłymi literami. Przytrzymanie autora
+  otwiera Szukaj. Od karteczki do pierwszej sekcji jest trochę bliżej.
+
 ## 1.91.0
 
 - Oryginały dzieł z Ulubionych (każdego domownika) oraz z ręcznych

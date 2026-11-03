@@ -811,6 +811,7 @@ actor DemoBackend: FrameBackend {
             day: day ?? iso(0),
             item: RemoteItem(item: wave, inLibrary: true),
             title: "Wielka fala w Kanagawie",
+            date: "ok. 1830–1832",
             teaser: "Fala z pazurami i święta góra schowana w jej dolinie.",
             focus: Spot(x: 0.3, y: 0.3),
             whyToday: "31 października mija kolejna rocznica urodzin Hokusaia (1760).",

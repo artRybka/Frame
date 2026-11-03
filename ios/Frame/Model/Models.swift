@@ -1622,6 +1622,9 @@ struct DailyWork: Codable, Hashable, Sendable {
     var item: RemoteItem
     /// The Polish title when there is one.
     var title: String
+    /// When the work was made, in Polish once its texts are ("ok.
+    /// 1830–1832"); nil from servers before 1.92.0.
+    var date: String?
     /// One sentence that fits the tile's two lines.
     var teaser: String
     /// Where the tile's band is cropped around; nil from 0.42 servers.

@@ -31,6 +31,7 @@ from frame_server.ai.daily import (
     unfinished,
     vary_hedges,
 )
+from frame_server.ai.pl_text import PolishText
 from frame_server.ai.study import KIND as STUDY
 from frame_server.config import Settings
 from frame_server.daily import HISTORY_KEY, of_season, round_anniversary
@@ -401,6 +402,7 @@ def test_without_a_key_the_page_shows_what_the_museum_says(tmp_path: Path) -> No
         assert work["size"] == {"height": 25.7, "width": 37.9}
         assert work["item"]["item"]["id"] == "met:1"
         assert work["title"] == "Under the Wave off Kanagawa"
+        assert work["date"] == "ca. 1830–32"  # the museum's, with no Polish texts
         assert work["written"] is False and work["writing"] is False
         assert work["teaser"].startswith("A great wave rises")
         assert work["context"] == [DESCRIPTION]
@@ -427,6 +429,23 @@ def test_without_a_key_the_page_shows_what_the_museum_says(tmp_path: Path) -> No
         tomorrow = (date.today() + timedelta(days=1)).isoformat()
         assert client.get(f"/api/daily?day={tomorrow}").status_code == 400
         assert client.get("/api/daily?day=2001-01-01").status_code == 404
+
+
+def test_the_date_under_the_title_is_polish_once_the_texts_are(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    app = _app(tmp_path)
+    with TestClient(app) as client:
+        svc: FrameService = app.state.service
+        _catalogue(svc)
+        _today_is(svc, "met:1")
+        polish = PolishText(title="Wielka fala", frame="", full="", date="ok. 1830–1832")
+        monkeypatch.setattr(svc.pl_text, "text", lambda item: polish)
+        assert client.get("/api/daily").json()["date"] == "ok. 1830–1832"
+        # Texts without a date: the museum's words.
+        undated = polish.model_copy(update={"date": ""})
+        monkeypatch.setattr(svc.pl_text, "text", lambda item: undated)
+        assert client.get("/api/daily").json()["date"] == "ca. 1830–32"
 
 
 def test_konfiguracja_draws_another_work_of_the_day(tmp_path: Path) -> None:
