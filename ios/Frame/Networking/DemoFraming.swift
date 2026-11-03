@@ -478,7 +478,7 @@ enum DemoFraming {
             width: line.width + 2 * pad.width, height: line.height + 2 * pad.height
         )
         context.saveGState()
-        context.setShadow(offset: CGSize(width: 0.5, height: 1), blur: 2, color: UIColor.black.withAlphaComponent(0.45).cgColor)
+        context.setShadow(offset: CGSize(width: 2, height: 7), blur: 8, color: UIColor.black.withAlphaComponent(0.5).cgColor)
         context.setFillColor(UIColor.white.cgColor)
         context.fill(card)
         context.restoreGState()

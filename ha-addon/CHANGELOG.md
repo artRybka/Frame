@@ -10,7 +10,7 @@
 - Podpis: przy Passe-partout nazywa się „Podpis pod dziełem”, przy
   Wypełnij „Podpis na dziele”, w Opisie go nie ma. Podpis na dziele to
   teraz biała karteczka w prawym dolnym rogu, położona na obrazie, z
-  delikatnym cieniem. Obraz wypełnia cały ekran, bez paska na dole.
+  miękkim cieniem rzucanym głównie w dół. Obraz wypełnia cały ekran, bez paska na dole.
 - Miniatury kadrowania i siatek Multi mają większy cień, a wybraną
   wyróżnia okrągły znaczek z ptaszkiem w rogu zamiast obwódki wokół ramki.
 - Multi przy czarnym passe-partout: okienka zdjęć w miniaturach siatek są
