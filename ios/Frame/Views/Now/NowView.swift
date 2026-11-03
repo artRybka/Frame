@@ -1059,9 +1059,9 @@ struct ArtworkInfo: View {
                 }
             }
             HStack(alignment: .center, spacing: 12) {
-                if !item.museum.isEmpty {
+                if !item.museumShown.isEmpty {
                     Label {
-                        Text(item.museum)
+                        Text(item.museumShown)
                     } icon: {
                         GroupMark(kind: "museum", side: 13)
                     }

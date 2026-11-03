@@ -302,7 +302,7 @@ def test_the_card_asks_and_the_frame_gets_the_copy(tmp_path: Path) -> None:
             Item(id="upload:1", kind=ItemKind.PHOTO, source="upload", source_id="1")
         )
         view = client.post(f"/api/library/items/{photo.id}/sharpen").json()
-        assert view == {"status": "off", "sharper": None, "width": 0, "height": 0}
+        assert view == {"status": "off", "sharper": None, "width": 0, "height": 0, "held_by": ""}
 
 
 def test_the_work_of_the_day_gets_its_sharper_copy_before_its_page(frame: Any) -> None:
