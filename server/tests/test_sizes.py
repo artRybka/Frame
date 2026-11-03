@@ -2,7 +2,7 @@ import httpx
 import pytest
 
 from frame_server.library import Item
-from frame_server.sizes import KIND, RealSize, Sizes, fits, parse
+from frame_server.sizes import KIND, RealSize, Sizes, commons_size, fits, parse
 
 
 def _item(source: str = "met", source_id: str = "437881", w: int = 890, h: int = 1000) -> Item:
@@ -106,10 +106,111 @@ def test_wikidata_when_the_museum_does_not_say(library) -> None:
 
 
 def test_nothing_found_is_kept_and_a_failure_is_not(library) -> None:
-    item = _item(source="vam", source_id="O1")
-    sizes = Sizes(library, lambda: _client({}))
-    assert sizes.look(item) is None  # no museum record, no Wikidata link
+    item = _item(source="europeana", source_id="O1")
+    sizes = Sizes(library, lambda: _client({"list=search": {"query": {"search": []}}}))
+    assert sizes.look(item) is None  # no museum record, nothing on Wikidata
     assert library.note(item.id, KIND) is not None
     met = _item(source_id="1")
     assert Sizes(library, lambda: _client({})).look(met) is None  # the Met's 404
     assert library.note(met.id, KIND) is None
+
+
+def test_a_commons_page_says_the_size() -> None:
+    page = "{{Artwork\n |artist = Leonardo\n |dimensions = {{Size|cm|77|53}}\n}}"
+    assert commons_size(page) == RealSize(height=77, width=53)
+    named = " |dimensions = {{Size|unit=mm|width=530|height=770}}"
+    assert commons_size(named) == RealSize(height=77, width=53)
+    assert commons_size(" |dimensions = 77 × 53 cm") == RealSize(height=77, width=53)
+    assert commons_size(" |medium = oil") is None
+
+
+def test_a_commons_work_by_its_page(library) -> None:
+    item = _item(source="wmc", source_id="123", w=530, h=770)
+    page = {
+        "query": {
+            "pages": [
+                {
+                    "title": "File:Mona Lisa.jpg",
+                    "revisions": [
+                        {"slots": {"main": {"content": " |dimensions = {{Size|cm|77|53}}"}}}
+                    ],
+                }
+            ]
+        }
+    }
+    sizes = Sizes(library, lambda: _client({"commons.wikimedia.org": page}))
+    assert sizes.look(item) == RealSize(height=77, width=53)
+
+
+def test_polish_museums_and_the_va_say_the_size(library) -> None:
+    mnw = {
+        "data": {
+            "sizes": [
+                {
+                    "name": "w ramie",
+                    "dimensions": [
+                        {"name": "wysokość", "value": "90", "unit": "cm"},
+                        {"name": "szerokość", "value": "80", "unit": "cm"},
+                    ],
+                },
+                {
+                    "name": "",
+                    "dimensions": [
+                        {"name": "wysokość", "value": "72,5", "unit": "cm"},
+                        {"name": "szerokość", "value": "60", "unit": "cm"},
+                    ],
+                },
+            ]
+        }
+    }
+    item = _item(source="mnw", source_id="943746", w=600, h=725)
+    assert Sizes(library, lambda: _client({"mnw.art.pl": mnw})).look(item) == RealSize(
+        height=72.5, width=60
+    )
+    text = {"data": {"sizes": [], "dimensionText": "wys. 12,5 cm, szer. 11 cm"}}
+    item = _item(source="mnk", source_id="5", w=110, h=125)
+    assert Sizes(library, lambda: _client({"mnk.pl": text})).look(item) == RealSize(
+        height=12.5, width=11
+    )
+    vam = {
+        "record": {
+            "dimensions": [
+                {"dimension": "Height", "value": "12.5", "unit": "cm", "part": ""},
+                {"dimension": "Width", "value": "13.5", "unit": "cm", "part": ""},
+            ]
+        }
+    }
+    item = _item(source="vam", source_id="O18946", w=135, h=125)
+    assert Sizes(library, lambda: _client({"api.vam.ac.uk": vam})).look(item) == RealSize(
+        height=12.5, width=13.5
+    )
+
+
+def _painting(about: str, year: str, height: str) -> dict:
+    def side(amount: str) -> list[dict]:
+        unit = "http://www.wikidata.org/entity/Q174728"
+        return [{"mainsnak": {"datavalue": {"value": {"amount": amount, "unit": unit}}}}]
+
+    return {
+        "descriptions": {"en": {"value": about}},
+        "claims": {
+            "P571": [{"mainsnak": {"datavalue": {"value": {"time": f"+{year}-00-00T00:00:00Z"}}}}],
+            "P2048": side(height),
+            "P2049": side("+40.6"),
+        },
+    }
+
+
+def test_wikidata_by_title_when_nothing_links_the_work(library) -> None:
+    item = _item(source="europeana", source_id="x", w=889, h=1000).model_copy(update={"year": 1662})
+    routes = {
+        "list=search": {"query": {"search": [{"title": "Q1"}, {"title": "Q2"}, {"title": "Q3"}]}},
+        "wbgetentities": {
+            "entities": {
+                "Q1": _painting("painting by Jan Steen", "1662", "+45.7"),  # another artist
+                "Q2": _painting("painting by Johannes Vermeer", "1640", "+45.7"),  # another year
+                "Q3": _painting("painting by Johannes Vermeer", "1662", "+45.7"),
+            }
+        },
+    }
+    assert Sizes(library, lambda: _client(routes)).look(item) == RealSize(height=45.7, width=40.6)

@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.85.1
+
+- Studium dzieła: gwiazdka oznaczająca tekst Claude'a jest już tylko raz,
+  na samym końcu karty, a nie przy każdej sekcji. Stopka nie powtarza
+  daty, techniki i muzeum.
+- Linia życia: wszystkie chwile z życia i wydarzenia historyczne mają
+  numerki w jednej numeracji według lat (historyczne na szaro), znaczniki
+  zbyt blisko siebie rozsuwają się, żeby się nie nakładały, a kreska osi
+  biegnie za urodzeniem i śmiercią do krawędzi ekranu. W legendzie tytuł
+  dzieła tym samym pismem co pozostałe pozycje, tylko na czerwono.
+- „Rozmiar obrazu” pojawia się częściej. Wymiary pochodziły tylko z Met,
+  Cleveland, SMK i z Wikidanych dla dzieł z kilku muzeów. Teraz serwer
+  pyta też Art Institute of Chicago, V&A, Muzeum Narodowe w Warszawie i w
+  Krakowie, czyta wymiary ze strony dzieła na Wikimedia Commons, a w
+  Wikidanych szuka dzieła także po stronie Commons, po zdjęciu i na końcu po
+  tytule (obraz, którego opis wymienia autora, z tego samego roku).
+  Dzieła, dla których wcześniej nic nie znaleziono, są sprawdzane ponownie
+  przy otwarciu karty.
+
 ## 1.85.0
 
 - Studium dzieła, Detale: wycinki trafiają teraz w to, o czym jest opis.
