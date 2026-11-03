@@ -2352,7 +2352,7 @@ struct LibrarySizeSection: View {
                         defaultMb: storage.catalogueDefaultMb,
                         options: [500, 1000, 1500, 2000, 3000, 5000, 10000, 20000]
                     ) { mb in await model.setLibraryLimit(catalogueMb: mb) }
-                    caption("Ponad limit znikają najsłabsze na e-papierze dzieła, które serwer dobrał sam. Ulubione, playlisty, kolejka i pokazane dzieła zostają. Większy katalog to więcej w Odkrywaj.")
+                    caption("Ponad limit znikają dzieła, które serwer dobrał sam, od najdawniej dodanych; oglądane na samym końcu. Ulubione, playlisty, kolejka i pokazane dzieła zostają. Większy katalog to więcej w Odkrywaj.")
                 }
                 Divider()
                 VStack(alignment: .leading, spacing: 8) {
@@ -2363,7 +2363,7 @@ struct LibrarySizeSection: View {
                         defaultMb: storage.originalsDefaultMb,
                         options: [500, 1000, 2000, 3000, 5000, 10000, 20000, 50000]
                     ) { mb in await model.setLibraryLimit(originalsMb: mb) }
-                    caption("Oryginał to około 1,5 MB. Ponad limit znikają najdawniej oglądane, a te z Ulubionych i playlist na samym końcu. Usunięty serwer pobierze ponownie z muzeum lub albumu, gdy będzie potrzebny.")
+                    caption("Serwer zachowuje oryginał każdego dzieła, które oglądasz (karta, cały ekran, studium) albo pokazujesz na ramce, około 1,5 MB na dzieło. Ponad limit znikają najdawniej oglądane, a te z Ulubionych i playlist na samym końcu. Usunięty serwer pobierze ponownie z muzeum lub albumu, gdy będzie potrzebny.")
                 }
                 Divider()
                 VStack(alignment: .leading, spacing: 8) {

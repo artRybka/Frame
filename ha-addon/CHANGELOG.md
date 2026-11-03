@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.85.3
+
+- Oryginały dzieł: serwer już zachowywał oryginał każdego dzieła, które
+  oglądasz (karta, cały ekran, studium) albo pokazujesz na ramce, nie tylko
+  z Ulubionych i playlist. Te ostatnie znikają tylko na samym końcu, gdy
+  pamięć przekroczy limit. Jedna luka: przycinanie katalogu usuwało dzieło
+  dobrane przez serwer razem z jego oryginałem, nawet obejrzane chwilę
+  wcześniej. Teraz obejrzane dzieła odchodzą z katalogu na samym końcu, od
+  najdawniej oglądanych. Opisy obu limitów w Konfiguracji mówią to wprost
+  (katalog przycina się od najdawniej dodanych, nie od najsłabszych na
+  e-papierze).
+
 ## 1.85.2
 
 - Karty na dole ekranu łatwiej przeczytać nad kolorowymi obrazami: większy

@@ -1071,7 +1071,10 @@ class Player:
 
     def trim_catalogue(self) -> int:
         """Keep the catalogue's thumbnails within ``catalogue_mb``: works the
-        server added that nobody kept go, the longest there first."""
+        server added that nobody kept go, the longest there first. Works the
+        owner looked at (their original is here: a card, the whole screen, a
+        study) go last, the least recently seen first: their originals have
+        a limit of their own, and looking at one again is quick."""
         images = self.service.images
         limit = self.service.settings.catalogue_mb * 1024 * 1024
         total = images.thumbs_size()
@@ -1087,7 +1090,12 @@ class Player:
             and not i.framing
             and i.id not in protected
         ]
-        spare.sort(key=lambda i: i.added_at)
+
+        def order(item: Item) -> tuple[bool, float, str]:
+            seen = images.used_at(item)
+            return seen is not None, seen or 0.0, item.added_at
+
+        spare.sort(key=order)
         gone: list[Item] = []
         for item in spare:
             if total <= limit:
