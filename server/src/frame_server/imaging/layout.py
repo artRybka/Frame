@@ -168,6 +168,9 @@ class Plan:
     windows: list[Window]
     caption_at: tuple[int, int, int] | None = None  # right x, top y, max width
     text_rect: Rect | None = None  # DESCRIPTION: where the text is printed on the mat
+    # FILL: the caption on a white card on the picture, at its bottom right:
+    # the card's right x, bottom y and widest width.
+    card_at: tuple[int, int, int] | None = None
 
     def mat_mask(self) -> np.ndarray:
         """Canvas pixels not covered by a window: the passe-partout."""
@@ -176,6 +179,12 @@ class Plan:
         for x, y, w, h in (window.rect for window in self.windows):
             mask[y : y + h, x : x + w] = False
         return mask
+
+
+#: FILL's caption card: its distance from the canvas's right and bottom
+#: edges (share of the short side) and its widest width (share of the width).
+CARD_INSET = 0.03
+CARD_MAX_WIDTH = 0.6
 
 
 def caption_size(canvas: tuple[int, int]) -> int:
@@ -290,16 +299,17 @@ def _plan_fill(
     crop: Crop | None,
     auto: AutoCrop | None,
 ) -> Plan:
+    """The picture over the whole canvas; a caption goes on a small white
+    card laid on the picture at the bottom right ("Podpis na dziele")."""
     cw, ch = canvas
-    band = caption_band(canvas) if caption else 0
-    aspect = cw / (ch - band)
+    aspect = cw / ch
     chosen = crop or _auto(auto, aspect, [1.0])[0]
-    window = Window((0, 0, cw, ch - band), crop_box(size, aspect, chosen), "fill", chosen)
-    at = None
+    window = Window((0, 0, cw, ch), crop_box(size, aspect, chosen), "fill", chosen)
+    card = None
     if caption:
-        pad = round(min(cw, ch) * 0.03)
-        at = (cw - pad, ch - band + (band - round(caption_size(canvas) * 1.2)) // 2, cw - 2 * pad)
-    return Plan(Fit.FILL, canvas, [window], at)
+        pad = round(min(cw, ch) * CARD_INSET)
+        card = (cw - pad, ch - pad, round(cw * CARD_MAX_WIDTH))
+    return Plan(Fit.FILL, canvas, [window], card_at=card)
 
 
 def detail_zoom(size: tuple[int, int], aspect: float, window_width: int, picture: float) -> float:

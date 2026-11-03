@@ -38,6 +38,9 @@ enum DemoFraming {
         let windows: [Window]
         let captionAt: CGRect?  // right-aligned within; origin = top-left of the line
         var textRect: CGRect?  // "description": where the text is printed on the mat
+        /// "fill": the caption on a white card on the picture; its bottom
+        /// right corner and widest width (layout.Plan.card_at).
+        var cardAt: (corner: CGPoint, width: CGFloat)?
     }
 
     /// The panel canvas at half resolution (the frame is 2560×1440).
@@ -213,18 +216,15 @@ enum DemoFraming {
     }
 
     private static func planFill(_ size: CGSize, _ canvas: CGSize, _ caption: Bool, _ crop: Crop?) -> Plan {
-        let band = caption ? captionBand(canvas) : 0
-        let rect = CGRect(x: 0, y: 0, width: canvas.width, height: canvas.height - band)
-        let aspect = rect.width / rect.height
+        let rect = CGRect(origin: .zero, size: canvas)
         let chosen = crop ?? Crop()
-        var at: CGRect?
-        if caption {
+        let window = Window(rect: rect, box: cropBox(size, aspect: rect.width / rect.height, crop: chosen), role: "fill", crop: chosen)
+        var plan = Plan(fit: "fill", canvas: canvas, windows: [window], captionAt: nil)
+        if caption {  // layout.CARD_INSET, CARD_MAX_WIDTH
             let pad = (min(canvas.width, canvas.height) * 0.03).rounded()
-            let top = rect.maxY + ((band - (captionSize(canvas) * 1.2).rounded()) / 2).rounded(.down)
-            at = CGRect(x: pad, y: top, width: canvas.width - 2 * pad, height: captionSize(canvas) * 1.4)
+            plan.cardAt = (CGPoint(x: canvas.width - pad, y: canvas.height - pad), canvas.width * 0.6)
         }
-        let window = Window(rect: rect, box: cropBox(size, aspect: aspect, crop: chosen), role: "fill", crop: chosen)
-        return Plan(fit: "fill", canvas: canvas, windows: [window], captionAt: at)
+        return plan
     }
 
     /// The close-up as close as the source's pixels allow, and at least 1.8×
@@ -358,6 +358,9 @@ enum DemoFraming {
             if let at = layout.captionAt {
                 drawCaption(art.caption, in: at, canvas: size, white: white)
             }
+            if let card = layout.cardAt {
+                drawCard(art.caption, corner: card.corner, width: card.width, canvas: size, in: context.cgContext)
+            }
             if let rect = layout.textRect {
                 drawText(art.text, in: rect, canvas: size, white: white)
             }
@@ -454,6 +457,32 @@ enum DemoFraming {
             red: r + (target - r) * amount, green: g + (target - g) * amount,
             blue: b + (target - b) * amount, alpha: 1
         )
+    }
+
+    /// The caption on a small white card laid on the picture, with a soft
+    /// shadow (caption.card_layout, shade_card; the canvas here is half size).
+    private static func drawCard(_ text: String, corner: CGPoint, width: CGFloat, canvas: CGSize, in context: CGContext) {
+        let size = captionSize(canvas)
+        let pad = CGSize(width: (size * 0.9).rounded(), height: (size * 0.55).rounded())
+        let style = NSMutableParagraphStyle()
+        style.lineBreakMode = .byTruncatingTail
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: UIFont.systemFont(ofSize: size),
+            .foregroundColor: UIColor(white: 0.1, alpha: 1),
+            .paragraphStyle: style,
+        ]
+        let measured = (text as NSString).size(withAttributes: attributes)
+        let line = CGSize(width: min(ceil(measured.width), width - 2 * pad.width), height: ceil(measured.height))
+        let card = CGRect(
+            x: corner.x - line.width - 2 * pad.width, y: corner.y - line.height - 2 * pad.height,
+            width: line.width + 2 * pad.width, height: line.height + 2 * pad.height
+        )
+        context.saveGState()
+        context.setShadow(offset: CGSize(width: 2, height: 7), blur: 8, color: UIColor.black.withAlphaComponent(0.5).cgColor)
+        context.setFillColor(UIColor.white.cgColor)
+        context.fill(card)
+        context.restoreGState()
+        (text as NSString).draw(in: CGRect(origin: CGPoint(x: card.minX + pad.width, y: card.minY + pad.height), size: line), withAttributes: attributes)
     }
 
     /// Right-aligned on the mat, like a museum label.

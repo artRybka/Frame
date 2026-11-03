@@ -16,7 +16,6 @@ from frame_server.imaging.layout import (
     Crop,
     Fit,
     Orientation,
-    caption_band,
     crop_box,
     detail_zoom,
     plan_layout,
@@ -248,11 +247,35 @@ def test_description_keeps_whole_sentences() -> None:
     assert whole_sentences(draw, text, fnt, width, 2) == " ".join(sentences(text)[:2])
 
 
-def test_fill_leaves_a_strip_for_the_caption() -> None:
+def test_fill_puts_the_caption_on_a_card_on_the_picture() -> None:
+    from frame_server.imaging.caption import card_layout
+
     plan = plan_layout((1600, 900), CANVAS, Fit.FILL, caption=True)
     (window,) = plan.windows
-    assert window.rect == (0, 0, 2560, 1440 - caption_band(CANVAS))
-    assert plan.caption_at is not None and plan.caption_at[1] > window.rect[3]
+    assert window.rect == (0, 0, 2560, 1440)  # no strip: the picture fills the frame
+    assert plan.caption_at is None and plan.card_at is not None
+    (x, y, w, h), line = card_layout(CANVAS, plan.card_at, "Someone — Something, 1900")
+    assert line == "Someone — Something, 1900"
+    assert x + w == plan.card_at[0] < 2560 and y + h == plan.card_at[1] < 1440  # bottom right
+    assert w < 2560 * 0.6 and 30 < h < 120
+    _, line = card_layout(CANVAS, plan.card_at, "Long title " * 60)
+    assert line.endswith("…")  # never wider than its share of the frame
+
+    settings = PRESETS["painting"].model_copy(deep=True)
+    settings.layout.fit = Fit.FILL
+    settings.caption = "Someone — Something, 1900"
+    result = render(Image.new("RGB", (1600, 900), (40, 70, 160)), settings)
+    panel = result.panel
+    white = SPECTRA6.device_u8()[SPECTRA6.white_index()]
+    black = SPECTRA6.device_u8()[SPECTRA6.black_index()]
+    card = panel[y : y + h, x : x + w]
+    on_card = np.all(card == white, axis=-1).mean()
+    assert 0.7 < on_card < 1  # a white card with black letters on it
+    assert np.any(np.all(card == black, axis=-1))
+    original = np.asarray(result.original_image())
+    below = original[y + h + 2, x + w // 2].astype(int)
+    away = original[y + h + 40, x + w // 2].astype(int)
+    assert below.sum() < away.sum()  # its soft shadow on the picture
 
 
 def test_mat_colour_bevel_and_caption_ink() -> None:
