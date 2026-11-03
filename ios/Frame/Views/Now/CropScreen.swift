@@ -23,10 +23,16 @@ struct CropScreen: View {
     /// frame comes out of it and goes back onto it. Presented and dismissed
     /// without the system's animation (`CropScreen.present`).
     var home: CGRect?
+    /// Closes it where it was opened (the binding there set to false), with
+    /// the system's animation off: `dismiss()` kept it on, so the empty
+    /// screen still slid away as a cream card with the frame in it, over
+    /// the preview already shown again (two frames for a moment).
+    var onClose: (() -> Void)?
 
     init(
         itemID: String, preview: ImageRef?, aspectRatio: CGFloat, placeholder: Color = Theme.mat,
-        onFrame: Bool = false, draft: Binding<FramingDraft>, save: @escaping () async -> Bool, home: CGRect? = nil
+        onFrame: Bool = false, draft: Binding<FramingDraft>, save: @escaping () async -> Bool, home: CGRect? = nil,
+        onClose: (() -> Void)? = nil
     ) {
         self.itemID = itemID
         self.preview = preview
@@ -36,6 +42,7 @@ struct CropScreen: View {
         _draft = draft
         self.save = save
         self.home = home
+        self.onClose = onClose
         _atHome = State(initialValue: home != nil)
     }
 
@@ -62,6 +69,9 @@ struct CropScreen: View {
     /// once it has gone back), with the page and controls faded out.
     @State private var atHome: Bool
     @State private var shown = false
+    /// The last moment: the frame on the preview goes with the screen, as
+    /// the preview under it shows again.
+    @State private var gone = false
 
     private var ready: Bool { draft.view?.windows.isEmpty == false }
 
@@ -89,6 +99,7 @@ struct CropScreen: View {
                 // Cast after the turn, so it keeps falling down.
                 .frameShadow()
                 .modifier(AtHome(move: atHome ? homeMove(in: geo) : nil))
+                .opacity(gone ? 0 : 1)
                 .frame(width: geo.size.width, height: geo.size.height)
                 .overlay {
                     if loaded != preview, !closing {
@@ -247,7 +258,10 @@ struct CropScreen: View {
             shown = false
         }
         try? await Task.sleep(for: .seconds(0.3))
-        Self.present { dismiss() }
+        Self.present {
+            gone = true
+            if let onClose { onClose() } else { dismiss() }
+        }
     }
 
     /// Quick, so the frame is on its side by the time the screen has popped

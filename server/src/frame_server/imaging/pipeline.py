@@ -27,7 +27,7 @@ from PIL import Image
 from pydantic import BaseModel, ConfigDict, Field
 
 from .bands import by_rows
-from .caption import caption_mask
+from .caption import caption_mask, card_masks, shade_card
 from .color import FloatArray, linear_to_u8, u8_to_linear
 from .dither import Kernel, error_diffusion, nearest
 from .filters import sharpen
@@ -319,7 +319,10 @@ def _compose_one(
     img: Image.Image, s: RenderSettings, fast: bool = False
 ) -> tuple[FloatArray, Plan]:
     plan = plan_for(img, s.layout, caption=bool(s.caption))
-    return compose_plan(img, plan, mat_color=_mat_rgb(img, s.layout.mat), fast=fast), plan
+    linear = compose_plan(img, plan, mat_color=_mat_rgb(img, s.layout.mat), fast=fast)
+    if s.caption and plan.card_at is not None:
+        shade_card(linear, plan.canvas, plan.card_at, s.caption)
+    return linear, plan
 
 
 def _compose_multi(
@@ -474,7 +477,11 @@ def _marks(
         if name in pal.names
     ]
     ink = pal.white_index() if dark_board else pal.black_index()
-    return marks + [(ink, mask) for mask in _letters(plan, s)]
+    marks += [(ink, mask) for mask in _letters(plan, s)]
+    if s.caption and plan.card_at is not None:  # FILL: a white card on the picture
+        card, letters = card_masks(plan.canvas, plan.card_at, s.caption)
+        marks += [(pal.white_index(), card), (pal.black_index(), letters)]
+    return marks
 
 
 def _letters(plan: Plan, s: RenderSettings) -> list[np.ndarray]:

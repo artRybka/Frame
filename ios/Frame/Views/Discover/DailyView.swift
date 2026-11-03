@@ -186,7 +186,8 @@ struct DailyView: View {
                     aspectRatio: model.isPortrait ? 9.0 / 16.0 : 16.0 / 9.0,
                     placeholder: work.item.item.placeholderColor,
                     onFrame: model.player?.current?.item?.id == work.item.id,
-                    draft: $draft, save: saveCrop, home: cropHome
+                    draft: $draft, save: saveCrop, home: cropHome,
+                    onClose: { cropping = false }
                 )
             }
         }

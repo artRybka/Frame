@@ -1252,6 +1252,24 @@ struct PresentationSection: View {
 
     private var isMulti: Bool { target == .photo && presentation.fit.wrappedValue == "multi" }
 
+    private var isDescription: Bool { target == .art && presentation.fit.wrappedValue == "description" }
+
+    /// The passe-partout's colour and width matter only where there is one:
+    /// art in Passe-partout or Opis, photos in Passe-partout or Multi.
+    private var hasMat: Bool { presentation.fit.wrappedValue != "fill" }
+
+    /// The caption is art's only: under the picture on a passe-partout, on
+    /// a small white card on the picture when it fills the frame, and none
+    /// in Opis, whose text says it all.
+    private var labelTitle: String? {
+        guard target == .art else { return nil }
+        switch presentation.fit.wrappedValue {
+        case "fit": return "Podpis pod dziełem"
+        case "fill": return "Podpis na dziele"
+        default: return nil
+        }
+    }
+
     /// The passe-partout's width in millimetres on the panel, in 5 mm steps.
     private var marginMillimetres: Binding<Double> {
         Binding(
@@ -1381,21 +1399,19 @@ struct PresentationSection: View {
             }
             .pickerStyle(.segmented)
             Card {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Kadrowanie").foregroundStyle(Theme.ink)
-                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
-                        ForEach(target == .photo ? FitOption.photoModes : FitOption.modes, id: \.fit) { mode in
-                            FitOption(
-                                title: mode.title, fit: mode.fit, mat: MatSwatch.color(presentation.mat.wrappedValue),
-                                selected: presentation.fit.wrappedValue == mode.fit
-                            ) {
-                                presentation.fit.wrappedValue = mode.fit
-                                if mode.fit == "fit", presentation.margin.wrappedValue == 0 {
-                                    presentation.margin.wrappedValue = Panel.margin(mm: 20)
-                                }
-                                if mode.fit == "multi", presentation.margin.wrappedValue < Panel.margin(mm: 20) {
-                                    presentation.margin.wrappedValue = Panel.margin(mm: 30)
-                                }
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
+                    ForEach(target == .photo ? FitOption.photoModes : FitOption.modes, id: \.fit) { mode in
+                        FitOption(
+                            title: mode.title, fit: mode.fit, mat: MatSwatch.color(presentation.mat.wrappedValue),
+                            darkMat: MatSwatch.isDark(presentation.mat.wrappedValue),
+                            selected: presentation.fit.wrappedValue == mode.fit
+                        ) {
+                            presentation.fit.wrappedValue = mode.fit
+                            if mode.fit == "fit", presentation.margin.wrappedValue == 0 {
+                                presentation.margin.wrappedValue = Panel.margin(mm: 20)
+                            }
+                            if mode.fit == "multi", presentation.margin.wrappedValue < Panel.margin(mm: 20) {
+                                presentation.margin.wrappedValue = Panel.margin(mm: 30)
                             }
                         }
                     }
@@ -1404,16 +1420,16 @@ struct PresentationSection: View {
                     Divider()
                     MultiSettings(presentation: presentation, portrait: settings.orientation == "portrait")
                 }
-                Divider()
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Passe-partout").foregroundStyle(Theme.ink)
-                    HStack(spacing: 0) { matSwatches }
-                }
-                if presentation.fit.wrappedValue != "fill" {
+                if hasMat {
+                    Divider()
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text(isDescription ? "Kolor passe-partout" : "Kolor").foregroundStyle(Theme.ink)
+                        HStack(spacing: 0) { matSwatches }
+                    }
                     Divider()
                     VStack(alignment: .leading, spacing: 4) {
                         HStack {
-                            Text("Szerokość passe-partout")
+                            Text(isDescription ? "Szerokość passe-partout" : "Szerokość")
                             Spacer()
                             Text("\(Int(Panel.millimetres(presentation.margin.wrappedValue).rounded())) mm")
                                 .monospacedDigit()
@@ -1422,9 +1438,9 @@ struct PresentationSection: View {
                         Slider(value: marginMillimetres, in: 0 ... 80, step: 5)
                     }
                 }
-                if target == .art {
+                if let title = labelTitle {
                     Divider()
-                    Toggle("Podpis na ramce", isOn: presentation.label)
+                    Toggle(title, isOn: presentation.label)
                 }
             }
             .tint(Theme.ink)
@@ -1437,6 +1453,8 @@ struct FitOption: View {
     let title: String
     let fit: String
     var mat: Color = Theme.matWhite
+    /// A black or deep board: the picture in the miniature is drawn light.
+    var darkMat = false
     let selected: Bool
     let action: () -> Void
 
@@ -1459,9 +1477,9 @@ struct FitOption: View {
                 .aspectRatio(1, contentMode: .fit)  // square: the same for portrait and landscape frames
                 .frame(height: 52)
                 .whiteFrame(3, corner: 1)
-                .selectionRing(selected)
+                .miniatureChoice(selected)
                 Text(title)
-                    .font(.caption2.weight(.medium))
+                    .font(.caption2.weight(selected ? .bold : .medium))
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
                     .foregroundStyle(Theme.ink)
@@ -1476,7 +1494,8 @@ struct FitOption: View {
     }
 
     @ViewBuilder private var miniature: some View {
-        let art = Theme.inkSoft.opacity(0.6)
+        let art = darkMat ? MatSwatch.lightArt : Theme.inkSoft.opacity(0.6)
+        let lines = darkMat ? MatSwatch.lightArt : Theme.ink.opacity(0.55)
         switch fit {
         case "fill":
             Rectangle().fill(art)
@@ -1488,7 +1507,7 @@ struct FitOption: View {
                     Spacer(minLength: 2)
                     ForEach([1.0, 0.9, 0.95, 0.6], id: \.self) { share in
                         GeometryReader { geo in
-                            Rectangle().fill(Theme.ink.opacity(0.55)).frame(width: geo.size.width * share, height: 1.5)
+                            Rectangle().fill(lines).frame(width: geo.size.width * share, height: 1.5)
                         }
                         .frame(height: 1.5)
                     }
@@ -1513,13 +1532,27 @@ struct FitOption: View {
 }
 
 extension View {
-    /// The chosen miniature: an accent outline a little off its frame, no tile around it.
-    func selectionRing(_ selected: Bool) -> some View {
-        overlay(
-            RoundedRectangle(cornerRadius: 3)
-                .strokeBorder(selected ? Theme.ink : .clear, lineWidth: 2)
-                .padding(-5)
-        )
+    /// A miniature of the frame hangs on the wall with a soft shadow; the
+    /// chosen one casts a little more and wears a round check badge on its
+    /// bottom right corner (sketch: zaznaczenie-miniatur, variant C).
+    func miniatureChoice(_ selected: Bool) -> some View {
+        shadow(color: .black.opacity(selected ? 0.30 : 0.20), radius: selected ? 6 : 3.5, y: selected ? 3.5 : 2)
+            .overlay(alignment: .bottomTrailing) {
+                if selected {
+                    ZStack {
+                        Circle().fill(Theme.card)
+                        Circle().fill(Theme.ink).padding(2)
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(Theme.card)
+                    }
+                    .frame(width: 20, height: 20)
+                    .offset(x: 8, y: 8)
+                    .transition(.scale(scale: 0.4).combined(with: .opacity))
+                    .accessibilityHidden(true)
+                }
+            }
+            .animation(.spring(duration: 0.25), value: selected)
     }
 }
 
@@ -1530,6 +1563,12 @@ struct MatSwatch: View {
     let action: () -> Void
 
     static let names = ["white", "cream", "grey", "black", "picture", "picture_dark"]
+
+    /// Boards a dark miniature picture would vanish on.
+    static func isDark(_ name: String) -> Bool { name == "black" || name == "picture_dark" }
+
+    /// The picture in a miniature on a dark board: a light warm grey.
+    static let lightArt = Color(hex: 0x9C968D)
 
     static func color(_ name: String) -> Color {
         switch name {

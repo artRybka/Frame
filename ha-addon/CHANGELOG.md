@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.85.5
+## 1.86.1
 
 - „Rozmiar obrazu”: obok dzieła dla skali stoi prawdziwa kartka A4 (biała,
   z cieniem i zagiętym rogiem, z cienkim ciemnoszarym nadrukiem „A4”). Gdy
@@ -10,6 +10,29 @@
   jednej linii, dolnej krawędzi dzieła; dzieło bez cienkiej obwódki.
 - Rysunek z wymiarami nie znika już na chwilę przy przełączaniu zakładek:
   wymiary przychodzą razem z tekstem studium.
+
+## 1.86.0
+
+- Ramka → Prezentacja: bez nagłówka „Kadrowanie”. Kolor i szerokość
+  passe-partout pokazują się tylko tam, gdzie jest karton (Sztuka:
+  Passe-partout i Opis, Zdjęcia: Passe-partout i Multi), jako „Kolor”
+  i „Szerokość”, a w Opisie „Kolor passe-partout” i „Szerokość
+  passe-partout”.
+- Podpis: przy Passe-partout nazywa się „Podpis pod dziełem”, przy
+  Wypełnij „Podpis na dziele”, w Opisie go nie ma. Podpis na dziele to
+  teraz biała karteczka w prawym dolnym rogu, położona na obrazie, z
+  miękkim cieniem rzucanym głównie w dół. Obraz wypełnia cały ekran, bez paska na dole.
+- Miniatury kadrowania i siatek Multi mają większy cień, a wybraną
+  wyróżnia okrągły znaczek z ptaszkiem w rogu zamiast obwódki wokół ramki.
+- Multi przy czarnym passe-partout: okienka zdjęć w miniaturach siatek są
+  jasne, wcześniej było czarne na czarnym.
+
+## 1.85.5
+
+- Kadrowanie (karta dzieła, Teraz i Studium): po powrocie ramki na
+  podgląd ekran Kadru znika od razu. Wcześniej system jeszcze go
+  zsuwał jako kremową kartę z ramką w środku, więc przez ułamek sekundy
+  było widać dwie ramki.
 
 ## 1.85.4
 
