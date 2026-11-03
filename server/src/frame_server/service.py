@@ -25,6 +25,7 @@ from .config import Settings
 from .copies import Copies
 from .daily import Daily
 from .device import MdcClient, MdcConnectionError, MdcError, wol
+from .holders import Holders
 from .imaging import Palette, RenderSettings, get_palette, render, render_multi
 from .imaging.pipeline import encode_image
 from .later import LaterWorks
@@ -233,6 +234,9 @@ class FrameService:
         self.sharper = Sharper(self.library, self.importer, self.images, copies.file)
         self.daily.sharper = self.sharper
         self.copies = Copies(self.sharper)
+        # The museums of works from Commons, Openverse, WikiArt: looked up
+        # when a card opens and at night.
+        self.holders = Holders(self.library, museum_client)
         self.study = Study(self.daily, self.ai, StudyJob(self.library, self.images, self.ai_config))
         self.ai.register(self.study.job)
         # Its steps on the Lock Screen, and "Studium gotowe" at the end.

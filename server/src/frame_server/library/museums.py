@@ -1459,6 +1459,9 @@ class WikiArt(Museum):
             thumb_url=image,
             width=d.get("width"),
             height=d.get("height"),
+            # Only a work's own record (``fetch``) names where it hangs:
+            # "Musée d'Orsay, Paris, France".
+            holder=next((str(g).strip() for g in d.get("galleries") or [] if str(g).strip()), ""),
         )
 
     def _page(self, term: str, number: int) -> tuple[list[dict[str, Any]], bool]:

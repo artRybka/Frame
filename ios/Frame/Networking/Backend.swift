@@ -45,6 +45,9 @@ protocol FrameBackend: Sendable {
     /// The card opened: when the work's picture is poor, the server looks
     /// for a sharper copy in other sources; waits up to `wait` seconds.
     func sharpen(itemID: String, wait: Int) async throws -> SharperView
+    /// The card opened on a work whose source gathers pictures (Commons,
+    /// Openverse, WikiArt): which museum it is in; waits up to `wait` seconds.
+    func holder(itemID: String, wait: Int) async throws -> HolderView
     /// "Szukaj lepszej kopii": every copy of the work's picture in the
     /// sources, as they answer.
     func copies(itemID: String) async throws -> AsyncThrowingStream<CopyLine, Error>

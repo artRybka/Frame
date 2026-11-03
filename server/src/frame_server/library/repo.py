@@ -439,6 +439,7 @@ class Library:
                         "keywords": existing.keywords,
                         "terms": existing.terms,
                         "sharper": existing.sharper,
+                        "holder": item.holder or existing.holder,
                     }
                 )
             elif not item.added_at:

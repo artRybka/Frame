@@ -89,6 +89,15 @@ struct LiveBackend: FrameBackend {
         return try await get("/api/library/items/\(escape(itemID))/polish", query: query)
     }
 
+    func holder(itemID: String, wait: Int) async throws -> HolderView {
+        var req = request(
+            "/api/library/items/\(escape(itemID))/holder", method: "POST",
+            query: [URLQueryItem(name: "wait", value: String(wait))]
+        )
+        req.timeoutInterval = TimeInterval(wait + 30)
+        return try await perform(req)
+    }
+
     func sharpen(itemID: String, wait: Int) async throws -> SharperView {
         var req = request(
             "/api/library/items/\(escape(itemID))/sharpen", method: "POST",

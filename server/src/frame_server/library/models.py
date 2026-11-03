@@ -4,8 +4,16 @@ from __future__ import annotations
 
 from enum import StrEnum
 from typing import Any, Literal
+from urllib.parse import urlsplit
 
-from pydantic import BaseModel, Field, SerializationInfo, field_serializer, model_validator
+from pydantic import (
+    BaseModel,
+    Field,
+    SerializationInfo,
+    computed_field,
+    field_serializer,
+    model_validator,
+)
 
 from ..imaging.layout import Crop, Fit
 from .viewer import OWNER_ID, VIEWER
@@ -68,6 +76,25 @@ class Framing(BaseModel):
         if data.get("detail") is None and isinstance(details, list) and len(details) == 2:
             data["detail"] = details[1]
         return data
+
+
+#: Sources that are a museum's own collection: the work hangs where its
+#: source says (``Item.museum``). The others gather pictures from many
+#: collections, and their name says only where the picture is from.
+COLLECTIONS = frozenset(
+    {"aic", "cma", "met", "rijks", "smk", "nga", "mnw", "mnk", "yale", "si", "paris", "vam"}
+)
+
+#: Openverse's museums, by the host of a work's page there.
+OPENVERSE_HOSTS = {
+    "metmuseum.org": "Metropolitan Museum of Art",
+    "clevelandart.org": "Cleveland Museum of Art",
+    "artic.edu": "Art Institute of Chicago",
+    "rijksmuseum.nl": "Rijksmuseum",
+    "smk.dk": "Statens Museum for Kunst",
+    "brooklynmuseum.org": "Brooklyn Museum",
+    "nga.gov": "National Gallery of Art",
+}
 
 
 class SharperCopy(BaseModel):
@@ -142,6 +169,32 @@ class Item(BaseModel):
     #: A sharper copy of the picture from another source, shown in place of
     #: the work's own.
     sharper: SharperCopy | None = None
+    #: The collection the work is in, as found out for a work from a source
+    #: that gathers pictures from many (Wikidata's "collection" of the work
+    #: on Commons or WikiArt, the institution on its Commons page, WikiArt's
+    #: gallery); "" when not known. See :attr:`held_by`.
+    holder: str = ""
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def held_by(self) -> str:
+        """The museum the work is in ("Muzeum Narodowe w Warszawie"), named on
+        the card above its title; "" when not known. Not where the picture is
+        from: a work on Wikimedia Commons hangs in a museum, not on Commons."""
+        if self.kind != ItemKind.ARTWORK or self.look is not None:
+            return ""
+        if self.source in COLLECTIONS:
+            return self.museum
+        if self.holder:
+            return self.holder
+        if self.sharper is not None and self.sharper.source in COLLECTIONS and self.sharper.museum:
+            return self.sharper.museum  # the same picture whole, from the museum itself
+        if self.source == "europeana":
+            return self.credit  # its data provider: the collection
+        if self.source == "openverse":
+            host = (urlsplit(self.url).hostname or "").removeprefix("www.")
+            return next((n for h, n in OPENVERSE_HOSTS.items() if host.endswith(h)), "")
+        return ""
 
     @property
     def file_stem(self) -> str:
@@ -175,6 +228,8 @@ class ItemSummary(BaseModel):
     pooled: bool = False
     #: The Polish title, where a list shows it ("Teraz"); None elsewhere.
     title_pl: str | None = None
+    #: ``Item.held_by``: the museum the work is in, "" when not known.
+    held_by: str = ""
 
     @classmethod
     def of(cls, item: Item) -> ItemSummary:

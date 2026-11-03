@@ -148,6 +148,18 @@ enum ColorTag {
 
     static func accent(_ family: String) -> String { accentPrefix + family }
 
+    /// A work's tags as the Kolor sheet groups them: colours, accents,
+    /// moods, each in the sheet's order (moods in pairs).
+    static func rows(_ tags: [String]) -> [[String]] {
+        let accents = accentFamilies.map(accent)
+        let known = Set(families + accents + moods)
+        return [
+            families.filter(tags.contains),
+            accents.filter(tags.contains),
+            moods.filter(tags.contains) + tags.filter { !known.contains($0) },
+        ]
+    }
+
     static func name(_ tag: String) -> String {
         if tag.hasPrefix(accentPrefix) {
             return "Akcent: " + name(String(tag.dropFirst(accentPrefix.count))).lowercased()

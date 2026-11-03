@@ -60,6 +60,17 @@ struct Item: Codable, Identifiable, Hashable, Sendable {
     /// A sharper copy of the picture from another source, shown in place
     /// of the museum's own (the server found it when the card was opened).
     var sharper: SharperCopy? = nil
+    /// The museum the work is in ("Muzeum Narodowe w Warszawie"), not where
+    /// its picture is from: "" when the server does not know it (yet), nil
+    /// from a server before 1.81.
+    var heldBy: String? = nil
+
+    /// The museum named on the card ("Kolekcja", "Teraz"): "" for a work
+    /// whose museum is not known; a server before 1.81 names the source.
+    var museumShown: String {
+        guard kind == .artwork else { return museum }
+        return heldBy ?? museum
+    }
 
     /// The display-size original: the sharper copy's under its own address
     /// (the one before stays in the caches under the plain one).
@@ -71,7 +82,7 @@ struct Item: Codable, Identifiable, Hashable, Sendable {
         ItemSummary(
             id: id, kind: kind, source: source, title: title, artist: artist, dateText: dateText,
             year: year, colors: colors, width: width, height: height, favorite: favorite,
-            suitability: suitability
+            suitability: suitability, heldBy: heldBy
         )
     }
 }
@@ -131,6 +142,15 @@ struct SharperView: Codable, Hashable, Sendable {
     var sharper: SharperCopy?
     var width: Int? = nil
     var height: Int? = nil
+    /// The museum the work is in: a copy from the museum itself names it.
+    var heldBy: String? = nil
+}
+
+/// The museum a work from Commons, Openverse or WikiArt is in, looked up as
+/// its card opens: "found" (`name`), "looking" (ask again), "none", "off".
+struct HolderView: Codable, Hashable, Sendable {
+    var status: String
+    var name: String = ""
 }
 
 /// One copy of a work's picture from another source ("Szukaj lepszej
@@ -224,6 +244,8 @@ struct ItemSummary: Codable, Identifiable, Hashable, Sendable {
     /// Width / height when the museum gives no size: the server measures it
     /// on the thumbnail (`RemoteItem.aspect`).
     var aspect: Double? = nil
+    /// `Item.heldBy`: the museum the work is in, "" when not known.
+    var heldBy: String? = nil
 
     /// The title "Teraz" shows: Polish when there is one.
     var shownTitle: String { titlePl ?? title }

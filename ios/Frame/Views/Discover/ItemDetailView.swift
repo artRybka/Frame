@@ -138,6 +138,7 @@ struct ItemDetailView: View {
         .task(id: itemID) { await load() }
         .task(id: described) { await loadSeen() }
         .task(id: described) { await sharpen() }
+        .task(id: described) { await findHolder() }
         .task(id: view == .frame ? draftKey : "") { await loadFraming() }
         .onChange(of: item) { _, item in
             if let item { ItemPeeks.keep(item) }
@@ -318,7 +319,14 @@ struct ItemDetailView: View {
     /// The title block as the tile knew it.
     private func peekTitle(_ summary: ItemSummary) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Eyebrow(Names.source(summary.source), color: Theme.vermilion)
+            // The museum the work is in; a source that only gathers
+            // pictures (Commons) is no museum, so nothing until it is known.
+            let held = summary.kind == .artwork
+                ? summary.heldBy ?? Names.source(summary.source)
+                : Names.source(summary.source)
+            if !held.isEmpty {
+                Eyebrow(held, color: Theme.vermilion)
+            }
             Text(nonEmpty(polish?.title) ?? (summary.shownTitle.isEmpty ? "Bez tytułu" : summary.shownTitle))
                 .font(.serif(30, weight: .semibold))
                 .foregroundStyle(Theme.ink)
@@ -479,8 +487,30 @@ struct ItemDetailView: View {
             if let width = view.width, let height = view.height, width > 0 {
                 pictureSize = (width, height)
             }
+            if let held = view.heldBy, !held.isEmpty, item?.heldBy?.isEmpty != false {
+                withAnimation(.easeOut(duration: 0.3)) { item?.heldBy = held }
+            }
             if let copy = view.sharper {
                 item?.sharper = copy
+                return
+            }
+            if view.status != "looking" { return }
+        }
+    }
+
+    /// A work from a source that gathers pictures (Commons, Openverse,
+    /// WikiArt) names no museum: the server looks it up on Wikidata and
+    /// Commons as the card opens, and it fades in above the title.
+    private func findHolder() async {
+        guard let id = described, id == itemID, item?.kind == .artwork, item?.heldBy == "" else { return }
+        for attempt in 0..<3 {
+            guard let view = try? await model.backend.holder(itemID: id, wait: attempt == 0 ? 15 : 30),
+                  !Task.isCancelled, id == itemID
+            else { return }
+            if view.status == "found", !view.name.isEmpty {
+                if item?.heldBy?.isEmpty != false {
+                    withAnimation(.easeOut(duration: 0.3)) { item?.heldBy = view.name }
+                }
                 return
             }
             if view.status != "looking" { return }
@@ -751,7 +781,15 @@ struct ItemDetailView: View {
 
     private func titleBlock(_ item: Item) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Eyebrow(Names.source(item.source), color: Theme.vermilion)
+            // The museum the work is in, not where its picture is from
+            // ("Zdjęcie dzieła" says that); nothing while it is not known.
+            let held = item.kind == .artwork
+                ? item.heldBy ?? Names.source(item.source)
+                : Names.source(item.source)
+            if !held.isEmpty {
+                Eyebrow(held, color: Theme.vermilion)
+                    .transition(.opacity)
+            }
             let shown = title(item)
             let original = OriginalTitle.of(item.title, shown: shown)
             Text(peeking ? original ?? shown : shown)
@@ -894,10 +932,16 @@ struct ItemDetailView: View {
                 }
                 .frame(height: 14)
             }
-            if !item.colorTags.isEmpty {
-                FlowLayout(spacing: 6) {
-                    ForEach(item.colorTags, id: \.self) { tag in
-                        TagLabel(text: ColorTag.name(tag), colorTag: tag)
+            // One row each, in the Kolor sheet's order: colours, accents, moods.
+            let rows = ColorTag.rows(item.colorTags).filter { !$0.isEmpty }
+            if !rows.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(rows, id: \.self) { row in
+                        FlowLayout(spacing: 6) {
+                            ForEach(row, id: \.self) { tag in
+                                TagLabel(text: ColorTag.name(tag), colorTag: tag)
+                            }
+                        }
                     }
                 }
             }
@@ -910,7 +954,7 @@ struct ItemDetailView: View {
             fact("Technika", nonEmpty(shownPolish?.medium) ?? item.medium)
             fact("Rodzaj", item.classification)
             fact("Pochodzenie", item.culture)
-            fact("Kolekcja", item.museum)
+            fact("Kolekcja", item.museumShown)
             if item.kind == .artwork && item.look == nil {
                 pictureFact(item)
             }
