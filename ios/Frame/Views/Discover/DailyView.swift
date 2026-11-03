@@ -379,6 +379,7 @@ struct DailyView: View {
         merged.legacy = shown.legacy
         merged.byArtist = shown.byArtist
         merged.sameTime = shown.sameTime
+        if merged.size == nil { merged.size = shown.size }
         work = merged
     }
 

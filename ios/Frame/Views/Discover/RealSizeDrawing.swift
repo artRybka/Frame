@@ -2,7 +2,8 @@ import SwiftUI
 
 /// "Rozmiar obrazu" (Mateusz 2026-11-02/03): the work at its real size on
 /// the left, at the column's edge, and a sheet of A4 paper on its right for
-/// scale, "A4" printed on it in light grey; one scale, centres level. The
+/// scale, "A4" printed on it in light grey; one scale, both standing on the
+/// work's bottom edge. The
 /// work's height and width are pencilled on the drawing; nothing else: no
 /// person, no sentence, no scale.
 struct RealSizeDrawing: View {
@@ -34,10 +35,11 @@ struct RealSizeDrawing: View {
         let gap: CGFloat = h >= 100 ? 66 : 54
         let room = Self.drawingHeight - Self.top - Self.bottom
         let scale = min(room / max(sheetH, h), (column - gap) / (sheetW + w))
-        let middle = Self.top + room / 2
-        let picture = CGRect(x: 0, y: middle - h * scale / 2, width: w * scale, height: h * scale)
+        // Both stand on one line, the work's bottom edge (Mateusz 2026-11-03).
+        let base = Self.top + room
+        let picture = CGRect(x: 0, y: base - h * scale, width: w * scale, height: h * scale)
         let sheet = CGRect(
-            x: picture.maxX + gap, y: middle - sheetH * scale / 2,
+            x: picture.maxX + gap, y: base - sheetH * scale,
             width: sheetW * scale, height: sheetH * scale
         )
         let pencil = Theme.ink.opacity(0.8)
@@ -54,7 +56,6 @@ struct RealSizeDrawing: View {
             )
             .frame(width: picture.width, height: picture.height)
             .clipped()
-            .overlay(Rectangle().strokeBorder(.black.opacity(0.35), lineWidth: 0.8))
             .shadow(color: .black.opacity(0.22), radius: 5, y: 5)
             .offset(x: picture.minX, y: picture.minY)
 

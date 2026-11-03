@@ -227,7 +227,9 @@ def page(
     by_artist = svc.artists.works(item, shown) if lists else []
     looking = lists and svc.artists.look_soon(item, len(by_artist))
     shown |= {w.id for w in by_artist}
-    size = svc.sizes.size(item) if lists else None
+    # Kept with the text too (a note's read), so the drawing does not go
+    # and come back while the lists are on their way.
+    size = svc.sizes.size(item)
     looking = looking or (lists and size is None and svc.sizes.look_soon(item))
     same_time = svc.daily.same_time(item, shown) if lists else []
     born, died = (
