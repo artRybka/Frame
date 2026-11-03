@@ -10,13 +10,12 @@ import SwiftUI
 /// measures only.
 ///
 /// The scale (Mateusz 2026-11-03 15:29, "przy małych dziełach pokazuj
-/// znacznie większy obraz i postać"): the work's longer side gets at least
-/// 120 points, as far as the column's width allows, but never so close that
-/// less than 80 cm of him shows from the head down. When he is then taller
-/// than the drawing, he is cut straight across at its foot and ends on a
-/// pencil line across the whole screen, his height written by a tick at
-/// the top of his head (variant C, 16:18; 19:05).
-/// A work beside which the whole man fits anyway is drawn as before. The
+/// znacznie większy obraz i postać"; 19:36, "albo ucięta w pasie, albo
+/// pełna od stóp"): the whole man and the work in the drawing's 250 points
+/// as a rule; when that leaves the work's longer side under 120 points,
+/// only his bust, cut just under his jacket on a pencil line across the
+/// screen, his height by a tick at his head, with the work as large as
+/// that and the column's width allow. Never anything in between. The
 /// drawing is as tall as what is on it, with no room left under it.
 struct RealSizeDrawing: View {
     let work: RemoteItem
@@ -68,8 +67,12 @@ struct RealSizeDrawing: View {
     private static let top: CGFloat = 10
     /// The work's longer side, at least, when the width allows.
     static let smallest: CGFloat = 120
-    /// The least of him shown, from the top of his head.
-    static let leastOfHim: CGFloat = 80
+    /// Where he is cut as a bust: just under his jacket, 750 of the
+    /// asset's units down (Mateusz 2026-11-03 19:36: cut at the waist,
+    /// under the jacket, or whole from his feet, nothing in between).
+    static let waist = 180 - 180 * 750 / manUnits
+    /// The least room between the work's foot and the cut, for its width.
+    private static let underRoom: CGFloat = 32
     private static let gap: CGFloat = 66
     /// How far the line he is cut on runs past the column: to the screen's
     /// edges, where the scroll view clips it.
@@ -90,15 +93,20 @@ struct RealSizeDrawing: View {
         let across = max(0.01, (column - gap - labelRoom) / (w + manW))
         let whole = min(room / tallest, across)
         let wanted = smallest / max(h, w, 1)
-        let scale = min(across, max(whole, min(wanted, room / leastOfHim)))
+        // A bust when the whole man leaves the work too small, the work
+        // hangs above his waist with room for its width under it, and the
+        // bust brings it noticeably closer.
+        let waist = CGFloat(Self.waist)
+        let bust = min(across, room / (tallest - waist))
+        let cropped = wanted > whole && bust > whole * 1.15 && (lift - waist) * bust >= underRoom
+        let scale = cropped ? bust : whole
         // Centimetres above the floor to points down from the drawing's top.
         func y(_ cm: CGFloat) -> CGFloat { top + (tallest - cm) * scale }
         let picture = CGRect(x: 0, y: y(lift + h), width: w * scale, height: h * scale)
         let man = CGRect(x: picture.maxX + gap, y: y(manH), width: manW * scale, height: manH * scale)
-        let cropped = manH * scale > room + 0.5
         let underWork = picture.maxY + widthLabel
         let feet = y(0) + manH * (CGFloat(manOverhang) - 1) * scale
-        let cut = top + room
+        let cut = y(waist)
         let height = cropped ? max(cut + 1, underWork) : max(feet, underWork)
         return Plan(scale: scale, picture: picture, man: man, cropped: cropped, cut: cut, height: ceil(height))
     }

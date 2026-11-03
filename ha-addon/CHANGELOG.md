@@ -2,9 +2,10 @@
 
 ## 1.91.1
 
-- „Rozmiar obrazu”: ucięty mężczyzna przy małych dziełach stoi na kresce
-  przez całą szerokość ekranu, a jego wzrost, 180 cm, jest podpisany przy
-  krótkiej kreseczce na wysokości czubka głowy.
+- „Rozmiar obrazu”: mężczyzna jest albo cały, od stóp, albo jako popiersie
+  ucięte tuż pod marynarką, bez wersji pośrednich. Popiersie stoi na
+  kresce przez całą szerokość ekranu, a jego wzrost, 180 cm, jest
+  podpisany przy krótkiej kreseczce na wysokości czubka głowy.
 - Studium dzieła, „Detale”: studium zapamiętuje, na której kopii zdjęcia
   Claude zaznaczał fragmenty. Gdy dzieło ma potem inną, ostrzejszą kopię,
   serwer dopasowuje do siebie obie kopie i wycina detale z tej lepszej,
