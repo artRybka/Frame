@@ -233,7 +233,7 @@ struct CopiesSheet: View {
                         }
                         .buttonStyle(.plain)
                     } else if let page = URL(string: copy.url), !copy.url.isEmpty {
-                        // Another work: nothing to compare, its page at the source.
+                        // No picture to compare: its page at the source.
                         Link(destination: page) {
                             CopyRow(copy: copy, work: item, chevron: true).opacity(0.6)
                         }
@@ -522,20 +522,16 @@ struct CopyCompare: View {
                     .frame(maxWidth: .infinity)
                 numbers
                 if copy.choosable {
-                    Button {
-                        Task { await choose() }
-                    } label: {
-                        HStack(spacing: 8) {
-                            if picking { ProgressView().tint(Theme.paper) }
-                            Text(copy.isOwn ? "Przywróć zdjęcie muzeum" : "Użyj tej kopii")
-                        }
+                    if !copy.fits {
+                        Text(Self.misfit(copy))
+                            .font(.footnote)
+                            .foregroundStyle(Theme.inkSoft)
                     }
-                    .buttonStyle(PrimaryButtonStyle())
-                    .disabled(picking)
-                } else if copy.verdict == "off" {
-                    Text("Ta kopia nie pasuje do dzieła, więc można ją tylko obejrzeć.")
-                        .font(.footnote)
-                        .foregroundStyle(Theme.inkSoft)
+                    if copy.fits {
+                        chooseButton.buttonStyle(PrimaryButtonStyle())
+                    } else {
+                        chooseButton.buttonStyle(SecondaryButtonStyle())
+                    }
                 }
                 if let url = URL(string: copy.url), !copy.url.isEmpty {
                     Link(destination: url) {
@@ -558,6 +554,32 @@ struct CopyCompare: View {
     }
 
     private var otherLabel: String { copy.isOwn ? "Zdjęcie muzeum" : "Ta kopia" }
+
+    private var chooseButton: some View {
+        Button {
+            Task { await choose() }
+        } label: {
+            HStack(spacing: 8) {
+                if picking { ProgressView().tint(copy.fits ? Theme.paper : Theme.ink) }
+                Text(copy.isOwn ? "Przywróć zdjęcie muzeum" : copy.fits ? "Użyj tej kopii" : "Użyj mimo to")
+            }
+        }
+        .disabled(picking)
+    }
+
+    /// Why a copy that does not fit may still be wanted, and what to expect.
+    static func misfit(_ copy: CopyView) -> String {
+        if copy.notes.contains("other") {
+            return "Wygląda na inne dzieło o podobnym tytule. Jeśli to jednak ten sam obraz, możesz go użyć."
+        }
+        if copy.notes.contains("page") {
+            return "To zdjęcie ma wokół obrazu margines. Możesz go użyć i przyciąć w Kadrowaniu."
+        }
+        if copy.notes.contains("fragment") {
+            return "To tylko fragment obrazu. Na ramce zobaczysz tylko tę część."
+        }
+        return "Ta kopia różni się od zdjęcia muzeum. Możesz jej użyć mimo to."
+    }
 
     private var closeUp: some View {
         GeometryReader { geo in

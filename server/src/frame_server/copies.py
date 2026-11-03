@@ -449,18 +449,16 @@ class Copies:
 
     def choose(self, item: Item, copy_id: str) -> Item:
         """The owner's pick for ``item``'s picture: a copy (``copy_id``), or
-        the work's own (its own id). Raises LookupError for no such copy,
-        ValueError for one that is another picture."""
+        the work's own (its own id). Any copy the list told, those that do
+        not fit too (a page around it, another work): the owner has seen it
+        and decides (Mateusz, 2026-11-02). Raises LookupError for no such
+        copy."""
         stored = self.sharper.library.get(item.id) or item
         if copy_id == stored.id:
             return self.sharper.keep_own(stored)
         copy = self.sharper.importer.resolve(copy_id)
         if copy is None or not display_copy(copy):
             raise LookupError(copy_id)
-        self.images.ensure_thumb(stored)
-        self.images.ensure_thumb(copy)
-        if self.likeness.fit(stored, copy) is None:
-            raise ValueError(f"{copy_id} is not a copy of {stored.id}")
         return self.sharper.choose(stored, copy)
 
     # -- the close-up ------------------------------------------------------------------
@@ -468,8 +466,9 @@ class Copies:
     def compare(self, item: Item, copy_id: str, x: float | None, y: float | None) -> Spot:
         """One spot (its centre at ``x``, ``y``; the most detailed one when
         not given) in the picture shown now and in the copy, both at the
-        frame's scale. Raises LookupError for no such copy, ValueError for
-        one that is another picture."""
+        frame's scale; for a copy that is not laid over the work (another
+        picture), the same place of each. Raises LookupError for no such
+        copy."""
         stored = self.sharper.library.get(item.id) or item
         if copy_id == stored.id and stored.sharper is not None:
             copy = stored.model_copy(update={"sharper": None})  # the work's own
@@ -484,8 +483,6 @@ class Copies:
         self.images.ensure_thumb(stored)
         self.images.ensure_thumb(copy)
         fit = self.likeness.fit(stored, copy) if copy.id != stored.id else None
-        if fit is None and copy.id != stored.id:
-            raise ValueError(f"{copy_id} is not a copy of {stored.id}")
         picture = self._picture(url)
         # The picture shown now, at the frame's scale (its long side the frame's).
         scale = IMAGE_MAX / max(current.size)  # small pictures are enlarged on the frame
