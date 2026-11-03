@@ -661,7 +661,7 @@ final class AppModel {
     /// The server cannot build the frame's app.
     private static let noCertificates = (
         "Brak certyfikatów Samsunga na serwerze",
-        "Skopiuj raz author.p12, distributor.p12 i password.txt do folderu data/panel-app/certs serwera (np. File Station)."
+        "Wgraj author.p12 i distributor.p12 w Konfiguracji → Aplikacja ramki."
     )
 
     func refreshPlaylists() async {
@@ -1175,6 +1175,24 @@ final class AppModel {
             notices.fail(error, in: card)
         }
         await refreshStatus(live: false)
+    }
+
+    /// Sends renewed Samsung certificates; the server signs the frame's app
+    /// with them at once. Nil when they went in, else why not
+    /// (`.authorChanged` when the author key differs from the stored one).
+    func uploadPanelCertificates(_ upload: PanelCertificatesUpload) async -> CertificatesUploadError? {
+        do {
+            panelApp = try await backend.uploadPanelCertificates(upload)
+            notices.done("Certyfikaty zapisane na serwerze", "Serwer podpisał nimi aplikację ramki.")
+            await refreshStatus(live: false)
+            return nil
+        } catch let BackendError.http(status, body) where status == 409 {
+            let said = (try? JSONDecoder().decode([String: String].self, from: Data(body.utf8)))?["detail"]
+            return .authorChanged(said ?? "To inny certyfikat autora niż dotąd.")
+        } catch {
+            let (title, detail) = Notices.words(for: error)
+            return .failed([title, detail].compactMap { $0 }.joined(separator: ". "))
+        }
     }
 
     func loadAiSettings() async {

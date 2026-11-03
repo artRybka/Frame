@@ -671,6 +671,73 @@ def test_certificates_copied_in_by_hand_are_picked_up(tmp_path: Path) -> None:
     assert [c.role for c in service.app.view().certificates] == ["author", "distributor"]
 
 
+def test_renewed_certificates_keep_the_author_key(tmp_path: Path) -> None:
+    """Renewed in the Certificate Manager, the author certificate keeps its
+    key: another key is refused (the panel would take the app for another
+    one) unless asked for; an expired one never goes in."""
+    from frame_server.web import create_app
+
+    service = _service(tmp_path)
+    app = create_app(service.settings)
+    author = _p12("Author")
+    with TestClient(app, client=PANEL_CLIENT) as client:
+
+        def put(author: bytes, distributor: bytes, **extra: str) -> tuple[int, str]:
+            files = {"author": ("a.p12", author), "distributor": ("d.p12", distributor)}
+            reply = client.put(
+                "/api/device/app/certificates", files=files, data={"password": PASSWORD, **extra}
+            )
+            return reply.status_code, reply.json().get("detail", "")
+
+        assert put(author, _p12("Distributor"))[0] == 200
+        assert put(author, _p12("Distributor"))[0] == 200  # renewed distributor
+        status, detail = put(_p12("Other author"), _p12("Distributor"))
+        assert status == 409 and "author.p12" in detail
+        status, detail = put(author, _p12("Distributor", days=-1))
+        assert status == 400 and "wygasł" in detail
+        status, detail = put(b"not a p12", _p12("Distributor"))
+        assert status == 400 and "hasło" in detail
+        assert put(_p12("New author"), _p12("Distributor"), new_author="true")[0] == 200
+        assert client.get("/api/device/app").json()["certificates"][0]["subject"] == "CN=New author"
+
+
+def test_certificates_last_until_their_chain_ends(tmp_path: Path) -> None:
+    """A Samsung intermediate bundled in the .p12 that ends before the leaf
+    sets the date."""
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from cryptography.hazmat.primitives.serialization import pkcs12
+    from cryptography.x509.oid import NameOID
+
+    from frame_server.panel_package import Certificates
+
+    now = datetime.now(UTC)
+
+    def cert(name: str, issuer: str, key: rsa.RSAPrivateKey, signer: rsa.RSAPrivateKey, days: int):
+        return (
+            x509.CertificateBuilder()
+            .subject_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, name)]))
+            .issuer_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, issuer)]))
+            .public_key(key.public_key())
+            .serial_number(x509.random_serial_number())
+            .not_valid_before(now - timedelta(days=1))
+            .not_valid_after(now + timedelta(days=days))
+            .sign(signer, hashes.SHA256())
+        )
+
+    ca_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    leaf_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    ca = cert("Partner CA", "Partner Root", ca_key, ca_key, 100)
+    leaf = cert("TizenSDK", "Partner CA", leaf_key, ca_key, 365)
+    encryption = serialization.BestAvailableEncryption(PASSWORD.encode())
+    distributor = pkcs12.serialize_key_and_certificates(b"d", leaf_key, leaf, [ca], encryption)
+    infos = Certificates(tmp_path).save(_p12("Author"), distributor, PASSWORD.encode())
+    until = datetime.fromisoformat(infos[1].expires_at)
+    assert infos[1].subject == "CN=TizenSDK"
+    assert abs(until - (now + timedelta(days=100))) < timedelta(seconds=2)
+
+
 def test_deep_sleep_for_hours_ends_at_its_time_or_with_the_button(tmp_path: Path) -> None:
     service = _service(tmp_path)
     service.player.save_settings(

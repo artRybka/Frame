@@ -526,6 +526,18 @@ struct LiveBackend: FrameBackend {
         return try await perform(req)
     }
 
+    func uploadPanelCertificates(_ upload: PanelCertificatesUpload) async throws -> PanelAppView {
+        var form = MultipartForm()
+        form.addFile("author", filename: "author.p12", mimeType: "application/x-pkcs12", data: upload.author)
+        form.addFile("distributor", filename: "distributor.p12", mimeType: "application/x-pkcs12", data: upload.distributor)
+        form.addField("password", upload.password)
+        if upload.newAuthor { form.addField("new_author", "true") }
+        var req = request("/api/device/app/certificates", method: "PUT")
+        req.setValue(form.contentType, forHTTPHeaderField: "Content-Type")
+        req.httpBody = form.body()
+        return try await perform(req)
+    }
+
     func libraryStorage() async throws -> LibraryStorage { try await get("/api/library/storage") }
 
     func saveLibraryLimits(_ update: LibraryStorageUpdate) async throws -> LibraryStorage {

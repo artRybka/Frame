@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.88.0
+
+- Konfiguracja → Aplikacja ramki: „Wgraj nowe certyfikaty”. Odnowione
+  w Tizen Studio `author.p12` i `distributor.p12` wybiera się w Plikach
+  (z Maca przez AirDrop), wpisuje hasło i wysyła na serwer, jak klucz
+  APNs. Serwer sprawdza hasło i daty, trzyma pliki tylko u siebie i od
+  razu podpisuje nimi aplikację ramki. Skrypt na Macu i File Station
+  działają dalej.
+- Serwer nie przyjmuje certyfikatu autora z innym kluczem niż dotąd
+  (ramka wzięłaby aplikację za inną; w arkuszu można go wgrać mimo to)
+  ani certyfikatu, który już wygasł. Błędy po polsku.
+- Ważność certyfikatów liczona z całego łańcucha w pliku `.p12`, nie
+  tylko z samego certyfikatu, więc ostrzeżenie zdąży także wtedy, gdy
+  pierwszy wygaśnie certyfikat pośredni Samsunga.
+
 ## 1.87.0
 
 - „Rozmiar obrazu”: obok dzieła dla skali zawsze stoi ciemna sylwetka
