@@ -17,6 +17,7 @@ from . import notifications
 from .ai import AiConfigStore, AiWorker, Claude, DailyJob, KeywordsJob, PlTextJob
 from .ai.composition import ComposeJob
 from .ai.extras import ExtrasJob
+from .ai.search_words import SearchWords
 from .ai.study import StudyJob
 from .albums import Albums
 from .artist_works import ArtistWorks
@@ -25,6 +26,7 @@ from .config import Settings
 from .copies import Copies
 from .daily import Daily
 from .device import MdcClient, MdcConnectionError, MdcError, wol
+from .holders import Holders
 from .imaging import Palette, RenderSettings, get_palette, render, render_multi
 from .imaging.pipeline import encode_image
 from .later import LaterWorks
@@ -205,6 +207,9 @@ class FrameService:
         # The language model: keywords and Polish texts; idle without a key.
         self.ai_config = AiConfigStore(settings, self.library)
         self.claude = Claude(self.ai_config, self.library)
+        # Polish words typed in Szukaj, in English for the museums abroad.
+        self.search_words = SearchWords(self.library, self.claude, self.ai_config)
+        self.importer.translate = self.search_words.wording
         self.ai = AiWorker(self.library, self.images, self.claude, self.ai_config)
         self.ai.register(KeywordsJob(self.library, self.images, self.ai_config))
         self.pl_text = PlTextJob(self.library, self.images, self.ai_config)
@@ -233,6 +238,9 @@ class FrameService:
         self.sharper = Sharper(self.library, self.importer, self.images, copies.file)
         self.daily.sharper = self.sharper
         self.copies = Copies(self.sharper)
+        # The museums of works from Commons, Openverse, WikiArt: looked up
+        # when a card opens and at night.
+        self.holders = Holders(self.library, museum_client)
         self.study = Study(self.daily, self.ai, StudyJob(self.library, self.images, self.ai_config))
         self.ai.register(self.study.job)
         # Its steps on the Lock Screen, and "Studium gotowe" at the end.
@@ -264,6 +272,10 @@ class FrameService:
         app = None
         if config.openverse_client_id and config.openverse_client_secret:
             app = (config.openverse_client_id, config.openverse_client_secret)
+        wikiart = None
+        if (codes := keys.get("wikiart")) and ":" in codes:
+            access, _, secret = codes.partition(":")
+            wikiart = (access, secret)
         return Access(
             private_use=chosen.private_use,
             wikiart=chosen.wikiart,
@@ -272,6 +284,7 @@ class FrameService:
             openverse_app=app,
             smithsonian_key=keys.get("si") or "",
             paris_token=keys.get("paris") or "",
+            wikiart_keys=wikiart,
             data_dir=config.data_dir,
         )
 

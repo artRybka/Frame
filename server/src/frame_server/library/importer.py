@@ -8,7 +8,7 @@ import re
 import secrets
 import threading
 from collections import OrderedDict
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import wait as wait_for
 from dataclasses import dataclass, field, replace
@@ -46,6 +46,7 @@ from .vocabulary import (
     set_aside,
     years,
 )
+from .wording import Wording
 
 log = logging.getLogger(__name__)
 
@@ -61,6 +62,9 @@ TASTE_SOURCES = (
 DRAW_SOURCES = (*TASTE_SOURCES, "paris")
 #: Museums that can be asked for their most important works.
 HIGHLIGHT_SOURCES = ("met", "cma", "mnw", "mnk")
+#: How long a search waits for typed words to be translated (seconds); an
+#: answer that comes later serves the next search.
+TRANSLATE_SECONDS = 5.0
 #: Museum works seen in search results, kept in memory so that opening one
 #: needs no second request.
 REMOTE_MEMO = 500
@@ -78,6 +82,12 @@ SEARCHED_MEMO = 5_000
 #: thumbnails; those not measured by then come as landscape and are known
 #: the next time.
 ASPECT_SECONDS = 2.5
+
+
+def language_of(key: str) -> str:
+    """The language museum ``key`` searches in."""
+    found = MUSEUMS.get(key)
+    return found.language if found is not None else "en"
 
 
 def small_thumb(item: Item) -> str:
@@ -166,6 +176,9 @@ class Importer:
         self._searched_seen: OrderedDict[str, None] = OrderedDict()
         self._searched_lock = threading.Lock()
         self._searching: threading.Thread | None = None
+        #: Words typed in Szukaj in the museums' languages (the language
+        #: model's, set by the service); none: asked as typed.
+        self.translate: Callable[[str, float], Wording] | None = None
 
     def access(self) -> Access:
         """The owner's current choices, with the shared death-year cache."""
@@ -398,11 +411,40 @@ class Importer:
         return self.save(f"{source}:{source_id}")
 
     def search_all(
-        self, query: str, limit: int = 8, page: int = 1, keys: list[str] | None = None
+        self,
+        query: str | Mapping[str, str],
+        limit: int = 8,
+        page: int = 1,
+        keys: list[str] | None = None,
     ) -> tuple[int, list[Item], list[str]]:
         """``limit`` results from every museum (or those of ``keys``) at
-        once, interleaved; returns (total, items, museums that failed)."""
-        return self._from_all(lambda key: self.search(key, query, limit, page), keys)
+        once, interleaved; returns (total, items, museums that failed).
+        ``query``: one text for all, or each museum's own (:meth:`typed`)."""
+
+        def ask(key: str) -> tuple[int, list[Item]]:
+            text = query if isinstance(query, str) else query.get(key, "")
+            return self.search(key, text, limit, page)
+
+        return self._from_all(ask, keys)
+
+    def wording(self, text: str, wait: float = TRANSLATE_SECONDS) -> Wording:
+        """Words someone typed, with their English and French when Polish."""
+        if self.translate is None or not text.strip():
+            return Wording(text)
+        try:
+            return self.translate(text, wait)
+        except Exception:
+            log.exception("translating %r failed", text)
+            return Wording(text)
+
+    def typed(
+        self, text: str, keys: Iterable[str] | None = None, wait: float = TRANSLATE_SECONDS
+    ) -> dict[str, str]:
+        """What each museum of ``keys`` (all on offer) is asked for words
+        someone typed: in its own language ("gitara" in Warsaw, "guitar" at
+        the Met)."""
+        words = self.wording(text, wait)
+        return {k: words.in_language(language_of(k)) for k in keys or self.sources()}
 
     def _from_all(
         self, ask: Callable[[str], tuple[int, list[Item]]], keys: list[str] | None = None

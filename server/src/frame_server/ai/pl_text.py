@@ -145,7 +145,7 @@ def request_text(item: Item, context: Context) -> str:
     if item.artist_bio:
         author = f"{author} ({item.artist_bio})" if author else item.artist_bio
     lines = [
-        f"Muzeum: {item.museum}",
+        f"Muzeum: {item.held_by or item.museum}",
         f"Tytuł (oryginał): {strip_markup(item.title)}",
         f"Autor: {author}",
         f"Data: {item.date_text}",

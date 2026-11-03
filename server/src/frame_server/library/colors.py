@@ -27,7 +27,7 @@ COLOR_FAMILIES = (
     "gray",
     "white",
 )
-MOODS = ("warm", "cool", "vivid", "muted", "monochrome", "dark", "light")
+MOODS = ("warm", "cool", "vivid", "muted", "colorful", "monochrome", "dark", "light")
 #: OKLab chroma of the strongest tint that still reads as aged paper or a
 #: sepia print rather than as colour.
 PAPER_TINT = 0.07
@@ -38,8 +38,8 @@ COLOUR_SPREAD = (0.01, 0.035)
 COLOUR_CHROMA = 0.08
 #: Version of the colour analysis and suitability score; items analysed by
 #: an older one are analysed again (``Player.rescore``). 3: accents, ICC;
-#: 4: colour tags by area, accents tagged apart.
-SCORE_VERSION = 4
+#: 4: colour tags by area, accents tagged apart; 5: "colorful".
+SCORE_VERSION = 5
 
 #: A pixel counts towards a colour family from this OKLab chroma on, or
 #: this chroma / lightness for light ones: a greyish-blue sky does, a beige
@@ -61,6 +61,22 @@ COOL_FAMILIES = ("green", "teal", "blue", "purple")
 TONE_AREA = 0.4
 TONE_VIVID = 0.1
 VIVID_CHROMA = 0.05
+
+#: A colourful picture ("colorful": no black-and-white, monochrome or
+#: two-tone work) shows colour, from ``HUE_CHROMA`` on, on at least
+#: ``COLOURFUL_HUES`` of these wide hue sectors (OKLab hue, degrees), each on
+#: ``HUE_AREA`` of it at least, an accent's size: a Madonna's red and blue in
+#: a gold altarpiece will do, red chalk or a blue-and-brown print won't.
+HUE_SECTORS = (
+    ("red", -30, 45),
+    ("yellow", 45, 110),
+    ("green", 110, 175),
+    ("blue", 175, 290),
+    ("purple", 290, 330),
+)
+HUE_CHROMA = 0.03
+HUE_AREA = 0.005
+COLOURFUL_HUES = 3
 
 #: Dominant colours closer than this (``_distance``) read as one.
 MERGE = 0.06
@@ -258,7 +274,11 @@ def colour_tags(
 
     chroma = np.hypot(lab[:, 1], lab[:, 2])
     mean_chroma = float(chroma.mean())
-    if mean_chroma < 0.03:
+    # Several hues, however muted (El Greco), are never monochrome.
+    in_colours = colourful(lab, spread)
+    if in_colours:
+        tags.append("colorful")
+    if mean_chroma < 0.03 and not in_colours:
         tags.append("monochrome")
     elif mean_chroma > 0.1:
         tags.append("vivid")
@@ -282,6 +302,22 @@ def colour_tags(
     elif mean_light > 0.8:
         tags.append("light")
     return tags
+
+
+def colourful(lab: np.ndarray, spread: float) -> bool:
+    """Whether a picture is in colours: several hues far apart, each on an
+    accent's share of it at least (``HUE_SECTORS``). Black-and-white,
+    sepia, a single tint and two-tone works are not."""
+    if spread < COLOUR_SPREAD[0]:
+        return False
+    coloured = np.hypot(lab[:, 1], lab[:, 2]) >= HUE_CHROMA
+    hue = _hue(lab)
+    hue = np.where(hue >= 330, hue - 360, hue)
+    found = sum(
+        float((coloured & (hue >= low) & (hue < high)).mean()) >= HUE_AREA
+        for _, low, high in HUE_SECTORS
+    )
+    return found >= COLOURFUL_HUES
 
 
 def has_colours(tags: list[str], wanted: list[str]) -> bool:

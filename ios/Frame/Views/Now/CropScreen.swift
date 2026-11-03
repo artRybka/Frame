@@ -26,8 +26,11 @@ struct CropScreen: View {
     @State private var saving = false
     @State private var confirmingDiscard = false
     /// A landscape frame lies on its side here, larger on the upright
-    /// phone; it turns once the screen is open, so it is seen to turn.
+    /// phone: it turns as the screen grows out of the preview, and turns
+    /// back before the screen shrinks into it again.
     @State private var turned = false
+    /// Closing: the frame turning back, nothing more to press.
+    @State private var closing = false
 
     private var ready: Bool { draft.view?.windows.isEmpty == false }
 
@@ -100,7 +103,7 @@ struct CropScreen: View {
                 .padding(.horizontal, Theme.gutter)
                 .padding(.bottom, 8)
             }
-            .disabled(saving)
+            .disabled(saving || closing)
             .animation(.easeInOut(duration: 0.2), value: draft.changed)
             .animation(.easeInOut(duration: 0.2), value: draft.offAutomatic)
             .paperPage()
@@ -109,7 +112,7 @@ struct CropScreen: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Anuluj") { cancel() }
-                        .disabled(saving)
+                        .disabled(saving || closing)
                 }
             }
             .confirmationDialog("Odrzucić zmiany kadru?", isPresented: $confirmingDiscard, titleVisibility: .visible) {
@@ -119,8 +122,8 @@ struct CropScreen: View {
         }
         .onAppear { if original == nil { original = draft } }
         .task {
-            // After the screen has popped out of the preview (or come up).
-            try? await Task.sleep(for: .seconds(0.4))
+            // One frame unturned first, so the turn is seen, along with the pop.
+            try? await Task.sleep(for: .seconds(0.05))
             withAnimation(.frameTurn) { turned = true }
         }
         .onChange(of: draft.key) { _, _ in
@@ -149,8 +152,23 @@ struct CropScreen: View {
     private func saveAndClose() async {
         saving = true
         defer { saving = false }
-        if await save() { dismiss() }
+        if await save() { await close() }
     }
+
+    /// Back on its place: a turned frame turns back, then the screen
+    /// shrinks into the preview it came from.
+    private func close() async {
+        guard !closing else { return }
+        closing = true
+        if turned, aspectRatio > 1 {
+            withAnimation(Self.turnBack) { turned = false }
+            try? await Task.sleep(for: .seconds(0.3))
+        }
+        dismiss()
+    }
+
+    /// Quicker than the turn in, so closing does not keep the finger waiting.
+    private static let turnBack = Animation.spring(duration: 0.4, bounce: 0.1)
 
     /// Back to the crop the server would choose; "Zapisz kadr" keeps it.
     private func automaticCrop() async {
@@ -175,13 +193,13 @@ struct CropScreen: View {
         if let original, draft != original {
             confirmingDiscard = true
         } else {
-            dismiss()
+            Task { await close() }
         }
     }
 
     private func discard() {
         if let original { draft = original }
-        dismiss()
+        Task { await close() }
     }
 }
 

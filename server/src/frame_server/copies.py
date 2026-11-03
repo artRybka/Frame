@@ -75,9 +75,11 @@ class CopyView(BaseModel):
     ``verdict``: "better" (sharper on the frame, the same picture whole in
     its colours), "warn" (sharper, but its colours differ), "worse" (the
     same picture, not sharper), "off" (a detail, a page around it, a grey
-    plate, a reproduction: only to look at), "checking" (being compared).
-    ``notes``: why, as codes the app names: "whole", "colours", "fragment",
-    "page", "turned", "grey", "coloured", "colour-off", "reproduction".
+    plate, a reproduction, another work: only to look at), "checking"
+    (being compared). ``notes``: why, as codes the app names: "whole",
+    "colours", "fragment", "page", "turned", "grey", "coloured",
+    "colour-off", "reproduction", "other" (another picture: the same title,
+    another work), "unseen" (its thumbnail could not be had).
     ``role``: "current" (the picture shown now), "own" (the work's own
     picture, while a copy stands in for it), "copy"."""
 
@@ -104,7 +106,7 @@ class CopyView(BaseModel):
 class CopyLine(BaseModel):
     """One line of the answer, as it comes (JSON lines): "start" (the
     sources asked), "copy" (a copy, new or judged: the app replaces it by
-    ``item_id``), "drop" (a copy that is another picture after all),
+    ``item_id``), "drop" (a copy that could not be judged at all),
     "source" (a source has answered: how many copies, or that it failed),
     "end"."""
 
@@ -193,6 +195,7 @@ class Copies:
         def judge(copy: Item) -> None:
             if gone.is_set():
                 return
+            view: CopyView | None
             try:
                 view = self.judge(stored, copy, quality, measured, lock)
             except Exception:
@@ -372,18 +375,20 @@ class Copies:
         current: Quality,
         measured: list[int] | None = None,
         lock: threading.Lock | None = None,
-    ) -> CopyView | None:
+    ) -> CopyView:
         """``copy`` judged against ``item``'s picture (``current``: the one
-        shown now); None when it is another picture altogether."""
+        shown now). What a source found is always told: another picture
+        altogether (the same title, another work) is "off" with "other", one
+        whose thumbnail could not be had "off" with "unseen"."""
         try:
             own_thumb = self.images.ensure_thumb(item)
             copy_thumb = self.images.ensure_thumb(copy)
         except (httpx.HTTPError, OSError) as err:
             log.info("thumbnails of %s and %s: %s", item.id, copy.id, err)
-            return None
+            return self._off(copy, current, "unseen")
         fit = self.likeness.fit(item, copy)
         if fit is None:
-            return None
+            return self._off(copy, current, "other")
         notes: list[str] = []
         off = False
         if fit.whole:
@@ -425,6 +430,11 @@ class Copies:
         view.notes = notes
         return view
 
+    def _off(self, copy: Item, current: Quality, note: str) -> CopyView:
+        view = self.view(copy, current, "off")
+        view.notes = [note]
+        return view
+
     @staticmethod
     def _may_measure(measured: list[int] | None, lock: threading.Lock | None) -> bool:
         if measured is None:
@@ -439,18 +449,16 @@ class Copies:
 
     def choose(self, item: Item, copy_id: str) -> Item:
         """The owner's pick for ``item``'s picture: a copy (``copy_id``), or
-        the work's own (its own id). Raises LookupError for no such copy,
-        ValueError for one that is another picture."""
+        the work's own (its own id). Any copy the list told, those that do
+        not fit too (a page around it, another work): the owner has seen it
+        and decides (Mateusz, 2026-11-02). Raises LookupError for no such
+        copy."""
         stored = self.sharper.library.get(item.id) or item
         if copy_id == stored.id:
             return self.sharper.keep_own(stored)
         copy = self.sharper.importer.resolve(copy_id)
         if copy is None or not display_copy(copy):
             raise LookupError(copy_id)
-        self.images.ensure_thumb(stored)
-        self.images.ensure_thumb(copy)
-        if self.likeness.fit(stored, copy) is None:
-            raise ValueError(f"{copy_id} is not a copy of {stored.id}")
         return self.sharper.choose(stored, copy)
 
     # -- the close-up ------------------------------------------------------------------
@@ -458,8 +466,9 @@ class Copies:
     def compare(self, item: Item, copy_id: str, x: float | None, y: float | None) -> Spot:
         """One spot (its centre at ``x``, ``y``; the most detailed one when
         not given) in the picture shown now and in the copy, both at the
-        frame's scale. Raises LookupError for no such copy, ValueError for
-        one that is another picture."""
+        frame's scale; for a copy that is not laid over the work (another
+        picture), the same place of each. Raises LookupError for no such
+        copy."""
         stored = self.sharper.library.get(item.id) or item
         if copy_id == stored.id and stored.sharper is not None:
             copy = stored.model_copy(update={"sharper": None})  # the work's own
@@ -474,8 +483,6 @@ class Copies:
         self.images.ensure_thumb(stored)
         self.images.ensure_thumb(copy)
         fit = self.likeness.fit(stored, copy) if copy.id != stored.id else None
-        if fit is None and copy.id != stored.id:
-            raise ValueError(f"{copy_id} is not a copy of {stored.id}")
         picture = self._picture(url)
         # The picture shown now, at the frame's scale (its long side the frame's).
         scale = IMAGE_MAX / max(current.size)  # small pictures are enlarged on the frame

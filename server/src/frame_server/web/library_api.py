@@ -246,7 +246,32 @@ def facets(svc: Svc) -> Facets:
 
 @router.get("/library/items/{item_id}", response_model=Item)
 async def get_item(item_id: str, svc: Svc) -> Item:
-    return await _work(svc, item_id)
+    return svc.holders.fill(await _work(svc, item_id))
+
+
+class HolderView(BaseModel):
+    """The museum the work is in, for its card (``Item.held_by``):
+    ``status`` "found" (``name`` says which); "looking" (ask again); "none"
+    (nobody says); "off" (photos, own works)."""
+
+    status: Literal["found", "looking", "none", "off"]
+    name: str = ""
+
+
+@router.post("/library/items/{item_id}/holder", response_model=HolderView)
+async def item_holder(
+    item_id: str, svc: Svc, wait: Annotated[float, Query(ge=0, le=60)] = 0
+) -> HolderView:
+    """The card opened on a work from Commons, Openverse, WikiArt or
+    Europeana: which museum it is in, looked up on Wikidata and Commons in
+    the background. ``wait``: seconds to wait for the answer."""
+    item = await _work(svc, item_id)
+    future = svc.holders.soon(item)
+    if wait:
+        with contextlib.suppress(TimeoutError):
+            await asyncio.wait_for(asyncio.shield(asyncio.wrap_future(future)), wait)
+    status, name = svc.holders.look(item, 0)
+    return HolderView(status=status, name=name)
 
 
 class PolishView(BaseModel):
@@ -359,6 +384,9 @@ class SharperView(BaseModel):
     #: for "Zdjęcie dzieła" on the card.
     width: int = 0
     height: int = 0
+    #: The museum the work is in (``Item.held_by``): a copy from the museum
+    #: itself names it.
+    held_by: str = ""
 
 
 @router.post("/library/items/{item_id}/sharpen", response_model=SharperView)
@@ -382,6 +410,7 @@ async def sharpen_item(
         sharper=copy,
         width=size[0],
         height=size[1],
+        held_by=svc.holders.fill(stored or item).held_by,
     )
 
 
@@ -891,13 +920,15 @@ async def museum_search(
     """One museum, or ``all`` of them (``limit`` results from each)."""
     failed: list[str] = []
     if source == ALL:
+        texts = await run_in_threadpool(svc.importer.typed, q)
         total, items, failed = await run_in_threadpool(
-            urgent_call(svc.importer.search_all), q, limit or 8, page
+            urgent_call(svc.importer.search_all), texts, limit or 8, page
         )
     elif source in svc.importer.sources():
+        texts = await run_in_threadpool(svc.importer.typed, q, [source])
         try:
             total, items = await run_in_threadpool(
-                urgent_call(svc.importer.search), source, q, limit or 24, page
+                urgent_call(svc.importer.search), source, texts[source], limit or 24, page
             )
         except httpx.HTTPError as err:
             raise HTTPException(502, f"{source}: {err}") from err

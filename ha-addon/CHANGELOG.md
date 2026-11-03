@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.83.0
+## 1.84.0
 
 - Studium dzieła, nowa sekcja „W tym samym czasie”: trzy dzieła z katalogu
   powstałe kilka lat przed nim lub po nim, u innych artystów i najlepiej w
@@ -19,7 +19,30 @@
   Wymiary pochodzą z muzeum albo z Wikidaty i są pokazywane tylko wtedy,
   gdy ich proporcje zgadzają się ze zdjęciem.
 
-## 1.80.0
+## 1.83.0
+
+- Karta dzieła: czerwony napis nad tytułem i wiersz „Kolekcja” podają
+  muzeum, w którym dzieło naprawdę jest, a nie źródło zdjęcia. Np.
+  „Skąpiec” Makowskiego z Wikimedia Commons pokazuje „Muzeum Narodowe w
+  Warszawie”. Skąd jest samo zdjęcie, mówi dalej wiersz „Zdjęcie dzieła”.
+- Dla dzieł z Wikimedia Commons, Openverse i WikiArt serwer szuka muzeum
+  przy otwarciu karty i w nocy: w Wikidata (kolekcja dzieła), na stronie
+  pliku w Commons (instytucja) albo w kopii tego samego dzieła z muzeum.
+  Europeana podaje muzeum sama. Gdy nikt nie wie, napisu nad tytułem nie
+  ma (zamiast „Wikimedia Commons”).
+- To samo muzeum widać w Teraz i w nagłówku Studium dnia.
+- Karta dzieła: etykiety pod Kolorystyką idą w trzech wierszach: kolory,
+  akcenty, nastroje.
+
+## 1.82.1
+
+- Kopie dzieła: kopii z „Nie pasują” (z marginesem, sam fragment, inne
+  dzieło o podobnym tytule) też można użyć. Po stuknięciu widać porównanie
+  z obecnym zdjęciem, krótkie wyjaśnienie, czemu kopia nie pasuje,
+  i przycisk „Użyj mimo to”. Kopię z marginesem przytniesz potem
+  w Kadrowaniu.
+
+## 1.82.0
 
 - Studium dzieła, „O autorze”: nad notką jest teraz wyraźnie imię i
   nazwisko twórcy (imię pierwsze, także gdy muzeum zapisuje „Gogh, Vincent
@@ -33,6 +56,60 @@
 - Inne prace artysty: cztery prace, po dwie w rzędzie jak w Podobnych
   dziełach. W obu siatkach miniatury są kadrowane wokół twarzy, nie przez
   środek.
+- Szukaj, arkusz „Kolor”: nowy nastrój „Kolorowe” dla dzieł w barwach,
+  bez czarno-białych, monochromatycznych i dwutonowych. Dzieło jest
+  kolorowe, gdy widać na nim co najmniej trzy odległe barwy (z czerwieni,
+  żółci, zieleni, błękitu i fioletu), każdą choćby wielkości akcentu.
+  Serwer po aktualizacji raz przelicza kolory biblioteki.
+- Przygaszone, ale barwne obrazy (np. El Greco) nie dostają już tagu
+  „Monochromia”.
+- Kropki nastroju są czytelniejsze: Ciepłe to gradient od morelowego do
+  ceglastej czerwieni, Chłodne od bladego błękitu do niebieskiego, Żywe
+  świecąca czerwień, Stonowane szarawy beż w szarą zieleń, Kolorowe koło
+  barw. Nastroje stoją parami, para w wierszu: Ciepłe i Chłodne, Żywe i
+  Stonowane, Kolorowe i Monochromia, Ciemne i Jasne. Te same kropki są przy kolorach na karcie dzieła, w polu
+  wyszukiwania, w regułach playlist i na pastylce „Kolor” po wyborze
+  nastroju.
+
+## 1.81.0
+
+- Szukaj: polskie słowa trafiają do muzeów zagranicznych po angielsku.
+  „gitara” idzie do Met, Rijksmuseum, NGA i reszty jako „guitar”, do Paris
+  Musées jako „guitare”, a do muzeów w Warszawie i Krakowie dalej po
+  polsku. Nazwiska, tytuły i słowa wpisane po angielsku zostają bez zmian.
+- Tłumaczenie bierze najpierw to, co serwer już zna (polskie nazwy stylów i
+  tematów, słowa kluczowe opisanych dzieł), a nowe słowa raz tłumaczy Haiku
+  i je zapamiętuje. Pierwsze wyszukanie nowego słowa może potrwać sekundę
+  dłużej.
+- Konfiguracja → Model językowy: nowy przełącznik „Tłumaczenie słów w
+  Szukaj” (domyślnie włączony).
+
+## 1.80.0
+
+- Szukaj lepszej kopii: arkusz „Kopie dzieła” pokazuje wszystko, co
+  znalazły źródła. Dotąd biała pastylka (np. „Wikimedia Commons · 6”)
+  mówiła, że coś się znalazło, ale znalezione dzieła o podobnym tytule,
+  które okazywały się innym obrazem, znikały bez śladu. Teraz są w „Nie
+  pasują” z oznaczeniem „Inne dzieło”, a stuknięcie otwiera ich stronę
+  w źródle. Kopie, których nie dało się pobrać do porównania, mają
+  oznaczenie „Nie udało się porównać”.
+- „Nie pasują” rozwija się samo, gdy nic lepszego się nie znalazło.
+- Szukaj w Paris Musées: każde wpisane słowo może pasować do tytułu albo
+  do autora, więc „Monet” czy „Nymphéas Monet” znajdują dzieła Moneta.
+  Dotąd Paris szukał wpisanego tekstu tylko w tytułach.
+- Konfiguracja → Źródła dzieł: pole na klucze WikiArt (Access code i Secret
+  code połączone dwukropkiem). Bez nich WikiArt korzysta ze wspólnego
+  darmowego limitu i często odmawia.
+
+## 1.79.9
+
+- Teraz: kadrowanie otwiera się z podglądu ramki tak jak na karcie dzieła.
+  Przy przytrzymaniu telefon postukuje coraz szybciej, a podgląd lekko
+  rośnie; kadrowanie rozwija się z podglądu („pop”) i zamyka się z
+  powrotem do niego. Zwykłe stuknięcie dalej działa.
+- Kadrowanie: pozioma ramka obraca się na bok już w trakcie otwierania,
+  bez czekania. Przy zamykaniu („Zapisz kadr”, „Anuluj”) najpierw płynnie
+  wraca do poziomu, a dopiero potem kadrowanie chowa się do podglądu.
 
 ## 1.79.8
 
@@ -44,6 +121,7 @@
 - Paris Musées szuka kopii po samym tytule dzieła. Wcześniej szukał tytułu
   razem z nazwiskiem artysty, czego w tytułach nie ma, więc nigdy nic nie
   znajdował.
+
 ## 1.79.7
 
 - Szukaj: menu po przytrzymaniu kafelka wyniku ma obok „Dodaj do kolejki”

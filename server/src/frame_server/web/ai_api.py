@@ -31,6 +31,7 @@ class AiView(BaseModel):
     keywords_artworks: bool
     keywords_photos: bool
     daily: bool
+    search_words: bool
     monthly_limit_usd: float
     spent_usd: float  # this month
     spent_by_kind: dict[str, float]
@@ -63,6 +64,7 @@ def _view(svc: FrameService) -> AiView:
         keywords_artworks=config.keywords_artworks,
         keywords_photos=config.keywords_photos,
         daily=config.daily,
+        search_words=config.search_words,
         monthly_limit_usd=config.monthly_limit_usd,
         spent_usd=round(sum(spent.values()), 4),
         spent_by_kind={k: round(v, 4) for k, v in spent.items()},

@@ -138,7 +138,7 @@ enum ColorTag {
         "red", "orange", "yellow", "green", "teal", "blue", "purple", "pink", "brown", "black",
         "gray", "white",
     ]
-    static let moods = ["warm", "cool", "vivid", "muted", "monochrome", "dark", "light"]
+    static let moods = ["warm", "cool", "vivid", "muted", "colorful", "monochrome", "dark", "light"]
     /// Tags of colours that are only an accent of a picture ("accent:red");
     /// a picture has either a colour's own tag or its accent tag.
     static let accentPrefix = "accent:"
@@ -147,6 +147,18 @@ enum ColorTag {
     ]
 
     static func accent(_ family: String) -> String { accentPrefix + family }
+
+    /// A work's tags as the Kolor sheet groups them: colours, accents,
+    /// moods, each in the sheet's order (moods in pairs).
+    static func rows(_ tags: [String]) -> [[String]] {
+        let accents = accentFamilies.map(accent)
+        let known = Set(families + accents + moods)
+        return [
+            families.filter(tags.contains),
+            accents.filter(tags.contains),
+            moods.filter(tags.contains) + tags.filter { !known.contains($0) },
+        ]
+    }
 
     static func name(_ tag: String) -> String {
         if tag.hasPrefix(accentPrefix) {
@@ -165,6 +177,7 @@ enum ColorTag {
         case "black": "Czerń"
         case "gray": "Szarości"
         case "white": "Biel"
+        case "colorful": "Kolorowe"
         case "warm": "Ciepłe"
         case "cool": "Chłodne"
         case "vivid": "Żywe"
@@ -193,15 +206,85 @@ enum ColorTag {
         case "black": Color(hex: 0x1D1B18)
         case "gray": Color(hex: 0x8E8A84)
         case "white": Color(hex: 0xF4F0E8)
-        case "warm": Color(hex: 0xC97B3F)
-        case "cool": Color(hex: 0x4D7FA6)
-        case "vivid": Color(hex: 0xC2412D)
-        case "muted": Color(hex: 0xA59A8A)
+        case "colorful": Color(hex: 0x6E9F55)
+        case "warm": Color(hex: 0xD27B4C)
+        case "cool": Color(hex: 0x9CC3E4)
+        case "vivid": Color(hex: 0xFF4A2E)
+        case "muted": Color(hex: 0xA9A497)
         case "monochrome": Color(hex: 0x6A6762)
         case "dark": Color(hex: 0x2E2B28)
         case "light": Color(hex: 0xEDE6D8)
         default: Theme.mat
         }
+    }
+}
+
+extension ColorTag {
+    /// How a tag's dot is filled: a colour family flat, the moods with a
+    /// look of their own so they read at a glance (PLAN 3.3zw): Ciepłe from
+    /// apricot to brick red, Chłodne from ice to blue, Żywe one glowing
+    /// red, Stonowane greyed beige to grey green, Kolorowe a colour wheel.
+    static func fill(_ tag: String) -> AnyShapeStyle {
+        switch tag {
+        case "warm":
+            AnyShapeStyle(LinearGradient(
+                colors: [Color(hex: 0xEBAA6B), Color(hex: 0xD27B4C), Color(hex: 0xB8483A)],
+                startPoint: .topLeading, endPoint: .bottomTrailing
+            ))
+        case "cool":
+            AnyShapeStyle(LinearGradient(
+                stops: [
+                    .init(color: Color(hex: 0xE6F2FB), location: 0),
+                    .init(color: Color(hex: 0x9CC3E4), location: 0.45),
+                    .init(color: Color(hex: 0x2F5E9A), location: 1),
+                ],
+                startPoint: .topLeading, endPoint: .bottomTrailing
+            ))
+        case "vivid":
+            AnyShapeStyle(EllipticalGradient(
+                stops: [
+                    .init(color: Color(hex: 0xFFB36B), location: 0),
+                    .init(color: Color(hex: 0xFF4A2E), location: 0.38),
+                    .init(color: Color(hex: 0xD8102E), location: 1),
+                ],
+                center: UnitPoint(x: 0.32, y: 0.3), startRadiusFraction: 0, endRadiusFraction: 0.95
+            ))
+        case "muted":
+            AnyShapeStyle(LinearGradient(
+                stops: [
+                    .init(color: Color(hex: 0xCBBFAE), location: 0),
+                    .init(color: Color(hex: 0xA9A497), location: 0.55),
+                    .init(color: Color(hex: 0x858B83), location: 1),
+                ],
+                startPoint: .topLeading, endPoint: .bottomTrailing
+            ))
+        case "colorful":
+            AnyShapeStyle(AngularGradient(
+                colors: ([0xC8443A, 0xE08A3A, 0xE2B84A, 0x6E9F55, 0x3B8A86, 0x3C6FA8, 0x7C5A9E, 0xC8443A] as [UInt32])
+                    .map { Color(hex: $0) },
+                center: .center, angle: .degrees(-120)
+            ))
+        default:
+            AnyShapeStyle(color(tag))
+        }
+    }
+}
+
+/// The round dot of a colour or mood tag, everywhere tags show.
+struct ColorTagDot: View {
+    let tag: String
+    var size: CGFloat = 12
+    /// The hairline around it; nil for none.
+    var stroke: Color? = Theme.inkSoft.opacity(0.4)
+    var lineWidth: CGFloat = 0.75
+
+    var body: some View {
+        Circle()
+            .fill(ColorTag.fill(tag))
+            .frame(width: size, height: size)
+            .overlay {
+                if let stroke { Circle().strokeBorder(stroke, lineWidth: lineWidth) }
+            }
     }
 }
 

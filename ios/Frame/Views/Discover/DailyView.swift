@@ -1026,7 +1026,7 @@ struct DailyView: View {
         // Where the work and its picture come from, at the very end with
         // who wrote the text (Mateusz 2026-11-02: not under the title).
         let item = work.item.item
-        let origin = [item.dateText, item.medium, item.museum].filter { !$0.isEmpty }.joined(separator: " · ")
+        let origin = [item.dateText, item.medium, item.museumShown].filter { !$0.isEmpty }.joined(separator: " · ")
         return VStack(alignment: .leading, spacing: 10) {
             Divider()
             VStack(alignment: .leading, spacing: 6) {

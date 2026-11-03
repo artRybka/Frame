@@ -51,6 +51,11 @@ SHARPER_AHEAD = 20
 #: One look for a sharper copy takes this long at most (seconds).
 SHARPER_WAIT = 600.0
 
+#: Works whose museum is looked up in one night, at most ...
+HOLDERS_A_NIGHT = 300
+#: ... each taking this long at most (seconds).
+HOLDER_WAIT = 60.0
+
 #: When the app last asked the server something (time.monotonic()).
 _last_used = float("-inf")
 
@@ -221,6 +226,22 @@ def tasks(service: FrameService) -> list[NightTask]:
             looked += 1
         return looked
 
+    def museums(night: Night) -> int:
+        """Which museums the library's works from Commons, Openverse and
+        WikiArt are in, for those nobody looked up yet."""
+        looked = 0
+        for item in service.library.all_items():
+            if looked == HOLDERS_A_NIGHT or not night.quiet():
+                break
+            if service.holders.known(item) is not None:
+                continue
+            try:
+                service.holders.soon(item).result(HOLDER_WAIT)
+            except FutureTimeout:
+                break
+            looked += 1
+        return looked
+
     def themes(night: Night) -> None:
         discover_api.work_out_cards(service, force=True)
 
@@ -237,6 +258,7 @@ def tasks(service: FrameService) -> list[NightTask]:
         NightTask("playlists", playlists),
         NightTask("frame line", frame_line),
         NightTask("sharper", sharper),
+        NightTask("museums", museums),
         NightTask("themes", themes),
         NightTask("suggestions", suggestions),
     ]

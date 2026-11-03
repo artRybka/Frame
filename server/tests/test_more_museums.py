@@ -11,6 +11,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote
 
 import httpx
+import pytest
 
 from frame_server.library.museums import Access, Discovery, available, museum
 from frame_server.library.muza import MuzaMuseum, NationalMuseumKrakow, NationalMuseumWarsaw, polish
@@ -415,8 +416,39 @@ def test_paris_musees_needs_a_token_and_takes_free_pictures() -> None:
     assert item.thumb_url.endswith("/styles/t/a.jpg")
     assert len(sent) == 2 and sent[0].headers["auth-token"] == "t"
     query = json.loads(sent[0].content)["query"]
-    assert '"%Baig neuses%"' in query and "field_image_libre" in query
+    assert "field_image_libre" in query
+    # Each word in the title or the author's name.
+    assert query.count("conjunction: OR") == 2 and '"%Baig%"' in query and '"%neuses%"' in query
+    assert "field_auteur_auteur.entity.name" in query
     assert 'operator: GREATER_THAN_OR_EQUAL, value: "1800"' in json.loads(sent[1].content)["query"]
+
+
+def test_paris_musees_searches_titles_only_when_authors_are_refused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from frame_server.library.paris import ParisMusees, _words
+
+    monkeypatch.setattr(ParisMusees, "_by_author", True)
+    assert _words("Le Pont de l'Europe Caillebotte") == ["Pont", "l'Europe", "Caillebotte"]
+    assert _words("a la de") == []
+    sent: list[str] = []
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        query = json.loads(request.content)["query"]
+        sent.append(query)
+        if "groups" in query:
+            return httpx.Response(200, json={"errors": [{"message": "field not found"}]})
+        return httpx.Response(
+            200, json={"data": {"nodeQuery": {"count": 1, "entities": [PARIS_WORK]}}}
+        )
+
+    with httpx.Client(transport=httpx.MockTransport(answer)) as http:
+        paris = ParisMusees(http, access=Access(paris_token="t"))
+        assert paris.search("Baigneuses Courbet")[0] == 1
+        assert paris.search("Baigneuses")[0] == 1
+    # Refused once, then the whole query in the title, without asking again.
+    assert "groups" in sent[0] and '"%Baigneuses Courbet%"' in sent[1]
+    assert len(sent) == 3 and "groups" not in sent[2]
 
 
 def test_source_keys_are_checked_kept_and_never_sent_back(tmp_path: Path) -> None:
@@ -439,7 +471,7 @@ def test_source_keys_are_checked_kept_and_never_sent_back(tmp_path: Path) -> Non
     svc.source_keys.check = check
     with TestClient(app) as client:
         views = {v["source"]: v for v in client.get("/api/sources/keys").json()}
-        assert set(views) == {"si", "paris", "europeana"}
+        assert set(views) == {"si", "paris", "europeana", "wikiart"}
         assert views["si"]["key_set"] is False and views["si"]["signup"].startswith("https://")
         assert "si" not in svc.importer.sources()
 
@@ -477,3 +509,36 @@ def test_a_source_key_is_asked_of_its_service() -> None:
                 except error:
                     continue
                 raise AssertionError((source, bad))
+
+
+def test_wikiart_keys_are_two_codes_and_open_a_session(monkeypatch: pytest.MonkeyPatch) -> None:
+    from frame_server.library.museums import WikiArt
+    from frame_server.source_keys import KeyRejected, SourceKeys
+
+    monkeypatch.setattr(WikiArt, "_sessions", {})
+    sent: list[httpx.Request] = []
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        sent.append(request)
+        params = request.url.params
+        if request.url.path.endswith("/login"):
+            if (params["accessCode"], params["secretCode"]) != ("acc", "sec"):
+                return httpx.Response(
+                    500, json={"Exception": {"Message": "Invalid Api/Secret combination"}}
+                )
+            return httpx.Response(200, json={"SessionKey": "s1"})
+        if params.get("authSessionKey") != "s1":
+            return httpx.Response(500, json={"Exception": {"Message": "Free API limit exceeded"}})
+        return httpx.Response(200, json={"data": [], "hasMore": False})
+
+    keys = SourceKeys.__new__(SourceKeys)
+    with httpx.Client(transport=httpx.MockTransport(answer)) as http:
+        keys.check("wikiart", "acc:sec", http)
+        for bad in ("acc:wrong", "accsec"):
+            with pytest.raises(KeyRejected):
+                keys.check("wikiart", bad, http)
+        wikiart = museum("wikiart", http, Access(wikiart=True, wikiart_keys=("acc", "sec")))
+        assert wikiart.search("Rothko") == (0, [])
+        assert wikiart.search("Klee") == (0, [])
+    logins = [r for r in sent if r.url.path.endswith("/login")]
+    assert len(logins) == 3  # two checks (no colon: not asked), one session for both

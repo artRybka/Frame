@@ -299,14 +299,11 @@ struct TermFacetBar: View {
             // Picked, the symbol stands for the group's name: "✎ Olej +1";
             // Kolor shows the picked colours' dots instead.
             HStack(spacing: 5) {
-                let swatches = facet == .color ? picked.map(\.key).filter { !ColorTag.moods.contains($0) } : []
+                let swatches = facet == .color ? picked.map(\.key) : []
                 if !swatches.isEmpty {
                     HStack(spacing: 3) {
                         ForEach(Array(swatches.prefix(3)), id: \.self) { tag in
-                            Circle()
-                                .fill(ColorTag.color(tag))
-                                .frame(width: 8, height: 8)
-                                .overlay(Circle().strokeBorder(.white.opacity(0.7), lineWidth: 1))
+                            ColorTagDot(tag: tag, size: 8, stroke: .white.opacity(0.7), lineWidth: 1)
                         }
                     }
                 } else {
@@ -539,10 +536,16 @@ struct TermFacetPanel: View {
             if !moods.isEmpty {
                 VStack(alignment: .leading, spacing: 10) {
                     Eyebrow("Nastrój")
-                    FlowLayout(spacing: 8) {
-                        ForEach(moods, id: \.self) { mood in
-                            Chip(title: ColorTag.name(mood), swatch: ColorTag.color(mood), selected: picked("color", mood)) {
-                                toggle("color", mood, ColorTag.name(mood))
+                    // In pairs, one pair a row: Ciepłe–Chłodne, Żywe–Stonowane,
+                    // Kolorowe–Monochromia, Ciemne–Jasne.
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(Array(stride(from: 0, to: moods.count, by: 2)), id: \.self) { start in
+                            HStack(spacing: 8) {
+                                ForEach(moods[start ..< min(start + 2, moods.count)], id: \.self) { mood in
+                                    Chip(title: ColorTag.name(mood), colorTag: mood, selected: picked("color", mood)) {
+                                        toggle("color", mood, ColorTag.name(mood))
+                                    }
+                                }
                             }
                         }
                     }
