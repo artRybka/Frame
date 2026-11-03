@@ -382,12 +382,14 @@ struct DailyView: View {
         merged.similar = shown.similar
         merged.legacy = shown.legacy
         merged.byArtist = shown.byArtist
+        merged.sameTime = shown.sameTime
         work = merged
     }
 
     /// Whether the lists under the text are still to come.
     private func listsComing(_ work: DailyWork) -> Bool {
         work.partial == true && work.similar.isEmpty && work.legacy.isEmpty && (work.byArtist ?? []).isEmpty
+            && (work.sameTime ?? []).isEmpty
     }
 
     @ViewBuilder
@@ -416,10 +418,11 @@ struct DailyView: View {
             if let takes = work.composition?.takes, !takes.isEmpty {
                 compositionSection(work, takes).id("composition")
             }
-            if !work.colour.isEmpty || !work.item.item.colors.isEmpty {
+            if !work.colour.isEmpty || !work.item.item.colors.isEmpty || !(work.pigments ?? []).isEmpty {
                 section("Kolor i światło") {
                     if !work.item.item.colors.isEmpty { PaletteStrip(swatches: work.item.item.colors, height: 26, cornerRadius: 6) }
                     if !work.colour.isEmpty { prose(work.colour) }
+                    if let pigments = work.pigments, !pigments.isEmpty { self.pigments(pigments) }
                 }
             }
             if let details = work.details, !details.isEmpty {
@@ -429,6 +432,9 @@ struct DailyView: View {
             if !work.legacy.isEmpty { section("Dalsze losy") { legacy(work.legacy) }.id("legacy") }
             if let others = work.byArtist, !others.isEmpty {
                 section("Inne prace artysty") { byArtist(Array(others.prefix(Self.byArtistShown))) }.id("artist")
+            }
+            if let then = work.sameTime, !then.isEmpty {
+                section("W tym samym czasie") { sameTime(Array(then.prefix(3))) }
             }
             if listsComing(work) {
                 HStack(spacing: 8) {
@@ -526,7 +532,6 @@ struct DailyView: View {
     private func header(_ work: DailyWork) -> some View {
         let item = work.item.item
         let byline = [Names.artist(item.artist), item.dateText].filter { !$0.isEmpty }.joined(separator: " · ")
-        let where_ = [item.medium, item.museum].filter { !$0.isEmpty }.joined(separator: " · ")
         let original = OriginalTitle.of(item.title, shown: work.title)
         return VStack(alignment: .leading, spacing: 4) {
             Text(peeking ? original ?? work.title : work.title)
@@ -542,7 +547,6 @@ struct DailyView: View {
                     .artistPress { model.artistSearch = item.artist }
                     .allowsHitTesting(!item.artist.isEmpty)
             }
-            if !where_.isEmpty { Text(where_).font(.caption).foregroundStyle(Theme.inkSoft) }
         }
     }
 
@@ -634,7 +638,7 @@ struct DailyView: View {
     private func author(_ work: DailyWork, _ note: String) -> some View {
         let item = work.item.item
         let name = Names.person(item.artist)
-        let life = Names.lifeYears(item.artistBio) ?? Names.lifeYears(item.artist)
+        let life = lifeSpan(work).map { "\($0.born)–\($0.died)" }
         return VStack(alignment: .leading, spacing: 10) {
             if name.isEmpty {
                 Text("O autorze")
@@ -657,8 +661,54 @@ struct DailyView: View {
                 }
                 .accessibilityElement(children: .combine)
             }
+            if let span = lifeSpan(work) {
+                LifeLine(
+                    born: span.born, died: span.died, work: item.year,
+                    others: (work.byArtist ?? []).compactMap(\.item.year),
+                    milestones: work.milestones ?? []
+                )
+                .padding(.vertical, 4)
+            }
             prose(note)
         }
+    }
+
+    /// The artist's years: the server's (the museum's line about them, else
+    /// the page's), else read from the line or the name here (older servers).
+    private func lifeSpan(_ work: DailyWork) -> (born: Int, died: Int)? {
+        if let born = work.born, let died = work.died, died > born { return (born, died) }
+        let item = work.item.item
+        return Names.life(item.artistBio) ?? Names.life(item.artist)
+    }
+
+    /// The paints the work is made with: each on its own swatch, its name,
+    /// where it is in the picture and a line about it.
+    private func pigments(_ pigments: [DailyWork.Pigment]) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ForEach(pigments, id: \.name) { pigment in
+                HStack(alignment: .top, spacing: 12) {
+                    Circle()
+                        .fill(Color(hexString: pigment.hex) ?? Theme.mat)
+                        .overlay(Circle().strokeBorder(.black.opacity(0.12), lineWidth: 0.5))
+                        .frame(width: 26, height: 26)
+                        .padding(.top, 1)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(pigment.name)
+                            .font(.serif(15, weight: .semibold))
+                            .foregroundStyle(Theme.ink)
+                        let line = [pigment.`where`, pigment.text].filter { !$0.isEmpty }.joined(separator: ". ")
+                        if !line.isEmpty {
+                            Text(line)
+                                .font(.serif(14))
+                                .foregroundStyle(Theme.inkSoft)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+                .accessibilityElement(children: .combine)
+            }
+        }
+        .padding(.top, 4)
     }
 
     private func prose(_ text: String, size: CGFloat = 16) -> some View {
@@ -795,9 +845,9 @@ struct DailyView: View {
     /// A work's picture in the two grids at the end: cropped to the tile
     /// around its faces (or what draws the eye), not through the middle,
     /// so a portrait keeps its head.
-    private func gridPicture(_ work: RemoteItem) -> some View {
+    private func gridPicture(_ work: RemoteItem, height: CGFloat = 124) -> some View {
         Color.clear
-            .frame(height: 124)
+            .frame(height: height)
             .frame(maxWidth: .infinity)
             .overlay {
                 ArtImage(
@@ -933,6 +983,38 @@ struct DailyView: View {
         }
     }
 
+    /// "W tym samym czasie": three works made a few years either side of
+    /// this one, elsewhere and by others, side by side; each opens its card.
+    private func sameTime(_ works: [RemoteItem]) -> some View {
+        let columns = Array(repeating: GridItem(.flexible(), spacing: 10, alignment: .top), count: 3)
+        return LazyVGrid(columns: columns, alignment: .leading, spacing: 14) {
+            ForEach(works, id: \.id) { other in
+                NavigationLink(value: other.id) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        gridPicture(other, height: 104)
+                        Text(other.item.title.isEmpty ? "Bez tytułu" : other.item.title)
+                            .font(.serif(13, weight: .semibold))
+                            .foregroundStyle(Theme.ink)
+                            .lineLimit(2)
+                            .multilineTextAlignment(.leading)
+                        Text(Names.artist(other.item.artist))
+                            .font(.caption2)
+                            .foregroundStyle(Theme.inkSoft)
+                            .lineLimit(1)
+                        if !other.item.dateText.isEmpty {
+                            Text(other.item.dateText)
+                                .font(.caption2)
+                                .foregroundStyle(Theme.inkSoft)
+                                .lineLimit(1)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
     private func footer(_ work: DailyWork) -> some View {
         let text: String
         if work.written {
@@ -941,12 +1023,19 @@ struct DailyView: View {
         } else {
             text = "Opis muzeum. Tekst, notkę o autorze i analizę kompozycji pisze Claude, gdy w Konfiguracji jest klucz i włączone „Studium dnia”."
         }
+        // Where the work and its picture come from, at the very end with
+        // who wrote the text (Mateusz 2026-11-02: not under the title).
+        let item = work.item.item
+        let origin = [item.medium, item.museum].filter { !$0.isEmpty }.joined(separator: " · ")
         return VStack(alignment: .leading, spacing: 10) {
             Divider()
-            Text(text)
-                .font(.caption)
-                .foregroundStyle(Theme.inkSoft)
-                .fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 6) {
+                if !origin.isEmpty { Text(origin) }
+                Text(text)
+            }
+            .font(.caption)
+            .foregroundStyle(Theme.inkSoft)
+            .fixedSize(horizontal: false, vertical: true)
         }
     }
 }

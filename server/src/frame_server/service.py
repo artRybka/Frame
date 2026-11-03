@@ -16,6 +16,7 @@ from PIL import Image
 from . import notifications
 from .ai import AiConfigStore, AiWorker, Claude, DailyJob, KeywordsJob, PlTextJob
 from .ai.composition import ComposeJob
+from .ai.extras import ExtrasJob
 from .ai.study import StudyJob
 from .albums import Albums
 from .artist_works import ArtistWorks
@@ -244,6 +245,10 @@ class FrameService:
         # lets it) and for pages left without one.
         self.compose = ComposeJob(self.daily.job)
         self.ai.register(self.compose)
+        # The artist's line of life and the work's paints for pages written
+        # before the page's question asked for them.
+        self.extras = ExtrasJob(self.daily.job)
+        self.ai.register(self.extras)
 
         #: Heavy work at night, while the server runs its background.
         self.night: NightQueue | None = None

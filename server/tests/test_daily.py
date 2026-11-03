@@ -126,6 +126,22 @@ ANSWER: dict[str, Any] = {
         }
     ],
     "sources": ["obraz", "Wikipedia", "nie-źródło"],
+    "born": 1760,
+    "died": 1849,
+    "milestones": [
+        {"year": 1831, "text": "seria „36 widoków góry Fudżi”."},
+        {"year": 1779, "text": "pierwsze drzeworyty"},
+        {"year": 1900, "text": "po śmierci"},
+    ],
+    "pigments": [
+        {
+            "name": "błękit pruski",
+            "hex": "#1f3a6b",
+            "where": "fala i niebo",
+            "text": "Sprowadzany z Europy.",
+        },
+        {"name": "bez barwy", "hex": "niebieski", "where": "", "text": ""},
+    ],
 }
 
 
@@ -371,6 +387,8 @@ def test_without_a_key_the_page_shows_what_the_museum_says(tmp_path: Path) -> No
         # The artist's line stays on the work (the years under the name in
         # "O autorze"), not on the works in the lists.
         assert work["item"]["item"]["artist_bio"] == "Japanese, 1760–1849"
+        assert (work["born"], work["died"]) == (1760, 1849)  # from the museum, unwritten
+        assert work["milestones"] == [] and work["pigments"] == []
         assert work["similar"][0]["item"]["item"]["artist_bio"] == ""
 
         # Discover's tile: the text at once, without the lists under it.
@@ -428,6 +446,13 @@ def test_claude_writes_the_page(tmp_path: Path) -> None:
             ("met:5", "ta sama epoka")
         ]
         assert work["legacy"][0]["who"] == "Claude Debussy" and work["legacy"][0]["item"] is None
+        # The artist's line of life, in order and within it; the paints named.
+        assert (work["born"], work["died"]) == (1760, 1849)
+        assert [(m["year"], m["text"]) for m in work["milestones"]] == [
+            (1779, "pierwsze drzeworyty"),
+            (1831, "seria „36 widoków góry Fudżi”"),
+        ]
+        assert [(p["name"], p["hex"]) for p in work["pigments"]] == [("błękit pruski", "#1F3A6B")]
         details = work["details"]
         assert [d["title"] for d in details] == ["Pazury piany", "Wioślarze"]
         assert details[0]["image"].startswith(f"/api/daily/detail?day={date.today()}&n=0&v=")
@@ -789,3 +814,100 @@ def test_a_study_written_again_mends_the_days_half_page(offline: FrameService) -
     assert offline.daily.ask(item) is None  # no question: the study is the page
     essay = daily.essay(item)
     assert essay is not None and essay.composition.views and essay.why_today == "Dziś"
+
+
+def test_works_made_at_the_same_time(offline: FrameService) -> None:
+    """Made within five years of the work, by others, from other countries first."""
+    wave = _add(
+        offline, "met:1", title="The Great Wave", artist="Katsushika Hokusai",
+        artist_bio="Japanese, 1760–1849", year=1831,
+    )  # fmt: skip
+    _add(offline, "met:2", title="Fine Wind", artist="Katsushika Hokusai", year=1831)
+    _add(
+        offline,
+        "a:1",
+        title="Kanbara",
+        artist="Utagawa Hiroshige",
+        artist_bio="Japanese",
+        year=1833,
+    )
+    _add(
+        offline,
+        "a:2",
+        title="Lake",
+        artist="Thomas Cole",
+        artist_bio="American, 1801–1848",
+        year=1833,
+    )
+    _add(
+        offline,
+        "a:3",
+        title="Fighting",
+        artist="J. M. W. Turner",
+        artist_bio="British, 1775–1851",
+        year=1829,
+    )
+    _add(
+        offline,
+        "a:4",
+        title="Liberty",
+        artist="Eugène Delacroix",
+        artist_bio="French, 1798–1863",
+        year=1830,
+    )
+    _add(
+        offline,
+        "a:5",
+        title="Ox-Bow",
+        artist="Thomas Cole",
+        artist_bio="American, 1801–1848",
+        year=1836,
+    )
+    _add(
+        offline,
+        "a:6",
+        title="Late",
+        artist="Claude Monet",
+        artist_bio="French, 1840–1926",
+        year=1906,
+    )
+    _add(offline, "a:7", title="Anon", artist="Unknown", year=1831)
+    picked = offline.daily.same_time(wave)
+    ids = [w.id for w in picked]
+    assert len(ids) == 3
+    assert not {"met:1", "met:2", "a:6", "a:7"} & set(ids)  # not his, not 1906, not nobody's
+    assert "a:1" not in ids  # another Japanese work waits while other countries have some
+    assert len({w.artist for w in picked}) == 3  # Cole once
+    assert offline.daily.same_time(wave) == picked  # the same each time
+    assert ids[0] not in {w.id for w in offline.daily.same_time(wave, set(ids[:1]))}
+    # Too few from other countries: the rest from anywhere.
+    assert {"a:1"} <= {w.id for w in offline.daily.same_time(wave, {"a:2", "a:3"})}
+    undated = _add(offline, "x:1", title="Undated", artist="Someone")
+    assert offline.daily.same_time(undated) == []
+
+
+def test_old_pages_get_the_line_of_life_and_paints(offline: FrameService) -> None:
+    from frame_server.ai.extras import ExtrasJob
+
+    _catalogue(offline)
+    item = offline.library.get("met:1")
+    assert item is not None
+    page = clean(ANSWER, []).model_dump()  # type: ignore[union-attr]
+    for key in ("born", "died", "milestones", "pigments"):
+        page.pop(key)
+    offline.library.save_note(
+        Note(item_id="met:1", kind=STUDY, model=OPUS, prompt_version="x", data=page)
+    )
+    job = ExtrasJob(offline.daily.job)
+    assert job.wanted(item)
+    assert not job.wanted(offline.library.get("met:2"))  # type: ignore[arg-type]
+    params = job.params(item)
+    assert params["messages"][0]["content"][0]["type"] == "text"  # no picture: no guessing
+    assert "Katsushika Hokusai" in params["messages"][0]["content"][0]["text"]
+    answer = {k: ANSWER[k] for k in ("born", "died", "milestones", "pigments")}
+    job.apply(item, Note(item_id="met:1", kind=job.kind, model="", prompt_version="x", data=answer))
+    kept = offline.library.note("met:1", STUDY)
+    assert kept is not None and kept.data["teaser"] == page["teaser"]
+    assert [m["year"] for m in kept.data["milestones"]] == [1779, 1831]
+    assert kept.data["pigments"][0]["name"] == "błękit pruski"
+    assert not job.wanted(item)  # once
