@@ -1108,3 +1108,36 @@ def test_details_drawn_on_another_copy_are_cut_from_the_picked_one(
     # Its file names both copies: cut again when another copy is picked.
     assert "met" in path.name
     assert offline.daily.detail_path(item, essay.details[0]) != path
+
+
+def test_a_detail_that_misses_is_drawn_again() -> None:
+    """Hopper's "Automat" (2026-11-03): "Twarz pod kapeluszem" cut the wall
+    above the hat. The check over the cuts redraws the box that misses and
+    keeps the ones that hit."""
+    from frame_server.ai.details import mended
+
+    details = [
+        {
+            "title": "Twarz pod kapeluszem",
+            "text": "",
+            "x": 0.665,
+            "y": 0.3346,
+            "w": 0.15,
+            "h": 0.1931,
+        },
+        {"title": "Dłoń i filiżanka", "text": "", "x": 0.59, "y": 0.6371, "w": 0.165, "h": 0.1673},
+    ]
+    answer = {
+        "details": [
+            {"n": 1, "ok": False, "x": 1290, "y": 670, "w": 300, "h": 300, "why": "ściana"},
+            {"n": 2, "ok": True, "x": 0, "y": 0, "w": 10, "h": 10, "why": ""},
+            {"n": 7, "ok": False, "x": 1, "y": 1, "w": 1, "h": 1, "why": ""},
+        ]
+    }
+    found = mended(details, answer, (2000, 1554))
+    assert found is not None
+    fixed, moved = found
+    assert moved == ["Twarz pod kapeluszem"]
+    assert fixed[0]["x"] == 1290 / 2000 and fixed[0]["y"] == 670 / 1554
+    assert fixed[1] == details[1]  # the one that hit stays as it was
+    assert mended(details, None, (2000, 1554)) is None

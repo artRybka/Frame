@@ -67,6 +67,8 @@ MODEL_TOKENS = 4784
 BOXES = "boxes"
 #: The copy the page's boxes are on (:class:`Seen`).
 SEEN = "seen"
+#: The details checked over their cuts (``ai.details``): the titles moved.
+DETAILS_CHECKED = "details_checked"
 BOXES_VERSION = 2
 #: The longest side of a kept original (``library.images.IMAGE_MAX``).
 ORIGINAL_SIDE = 2560
@@ -1172,7 +1174,14 @@ class DailyJob(NoteJob):
                 log.warning("page of %s kept without %s", item.id, ", ".join(lacking))
                 data = {**data, INCOMPLETE: lacking}
         from .composition import compose
+        from .details import check as check_details
 
+        try:
+            data = check_details(self.images, item, data, ask)
+        except (AiUnavailable, anthropic.APIError) as err:
+            log.warning("details of %s not checked: %s", item.id, err)
+        except Exception:  # the page is paid for: never lost to its details' check
+            log.exception("details check of %s failed", item.id)
         data = {**data, "composition": {"views": []}}
         try:
             data.update(compose(self.images, item, context or self.sources(item), ask))
@@ -1190,7 +1199,7 @@ class DailyJob(NoteJob):
             data: dict[str, Any] = {"failed": True}
         else:
             data = essay.model_dump()
-            for key in (CHECKED, CHECK_ROUND, INCOMPLETE, BOXES, SEEN):
+            for key in (CHECKED, CHECK_ROUND, INCOMPLETE, BOXES, SEEN, DETAILS_CHECKED):
                 if key in note.data:
                     data[key] = note.data[key]
         self.library.save_note(note.model_copy(update={"data": data}))

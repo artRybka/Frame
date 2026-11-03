@@ -10,6 +10,9 @@
   Claude zaznaczał fragmenty. Gdy dzieło ma potem inną, ostrzejszą kopię,
   serwer dopasowuje do siebie obie kopie i wycina detale z tej lepszej,
   trafiając w to samo miejsce obrazu.
+- Nowe studia: Claude sprawdza swoje detale na wyciętych fragmentach
+  i poprawia ramkę, która nie pokazuje tego, o czym mówi (np. tło nad
+  kapeluszem zamiast twarzy w „Automacie” Hoppera).
 
 ## 1.91.0
 
