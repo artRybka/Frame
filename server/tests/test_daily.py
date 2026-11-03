@@ -474,6 +474,9 @@ def test_claude_writes_the_page(tmp_path: Path) -> None:
         assert cut.status_code == 200 and cut.headers["content-type"] == "image/jpeg"
         assert Image.open(io.BytesIO(cut.content)).size == (270, 240)
         assert client.get(f"/api/daily/detail?day={date.today()}&n=5").status_code == 404
+        # Asked on a picture the model reads as it is: its boxes are kept as written.
+        kept = svc.library.note("met:1", svc.daily.job.kind)
+        assert kept is not None and kept.data["boxes"] == 2
 
         (asked,) = written(fake)
         content = asked["messages"][0]["content"]
@@ -915,7 +918,7 @@ def test_old_pages_get_the_line_of_life_and_paints(offline: FrameService) -> Non
     assert job.wanted(item)
     assert not job.wanted(offline.library.get("met:2"))  # type: ignore[arg-type]
     params = job.params(item)
-    assert params["messages"][0]["content"][0]["type"] == "text"  # no picture: no guessing
+    assert params["messages"][0]["content"][0]["type"] == "text"  # no picture: its colours in words
     assert "Katsushika Hokusai" in params["messages"][0]["content"][0]["text"]
     answer = {k: ANSWER[k] for k in ("born", "died", "milestones", "pigments")}
     job.apply(item, Note(item_id="met:1", kind=job.kind, model="", prompt_version="x", data=answer))
@@ -924,3 +927,69 @@ def test_old_pages_get_the_line_of_life_and_paints(offline: FrameService) -> Non
     assert [m["year"] for m in kept.data["milestones"]] == [1779, 1831]
     assert kept.data["pigments"][0]["name"] == "błękit pruski"
     assert not job.wanted(item)  # once
+
+    # A page with its line of life but no paints, from before the likely ones
+    # were asked for: they are, the line is kept.
+    before = {k: v for k, v in kept.data.items() if k != "paints"}
+    offline.library.save_note(kept.model_copy(update={"data": {**before, "pigments": []}}))
+    job._pages = (0.0, set())
+    assert job.wanted(item)
+    likely = {
+        "born": 1700,
+        "died": 1790,
+        "milestones": [],
+        "pigments": [
+            {"name": "indygo", "hex": "#2b3a67", "where": "fala", "text": "Najpewniej…"}
+            | {"sure": False}
+        ],
+    }
+    job.apply(item, Note(item_id="met:1", kind=job.kind, model="", prompt_version="x", data=likely))
+    kept = offline.library.note("met:1", STUDY)
+    assert kept is not None and [m["year"] for m in kept.data["milestones"]] == [1779, 1831]
+    assert kept.data["pigments"] == [
+        {"name": "indygo", "hex": "#2B3A67", "where": "fala", "text": "Najpewniej…", "sure": False}
+    ]
+    assert not job.wanted(item)
+    kept_none = kept.model_copy(update={"data": {**kept.data, "pigments": []}})
+    offline.library.save_note(kept_none)  # nothing found: not asked again
+    assert not job.wanted(item)
+
+
+def test_the_picture_goes_out_as_the_model_reads_it() -> None:
+    from frame_server.ai.daily import model_size
+
+    # The API's own examples: a 4K picture is read at 2576 × 1449; one that
+    # fits is read as it is.
+    assert model_size(3840, 2160) == (2576, 1449)
+    assert model_size(2000, 1500) == (2000, 1500)
+    # A kept original of 4:3 is more than the model reads: made smaller here.
+    assert model_size(2560, 1920) == (2212, 1659)
+    assert model_size(1920, 2560) == (1659, 2212)
+
+
+def test_boxes_of_a_page_from_before_are_mended(offline: FrameService) -> None:
+    from frame_server.ai.daily import BOXES, BOXES_VERSION
+
+    _catalogue(offline)
+    item = offline.library.get("met:1")
+    assert item is not None
+    item = item.model_copy(update={"width": 4000, "height": 3000})
+    offline.library.upsert(item)
+    page = clean(ANSWER, []).model_dump()  # type: ignore[union-attr]
+    page["details"] = [{"title": "Napis", "text": "", "x": 0.5, "y": 0.5, "w": 0.2, "h": 0.2}]
+    page["focus"] = {"x": 0.5, "y": 0.5}
+    job = offline.daily.job
+    note = Note(item_id="met:1", kind=job.kind, model=OPUS, prompt_version="x", data=page)
+    job.fresh = lambda item, note: True  # type: ignore[method-assign]
+    offline.library.save_note(note)
+    essay = job.essay(item)
+    assert essay is not None
+    # Read at 2212 × 1659 of the 2560 × 1920 sent: further right and down, larger.
+    box = essay.details[0]
+    assert box.x == pytest.approx(0.5 * 2560 / 2212) and box.y == pytest.approx(0.5 * 1920 / 1659)
+    assert box.w == pytest.approx(0.2 * 2560 / 2212)
+    assert essay.focus is not None and essay.focus.x == pytest.approx(0.5 * 2560 / 2212)
+    # A page asked for on a picture of the model's size is as it was written.
+    offline.library.save_note(note.model_copy(update={"data": {**page, BOXES: BOXES_VERSION}}))
+    essay = job.essay(item)
+    assert essay is not None and essay.details[0].x == 0.5

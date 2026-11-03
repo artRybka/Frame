@@ -404,7 +404,7 @@ struct DailyView: View {
                 }
             }
             if !work.context.isEmpty {
-                section(work.headline ?? "Co mówi muzeum") {
+                section(work.headline ?? "Co mówi muzeum", ai: work.written) {
                     ForEach(Array(work.context.enumerated()), id: \.offset) { _, paragraph in
                         prose(paragraph)
                     }
@@ -418,22 +418,22 @@ struct DailyView: View {
                 compositionSection(work, takes).id("composition")
             }
             if !work.colour.isEmpty || !work.item.item.colors.isEmpty || !(work.pigments ?? []).isEmpty {
-                section("Kolor i światło") {
+                section("Kolor i światło", ai: work.written && (!work.colour.isEmpty || !(work.pigments ?? []).isEmpty)) {
                     if !work.item.item.colors.isEmpty { PaletteStrip(swatches: work.item.item.colors, height: 26, cornerRadius: 6) }
                     if !work.colour.isEmpty { prose(work.colour) }
                     if let pigments = work.pigments, !pigments.isEmpty { self.pigments(pigments) }
                 }
             }
             if let details = work.details, !details.isEmpty {
-                section("Detale") { self.details(work, details) }.id("details")
+                section("Detale", ai: true) { self.details(work, details) }.id("details")
             }
-            if !similarWorks(work).isEmpty { section("Podobne dzieła") { similar(similarWorks(work)) } }
-            if !work.legacy.isEmpty { section("Dalsze losy") { legacy(work.legacy) }.id("legacy") }
+            if !similarWorks(work).isEmpty { section("Podobne dzieła", ai: work.written) { similar(similarWorks(work)) } }
+            if !work.legacy.isEmpty { section("Dalsze losy", ai: true) { legacy(work.legacy) }.id("legacy") }
             if let others = work.byArtist, !others.isEmpty {
                 section("Inne prace artysty") { byArtist(Array(others.prefix(Self.byArtistShown))) }.id("artist")
             }
             if let then = work.sameTime, !then.isEmpty {
-                section("W tym samym czasie") { sameTime(Array(then.prefix(3))) }
+                section("Inni w tym samym czasie") { sameTime(Array(then.prefix(3))) }
             }
             if listsComing(work) {
                 HStack(spacing: 8) {
@@ -445,12 +445,12 @@ struct DailyView: View {
                 .transition(.opacity)
             }
             if let size = work.size, size.height > 0, size.width > 0 {
-                section("Prawdziwy rozmiar") {
-                    RealSizeDrawing(work: work.item, height: size.height, width: size.width, portrait: model.isPortrait)
+                section("Rozmiar obrazu") {
+                    RealSizeDrawing(work: work.item, height: size.height, width: size.width)
                         .padding(.top, 4)
                 }
             }
-            section("Na Twojej ramce") { onFrame(work) }
+            section("Na Twojej ramce", ai: !work.onFrame.isEmpty) { onFrame(work) }
             footer(work).id("end")
         }
     }
@@ -604,7 +604,10 @@ struct DailyView: View {
     private func whyToday(_ text: String) -> some View {
         let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
         return VStack(alignment: .leading, spacing: 5) {
-            Eyebrow("Dlaczego dziś", color: Theme.inkSoft)
+            HStack(alignment: .firstTextBaseline, spacing: 5) {
+                Eyebrow("Dlaczego dziś", color: Theme.inkSoft)
+                AiMark()
+            }
             prose(text, size: 15)
         }
         .padding(14)
@@ -619,11 +622,16 @@ struct DailyView: View {
 
     // MARK: Sections
 
-    private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+    /// ``ai``: the section's text is Claude's, marked by small stars after
+    /// its title (Mateusz 2026-11-03, in place of the note at the end).
+    private func section<Content: View>(_ title: String, ai: Bool = false, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(title)
-                .font(.serif(20, weight: .semibold))
-                .foregroundStyle(Theme.ink)
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(title)
+                    .font(.serif(20, weight: .semibold))
+                    .foregroundStyle(Theme.ink)
+                if ai { AiMark() }
+            }
             content()
         }
     }
@@ -644,11 +652,14 @@ struct DailyView: View {
                     .foregroundStyle(Theme.ink)
             } else {
                 VStack(alignment: .leading, spacing: 3) {
-                    Eyebrow("O autorze")
+                    HStack(alignment: .firstTextBaseline, spacing: 5) {
+                        Eyebrow("O autorze")
+                        if !note.isEmpty { AiMark() }
+                    }
                     // In the pencil's hand, as the composition's notes
-                    // (Mateusz 2026-11-03), a little smaller than the title.
+                    // (Mateusz 2026-11-03; then 40% larger).
                     Text(name)
-                        .font(.hand(25))
+                        .font(.hand(35))
                         .foregroundStyle(Theme.ink)
                         .fixedSize(horizontal: false, vertical: true)
                         .artistPress { model.artistSearch = item.artist }
@@ -661,15 +672,19 @@ struct DailyView: View {
                 }
                 .accessibilityElement(children: .combine)
             }
+            if !note.isEmpty { prose(note) }
+            // After the note (Mateusz 2026-11-03), each mark named under it.
             if let span = lifeSpan(work) {
                 LifeLine(
-                    born: span.born, died: span.died, work: item.year,
-                    others: (work.byArtist ?? []).compactMap(\.item.year),
+                    born: span.born, died: span.died,
+                    work: item.year.map { LifeLine.Work(year: $0, title: work.title) },
+                    others: (work.byArtist ?? []).compactMap { other in
+                        other.item.year.map { LifeLine.Work(year: $0, title: other.item.title.isEmpty ? "Bez tytułu" : other.item.title) }
+                    },
                     milestones: work.milestones ?? []
                 )
-                .padding(.vertical, 4)
+                .padding(.top, 6)
             }
-            if !note.isEmpty { prose(note) }
         }
     }
 
@@ -690,6 +705,14 @@ struct DailyView: View {
                     Circle()
                         .fill(Color(hexString: pigment.hex) ?? Theme.mat)
                         .overlay(Circle().strokeBorder(.black.opacity(0.12), lineWidth: 0.5))
+                        // A likely paint, not one the sources name: a dashed ring round it.
+                        .overlay {
+                            if pigment.sure == false {
+                                Circle()
+                                    .strokeBorder(Theme.inkSoft, style: StrokeStyle(lineWidth: 1, dash: [2.5, 2]))
+                                    .padding(-3)
+                            }
+                        }
                         .frame(width: 26, height: 26)
                         .padding(.top, 1)
                     VStack(alignment: .leading, spacing: 2) {
@@ -724,7 +747,7 @@ struct DailyView: View {
     /// than one); the take's text under it in the page's own type.
     private func compositionSection(_ work: DailyWork, _ takes: [DailyWork.Take]) -> some View {
         let shown = takes[min(take, takes.count - 1)]
-        return section("Analiza kompozycji") {
+        return section("Analiza kompozycji", ai: true) {
             if takes.count > 1 {
                 HStack(spacing: 6) {
                     ForEach(Array(takes.enumerated()), id: \.offset) { index, each in
@@ -1015,27 +1038,20 @@ struct DailyView: View {
         }
     }
 
+    /// Where the work and its picture come from, at the very end: who
+    /// wrote the text is told by the stars by each section of Claude's
+    /// (Mateusz 2026-11-03).
     private func footer(_ work: DailyWork) -> some View {
-        let text: String
-        if work.written {
-            let from = work.sources.isEmpty ? "" : " na podstawie: \(work.sources.joined(separator: ", "))"
-            text = "Tekst napisał Claude\(from). Może zawierać błędy."
-        } else {
-            text = "Opis muzeum. Tekst, notkę o autorze i analizę kompozycji pisze Claude, gdy w Konfiguracji jest klucz i włączone „Studium dnia”."
-        }
-        // Where the work and its picture come from, at the very end with
-        // who wrote the text (Mateusz 2026-11-02: not under the title).
         let item = work.item.item
         let origin = [item.dateText, item.medium, item.museumShown].filter { !$0.isEmpty }.joined(separator: " · ")
         return VStack(alignment: .leading, spacing: 10) {
             Divider()
-            VStack(alignment: .leading, spacing: 6) {
-                if !origin.isEmpty { Text(origin) }
-                Text(text)
+            if !origin.isEmpty {
+                Text(origin)
+                    .font(.caption)
+                    .foregroundStyle(Theme.inkSoft)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .font(.caption)
-            .foregroundStyle(Theme.inkSoft)
-            .fixedSize(horizontal: false, vertical: true)
         }
     }
 }

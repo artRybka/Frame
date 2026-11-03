@@ -53,6 +53,20 @@ TEASER_CHARS = 100
 #: The picture goes out this big: as large as Opus reads one, so that it
 #: points at things to the pixel.
 IMAGE_SIDE = 2576
+#: What Opus reads without making the picture smaller first: the long edge
+#: and the visual tokens (one per 28 × 28 pixels). A larger picture is made
+#: smaller by the API, and the model's pixels are then its, not ours: a
+#: 2560 × 1920 picture was read at 2222 × 1667, so every box drawn on the
+#: picture before 2026-11-03 came out too small and too far up and left
+#: (Mateusz: "wycinki nie trafiają w to, czego dotyczy opis").
+MODEL_EDGE = 2576
+MODEL_TOKENS = 4784
+#: Marks a page whose boxes were asked for on a picture the model read at
+#: its own size (:func:`model_size`); pages without it are mended when read.
+BOXES = "boxes"
+BOXES_VERSION = 2
+#: The longest side of a kept original (``library.images.IMAGE_MAX``).
+ORIGINAL_SIDE = 2560
 #: Wikipedia articles about the work, and the artist's opening paragraph.
 WORK_CHARS = 9000
 ARTIST_CHARS = 1500
@@ -148,6 +162,25 @@ POINTS = """Współrzędne podajesz w pikselach \
 obrazu, który dostajesz (jego wymiary są w danych: OBRAZ), od lewego górnego rogu: x w prawo, \
 y w dół. Celuj dokładnie."""
 
+
+#: The paints, for the page's question and the one filling older pages in
+#: (``ai.extras``). Named by the sources, else the likely ones for the
+#: picture's main colours (Mateusz 2026-11-03: "dawać je częściej,
+#: dopasowując się do kolorów z obrazu"), marked as such and never later
+#: than the work.
+PIGMENTS_RULE = """- "pigments": 2–4 farby (pigmenty), z których powstały główne kolory tego \
+dzieła (spójrz na obraz i na „Kolory (analiza serwera)”), tylko dla dzieł malowanych (olej, \
+tempera, akwarela, gwasz, fresk, pastel); dla grafiki, rysunku, fotografii i rzeźby pusta lista. \
+Najpierw te, które wymienia opis muzeum, Wikipedia albo pewna wiedza o badaniach \
+konserwatorskich tego dzieła: "sure": true. Gdy źródła milczą, podaj farby, którymi ten malarz \
+albo malarze jego czasu, miejsca i techniki najpewniej uzyskiwali te kolory: "sure": false, a \
+"text" zaczyna się od „Najpewniej” albo „Prawdopodobnie”. Nigdy farby młodszej niż dzieło (np. \
+błękit pruski od 1706, biel cynkowa od 1834, błękit kobaltowy od 1802, ultramaryna syntetyczna \
+od 1828, żółcień kadmowa od ok. 1840, zieleń szmaragdowa (viridian) od 1838, biel tytanowa od \
+1921). Każda: "name" (polska nazwa, np. „ultramaryna naturalna”), "hex" (barwa samej farby, jak \
+najbliżej koloru na obrazie, np. "#2A4FA0"), "where" (gdzie na obrazie, 2–5 słów), "text" (jedno \
+zdanie, najwyżej 140 znaków: skąd się brała, ile kosztowała, co w niej szczególnego), "sure"."""
+
 SYSTEM = (
     """Piszesz „Dzieło dnia” do aplikacji domowej ramki z kolorowym e-papierem: \
 krótkie, mądre omówienie jednego dzieła dla miłośnika sztuki, który nie jest historykiem sztuki.
@@ -209,12 +242,8 @@ anonimowego lub warsztatu) albo autor żyje.
 (rok) i "text" (najwyżej 50 znaków, bez kropki, np. „wstępuje do gildii św. Łukasza”, „wyjazd \
 do Paryża”). Bez urodzin, śmierci i powstania tego dzieła. Tylko ze źródeł albo pewnej wiedzy \
 encyklopedycznej; pusta lista, gdy ich nie ma.
-- "pigments": 0–4 farby (pigmenty), z których to dzieło namalowano, TYLKO gdy wymienia je \
-opis muzeum, Wikipedia albo pewna wiedza encyklopedyczna o tym konkretnym dziele (badania \
-konserwatorskie). Nie zgaduj z wyglądu obrazu. Każda: "name" (polska nazwa, np. „ultramaryna \
-naturalna”), "hex" (barwa samej farby, np. "#2A4FA0"), "where" (gdzie na obrazie, 2–5 słów), \
-"text" (jedno zdanie o tej farbie, najwyżej 140 znaków: skąd się brała, ile kosztowała, co \
-w niej szczególnego). Pusta lista, gdy źródła milczą."""
+"""
+    + PIGMENTS_RULE
 )
 
 
@@ -257,7 +286,9 @@ EXTRAS_PROPS: dict[str, Any] = {
     "born": {"type": "integer"},
     "died": {"type": "integer"},
     "milestones": _list(_object(year={"type": "integer"}, text=_str())),
-    "pigments": _list(_object(name=_str(), hex=_str(), where=_str(), text=_str())),
+    "pigments": _list(
+        _object(name=_str(), hex=_str(), where=_str(), text=_str(), sure={"type": "boolean"})
+    ),
 }
 
 SCHEMA = _object(
@@ -382,12 +413,14 @@ class Milestone(BaseModel):
 
 
 class Pigment(BaseModel):
-    """A paint the work is made with, as its sources name it."""
+    """A paint the work is made with: as its sources name it (``sure``), or
+    the likely one for one of its colours."""
 
     name: str
     hex: str
     where: str = ""
     text: str = ""
+    sure: bool = True
 
 
 class Essay(BaseModel):
@@ -773,6 +806,7 @@ def extras(data: dict[str, Any]) -> dict[str, Any]:
             hex=str(p.get("hex")).upper(),
             where=_text(p.get("where"), 60),
             text=_text(p.get("text"), 200),
+            sure=p.get("sure") is not False,
         )
         for p in _dicts(data.get("pigments"))
         if (name := _text(p.get("name"), 50)) and HEX.match(str(p.get("hex") or ""))
@@ -818,13 +852,85 @@ def unfinished(data: dict[str, Any]) -> bool:
     return all(part in lacking for part in ("composition", "colour", "on_frame"))
 
 
+def _tokens(width: int, height: int) -> int:
+    return -(-width // 28) * -(-height // 28)
+
+
+def model_size(width: int, height: int) -> tuple[int, int]:
+    """The size the model reads a picture at (the API's own rule: the
+    largest size of the same proportions within :data:`MODEL_EDGE` and
+    :data:`MODEL_TOKENS`); the picture's own when it fits."""
+
+    def fits(w: int, h: int) -> bool:
+        edge = MODEL_EDGE
+        return (
+            -(-w // 28) * 28 <= edge and -(-h // 28) * 28 <= edge and _tokens(w, h) <= MODEL_TOKENS
+        )
+
+    if fits(width, height):
+        return width, height
+    if height > width:
+        h, w = model_size(height, width)
+        return w, h
+    ratio = width / height
+    lo, hi = 1, width  # lo fits, hi does not
+    while lo + 1 < hi:
+        mid = (lo + hi) // 2
+        if fits(mid, max(round(mid / ratio), 1)):
+            lo = mid
+        else:
+            hi = mid
+    return lo, max(round(lo / ratio), 1)
+
+
 def picture(images: ImageCache, item: Item, side: int = IMAGE_SIDE) -> Image.Image:
-    """The work's picture at most ``side`` pixels long: the original when it
-    can be had, else the thumbnail."""
+    """The work's picture at most ``side`` pixels long, and no larger than
+    the model reads one (:func:`model_size`), so that the pixels it answers
+    in are the picture's: the original when it can be had, else the
+    thumbnail."""
     path, _ = images.picture(item)
     img = load_image(path.read_bytes()).convert("RGB")
     img.thumbnail((side, side), Image.Resampling.LANCZOS)
+    size = model_size(*img.size)
+    if size != img.size:
+        img = img.resize(size, Image.Resampling.LANCZOS)
     return img
+
+
+def mend_boxes(essay: Essay, item: Item) -> Essay:
+    """A page written before :data:`BOXES_VERSION`: its details and its
+    focus as they were meant, on the picture the model read (the original,
+    at most :data:`ORIGINAL_SIDE` long, made smaller by the API). Its
+    composition was checked on a picture small enough, so it stays."""
+    if not item.width or not item.height:
+        return essay
+    scale = min(1.0, ORIGINAL_SIDE / max(item.width, item.height))
+    sent = (max(round(item.width * scale), 1), max(round(item.height * scale), 1))
+    read = model_size(*sent)
+    fx, fy = sent[0] / read[0], sent[1] / read[1]
+    if fx == 1 and fy == 1:
+        return essay
+    details = [
+        d
+        for d in (
+            _detail(
+                {
+                    "title": box.title,
+                    "text": box.text,
+                    "x": box.x * fx,
+                    "y": box.y * fy,
+                    "w": box.w * fx,
+                    "h": box.h * fy,
+                }
+            )
+            for box in essay.details
+        )
+        if d is not None
+    ]
+    focus = essay.focus
+    if focus is not None:
+        focus = Spot(x=min(focus.x * fx, 1.0), y=min(focus.y * fy, 1.0))
+    return essay.model_copy(update={"details": details, "focus": focus})
 
 
 def image_block(img: Image.Image) -> dict[str, Any]:
@@ -980,7 +1086,7 @@ class DailyJob(NoteJob):
         context = self._sources.pop(item.id, None)
         if answer.data is None:
             return answer
-        data = to_fractions(answer.data, sent_size(params))
+        data = {**to_fractions(answer.data, sent_size(params)), BOXES: BOXES_VERSION}
         if lacking := missing(data, ANSWERED):
             log.warning("page of %s came back without %s: asked again", item.id, ", ".join(lacking))
             try:
@@ -991,7 +1097,7 @@ class DailyJob(NoteJob):
                 answer = replace(answer, cost_usd=answer.cost_usd + again.cost_usd)
                 fresh = to_fractions(again.data, sent_size(params)) if again.data else None
                 if fresh is not None and len(missing(fresh, ANSWERED)) < len(lacking):
-                    data = fresh
+                    data = {**fresh, BOXES: BOXES_VERSION}
             if lacking := missing(data, ANSWERED):
                 log.warning("page of %s kept without %s", item.id, ", ".join(lacking))
                 data = {**data, INCOMPLETE: lacking}
@@ -1014,7 +1120,7 @@ class DailyJob(NoteJob):
             data: dict[str, Any] = {"failed": True}
         else:
             data = essay.model_dump()
-            for key in (CHECKED, CHECK_ROUND, INCOMPLETE):
+            for key in (CHECKED, CHECK_ROUND, INCOMPLETE, BOXES):
                 if key in note.data:
                     data[key] = note.data[key]
         self.library.save_note(note.model_copy(update={"data": data}))
@@ -1062,6 +1168,8 @@ class DailyJob(NoteJob):
         if not self.fresh(item, note) or note is None or "teaser" not in note.data:
             return None
         essay = Essay.model_validate(note.data)
+        if note.data.get(BOXES) != BOXES_VERSION:
+            essay = mend_boxes(essay, item)
         shown = takes(essay.composition.views)
         if shown == essay.composition.views:
             return essay

@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.85.0
+
+- Studium dzieła, Detale: wycinki trafiają teraz w to, o czym jest opis.
+  Duże obrazy model oglądał pomniejszone, a serwer liczył ramki wycinków
+  względem obrazu wysłanego, więc wycinek wypadał za mały i przesunięty w
+  górę i w lewo. Obraz idzie teraz w rozmiarze, w jakim model go czyta, a
+  wycinki studiów napisanych wcześniej są poprawiane przy otwarciu.
+- „O autorze”: imię i nazwisko pismem odręcznym większe. Linia życia jest
+  po notce o autorze, bez podpisu „to dzieło”; pod nią legenda wszystkich
+  znaczków w kolejności lat: to dzieło (czerwona kropka) z tytułem, chwile
+  z życia (kółka) i inne prace artysty ze strony (szare kropki).
+- Zamiast notki „Tekst napisał Claude…” na końcu, małe gwiazdki przy
+  tytułach sekcji, które napisał Claude. W stopce zostaje data, technika i
+  muzeum.
+- „W tym samym czasie” nazywa się teraz „Inni w tym samym czasie”.
+- „Prawdziwy rozmiar” to teraz „Rozmiar obrazu”: obok dzieła dla skali
+  kartka A4 z jasnoszarym napisem „A4”. Wymiary są pokazywane także wtedy,
+  gdy proporcje różnią się od zdjęcia do 15%.
+- Farby w „Kolor i światło” pojawiają się częściej: gdy źródła ich nie
+  wymieniają, Claude podaje farby, którymi w tamtym czasie i miejscu
+  najpewniej uzyskiwano główne kolory obrazu (oznaczone kółkiem z
+  przerywaną obwódką i słowem „Najpewniej”), nigdy młodsze niż dzieło.
+  Studia bez farb serwer uzupełnia w tle.
+
 ## 1.84.1
 
 - Tytuły dzieł nie zaczynają się już od imienia i nazwiska autora
