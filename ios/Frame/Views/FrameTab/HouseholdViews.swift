@@ -346,6 +346,7 @@ struct MyAccessView: View {
                             }
                         }
                     }
+                    TailnetSection(editable: false)
                     NotificationsSection()
                     FunSection()
                     Button("Odłącz ten telefon", role: .destructive) { confirmLeave = true }

@@ -109,6 +109,8 @@ def test_a_member_has_no_konfiguracja(tmp_path: Path) -> None:
             ("get", "/api/sources/keys"),
             ("put", "/api/sources/keys/si"),
             ("delete", "/api/sources/keys/si"),
+            ("put", "/api/tailnet/key"),
+            ("delete", "/api/tailnet/key"),
             ("get", "/api/library/storage"),
             ("put", "/api/library/storage"),
             ("get", "/api/calibration"),

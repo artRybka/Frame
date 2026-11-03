@@ -169,3 +169,28 @@ domu.
 przy edycji. Odrzucone: konta z hasłem (logowanie na telefonie jest zbędne
 w domu) i jeden wspólny token z rolą w nagłówku (nie da się odebrać dostępu
 jednemu telefonowi).
+
+## D16. Tailscale wbudowany w aplikację — 2026-11-03
+
+**Kontekst.** Poza domem aplikacja łączyła się przez aplikację Tailscale
+(D13), czyli VPN na iPhonie. Mateusz czasem używa innego VPN, a iOS pozwala
+na jeden naraz; Paulina potrzebowałaby też konta Tailscale.
+**Decyzja.** Aplikacja Frame ma własny węzeł Tailscale: libtailscale
+(biblioteka C z TailscaleKit, Go) działa w procesie aplikacji, bez Network
+Extension i bez VPN, a zapytania idą przez jej lokalne proxy SOCKS5
+(`Networking/Tailnet.swift`). Przez węzeł idą tylko zapytania do adresu
+„Spoza domu”, gdy to adres Tailscale (100.64.0.0/10, `*.ts.net`); reszta jak
+dotąd. Klucz (auth key, najlepiej wielokrotny z tagiem `tag:frame-app`)
+właściciel wkleja raz w Konfiguracja → Dostęp spoza domu; serwer go trzyma
+(`tailnet.py`, `GET/PUT/DELETE /api/tailnet`) i oddaje każdemu telefonowi
+domu, także domownikowi, więc nikt poza właścicielem nie potrzebuje konta
+Tailscale. Tożsamość węzła leży w Application Support poza kopią zapasową.
+Węzeł startuje przy pierwszej potrzebie i od nowa po >20 s w tle, zmianie
+sieci albo nieudanym zapytaniu (iOS zabiera gniazda zawieszonej aplikacji).
+Przełącznik na telefonie wraca do VPN aplikacji Tailscale.
+**Konsekwencje.** Aplikacja jest większa o bibliotekę Go (ok. 15–25 MB),
+CI buduje ją skryptem `ios/scripts/build-tailscale.sh` (Go, wynik w cache).
+Klucz Tailscale wraca do telefonów, w przeciwieństwie do innych kluczy.
+Odrzucone: publiczny adres (Funnel, Cloudflare Tunnel, DDNS z reverse proxy),
+bo serwer chroni tylko token, a API przebudowuje kontener; własny Packet
+Tunnel (to przepisanie aplikacji Tailscale, z tym samym jednym VPN naraz).

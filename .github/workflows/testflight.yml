@@ -67,6 +67,22 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "build=$build" >> "$GITHUB_OUTPUT"
           echo "::notice::TestFlight $version ($build)"
+      # libtailscale for the Tailscale built into the app (D16): Go, built once
+      # per revision of the script and kept in the cache.
+      - name: Cache libtailscale
+        id: tailscale
+        uses: actions/cache@v4
+        with:
+          path: ios/Vendor/Tailscale
+          key: libtailscale-${{ hashFiles('ios/scripts/build-tailscale.sh') }}
+      - uses: actions/setup-go@v5
+        if: steps.tailscale.outputs.cache-hit != 'true'
+        with:
+          go-version: "1.27.1"
+          cache: false
+      - name: Build libtailscale
+        if: steps.tailscale.outputs.cache-hit != 'true'
+        run: scripts/build-tailscale.sh
       - run: brew install xcodegen
       - run: xcodegen generate
       - name: Write the API key
