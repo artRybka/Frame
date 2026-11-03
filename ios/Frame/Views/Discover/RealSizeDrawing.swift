@@ -1,41 +1,38 @@
 import SwiftUI
 
 /// "Rozmiar obrazu" (Mateusz 2026-11-02/03): the work at its real size on
-/// the left, at the column's edge, and beside it for scale a sheet of A4
-/// paper, white, with a shadow and a curled corner, "A4" printed on it in
-/// thin dark grey; for a work over 1.3 m a man's dark silhouette (the one
-/// Mateusz chose), 180 cm, his height pencilled beside him. One scale, both
-/// standing on the work's bottom edge. A sheet lower than the pencilled
-/// height stands a little past its line, under its figures; else past them.
+/// the left, at the column's edge, and beside it for scale always the same
+/// man, the dark silhouette Mateusz chose, 180 cm, his height pencilled
+/// beside him. One scale. A smaller work hangs as in a museum: his eye line
+/// (168 cm) crosses it two thirds of the way up; a work that would then
+/// hang lower than 60 cm above the floor stands on the floor, the line of
+/// his right foot. No floor line, no eye line: the work, the man and the
+/// measures only.
 struct RealSizeDrawing: View {
     let work: RemoteItem
     /// Centimetres.
     let height: Double
     let width: Double
 
-    /// What stands beside the work, in centimetres.
-    enum Reference {
-        case sheet
-        case figure
+    /// The silhouette (the asset is cropped to its outline, 1453.49 units
+    /// high): 180 cm from the top of his head to the sole of his right foot,
+    /// the one further back, 1421.2 units down (Mateusz 2026-11-03); his left
+    /// foot, nearer, reaches a little below the floor he stands on.
+    static let manUnits = 1421.2
+    static let manHeight = 180.0
+    static let manWidth = 180 * 427.79 / manUnits
+    /// The asset's whole height over the 180 cm he is measured to.
+    static let manOverhang = 1453.49 / manUnits
+    /// His eyes, above the floor.
+    static let eyeHeight = 168.0
+    /// How high above the floor a hanging work's bottom edge must stay.
+    static let clearance = 60.0
 
-        static let sheetSize = CGSize(width: 21, height: 29.7)
-        /// The silhouette (the asset is cropped to its outline, 1453.49 units
-        /// high): 180 cm from the top of his head to the sole of his right
-        /// foot, the one further back, 1421.2 units down (Mateusz 2026-11-03);
-        /// his left foot, nearer, reaches a little below the line he stands on.
-        static let figureUnits = 1421.2
-        static let figureSize = CGSize(width: 180 * 427.79 / figureUnits, height: 180)
-        /// The asset's whole height over the 180 cm he is measured to.
-        static let figureOverhang = 1453.49 / figureUnits
-        /// Works higher than this get the figure.
-        static let figureFrom = 130.0
-
-        init(height: Double) {
-            self = height > Self.figureFrom ? .figure : .sheet
-        }
-
-        var size: CGSize { self == .sheet ? Self.sheetSize : Self.figureSize }
-        var spoken: String { self == .sheet ? "kartka A4" : "sylwetka człowieka, 180 cm" }
+    /// How high above the floor the work's bottom edge is: two thirds of it
+    /// under his eye line, else on the floor.
+    static func lift(for height: Double) -> Double {
+        let hung = eyeHeight - height * 2 / 3
+        return hung >= clearance ? hung : 0
     }
 
     private static let drawingHeight: CGFloat = 230
@@ -50,32 +47,26 @@ struct RealSizeDrawing: View {
         .accessibilityElement()
         .accessibilityLabel(
             Text(
-                "Rozmiar obrazu: \(Self.length(height)) wysokości, \(Self.length(width)) szerokości, obok \(Reference(height: height).spoken)"
+                "Rozmiar obrazu: \(Self.length(height)) wysokości, \(Self.length(width)) szerokości, obok sylwetka człowieka, 180 cm"
             )
         )
     }
 
     private func drawing(width column: CGFloat) -> some View {
-        let reference = Reference(height: height)
-        let refW = reference.size.width, refH = reference.size.height
         let h = CGFloat(height), w = CGFloat(width)
-        let gap: CGFloat = h >= 100 ? 66 : 54
+        let lift = CGFloat(Self.lift(for: height))
+        let manH = CGFloat(Self.manHeight), manW = CGFloat(Self.manWidth)
+        let tallest = max(manH, lift + h)
+        let gap: CGFloat = 66
+        // His pencilled height needs room on his right.
+        let labelRoom: CGFloat = 56
         let room = Self.drawingHeight - Self.top - Self.bottom
-        // The figure's pencilled height needs room on its right.
-        let labelRoom: CGFloat = reference == .figure ? 56 : 0
-        let scale = min(room / max(refH, h), (column - gap - labelRoom) / (refW + w))
-        // Both stand on one line, the work's bottom edge (Mateusz 2026-11-03).
-        let base = Self.top + room
-        let picture = CGRect(x: 0, y: base - h * scale, width: w * scale, height: h * scale)
+        let scale = min(room / tallest, (column - gap - labelRoom) / (w + manW))
+        let floor = Self.top + tallest * scale
+        let picture = CGRect(x: 0, y: floor - (lift + h) * scale, width: w * scale, height: h * scale)
+        let man = CGRect(x: picture.maxX + gap, y: floor - manH * scale, width: manW * scale, height: manH * scale)
         let heightX = picture.maxX + 10
         let widthY = picture.maxY + 9
-        let refTop = base - refH * scale
-        // Under the pencilled height (its figures about the middle): close by.
-        let close = refTop > picture.midY + 12
-        let ref = CGRect(
-            x: close ? heightX + 24 : picture.maxX + gap, y: refTop,
-            width: refW * scale, height: refH * scale
-        )
         let pencil = Theme.ink.opacity(0.8)
         return ZStack(alignment: .topLeading) {
             // Holds the drawing's corner at (0, 0) for the parts placed by offset.
@@ -91,24 +82,17 @@ struct RealSizeDrawing: View {
             .shadow(color: .black.opacity(0.22), radius: 5, y: 5)
             .offset(x: picture.minX, y: picture.minY)
 
-            switch reference {
-            case .sheet:
-                PaperSheet()
-                    .frame(width: ref.width, height: ref.height)
-                    .offset(x: ref.minX, y: ref.minY)
-            case .figure:
-                Image("ScaleFigure")
-                    .renderingMode(.template)
-                    .resizable()
-                    .foregroundStyle(Theme.ink.opacity(0.88))
-                    .frame(width: ref.width, height: ref.height * Reference.figureOverhang)
-                    .offset(x: ref.minX, y: ref.minY)
-                Dimension(from: CGPoint(x: ref.maxX + 8, y: ref.minY), to: CGPoint(x: ref.maxX + 8, y: ref.maxY))
-                    .stroke(pencil, style: StrokeStyle(lineWidth: 1.2, lineCap: .round))
-                pencilled("180 cm")
-                    .alignmentGuide(.leading) { _ in -(ref.maxX + 14) }
-                    .alignmentGuide(.top) { d in -(ref.midY - d.height / 2) }
-            }
+            Image("ScaleFigure")
+                .renderingMode(.template)
+                .resizable()
+                .foregroundStyle(Theme.ink.opacity(0.88))
+                .frame(width: man.width, height: man.height * Self.manOverhang)
+                .offset(x: man.minX, y: man.minY)
+            Dimension(from: CGPoint(x: man.maxX + 8, y: man.minY), to: CGPoint(x: man.maxX + 8, y: man.maxY))
+                .stroke(pencil, style: StrokeStyle(lineWidth: 1.2, lineCap: .round))
+            pencilled("180 cm")
+                .alignmentGuide(.leading) { _ in -(man.maxX + 14) }
+                .alignmentGuide(.top) { d in -(man.midY - d.height / 2) }
 
             Dimension(from: CGPoint(x: heightX, y: picture.minY), to: CGPoint(x: heightX, y: picture.maxY))
                 .stroke(pencil, style: StrokeStyle(lineWidth: 1.2, lineCap: .round))
@@ -144,70 +128,6 @@ struct RealSizeDrawing: View {
         while text.hasSuffix("0") { text.removeLast() }
         if text.hasSuffix(",") { text.removeLast() }
         return "\(text) m"
-    }
-}
-
-/// White paper, a little dimmed in the dark style.
-private enum Paper {
-    static let light = Color(light: 0xFFFFFF, dark: 0xECE8E1)
-    static let shade = Color(light: 0xEFEBE4, dark: 0xD6D1C8)
-    static let curl = Color(light: 0xE2DCD2, dark: 0xC9C3B9)
-    /// What is printed on it: thin dark grey (Mateusz 2026-11-03).
-    static let print = Color(light: 0x7D776F, dark: 0x7D776F)
-    static let fill = LinearGradient(colors: [light, shade], startPoint: .topLeading, endPoint: .bottomTrailing)
-}
-
-/// A sheet of paper, upright, its lower right corner curled up a little.
-private struct PaperSheet: View {
-    var body: some View {
-        GeometryReader { geometry in
-            let size = geometry.size
-            let corner = min(size.width, size.height) * 0.12
-            ZStack(alignment: .topLeading) {
-                SheetOutline(corner: corner)
-                    .fill(Paper.fill)
-                    .overlay(SheetOutline(corner: corner).stroke(.black.opacity(0.1), lineWidth: 0.5))
-                    .shadow(color: .black.opacity(0.22), radius: 3, y: 2)
-                Curl(corner: corner)
-                    .fill(LinearGradient(colors: [Paper.curl, Paper.light], startPoint: .topLeading, endPoint: .bottomTrailing))
-                    .overlay(Curl(corner: corner).stroke(.black.opacity(0.08), lineWidth: 0.5))
-                if size.width >= 14 {
-                    Text("A4")
-                        .font(.system(size: size.width * 0.3, weight: .light))
-                        .foregroundStyle(Paper.print)
-                        .frame(width: size.width, height: size.height)
-                }
-            }
-        }
-    }
-}
-
-private struct SheetOutline: Shape {
-    let corner: CGFloat
-
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        path.move(to: rect.origin)
-        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
-        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - corner))
-        path.addLine(to: CGPoint(x: rect.maxX - corner, y: rect.maxY))
-        path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
-        path.closeSubpath()
-        return path
-    }
-}
-
-/// The curled corner: the paper's back, folded over.
-private struct Curl: Shape {
-    let corner: CGFloat
-
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        path.move(to: CGPoint(x: rect.maxX, y: rect.maxY - corner))
-        path.addLine(to: CGPoint(x: rect.maxX - corner, y: rect.maxY - corner))
-        path.addLine(to: CGPoint(x: rect.maxX - corner, y: rect.maxY))
-        path.closeSubpath()
-        return path
     }
 }
 

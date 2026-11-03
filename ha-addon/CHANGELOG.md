@@ -2,12 +2,12 @@
 
 ## 1.86.1
 
-- „Rozmiar obrazu”: obok dzieła dla skali stoi prawdziwa kartka A4 (biała,
-  z cieniem i zagiętym rogiem, z cienkim ciemnoszarym nadrukiem „A4”). Gdy
-  kartka mieści się pod podpisem wysokości dzieła, stoi bliżej dzieła. Przy
-  dziełach wyższych niż 1,3 m zamiast kartki stoi ciemna sylwetka
-  mężczyzny, 180 cm (od czubka głowy do podeszwy stopy z tyłu), z wzrostem dopisanym ołówkiem obok. Dzieło i odniesienie stoją na
-  jednej linii, dolnej krawędzi dzieła; dzieło bez cienkiej obwódki.
+- „Rozmiar obrazu”: obok dzieła dla skali zawsze stoi ciemna sylwetka
+  mężczyzny, 180 cm (od czubka głowy do podeszwy stopy z tyłu), z wzrostem
+  dopisanym ołówkiem obok. Mniejsze dzieła wiszą jak w muzeum: linia jego
+  wzroku przecina je na 2/3 wysokości; większe stoją na podłodze, na linii
+  jego prawej stopy. Bez linii podłogi i linii wzroku; dzieło bez cienkiej
+  obwódki.
 - Rysunek z wymiarami nie znika już na chwilę przy przełączaniu zakładek:
   wymiary przychodzą razem z tekstem studium.
 
