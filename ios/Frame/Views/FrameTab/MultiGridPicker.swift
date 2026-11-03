@@ -100,13 +100,13 @@ struct MultiSettings: View {
                 }
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
                     GridOption(title: "Auto", grid: nil, portrait: portrait, margin: presentation.margin,
-                               mat: MatSwatch.color(presentation.mat),
+                               mat: MatSwatch.color(presentation.mat), darkMat: MatSwatch.isDark(presentation.mat),
                                selected: presentation.multiGrid == "auto") {
                         presentation.multiGrid = "auto"
                     }
                     ForEach(MultiGrid.grids(presentation.multiCount), id: \.id) { grid in
                         GridOption(title: grid.name, grid: grid, portrait: portrait, margin: presentation.margin,
-                                   mat: MatSwatch.color(presentation.mat),
+                                   mat: MatSwatch.color(presentation.mat), darkMat: MatSwatch.isDark(presentation.mat),
                                    selected: presentation.multiGrid == grid.id) {
                             presentation.multiGrid = grid.id
                         }
@@ -124,11 +124,14 @@ private struct GridOption: View {
     let portrait: Bool
     let margin: Double
     let mat: Color
+    /// A black or deep board: the photos are drawn light, not in ink.
+    let darkMat: Bool
     let selected: Bool
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
+            let photo = darkMat ? MatSwatch.lightArt : Theme.ink.opacity(0.75)
             VStack(spacing: 8) {
                 ZStack {
                     Canvas { context, size in
@@ -141,21 +144,21 @@ private struct GridOption: View {
                                 x: rect.minX / frame.width * size.width, y: rect.minY / frame.height * size.height,
                                 width: rect.width / frame.width * size.width, height: rect.height / frame.height * size.height
                             )
-                            context.fill(Path(square), with: .color(Theme.ink.opacity(0.75)))
+                            context.fill(Path(square), with: .color(photo))
                         }
                     }
                     if grid == nil {
                         Image(systemName: "sparkles")
                             .font(.subheadline)
-                            .foregroundStyle(Theme.ink.opacity(0.75))
+                            .foregroundStyle(photo)
                     }
                 }
                 .aspectRatio(1, contentMode: .fit)  // square, as the framing icons
                 .frame(height: 52)
                 .whiteFrame(3, corner: 1)
-                .selectionRing(selected)
+                .miniatureChoice(selected)
                 Text(title)
-                    .font(.caption2.weight(.medium))
+                    .font(.caption2.weight(selected ? .bold : .medium))
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
                     .foregroundStyle(Theme.ink)
