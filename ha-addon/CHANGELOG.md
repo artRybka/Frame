@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.92.1
+
+- Studium dzieła: podpis pod obrazem to same litery, bez czarnego pasa
+  (i kremowego w ciemnym trybie), jak etykieta w muzeum. Tytuł zostaje
+  wielkimi literami jak na przyciskach, ale mniejszy i w kolorze tekstu,
+  a pod nim szarym, cienkim pismem autor i data.
+- Studium dzieła: w górnym pasku nie ma już napisu „Studium dzieła”,
+  zostały same przyciski (wstecz, serce, „…”) nad stroną.
+
 ## 1.92.0
 
 - Studium dzieła: tytuł jest na karteczce tuż pod obrazem, na jego
