@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.90.1
+
+- „Rozmiar obrazu”: małe dzieła są przybliżone. Dłuższy bok dzieła ma co
+  najmniej około 1/3 szerokości ekranu (o ile mieści się obok mężczyzna);
+  mężczyzna widoczny jest wtedy od głowy co najmniej do pasa, ucięty równo
+  na krótkiej kresce ołówkiem, która zanika na końcach. Przy dziełach od
+  około metra widać go całego, jak dotąd. Pod rysunkiem nie ma już pustego miejsca.
+- Gdy wymiary dzieła przychodzą dopiero po otwarciu studium (raz, przy
+  dziełach ze studium sprzed szukania wymiarów), sekcja pojawia się
+  płynnie zamiast wskakiwać.
+
 ## 1.90.0
 
 - Studium dzieła, tylko dla właściciela: przytrzymanie nagłówka „Analiza
