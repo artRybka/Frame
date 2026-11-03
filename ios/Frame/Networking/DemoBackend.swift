@@ -1171,6 +1171,13 @@ actor DemoBackend: FrameBackend {
         try await panelApp()
     }
 
+    func uploadPanelCertificates(_ upload: PanelCertificatesUpload) async throws -> PanelAppView {
+        var view = try await panelApp()
+        let until = ISO8601DateFormatter().string(from: .now.addingTimeInterval(365 * 86400))
+        view.certificates = view.certificates?.map { PanelCertificate(role: $0.role, subject: $0.subject, expiresAt: until) }
+        return view
+    }
+
     func libraryStorage() async throws -> LibraryStorage {
         let mb: Int64 = 1024 * 1024
         let usage = LibraryStorage.Usage(

@@ -470,10 +470,12 @@ class PanelApp:
             return None
         return self.store_package(data, version, self.source())
 
-    def store_certificates(self, author: bytes, distributor: bytes, password: bytes) -> AppView:
+    def store_certificates(
+        self, author: bytes, distributor: bytes, password: bytes, new_author: bool = False
+    ) -> AppView:
         """The Samsung certificates (once, and again when renewed): kept in
         the data directory, and a package built with them at once."""
-        self.certificates.save(author, distributor, password)
+        self.certificates.save(author, distributor, password, new_author)
         state = self.state
         if state.active:
             # Whatever ran so far, the next tick points the panel at the app

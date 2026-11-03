@@ -2088,9 +2088,9 @@ func certificatesText(_ expires: String) -> String {
     let date = When.date(expires)
     let day = date?.formatted(.dateTime.day().month(.wide).year().locale(Locale(identifier: "pl_PL"))) ?? expires
     if let date, date < .now {
-        return "Certyfikaty aplikacji ramki wygasły \(day). Odnów je w Certificate Managerze Tizen Studio i wgraj ponownie na serwer, inaczej ramka nie przyjmie nowej wersji aplikacji."
+        return "Certyfikaty aplikacji ramki wygasły \(day). Odnów je w Certificate Managerze Tizen Studio i wgraj w Konfiguracji → Aplikacja ramki, inaczej ramka nie przyjmie nowej wersji aplikacji."
     }
-    return "Certyfikaty aplikacji ramki wygasają \(day). Odnów je w Certificate Managerze Tizen Studio i wgraj ponownie na serwer."
+    return "Certyfikaty aplikacji ramki wygasają \(day). Odnów je w Certificate Managerze Tizen Studio i wgraj w Konfiguracji → Aplikacja ramki."
 }
 
 /// A one-line note under the status tiles.
@@ -2115,6 +2115,7 @@ struct PanelAppSection: View {
     @Environment(AppModel.self) private var model
     let app: PanelAppView
     @State private var installing = false
+    @State private var uploading = false
 
     private var certificatesUntil: String? {
         let dates = (app.certificates ?? []).compactMap { When.date($0.expiresAt) }
@@ -2144,7 +2145,7 @@ struct PanelAppSection: View {
                         .font(.caption)
                         .foregroundStyle(Theme.inkSoft)
                 } else {
-                    Text("Na serwerze nie ma jeszcze certyfikatów Samsunga, więc nie zbuduje aplikacji. Skopiuj raz author.p12, distributor.p12 i password.txt do folderu data/panel-app/certs serwera (np. File Station) albo uruchom scripts/panel-app/upload-certs.sh na Macu.")
+                    Text("Na serwerze nie ma jeszcze certyfikatów Samsunga, więc nie zbuduje aplikacji. Wgraj author.p12 i distributor.p12 poniżej albo skopiuj je z password.txt do folderu data/panel-app/certs serwera (np. File Station).")
                         .font(.caption)
                         .foregroundStyle(Theme.warn)
                 }
@@ -2172,7 +2173,17 @@ struct PanelAppSection: View {
                 }
                 .fontWeight(.semibold)
                 .disabled(installing || app.package == nil)
+                Divider()
+                Button {
+                    uploading = true
+                } label: {
+                    Label(app.certificates?.isEmpty == false ? "Wgraj nowe certyfikaty" : "Wgraj certyfikaty", systemImage: "key")
+                }
+                .fontWeight(app.certificatesExpireAt != nil || app.package == nil ? .semibold : .regular)
             }
+        }
+        .sheet(isPresented: $uploading) {
+            PanelCertificatesSheet()
         }
     }
 }

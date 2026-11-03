@@ -563,7 +563,7 @@ struct Delivery: Codable, Hashable, Sendable {
         }
     }
 
-    static let noCertificates = "Na serwerze brakuje certyfikatów Samsunga, więc nie zbuduje aplikacji dla ramki. Skopiuj raz author.p12, distributor.p12 i password.txt do folderu data/panel-app/certs serwera (np. File Station)."
+    static let noCertificates = "Na serwerze brakuje certyfikatów Samsunga, więc nie zbuduje aplikacji dla ramki. Wgraj author.p12 i distributor.p12 w Konfiguracji → Aplikacja ramki."
 
     /// Why it is not on the frame (yet).
     var explanation: String {
@@ -835,6 +835,22 @@ struct PanelAppPackage: Codable, Hashable, Sendable {
     var version: String
     var size: Int
     var uploadedAt: String
+}
+
+/// Renewed Samsung certificates picked in Files, on their way to the server.
+struct PanelCertificatesUpload: Sendable {
+    var author: Data
+    var distributor: Data
+    var password: String
+    /// Another author key than the one on the server, on purpose.
+    var newAuthor = false
+}
+
+/// Why renewed certificates did not go in.
+enum CertificatesUploadError: Equatable, Sendable {
+    /// The author key differs from the stored one (the server's words).
+    case authorChanged(String)
+    case failed(String)
 }
 
 /// One of the two Samsung certificates (author, distributor).

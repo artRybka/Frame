@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from ..device import MdcError
 from ..panel_app import AppView
 from ..panel_config import PanelConfigUpdate, PanelConfigView
+from ..panel_package import AuthorChanged
 from ..service import FrameService
 from .deps import require_owner, service
 
@@ -57,16 +58,21 @@ async def put_certificates(
     distributor: Annotated[UploadFile, File()],
     password: Annotated[str, Form()],
     svc: Svc,
+    new_author: Annotated[bool, Form()] = False,
 ) -> AppView:
     """The Samsung certificates the frame's app is signed with (author.p12,
-    distributor.p12 and their password, ``scripts/panel-app/upload-certs.sh``):
-    kept in the data directory only; the server builds the package with them."""
+    distributor.p12 and their password; Konfiguracja → Aplikacja ramki or
+    ``scripts/panel-app/upload-certs.sh``): kept in the data directory only;
+    the server builds the package with them. Another author key than the
+    stored one is 409 unless ``new_author``."""
     try:
         return svc.app.store_certificates(
-            await author.read(), await distributor.read(), password.encode()
+            await author.read(), await distributor.read(), password.encode(), new_author
         )
+    except AuthorChanged as err:
+        raise HTTPException(409, str(err)) from err
     except ValueError as err:
-        raise HTTPException(400, f"certificates: {err}") from err
+        raise HTTPException(400, str(err)) from err
 
 
 @router.post("/app/install", response_model=AppView)
