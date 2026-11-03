@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.85.1
+
+- Studium dzieła: gwiazdka oznaczająca tekst Claude'a jest już tylko raz,
+  na samym końcu karty, a nie przy każdej sekcji. Stopka nie powtarza
+  daty, techniki i muzeum.
+- Legenda linii życia: tytuł dzieła tym samym pismem co pozostałe pozycje,
+  tylko na czerwono.
+
 ## 1.85.0
 
 - Studium dzieła, Detale: wycinki trafiają teraz w to, o czym jest opis.

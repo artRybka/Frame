@@ -6,7 +6,7 @@ import SwiftUI
 /// moments of their life as numbered rings (1, 2, 3); one or two historical
 /// events of their time as lettered squares (A, B). Under it a legend in the
 /// order of the years: each mark as on the line, its year and what it is
-/// (this work by its title, the events in grey).
+/// (this work by its title in vermilion, the events in grey).
 struct LifeLine: View {
     /// This work: its year and title.
     struct Work: Hashable {
@@ -89,7 +89,7 @@ struct LifeLine: View {
     private func legendText(_ entry: Entry) -> Text {
         switch entry.mark {
         case .work:
-            Text(entry.text).font(.serif(15, weight: .semibold)).italic().foregroundStyle(Theme.ink)
+            Text(entry.text).font(.serif(15)).foregroundStyle(Theme.vermilion)
         case .moment:
             Text(entry.text).font(.serif(15)).foregroundStyle(Theme.ink.opacity(0.9))
         case .event:

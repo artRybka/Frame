@@ -404,7 +404,7 @@ struct DailyView: View {
                 }
             }
             if !work.context.isEmpty {
-                section(work.headline ?? "Co mówi muzeum", ai: work.written) {
+                section(work.headline ?? "Co mówi muzeum") {
                     ForEach(Array(work.context.enumerated()), id: \.offset) { _, paragraph in
                         prose(paragraph)
                     }
@@ -418,17 +418,17 @@ struct DailyView: View {
                 compositionSection(work, takes).id("composition")
             }
             if !work.colour.isEmpty || !work.item.item.colors.isEmpty || !(work.pigments ?? []).isEmpty {
-                section("Kolor i światło", ai: work.written && (!work.colour.isEmpty || !(work.pigments ?? []).isEmpty)) {
+                section("Kolor i światło") {
                     if !work.item.item.colors.isEmpty { PaletteStrip(swatches: work.item.item.colors, height: 26, cornerRadius: 6) }
                     if !work.colour.isEmpty { prose(work.colour) }
                     if let pigments = work.pigments, !pigments.isEmpty { self.pigments(pigments) }
                 }
             }
             if let details = work.details, !details.isEmpty {
-                section("Detale", ai: true) { self.details(work, details) }.id("details")
+                section("Detale") { self.details(work, details) }.id("details")
             }
-            if !similarWorks(work).isEmpty { section("Podobne dzieła", ai: work.written) { similar(similarWorks(work)) } }
-            if !work.legacy.isEmpty { section("Dalsze losy", ai: true) { legacy(work.legacy) }.id("legacy") }
+            if !similarWorks(work).isEmpty { section("Podobne dzieła") { similar(similarWorks(work)) } }
+            if !work.legacy.isEmpty { section("Dalsze losy") { legacy(work.legacy) }.id("legacy") }
             if let others = work.byArtist, !others.isEmpty {
                 section("Inne prace artysty") { byArtist(Array(others.prefix(Self.byArtistShown))) }.id("artist")
             }
@@ -450,7 +450,7 @@ struct DailyView: View {
                         .padding(.top, 4)
                 }
             }
-            section("Na Twojej ramce", ai: !work.onFrame.isEmpty) { onFrame(work) }
+            section("Na Twojej ramce") { onFrame(work) }
             footer(work).id("end")
         }
     }
@@ -535,7 +535,7 @@ struct DailyView: View {
     }
 
     /// The title alone (Mateusz 2026-11-03): the artist is named in "O
-    /// autorze", the date, medium and museum are in the footer.
+    /// autorze".
     private func header(_ work: DailyWork) -> some View {
         let item = work.item.item
         let original = OriginalTitle.of(item.title, shown: work.title)
@@ -604,10 +604,7 @@ struct DailyView: View {
     private func whyToday(_ text: String) -> some View {
         let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
         return VStack(alignment: .leading, spacing: 5) {
-            HStack(alignment: .firstTextBaseline, spacing: 5) {
-                Eyebrow("Dlaczego dziś", color: Theme.inkSoft)
-                AiMark()
-            }
+            Eyebrow("Dlaczego dziś", color: Theme.inkSoft)
             prose(text, size: 15)
         }
         .padding(14)
@@ -622,16 +619,11 @@ struct DailyView: View {
 
     // MARK: Sections
 
-    /// ``ai``: the section's text is Claude's, marked by small stars after
-    /// its title (Mateusz 2026-11-03, in place of the note at the end).
-    private func section<Content: View>(_ title: String, ai: Bool = false, @ViewBuilder content: () -> Content) -> some View {
+    private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(title)
-                    .font(.serif(20, weight: .semibold))
-                    .foregroundStyle(Theme.ink)
-                if ai { AiMark() }
-            }
+            Text(title)
+                .font(.serif(20, weight: .semibold))
+                .foregroundStyle(Theme.ink)
             content()
         }
     }
@@ -652,10 +644,7 @@ struct DailyView: View {
                     .foregroundStyle(Theme.ink)
             } else {
                 VStack(alignment: .leading, spacing: 3) {
-                    HStack(alignment: .firstTextBaseline, spacing: 5) {
-                        Eyebrow("O autorze")
-                        if !note.isEmpty { AiMark() }
-                    }
+                    Eyebrow("O autorze")
                     // In the pencil's hand, as the composition's notes
                     // (Mateusz 2026-11-03; then 40% larger).
                     Text(name)
@@ -745,7 +734,7 @@ struct DailyView: View {
     /// than one); the take's text under it in the page's own type.
     private func compositionSection(_ work: DailyWork, _ takes: [DailyWork.Take]) -> some View {
         let shown = takes[min(take, takes.count - 1)]
-        return section("Analiza kompozycji", ai: true) {
+        return section("Analiza kompozycji") {
             if takes.count > 1 {
                 HStack(spacing: 6) {
                     ForEach(Array(takes.enumerated()), id: \.offset) { index, each in
@@ -1036,20 +1025,13 @@ struct DailyView: View {
         }
     }
 
-    /// Where the work and its picture come from, at the very end: who
-    /// wrote the text is told by the stars by each section of Claude's
-    /// (Mateusz 2026-11-03).
+    /// The very end: one small star, where the note on who wrote the text
+    /// used to be, and nothing else: no stars by the sections, no date,
+    /// medium or museum (Mateusz 2026-11-03).
     private func footer(_ work: DailyWork) -> some View {
-        let item = work.item.item
-        let origin = [item.dateText, item.medium, item.museumShown].filter { !$0.isEmpty }.joined(separator: " · ")
-        return VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 10) {
             Divider()
-            if !origin.isEmpty {
-                Text(origin)
-                    .font(.caption)
-                    .foregroundStyle(Theme.inkSoft)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            AiMark()
         }
     }
 }
