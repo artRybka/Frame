@@ -124,7 +124,7 @@ struct CropScreen: View {
         .task {
             // One frame unturned first, so the turn is seen, along with the pop.
             try? await Task.sleep(for: .seconds(0.05))
-            withAnimation(.frameTurn) { turned = true }
+            withAnimation(Self.turnIn) { turned = true }
         }
         .onChange(of: draft.key) { _, _ in
             // Another picture or presentation came in under it: nothing to crop.
@@ -140,9 +140,7 @@ struct CropScreen: View {
 
     private var hint: String {
         guard draft.changed else {
-            return turned && aspectRatio > 1
-                ? "Ramka leży bokiem, żeby była większa. Przesuń obraz palcem albo rozsuń dwa palce."
-                : "Przesuń obraz palcem albo rozsuń dwa palce, żeby go wykadrować."
+            return "Przesuń obraz palcem albo rozsuń dwa palce, żeby go wykadrować."
         }
         return onFrame
             ? "Po zapisaniu ramka od razu pokaże nowy kadr."
@@ -167,7 +165,10 @@ struct CropScreen: View {
         dismiss()
     }
 
-    /// Quicker than the turn in, so closing does not keep the finger waiting.
+    /// Quick, so the frame is on its side by the time the screen has popped
+    /// out (the frame's own turn, 0.6 s, was too slow here).
+    private static let turnIn = Animation.spring(duration: 0.28, bounce: 0.08)
+    /// Back again before the screen shrinks into the preview.
     private static let turnBack = Animation.spring(duration: 0.4, bounce: 0.1)
 
     /// Back to the crop the server would choose; "Zapisz kadr" keeps it.
