@@ -107,6 +107,8 @@ struct DailyView: View {
     @State private var cropping = false
     /// Where the preview is on the screen, for cropping's frame to fly from.
     @State private var cropHome: CGRect?
+    /// Held open, the preview had grown a touch: the frame starts that size.
+    @State private var cropGrow: CGFloat = 1
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -187,7 +189,7 @@ struct DailyView: View {
                     placeholder: work.item.item.placeholderColor,
                     onFrame: model.player?.current?.item?.id == work.item.id,
                     draft: $draft, save: saveCrop, home: cropHome,
-                    onClose: { cropping = false }
+                    onClose: { cropping = false }, homeGrow: cropGrow
                 )
             }
         }
@@ -862,12 +864,16 @@ struct DailyView: View {
             loadedPreview = loaded
         }
         .frame(width: width, height: (width - 2 * moulding) / ratio + 2 * moulding)
-        // Cropping's frame comes out of it and goes back onto it.
-        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { cropHome = $0 }
         // Under the crop screen's frame while it is open: that one flies.
         .opacity(cropping ? 0 : 1)
         // Tap or hold (the phone taps closer and closer), as on Teraz and the card.
-        .picturePress(enabled: canCrop) { CropScreen.present { cropping = true } }
+        .picturePress(enabled: canCrop) { held in
+            cropGrow = held ? PressHold.pictureGrow : 1
+            CropScreen.present { cropping = true }
+        }
+        // Cropping's frame comes out of it and goes back onto it. Out here,
+        // so the place is the preview's own, not grown by the press.
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { cropHome = $0 }
         .padding(.bottom, 6)  // room for the frame's shadow
         .accessibilityLabel(Text("Podgląd na ramce"))
         .accessibilityAddTraits(canCrop ? .isButton : [])
