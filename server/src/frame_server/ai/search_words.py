@@ -186,6 +186,11 @@ class SearchWords:
         """The model's answer for ``text``, asked once however many
         museums wait for it."""
         with self._lock:
+            known = self._known.get(key)
+            if known is not None:  # answered since the caller looked
+                done: Future[Wording | None] = Future()
+                done.set_result(Wording(text, known.get("en", ""), known.get("fr", "")))
+                return done
             future = self._asking.get(key)
             if future is None:
                 future = self._asking[key] = self._pool.submit(self._translate, text, key)

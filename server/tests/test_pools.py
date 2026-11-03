@@ -211,6 +211,32 @@ def test_catalogue_stays_within_its_size(museums) -> None:
     assert player.grow_catalogue() is None  # disabled
 
 
+def test_catalogue_keeps_the_works_looked_at_longest(museums, monkeypatch) -> None:
+    service = museums
+    player = service.player
+    _wait(player.grow_catalogue())
+    protected = player._protected()
+    spare = sorted(
+        (
+            i
+            for i in service.library.query(PlaylistRules(kept_only=False), include_excluded=True)[1]
+            if i.pooled and i.id not in protected
+        ),
+        key=lambda i: i.added_at,
+    )
+    assert len(spare) > 2
+    oldest, next_one = spare[0], spare[1]
+    service.images.ensure_image(oldest)  # its card was opened: the original is here
+
+    # One byte over the limit: one work has to go.
+    service.settings.catalogue_mb = 1
+    monkeypatch.setattr(service.images, "thumbs_size", lambda: 1024 * 1024 + 1)
+    assert player.trim_catalogue() == 1
+    assert service.library.get(oldest.id) is not None  # looked at: goes last
+    assert service.images.has_image(oldest)
+    assert service.library.get(next_one.id) is None
+
+
 def test_clean_start_deletes_the_old_museum_works(service) -> None:
     own = service.importer.add_upload(jpeg_bytes((200, 40, 40)), kind=ItemKind.OWN)
     old = service.library.upsert(Item(id="aic:1", source="aic", source_id="1", favorite=True))

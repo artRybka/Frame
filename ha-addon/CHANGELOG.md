@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.85.3
+
+- Oryginały dzieł: serwer już zachowywał oryginał każdego dzieła, które
+  oglądasz (karta, cały ekran, studium) albo pokazujesz na ramce, nie tylko
+  z Ulubionych i playlist. Te ostatnie znikają tylko na samym końcu, gdy
+  pamięć przekroczy limit. Jedna luka: przycinanie katalogu usuwało dzieło
+  dobrane przez serwer razem z jego oryginałem, nawet obejrzane chwilę
+  wcześniej. Teraz obejrzane dzieła odchodzą z katalogu na samym końcu, od
+  najdawniej oglądanych. Opisy obu limitów w Konfiguracji mówią to wprost
+  (katalog przycina się od najdawniej dodanych, nie od najsłabszych na
+  e-papierze).
+- Kadrowanie (karta dzieła i Teraz): przy zamykaniu ramka po obrocie
+  szybko i płynnie wraca dokładnie na miejsce podglądu, a reszta ekranu
+  w tym czasie znika, więc na końcu nic nie miga. Wcześniej systemowe
+  przejście zmniejszało cały ekran i dopiero na końcu podmieniało go na
+  podgląd. Otwieranie wygląda tak samo: ramka wychodzi z podglądu
+  i obraca się, a strona pojawia się wokół niej. Po „Zapisz kadr” ramka
+  wraca już z nowym kadrem.
+- Tłumaczenie słów w Szukaj: odpowiedź modelu, która przyszła w trakcie
+  kolejnego wyszukiwania, nie wywołuje już drugiego, takiego samego pytania.
+
 ## 1.85.2
 
 - Karty na dole ekranu łatwiej przeczytać nad kolorowymi obrazami: większy

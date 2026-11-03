@@ -339,6 +339,14 @@ class ImageCache:
     def has_image(self, item: Item) -> bool:
         return self.image_path(item).is_file()
 
+    def used_at(self, item: Item) -> float | None:
+        """When the original was last downloaded or asked for (wall clock),
+        None when it is not here."""
+        try:
+            return self.image_path(item).stat().st_mtime
+        except OSError:
+            return None
+
     def unavailable(self, item: Item) -> bool:
         """Whether the original failed to download lately (and is not here),
         or the work has no picture anywhere."""

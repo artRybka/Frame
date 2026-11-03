@@ -22,8 +22,8 @@ struct NowView: View {
     /// asks for them by name, as the one cached from before shows the old crop.
     @State private var applied: [String: FramingCrops] = [:]
     @State private var cropping = false
-    /// The preview cropping grows out of ("pop").
-    @Namespace private var zoomSpace
+    /// Where the frame's preview is on the screen, for cropping to fly from ("pop").
+    @State private var cropHome: CGRect?
     @State private var sending = false
     @State private var routed = false
     /// The hero picture last loaded: cropping waits for it, so a half-loaded
@@ -245,11 +245,8 @@ struct NowView: View {
                         aspectRatio: model.isPortrait ? 9.0 / 16.0 : 16.0 / 9.0,
                         placeholder: selectedItem?.placeholderColor ?? browsed?.summary.placeholderColor ?? Theme.mat,
                         onFrame: offset == 0,
-                        draft: $draft, save: saveCrop
+                        draft: $draft, save: saveCrop, home: cropHome
                     )
-                    .navigationTransition(.zoom(sourceID: "crop", in: zoomSpace))
-                    // A drag down crops: it must not close the screen past "Anuluj".
-                    .interactiveDismissDisabled()
                 }
             }
             .onChange(of: canCrop) { _, can in
@@ -382,13 +379,13 @@ struct NowView: View {
                 guard ref == heroRef else { return }
                 withAnimation(.easeOut(duration: 0.3)) { loadedHero = ref }
             }
-            // Cropping grows out of it, as on the artwork card.
-            .matchedTransitionSource(id: "crop", in: zoomSpace) {
-                $0.clipShape(RoundedRectangle(cornerRadius: 2))
-            }
+            // Cropping's frame comes out of it and goes back onto it, as on the artwork card.
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { cropHome = $0 }
             .frameShadow()
+            // Under the crop screen's frame while it is open: that one flies.
+            .opacity(cropping ? 0 : 1)
             // Tap or hold (the phone taps closer and closer), like the picture on the card.
-            .picturePress(enabled: canCrop && !sending && !stale) { cropping = true }
+            .picturePress(enabled: canCrop && !sending && !stale) { CropScreen.present { cropping = true } }
             .accessibilityAddTraits(canCrop ? .isButton : [])
             .accessibilityHint(Text(canCrop ? "Otwiera kadrowanie na całym ekranie" : ""))
             .accessibilityValue(Text(redrawing ? "Ramka zmienia obraz" : ""))

@@ -19,6 +19,33 @@ struct CropScreen: View {
     @Binding var draft: FramingDraft
     /// Saves the crop; false (it failed) keeps the screen open.
     let save: () async -> Bool
+    /// Where the preview it opened from is on the screen (global): the
+    /// frame comes out of it and goes back onto it. Presented and dismissed
+    /// without the system's animation (`CropScreen.present`).
+    var home: CGRect?
+
+    init(
+        itemID: String, preview: ImageRef?, aspectRatio: CGFloat, placeholder: Color = Theme.mat,
+        onFrame: Bool = false, draft: Binding<FramingDraft>, save: @escaping () async -> Bool, home: CGRect? = nil
+    ) {
+        self.itemID = itemID
+        self.preview = preview
+        self.aspectRatio = aspectRatio
+        self.placeholder = placeholder
+        self.onFrame = onFrame
+        _draft = draft
+        self.save = save
+        self.home = home
+        _atHome = State(initialValue: home != nil)
+    }
+
+    /// Opens or closes it with no animation of the system's: the screen
+    /// itself flies the frame out of its preview and back.
+    static func present(_ change: () -> Void) {
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction, change)
+    }
 
     /// The draft as it was when the screen opened, for "Anuluj".
     @State private var original: FramingDraft?
@@ -31,41 +58,48 @@ struct CropScreen: View {
     @State private var turned = false
     /// Closing: the frame turning back, nothing more to press.
     @State private var closing = false
+    /// The frame sits on the preview it came from (as the screen opens and
+    /// once it has gone back), with the page and controls faded out.
+    @State private var atHome: Bool
+    @State private var shown = false
 
     private var ready: Bool { draft.view?.windows.isEmpty == false }
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 14) {
-                GeometryReader { geo in
-                    let turn = turned && turns(in: geo.size)
-                    // Turned, it is laid out in the space with its sides swapped.
-                    let box = turn ? CGSize(width: geo.size.height, height: geo.size.width) : geo.size
-                    FramedArtwork(ref: preview, aspectRatio: aspectRatio, placeholder: placeholder, shadow: false) {
-                        if ready, loaded != nil {
-                            CropWindows(itemID: itemID, draft: $draft)
-                                .transition(.opacity)
-                        }
+        VStack(spacing: 14) {
+            header
+                .opacity(shown ? 1 : 0)
+            GeometryReader { geo in
+                let turn = turned && turns(in: geo.size)
+                // Turned, it is laid out in the space with its sides swapped.
+                let box = turn ? CGSize(width: geo.size.height, height: geo.size.width) : geo.size
+                FramedArtwork(ref: preview, aspectRatio: aspectRatio, placeholder: placeholder, shadow: false) {
+                    if ready, loaded != nil {
+                        CropWindows(itemID: itemID, draft: $draft)
+                            .transition(.opacity)
                     }
-                    .environment(\.artImageLoaded) { ref in
-                        guard ref == preview else { return }
-                        withAnimation(.easeOut(duration: 0.3)) { loaded = ref }
-                    }
-                    .environment(\.cropTurned, turn)
-                    .frame(width: box.width, height: box.height)
-                    .rotationEffect(.degrees(turn ? 90 : 0))
-                    // Cast after the turn, so it keeps falling down.
-                    .frameShadow()
-                    .frame(width: geo.size.width, height: geo.size.height)
                 }
+                .environment(\.artImageLoaded) { ref in
+                    guard ref == preview else { return }
+                    withAnimation(.easeOut(duration: 0.3)) { loaded = ref }
+                }
+                .environment(\.cropTurned, turn)
+                .frame(width: box.width, height: box.height)
+                .rotationEffect(.degrees(turn ? 90 : 0))
+                // Cast after the turn, so it keeps falling down.
+                .frameShadow()
+                .modifier(AtHome(move: atHome ? homeMove(in: geo) : nil))
+                .frame(width: geo.size.width, height: geo.size.height)
                 .overlay {
-                    if loaded != preview {
+                    if loaded != preview, !closing {
                         LoadingBadge(text: "Wczytuję podgląd…")
                     }
                 }
-                .padding(.horizontal, Theme.gutter)
-                .padding(.top, 8)
+            }
+            .padding(.horizontal, Theme.gutter)
+            .padding(.top, 8)
 
+            Group {
                 Text(hint)
                     .font(.caption)
                     .foregroundStyle(Theme.inkSoft)
@@ -103,33 +137,72 @@ struct CropScreen: View {
                 .padding(.horizontal, Theme.gutter)
                 .padding(.bottom, 8)
             }
-            .disabled(saving || closing)
-            .animation(.easeInOut(duration: 0.2), value: draft.changed)
-            .animation(.easeInOut(duration: 0.2), value: draft.offAutomatic)
-            .paperPage()
-            .navigationTitle("Kadr")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Anuluj") { cancel() }
-                        .disabled(saving || closing)
-                }
-            }
-            .confirmationDialog("Odrzucić zmiany kadru?", isPresented: $confirmingDiscard, titleVisibility: .visible) {
-                Button("Odrzuć zmiany", role: .destructive) { discard() }
-                Button("Edytuj dalej", role: .cancel) {}
-            }
+            .opacity(shown ? 1 : 0)
+        }
+        .disabled(saving || closing)
+        .animation(.easeInOut(duration: 0.2), value: draft.changed)
+        .animation(.easeInOut(duration: 0.2), value: draft.offAutomatic)
+        // The page behind it fades in and out with the controls, so the frame
+        // is seen to come out of its preview and go back onto it.
+        .background {
+            Color.clear.paperPage()
+                .opacity(shown ? 1 : 0)
+        }
+        .presentationBackground(.clear)
+        .confirmationDialog("Odrzucić zmiany kadru?", isPresented: $confirmingDiscard, titleVisibility: .visible) {
+            Button("Odrzuć zmiany", role: .destructive) { discard() }
+            Button("Edytuj dalej", role: .cancel) {}
         }
         .onAppear { if original == nil { original = draft } }
         .task {
-            // One frame unturned first, so the turn is seen, along with the pop.
-            try? await Task.sleep(for: .seconds(0.05))
+            // One frame on the preview first, so it is seen to come out of it.
+            try? await Task.sleep(for: .seconds(0.03))
+            withAnimation(Self.out) {
+                atHome = false
+                shown = true
+            }
             withAnimation(Self.turnIn) { turned = true }
         }
         .onChange(of: draft.key) { _, _ in
             // Another picture or presentation came in under it: nothing to crop.
             dismiss()
         }
+    }
+
+    /// "Anuluj" and the title, where a navigation bar would have them: a bar
+    /// of its own, so it fades with the rest while the frame flies.
+    private var header: some View {
+        HStack {
+            Button("Anuluj") { cancel() }
+                .buttonStyle(.glass)
+                .disabled(saving || closing)
+            Spacer()
+        }
+        .overlay {
+            Text("Kadr")
+                .font(.headline)
+                .foregroundStyle(Theme.ink)
+                .accessibilityAddTraits(.isHeader)
+        }
+        .padding(.horizontal, Theme.gutter)
+        .padding(.top, 6)
+    }
+
+    /// How the frame here gets onto the preview it came from: the same middle,
+    /// at its size (the frame unturned, as it is when it flies).
+    private func homeMove(in geo: GeometryProxy) -> AtHome.Move? {
+        guard let home, home.width > 0 else { return nil }
+        let space = geo.frame(in: .global)
+        let moulding: CGFloat = 8
+        let inner = CGSize(width: max(space.width - 2 * moulding, 1), height: max(space.height - 2 * moulding, 1))
+        let fitted = inner.width / inner.height > aspectRatio
+            ? CGSize(width: inner.height * aspectRatio, height: inner.height)
+            : CGSize(width: inner.width, height: inner.width / aspectRatio)
+        let width = fitted.width + 2 * moulding
+        return AtHome.Move(
+            scale: home.width / width,
+            offset: CGSize(width: home.midX - space.midX, height: home.midY - space.midY)
+        )
     }
 
     /// A landscape frame turns where the space is upright, so it comes out
@@ -153,23 +226,39 @@ struct CropScreen: View {
         if await save() { await close() }
     }
 
-    /// Back on its place: a turned frame turns back, then the screen
-    /// shrinks into the preview it came from.
+    /// Back on its place: a turned frame turns back, then it goes quickly
+    /// onto the preview it came from while the page fades, and only then
+    /// does the screen go (the preview under it is the same, so nothing
+    /// blinks; the system's zoom shrank the whole screen and then swapped).
     private func close() async {
         guard !closing else { return }
         closing = true
+        // A saved crop's preview first, so it lands as the card will show it.
+        let waited = ContinuousClock.now
+        while loaded != preview, ContinuousClock.now - waited < .seconds(2) {
+            try? await Task.sleep(for: .seconds(0.05))
+        }
         if turned, aspectRatio > 1 {
             withAnimation(Self.turnBack) { turned = false }
             try? await Task.sleep(for: .seconds(0.3))
         }
-        dismiss()
+        withAnimation(Self.back) {
+            atHome = home != nil
+            shown = false
+        }
+        try? await Task.sleep(for: .seconds(0.3))
+        Self.present { dismiss() }
     }
 
     /// Quick, so the frame is on its side by the time the screen has popped
     /// out (the frame's own turn, 0.6 s, was too slow here).
     private static let turnIn = Animation.spring(duration: 0.28, bounce: 0.08)
-    /// Back again before the screen shrinks into the preview.
+    /// Back again before the frame goes onto the preview.
     private static let turnBack = Animation.spring(duration: 0.4, bounce: 0.1)
+    /// Out of the preview, as the screen opens.
+    private static let out = Animation.spring(duration: 0.35, bounce: 0.12)
+    /// Back onto it: quick, but no bounce, so it settles right on it.
+    private static let back = Animation.spring(duration: 0.3, bounce: 0)
 
     /// Back to the crop the server would choose; "Zapisz kadr" keeps it.
     private func automaticCrop() async {
@@ -217,5 +306,21 @@ struct CornerBadge: View {
             .overlay(Circle().strokeBorder(Theme.hairline))
             .padding(10)
             .allowsHitTesting(false)
+    }
+}
+
+/// The crop screen's frame moved onto the preview it came from.
+private struct AtHome: ViewModifier {
+    struct Move: Equatable {
+        var scale: CGFloat
+        var offset: CGSize
+    }
+
+    let move: Move?
+
+    func body(content: Content) -> some View {
+        content
+            .scaleEffect(move?.scale ?? 1)
+            .offset(move?.offset ?? .zero)
     }
 }

@@ -26,6 +26,8 @@ struct ItemDetailView: View {
     @State private var loadedPreview: ImageRef?
     @State private var saving = false
     @State private var opened: Opened?
+    /// Where the "Na ramce" preview is on the screen, for cropping to fly from.
+    @State private var cropHome: CGRect?
     @State private var savingPhoto = false
     /// Polish title and texts, once the server has them ("Polskie tytuły i
     /// opisy" in the settings); the museum's own while they are written.
@@ -725,17 +727,11 @@ struct ItemDetailView: View {
                     aspectRatio: model.isPortrait ? 9.0 / 16.0 : 16.0 / 9.0,
                     placeholder: item.placeholderColor,
                     onFrame: model.player?.current?.item?.id == item.id,
-                    draft: $draft, save: saveFromCropScreen
+                    draft: $draft, save: saveFromCropScreen, home: cropHome
                 )
-                .navigationTransition(.zoom(sourceID: Self.cropSource, in: zoomSpace))
-                // A drag down crops: it must not close the screen past "Anuluj".
-                .interactiveDismissDisabled()
             }
         }
     }
-
-    /// The "Na ramce" preview cropping grows out of.
-    private static let cropSource = "crop"
 
     /// The picture as the frame will show it; a tap opens it on the crop
     /// screen once its crop is loaded.
@@ -751,18 +747,18 @@ struct ItemDetailView: View {
             guard loaded == previewRef else { return }
             withAnimation(.easeOut(duration: 0.3)) { loadedPreview = loaded }
         }
-        // Cropping grows out of it ("pop"), as the whole picture does out of "Oryginał".
-        .matchedTransitionSource(id: Self.cropSource, in: zoomSpace) {
-            $0.clipShape(RoundedRectangle(cornerRadius: 2))
-        }
+        // Cropping's frame comes out of it ("pop") and goes back onto it.
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { cropHome = $0 }
         .frameShadow()
         .overlay {
             if loadedPreview != ref {
                 LoadingBadge(text: "Wczytuję podgląd…")
             }
         }
+        // Under the crop screen's frame while it is open: that one flies.
+        .opacity(opened == .crop ? 0 : 1)
         // Tap or hold (the phone taps closer and closer), like the picture.
-        .picturePress(enabled: cropping) { opened = .crop }
+        .picturePress(enabled: cropping) { CropScreen.present { opened = .crop } }
         .accessibilityAddTraits(cropping ? .isButton : [])
         .accessibilityHint(Text(cropping ? "Otwiera kadrowanie na całym ekranie" : ""))
     }
