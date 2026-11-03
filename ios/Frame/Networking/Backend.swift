@@ -175,6 +175,10 @@ protocol FrameBackend: Sendable {
     /// The Frame app on the panel, and switching the panel to it or back.
     func panelApp() async throws -> PanelAppView
     func installPanelApp() async throws -> PanelAppView
+    /// Renewed Samsung certificates (author.p12, distributor.p12, their
+    /// password); the server signs the app with them. Another author key
+    /// than the stored one is 409 unless `newAuthor`.
+    func uploadPanelCertificates(_ upload: PanelCertificatesUpload) async throws -> PanelAppView
     /// How much disk the library takes on the server, and its limits.
     func libraryStorage() async throws -> LibraryStorage
     /// A limit equal to its default goes back to frame.env or the add-on options.

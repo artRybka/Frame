@@ -220,6 +220,17 @@ ten sam obraz 2560×1440 co w trybie Mobile (nasz dither albo passthrough).
   podpisane launcher zainstalował i uruchomił. Serwer na NAS może więc sam
   budować aplikację. Certyfikaty i hasło tylko lokalnie, nigdy w repozytorium.
   **Certyfikaty ważne do 2027-10-27:** odnowić w Certificate Managerze.
+  Daty sprawdzone 2026-11-03: oba liście (author `CN=frame` od „Samsung VD
+  Author CA”, distributor `CN=TizenSDK` od „VD DEVELOPER Partner CA Class”)
+  2026-10-27 → 2027-10-27; pośredni certyfikat autora do 2040-06-19 (korzeń
+  „Tizen Developers Root Class” do 2033-12-25), pośredni dystrybutora do
+  2029-06-16, więc odnowiony dystrybutor nie będzie ważny dłużej, dopóki
+  Samsung nie wyda nowego (pewnie z Tizen Studio). Ważności nie da się
+  wydłużyć: odnowienie to ten sam profil `frame`, nowy certyfikat
+  dystrybutora (Samsung, TV, Partner, ten sam DUID) i stary albo przedłużony
+  z tym samym kluczem certyfikat autora. Po wygaśnięciu ramka nie przyjmie
+  nowej paczki (zmiana plików aplikacji, ratowanie zawieszonej przez nową
+  wersję, reinstalacja przez launcher), więc trzeba zdążyć przed datą.
 - Po wyłączeniu i włączeniu ramka potrafi połączyć się z inną zapamiętaną
   siecią Wi-Fi (raz „Sasiad IoT”, 198.51.100.20): wtedy serwer jej nie widzi.
   Aplikacja powinna raportować SSID i IP.
@@ -753,7 +764,13 @@ na podstawie tego, co już wiesz”).
 
 **Certyfikaty na serwer (raz, i ponownie po odnowieniu).** Leżą tylko na
 Macu (`~/SamsungCertificate/frame`), a do repozytorium trafić nie mogą, więc
-raz trzeba je przenieść na NAS. Dwa sposoby, oba równie dobre:
+raz trzeba je przenieść na NAS. Trzy sposoby, wszystkie równie dobre:
+
+- **Z telefonu (od 1.87.0):** Konfiguracja → Aplikacja ramki → „Wgraj nowe
+  certyfikaty”, wybrać `author.p12` i `distributor.p12` w Plikach (z Maca
+  przez AirDrop) i wpisać hasło. Serwer sprawdza hasło, daty i to, czy klucz
+  autora jest ten sam co dotąd: inny odrzuca, bo ramka wzięłaby aplikację za
+  inną (w arkuszu można go wgrać mimo to).
 
 - **Bez terminala (File Station albo Finder):** w folderze projektu `frame`
   na Synology wejść do `data`, utworzyć `panel-app/certs` i skopiować tam

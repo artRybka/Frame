@@ -45,6 +45,11 @@ class CertificateInfo(BaseModel):
     expires_at: str  # ISO
 
 
+class AuthorChanged(ValueError):
+    """A new author certificate with another key: the panel would take the
+    app signed with it for a different one and not install it over ours."""
+
+
 class Identity:
     def __init__(self, key: rsa.RSAPrivateKey, certs: list[x509.Certificate]) -> None:
         self.key = key
@@ -78,11 +83,37 @@ class Certificates:
                 return self.dir / name
         return None
 
-    def save(self, author: bytes, distributor: bytes, password: bytes) -> list[CertificateInfo]:
-        """Check that the password opens both, then keep them."""
+    def save(
+        self, author: bytes, distributor: bytes, password: bytes, new_author: bool = False
+    ) -> list[CertificateInfo]:
+        """Check that the password opens both, that they are still valid and
+        that the author key is the one the panel knows (renewed in the
+        Certificate Manager, the author certificate is kept or extended with
+        the same key; ``new_author`` takes another one anyway), then keep
+        them."""
         password = password.strip()
         found = {"author": author, "distributor": distributor}
-        infos = [_info(role, load_identity(data, password)) for role, data in found.items()]
+        identities: dict[str, Identity] = {}
+        for role, data in found.items():
+            try:
+                identities[role] = load_identity(data, password)
+            except ValueError as err:
+                raise ValueError(
+                    f"hasło nie otwiera pliku {role}.p12 albo to nie jest certyfikat .p12"
+                ) from err
+        infos = [_info(role, identity) for role, identity in identities.items()]
+        now = datetime.now(UTC)
+        for info in infos:
+            if datetime.fromisoformat(info.expires_at) <= now:
+                day = info.expires_at[:10]
+                raise ValueError(
+                    f"certyfikat {info.role}.p12 wygasł {day}, odnów go w Tizen Studio"
+                )
+        if not new_author and self._author_key() not in (None, _public_key(identities["author"])):
+            raise AuthorChanged(
+                "to inny certyfikat autora niż dotąd: ramka uzna aplikację za inną i może jej "
+                "nie zainstalować; przy odnawianiu zostaw stary author.p12"
+            )
         self.dir.mkdir(parents=True, exist_ok=True)
         os.chmod(self.dir, 0o700)
         for name, data in ((f"{r}.p12", d) for r, d in found.items()):
@@ -90,6 +121,15 @@ class Certificates:
         _write_private(self.dir / PASSWORD, password)
         log.info("panel app certificates stored (valid until %s)", _earliest(infos))
         return infos
+
+    def _author_key(self) -> bytes | None:
+        """The stored author certificate's public key; None without one."""
+        if not self.present():
+            return None
+        try:
+            return _public_key(self.identity("author"))
+        except (OSError, ValueError):
+            return None
 
     def identity(self, role: str) -> Identity:
         path = self._password_path()
@@ -129,12 +169,24 @@ def _write_private(path: Path, data: bytes) -> None:
     tmp.replace(path)
 
 
+def _public_key(identity: Identity) -> bytes:
+    return (
+        identity.certs[0]
+        .public_key()
+        .public_bytes(serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo)
+    )
+
+
 def _info(role: str, identity: Identity) -> CertificateInfo:
+    """The leaf's subject; valid until the first certificate in its chain
+    ends (the leaf, or a Samsung intermediate bundled in the .p12: on
+    2026-11-03 the Partner distributor CA ran to 2029-06-16)."""
     leaf = identity.certs[0]
+    until = min(cert.not_valid_after_utc for cert in identity.certs)
     return CertificateInfo(
         role=role,
         subject=leaf.subject.rfc4514_string(),
-        expires_at=leaf.not_valid_after_utc.astimezone(UTC).isoformat(timespec="seconds"),
+        expires_at=until.astimezone(UTC).isoformat(timespec="seconds"),
     )
 
 
