@@ -40,7 +40,7 @@ EOF
 
 build() {
     local sdk=$1 min=$2
-    echo "Building libtailscale for $sdk…"
+    echo "Building libtailscale for ${sdk}..."
     mkdir -p "$work/$sdk"
     (cd "$work/src" && GOOS=ios GOARCH=arm64 CGO_ENABLED=1 CC="$(compiler "$sdk" "$min")" \
         go build -trimpath -ldflags=-w -tags ios -buildmode=c-archive -o "$work/$sdk/libtailscale.a" .)
