@@ -59,6 +59,7 @@ from . import (
     sources_api,
     storage_api,
     study_api,
+    tailnet_api,
     update_api,
     users_api,
 )
@@ -173,6 +174,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         notify_api.router,
         users_api.router,
         sources_api.router,
+        tailnet_api.router,
     )
     for router in routers:
         app.include_router(router)

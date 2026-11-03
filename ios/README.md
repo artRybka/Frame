@@ -5,10 +5,16 @@ SwiftUI, iOS 26+, interfejs po polsku. Projekt Xcode jest generowany z
 trafia do repozytorium.
 
 ```bash
-brew install xcodegen
+brew install xcodegen go
+scripts/build-tailscale.sh   # raz: libtailscale do Vendor/Tailscale
 xcodegen generate
 open Frame.xcodeproj
 ```
+
+`scripts/build-tailscale.sh` buduje z Go bibliotekę libtailscale
+(Tailscale wbudowany w aplikację, `Networking/Tailnet.swift`, D16; licencja
+BSD-3-Clause, Tailscale Inc & AUTHORS) dla iPhone'a i symulatora na Macu
+z Apple silicon. Wynik jest poza repozytorium; CI trzyma go w cache.
 
 Przed pierwszym uruchomieniem na iPhonie wybierz w Xcode swój zespół
 (*Signing & Capabilities*) albo wpisz `DEVELOPMENT_TEAM` w `project.yml`.

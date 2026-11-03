@@ -1030,6 +1030,15 @@ struct SourceKey: Codable, Hashable, Sendable, Identifiable {
     var id: String { source }
 }
 
+/// The household's Tailscale auth key (`/api/tailnet`): the whole key for the
+/// phone to join the tailnet with, its last characters for Konfiguracja.
+struct TailnetKey: Codable, Hashable, Sendable {
+    var keySet: Bool
+    var keyTail: String?
+    var key: String?
+    var savedAt: String?
+}
+
 /// What "Opisz bibliotekę" would ask about, and about what it costs.
 struct AiEstimate: Codable, Hashable, Sendable {
     var items: Int

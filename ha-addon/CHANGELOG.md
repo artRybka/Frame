@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.88.0
+
+- Tailscale wbudowany w aplikację: spoza domu Frame łączy się z serwerem
+  własnym połączeniem Tailscale, bez aplikacji Tailscale i bez VPN na
+  iPhonie, więc działa obok innego VPN. Klucz Tailscale wkleja się raz
+  w Konfiguracja → Dostęp spoza domu („Zapisz i połącz”); serwer oddaje
+  go każdemu telefonowi domu, także domownikom bez konta Tailscale.
+  Tam też stan połączenia, przełącznik „Tailscale w aplikacji”,
+  „Połącz ponownie” i dziennik. Przez Tailscale idzie tylko adres
+  „Spoza domu”, gdy to adres Tailscale. Instrukcja (tag i klucz
+  w panelu Tailscale): deploy/synology/README.md.
+
 ## 1.86.2
 
 - Karta dzieła: gdy otwiera się od razu z polskim tytułem, po sekundzie

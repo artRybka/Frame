@@ -37,6 +37,7 @@ actor DemoBackend: FrameBackend {
     private var originalsLimitMb: Int?
     /// Studies asked for, and when: "written" a few seconds later.
     private var askedStudies: [String: Date] = [:]
+    private var tailnetValue = TailnetKey(keySet: false)
     private var sourceKeyValues = [
         SourceKey(
             source: "si", name: "Smithsonian",
@@ -1252,6 +1253,23 @@ actor DemoBackend: FrameBackend {
     func aiSettings() async throws -> AiSettings { aiValue }
 
     func sourceKeys() async throws -> [SourceKey] { sourceKeyValues }
+
+    /// Demo: the key is kept, the phone never joins a tailnet with it.
+    func tailnet() async throws -> TailnetKey { tailnetValue }
+
+    func saveTailnetKey(_ key: String) async throws -> TailnetKey {
+        let key = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard key.hasPrefix("tskey-"), key.count >= 24 else {
+            throw BackendError.http(status: 400, body: "to nie jest klucz Tailscale (zaczyna się od tskey-)")
+        }
+        tailnetValue = TailnetKey(keySet: true, keyTail: String(key.suffix(4)), key: nil, savedAt: nil)
+        return tailnetValue
+    }
+
+    func deleteTailnetKey() async throws -> TailnetKey {
+        tailnetValue = TailnetKey(keySet: false)
+        return tailnetValue
+    }
 
     func saveSourceKey(_ source: String, key: String) async throws -> [SourceKey] {
         if let i = sourceKeyValues.firstIndex(where: { $0.source == source }) {

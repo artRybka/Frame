@@ -202,6 +202,11 @@ protocol FrameBackend: Sendable {
     func sourceKeys() async throws -> [SourceKey]
     func saveSourceKey(_ source: String, key: String) async throws -> [SourceKey]
     func deleteSourceKey(_ source: String) async throws -> [SourceKey]
+    /// The household's Tailscale key for the app's own Tailscale node: every
+    /// phone reads it, the owner sets it.
+    func tailnet() async throws -> TailnetKey
+    func saveTailnetKey(_ key: String) async throws -> TailnetKey
+    func deleteTailnetKey() async throws -> TailnetKey
     func keywordsEstimate() async throws -> AiEstimate
     /// Keywords for the whole library through Anthropic's batches (within a day).
     func describeLibrary() async throws -> AiStarted

@@ -1919,6 +1919,9 @@ struct ConnectionSettingsView: View {
                         PanelAppSection(app: app)
                     }
                     ServerSection()
+                    if !model.demoMode {
+                        TailnetSection()
+                    }
                     HouseholdSection()
                     NotificationsSection()
                     if let settings = model.settings {
@@ -2198,7 +2201,7 @@ struct ServerSection: View {
                     AddressField(title: "W domu", prompt: "http://homeassistant.local:8099", text: $model.serverURL)
                     Divider()
                     AddressField(title: "Spoza domu", prompt: "Tailscale, np. http://100.64.0.5:8099", text: $model.remoteURL)
-                    Text("Opcjonalny. Aplikacja sama wybiera adres, który odpowiada, a domowy ma pierwszeństwo.")
+                    Text("Opcjonalny. Aplikacja sama wybiera adres, który odpowiada, a domowy ma pierwszeństwo. Adres Tailscale łączy się przez Tailscale wbudowany w aplikację (niżej).")
                         .font(.caption)
                         .foregroundStyle(Theme.inkSoft)
                     Divider()

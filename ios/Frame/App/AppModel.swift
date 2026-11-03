@@ -15,6 +15,8 @@ final class AppModel {
         /// The address that answered last (`ServerRoute.Kind`): the next
         /// launch asks it first.
         static let serverPath = "serverPath"
+        /// The household's Tailscale key, as the server last gave it.
+        static let tailnetKey = "tailnetKey"
     }
 
     enum Connection: Equatable {
@@ -75,6 +77,10 @@ final class AppModel {
     var aiSettings: AiSettings?
     /// Keys of art sources; loaded when Konfiguracja opens, empty on an older server.
     var sourceKeys: [SourceKey] = []
+    /// Tailscale built into the app (`Tailnet`): the key as the server has
+    /// it, and how the phone's own node is doing.
+    var tailnetKey: TailnetKey?
+    var tailnet: Tailnet.State = Tailnet.shared.current
     /// Notifications on this phone as the server has them; loaded when
     /// Konfiguracja opens, nil on an older server.
     var notificationSettings: NotificationSettings?
@@ -179,6 +185,9 @@ final class AppModel {
         apiToken = token
         demoMode = demo
         backend = DemoBackend()
+        Tailnet.shared.onChange = { [weak self] state in
+            Task { @MainActor in self?.tailnet = state }
+        }
         connect(demo: demo, url: url, remote: remote, token: token)
         restoreNow()
         restoreDiscover()
@@ -196,10 +205,14 @@ final class AppModel {
         guard !demo, let home = Self.serverAddress(url) else {
             route = nil
             ImageLoader.sameServer(nil)
+            Tailnet.shared.configure(key: nil, remote: nil, name: Tailnet.nodeName(for: nil))
             backend = DemoBackend()
             return
         }
         let away = Self.serverAddress(remote)
+        Tailnet.shared.configure(
+            key: KeychainStore.read(Keys.tailnetKey), remote: away, name: Tailnet.nodeName(for: me?.name)
+        )
         let last = UserDefaults.standard.string(forKey: Keys.serverPath).flatMap(ServerRoute.Kind.init(rawValue:))
         let route = ServerRoute(home: home, remote: away, active: last ?? .home)
         route.onSwitch = { [weak self] kind in
@@ -238,6 +251,7 @@ final class AppModel {
         serverUpdate = nil
         aiSettings = nil
         sourceKeys = []
+        tailnetKey = nil
         notificationSettings = nil
         me = nil
         playlists = []
@@ -307,6 +321,7 @@ final class AppModel {
         if !demoMode { Task { await PushCenter.shared.registerIfAllowed() } }
         // Ready before Discover is opened.
         Task { await refreshDiscover() }
+        Task { await syncTailnet() }
     }
 
     // MARK: Reaching the server
@@ -374,7 +389,7 @@ final class AppModel {
     private func reachOnce() async -> Reach {
         if let route, route.hasRemote, await route.resolve() == nil {
             if Task.isCancelled { return .cancelled }
-            return .unreachable("Serwer nie odpowiada pod żadnym adresem. Poza domem włącz Tailscale.")
+            return .unreachable(Self.nowhere(Tailnet.shared.current))
         }
         do {
             _ = try await backend.health()
@@ -385,6 +400,16 @@ final class AppModel {
             // a server still starting.
             if case let BackendError.http(status, _) = error, status < 500 { return .refused(error.localizedDescription) }
             return .unreachable(error.localizedDescription)
+        }
+    }
+
+    /// "Not at any address", with what the app's own Tailscale says.
+    private static func nowhere(_ tailnet: Tailnet.State) -> String {
+        let base = "Serwer nie odpowiada pod żadnym adresem."
+        switch tailnet {
+        case let .failed(message): return "\(base) \(message)"
+        case .off, .paused: return "\(base) Poza domem włącz Tailscale albo zapisz klucz Tailscale w Konfiguracji."
+        case .idle, .starting, .running: return base
         }
     }
 
@@ -457,6 +482,7 @@ final class AppModel {
     private func networkChanged(_ seen: String) {
         defer { networkSeen = seen }
         guard let before = networkSeen, before != seen else { return }
+        Tailnet.shared.networkChanged()
         // A new network (or the VPN coming up) takes a moment to settle.
         networkSettle?.cancel()
         networkSettle = Task {
@@ -1247,6 +1273,81 @@ final class AppModel {
             return
         }
         notices.done("Usunięto klucz", source.name)
+    }
+
+    // MARK: Tailscale in the app
+
+    /// The household's Tailscale key from the server, kept on the phone for
+    /// the times away from home; the phone's node follows it.
+    func syncTailnet() async {
+        guard !demoMode else { return }
+        // Older servers have no key: the node stays as it was.
+        guard let found = try? await backend.tailnet() else { return }
+        tailnetKey = found
+        useTailnetKey(found.key)
+    }
+
+    private func useTailnetKey(_ key: String?) {
+        guard !demoMode else { return }
+        if KeychainStore.read(Keys.tailnetKey) != key { KeychainStore.write(Keys.tailnetKey, value: key ?? "") }
+        Tailnet.shared.configure(key: key, remote: route?.remote, name: Tailnet.nodeName(for: me?.name))
+    }
+
+    /// Konfiguracja → Dostęp spoza domu: keeps the key on the server and
+    /// joins the tailnet with it at once. True when the server kept it.
+    func saveTailnetKey(_ key: String) async -> Bool {
+        do {
+            let saved = try await backend.saveTailnetKey(key)
+            tailnetKey = saved
+            useTailnetKey(saved.key)
+        } catch let BackendError.http(400, body) {
+            let detail = (try? JSONDecoder().decode([String: String].self, from: Data(body.utf8)))?["detail"]
+            notices.fail("Klucz odrzucony", detail ?? "To nie jest klucz Tailscale.")
+            return false
+        } catch {
+            show(error)
+            return false
+        }
+        guard !demoMode, Tailnet.shared.current != .off else {
+            notices.done("Klucz Tailscale zapisany")
+            return true
+        }
+        switch await Tailnet.shared.warm() {
+        case let .running(address):
+            notices.done("Połączono z Tailscale", address)
+        case let .failed(message):
+            notices.fail("Klucz zapisany, Tailscale się nie połączył", message)
+        default:
+            notices.done("Klucz Tailscale zapisany")
+        }
+        return true
+    }
+
+    func deleteTailnetKey() async {
+        do {
+            let saved = try await backend.deleteTailnetKey()
+            tailnetKey = saved
+            useTailnetKey(saved.key)
+        } catch {
+            show(error)
+            return
+        }
+        notices.done("Usunięto klucz Tailscale", "Telefony łączą się spoza domu tylko przez aplikację Tailscale.")
+    }
+
+    /// This phone's switch for the built-in Tailscale.
+    func setTailnetEnabled(_ on: Bool) {
+        Tailnet.shared.setEnabled(on)
+        Task { await recheckServer() }
+    }
+
+    /// Starts the phone's node again now (Konfiguracja → "Połącz ponownie").
+    func retryTailnet() async {
+        Tailnet.shared.networkChanged()
+        if case let .failed(message) = await Tailnet.shared.warm() {
+            notices.fail("Tailscale się nie połączył", message)
+        }
+        await recheckServer()
     }
 
     func keywordsEstimate() async -> AiEstimate? {
