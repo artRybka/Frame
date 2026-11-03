@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.85.2
+
+- Kadrowanie (karta dzieła i Teraz): przy zamykaniu ramka po obrocie
+  szybko i płynnie wraca dokładnie na miejsce podglądu, a reszta ekranu
+  w tym czasie znika, więc na końcu nic nie miga. Wcześniej systemowe
+  przejście zmniejszało cały ekran i dopiero na końcu podmieniało go na
+  podgląd. Otwieranie wygląda tak samo: ramka wychodzi z podglądu
+  i obraca się, a strona pojawia się wokół niej. Po „Zapisz kadr” ramka
+  wraca już z nowym kadrem.
+
 ## 1.85.1
 
 - Studium dzieła: gwiazdka oznaczająca tekst Claude'a jest już tylko raz,
