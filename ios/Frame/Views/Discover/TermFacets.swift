@@ -533,7 +533,8 @@ struct TermFacetPanel: View {
                     swatch(tag: tag, family: family)
                 }
             }
-            if !moods.isEmpty {
+            // A mood is the whole work's, never an accent's: only under "Dominuje".
+            if !accents && !moods.isEmpty {
                 VStack(alignment: .leading, spacing: 10) {
                     Eyebrow("Nastrój")
                     // In pairs, one pair a row: Ciepłe–Chłodne, Żywe–Stonowane,
