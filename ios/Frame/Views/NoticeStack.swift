@@ -39,26 +39,28 @@ struct NoticeStack: View {
     }
 }
 
-/// One card, in the look of `DisplayProgressBar`.
+/// One card, in the look of `DisplayProgressBar`: frosted glass, ink type
+/// large and dark enough to read over any picture, the kind in a small soft
+/// disc, and an edge and shadow that lift it off the pictures below.
 struct NoticeCard: View {
     let notice: Notice
     var close: () -> Void = {}
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            HStack(alignment: .top, spacing: 8) {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .center, spacing: 11) {
                 icon
-                    .frame(width: 16, height: 18)
-                VStack(alignment: .leading, spacing: 2) {
+                    .frame(width: 22, height: 22)
+                VStack(alignment: .leading, spacing: 3) {
                     Text(notice.title)
-                        .font(.footnote.weight(.semibold))
+                        .font(.subheadline.weight(.semibold))
                         .foregroundStyle(Theme.ink)
                         .fixedSize(horizontal: false, vertical: true)
                         .contentTransition(.opacity)
                     if let detail = notice.detail {
                         Text(detail)
-                            .font(.caption)
-                            .foregroundStyle(Theme.inkSoft)
+                            .font(.footnote)
+                            .foregroundStyle(Theme.glassInk)
                             .lineLimit(4)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -68,18 +70,13 @@ struct NoticeCard: View {
             }
             // A bar only when the share done is known; otherwise the spinner says it all.
             if let fraction = notice.fraction {
-                NoticeBar(fraction: fraction, tint: tint)
+                NoticeBar(fraction: fraction)
             }
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 11)
+        .padding(.vertical, 13)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: Theme.corner, style: .continuous)
-                .strokeBorder(Theme.hairline.opacity(0.6))
-        )
-        .shadow(color: .black.opacity(0.08), radius: 10, y: 4)
+        .noticeGlass()
         .animation(.easeInOut(duration: 0.3), value: notice.kind)
         .contentShape(Rectangle())
         .onTapGesture {
@@ -105,43 +102,26 @@ struct NoticeCard: View {
         .accessibilityAction(named: "Zamknij") { if notice.kind != .working { close() } }
     }
 
-    private var tint: Color {
-        switch notice.kind {
-        case .working: Theme.vermilion
-        case .done: Theme.good
-        case .info: Theme.ink
-        case .warning: Theme.warn
-        case .error: Theme.bad
-        }
-    }
-
     @ViewBuilder private var icon: some View {
         switch notice.kind {
         case .working:
             ProgressView()
-                .controlSize(.mini)
-                .tint(Theme.vermilion)
-        case .done: symbol("checkmark.circle.fill")
-        case .info: symbol("info.circle.fill")
-        case .warning: symbol("exclamationmark.circle.fill")
-        case .error: symbol("xmark.circle.fill")
+                .controlSize(.small)
+                .tint(Theme.ink)
+                .opacity(0.6)
+        case .done: NoticeMark(kind: .done)
+        case .info: NoticeMark(kind: .info)
+        case .warning: NoticeMark(kind: .warning)
+        case .error: NoticeMark(kind: .error)
         }
-    }
-
-    private func symbol(_ name: String) -> some View {
-        Image(systemName: name)
-            .font(.footnote)
-            .foregroundStyle(tint)
-            .transition(.scale.combined(with: .opacity))
     }
 
     @ViewBuilder private var trailing: some View {
         switch notice.kind {
         case .working:
             Text(notice.count ?? "")
-                .font(.caption.weight(.medium).monospacedDigit())
-                .foregroundStyle(Theme.inkSoft)
-                .padding(.top, 1)
+                .font(.footnote.weight(.medium).monospacedDigit())
+                .foregroundStyle(Theme.glassInk)
         case _ where notice.action != nil:
             HStack(spacing: 10) {
                 Text(notice.action?.label ?? "")
@@ -164,8 +144,10 @@ struct NoticeCard: View {
     private var closeButton: some View {
         Button(action: close) {
             Image(systemName: "xmark")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(Theme.inkSoft)
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(Theme.ink)
+                .frame(width: 24, height: 24)
+                .background(Theme.ink.opacity(0.08), in: Circle())
                 .padding(6)
                 .contentShape(Rectangle())
         }
@@ -175,17 +157,68 @@ struct NoticeCard: View {
     }
 }
 
+/// The kind of a card: its glyph in paper on a small disc of soft colour.
+struct NoticeMark: View {
+    let kind: Notice.Kind
+
+    var body: some View {
+        Image(systemName: glyph)
+            .font(.system(size: 10, weight: .heavy))
+            .foregroundStyle(Theme.paper)
+            .frame(width: 20, height: 20)
+            .background(color, in: Circle())
+            .transition(.scale.combined(with: .opacity))
+    }
+
+    private var glyph: String {
+        switch kind {
+        case .done: "checkmark"
+        case .info: "info"
+        case .warning: "exclamationmark"
+        case .error, .working: "xmark"
+        }
+    }
+
+    private var color: Color {
+        switch kind {
+        case .done: Theme.markGood
+        case .info, .working: Theme.markInfo
+        case .warning: Theme.markWarn
+        case .error: Theme.markBad
+        }
+    }
+}
+
+extension View {
+    /// The cards' and the send bar's frosted glass, with a light inner edge
+    /// and a soft shadow, so they stand off busy pictures below.
+    func noticeGlass() -> some View { modifier(NoticeGlass()) }
+}
+
+private struct NoticeGlass: ViewModifier {
+    @Environment(\.colorScheme) private var scheme
+
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: Theme.corner, style: .continuous)
+        let dark = scheme == .dark
+        return content
+            .background(.ultraThinMaterial, in: shape)
+            .overlay(shape.strokeBorder(Color.white.opacity(dark ? 0.14 : 0.5), lineWidth: 1))
+            .overlay(shape.stroke(Color.black.opacity(dark ? 0.5 : 0.12), lineWidth: 0.5))
+            .shadow(color: .black.opacity(dark ? 0.4 : 0.15), radius: 11, y: 7)
+    }
+}
+
 /// The card's bar, filled as far as the work is.
 private struct NoticeBar: View {
     let fraction: Double
-    let tint: Color
 
     var body: some View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
                 Capsule().fill(Theme.ink.opacity(0.1))
                 Capsule()
-                    .fill(tint)
+                    .fill(Theme.ink)
                     .frame(width: max(6, geo.size.width * fraction))
             }
         }

@@ -1079,7 +1079,7 @@ final class AppModel {
     /// older servers, or one that cannot reach the registry, leave it to the
     /// helper, which pulls the newest image (a minute or more).
     func checkServerUpdate() async {
-        let card = notices.begin("Sprawdzam, czy jest nowsza wersja serwera")
+        let card = notices.begin("Szukam nowszej wersji serwera")
         do {
             serverUpdate = try await backend.checkServerUpdate()
         } catch {
@@ -1356,7 +1356,7 @@ final class AppModel {
                 notices.end(card, .warning, "Brak adresu MAC ramki", "Ustaw go w Połączeniu z ekranem.")
             } else {
                 notices.end(
-                    card, .warning, "Ramka nie odpowiada na sygnał budzenia",
+                    card, .warning, "Ramka nie reaguje na budzenie",
                     "Na baterii bywa zawodny. Naciśnij krótko przycisk z tyłu ramki."
                 )
             }

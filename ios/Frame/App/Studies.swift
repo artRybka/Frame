@@ -94,7 +94,10 @@ extension AppModel {
         var misses = 0
         studies[itemID] = view
         while view.isPending {
-            notices.update(card, title: Self.studyStep(view.status), detail: Self.studyDetail(title, step: view.status))
+            notices.update(
+                card, title: Self.studyStep(view.status), detail: Self.studyDetail(title, step: view.status),
+                count: Self.studyCount(view.status)
+            )
             studyActivity.update(itemID: itemID, status: view.status)
             do {
                 view = try await backend.study(itemID: itemID, wait: 25)
@@ -128,11 +131,18 @@ extension AppModel {
 
     private static func studyStep(_ status: String) -> String {
         switch status {
-        case "sources": "Studium dzieła: zbieram źródła"
-        case "writing": "Claude pisze studium dzieła"
+        case "sources": "Zbieram źródła"
+        case "writing": "Claude pisze studium"
         case "details": "Wycinam detale z oryginału"
-        default: "Studium dzieła: czekam na Claude’a"
+        default: "Czekam na Claude’a"
         }
+    }
+
+    /// "2 z 3" at the card's end, as the Lock Screen counts the steps.
+    private static func studyCount(_ status: String) -> String {
+        let steps = StudyActivityAttributes.ContentState.steps
+        guard let index = steps.firstIndex(where: { $0.key == status }) else { return "" }
+        return "\(index + 1) z \(steps.count)"
     }
 
     private static func studyDetail(_ title: String, step: String) -> String {
