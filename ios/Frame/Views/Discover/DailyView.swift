@@ -414,7 +414,8 @@ struct DailyView: View {
 
     @ViewBuilder
     private func content(_ work: DailyWork) -> some View {
-        VStack(alignment: .leading, spacing: 26) {
+        // A little more air after each section (Mateusz 2026-11-03).
+        VStack(alignment: .leading, spacing: 36) {
             VStack(alignment: .leading, spacing: 14) {
                 header(work)
                 if !work.whyToday.isEmpty { whyToday(work.whyToday) }
@@ -436,7 +437,7 @@ struct DailyView: View {
             }
             // Also over the museum's text alone: the only place the artist is named.
             if !(work.artist ?? "").isEmpty || !Names.person(work.item.item.artist).isEmpty {
-                author(work, work.artist ?? "")
+                author(work, work.artist ?? "").id("author")
             }
             if let takes = work.composition?.takes, !takes.isEmpty {
                 compositionSection(work, takes).id("composition")
@@ -447,9 +448,18 @@ struct DailyView: View {
                     if !work.colour.isEmpty { prose(work.colour) }
                     if let pigments = work.pigments, !pigments.isEmpty { self.pigments(pigments) }
                 }
+                .id("colour")
             }
             if let details = work.details, !details.isEmpty {
                 section("Detale") { self.details(work, details) }.id("details")
+            }
+            // Right after "Detale", ahead of the lists (Mateusz 2026-11-03).
+            if let size = work.size, size.height > 0, size.width > 0 {
+                section("Rozmiar obrazu") {
+                    RealSizeDrawing(work: work.item, height: size.height, width: size.width)
+                        .padding(.top, 4)
+                }
+                .id("size")
             }
             if !similarWorks(work).isEmpty { section("Podobne dzieła") { similar(similarWorks(work)) } }
             if !work.legacy.isEmpty { section("Dalsze losy") { legacy(work.legacy) }.id("legacy") }
@@ -457,7 +467,7 @@ struct DailyView: View {
                 section("Inne prace artysty") { byArtist(Array(others.prefix(Self.byArtistShown))) }.id("artist")
             }
             if let then = work.sameTime, !then.isEmpty {
-                section("Inni w tym samym czasie") { sameTime(Array(then.prefix(3))) }
+                section("Inni w tym samym czasie") { sameTime(then) }.id("sametime")
             }
             if listsComing(work) {
                 HStack(spacing: 8) {
@@ -467,13 +477,6 @@ struct DailyView: View {
                         .foregroundStyle(Theme.inkSoft)
                 }
                 .transition(.opacity)
-            }
-            if let size = work.size, size.height > 0, size.width > 0 {
-                section("Rozmiar obrazu") {
-                    RealSizeDrawing(work: work.item, height: size.height, width: size.width)
-                        .padding(.top, 4)
-                }
-                .id("size")
             }
             section("Na Twojej ramce") { onFrame(work) }
             footer(work).id("end")
@@ -1090,37 +1093,46 @@ struct DailyView: View {
         }
     }
 
-    /// "W tym samym czasie": three works made a few years either side of
-    /// this one, elsewhere and by others, side by side; each opens its card.
+    /// "Inni w tym samym czasie": works made a few years either side of this
+    /// one, elsewhere and by others, in one row scrolled sideways (Mateusz
+    /// 2026-11-03: more of them, one row); each opens its card.
     private func sameTime(_ works: [RemoteItem]) -> some View {
-        let columns = Array(repeating: GridItem(.flexible(), spacing: 10, alignment: .top), count: 3)
-        return LazyVGrid(columns: columns, alignment: .leading, spacing: 14) {
-            ForEach(works, id: \.id) { other in
-                NavigationLink(value: other.id) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        gridPicture(other, height: 104)
-                        Text(other.item.title.isEmpty ? "Bez tytułu" : other.item.title)
-                            .font(.serif(13, weight: .semibold))
-                            .foregroundStyle(Theme.ink)
-                            .lineLimit(2)
-                            .multilineTextAlignment(.leading)
-                        Text(Names.artist(other.item.artist))
-                            .font(.caption2)
-                            .foregroundStyle(Theme.inkSoft)
-                            .lineLimit(1)
-                        if !other.item.dateText.isEmpty {
-                            Text(other.item.dateText)
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(alignment: .top, spacing: 10) {
+                ForEach(works, id: \.id) { other in
+                    NavigationLink(value: other.id) {
+                        VStack(alignment: .leading, spacing: 3) {
+                            gridPicture(other, height: 104)
+                            Text(other.item.title.isEmpty ? "Bez tytułu" : other.item.title)
+                                .font(.serif(13, weight: .semibold))
+                                .foregroundStyle(Theme.ink)
+                                .lineLimit(2)
+                                .multilineTextAlignment(.leading)
+                            Text(Names.artist(other.item.artist))
                                 .font(.caption2)
                                 .foregroundStyle(Theme.inkSoft)
                                 .lineLimit(1)
+                            if !other.item.dateText.isEmpty {
+                                Text(other.item.dateText)
+                                    .font(.caption2)
+                                    .foregroundStyle(Theme.inkSoft)
+                                    .lineLimit(1)
+                            }
                         }
+                        .frame(width: Self.sameTimeWidth, alignment: .topLeading)
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
+            .scrollTargetLayout()
         }
+        .scrollTargetBehavior(.viewAligned)
+        .scrollClipDisabled()
     }
+
+    /// One work of "Inni w tym samym czasie": three and a bit to a screen,
+    /// the next peeking in.
+    private static let sameTimeWidth: CGFloat = 104
 
     /// The very end: one small star, where the note on who wrote the text
     /// used to be, and nothing else: no stars by the sections, no date,

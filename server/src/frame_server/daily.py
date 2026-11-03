@@ -65,8 +65,9 @@ MIN_SIDE = 1000
 #: Works like the work of the day the model chooses among.
 CANDIDATES = 12
 #: "W tym samym czasie": works made a few years either side of the work,
-#: elsewhere and by others (Mateusz 2026-11-02).
-SAME_TIME = 3
+#: elsewhere and by others (Mateusz 2026-11-02); one row scrolled sideways
+#: since 2026-11-03 ("pokazuj więcej dzieł").
+SAME_TIME = 10
 SAME_TIME_YEARS = 5
 #: The catalogue's works of those years looked among.
 SAME_TIME_POOL = 300

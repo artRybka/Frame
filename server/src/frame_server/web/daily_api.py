@@ -26,6 +26,7 @@ from ..ai.daily import (
     Pigment,
     Spot,
     short,
+    vary_hedges,
 )
 from ..ai.pl_text import description
 from ..later import entry_key
@@ -264,7 +265,7 @@ def page(
         died=died,
         milestones=essay.milestones if essay else [],
         events=essay.events if essay else [],
-        pigments=essay.pigments if essay else [],
+        pigments=vary_hedges(essay.pigments) if essay else [],
         size=size,
         legacy_pending=bool(lists and essay and svc.later.look_soon(item, essay.legacy)) or looking,
         sources=essay.sources if essay else [],

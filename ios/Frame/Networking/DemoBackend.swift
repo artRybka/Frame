@@ -849,6 +849,25 @@ actor DemoBackend: FrameBackend {
             sources: ["obraz", "Wikipedia"],
             model: "claude-opus-5-5"
         )
+        // The artist's life, the paints and "Inni w tym samym czasie", as a
+        // server from 1.85 sends them (CI screenshots).
+        work.born = 1760
+        work.died = 1849
+        work.milestones = [
+            .init(year: 1779, text: "Pierwsze drzeworyty jako Shunrō"),
+            .init(year: 1814, text: "Pierwszy tom „Hokusai manga”"),
+            .init(year: 1834, text: "„Sto widoków góry Fudżi”"),
+        ]
+        work.events = [.init(year: 1806, text: "Wielki pożar Edo")]
+        work.pigments = [
+            .init(name: "błękit pruski", hex: "#1F3A6B", where: "fala, niebo przy Fudżi", text: "Sprowadzany przez Holendrów, trwalszy i głębszy od indygo.", sure: true),
+            .init(name: "indygo", hex: "#2E3F5C", where: "ciemne doliny fal", text: "Najpewniej indygo, roślinny barwnik tańszy od błękitu pruskiego.", sure: false),
+            .init(name: "czerwień z krokosza", hex: "#C2473A", where: "brzeg nieba", text: "Prawdopodobnie krokosz, nietrwały róż blednący na świetle.", sure: false),
+        ]
+        work.sameTime = items
+            .filter { $0.artist != wave.artist && !$0.artist.isEmpty && $0.id != wave.id }
+            .prefix(10)
+            .map { RemoteItem(item: $0, inLibrary: true) }
         // CI screenshots: "-realSize 210x163" draws a big work's scale.
         let asked = (UserDefaults.standard.string(forKey: "realSize") ?? "").split(separator: "x").compactMap { Double($0) }
         work.size = asked.count == 2 ? .init(height: asked[0], width: asked[1]) : .init(height: 25.7, width: 37.9)
@@ -888,6 +907,7 @@ actor DemoBackend: FrameBackend {
             work.similar = []
             work.legacy = []
             work.byArtist = []
+            work.sameTime = []
             work.partial = true
         }
         return StudyView(status: "ready", error: "", work: work, costUsd: 0.14)

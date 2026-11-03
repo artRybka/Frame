@@ -73,6 +73,9 @@ jobs:
             capture daily 16 "daily-detail-geometry-$appearance" -scroll composition -take 1
             capture daily 16 "daily-details-$appearance" -scroll details
             capture daily 16 "daily-legacy-$appearance" -scroll legacy
+            capture daily 16 "daily-author-$appearance" -scroll author
+            capture daily 16 "daily-colour-$appearance" -scroll colour
+            capture daily 16 "daily-sametime-$appearance" -scroll sametime
             capture daily 16 "daily-size-$appearance" -scroll size
             capture daily 16 "daily-size-big-$appearance" -scroll size -realSize 210x163
             capture daily 16 "daily-size-huge-$appearance" -scroll size -realSize 378.5x647.7
