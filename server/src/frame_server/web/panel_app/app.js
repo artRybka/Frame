@@ -39,6 +39,9 @@
   var AUTO_SLEEP = "5MIN";
   var ATTEMPTS = 4;
   var ATTEMPT_DELAY_MS = 5000;
+  // On the charger without the server: ask again after 1, 2, ... minutes, at
+  // most this many.
+  var OFFLINE_RETRIES = 5;
   // "wait" answers in a row before giving up on the server for now.
   var MAX_WAITS = 30;
   var RELOAD_EVERY_MS = 10 * 60000;
@@ -270,12 +273,29 @@
     });
   }
 
-  // No server: sleep and try again later, a bit later each time.
+  // The charger is in (getBatteryPowerSource); null when unknown.
+  function plugged() {
+    var d = (typeof webapis !== "undefined" && webapis.deviced) ? webapis.deviced : null;
+    if (!d) return null;
+    var source = call(function () { return d.getBatteryPowerSource(); });
+    return source.ok && source.value ? source.value !== "NO_CHARGER" : null;
+  }
+
+  // No server: sleep and try again later, a bit later each time. On the
+  // charger the app never sleeps: it stays up and asks again in a minute or
+  // so. A server restarted for an update is away ~50 s, and a sleep then
+  // left the frame down with no alarm that rang (2026-11-03, 22:56: silent
+  // until the button, "Na baterii, bez Wi-Fi" on the phone).
   function offline(why) {
     var failures = (saved("failures") || 0) + 1;
     saved("failures", failures);
-    var minutes = Math.min(15 * Math.pow(2, failures - 1), 360);
     if (!shown) note("Ramka nie łączy się z serwerem " + SERVER);
+    if (plugged()) {
+      clearTimeout(timer);
+      timer = setTimeout(function () { ask("retry"); }, Math.min(failures, OFFLINE_RETRIES) * 60000);
+      return;
+    }
+    var minutes = Math.min(15 * Math.pow(2, failures - 1), 360);
     sleep(Date.now() + minutes * 60000, null, "offline: " + why);
   }
 
