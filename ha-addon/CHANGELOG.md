@@ -5,6 +5,10 @@
 - Kadrowanie: pozioma ramka obraca się na bok przy wejściu dużo szybciej
   (ok. 0,3 s zamiast 0,6 s). Pod ramką nie ma już dopisku „Ramka leży
   bokiem, żeby była większa”, zostaje zwykła podpowiedź.
+- Kafelek Bateria: gdy ramka śpi, pasek kończy się prosto na szacowanym
+  poziomie, a cienka szczelina oddziela go od jaśniejszej części zużytej od
+  ostatniego odczytu. Wcześniej przy kilku procentach różnicy jaśniejszy
+  kawałek chował się pod zaokrąglonym końcem paska.
 
 ## 1.84.1
 

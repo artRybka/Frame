@@ -713,8 +713,8 @@ struct BatteryRing: View {
     let level: Int?
     /// Asleep the frame reads nothing: its level now, estimated by the server
     /// from what it has done since `level` was read. The ring then ends at the
-    /// estimate, the part used since the reading in a lighter shade, and the
-    /// number is grey instead of black.
+    /// estimate, cut square with a thin gap, the part used since the reading
+    /// in a lighter shade after it, and the number is grey instead of black.
     var estimated: Int? = nil
     let charging: Bool
     /// Under the level: how long it lasts, "na zasilaczu"...
@@ -723,6 +723,9 @@ struct BatteryRing: View {
     private var shown: Int? { estimated.map { min($0, level ?? $0) } ?? level }
     private var fraction: Double { Double(shown ?? 0) / 100 }
     private var readFraction: Double { estimated == nil ? fraction : Double(level ?? 0) / 100 }
+    /// Whether the estimate lies below the reading, so part of the ring is
+    /// the lighter "used since the reading".
+    private var showsUsed: Bool { fraction > 0 && readFraction > fraction }
     private var color: Color {
         guard let shown else { return Theme.inkSoft }
         if charging { return Theme.warn }
@@ -740,11 +743,33 @@ struct BatteryRing: View {
                     .stroke(color.opacity(0.32), style: StrokeStyle(lineWidth: 9, lineCap: .round))
                     .rotationEffect(.degrees(-90))
                     .animation(.easeOut(duration: 0.8), value: readFraction)
-                Circle()
-                    .trim(from: 0, to: fraction)
-                    .stroke(color, style: StrokeStyle(lineWidth: 9, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
-                    .animation(.easeOut(duration: 0.8), value: fraction)
+                if showsUsed {
+                    // Round at the top, cut square at the estimate, so the
+                    // lighter part starts right there and is not hidden
+                    // under a round end when only a few percent were used.
+                    Circle()
+                        .fill(color)
+                        .frame(width: 9, height: 9)
+                        .offset(y: -32)
+                    Circle()
+                        .trim(from: 0, to: fraction)
+                        .stroke(color, style: StrokeStyle(lineWidth: 9, lineCap: .butt))
+                        .rotationEffect(.degrees(-90))
+                        .animation(.easeOut(duration: 0.8), value: fraction)
+                    // A thin gap in the card's colour where the two meet.
+                    Rectangle()
+                        .fill(Theme.card)
+                        .frame(width: 2, height: 11)
+                        .offset(y: -32)
+                        .rotationEffect(.degrees(360 * fraction))
+                        .animation(.easeOut(duration: 0.8), value: fraction)
+                } else {
+                    Circle()
+                        .trim(from: 0, to: fraction)
+                        .stroke(color, style: StrokeStyle(lineWidth: 9, lineCap: .round))
+                        .rotationEffect(.degrees(-90))
+                        .animation(.easeOut(duration: 0.8), value: fraction)
+                }
                 if charging {
                     Image(systemName: "bolt.fill").font(.callout).foregroundStyle(color)
                 }
