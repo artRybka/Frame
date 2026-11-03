@@ -64,10 +64,14 @@ def caption_mask(canvas: tuple[int, int], at: tuple[int, int, int], text: str) -
 
 
 #: The caption card on a filled picture: its padding (in caption sizes) and
-#: its soft shadow, in panel pixels, cast a little down and to the right.
+#: its soft shadow, in panel pixels: blurred over about ``CARD_SHADOW`` and
+#: cast mostly downwards, like a card lifted a little off the picture (4 px
+#: was all but invisible on the panel; Mateusz 2026-11-03: larger, most of
+#: all below).
 CARD_PADDING = (0.9, 0.55)
-CARD_SHADOW = 4
-CARD_SHADOW_DEPTH = 0.45
+CARD_SHADOW = 16
+CARD_SHADOW_OFFSET = (4, 14)
+CARD_SHADOW_DEPTH = 0.7
 
 
 def card_layout(canvas: tuple[int, int], at: tuple[int, int, int], text: str) -> tuple[Rect, str]:
@@ -109,10 +113,12 @@ def shade_card(
     light); the card itself is printed over it in pure white."""
     (x, y, w, h), _ = card_layout(canvas, at, text)
     ch, cw = target.shape[:2]
-    reach = CARD_SHADOW * 3
+    dx, dy = CARD_SHADOW_OFFSET
+    reach = CARD_SHADOW * 2 + max(dx, dy)
     x0, y0 = max(0, x - reach), max(0, y - reach)
     x1, y1 = min(cw, x + w + reach), min(ch, y + h + reach)
     shape = Image.new("L", (x1 - x0, y1 - y0), 0)
-    ImageDraw.Draw(shape).rectangle((x - x0 + 1, y - y0 + 2, x - x0 + w, y - y0 + h + 1), fill=255)
+    left, top = x - x0 + dx, y - y0 + dy
+    ImageDraw.Draw(shape).rectangle((left, top, left + w - 1, top + h - 1), fill=255)
     soft = np.asarray(shape.filter(ImageFilter.GaussianBlur(CARD_SHADOW / 2)), np.float32) / 255
     target[y0:y1, x0:x1] *= (1 - CARD_SHADOW_DEPTH * soft)[..., None]
