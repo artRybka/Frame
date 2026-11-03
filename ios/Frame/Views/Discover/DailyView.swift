@@ -399,6 +399,16 @@ struct DailyView: View {
     /// The page's text, fresh; the lists already on the page stay until
     /// the fresh ones come.
     private func show(_ fresh: DailyWork) {
+        // The size found while the page is open (a work studied before the
+        // sizes were looked up, once) fades in instead of jumping in.
+        if let shown = work, shown.item.id == fresh.item.id, shown.size == nil, fresh.size != nil {
+            withAnimation(.easeOut(duration: 0.4)) { merge(fresh) }
+        } else {
+            merge(fresh)
+        }
+    }
+
+    private func merge(_ fresh: DailyWork) {
         guard fresh.partial == true, let shown = work, shown.item.id == fresh.item.id, shown.partial != true else {
             work = fresh
             return
@@ -462,10 +472,13 @@ struct DailyView: View {
             // Right after "Detale", ahead of the lists (Mateusz 2026-11-03).
             if let size = work.size, size.height > 0, size.width > 0 {
                 section("Rozmiar obrazu") {
-                    RealSizeDrawing(work: work.item, height: size.height, width: size.width)
+                    RealSizeDrawing(work: work.item, height: size.height, width: size.width, column: columnWidth)
                         .padding(.top, 4)
                 }
                 .id("size")
+                // A work studied before the sizes were looked up gets its
+                // size a moment later, once: it fades in, no jump.
+                .transition(.opacity)
             }
             if !similarWorks(work).isEmpty { section("Podobne dzieła") { similar(similarWorks(work)) } }
             if !work.legacy.isEmpty { section("Dalsze losy") { legacy(work.legacy) }.id("legacy") }
