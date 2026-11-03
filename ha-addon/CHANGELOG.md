@@ -18,6 +18,8 @@
   podgląd. Otwieranie wygląda tak samo: ramka wychodzi z podglądu
   i obraca się, a strona pojawia się wokół niej. Po „Zapisz kadr” ramka
   wraca już z nowym kadrem.
+- Tłumaczenie słów w Szukaj: odpowiedź modelu, która przyszła w trakcie
+  kolejnego wyszukiwania, nie wywołuje już drugiego, takiego samego pytania.
 
 ## 1.85.2
 

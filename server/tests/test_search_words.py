@@ -105,6 +105,34 @@ def test_a_slow_answer_serves_the_next_search(service: FrameService, fake: FakeA
     assert len(fake.asked) == 1
 
 
+def test_an_answer_landing_mid_search_is_not_asked_again(
+    service: FrameService, fake: FakeAnthropic, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The first answer lands after the next search looked for it in what
+    # is known but before it asks: that search must not ask again.
+    words = service.search_words
+    held = threading.Event()
+    create = fake.messages.create
+
+    def slow(**params: Any) -> Any:
+        held.wait(10)
+        return create(**params)
+
+    fake.messages.create = slow
+    assert not words.wording("gitara", wait=0.05).translated
+    first = words._asking["gitara"]
+    from_library = words._from_library
+
+    def late(key: str) -> str:
+        held.set()
+        first.result(timeout=5)
+        return from_library(key)
+
+    monkeypatch.setattr(words, "_from_library", late)
+    assert words.wording("gitara", wait=5).en == "guitar"
+    assert len(fake.asked) == 1
+
+
 def test_museums_are_asked_in_their_languages(
     service: FrameService, fake: FakeAnthropic, monkeypatch: pytest.MonkeyPatch
 ) -> None:
