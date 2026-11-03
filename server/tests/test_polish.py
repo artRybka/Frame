@@ -437,6 +437,26 @@ def test_the_frame_shows_life_years_only_without_a_date() -> None:
     assert text_block_for(bare, plain).meta == ["Judith Leyster", "olej na desce"]
 
 
+def test_polish_titles_lose_the_artists_name(service: FrameService, fake: FakeAnthropic) -> None:
+    # A model keeps the name a Commons file name put in front of the title.
+    item = _item(
+        title="Tadeusz Makowski Skapiec", artist="Tadeusz Makowski", description=DESCRIPTION
+    )
+    text = clean({**PL_ANSWER, "title": "Tadeusz Makowski Skąpiec"}, item, None)
+    assert text is not None and text.title == "Skąpiec"
+
+    # Texts written by older versions are shown without it too.
+    fake.answer = {**PL_ANSWER, "title": "Tadeusz Makowski Skąpiec"}
+    item = _add(service, "met:1", artist="Tadeusz Makowski", description=DESCRIPTION)
+    service.ai.run_one(KIND, "met:1")
+    note = service.library.note("met:1", KIND)
+    assert note is not None
+    data = {**note.data, "title": "Tadeusz Makowski Skąpiec"}
+    service.library.save_note(note.model_copy(update={"data": data}))
+    text = service.pl_text.text(item)
+    assert text is not None and text.title == "Skąpiec"
+
+
 def test_the_player_uses_polish_texts_once_written(
     service: FrameService, fake: FakeAnthropic
 ) -> None:

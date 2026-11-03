@@ -17,12 +17,14 @@ import re
 from collections.abc import Sequence
 from html.parser import HTMLParser
 from typing import TYPE_CHECKING
+from urllib.parse import unquote
 
 from .markup import (
     VECTOR,
     commons_rendition,
     drop_tags,
     extension,
+    strip_artist,
     strip_language_prefix,
     strip_markup,
 )
@@ -208,10 +210,27 @@ def commons_year(text: str) -> int | None:
     return int(m.group(1)) if m else None
 
 
+def _file_stem(name: str) -> str:
+    """ "File:Tadeusz_Makowski_Szewc.jpg" -> "Tadeusz Makowski Szewc"."""
+    return re.sub(r"^File:|\.[a-zA-Z]+$", "", name).replace("_", " ").strip()
+
+
+def file_title(name: str, artist: str, year: int | None = None) -> str:
+    """The title a Commons file's name gives, for a file whose description
+    has none: "File:Tadeusz Makowski Skapiec 1932.jpg" -> "Skapiec" (the
+    artist's name and the work's year left out)."""
+    title = _file_stem(name)
+    if year:
+        title = re.sub(rf"\s*[,–—-]?\s*\(?{year}\)?$", "", title) or title
+    return strip_artist(title, artist)
+
+
 # Bump when the cleaning rules change, so stored items are cleaned again.
 # 2: markup left in titles of any source (Wikidata's edit icon), SVG links.
 # 3: language prefixes in titles of any source ("en:Night Windows").
-REPAIR_VERSION = 3
+# 4: the artist's name in front of titles ("Tadeusz Makowski Szewc"), as
+#    Commons file names have it.
+REPAIR_VERSION = 4
 REPAIR_STATE_KEY = "commons_text_repair"
 # The household's own photos: their captions are left as they were typed.
 OWN_SOURCES = frozenset({"upload", "icloud"})
@@ -226,6 +245,16 @@ def _repairs(item: Item) -> dict[str, object]:
             clean = strip_language_prefix(clean)
         if clean != value:
             fixes[key] = clean
+    if item.source not in OWN_SOURCES:
+        title = str(fixes.get("title", item.title))
+        artist = str(fixes.get("artist", item.artist))
+        if item.source == "wmc" and title == _file_stem(unquote(item.url.rsplit("/", 1)[-1])):
+            # Named after its file: the year at the end goes as well.
+            clean = file_title(title, artist, item.year)
+        else:
+            clean = strip_artist(title, artist)
+        if clean != title:
+            fixes["title"] = clean
     drawing = item.source in ("wmc", "openverse") and extension(item.image_url) in VECTOR
     if drawing and (image_url := commons_rendition(item.image_url, 3840, item.width)):
         fixes["image_url"] = image_url
@@ -233,6 +262,7 @@ def _repairs(item: Item) -> dict[str, object]:
     if item.source != "wmc":
         return fixes
     title = strip_language_prefix(commons_plain(str(fixes.get("title", item.title)), title=True))
+    title = strip_artist(title, str(fixes.get("artist", item.artist)))
     if title and title != item.title:
         fixes["title"] = title
     date_text = commons_plain(item.date_text)
