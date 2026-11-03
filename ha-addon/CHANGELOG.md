@@ -1,13 +1,23 @@
 # Changelog
 
-## 1.85.4
+## 1.85.5
 
-- „Rozmiar obrazu”: obok dzieła dla skali stoi żółta miarka stolarska
-  (20 cm, 50 cm, 1 m albo 2 m, zależnie od wielkości dzieła), a nie kartka
-  A4. Miarka i dzieło stoją na jednej linii, dolnej krawędzi dzieła. Dzieło
-  bez cienkiej obwódki.
+- „Rozmiar obrazu”: obok dzieła dla skali stoi prawdziwa kartka A4 (biała,
+  z cieniem i zagiętym rogiem, bez napisu), a „A4” jest dopisane ołówkiem
+  pod nią. Gdy kartka mieści się pod podpisem wysokości dzieła, stoi tuż
+  przy dziele. Przy dziełach wyższych niż 1,3 m zamiast kartki stoi postać
+  wycięta z tego samego papieru (170 cm). Dzieło i odniesienie stoją na
+  jednej linii, dolnej krawędzi dzieła; dzieło bez cienkiej obwódki.
 - Rysunek z wymiarami nie znika już na chwilę przy przełączaniu zakładek:
   wymiary przychodzą razem z tekstem studium.
+
+## 1.85.4
+
+- Studium dzieła, „Na Twojej ramce”: podgląd ramki otwiera kadrowanie
+  tak jak w Teraz i na karcie dzieła. Działa stuknięcie albo przytrzymanie
+  z postukiwaniem, ramka wychodzi z podglądu i po zamknięciu wraca na
+  niego. Zapisany kadr od razu widać w podglądzie, a gdy dzieło jest
+  właśnie na ramce, ramka przerysowuje je z nowym kadrem.
 
 ## 1.85.3
 

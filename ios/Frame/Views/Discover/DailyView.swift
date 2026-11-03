@@ -97,6 +97,16 @@ struct DailyView: View {
     @State private var peeking = false
     /// The picture the whole-screen viewer grows out of.
     @Namespace private var zoomSpace
+    /// "Na Twojej ramce" opens cropping, as on Teraz and the work's card.
+    @State private var draft = FramingDraft()
+    /// Crops saved here: the preview asks for them by name, as the one
+    /// cached from before shows the old crop.
+    @State private var applied: FramingCrops?
+    /// The preview last loaded: cropping waits for it.
+    @State private var loadedPreview: ImageRef?
+    @State private var cropping = false
+    /// Where the preview is on the screen, for cropping's frame to fly from.
+    @State private var cropHome: CGRect?
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -169,6 +179,18 @@ struct DailyView: View {
                     .navigationTransition(.zoom(sourceID: "picture", in: zoomSpace))
             }
         }
+        .fullScreenCover(isPresented: $cropping) {
+            if let work {
+                CropScreen(
+                    itemID: work.item.id, preview: previewRef,
+                    aspectRatio: model.isPortrait ? 9.0 / 16.0 : 16.0 / 9.0,
+                    placeholder: work.item.item.placeholderColor,
+                    onFrame: model.player?.current?.item?.id == work.item.id,
+                    draft: $draft, save: saveCrop, home: cropHome
+                )
+            }
+        }
+        .task(id: cropKey) { await loadFraming() }
     }
 
     @ViewBuilder
@@ -831,13 +853,85 @@ struct DailyView: View {
     private func framePreview(_ work: DailyWork, width: CGFloat) -> some View {
         let ratio: CGFloat = model.isPortrait ? 9.0 / 16.0 : 16.0 / 9.0
         let moulding: CGFloat = 7
+        let ref = previewRef
         return FramedArtwork(
-            ref: .framePreview(work.item.id, settings: model.settings),
-            aspectRatio: ratio, placeholder: work.item.item.placeholderColor, moulding: moulding
+            ref: ref, aspectRatio: ratio, placeholder: work.item.item.placeholderColor, moulding: moulding
         )
+        .environment(\.artImageLoaded) { loaded in
+            guard loaded == previewRef else { return }
+            loadedPreview = loaded
+        }
         .frame(width: width, height: (width - 2 * moulding) / ratio + 2 * moulding)
+        // Cropping's frame comes out of it and goes back onto it.
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { cropHome = $0 }
+        // Under the crop screen's frame while it is open: that one flies.
+        .opacity(cropping ? 0 : 1)
+        // Tap or hold (the phone taps closer and closer), as on Teraz and the card.
+        .picturePress(enabled: canCrop) { CropScreen.present { cropping = true } }
         .padding(.bottom, 6)  // room for the frame's shadow
         .accessibilityLabel(Text("Podgląd na ramce"))
+        .accessibilityAddTraits(canCrop ? .isButton : [])
+        .accessibilityHint(Text(canCrop ? "Otwiera kadrowanie na całym ekranie" : ""))
+    }
+
+    // MARK: Crop
+
+    /// The work, orientation and presentation: a crop belongs to all three.
+    private var cropKey: String {
+        guard let work, work.item.inLibrary else { return "" }
+        return [work.item.id, model.settings?.presentationKey ?? ""].joined(separator: "|")
+    }
+
+    /// The crop and its preview are loaded.
+    private var canCrop: Bool {
+        !cropKey.isEmpty && draft.key == cropKey && draft.view?.windows.isEmpty == false
+            && previewRef != nil && loadedPreview == previewRef
+    }
+
+    /// With the settings in the address, so a turned frame or another
+    /// presentation is a new picture, not the old one from memory; with the
+    /// crop tried or saved here once there is one.
+    private var previewRef: ImageRef? {
+        guard let work else { return nil }
+        let current = !cropKey.isEmpty && draft.key == cropKey
+        return .framePreview(work.item.id, settings: model.settings, framing: current ? draft.trial ?? applied : nil)
+    }
+
+    /// The crop as the server has it, for the work and presentation shown.
+    private func loadFraming() async {
+        let key = cropKey
+        guard !key.isEmpty, draft.key != key, let work else { return }
+        draft = FramingDraft()
+        applied = nil
+        let orientation = model.settings?.orientation ?? "landscape"
+        guard let loaded = await FramingDraft.load(model.backend, itemID: work.item.id, orientation: orientation, key: key),
+              key == cropKey
+        else { return }
+        draft = loaded
+    }
+
+    /// "Zapisz kadr" on the crop screen; the picture on the frame now is
+    /// redrawn with it there. False if it failed, so the screen stays.
+    private func saveCrop() async -> Bool {
+        guard let work, draft.key == cropKey, let change = draft.change else { return true }
+        let itemID = work.item.id
+        let onFrame = model.player?.current?.item?.id == itemID
+        let key = draft.key
+        do {
+            let saved = try await model.applyFraming(itemID: itemID, change)
+            guard key == draft.key else { return true }
+            draft = FramingDraft(saved: saved, key: key)
+            applied = draft.savedCrops
+        } catch {
+            model.show(error)
+            return false
+        }
+        if onFrame {
+            Task { await model.followPlayer() }  // the send bar shows the redraw
+        } else {
+            model.notices.done("Zapisano kadr")
+        }
+        return true
     }
 
     /// "Podobne dzieła" without the artist's own works, which are under
