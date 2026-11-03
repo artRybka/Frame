@@ -4,8 +4,12 @@ centimetres, drawn next to a sheet of A4 for scale.
 
 Looked up once per work, in the background when its page opens: the
 museum's own record where its API says it plainly (the Met, Cleveland,
-SMK), else Wikidata's height and width (P2048, P2049) of the work its
-record links to. A size is kept only when its proportions are the
+SMK, Chicago, the V&A, the national museums in Warsaw and Kraków), the
+``dimensions`` of a Commons page's {{Artwork}}; else Wikidata's height and
+width (P2048, P2049) of the work, found by the museum's record, the
+Commons page, the Commons file as its picture (P18), or last by its title,
+a painting whose description names the artist and whose year is the
+work's (Mateusz 2026-11-03: "dlaczego tak rzadko"). A size is kept only when its proportions are the
 picture's (within :data:`PROPORTION`, 15% since Mateusz 2026-11-03): a
 museum's "Overall" of a sheet whose picture is a cut-out, or a frame
 measured in place of the canvas, would draw a lie. Nothing found is kept
@@ -24,6 +28,7 @@ from typing import TYPE_CHECKING, Any
 import httpx
 from pydantic import BaseModel
 
+from .holders import COMMONS_API, commons_file, work_qid
 from .library import Item, ItemKind
 from .library.models import Note
 from .library.museums import client
@@ -35,7 +40,7 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 KIND = "real_size"
-VERSION = "size-2"
+VERSION = "size-3"  # size-3: more sources; works with none asked again
 #: How far the size's proportions may be from the picture's.
 PROPORTION = 0.15
 #: Sides believed, in centimetres: a miniature to a ceiling.
@@ -108,6 +113,43 @@ def fits(size: RealSize, item: Item) -> RealSize | None:
     return None
 
 
+#: Muza's "wys. 12,5 cm, szer. 11 cm".
+_POLISH = re.compile(
+    rf"wys\.?\s*{_NUMBER}\s*(cm|mm|m)?\b.*?szer\.?\s*{_NUMBER}\s*(cm|mm|m)\b", re.IGNORECASE
+)
+#: A Commons {{Size|cm|77|53}} (height, width) or {{Size|unit=cm|height=..|width=..}}.
+_SIZE_TEMPLATE = re.compile(r"\{\{\s*size\s*\|([^}]*)\}\}", re.IGNORECASE)
+#: Muza's names of a measurement of something other than the work.
+_NOT_THE_WORK_PL = re.compile(r"ram|passe|oprawa|karton|arkusz|podkład|płyt", re.IGNORECASE)
+
+
+def commons_size(wikitext: str) -> RealSize | None:
+    """The size in a Commons page's {{Artwork |dimensions = ...}}: a
+    {{Size}} template, else a "73 × 92 cm" in its text."""
+    match = re.search(r"^\s*\|\s*dimensions\s*=(.*)$", wikitext, re.MULTILINE | re.IGNORECASE)
+    if not match:
+        return None
+    value = match.group(1)
+    if template := _SIZE_TEMPLATE.search(value):
+        named: dict[str, str] = {}
+        plain: list[str] = []
+        for part in template.group(1).split("|"):
+            key, eq, rest = part.partition("=")
+            if eq:
+                named[key.strip().casefold()] = rest.strip()
+            else:
+                plain.append(part.strip())
+        unit = named.get("unit") or (plain.pop(0) if plain else "")
+        height = named.get("height") or (plain[0] if plain else "")
+        width = named.get("width") or (plain[1] if len(plain) > 1 else "")
+        if unit.casefold() in ("cm", "mm", "m") and height and width:
+            try:
+                return RealSize(height=_cm(height, unit), width=_cm(width, unit))
+            except ValueError:
+                pass
+    return parse(value)
+
+
 def _quantity(entity: dict[str, Any], prop: str) -> float | None:
     for claim in (entity.get("claims") or {}).get(prop) or []:
         if claim.get("rank") == "deprecated" or "P518" in (claim.get("qualifiers") or {}):
@@ -124,34 +166,122 @@ def _quantity(entity: dict[str, Any], prop: str) -> float | None:
     return None
 
 
+def _search(http: httpx.Client, query: str, limit: int = 1) -> list[str]:
+    resp = http.get(
+        API,
+        params={
+            "action": "query",
+            "list": "search",
+            "srsearch": query,
+            "srlimit": limit,
+            "format": "json",
+        },
+    )
+    resp.raise_for_status()
+    return [str(hit["title"]) for hit in resp.json().get("query", {}).get("search") or []]
+
+
+def _entities(http: httpx.Client, ids: list[str]) -> dict[str, Any]:
+    resp = http.get(
+        API,
+        params={
+            "action": "wbgetentities",
+            "ids": "|".join(ids),
+            "props": "claims|descriptions",
+            "languages": "en",
+            "format": "json",
+        },
+    )
+    resp.raise_for_status()
+    return resp.json().get("entities") or {}
+
+
+def _sides(entity: dict[str, Any]) -> RealSize | None:
+    height, width = _quantity(entity, "P2048"), _quantity(entity, "P2049")
+    return RealSize(height=height, width=width) if height and width else None
+
+
+def _year(entity: dict[str, Any]) -> int | None:
+    for claim in (entity.get("claims") or {}).get("P571") or []:
+        value = claim.get("mainsnak", {}).get("datavalue", {}).get("value")
+        if isinstance(value, dict) and (match := re.match(r"[+-](\d+)-", str(value.get("time")))):
+            return int(match.group(1))
+    return None
+
+
+def _surname(artist: str) -> str:
+    """The word an English description names the artist by: "Vermeer" of
+    "Johannes Vermeer" or "Vermeer, Johannes"."""
+    name = artist.split(",")[0] if "," in artist else (artist.split() or [""])[-1]
+    return name.strip().casefold() if len(name.strip()) > 2 else ""
+
+
 def from_wikidata(http: httpx.Client, item: Item) -> RealSize | None:
     """Height (P2048) and width (P2049) of the Wikidata work linked to the
     museum's record."""
     ref = record_id(item)
     if ref is None:
         return None
-    resp = http.get(
-        API,
-        params={
-            "action": "query",
-            "list": "search",
-            "srsearch": f"haswbstatement:{ref[0]}={ref[1]}",
-            "srlimit": 1,
-            "format": "json",
-        },
-    )
-    resp.raise_for_status()
-    hits = resp.json().get("query", {}).get("search") or []
-    if not hits:
+    found = _search(http, f"haswbstatement:{ref[0]}={ref[1]}")
+    if not found:
         return None
-    qid = str(hits[0]["title"])
-    resp = http.get(
-        API, params={"action": "wbgetentities", "ids": qid, "props": "claims", "format": "json"}
-    )
+    return _sides(_entities(http, found[:1]).get(found[0]) or {})
+
+
+def from_commons(http: httpx.Client, item: Item) -> RealSize | None:
+    """The size on the work's Commons page, else on the Wikidata item that
+    page names, else on the one whose picture (P18) is its file."""
+    page_id, title = commons_file(item)
+    if not page_id and not title:
+        return None
+    params: dict[str, Any] = {
+        "action": "query",
+        "format": "json",
+        "formatversion": 2,
+        "prop": "revisions",
+        "rvprop": "content",
+        "rvslots": "main",
+    }
+    params["pageids" if page_id else "titles"] = page_id or title
+    resp = http.get(COMMONS_API, params=params)
     resp.raise_for_status()
-    entity = (resp.json().get("entities") or {}).get(qid) or {}
-    height, width = _quantity(entity, "P2048"), _quantity(entity, "P2049")
-    return RealSize(height=height, width=width) if height and width else None
+    pages = resp.json().get("query", {}).get("pages") or []
+    if not pages or "revisions" not in pages[0]:
+        return None
+    text = str(pages[0]["revisions"][0].get("slots", {}).get("main", {}).get("content") or "")
+    if (size := commons_size(text)) is not None:
+        return size
+    qid = work_qid(text)
+    if not qid:
+        name = str(pages[0].get("title") or title).removeprefix("File:")
+        found = _search(http, f'haswbstatement:"P18={name}"') if name else []
+        qid = found[0] if found else ""
+    return _sides(_entities(http, [qid]).get(qid) or {}) if qid else None
+
+
+def by_title(http: httpx.Client, item: Item) -> RealSize | None:
+    """A painting on Wikidata by the work's title, whose English description
+    names the artist ("painting by Johannes Vermeer") and whose year, when
+    both are known, is the work's within two."""
+    surname = _surname(item.artist)
+    title = re.sub(r"[\"“”„«»]", " ", item.title).strip()
+    if not surname or len(title) < 3:
+        return None
+    found = _search(http, f"{title} haswbstatement:P31=Q3305213", limit=5)
+    if not found:
+        return None
+    entities = _entities(http, found)
+    for qid in found:
+        entity = entities.get(qid) or {}
+        about = str(((entity.get("descriptions") or {}).get("en") or {}).get("value") or "")
+        if surname not in about.casefold():
+            continue
+        year = _year(entity)
+        if item.year and year and abs(item.year - year) > 2:
+            continue
+        if (size := _sides(entity)) is not None:
+            return size
+    return None
 
 
 def _met(http: httpx.Client, item: Item) -> RealSize | None:
@@ -199,11 +329,71 @@ def _smk(http: httpx.Client, item: Item) -> RealSize | None:
     return RealSize(**sides) if len(sides) == 2 else None
 
 
+def _aic(http: httpx.Client, item: Item) -> RealSize | None:
+    resp = http.get(
+        f"https://api.artic.edu/api/v1/artworks/{item.source_id}",
+        params={"fields": "dimensions,dimensions_detail"},
+    )
+    resp.raise_for_status()
+    data = resp.json().get("data") or {}
+    for part in data.get("dimensions_detail") or []:  # centimetres
+        if not part.get("clarification") and part.get("height") and part.get("width"):
+            return RealSize(height=float(part["height"]), width=float(part["width"]))
+    return parse(str(data.get("dimensions") or ""))
+
+
+def _vam(http: httpx.Client, item: Item) -> RealSize | None:
+    resp = http.get(f"https://api.vam.ac.uk/v2/museumobject/{item.source_id}")
+    resp.raise_for_status()
+    sides: dict[str, float] = {}
+    for part in (resp.json().get("record") or {}).get("dimensions") or []:
+        kind = str(part.get("dimension") or "").casefold()
+        unit = str(part.get("unit") or "")
+        wanted = kind in ("height", "width") and kind not in sides and not part.get("part")
+        if wanted and unit in ("cm", "mm", "m"):
+            try:
+                sides[kind] = _cm(str(part.get("value")), unit)
+            except ValueError:
+                continue
+    return RealSize(**sides) if len(sides) == 2 else None
+
+
+def _muza(api: str) -> Callable[[httpx.Client, Item], RealSize | None]:
+    def ask(http: httpx.Client, item: Item) -> RealSize | None:
+        resp = http.get(f"{api}/object/{item.source_id}")
+        resp.raise_for_status()
+        data = resp.json().get("data") or {}
+        for size in data.get("sizes") or []:
+            if _NOT_THE_WORK_PL.search(str(size.get("name") or "")):
+                continue
+            sides: dict[str, float] = {}
+            for part in size.get("dimensions") or []:
+                kind = {"wysokość": "height", "szerokość": "width"}.get(str(part.get("name") or ""))
+                unit = str(part.get("unit") or "")
+                if kind and kind not in sides and unit in ("cm", "mm", "m"):
+                    try:
+                        sides[kind] = _cm(str(part.get("value")), unit)
+                    except ValueError:
+                        continue
+            if len(sides) == 2:
+                return RealSize(**sides)
+        if match := _POLISH.search(str(data.get("dimensionText") or "")):
+            height, unit_h, width, unit = match.groups()
+            return RealSize(height=_cm(height, unit_h or unit), width=_cm(width, unit))
+        return None
+
+    return ask
+
+
 #: Museums whose own record says the size plainly.
 MUSEUMS: dict[str, Callable[[httpx.Client, Item], RealSize | None]] = {
     "met": _met,
     "cma": _cma,
     "smk": _smk,
+    "aic": _aic,
+    "vam": _vam,
+    "mnw": _muza("https://cyfrowe-api.mnw.art.pl/api"),
+    "mnk": _muza("https://api-zbiory.mnk.pl/api"),
 }
 
 
@@ -248,11 +438,11 @@ class Sizes:
                 self._looking.discard(item.id)
 
     def look(self, item: Item) -> RealSize | None:
-        """The museum's size, else Wikidata's, when it fits the picture;
-        kept (also none)."""
+        """The museum's size, else Commons', else Wikidata's, when it fits
+        the picture; kept (also none)."""
         found: RealSize | None = None
         with (self.http or client)() as http:
-            for ask in (MUSEUMS.get(item.source), from_wikidata):
+            for ask in (MUSEUMS.get(item.source), from_commons, from_wikidata, by_title):
                 if ask is None:
                     continue
                 try:
