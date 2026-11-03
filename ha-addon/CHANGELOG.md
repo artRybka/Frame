@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.84.2
+
+- Kafelek Bateria: gdy ramka śpi, pasek kończy się prosto na szacowanym
+  poziomie, a cienka szczelina oddziela go od jaśniejszej części zużytej od
+  ostatniego odczytu. Wcześniej przy kilku procentach różnicy jaśniejszy
+  kawałek chował się pod zaokrąglonym końcem paska.
+
 ## 1.84.1
 
 - Tytuły dzieł nie zaczynają się już od imienia i nazwiska autora
