@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.83.1
+
+- Szukaj, arkusz „Kolor”: na karcie „Tylko akcent” nie ma już sekcji
+  Nastrój, bo nastrój dotyczy całego dzieła, nie akcentu. Nastroje są
+  pod „Dominuje”.
+
 ## 1.83.0
 
 - Karta dzieła: czerwony napis nad tytułem i wiersz „Kolekcja” podają
