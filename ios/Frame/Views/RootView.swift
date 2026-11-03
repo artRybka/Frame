@@ -108,7 +108,12 @@ struct RootView: View {
             // CI screenshots: the cards at the bottom, one of each kind.
             guard LaunchRoute.screen == "notices" else { return }
             try? await Task.sleep(for: .seconds(2))
-            model.notices.begin("„Japonia”: pobieram dzieła z muzeów", background: true)
+            let fill = model.notices.begin("„Japonia”: pobieram dzieła z muzeów", background: true)
+            model.notices.update(fill, fraction: 0.4, count: "16 z 40")
+            let study = model.notices.begin("Claude pisze studium", "„Uliczka” · zwykle 1–3 minuty")
+            model.notices.update(study, count: "2 z 3")
+            let ready = model.notices.begin("Wycinam detale z oryginału", "„Mleczarka”")
+            model.notices.end(ready, .done, "Studium dzieła gotowe", "„Mleczarka”", action: Notice.Action(label: "Otwórz") {})
             let wake = model.notices.begin("Budzę ramkę", "Na baterii trwa to do 3 minut")
             model.notices.warn(
                 "Ramka śpi głęboko, sama obudzi się jutro o 7:00",

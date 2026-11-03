@@ -19,6 +19,15 @@ enum Theme {
     static let good = Color(light: 0x3E7B56, dark: 0x7CC49A)
     static let warn = Color(light: 0xB7832A, dark: 0xE2B45E)
     static let bad = Color(light: 0xB8432F, dark: 0xE58A6F)
+    /// Second lines on the frosted glass of the cards at the bottom: inkSoft
+    /// fades to 2.5:1 there over bright pictures.
+    static let glassInk = Color(light: 0x3A352F, dark: 0xD3CCC1)
+    /// The kind of a card at the bottom, in a small disc: soft colours, a
+    /// glyph in paper on them (`NoticeCard`).
+    static let markGood = Color(light: 0x6F977B, dark: 0x8DB79A)
+    static let markBad = Color(light: 0xBE7A66, dark: 0xD39684)
+    static let markWarn = Color(light: 0xBF9A58, dark: 0xD7B679)
+    static let markInfo = Color(light: 0x8A8378, dark: 0xA79F94)
     /// The track of a switch that is on: ink in the light; in the dark a warm
     /// stone, because cream ink is as light as the white knob.
     static let switchOn = Color(light: 0x1D1B18, dark: 0x8F8578)

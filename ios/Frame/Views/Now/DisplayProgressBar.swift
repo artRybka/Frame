@@ -9,12 +9,18 @@ struct DisplayProgressBar: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: compact ? 7 : 10) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                if progress.isDone {
-                    Image(systemName: "checkmark.circle.fill").foregroundStyle(Theme.good)
+            HStack(alignment: .center, spacing: compact ? 11 : 8) {
+                if let mark {
+                    NoticeMark(kind: mark)
+                } else if compact {
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(Theme.ink)
+                        .opacity(0.6)
+                        .frame(width: 22, height: 22)
                 }
                 Text(progress.stageLabel)
-                    .font(.footnote.weight(.semibold))
+                    .font(compact ? .subheadline.weight(.semibold) : .footnote.weight(.semibold))
                     .foregroundStyle(Theme.ink)
                     .lineLimit(1)
                     .contentTransition(.opacity)
@@ -23,7 +29,7 @@ struct DisplayProgressBar: View {
                 if let origin = progress.origin {
                     Image(systemName: origin == "schedule" ? "clock" : "iphone")
                         .font(.footnote.weight(.semibold))
-                        .foregroundStyle(origin == "schedule" ? Theme.ink : Theme.vermilion)
+                        .foregroundStyle(Theme.ink)
                 }
             }
             bar
@@ -32,29 +38,26 @@ struct DisplayProgressBar: View {
                 if let message = progress.message, progress.isFailed || progress.isWaiting {
                     Text(message)
                         .font(.caption)
-                        .foregroundStyle(Theme.inkSoft)
+                        .foregroundStyle(Theme.glassInk)
                         .lineLimit(2)
                 }
             }
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, compact ? 11 : 14)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: Theme.corner, style: .continuous)
-                .strokeBorder(Theme.hairline.opacity(0.6))
-        )
+        .padding(.vertical, compact ? 13 : 14)
+        .modifier(BarGlass(compact: compact))
         .animation(.easeInOut(duration: 0.3), value: progress.stage)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(progress.origin == "schedule" ? "Harmonogram: \(progress.stageLabel)" : progress.stageLabel)
         .accessibilityValue("\(Int((progress.fraction * 100).rounded())) %")
     }
 
-    private var tint: Color {
-        if progress.isFailed { return Theme.bad }
-        if progress.isWaiting { return Theme.warn }
-        if progress.isDone { return Theme.good }
-        return Theme.vermilion
+    /// Ended or held up: said by the same soft disc as the cards'.
+    private var mark: Notice.Kind? {
+        if progress.isFailed { return .error }
+        if progress.isWaiting { return .warning }
+        if progress.isDone { return .done }
+        return nil
     }
 
     private var bar: some View {
@@ -62,7 +65,7 @@ struct DisplayProgressBar: View {
             ZStack(alignment: .leading) {
                 Capsule().fill(Theme.ink.opacity(0.1))
                 Capsule()
-                    .fill(tint)
+                    .fill(Theme.ink)
                     .frame(width: max(6, geo.size.width * min(max(progress.fraction, 0), 1)))
             }
         }
@@ -87,6 +90,25 @@ struct DisplayProgressBar: View {
                 .font(.caption.weight(now ? .semibold : .regular))
                 .foregroundStyle(now ? Theme.ink : done ? Theme.inkSoft : Theme.inkSoft.opacity(0.55))
             }
+        }
+    }
+}
+
+/// Among the cards it lifts off the pictures like them; under the picture
+/// on "Teraz" it lies on paper, with only the hairline.
+private struct BarGlass: ViewModifier {
+    let compact: Bool
+
+    func body(content: Content) -> some View {
+        if compact {
+            content.noticeGlass()
+        } else {
+            content
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: Theme.corner, style: .continuous)
+                        .strokeBorder(Theme.hairline.opacity(0.6))
+                )
         }
     }
 }

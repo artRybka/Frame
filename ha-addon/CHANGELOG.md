@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.85.2
+
+- Karty na dole ekranu łatwiej przeczytać nad kolorowymi obrazami: większy
+  tytuł, większy i ciemniejszy drugi wiersz, rodzaj karty w małym kółku w
+  stonowanym kolorze, jasna krawędź i miękki cień. Matowe szkło bez zmian.
+- Kręciołek, pasek postępu i ikonka telefonu przy wysyłce są czarne (w
+  ciemnym trybie jasne) zamiast czerwonych.
+- Krótsze tytuły kart: kroki studium z licznikiem „2 z 3”, „Ramka nie
+  reaguje na budzenie”, „Szukam nowszej wersji serwera”.
+
 ## 1.85.1
 
 - Studium dzieła: gwiazdka oznaczająca tekst Claude'a jest już tylko raz,
