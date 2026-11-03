@@ -8,9 +8,12 @@
   górę i w lewo. Obraz idzie teraz w rozmiarze, w jakim model go czyta, a
   wycinki studiów napisanych wcześniej są poprawiane przy otwarciu.
 - „O autorze”: imię i nazwisko pismem odręcznym większe. Linia życia jest
-  po notce o autorze, bez podpisu „to dzieło”; pod nią legenda wszystkich
-  znaczków w kolejności lat: to dzieło (czerwona kropka) z tytułem, chwile
-  z życia (kółka) i inne prace artysty ze strony (szare kropki).
+  po notce o autorze i czytelniejsza: na końcach „ur.” i „zm.” z rokiem,
+  ważne chwile z życia jako kółka z numerami, jedno lub dwa wydarzenia
+  historyczne z czasu artysty jako kwadraciki z literami, to dzieło jako
+  czerwona kropka. Pod linią legenda w kolejności lat z tymi samymi
+  znaczkami (dzieło z tytułem). Studia napisane wcześniej serwer uzupełnia
+  o wydarzenia w tle.
 - Zamiast notki „Tekst napisał Claude…” na końcu, małe gwiazdki przy
   tytułach sekcji, które napisał Claude. W stopce zostaje data, technika i
   muzeum.

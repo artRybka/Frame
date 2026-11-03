@@ -678,10 +678,8 @@ struct DailyView: View {
                 LifeLine(
                     born: span.born, died: span.died,
                     work: item.year.map { LifeLine.Work(year: $0, title: work.title) },
-                    others: (work.byArtist ?? []).compactMap { other in
-                        other.item.year.map { LifeLine.Work(year: $0, title: other.item.title.isEmpty ? "Bez tytułu" : other.item.title) }
-                    },
-                    milestones: work.milestones ?? []
+                    milestones: work.milestones ?? [],
+                    events: work.events ?? []
                 )
                 .padding(.top, 6)
             }

@@ -1631,6 +1631,8 @@ struct DailyWork: Codable, Hashable, Sendable {
     var died: Int? = nil
     var milestones: [Milestone]? = nil
     var pigments: [Pigment]? = nil
+    /// One or two historical events in the artist's lifetime (server 1.85).
+    var events: [Milestone]? = nil
     /// "Prawdziwy rozmiar": from the museum or Wikidata, when it has the
     /// picture's proportions (server 1.83).
     var size: RealSize? = nil

@@ -1,14 +1,14 @@
 import SwiftUI
 
-/// The artist's life as a thin line, after the note in "O autorze"
-/// (Mateusz 2026-11-02/03): born at the left end, died at the right; this
-/// work in vermilion, their other works on the page as small grey dots,
-/// the moments of their life as rings. Nothing is written on the line but
-/// the two years: under it a legend lists every mark in the order of the
-/// years, each with its own mark, its year and what it is (this work by its
-/// title).
+/// The artist's life as a line, after the note in "O autorze" (Mateusz
+/// 2026-11-03: "czytelna i jednoznaczna"): "ur." and the year at its left
+/// end, "zm." and the year at its right; this work as a vermilion dot; the
+/// moments of their life as numbered rings (1, 2, 3); one or two historical
+/// events of their time as lettered squares (A, B). Under it a legend in the
+/// order of the years: each mark as on the line, its year and what it is
+/// (this work by its title, the events in grey).
 struct LifeLine: View {
-    /// A work on the line: its year and title.
+    /// This work: its year and title.
     struct Work: Hashable {
         var year: Int
         var title: String
@@ -18,16 +18,18 @@ struct LifeLine: View {
     let died: Int
     /// This work, when its year is known.
     let work: Work?
-    /// Their other works shown on the page.
-    let others: [Work]
     let milestones: [DailyWork.Milestone]
+    let events: [DailyWork.Milestone]
 
-    private static let inset: CGFloat = 6
-    private static let lineY: CGFloat = 8
-    private static let height: CGFloat = 30
+    private static let inset: CGFloat = 10
+    private static let lineY: CGFloat = 12
+    private static let height: CGFloat = 40
+    private static let markSize: CGFloat = 17
 
     private enum Mark: Hashable {
-        case work, other, moment
+        case work
+        case moment(Int)
+        case event(Int)
     }
 
     private struct Entry: Hashable {
@@ -36,18 +38,24 @@ struct LifeLine: View {
         var text: String
     }
 
+    private static let letters = ["A", "B", "C"]
+
     /// Everything on the line, by year; on the same year this work first.
     private var entries: [Entry] {
-        var all = milestones.map { Entry(year: $0.year, mark: .moment, text: $0.text) }
-        all += uniqueOthers.map { Entry(year: $0.year, mark: .other, text: $0.title) }
+        var all: [Entry] = []
         if let work { all.append(Entry(year: work.year, mark: .work, text: work.title)) }
-        let order: [Mark: Int] = [.work: 0, .moment: 1, .other: 2]
-        return all.sorted { ($0.year, order[$0.mark]!) < ($1.year, order[$1.mark]!) }
-    }
-
-    private var uniqueOthers: [Work] {
-        var seen = Set<Work>()
-        return others.filter { $0.year >= born - 5 && $0.year <= died + 5 && seen.insert($0).inserted }
+        all += milestones.enumerated().map { Entry(year: $1.year, mark: .moment($0), text: $1.text) }
+        all += events.prefix(Self.letters.count).enumerated().map {
+            Entry(year: $1.year, mark: .event($0), text: $1.text)
+        }
+        func rank(_ mark: Mark) -> Int {
+            switch mark {
+            case .work: 0
+            case .moment: 1
+            case .event: 2
+            }
+        }
+        return all.sorted { ($0.year, rank($0.mark)) < ($1.year, rank($1.mark)) }
     }
 
     var body: some View {
@@ -57,20 +65,17 @@ struct LifeLine: View {
             }
             .frame(height: Self.height)
             .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 7) {
                 ForEach(entries, id: \.self) { entry in
                     HStack(alignment: .firstTextBaseline, spacing: 10) {
                         marker(entry.mark)
-                            .frame(width: 14, height: 14)
+                            .frame(width: Self.markSize, height: Self.markSize)
                             .alignmentGuide(.firstTextBaseline) { d in d[VerticalAlignment.center] + 5 }
                         Text(String(entry.year))
                             .font(.caption.weight(.bold))
                             .monospacedDigit()
                             .foregroundStyle(entry.mark == .work ? Theme.vermilion : Theme.inkSoft)
-                        Text(entry.text)
-                            .font(.serif(15, weight: entry.mark == .work ? .semibold : .regular))
-                            .italic(entry.mark != .moment)
-                            .foregroundStyle(entry.mark == .other ? Theme.inkSoft : Theme.ink.opacity(0.9))
+                        legendText(entry)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     .accessibilityElement(children: .combine)
@@ -81,18 +86,43 @@ struct LifeLine: View {
         .accessibilityLabel(Text("Życie artysty, \(String(born))–\(String(died))"))
     }
 
+    private func legendText(_ entry: Entry) -> Text {
+        switch entry.mark {
+        case .work:
+            Text(entry.text).font(.serif(15, weight: .semibold)).italic().foregroundStyle(Theme.ink)
+        case .moment:
+            Text(entry.text).font(.serif(15)).foregroundStyle(Theme.ink.opacity(0.9))
+        case .event:
+            Text(entry.text).font(.serif(15)).foregroundStyle(Theme.inkSoft)
+        }
+    }
+
+    /// The mark as on the line: the work's dot, a moment's numbered ring,
+    /// an event's lettered square.
     @ViewBuilder
     private func marker(_ mark: Mark) -> some View {
         switch mark {
         case .work:
-            Circle().fill(Theme.vermilion).frame(width: 12, height: 12)
-        case .other:
-            Circle().fill(Theme.inkSoft.opacity(0.55)).frame(width: 7, height: 7)
-        case .moment:
+            Circle().fill(Theme.vermilion).frame(width: 13, height: 13)
+        case .moment(let index):
             Circle()
                 .fill(Theme.paper)
-                .overlay(Circle().strokeBorder(Theme.inkSoft, lineWidth: 1.5))
-                .frame(width: 10, height: 10)
+                .overlay(Circle().strokeBorder(Theme.ink.opacity(0.75), lineWidth: 1.3))
+                .overlay(
+                    Text(String(index + 1))
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(Theme.ink)
+                )
+                .frame(width: Self.markSize, height: Self.markSize)
+        case .event(let index):
+            RoundedRectangle(cornerRadius: 3, style: .continuous)
+                .fill(Theme.hairline)
+                .overlay(
+                    Text(Self.letters[index])
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(Theme.inkSoft)
+                )
+                .frame(width: Self.markSize - 1, height: Self.markSize - 1)
         }
     }
 
@@ -106,34 +136,37 @@ struct LifeLine: View {
         let y = Self.lineY
         return ZStack(alignment: .topLeading) {
             Capsule()
-                .fill(Theme.hairline)
+                .fill(Theme.inkSoft.opacity(0.45))
                 .frame(width: max(width - 2 * Self.inset, 0), height: 2)
                 .position(x: width / 2, y: y)
-            ForEach(Array(Set(uniqueOthers.map(\.year))).sorted(), id: \.self) { year in
-                marker(.other).position(x: x(year, in: width), y: y)
+            // The two ends: short upright ticks, as on a ruler.
+            ForEach([born, died], id: \.self) { year in
+                Capsule()
+                    .fill(Theme.inkSoft)
+                    .frame(width: 2, height: 10)
+                    .position(x: x(year, in: width), y: y)
             }
-            ForEach(milestones, id: \.year) { moment in
-                marker(.moment).position(x: x(moment.year, in: width), y: y)
+            ForEach(entries.filter { $0.mark != .work }, id: \.self) { entry in
+                marker(entry.mark).position(x: x(entry.year, in: width), y: y)
             }
             if let work {
-                Circle()
-                    .fill(Theme.vermilion)
-                    .frame(width: 13, height: 13)
-                    .position(x: x(work.year, in: width), y: y)
+                marker(.work).position(x: x(work.year, in: width), y: y)
             }
-            Text(String(born))
-                .font(.caption2)
+            Text("ur. \(String(born))")
+                .font(.caption2.weight(.semibold))
                 .monospacedDigit()
                 .foregroundStyle(Theme.inkSoft)
                 .fixedSize()
-                .position(x: Self.inset + 14, y: y + 15)
-            Text(String(died))
-                .font(.caption2)
+                .alignmentGuide(.leading) { _ in -(Self.inset - 2) }
+                .alignmentGuide(.top) { _ in -(y + 12) }
+            Text("zm. \(String(died))")
+                .font(.caption2.weight(.semibold))
                 .monospacedDigit()
                 .foregroundStyle(Theme.inkSoft)
                 .fixedSize()
-                .position(x: width - Self.inset - 14, y: y + 15)
+                .alignmentGuide(.leading) { d in -(width - Self.inset + 2 - d.width) }
+                .alignmentGuide(.top) { _ in -(y + 12) }
         }
-        .frame(width: width, height: Self.height)
+        .frame(width: width, height: Self.height, alignment: .topLeading)
     }
 }

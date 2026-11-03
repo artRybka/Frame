@@ -144,6 +144,8 @@ DETAIL_MAX = 0.6
 MAX_LEGACY = 5
 #: Moments of the artist's life on the line under their name.
 MAX_MILESTONES = 3
+#: Historical events on the artist's line of life (Mateusz 2026-11-03: "jedno lub dwa").
+MAX_EVENTS = 2
 #: The paints named under "Kolor i światło" ("Farby, z których powstał").
 MAX_PIGMENTS = 4
 SOURCES = ("obraz", "dane muzeum", "Wikidata", "Wikipedia", "wiedza ogólna")
@@ -161,6 +163,15 @@ MONTHS = (
 POINTS = """Współrzędne podajesz w pikselach \
 obrazu, który dostajesz (jego wymiary są w danych: OBRAZ), od lewego górnego rogu: x w prawo, \
 y w dół. Celuj dokładnie."""
+
+
+#: Historical events on the artist's line of life, for the page's question
+#: and the one filling older pages in (``ai.extras``).
+EVENTS_RULE = """- "events": 1–2 wydarzenia historyczne z czasu życia autora, które dotknęły \
+jego świata (kraju, miasta, sztuki), np. „wojna trzydziestoletnia”, „rewolucja francuska”, \
+„wynalezienie fotografii”: "year" (rok początku) i "text" (najwyżej 40 znaków, bez kropki). \
+Tylko pewne daty; nie powtarzaj chwil z "milestones".
+"""
 
 
 #: The paints, for the page's question and the one filling older pages in
@@ -211,7 +222,7 @@ powstało, co było w nim nowe, jak je przyjęto.
 - "artist": krótka notka o autorze, dwa-trzy zdania (najwyżej 400 znaków): kim był, czym się \
 wyróżniał i w którym miejscu jego drogi powstało to dzieło. Bez powtarzania tekstu powyżej.
 """
-    + """- "born", "died", "milestones", "pigments": jak niżej (LINIA ŻYCIA I FARBY).
+    + """- "born", "died", "milestones", "events", "pigments": jak niżej (LINIA ŻYCIA I FARBY).
 """
     + """- Analizy kompozycji tu nie piszesz: robi ją osobne pytanie.
 - "colour": dwa-trzy zdania o kolorze i świetle.
@@ -243,6 +254,7 @@ anonimowego lub warsztatu) albo autor żyje.
 do Paryża”). Bez urodzin, śmierci i powstania tego dzieła. Tylko ze źródeł albo pewnej wiedzy \
 encyklopedycznej; pusta lista, gdy ich nie ma.
 """
+    + EVENTS_RULE
     + PIGMENTS_RULE
 )
 
@@ -286,6 +298,7 @@ EXTRAS_PROPS: dict[str, Any] = {
     "born": {"type": "integer"},
     "died": {"type": "integer"},
     "milestones": _list(_object(year={"type": "integer"}, text=_str())),
+    "events": _list(_object(year={"type": "integer"}, text=_str())),
     "pigments": _list(
         _object(name=_str(), hex=_str(), where=_str(), text=_str(), sure={"type": "boolean"})
     ),
@@ -449,6 +462,8 @@ class Essay(BaseModel):
     born: int | None = None
     died: int | None = None
     milestones: list[Milestone] = Field(default_factory=list)
+    #: Historical events in the artist's lifetime (same shape as a moment).
+    events: list[Milestone] = Field(default_factory=list)
     pigments: list[Pigment] = Field(default_factory=list)
 
 
@@ -787,9 +802,9 @@ def _year_of(value: Any) -> int | None:
 
 
 def extras(data: dict[str, Any]) -> dict[str, Any]:
-    """The artist's years, the moments of their life (within it, in order,
-    each year once) and the work's paints from a model's answer, made safe
-    to show: as :class:`Essay` keeps them."""
+    """The artist's years, the moments of their life and the historical
+    events in it (within it, in order, each year once) and the work's paints
+    from a model's answer, made safe to show: as :class:`Essay` keeps them."""
     born, died = _year_of(data.get("born")), _year_of(data.get("died"))
     if born is not None and died is not None and not 10 < died - born < 110:
         born = died = None
@@ -800,6 +815,11 @@ def extras(data: dict[str, Any]) -> dict[str, Any]:
         year, text = _year_of(m.get("year")), _text(m.get("text"), 60).rstrip(".")
         if year is not None and text and low <= year <= high and year not in moments:
             moments[year] = Milestone(year=year, text=text)
+    events: dict[int, Milestone] = {}
+    for e in _dicts(data.get("events")):
+        year, text = _year_of(e.get("year")), _text(e.get("text"), 50).rstrip(".")
+        if year is not None and text and low <= year <= high and year not in events:
+            events[year] = Milestone(year=year, text=text)
     pigments = [
         Pigment(
             name=name,
@@ -815,6 +835,7 @@ def extras(data: dict[str, Any]) -> dict[str, Any]:
         "born": born,
         "died": died,
         "milestones": [moments[y] for y in sorted(moments)][:MAX_MILESTONES],
+        "events": [events[y] for y in sorted(events)][:MAX_EVENTS],
         "pigments": pigments[:MAX_PIGMENTS],
     }
 

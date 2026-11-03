@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any
 
 from ..library.models import Note
 from .client import SONNET, request
-from .daily import EXTRAS_PROPS, PIGMENTS_RULE, _object, extras, request_text
+from .daily import EVENTS_RULE, EXTRAS_PROPS, PIGMENTS_RULE, _object, extras, request_text
 from .daily import KIND as DAILY
 from .jobs import NoteJob, Usage, text_hash
 from .study import KIND as STUDY
@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from .daily import DailyJob
 
 KIND = "study_extras"
-PROMPT_VERSION = "extras-2"
+PROMPT_VERSION = "extras-3"
 #: Pages whose paints were asked for with the likely ones too (2026-11-03).
 PAINTS = 2
 #: The pages it is written into.
@@ -46,6 +46,7 @@ anonimowego lub warsztatu) albo autor żyje.
 do Paryża”). Bez urodzin, śmierci i powstania tego dzieła. Pusta lista, gdy ich nie znasz.
 Obrazu tu nie widzisz: jego kolory podaje „Kolory (analiza serwera)”.
 """
+    + EVENTS_RULE
     + PIGMENTS_RULE
 )
 
@@ -53,12 +54,17 @@ SCHEMA = _object(**EXTRAS_PROPS)
 
 
 def wants(note: Note | None) -> bool:
-    """A written page from before the line of life and the paints, or
-    without paints from before the likely ones were asked for."""
+    """A written page from before the line of life, its historical events
+    and the paints, or without paints from before the likely ones were
+    asked for."""
     if note is None or "teaser" not in note.data:
         return False
     data = note.data
-    return "milestones" not in data or (not data.get("pigments") and data.get("paints") != PAINTS)
+    return (
+        "milestones" not in data
+        or "events" not in data
+        or (not data.get("pigments") and data.get("paints") != PAINTS)
+    )
 
 
 class ExtrasJob(NoteJob):
@@ -108,6 +114,7 @@ class ExtrasJob(NoteJob):
         nothing: an empty line of life is not asked for again)."""
         found = extras(note.data)
         paints = {"pigments": [p.model_dump() for p in found["pigments"]], "paints": PAINTS}
+        events = {"events": [e.model_dump() for e in found["events"]]}
         life = {
             "born": found["born"],
             "died": found["died"],
@@ -116,7 +123,11 @@ class ExtrasJob(NoteJob):
         for kind in PAGES:
             page = self.library.note(item.id, kind)
             if wants(page) and page is not None:
-                # A page with its line of life keeps it: only the paints are new.
-                data = paints if "milestones" in page.data else {**life, **paints}
+                # A page keeps what it has: its line of life, its paints.
+                data: dict[str, Any] = dict(events)
+                if "milestones" not in page.data:
+                    data.update(life)
+                if not page.data.get("pigments"):
+                    data.update(paints)
                 self.library.save_note(page.model_copy(update={"data": {**page.data, **data}}))
         self._pages = (0.0, set())

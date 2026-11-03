@@ -134,6 +134,10 @@ ANSWER: dict[str, Any] = {
         {"year": 1779, "text": "pierwsze drzeworyty"},
         {"year": 1900, "text": "po śmierci"},
     ],
+    "events": [
+        {"year": 1825, "text": "edykt o odpędzaniu obcych statków."},
+        {"year": 1600, "text": "przed urodzinami"},
+    ],
     "pigments": [
         {
             "name": "błękit pruski",
@@ -466,6 +470,9 @@ def test_claude_writes_the_page(tmp_path: Path) -> None:
             (1831, "seria „36 widoków góry Fudżi”"),
         ]
         assert [(p["name"], p["hex"]) for p in work["pigments"]] == [("błękit pruski", "#1F3A6B")]
+        assert [(e["year"], e["text"]) for e in work["events"]] == [
+            (1825, "edykt o odpędzaniu obcych statków")
+        ]
         details = work["details"]
         assert [d["title"] for d in details] == ["Pazury piany", "Wioślarze"]
         assert details[0]["image"].startswith(f"/api/daily/detail?day={date.today()}&n=0&v=")
@@ -909,7 +916,7 @@ def test_old_pages_get_the_line_of_life_and_paints(offline: FrameService) -> Non
     item = offline.library.get("met:1")
     assert item is not None
     page = clean(ANSWER, []).model_dump()  # type: ignore[union-attr]
-    for key in ("born", "died", "milestones", "pigments"):
+    for key in ("born", "died", "milestones", "events", "pigments"):
         page.pop(key)
     offline.library.save_note(
         Note(item_id="met:1", kind=STUDY, model=OPUS, prompt_version="x", data=page)
@@ -920,12 +927,13 @@ def test_old_pages_get_the_line_of_life_and_paints(offline: FrameService) -> Non
     params = job.params(item)
     assert params["messages"][0]["content"][0]["type"] == "text"  # no picture: its colours in words
     assert "Katsushika Hokusai" in params["messages"][0]["content"][0]["text"]
-    answer = {k: ANSWER[k] for k in ("born", "died", "milestones", "pigments")}
+    answer = {k: ANSWER[k] for k in ("born", "died", "milestones", "events", "pigments")}
     job.apply(item, Note(item_id="met:1", kind=job.kind, model="", prompt_version="x", data=answer))
     kept = offline.library.note("met:1", STUDY)
     assert kept is not None and kept.data["teaser"] == page["teaser"]
     assert [m["year"] for m in kept.data["milestones"]] == [1779, 1831]
     assert kept.data["pigments"][0]["name"] == "błękit pruski"
+    assert [e["year"] for e in kept.data["events"]] == [1825]
     assert not job.wanted(item)  # once
 
     # A page with its line of life but no paints, from before the likely ones
@@ -952,6 +960,17 @@ def test_old_pages_get_the_line_of_life_and_paints(offline: FrameService) -> Non
     assert not job.wanted(item)
     kept_none = kept.model_copy(update={"data": {**kept.data, "pigments": []}})
     offline.library.save_note(kept_none)  # nothing found: not asked again
+    assert not job.wanted(item)
+
+    # A page from before the historical events: only they are added.
+    without = {k: v for k, v in kept.data.items() if k != "events"}
+    offline.library.save_note(kept.model_copy(update={"data": without}))
+    job._pages = (0.0, set())
+    assert job.wanted(item)
+    job.apply(item, Note(item_id="met:1", kind=job.kind, model="", prompt_version="x", data=ANSWER))
+    kept = offline.library.note("met:1", STUDY)
+    assert kept is not None and [e["year"] for e in kept.data["events"]] == [1825]
+    assert kept.data["pigments"][0]["name"] == "indygo"  # its own paints kept
     assert not job.wanted(item)
 
 
