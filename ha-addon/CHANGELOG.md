@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.91.1
+
+- „Rozmiar obrazu”: ucięty mężczyzna przy małych dziełach stoi na kresce
+  przez całą szerokość ekranu, a jego wzrost, 180 cm, jest podpisany przy
+  krótkiej kreseczce na wysokości czubka głowy.
+
 ## 1.91.0
 
 - Oryginały dzieł z Ulubionych (każdego domownika) oraz z ręcznych

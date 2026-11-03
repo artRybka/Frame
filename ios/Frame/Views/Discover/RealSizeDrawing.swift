@@ -14,7 +14,8 @@ import SwiftUI
 /// 120 points, as far as the column's width allows, but never so close that
 /// less than 80 cm of him shows from the head down. When he is then taller
 /// than the drawing, he is cut straight across at its foot and ends on a
-/// short pencil line fading out at both ends (variant C, 16:18).
+/// pencil line across the whole screen, his height written by a tick at
+/// the top of his head (variant C, 16:18; 19:05).
 /// A work beside which the whole man fits anyway is drawn as before. The
 /// drawing is as tall as what is on it, with no room left under it.
 struct RealSizeDrawing: View {
@@ -70,6 +71,12 @@ struct RealSizeDrawing: View {
     /// The least of him shown, from the top of his head.
     static let leastOfHim: CGFloat = 80
     private static let gap: CGFloat = 66
+    /// How far the line he is cut on runs past the column: to the screen's
+    /// edges, where the scroll view clips it.
+    private static let overrun: CGFloat = 2000
+    /// Just right of his cap, across his width, where the tick by his head
+    /// starts.
+    private static let headRight: CGFloat = 0.66
     /// His pencilled height needs room on his right.
     private static let labelRoom: CGFloat = 56
     /// The width's line and its pencilled number under the work.
@@ -128,50 +135,41 @@ struct RealSizeDrawing: View {
             .offset(x: picture.minX, y: picture.minY)
 
             if plan.cropped {
-                // Cut straight across: he ends on a short pencil line that
-                // fades out at both ends (Mateusz 2026-11-03 16:18, "C").
+                // Cut straight across: he ends on a pencil line running the
+                // screen's whole width, and his height is written by a short
+                // tick at the top of his head (Mateusz 2026-11-03 16:18, "C";
+                // 19:05, his sketch).
                 let cut = plan.cut
                 ZStack(alignment: .topLeading) {
                     Color.clear.frame(width: column, height: cut)
                     figure(man)
-                    Dimension(
-                        from: CGPoint(x: man.maxX + 8, y: man.minY),
-                        to: CGPoint(x: man.maxX + 8, y: cut),
-                        ticks: .start
-                    )
-                    .stroke(pencil, style: StrokeStyle(lineWidth: 1.2, lineCap: .round))
                 }
                 .frame(width: column, height: cut, alignment: .topLeading)
                 .clipped()
-                let from = man.minX - 14, to = man.maxX + 22
                 Path { path in
-                    path.move(to: CGPoint(x: from, y: cut))
-                    path.addLine(to: CGPoint(x: to, y: cut))
+                    path.move(to: CGPoint(x: -Self.overrun, y: cut))
+                    path.addLine(to: CGPoint(x: column + Self.overrun, y: cut))
                 }
-                .stroke(
-                    LinearGradient(
-                        stops: [
-                            .init(color: pencil.opacity(0), location: 0),
-                            .init(color: pencil, location: 0.25),
-                            .init(color: pencil, location: 0.75),
-                            .init(color: pencil.opacity(0), location: 1),
-                        ],
-                        startPoint: UnitPoint(x: from / column, y: 0),
-                        endPoint: UnitPoint(x: to / column, y: 0)
-                    ),
-                    style: StrokeStyle(lineWidth: 1.2, lineCap: .round)
-                )
+                .stroke(pencil, style: StrokeStyle(lineWidth: 1.2, lineCap: .round))
                 .frame(width: column, height: plan.height)
+                let tick = man.minX + Self.headRight * man.width
+                Path { path in
+                    path.move(to: CGPoint(x: tick, y: man.minY))
+                    path.addLine(to: CGPoint(x: tick + 30, y: man.minY))
+                }
+                .stroke(pencil, style: StrokeStyle(lineWidth: 1.2, lineCap: .round))
+                .frame(width: column, height: plan.height)
+                pencilled("180 cm")
+                    .alignmentGuide(.leading) { _ in -(tick + 36) }
+                    .alignmentGuide(.top) { d in -(man.minY - d.height / 2) }
             } else {
                 figure(man)
                 Dimension(from: CGPoint(x: man.maxX + 8, y: man.minY), to: CGPoint(x: man.maxX + 8, y: man.maxY))
                     .stroke(pencil, style: StrokeStyle(lineWidth: 1.2, lineCap: .round))
+                pencilled("180 cm")
+                    .alignmentGuide(.leading) { _ in -(man.maxX + 14) }
+                    .alignmentGuide(.top) { d in -(man.midY - d.height / 2) }
             }
-            pencilled("180 cm")
-                .alignmentGuide(.leading) { _ in -(man.maxX + 14) }
-                .alignmentGuide(.top) { d in
-                    -((plan.cropped ? (man.minY + plan.cut) / 2 : man.midY) - d.height / 2)
-                }
 
             Dimension(from: CGPoint(x: heightX, y: picture.minY), to: CGPoint(x: heightX, y: picture.maxY))
                 .stroke(pencil, style: StrokeStyle(lineWidth: 1.2, lineCap: .round))
@@ -219,13 +217,10 @@ struct RealSizeDrawing: View {
     }
 }
 
-/// A pencil dimension line with a short tick at each end (or only at its
-/// start, when it runs on out of the drawing).
+/// A pencil dimension line with a short tick at each end.
 private struct Dimension: Shape {
-    enum Ticks { case both, start }
     let from: CGPoint
     let to: CGPoint
-    var ticks: Ticks = .both
 
     func path(in rect: CGRect) -> Path {
         var path = Path()
@@ -233,7 +228,7 @@ private struct Dimension: Shape {
         path.addLine(to: to)
         let tick: CGFloat = 4
         let vertical = from.x == to.x
-        for end in ticks == .both ? [from, to] : [from] {
+        for end in [from, to] {
             if vertical {
                 path.move(to: CGPoint(x: end.x - tick, y: end.y))
                 path.addLine(to: CGPoint(x: end.x + tick, y: end.y))
