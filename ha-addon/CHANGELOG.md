@@ -5,7 +5,7 @@
 - „Rozmiar obrazu”: małe dzieła są przybliżone. Dłuższy bok dzieła ma co
   najmniej około 1/3 szerokości ekranu (o ile mieści się obok mężczyzna);
   mężczyzna widoczny jest wtedy od głowy co najmniej do pasa, a jego nogi
-  i kreska wzrostu łagodnie znikają. Przy dziełach od około metra widać go
+  przechodzą w coraz mocniejsze rozmycie. Przy dziełach od około metra widać go
   całego, jak dotąd. Pod rysunkiem nie ma już pustego miejsca.
 - Gdy wymiary dzieła przychodzą dopiero po otwarciu studium (raz, przy
   dziełach ze studium sprzed szukania wymiarów), sekcja pojawia się

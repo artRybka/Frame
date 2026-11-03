@@ -13,7 +13,8 @@ import SwiftUI
 /// znacznie większy obraz i postać"): the work's longer side gets at least
 /// 120 points, as far as the column's width allows, but never so close that
 /// less than 80 cm of him shows from the head down. When he is then taller
-/// than the drawing, his legs and his height line fade out at its foot.
+/// than the drawing, his legs go over into blur at its foot and his height
+/// line fades out.
 /// A work beside which the whole man fits anyway is drawn as before. The
 /// drawing is as tall as what is on it, with no room left under it.
 struct RealSizeDrawing: View {
@@ -126,38 +127,30 @@ struct RealSizeDrawing: View {
             .shadow(color: .black.opacity(0.22), radius: 5, y: 5)
             .offset(x: picture.minX, y: picture.minY)
 
-            ZStack(alignment: .topLeading) {
-                Color.clear.frame(width: column, height: plan.height)
-                Image("ScaleFigure")
-                    .renderingMode(.template)
-                    .resizable()
-                    .foregroundStyle(Theme.ink.opacity(0.88))
-                    .frame(width: man.width, height: man.height * Self.manOverhang)
-                    .offset(x: man.minX, y: man.minY)
+            if plan.cropped {
+                // His legs are not lost: below the waist he goes over into
+                // ever stronger blur, layers under one another, the
+                // strongest at the bottom (Mateusz 2026-11-03 15:46).
+                let start = max(0, plan.height - 120) / plan.height
+                let mid = max(0, plan.height - 55) / plan.height
+                let low = max(0, plan.height - 15) / plan.height
+                layer(figure(man).blur(radius: 4.5), plan, [(start, 0), (mid, 1)])
+                layer(figure(man).blur(radius: 2), plan, [(max(0, start - 0.04), 0), (start + 0.04, 1), (mid, 1), (low, 0)])
+                layer(figure(man), plan, [(0, 1), (start, 1), (mid, 0)])
+            } else {
+                figure(man)
+            }
+            // His height: cropped, it runs on to the drawing's foot, fading.
+            layer(
                 Dimension(
                     from: CGPoint(x: man.maxX + 8, y: man.minY),
                     to: CGPoint(x: man.maxX + 8, y: lineEnd),
                     ticks: plan.cropped ? .start : .both
                 )
-                .stroke(pencil, style: StrokeStyle(lineWidth: 1.2, lineCap: .round))
-            }
-            .frame(width: column, height: plan.height, alignment: .topLeading)
-            .clipped()
-            .mask {
-                if plan.cropped {
-                    LinearGradient(
-                        stops: [
-                            .init(color: .black, location: 0),
-                            .init(color: .black, location: max(0, (plan.height - fade) / plan.height)),
-                            .init(color: .clear, location: 1),
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                } else {
-                    Color.black
-                }
-            }
+                .stroke(pencil, style: StrokeStyle(lineWidth: 1.2, lineCap: .round)),
+                plan,
+                plan.cropped ? [(0, 1), (max(0, plan.height - fade) / plan.height, 1), (1, 0)] : [(0, 1), (1, 1)]
+            )
             pencilled("180 cm")
                 .alignmentGuide(.leading) { _ in -(man.maxX + 14) }
                 .alignmentGuide(.top) { d in
@@ -174,6 +167,34 @@ struct RealSizeDrawing: View {
             pencilled(Self.length(width))
                 .alignmentGuide(.leading) { d in -(picture.midX - d.width / 2) }
                 .alignmentGuide(.top) { _ in -(widthY + 6) }
+        }
+    }
+
+    /// The silhouette at `man`, his 180 cm.
+    private func figure(_ man: CGRect) -> some View {
+        Image("ScaleFigure")
+            .renderingMode(.template)
+            .resizable()
+            .foregroundStyle(Theme.ink.opacity(0.88))
+            .frame(width: man.width, height: man.height * Self.manOverhang)
+            .offset(x: man.minX, y: man.minY)
+    }
+
+    /// `content` over the whole drawing, kept to it and shown as far as the
+    /// stops say, top to bottom (location, opacity).
+    private func layer(_ content: some View, _ plan: Plan, _ stops: [(CGFloat, Double)]) -> some View {
+        ZStack(alignment: .topLeading) {
+            Color.clear.frame(width: column, height: plan.height)
+            content
+        }
+        .frame(width: column, height: plan.height, alignment: .topLeading)
+        .clipped()
+        .mask {
+            LinearGradient(
+                stops: stops.map { Gradient.Stop(color: .black.opacity($0.1), location: $0.0) },
+                startPoint: .top,
+                endPoint: .bottom
+            )
         }
     }
 
