@@ -87,5 +87,7 @@ final class PolishNamesTests: XCTestCase {
         XCTAssertNil(Names.lifeYears("French, active 1890s"))
         XCTAssertNil(Names.lifeYears("1900–2100"))  // not a life
         XCTAssertNil(Names.lifeYears(""))
+        XCTAssertEqual(Names.life("Dutch, Delft 1632–1675 Delft")?.born, 1632)
+        XCTAssertEqual(Names.life("Dutch, Delft 1632–1675 Delft")?.died, 1675)
     }
 }

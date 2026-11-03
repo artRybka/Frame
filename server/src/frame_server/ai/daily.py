@@ -17,6 +17,7 @@ import base64
 import copy
 import io
 import logging
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from datetime import date
@@ -127,6 +128,10 @@ MAX_DETAILS = 3
 DETAIL_MIN = 0.04
 DETAIL_MAX = 0.6
 MAX_LEGACY = 5
+#: Moments of the artist's life on the line under their name.
+MAX_MILESTONES = 3
+#: The paints named under "Kolor i światło" ("Farby, z których powstał").
+MAX_PIGMENTS = 4
 SOURCES = ("obraz", "dane muzeum", "Wikidata", "Wikipedia", "wiedza ogólna")
 #: Picture, sources and an answer with thinking (the composition is asked
 #: apart, ``ai.composition``, and counted there).
@@ -173,6 +178,8 @@ powstało, co było w nim nowe, jak je przyjęto.
 - "artist": krótka notka o autorze, dwa-trzy zdania (najwyżej 400 znaków): kim był, czym się \
 wyróżniał i w którym miejscu jego drogi powstało to dzieło. Bez powtarzania tekstu powyżej.
 """
+    + """- "born", "died", "milestones", "pigments": jak niżej (LINIA ŻYCIA I FARBY).
+"""
     + """- Analizy kompozycji tu nie piszesz: robi ją osobne pytanie.
 - "colour": dwa-trzy zdania o kolorze i świetle.
 - "details": 2–3 fragmenty warte powiększenia, których w całym obrazie na telefonie nie \
@@ -192,7 +199,22 @@ tylko identyfikatorów z listy.
 od najwcześniejszego. Rok, kto, tytuł po polsku, jedno-dwa zdania i, jeśli źródło go podaje, \
 krótki cytat. "search": nazwisko i oryginalny tytuł do wyszukania w katalogu. Pusta lista, gdy \
 źródła o tym milczą, a dzieło nie jest na tyle słynne, żebyś był pewien.
-- "sources": źródła, z których faktycznie skorzystałeś."""
+- "sources": źródła, z których faktycznie skorzystałeś.
+
+"""
+    + "LINIA ŻYCIA I FARBY\n"
+    + """- "born", "died": rok urodzin i rok śmierci autora; 0, gdy nieznany (także dla autora \
+anonimowego lub warsztatu) albo autor żyje.
+- "milestones": 2–3 ważne chwile z życia autora na jego linii życia, w porządku lat: "year" \
+(rok) i "text" (najwyżej 50 znaków, bez kropki, np. „wstępuje do gildii św. Łukasza”, „wyjazd \
+do Paryża”). Bez urodzin, śmierci i powstania tego dzieła. Tylko ze źródeł albo pewnej wiedzy \
+encyklopedycznej; pusta lista, gdy ich nie ma.
+- "pigments": 0–4 farby (pigmenty), z których to dzieło namalowano, TYLKO gdy wymienia je \
+opis muzeum, Wikipedia albo pewna wiedza encyklopedyczna o tym konkretnym dziele (badania \
+konserwatorskie). Nie zgaduj z wyglądu obrazu. Każda: "name" (polska nazwa, np. „ultramaryna \
+naturalna”), "hex" (barwa samej farby, np. "#2A4FA0"), "where" (gdzie na obrazie, 2–5 słów), \
+"text" (jedno zdanie o tej farbie, najwyżej 140 znaków: skąd się brała, ile kosztowała, co \
+w niej szczególnego). Pusta lista, gdy źródła milczą."""
 )
 
 
@@ -229,6 +251,15 @@ VIEW = _object(
     ),
 )
 
+#: The artist's line of life and the work's paints: in the page's answer,
+#: and asked alone for pages written before them (``ai.extras``).
+EXTRAS_PROPS: dict[str, Any] = {
+    "born": {"type": "integer"},
+    "died": {"type": "integer"},
+    "milestones": _list(_object(year={"type": "integer"}, text=_str())),
+    "pigments": _list(_object(name=_str(), hex=_str(), where=_str(), text=_str())),
+}
+
 SCHEMA = _object(
     title=_str(),
     teaser=_str(),
@@ -254,6 +285,7 @@ SCHEMA = _object(
         _object(year=_str(), who=_str(), title=_str(), text=_str(), quote=_str(), search=_str())
     ),
     sources=_list({"type": "string", "enum": list(SOURCES)}),
+    **EXTRAS_PROPS,
 )
 
 
@@ -342,6 +374,22 @@ class Legacy(BaseModel):
     search: str = ""
 
 
+class Milestone(BaseModel):
+    """A moment of the artist's life, on the line under their name."""
+
+    year: int
+    text: str
+
+
+class Pigment(BaseModel):
+    """A paint the work is made with, as its sources name it."""
+
+    name: str
+    hex: str
+    where: str = ""
+    text: str = ""
+
+
 class Essay(BaseModel):
     """What the model wrote about the work of the day, cleaned."""
 
@@ -363,6 +411,12 @@ class Essay(BaseModel):
     similar: list[Similar] = Field(default_factory=list)
     legacy: list[Legacy] = Field(default_factory=list)
     sources: list[str] = Field(default_factory=list)
+    #: The artist's years, when the model knows them (the museum's line
+    #: about the artist comes first, ``web.daily_api``).
+    born: int | None = None
+    died: int | None = None
+    milestones: list[Milestone] = Field(default_factory=list)
+    pigments: list[Pigment] = Field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -684,7 +738,51 @@ def clean(data: dict[str, Any], candidates: list[str]) -> Essay | None:
         similar=similar[:MAX_SIMILAR],
         legacy=legacy,
         sources=[s for s in data.get("sources") or [] if s in SOURCES],
+        **extras(data),
     )
+
+
+HEX = re.compile(r"^#[0-9A-Fa-f]{6}$")
+
+
+def _year_of(value: Any) -> int | None:
+    try:
+        year = int(value)
+    except (TypeError, ValueError):
+        return None
+    return year if 0 < year <= date.today().year else None
+
+
+def extras(data: dict[str, Any]) -> dict[str, Any]:
+    """The artist's years, the moments of their life (within it, in order,
+    each year once) and the work's paints from a model's answer, made safe
+    to show: as :class:`Essay` keeps them."""
+    born, died = _year_of(data.get("born")), _year_of(data.get("died"))
+    if born is not None and died is not None and not 10 < died - born < 110:
+        born = died = None
+    low = born if born is not None else (died - 110 if died is not None else 0)
+    high = died + 1 if died is not None else date.today().year
+    moments: dict[int, Milestone] = {}
+    for m in _dicts(data.get("milestones")):
+        year, text = _year_of(m.get("year")), _text(m.get("text"), 60).rstrip(".")
+        if year is not None and text and low <= year <= high and year not in moments:
+            moments[year] = Milestone(year=year, text=text)
+    pigments = [
+        Pigment(
+            name=name,
+            hex=str(p.get("hex")).upper(),
+            where=_text(p.get("where"), 60),
+            text=_text(p.get("text"), 200),
+        )
+        for p in _dicts(data.get("pigments"))
+        if (name := _text(p.get("name"), 50)) and HEX.match(str(p.get("hex") or ""))
+    ]
+    return {
+        "born": born,
+        "died": died,
+        "milestones": [moments[y] for y in sorted(moments)][:MAX_MILESTONES],
+        "pigments": pigments[:MAX_PIGMENTS],
+    }
 
 
 #: What every page has, besides its text: the takes on its composition,

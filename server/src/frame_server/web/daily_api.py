@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import re
 from collections.abc import Callable
 from datetime import date
 from typing import Annotated
@@ -14,12 +15,24 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 
-from ..ai.daily import TEASER_CHARS, Composition, DailyJob, Detail, Essay, Legacy, Spot, short
+from ..ai.daily import (
+    TEASER_CHARS,
+    Composition,
+    DailyJob,
+    Detail,
+    Essay,
+    Legacy,
+    Milestone,
+    Pigment,
+    Spot,
+    short,
+)
 from ..ai.pl_text import description
 from ..later import entry_key
 from ..library import Item
 from ..library.markup import strip_markup
 from ..service import FrameService
+from ..sizes import RealSize
 from .deps import require_owner, require_token, service
 from .library_api import RemoteItem, remote_items
 
@@ -85,6 +98,16 @@ class DailyWork(BaseModel):
     legacy: list[LegacyWork] = []
     #: Other works by the artist ("Inne prace artysty").
     by_artist: list[RemoteItem] = []
+    #: Works made a few years either side, elsewhere ("W tym samym czasie").
+    same_time: list[RemoteItem] = []
+    #: The artist's years (the museum's line about them first, else the
+    #: page's), moments of their life and the work's paints.
+    born: int | None = None
+    died: int | None = None
+    milestones: list[Milestone] = []
+    pigments: list[Pigment] = []
+    #: How big the work really is, in centimetres ("Prawdziwy rozmiar").
+    size: RealSize | None = None
     sources: list[str] = []
     model: str = ""
     #: Left empty: the days before are no longer listed under the page.
@@ -93,6 +116,19 @@ class DailyWork(BaseModel):
     #: the artist), which take a while: asked for the text first, the page
     #: opens with it and asks again for the rest.
     partial: bool = False
+
+
+LIFE = re.compile(r"(?<!\d)(\d{3,4})\s*[-–—]\s*(\d{3,4})(?!\d)")
+
+
+def life(text: str) -> tuple[int, int] | None:
+    """The years of the artist's life in the museum's line about them
+    ("Dutch, Delft 1632–1675 Delft") or in brackets in the name."""
+    match = LIFE.search(text)
+    if not match:
+        return None
+    born, died = int(match.group(1)), int(match.group(2))
+    return (born, died) if 10 < died - born < 110 else None
 
 
 def _light(svc: FrameService, item: Item, *, bio: bool = False) -> RemoteItem:
@@ -188,6 +224,15 @@ def page(
     shown = {s.item.item.id for s in similar}
     by_artist = svc.artists.works(item, shown) if lists else []
     looking = lists and svc.artists.look_soon(item, len(by_artist))
+    shown |= {w.id for w in by_artist}
+    size = svc.sizes.size(item) if lists else None
+    looking = looking or (lists and size is None and svc.sizes.look_soon(item))
+    same_time = svc.daily.same_time(item, shown) if lists else []
+    born, died = (
+        life(item.artist_bio)
+        or life(item.artist)
+        or ((essay.born, essay.died) if essay else (None, None))
+    )
     note = svc.library.note(item.id, job.kind) if essay else None
     return DailyWork(
         day=day,
@@ -210,6 +255,12 @@ def page(
         similar=similar,
         legacy=legacy,
         by_artist=[_light(svc, other) for other in by_artist],
+        same_time=[_light(svc, other) for other in same_time],
+        born=born,
+        died=died,
+        milestones=essay.milestones if essay else [],
+        pigments=essay.pigments if essay else [],
+        size=size,
         legacy_pending=bool(lists and essay and svc.later.look_soon(item, essay.legacy)) or looking,
         sources=essay.sources if essay else [],
         model=note.model if note else "",

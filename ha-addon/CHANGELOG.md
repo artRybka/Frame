@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.84.0
+
+- Studium dzieła, nowa sekcja „W tym samym czasie”: trzy dzieła z katalogu
+  powstałe kilka lat przed nim lub po nim, u innych artystów i najlepiej w
+  innych krajach.
+- „O autorze”: pod nazwiskiem linia życia artysty. Na niej to dzieło (na
+  czerwono), inne jego prace ze strony i dwie, trzy ważne chwile z życia,
+  wypisane pod linią z rokiem.
+- „Kolor i światło”: farby, z których dzieło namalowano (z kółkiem barwy,
+  miejscem na obrazie i zdaniem o farbie), gdy wymieniają je źródła.
+  Studia napisane wcześniej serwer uzupełnia o linię życia i farby w tle.
+- Pod tytułem studium jest teraz sam tytuł. Imię i nazwisko twórcy jest w
+  „O autorze”, pismem odręcznym jak uwagi do kompozycji, a data, technika i
+  muzeum w stopce, obok informacji, kto napisał tekst.
+- Nowa sekcja „Prawdziwy rozmiar” tuż przed „Na Twojej ramce”: rysunek
+  dzieła w prawdziwych wymiarach (ołówkiem) obok pustej ramki dla skali.
+  Wymiary pochodzą z muzeum albo z Wikidaty i są pokazywane tylko wtedy,
+  gdy ich proporcje zgadzają się ze zdjęciem.
+
 ## 1.83.1
 
 - Szukaj, arkusz „Kolor”: na karcie „Tylko akcent” nie ma już sekcji

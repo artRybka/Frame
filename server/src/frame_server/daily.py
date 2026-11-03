@@ -18,6 +18,7 @@ import random
 import re
 import threading
 import time
+import zlib
 from collections.abc import Callable
 from concurrent.futures import Future
 from datetime import date, timedelta
@@ -35,6 +36,7 @@ from .library import Item, ItemKind, PlaylistRules
 from .library.artists import is_artist
 from .library.images import display_copy
 from .library.models import Note
+from .library.nationality import NATIONALITIES
 from .library.vocabulary import artist_matches, is_photograph
 
 if TYPE_CHECKING:
@@ -62,6 +64,12 @@ POOL = 800
 MIN_SIDE = 1000
 #: Works like the work of the day the model chooses among.
 CANDIDATES = 12
+#: "W tym samym czasie": works made a few years either side of the work,
+#: elsewhere and by others (Mateusz 2026-11-02).
+SAME_TIME = 3
+SAME_TIME_YEARS = 5
+#: The catalogue's works of those years looked among.
+SAME_TIME_POOL = 300
 #: How often the background picks the day's work and asks for its page.
 TICK_SECONDS = 1800.0
 #: The fragments' pictures ("Detale"): their longer side, and how long kept.
@@ -113,6 +121,7 @@ class Daily:
         job.candidates = self.candidates
         self._lock = threading.Lock()
         self._candidates: dict[str, list[str]] = {}
+        self._same_time: dict[str, list[str]] = {}
         self._stop = threading.Event()
         self._cutting = threading.Lock()
         self.details_dir = job.images.thumbs.parent / "details"
@@ -257,6 +266,58 @@ class Daily:
         self._candidates[item.id] = [i.id for i in picked]
         return picked
 
+    def same_time(self, item: Item, skip: set[str] | None = None) -> list[Item]:
+        """Up to :data:`SAME_TIME` works of the catalogue made within
+        :data:`SAME_TIME_YEARS` of ``item``, by other artists, each by
+        another: from other countries than the work's and one another's
+        first, the owner's favourites and the museums' highlights ahead,
+        in an order kept for the work. None of ``skip`` (shown elsewhere
+        on the page); none for a work without a year."""
+        if not item.year:
+            return []
+        if item.id not in self._same_time:
+            rules = PlaylistRules(
+                kinds=[ItemKind.ARTWORK],
+                year_from=item.year - SAME_TIME_YEARS,
+                year_to=item.year + SAME_TIME_YEARS,
+            )
+            seed = zlib.crc32(item.id.encode())
+            found = self.library.query(rules, sort="random", seed=seed, limit=SAME_TIME_POOL)[1]
+            found.sort(key=lambda i: (not i.favorite, not i.highlight))  # stable
+            self._same_time[item.id] = [i.id for i in found]
+        hidden = self.library.hidden()
+        skip = skip or set()
+        pool = [
+            other
+            for i in self._same_time[item.id]
+            if (other := self.library.get(i)) is not None
+            and other.id != item.id
+            and other.id not in skip
+            and other.look is None
+            and not other.excluded
+            and other not in hidden
+            and not is_photograph(other)
+            and is_artist(other.artist)
+            and not same_artist(item, other)
+        ]
+        picked: list[Item] = []
+        countries = {c} if (c := country(item)) else set()
+        for strict in (True, False):
+            for other in pool:
+                if len(picked) == SAME_TIME:
+                    return picked
+                where = country(other)
+                if (
+                    other in picked
+                    or any(same_artist(p, other) for p in picked)
+                    or (strict and (not where or where in countries))
+                ):
+                    continue
+                picked.append(other)
+                if where:
+                    countries.add(where)
+        return picked
+
     # -- its page ------------------------------------------------------------
 
     def ask(self, item: Item) -> Future[Note | None] | None:
@@ -389,3 +450,13 @@ def same_artist(item: Item, other: Item) -> bool:
         and bool(other.artist)
         and artist_matches(other.artist, [item.artist])
     )
+
+
+def country(item: Item) -> str:
+    """Where the work comes from, as far as the catalogue says: the artist's
+    nationality from the museum's line about them ("Dutch, Delft 1632–1675"),
+    else the work's culture ("Japan"); folded."""
+    head = re.split(r"[,(;]", item.artist_bio, maxsplit=1)[0].strip().casefold()
+    if head in NATIONALITIES:
+        return NATIONALITIES[head][2]
+    return item.culture.strip().casefold()

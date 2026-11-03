@@ -16,6 +16,7 @@ from PIL import Image
 from . import notifications
 from .ai import AiConfigStore, AiWorker, Claude, DailyJob, KeywordsJob, PlTextJob
 from .ai.composition import ComposeJob
+from .ai.extras import ExtrasJob
 from .ai.search_words import SearchWords
 from .ai.study import StudyJob
 from .albums import Albums
@@ -43,6 +44,7 @@ from .power import INSTALL_LOOK, WAKE_BURST_SECONDS, PowerManager
 from .progress import ProgressTracker, Stage
 from .rendered import RenderCache, Rendered, render_key
 from .sharper import Sharper
+from .sizes import Sizes
 from .source_keys import SourceKeys
 from .status import StatusMonitor
 from .storage import StorageStore
@@ -228,6 +230,8 @@ class FrameService:
             self.library, lambda q, n: self.importer.search_all(q, n), self.images
         )
         self.daily.artists = self.artists
+        # How big each study's work really is, from its museum or Wikidata.
+        self.sizes = Sizes(self.library)
         # Studies of any work, asked for on its card.
         # Sharper copies of works whose own picture is poor: looked for when
         # a card opens, and for the work of the day before its page.
@@ -252,6 +256,10 @@ class FrameService:
         # lets it) and for pages left without one.
         self.compose = ComposeJob(self.daily.job)
         self.ai.register(self.compose)
+        # The artist's line of life and the work's paints for pages written
+        # before the page's question asked for them.
+        self.extras = ExtrasJob(self.daily.job)
+        self.ai.register(self.extras)
 
         #: Heavy work at night, while the server runs its background.
         self.night: NightQueue | None = None

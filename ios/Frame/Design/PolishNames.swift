@@ -63,12 +63,17 @@ extension Names {
 
     /// The years of the artist's life from the museum's line about them
     /// ("Dutch, Delft 1632–1675 Delft", "Japanese, 1760–1849") or from
-    /// brackets in the name ("Kandinsky, Wassily (1866-1944)"): "1632–1675".
-    static func lifeYears(_ text: String) -> String? {
+    /// brackets in the name ("Kandinsky, Wassily (1866-1944)").
+    static func life(_ text: String) -> (born: Int, died: Int)? {
         guard let match = text.firstMatch(of: #/(\d{3,4})\s*[-–—]\s*(\d{3,4})/#),
-              let born = Int(match.1), let died = Int(match.2), died > born, died - born < 110
+              let born = Int(match.1), let died = Int(match.2), died - born > 10, died - born < 110
         else { return nil }
-        return "\(born)–\(died)"
+        return (born, died)
+    }
+
+    /// The same as a line: "1632–1675".
+    static func lifeYears(_ text: String) -> String? {
+        life(text).map { "\($0.born)–\($0.died)" }
     }
 
     /// A theme's name, which for the artist of the week and "Bo lubisz" is
