@@ -125,6 +125,12 @@ NUDGE_EVERY = timedelta(minutes=5)
 # hung or quit, and 0xC7 81 01 restarts it. A few tries, then the panel is
 # most likely asleep (unplugged: it sleeps at once, E8).
 SILENT_AFTER = timedelta(minutes=3)
+# An app that finds no server sleeps this long before it tries again (app.js
+# ``offline``: 15 minutes after the first failure, ~20 s of attempts).
+OFFLINE_RETRY = timedelta(minutes=15, seconds=30)
+# Heard this long before the server started at most: silent since because
+# the server was away (an update, a restart of the NAS).
+SERVER_AWAY = timedelta(hours=1)
 SILENT_KICKS = 3
 # Told to sleep, the app's JS runs on up to ~130 s after goToSleep() (E16).
 # A start over MDC in that time raced the sleep (2026-10-30): the panel went
@@ -303,6 +309,8 @@ class PanelApp:
         self._sleep_reported: datetime | None = None  # its last "sleep" report
         self._kick_error: MdcError | None = None  # why the last start failed
         self._next_alarm: datetime | None = None  # as the status shows it
+        self.started_at = datetime.now(UTC)  # this server's start
+        self._restart_wake: asyncio.Task[None] | None = None
         self.certificates = Certificates(self.dir / "certs")
         self._images: dict[str, str] = {}  # file_id -> the path the app gets
         self._shown: dict[str, asyncio.Event] = {}
@@ -1014,7 +1022,7 @@ class PanelApp:
                 self._silent_kicks += 1
                 log.info("the frame's app has been silent since %s", state.seen_at)
                 if not await self._kick():
-                    await self._fell_asleep(now)
+                    await self._fell_asleep(now, seen)
             return
         if self._button_look_due(now):
             # Up although nothing rang: the button. Started, the app asks (a
@@ -1148,7 +1156,7 @@ class PanelApp:
         tried = [t for t in (self._kicked, self._nudged, self._looked) if t is not None]
         return bool(tried) and now - max(tried) < gap
 
-    async def _fell_asleep(self, now: datetime) -> None:
+    async def _fell_asleep(self, now: datetime, seen: datetime | None = None) -> None:
         """Not told to sleep, silent, and the panel does not answer MDC: it
         went to sleep by itself, with no alarm of ours. On the charger the
         app never sleeps, so the panel was unplugged: it sleeps at once then,
@@ -1158,24 +1166,66 @@ class PanelApp:
         So unplugged, only the button (or a spare alarm) wakes it, and the
         server looks for it over MDC to start the app. Asleep by itself on
         battery, the Wi-Fi decides (ARP): on it, a picture and "Obudź ramkę"
-        send Wake-on-LAN."""
+        send Wake-on-LAN.
+
+        Silent since before this server started (``seen``): the server was
+        away, not the charger. An app that finds no server sleeps until it
+        tries again (app.js ``offline``, on the charger too before 1.92.1),
+        and the charger stays in (2026-11-03, 22:56: a server update, the
+        phone said "Na baterii" though the frame was on the charger). That
+        sleep on the charger left the panel off the Wi-Fi as unplugged: no
+        ping, no MDC, neither its alarms (23:00, 23:30, 00:00) nor a magic
+        packet woke it. So without the Wi-Fi as far as the app shows (the
+        button), but with the charger, its own alarm for the next try noted,
+        and Wake-on-LAN tried once anyway."""
         status = self.service.status
-        unplugged = status.status.power_source == "ac"
         on_network = await status.look_for_panel(self._kick_error)
-        wifi = not unplugged and on_network is not False
+        away = seen is not None and self.started_at - SERVER_AWAY <= seen < self.started_at
+        unplugged = status.status.power_source == "ac" and not away
+        wifi = not unplugged and not away and on_network is not False
         state = self.state
         state.asleep = True
         state.standby = wifi
         state.wifi_lost = not wifi
         state.wakes = self._spare_left(state, now)
+        if away and seen is not None:
+            # Its own alarm for the next try (15 minutes after the first
+            # failed question, app.js).
+            retry = (seen + OFFLINE_RETRY).astimezone(UTC)
+            if retry > now:
+                state.wakes = sorted({*state.wakes, retry.isoformat(timespec="seconds")})
         state.wake_at = state.wakes[0] if state.wakes else None
         state.slept_at = None  # down already: the panel did not answer
         self._save(state)
         status.note_fell_asleep(on_network, unplugged=unplugged, wifi=wifi)
+        if away:
+            log.warning(
+                "the frame's app fell silent while the server was away and the panel does not "
+                "answer: asleep for lack of the server (on the network: %s), trying Wake-on-LAN",
+                on_network,
+            )
+            self._wake_after_restart()
+            return
         log.warning(
             "the frame's app fell silent and the panel does not answer: asleep by itself, %s",
             "in the network" if wifi else "deeply (unplugged or off the Wi-Fi: only the button)",
         )
+
+    def _wake_after_restart(self) -> None:
+        """Asleep for lack of the server: magic packets, and the app started
+        once the panel answers (should the sleep be one in the network)."""
+        if not self.service.settings.device_mac:
+            return
+        if self._restart_wake is not None and not self._restart_wake.done():
+            return
+
+        async def wake() -> None:
+            try:
+                await self.service.power.reach()
+            except MdcError as err:
+                log.info("could not wake the frame after the server's restart: %s", err)
+
+        self._restart_wake = asyncio.create_task(wake())
 
     def _spare(self, now: datetime) -> list[datetime]:
         """The spare alarms the app on the charger keeps set (it sets each
