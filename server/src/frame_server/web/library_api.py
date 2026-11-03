@@ -523,6 +523,8 @@ async def patch_item(item_id: str, patch: ItemPatch, svc: Svc) -> Item:
     assert updated is not None
     if changes.keys() & {"favorite", "excluded"}:
         svc.player.item_changed(item_id)  # e.g. a new favourite joins Ulubione playing now
+    if liked:
+        svc.kept.soon([item_id])  # a favourite's original stays on the server
     player, state = svc.player, svc.player.state
     if "look" in changes and updated.look != item.look:
         if state.current_item_id == item_id:

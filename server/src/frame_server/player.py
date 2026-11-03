@@ -23,6 +23,7 @@ from .imaging import PRESETS, RenderSettings
 from .imaging.grids import MAX_PHOTOS, MIN_PHOTOS
 from .imaging.layout import Fit
 from .imaging.text import TextBlock
+from .kept import kept_ids
 from .library import AlbumOrder, Item, ItemKind, Job, Note, Playlist, PlaylistKind, PlaylistRules
 from .library.artists import is_artist
 from .library.colors import SCORE_VERSION, analyse, tint_spread
@@ -1340,7 +1341,7 @@ class Player:
         _, items = self.library.query(include_excluded=True)
         keep = [i for i in items if i.id in soon]
         own = [i for i in items if only_copy(i)]
-        kept = {i for p in self.library.playlists() for i in p.item_ids}
+        kept = kept_ids(self.service)
         last = [i for i in items if i.favorite or i.id in kept]
         limit = self.service.settings.image_cache_mb * 1024 * 1024
         gone = 0

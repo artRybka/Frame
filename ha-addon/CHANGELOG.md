@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.91.0
+
+- Oryginały dzieł z Ulubionych (każdego domownika) oraz z ręcznych
+  i albumowych playlist są zawsze na serwerze. Serwer pobiera oryginał
+  w tle zaraz po dodaniu serca albo dzieła do playlisty, a te, których
+  brakuje (dodane wcześniej, muzeum nie odpowiadało), w nocy jako
+  ostatnie zadanie: najwyżej 300 na noc, jedno po drugim z przerwą,
+  muzeum, które odmawia albo każe zwolnić, zostaje na następną noc,
+  a dzieło, którego oryginału muzeum nie daje, nie jest pytane przez
+  30 dni. Pobiera tylko do 90% limitu „Oryginały dzieł”, żeby porządki
+  od razu ich nie usuwały. Nowy podpis pod tym limitem w Konfiguracji.
+
 ## 1.90.1
 
 - „Rozmiar obrazu”: małe dzieła są przybliżone. Dłuższy bok dzieła ma co
