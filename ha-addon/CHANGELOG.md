@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.86.0
+
+- Ramka → Prezentacja: bez nagłówka „Kadrowanie”. Kolor i szerokość
+  passe-partout pokazują się tylko tam, gdzie jest karton (Sztuka:
+  Passe-partout i Opis, Zdjęcia: Passe-partout i Multi), jako „Kolor”
+  i „Szerokość”, a w Opisie „Kolor passe-partout” i „Szerokość
+  passe-partout”.
+- Podpis: przy Passe-partout nazywa się „Podpis pod dziełem”, przy
+  Wypełnij „Podpis na dziele”, w Opisie go nie ma. Podpis na dziele to
+  teraz biała karteczka w prawym dolnym rogu, położona na obrazie, z
+  delikatnym cieniem. Obraz wypełnia cały ekran, bez paska na dole.
+- Miniatury kadrowania i siatek Multi mają większy cień, a wybraną
+  wyróżnia okrągły znaczek z ptaszkiem w rogu zamiast obwódki wokół ramki.
+- Multi przy czarnym passe-partout: okienka zdjęć w miniaturach siatek są
+  jasne, wcześniej było czarne na czarnym.
+
 ## 1.85.5
 
 - Kadrowanie (karta dzieła, Teraz i Studium): po powrocie ramki na

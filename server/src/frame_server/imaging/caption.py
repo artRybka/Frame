@@ -6,9 +6,10 @@ from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
-from .layout import caption_size
+from .color import FloatArray
+from .layout import Rect, caption_size
 
 FONT_CANDIDATES = {
     "sans": (
@@ -60,3 +61,58 @@ def caption_mask(canvas: tuple[int, int], at: tuple[int, int, int], text: str) -
     line = fit_text(draw, text, fnt, width)
     draw.text((right - draw.textlength(line, font=fnt), top), line, font=fnt, fill=1)
     return np.asarray(text_img, dtype=bool)
+
+
+#: The caption card on a filled picture: its padding (in caption sizes) and
+#: its soft shadow, in panel pixels, cast a little down and to the right.
+CARD_PADDING = (0.9, 0.55)
+CARD_SHADOW = 4
+CARD_SHADOW_DEPTH = 0.45
+
+
+def card_layout(canvas: tuple[int, int], at: tuple[int, int, int], text: str) -> tuple[Rect, str]:
+    """The white card for ``text`` whose bottom right corner is ``at`` =
+    (right x, bottom y, max width), and the line printed on it."""
+    right, bottom, width = at
+    size = caption_size(canvas)
+    fnt = font(size)
+    pad_x, pad_y = round(size * CARD_PADDING[0]), round(size * CARD_PADDING[1])
+    draw = ImageDraw.Draw(Image.new("1", (1, 1)))
+    line = fit_text(draw, text, fnt, width - 2 * pad_x)
+    ascent, descent = fnt.getmetrics() if isinstance(fnt, ImageFont.FreeTypeFont) else (size, 0)
+    w = round(draw.textlength(line, font=fnt)) + 2 * pad_x
+    h = ascent + descent + 2 * pad_y
+    return (right - w, bottom - h, w, h), line
+
+
+def card_masks(
+    canvas: tuple[int, int], at: tuple[int, int, int], text: str
+) -> tuple[np.ndarray, np.ndarray]:
+    """Boolean masks of the white card and of the black letters on it."""
+    cw, ch = canvas
+    (x, y, w, h), line = card_layout(canvas, at, text)
+    card = np.zeros((ch, cw), dtype=bool)
+    card[y : y + h, x : x + w] = True
+    size = caption_size(canvas)
+    pad_x, pad_y = round(size * CARD_PADDING[0]), round(size * CARD_PADDING[1])
+    text_img = Image.new("1", (cw, ch), 0)
+    draw = ImageDraw.Draw(text_img)
+    draw.fontmode = "1"
+    draw.text((x + pad_x, y + pad_y), line, font=font(size), fill=1)
+    return card, np.asarray(text_img, dtype=bool)
+
+
+def shade_card(
+    target: FloatArray, canvas: tuple[int, int], at: tuple[int, int, int], text: str
+) -> None:
+    """The card's soft shadow on the picture under it (``target`` in linear
+    light); the card itself is printed over it in pure white."""
+    (x, y, w, h), _ = card_layout(canvas, at, text)
+    ch, cw = target.shape[:2]
+    reach = CARD_SHADOW * 3
+    x0, y0 = max(0, x - reach), max(0, y - reach)
+    x1, y1 = min(cw, x + w + reach), min(ch, y + h + reach)
+    shape = Image.new("L", (x1 - x0, y1 - y0), 0)
+    ImageDraw.Draw(shape).rectangle((x - x0 + 1, y - y0 + 2, x - x0 + w, y - y0 + h + 1), fill=255)
+    soft = np.asarray(shape.filter(ImageFilter.GaussianBlur(CARD_SHADOW / 2)), np.float32) / 255
+    target[y0:y1, x0:x1] *= (1 - CARD_SHADOW_DEPTH * soft)[..., None]
