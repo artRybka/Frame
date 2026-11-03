@@ -13,6 +13,11 @@ Pages written before are written again (:class:`ComposeJob`) in the
 background, one by one, for the works the owner lets it (:data:`REWORK_KEY`:
 first a few to see, then all); a page left without its composition (the
 question failed) gets it the same way, unasked.
+
+The owner may also ask for one work's analysis anew from its page (held
+header "Analiza kompozycji" → "Wykonaj ponowną analizę", Mateusz
+2026-11-03; :data:`AGAIN_KEY`): every analysis a page has had is kept
+(:data:`VERSIONS`) and the owner picks the one it shows.
 """
 
 from __future__ import annotations
@@ -39,6 +44,7 @@ from .daily import (
     Context,
     View,
     _composition,
+    _dicts,
     _list,
     _object,
     image_block,
@@ -68,6 +74,16 @@ PAGES = (DAILY, STUDY)
 REWORK_KEY = "composition_rework"
 #: The take a page had before it was written again, kept to go back to.
 BEFORE = "composition_before"
+#: The works whose analysis the owner asked to be made anew, one at a time
+#: on their page ("Wykonaj ponowną analizę"), until it is.
+AGAIN_KEY = "composition_again"
+#: Every analysis a page has had since the owner first asked for one anew,
+#: oldest first (:func:`version`), the one it shows among them.
+VERSIONS = "composition_versions"
+#: Which of :data:`VERSIONS` the page shows.
+SHOWN = "composition_shown"
+#: The owner picked the one shown: a rework of all pages leaves it be.
+CHOSEN = "composition_chosen"
 #: How long the list of pages wanting their composition is kept between looks.
 PAGES_SECONDS = 30.0
 #: The analysis (picture, sources, much thinking), then its check.
@@ -301,10 +317,34 @@ def failed(note: Note | None) -> bool:
     return note is not None and any(note.data.get(k) for k in ("unusable", "refused", "failed"))
 
 
-def wants(note: Note | None, rework: bool | list[str]) -> bool:
+def version(data: dict[str, Any], made: str, model: str) -> dict[str, Any]:
+    """One analysis as a page keeps it among its :data:`VERSIONS`: the take,
+    what the check changed, its round, when and by which model."""
+    return {
+        "composition": data.get("composition") or {"views": []},
+        CHECKED: data.get(CHECKED, []),
+        CHECK_ROUND: data.get(CHECK_ROUND, 1),
+        "made": made,
+        "model": model,
+    }
+
+
+def versions(data: dict[str, Any]) -> list[dict[str, Any]]:
+    """The analyses a page has had (none before the owner asked anew)."""
+    return [v for v in _dicts(data.get(VERSIONS)) if isinstance(v.get("composition"), dict)]
+
+
+def wants(
+    note: Note | None, rework: bool | list[str], again: set[str] | frozenset[str] = frozenset()
+) -> bool:
     """A written page whose composition is of an earlier round, when the
-    owner lets it be written again; one without any, always."""
+    owner lets it be written again; one without any, always; one whose
+    analysis the owner asked for anew (``again``), always."""
     if note is None or "teaser" not in note.data:
+        return False
+    if note.item_id in again:
+        return True
+    if note.data.get(CHOSEN) and page_views(note.data):
         return False
     if note.data.get(CHECK_ROUND, 1) >= ROUND:
         return False
@@ -354,17 +394,76 @@ class ComposeJob(NoteJob):
         """The pages wanting their composition looked up afresh next time."""
         self._pages = (0.0, set())
 
+    def asked_again(self) -> set[str]:
+        """The works whose analysis the owner asked for anew, not made yet."""
+        found = self.library.get_state(AGAIN_KEY, [])
+        return {str(i) for i in found} if isinstance(found, list) else set()
+
+    def _pages_of(self, item_id: str) -> list[Note]:
+        """The work's written pages (its study, its day's page)."""
+        found = (self.library.note(item_id, kind) for kind in PAGES)
+        return [page for page in found if page is not None and "teaser" in page.data]
+
+    def again(self, item: Item) -> bool:
+        """The owner's "Wykonaj ponowną analizę": the work's analysis asked
+        anew, the one its pages show kept as their first version. False
+        when the work has no written page."""
+        pages = self._pages_of(item.id)
+        if not pages:
+            return False
+        old = self.library.note(item.id, KIND)
+        for page in pages:
+            if VERSIONS in page.data or not page_views(page.data):
+                continue
+            # The analysis of its own question, when it was asked apart.
+            own = old is not None and "composition" in old.data
+            made = old.created_at if own and old is not None else page.created_at
+            model = old.model if own and old is not None else page.model
+            data = {**page.data, VERSIONS: [version(page.data, made, model)], SHOWN: 0}
+            self.library.save_note(page.model_copy(update={"data": data}))
+        self.library.set_state(AGAIN_KEY, sorted(self.asked_again() | {item.id}))
+        self.library.delete_notes(KIND, item.id)
+        self.forget()
+        return True
+
+    def pending(self, item_id: str) -> bool:
+        """The owner asked for the work's analysis anew and it is on its way
+        (not when the answer came back without a take)."""
+        return item_id in self.asked_again() and not failed(self.library.note(item_id, KIND))
+
+    def choose(self, item: Item, n: int) -> bool:
+        """The owner's pick among the analyses the work's pages have had:
+        the one they show from now on. False when there is no such one."""
+        chosen = False
+        for page in self._pages_of(item.id):
+            kept = versions(page.data)
+            if not 0 <= n < len(kept):
+                continue
+            pick = kept[n]
+            data = {
+                **page.data,
+                "composition": pick["composition"],
+                CHECKED: pick.get(CHECKED, []),
+                CHECK_ROUND: pick.get(CHECK_ROUND, ROUND),
+                SHOWN: n,
+                CHOSEN: True,
+            }
+            self.library.save_note(page.model_copy(update={"data": data}))
+            chosen = True
+        self.forget()
+        return chosen
+
     def waiting(self) -> set[str]:
         """The works with a page wanting its composition (looked up again
         every :data:`PAGES_SECONDS`: the background asks about every item)."""
         when, ids = self._pages
         if time.monotonic() - when > PAGES_SECONDS:
-            rework = self.rework()
+            rework, again = self.rework(), self.asked_again()
             ids = {
                 item_id
                 for kind in PAGES
                 for item_id, note in self.library.notes(kind).items()
-                if wants(note, rework)
+                if wants(note, rework, again)
             } - self.failed()
             self._pages = (time.monotonic(), ids)
         return ids
@@ -392,14 +491,23 @@ class ComposeJob(NoteJob):
 
     def apply(self, item: Item, note: Note) -> None:
         """Puts the take in each of the work's pages wanting it, keeping the
-        one it had (:data:`BEFORE`)."""
+        one it had (:data:`BEFORE`; among its :data:`VERSIONS` once the
+        owner asked for one anew, the new one shown)."""
+        again = self.asked_again()
         if "composition" in note.data:
             rework = self.rework()
             for kind in PAGES:
                 page = self.library.note(item.id, kind)
-                if page is None or not wants(page, rework):
+                if page is None or not wants(page, rework, again):
                     continue
                 data = {**page.data, **note.data}
-                data.setdefault(BEFORE, page.data.get("composition"))
+                if VERSIONS in page.data or item.id in again:
+                    kept = [*versions(page.data), version(note.data, note.created_at, note.model)]
+                    data.update({VERSIONS: kept, SHOWN: len(kept) - 1})
+                    data.pop(CHOSEN, None)
+                else:
+                    data.setdefault(BEFORE, page.data.get("composition"))
                 self.library.save_note(page.model_copy(update={"data": data}))
+        if item.id in again:  # made, or came back without a take: asked no more
+            self.library.set_state(AGAIN_KEY, sorted(again - {item.id}))
         self.forget()

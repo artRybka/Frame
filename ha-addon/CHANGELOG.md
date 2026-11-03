@@ -1,15 +1,36 @@
 # Changelog
 
-## 1.88.1
+## 1.90.1
 
 - „Rozmiar obrazu”: małe dzieła są przybliżone. Dłuższy bok dzieła ma co
   najmniej około 1/3 szerokości ekranu (o ile mieści się obok mężczyzna);
   mężczyzna widoczny jest wtedy od głowy co najmniej do pasa, ucięty równo
-  na krótkiej kresce ołówkiem, która zanika na końcach. Przy dziełach od około metra widać go
-  całego, jak dotąd. Pod rysunkiem nie ma już pustego miejsca.
+  na krótkiej kresce ołówkiem, która zanika na końcach. Przy dziełach od
+  około metra widać go całego, jak dotąd. Pod rysunkiem nie ma już pustego miejsca.
 - Gdy wymiary dzieła przychodzą dopiero po otwarciu studium (raz, przy
   dziełach ze studium sprzed szukania wymiarów), sekcja pojawia się
   płynnie zamiast wskakiwać.
+
+## 1.90.0
+
+- Studium dzieła, tylko dla właściciela: przytrzymanie nagłówka „Analiza
+  kompozycji” otwiera menu z „Wykonaj ponowną analizę”. Claude analizuje
+  kompozycję od nowa (to trwa kilka minut, pod nagłówkiem widać, że
+  pracuje), a nowa analiza zastępuje pokazywaną. Poprzednie zostają: gdy
+  jest ich kilka, to samo menu pozwala wybrać, którą pokazywać. Domownicy
+  widzą zwykły nagłówek.
+
+## 1.89.0
+
+- Tailscale wbudowany w aplikację: spoza domu Frame łączy się z serwerem
+  własnym połączeniem Tailscale, bez aplikacji Tailscale i bez VPN na
+  iPhonie, więc działa obok innego VPN. Klucz Tailscale wkleja się raz
+  w Konfiguracja → Dostęp spoza domu („Zapisz i połącz”); serwer oddaje
+  go każdemu telefonowi domu, także domownikom bez konta Tailscale.
+  Tam też stan połączenia, przełącznik „Tailscale w aplikacji”,
+  „Połącz ponownie” i dziennik. Przez Tailscale idzie tylko adres
+  „Spoza domu”, gdy to adres Tailscale. Instrukcja (tag i klucz
+  w panelu Tailscale): deploy/synology/README.md.
 
 ## 1.88.0
 

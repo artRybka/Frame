@@ -49,20 +49,39 @@ Uwagi:
 ## Dostęp spoza domu (Tailscale)
 
 Serwer nie powinien być wystawiony do internetu. Aplikacja łączy się z nim
-spoza domu przez Tailscale:
+spoza domu przez Tailscale, które ma wbudowane: na iPhonie nie trzeba
+aplikacji Tailscale ani VPN (D16).
 
 1. Na NAS-ie zainstaluj pakiet *Tailscale* z Centrum pakietów i zaloguj go
    na swoje konto. Kontener działa w sieci hosta, więc serwer od razu
    odpowiada pod adresem Tailscale NAS-a (`100.x.y.z`, widocznym w panelu
    Tailscale) na porcie 8099.
-2. Na iPhonie zainstaluj aplikację Tailscale na to samo konto.
-3. W aplikacji Frame: *Ramka → trybik → Serwer ramki*, w polu *Spoza domu*
-   wpisz `http://100.x.y.z:8099` (albo nazwę MagicDNS, np.
-   `http://nas.tailXXXX.ts.net:8099`) i stuknij *Połącz*.
+2. W panelu Tailscale, w *Access controls*, dodaj tag dla telefonów i pozwól
+   im tylko na serwer ramki, np.:
 
-Aplikacja sama wybiera adres, który odpowiada; domowy ma pierwszeństwo. Pod
-przyciskiem *Połącz* widać, którędy jest połączona („w domu” albo „spoza
-domu”). Poza domem Tailscale na iPhonie musi być włączony.
+   ```json
+   "tagOwners": { "tag:frame-app": ["autogroup:admin"] },
+   "grants": [
+     { "src": ["tag:frame-app"], "dst": ["<adres-NAS-a>"], "ip": ["tcp:8099"] }
+   ]
+   ```
+
+   (zostaw swoje dotychczasowe reguły; gdy tailnet używa domyślnej reguły
+   „wszyscy do wszystkiego”, telefony z tagiem i tak dojdą do NAS-a).
+3. W *Settings → Keys* utwórz klucz: *Reusable*, *Tags* `tag:frame-app`.
+   Węzły z tagiem nie wygasają; sam klucz może wygasnąć (do 90 dni), wtedy
+   tylko nowy telefon potrzebuje nowego klucza.
+4. W aplikacji Frame: *Ramka → trybik → Serwer ramki*, w polu *Spoza domu*
+   wpisz `http://100.x.y.z:8099` (albo nazwę MagicDNS, np.
+   `http://nas.tailXXXX.ts.net:8099`) i stuknij *Połącz*. Niżej, w *Dostęp
+   spoza domu*, wklej klucz i stuknij *Zapisz i połącz*. Telefon pojawi się
+   w panelu Tailscale jako `frame-<imię>`.
+
+Klucz trzyma serwer i oddaje go każdemu telefonowi domu, także domownikom,
+więc nie potrzebują konta Tailscale. Aplikacja sama wybiera adres, który
+odpowiada; domowy ma pierwszeństwo. Pod przyciskiem *Połącz* widać, którędy
+jest połączona („w domu” albo „spoza domu”). Przełącznik *Tailscale
+w aplikacji* wyłączony: jak dawniej, przez aplikację Tailscale na iPhonie.
 
 ## Powiadomienia na telefonie
 

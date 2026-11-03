@@ -121,6 +121,14 @@ protocol FrameBackend: Sendable {
     func studies() async throws -> [StudyBrief]
     /// Asks Claude for the work's study (`again`: a new one, though there is one).
     func prepareStudy(itemID: String, again: Bool) async throws -> StudyView
+    /// The owner's "Wykonaj ponowną analizę": the work's analysis of the
+    /// composition asked for anew (minutes); the one its page shows is kept
+    /// among its versions. 409: no key, or no page yet.
+    func compositionAgain(itemID: String) async throws -> CompositionAgain
+    /// Whether the analysis asked for anew is still being made.
+    func compositionState(itemID: String) async throws -> CompositionAgain
+    /// The owner's pick among the page's analyses (`DailyWork.compositionVersions`).
+    func pickComposition(itemID: String, shown: Int) async throws -> CompositionAgain
     /// The push token of the Lock Screen card following the work's study:
     /// the server pushes each step to it.
     func followStudy(itemID: String, activityToken: String, sandbox: Bool) async throws
@@ -206,6 +214,11 @@ protocol FrameBackend: Sendable {
     func sourceKeys() async throws -> [SourceKey]
     func saveSourceKey(_ source: String, key: String) async throws -> [SourceKey]
     func deleteSourceKey(_ source: String) async throws -> [SourceKey]
+    /// The household's Tailscale key for the app's own Tailscale node: every
+    /// phone reads it, the owner sets it.
+    func tailnet() async throws -> TailnetKey
+    func saveTailnetKey(_ key: String) async throws -> TailnetKey
+    func deleteTailnetKey() async throws -> TailnetKey
     func keywordsEstimate() async throws -> AiEstimate
     /// Keywords for the whole library through Anthropic's batches (within a day).
     func describeLibrary() async throws -> AiStarted

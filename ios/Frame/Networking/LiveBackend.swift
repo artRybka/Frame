@@ -293,6 +293,20 @@ struct LiveBackend: FrameBackend {
         return try await perform(request("/api/study/\(escape(itemID))", method: "POST", query: query))
     }
 
+    func compositionAgain(itemID: String) async throws -> CompositionAgain {
+        try await send("/api/study/\(escape(itemID))/composition", method: "POST")
+    }
+
+    func compositionState(itemID: String) async throws -> CompositionAgain {
+        try await get("/api/study/\(escape(itemID))/composition")
+    }
+
+    func pickComposition(itemID: String, shown: Int) async throws -> CompositionAgain {
+        try await send(
+            "/api/study/\(escape(itemID))/composition", method: "PUT", body: CompositionPick(shown: shown)
+        )
+    }
+
     func followStudy(itemID: String, activityToken: String, sandbox: Bool) async throws {
         try await send(
             "/api/study/\(escape(itemID))/activity", method: "PUT",
@@ -640,6 +654,14 @@ struct LiveBackend: FrameBackend {
         try await send("/api/sources/keys/\(source)", method: "DELETE")
     }
 
+    func tailnet() async throws -> TailnetKey { try await get("/api/tailnet") }
+
+    func saveTailnetKey(_ key: String) async throws -> TailnetKey {
+        try await send("/api/tailnet/key", method: "PUT", body: AiKeyUpdate(key: key))
+    }
+
+    func deleteTailnetKey() async throws -> TailnetKey { try await send("/api/tailnet/key", method: "DELETE") }
+
     func keywordsEstimate() async throws -> AiEstimate { try await get("/api/ai/keywords/estimate") }
 
     func describeLibrary() async throws -> AiStarted {
@@ -787,13 +809,15 @@ struct LiveBackend: FrameBackend {
     private func load(_ req: URLRequest) async throws -> (Data, URLResponse) {
         let route = self.route
         return try await again(req) { req in
-            try await reach(req) { try await route.follow($0) { try await URLSession.shared.data(for: $0) } }
+            try await reach(req) { try await route.follow($0) { try await Tailnet.shared.data(for: $0) } }
         }
     }
 
     /// Like `load`, for a response read as it comes.
     private func stream(_ req: URLRequest) async throws -> (URLSession.AsyncBytes, URLResponse) {
-        try await again(req) { try await reach($0) { try await URLSession.shared.bytes(for: $0) } }
+        try await again(req) {
+            try await reach($0) { request in try await Tailnet.shared.send(request) { try await $0.bytes(for: request) } }
+        }
     }
 
     private func again<T>(_ req: URLRequest, _ send: (URLRequest) async throws -> T) async throws -> T {
