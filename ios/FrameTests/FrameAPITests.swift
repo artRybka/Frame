@@ -112,6 +112,11 @@ final class FrameAPITests: XCTestCase {
          ],
          "artist": "Katsushika Hokusai, malarz i rysownik z Edo, zmieniał imię ponad trzydzieści razy.",
          "facts": [],
+         "composition_versions": [
+          {"made": "2026-11-02T08:00:00+00:00", "shown": false},
+          {"made": "2026-11-03T15:10:00+00:00", "shown": true}
+         ],
+         "composition_pending": false,
          "composition": {
           "views": [
            {
@@ -286,6 +291,9 @@ final class FrameAPITests: XCTestCase {
         XCTAssertEqual(work.artist?.hasPrefix("Katsushika Hokusai"), true)
         XCTAssertEqual(work.composition?.points.first?.title, "Fudżi")
         XCTAssertEqual(work.composition?.lines.first?.points.count, 2)
+        XCTAssertEqual(work.compositionVersions?.map(\.shown), [false, true])
+        XCTAssertNotNil(When.date(work.compositionVersions?.last?.made))
+        XCTAssertEqual(work.compositionPending, false)
         XCTAssertEqual(work.details?.first?.title, "Pazury piany")
         XCTAssertEqual(work.details?.first?.image, "/api/daily/detail?day=2026-10-30&n=0&v=ab12")
         XCTAssertEqual(work.similar.first?.why, "ta sama seria")

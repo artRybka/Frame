@@ -487,3 +487,107 @@ def test_the_owner_lets_pages_be_written_again(tmp_path: Any) -> None:
         shown = client.put("/api/ai/composition", json={"rework": ["met:1"]}).json()
         assert shown["rework"] == ["met:1"] and shown["waiting"] == ["met:1"]
         assert client.put("/api/ai/composition", json={"rework": True}).json()["rework"] is True
+
+
+def _made_again(service: FrameService, item_id: str = "met:1") -> None:
+    """The analysis asked for anew, as the worker makes it (the check refused)."""
+    job = service.ai.jobs[KIND]
+    assert isinstance(job, ComposeJob)
+    item = service.library.get(item_id)
+    assert item is not None and job.wanted(item)
+    params = job.params(item)
+    answer = job.revise(
+        item,
+        params,
+        Answer(pixels(ANALYSIS), False, 0.2, "o2"),
+        lambda p: Answer(None, True, 0, "o"),
+    )
+    note = Note(
+        item_id=item_id,
+        kind=KIND,
+        model="o2",
+        prompt_version=job.prompt_version,
+        source_hash=job.source_hash(item),
+        data=answer.data or {},
+    )
+    job.apply(item, service.library.save_note(note))
+
+
+def test_the_owner_asks_for_the_analysis_anew_and_picks_one(tmp_path: Any) -> None:
+    from fastapi.testclient import TestClient
+    from test_ai import GOOD_KEY
+    from test_daily import _app
+
+    app = _app(tmp_path)
+    svc: FrameService = app.state.service
+    with TestClient(app) as client:
+        _catalogue(svc)
+        assert client.post("/api/study/met:1/composition").status_code == 409  # no key
+        svc.ai_config.set_key(GOOD_KEY)
+        assert client.post("/api/study/met:1/composition").status_code == 409  # no page
+        _old_page(svc, **{CHECK_ROUND: ROUND})
+        job = svc.ai.jobs[KIND]
+        assert isinstance(job, ComposeJob)
+        item = svc.library.get("met:1")
+        assert item is not None and not job.wanted(item)  # up to date: nothing by itself
+        first = client.get("/api/study/met:1").json()["work"]
+        assert first["composition_versions"] == [] and first["composition_pending"] is False
+
+        state = client.post("/api/study/met:1/composition").json()
+        assert state == {"pending": True, "versions": 1}  # the one shown kept first
+        work = client.get("/api/study/met:1").json()["work"]
+        assert work["composition_pending"] is True
+        assert [v["shown"] for v in work["composition_versions"]] == [True]
+        assert work["composition"] == first["composition"]  # shown until the new one comes
+
+        _made_again(svc)
+        assert client.get("/api/study/met:1/composition").json() == {
+            "pending": False,
+            "versions": 2,
+        }
+        work = client.get("/api/study/met:1").json()["work"]
+        assert [v["shown"] for v in work["composition_versions"]] == [False, True]
+        assert work["composition"]["views"][0]["marks"][0]["shape"] == "rhythm"
+        assert not job.wanted(item)  # made once
+
+        # And once more: three kept.
+        client.post("/api/study/met:1/composition")
+        _made_again(svc)
+        page = svc.library.note("met:1", STUDY)
+        assert page is not None and len(page.data["composition_versions"]) == 3
+
+        # The owner goes back to the first: shown, and left be by a rework of all.
+        assert client.put("/api/study/met:1/composition", json={"shown": 0}).status_code == 200
+        work = client.get("/api/study/met:1").json()["work"]
+        assert [v["shown"] for v in work["composition_versions"]] == [True, False, False]
+        assert work["composition"] == first["composition"]
+        job.let(True)
+        assert not job.wanted(item)
+        assert client.put("/api/study/met:1/composition", json={"shown": 7}).status_code == 404
+
+
+def test_an_analysis_asked_anew_that_gives_no_take(service: FrameService) -> None:
+    _catalogue(service)
+    job = service.ai.jobs[KIND]
+    assert isinstance(job, ComposeJob)
+    item = service.library.get("met:1")
+    assert item is not None
+    _old_page(service, **{CHECK_ROUND: ROUND})
+    assert job.again(item) and job.pending("met:1")
+    params = job.params(item)
+    empty = {"composition": {"views": [{"title": "Analiza kompozycji", "marks": []}]}}
+    answer = job.revise(item, params, Answer(empty, False, 0.2, "o"), lambda p: p)
+    note = Note(
+        item_id="met:1",
+        kind=KIND,
+        model="o",
+        prompt_version=job.prompt_version,
+        source_hash=job.source_hash(item),
+        data=answer.data or {},
+    )
+    job.apply(item, service.library.save_note(note))
+    # No longer on its way, the page as it was, and not asked again by itself.
+    assert not job.pending("met:1") and not job.wanted(item)
+    page = service.library.note("met:1", STUDY)
+    assert page is not None and len(page.data["composition_versions"]) == 1
+    assert job.again(item) and job.wanted(item)  # asked anew: once more

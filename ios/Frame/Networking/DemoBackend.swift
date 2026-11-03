@@ -37,6 +37,10 @@ actor DemoBackend: FrameBackend {
     private var originalsLimitMb: Int?
     /// Studies asked for, and when: "written" a few seconds later.
     private var askedStudies: [String: Date] = [:]
+    /// The analyses of the composition asked for anew ("Wykonaj ponowną
+    /// analizę"), by work: when each was made, the one shown, and when the
+    /// one on its way is "made".
+    private var analyses: [String: (made: [String], shown: Int, readyAt: Date?)] = [:]
     private var sourceKeyValues = [
         SourceKey(
             source: "si", name: "Smithsonian",
@@ -868,6 +872,16 @@ actor DemoBackend: FrameBackend {
             .filter { $0.artist != wave.artist && !$0.artist.isEmpty && $0.id != wave.id }
             .prefix(10)
             .map { RemoteItem(item: $0, inLibrary: true) }
+        settleAnalysis(wave.id)
+        // The owner may ask for the analysis anew: none asked for yet is an empty list.
+        work.compositionVersions = []
+        work.compositionPending = false
+        if let kept = analyses[wave.id] {
+            work.compositionVersions = kept.made.enumerated().map {
+                DailyWork.CompositionVersion(made: $0.element, shown: $0.offset == kept.shown)
+            }
+            work.compositionPending = kept.readyAt != nil
+        }
         // CI screenshots: "-realSize 210x163" draws a big work's scale.
         let asked = (UserDefaults.standard.string(forKey: "realSize") ?? "").split(separator: "x").compactMap { Double($0) }
         work.size = asked.count == 2 ? .init(height: asked[0], width: asked[1]) : .init(height: 25.7, width: 37.9)
@@ -943,6 +957,40 @@ actor DemoBackend: FrameBackend {
     func prepareStudy(itemID: String, again: Bool) async throws -> StudyView {
         if again || askedStudies[itemID] == nil { askedStudies[itemID] = Date() }
         return try await study(itemID: itemID, wait: 0, lists: true)
+    }
+
+    /// The analysis on its way, made once its time has come.
+    private func settleAnalysis(_ itemID: String) {
+        guard var kept = analyses[itemID], let ready = kept.readyAt, ready <= Date() else { return }
+        kept.made.append(ISO8601DateFormatter().string(from: ready))
+        kept.shown = kept.made.count - 1
+        kept.readyAt = nil
+        analyses[itemID] = kept
+    }
+
+    private func analysisState(_ itemID: String) -> CompositionAgain {
+        settleAnalysis(itemID)
+        let kept = analyses[itemID]
+        return CompositionAgain(pending: kept?.readyAt != nil, versions: kept?.made.count ?? 0)
+    }
+
+    /// The demo's analysis "made" anew a few seconds later (the same one).
+    func compositionAgain(itemID: String) async throws -> CompositionAgain {
+        var kept = analyses[itemID] ?? (
+            made: [ISO8601DateFormatter().string(from: .now.addingTimeInterval(-86400))], shown: 0, readyAt: nil
+        )
+        kept.readyAt = .now.addingTimeInterval(8)
+        analyses[itemID] = kept
+        return analysisState(itemID)
+    }
+
+    func compositionState(itemID: String) async throws -> CompositionAgain { analysisState(itemID) }
+
+    func pickComposition(itemID: String, shown: Int) async throws -> CompositionAgain {
+        guard var kept = analyses[itemID], kept.made.indices.contains(shown) else { throw BackendError.notFound }
+        kept.shown = shown
+        analyses[itemID] = kept
+        return analysisState(itemID)
     }
 
     /// The demo has no server to push the study's steps: the app moves

@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.88.0
+
+- Studium dzieła, tylko dla właściciela: przytrzymanie nagłówka „Analiza
+  kompozycji” otwiera menu z „Wykonaj ponowną analizę”. Claude analizuje
+  kompozycję od nowa (to trwa kilka minut, pod nagłówkiem widać, że
+  pracuje), a nowa analiza zastępuje pokazywaną. Poprzednie zostają: gdy
+  jest ich kilka, to samo menu pozwala wybrać, którą pokazywać. Domownicy
+  widzą zwykły nagłówek.
+
 ## 1.87.0
 
 - „Rozmiar obrazu”: obok dzieła dla skali zawsze stoi ciemna sylwetka
