@@ -1,19 +1,39 @@
 import SwiftUI
 
 /// "Rozmiar obrazu" (Mateusz 2026-11-02/03): the work at its real size on
-/// the left, at the column's edge, and a sheet of A4 paper on its right for
-/// scale, "A4" printed on it in light grey; one scale, centres level. The
-/// work's height and width are pencilled on the drawing; nothing else: no
-/// person, no sentence, no scale.
+/// the left, at the column's edge, and beside it for scale always the same
+/// man, the dark silhouette Mateusz chose, 180 cm, his height pencilled
+/// beside him. One scale. A smaller work hangs as in a museum: his eye line
+/// (168 cm) crosses it two thirds of the way up; a work that would then
+/// hang lower than 60 cm above the floor stands on the floor, the line of
+/// his right foot. No floor line, no eye line: the work, the man and the
+/// measures only.
 struct RealSizeDrawing: View {
     let work: RemoteItem
     /// Centimetres.
     let height: Double
     let width: Double
 
-    /// A sheet of A4, upright, in centimetres.
-    static let sheetWidth = 21.0
-    static let sheetHeight = 29.7
+    /// The silhouette (the asset is cropped to its outline, 1453.49 units
+    /// high): 180 cm from the top of his head to the sole of his right foot,
+    /// the one further back, 1421.2 units down (Mateusz 2026-11-03); his left
+    /// foot, nearer, reaches a little below the floor he stands on.
+    static let manUnits = 1421.2
+    static let manHeight = 180.0
+    static let manWidth = 180 * 427.79 / manUnits
+    /// The asset's whole height over the 180 cm he is measured to.
+    static let manOverhang = 1453.49 / manUnits
+    /// His eyes, above the floor.
+    static let eyeHeight = 168.0
+    /// How high above the floor a hanging work's bottom edge must stay.
+    static let clearance = 60.0
+
+    /// How high above the floor the work's bottom edge is: two thirds of it
+    /// under his eye line, else on the floor.
+    static func lift(for height: Double) -> Double {
+        let hung = eyeHeight - height * 2 / 3
+        return hung >= clearance ? hung : 0
+    }
 
     private static let drawingHeight: CGFloat = 230
     private static let top: CGFloat = 10
@@ -25,24 +45,29 @@ struct RealSizeDrawing: View {
         }
         .frame(height: Self.drawingHeight)
         .accessibilityElement()
-        .accessibilityLabel(Text("Rozmiar obrazu: \(Self.length(height)) wysokości, \(Self.length(width)) szerokości, obok kartka A4"))
+        .accessibilityLabel(
+            Text(
+                "Rozmiar obrazu: \(Self.length(height)) wysokości, \(Self.length(width)) szerokości, obok sylwetka człowieka, 180 cm"
+            )
+        )
     }
 
     private func drawing(width column: CGFloat) -> some View {
-        let sheetW = CGFloat(Self.sheetWidth), sheetH = CGFloat(Self.sheetHeight)
         let h = CGFloat(height), w = CGFloat(width)
-        let gap: CGFloat = h >= 100 ? 66 : 54
+        let lift = CGFloat(Self.lift(for: height))
+        let manH = CGFloat(Self.manHeight), manW = CGFloat(Self.manWidth)
+        let tallest = max(manH, lift + h)
+        let gap: CGFloat = 66
+        // His pencilled height needs room on his right.
+        let labelRoom: CGFloat = 56
         let room = Self.drawingHeight - Self.top - Self.bottom
-        let scale = min(room / max(sheetH, h), (column - gap) / (sheetW + w))
-        let middle = Self.top + room / 2
-        let picture = CGRect(x: 0, y: middle - h * scale / 2, width: w * scale, height: h * scale)
-        let sheet = CGRect(
-            x: picture.maxX + gap, y: middle - sheetH * scale / 2,
-            width: sheetW * scale, height: sheetH * scale
-        )
-        let pencil = Theme.ink.opacity(0.8)
+        let scale = min(room / tallest, (column - gap - labelRoom) / (w + manW))
+        let floor = Self.top + tallest * scale
+        let picture = CGRect(x: 0, y: floor - (lift + h) * scale, width: w * scale, height: h * scale)
+        let man = CGRect(x: picture.maxX + gap, y: floor - manH * scale, width: manW * scale, height: manH * scale)
         let heightX = picture.maxX + 10
         let widthY = picture.maxY + 9
+        let pencil = Theme.ink.opacity(0.8)
         return ZStack(alignment: .topLeading) {
             // Holds the drawing's corner at (0, 0) for the parts placed by offset.
             Color.clear.frame(width: column, height: Self.drawingHeight)
@@ -54,23 +79,20 @@ struct RealSizeDrawing: View {
             )
             .frame(width: picture.width, height: picture.height)
             .clipped()
-            .overlay(Rectangle().strokeBorder(.black.opacity(0.35), lineWidth: 0.8))
             .shadow(color: .black.opacity(0.22), radius: 5, y: 5)
             .offset(x: picture.minX, y: picture.minY)
 
-            Rectangle()
-                .fill(Self.paper)
-                .overlay(Rectangle().strokeBorder(Theme.mouldingEdge, lineWidth: 0.6))
-                .overlay {
-                    if sheet.width >= 14 {
-                        Text("A4")
-                            .font(.system(size: sheet.width * 0.3, weight: .semibold))
-                            .foregroundStyle(Self.print)
-                    }
-                }
-                .shadow(color: .black.opacity(0.12), radius: 3, y: 2)
-                .frame(width: sheet.width, height: sheet.height)
-                .offset(x: sheet.minX, y: sheet.minY)
+            Image("ScaleFigure")
+                .renderingMode(.template)
+                .resizable()
+                .foregroundStyle(Theme.ink.opacity(0.88))
+                .frame(width: man.width, height: man.height * Self.manOverhang)
+                .offset(x: man.minX, y: man.minY)
+            Dimension(from: CGPoint(x: man.maxX + 8, y: man.minY), to: CGPoint(x: man.maxX + 8, y: man.maxY))
+                .stroke(pencil, style: StrokeStyle(lineWidth: 1.2, lineCap: .round))
+            pencilled("180 cm")
+                .alignmentGuide(.leading) { _ in -(man.maxX + 14) }
+                .alignmentGuide(.top) { d in -(man.midY - d.height / 2) }
 
             Dimension(from: CGPoint(x: heightX, y: picture.minY), to: CGPoint(x: heightX, y: picture.maxY))
                 .stroke(pencil, style: StrokeStyle(lineWidth: 1.2, lineCap: .round))
@@ -92,10 +114,6 @@ struct RealSizeDrawing: View {
             .foregroundStyle(Theme.ink)
             .fixedSize()
     }
-
-    /// White paper, a little dimmed in the dark style, and its light grey print.
-    private static let paper = Color(light: 0xFFFFFF, dark: 0xE9E6E0)
-    private static let print = Color(light: 0xD6D2CB, dark: 0xBDB8AF)
 
     /// "45,7".
     static func number(_ value: Double) -> String {

@@ -26,6 +26,7 @@ from ..ai.daily import (
     Pigment,
     Spot,
     short,
+    vary_hedges,
 )
 from ..ai.pl_text import description
 from ..later import entry_key
@@ -227,7 +228,9 @@ def page(
     by_artist = svc.artists.works(item, shown) if lists else []
     looking = lists and svc.artists.look_soon(item, len(by_artist))
     shown |= {w.id for w in by_artist}
-    size = svc.sizes.size(item) if lists else None
+    # Kept with the text too (a note's read), so the drawing does not go
+    # and come back while the lists are on their way.
+    size = svc.sizes.size(item)
     looking = looking or (lists and size is None and svc.sizes.look_soon(item))
     same_time = svc.daily.same_time(item, shown) if lists else []
     born, died = (
@@ -262,7 +265,7 @@ def page(
         died=died,
         milestones=essay.milestones if essay else [],
         events=essay.events if essay else [],
-        pigments=essay.pigments if essay else [],
+        pigments=vary_hedges(essay.pigments) if essay else [],
         size=size,
         legacy_pending=bool(lists and essay and svc.later.look_soon(item, essay.legacy)) or looking,
         sources=essay.sources if essay else [],

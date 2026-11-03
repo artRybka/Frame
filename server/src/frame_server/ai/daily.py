@@ -185,7 +185,9 @@ tempera, akwarela, gwasz, fresk, pastel); dla grafiki, rysunku, fotografii i rze
 Najpierw te, które wymienia opis muzeum, Wikipedia albo pewna wiedza o badaniach \
 konserwatorskich tego dzieła: "sure": true. Gdy źródła milczą, podaj farby, którymi ten malarz \
 albo malarze jego czasu, miejsca i techniki najpewniej uzyskiwali te kolory: "sure": false, a \
-"text" zaczyna się od „Najpewniej” albo „Prawdopodobnie”. Nigdy farby młodszej niż dzieło (np. \
+"text" zaczyna się od słowa niepewności, za każdym razem innego („Najpewniej”, \
+„Prawdopodobnie”, „Zapewne”, „Przypuszczalnie”), nigdy dwa razy tego samego. \
+Nigdy farby młodszej niż dzieło (np. \
 błękit pruski od 1706, biel cynkowa od 1834, błękit kobaltowy od 1802, ultramaryna syntetyczna \
 od 1828, żółcień kadmowa od ok. 1840, zieleń szmaragdowa (viridian) od 1838, biel tytanowa od \
 1921). Każda: "name" (polska nazwa, np. „ultramaryna naturalna”), "hex" (barwa samej farby, jak \
@@ -434,6 +436,32 @@ class Pigment(BaseModel):
     where: str = ""
     text: str = ""
     sure: bool = True
+
+
+#: The words a likely paint's line opens with, in turn (Mateusz 2026-11-03:
+#: not „Najpewniej” at every one).
+HEDGES = ("Najpewniej", "Prawdopodobnie", "Zapewne", "Przypuszczalnie", "Najprawdopodobniej")
+_HEDGE = re.compile(
+    r"^(?:" + "|".join(HEDGES) + r"|Raczej|Pewnie|Być może|Możliwe, że)\b[,:]?\s*", re.IGNORECASE
+)
+
+
+def vary_hedges(pigments: list[Pigment]) -> list[Pigment]:
+    """The paints with the likely ones' opening word taken in turn from
+    :data:`HEDGES`, so the lines don't all start alike; pages written
+    before the rule (or a model repeating itself) included. Copies; the
+    rest of each line as written."""
+    out: list[Pigment] = []
+    turn = 0
+    for pigment in pigments:
+        found = None if pigment.sure else _HEDGE.match(pigment.text)
+        if found is None:
+            out.append(pigment)
+            continue
+        rest = pigment.text[found.end() :]
+        out.append(pigment.model_copy(update={"text": f"{HEDGES[turn % len(HEDGES)]} {rest}"}))
+        turn += 1
+    return out
 
 
 class Essay(BaseModel):
