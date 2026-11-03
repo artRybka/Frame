@@ -271,7 +271,8 @@
    ],
    "color_tags": [
     "gray",
-    "monochrome"
+    "colorful",
+    "muted"
    ],
    "suitability": 0.575,
    "favorite": false,
@@ -351,7 +352,8 @@
    ],
    "color_tags": [
     "gray",
-    "monochrome"
+    "colorful",
+    "muted"
    ],
    "suitability": 0.685,
    "favorite": false,
@@ -434,6 +436,7 @@
    "color_tags": [
     "blue",
     "gray",
+    "colorful",
     "muted",
     "cool"
    ],
@@ -518,7 +521,8 @@
    ],
    "color_tags": [
     "gray",
-    "monochrome"
+    "colorful",
+    "muted"
    ],
    "suitability": 0.764,
    "favorite": false,
@@ -596,7 +600,8 @@
    ],
    "color_tags": [
     "gray",
-    "monochrome"
+    "colorful",
+    "muted"
    ],
    "suitability": 0.689,
    "favorite": true,
@@ -675,6 +680,7 @@
     "teal",
     "blue",
     "gray",
+    "colorful",
     "muted",
     "cool"
    ],
@@ -768,7 +774,8 @@
    ],
    "color_tags": [
     "gray",
-    "monochrome"
+    "colorful",
+    "muted"
    ],
    "suitability": 0.72,
    "favorite": false,
@@ -851,6 +858,7 @@
     "green",
     "brown",
     "gray",
+    "colorful",
     "muted",
     "warm"
    ],
@@ -939,7 +947,8 @@
    ],
    "color_tags": [
     "gray",
-    "monochrome"
+    "colorful",
+    "muted"
    ],
    "suitability": 0.731,
    "favorite": false,
@@ -1024,6 +1033,7 @@
    "color_tags": [
     "brown",
     "black",
+    "colorful",
     "muted",
     "warm",
     "dark"
@@ -1151,6 +1161,7 @@
    "color_tags": [
     "yellow",
     "green",
+    "colorful",
     "muted",
     "warm",
     "dark"
@@ -1362,6 +1373,7 @@
     "yellow",
     "gray",
     "white",
+    "colorful",
     "warm"
    ],
    "suitability": 0.873,
@@ -1562,6 +1574,7 @@
    "color_tags": [
     "gray",
     "white",
+    "colorful",
     "muted",
     "warm"
    ],
@@ -1637,6 +1650,7 @@
    "color_tags": [
     "gray",
     "white",
+    "colorful",
     "muted",
     "warm"
    ],
@@ -1831,6 +1845,7 @@
    "color_tags": [
     "yellow",
     "white",
+    "colorful",
     "warm"
    ],
    "suitability": 0.723,
@@ -1915,6 +1930,7 @@
    "color_tags": [
     "yellow",
     "gray",
+    "colorful",
     "muted",
     "warm"
    ],
@@ -1996,6 +2012,7 @@
     "orange",
     "blue",
     "gray",
+    "colorful",
     "muted",
     "cool"
    ],
@@ -2075,6 +2092,7 @@
    "color_tags": [
     "brown",
     "gray",
+    "colorful",
     "muted",
     "warm"
    ],
@@ -2963,6 +2981,7 @@
     "yellow",
     "brown",
     "gray",
+    "colorful",
     "warm"
    ],
    "suitability": 0.729,
@@ -3051,6 +3070,7 @@
    "color_tags": [
     "brown",
     "gray",
+    "colorful",
     "warm"
    ],
    "suitability": 0.809,

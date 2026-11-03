@@ -29,6 +29,48 @@ extension Names {
         NameStyle.shared.polishFirstNames ? PolishNames.artist(name) : name
     }
 
+    /// An artist's name to read as a heading ("O autorze"): first name
+    /// first ("Gogh, Vincent van" is "Vincent van Gogh", "Hokusai,
+    /// Katsushika" is "Katsushika Hokusai"), without what some catalogues
+    /// add after it ("Paul Cézanne, French", years in brackets), with
+    /// Polish first names when the switch is on. Turned only when the part
+    /// before the comma is a surname ("Workshop of Rubens, Peter Paul"
+    /// stays as it is).
+    @MainActor
+    static func person(_ name: String) -> String {
+        var shown = name.replacingOccurrences(of: #"\s*\([^)]*\d[^)]*\)"#, with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespaces)
+        let parts = shown.components(separatedBy: ", ").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        if parts.count >= 2 {
+            let (head, tail) = (parts[0], parts[1])
+            let headWords = head.split(separator: " ")
+            let tailWords = tail.split(separator: " ")
+            let surname = headWords.count == 1
+                || (headWords.count <= 3 && particles.contains(headWords[0].lowercased()))
+            if surname, parts.count == 2, tail.rangeOfCharacter(from: .decimalDigits) == nil, tailWords.count <= 3 {
+                shown = tail + " " + head
+            } else if headWords.count >= 2, tailWords.count == 1 || tail.rangeOfCharacter(from: .decimalDigits) != nil {
+                shown = head
+            }
+        }
+        return artist(shown)
+    }
+
+    /// Words a surname may start with ("van Gogh", "Le Nain", "de La Tour").
+    private static let particles: Set<String> = [
+        "van", "von", "de", "del", "della", "der", "di", "da", "du", "le", "la", "ter", "ten", "dos", "das",
+    ]
+
+    /// The years of the artist's life from the museum's line about them
+    /// ("Dutch, Delft 1632–1675 Delft", "Japanese, 1760–1849") or from
+    /// brackets in the name ("Kandinsky, Wassily (1866-1944)"): "1632–1675".
+    static func lifeYears(_ text: String) -> String? {
+        guard let match = text.firstMatch(of: #/(\d{3,4})\s*[-–—]\s*(\d{3,4})/#),
+              let born = Int(match.1), let died = Int(match.2), died > born, died - born < 110
+        else { return nil }
+        return "\(born)–\(died)"
+    }
+
     /// A theme's name, which for the artist of the week and "Bo lubisz" is
     /// an artist's.
     @MainActor

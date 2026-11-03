@@ -51,8 +51,13 @@ struct CompositionSketch: View {
         }
     }
 
+    /// The picture with the marks over it. The picture's great lines may
+    /// run on past its edges (Mateusz 2026-11-02): there they go on in the
+    /// page's ink over its background, room made above and below for them;
+    /// at the sides they run to the screen's edge.
     private func picture(_ labelled: [Labelled]) -> some View {
-        box
+        let room = overflow
+        return box
             .overlay {
                 ArtImage(
                     ref: item.inLibrary ? item.item.originalRef : item.thumb,
@@ -61,13 +66,22 @@ struct CompositionSketch: View {
                     maxPixel: 1600
                 )
             }
+            .clipShape(RoundedRectangle(cornerRadius: Self.corner, style: .continuous))
             .overlay {
-                Canvas { context, size in draw(in: &context, size: size, labelled: labelled) }
+                ZStack {
+                    Canvas { context, size in drawOutside(in: &context, size: size, room: room) }
+                    Canvas { context, size in
+                        let picture = Self.pictureRect(in: size, room: room)
+                        context.clip(to: Path(roundedRect: picture, cornerRadius: Self.corner, style: .continuous))
+                        context.translateBy(x: picture.minX, y: picture.minY)
+                        draw(in: &context, size: picture.size, labelled: labelled)
+                    }
                     .shadow(color: .black.opacity(0.3), radius: 1.5, y: 0.5)
-                    .opacity(bare ? 0 : 1)
-                    .allowsHitTesting(false)
+                }
+                .padding(EdgeInsets(top: -room.top, leading: -room.leading, bottom: -room.bottom, trailing: -room.trailing))
+                .opacity(bare ? 0 : 1)
+                .allowsHitTesting(false)
             }
-            .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
             .contentShape(Rectangle())
             .onTapGesture {
                 withAnimation(.easeInOut(duration: 0.25)) { bare.toggle() }
@@ -75,8 +89,12 @@ struct CompositionSketch: View {
             .sensoryFeedback(.selection, trigger: bare)
             .accessibilityAddTraits(.isButton)
             .accessibilityHint(bare ? "Pokazuje ślady analizy" : "Pokazuje sam obraz")
+            .padding(.top, room.top)
+            .padding(.bottom, room.bottom)
             .frame(maxWidth: .infinity)
     }
+
+    private static let corner: CGFloat = 3
 
     /// Each stroke twice: a wider paper-coloured one under it, then the
     /// pencil; the grid fainter, the numbers on paper discs (`Pencil.badge`).
@@ -97,6 +115,38 @@ struct CompositionSketch: View {
         }
         for entry in labelled {
             Pencil.badge(entry.number, at: Pencil.numberSpot(for: entry.mark, in: size), in: &context)
+        }
+    }
+
+    /// How far the marks run past the picture's edges, in points: nothing
+    /// before the picture's size is known.
+    private var overflow: EdgeInsets {
+        guard let width, width > 0, aspect > 0 else { return EdgeInsets() }
+        return Pencil.overflow(of: take.marks, in: CGSize(width: width, height: width / aspect))
+    }
+
+    /// The picture's place in a canvas grown by `room` on each side.
+    private static func pictureRect(in size: CGSize, room: EdgeInsets) -> CGRect {
+        CGRect(
+            x: room.leading, y: room.top,
+            width: max(size.width - room.leading - room.trailing, 1),
+            height: max(size.height - room.top - room.bottom, 1)
+        )
+    }
+
+    /// The marks' parts beyond the picture: plain strokes in the page's ink
+    /// (dark on the light page, light on the dark one), no paper edge.
+    private func drawOutside(in context: inout GraphicsContext, size: CGSize, room: EdgeInsets) {
+        guard room.top + room.bottom + room.leading + room.trailing > 0 else { return }
+        let picture = Self.pictureRect(in: size, room: room)
+        var outside = Path(CGRect(origin: .zero, size: size))
+        outside.addRoundedRect(in: picture, cornerSize: CGSize(width: Self.corner, height: Self.corner), style: .continuous)
+        context.clip(to: outside, style: FillStyle(eoFill: true))
+        context.translateBy(x: picture.minX, y: picture.minY)
+        for (index, mark) in take.marks.enumerated() {
+            for path in Pencil.paths(for: mark, in: picture.size, seed: index * 7 + 1) {
+                context.fill(path, with: .color(Theme.ink.opacity(0.85)))
+            }
         }
     }
 
@@ -299,6 +349,28 @@ enum Pencil {
             return points.count >= 2
                 ? corners(points).enumerated().map { stroke($1, width: 2.2, seed: seed + $0) } : []
         }
+    }
+
+    /// How far the marks drawn in a picture of `size` run past its edges,
+    /// in points: the picture's great lines (a triangle's apex up in the
+    /// sky, a vanishing point above it) reach at most half a side out, as
+    /// the server lets them (`ai/daily.py` REACH).
+    static func overflow(of marks: [DailyWork.Mark], in size: CGSize) -> EdgeInsets {
+        var bounds = CGRect(origin: .zero, size: size)
+        for (index, mark) in marks.enumerated() {
+            for path in paths(for: mark, in: size, seed: index * 7 + 1) where !path.isEmpty {
+                bounds = bounds.union(path.boundingRect)
+            }
+        }
+        func out(_ beyond: CGFloat, _ side: CGFloat) -> CGFloat {
+            beyond > 0.5 ? min(beyond + 2, side * 0.5 + 4).rounded(.up) : 0
+        }
+        return EdgeInsets(
+            top: out(-bounds.minY, size.height),
+            leading: out(-bounds.minX, size.width),
+            bottom: out(bounds.maxY - size.height, size.height),
+            trailing: out(bounds.maxX - size.width, size.width)
+        )
     }
 
     /// Where a mark's number goes: beside a loop's upper right, inside a

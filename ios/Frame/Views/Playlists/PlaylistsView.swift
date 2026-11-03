@@ -639,7 +639,7 @@ struct RulesSummary: View {
             ForEach(rules.artists, id: \.self) { TagLabel(text: Names.artist($0)) }
             ForEach(rules.styles, id: \.self) { TagLabel(text: $0) }
             ForEach(rules.subjects, id: \.self) { TagLabel(text: "#\($0)") }
-            ForEach(rules.colors, id: \.self) { TagLabel(text: ColorTag.name($0), swatch: ColorTag.color($0)) }
+            ForEach(rules.colors, id: \.self) { TagLabel(text: ColorTag.name($0), colorTag: $0) }
             if !rules.query.isEmpty { TagLabel(text: "„\(rules.query)”") }
             if let from = rules.yearFrom { TagLabel(text: "od \(String(from))") }
             if let to = rules.yearTo { TagLabel(text: "do \(String(to))") }

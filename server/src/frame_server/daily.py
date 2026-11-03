@@ -62,7 +62,6 @@ POOL = 800
 MIN_SIDE = 1000
 #: Works like the work of the day the model chooses among.
 CANDIDATES = 12
-SAME_ARTIST = 4
 #: How often the background picks the day's work and asks for its page.
 TICK_SECONDS = 1800.0
 #: The fragments' pictures ("Detale"): their longer side, and how long kept.
@@ -227,8 +226,9 @@ class Daily:
     # -- works like it -----------------------------------------------------
 
     def candidates(self, item: Item) -> list[Item]:
-        """Works of the catalogue like ``item``: by its artist first, then of
-        its styles and periods, close in time."""
+        """Works of the catalogue like ``item``: of its styles and periods,
+        close in time, by other artists ("Podobne dzieła" leaves the
+        artist's own to "Inne prace artysty", Mateusz 2026-11-02)."""
         if item.id in self._candidates:
             found = (self.library.get(i) for i in self._candidates[item.id])
             return [i for i in found if i is not None]
@@ -239,12 +239,15 @@ class Daily:
                 if len(picked) >= limit:
                     return
                 twin = any(p.title == other.title and p.artist == other.artist for p in picked)
-                if other.id != item.id and other.look is None and other not in picked and not twin:
+                if (
+                    other.id != item.id
+                    and other.look is None
+                    and other not in picked
+                    and not twin
+                    and not same_artist(item, other)
+                ):
                     picked.append(other)
 
-        if is_artist(item.artist):
-            same = PlaylistRules(kinds=[ItemKind.ARTWORK], artists=[item.artist])
-            add(self.library.query(same, sort="suitability", limit=40)[1], SAME_ARTIST)
         for term in [t for t in item.terms if t.startswith(("style:", "years:", "technique:"))]:
             near = PlaylistRules(kinds=[ItemKind.ARTWORK], terms=[term])
             items = self.library.query(near, sort="suitability", limit=60)[1]
@@ -376,3 +379,13 @@ class Daily:
 
     def stop(self) -> None:
         self._stop.set()
+
+
+def same_artist(item: Item, other: Item) -> bool:
+    """``other`` is by ``item``'s artist (a known one: two anonymous works
+    are not)."""
+    return (
+        is_artist(item.artist)
+        and bool(other.artist)
+        and artist_matches(other.artist, [item.artist])
+    )

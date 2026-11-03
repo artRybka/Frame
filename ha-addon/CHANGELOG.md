@@ -1,5 +1,34 @@
 # Changelog
 
+## 1.82.0
+
+- Studium dzieła, „O autorze”: nad notką jest teraz wyraźnie imię i
+  nazwisko twórcy (imię pierwsze, także gdy muzeum zapisuje „Gogh, Vincent
+  van”), a pod nim lata życia, gdy muzeum je podaje. Przytrzymanie nazwiska
+  otwiera jego dzieła w Szukaj.
+- Analiza kompozycji: kreski, które biegną dalej niż obraz (wierzchołek
+  trójkąta, punkt zbiegu), nie są już ucinane na krawędzi obrazu, tylko
+  przechodzą na tło strony.
+- Podobne dzieła nie pokazują już prac tego samego artysty; te są w „Inne
+  prace artysty”.
+- Inne prace artysty: cztery prace, po dwie w rzędzie jak w Podobnych
+  dziełach. W obu siatkach miniatury są kadrowane wokół twarzy, nie przez
+  środek.
+- Szukaj, arkusz „Kolor”: nowy nastrój „Kolorowe” dla dzieł w barwach,
+  bez czarno-białych, monochromatycznych i dwutonowych. Dzieło jest
+  kolorowe, gdy widać na nim co najmniej trzy odległe barwy (z czerwieni,
+  żółci, zieleni, błękitu i fioletu), każdą choćby wielkości akcentu.
+  Serwer po aktualizacji raz przelicza kolory biblioteki.
+- Przygaszone, ale barwne obrazy (np. El Greco) nie dostają już tagu
+  „Monochromia”.
+- Kropki nastroju są czytelniejsze: Ciepłe to gradient od morelowego do
+  ceglastej czerwieni, Chłodne od bladego błękitu do niebieskiego, Żywe
+  świecąca czerwień, Stonowane szarawy beż w szarą zieleń, Kolorowe koło
+  barw. Nastroje stoją parami, para w wierszu: Ciepłe i Chłodne, Żywe i
+  Stonowane, Kolorowe i Monochromia, Ciemne i Jasne. Te same kropki są przy kolorach na karcie dzieła, w polu
+  wyszukiwania, w regułach playlist i na pastylce „Kolor” po wyborze
+  nastroju.
+
 ## 1.81.0
 
 - Szukaj: polskie słowa trafiają do muzeów zagranicznych po angielsku.
