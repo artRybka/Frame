@@ -1560,6 +1560,26 @@ struct DailyWork: Codable, Hashable, Sendable {
         var title: String
     }
 
+    /// A moment of the artist's life, on the line under their name.
+    struct Milestone: Codable, Hashable, Sendable {
+        var year: Int
+        var text: String
+    }
+
+    /// A paint the work is made with, as its sources name it.
+    struct Pigment: Codable, Hashable, Sendable {
+        var name: String
+        var hex: String
+        var `where`: String
+        var text: String
+    }
+
+    /// How big the work really is, in centimetres.
+    struct RealSize: Codable, Hashable, Sendable {
+        var height: Double
+        var width: Double
+    }
+
     /// "2026-10-30".
     var day: String
     var item: RemoteItem
@@ -1599,6 +1619,18 @@ struct DailyWork: Codable, Hashable, Sendable {
     /// led to, other works by the artist): asked for the text first, which
     /// the server has at once; the lists come with the next answer.
     var partial: Bool? = nil
+    /// Works made a few years either side, elsewhere and by others ("W tym
+    /// samym czasie"); nil from servers before 1.83.
+    var sameTime: [RemoteItem]? = nil
+    /// The artist's years (the museum's, else the page's), moments of
+    /// their life and the work's paints; nil from servers before 1.83.
+    var born: Int? = nil
+    var died: Int? = nil
+    var milestones: [Milestone]? = nil
+    var pigments: [Pigment]? = nil
+    /// "Prawdziwy rozmiar": from the museum or Wikidata, when it has the
+    /// picture's proportions (server 1.83).
+    var size: RealSize? = nil
 
     /// Today as `day` names it, "2026-11-02" (the phone's day, the server's
     /// in the same house).
