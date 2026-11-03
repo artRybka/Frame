@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.85.5
+
+- Kadrowanie (karta dzieła, Teraz i Studium): po powrocie ramki na
+  podgląd ekran Kadru znika od razu. Wcześniej system jeszcze go
+  zsuwał jako kremową kartę z ramką w środku, więc przez ułamek sekundy
+  były widać dwie ramki.
+
 ## 1.85.4
 
 - Studium dzieła, „Na Twojej ramce”: podgląd ramki otwiera kadrowanie

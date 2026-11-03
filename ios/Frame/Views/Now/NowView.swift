@@ -245,7 +245,8 @@ struct NowView: View {
                         aspectRatio: model.isPortrait ? 9.0 / 16.0 : 16.0 / 9.0,
                         placeholder: selectedItem?.placeholderColor ?? browsed?.summary.placeholderColor ?? Theme.mat,
                         onFrame: offset == 0,
-                        draft: $draft, save: saveCrop, home: cropHome
+                        draft: $draft, save: saveCrop, home: cropHome,
+                        onClose: { cropping = false }
                     )
                 }
             }
