@@ -20,6 +20,8 @@ struct PressHold: ViewModifier {
 
     /// How long the finger stays before `action`.
     static let hold = 0.5
+    /// How much a held picture grows: at this size when the hold fires.
+    static let pictureGrow: CGFloat = 1.05
     /// A touch shorter than this (a tap, a scroll starting) shows nothing.
     private static let settle = 0.08
 
@@ -89,7 +91,16 @@ extension View {
     /// A picture that opens on the whole screen: a tap, or a hold that
     /// answers like a title does.
     func picturePress(enabled: Bool = true, open: @escaping () -> Void) -> some View {
-        pressHold(enabled: enabled, grow: 1.05, anchor: .center, onTap: { if enabled { open() } }, action: open)
+        picturePress(enabled: enabled) { _ in open() }
+    }
+
+    /// As above, telling whether it was held (the picture grown by
+    /// `PressHold.pictureGrow` as it opens) or tapped.
+    func picturePress(enabled: Bool = true, open: @escaping (_ held: Bool) -> Void) -> some View {
+        pressHold(
+            enabled: enabled, grow: PressHold.pictureGrow, anchor: .center,
+            onTap: { if enabled { open(false) } }, action: { open(true) }
+        )
     }
 
     /// "Tytuł w oryginale": a Polish title, held, turns into the source's
@@ -120,6 +131,83 @@ extension View {
             .accessibilityAddTraits(.isButton)
             .accessibilityHint(Text("Szuka innych dzieł tego autora"))
             .accessibilityAction { search() }
+    }
+}
+
+/// A Polish title the card opened with: a second after, a soft lighter
+/// band passes over it once, left to right, a hint that it answers a hold
+/// ("Tytuł w oryginale"). Not again while the card stays, nor with Reduce
+/// Motion.
+struct Glint: ViewModifier {
+    let enabled: Bool
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// 0: the band is still off the title's left edge, 1: past its right.
+    @State private var at: CGFloat = 0
+    @State private var sweeping = false
+    @State private var done = false
+
+    static let delay = 1.0
+    static let duration = 1.2
+    /// How much of the title shows in the band's middle.
+    static let dip = 0.45
+    /// Half the band's width, in parts of the title's.
+    static let half: CGFloat = 0.22
+
+    /// The band's edges, in parts of the title's width, `at` along the way.
+    static func band(at: CGFloat) -> (start: CGFloat, end: CGFloat) {
+        let middle = -half + at * (1 + 2 * half)
+        return (middle - half, middle + half)
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .modifier(GlintMask(at: at, on: sweeping))
+            .task {
+                guard enabled, !done, !reduceMotion else { return }
+                try? await Task.sleep(for: .seconds(Self.delay))
+                guard !Task.isCancelled else { return }
+                done = true
+                sweeping = true
+                withAnimation(.easeInOut(duration: Self.duration)) {
+                    at = 1
+                } completion: {
+                    sweeping = false
+                }
+            }
+    }
+}
+
+/// The band itself: the title fades a touch towards the paper under it.
+private struct GlintMask: ViewModifier, Animatable {
+    var at: CGFloat
+    let on: Bool
+
+    var animatableData: CGFloat {
+        get { at }
+        set { at = newValue }
+    }
+
+    func body(content: Content) -> some View {
+        let band = Glint.band(at: at)
+        content.mask {
+            LinearGradient(
+                stops: [
+                    .init(color: .black, location: 0),
+                    .init(color: .black.opacity(on ? Glint.dip : 1), location: 0.5),
+                    .init(color: .black, location: 1),
+                ],
+                startPoint: UnitPoint(x: band.start, y: 0.5),
+                endPoint: UnitPoint(x: band.end, y: 0.5)
+            )
+        }
+    }
+}
+
+extension View {
+    /// See `Glint`. `enabled` counts as the title first shows.
+    func titleGlint(enabled: Bool) -> some View {
+        modifier(Glint(enabled: enabled))
     }
 }
 

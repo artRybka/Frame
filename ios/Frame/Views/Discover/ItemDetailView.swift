@@ -28,6 +28,8 @@ struct ItemDetailView: View {
     @State private var opened: Opened?
     /// Where the "Na ramce" preview is on the screen, for cropping to fly from.
     @State private var cropHome: CGRect?
+    /// Held open, the preview had grown a touch: the frame starts that size.
+    @State private var cropGrow: CGFloat = 1
     @State private var savingPhoto = false
     /// Polish title and texts, once the server has them ("Polskie tytuły i
     /// opisy" in the settings); the museum's own while they are written.
@@ -728,7 +730,7 @@ struct ItemDetailView: View {
                     placeholder: item.placeholderColor,
                     onFrame: model.player?.current?.item?.id == item.id,
                     draft: $draft, save: saveFromCropScreen, home: cropHome,
-                    onClose: { opened = nil }
+                    onClose: { opened = nil }, homeGrow: cropGrow
                 )
             }
         }
@@ -748,8 +750,6 @@ struct ItemDetailView: View {
             guard loaded == previewRef else { return }
             withAnimation(.easeOut(duration: 0.3)) { loadedPreview = loaded }
         }
-        // Cropping's frame comes out of it ("pop") and goes back onto it.
-        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { cropHome = $0 }
         .frameShadow()
         .overlay {
             if loadedPreview != ref {
@@ -759,7 +759,13 @@ struct ItemDetailView: View {
         // Under the crop screen's frame while it is open: that one flies.
         .opacity(opened == .crop ? 0 : 1)
         // Tap or hold (the phone taps closer and closer), like the picture.
-        .picturePress(enabled: cropping) { CropScreen.present { opened = .crop } }
+        .picturePress(enabled: cropping) { held in
+            cropGrow = held ? PressHold.pictureGrow : 1
+            CropScreen.present { opened = .crop }
+        }
+        // Cropping's frame comes out of it and goes back onto it. Out here,
+        // so the place is the preview's own, not grown by the press.
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { cropHome = $0 }
         .accessibilityAddTraits(cropping ? .isButton : [])
         .accessibilityHint(Text(cropping ? "Otwiera kadrowanie na całym ekranie" : ""))
     }
@@ -795,6 +801,9 @@ struct ItemDetailView: View {
                 .fixedSize(horizontal: false, vertical: true)
                 // The museum's title fades into the Polish one.
                 .contentTransition(.opacity)
+                // Opened in Polish: a light passes over it once, a hint
+                // that a hold does something. Not when Polish fades in later.
+                .titleGlint(enabled: original != nil && !peeking)
                 // Held: the museum's own, until held again.
                 .titlePeek(enabled: original != nil, peeking: $peeking)
             if !item.artist.isEmpty {

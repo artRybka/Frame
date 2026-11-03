@@ -1,15 +1,38 @@
 # Changelog
 
-## 1.86.1
+## 1.87.0
 
 - „Rozmiar obrazu”: obok dzieła dla skali zawsze stoi ciemna sylwetka
   mężczyzny, 180 cm (od czubka głowy do podeszwy stopy z tyłu), z wzrostem
   dopisanym ołówkiem obok. Mniejsze dzieła wiszą jak w muzeum: linia jego
   wzroku przecina je na 2/3 wysokości; większe stoją na podłodze, na linii
   jego prawej stopy. Bez linii podłogi i linii wzroku; dzieło bez cienkiej
-  obwódki.
+  obwódki. Sekcja stoi teraz zaraz po „Detale”.
 - Rysunek z wymiarami nie znika już na chwilę przy przełączaniu zakładek:
   wymiary przychodzą razem z tekstem studium.
+- Studium dzieła: przy farbach niepewnych na zmianę „Najpewniej”,
+  „Prawdopodobnie”, „Zapewne”, „Przypuszczalnie” (także w studiach
+  napisanych wcześniej); większy odstęp po każdej sekcji; „Inni w tym
+  samym czasie” pokazuje do 10 dzieł w jednym wierszu przewijanym w bok;
+  czerwona kropka dzieła na linii życia jest wielkości kółek z numerkami.
+
+## 1.86.2
+
+- Karta dzieła: gdy otwiera się od razu z polskim tytułem, po sekundzie
+  przez tytuł raz przechodzi od lewej do prawej delikatny, jaśniejszy
+  pas. To podpowiedź, że tytuł można przytrzymać i zobaczyć tytuł
+  z muzeum. Gdy polski tytuł dochodzi później, nic nie przechodzi
+  (wtedy tytuł i tak się przenika). Przy włączonym „Ogranicz ruch”
+  bez efektu.
+
+## 1.86.1
+
+- Kadrowanie: lot ramki z podglądu i z powrotem już nie podskakuje.
+  Ramka nie przeskakuje za cel i nie odbija, a przy zamykaniu ląduje
+  do końca, zanim pojawi się podgląd. Kadrowanie otwarte
+  przytrzymaniem startuje z podglądu tak powiększonego, jakim go widać
+  pod palcem. Okna kadru znikają w locie, więc ramka ląduje dokładnie
+  jako podgląd.
 
 ## 1.86.0
 
