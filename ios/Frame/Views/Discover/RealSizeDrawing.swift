@@ -4,7 +4,8 @@ import SwiftUI
 /// the left, at the column's edge, and beside it for scale a sheet of A4
 /// paper, white, with a shadow and a curled corner, "A4" printed on it in
 /// thin dark grey; for a work over 1.3 m a man's dark silhouette, 180 cm,
-/// his height pencilled beside him (Mateusz's drawing, 2026-11-03). One
+/// his height pencilled beside him (the silhouette Mateusz chose,
+/// 2026-11-03). One
 /// scale, both standing on the work's bottom edge. A sheet lower than the pencilled
 /// height stands a little past its line, under its figures; else past
 /// them.
