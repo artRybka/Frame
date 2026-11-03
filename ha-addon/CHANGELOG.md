@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.85.4
+
+- „Rozmiar obrazu”: obok dzieła dla skali stoi żółta miarka stolarska
+  (20 cm, 50 cm, 1 m albo 2 m, zależnie od wielkości dzieła), a nie kartka
+  A4. Miarka i dzieło stoją na jednej linii, dolnej krawędzi dzieła. Dzieło
+  bez cienkiej obwódki.
+- Rysunek z wymiarami nie znika już na chwilę przy przełączaniu zakładek:
+  wymiary przychodzą razem z tekstem studium.
+
 ## 1.85.3
 
 - Oryginały dzieł: serwer już zachowywał oryginał każdego dzieła, które
