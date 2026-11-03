@@ -83,8 +83,8 @@ enum PhotoSaver {
     /// The picture's bytes and type, if it is one Photos takes.
     private static func download(_ request: URLRequest, route: ServerRoute?) async throws -> (Data, UTType) {
         // The server's copy follows it to its other address mid-download.
-        let fetch: @Sendable (URLRequest) async throws -> (URL, URLResponse) = {
-            try await URLSession.shared.download(for: $0)
+        let fetch: @Sendable (URLRequest) async throws -> (URL, URLResponse) = { request in
+            try await Tailnet.shared.send(request) { try await $0.download(for: request) }
         }
         let fetched = if let route { try await route.follow(request, fetch) } else { try await fetch(request) }
         let (file, response) = fetched

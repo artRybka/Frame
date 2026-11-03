@@ -217,9 +217,14 @@ actor ImageLoader {
     }
 
     /// The server's pictures follow it to its other address mid-download.
+    /// Pictures from the server's Tailscale address come through the app's
+    /// own Tailscale node (`Tailnet`), with the same disk cache.
     private static func send(_ request: URLRequest, session: URLSession) async throws -> (Data, URLResponse) {
-        guard let route else { return try await session.data(for: request) }
-        return try await route.follow(request) { try await session.data(for: $0) }
+        let load: @Sendable (URLRequest) async throws -> (Data, URLResponse) = { request in
+            try await Tailnet.shared.send(request, else: session, images: true) { try await $0.data(for: request) }
+        }
+        guard let route else { return try await load(request) }
+        return try await route.follow(request, load)
     }
 
     /// What the host asked for in Retry-After, else a growing pause; a few

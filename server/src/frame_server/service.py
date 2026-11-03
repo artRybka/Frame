@@ -50,6 +50,7 @@ from .status import StatusMonitor
 from .storage import StorageStore
 from .store import ContentInfo, ContentStore
 from .study import Study
+from .tailnet import Tailnet
 from .users import Users
 
 log = logging.getLogger(__name__)
@@ -184,6 +185,8 @@ class FrameService:
         self.storage = StorageStore(settings, self.library, self.images, self.store)
         # Keys of art sources, entered in the app.
         self.source_keys = SourceKeys(settings, self.library)
+        # Tailscale built into the app: the key its phones join with.
+        self.tailnet = Tailnet(self.library)
         self.importer = Importer(
             self.library,
             self.images,
