@@ -1152,6 +1152,41 @@ final class FrameAPITests: XCTestCase {
         XCTAssertEqual(decoded.work, "gogh|irises")
     }
 
+    func testMuseumIsWhereTheWorkHangsNotWhereItsPictureIsFrom() async throws {
+        let demo = DemoBackend()
+        let themes = try await demo.themes()
+        let theme = try XCTUnwrap(themes.first)
+        let page = try await demo.themePage(key: theme.key, page: 1)
+        let item = try XCTUnwrap(page.items.first).item
+        let encoded = try LiveBackend.encoder().encode(item)
+        var fields = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        fields["source"] = "wmc"
+        fields["museum"] = "Wikimedia Commons"
+        // A server before 1.81 says nothing: the source, as before.
+        fields.removeValue(forKey: "held_by")
+        var older = try LiveBackend.decoder().decode(Item.self, from: JSONSerialization.data(withJSONObject: fields))
+        XCTAssertNil(older.heldBy)
+        XCTAssertEqual(older.museumShown, "Wikimedia Commons")
+        older.kind = .photo
+        XCTAssertEqual(older.museumShown, "Wikimedia Commons")
+        // Not known yet: nothing, the picture's source is no museum.
+        fields["held_by"] = ""
+        let unknown = try LiveBackend.decoder().decode(Item.self, from: JSONSerialization.data(withJSONObject: fields))
+        XCTAssertEqual(unknown.museumShown, "")
+        fields["held_by"] = "Muzeum Narodowe w Warszawie"
+        let known = try LiveBackend.decoder().decode(Item.self, from: JSONSerialization.data(withJSONObject: fields))
+        XCTAssertEqual(known.museumShown, "Muzeum Narodowe w Warszawie")
+        XCTAssertEqual(known.summary.heldBy, "Muzeum Narodowe w Warszawie")
+        let view = try LiveBackend.decoder().decode(
+            HolderView.self, from: Data(#"{"status": "found", "name": "Louvre"}"#.utf8)
+        )
+        XCTAssertEqual(view.name, "Louvre")
+        let sharper = try LiveBackend.decoder().decode(
+            SharperView.self, from: Data(#"{"status": "none", "held_by": "Louvre"}"#.utf8)
+        )
+        XCTAssertEqual(sharper.heldBy, "Louvre")
+    }
+
     func testDecodesThemePage() throws {
         let json = #"{"items": [], "more": true}"#
         let page = try LiveBackend.decoder().decode(ArtThemePage.self, from: Data(json.utf8))

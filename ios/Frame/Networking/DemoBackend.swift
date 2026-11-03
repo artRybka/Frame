@@ -442,6 +442,10 @@ actor DemoBackend: FrameBackend {
         SharperView(status: "off", sharper: nil)
     }
 
+    func holder(itemID: String, wait: Int) async throws -> HolderView {
+        HolderView(status: "none")
+    }
+
     func copies(itemID: String) async throws -> AsyncThrowingStream<CopyLine, Error> {
         AsyncThrowingStream { continuation in
             continuation.yield(CopyLine(kind: "start", sources: []))

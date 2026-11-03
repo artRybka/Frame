@@ -216,7 +216,7 @@ def request_text(item: Item, context: Context) -> str:
     """The work and what the museum and Wikipedia say of it."""
     lines = [
         "DZIEŁO",
-        f"Muzeum: {item.museum}",
+        f"Muzeum: {item.held_by or item.museum}",
         f"Tytuł (oryginał): {strip_markup(item.title)}",
         f"Autor: {item.artist}",
         f"Data: {item.date_text}",

@@ -526,7 +526,7 @@ struct DailyView: View {
     private func header(_ work: DailyWork) -> some View {
         let item = work.item.item
         let byline = [Names.artist(item.artist), item.dateText].filter { !$0.isEmpty }.joined(separator: " · ")
-        let where_ = [item.medium, item.museum].filter { !$0.isEmpty }.joined(separator: " · ")
+        let where_ = [item.medium, item.museumShown].filter { !$0.isEmpty }.joined(separator: " · ")
         let original = OriginalTitle.of(item.title, shown: work.title)
         return VStack(alignment: .leading, spacing: 4) {
             Text(peeking ? original ?? work.title : work.title)

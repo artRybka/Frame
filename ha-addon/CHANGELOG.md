@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.82.0
+
+- Karta dzieła: czerwony napis nad tytułem i wiersz „Kolekcja” podają
+  muzeum, w którym dzieło naprawdę jest, a nie źródło zdjęcia. Np.
+  „Skąpiec” Makowskiego z Wikimedia Commons pokazuje „Muzeum Narodowe w
+  Warszawie”. Skąd jest samo zdjęcie, mówi dalej wiersz „Zdjęcie dzieła”.
+- Dla dzieł z Wikimedia Commons, Openverse i WikiArt serwer szuka muzeum
+  przy otwarciu karty i w nocy: w Wikidata (kolekcja dzieła), na stronie
+  pliku w Commons (instytucja) albo w kopii tego samego dzieła z muzeum.
+  Europeana podaje muzeum sama. Gdy nikt nie wie, napisu nad tytułem nie
+  ma (zamiast „Wikimedia Commons”).
+- To samo muzeum widać w Teraz i w nagłówku Studium dnia.
+
 ## 1.81.0
 
 - Szukaj: polskie słowa trafiają do muzeów zagranicznych po angielsku.
