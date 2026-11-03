@@ -112,6 +112,9 @@ struct DailyView: View {
     /// "Wykonaj ponowną analizę" sent: how many analyses the page had
     /// before, to tell once the new one is here (or came to nothing).
     @State private var analysingFrom: Int?
+    /// "Popraw detale" sent: Claude is checking the details (until the
+    /// server says it is done).
+    @State private var mending = false
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -198,6 +201,7 @@ struct DailyView: View {
         }
         .task(id: cropKey) { await loadFraming() }
         .task(id: work?.compositionPending == true || analysingFrom != nil) { await followAnalysis() }
+        .task(id: work?.detailsPending == true || mending) { await followMending() }
     }
 
     @ViewBuilder
@@ -471,7 +475,7 @@ struct DailyView: View {
                     .id("colour")
                 }
                 if let details = work.details, !details.isEmpty {
-                    section("Detale") { self.details(work, details) }.id("details")
+                    detailsSection(work, details).id("details")
                 }
                 // Right after "Detale", ahead of the lists (Mateusz 2026-11-03).
                 if let size = work.size, size.height > 0, size.width > 0 {
@@ -930,6 +934,88 @@ struct DailyView: View {
         guard let fresh else { return }
         withAnimation(.easeInOut(duration: 0.25)) { show(fresh) }
         if route.day == nil, route.study == nil, let work { model.daily = work }
+    }
+
+    /// "Detale"; the owner holds the title for "Popraw detale" (Mateusz
+    /// 2026-11-03: "Na żądanie, przytrzymaniem"): Claude checks each
+    /// fragment over its cut and draws anew a box that misses.
+    private func detailsSection(_ work: DailyWork, _ details: [DailyWork.Detail]) -> some View {
+        let busy = work.detailsPending == true || mending
+        return VStack(alignment: .leading, spacing: 10) {
+            detailsTitle(work, busy: busy)
+            if busy {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text("Claude sprawdza kadry detali…")
+                        .font(.footnote)
+                        .foregroundStyle(Theme.inkSoft)
+                }
+                .transition(.opacity)
+            }
+            self.details(work, details)
+        }
+        .animation(.easeOut(duration: 0.25), value: busy)
+    }
+
+    @ViewBuilder
+    private func detailsTitle(_ work: DailyWork, busy: Bool) -> some View {
+        let title = Text("Detale")
+            .font(.serif(20, weight: .semibold))
+            .foregroundStyle(Theme.ink)
+        // Servers before 1.92.0 send no `detailsPending`: nothing to hold.
+        if model.isOwner, work.written, work.detailsPending != nil {
+            title
+                .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .contextMenu {
+                    Button("Popraw detale", systemImage: "crop") { mendDetails(work) }
+                        .disabled(busy)
+                }
+                .accessibilityAction(named: "Popraw detale") { mendDetails(work) }
+        } else {
+            title
+        }
+    }
+
+    /// Asks the server to check the details; the page shows it is on its
+    /// way and follows it (`followMending`).
+    private func mendDetails(_ work: DailyWork) {
+        Task {
+            do {
+                _ = try await model.backend.detailsAgain(itemID: work.item.id)
+                mending = true
+                await refreshPage()
+            } catch {
+                model.show(error)
+            }
+        }
+    }
+
+    /// While the details are being checked: asked after every few seconds,
+    /// the page fetched again once they are done (the fragments cut anew).
+    private func followMending() async {
+        guard let id = work?.item.id, work?.detailsPending == true || mending else { return }
+        for _ in 0..<60 {  // five minutes
+            try? await Task.sleep(for: .seconds(5))
+            if Task.isCancelled { return }
+            guard let state = try? await model.backend.detailsState(itemID: id) else { continue }
+            guard !state.pending else { continue }
+            let asked = mending
+            await refreshPage()
+            mending = false
+            if asked {
+                switch state.moved {
+                case nil:
+                    model.notices.fail("Nie udało się sprawdzić detali", "Detale zostają jak były.")
+                case let moved? where moved.isEmpty:
+                    model.notices.done("Detale są dobrze wykadrowane")
+                case let moved?:
+                    let count = BatteryText.count(Double(moved.count), one: "detal", few: "detale", many: "detali")
+                    model.notices.done("Poprawiono \(count)", moved.joined(separator: ", "))
+                }
+            }
+            return
+        }
+        mending = false
     }
 
     /// Fragments cut from the original, side by side to swipe through (the

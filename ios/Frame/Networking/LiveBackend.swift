@@ -307,6 +307,14 @@ struct LiveBackend: FrameBackend {
         )
     }
 
+    func detailsAgain(itemID: String) async throws -> DetailsAgain {
+        try await send("/api/study/\(escape(itemID))/details", method: "POST")
+    }
+
+    func detailsState(itemID: String) async throws -> DetailsAgain {
+        try await get("/api/study/\(escape(itemID))/details")
+    }
+
     func followStudy(itemID: String, activityToken: String, sandbox: Bool) async throws {
         try await send(
             "/api/study/\(escape(itemID))/activity", method: "PUT",

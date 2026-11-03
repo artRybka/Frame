@@ -14,7 +14,7 @@ import httpx
 import pytest
 from conftest import jpeg_bytes
 from fastapi.testclient import TestClient
-from PIL import Image, ImageDraw, ImageOps
+from PIL import Image, ImageDraw, ImageOps, ImageStat
 from test_ai import GOOD_KEY, FakeAnthropic, _message
 
 from frame_server import daily as daily_module
@@ -36,7 +36,7 @@ from frame_server.ai.study import KIND as STUDY
 from frame_server.config import Settings
 from frame_server.daily import HISTORY_KEY, of_season, round_anniversary
 from frame_server.library import Item, ItemKind
-from frame_server.library.models import Note
+from frame_server.library.models import Note, SharperCopy
 from frame_server.service import FrameService
 from frame_server.web import create_app
 
@@ -1062,3 +1062,182 @@ def test_the_likely_paints_do_not_all_start_the_same() -> None:
     assert texts[3] == "Zapewne biel ołowiana."
     assert texts[4] == "Czerń kostna, z palonych kości."
     assert paints[2].text.startswith("Najpewniej")  # the page's own copy is left as it was
+
+
+def _art() -> Image.Image:
+    """A painting with a red square at (600, 300)–(700, 400) among shapes."""
+    rng = random.Random(7)
+    art = Image.new("RGB", (1200, 900), (40, 50, 90))
+    draw = ImageDraw.Draw(art)
+    for _ in range(60):
+        x, y = rng.randint(0, 1150), rng.randint(0, 850)
+        size = (rng.randint(10, 160), rng.randint(10, 160))
+        colour = (rng.randint(0, 120), rng.randint(100, 255), rng.randint(0, 255))
+        draw.ellipse((x, y, x + size[0], y + size[1]), fill=colour)
+    draw.rectangle((600, 300, 700, 400), fill=(230, 20, 20))
+    return art
+
+
+def test_details_drawn_on_another_copy_are_cut_from_the_picked_one(
+    offline: FrameService,
+) -> None:
+    """Mateusz 2026-11-03 (Hopper's "Automat"): the page's boxes were drawn
+    on the work's own copy, with a margin; a sharper copy, cut close, was
+    picked since. The fragment is cut from the picked copy, where the box
+    lies on it."""
+    _catalogue(offline)
+    item = offline.library.get("met:1")
+    assert item is not None
+    art = _art()
+    own = Image.new("RGB", (1300, 1000), (120, 100, 60))
+    own.paste(art, (50, 50))
+    picked = art.crop((10, 8, 1190, 892)).resize((2360, 1768))
+    copies = {"https://own/1.jpg": own, "https://sharp/1.jpg": picked}
+    offline.images.sample = lambda url, urgent=False: copies[url].copy()  # type: ignore[method-assign]
+    sharper = SharperCopy(
+        url="https://sharp/1.jpg", item_id="wmc:1", source="wmc", width=2360, height=1768
+    )
+    item = offline.library.update(item.id, sharper=sharper) or item
+    essay = clean(ANSWER, [])
+    assert essay is not None
+    # The red square on the own copy, as fractions of it.
+    box = {"title": "Czerwień", "text": "", "x": 650 / 1300, "y": 350 / 1000, "w": 0.077, "h": 0.1}
+    job = offline.daily.job
+    offline.library.save_note(
+        Note(
+            item_id=item.id,
+            kind=job.kind,
+            model=OPUS,
+            prompt_version=job.prompt_version,
+            source_hash=job.source_hash(item),
+            data={
+                **essay.model_dump(),
+                "details": [box],
+                "boxes": 2,
+                "seen": {"copy_id": "", "url": "https://own/1.jpg"},
+            },
+        )
+    )
+    path = offline.daily.detail(item, 0)
+    assert path is not None and path.is_file()
+    cut = Image.open(path).convert("RGB")
+    r, g, b = ImageStat.Stat(cut).mean
+    assert r > 180 and g < 70 and b < 70  # the red square, not what lies above it
+    assert cut.size[0] > 150  # from the sharper copy: twice the own's pixels
+    # Its file names both copies: cut again when another copy is picked.
+    assert "met" in path.name
+    assert offline.daily.detail_path(item, essay.details[0]) != path
+
+
+def test_a_detail_that_misses_is_drawn_again() -> None:
+    """Hopper's "Automat" (2026-11-03): "Twarz pod kapeluszem" cut the wall
+    above the hat. The check over the cuts redraws the box that misses and
+    keeps the ones that hit."""
+    from frame_server.ai.details import mended
+
+    details = [
+        {
+            "title": "Twarz pod kapeluszem",
+            "text": "",
+            "x": 0.665,
+            "y": 0.3346,
+            "w": 0.15,
+            "h": 0.1931,
+        },
+        {"title": "Dłoń i filiżanka", "text": "", "x": 0.59, "y": 0.6371, "w": 0.165, "h": 0.1673},
+    ]
+    answer = {
+        "details": [
+            {"n": 1, "ok": False, "x": 1290, "y": 670, "w": 300, "h": 300, "why": "ściana"},
+            {"n": 2, "ok": True, "x": 0, "y": 0, "w": 10, "h": 10, "why": ""},
+            {"n": 7, "ok": False, "x": 1, "y": 1, "w": 1, "h": 1, "why": ""},
+        ]
+    }
+    found = mended(details, answer, (2000, 1554))
+    assert found is not None
+    fixed, moved = found
+    assert moved == ["Twarz pod kapeluszem"]
+    assert fixed[0]["x"] == 1290 / 2000 and fixed[0]["y"] == 670 / 1554
+    assert fixed[1] == details[1]  # the one that hit stays as it was
+    assert mended(details, None, (2000, 1554)) is None
+
+
+def test_the_owner_has_the_details_of_an_older_page_checked(tmp_path: Any) -> None:
+    """ "Popraw detale" (Mateusz 2026-11-03: "Na żądanie, przytrzymaniem"):
+    the details of a page written before the check, checked when asked; a
+    box that misses is drawn anew in every page of the work."""
+    from frame_server.ai.client import Answer
+    from frame_server.ai.daily import (
+        BOXES,
+        BOXES_VERSION,
+        DETAILS_CHECKED,
+        SEEN,
+        clean,
+        sent_size,
+    )
+    from frame_server.ai.details import KIND as MEND
+    from frame_server.ai.details import MendJob
+
+    app = _app(tmp_path)
+    svc: FrameService = app.state.service
+    with TestClient(app) as client:
+        _catalogue(svc)
+        assert client.post("/api/study/met:1/details").status_code == 409  # no key
+        svc.ai_config.set_key(GOOD_KEY)
+        assert client.post("/api/study/met:1/details").status_code == 409  # no page
+        item = svc.library.get("met:1")
+        essay = clean(ANSWER, [])
+        assert item is not None and essay is not None
+        svc.library.save_note(
+            Note(
+                item_id="met:1",
+                kind=STUDY,
+                model="claude-opus",
+                prompt_version="study-1/daily-7",
+                source_hash=svc.study.job.source_hash(item),
+                data={**essay.model_dump(), BOXES: BOXES_VERSION},
+            )
+        )
+        job = svc.ai.jobs[MEND]
+        assert isinstance(job, MendJob) and not job.wanted(item)
+        assert client.get("/api/study/met:1").json()["work"]["details_pending"] is False
+
+        assert client.post("/api/study/met:1/details").json() == {"pending": True, "moved": None}
+        assert client.get("/api/study/met:1").json()["work"]["details_pending"] is True
+        assert job.wanted(item)
+
+        params = job.params(item)
+        width, height = sent_size(params) or (0, 0)
+        first = essay.details[0]
+        wrong = {"n": 1, "ok": False, "x": 0.1 * width, "y": 0.2 * height}
+        answer = job.revise(
+            item,
+            params,
+            Answer({"details": [{**wrong, "w": 0.3 * width, "h": 0.3 * height}]}, False, 0.1, "o"),
+            lambda p: Answer(None, True, 0, "o"),
+        )
+        job.apply(
+            item,
+            svc.library.save_note(
+                Note(
+                    item_id="met:1",
+                    kind=MEND,
+                    model="o",
+                    prompt_version=job.prompt_version,
+                    source_hash=job.source_hash(item),
+                    data=answer.data or {},
+                )
+            ),
+        )
+        assert client.get("/api/study/met:1/details").json() == {
+            "pending": False,
+            "moved": [first.title],
+        }
+        page = svc.library.note("met:1", STUDY)
+        assert page is not None and page.data[DETAILS_CHECKED] == [first.title]
+        box = page.data["details"][0]
+        assert (box["x"], box["y"]) == pytest.approx((0.1, 0.2), abs=0.01)
+        assert SEEN in page.data  # the copy they are drawn on from now on
+        assert not job.wanted(item)  # done once
+        work = client.get("/api/study/met:1").json()["work"]
+        assert work["details_pending"] is False and len(work["details"]) == len(essay.details)

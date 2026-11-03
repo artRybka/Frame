@@ -30,6 +30,7 @@ from pydantic import BaseModel, Field
 
 from ..imaging.layout import load_image
 from ..imaging.text import sentences
+from ..library.images import display_copy
 from ..library.markup import strip_markup
 from ..library.models import Note
 from ..library.museums import client
@@ -64,6 +65,10 @@ MODEL_TOKENS = 4784
 #: Marks a page whose boxes were asked for on a picture the model read at
 #: its own size (:func:`model_size`); pages without it are mended when read.
 BOXES = "boxes"
+#: The copy the page's boxes are on (:class:`Seen`).
+SEEN = "seen"
+#: The details checked over their cuts (``ai.details``): the titles moved.
+DETAILS_CHECKED = "details_checked"
 BOXES_VERSION = 2
 #: The longest side of a kept original (``library.images.IMAGE_MAX``).
 ORIGINAL_SIDE = 2560
@@ -394,6 +399,17 @@ class Composition(BaseModel):
     lines: list[Line] = Field(default_factory=list)
 
 
+class Seen(BaseModel):
+    """The copy of the work the model looked at when it drew the page's
+    boxes: the sharper copy's id ("" for the work's own) and its address.
+    Its details are cut from it, also after another copy is picked
+    (Mateusz 2026-11-03: Hopper's "Automat" showed the background above the
+    face it was about)."""
+
+    copy_id: str = ""
+    url: str = ""
+
+
 class Detail(BaseModel):
     """A fragment worth a close look: a box on the picture (fractions of its
     width and height, from the top left), cut from the original."""
@@ -404,6 +420,8 @@ class Detail(BaseModel):
     y: float
     w: float
     h: float
+    #: The copy the box is on (:class:`Seen`), when the page says; not sent.
+    seen: Seen | None = Field(default=None, exclude=True)
 
 
 class Similar(BaseModel):
@@ -1135,7 +1153,12 @@ class DailyJob(NoteJob):
         context = self._sources.pop(item.id, None)
         if answer.data is None:
             return answer
-        data = {**to_fractions(answer.data, sent_size(params)), BOXES: BOXES_VERSION}
+        seen = Seen(copy_id=item.sharper.item_id if item.sharper else "", url=display_copy(item))
+        data = {
+            **to_fractions(answer.data, sent_size(params)),
+            BOXES: BOXES_VERSION,
+            SEEN: seen.model_dump(),
+        }
         if lacking := missing(data, ANSWERED):
             log.warning("page of %s came back without %s: asked again", item.id, ", ".join(lacking))
             try:
@@ -1146,12 +1169,19 @@ class DailyJob(NoteJob):
                 answer = replace(answer, cost_usd=answer.cost_usd + again.cost_usd)
                 fresh = to_fractions(again.data, sent_size(params)) if again.data else None
                 if fresh is not None and len(missing(fresh, ANSWERED)) < len(lacking):
-                    data = {**fresh, BOXES: BOXES_VERSION}
+                    data = {**fresh, BOXES: BOXES_VERSION, SEEN: seen.model_dump()}
             if lacking := missing(data, ANSWERED):
                 log.warning("page of %s kept without %s", item.id, ", ".join(lacking))
                 data = {**data, INCOMPLETE: lacking}
         from .composition import compose
+        from .details import check as check_details
 
+        try:
+            data = check_details(self.images, item, data, ask)
+        except (AiUnavailable, anthropic.APIError) as err:
+            log.warning("details of %s not checked: %s", item.id, err)
+        except Exception:  # the page is paid for: never lost to its details' check
+            log.exception("details check of %s failed", item.id)
         data = {**data, "composition": {"views": []}}
         try:
             data.update(compose(self.images, item, context or self.sources(item), ask))
@@ -1169,7 +1199,7 @@ class DailyJob(NoteJob):
             data: dict[str, Any] = {"failed": True}
         else:
             data = essay.model_dump()
-            for key in (CHECKED, CHECK_ROUND, INCOMPLETE, BOXES):
+            for key in (CHECKED, CHECK_ROUND, INCOMPLETE, BOXES, SEEN, DETAILS_CHECKED):
                 if key in note.data:
                     data[key] = note.data[key]
         self.library.save_note(note.model_copy(update={"data": data}))
@@ -1219,6 +1249,10 @@ class DailyJob(NoteJob):
         essay = Essay.model_validate(note.data)
         if note.data.get(BOXES) != BOXES_VERSION:
             essay = mend_boxes(essay, item)
+        if isinstance(raw := note.data.get(SEEN), dict):
+            seen = Seen.model_validate(raw)
+            details = [d.model_copy(update={"seen": seen}) for d in essay.details]
+            essay = essay.model_copy(update={"details": details})
         shown = takes(essay.composition.views)
         if shown == essay.composition.views:
             return essay
