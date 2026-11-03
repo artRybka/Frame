@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.84.2
+
+- Kadrowanie: pozioma ramka obraca się na bok przy wejściu dużo szybciej
+  (ok. 0,3 s zamiast 0,6 s). Pod ramką nie ma już dopisku „Ramka leży
+  bokiem, żeby była większa”, zostaje zwykła podpowiedź.
+
 ## 1.84.1
 
 - Tytuły dzieł nie zaczynają się już od imienia i nazwiska autora
