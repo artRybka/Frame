@@ -19,8 +19,14 @@ struct RealSizeDrawing: View {
         case figure
 
         static let sheetSize = CGSize(width: 21, height: 29.7)
-        /// The silhouette's own bounds (the asset is cropped to them), 180 cm.
-        static let figureSize = CGSize(width: 180 * 427.79 / 1453.49, height: 180)
+        /// The silhouette (the asset is cropped to its outline, 1453.49 units
+        /// high): 180 cm from the top of his head to the sole of his right
+        /// foot, the one further back, 1421.2 units down (Mateusz 2026-11-03);
+        /// his left foot, nearer, reaches a little below the line he stands on.
+        static let figureUnits = 1421.2
+        static let figureSize = CGSize(width: 180 * 427.79 / figureUnits, height: 180)
+        /// The asset's whole height over the 180 cm he is measured to.
+        static let figureOverhang = 1453.49 / figureUnits
         /// Works higher than this get the figure.
         static let figureFrom = 130.0
 
@@ -95,7 +101,7 @@ struct RealSizeDrawing: View {
                     .renderingMode(.template)
                     .resizable()
                     .foregroundStyle(Theme.ink.opacity(0.88))
-                    .frame(width: ref.width, height: ref.height)
+                    .frame(width: ref.width, height: ref.height * Reference.figureOverhang)
                     .offset(x: ref.minX, y: ref.minY)
                 Dimension(from: CGPoint(x: ref.maxX + 8, y: ref.minY), to: CGPoint(x: ref.maxX + 8, y: ref.maxY))
                     .stroke(pencil, style: StrokeStyle(lineWidth: 1.2, lineCap: .round))

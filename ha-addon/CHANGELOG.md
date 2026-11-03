@@ -6,7 +6,7 @@
   z cieniem i zagiętym rogiem, z cienkim ciemnoszarym nadrukiem „A4”). Gdy
   kartka mieści się pod podpisem wysokości dzieła, stoi bliżej dzieła. Przy
   dziełach wyższych niż 1,3 m zamiast kartki stoi ciemna sylwetka
-  mężczyzny, 180 cm, z wzrostem dopisanym ołówkiem obok. Dzieło i odniesienie stoją na
+  mężczyzny, 180 cm (od czubka głowy do podeszwy stopy z tyłu), z wzrostem dopisanym ołówkiem obok. Dzieło i odniesienie stoją na
   jednej linii, dolnej krawędzi dzieła; dzieło bez cienkiej obwódki.
 - Rysunek z wymiarami nie znika już na chwilę przy przełączaniu zakładek:
   wymiary przychodzą razem z tekstem studium.
