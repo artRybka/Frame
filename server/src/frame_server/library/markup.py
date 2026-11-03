@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import html
 import re
+import unicodedata
 from urllib.parse import urlsplit
 
 _TAG = re.compile(r"<[a-zA-Z/!][^<>]*>")
@@ -63,6 +64,64 @@ def strip_language_prefix(text: str) -> str:
 def clean_title(text: str | None) -> str:
     """A title or a name as plain text, without markup or a language prefix."""
     return strip_language_prefix(strip_markup(text))
+
+
+def _fold_char(char: str) -> str:
+    """One letter in lower case without its accent ("Ł" → "l", "é" → "e"),
+    one letter for one, so a folded text keeps its positions."""
+    if char in "łŁ":
+        return "l"
+    base = unicodedata.normalize("NFKD", char)[:1] or char
+    return base.casefold()[:1] or base
+
+
+def _fold(text: str) -> str:
+    return "".join(_fold_char(c) for c in text)
+
+
+_WORD = re.compile(r"[^\W\d_]+")
+# Between the words of a name in a title: "Tadeusz Makowski", "Makowski, Tadeusz".
+_NAME_GAP = re.compile(r"[\s,.\-'’]*")
+# After the name: "Tadeusz Makowski Szewc", "Claude Monet - Nymphéas", "Goya: ...".
+_AFTER_NAME = re.compile(r"\s*[:–—-]\s*|\s*,\s*|\s+")
+_MARKED = re.compile(r"\s*[:–—-]")
+# A name's dates and roles: "Tadeusz Makowski (1882-1932)", "… (attributed to)".
+_NAME_TAIL = re.compile(r"\s*[(\[].*$")
+
+
+def strip_artist(title: str, artist: str) -> str:
+    """``title`` without the artist's name in front: "Tadeusz Makowski Szewc"
+    → "Szewc", as Commons file names (titles of files whose description
+    has none) and some catalogues have it. Accents and the order of the
+    name's words do not matter ("Jozef Chelmonski", "Makowski, Tadeusz").
+    A one-word name only goes when a colon or a dash follows it ("Canaletto
+    - Widok Warszawy", not "Rembrandt Laughing"); a title that is only the
+    name (a portrait of the artist) stays as it is.
+    """
+    if not title or not artist:
+        return title
+    name = _NAME_TAIL.sub("", artist.split("\n")[0])
+    words = sorted(_fold(w) for w in _WORD.findall(name))
+    if not words:
+        return title
+    folded = _fold(title)
+    end = 0
+    taken: list[str] = []
+    for _ in words:
+        gap = _NAME_GAP.match(folded, end)
+        start = gap.end() if gap and taken else end
+        word = _WORD.match(folded, start)
+        if word is None:
+            return title
+        taken.append(word.group())
+        end = word.end()
+    if sorted(taken) != words:
+        return title
+    after = _AFTER_NAME.match(folded, end)
+    if after is None or (len(words) == 1 and not _MARKED.match(folded, end)):
+        return title
+    rest = title[after.end() :].strip()
+    return rest if _WORD.search(rest) else title
 
 
 #: Formats every browser opens; Commons' TIFFs (often 100 MB and more) are

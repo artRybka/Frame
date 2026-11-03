@@ -9,11 +9,13 @@ from frame_server.library.commons import (
     commons_html,
     commons_plain,
     commons_year,
+    file_title,
     repair_library,
 )
 from frame_server.library.markup import (
     clean_title,
     commons_rendition,
+    strip_artist,
     strip_language_prefix,
     strip_markup,
 )
@@ -109,6 +111,42 @@ def test_titles_lose_language_prefixes() -> None:
         assert strip_language_prefix(text) == text
 
 
+def test_titles_lose_the_artists_name_in_front() -> None:
+    cases = {
+        ("Tadeusz Makowski Szewc", "Tadeusz Makowski"): "Szewc",
+        ("Tadeusz Makowski Skąpiec", "Tadeusz Makowski (1882–1932)"): "Skąpiec",
+        # File names without Polish letters, the name the other way round.
+        ("Jozef Chelmonski Babie lato", "Józef Chełmoński"): "Babie lato",
+        ("Makowski, Tadeusz: Szewc", "Tadeusz Makowski"): "Szewc",
+        ("Claude Monet - Water Lilies", "Claude Monet"): "Water Lilies",
+        ("Vincent van Gogh Irises", "Vincent van Gogh"): "Irises",
+        ("Canaletto – Widok Warszawy", "Canaletto"): "Widok Warszawy",
+    }
+    for (title, artist), want in cases.items():
+        assert strip_artist(title, artist) == want
+    # A one-word name without a colon or dash, a title that is only the name,
+    # the name in another form or elsewhere in the title: kept.
+    for title, artist in (
+        ("Rembrandt Laughing", "Rembrandt"),
+        ("Jan Matejko", "Jan Matejko"),
+        ("Portret Tadeusza Makowskiego", "Tadeusz Makowski"),
+        ("Tadeusz Kościuszko", "Tadeusz Makowski"),
+        ("Szewc", "Tadeusz Makowski"),
+        ("Szewc", ""),
+    ):
+        assert strip_artist(title, artist) == title
+
+
+def test_file_names_as_titles() -> None:
+    # Commons files whose Artwork template has an empty title.
+    assert file_title("File:Tadeusz Makowski Szewc.jpg", "Tadeusz Makowski", 1930) == "Szewc"
+    assert file_title("File:Tadeusz_Makowski_Skapiec_1932.jpg", "Tadeusz Makowski", 1932) == (
+        "Skapiec"
+    )
+    # Only the work's own year goes.
+    assert file_title("File:Jan Matejko Bitwa 1410.jpg", "Jan Matejko", 1878) == "Bitwa 1410"
+
+
 def test_plain_repair() -> None:
     assert commons_plain(STORED_TITLE, title=True) == "Żniwiarka"
     assert commons_plain(STORED_DATE) == "1879"
@@ -184,6 +222,31 @@ def test_wikimedia_import_drops_language_prefix() -> None:
     assert items[0].title == "Night Windows"
 
 
+def test_wikimedia_file_without_a_title_is_named_without_the_artist() -> None:
+    page = {
+        "pageid": 11,
+        "title": "File:Tadeusz Makowski Skapiec 1932.jpg",
+        "imageinfo": [
+            {
+                "url": "https://upload/full.jpg",
+                "extmetadata": {
+                    "Artist": {"value": '<bdi><a href="/wiki/x">Tadeusz Makowski</a></bdi>'},
+                    "DateTimeOriginal": {"value": "1932"},
+                    "LicenseShortName": {"value": "Public domain"},
+                },
+            }
+        ],
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"query": {"pages": {"11": page}}})
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http:
+        item = WikimediaCommons(http).fetch("11")
+    assert item is not None
+    assert (item.title, item.artist, item.year) == ("Skapiec", "Tadeusz Makowski", 1932)
+
+
 def test_repair_stored_items(tmp_path) -> None:
     lib = Library(tmp_path / "lib.db")
     broken = Item(
@@ -209,10 +272,37 @@ def test_repair_stored_items(tmp_path) -> None:
     prefixed = Item(id="wmc:9", source="wmc", source_id="9", title="en:Night Windows")
     linked = Item(id="openverse:2", source="openverse", source_id="2", title=":fr:Le Pont")
     photo = Item(id="upload:1", source="upload", source_id="", title="pl:moja notatka")
-    for item in (broken, other, wikidata, tagged, drawing, prefixed, linked, photo):
+    named = Item(
+        id="wmc:10",
+        source="wmc",
+        source_id="10",
+        title="Tadeusz Makowski Skapiec 1932",
+        artist="Tadeusz Makowski",
+        year=1932,
+        url="https://commons.wikimedia.org/wiki/File:Tadeusz_Makowski_Skapiec_1932.jpg",
+    )
+    catalogued = Item(
+        id="europeana:2",
+        source="europeana",
+        source_id="2",
+        title="Jozef Chelmonski - Babie lato",
+        artist="Józef Chełmoński",
+    )
+    selfie = Item(
+        id="upload:2",
+        source="upload",
+        source_id="",
+        title="Jan Kowalski w ogrodzie",
+        artist="Jan Kowalski",
+    )
+    items = (broken, other, wikidata, tagged, drawing, prefixed, linked, photo, named, catalogued)
+    for item in (*items, selfie):
         lib.upsert(item)
 
-    assert repair_library(lib) == 6
+    assert repair_library(lib) == 8
+    assert lib.get("wmc:10").title == "Skapiec"
+    assert lib.get("europeana:2").title == "Babie lato"
+    assert lib.get("upload:2").title == selfie.title
     fixed = lib.get("wmc:7")
     assert fixed is not None
     assert (fixed.title, fixed.date_text, fixed.year) == ("Żniwiarka", "1879", 1879)

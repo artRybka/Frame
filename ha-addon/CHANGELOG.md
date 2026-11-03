@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.84.1
+
+- Tytuły dzieł nie zaczynają się już od imienia i nazwiska autora
+  („Tadeusz Makowski Szewc” → „Szewc”). Brało się to z Wikimedia Commons:
+  gdy opis pliku nie ma tytułu, serwer brał nazwę pliku, a ta zaczyna się
+  od autora i czasem kończy rokiem. Dotyczy też polskiego tytułu i dzieł
+  już zapisanych w bibliotece (poprawiane raz po aktualizacji serwera).
+
 ## 1.83.1
 
 - Szukaj, arkusz „Kolor”: na karcie „Tylko akcent” nie ma już sekcji
