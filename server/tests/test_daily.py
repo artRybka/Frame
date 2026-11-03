@@ -14,7 +14,7 @@ import httpx
 import pytest
 from conftest import jpeg_bytes
 from fastapi.testclient import TestClient
-from PIL import Image, ImageDraw, ImageOps
+from PIL import Image, ImageDraw, ImageOps, ImageStat
 from test_ai import GOOD_KEY, FakeAnthropic, _message
 
 from frame_server import daily as daily_module
@@ -35,7 +35,7 @@ from frame_server.ai.study import KIND as STUDY
 from frame_server.config import Settings
 from frame_server.daily import HISTORY_KEY, of_season, round_anniversary
 from frame_server.library import Item, ItemKind
-from frame_server.library.models import Note
+from frame_server.library.models import Note, SharperCopy
 from frame_server.service import FrameService
 from frame_server.web import create_app
 
@@ -1043,3 +1043,68 @@ def test_the_likely_paints_do_not_all_start_the_same() -> None:
     assert texts[3] == "Zapewne biel ołowiana."
     assert texts[4] == "Czerń kostna, z palonych kości."
     assert paints[2].text.startswith("Najpewniej")  # the page's own copy is left as it was
+
+
+def _art() -> Image.Image:
+    """A painting with a red square at (600, 300)–(700, 400) among shapes."""
+    rng = random.Random(7)
+    art = Image.new("RGB", (1200, 900), (40, 50, 90))
+    draw = ImageDraw.Draw(art)
+    for _ in range(60):
+        x, y = rng.randint(0, 1150), rng.randint(0, 850)
+        size = (rng.randint(10, 160), rng.randint(10, 160))
+        colour = (rng.randint(0, 120), rng.randint(100, 255), rng.randint(0, 255))
+        draw.ellipse((x, y, x + size[0], y + size[1]), fill=colour)
+    draw.rectangle((600, 300, 700, 400), fill=(230, 20, 20))
+    return art
+
+
+def test_details_drawn_on_another_copy_are_cut_from_the_picked_one(
+    offline: FrameService,
+) -> None:
+    """Mateusz 2026-11-03 (Hopper's "Automat"): the page's boxes were drawn
+    on the work's own copy, with a margin; a sharper copy, cut close, was
+    picked since. The fragment is cut from the picked copy, where the box
+    lies on it."""
+    _catalogue(offline)
+    item = offline.library.get("met:1")
+    assert item is not None
+    art = _art()
+    own = Image.new("RGB", (1300, 1000), (120, 100, 60))
+    own.paste(art, (50, 50))
+    picked = art.crop((10, 8, 1190, 892)).resize((2360, 1768))
+    copies = {"https://own/1.jpg": own, "https://sharp/1.jpg": picked}
+    offline.images.sample = lambda url, urgent=False: copies[url].copy()  # type: ignore[method-assign]
+    sharper = SharperCopy(
+        url="https://sharp/1.jpg", item_id="wmc:1", source="wmc", width=2360, height=1768
+    )
+    item = offline.library.update(item.id, sharper=sharper) or item
+    essay = clean(ANSWER, [])
+    assert essay is not None
+    # The red square on the own copy, as fractions of it.
+    box = {"title": "Czerwień", "text": "", "x": 650 / 1300, "y": 350 / 1000, "w": 0.077, "h": 0.1}
+    job = offline.daily.job
+    offline.library.save_note(
+        Note(
+            item_id=item.id,
+            kind=job.kind,
+            model=OPUS,
+            prompt_version=job.prompt_version,
+            source_hash=job.source_hash(item),
+            data={
+                **essay.model_dump(),
+                "details": [box],
+                "boxes": 2,
+                "seen": {"copy_id": "", "url": "https://own/1.jpg"},
+            },
+        )
+    )
+    path = offline.daily.detail(item, 0)
+    assert path is not None and path.is_file()
+    cut = Image.open(path).convert("RGB")
+    r, g, b = ImageStat.Stat(cut).mean
+    assert r > 180 and g < 70 and b < 70  # the red square, not what lies above it
+    assert cut.size[0] > 150  # from the sharper copy: twice the own's pixels
+    # Its file names both copies: cut again when another copy is picked.
+    assert "met" in path.name
+    assert offline.daily.detail_path(item, essay.details[0]) != path

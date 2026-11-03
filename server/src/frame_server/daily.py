@@ -28,9 +28,10 @@ from typing import TYPE_CHECKING
 import httpx
 from PIL import Image
 
-from .ai.daily import KIND, DailyJob, Detail, Essay
+from .ai.daily import KIND, DailyJob, Detail, Essay, Seen
 from .ai.jobs import text_hash
 from .ai.study import KIND as STUDY
+from .imaging.align import align
 from .imaging.layout import load_image
 from .library import Item, ItemKind, PlaylistRules
 from .library.artists import is_artist
@@ -350,8 +351,9 @@ class Daily:
 
     def detail_path(self, item: Item, box: Detail) -> Path:
         parts = [f"{box.x:.4f}", f"{box.y:.4f}", f"{box.w:.4f}", f"{box.h:.4f}"]
-        if item.sharper is not None:  # cut from a sharper copy: another file, another address
-            parts.append(item.sharper.item_id)
+        copy = _copy_of(item, box)
+        if copy:  # cut from a sharper copy: another file, another address
+            parts.append(copy)
         key = text_hash(*parts)[:10]
         return self.details_dir / f"{item.file_stem}-{key}.jpg"
 
@@ -373,14 +375,23 @@ class Daily:
 
     def _cut(self, item: Item, boxes: list[Detail]) -> None:
         img = self._full_size(item)
+        seen = boxes[0].seen if boxes else None
+        places = boxes
+        if seen is not None and seen.url and seen.copy_id != _current(item):
+            # Drawn on another copy than the one the work has now: cut from
+            # the one picked (the best), the boxes carried over onto it by
+            # where the two copies lie on one another; from the one drawn
+            # on when the two cannot be matched (Mateusz 2026-11-03).
+            places, img = self._carried(item, boxes, seen, img)
         width, height = img.size
         self.details_dir.mkdir(parents=True, exist_ok=True)
-        for box in boxes:
+        for box, place in zip(boxes, places, strict=True):
+            path = self.detail_path(item, box)
+            box = place
             left, top = round(box.x * width), round(box.y * height)
             right, bottom = round((box.x + box.w) * width), round((box.y + box.h) * height)
-            crop = img.crop((left, top, right, bottom))
+            crop = img.crop((max(left, 0), max(top, 0), min(right, width), min(bottom, height)))
             crop.thumbnail((DETAIL_SIDE, DETAIL_SIDE), Image.Resampling.LANCZOS)
-            path = self.detail_path(item, box)
             tmp = path.with_suffix(".tmp")
             crop.convert("RGB").save(tmp, "JPEG", quality=88, optimize=True)
             tmp.replace(path)
@@ -389,6 +400,28 @@ class Daily:
             with contextlib.suppress(OSError):
                 if old.stat().st_mtime < cutoff:
                     old.unlink()
+
+    def _carried(
+        self, item: Item, boxes: list[Detail], seen: Seen, img: Image.Image
+    ) -> tuple[list[Detail], Image.Image]:
+        """``boxes`` (drawn on the copy ``seen``) on ``img`` (the current
+        copy), with the picture to cut them from: ``img`` when the two copies
+        match, else the copy they were drawn on."""
+        try:
+            drawn = self.job.images.sample(seen.url)
+        except (httpx.HTTPError, OSError) as err:
+            log.info("copy %r of %s failed: %s; cut from the current", seen.copy_id, item.id, err)
+            return boxes, img
+        fit = align(drawn, img)
+        if fit is None:
+            log.info("copies of %s do not match: details cut from %r", item.id, seen.copy_id)
+            return boxes, drawn
+        log.info("details of %s carried onto its copy (fit %.2f)", item.id, fit.score)
+        carried = []
+        for box in boxes:
+            x, y, w, h = fit.box(box.x, box.y, box.w, box.h)
+            carried.append(box.model_copy(update={"x": x, "y": y, "w": w, "h": h}))
+        return carried, img
 
     def _full_size(self, item: Item) -> Image.Image:
         """The museum's file as it is (the cached original is cut down to
@@ -461,3 +494,17 @@ def country(item: Item) -> str:
     if head in NATIONALITIES:
         return NATIONALITIES[head][2]
     return item.culture.strip().casefold()
+
+
+def _current(item: Item) -> str:
+    """The copy the work has now: its sharper copy's id, "" for its own."""
+    return item.sharper.item_id if item.sharper is not None else ""
+
+
+def _copy_of(item: Item, box: Detail) -> str:
+    """What ``box``'s fragment is cut from, for its file's name: the work's
+    current copy, and the one the box was drawn on when that was another."""
+    current = _current(item)
+    if box.seen is not None and box.seen.copy_id != current:
+        return f"{box.seen.copy_id or 'own'}>{current or 'own'}"
+    return current
