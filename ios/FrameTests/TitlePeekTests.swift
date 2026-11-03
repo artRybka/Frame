@@ -17,4 +17,13 @@ final class TitlePeekTests: XCTestCase {
         XCTAssertNil(OriginalTitle.of("nighthawks ", shown: "Nighthawks"))
         XCTAssertNil(OriginalTitle.of("  ", shown: "Bez tytułu"))
     }
+
+    func testGlintStartsAndEndsOffTheTitle() {
+        let first = Glint.band(at: 0)
+        let last = Glint.band(at: 1)
+        XCTAssertLessThanOrEqual(first.end, 0)
+        XCTAssertGreaterThanOrEqual(last.start, 1)
+        let middle = Glint.band(at: 0.5)
+        XCTAssertEqual((middle.start + middle.end) / 2, 0.5, accuracy: 0.0001)
+    }
 }
