@@ -24,6 +24,8 @@ struct NowView: View {
     @State private var cropping = false
     /// Where the frame's preview is on the screen, for cropping to fly from ("pop").
     @State private var cropHome: CGRect?
+    /// Held open, the preview had grown a touch: the frame starts that size.
+    @State private var cropGrow: CGFloat = 1
     @State private var sending = false
     @State private var routed = false
     /// The hero picture last loaded: cropping waits for it, so a half-loaded
@@ -246,7 +248,7 @@ struct NowView: View {
                         placeholder: selectedItem?.placeholderColor ?? browsed?.summary.placeholderColor ?? Theme.mat,
                         onFrame: offset == 0,
                         draft: $draft, save: saveCrop, home: cropHome,
-                        onClose: { cropping = false }
+                        onClose: { cropping = false }, homeGrow: cropGrow
                     )
                 }
             }
@@ -380,13 +382,17 @@ struct NowView: View {
                 guard ref == heroRef else { return }
                 withAnimation(.easeOut(duration: 0.3)) { loadedHero = ref }
             }
-            // Cropping's frame comes out of it and goes back onto it, as on the artwork card.
-            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { cropHome = $0 }
             .frameShadow()
             // Under the crop screen's frame while it is open: that one flies.
             .opacity(cropping ? 0 : 1)
             // Tap or hold (the phone taps closer and closer), like the picture on the card.
-            .picturePress(enabled: canCrop && !sending && !stale) { CropScreen.present { cropping = true } }
+            .picturePress(enabled: canCrop && !sending && !stale) { held in
+                cropGrow = held ? PressHold.pictureGrow : 1
+                CropScreen.present { cropping = true }
+            }
+            // Cropping's frame comes out of it and goes back onto it. Out here,
+            // so the place is the preview's own, not grown by the press.
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { cropHome = $0 }
             .accessibilityAddTraits(canCrop ? .isButton : [])
             .accessibilityHint(Text(canCrop ? "Otwiera kadrowanie na całym ekranie" : ""))
             .accessibilityValue(Text(redrawing ? "Ramka zmienia obraz" : ""))

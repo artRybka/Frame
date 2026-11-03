@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.86.1
+
+- Kadrowanie: lot ramki z podglądu i z powrotem już nie podskakuje.
+  Ramka nie przeskakuje za cel i nie odbija, a przy zamykaniu ląduje
+  do końca, zanim pojawi się podgląd. Kadrowanie otwarte
+  przytrzymaniem startuje z podglądu tak powiększonego, jakim go widać
+  pod palcem. Okna kadru znikają w locie, więc ramka ląduje dokładnie
+  jako podgląd.
+
 ## 1.86.0
 
 - Ramka → Prezentacja: bez nagłówka „Kadrowanie”. Kolor i szerokość
