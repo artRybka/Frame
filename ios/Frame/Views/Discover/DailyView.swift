@@ -142,6 +142,9 @@ struct DailyView: View {
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { pageWidth = $0 }
         .navigationTitle("Studium dzieła")
         .navigationBarTitleDisplayMode(.inline)
+        // No title in the bar, only its buttons over the page (Mateusz
+        // 2026-11-03); the title stays for the back button's menu and VoiceOver.
+        .toolbar(removing: .title)
         .toolbar {
             if let card {
                 ItemToolbar(
@@ -210,7 +213,7 @@ struct DailyView: View {
             // The picture stays put while the page fades in under it: the
             // placeholder's thumbnail and the page's picture, faded one over
             // the other, blinked it.
-            // The title's slip 6 pt under the picture, its own thing.
+            // The label 12 pt under the picture (6 here, 6 its own).
             VStack(alignment: .leading, spacing: 6) {
                 picture(work)
                 ZStack(alignment: .top) {
@@ -282,9 +285,9 @@ struct DailyView: View {
             Group {
                 if let peek {
                     // The artist alone: the date in Polish comes with the page.
-                    TitleSlip(
+                    StudyLabel(
                         title: peek.title.isEmpty ? "Bez tytułu" : peek.title,
-                        byline: TitleSlip.byline(peek.item, date: "")
+                        byline: StudyLabel.byline(peek.item, date: "")
                     )
                 } else {
                     TitleSkeleton().padding(.top, 8)
@@ -437,7 +440,7 @@ struct DailyView: View {
     @ViewBuilder
     private func content(_ work: DailyWork) -> some View {
         // A little more air after each section (Mateusz 2026-11-03); a
-        // little less after the title's slip.
+        // little less after the title's label.
         VStack(alignment: .leading, spacing: 24) {
             VStack(alignment: .leading, spacing: 14) {
                 header(work)
@@ -590,14 +593,14 @@ struct DailyView: View {
         return item.originalRef
     }
 
-    /// The title on its slip under the picture, the artist and the date
-    /// under it (Mateusz 2026-11-03).
+    /// The title under the picture, the artist and the date under it, in
+    /// letters only (Mateusz 2026-11-03).
     private func header(_ work: DailyWork) -> some View {
         let item = work.item.item
         let original = OriginalTitle.of(item.title, shown: work.title)
-        return TitleSlip(
+        return StudyLabel(
             title: peeking ? original ?? work.title : work.title,
-            byline: TitleSlip.byline(item, date: work.date),
+            byline: StudyLabel.byline(item, date: work.date),
             peekable: original != nil,
             peeking: $peeking,
             onArtist: item.artist.isEmpty ? nil : { model.artistSearch = item.artist }
@@ -1404,24 +1407,22 @@ enum DailyPeeks {
     }
 }
 
-/// The study's title on a slip 6 pt under the picture, as wide as it:
-/// black with white letters, cream with dark ones in the dark style; the
+/// The study's label under the picture, letters only, like a museum's
+/// wall label: no band, ink on the page's paper (Mateusz 2026-11-03, "same
+/// litery", variant 1, after 1.92.0's black slip looked too heavy). The
 /// title in the buttons' letters (plain, semibold, capitals, spaced out),
-/// under it, finer and lighter, the artist and the date (Mateusz
-/// 2026-11-03, "Tytuł na karteczce"). Held, the title turns into the
-/// museum's own; a long one (some run to 150 characters) is in plain
-/// letters, hard to read in capitals. Held, the artist looks for their other
-/// works on Szukaj, as in "O autorze".
-struct TitleSlip: View {
+/// smaller than the sections' serif headings; under it, finer and grey, the
+/// artist and the date. Held, the title turns into the museum's own; a long
+/// one (some run to 150 characters) is in plain letters, hard to read in
+/// capitals. Held, the artist looks for their other works on Szukaj, as in
+/// "O autorze".
+struct StudyLabel: View {
     var title: String
     var byline: String
     var peekable = false
     var peeking: Binding<Bool> = .constant(false)
     var onArtist: (() -> Void)?
 
-    static let ground = Color(light: 0x111010, dark: 0xEDE8DF)
-    static let ink = Color(light: 0xFFFFFF, dark: 0x121110)
-    static let soft = Color(light: 0xF5F1EA, dark: 0x1D1B18).opacity(0.7)
     /// Up to this many characters, the title is in capitals.
     static let capitals = 60
 
@@ -1435,21 +1436,20 @@ struct TitleSlip: View {
 
     var body: some View {
         let plain = title.count > Self.capitals
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: 3) {
             Text(plain ? title : title.uppercased(with: Locale(identifier: "pl_PL")))
-                .font(.system(size: plain ? 14.5 : 15, weight: .semibold))
+                .font(.system(size: plain ? 13.5 : 12.5, weight: .semibold))
                 .tracking(plain ? 0 : 1.6)
-                .foregroundStyle(Self.ink)
+                .lineSpacing(plain ? 1 : 2)
+                .foregroundStyle(Theme.ink)
                 .fixedSize(horizontal: false, vertical: true)
                 .contentTransition(.opacity)
                 // Held: the museum's own, until held again.
                 .titlePeek(enabled: peekable, peeking: peeking)
             if !byline.isEmpty { bylineText }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
+        .padding(.top, 6)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Self.ground, in: RoundedRectangle(cornerRadius: LabelButton.corner, style: .continuous))
         .animation(.easeInOut(duration: 0.3), value: title)
     }
 
@@ -1457,7 +1457,7 @@ struct TitleSlip: View {
     private var bylineText: some View {
         let text = Text(byline)
             .font(.system(size: 13, weight: .light))
-            .foregroundStyle(Self.soft)
+            .foregroundStyle(Theme.inkSoft)
             .fixedSize(horizontal: false, vertical: true)
         if let onArtist {
             text.artistPress(onArtist)
