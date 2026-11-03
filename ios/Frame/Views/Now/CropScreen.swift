@@ -32,7 +32,7 @@ struct CropScreen: View {
     init(
         itemID: String, preview: ImageRef?, aspectRatio: CGFloat, placeholder: Color = Theme.mat,
         onFrame: Bool = false, draft: Binding<FramingDraft>, save: @escaping () async -> Bool, home: CGRect? = nil,
-        onClose: (() -> Void)? = nil
+        onClose: (() -> Void)? = nil, homeGrow: CGFloat = 1
     ) {
         self.itemID = itemID
         self.preview = preview
@@ -44,6 +44,7 @@ struct CropScreen: View {
         self.home = home
         self.onClose = onClose
         _atHome = State(initialValue: home != nil)
+        _grow = State(initialValue: homeGrow)
     }
 
     /// Opens or closes it with no animation of the system's: the screen
@@ -72,6 +73,9 @@ struct CropScreen: View {
     /// The last moment: the frame on the preview goes with the screen, as
     /// the preview under it shows again.
     @State private var gone = false
+    /// The preview held open is grown a touch (`PressHold.pictureGrow`):
+    /// the frame starts at that size, not with a small jump back.
+    @State private var grow: CGFloat
 
     private var ready: Bool { draft.view?.windows.isEmpty == false }
 
@@ -86,6 +90,9 @@ struct CropScreen: View {
                 FramedArtwork(ref: preview, aspectRatio: aspectRatio, placeholder: placeholder, shadow: false) {
                     if ready, loaded != nil {
                         CropWindows(itemID: itemID, draft: $draft)
+                            // On the preview it lands as the preview itself,
+                            // not as the windows drawn here (a small jump).
+                            .opacity(atHome ? 0 : 1)
                             .transition(.opacity)
                     }
                 }
@@ -171,6 +178,7 @@ struct CropScreen: View {
             withAnimation(Self.out) {
                 atHome = false
                 shown = true
+                grow = 1
             }
             withAnimation(Self.turnIn) { turned = true }
         }
@@ -211,7 +219,7 @@ struct CropScreen: View {
             : CGSize(width: inner.width, height: inner.width / aspectRatio)
         let width = fitted.width + 2 * moulding
         return AtHome.Move(
-            scale: home.width / width,
+            scale: home.width / width * grow,
             offset: CGSize(width: home.midX - space.midX, height: home.midY - space.midY)
         )
     }
@@ -250,14 +258,13 @@ struct CropScreen: View {
             try? await Task.sleep(for: .seconds(0.05))
         }
         if turned, aspectRatio > 1 {
-            withAnimation(Self.turnBack) { turned = false }
-            try? await Task.sleep(for: .seconds(0.3))
+            await animate(Self.turnBack, until: .logicallyComplete) { turned = false }
         }
-        withAnimation(Self.back) {
+        // To the very end: swapped while a spring still crept, it jumped.
+        await animate(Self.back, until: .removed) {
             atHome = home != nil
             shown = false
         }
-        try? await Task.sleep(for: .seconds(0.3))
         Self.present {
             gone = true
             if let onClose { onClose() } else { dismiss() }
@@ -266,13 +273,21 @@ struct CropScreen: View {
 
     /// Quick, so the frame is on its side by the time the screen has popped
     /// out (the frame's own turn, 0.6 s, was too slow here).
-    private static let turnIn = Animation.spring(duration: 0.28, bounce: 0.08)
+    private static let turnIn = Animation.spring(duration: 0.28, bounce: 0)
     /// Back again before the frame goes onto the preview.
-    private static let turnBack = Animation.spring(duration: 0.4, bounce: 0.1)
+    private static let turnBack = Animation.spring(duration: 0.35, bounce: 0)
     /// Out of the preview, as the screen opens.
-    private static let out = Animation.spring(duration: 0.35, bounce: 0.12)
+    /// No bounce: overshooting, the frame seemed to jump.
+    private static let out = Animation.spring(duration: 0.35, bounce: 0)
     /// Back onto it: quick, but no bounce, so it settles right on it.
     private static let back = Animation.spring(duration: 0.3, bounce: 0)
+
+    /// Runs `change` with `animation` and returns once it is `until`.
+    private func animate(_ animation: Animation, until: AnimationCompletionCriteria, _ change: () -> Void) async {
+        await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
+            withAnimation(animation, completionCriteria: until, change) { done.resume() }
+        }
+    }
 
     /// Back to the crop the server would choose; "Zapisz kadr" keeps it.
     private func automaticCrop() async {

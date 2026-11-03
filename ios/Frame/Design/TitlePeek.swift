@@ -20,6 +20,8 @@ struct PressHold: ViewModifier {
 
     /// How long the finger stays before `action`.
     static let hold = 0.5
+    /// How much a held picture grows: at this size when the hold fires.
+    static let pictureGrow: CGFloat = 1.05
     /// A touch shorter than this (a tap, a scroll starting) shows nothing.
     private static let settle = 0.08
 
@@ -89,7 +91,16 @@ extension View {
     /// A picture that opens on the whole screen: a tap, or a hold that
     /// answers like a title does.
     func picturePress(enabled: Bool = true, open: @escaping () -> Void) -> some View {
-        pressHold(enabled: enabled, grow: 1.05, anchor: .center, onTap: { if enabled { open() } }, action: open)
+        picturePress(enabled: enabled) { _ in open() }
+    }
+
+    /// As above, telling whether it was held (the picture grown by
+    /// `PressHold.pictureGrow` as it opens) or tapped.
+    func picturePress(enabled: Bool = true, open: @escaping (_ held: Bool) -> Void) -> some View {
+        pressHold(
+            enabled: enabled, grow: PressHold.pictureGrow, anchor: .center,
+            onTap: { if enabled { open(false) } }, action: { open(true) }
+        )
     }
 
     /// "Tytuł w oryginale": a Polish title, held, turns into the source's
