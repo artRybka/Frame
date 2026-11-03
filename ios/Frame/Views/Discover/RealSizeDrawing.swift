@@ -3,9 +3,9 @@ import SwiftUI
 /// "Rozmiar obrazu" (Mateusz 2026-11-02/03): the work at its real size on
 /// the left, at the column's edge, and beside it for scale a sheet of A4
 /// paper, white, with a shadow and a curled corner, "A4" printed on it in
-/// light grey; for a work over 1.3 m a standing figure (the system's
-/// "figure.stand") cut out of the same paper, 170 cm. One scale, both
-/// standing on the work's bottom edge. A sheet lower than the pencilled
+/// thin dark grey; for a work over 1.3 m a man's dark silhouette, 180 cm,
+/// his height pencilled beside him (Mateusz's drawing, 2026-11-03). One
+/// scale, both standing on the work's bottom edge. A sheet lower than the pencilled
 /// height stands a little past its line, under its figures; else past
 /// them.
 struct RealSizeDrawing: View {
@@ -20,8 +20,8 @@ struct RealSizeDrawing: View {
         case figure
 
         static let sheetSize = CGSize(width: 21, height: 29.7)
-        /// Wider than the figure, so that it is the box's height, 170 cm.
-        static let figureSize = CGSize(width: 90, height: 170)
+        /// The silhouette's own bounds (the asset is cropped to them), 180 cm.
+        static let figureSize = CGSize(width: 180 * 427.79 / 1453.49, height: 180)
         /// Works higher than this get the figure.
         static let figureFrom = 130.0
 
@@ -30,7 +30,7 @@ struct RealSizeDrawing: View {
         }
 
         var size: CGSize { self == .sheet ? Self.sheetSize : Self.figureSize }
-        var spoken: String { self == .sheet ? "kartka A4" : "postać, 170 cm" }
+        var spoken: String { self == .sheet ? "kartka A4" : "sylwetka człowieka, 180 cm" }
     }
 
     private static let drawingHeight: CGFloat = 230
@@ -56,7 +56,9 @@ struct RealSizeDrawing: View {
         let h = CGFloat(height), w = CGFloat(width)
         let gap: CGFloat = h >= 100 ? 66 : 54
         let room = Self.drawingHeight - Self.top - Self.bottom
-        let scale = min(room / max(refH, h), (column - gap) / (refW + w))
+        // The figure's pencilled height needs room on its right.
+        let labelRoom: CGFloat = reference == .figure ? 56 : 0
+        let scale = min(room / max(refH, h), (column - gap - labelRoom) / (refW + w))
         // Both stand on one line, the work's bottom edge (Mateusz 2026-11-03).
         let base = Self.top + room
         let picture = CGRect(x: 0, y: base - h * scale, width: w * scale, height: h * scale)
@@ -84,14 +86,24 @@ struct RealSizeDrawing: View {
             .shadow(color: .black.opacity(0.22), radius: 5, y: 5)
             .offset(x: picture.minX, y: picture.minY)
 
-            Group {
-                switch reference {
-                case .sheet: PaperSheet()
-                case .figure: PaperFigure()
-                }
+            switch reference {
+            case .sheet:
+                PaperSheet()
+                    .frame(width: ref.width, height: ref.height)
+                    .offset(x: ref.minX, y: ref.minY)
+            case .figure:
+                Image("ScaleFigure")
+                    .renderingMode(.template)
+                    .resizable()
+                    .foregroundStyle(Theme.ink.opacity(0.88))
+                    .frame(width: ref.width, height: ref.height)
+                    .offset(x: ref.minX, y: ref.minY)
+                Dimension(from: CGPoint(x: ref.maxX + 8, y: ref.minY), to: CGPoint(x: ref.maxX + 8, y: ref.maxY))
+                    .stroke(pencil, style: StrokeStyle(lineWidth: 1.2, lineCap: .round))
+                pencilled("180 cm")
+                    .alignmentGuide(.leading) { _ in -(ref.maxX + 14) }
+                    .alignmentGuide(.top) { d in -(ref.midY - d.height / 2) }
             }
-            .frame(width: ref.width, height: ref.height)
-            .offset(x: ref.minX, y: ref.minY)
 
             Dimension(from: CGPoint(x: heightX, y: picture.minY), to: CGPoint(x: heightX, y: picture.maxY))
                 .stroke(pencil, style: StrokeStyle(lineWidth: 1.2, lineCap: .round))
@@ -135,8 +147,8 @@ private enum Paper {
     static let light = Color(light: 0xFFFFFF, dark: 0xECE8E1)
     static let shade = Color(light: 0xEFEBE4, dark: 0xD6D1C8)
     static let curl = Color(light: 0xE2DCD2, dark: 0xC9C3B9)
-    /// What is printed on it: light grey.
-    static let print = Color(light: 0xD6D2CB, dark: 0xBDB8AF)
+    /// What is printed on it: thin dark grey (Mateusz 2026-11-03).
+    static let print = Color(light: 0x7D776F, dark: 0x7D776F)
     static let fill = LinearGradient(colors: [light, shade], startPoint: .topLeading, endPoint: .bottomTrailing)
 }
 
@@ -156,7 +168,7 @@ private struct PaperSheet: View {
                     .overlay(Curl(corner: corner).stroke(.black.opacity(0.08), lineWidth: 0.5))
                 if size.width >= 14 {
                     Text("A4")
-                        .font(.system(size: size.width * 0.3, weight: .semibold))
+                        .font(.system(size: size.width * 0.3, weight: .light))
                         .foregroundStyle(Paper.print)
                         .frame(width: size.width, height: size.height)
                 }
@@ -191,24 +203,6 @@ private struct Curl: Shape {
         path.addLine(to: CGPoint(x: rect.maxX - corner, y: rect.maxY))
         path.closeSubpath()
         return path
-    }
-}
-
-/// A standing figure cut out of the same paper: the system's "figure.stand"
-/// (a drawn, balanced figure; Mateusz 2026-11-03: the hand-made one was
-/// lopsided), filled with the paper and lifted by its shadow.
-private struct PaperFigure: View {
-    var body: some View {
-        Rectangle()
-            .fill(Paper.fill)
-            .mask {
-                Image(systemName: "figure.stand")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
-            }
-            .shadow(color: .black.opacity(0.22), radius: 3, y: 2)
-            .shadow(color: .black.opacity(0.08), radius: 0.5)
     }
 }
 
