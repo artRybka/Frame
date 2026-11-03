@@ -472,6 +472,7 @@ struct DailyView: View {
                     RealSizeDrawing(work: work.item, height: size.height, width: size.width)
                         .padding(.top, 4)
                 }
+                .id("size")
             }
             section("Na Twojej ramce") { onFrame(work) }
             footer(work).id("end")

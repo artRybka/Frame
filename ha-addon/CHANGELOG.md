@@ -3,10 +3,10 @@
 ## 1.85.5
 
 - „Rozmiar obrazu”: obok dzieła dla skali stoi prawdziwa kartka A4 (biała,
-  z cieniem i zagiętym rogiem, bez napisu), a „A4” jest dopisane ołówkiem
-  pod nią. Gdy kartka mieści się pod podpisem wysokości dzieła, stoi tuż
-  przy dziele. Przy dziełach wyższych niż 1,3 m zamiast kartki stoi postać
-  wycięta z tego samego papieru (170 cm). Dzieło i odniesienie stoją na
+  z cieniem i zagiętym rogiem, z jasnoszarym nadrukiem „A4”). Gdy kartka
+  mieści się pod podpisem wysokości dzieła, stoi bliżej dzieła. Przy
+  dziełach wyższych niż 1,3 m zamiast kartki stoi postać wycięta z tego
+  samego papieru (170 cm). Dzieło i odniesienie stoją na
   jednej linii, dolnej krawędzi dzieła; dzieło bez cienkiej obwódki.
 - Rysunek z wymiarami nie znika już na chwilę przy przełączaniu zakładek:
   wymiary przychodzą razem z tekstem studium.

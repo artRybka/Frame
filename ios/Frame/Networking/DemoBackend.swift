@@ -802,7 +802,7 @@ actor DemoBackend: FrameBackend {
             ("Tytuł i sygnatura", "W prostokątnym kartuszu tytuł serii i obrazu; obok podpis: „z pędzla Hokusaia, zmienione imię Iitsu”.", 0.012, 0.06, 0.115, 0.29),
         ]
         typealias Spot = DailyWork.Spot
-        return DailyWork(
+        var work = DailyWork(
             day: day ?? iso(0),
             item: RemoteItem(item: wave, inLibrary: true),
             title: "Wielka fala w Kanagawie",
@@ -849,6 +849,10 @@ actor DemoBackend: FrameBackend {
             sources: ["obraz", "Wikipedia"],
             model: "claude-opus-5-5"
         )
+        // CI screenshots: "-realSize 210x163" draws a big work's scale.
+        let asked = (UserDefaults.standard.string(forKey: "realSize") ?? "").split(separator: "x").compactMap { Double($0) }
+        work.size = asked.count == 2 ? .init(height: asked[0], width: asked[1]) : .init(height: 25.7, width: 37.9)
+        return work
     }
 
     func study(itemID: String, wait: Int, lists: Bool) async throws -> StudyView {

@@ -2,11 +2,12 @@ import SwiftUI
 
 /// "Rozmiar obrazu" (Mateusz 2026-11-02/03): the work at its real size on
 /// the left, at the column's edge, and beside it for scale a sheet of A4
-/// paper, white, with a shadow and a curled corner, "A4" pencilled under
-/// it; for a work over 1.3 m a standing figure cut out of the same paper,
-/// 170 cm. One scale, both standing on the work's bottom edge. A sheet lower
-/// than the pencilled height stands close, just past its line; else past
-/// the height's figures.
+/// paper, white, with a shadow and a curled corner, "A4" printed on it in
+/// light grey; for a work over 1.3 m a standing figure (the system's
+/// "figure.stand") cut out of the same paper, 170 cm. One scale, both
+/// standing on the work's bottom edge. A sheet lower than the pencilled
+/// height stands a little past its line, under its figures; else past
+/// them.
 struct RealSizeDrawing: View {
     let work: RemoteItem
     /// Centimetres.
@@ -19,7 +20,8 @@ struct RealSizeDrawing: View {
         case figure
 
         static let sheetSize = CGSize(width: 21, height: 29.7)
-        static let figureSize = CGSize(width: 46, height: 170)
+        /// Wider than the figure, so that it is the box's height, 170 cm.
+        static let figureSize = CGSize(width: 90, height: 170)
         /// Works higher than this get the figure.
         static let figureFrom = 130.0
 
@@ -28,7 +30,6 @@ struct RealSizeDrawing: View {
         }
 
         var size: CGSize { self == .sheet ? Self.sheetSize : Self.figureSize }
-        var caption: String { self == .sheet ? "A4" : "170 cm" }
         var spoken: String { self == .sheet ? "kartka A4" : "postać, 170 cm" }
     }
 
@@ -65,7 +66,7 @@ struct RealSizeDrawing: View {
         // Under the pencilled height (its figures about the middle): close by.
         let close = refTop > picture.midY + 12
         let ref = CGRect(
-            x: close ? heightX + 9 : picture.maxX + gap, y: refTop,
+            x: close ? heightX + 24 : picture.maxX + gap, y: refTop,
             width: refW * scale, height: refH * scale
         )
         let pencil = Theme.ink.opacity(0.8)
@@ -102,12 +103,6 @@ struct RealSizeDrawing: View {
             pencilled(Self.length(width))
                 .alignmentGuide(.leading) { d in -(picture.midX - d.width / 2) }
                 .alignmentGuide(.top) { _ in -(widthY + 6) }
-            Text(reference.caption)
-                .font(.hand(15))
-                .foregroundStyle(Theme.inkSoft)
-                .fixedSize()
-                .alignmentGuide(.leading) { d in -min(ref.midX - d.width / 2, column - d.width) }
-                .alignmentGuide(.top) { _ in -(widthY + 7) }
         }
         .frame(width: column, height: Self.drawingHeight, alignment: .topLeading)
     }
@@ -140,6 +135,8 @@ private enum Paper {
     static let light = Color(light: 0xFFFFFF, dark: 0xECE8E1)
     static let shade = Color(light: 0xEFEBE4, dark: 0xD6D1C8)
     static let curl = Color(light: 0xE2DCD2, dark: 0xC9C3B9)
+    /// What is printed on it: light grey.
+    static let print = Color(light: 0xD6D2CB, dark: 0xBDB8AF)
     static let fill = LinearGradient(colors: [light, shade], startPoint: .topLeading, endPoint: .bottomTrailing)
 }
 
@@ -157,6 +154,12 @@ private struct PaperSheet: View {
                 Curl(corner: corner)
                     .fill(LinearGradient(colors: [Paper.curl, Paper.light], startPoint: .topLeading, endPoint: .bottomTrailing))
                     .overlay(Curl(corner: corner).stroke(.black.opacity(0.08), lineWidth: 0.5))
+                if size.width >= 14 {
+                    Text("A4")
+                        .font(.system(size: size.width * 0.3, weight: .semibold))
+                        .foregroundStyle(Paper.print)
+                        .frame(width: size.width, height: size.height)
+                }
             }
         }
     }
@@ -191,58 +194,21 @@ private struct Curl: Shape {
     }
 }
 
-/// A standing figure cut out of the same paper: no face, no detail.
+/// A standing figure cut out of the same paper: the system's "figure.stand"
+/// (a drawn, balanced figure; Mateusz 2026-11-03: the hand-made one was
+/// lopsided), filled with the paper and lifted by its shadow.
 private struct PaperFigure: View {
     var body: some View {
-        FigureOutline()
+        Rectangle()
             .fill(Paper.fill)
-            .overlay(FigureOutline().stroke(.black.opacity(0.12), lineWidth: 0.5))
+            .mask {
+                Image(systemName: "figure.stand")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+            }
             .shadow(color: .black.opacity(0.22), radius: 3, y: 2)
-    }
-}
-
-/// A person standing, arms down, drawn in a 46 × 170 box (centimetres).
-private struct FigureOutline: Shape {
-    func path(in rect: CGRect) -> Path {
-        let sx = rect.width / 46, sy = rect.height / 170
-        func p(_ x: CGFloat, _ y: CGFloat) -> CGPoint {
-            CGPoint(x: rect.minX + x * sx, y: rect.minY + y * sy)
-        }
-        var path = Path()
-        path.move(to: p(23, 0))
-        path.addCurve(to: p(32.5, 11), control1: p(29, 0), control2: p(32.5, 4.5))
-        path.addCurve(to: p(26.5, 22.8), control1: p(32.5, 17), control2: p(29.5, 21.5))
-        path.addLine(to: p(26.5, 26))
-        path.addCurve(to: p(40.5, 31.5), control1: p(33, 27), control2: p(38.5, 28.5))
-        path.addCurve(to: p(43.5, 62), control1: p(42.5, 35), control2: p(43, 48))
-        path.addCurve(to: p(44, 94), control1: p(44, 75), control2: p(44.5, 88))
-        path.addCurve(to: p(40, 94), control1: p(43.5, 97), control2: p(40.5, 97))
-        path.addLine(to: p(37.5, 64))
-        path.addLine(to: p(35.5, 60))
-        path.addLine(to: p(35, 96))
-        path.addLine(to: p(34.8, 166))
-        path.addCurve(to: p(30.5, 170), control1: p(34.8, 169), control2: p(33, 170))
-        path.addLine(to: p(26, 170))
-        path.addCurve(to: p(24.6, 167.5), control1: p(25, 170), control2: p(24.6, 169))
-        path.addLine(to: p(24, 104))
-        path.addLine(to: p(22, 104))
-        path.addLine(to: p(21.4, 167.5))
-        path.addCurve(to: p(20, 170), control1: p(21.4, 169), control2: p(21, 170))
-        path.addLine(to: p(15.5, 170))
-        path.addCurve(to: p(11.2, 166), control1: p(13, 170), control2: p(11.2, 169))
-        path.addLine(to: p(11, 96))
-        path.addLine(to: p(10.5, 60))
-        path.addLine(to: p(8.5, 64))
-        path.addLine(to: p(6, 94))
-        path.addCurve(to: p(2, 94), control1: p(5.5, 97), control2: p(2.5, 97))
-        path.addCurve(to: p(2.5, 62), control1: p(1.5, 88), control2: p(2, 75))
-        path.addCurve(to: p(5.5, 31.5), control1: p(3, 48), control2: p(3.5, 35))
-        path.addCurve(to: p(19.5, 26), control1: p(7.5, 28.5), control2: p(13, 27))
-        path.addLine(to: p(19.5, 22.8))
-        path.addCurve(to: p(13.5, 11), control1: p(16.5, 21.5), control2: p(13.5, 17))
-        path.addCurve(to: p(23, 0), control1: p(13.5, 4.5), control2: p(17, 0))
-        path.closeSubpath()
-        return path
+            .shadow(color: .black.opacity(0.08), radius: 0.5)
     }
 }
 
