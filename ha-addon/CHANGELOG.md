@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.82.2
+
+- Karta dzieła: etykiety pod Kolorystyką idą w trzech wierszach: kolory,
+  akcenty, nastroje.
+
 ## 1.82.1
 
 - Kopie dzieła: kopii z „Nie pasują” (z marginesem, sam fragment, inne
