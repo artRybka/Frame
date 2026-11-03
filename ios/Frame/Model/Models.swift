@@ -1643,6 +1643,9 @@ struct DailyWork: Codable, Hashable, Sendable {
     var compositionVersions: [CompositionVersion]? = nil
     /// The owner asked for the analysis anew and Claude is making it.
     var compositionPending: Bool? = nil
+    /// The owner asked for the details to be checked ("Popraw detale") and
+    /// Claude is at it (nil from servers before 1.91.1).
+    var detailsPending: Bool? = nil
     var colour: String
     /// Nil from 0.42 servers.
     var details: [Detail]?
@@ -1737,6 +1740,15 @@ struct CompositionAgain: Codable, Hashable, Sendable {
     var pending: Bool
     /// How many analyses the work's page has had.
     var versions: Int
+}
+
+/// `POST`/`GET /api/study/{id}/details`: the work's details checked over
+/// their cuts, a box that misses drawn anew (the owner, held "Detale").
+struct DetailsAgain: Codable, Hashable, Sendable {
+    /// Claude is checking them.
+    var pending: Bool
+    /// The titles of the details drawn anew; nil when the check came to nothing.
+    var moved: [String]?
 }
 
 /// `PUT /api/study/{id}/composition`: which analysis the page shows.

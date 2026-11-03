@@ -1141,3 +1141,84 @@ def test_a_detail_that_misses_is_drawn_again() -> None:
     assert fixed[0]["x"] == 1290 / 2000 and fixed[0]["y"] == 670 / 1554
     assert fixed[1] == details[1]  # the one that hit stays as it was
     assert mended(details, None, (2000, 1554)) is None
+
+
+def test_the_owner_has_the_details_of_an_older_page_checked(tmp_path: Any) -> None:
+    """ "Popraw detale" (Mateusz 2026-11-03: "Na żądanie, przytrzymaniem"):
+    the details of a page written before the check, checked when asked; a
+    box that misses is drawn anew in every page of the work."""
+    from frame_server.ai.client import Answer
+    from frame_server.ai.daily import (
+        BOXES,
+        BOXES_VERSION,
+        DETAILS_CHECKED,
+        SEEN,
+        clean,
+        sent_size,
+    )
+    from frame_server.ai.details import KIND as MEND
+    from frame_server.ai.details import MendJob
+
+    app = _app(tmp_path)
+    svc: FrameService = app.state.service
+    with TestClient(app) as client:
+        _catalogue(svc)
+        assert client.post("/api/study/met:1/details").status_code == 409  # no key
+        svc.ai_config.set_key(GOOD_KEY)
+        assert client.post("/api/study/met:1/details").status_code == 409  # no page
+        item = svc.library.get("met:1")
+        essay = clean(ANSWER, [])
+        assert item is not None and essay is not None
+        svc.library.save_note(
+            Note(
+                item_id="met:1",
+                kind=STUDY,
+                model="claude-opus",
+                prompt_version="study-1/daily-7",
+                source_hash=svc.study.job.source_hash(item),
+                data={**essay.model_dump(), BOXES: BOXES_VERSION},
+            )
+        )
+        job = svc.ai.jobs[MEND]
+        assert isinstance(job, MendJob) and not job.wanted(item)
+        assert client.get("/api/study/met:1").json()["work"]["details_pending"] is False
+
+        assert client.post("/api/study/met:1/details").json() == {"pending": True, "moved": None}
+        assert client.get("/api/study/met:1").json()["work"]["details_pending"] is True
+        assert job.wanted(item)
+
+        params = job.params(item)
+        width, height = sent_size(params) or (0, 0)
+        first = essay.details[0]
+        wrong = {"n": 1, "ok": False, "x": 0.1 * width, "y": 0.2 * height}
+        answer = job.revise(
+            item,
+            params,
+            Answer({"details": [{**wrong, "w": 0.3 * width, "h": 0.3 * height}]}, False, 0.1, "o"),
+            lambda p: Answer(None, True, 0, "o"),
+        )
+        job.apply(
+            item,
+            svc.library.save_note(
+                Note(
+                    item_id="met:1",
+                    kind=MEND,
+                    model="o",
+                    prompt_version=job.prompt_version,
+                    source_hash=job.source_hash(item),
+                    data=answer.data or {},
+                )
+            ),
+        )
+        assert client.get("/api/study/met:1/details").json() == {
+            "pending": False,
+            "moved": [first.title],
+        }
+        page = svc.library.note("met:1", STUDY)
+        assert page is not None and page.data[DETAILS_CHECKED] == [first.title]
+        box = page.data["details"][0]
+        assert (box["x"], box["y"]) == pytest.approx((0.1, 0.2), abs=0.01)
+        assert SEEN in page.data  # the copy they are drawn on from now on
+        assert not job.wanted(item)  # done once
+        work = client.get("/api/study/met:1").json()["work"]
+        assert work["details_pending"] is False and len(work["details"]) == len(essay.details)

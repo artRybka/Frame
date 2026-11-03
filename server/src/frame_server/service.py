@@ -16,6 +16,7 @@ from PIL import Image
 from . import notifications
 from .ai import AiConfigStore, AiWorker, Claude, DailyJob, KeywordsJob, PlTextJob
 from .ai.composition import ComposeJob
+from .ai.details import MendJob
 from .ai.extras import ExtrasJob
 from .ai.search_words import SearchWords
 from .ai.study import StudyJob
@@ -266,6 +267,9 @@ class FrameService:
         # before the page's question asked for them.
         self.extras = ExtrasJob(self.daily.job)
         self.ai.register(self.extras)
+        # The owner's "Popraw detale": a page's details checked over their cuts.
+        self.mend = MendJob(self.library, self.images, self.ai_config)
+        self.ai.register(self.mend)
 
         #: Heavy work at night, while the server runs its background.
         self.night: NightQueue | None = None

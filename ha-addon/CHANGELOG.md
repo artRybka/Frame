@@ -13,6 +13,10 @@
 - Nowe studia: Claude sprawdza swoje detale na wyciętych fragmentach
   i poprawia ramkę, która nie pokazuje tego, o czym mówi (np. tło nad
   kapeluszem zamiast twarzy w „Automacie” Hoppera).
+- Studia napisane wcześniej: właściciel przytrzymuje nagłówek „Detale”
+  i wybiera „Popraw detale”. Claude sprawdza wtedy każdy detal na jego
+  wycinku i poprawia ramki, które chybiają; aplikacja mówi na koniec,
+  ile detali poprawiono.
 
 ## 1.91.0
 

@@ -108,6 +108,8 @@ class DailyWork(BaseModel):
     composition_versions: list[CompositionVersion] = []
     #: The owner asked for the analysis anew and it is being made.
     composition_pending: bool = False
+    #: The owner asked for the details to be checked ("Popraw detale"): on its way.
+    details_pending: bool = False
     colour: str = ""
     details: list[DailyDetail] = []
     on_frame: str = ""
@@ -277,6 +279,7 @@ def page(
             for n, v in enumerate(kept)
         ],
         composition_pending=bool(essay) and svc.compose.pending(item.id),
+        details_pending=bool(essay) and svc.mend.pending(item.id),
         colour=essay.colour if essay else "",
         details=details,
         on_frame=essay.on_frame if essay else "",
