@@ -727,7 +727,8 @@ struct ItemDetailView: View {
                     aspectRatio: model.isPortrait ? 9.0 / 16.0 : 16.0 / 9.0,
                     placeholder: item.placeholderColor,
                     onFrame: model.player?.current?.item?.id == item.id,
-                    draft: $draft, save: saveFromCropScreen, home: cropHome
+                    draft: $draft, save: saveFromCropScreen, home: cropHome,
+                    onClose: { opened = nil }
                 )
             }
         }
