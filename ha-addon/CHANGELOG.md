@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.86.2
+
+- Karta dzieła: gdy otwiera się od razu z polskim tytułem, po sekundzie
+  przez tytuł raz przechodzi od lewej do prawej delikatny, jaśniejszy
+  pas. To podpowiedź, że tytuł można przytrzymać i zobaczyć tytuł
+  z muzeum. Gdy polski tytuł dochodzi później, nic nie przechodzi
+  (wtedy tytuł i tak się przenika). Przy włączonym „Ogranicz ruch”
+  bez efektu.
+
 ## 1.86.1
 
 - Kadrowanie: lot ramki z podglądu i z powrotem już nie podskakuje.

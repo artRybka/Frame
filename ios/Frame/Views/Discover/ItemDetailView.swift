@@ -801,6 +801,9 @@ struct ItemDetailView: View {
                 .fixedSize(horizontal: false, vertical: true)
                 // The museum's title fades into the Polish one.
                 .contentTransition(.opacity)
+                // Opened in Polish: a light passes over it once, a hint
+                // that a hold does something. Not when Polish fades in later.
+                .titleGlint(enabled: original != nil && !peeking)
                 // Held: the museum's own, until held again.
                 .titlePeek(enabled: original != nil, peeking: $peeking)
             if !item.artist.isEmpty {
