@@ -40,7 +40,13 @@ KIND = "pl_text"
 PROMPT_VERSION = "pl-1"
 
 #: A description shorter than this ("Gift of ...") is no description.
-MIN_DESCRIPTION = 80
+MIN_DESCRIPTION = 120
+#: Nor is one with fewer words of its own than this: words that are not the
+#: title, the author, the date, the medium, the museum or a catalogue's stock
+#: words. "Boy in a Red Waistcoat, oil painting by Paul Cézanne, 1888–1890;
+#: high-resolution scan" (a Commons file's caption) has three. Such a work
+#: gets a note, written with the short text as one more fact.
+MIN_OWN_WORDS = 10
 TITLE_MAX = 80
 #: The frame's first sentence is all a small space has room for.
 FIRST_SENTENCE_MAX = 180
@@ -88,8 +94,8 @@ tłumaczysz na polski. Wszystkie pola odpowiedzi są po polsku.
 - Nie dodawaj faktów, których nie ma w danych."""
 
 NOTE_SYSTEM = f"""{_RULES}
-- Muzeum nie podaje opisu dzieła, więc piszesz krótką notkę na podstawie danych i załączonego \
-obrazu (to reprodukcja tego dzieła).
+- Muzeum nie podaje opisu dzieła (najwyżej krótką adnotację), więc piszesz krótką notkę na \
+podstawie danych i załączonego obrazu (to reprodukcja tego dzieła).
 - "full": notka do aplikacji, 400–900 znaków.
 - Opisuj tylko to, co widać na obrazie, albo to, co wynika z podanych danych. Nie wymyślaj dat, \
 miejsc, okoliczności powstania, cytatów ani interpretacji spoza tych źródeł. Jeśli czegoś nie \
@@ -124,11 +130,55 @@ class Context:
     wiki_en: str = ""
 
 
+# Words a caption or a catalogue entry is made of, in the languages museums
+# write in; with words under three letters, never a description's own.
+_STOCK = frozenset(
+    {
+        "the", "and", "with", "from", "for", "this", "that", "its", "his", "her", "their",
+        "are", "was", "were", "has", "had", "into", "oil", "oils", "painting", "paintings",
+        "painted", "canvas", "panel", "board", "paper", "wood", "copper", "tempera",
+        "watercolour", "watercolor", "gouache", "pastel", "drawing", "print", "etching",
+        "engraving", "woodcut", "lithograph", "photograph", "photo", "image", "picture", "scan",
+        "scanned", "high", "resolution", "file", "detail", "version", "reproduction", "copy",
+        "work", "artwork", "artist", "signed", "dated", "lower", "left", "right", "museum",
+        "gallery", "collection", "national", "art", "arts", "public", "domain", "gift",
+        "bequest", "purchase", "purchased", "fund", "acquired", "lent", "loan", "courtesy",
+        "credit", "inv", "inventory", "object", "accession", "van", "het", "een", "met", "voor",
+        "die", "der", "das", "und", "mit", "von", "dem", "den", "des", "les", "une", "sur",
+        "par", "avec", "pour", "del", "della", "dello", "con", "per", "una", "gli",
+    }
+)  # fmt: skip
+_TEXT_WORD = re.compile(r"[^\W\d_]{3,}")
+
+
+def _words(*texts: str) -> set[str]:
+    return {w for text in texts for w in _TEXT_WORD.findall(text.casefold())}
+
+
+def own_words(item: Item, text: str) -> set[str]:
+    """The words of ``text`` that say more than the work's data does."""
+    known = _words(
+        strip_markup(item.title), item.artist, item.artist_bio, item.date_text,
+        item.medium, item.classification, item.culture, item.museum, item.credit,
+        item.held_by,
+    )  # fmt: skip
+    return _words(text) - known - _STOCK
+
+
 def description(item: Item) -> str:
     """The museum's own description, as plain text; "" when it has none worth
-    translating."""
+    translating: too short, or saying little more than the title, the author
+    and the date (a Commons file's one-line caption)."""
     text = strip_markup(item.description)
-    return text if len(text) >= MIN_DESCRIPTION else ""
+    if len(text) < MIN_DESCRIPTION or len(own_words(item, text)) < MIN_OWN_WORDS:
+        return ""
+    return text
+
+
+def short_description(item: Item) -> str:
+    """What the museum says when it is too little to translate: one more fact
+    for a note."""
+    return "" if description(item) else strip_markup(item.description)[:MAX_BODY]
 
 
 def written_for(item: Item) -> Written:
@@ -169,6 +219,8 @@ def request_text(item: Item, context: Context) -> str:
         lines.append(f"Wikipedia (en): {context.wiki_en}")
     if text := description(item):
         lines.append(f"Opis muzeum:\n{text}")
+    elif short := short_description(item):
+        lines.append(f"Krótka adnotacja muzeum (za mało na opis): {short}")
     return "DANE\n" + "\n".join(lines)
 
 

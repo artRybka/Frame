@@ -24,6 +24,7 @@ from frame_server.ai.pl_text import (
     Context,
     PolishText,
     clean,
+    description,
     model_for,
     request_text,
     schema,
@@ -171,6 +172,42 @@ def test_translation_or_note_by_description() -> None:
     assert "Opis muzeum:\n" + DESCRIPTION in text
     assert "co przedstawia: statek" in text
     assert "Opis muzeum" not in request_text(bare, Context())
+
+
+def test_a_one_line_caption_gets_a_note() -> None:
+    """A caption that names the work, its author and its date and nothing more
+    (a Commons file's, here for a work in the NGA) is too little to translate:
+    the work gets a note, with the caption as one more fact."""
+    caption = (
+        "Boy in a Red Waistcoat, oil painting by Paul Cézanne, 1888–1890; high-resolution scan."
+    )
+    longer = (
+        "Garçon au gilet rouge. Oil on canvas, 1888–1890, by Paul Cézanne (French, 1839–1906). "
+        "National Gallery of Art, Washington, Collection of Mr. and Mrs. Paul Mellon."
+    )
+    for text in (caption, longer):
+        item = _item(
+            title="Garçon au gilet rouge",
+            artist="Paul Cézanne",
+            artist_bio="French, 1839–1906",
+            date_text="c. 1888–1890",
+            medium="oil on canvas",
+            description=text,
+        )
+        assert description(item) == "", text
+        assert written_for(item) == "note"
+        asked = request_text(item, Context())
+        assert "Opis muzeum" not in asked
+        assert f"Krótka adnotacja muzeum (za mało na opis): {text}" in asked
+
+    # One short sentence about what the picture shows is still a description.
+    said = (
+        "A boy leans on a table with his head in his hand, his red waistcoat the one warm "
+        "note among the blues and greys of the room."
+    )
+    item = _item(title="Garçon au gilet rouge", artist="Paul Cézanne", description=said)
+    assert description(item) == said
+    assert "Krótka adnotacja" not in request_text(item, Context())
 
 
 def test_clean_fixes_and_trims_answers() -> None:
