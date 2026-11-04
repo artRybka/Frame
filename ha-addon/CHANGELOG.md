@@ -11,10 +11,9 @@
 
 ## 1.99.1
 
-- Wellcome Collection nie podsuwa ilustracji medycznych: dzieła z chorobą,
-  raną, anatomią, sekcją albo narzędziami chirurgicznymi w tytule lub
-  temacie są pomijane. Obrazy z lekarzem przy pacjencie (np. holenderskie
-  sceny rodzajowe) zostają.
+- Wellcome Collection pomija ilustracje medyczne: akwarele chorób skóry,
+  anatomię, rany, sekcje i narzędzia chirurgiczne. Sceny z lekarzami
+  i portrety zostają.
 
 ## 1.99.0
 
@@ -39,6 +38,7 @@
   Rowlandsona. Z „Użytkiem prywatnym” także dzieła na licencjach CC BY i
   CC BY-NC. Pojawia się w Szukaj, przy artystach, motywach i playlistach,
   ale nie w losowych obrazach, bo wiele prac dotyczy medycyny.
+
 ## 1.98.0
 
 - Zdjęcia z albumów iCloud nie są już „Bez tytułu / Album iCloud”. Claude,
