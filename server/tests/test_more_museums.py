@@ -396,6 +396,9 @@ def test_wellcome_takes_public_domain_pictures_and_cuts_the_title() -> None:
         _wellcome_work("A man and a woman, both wearing enormous hats. Etching by J. Gillray."),
         _wellcome_work("Two friends. Coloured etching after J. Gillray, 1800.", licence="cc-by-nc"),
         _wellcome_work("A doctor. Photograph, 1890.", genres=("Photographs",)),
+        _wellcome_work(
+            "Head of a man with a disease affecting his face. Watercolour by C. D'Alton."
+        ),
     ]
     sent: list[httpx.Request] = []
 
@@ -414,7 +417,8 @@ def test_wellcome_takes_public_domain_pictures_and_cuts_the_title() -> None:
         assert wellcome.discover(Discovery(highlight=True)) == (0, [])
         assert wellcome.fetch("gone") is None
         _, private = museum("wellcome", http, Access(private_use=True)).search("Gillray")
-    assert total == 3 and len(items) == 1  # the CC BY-NC one only for private use, no photographs
+    # The CC BY-NC one only for private use; no photographs, no diseases.
+    assert total == 3 and len(items) == 1
     item = items[0]
     assert item.id == "wellcome:ke2zpvqb" and item.museum == "Wellcome Collection"
     assert item.title == "A man and a woman, both wearing enormous hats"

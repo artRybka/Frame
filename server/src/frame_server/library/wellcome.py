@@ -4,7 +4,8 @@ Its pictures are prints, drawings and paintings gathered around the history
 of medicine: Indian gouaches, Japanese woodcuts, Dürer, Rembrandt, Goya,
 Hogarth, Gillray and Rowlandson (Mateusz 2026-11-04, "muzea brytyjskie").
 Most carry the Public Domain Mark; works under CC BY and its non-commercial
-variants come only with "Użytek prywatny". Pictures come over IIIF in full
+variants come only with "Użytek prywatny". Medical pictures (diseased
+bodies, anatomy, wounds) are left out. Pictures come over IIIF in full
 size (often 2000-4000 px). No published request limits.
 
 A work's title holds its description after the subject ("An election
@@ -45,6 +46,21 @@ PRINTS = (
 
 #: Photographs and photomechanical copies: never what the frame looks for.
 _NOT_ART = re.compile(r"\b(photo\w*|process print\w*|half-?tone\w*|reproduction)\b", re.IGNORECASE)
+
+#: Medical pictures rather than art (Mateusz 2026-11-04: "niepokoi mnie ten
+#: zbiór chorób i operacji"): diseased bodies (Christopher D'Alton's
+#: watercolours for the Royal Free Hospital), anatomy, wounds, surgical
+#: instruments. Scenes with doctors and surgeons (Dutch genre paintings,
+#: portraits) stay.
+_MEDICAL = re.compile(
+    r"\b(diseas\w*|tumou?rs?|rash\w*|abs?cess\w*|lesions?|sores|ulcer\w*|swellings?|"
+    r"gangren\w*|syphili\w*|smallpox|leprosy|cancer\w*|carcinom\w*|patholog\w*|"
+    r"dermatolog\w*|anatom\w*|dissect\w*|viscera|skeletons?|circulatory|nervous system|"
+    r"muscles|foetus\w*|fetus\w*|embryos?|deformit\w*|amputat\w*|surgical instruments?|"
+    r"wounds?|injur\w*|corpses?|cadavers?|genital\w*|penis|vagina\w*|vulva|"
+    r"royal free hospital|d' ?alton)\b",
+    re.IGNORECASE,
+)
 
 #: Words that open the sentence describing the picture rather than its
 #: subject ("Coloured etching by J. Gillray", "Pen and ink drawing").
@@ -126,6 +142,9 @@ class WellcomeCollection(Museum):
         title, technique = split_title(str(d.get("title") or ""))
         if _NOT_ART.search(" ".join((*genres, technique, physical.partition(";")[0]))):
             return None
+        subjects = [str(s.get("label")) for s in d.get("subjects") or [] if s.get("label")]
+        if _MEDICAL.search(" ".join((str(d.get("title") or ""), *subjects))):
+            return None
         people = [
             c
             for c in d.get("contributors") or []
@@ -145,7 +164,7 @@ class WellcomeCollection(Museum):
             year=year,
             medium=_medium(physical) or technique,
             classification=", ".join(g for g in genres if g),
-            subjects=[str(s.get("label")) for s in d.get("subjects") or [] if s.get("label")],
+            subjects=subjects,
             culture=_place(places[0]) if places else "",
             credit=f"{self.name}, {reference}" if reference else self.name,
             license=LICENCES[licence],

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.99.1
+
+- Wellcome Collection pomija ilustracje medyczne: akwarele chorób skóry,
+  anatomię, rany, sekcje i narzędzia chirurgiczne. Sceny z lekarzami
+  i portrety zostają.
+
 ## 1.99.0
 
 - Zestawy w Odkrywaj (np. „Polskie międzywojnie”) są wymieszane: obok
