@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.95.2
+
+- Live Activity na ekranie blokady i w Dynamic Island: pasek wysyłki na
+  ramkę i studium dzieła są białe (na jasnym ekranie blokady czarne)
+  zamiast czerwonych, a po sukcesie zielone.
+
 ## 1.95.0
 
 - Pasek wysyłki na ekranie blokady i w wyspie pokazuje małą miniaturę
