@@ -1723,19 +1723,25 @@ struct DailyRoute: Hashable {
 /// A study of a work, `GET`/`POST /api/study/<id>`: the work of the day's
 /// page for any work, written by Claude when asked for and kept.
 struct StudyView: Codable, Hashable, Sendable {
-    /// "off" (no key), "none" (not asked for), on its way ("waiting",
-    /// "sources", "writing", "details"), "ready" or "failed".
+    /// "off" (no key), "none" (not asked for), "later" (ordered for later,
+    /// for less: "Przygotuj na później"), on its way ("waiting", "sources",
+    /// "writing", "details"), "ready" or "failed".
     var status: String
     /// Why it failed, in Polish.
     var error: String
     /// The page, once ready.
     var work: DailyWork?
-    /// What one costs, about (USD).
+    /// What one costs, about (USD): now, and ordered for later (nil from a
+    /// server before "Przygotuj na później").
     var costUsd: Double
+    var laterCostUsd: Double? = nil
 
     static let pending: Set<String> = ["waiting", "sources", "writing", "details"]
 
     var isPending: Bool { Self.pending.contains(status) }
+
+    /// Ordered for later: the server says "Studium gotowe" when it is.
+    var isLater: Bool { status == "later" }
 }
 
 /// `POST`/`GET`/`PUT /api/study/{id}/composition`: the work's analysis of

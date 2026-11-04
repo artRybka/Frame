@@ -37,6 +37,8 @@ actor DemoBackend: FrameBackend {
     private var originalsLimitMb: Int?
     /// Studies asked for, and when: "written" a few seconds later.
     private var askedStudies: [String: Date] = [:]
+    /// Studies ordered for later ("Przygotuj na później"): they stay so.
+    private var laterStudies: Set<String> = []
     private var tailnetValue = TailnetKey(keySet: false)
     /// The analyses of the composition asked for anew ("Wykonaj ponowną
     /// analizę"), by work: when each was made, the one shown, and when the
@@ -896,7 +898,8 @@ actor DemoBackend: FrameBackend {
 
     func study(itemID: String, wait: Int, lists: Bool) async throws -> StudyView {
         guard let asked = askedStudies[itemID] else {
-            return StudyView(status: "none", error: "", work: nil, costUsd: 0.14)
+            let status = laterStudies.contains(itemID) ? "later" : "none"
+            return StudyView(status: status, error: "", work: nil, costUsd: 0.14, laterCostUsd: 0.07)
         }
         let elapsed = Date().timeIntervalSince(asked)
         if elapsed < 6 {
@@ -960,7 +963,12 @@ actor DemoBackend: FrameBackend {
         }
     }
 
-    func prepareStudy(itemID: String, again: Bool) async throws -> StudyView {
+    func prepareStudy(itemID: String, again: Bool, later: Bool) async throws -> StudyView {
+        if later, !again {
+            if askedStudies[itemID] == nil { laterStudies.insert(itemID) }
+            return try await study(itemID: itemID, wait: 0, lists: true)
+        }
+        laterStudies.remove(itemID)
         if again || askedStudies[itemID] == nil { askedStudies[itemID] = Date() }
         return try await study(itemID: itemID, wait: 0, lists: true)
     }

@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.96.0
+
+- Studium dnia za pół ceny: serwer w nocy wybiera dzieło na jutro i zamawia
+  jego studium w pakiecie Anthropic (Batch API), który kosztuje połowę i
+  odpowiada zwykle w ciągu kilku godzin. Rano studium jest gotowe; gdy pakiet
+  się spóźni, serwer dopytuje o resztę od razu i nie płaci drugi raz za to,
+  co już przyszło. Jutrzejsze dzieło nie pojawia się wcześniej w „Studia
+  dzieł”.
+- Przytrzymanie „Przygotuj studium dzieła” na karcie dzieła daje menu:
+  „Przygotuj na już” (jak dotąd, 1–3 minuty) i „Przygotuj na później” (za pół
+  ceny, zwykle w ciągu kilku godzin). Gotowe studium przychodzi jako
+  powiadomienie „Studium gotowe”. Zamówione na później można przytrzymać
+  jeszcze raz i przygotować na już, bez ponownej opłaty za to, co pakiet już
+  zrobił.
 ## 1.95.6
 
 - Serwer pyta źródła dzieł tak, jak proszą ich zasady dla programów, żeby
