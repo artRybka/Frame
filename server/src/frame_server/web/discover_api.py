@@ -33,6 +33,7 @@ from ..library.artists import is_artist
 from ..library.duplicates import Shown
 from ..library.hosts import urgent_call
 from ..library.importer import ALL, span
+from ..library.mix import mixed
 from ..library.museums import Discovery, Kind
 from ..library.themes import (
     GROUPS,
@@ -357,7 +358,7 @@ def _back_row(svc: FrameService, day: date) -> SuggestionRow | None:
         key="back",
         title="Dawno ich nie było",
         subtitle="Twoje dzieła, których ramka nie pokazała od pół roku",
-        items=remote_items(svc, back[:ROW_SIZE]),
+        items=remote_items(svc, mixed(back[:ROW_SIZE])),
     )
 
 
@@ -385,7 +386,7 @@ def _suggestion_rows(svc: FrameService) -> list[SuggestionRow]:
                 title=f"Motyw dnia: {found.name}",
                 subtitle=f"{reason}. {found.description}" if reason else found.description,
                 theme=found.key,
-                items=remote_items(svc, day),
+                items=remote_items(svc, mixed(day)),
             )
         )
     if back := _back_row(svc, today):

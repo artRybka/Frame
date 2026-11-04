@@ -2,6 +2,20 @@
 
 ## 1.99.0
 
+- Zestawy w Odkrywaj (np. „Polskie międzywojnie”) są wymieszane: obok
+  siebie nie stoją dwa dzieła jednego autora ani jednego muzeum, o ile
+  jest czym je przedzielić, a rodzaje (obrazy, grafiki, rysunki) też się
+  przeplatają. U każdego autora dzieła idą od najwcześniejszego, więc
+  całość lekko płynie w czasie. Pierwsza porcja zestawu przynosi od razu
+  kilku różnych autorów, a pokazane dzieła nie przeskakują.
+- Wiersze „Motyw dnia” i „Dawno ich nie było” są wymieszane tak samo.
+- Konfiguracja → Aplikacja ramki → „Pokaż ekran ramki”: zrzut ekranu ramki
+  (pomniejszony, tak jak aplikacja go narysowała). Tylko gdy ramka jest na
+  zasilaczu; ramka robi go co najmniej minutę po zmianie obrazu.
+- Aplikacja na ramce sama ustawia jej zegar, gdy ten się rozjedzie (stał na
+  1 stycznia 2024). Ramka raz zainstaluje nową wersję aplikacji (ekran
+  instalatora). Budziki przeliczane na zegar ramki zostają jako
+  zabezpieczenie.
 - Nowe źródło dzieł: Wellcome Collection z Londynu, bez klucza. Daje
   pełnowymiarowe obrazy z domeny publicznej: indyjskie gwasze, japońskie
   drzeworyty (Hokusai, Kuniyoshi, Hiroshige, Utamaro), ryciny Dürera,
