@@ -312,6 +312,10 @@
       var reloaded = saved("reloaded") || 0;
       if (Date.now() - reloaded > RELOAD_EVERY_MS) {
         saved("reloaded", Date.now());
+        // The new page starts white and the panel redraws it: the picture
+        // has to go on it again (2026-11-04, white for 3 minutes after an
+        // update of the server).
+        saved("screen", null);
         location.reload();  // the server's logic changed
         return;
       }
@@ -441,17 +445,49 @@
   // every sleep, so each sleep sets its own.
   saved("alarms", null);
 
-  function arm(ms) {
-    var now = Date.now();
-    var armed = (saved("alarms") || []).filter(function (t) { return t > now; });
-    if (armed.indexOf(ms) >= 0) return { ok: true, value: "already set" };
-    var d = new Date(ms);
-    var result = call(function () {
+  // How far the panel's own clock (webapis.timer, the one its alarms run
+  // on) is from the page's. 2026-11-04 (E18): it said 2024-01-01 09:20
+  // while the page knew the right time, an alarm at the right time failed
+  // with UnknownError and one at the same distance on its clock was taken.
+  // Within 2 minutes it counts as right: alarms go as they always did.
+  var CLOCK_RIGHT_MS = 2 * 60000;
+
+  function panelShift() {
+    var t = (typeof webapis !== "undefined" && webapis.timer) ? webapis.timer : null;
+    if (!t) return 0;
+    var now = call(function () { return t.getCurrentTime(); });
+    var v = now.ok ? now.value : null;
+    if (!v || !v.year || !v.month) return 0;
+    var at = new Date(v.year, v.month - 1, v.day || 1, v.hour || 0, v.minute || 0, v.second || 0);
+    var shift = at.getTime() - Date.now();
+    return isNaN(shift) || Math.abs(shift) < CLOCK_RIGHT_MS ? 0 : shift;
+  }
+
+  function setAlarm(d) {
+    return call(function () {
       return ep.setScheduleWakeupTime({
         year: d.getFullYear(), month: d.getMonth() + 1, day: d.getDate(),
         hour: d.getHours(), minute: d.getMinutes(), second: d.getSeconds()
       });
     });
+  }
+
+  function arm(ms) {
+    var now = Date.now();
+    var armed = (saved("alarms") || []).filter(function (t) { return t > now; });
+    if (armed.indexOf(ms) >= 0) return { ok: true, value: "already set" };
+    var shift = panelShift();
+    var result = setAlarm(new Date(ms + shift));
+    if (shift) {
+      result.shift_s = Math.round(shift / 1000);
+      // Its clock read wrong: the right time, as before, is worth a try.
+      if (!result.ok) {
+        var plainTry = setAlarm(new Date(ms));
+        plainTry.shift_s = 0;
+        plainTry.shifted_error = result.error;
+        result = plainTry;
+      }
+    }
     if (result.ok) {
       armed.push(ms);
       saved("alarms", armed);
@@ -463,7 +499,9 @@
     var set = [];
     times.forEach(function (ms) {
       var a = arm(ms);
-      if (a.value !== "already set") set.push(a.ok ? new Date(ms).toTimeString().slice(0, 5) : a.error);
+      if (a.value !== "already set") {
+        set.push(a.ok ? new Date(ms).toTimeString().slice(0, 5) + (a.shift_s ? " (zegar ramki " + a.shift_s + " s)" : "") : a.error);
+      }
     });
     if (set.length) report("alarm", { spare: set });
   }
@@ -511,6 +549,7 @@
           var a = arm(ms);
           return a.ok ? new Date(ms).toTimeString().slice(0, 5) : a.error;
         });
+        r.shift_s = r.alarm && r.alarm.shift_s;
       }
       // An alarm the server does not start the app for (a check with
       // nothing new, one set before a rest) boots the panel cold: it goes
@@ -789,11 +828,20 @@
 
   // The button on the frame and the battery as they change: for the log
   // first (2026-11-04), to see whether they reach the page at all.
+  // The "next" button comes as ArrowRight (E18): the server shows the next
+  // work, and the app asks for it at once instead of at its next poll.
   var keysTold = 0;
   function onKey(e) {
+    var next = e.type === "keydown" && (e.key === "ArrowRight" || e.keyCode === 39);
+    if (next) {
+      report("key", { type: e.type, key: e.key, key_code: e.keyCode }, function () {
+        setTimeout(function () { ask("poll"); }, 3000);
+      });
+      return;
+    }
     if (keysTold >= 20) return;
     keysTold++;
-    report("key", { type: e.type, key: e.key, code: e.keyCode, name: e.keyName });
+    report("key", { type: e.type, key: e.key, key_code: e.keyCode, key_name: e.keyName });
   }
   document.addEventListener("keydown", onKey);
   window.addEventListener("tizenhwkey", onKey);

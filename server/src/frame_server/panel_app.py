@@ -191,6 +191,9 @@ DITHERED_COLOURS = 16
 # The app reports when it has downloaded a picture and put it on the page;
 # after a push the progress bar waits for that this long at most.
 SHOWN_WAIT = 300.0
+# The frame's "next" button reaches the app as ArrowRight (E18): one press
+# is the next work; presses closer than this are one.
+BUTTON_EVERY = timedelta(seconds=15)
 
 
 class AppState(BaseModel):
@@ -296,6 +299,7 @@ class PanelApp:
         self.dir: Path = service.settings.data_dir / "panel-app"
         # The owner asked for a screenshot of the panel (answer.capture).
         self.capture_requested = False
+        self._button_at: datetime | None = None
         self.contact = asyncio.Event()  # set at every question of the app
         self.contacts = 0  # questions so far, to wait for the next one
         self.heard_at: datetime | None = None  # the last question or report
@@ -849,6 +853,8 @@ class PanelApp:
                 self.service.progress.note_download(loaded / total)
         elif event == "wifi":
             self.service.status.note_wifi(data)
+        elif event == "key":
+            self._button(data)
         elif event == "shown":
             self.service.status.note_drawn()
             file_id = str(data.get("file_id", ""))
@@ -860,6 +866,25 @@ class PanelApp:
             shown = self._shown.pop(file_id, None)
             if shown is not None:
                 shown.set()
+
+    def _button(self, data: dict[str, object]) -> None:
+        """The "next" button on the frame: the next work, as the arrow in
+        the iOS app. (An app.js of 1.93-1.95 sent the key code as ``code``.)"""
+        if data.get("type") != "keydown":
+            return
+        if data.get("key") != "ArrowRight" and 39 not in (data.get("key_code"), data.get("code")):
+            return
+        now = datetime.now(UTC)
+        if self._button_at is not None and now - self._button_at < BUTTON_EVERY:
+            return
+        self._button_at = now
+        log.info("the frame's next button: the next work")
+        player = self.service.player
+        player.set_hold(None)
+        try:
+            self.service.background(player.next("button"))
+        except RuntimeError:  # no event loop (a test calling report directly)
+            log.warning("the frame's next button: no event loop")
 
     @property
     def capture_path(self) -> Path:

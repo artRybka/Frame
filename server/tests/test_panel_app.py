@@ -1340,3 +1340,19 @@ async def test_new_firmware_is_told(tmp_path: Path, server_ssl: ssl.SSLContext) 
         assert told == [("S-RSEDWWC-1130.7", "S-RSEDWWC-1131.2")]
     finally:
         await panel.stop()
+
+
+async def test_the_frames_next_button_shows_the_next_work(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    asked: list[str] = []
+
+    async def next_work(reason: str = "manual", **_: object) -> None:
+        asked.append(reason)
+
+    service.player.next = next_work  # type: ignore[method-assign]
+    press = {"type": "keydown", "key": "ArrowRight", "key_code": 39}
+    service.app.report("key", press)
+    service.app.report("key", press)  # within BUTTON_EVERY: the same press
+    service.app.report("key", {"type": "keydown", "key": "Enter", "key_code": 13})
+    await asyncio.sleep(0)
+    assert asked == ["button"]

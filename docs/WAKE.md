@@ -850,6 +850,25 @@ według `timer.getCurrentTime()`, odczyt i od razu odwołanie; część `alarm`)
 oraz zrzut ekranu czytany przez `XMLHttpRequest` z `file://<ścieżka>`, którą
 zwraca `captureScreen`.
 
+**Budziki według zegara ramki (1.95.1, po E18):** `arm()` czyta przed każdym
+budzikiem `webapis.timer.getCurrentTime()` i, gdy różni się od zegara strony
+o ponad 2 minuty, ustawia budzik przesunięty o tę różnicę (w zgłoszeniach
+`shift_s`); gdy taki budzik się nie uda, próbuje jak dotąd według prawdziwej
+godziny. Ustawień ramki nie zmienia (`setCurrentTime` i `setNTP` wymagają
+przywilejów `devicetimer` i `networkbearerselection`, czyli nowej paczki).
+Po przeładowaniu strony z powodu nowej logiki aplikacja zapomina obraz na
+ekranie (`frame.screen`) i rysuje go ponownie. Serwer ostrzega o zegarze
+ramki dopiero po dwóch kolejnych odczytach ponad 60 s (spóźnione zapytanie
+niesie stary czas). **Guziki (E18):** „następny” dochodzi do strony jako `keydown`
+`ArrowRight` (keyCode 39), Bluetooth i zasilanie nie. Od 1.95.1 (wybór
+Mateusza 2026-11-04) „następny” = następne dzieło: aplikacja zgłasza `key`,
+serwer (`PanelApp._button`, najwyżej raz na 15 s) wywołuje
+`player.next("button")`, a aplikacja pyta o obraz po 3 s. Czy naciśnięcie
+budzące uśpioną ramkę też dochodzi jako klawisz: nie sprawdzone.
+**Do sprawdzenia na baterii:** czy budzik według zegara
+ramki naprawdę ją budzi, także po głębokim śnie (zimny start może cofać jej
+zegar).
+
 **Do sprawdzenia na ramce (sesja na Macu):** wynik sondy w logu, czy
 przycisk daje `key`, czy listenery baterii odpowiadają, czy zrzut ekranu
 działa i czy pokazuje to, co widzi kamera.
