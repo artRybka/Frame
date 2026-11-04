@@ -325,6 +325,9 @@ def test_favorites_playlist_always_stays(service) -> None:
         fav_id = favorites[0]["id"]
 
         assert client.delete(f"/api/playlists/{fav_id}").status_code == 409
+        # It can be presented on the frame like any other.
+        assert client.post(f"/api/playlists/{fav_id}/play").status_code == 202
+        assert svc.player.settings.playlist_id == fav_id
         # Renamed, it stays the hearts' smart playlist.
         renamed = client.put(
             f"/api/playlists/{fav_id}",

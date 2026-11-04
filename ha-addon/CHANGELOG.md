@@ -13,6 +13,9 @@
   z modułu `remotepower` i zapisuje pełną listę funkcji ekranu w logu.
 - Zrzut ekranu na żądanie próbuje odczytać plik inną drogą, bo ramka nie
   pozwalała aplikacji go otworzyć.
+- „Prezentuj na ramce” działa dla Ulubionych, z przytrzymania okładki
+  i z przycisku na stronie playlisty. Dotąd serwer odpowiadał
+  „Ulubione zostają zawsze”, jakby chodziło o usuwanie.
 
 ## 1.94.1
 
