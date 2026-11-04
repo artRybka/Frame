@@ -102,6 +102,8 @@ class ProgressTracker:
         self.on_learn: Callable[[dict[str, float]], None] | None = None  # e.g. to save it
         # A run ended (DONE, WAITING, FAILED): its stage, title and reason.
         self.on_end: Callable[[Stage, str, str | None], None] | None = None
+        # A run began, moved on or ended (the Lock Screen card follows it).
+        self.on_change: Callable[[], None] | None = None
         self._took: dict[Stage, float] = {}
         self._stage = Stage.IDLE
         self._planned: list[Stage] = []
@@ -175,6 +177,14 @@ class ProgressTracker:
         self._end = None
         self._shown = 0.0
         self._downloaded = 0.0
+        self._changed()
+
+    def _changed(self) -> None:
+        if self.on_change:
+            try:
+                self.on_change()
+            except Exception:
+                log.exception("progress change")
 
     def note_download(self, fraction: float) -> None:
         """The panel app's word on its download (the Mobile source says
@@ -202,6 +212,7 @@ class ProgressTracker:
                 ", ".join(f"{s.value} {t:.1f} s" for s, t in self._took.items()),
                 self.expected[Stage.REFRESHING],
             )
+        self._changed()
 
     def _learn(self, stage: Stage, took: float, *, woke: bool) -> None:
         if stage == Stage.REFRESHING or (stage == Stage.RENDERING and took < MIN_RENDER):
@@ -237,6 +248,7 @@ class ProgressTracker:
                 self.on_end(stage, self._title, message)
             except Exception:
                 log.exception("progress end")
+        self._changed()
 
     def _settle(self) -> None:
         """The refresh has no end signal: it is over when its time is up."""

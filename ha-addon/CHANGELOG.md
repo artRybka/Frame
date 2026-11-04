@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.95.4
+
+- Pasek wysyłki na ekranie blokady dochodzi do końca także przy uśpionej
+  aplikacji: serwer sam przesuwa go przez kolejne etapy, na koniec pokazuje
+  zielone „Obraz jest na ramce” i po 15 sekundach pasek znika. Dotąd
+  zatrzymywał się na „Ramka odświeża ekran” do otwarcia aplikacji.
+- Potrzebny klucz APNs, jak przy powiadomieniach. Bez niego pasek działa
+  jak dotąd.
+- Mniej pustych kafelków ze strzałką odświeżenia w Odkrywaj i Szukaj. Gdy
+  Art Institute of Chicago (albo inne muzeum za ścianą anty-botową)
+  chwilowo odmawia serwerowi, lista pomija jego dzieła, których miniatury
+  serwer jeszcze nie ma, a kafelek, który już jest, znika z siatki na
+  kilka minut, zamiast pokazywać strzałkę.
+- Serwer w czasie takiej przerwy raz na minutę sprawdza, czy muzeum już
+  odpowiada, i wraca do niego od razu, bez czekania pełnych 15 minut.
+  Do obrazów AIC pyta też spokojniej.
+- Log serwera zachowuje koniec długich błędów, gdzie widać ich przyczynę.
+
 ## 1.95.3
 
 - Po aktualizacji serwera ekran ramki nie zostaje biały także wtedy, gdy

@@ -51,6 +51,7 @@ from pydantic import BaseModel
 from .births import search_name
 from .library.models import ItemKind, PlaylistRules
 from .library.viewer import OWNER_ID
+from .progress import DisplayProgress, Stage
 
 if TYPE_CHECKING:
     from .library import Item, Library
@@ -129,6 +130,37 @@ STUDY_READY_FOR = timedelta(minutes=2)
 STUDY_FAILED_FOR = timedelta(minutes=5)
 STUDY_ON_WAY = ("waiting", "sources", "writing", "details")
 
+# A send's Live Activity (the bar on the Lock Screen): the server moves it
+# on and ends it, so it does with the app asleep too. Once over, how long it
+# stays (as the app's own end, SendLiveActivity.doneFor, failedFor).
+SEND_ACTIVITIES_KEY = "push_send_activities"
+SEND_DONE_FOR = timedelta(seconds=15)
+SEND_FAILED_FOR = timedelta(minutes=5)
+# Under way with no word for this long past the expected end: the card
+# says to open the app (as the app's own, +90 s).
+SEND_STALE_AFTER = timedelta(seconds=90)
+# Waiting for the frame to wake: the card stays up a long while.
+SEND_WAITING_STALE = timedelta(hours=12)
+# How often the run is looked at while it goes: the refresh has no end
+# signal, it is over when its time is up (progress.py).
+SEND_LOOK_EVERY = 1.0
+# A follow ends after this long whatever happens.
+SEND_FOLLOW_MAX = 20 * 60
+# Swift's Date in an ActivityKit push is seconds since 2001-01-01 (its
+# default Codable), not since 1970.
+APPLE_EPOCH = 978_307_200
+# The line under the title, as the app's DisplayProgress.stageLabel.
+SEND_LABELS = {
+    "rendering": "Przygotowuję obraz dla e-papieru",
+    "sending": "Łączę się z ramką",
+    "waking": "Budzę ramkę",
+    "downloading": "Ramka pobiera obraz",
+    "refreshing": "Ramka odświeża ekran",
+    "done": "Obraz jest na ramce",
+    "waiting": "Obraz poczeka, aż ramka się obudzi",
+    "failed": "Nie udało się wysłać obrazu",
+}
+
 # APNs answers meaning the token is no good any more.
 GONE = {"BadDeviceToken", "Unregistered", "DeviceTokenNotForTopic"}
 _TOKEN = re.compile(r"^[0-9a-f]{32,200}$")
@@ -166,6 +198,36 @@ class StudyActivity(BaseModel):
     token: str
     sandbox: bool = False
     added_at: str = ""
+
+
+class SendActivity(BaseModel):
+    """A send followed on a phone's Lock Screen: its Live Activity's token
+    and the title it shows (a card is for one picture)."""
+
+    token: str
+    title: str = ""
+    sandbox: bool = False
+    added_at: str = ""
+
+
+def apple_time(moment: datetime) -> float:
+    return round(moment.timestamp() - APPLE_EPOCH, 3)
+
+
+def send_state(view: DisplayProgress, now: datetime) -> dict[str, Any]:
+    """The card's content, as the app's SendActivityAttributes.ContentState."""
+    done = view.stage == Stage.DONE
+    state: dict[str, Any] = {
+        "stage": view.stage.value,
+        "label": SEND_LABELS.get(view.stage.value, ""),
+        "fraction": 1.0 if done else view.fraction,
+        "heardAt": apple_time(now),
+    }
+    if view.phase is not None:
+        state["phase"] = view.phase
+    if view.active and view.seconds_left is not None:
+        state["expectedEnd"] = apple_time(now + timedelta(seconds=view.seconds_left))
+    return state
 
 
 @dataclass
@@ -300,6 +362,11 @@ class Notifier:
         self.base_url: Callable[[], str] | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._tasks: set[asyncio.Future[object]] = set()
+        #: Where the picture on its way is (``ProgressTracker.view``, set by
+        #: the service): the Lock Screen card follows it.
+        self.progress: Callable[[], DisplayProgress] | None = None
+        self._send_following = False
+        self._send_again = False
 
     # -- the key -------------------------------------------------------------
 
@@ -465,7 +532,8 @@ class Notifier:
         )
         self._spawn(coro)
 
-    def _spawn(self, coro: Coroutine[Any, Any, object]) -> None:
+    def _spawn(self, coro: Coroutine[Any, Any, object]) -> bool:
+        """False: no event loop to run it on (it is dropped)."""
         try:
             running = asyncio.get_running_loop()
         except RuntimeError:
@@ -479,9 +547,10 @@ class Notifier:
             )
         else:
             coro.close()
-            return
+            return False
         self._tasks.add(future)
         future.add_done_callback(self._tasks.discard)
+        return True
 
     async def send(
         self,
@@ -751,6 +820,119 @@ class Notifier:
     def _forget_activities(self, tokens: set[str]) -> None:
         if tokens:
             self._save_activities([a for a in self.study_activities() if a.token not in tokens])
+
+    # -- sends on the Lock Screen (Live Activity) ------------------------------
+
+    def send_activities(self) -> list[SendActivity]:
+        stored = self.library.get_state(SEND_ACTIVITIES_KEY, [])
+        return [SendActivity.model_validate(a) for a in stored]
+
+    def _save_send_activities(self, activities: list[SendActivity]) -> None:
+        self.library.set_state(SEND_ACTIVITIES_KEY, [a.model_dump() for a in activities])
+
+    def follow_send(self, token: str, title: str, *, sandbox: bool) -> SendActivity:
+        """The token of the Live Activity following a picture to the frame;
+        the run is followed from now on (``progress_changed``)."""
+        token = token.strip().lower()
+        if not _TOKEN.match(token):
+            raise PushError("nieprawidłowy token Live Activity")
+        kept = [a for a in self.send_activities() if a.token != token]
+        activity = SendActivity(token=token, title=title, sandbox=sandbox, added_at=_now())
+        self._save_send_activities([*kept, activity])
+        self.progress_changed()
+        return activity
+
+    def _forget_sends(self, tokens: set[str]) -> None:
+        if tokens:
+            kept = [a for a in self.send_activities() if a.token not in tokens]
+            self._save_send_activities(kept)
+
+    def progress_changed(self) -> None:
+        """A run began, moved on or ended (progress.py), from any thread:
+        followed until it is over while a card waits for it."""
+        if self.progress is None or not self.send_activities():
+            return
+        if self._send_following:
+            self._send_again = True  # e.g. a new card: told where it is
+            return
+        self._send_following = True
+        self._send_again = False
+        if not self._spawn(self._follow_send()):
+            self._send_following = False
+
+    async def _follow_send(self) -> None:
+        try:
+            last: tuple[object, ...] | None = None
+            loop = asyncio.get_running_loop()
+            until = loop.time() + SEND_FOLLOW_MAX
+            while self.progress is not None and loop.time() < until:
+                view = self.progress()
+                key = (view.stage, view.phase, view.started_at, view.title)
+                if key != last or self._send_again:
+                    self._send_again = False
+                    last = key
+                    await self.push_send(view)
+                if not view.active or not self.send_activities():
+                    return
+                await asyncio.sleep(SEND_LOOK_EVERY)
+        finally:
+            self._send_following = False
+        if self._send_again:  # a change came as it ended: a new run
+            self.progress_changed()
+
+    async def push_send(
+        self, view: DisplayProgress, *, now: datetime | None = None
+    ) -> dict[str, Sent]:
+        """Where the run is to the cards following it: under way or waiting
+        it moves them on, done or failed it ends them (they are forgotten
+        here). A card for another picture ends at once: a new one comes."""
+        activities = self.send_activities()
+        apns = self.apns()
+        if apns is None or not activities:
+            self._forget_sends({a.token for a in activities})
+            return {}
+        if view.stage == Stage.IDLE:
+            return {}
+        now = now or datetime.now(UTC)
+        over = view.stage in (Stage.DONE, Stage.FAILED)
+        state = send_state(view, now)
+        results: dict[str, Sent] = {}
+        gone: set[str] = set()
+        async with apns.client() as client:
+            for activity in activities:
+                other = bool(activity.title) and activity.title != view.title
+                aps: dict[str, Any] = {"timestamp": int(now.timestamp())}
+                if other:
+                    aps |= {"event": "end", "dismissal-date": int(now.timestamp())}
+                    aps["content-state"] = state
+                elif over:
+                    keep = SEND_DONE_FOR if view.stage == Stage.DONE else SEND_FAILED_FOR
+                    aps |= {"event": "end", "content-state": state}
+                    aps["dismissal-date"] = int((now + keep).timestamp())
+                else:
+                    aps |= {"event": "update", "content-state": state}
+                    left = timedelta(seconds=view.seconds_left or 0)
+                    stale = SEND_WAITING_STALE if not view.active else left + SEND_STALE_AFTER
+                    aps["stale-date"] = int((now + stale).timestamp())
+                payload = {"aps": aps}
+                sent = await apns.send(
+                    client, activity.token, payload, sandbox=activity.sandbox, live=True
+                )
+                if sent.reason == "BadDeviceToken":
+                    again = await apns.send(
+                        client, activity.token, payload, sandbox=not activity.sandbox, live=True
+                    )
+                    if again.ok:
+                        sent = again
+                results[activity.token] = sent
+                if not sent.ok:
+                    log.warning(
+                        "APNs send %s to …%s: %s", view.stage, activity.token[-6:], sent.reason
+                    )
+                if other or over or (sent.reason in GONE and sent.status in (400, 410)):
+                    gone.add(activity.token)
+        self._forget_sends(gone)
+        return results
 
 
 def _ready_body(title: str) -> str:

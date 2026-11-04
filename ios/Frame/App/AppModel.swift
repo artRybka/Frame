@@ -108,6 +108,9 @@ final class AppModel {
     /// Works the server found no picture of anywhere (it answered 410):
     /// grids leave them out until the app starts again.
     private(set) var missingPictures: Set<String> = []
+    /// Works whose museum turned the server away for now (it answered 503),
+    /// and until when grids leave them out instead of an empty tile.
+    private(set) var pausedPictures: [String: Date] = [:]
     /// Goes up when the owner taps a picture that did not load: every
     /// picture on screen that failed tries again.
     private(set) var pictureRetries = 0
@@ -199,6 +202,9 @@ final class AppModel {
             await self?.followStudyOnLockScreen(itemID: itemID, token: token)
         }
         liveActivity.picture = { [weak self] itemID in await self?.activityPicture(itemID) }
+        liveActivity.onToken = { [weak self] title, token in
+            await self?.followSendOnLockScreen(title: title, token: token)
+        }
         studyActivity.picture = { [weak self] itemID in await self?.activityPicture(itemID) }
     }
 
@@ -845,6 +851,11 @@ final class AppModel {
         return image.flatMap(ActivityPicture.data(from:))
     }
 
+    /// The send bar's push token, on the server (`SendLiveActivity.onToken`).
+    func followSendOnLockScreen(title: String, token: String) async {
+        try? await backend.followSend(title: title, activityToken: token, sandbox: PushCenter.sandbox)
+    }
+
     /// The app is open (again): Lock Screen cards whose work is over go,
     /// also any that iOS left up past their time or an earlier run of the
     /// app left behind. Cards still under way stay and are settled after.
@@ -857,6 +868,7 @@ final class AppModel {
     /// a picture is under way or waits for the frame, its result otherwise.
     func settleLiveActivity() async {
         guard liveActivity.isRunning, progressTask == nil else { return }
+        liveActivity.watchToken()
         guard let value = try? await backend.progress() else {
             liveActivity.finish(.idle)
             return
@@ -1638,6 +1650,23 @@ final class AppModel {
     func pictureMissing(_ itemID: String) {
         guard !missingPictures.contains(itemID) else { return }
         missingPictures.insert(itemID)
+    }
+
+    /// The work's museum turns the server away for a while (503): grids
+    /// leave it out for `seconds` (the server's Retry-After, or a few
+    /// minutes), then show it again and ask once more.
+    func picturePaused(_ itemID: String, for seconds: TimeInterval = 300) {
+        let until = Date().addingTimeInterval(min(max(seconds, 60), 1800))
+        pausedPictures = pausedPictures.filter { $0.value > Date() }
+        pausedPictures[itemID] = until
+    }
+
+    /// Whether grids leave the work out: no picture of it anywhere, or not
+    /// for now.
+    func hidesPicture(_ itemID: String) -> Bool {
+        if missingPictures.contains(itemID) { return true }
+        guard let until = pausedPictures[itemID] else { return false }
+        return until > Date()
     }
 
     /// Every picture on screen that failed tries again (a tap on one of them).

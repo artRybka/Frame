@@ -37,7 +37,7 @@ from ..imaging.layout import (
 from ..imaging.pipeline import RenderSettings, encode_image, plan_for, render_original
 from ..library import Facets, Item, ItemKind, ItemSummary, Job, Look, PhotoInfo, PlaylistRules
 from ..library.duplicates import work_key
-from ..library.hosts import urgent_call
+from ..library.hosts import Resting, urgent_call
 from ..library.images import Gone
 from ..library.importer import ALL
 from ..library.models import Framing, SharperCopy
@@ -101,12 +101,16 @@ def remote_items(
     the library's copy, unless this one is from a more reliable source than a
     copy only the server added. Works with no picture anywhere are left out
     (``ImageCache.gone``), and so are hidden works and their copies
-    ("Ukryj dzieło"), unless ``keep_hidden``."""
+    ("Ukryj dzieło"), unless ``keep_hidden``; without it also those whose
+    thumbnail is not here while its museum turned us away
+    (``ImageCache.thumb_waits``): they would be empty tiles for now."""
     found: dict[str, RemoteItem] = {}
     gone = svc.images.gone_ids()
     hidden = Hidden() if keep_hidden else svc.library.hidden()
     for item in items:
         if item.id in gone or item in hidden:
+            continue
+        if not keep_hidden and svc.images.thumb_waits(item):
             continue
         twin: str | None = None
         if copies and not svc.library.has(item.id):
@@ -551,6 +555,11 @@ async def item_thumb(item_id: str, svc: Svc) -> FileResponse:
         )
     except Gone as err:  # the app leaves the work out
         raise HTTPException(410, f"no picture anywhere: {err}") from err
+    except Resting as err:  # the app leaves it out for now, asks again later
+        wait = max(svc.images.thumb_waits(item), 60.0)
+        raise HTTPException(
+            503, f"thumbnail not now: {err}", headers={"Retry-After": f"{wait:.0f}"}
+        ) from err
     except (httpx.HTTPError, OSError) as err:
         raise HTTPException(502, f"thumbnail unavailable: {err}") from err
     return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "max-age=86400"})
