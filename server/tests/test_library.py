@@ -374,7 +374,7 @@ def test_aic_mapping() -> None:
     item = items[0]
     assert item.id == "aic:24645" and item.artist_bio == "Japanese, 1760-1849"
     assert item.description == "Famous & blue." and item.subjects == ["waves", "Mount Fuji"]
-    assert item.thumb_url.endswith("/abc/full/600,/0/default.jpg")
+    assert item.thumb_url.endswith("/abc/full/843,/0/default.jpg")
 
 
 def test_cleveland_mapping() -> None:

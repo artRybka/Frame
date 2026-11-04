@@ -12,6 +12,7 @@ from pathlib import Path
 import httpx
 import pytest
 
+from frame_server.library.aic import aic_width
 from frame_server.library.hosts import (
     PROBE_EVERY,
     REST,
@@ -188,27 +189,35 @@ def test_resting_host_is_not_tried_again_by_the_image_cache(tmp_path: Path) -> N
     assert not cache.unavailable(item)
 
 
-def test_aic_never_asks_a_picture_wider_than_it_is() -> None:
-    def record(width: int) -> dict:
+def test_aic_asks_only_the_widths_its_iiif_server_gives() -> None:
+    """Its API docs allow 112, 200, 400, 600, 800, 843 (1200, 1686 for public
+    domain), 843 recommended; ``full/full`` woke its Cloudflare (2026-11-04),
+    and a width beyond the picture's its server refuses."""
+
+    def record(width: int | None) -> dict:
+        thumb = {"width": width, "height": 3000} if width else {}
         return {
             "id": 22961,
             "title": "Hanging scroll",
             "image_id": "abc",
-            "thumbnail": {"width": width, "height": 3000},
+            "thumbnail": thumb,
             "is_public_domain": True,
         }
 
     aic = ArtInstituteChicago(httpx.Client())
-    narrow = aic._map(record(562))
-    assert narrow is not None
-    assert narrow.thumb_url.endswith("/abc/full/full/0/default.jpg")
-    assert narrow.image_url.endswith("/abc/full/full/0/default.jpg")
-    middle = aic._map(record(1200))
-    assert middle is not None
-    assert middle.thumb_url.endswith("/abc/full/600,/0/default.jpg")
-    assert middle.image_url.endswith("/abc/full/full/0/default.jpg")
-    wide = aic._map(record(6679))
-    assert wide is not None and wide.image_url.endswith("/abc/full/1686,/0/default.jpg")
+
+    def sizes(width: int | None) -> tuple[str, str]:
+        item = aic._map(record(width))
+        assert item is not None
+        return item.thumb_url.split("/full/")[1], item.image_url.split("/full/")[1]
+
+    assert sizes(562) == ("400,/0/default.jpg", "400,/0/default.jpg")
+    assert sizes(843) == ("843,/0/default.jpg", "843,/0/default.jpg")
+    assert sizes(1200) == ("843,/0/default.jpg", "1200,/0/default.jpg")
+    assert sizes(1500) == ("843,/0/default.jpg", "1200,/0/default.jpg")
+    assert sizes(6679) == ("843,/0/default.jpg", "1686,/0/default.jpg")
+    assert sizes(None) == ("843,/0/default.jpg", "1686,/0/default.jpg")
+    assert aic_width(843, 90) == 112  # smaller than any: the smallest
 
 
 def test_a_met_object_that_does_not_load_leaves_the_others() -> None:
