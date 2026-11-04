@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import itertools
+
 import pytest
 from fastapi.testclient import TestClient
 from test_pools import _wait, museums  # noqa: F401  (fixture)
@@ -10,6 +12,7 @@ from frame_server.library import Item, ItemKind, PlaylistRules
 from frame_server.library.lifespan import last_free_year
 from frame_server.library.repo import matches
 from frame_server.library.themes import (
+    ARTIST_SPREAD,
     COLOUR,
     COLOUR_POOL,
     GROUPS,
@@ -485,6 +488,27 @@ def test_theme_pages_pass_over_searches_that_find_nothing() -> None:
         sources = [source for source, _ in theme(key).searches()]
         assert set(sources) == {"mnw", "mnk", "wmc"}
         assert sources[:2] == ["mnw", "mnk"]
+
+
+def test_a_sets_searches_asked_together_are_for_different_painters() -> None:
+    # The museums answer one painter at a time; a round asks four searches
+    # at once, so four painters come in the first round, not two museums'
+    # worth of one (Strzemiński in Warsaw, then Strzemiński in Kraków).
+    found = next(t for t in THEMES if t.key == "polish-interwar")
+    searches = found.searches()
+    assert sorted(searches) == sorted(found.queries)  # only the order differs
+    painters = [next(a for a in found.artists if a.split()[-1] in query) for _, query in searches]
+    assert len(set(painters[:7])) == 7  # every painter before anyone twice
+    for start in range(len(painters) - ARTIST_SPREAD):
+        assert len(set(painters[start : start + ARTIST_SPREAD + 1])) == ARTIST_SPREAD + 1
+    sources = [source for source, _ in searches]
+    assert all(a != b for a, b in itertools.pairwise(sources))
+
+    # Themes of painters without set searches: each painter's museums in
+    # turn, a new painter in each.
+    plain = next(t for t in THEMES if t.artists and not t.queries)
+    first = plain.searches()[: len(plain.artists)]
+    assert len({query for _, query in first}) == len(plain.artists)
 
 
 def test_periods_reach_the_last_year_free_in_the_eu() -> None:

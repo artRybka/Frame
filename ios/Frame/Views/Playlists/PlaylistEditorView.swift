@@ -715,7 +715,7 @@ struct PlaylistEditorView: View {
         if !rules.kinds.isEmpty, !rules.kinds.contains(.artwork) { return "Z muzeów przychodzą tylko dzieła sztuki." }
         let museums: Set<String> = [
             "aic", "cma", "met", "rijks", "wmc", "europeana", "openverse", "smk", "wikiart",
-            "nga", "mnw", "mnk", "yale", "si", "paris", "vam",
+            "nga", "mnw", "mnk", "yale", "si", "paris", "vam", "wellcome",
         ]
         if !rules.sources.isEmpty, museums.isDisjoint(with: rules.sources) {
             return "Reguły nie dopuszczają żadnego muzeum."

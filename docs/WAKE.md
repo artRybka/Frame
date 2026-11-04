@@ -882,13 +882,26 @@ zasnęła znowu; zadzwonił ok. 34 s przed pełną godziną według zegara
 serwera. W czuwaniu na baterii ramka jest w sieci (ARP), ale MDC 1515 nie
 odpowiada. Zimny start z głębokiego snu nie cofnął przesunięcia zegara.
 
+**Zegar ramki ustawiany przez aplikację (1.98.0):** `setClock()` w `app.js`
+przed każdym budzikiem: gdy `webapis.timer.getCurrentTime()` różni się od
+zegara strony o ponad 2 min, `setCurrentTime` z lokalnym czasem strony
+(przywilej `devicetimer`, poziom Partner; paczka 2.0.6), najwyżej raz na
+godzinę, zgłoszenie `clock` z `before_s` i `after_s`. Gdy zegar przyjął
+czas, aplikacja zapomina zapamiętane budziki (ustawione według starego
+zegara są lata wstecz i nie zadzwonią) i ustawia potrzebne od nowa. NTP
+i strefy (Africa/Casablanca) nie rusza: `setNTP` chce adresu IP serwera
+czasu i przywileju `networkbearerselection`, a budziki liczą się w
+lokalnym czasie ramki, który i tak równa się czasowi strony.
+
 **Zrzut ekranu (E18, 2026-11-04 08:52 UTC):** działa. Prośba doszła przy
 najbliższym `/panel/next` (11 s), `captureScreen` 69 ms, `openFile` i
 `resolve` dają `SecurityError`, odczyt `XMLHttpRequest` z `file://` działa
 (263 553 B, `via: file-xhr`). Obraz ma 640×360 (1/4 ekranu w każdym
 wymiarze) i pokazuje to, co narysowała strona, w gładkich kolorach, bez
 rastra Spectra 6: nadaje się do sprawdzenia, co jest na ramce, nie do oceny
-wydruku.
+wydruku. Zrzut 33 s po rysowaniu był jeszcze cały biały, więc od 1.98.0
+aplikacja robi go co najmniej minutę po rysowaniu. W aplikacji iOS:
+Konfiguracja → Aplikacja ramki → „Pokaż ekran ramki”.
 
 **Do sprawdzenia na ramce (sesja na Macu):** czy listenery baterii
 odpowiadają.

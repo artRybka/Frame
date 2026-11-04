@@ -1130,6 +1130,7 @@ actor DemoBackend: FrameBackend {
             Museum(key: "mnw", name: "Muzeum Narodowe w Warszawie"),
             Museum(key: "mnk", name: "Muzeum Narodowe w Krakowie"),
             Museum(key: "yale", name: "Yale"),
+            Museum(key: "wellcome", name: "Wellcome Collection"),
             Museum(key: "wmc", name: "Wikimedia Commons"),
             Museum(key: "europeana", name: "Europeana"),
             Museum(key: "openverse", name: "Openverse"),
@@ -1282,6 +1283,14 @@ actor DemoBackend: FrameBackend {
         let until = ISO8601DateFormatter().string(from: .now.addingTimeInterval(365 * 86400))
         view.certificates = view.certificates?.map { PanelCertificate(role: $0.role, subject: $0.subject, expiresAt: until) }
         return view
+    }
+
+    func panelScreenshot() async throws -> PanelScreenshot {
+        PanelScreenshot(askedAt: nil, takenAt: nil, onCharger: true)
+    }
+
+    func askPanelScreenshot() async throws -> PanelScreenshot {
+        try await panelScreenshot()
     }
 
     func libraryStorage() async throws -> LibraryStorage {

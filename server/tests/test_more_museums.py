@@ -18,6 +18,7 @@ from frame_server.library.muza import MuzaMuseum, NationalMuseumKrakow, National
 from frame_server.library.nga import NationalGalleryOfArt, build
 from frame_server.library.smithsonian import Smithsonian
 from frame_server.library.vam import VictoriaAndAlbert
+from frame_server.library.wellcome import WellcomeCollection, split_title
 from frame_server.library.yale import YaleMuseums
 
 MNW_OBJECT = {
@@ -363,6 +364,95 @@ def test_the_va_only_with_private_use() -> None:
         sent[1].url.params["year_made_to"] == "1899"
         and sent[1].url.params["q_object_type"] == "print"
     )
+
+
+def _wellcome_work(
+    title: str, licence: str = "pdm", genres: tuple[str, ...] = ("Etching",)
+) -> dict[str, object]:
+    return {
+        "id": "ke2zpvqb",
+        "title": title,
+        "physicalDescription": "1 print : etching, with watercolour ; image 21 x 32 cm",
+        "thumbnail": {
+            "url": "https://iiif.wellcomecollection.org/image/V0047380EL/full/300,/0/default.jpg",
+            "license": {"id": licence},
+        },
+        "contributors": [
+            {"agent": {"label": "H. Humphrey", "type": "Organisation"}, "primary": False},
+            {"agent": {"label": "James Gillray", "type": "Person"}, "primary": True},
+        ],
+        "production": [
+            {"dates": [{"label": "[1795?]"}], "places": [{"label": "London (No. 37 New Bond St)"}]}
+        ],
+        "genres": [{"label": g} for g in genres],
+        "subjects": [{"label": "Hats"}],
+        "referenceNumber": "12345i",
+        "description": "<p>A <i>fine</i> pair</p>",
+    }
+
+
+def test_wellcome_takes_public_domain_pictures_and_cuts_the_title() -> None:
+    works = [
+        _wellcome_work("A man and a woman, both wearing enormous hats. Etching by J. Gillray."),
+        _wellcome_work("Two friends. Coloured etching after J. Gillray, 1800.", licence="cc-by-nc"),
+        _wellcome_work("A doctor. Photograph, 1890.", genres=("Photographs",)),
+    ]
+    sent: list[httpx.Request] = []
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        sent.append(request)
+        if request.url.path.endswith("/works/gone"):
+            return httpx.Response(410)
+        return httpx.Response(200, json={"totalResults": 3, "results": works})
+
+    with httpx.Client(transport=httpx.MockTransport(answer)) as http:
+        wellcome = museum("wellcome", http, Access())
+        assert isinstance(wellcome, WellcomeCollection)
+        total, items = wellcome.search("Gillray")
+        wellcome.discover(Discovery(kind="painting", year_from=1800, year_to=1850))
+        assert wellcome.discover(Discovery(kind="sculpture")) == (0, [])
+        assert wellcome.discover(Discovery(highlight=True)) == (0, [])
+        assert wellcome.fetch("gone") is None
+        _, private = museum("wellcome", http, Access(private_use=True)).search("Gillray")
+    assert total == 3 and len(items) == 1  # the CC BY-NC one only for private use, no photographs
+    item = items[0]
+    assert item.id == "wellcome:ke2zpvqb" and item.museum == "Wellcome Collection"
+    assert item.title == "A man and a woman, both wearing enormous hats"
+    assert item.artist == "James Gillray" and item.year == 1795 and item.date_text == "1795"
+    assert item.medium == "etching, with watercolour" and item.culture == "London"
+    assert item.license == "Public Domain Mark 1.0" and item.credit == "Wellcome Collection, 12345i"
+    assert item.description == "A fine pair"
+    assert item.image_url == (
+        "https://iiif.wellcomecollection.org/image/V0047380EL/full/!2560,2560/0/default.jpg"
+    )
+    assert item.url == "https://wellcomecollection.org/works/ke2zpvqb"
+    assert [i.license for i in private] == ["Public Domain Mark 1.0", "CC BY-NC 4.0"]
+    assert sent[0].url.params["items.locations.license"] == "pdm,cc-0"
+    assert sent[0].url.params["workType"] == "k" and sent[0].url.params["query"] == "Gillray"
+    found = sent[1].url.params
+    assert found["genres.label"] == "Paintings,Gouaches,Watercolor painting"
+    assert found["production.dates.from"] == "1800-01-01"
+    assert found["production.dates.to"] == "1850-12-31"
+    assert "cc-by-nc" in sent[-1].url.params["items.locations.license"]
+
+
+def test_wellcome_titles_lose_the_description_of_the_picture() -> None:
+    assert split_title("An election banquet. Engraving by W. Hogarth, 1755.") == (
+        "An election banquet",
+        "Engraving",
+    )
+    assert split_title("Indian acrobats performing. Gouache painting.") == (
+        "Indian acrobats performing",
+        "Gouache painting",
+    )
+    assert split_title("St. Luke painting the Virgin. Oil painting.") == (
+        "St. Luke painting the Virgin",
+        "Oil painting",
+    )
+    assert split_title("Pen and ink. Pen and ink drawing by T. Rowlandson.")[1] == (
+        "Pen and ink drawing"
+    )
+    assert split_title("Dr. Ranby's house in Chiswick") == ("Dr. Ranby's house in Chiswick", "")
 
 
 PARIS_WORK = {

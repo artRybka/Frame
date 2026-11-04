@@ -310,6 +310,7 @@ struct CopiesSheet: View {
         case "mnw": "MNW"
         case "mnk": "MNK"
         case "vam": "V&A"
+        case "wellcome": "Wellcome"
         default: Names.source(key)
         }
     }

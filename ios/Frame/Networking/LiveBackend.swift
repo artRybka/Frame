@@ -569,6 +569,12 @@ struct LiveBackend: FrameBackend {
         return try await perform(req)
     }
 
+    func panelScreenshot() async throws -> PanelScreenshot { try await get("/api/device/screenshot") }
+
+    func askPanelScreenshot() async throws -> PanelScreenshot {
+        try await send("/api/device/screenshot", method: "POST")
+    }
+
     func libraryStorage() async throws -> LibraryStorage { try await get("/api/library/storage") }
 
     func saveLibraryLimits(_ update: LibraryStorageUpdate) async throws -> LibraryStorage {

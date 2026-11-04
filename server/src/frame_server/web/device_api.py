@@ -6,9 +6,10 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 
 from ..device import MdcError
-from ..panel_app import AppView
+from ..panel_app import AppView, ScreenshotView
 from ..panel_config import PanelConfigUpdate, PanelConfigView
 from ..panel_package import AuthorChanged
 from ..service import FrameService
@@ -86,3 +87,23 @@ async def install_app(svc: Svc) -> AppView:
     except MdcError as err:
         raise HTTPException(502, f"panel: {err}") from err
     return svc.app.view()
+
+
+@router.get("/screenshot", response_model=ScreenshotView)
+def get_screenshot(svc: Svc) -> ScreenshotView:
+    return svc.app.screenshot()
+
+
+@router.post("/screenshot", response_model=ScreenshotView)
+def ask_screenshot(svc: Svc) -> ScreenshotView:
+    """The frame's app takes a screenshot at its next question on the
+    charger and sends it; ``taken_at`` changes once it is in."""
+    return svc.app.ask_capture()
+
+
+@router.get("/screenshot.jpg")
+def screenshot_file(svc: Svc) -> FileResponse:
+    path = svc.app.capture_path
+    if not path.exists():
+        raise HTTPException(404, "no screenshot yet")
+    return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
