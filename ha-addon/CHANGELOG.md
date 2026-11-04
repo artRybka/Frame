@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.95.3
+
+- Po aktualizacji serwera ekran ramki nie zostaje biały także wtedy, gdy
+  serwer uruchamia aplikację na ramce od nowa (z ekranem instalatora):
+  aplikacja rysuje wtedy obraz jeszcze raz, choć pamięta go na ekranie.
+
 ## 1.95.2
 
 - Pasek wysyłki na ekranie blokady sam znika: po „Obraz jest na ramce”

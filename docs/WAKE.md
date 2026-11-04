@@ -857,7 +857,13 @@ o ponad 2 minuty, ustawia budzik przesunięty o tę różnicę (w zgłoszeniach
 godziny. Ustawień ramki nie zmienia (`setCurrentTime` i `setNTP` wymagają
 przywilejów `devicetimer` i `networkbearerselection`, czyli nowej paczki).
 Po przeładowaniu strony z powodu nowej logiki aplikacja zapomina obraz na
-ekranie (`frame.screen`) i rysuje go ponownie. Serwer ostrzega o zegarze
+ekranie (`frame.screen`) i rysuje go ponownie. To nie wystarczyło (2026-11-04, 1.95.1): po
+aktualizacji serwer uruchomił aplikację przez MDC, ekran instalatora
+zamalował obraz, a nowa strona z tym samym `code` i `build` pamiętała go w
+`frame.screen` i ekran został biały. Od 1.95.3 pierwsza odpowiedź na
+`reason=start` po starcie przez MDC (`_unanswered > 0`) ma `redraw`, a
+aplikacja zapomina wtedy obraz i rysuje go jeszcze raz. Start po własnym
+budziku (bez MDC) dalej nie rysuje go drugi raz. Serwer ostrzega o zegarze
 ramki dopiero po dwóch kolejnych odczytach ponad 60 s (spóźnione zapytanie
 niesie stary czas). **Guziki (E18):** „następny” dochodzi do strony jako `keydown`
 `ArrowRight` (keyCode 39), Bluetooth i zasilanie nie. Od 1.95.1 (wybór
