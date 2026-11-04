@@ -5,6 +5,10 @@
 - Guziki studium na karcie dzieła („Przygotuj studium dzieła”, „Otwórz
   studium”, „Zamówione na później”) mają białe tło, w ciemnym trybie
   czarne, żeby wyróżniały się na stronie.
+- Dzieła duńskiego SMK, których numer ma ukośnik (np. „KKS1984-23/366”),
+  znowu mają miniatury, kartę, podgląd na ramce i dają się wysłać. Serwer
+  nie rozpoznawał takiego adresu i odpowiadał „nie znaleziono”, więc
+  kafelki zostawały puste ze strzałką odświeżenia.
 
 ## 1.96.1
 

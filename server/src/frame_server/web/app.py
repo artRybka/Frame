@@ -66,6 +66,7 @@ from . import (
     users_api,
 )
 from .deps import require_owner, require_token
+from .ids import EncodedSlashes
 
 log = logging.getLogger(__name__)
 
@@ -186,6 +187,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     for router in routers:
         app.include_router(router)
+    app.add_middleware(EncodedSlashes)  # work ids with a slash (SMK)
 
     @app.middleware("http")
     async def log_panel_requests(request: Request, call_next):
