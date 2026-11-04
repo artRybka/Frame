@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any, Literal, NamedTuple
 
 from .artists import is_artist
-from .colors import has_colours
+from .colors import has_colours, shown_tags
 from .duplicates import Works, dedupe, regroups
 from .models import (
     MINE,
@@ -756,7 +756,7 @@ class Library:
             artists=top(Counter(i.artist for i in items if is_artist(i.artist))),
             styles=top(Counter(s for i in items for s in i.styles)),
             subjects=top(Counter(s for i in items for s in i.subjects)),
-            colors=top(Counter(c for i in items for c in i.color_tags)),
+            colors=top(Counter(c for i in items for c in shown_tags(i.color_tags))),
             sources=top(Counter(i.source for i in items)),
             kinds=top(Counter(i.kind.value for i in items)),
         )

@@ -160,6 +160,22 @@ enum ColorTag {
 
     static func accent(_ family: String) -> String { accentPrefix + family }
 
+    /// Colours a picture is painted in ("only:blue"), as the server tags
+    /// them: never shown on a work. Picked under "Wyłącznie", they find
+    /// pictures painted in those colours alone (with white, grey, black).
+    static let onlyPrefix = "only:"
+    static let onlyFamilies = accentFamilies
+
+    static func only(_ family: String) -> String { onlyPrefix + family }
+
+    /// The family a tag is of: "blue" for "blue", "accent:blue", "only:blue".
+    static func family(_ tag: String) -> String {
+        for prefix in [accentPrefix, onlyPrefix] where tag.hasPrefix(prefix) {
+            return String(tag.dropFirst(prefix.count))
+        }
+        return tag
+    }
+
     /// A work's tags as the Kolor sheet groups them: colours, accents,
     /// moods, each in the sheet's order (moods in pairs).
     static func rows(_ tags: [String]) -> [[String]] {
@@ -168,13 +184,16 @@ enum ColorTag {
         return [
             families.filter(tags.contains),
             accents.filter(tags.contains),
-            moods.filter(tags.contains) + tags.filter { !known.contains($0) },
+            moods.filter(tags.contains) + tags.filter { !known.contains($0) && !$0.hasPrefix(onlyPrefix) },
         ]
     }
 
     static func name(_ tag: String) -> String {
         if tag.hasPrefix(accentPrefix) {
-            return "Akcent: " + name(String(tag.dropFirst(accentPrefix.count))).lowercased()
+            return "Akcent: " + name(family(tag)).lowercased()
+        }
+        if tag.hasPrefix(onlyPrefix) {
+            return "Wyłącznie: " + name(family(tag)).lowercased()
         }
         return switch tag {
         case "red": "Czerwień"
@@ -202,8 +221,8 @@ enum ColorTag {
     }
 
     static func color(_ tag: String) -> Color {
-        if tag.hasPrefix(accentPrefix) {
-            return color(String(tag.dropFirst(accentPrefix.count)))
+        if tag != family(tag) {
+            return color(family(tag))
         }
         return switch tag {
         case "red": Color(hex: 0xB8432F)
