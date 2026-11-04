@@ -25,6 +25,7 @@ targets:
       - Shared
     dependencies:
       - target: FrameWidgets
+      - target: FrameNotifications
     info:
       path: Frame/Info.plist
       properties:
@@ -98,6 +99,32 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.artrybka.frame.widgets
+        TARGETED_DEVICE_FAMILY: "1"
+  FrameNotifications:
+    # Adds the work's picture to a notification from the server
+    # (NotificationPicture: the server's thumbnail at home, else the museum's).
+    type: app-extension
+    platform: iOS
+    sources:
+      - FrameNotifications
+      - path: Shared/NotificationPicture.swift
+    info:
+      path: FrameNotifications/Info.plist
+      properties:
+        CFBundleDisplayName: Frame
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleDevelopmentRegion: pl
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.usernotifications.service
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).NotificationService
+        # The server's thumbnail comes over plain HTTP from the home network.
+        NSLocalNetworkUsageDescription: Frame łączy się z serwerem ramki w Twojej sieci domowej.
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.artrybka.frame.notifications
         TARGETED_DEVICE_FAMILY: "1"
   FrameTests:
     type: bundle.unit-test

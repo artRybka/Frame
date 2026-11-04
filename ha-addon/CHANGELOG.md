@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.93.0
+
+- Powiadomienia o dziele pokazują jego miniaturę: zmiana dzieła na
+  ramce, Studium dnia, Studium gotowe, Artysta tygodnia i Rocznica
+  urodzin (przy dwóch ostatnich jedno z ulubionych dzieł artysty).
+  W domu obrazek przychodzi z serwera, poza domem z muzeum; zdjęcie
+  z rolki poza domem przychodzi bez miniatury. Gdy obrazek nie zdąży
+  się pobrać, powiadomienie przychodzi jak dotąd, bez niego.
+- „Studium gotowe” przy karcie na ekranie blokady jest osobnym
+  powiadomieniem z miniaturą, a karta tylko się rozświetla.
+- Wymaga nowej aplikacji z TestFlight i nowej wersji serwera.
+
 ## 1.92.1
 
 - Studium dzieła: podpis pod obrazem to same litery, bez czarnego pasa

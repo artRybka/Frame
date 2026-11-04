@@ -17,6 +17,7 @@ from fastapi.testclient import TestClient
 
 from frame_server import notifications
 from frame_server.config import Settings
+from frame_server.library.models import ItemKind
 from frame_server.notifications import Apns, Notifier, PushError
 from frame_server.progress import Stage
 from frame_server.updates import ImageInfo, UpdateFolder, UpdaterStatus
@@ -345,19 +346,23 @@ def test_a_study_moves_on_on_the_lock_screen(notifier: Notifier, apple: FakeAppl
     assert aps["stale-date"] > aps["timestamp"]  # type: ignore[index, operator]
     assert "alert" not in aps  # type: ignore[operator]
 
-    # Ready: the Lock Screen card says so and lights up, no second notification.
+    # Ready: the Lock Screen card says so and lights up, quietly; the
+    # notification that can carry the work's picture tells it.
     _step(notifier, "met:7", "ready", "", "Ul")
-    assert len(apple.sent) == 2
-    _, token, _, payload = apple.sent[-1]
+    assert len(apple.sent) == 3
+    _, token, _, payload = apple.sent[1]
     aps = payload["aps"]
     assert token == LIVE and aps["event"] == "end"  # type: ignore[index]
     assert aps["content-state"]["status"] == "ready"  # type: ignore[index]
     assert aps["dismissal-date"] - aps["timestamp"] == 3600  # type: ignore[index, operator]
-    assert aps["alert"]["body"] == "„Ul”: można czytać."  # type: ignore[index]
+    assert "alert" not in aps  # type: ignore[operator]
+    _, token, headers, payload = apple.sent[2]
+    assert token == PHONE and headers["apns-push-type"] == "alert"
+    assert payload["aps"]["alert"]["body"] == "„Ul”: można czytać."  # type: ignore[index]
     assert notifier.study_activities() == []
 
 
-def test_a_lost_lock_screen_card_falls_back_to_the_notification(
+def test_a_lost_lock_screen_card_still_leaves_the_notification(
     notifier: Notifier, apple: FakeApple
 ) -> None:
     notifier.register(PHONE, sandbox=False)
@@ -467,6 +472,7 @@ def test_birthdays_of_favourite_artists_go_out_at_ten(
         "body": "186. rocznica urodzin (ur. 14.11.1840). W Twoich ulubionych: 2 dzieła.",
     }
     assert payload["route"] == "artist/Monet, Claude"
+    assert "id=met%3A1&" in payload["pictures"][0]  # type: ignore[index]  # one hearted
 
 
 def test_a_birthday_is_found_on_wikidata_only_for_the_right_person(service) -> None:
@@ -507,3 +513,63 @@ def test_a_birthday_is_found_on_wikidata_only_for_the_right_person(service) -> N
 
     assert births.today(date(2026, 11, 14), ["Monet, Claude"])
     assert not births.today(date(2026, 11, 15), ["Monet, Claude"])
+
+
+# -- pictures ------------------------------------------------------------------
+
+
+def test_a_notification_about_a_work_carries_its_picture(
+    notifier: Notifier, apple: FakeApple, service
+) -> None:
+    notifier.register(PHONE, sandbox=False)
+    _work(service, "met:7", title="Ul", thumb_url="https://images.metmuseum.org/ul-small.jpg")
+    _work(service, "upload:photo 1", kind=ItemKind.PHOTO, title="Wakacje")
+    notifier.base_url = lambda: "http://192.168.1.5:8099"
+
+    async def send() -> None:
+        await notifier.send("changed", "Na ramce: Ul", "", picture="met:7")
+        await notifier.send("changed", "Na ramce: Wakacje", "", picture="upload:photo 1")
+        await notifier.send("battery", "Bateria ramki: 19%", "Podłącz.", only=PHONE)
+
+    asyncio.run(send())
+    work, photo, battery = (payload for _, _, _, payload in apple.sent)
+    assert work["aps"]["mutable-content"] == 1  # type: ignore[index]
+    own, museum = work["pictures"]  # type: ignore[misc]
+    assert own.startswith("http://192.168.1.5:8099/push/picture?id=met%3A7&s=")
+    assert museum == "https://images.metmuseum.org/ul-small.jpg"
+    # A photo from the camera roll only from the server, nothing without a work.
+    (own_photo,) = photo["pictures"]  # type: ignore[misc]
+    assert "id=upload%3Aphoto%201&s=" in own_photo
+    assert "pictures" not in battery and "mutable-content" not in battery["aps"]  # type: ignore[operator]
+
+
+def test_the_picture_s_address_works_only_signed(tmp_path: Path) -> None:
+    from frame_server.library.models import Item, ItemKind
+
+    with _client(tmp_path) as client:
+        service = client.app.state.service  # type: ignore[attr-defined]
+        service.library.upsert(
+            Item(id="met:7", source="met", source_id="7", kind=ItemKind.ARTWORK, title="Ul")
+        )
+        thumb = service.images.thumb_path(service.library.get("met:7"))
+        thumb.parent.mkdir(parents=True, exist_ok=True)
+        thumb.write_bytes(b"\xff\xd8jpeg")
+        service.notifier.base_url = lambda: "http://testserver"
+        (url,) = service.notifier.picture_urls("met:7")
+        path = url.removeprefix("http://testserver")
+        bare = TestClient(client.app)  # the extension has no token
+        ok = bare.get(path)
+        assert ok.status_code == 200 and ok.content == b"\xff\xd8jpeg"
+        assert ok.headers["content-type"] == "image/jpeg"
+        assert bare.get(path[:-1] + ("0" if path[-1] != "0" else "1")).status_code == 404
+        assert bare.get("/push/picture?id=met%3A8&s=" + path[-32:]).status_code == 404
+
+
+def test_the_frame_s_new_picture_is_shown_with_its_work(service, monkeypatch) -> None:
+    told: list[str | None] = []
+    service.notifier.notify = lambda kind, title, body, **kw: told.append(kw.get("picture"))
+    content = service.store.current()
+    content.extra = {**(content.extra or {}), "item_id": "met:7"}
+    monkeypatch.setattr(service.store, "current", lambda: content)
+    service.app._tell_shown(content.file_id)
+    assert told == ["met:7"]
