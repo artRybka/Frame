@@ -40,6 +40,7 @@ RANKS = {
     "si": 0,
     "paris": 0,
     "vam": 0,
+    "wellcome": 0,
     "europeana": 1,
     "wmc": 2,
     "openverse": 3,

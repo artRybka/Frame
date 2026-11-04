@@ -1543,6 +1543,7 @@ from .nga import NationalGalleryOfArt  # noqa: E402
 from .paris import ParisMusees  # noqa: E402
 from .smithsonian import Smithsonian  # noqa: E402
 from .vam import VictoriaAndAlbert  # noqa: E402
+from .wellcome import WellcomeCollection  # noqa: E402
 from .yale import YaleMuseums  # noqa: E402
 
 MUSEUMS: dict[str, type[Museum]] = {
@@ -1559,6 +1560,7 @@ MUSEUMS: dict[str, type[Museum]] = {
         Smithsonian,
         ParisMusees,
         VictoriaAndAlbert,
+        WellcomeCollection,
         WikimediaCommons,
         Europeana,
         Openverse,

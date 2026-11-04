@@ -2119,6 +2119,7 @@ struct PanelAppSection: View {
     let app: PanelAppView
     @State private var installing = false
     @State private var uploading = false
+    @State private var showingScreen = false
 
     private var certificatesUntil: String? {
         let dates = (app.certificates ?? []).compactMap { When.date($0.expiresAt) }
@@ -2178,6 +2179,13 @@ struct PanelAppSection: View {
                 .disabled(installing || app.package == nil)
                 Divider()
                 Button {
+                    showingScreen = true
+                } label: {
+                    Label("Pokaż ekran ramki", systemImage: "camera.viewfinder")
+                }
+                .disabled(!app.active)
+                Divider()
+                Button {
                     uploading = true
                 } label: {
                     Label(app.certificates?.isEmpty == false ? "Wgraj nowe certyfikaty" : "Wgraj certyfikaty", systemImage: "key")
@@ -2187,6 +2195,9 @@ struct PanelAppSection: View {
         }
         .sheet(isPresented: $uploading) {
             PanelCertificatesSheet()
+        }
+        .sheet(isPresented: $showingScreen) {
+            PanelScreenshotSheet()
         }
     }
 }

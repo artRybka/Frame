@@ -378,6 +378,7 @@ enum Names {
         case "si": "Smithsonian"
         case "paris": "Paris Musées"
         case "vam": "Victoria and Albert Museum"
+        case "wellcome": "Wellcome Collection"
         case "wikiart": "WikiArt"
         case "upload": "Własne"
         case "icloud": "Album iCloud"

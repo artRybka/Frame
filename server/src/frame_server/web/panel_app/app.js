@@ -61,6 +61,8 @@
   // a picture sent right after a status check: silent until the button).
   // Ask again instead of waiting for a wake that already happened.
   var STILL_UP_MS = 4 * 60000;
+  // A screenshot a minute after a drawing at the earliest (capture()).
+  var CAPTURE_SETTLE_MS = 60000;
 
   var ep = (typeof webapis !== "undefined" && webapis.epaper) ? webapis.epaper : null;
   var busy = false;
@@ -328,7 +330,9 @@
     // frame kept awake from the iOS app on battery.
     if (answer.action === "stay" && onCharger()) {
       if (saved("probed") !== CODE) setTimeout(probe, 5000);
-      if (answer.capture) setTimeout(capture, 3000);
+      // A minute after a drawing at the earliest: 33 s after one the
+      // screenshot was still all white (2026-11-04).
+      if (answer.capture) setTimeout(capture, Math.max(3000, drawnAt + CAPTURE_SETTLE_MS - Date.now()));
     } else if (answer.capture) {
       report("capture", { error: "not on the charger" });
     }
@@ -470,6 +474,35 @@
     return isNaN(shift) || Math.abs(shift) < CLOCK_RIGHT_MS ? 0 : shift;
   }
 
+  // The panel's own clock (webapis.timer) stood at 2024-01-01 while the
+  // page's was right, and its alarms go by it (E18). It is set to the page's
+  // time (privilege devicetimer, package 2.0.6 on), at most once an hour;
+  // the shift in arm() stays for a package without it or a clock that
+  // does not take the time.
+  var CLOCK_SET_EVERY_MS = 60 * 60000;
+
+  function setClock() {
+    var t = (typeof webapis !== "undefined" && webapis.timer) ? webapis.timer : null;
+    if (!t || !t.setCurrentTime) return;
+    var before = panelShift();
+    if (!before || Date.now() - (saved("clockSetAt") || 0) < CLOCK_SET_EVERY_MS) return;
+    saved("clockSetAt", Date.now());
+    var d = new Date();
+    var r = call(function () {
+      return t.setCurrentTime({
+        year: d.getFullYear(), month: d.getMonth() + 1, day: d.getDate(),
+        hour: d.getHours(), minute: d.getMinutes(), second: d.getSeconds()
+      });
+    });
+    var after = panelShift();
+    r.before_s = Math.round(before / 1000);
+    r.after_s = Math.round(after / 1000);
+    // Alarms set by the old clock are years back by the new one: they do
+    // not ring, and the ones still wanted are set again.
+    if (!after) saved("alarms", []);
+    report("clock", r);
+  }
+
   function setAlarm(d) {
     return call(function () {
       return ep.setScheduleWakeupTime({
@@ -481,6 +514,7 @@
 
   function arm(ms) {
     var now = Date.now();
+    setClock();
     var armed = (saved("alarms") || []).filter(function (t) { return t > now; });
     if (armed.indexOf(ms) >= 0) return { ok: true, value: "already set" };
     var shift = panelShift();

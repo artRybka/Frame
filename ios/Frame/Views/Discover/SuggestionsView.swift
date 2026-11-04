@@ -471,7 +471,9 @@ struct SuggestionRowView: View {
 struct ThemeView: View {
     @Environment(AppModel.self) private var model
     let theme: ArtTheme
-    @State private var items: [RemoteItem] = []
+    /// The works come, woven so that one painter's or one museum's do not
+    /// stand in a row.
+    @State private var weave = WorkWeave()
     /// The page to ask for next.
     @State private var page = 1
     @State private var more = true
@@ -558,6 +560,8 @@ struct ThemeView: View {
 
     private var stopped: Bool { failures >= Self.failuresToStop && !loading }
 
+    private var items: [RemoteItem] { weave.shown }
+
     private var actions: some View {
         HStack(spacing: 10) {
             Button {
@@ -632,11 +636,12 @@ struct ThemeView: View {
     private func loadMore() async -> Bool {
         do {
             for try await line in try await model.backend.themeLines(key: theme.key, page: page) {
-                items = items.adding(line.items)
+                weave.add(line.items)
                 if line.end {
                     if line.failed { return false }
                     more = line.more
                     if let next = line.nextPage { page = next } else { more = false }
+                    weave.endRound(more: more)
                     return true
                 }
             }

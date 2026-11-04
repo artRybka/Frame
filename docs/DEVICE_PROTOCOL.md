@@ -111,8 +111,8 @@ z nagłówkiem CORS, bo strona aplikacji ma pochodzenie `file://`):
 | `GET /panel/app/app.js` | przy każdym starcie aplikacji | logika aplikacji z `window.FRAME_CODE` (wersja) |
 | `GET /panel/next?reason=start\|resume\|wake\|poll\|retry&build=&code=&screen=&battery=&charging=&now=` | start, wznowienie po śnie, co 10 s przy ładowarce; `now` = zegar ramki w ms | `action` (`sleep` / `stay` / `wait`), `image`, `file_id`, `wake_at`, `wake_ms`, `standby` (`ON`/`OFF`), `wait_s`, `code`, `capture` (zrzut ekranu na żądanie, tylko przy `stay`) |
 | `GET /panel/images/<plik>` | gdy obraz się zmienił | obraz jak dla manifestu; pobranie oznacza dostarczenie |
-| `POST /panel/report` (`text/plain`, JSON z `event`) | `shown`, `sleep` (budzik, standby), `error`, `wifi`, `progress`; do logu `probe` (sonda na zasilaczu), `key`, `battery`, `capture` | `{}` |
-| `POST /panel/capture` (`text/plain`, plik JPEG) | po `capture: true` | `{"saved": bool}`; obraz pod `GET /api/debug/panel-capture.jpg` (właściciel) |
+| `POST /panel/report` (`text/plain`, JSON z `event`) | `shown`, `sleep` (budzik, standby), `error`, `wifi`, `progress`; do logu `probe` (sonda na zasilaczu), `key`, `battery`, `capture`, `clock` (ustawienie zegara ramki) | `{}` |
+| `POST /panel/capture` (`text/plain`, plik JPEG) | po `capture: true` | `{"saved": bool}`; obraz pod `GET /api/device/screenshot.jpg` (właściciel; prośba `POST /api/device/screenshot`, stan `GET /api/device/screenshot`) |
 
 ## Tizen / VXT
 

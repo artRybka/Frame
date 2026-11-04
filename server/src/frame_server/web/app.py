@@ -473,8 +473,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def ask_panel_capture() -> dict[str, object]:
         """Ask the Frame app for a screenshot at its next question with
         ``stay`` (on the charger every 20 s); fetch it from the GET."""
-        service.app.capture_requested = True
-        return {"asked": True, "on_charger": service.status.status.power_source == "ac"}
+        return {"asked": True, "on_charger": service.app.ask_capture().on_charger}
 
     @app.get("/api/debug/panel-capture.jpg", dependencies=[Depends(require_owner)])
     def panel_capture_file() -> FileResponse:

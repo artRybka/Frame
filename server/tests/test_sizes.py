@@ -142,7 +142,7 @@ def test_a_commons_work_by_its_page(library) -> None:
     assert sizes.look(item) == RealSize(height=77, width=53)
 
 
-def test_polish_museums_and_the_va_say_the_size(library) -> None:
+def test_polish_museums_the_va_and_the_wellcome_say_the_size(library) -> None:
     mnw = {
         "data": {
             "sizes": [
@@ -184,6 +184,11 @@ def test_polish_museums_and_the_va_say_the_size(library) -> None:
     assert Sizes(library, lambda: _client({"api.vam.ac.uk": vam})).look(item) == RealSize(
         height=12.5, width=13.5
     )
+    wellcome = {"physicalDescription": "1 print : etching ; image 21 x 32 cm"}
+    item = _item(source="wellcome", source_id="ke2zpvqb", w=320, h=210)
+    assert Sizes(library, lambda: _client({"wellcomecollection.org": wellcome})).look(
+        item
+    ) == RealSize(height=21, width=32)
 
 
 def _painting(about: str, year: str, height: str) -> dict:

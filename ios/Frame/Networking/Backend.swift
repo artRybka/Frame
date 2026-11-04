@@ -197,6 +197,11 @@ protocol FrameBackend: Sendable {
     /// password); the server signs the app with them. Another author key
     /// than the stored one is 409 unless `newAuthor`.
     func uploadPanelCertificates(_ upload: PanelCertificatesUpload) async throws -> PanelAppView
+    /// The last screenshot of the frame's screen, and one asked for.
+    func panelScreenshot() async throws -> PanelScreenshot
+    /// A new screenshot: the frame's app takes it at its next question on
+    /// the charger (`/api/device/screenshot.jpg` once `takenAt` changes).
+    func askPanelScreenshot() async throws -> PanelScreenshot
     /// How much disk the library takes on the server, and its limits.
     func libraryStorage() async throws -> LibraryStorage
     /// A limit equal to its default goes back to frame.env or the add-on options.
