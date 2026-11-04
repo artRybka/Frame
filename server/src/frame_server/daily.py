@@ -333,7 +333,23 @@ class Daily:
         future.add_done_callback(lambda done: self._written(item.id))
         return future
 
+    def ask_later(self, item: Item) -> bool:
+        """Orders the work's page for later, for less (the Batch API: half
+        price, mostly within minutes to hours); False when it needs none."""
+        if not self.job.enabled() or self.job.essay(item) or self.job.failed(item):
+            return False
+        if self.job.take(item, self.library.note(item.id, STUDY)):
+            return False  # the owner had its study written: the page is that
+        return self.ai.ask_later(item.id, KIND)
+
+    def written_later(self, item: Item) -> None:
+        """A page ordered for later is made: its work's study now."""
+        self._written(item.id)
+
     def _written(self, item_id: str) -> None:
+        day = self.day_of(item_id)
+        if day is not None and day > date.today():
+            return  # tomorrow's page, written a day ahead: its study on its day
         item = self.library.get(item_id)
         if item is not None and self.on_written is not None and self.job.essay(item):
             try:
@@ -437,18 +453,33 @@ class Daily:
         return load_image(path)
 
     def tick(self, day: date | None = None) -> None:
+        """The day's page (asked now when the order of the night before is
+        not in yet: what its batches answered is not asked again), then the
+        next day's ordered for later, for less (Mateusz 2026-11-04)."""
         self.adopt_all()
-        item = self.pick(day or date.today())
+        today = day or date.today()
+        item = self.pick(today)
         if item is not None:
-            if self.sharper is not None:
-                # The page, its details and the frame from the sharper copy.
-                self.sharper.look(item)
-                item = self.library.get(item.id) or item
+            item = self._sharper(item)
             self.ask(item)
             essay = self.job.essay(item)
             if self.later is not None and essay and self.later.missing(item.id, essay.legacy):
                 self.later.look(item, essay.legacy)  # what it led to, with pictures
             self.warm(item, essay)
+        tomorrow = self.pick(today + timedelta(days=1))
+        if tomorrow is not None:
+            try:
+                self.ask_later(self._sharper(tomorrow))
+            except Exception:  # today's page is there: tomorrow's is asked tomorrow
+                log.exception("page of %s for tomorrow not ordered", tomorrow.id)
+
+    def _sharper(self, item: Item) -> Item:
+        """The work with a sharper copy looked for: its page, its details
+        and the frame come from that."""
+        if self.sharper is None:
+            return item
+        self.sharper.look(item)
+        return self.library.get(item.id) or item
 
     def warm(self, item: Item, essay: Essay | None) -> None:
         """Looks through the catalogue for the lists under the day's page

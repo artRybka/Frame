@@ -120,7 +120,9 @@ protocol FrameBackend: Sendable {
     /// Every work with a study, the last asked for first.
     func studies() async throws -> [StudyBrief]
     /// Asks Claude for the work's study (`again`: a new one, though there is one).
-    func prepareStudy(itemID: String, again: Bool) async throws -> StudyView
+    /// `later`: for less, through Anthropic's batches ("Przygotuj na
+    /// później"); a study ordered so and asked for without it is made now.
+    func prepareStudy(itemID: String, again: Bool, later: Bool) async throws -> StudyView
     /// The owner's "Wykonaj ponowną analizę": the work's analysis of the
     /// composition asked for anew (minutes); the one its page shows is kept
     /// among its versions. 409: no key, or no page yet.

@@ -260,6 +260,8 @@ struct ItemDetailView: View {
         // Only where it is: the page's lists would keep the server busy.
         guard let found = try? await model.backend.study(itemID: itemID, wait: 0, lists: false) else { return }
         study = found
+        // Ordered for later and made since: the card's last word is stale.
+        if model.studies[itemID]?.isLater == true, !found.isLater { model.studies[itemID] = found }
         if found.isPending, let item {
             let name = title(item)
             Task { await model.resumeStudy(itemID: itemID, title: name, view: found) }
@@ -590,7 +592,10 @@ struct ItemDetailView: View {
     /// "Przygotuj studium dzieła" under "O dziele": Claude writes the work
     /// of the day's page for this work; the card at the bottom follows it
     /// and opens it once ready. A study made is kept, and "Otwórz studium"
-    /// moves up under the frame buttons (`actions`).
+    /// moves up under the frame buttons (`actions`). Held: "Przygotuj na
+    /// już" or "Przygotuj na później", the latter for half the price through
+    /// Anthropic's batches, told by a notification when ready (Mateusz
+    /// 2026-11-04); ordered so, held again it is made now.
     @ViewBuilder
     private func studySection(_ item: Item) -> some View {
         if let state = studyState, state.status != "off", state.status != "ready" {
@@ -605,12 +610,29 @@ struct ItemDetailView: View {
                     }
                     .disabled(true)
                     studyNote("Postęp widać w dymku na dole; możesz w tym czasie przeglądać dalej.")
+                } else if state.isLater {
+                    Button {} label: {
+                        Label("Zamówione na później", systemImage: "clock")
+                    }
+                    .labelButtonMenu {
+                        studyNowOption(item, state, again: false)
+                    }
+                    studyNote("Claude napisze je za pół ceny, zwykle w ciągu kilku godzin; dam znać powiadomieniem. Przytrzymaj, by przygotować na już.")
                 } else {
                     let failed = state.status == "failed"
                     Button {
                         prepareStudy(item, again: failed)
                     } label: {
                         Label(failed ? "Spróbuj ponownie" : "Przygotuj studium dzieła", systemImage: "sparkles")
+                    }
+                    .labelButtonMenu {
+                        studyNowOption(item, state, again: failed)
+                        Button {
+                            orderStudyLater(item)
+                        } label: {
+                            Label("Przygotuj na później", systemImage: "clock")
+                            Text(Self.laterHint(state))
+                        }
                     }
                     if failed, !state.error.isEmpty {
                         studyNote(state.error, color: Theme.bad)
@@ -638,6 +660,28 @@ struct ItemDetailView: View {
         studyTaps += 1
         let name = title(item)
         Task { await model.prepareStudy(itemID: item.id, title: name, again: again) }
+    }
+
+    private func orderStudyLater(_ item: Item) {
+        studyTaps += 1
+        let name = title(item)
+        Task { await model.orderStudyLater(itemID: item.id, title: name) }
+    }
+
+    /// "Przygotuj na już" in the held menu: what it costs, about.
+    private func studyNowOption(_ item: Item, _ state: StudyView, again: Bool) -> some View {
+        Button {
+            prepareStudy(item, again: again)
+        } label: {
+            Label("Przygotuj na już", systemImage: "sparkles")
+            Text(state.costUsd > 0 ? "W 1–3 minuty · ok. \(Money.usd(state.costUsd))" : "W 1–3 minuty")
+        }
+    }
+
+    /// Under "Przygotuj na później": half the price, in hours.
+    private static func laterHint(_ state: StudyView) -> String {
+        guard let later = state.laterCostUsd, later > 0 else { return "Za pół ceny, zwykle w ciągu kilku godzin" }
+        return "Zwykle w ciągu kilku godzin · ok. \(Money.usd(later))"
     }
 
     private func studyNote(_ text: String, color: Color = Theme.inkSoft) -> some View {

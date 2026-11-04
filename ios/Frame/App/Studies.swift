@@ -12,12 +12,39 @@ extension AppModel {
         guard studyCards[itemID] == nil else { return }
         let card = beginStudyCard(itemID: itemID, title: title)
         do {
-            let view = try await backend.prepareStudy(itemID: itemID, again: again)
+            let view = try await backend.prepareStudy(itemID: itemID, again: again, later: false)
             await studyActivity.start(itemID: itemID, title: title, status: view.status)
             await followStudy(itemID: itemID, title: title, from: view, card: card)
         } catch {
             studyCards[itemID] = nil
             notices.fail(error, in: card)
+        }
+    }
+
+    /// Orders the work's study for later, for less ("Przygotuj na później"):
+    /// Claude's long questions go through Anthropic's batches at half the
+    /// price, mostly within minutes to hours. No card follows it; the server
+    /// says "Studium gotowe" in a notification when it is.
+    func orderStudyLater(itemID: String, title: String) async {
+        guard studyCards[itemID] == nil else { return }
+        do {
+            let view = try await backend.prepareStudy(itemID: itemID, again: false, later: true)
+            studies[itemID] = view
+            switch view.status {
+            case "later":
+                notices.done("Studium zamówione na później", "„\(title)” · dam znać powiadomieniem, gdy będzie gotowe")
+            case "ready":
+                notices.done("Studium dzieła gotowe", "„\(title)”")
+            case "off":
+                notices.warn("Claude jest wyłączony", "Dodaj klucz API w Konfiguracji.")
+            default:
+                // A server from before "na później" makes it now: followed as usual.
+                if view.isPending {
+                    await resumeStudy(itemID: itemID, title: title, view: view)
+                }
+            }
+        } catch {
+            notices.fail(error)
         }
     }
 

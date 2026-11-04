@@ -10,7 +10,11 @@ answer. The :class:`AiWorker` asks on two threads of its own:
 - in the background, one at a time: items a job wants and that have no
   up-to-date note;
 - ``describe_library(kind)``: the whole library through the Batch API (half
-  price, answers within 24 hours), in chunks of :data:`BATCH_SIZE`.
+  price, answers within 24 hours), in chunks of :data:`BATCH_SIZE`;
+- ``ask_later(item_id, kind)``: one item's note made for less, by and by
+  (:class:`Deferred`): its long questions go through the Batch API one by
+  one, the short ones are asked at once (Mateusz 2026-11-04: "Przygotuj na
+  później", and every day's study a day ahead).
 
 An answer is kept as a :class:`~frame_server.library.Note` until the item's
 source text or the job's prompt change. A refusal or an unreadable answer is
@@ -37,7 +41,7 @@ import httpx
 from pydantic import BaseModel
 
 from ..library.models import Note
-from .client import AiUnavailable, Answer, cost
+from .client import OPUS, AiUnavailable, Answer, cost
 
 if TYPE_CHECKING:
     from ..library import ImageCache, Item, Library
@@ -56,12 +60,33 @@ SWEEP_ITEMS = 20
 #: nothing and the library, its notes and the jobs stayed as they were, the
 #: next waits this long (2026-11-02: not a whole look every minute).
 SWEEP_IDLE_SECONDS = 900.0
-#: How often to ask whether running batches are done.
+#: How often to ask whether running batches are done (an order for later's
+#: one question is often answered within minutes).
 POLL_SECONDS = 300.0
+LATER_POLL_SECONDS = 120.0
 #: After a failure that is not the item's fault (network, throttling).
 PAUSE_SECONDS = 600.0
 #: Priorities: lower goes first.
 NOW, BACKGROUND = 0, 10
+#: Notes ordered for later (:meth:`AiWorker.ask_later`): the answers they
+#: have had so far, by "kind|item id".
+LATER_KEY = "ai_later"
+#: The questions an order for later sends through the Batch API (the
+#: others are asked at once: they cost little).
+DEFERRED_MODELS = (OPUS,)
+
+
+class Deferred(BaseException):
+    """A question of a note ordered for later, put into a batch: the note is
+    made again from its start once the answer is in, every question it
+    asked before answered from what was kept. A ``BaseException``, so the
+    jobs' own ``except Exception`` (a check that failed must not lose a
+    page) let it through."""
+
+    def __init__(self, params: dict[str, Any], seq: int) -> None:
+        super().__init__(f"question {seq} put off")
+        self.params = params
+        self.seq = seq
 
 
 def text_hash(*parts: object) -> str:
@@ -161,6 +186,8 @@ class _Task:
     kind: str = field(compare=False)
     item_id: str = field(compare=False)
     future: Future[Note | None] | None = field(compare=False, default=None)
+    #: An order for later (:meth:`AiWorker.advance`), not a question now.
+    later: bool = field(compare=False, default=False)
 
 
 class AiWorker:
@@ -189,6 +216,8 @@ class AiWorker:
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self._threads: list[threading.Thread] = []
+        #: Told of a note ordered for later once it is made: ``(kind, item)``.
+        self.on_later: Callable[[str, Item], None] | None = None
 
     def register(self, job: NoteJob) -> NoteJob:
         self.jobs[job.kind] = job
@@ -213,23 +242,202 @@ class AiWorker:
         return future
 
     def run_one(self, kind: str, item_id: str) -> Note | None:
-        """Ask about one item now, on the caller's thread."""
+        """Ask about one item now, on the caller's thread. One ordered for
+        later is finished now: what its batches answered is not asked again."""
         with self._asking(kind, item_id):  # the other thread may be asking already
             job, item = self.jobs[kind], self.library.get(item_id)
             if item is None or not job.enabled():
                 return None
             note = self.library.note(item_id, kind)
             if job.fresh(item, note):
+                self._drop_later(kind, item_id)
                 return note
+            ask = self._replaying(kind, item_id, defer=False)
             params = job.params(item)
-            if job.streams:
+            if self.later(kind, item_id):
+                answer = ask(params)
+            elif job.streams:
                 answer = self.claude.ask(
                     kind, params, on_text=lambda piece: job.partial(item, piece)
                 )
             else:
                 answer = self.claude.ask(kind, params)
-            answer = job.revise(item, params, answer, lambda more: self.claude.ask(kind, more))
-            return self._keep(job, item, answer)
+            answer = job.revise(item, params, answer, ask)
+            kept = self._keep(job, item, answer)
+            self._drop_later(kind, item_id)
+            return kept
+
+    # -- for later, for less ------------------------------------------------
+
+    def _later(self) -> dict[str, dict[str, Any]]:
+        return dict(self.library.get_state(LATER_KEY, {}))
+
+    def later(self, kind: str, item_id: str) -> bool:
+        """The item's note is ordered for later and not made yet."""
+        return f"{kind}|{item_id}" in self._later()
+
+    def later_ids(self, kind: str) -> set[str]:
+        return {k.split("|", 1)[1] for k in self._later() if k.split("|", 1)[0] == kind}
+
+    def ask_later(self, item_id: str, kind: str) -> bool:
+        """Orders the item's note for later, for less: its long questions go
+        through the Batch API (half price, mostly within minutes to hours),
+        one after another as each answer comes. False when the job is off,
+        the item is not for it or it has a note already."""
+        job, item = self.jobs.get(kind), self.library.get(item_id)
+        if job is None or item is None or not job.enabled() or not job.in_library(item):
+            return False
+        if job.fresh(item, self.library.note(item_id, kind)) or self.later(kind, item_id):
+            return False
+        with self._lock:
+            later = self._later()
+            later[f"{kind}|{item_id}"] = {"answers": [], "batch": ""}
+            self.library.set_state(LATER_KEY, later)
+        self._queue.put(_Task(BACKGROUND, next(self._seq), kind, item_id, later=True))
+        return True
+
+    def _drop_later(self, kind: str, item_id: str) -> None:
+        with self._lock:
+            later = self._later()
+            if later.pop(f"{kind}|{item_id}", None) is not None:
+                self.library.set_state(LATER_KEY, later)
+
+    def _save_answer(self, kind: str, item_id: str, seq: int, answer: Answer) -> None:
+        """The answer to an order's question ``seq``, kept for its next go."""
+        with self._lock:
+            later = self._later()
+            entry = later.get(f"{kind}|{item_id}")
+            if entry is None:
+                return
+            answers = list(entry.get("answers") or [])[:seq]
+            if len(answers) < seq:  # a question before it is missing: asked again
+                return
+            answers.append(
+                {
+                    "data": answer.data,
+                    "refused": answer.refused,
+                    "cost_usd": answer.cost_usd,
+                    "model": answer.model,
+                }
+            )
+            later[f"{kind}|{item_id}"] = {**entry, "answers": answers, "batch": ""}
+            self.library.set_state(LATER_KEY, later)
+
+    def _replaying(self, kind: str, item_id: str, *, defer: bool) -> Callable[..., Answer]:
+        """The ``ask`` of an order for later: each question in turn answered
+        from what was kept, else asked now (``defer``: a long one put into a
+        batch, :class:`Deferred`), and what it answered kept."""
+        entry = self._later().get(f"{kind}|{item_id}")
+        kept = list(entry.get("answers") or []) if entry else []
+        seq = itertools.count()
+
+        def ask(params: dict[str, Any]) -> Answer:
+            n = next(seq)
+            if n < len(kept) and kept[n].get("model", "").startswith(params["model"]):
+                k = kept[n]
+                return Answer(
+                    k.get("data"), bool(k.get("refused")), k.get("cost_usd", 0.0), k["model"]
+                )
+            if defer and params["model"] in DEFERRED_MODELS:
+                raise Deferred(params, n)
+            answer = self.claude.ask(kind, params)
+            if entry is not None:
+                self._save_answer(kind, item_id, n, answer)
+            return answer
+
+        return ask
+
+    def advance(self, kind: str, item_id: str) -> Note | None:
+        """An order for later taken a step further: made from its start with
+        the answers it has, until a long question not answered yet goes into
+        a batch (None), or the note is made."""
+        with self._asking(kind, item_id):
+            job, item = self.jobs.get(kind), self.library.get(item_id)
+            entry = self._later().get(f"{kind}|{item_id}")
+            if entry is None or entry.get("batch"):
+                return None  # made already, or waiting for its batch
+            if job is None or item is None or not job.enabled() or not job.in_library(item):
+                self._drop_later(kind, item_id)  # gone, off, or no longer wanted
+                return None
+            note = self.library.note(item_id, kind)
+            if not job.fresh(item, note):
+                ask = self._replaying(kind, item_id, defer=True)
+                try:
+                    params = job.params(item)
+                    answer = job.revise(item, params, ask(params), ask)
+                except Deferred as put_off:
+                    self._defer(kind, item_id, put_off)
+                    return None
+                note = self._keep(job, item, answer)
+            self._drop_later(kind, item_id)
+        if self.on_later is not None:
+            try:
+                self.on_later(kind, item)
+            except Exception:
+                log.exception("%s for %s: made for later, then", kind, item_id)
+        return note
+
+    def _defer(self, kind: str, item_id: str, put_off: Deferred) -> None:
+        # ``timeout`` is the client's own (a long answer), no part of the request.
+        params = {k: v for k, v in put_off.params.items() if k != "timeout"}
+        batch_id = self.claude.create_batch([{"custom_id": "q", "params": params}])
+        log.info("%s for %s: question %d in batch %s", kind, item_id, put_off.seq, batch_id)
+        with self._lock:
+            later = self._later()
+            key = f"{kind}|{item_id}"
+            if key in later:
+                answers = list(later[key].get("answers") or [])[: put_off.seq]
+                later[key] = {**later[key], "answers": answers, "batch": batch_id}
+                self.library.set_state(LATER_KEY, later)
+        record = {
+            "id": batch_id,
+            "kind": kind,
+            "model": put_off.params["model"],
+            "prompt_version": self.jobs[kind].prompt_version,
+            "ids": {"q": item_id},
+            "done": 0,
+            "later": put_off.seq,
+        }
+        self._save_batches([*self._batches(), record])
+        self._next_poll = min(self._next_poll, time.monotonic() + LATER_POLL_SECONDS)
+
+    def _collect_later(self, record: dict[str, Any]) -> int:
+        """An order's question answered in its batch: kept, and the order
+        taken on (or, failed, asked again on its next go)."""
+        kind, seq = record["kind"], int(record["later"])
+        item_id = record["ids"].get("q", "")
+        for _, message in self.claude.batch_results(record["id"]):
+            if message is not None:
+                model = str(getattr(message, "model", "") or record["model"])
+                answer = self.claude.answer(kind, model, message, batch=True)
+                self._save_answer(kind, item_id, seq, answer)
+        with self._lock:  # failed: no answer kept, the next go sends it again
+            later = self._later()
+            key = f"{kind}|{item_id}"
+            if key in later and later[key].get("batch") == record["id"]:
+                later[key] = {**later[key], "batch": ""}
+                self.library.set_state(LATER_KEY, later)
+        return 1 if self._try_advance(kind, item_id) is not None else 0
+
+    def _try_advance(self, kind: str, item_id: str) -> Note | None:
+        """:meth:`advance`, an order given up on the item's own trouble (no
+        picture, a bad answer); Anthropic's or the network's is raised, and
+        the order waits for the worker's pause to end."""
+        try:
+            return self.advance(kind, item_id)
+        except (AiUnavailable, anthropic.APIError):
+            raise
+        except Exception:
+            log.exception("%s for %s: order for later given up", kind, item_id)
+            self._drop_later(kind, item_id)
+            return None
+
+    def _advance_all(self) -> None:
+        """Orders for later not waiting for a batch (just ordered, their
+        batch failed, the server restarted): taken on."""
+        for key, entry in self._later().items():
+            if not entry.get("batch"):
+                self._try_advance(*key.split("|", 1))
 
     @contextlib.contextmanager
     def _asking(self, kind: str, item_id: str) -> Iterator[None]:
@@ -320,6 +528,7 @@ class AiWorker:
                 self.poll_batches()
             if now >= self._next_sweep and now >= self._paused_until:
                 self._next_sweep = now + SWEEP_SECONDS
+                self._advance_all()
                 key = self._sweep_key()
                 if key != self._swept_from or now - self._swept_at >= SWEEP_IDLE_SECONDS:
                     found = self.sweep()
@@ -335,6 +544,8 @@ class AiWorker:
         try:
             if task.priority >= BACKGROUND and time.monotonic() < self._paused_until:
                 result = None
+            elif task.later:
+                result = self._try_advance(task.kind, task.item_id)
             else:
                 result = self.run_one(task.kind, task.item_id)
                 if result is not None and self.error:
@@ -389,9 +600,10 @@ class AiWorker:
         for job in self.jobs.values():
             if not job.enabled():
                 continue
+            later = self.later_ids(job.kind)
             for item in self._stale(job, job.wanted):
                 key = (job.kind, item.id)
-                if key in self._skipped or key in in_batches:
+                if key in self._skipped or key in in_batches or item.id in later:
                     continue
                 with self._lock:
                     if key in self._pending:
@@ -501,14 +713,17 @@ class AiWorker:
                 left.append(record)
                 continue
             saved += self._collect(record)
-        if records:
-            self._save_batches(left)
+        if records:  # with the batches put in meanwhile (an order's next question)
+            polled = {r["id"] for r in records}
+            self._save_batches(left + [r for r in self._batches() if r["id"] not in polled])
         return saved
 
     def _collect(self, record: dict[str, Any]) -> int:
         job = self.jobs.get(record["kind"])
         if job is None:
             return 0
+        if "later" in record:
+            return self._collect_later(record)
         saved = 0
         for custom_id, message in self.claude.batch_results(record["id"]):
             item = self.library.get(record["ids"].get(custom_id, ""))

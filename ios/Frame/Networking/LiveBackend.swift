@@ -288,8 +288,10 @@ struct LiveBackend: FrameBackend {
 
     func studies() async throws -> [StudyBrief] { try await get("/api/studies") }
 
-    func prepareStudy(itemID: String, again: Bool) async throws -> StudyView {
-        let query = again ? [URLQueryItem(name: "again", value: "true")] : []
+    func prepareStudy(itemID: String, again: Bool, later: Bool) async throws -> StudyView {
+        var query: [URLQueryItem] = []
+        if again { query.append(URLQueryItem(name: "again", value: "true")) }
+        if later { query.append(URLQueryItem(name: "later", value: "true")) }
         return try await perform(request("/api/study/\(escape(itemID))", method: "POST", query: query))
     }
 
