@@ -12,6 +12,7 @@ from pathlib import Path
 import httpx
 import pytest
 
+from frame_server.library.aic import aic_width
 from frame_server.library.hosts import (
     PROBE_EVERY,
     REST,
@@ -22,7 +23,6 @@ from frame_server.library.hosts import (
     urgently,
     walled,
 )
-from frame_server.library.aic import aic_width
 from frame_server.library.images import ImageCache
 from frame_server.library.models import Item, ItemKind
 from frame_server.library.museums import ArtInstituteChicago, MetropolitanMuseum
