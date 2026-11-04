@@ -105,6 +105,12 @@ async def sync_albums_periodically(service: FrameService, minutes: int = 30) -> 
         await asyncio.sleep(minutes * 60)
 
 
+# The Frame app's reports: its probe is a few KB of JSON.
+REPORT_BYTES = 16000
+# A screenshot of the panel, JPEG.
+CAPTURE_BYTES = 15 * 1024 * 1024
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings.load()
     service = FrameService(settings)
@@ -237,6 +243,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         screen: str | None = None,
         battery: int | None = None,
         charging: bool | None = None,
+        now: int | None = None,
     ) -> NextAnswer:
         """The Frame app, at every start and wake: what to show, and when to
         wake next."""
@@ -247,12 +254,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             screen=screen,
             battery=battery,
             charging=charging,
+            now=now,
         )
         return await service.app.ask(hello)
 
     @app.post("/panel/report")
     async def panel_report(request: Request) -> dict[str, object]:
-        body = (await request.body())[:4000].decode("utf-8", "replace")
+        body = (await request.body())[:REPORT_BYTES].decode("utf-8", "replace")
         try:
             data = json.loads(body)
         except ValueError:
@@ -261,6 +269,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             data = {"value": data}
         service.app.report(str(data.pop("event", "")), data)
         return {}
+
+    @app.post("/panel/capture")
+    async def panel_capture(request: Request) -> dict[str, object]:
+        """The screenshot the Frame app took when the owner asked for one."""
+        body = await request.body()
+        if len(body) > CAPTURE_BYTES:
+            raise HTTPException(413)
+        return {"saved": service.app.save_capture(body)}
 
     @app.get("/panel/app-images/{name}")
     def panel_app_image(name: str) -> FileResponse:
@@ -433,6 +449,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except MdcError as err:
             raise HTTPException(502, f"panel: {err}") from err
         return {"ok": True}
+
+    @app.post("/api/debug/panel-capture", dependencies=[Depends(require_owner)])
+    def ask_panel_capture() -> dict[str, object]:
+        """Ask the Frame app for a screenshot at its next question with
+        ``stay`` (on the charger every 20 s); fetch it from the GET."""
+        service.app.capture_requested = True
+        return {"asked": True, "on_charger": service.status.status.power_source == "ac"}
+
+    @app.get("/api/debug/panel-capture.jpg", dependencies=[Depends(require_owner)])
+    def panel_capture_file() -> FileResponse:
+        path = service.app.capture_path
+        if not path.exists():
+            raise HTTPException(404, "no screenshot yet")
+        return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
 
     @app.get("/api/debug/panel-requests", dependencies=[Depends(require_owner)])
     def panel_requests() -> list[dict[str, object]]:

@@ -1,7 +1,8 @@
 """The composition's marks: where they land and whether they hold. Points in
 the picture's pixels, marks that mean something, a grid only under a take
-that lies on it, the analysis asked apart, a check by Claude over the marks
-drawn on the picture, and pages written before written again."""
+that lies on it, the analysis asked apart in steps (Opus, a Haiku check over
+the marks drawn on the picture, the grid measured by the server, Sonnet's
+movement), and pages written before written again."""
 
 from __future__ import annotations
 
@@ -10,16 +11,28 @@ from typing import Any
 from PIL import Image
 from test_daily import ANSWER, SIZE, _catalogue, pixels
 
+from frame_server.ai import grid as grids
+from frame_server.ai import lines as found_lines
 from frame_server.ai.check import SYSTEM as CHECK_SYSTEM
-from frame_server.ai.check import check
-from frame_server.ai.client import Answer
-from frame_server.ai.composition import BEFORE, KIND, REWORK_KEY, ComposeJob, compose
+from frame_server.ai.check import checked
+from frame_server.ai.check import question as check_question
+from frame_server.ai.client import HAIKU, OPUS, SONNET, AiUnavailable, Answer
+from frame_server.ai.composition import (
+    BEFORE,
+    COST,
+    KIND,
+    REWORK_KEY,
+    ComposeJob,
+    compose,
+    merged,
+)
 from frame_server.ai.composition import SYSTEM as COMPOSITION_SYSTEM
 from frame_server.ai.daily import (
     CHECK_ROUND,
     CHECKED,
     ROUND,
     TAKE,
+    Key,
     View,
     _mark,
     _view,
@@ -27,6 +40,9 @@ from frame_server.ai.daily import (
     takes,
     to_fractions,
 )
+from frame_server.ai.grid import SYSTEM as GRID_SYSTEM
+from frame_server.ai.motion import SYSTEM as MOTION_SYSTEM
+from frame_server.ai.motion import Movement, movement
 from frame_server.ai.sketch import PHI, beats, draw, grid_fits, measure, measures
 from frame_server.ai.sketch import spiral as sketch_spiral
 from frame_server.ai.study import KIND as STUDY
@@ -253,38 +269,121 @@ CHECKED_TAKE = {
 }
 
 
-def test_claude_checks_the_takes_over_its_marks(service: FrameService) -> None:
+def test_haiku_checks_each_mark_and_place(service: FrameService) -> None:
+    from frame_server.ai.check import CHECK_SIDE
+    from frame_server.ai.daily import picture
+
     _catalogue(service)
     item = service.library.get("met:1")
     assert item is not None
-    data = to_fractions(pixels(ANSWER), SIZE)
-    asked: list[dict[str, Any]] = []
-
-    def ask(params: dict[str, Any]) -> Answer:
-        asked.append(params)
-        reply = {"views": [CHECKED_TAKE], "changes": ["Spojrzenie, ślad 2: kółko na szczycie"]}
-        return Answer(pixels(reply, (900, 600)), False, 0.05, "claude-opus-5-5")
-
-    checked = check(service.images, item, data, ask)
-    (params,) = asked
-    assert params["system"][0]["text"] == CHECK_SYSTEM
+    view = _view(CHECKED_TAKE | {"marks": [*CHECKED_TAKE["marks"], HORIZON]})
+    assert view is not None
+    keys = [Key(x=0.5, y=0.5, title="szczyt", main=True), Key(x=0.2, y=0.9, title="łódź")]
+    img = picture(service.images, item, CHECK_SIDE)
+    params = check_question(img, view, keys, {"Fudżi": ["szczyt", "zbocze"]})
+    assert params["model"] == HAIKU and params["system"][0]["text"] == CHECK_SYSTEM
     content = params["messages"][0]["content"]
     assert [b["type"] for b in content].count("image") == 2  # clean, and the take drawn
     text = content[-1]["text"]
     assert "OBRAZ: 900 × 600 px" in text and "Pomiary serwera:" in text
-    assert "rect „Kartusz”" in text and "(90, 60)" in text  # its points in pixels
-    views = checked["composition"]["views"]
-    assert [v["title"] for v in views] == [TAKE]
-    assert views[0]["marks"][0]["points"][0] == {"x": 0.66, "y": 0.7}
-    assert checked[CHECKED] == ["Spojrzenie, ślad 2: kółko na szczycie"]
-    assert checked["teaser"] == data["teaser"]  # the rest of the page as it was
+    assert "loop „Fudżi”" in text and "na: szczyt; zbocze" in text
+    assert "P1. (450, 300) – na: szczyt – główny" in text
 
-    # An unusable check leaves the takes as they were.
-    def refuse(params: dict[str, Any]) -> Answer:
-        return Answer(None, True, 0.0, "claude-opus-5-5")
+    reply = {
+        "marks": [
+            {"n": 1, "verdict": "move", "points": _points((630, 420), (680, 470)), "why": "obok"},
+            {"n": 2, "verdict": "drop", "points": [], "why": "nie ma horyzontu"},
+        ],
+        "points": [
+            {"n": 1, "verdict": "move", "point": {"x": 540, "y": 300}, "why": ""},
+            {"n": 2, "verdict": "drop", "point": {"x": 0, "y": 0}, "why": ""},
+        ],
+        "text": "Oko biegnie do Fudżi.",
+    }
+    found = checked(view, keys, reply, img.size)
+    (mark,) = found.view.marks
+    assert mark.title == "Fudżi" and (mark.points[0].x, mark.points[0].y) == (0.7, 0.7)
+    assert [(k.title, k.x) for k in found.keys] == [("szczyt", 0.6)]
+    assert found.keys[0].main
+    assert found.view.text == "Oko biegnie do Fudżi."
+    assert found.changes[1] == "usunięty ślad 2 „Horyzont”: nie ma horyzontu"
+    # A check that would leave nothing, or none at all: the take as it was.
+    every = {"marks": [{"n": n, "verdict": "drop"} for n in (1, 2)], "points": [], "text": ""}
+    assert checked(view, keys, every, img.size).view == view
+    assert checked(view, keys, None, img.size).changes == []
 
-    assert check(service.images, item, data, refuse) == {**data, CHECKED: [], CHECK_ROUND: ROUND}
-    assert check(service.images, item, {"teaser": "x"}, refuse) == {"teaser": "x"}
+
+HORIZON = {"shape": "line", "points": _points((0.0, 0.6), (1.0, 0.6)), "title": "Horyzont"}
+
+
+def _sea(size: tuple[int, int] = (900, 600), horizon: float = 0.62) -> Image.Image:
+    """A light sky over a dark sea."""
+    img = Image.new("RGB", size, (200, 215, 235))
+    img.paste((20, 40, 90), (0, round(size[1] * horizon), size[0], size[1]))
+    return img
+
+
+def test_the_pictures_own_lines_are_found_in_code() -> None:
+    found = found_lines.find(_sea())
+    (edge,) = [e for e in found.edges if e.axis == "y"]
+    assert abs(edge.pos - 0.62) < 0.01 and edge.run() > 0.9 and edge.name == "L1"
+    assert "granica" in edge.kind and edge.side().startswith("jaśniej nad")
+    level, upright, _ = found_lines.directions(_sea())
+    assert level > 0.9 and upright < 0.05
+    assert found_lines.find(Image.new("RGB", (300, 200), (40, 70, 140))).edges == []
+
+
+def test_the_grid_is_chosen_by_what_lies_on_it() -> None:
+    sea = found_lines.find(_sea(horizon=0.665))
+    # The horizon named a little off (0.69: beside the thirds) moves onto the
+    # picture's own line, which lies on them.
+    horizon = Key(x=0.5, y=0.69, title="horyzont", axis="y")
+    face = Key(x=0.34, y=0.5, title="twarz", main=True)
+    choice = grids.choose([face, horizon], sea)
+    assert choice.grid == "thirds"
+    assert abs(choice.held[1].key.y - 0.665) < 0.01 and choice.held[1].edge is not None
+    assert len(choice.kept()) == 2  # the horizon is named: no free line
+    assert grids.choose([face, horizon], found_lines.Found([], [])).grid == "none"
+    # Nothing on any grid's lines: none.
+    assert grids.choose([Key(x=0.45, y=0.45, title="x", main=True)], sea).grid == "none"
+    # A long boundary in the middle counts by itself (but not as the main one).
+    middle = found_lines.find(_sea(horizon=0.5))
+    alone = grids.choose([Key(x=0.5, y=0.2, title="oś", axis="x")], middle)
+    assert alone.grid == "none"  # two on the halves, neither main
+    with_face = grids.choose([Key(x=0.5, y=0.2, title="oś", axis="x", main=True)], middle)
+    assert with_face.grid == "halves" and with_face.held[-1].free
+    # A take keeps what its grid was chosen by, so the grid stays under it.
+    view = _view(
+        {
+            "title": TAKE,
+            "grid": "halves",
+            "marks": [CHECKED_TAKE["marks"][0]],
+            "keys": [k.model_dump() for k in with_face.kept()],
+        }
+    )
+    assert view is not None and view.grid == "halves" and len(view.keys) == 2
+
+
+def test_the_steps_are_put_together() -> None:
+    view = _view(CHECKED_TAKE | {"text": "Jeden. Dwa. Trzy."})
+    assert view is not None
+    flight = _mark({"shape": "motion", "points": _points((0.1, 0.9), (0.5, 0.3)), "title": "Lot"})
+    assert flight is not None
+    choice = grids.Choice("thirds", [grids.Held(Key(x=1 / 3, y=0.5, title="oś", axis="x"))])
+    both = merged(view, choice, ("Siatka.", 3), Movement("dynamiczna", "Ruch.", 0, 1, [flight]))
+    assert both.text == "Jeden. Ruch. Dwa. Trzy. Siatka."
+    assert both.grid == "thirds" and [m.shape for m in both.marks] == ["loop", "motion"]
+    swapped = merged(view, None, None, Movement("statyczna", "Spokój.", 2, 0, []))
+    assert swapped.text == "Jeden. Spokój. Trzy." and swapped.grid == "none"
+    answer = {
+        "sentence": "Ruch.",
+        "replaces": 0,
+        "where": 0,
+        "marks": [{"shape": "motion", "points": _points((90, 540), (450, 180)), "title": "Lot"}],
+    }
+    found = movement(answer, (900, 600))
+    assert found is not None and found.marks[0].points[0].x == 0.1
+    assert movement({"sentence": ""}, (900, 600)) is None
 
 
 ANALYSIS = {
@@ -310,38 +409,133 @@ ANALYSIS = {
 }
 
 
-def test_the_analysis_is_asked_apart_and_checked(service: FrameService) -> None:
+#: Opus's analysis, in pixels of a 900 × 600 picture: no grid, no
+#: movement, the places it rests on.
+ANALYSIS_V5 = {
+    "composition": {
+        "views": [
+            {
+                "title": TAKE,
+                "text": "Fala zamyka lewą stronę. Kompozycja otwarta: fala tnie krawędź. "
+                "Mała góra równoważy wielką falę.",
+                "points": [
+                    {"x": 300, "y": 200, "na": "grzbiet fali", "os": "xy", "waga": "główny"},
+                    {"x": 610, "y": 400, "na": "szczyt Fudżi", "os": "xy", "waga": "ważny"},
+                    {"x": 450, "y": 590, "na": "łódź", "os": "y", "waga": "ważny"},
+                ],
+                "marks": [
+                    {
+                        "shape": "loop",
+                        "points": _points((600, 400), (650, 440)),
+                        "title": "Fudżi",
+                        "text": "przeciwwaga",
+                        "na": ["szczyt", "zbocze"],
+                    },
+                    {
+                        "shape": "line",
+                        "points": _points((0, 300), (900, 300)),
+                        "title": "Horyzont",
+                        "text": "",
+                        "na": ["brzeg", "brzeg"],
+                    },
+                ],
+            }
+        ]
+    }
+}
+
+
+def _pipeline(asked: list[dict[str, Any]], analysis: dict[str, Any] = ANALYSIS_V5) -> Any:
+    """Every step answering: Opus, the Haiku check, the Haiku grid sentence
+    and Sonnet's movement."""
+
+    def ask(params: dict[str, Any]) -> Answer:
+        asked.append(params)
+        system = params["system"][0]["text"]
+        if system == CHECK_SYSTEM:
+            reply: dict[str, Any] = {
+                "marks": [
+                    {"n": 1, "verdict": "move", "points": _points((610, 400), (660, 440))},
+                    {"n": 2, "verdict": "drop", "points": [], "why": "brak horyzontu"},
+                ],
+                "points": [{"n": 3, "verdict": "drop", "point": {"x": 0, "y": 0}}],
+                "text": "",
+            }
+            return Answer(reply, False, 0.01, HAIKU)
+        if system == GRID_SYSTEM:
+            reply = {"sentence": "Grzbiet fali leży na przecięciu linii trójpodziału.", "where": 1}
+            return Answer(reply, False, 0.002, HAIKU)
+        if system == MOTION_SYSTEM:
+            reply = {
+                "budowa": "dynamiczna",
+                "sentence": "Przeważają łuki fali, więc kompozycja jest dynamiczna.",
+                "replaces": 0,
+                "where": 2,
+                "marks": [
+                    {
+                        "shape": "motion",
+                        "points": _points((100, 500), (300, 200), (450, 150)),
+                        "na": ["dół", "grzbiet", "pióropusz"],
+                        "title": "Fala",
+                        "text": "wali się",
+                    }
+                ],
+                "why": "łuki",
+            }
+            return Answer(reply, False, 0.03, SONNET)
+        return Answer(analysis, False, 0.07, OPUS)
+
+    return ask
+
+
+def test_the_analysis_is_asked_apart_in_steps(service: FrameService) -> None:
     _catalogue(service)
     item = service.library.get("met:1")
     assert item is not None
     asked: list[dict[str, Any]] = []
+    found = compose(service.images, item, service.daily.job.sources(item), _pipeline(asked))
+    first, check, grid, motion = asked
+    assert first["system"][0]["text"] == COMPOSITION_SYSTEM and first["model"] == OPUS
+    assert first["output_config"]["effort"] == "medium"
+    text = first["messages"][0]["content"][1]["text"]
+    assert "OBRAZ: 900 × 600 px" in text and "OPIS MUZEUM" not in text  # the picture alone
+    assert check["model"] == HAIKU and "loop „Fudżi”" in check["messages"][0]["content"][-1]["text"]
+    assert grid["model"] == HAIKU and "trójpodział" in grid["messages"][0]["content"][-1]["text"]
+    assert motion["model"] == SONNET
+    (view,) = found["composition"]["views"]
+    assert view["title"] == TAKE and view["grid"] == "thirds"
+    assert view["text"] == (
+        "Fala zamyka lewą stronę. Grzbiet fali leży na przecięciu linii trójpodziału. "
+        "Kompozycja otwarta: fala tnie krawędź. Przeważają łuki fali, więc kompozycja jest "
+        "dynamiczna. Mała góra równoważy wielką falę."
+    )
+    assert [m["shape"] for m in view["marks"]] == ["loop", "motion"]
+    assert [k["title"] for k in view["keys"]] == ["grzbiet fali", "szczyt Fudżi"]
+    assert found[CHECKED][0].startswith("przesunięty ślad 1 „Fudżi”")
+    assert found[CHECK_ROUND] == ROUND
+    assert found[COST] == {"analysis": 0.07, "check": 0.01, "grid": 0.002, "motion": 0.03}
+    # An unusable analysis gives the page nothing.
+    refused = compose(
+        service.images, item, service.daily.job.sources(item), lambda p: Answer(None, True, 0, "o")
+    )
+    assert refused == {}
+
+
+def test_a_step_that_fails_leaves_the_rest(service: FrameService) -> None:
+    _catalogue(service)
+    item = service.library.get("met:1")
+    assert item is not None
 
     def ask(params: dict[str, Any]) -> Answer:
-        asked.append(params)
-        if params["system"][0]["text"] == CHECK_SYSTEM:
-            reply = {"views": [CHECKED_TAKE], "changes": ["kółko na szczycie"]}
-            return Answer(pixels(reply), False, 0.05, "o")
-        return Answer(pixels(ANALYSIS), False, 0.2, "o")
+        if params["model"] == OPUS:
+            return Answer(ANALYSIS_V5, False, 0.07, OPUS)
+        raise AiUnavailable("the month's limit")
 
     found = compose(service.images, item, service.daily.job.sources(item), ask)
-    first, second = asked
-    assert first["system"][0]["text"] == COMPOSITION_SYSTEM
-    assert first["output_config"]["effort"] == "high"
-    assert "OBRAZ: 900 × 600 px" in first["messages"][0]["content"][1]["text"]
-    assert second["system"][0]["text"] == CHECK_SYSTEM
-    assert "rhythm „Rytm łodzi”" in second["messages"][0]["content"][-1]["text"]
-    assert found[CHECKED] == ["kółko na szczycie"] and found[CHECK_ROUND] == ROUND
-    assert [v["title"] for v in found["composition"]["views"]] == [TAKE]
-    # An unusable analysis gives the page nothing.
-    assert (
-        compose(
-            service.images,
-            item,
-            service.daily.job.sources(item),
-            lambda p: Answer(None, True, 0.0, "o"),
-        )
-        == {}
-    )
+    (view,) = found["composition"]["views"]
+    assert [m["title"] for m in view["marks"]] == ["Fudżi", "Horyzont"]  # unchecked
+    assert view["grid"] == "thirds"  # measured, only its sentence missing
+    assert found[CHECKED] == []
 
 
 def _old_page(service: FrameService, **extra: Any) -> None:
@@ -424,16 +618,12 @@ def test_a_take_under_another_title_counts(service: FrameService) -> None:
     retitled = {"composition": {"views": [{**ANALYSIS["composition"]["views"][0]}]}}
     retitled["composition"]["views"][0]["title"] = "Analiza kompozycji: Trouville"
 
-    def ask(params: dict[str, Any]) -> Answer:
-        if params["system"][0]["text"] == CHECK_SYSTEM:
-            reply = {"views": [{**CHECKED_TAKE, "title": "Kompozycja"}], "changes": []}
-            return Answer(pixels(reply), False, 0.05, "o")
-        return Answer(pixels(retitled), False, 0.2, "o")
-
-    found = compose(service.images, item, service.daily.job.sources(item), ask)
+    found = compose(
+        service.images, item, service.daily.job.sources(item), _pipeline([], pixels(retitled))
+    )
     views = found["composition"]["views"]
     assert [v["title"] for v in views] == [TAKE]
-    assert views[0]["marks"][0]["title"] == "Fudżi"  # the check's take, not lost either
+    assert views[0]["marks"][0]["title"] == "Rytm łodzi"
 
 
 def test_an_answer_without_a_take_is_asked_again_when_let(service: FrameService) -> None:

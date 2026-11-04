@@ -299,7 +299,7 @@ def test_a_phone_of_the_first_release_gets_the_new_kinds(notifier: Notifier) -> 
     notifier.library.set_state(DEVICES_KEY, [old])
     device = notifier.device(PHONE)
     assert device is not None
-    assert device.kinds == ["battery", "daily", "study", "week_artist", "birthday"]
+    assert device.kinds == ["battery", "daily", "study", "week_artist", "birthday", "firmware"]
     assert set(FIRST_KINDS) < set(device.seen or [])
     # Switched off once, it stays off.
     notifier.register(PHONE, sandbox=False, kinds=["daily"])

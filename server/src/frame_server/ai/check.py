@@ -2,148 +2,198 @@
 
 A model that analyses a work's composition points at things by eye: a
 loop a little beside a face, a horizon a few pixels off, a triangle that
-was meant more than seen, a golden section the picture does not have. So
-the take it drew (``ai.composition``) is drawn on the picture
-(``ai.sketch``) and shown to Opus again with what the server measured of
-it: it moves what missed, leaves out what cannot be defended and mends the
-text that claimed it. One more question, far shorter; a take whose check
-fails stays as it was.
+was meant more than seen. So the take it drew (``ai.composition``) is drawn
+on the picture (``ai.sketch``), with the places it named as the ones it
+rests on, and shown to Haiku with what each point was meant to lie on and
+what the server measured: it says of every mark and place whether it hits,
+moves what missed, leaves out what is not there and mends a sentence about
+what it left out. It no longer judges the analysis itself (Opus did, at
+many times the cost; Mateusz 2026-11-04, after a blind trial). A take whose
+check fails stays as it was.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from .client import OPUS, Answer, request
+from .client import HAIKU, request
 from .daily import (
-    CHECK_ROUND,
-    CHECKED,
-    ROUND,
     TAKE,
-    VIEW,
+    TEXT_CHARS,
+    Key,
     View,
     _dicts,
+    _key,
     _list,
+    _mark,
     _object,
     _str,
     _text,
     _view,
     image_block,
-    picture,
-    sent_size,
     takes,
-    to_fractions,
 )
-from .sketch import draw, measures
+from .sketch import draw, draw_keys, measures
 
 if TYPE_CHECKING:
-    from ..library import ImageCache, Item
+    from PIL import Image
 
-#: The pictures go out this big: one clean and one per take, so smaller
-#: than the page's, still enough to see where a mark lies.
+#: The pictures go out this big: one clean and one with the take drawn,
+#: smaller than the analysis's, still enough to see where a mark lies.
 CHECK_SIDE = 1568
-MAX_CHANGES = 20
+VERDICTS = ("ok", "move", "drop")
 
-SYSTEM = """Sprawdzasz „Analizę kompozycji” dzieła, którą inny autor narysował ołówkiem \
-na obrazie do aplikacji domowej ramki. Dostajesz obraz bez śladów, potem ten sam obraz \
-z narysowanymi śladami: różowe linie, trójkąty, koła, ramki, spirale, kreski rytmu (jedna \
-wzdłuż każdej powtarzanej formy), promienie perspektywy zbiegające się w punkcie zbiegu, \
-strzałki i ruch (strzałka ze smugami); numer śladu w białym kółku przy jego początku (przy \
-spirali obok jej oka); niebieskie linie to siatka, gdy jest. Dalej ujęcie jako dane, ze \
-współrzędnymi w pikselach obrazu (wymiary są w danych: OBRAZ, od lewego górnego rogu, x \
-w prawo, y w dół), i pomiary serwera.
+SYSTEM = """Sprawdzasz, czy ślady narysowane na obrazie trafiają tam, gdzie mówi ich opis. Nie \
+oceniasz pomysłu na kompozycję, tylko celność i uczciwość śladów.
 
-Najpierw sam spójrz na obraz bez śladów, z daleka, jak historyk sztuki: duże masy i ich \
-równowaga, podziały pola, jedna figura, która porządkuje całość (trójkąt, przekątna, krzyż, \
-owal, krzywa S, perspektywa zbieżna, klin, pasy), duże wyraźne rytmy, otwarta czy zamknięta.
+Dostajesz: obraz bez śladów, ten sam obraz z narysowanymi śladami (różowe linie, numer śladu w \
+białym kółku przy jego początku; żółte kółka z numerem P1, P2… to punkty kluczowe), a potem listę \
+śladów: kształt, tytuł, punkty w pikselach (x w prawo, y w dół od lewego górnego rogu) i przy \
+każdym punkcie nazwa miejsca, na którym miał leżeć ("na"), listę punktów kluczowych (tak samo: \
+piksele i nazwa miejsca) oraz pomiary serwera.
 
-Potem sprawdź każdy ślad:
-- Czy pokazuje coś, co ten obraz naprawdę porządkuje, wyznaczone przez konkretne formy. \
-Ślad naciągnięty (wzór przyłożony na siłę, linia przez puste pole, rytm z kilku form, które \
-tylko przypadkiem stoją obok siebie, rytm sprzętów czy przedmiotów, np. stołków, krzeseł, \
-butelek, spirala przez puste niebo) usuń i popraw tekst. Lepiej mniej i pewnie.
-- Czy trafia: linia biegnie przez formy, które ją wyznaczają, a nie obok nich (przesuń ją, \
-gdy mija je o więcej niż ich szerokość) i kończy się tam, gdzie one (albo biegnie dalej, gdy \
-dalej biegnie forma; punkty poza obrazem są dozwolone, do połowy boku); kreska rytmu idzie \
-po osi swojej formy od jej dołu do góry; promień perspektywy po prawdziwej krawędzi do punktu \
-zbiegu, w którym spotykają się krawędzie; spirala ma oko na rzeczy, w którą się zwija, a łuki \
-(pomiary podają, gdzie leżą kolejne ćwierć obroty) po prawdziwych formach; przesuń jej \
-początek, punkt kierunku lub oko (spiralę można obrócić), albo ją usuń.
-- Czytelność: dwa ślady nie biegną po tej samej krawędzi ani tuż obok siebie, jedna rzecz ma \
-jeden ślad (nie kółko wokół łodzi i linia po jej maszcie), a numery nie lądują na sobie; gdy \
-tak jest, zostaw ten, który mówi więcej (albo przesuń drugi na jego własną formę). Łamana, \
-która krąży zygzakiem po kilku krawędziach, to zwykle klin: zostaw 3 punkty (koniec boku, \
-wierzchołek, koniec drugiego boku). Krawędzie zbiegające się w perspektywie: "rays", gdy \
-punkt zbiegu leży w obrazie lub do pół boku poza nim, inaczej dwie osobne "line" po tych \
-krawędziach. Strzałka otwartości jest \
-długa (co najmniej jedna piąta boku) i idzie przez formę, której nie zajmuje inny ślad; \
-krótki zaczep przy krawędzi usuń.
-- Gdy brakuje głównego układu, wyraźnego podziału albo dużego rytmu, które widzisz, dodaj go \
-i dopisz do tekstu. Układ, który tekst nazywa najmocniejszym (np. klin, piramida, przekątna), \
-musi mieć swój ślad, i to pierwszy; porządkując czytelność, nie usuwaj go, tylko to, co go \
-dubluje.
-- Siatka zostaje, gdy kluczowy element leży na jej linii lub blisko niej (pomiary podają \
-odległości w ułamkach boku: do ok. 0,02 to „na linii”, do ok. 0,05 „blisko linii”, dalej \
-siatka nie pasuje): wtedy ustaw właściwą ("golden", "thirds", "halves", "3x2", "2x3"); \
-inaczej "none" i usuń z tekstu twierdzenie o siatce.
-- Tekst: 4–6 zdań, jedno mówi, czy kompozycja jest otwarta czy zamknięta i po czym to widać. \
-Popraw zdania, które twierdzą coś, czego obraz nie potwierdza.
+Dla każdego śladu po kolei:
+1. Znajdź na obrazie bez śladów każde nazwane miejsce. Czy punkt leży na nim? Chybienie to więcej \
+niż szerokość tej formy albo ok. 3% boku obrazu.
+2. Werdykt:
+   - "ok": wszystkie punkty trafiają (drobne różnice zostaw).
+   - "move": któryś punkt chybia, a miejsce istnieje; podaj WSZYSTKIE punkty śladu, poprawione \
+tam, gdzie chybiały, resztę bez zmian.
+   - "drop": nazwanego miejsca nie ma, linia biegnie przez puste pole, "rytm" to przypadkowe \
+przedmioty lub mniej niż trzy formy, spirala przez puste niebo, albo ślad dubluje inny ślad.
+3. "why": najwyżej 12 słów.
 
-Popraw: przesuń punkty tego, co chybia, celując dokładnie; usuń ślad, którego nie da się \
-obronić. Co poprawne, zostaw bez zmian: te same współrzędne, te same słowa.
+Punkty kluczowe: każdy sprawdzasz jak ślad. "ok", gdy leży na nazwanym miejscu; "move" z \
+poprawionym punktem, gdy miejsce istnieje obok; "drop", gdy go nie ma.
+Tekst: gdy usuwasz ślad, a tekst o nim mówi, zwróć poprawiony tekst ("text") bez tego \
+twierdzenia, zmieniając jak najmniej słów; inaczej "text": "".
 
-Kształty i ich punkty: "line" (2–12 punktów), "triangle" (3 wierzchołki), "loop" (środek \
-i jeden róg prostokąta, w który się wpisuje), "rect" (dwa przeciwległe rogi), "rhythm" (pary \
-punktów, 3–12 par: dół i góra każdej powtarzanej formy), "rays" (punkt zbiegu, potem 2–8 \
-dalekich końców promieni), "motion" (2–12 punktów po torze ruchu, grot na końcu), "arrow" \
-(2–12 punktów, grot na końcu), "spiral" (złota spirala: początek najszerszego łuku, punkt na \
-nim mniej więcej ćwierć obrotu dalej, który wyznacza kierunek skrętu, i oko). Forma jak \
-w oryginale, naturalną polszczyzną: "title" ujęcia „Analiza kompozycji”, podpis śladu \
-("title") 1–3 słowa, dopisek ("text") najwyżej 45 znaków; 3–6 śladów, najpierw główny układ.
+Odpowiedź JSON: {"marks": [{"n": 1, "verdict": "ok"|"move"|"drop", "points": [{"x": …, "y": …}, \
+…] (przy "move" wszystkie punkty śladu, inaczej pusta lista), "why": "..."}], "points": [{"n": 1, \
+"verdict": "ok"|"move"|"drop", "point": {"x": …, "y": …} (przy "move" poprawiony, inaczej ten \
+sam), "why": "..."}], "text": "..."}"""
 
-Zwróć poprawione ujęcie ("views" z jednym ujęciem, współrzędne w pikselach) i "changes": \
-krótkie notatki, co zmieniłeś i dlaczego (np. „usunięty rytm drzew: stoją przypadkiem”); \
-pusta lista, gdy wszystko było dobrze."""
-
-SCHEMA = _object(views=_list(VIEW), changes=_list(_str()))
+_POINT = _object(x={"type": "number"}, y={"type": "number"})
+_VERDICT = {"type": "string", "enum": list(VERDICTS)}
+SCHEMA = _object(
+    marks=_list(_object(n={"type": "integer"}, verdict=_VERDICT, points=_list(_POINT), why=_str())),
+    points=_list(_object(n={"type": "integer"}, verdict=_VERDICT, point=_POINT, why=_str())),
+    text=_str(),
+)
 
 
-def _px(view: View, size: tuple[int, int]) -> list[str]:
-    """A take as data, its points in pixels, with what the server measured."""
-    lines = [f"Siatka: {view.grid}", f"Tekst: {view.text}", "Ślady:"]
-    for n, mark in enumerate(view.marks, start=1):
-        points = " ".join(f"({p.x * size[0]:.0f}, {p.y * size[1]:.0f})" for p in mark.points)
-        note = f" – dopisek: {mark.text}" if mark.text else ""
-        lines.append(f"{n}. {mark.shape} „{mark.title}”{note} – punkty: {points}")
-    return [*lines, "Pomiary serwera:", *measures(view, size)]
+@dataclass
+class Checked:
+    """The take and its key points as the check left them, and what it changed."""
+
+    view: View
+    keys: list[Key]
+    changes: list[str] = field(default_factory=list)
 
 
-def question(views: list[View], images: ImageCache, item: Item) -> dict[str, Any]:
-    """The check of ``views``: the clean picture, each take drawn on it, and
-    the takes as data with what the server measured."""
-    img = picture(images, item, CHECK_SIDE)
-    size = img.size
-    content: list[dict[str, Any]] = [
+def question(
+    img: Image.Image, view: View, keys: list[Key], na: dict[str, list[str]]
+) -> dict[str, Any]:
+    """The check of a take: the clean picture, the take and its key points
+    drawn on it, and both as data with what each point was meant to lie on
+    and what the server measured."""
+    w, h = img.size
+    lines = [f"OBRAZ: {w} × {h} px (oba obrazy)", f"Tekst: {view.text}", "Ślady:"]
+    for n, m in enumerate(view.marks, start=1):
+        points = " ".join(f"({p.x * w:.0f}, {p.y * h:.0f})" for p in m.points)
+        named = "; ".join(na.get(m.title, []))
+        lines.append(f"{n}. {m.shape} „{m.title}” – {m.text} – punkty: {points} – na: {named}")
+    lines.append("Punkty kluczowe:")
+    for n, k in enumerate(keys, start=1):
+        kind = "główny" if k.main else "ważny"
+        lines.append(f"P{n}. ({k.x * w:.0f}, {k.y * h:.0f}) – na: {k.title} – {kind}")
+    lines += ["Pomiary serwera:", *measures(view, (w, h))]
+    content = [
         {"type": "text", "text": "OBRAZ BEZ ŚLADÓW"},
         image_block(img),
+        {"type": "text", "text": "TEN SAM OBRAZ ZE ŚLADAMI"},
+        image_block(draw_keys(draw(img, view), keys)),
+        {"type": "text", "text": "\n".join(lines)},
     ]
-    data = [
-        f"DZIEŁO: {item.artist}, {_text(item.title, 200)}, {item.date_text}",
-        f"OBRAZ: {size[0]} × {size[1]} px (wszystkie obrazy mają ten rozmiar)",
-    ]
-    for n, view in enumerate(views, start=1):
-        content += [
-            {"type": "text", "text": f"UJĘCIE {n} „{view.title}” Z NARYSOWANYMI ŚLADAMI"},
-            image_block(draw(img, view)),
-        ]
-        data += ["", f"UJĘCIE {n} „{view.title}”", *_px(view, size)]
-    content.append({"type": "text", "text": "\n".join(data)})
-    params = request(
-        model=OPUS, system=SYSTEM, content=content, schema=SCHEMA, max_tokens=16000, effort="medium"
-    )
-    params["timeout"] = 600.0
-    return params
+    return request(
+        model=HAIKU, system=SYSTEM, content=content, schema=SCHEMA, max_tokens=8000,
+        effort="medium",
+    )  # fmt: skip
+
+
+def _coord(value: Any) -> float | None:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if number == number else None
+
+
+def checked(
+    view: View, keys: list[Key], data: dict[str, Any] | None, size: tuple[int, int]
+) -> Checked:
+    """The take after the check's verdicts (its points in the pixels of the
+    pictures it got): marks and places that missed moved, those that are
+    not there left out, the text mended. As it was when the check is
+    unusable or would leave no mark."""
+    if not data:
+        return Checked(view, keys)
+    given = [p for c in _dicts(data.get("marks")) for p in _dicts(c.get("points"))]
+    given += [c["point"] for c in _dicts(data.get("points")) if isinstance(c.get("point"), dict)]
+    numbers = [abs(n) for p in given for n in (_coord(p.get("x")), _coord(p.get("y"))) if n]
+    # In pixels, as asked; an answer all within the unit square gave fractions.
+    w, h = size if numbers and max(numbers) > 1.5 else (1, 1)
+
+    def spot(raw: Any) -> dict[str, float] | None:
+        if not isinstance(raw, dict):
+            return None
+        x, y = _coord(raw.get("x")), _coord(raw.get("y"))
+        return None if x is None or y is None else {"x": x / w, "y": y / h}
+
+    def verdicts(key: str) -> dict[int, dict[str, Any]]:
+        found: dict[int, dict[str, Any]] = {}
+        for c in _dicts(data.get(key)):
+            n = c.get("n")
+            if isinstance(n, int) and c.get("verdict") in VERDICTS:
+                found.setdefault(n, c)
+        return found
+
+    changes: list[str] = []
+    marks = []
+    for n, mark in enumerate(view.marks, start=1):
+        c = verdicts("marks").get(n, {})
+        why = _text(c.get("why"), 120)
+        note = f": {why}" if why else ""
+        if c.get("verdict") == "drop":
+            changes.append(f"usunięty ślad {n} „{mark.title}”{note}")
+            continue
+        if c.get("verdict") == "move":
+            points = [p for p in map(spot, c.get("points") or []) if p is not None]
+            raw = {"shape": mark.shape, "title": mark.title, "text": mark.text, "points": points}
+            moved = _mark(raw)
+            if moved is not None and moved.points != mark.points:
+                changes.append(f"przesunięty ślad {n} „{mark.title}”{note}")
+                mark = moved
+        marks.append(mark)
+    if not marks:  # nothing left to show: the take as it was
+        return Checked(view, keys)
+    kept = []
+    for n, key in enumerate(keys, start=1):
+        c = verdicts("points").get(n, {})
+        if c.get("verdict") == "drop":
+            changes.append(f"usunięty punkt P{n} „{key.title}”")
+            continue
+        if c.get("verdict") == "move" and (to := spot(c.get("point"))) is not None:
+            moved_key = _key({**key.model_dump(), **to})
+            if moved_key is not None:
+                key = moved_key
+        kept.append(key)
+    text = _text(data.get("text"), TEXT_CHARS)
+    if text and text != view.text:
+        changes.append("poprawiony tekst")
+    update = {"marks": marks, "text": text or view.text}
+    return Checked(view.model_copy(update=update), kept, changes)
 
 
 def page_views(data: dict[str, Any]) -> list[View]:
@@ -164,35 +214,3 @@ def answer_views(data: dict[str, Any]) -> list[View]:
     views = [v for v in map(_view, _dicts(raw)) if v is not None]
     found = takes(views) or views[:1]
     return [found[0].model_copy(update={"title": TAKE})] if found else []
-
-
-def corrected(data: dict[str, Any] | None) -> tuple[list[View], list[str]] | None:
-    """The takes a check gave back (its answer in fractions already) and
-    what it changed; None when it is unusable."""
-    if data is None:
-        return None
-    kept = answer_views(data)
-    if not kept:
-        return None
-    changes = [_text(c, 200) for c in data.get("changes") or [] if _text(c)][:MAX_CHANGES]
-    return kept, changes
-
-
-def check(
-    images: ImageCache, item: Item, data: dict[str, Any], ask: Callable[[dict[str, Any]], Answer]
-) -> dict[str, Any]:
-    """``data`` (a page's answer in fractions) with its takes as Claude
-    corrected them over the marks drawn on the picture, and what it changed
-    under :data:`CHECKED`; as it was when there is nothing to check, with an
-    empty :data:`CHECKED` when the answer is unusable."""
-    views = page_views(data)
-    if not views:
-        return data
-    params = question(views, images, item)
-    answer = ask(params)
-    found = corrected(to_fractions(answer.data, sent_size(params)) if answer.data else None)
-    if found is None:  # asked once all the same
-        return {**data, CHECKED: [], CHECK_ROUND: ROUND}
-    kept, changes = found
-    drawn = [v.model_dump() for v in kept]
-    return {**data, "composition": {"views": drawn}, CHECKED: changes, CHECK_ROUND: ROUND}

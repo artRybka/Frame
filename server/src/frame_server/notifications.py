@@ -66,12 +66,13 @@ KINDS: dict[str, tuple[str, str]] = {
     "study": ("Studium gotowe", "Gdy skończy się pisać zamówione studium dzieła."),
     "week_artist": ("Artysta tygodnia", "W poniedziałek o 9:00."),
     "birthday": ("Rocznica urodzin", "Urodziny artystów Twoich ulubionych dzieł, o 10:00."),
+    "firmware": ("Nowy firmware ramki", "Gdy Samsung zaktualizuje oprogramowanie ekranu."),
 }
 # The kinds of the first release: a phone registered then gets the later
 # ones switched on as they come (``PushDevice.seen``).
 FIRST_KINDS = ["battery", "send_failed", "changed", "server_update", "daily"]
 #: Told only to the owner's phones: a member does not run the server.
-OWNER_KINDS = frozenset({"server_update"})
+OWNER_KINDS = frozenset({"server_update", "firmware"})
 
 BATTERY_LOW = 20
 # Told once below ``BATTERY_LOW``; again only after charging or this level.
@@ -526,6 +527,18 @@ class Notifier:
                 collapse="battery",
                 route="frame",
             )
+
+    def firmware(self, before: str, now: str) -> None:
+        """The panel runs other firmware than before: the frame was worked
+        out on 1130.7 (wake, alarms, MDC), so a change is worth a look."""
+        self.notify(
+            "firmware",
+            "Nowy firmware ramki",
+            f"Ekran ma teraz {now} (wcześniej {before}). "
+            "Sprawdź, czy ramka budzi się i zmienia obrazy.",
+            collapse="firmware",
+            route="frame",
+        )
 
     def ended(self, failed: bool, title: str, message: str | None) -> None:
         """A send ended (progress.py); only a failure is told."""

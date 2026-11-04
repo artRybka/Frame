@@ -236,6 +236,7 @@ class AppHello(BaseModel):
     battery: int | None = None  # percent
     charging: bool | None = None  # the charger is in (getBatteryPowerSource), full or not
     shown: str | None = None  # file_id on the screen, "" for none
+    now: int | None = None  # the panel's own clock, ms since 1970
 
 
 class NextAnswer(BaseModel):
@@ -256,6 +257,9 @@ class NextAnswer(BaseModel):
     wakes_ms: list[int] = []
     standby: Literal["ON", "OFF"] = "ON"
     code: str = ""  # app.js on the server: a different one is loaded at once
+    # Take a screenshot and send it to /panel/capture (asked by the owner,
+    # only with ``stay``: on the charger or kept awake).
+    capture: bool = False
 
 
 class PackageInfo(BaseModel):
@@ -290,6 +294,8 @@ class PanelApp:
     def __init__(self, service: FrameService) -> None:
         self.service = service
         self.dir: Path = service.settings.data_dir / "panel-app"
+        # The owner asked for a screenshot of the panel (answer.capture).
+        self.capture_requested = False
         self.contact = asyncio.Event()  # set at every question of the app
         self.contacts = 0  # questions so far, to wait for the next one
         self.heard_at: datetime | None = None  # the last question or report
@@ -585,6 +591,8 @@ class PanelApp:
         service = self.service
         now = now or datetime.now(UTC)
         self._note_contact(hello, now)
+        if hello.now:
+            service.status.note_clock(hello.now, now)
         content = service.store.current()
         power = service.power
         if power.state.pending_push:
@@ -618,6 +626,10 @@ class PanelApp:
         charger = service.status.status.power_source == "ac"
         if not self.sleep_requested and (awake or charger):
             answer = NextAnswer(action="stay", wait_s=_s(POLL), **common)
+            if self.capture_requested:
+                self.capture_requested = False
+                answer.capture = True
+                log.info("the frame's app is asked for a screenshot")
             if charger and service.player.settings.power_mode == "online":
                 spare = self._spare(now)
                 answer.wake_ms = _ms(spare[0])
@@ -810,7 +822,7 @@ class PanelApp:
 
     def report(self, event: str, data: dict[str, object]) -> None:
         """What the app did: drew a picture, set its alarm, fell asleep, failed."""
-        text = json.dumps(data, ensure_ascii=False)[: 6000 if event == "probe" else 600]
+        text = json.dumps(data, ensure_ascii=False)[: 12000 if event == "probe" else 600]
         if event not in ("sleep", "visibility"):
             self.heard_at = datetime.now(UTC)  # hidden as it goes down is no sign of life
         if event == "error":
@@ -837,6 +849,22 @@ class PanelApp:
             shown = self._shown.pop(file_id, None)
             if shown is not None:
                 shown.set()
+
+    @property
+    def capture_path(self) -> Path:
+        return self.dir / "screenshot.jpg"
+
+    def save_capture(self, data: bytes) -> bool:
+        """The screenshot the app took when asked; False when not a JPEG."""
+        if not data.startswith(b"\xff\xd8"):
+            log.warning("panel app capture: not a JPEG (%d bytes)", len(data))
+            return False
+        self.dir.mkdir(parents=True, exist_ok=True)
+        tmp = self.capture_path.with_suffix(".part")
+        tmp.write_bytes(data)
+        tmp.replace(self.capture_path)
+        log.info("panel app capture: %d bytes", len(data))
+        return True
 
     def _tell_shown(self, file_id: str) -> None:
         """The owner's phone hears of a picture new on the frame."""

@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.93.0
+
+- Analiza kompozycji kosztuje około jednej trzeciej tego, co dotąd.
+  Opus patrzy na sam obraz, bez tekstów muzeum i Wikipedii, i wskazuje
+  miejsca, na których opiera się kompozycja. Haiku sprawdza, czy każdy
+  ślad trafia tam, gdzie mówi jego opis. Siatkę (połowy, trójpodział,
+  złoty podział) serwer wybiera sam, mierząc linie w obrazie, a Haiku
+  dopisuje o niej jedno zdanie. O tym, czy kompozycja jest spokojna czy
+  pełna ruchu, i o śladach ruchu decyduje Sonnet.
+- Dotychczasowe analizy zostają, jakie były. Nowe studia i „Wykonaj
+  ponowną analizę” idą już nową drogą.
+- Ramka na zasilaczu raz sprawdza, co jeszcze potrafi powiedzieć o sobie
+  (zegar i jego strefa, pamięć, wolne miejsce, sieć, czujniki, ustawienia),
+  i zapisuje to w logu serwera. Same odczyty, bez zmian w ustawieniach.
+- Serwer wie, o ile zegar ramki rozjeżdża się z jego zegarem, i pisze o tym
+  w logu przy różnicy ponad minutę: od zegara ramki zależą jej budziki.
+- Gdy w Konfiguracji nie ma adresu MAC ramki, serwer bierze go od samej
+  ramki i budzi ją nim przez sieć.
+- Nowe powiadomienie „Nowy firmware ramki”, gdy Samsung zaktualizuje
+  oprogramowanie ekranu (tylko właściciel).
+- Na próbę: zrzut ekranu ramki na żądanie z serwera, naciśnięcia przycisku
+  i zmiany baterii na żywo trafiają do logu.
+
 ## 1.92.1
 
 - Studium dzieła: podpis pod obrazem to same litery, bez czarnego pasa
