@@ -333,15 +333,19 @@ struct ItemDetailView: View {
             if !held.isEmpty {
                 Eyebrow(held, color: Theme.vermilion)
             }
-            Text(nonEmpty(polish?.title) ?? (summary.shownTitle.isEmpty ? "Bez tytułu" : summary.shownTitle))
-                .font(.serif(30, weight: .semibold))
-                .foregroundStyle(Theme.ink)
+            // The year at the title's end in small print, as below.
+            let date = nonEmpty(polish?.date) ?? summary.dateText
+            let photo = summary.kind == .photo
+            TitleYear.text(
+                nonEmpty(polish?.title) ?? (summary.shownTitle.isEmpty ? "Bez tytułu" : summary.shownTitle),
+                date: photo ? "" : date,
+                font: .serif(30, weight: .semibold)
+            )
                 .fixedSize(horizontal: false, vertical: true)
             if !summary.artist.isEmpty {
                 Text(Names.artist(summary.artist)).font(.serif(19)).foregroundStyle(Theme.ink)
             }
-            let date = nonEmpty(polish?.date) ?? summary.dateText
-            if !date.isEmpty {
+            if photo, !date.isEmpty {
                 Text(date).font(.subheadline).foregroundStyle(Theme.inkSoft)
             }
         }
@@ -839,9 +843,15 @@ struct ItemDetailView: View {
             }
             let shown = title(item)
             let original = OriginalTitle.of(item.title, shown: shown)
-            Text(peeking ? original ?? shown : shown)
-                .font(.serif(30, weight: .semibold))
-                .foregroundStyle(Theme.ink)
+            // The year at its end in small print (Mateusz 2026-11-04, as on
+            // Teraz); a photo keeps its date on a line of its own.
+            let date = nonEmpty(shownPolish?.date) ?? item.dateText
+            let photo = item.kind == .photo
+            TitleYear.text(
+                peeking ? original ?? shown : shown,
+                date: photo ? "" : date,
+                font: .serif(30, weight: .semibold)
+            )
                 .fixedSize(horizontal: false, vertical: true)
                 // The museum's title fades into the Polish one.
                 .contentTransition(.opacity)
@@ -861,8 +871,7 @@ struct ItemDetailView: View {
                 Text(bio).font(.subheadline).foregroundStyle(Theme.inkSoft)
                     .contentTransition(.opacity)
             }
-            let date = nonEmpty(shownPolish?.date) ?? item.dateText
-            if !date.isEmpty {
+            if photo, !date.isEmpty {
                 Text(date).font(.subheadline).foregroundStyle(Theme.inkSoft)
                     .contentTransition(.opacity)
             }

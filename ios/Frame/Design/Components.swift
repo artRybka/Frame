@@ -781,3 +781,25 @@ private struct EmptyCover: View {
         }
     }
 }
+
+/// A work's title with its date at the end in small grey print, "W oranżerii
+/// 1890" (Mateusz 2026-11-04, variant A): Teraz and the work's card. The
+/// date moves to the next line whole with the title's last word, never
+/// broken itself ("ok. 1893–1894").
+enum TitleYear {
+    static func text(_ title: String, date: String, font: Font) -> Text {
+        let title = Text(title).font(font).foregroundStyle(Theme.ink)
+        let date = unbroken(date)
+        guard !date.isEmpty else { return title }
+        return title + Text(" ").font(font)
+            + Text(date).font(.subheadline).foregroundStyle(Theme.inkSoft)
+    }
+
+    /// No line break inside the date: spaces held, dashes joined.
+    static func unbroken(_ date: String) -> String {
+        date.trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: " ", with: "\u{00A0}")
+            .replacingOccurrences(of: "–", with: "\u{2060}–\u{2060}")
+            .replacingOccurrences(of: "-", with: "\u{2011}")
+    }
+}

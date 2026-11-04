@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.96.2
+
+- Teraz: nad tytułem dzieła nazwa muzeum, w którym wisi, zamiast „Dzieło”;
+  muzeum, tytuł i autor bliżej siebie. Rok powstania drobnym drukiem na
+  końcu tytułu, w Teraz i na karcie dzieła.
+
 ## 1.96.1
 
 - Przytrzymane guziki z obwódką („Przygotuj studium dzieła”, „Otwórz
