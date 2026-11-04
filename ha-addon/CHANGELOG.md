@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.95.1
+
+- Budziki ramki znowu się ustawiają: zegar systemowy ramki stał na
+  1 stycznia 2024 i ramka odrzucała każdy budzik ustawiony według
+  prawdziwej godziny, więc na baterii sama by się nie obudziła. Aplikacja
+  przelicza teraz godzinę budzika na zegar ramki. Ustawień ramki nie zmienia.
+- Po aktualizacji serwera ekran ramki nie zostaje biały: aplikacja po
+  przeładowaniu rysuje obraz jeszcze raz.
+- Serwer nie ostrzega o rozjechanym zegarze ramki z powodu jednego
+  spóźnionego zapytania.
+- Guzik „następny” na ramce przełącza na następne dzieło, tak jak strzałka
+  w aplikacji (gdy ramka nie śpi; na zasilaczu zawsze). Naciśnięcia w
+  odstępie krótszym niż 15 s liczą się jako jedno.
+
 ## 1.95.0
 
 - Pasek wysyłki na ekranie blokady i w wyspie pokazuje małą miniaturę

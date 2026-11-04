@@ -478,8 +478,13 @@ class StatusMonitor:
     def note_clock(self, panel_ms: int, now: datetime) -> None:
         """The app's own time as it asked: how far the panel's clock is off."""
         offset = round(panel_ms / 1000 - now.timestamp(), 1)
+        # A question held up on the panel (its JS stood still during a
+        # redraw) arrives late with its old time: only a second reading
+        # that says the same counts (2026-11-04, "-92 s" from four polls
+        # queued over a white page).
+        before = self.status.clock_offset_s
         self.status.clock_offset_s = offset
-        off = abs(offset) >= CLOCK_OFF_S
+        off = abs(offset) >= CLOCK_OFF_S and before is not None and abs(before) >= CLOCK_OFF_S
         if off and not self._clock_told:
             log.warning("the panel's clock is %+.0f s off the server's", offset)
         self._clock_told = off
