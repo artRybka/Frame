@@ -7,6 +7,7 @@ import asyncio
 import io
 import json
 import ssl
+import time
 import zipfile
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -1309,6 +1310,19 @@ def test_a_screenshot_is_taken_only_when_asked_and_on_the_charger(tmp_path: Path
         assert client.post("/panel/capture", content=jpeg).json()["saved"]
         shot = client.get("/api/debug/panel-capture.jpg")
         assert shot.status_code == 200 and shot.content == jpeg
+        # The same for the iOS app (Konfiguracja → Aplikacja ramki).
+        view = client.get("/api/device/screenshot").json()
+        assert view["taken_at"] and view["asked_at"] is None and view["on_charger"]
+        asked = client.post("/api/device/screenshot").json()
+        assert asked["asked_at"] and asked["asked_at"] >= view["taken_at"]
+        assert client.get("/panel/next", params={"reason": "poll", "charging": "true"}).json()[
+            "capture"
+        ]
+        time.sleep(1.1)  # a newer file time than the ask
+        assert client.post("/panel/capture", content=jpeg + b"2").json()["saved"]
+        view = client.get("/api/device/screenshot").json()
+        assert view["asked_at"] is None and view["taken_at"] >= asked["asked_at"]
+        assert client.get("/api/device/screenshot.jpg").content == jpeg + b"2"
         assert svc.app.capture_path.exists()
         # The probe is longer than the other reports and reaches the log whole.
         probe = {"event": "probe", "part": "methods", "methods": {"epaper": "x" * 9000}}

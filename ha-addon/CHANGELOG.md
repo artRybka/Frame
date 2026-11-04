@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.98.0
+
+- Konfiguracja → Aplikacja ramki → „Pokaż ekran ramki”: zrzut ekranu ramki
+  (pomniejszony, tak jak aplikacja go narysowała). Tylko gdy ramka jest na
+  zasilaczu; ramka robi go co najmniej minutę po zmianie obrazu.
+- Aplikacja na ramce sama ustawia jej zegar, gdy ten się rozjedzie (stał na
+  1 stycznia 2024). Ramka raz zainstaluje nową wersję aplikacji (ekran
+  instalatora). Budziki przeliczane na zegar ramki zostają jako
+  zabezpieczenie.
+
 ## 1.97.0
 
 - Odkrywaj → Kolor i nastrój pokazuje tylko obrazy, rysunki i akwarele,

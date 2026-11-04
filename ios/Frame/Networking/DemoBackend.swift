@@ -1284,6 +1284,14 @@ actor DemoBackend: FrameBackend {
         return view
     }
 
+    func panelScreenshot() async throws -> PanelScreenshot {
+        PanelScreenshot(askedAt: nil, takenAt: nil, onCharger: true)
+    }
+
+    func askPanelScreenshot() async throws -> PanelScreenshot {
+        try await panelScreenshot()
+    }
+
     func libraryStorage() async throws -> LibraryStorage {
         let mb: Int64 = 1024 * 1024
         let usage = LibraryStorage.Usage(

@@ -832,6 +832,16 @@ struct PanelAppView: Codable, Hashable, Sendable {
     var certificatesExpireAt: String?
 }
 
+/// The frame's screen as its app drew it (640×360, smooth colours, not the
+/// e-paper's dots), taken only while the frame is on the charger.
+struct PanelScreenshot: Codable, Hashable, Sendable {
+    /// Asked for and not in yet.
+    var askedAt: String?
+    /// The last one the server holds.
+    var takenAt: String?
+    var onCharger: Bool
+}
+
 /// The package the server built and signed for the panel.
 struct PanelAppPackage: Codable, Hashable, Sendable {
     var version: String

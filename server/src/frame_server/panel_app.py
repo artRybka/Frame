@@ -269,6 +269,15 @@ class NextAnswer(BaseModel):
     redraw: bool = False
 
 
+class ScreenshotView(BaseModel):
+    """The frame's screen as its app drew it (Konfiguracja → Aplikacja
+    ramki → „Pokaż ekran ramki”): 640x360, taken only on the charger."""
+
+    asked_at: str | None = None  # asked and not taken yet (ISO)
+    taken_at: str | None = None  # the last screenshot (ISO)
+    on_charger: bool = False
+
+
 class PackageInfo(BaseModel):
     version: str
     size: int
@@ -303,6 +312,7 @@ class PanelApp:
         self.dir: Path = service.settings.data_dir / "panel-app"
         # The owner asked for a screenshot of the panel (answer.capture).
         self.capture_requested = False
+        self.capture_asked_at: datetime | None = None
         self._button_at: datetime | None = None
         self.contact = asyncio.Event()  # set at every question of the app
         self.contacts = 0  # questions so far, to wait for the next one
@@ -899,6 +909,26 @@ class PanelApp:
     @property
     def capture_path(self) -> Path:
         return self.dir / "screenshot.jpg"
+
+    def ask_capture(self) -> ScreenshotView:
+        """A screenshot at the app's next question with ``stay`` (on the
+        charger every 10 s), at least a minute after its last drawing."""
+        self.capture_requested = True
+        self.capture_asked_at = datetime.now(UTC)
+        return self.screenshot()
+
+    def screenshot(self) -> ScreenshotView:
+        taken = None
+        if self.capture_path.exists():
+            taken = datetime.fromtimestamp(self.capture_path.stat().st_mtime, UTC)
+        asked = self.capture_asked_at
+        if asked is not None and taken is not None and taken >= asked:
+            asked = self.capture_asked_at = None
+        return ScreenshotView(
+            asked_at=asked.isoformat(timespec="seconds") if asked else None,
+            taken_at=taken.isoformat(timespec="seconds") if taken else None,
+            on_charger=self.service.status.status.power_source == "ac",
+        )
 
     def save_capture(self, data: bytes) -> bool:
         """The screenshot the app took when asked; False when not a JPEG."""
