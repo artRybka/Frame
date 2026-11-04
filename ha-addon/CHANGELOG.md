@@ -8,7 +8,8 @@
   Rembrandta i Goi oraz angielską satyrę Hogartha, Gillraya i
   Rowlandsona. Z „Użytkiem prywatnym” także dzieła na licencjach CC BY i
   CC BY-NC. Pojawia się w Szukaj, przy artystach, motywach i playlistach,
-  ale nie w losowych obrazach, bo wiele prac dotyczy medycyny.
+  ale nie w losowych obrazach. Ilustracje medyczne (choroby skóry,
+  anatomia, rany, narzędzia chirurgiczne) są pomijane.
 
 ## 1.98.0
 
