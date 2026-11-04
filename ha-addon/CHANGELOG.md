@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.96.2
+
+- Guziki studium na karcie dzieła („Przygotuj studium dzieła”, „Otwórz
+  studium”, „Zamówione na później”) mają białe tło, w ciemnym trybie
+  czarne, żeby wyróżniały się na stronie.
+
 ## 1.96.1
 
 - Przytrzymane guziki z obwódką („Przygotuj studium dzieła”, „Otwórz

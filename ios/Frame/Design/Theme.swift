@@ -7,6 +7,9 @@ import UIKit
 enum Theme {
     static let paper = Color(light: 0xF5F1EA, dark: 0x121110)
     static let card = Color(light: 0xFFFDF9, dark: 0x1D1B19)
+    /// Under an outlined button that stands out from the page (the study's
+    /// buttons on a work's card, Mateusz 2026-11-04): pure white, pure black.
+    static let raised = Color(light: 0xFFFFFF, dark: 0x000000)
     static let mat = Color(light: 0xEEE8DE, dark: 0x2A2724)
     static let matWhite = Color(light: 0xFBF9F4, dark: 0xE9E4DA)
     static let ink = Color(light: 0x1D1B18, dark: 0xF1ECE4)
