@@ -18,6 +18,10 @@ final class StudyLiveActivity {
     var onToken: ((_ itemID: String, _ token: String) async -> Void)?
 
     private var watching: [String: Task<Void, Never>] = [:]
+    /// Cards being started: their pictures are on the way.
+    private var starting: Set<String> = []
+    /// The work's small picture for the card (`ActivityPicture`), set by the model.
+    var picture: ((String) async -> Data?)?
 
     /// The cards still under way (not ended), by work.
     var running: [Activity<StudyActivityAttributes>] {
@@ -32,20 +36,28 @@ final class StudyLiveActivity {
 
     /// The card for a study on its way (only possible with the app open),
     /// or the one already there moved on.
-    func start(itemID: String, title: String, status: String) {
+    func start(itemID: String, title: String, status: String) async {
         let state = State(status: status)
         guard state.isActive else { return }
         if activity(for: itemID) != nil {
             update(itemID: itemID, status: status)
             return
         }
-        guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
-        let attributes = StudyActivityAttributes(itemID: itemID, title: title)
+        guard ActivityAuthorizationInfo().areActivitiesEnabled, !starting.contains(itemID) else { return }
+        starting.insert(itemID)
+        defer { starting.remove(itemID) }
+        let image = await picture?(itemID)
+        guard activity(for: itemID) == nil else { return }  // started meanwhile
         let content = ActivityContent(state: state, staleDate: .now.addingTimeInterval(Self.staleAfter))
         // Pushed by the server; without the push entitlement it still runs
-        // while the app is open.
-        let started = (try? Activity.request(attributes: attributes, content: content, pushType: .token))
-            ?? (try? Activity.request(attributes: attributes, content: content))
+        // while the app is open. Too big for ActivityKit: without the picture.
+        var started: Activity<StudyActivityAttributes>?
+        for picture in image == nil ? [nil] : [image, nil] {
+            let attributes = StudyActivityAttributes(itemID: itemID, title: title, picture: picture)
+            started = (try? Activity.request(attributes: attributes, content: content, pushType: .token))
+                ?? (try? Activity.request(attributes: attributes, content: content))
+            if started != nil { break }
+        }
         if let started { watchToken(started) }
     }
 

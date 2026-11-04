@@ -671,7 +671,9 @@ class Player:
 
             async def work() -> None:
                 # Begun at the download.
-                self.service.progress.begin(item.title, keep=True, origin=origin_of(reason))
+                self.service.progress.begin(
+                    item.title, keep=True, origin=origin_of(reason), item_id=item.id
+                )
                 await self.wait_for_polish(item, settings, POLISH_SHOW_SECONDS)
                 await self._publish(board, settings)
                 if state.current_item_id and state.current_item_id != item.id:
@@ -720,7 +722,8 @@ class Player:
             board = self.board(item, state, settings, keep=state.current_group)
 
             async def work() -> None:
-                self.service.progress.begin(item.title, origin="app")  # new settings
+                # New settings.
+                self.service.progress.begin(item.title, origin="app", item_id=item.id)
                 await self.wait_for_polish(item, settings, POLISH_SHOW_SECONDS)
                 await self._publish(board, settings)
                 state.current_group = [i.id for i in board[1:]]
@@ -887,7 +890,8 @@ class Player:
         progress = self.service.progress
         downloading = not images.has_image(item)
         if downloading:
-            progress.begin(item.title, origin=origin)  # the app's bar from the download on
+            # The app's bar from the download on.
+            progress.begin(item.title, origin=origin, item_id=item.id)
         try:
             await run_in_threadpool(images.ensure_image, item, True)
             return item

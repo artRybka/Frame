@@ -1,7 +1,12 @@
 # Changelog
 
-## 1.94.2
+## 1.95.0
 
+- Pasek wysyłki na ekranie blokady i w wyspie pokazuje małą miniaturę
+  dzieła, które jedzie na ramkę, ze znaczkiem stanu na rogu (ptaszek,
+  krzyżyk, księżyc). Tak samo karta studium, które się pisze.
+- Powiadomienie „Błąd wysyłki” też ma miniaturę dzieła.
+- Gdy miniatura nie zdąży się pobrać, karta wygląda jak dotąd.
 - Druga sonda ramki (na zasilaczu, raz): sprawdza, według którego zegara
   ramka liczy budziki (jej zegar systemowy stoi na 1 stycznia 2024, a
   zapasowe budziki na zasilaczu się nie ustawiają), odczytuje stan zasilania

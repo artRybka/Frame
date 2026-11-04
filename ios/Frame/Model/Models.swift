@@ -617,6 +617,8 @@ struct DisplayProgress: Codable, Hashable, Sendable {
     var message: String?
     /// Who changed the picture: schedule or app; nil when the server does not say.
     var origin: String? = nil
+    /// The work on its way, when it is one (older servers: nil).
+    var itemId: String? = nil
 
     static let idle = DisplayProgress(stage: "idle", active: false, title: "", fraction: 0)
 

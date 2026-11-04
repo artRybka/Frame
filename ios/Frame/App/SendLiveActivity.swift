@@ -11,6 +11,10 @@ final class SendLiveActivity {
     typealias State = SendActivityAttributes.ContentState
 
     private var activity: Activity<SendActivityAttributes>?
+    /// The card being started: its picture is on its way.
+    private var starting: String?
+    /// The work's small picture for the card (`ActivityPicture`), set by the model.
+    var picture: ((String) async -> Data?)?
 
     init() {
         // One left from before the app was closed.
@@ -24,15 +28,17 @@ final class SendLiveActivity {
 
     /// A run under way: starts the card (only possible with the app open) or
     /// moves it on.
-    func show(_ progress: DisplayProgress) {
-        put(State(progress), title: progress.title, stale: progress.secondsLeft.map { .now.addingTimeInterval(Double($0) + 90) })
+    func show(_ progress: DisplayProgress) async {
+        let stale = progress.secondsLeft.map { Date.now.addingTimeInterval(Double($0) + 90) }
+        await put(State(progress), title: progress.title, itemID: progress.itemId, stale: stale)
     }
 
     /// The picture waits for the frame to wake; `until`: its alarm (ISO).
-    func wait(_ progress: DisplayProgress, until: String?) {
+    func wait(_ progress: DisplayProgress, until: String?) async {
         var state = State(progress)
         state.wakes = When.at(until)
-        put(state, title: progress.title, stale: When.date(until).map { $0.addingTimeInterval(15 * 60) })
+        let stale = When.date(until).map { $0.addingTimeInterval(15 * 60) }
+        await put(state, title: progress.title, itemID: progress.itemId, stale: stale)
     }
 
     /// The run ended: its result stays on the Lock Screen for a while; with
@@ -47,7 +53,7 @@ final class SendLiveActivity {
         Task { await activity.end(result ? content : nil, dismissalPolicy: policy) }
     }
 
-    private func put(_ state: State, title: String, stale: Date?) {
+    private func put(_ state: State, title: String, itemID: String?, stale: Date?) async {
         let content = ActivityContent(state: state, staleDate: stale)
         if let activity, isRunning {
             if activity.attributes.title == title {
@@ -58,8 +64,16 @@ final class SendLiveActivity {
             Task { await activity.end(nil, dismissalPolicy: .immediate) }
             self.activity = nil
         }
-        guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
-        activity = try? Activity.request(attributes: SendActivityAttributes(title: title), content: content)
+        guard ActivityAuthorizationInfo().areActivitiesEnabled, starting != title else { return }
+        starting = title
+        defer { starting = nil }
+        var image: Data?
+        if let itemID, let picture { image = await picture(itemID) }
+        if let activity, isRunning, activity.attributes.title == title { return }  // started meanwhile
+        let attributes = SendActivityAttributes(title: title, picture: image)
+        // Too big for ActivityKit after all: without the picture.
+        activity = (try? Activity.request(attributes: attributes, content: content))
+            ?? (image == nil ? nil : try? Activity.request(attributes: SendActivityAttributes(title: title), content: content))
     }
 }
 

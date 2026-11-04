@@ -604,13 +604,15 @@ class Notifier:
             route="frame",
         )
 
-    def ended(self, failed: bool, title: str, message: str | None) -> None:
+    def ended(
+        self, failed: bool, title: str, message: str | None, item_id: str | None = None
+    ) -> None:
         """A send ended (progress.py); only a failure is told."""
         if not failed:
             return
         what = f"„{title}” nie dotarł na ramkę." if title else "Obraz nie dotarł na ramkę."
         body = f"{what} {message}" if message else what
-        self.notify("send_failed", "Błąd wysyłki", body, route="now")
+        self.notify("send_failed", "Błąd wysyłki", body, route="now", picture=item_id)
 
     def shown(
         self, title: str, artist: str, origin: str | None, item_id: str | None = None

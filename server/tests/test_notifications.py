@@ -172,6 +172,15 @@ def test_a_failed_send_is_told(service) -> None:
     assert told == [("send_failed", "„Słoneczniki” nie dotarł na ramkę. panel unreachable")]
 
 
+def test_a_failed_send_shows_its_work(service) -> None:
+    pictures: list[str | None] = []
+    service.notifier.notify = lambda kind, title, body, **kw: pictures.append(kw.get("picture"))
+    service.progress.begin("Ul", render=False, item_id="met:7")
+    assert service.progress.view().item_id == "met:7"  # the app's Lock Screen card
+    service.progress.finish(Stage.FAILED, "panel unreachable")
+    assert pictures == ["met:7"]
+
+
 def test_a_new_picture_on_the_frame_is_told_once(service) -> None:
     told: list[str] = []
     service.notifier.notify = lambda kind, title, body, **kw: told.append(f"{title} | {body}")
