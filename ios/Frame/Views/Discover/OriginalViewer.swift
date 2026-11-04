@@ -54,10 +54,12 @@ struct OriginalViewer: View {
 
     private var caption: some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(item.title.isEmpty ? "Bez tytułu" : item.title)
+            Text(item.displayTitle.isEmpty ? "Bez tytułu" : item.displayTitle)
                 .font(.serif(19, weight: .semibold))
                 .lineLimit(2)
-            let line = [Names.artist(item.artist), item.dateText].filter { !$0.isEmpty }.joined(separator: " · ")
+            let line = item.kind == .photo
+                ? item.photoLine
+                : [Names.artist(item.artist), item.dateText].filter { !$0.isEmpty }.joined(separator: " · ")
             if !line.isEmpty {
                 Text(line).font(.footnote).opacity(0.75)
             }

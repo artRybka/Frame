@@ -973,7 +973,7 @@ struct ArtworkInfo: View {
 
     private var shown: PolishText? { asked ?? polish }
     private var title: String {
-        nonEmpty(shown?.title) ?? (item.title.isEmpty ? "Bez tytułu" : item.title)
+        nonEmpty(shown?.title) ?? (item.displayTitle.isEmpty ? "Bez tytułu" : item.displayTitle)
     }
     private var about: String { nonEmpty(shown?.full) ?? item.description }
     private var artistNote: String { nonEmpty(shown?.artistNote) ?? item.artistBio }
@@ -1133,7 +1133,7 @@ struct PhotoFacts: View {
             if let who = item.photo?.contributor ?? (item.artist.isEmpty ? nil : item.artist) {
                 Label("Dodał(a): \(who)", systemImage: "person.crop.circle")
             }
-            if let caption = item.photo?.caption, !caption.isEmpty {
+            if let caption = item.photo?.caption, !caption.isEmpty, caption != item.displayTitle {
                 Text("„\(caption)”").font(.serif(17)).italic()
             }
         }
@@ -1143,6 +1143,11 @@ struct PhotoFacts: View {
     }
 
     private func geocode() async {
+        // The server's name for it first: the one the tiles and the frame show.
+        if let named = item.photo?.place {
+            place = named.isEmpty ? nil : named
+            return
+        }
         guard let lat = item.photo?.latitude, let lon = item.photo?.longitude else { return }
         let marks = try? await CLGeocoder().reverseGeocodeLocation(
             CLLocation(latitude: lat, longitude: lon), preferredLocale: Locale(identifier: "pl_PL")

@@ -19,6 +19,12 @@ struct PhotoInfo: Codable, Hashable, Sendable {
     var longitude: Double?
     var contributor: String?
     var caption: String?
+    /// A few Polish words for what it shows, written by the language model:
+    /// the title while the photo has no caption.
+    var title: String? = nil
+    /// The town its coordinates name ("Kraków", "Rzym, Włochy"), looked up
+    /// by the server; "" when nothing was found.
+    var place: String? = nil
 }
 
 struct Item: Codable, Identifiable, Hashable, Sendable {
@@ -78,12 +84,43 @@ struct Item: Codable, Identifiable, Hashable, Sendable {
         sharper.map { .original(id, version: $0.itemId) } ?? .image(id)
     }
 
+    /// The title: for a photo its caption, else the model's words, else
+    /// the day it was taken (as the server names it, `photo_text.py`).
+    var displayTitle: String {
+        guard kind == .photo else { return title }
+        let named = [title, photo?.caption ?? "", photo?.title ?? ""].first { !$0.isEmpty }
+        return named ?? PhotoText.day(of: self) ?? ""
+    }
+
+    /// A photo's line under its title: "29 października 2026 · Kraków",
+    /// without what the title says already; "" for a work.
+    var photoLine: String {
+        guard kind == .photo else { return "" }
+        let day = PhotoText.day(of: self).flatMap { $0 == displayTitle ? nil : $0 }
+        return [day, photo?.place].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
+    }
+
     var summary: ItemSummary {
         ItemSummary(
-            id: id, kind: kind, source: source, title: title, artist: artist, dateText: dateText,
+            id: id, kind: kind, source: source, title: displayTitle, artist: artist, dateText: dateText,
             year: year, colors: colors, width: width, height: height, favorite: favorite,
-            suitability: suitability, heldBy: heldBy
+            suitability: suitability, heldBy: heldBy, subtitle: photoLine
         )
+    }
+}
+
+/// How a photo is named where a work shows its title and author.
+enum PhotoText {
+    /// "29 października 2026": the day the photo was taken.
+    static func day(of item: Item) -> String? {
+        for text in [item.photo?.takenAt ?? "", item.dateText] {
+            let parts = text.prefix(10).split(separator: "-").compactMap { Int($0) }
+            guard parts.count == 3,
+                  let date = Calendar.current.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2]))
+            else { continue }
+            return date.formatted(.dateTime.day().month(.wide).year().locale(Locale(identifier: "pl_PL")))
+        }
+        return nil
     }
 }
 
@@ -246,6 +283,9 @@ struct ItemSummary: Codable, Identifiable, Hashable, Sendable {
     var aspect: Double? = nil
     /// `Item.heldBy`: the museum the work is in, "" when not known.
     var heldBy: String? = nil
+    /// A photo's line under its title: when and where ("29 października
+    /// 2026 · Kraków"); "" for works, nil from an older server.
+    var subtitle: String? = nil
 
     /// The title "Teraz" shows: Polish when there is one.
     var shownTitle: String { titlePl ?? title }

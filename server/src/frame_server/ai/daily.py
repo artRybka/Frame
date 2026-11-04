@@ -34,6 +34,7 @@ from ..library.images import display_copy
 from ..library.markup import strip_markup
 from ..library.models import Note
 from ..library.museums import client
+from ..library.photo_text import polish_date
 from ..library.wikidata import Facts, Wikidata, wikipedia_intro, wikipedia_text
 from .client import OPUS, AiUnavailable, Answer, request
 from .jobs import NoteJob, Usage, text_hash
@@ -164,11 +165,6 @@ SOURCES = ("obraz", "dane muzeum", "Wikidata", "Wikipedia", "wiedza ogólna")
 #: Picture, sources and an answer with thinking (the composition is asked
 #: apart, ``ai.composition``, and counted there).
 TYPICAL = Usage(input_tokens=17000, cache_read_input_tokens=2500, output_tokens=6000)
-
-MONTHS = (
-    "stycznia", "lutego", "marca", "kwietnia", "maja", "czerwca", "lipca", "sierpnia",
-    "września", "października", "listopada", "grudnia",
-)  # fmt: skip
 
 #: Where the model puts its points: pixels of the picture it gets (it
 #: points far better in pixels than in fractions); the server divides them.
@@ -548,10 +544,6 @@ class Context:
     candidates: list[Item] = field(default_factory=list)
     #: The picture's size as sent, in pixels.
     size: tuple[int, int] | None = None
-
-
-def polish_date(day: date) -> str:
-    return f"{day.day} {MONTHS[day.month - 1]} {day.year}"
 
 
 def request_text(item: Item, context: Context) -> str:

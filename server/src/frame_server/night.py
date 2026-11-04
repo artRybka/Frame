@@ -242,6 +242,11 @@ def tasks(service: FrameService) -> list[NightTask]:
             looked += 1
         return looked
 
+    def places(night: Night) -> int:
+        """The towns of photos from the camera roll and older albums (their
+        coordinates come with the original)."""
+        return service.places.fill()
+
     def themes(night: Night) -> None:
         discover_api.work_out_cards(service, force=True)
 
@@ -259,6 +264,7 @@ def tasks(service: FrameService) -> list[NightTask]:
         NightTask("frame line", frame_line),
         NightTask("sharper", sharper),
         NightTask("museums", museums),
+        NightTask("places", places),
         NightTask("themes", themes),
         NightTask("suggestions", suggestions),
         # Last: downloads, gently, in whatever time the night has left.

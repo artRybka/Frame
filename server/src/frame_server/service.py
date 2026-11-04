@@ -41,6 +41,7 @@ from .night import NightQueue
 from .notifications import Notifier
 from .panel_app import POLL, PanelApp
 from .panel_config import PanelConfigStore
+from .places import Places
 from .player import Player
 from .power import INSTALL_LOOK, WAKE_BURST_SECONDS, PowerManager
 from .progress import ProgressTracker, Stage
@@ -253,6 +254,8 @@ class FrameService:
         # The museums of works from Commons, Openverse, WikiArt: looked up
         # when a card opens and at night.
         self.holders = Holders(self.library, museum_client)
+        # Town names of photos' coordinates: after each album sync and at night.
+        self.places = Places(self.library)
         self.study = Study(self.daily, self.ai, StudyJob(self.library, self.images, self.ai_config))
         self.ai.register(self.study.job)
         # Its steps on the Lock Screen, and "Studium gotowe" at the end.

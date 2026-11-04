@@ -340,7 +340,9 @@ struct ItemDetailView: View {
             if !summary.artist.isEmpty {
                 Text(Names.artist(summary.artist)).font(.serif(19)).foregroundStyle(Theme.ink)
             }
-            let date = nonEmpty(polish?.date) ?? summary.dateText
+            let date = summary.kind == .photo
+                ? summary.subtitle ?? summary.dateText
+                : nonEmpty(polish?.date) ?? summary.dateText
             if !date.isEmpty {
                 Text(date).font(.subheadline).foregroundStyle(Theme.inkSoft)
             }
@@ -861,7 +863,7 @@ struct ItemDetailView: View {
                 Text(bio).font(.subheadline).foregroundStyle(Theme.inkSoft)
                     .contentTransition(.opacity)
             }
-            let date = nonEmpty(shownPolish?.date) ?? item.dateText
+            let date = item.kind == .photo ? item.photoLine : nonEmpty(shownPolish?.date) ?? item.dateText
             if !date.isEmpty {
                 Text(date).font(.subheadline).foregroundStyle(Theme.inkSoft)
                     .contentTransition(.opacity)
@@ -871,7 +873,7 @@ struct ItemDetailView: View {
 
     private func title(_ item: Item) -> String {
         nonEmpty(shownPolish?.title) ?? (showOriginal ? nil : earlyTitle)
-            ?? (item.title.isEmpty ? "Bez tytułu" : item.title)
+            ?? (item.displayTitle.isEmpty ? "Bez tytułu" : item.displayTitle)
     }
 
     private func nonEmpty(_ text: String?) -> String? {

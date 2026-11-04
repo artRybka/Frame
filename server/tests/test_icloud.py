@@ -477,3 +477,30 @@ def test_heic_originals_load() -> None:
     Image.new("RGB", (64, 48), (200, 30, 30)).save(buf, "HEIF")
     img = load_image(buf.getvalue())
     assert img.size == (64, 48) and img.mode == "RGB"
+
+
+def test_a_caption_added_later_becomes_the_title(service, icloud) -> None:
+    token = "B0aGWZuqDGKPOC"
+    icloud.albums[token] = ("Rodzina", [_photo("G1", "2025-08-14T16:32:00Z", "2025-08-20T10:00Z")])
+    sync_album(service.importer, URL)
+    item = service.library.get("icloud:G1")
+    assert item is not None and item.title == "" and item.photo is not None
+    # The model's words and the town, written between two syncs, stay.
+    service.library.update(
+        "icloud:G1", photo=item.photo.model_copy(update={"title": "Plaża", "place": "Hel"})
+    )
+
+    icloud.albums[token] = (
+        "Rodzina",
+        [_photo("G1", "2025-08-14T16:32:00Z", "2025-08-20T10:00Z", "Babcia na Helu")],
+    )
+    sync_album(service.importer, URL)
+    item = service.library.get("icloud:G1")
+    assert item is not None and item.photo is not None
+    assert item.title == "Babcia na Helu" and item.photo.caption == "Babcia na Helu"
+    assert (item.photo.title, item.photo.place) == ("Plaża", "Hel")
+
+    # A title given in the app stays while the album's caption does not change.
+    service.library.update("icloud:G1", title="Babcia")
+    sync_album(service.importer, URL)
+    assert service.library.get("icloud:G1").title == "Babcia"  # type: ignore[union-attr]

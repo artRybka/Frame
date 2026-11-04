@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.98.0
+
+- Zdjęcia z albumów iCloud nie są już „Bez tytułu / Album iCloud”. Claude,
+  który i tak ogląda każde zdjęcie przy słowach kluczowych, nadaje mu
+  krótki polski tytuł, np. „Montaż drewnianej ścianki”, a pod nim widać
+  dzień i miejsce: „29 października 2026 · Kraków”. Podpis dodany
+  w Zdjęciach zawsze wygrywa, także dopisany później. Bez Claude tytułem
+  jest dzień zrobienia zdjęcia.
+- Nazwę miejscowości serwer bierze ze współrzędnych zdjęcia
+  (OpenStreetMap, współrzędne zaokrąglone do ok. 1 km), po każdej
+  synchronizacji albumu i w nocy. Ten sam tytuł i miejsce pokazują
+  kafelki, karta zdjęcia, Teraz i ramka w trybie Opis. Zdjęcia, które
+  już są w bibliotece, dostają tytuły w tle.
+
 ## 1.97.0
 
 - Odkrywaj → Kolor i nastrój pokazuje tylko obrazy, rysunki i akwarele,
