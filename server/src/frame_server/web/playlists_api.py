@@ -225,7 +225,7 @@ def add_items(playlist_id: int, body: ItemIds, svc: Svc, user: CurrentUser) -> P
     return _detail(svc, saved)
 
 
-@router.delete("/playlists/{playlist_id}/items/{item_id}", response_model=PlaylistDetail)
+@router.delete("/playlists/{playlist_id}/items/{item_id:item}", response_model=PlaylistDetail)
 def remove_item(playlist_id: int, item_id: str, svc: Svc, user: CurrentUser) -> PlaylistDetail:
     """Take one work out of a playlist. A smart or album playlist remembers it
     as an exception; clearing ``rules.exclude_ids`` brings it back."""

@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.96.2
+
+- Dzieła duńskiego SMK, których numer ma ukośnik (np. „KKS1984-23/366”),
+  znowu mają miniatury, kartę, podgląd na ramce i dają się wysłać. Serwer
+  nie rozpoznawał takiego adresu i odpowiadał „nie znaleziono”, więc
+  kafelki zostawały puste ze strzałką odświeżenia.
+
 ## 1.96.1
 
 - Przytrzymane guziki z obwódką („Przygotuj studium dzieła”, „Otwórz

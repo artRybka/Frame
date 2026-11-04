@@ -125,7 +125,7 @@ async def _wait(svc: FrameService, item: Item | None, wait: float) -> None:
         await asyncio.sleep(0.5)
 
 
-@router.get("/study/{item_id}", response_model=StudyView)
+@router.get("/study/{item_id:item}", response_model=StudyView)
 async def study(
     item_id: str,
     svc: Svc,
@@ -142,7 +142,7 @@ async def study(
     return await run_in_threadpool(_view, svc, item, user, lists)
 
 
-@router.post("/study/{item_id}", response_model=StudyView)
+@router.post("/study/{item_id:item}", response_model=StudyView)
 async def prepare_study(
     item_id: str,
     svc: Svc,
@@ -189,7 +189,7 @@ class StudyActivityToken(BaseModel):
     sandbox: bool = False
 
 
-@router.put("/study/{item_id}/activity", status_code=204)
+@router.put("/study/{item_id:item}/activity", status_code=204)
 async def follow_study(item_id: str, body: StudyActivityToken, svc: Svc) -> None:
     """The Lock Screen card following the work's study: each step is pushed
     to it (without an APNs key it moves on only while the app is open).
@@ -204,7 +204,7 @@ async def follow_study(item_id: str, body: StudyActivityToken, svc: Svc) -> None
     await svc.notifier.push_study(item_id, step, error, only=activity.token)
 
 
-@router.get("/study/{item_id}/detail")
+@router.get("/study/{item_id:item}/detail")
 async def study_detail(
     item_id: str, svc: Svc, n: Annotated[int, Query(ge=0, le=9)] = 0
 ) -> FileResponse:
@@ -237,7 +237,7 @@ def _again_state(svc: FrameService, item_id: str) -> CompositionAgain:
 
 
 @router.post(
-    "/study/{item_id}/composition",
+    "/study/{item_id:item}/composition",
     response_model=CompositionAgain,
     dependencies=[Depends(require_owner)],
 )
@@ -256,13 +256,13 @@ async def composition_again(item_id: str, svc: Svc) -> CompositionAgain:
     return await run_in_threadpool(_again_state, svc, item_id)
 
 
-@router.get("/study/{item_id}/composition", response_model=CompositionAgain)
+@router.get("/study/{item_id:item}/composition", response_model=CompositionAgain)
 async def composition_state(item_id: str, svc: Svc) -> CompositionAgain:
     return await run_in_threadpool(_again_state, svc, item_id)
 
 
 @router.put(
-    "/study/{item_id}/composition",
+    "/study/{item_id:item}/composition",
     response_model=CompositionAgain,
     dependencies=[Depends(require_owner)],
 )
@@ -289,7 +289,7 @@ def _mend_state(svc: FrameService, item_id: str) -> DetailsAgain:
 
 
 @router.post(
-    "/study/{item_id}/details",
+    "/study/{item_id:item}/details",
     response_model=DetailsAgain,
     dependencies=[Depends(require_owner)],
 )
@@ -308,6 +308,6 @@ async def details_again(item_id: str, svc: Svc) -> DetailsAgain:
     return await run_in_threadpool(_mend_state, svc, item_id)
 
 
-@router.get("/study/{item_id}/details", response_model=DetailsAgain)
+@router.get("/study/{item_id:item}/details", response_model=DetailsAgain)
 async def details_state(item_id: str, svc: Svc) -> DetailsAgain:
     return await run_in_threadpool(_mend_state, svc, item_id)

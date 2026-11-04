@@ -184,7 +184,7 @@ def candidate_chart(candidate_id: str, svc: Svc) -> FileResponse:
     return FileResponse(_candidate(svc, candidate_id) / "chart.jpg", media_type="image/jpeg")
 
 
-@router.get("/candidates/{candidate_id}/preview/{item_id}")
+@router.get("/candidates/{candidate_id}/preview/{item_id:item}")
 async def candidate_preview(candidate_id: str, item_id: str, svc: Svc) -> FileResponse:
     """A library item on the panel with the measured palette, to compare."""
     directory = _candidate(svc, candidate_id)
