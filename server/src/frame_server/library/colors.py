@@ -55,7 +55,7 @@ ACCENT_TAG = "accent:"
 NEUTRALS = ("black", "gray", "white")
 #: Tags of the colours a picture is painted in (``"only:blue"``): the
 #: fewest colour families, largest first, that make ``ONLY_SHARE`` of its
-#: coloured pixels (neutrals aside). Never shown; a search for "Wyłącznie
+#: coloured pixels (neutrals aside). Never shown; a search for "Dominuje:
 #: błękit i turkus" finds pictures whose such tags are all among those.
 ONLY_TAG = "only:"
 ONLY_SHARE = 0.8

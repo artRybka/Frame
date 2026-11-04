@@ -104,11 +104,11 @@ final class TermFacetTests: XCTestCase {
     }
 
     func testOnlyColoursNameThemselves() {
-        XCTAssertEqual(ColorTag.name("only:blue"), "Wyłącznie: błękit")
+        XCTAssertEqual(ColorTag.name("only:blue"), "Dominuje: błękit")
         XCTAssertEqual(ColorTag.family("only:teal"), "teal")
         XCTAssertEqual(ColorTag.family("accent:red"), "red")
         XCTAssertEqual(ColorTag.family("blue"), "blue")
-        let tokens = [SearchToken(kind: "color", key: "only:blue", name: "Wyłącznie: błękit")]
-        XCTAssertEqual(TermFacet.color.label(tokens, periods: periods), "Wyłącznie: błękit")
+        let tokens = [SearchToken(kind: "color", key: "only:blue", name: "Dominuje: błękit")]
+        XCTAssertEqual(TermFacet.color.label(tokens, periods: periods), "Dominuje: błękit")
     }
 }
