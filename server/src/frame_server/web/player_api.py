@@ -225,7 +225,7 @@ async def previous_picture(svc: Svc) -> dict[str, Any]:
     return {"accepted": True}
 
 
-@router.delete("/player/queue/{item_id}", response_model=PlayerView)
+@router.delete("/player/queue/{item_id:item}", response_model=PlayerView)
 async def dequeue(item_id: str, svc: Svc) -> PlayerView:
     """Take back a work added with "Dodaj do kolejki"."""
     svc.player.dequeue(item_id)
@@ -233,7 +233,7 @@ async def dequeue(item_id: str, svc: Svc) -> PlayerView:
     return _player_view(svc)
 
 
-@router.post("/player/skip/{item_id}", response_model=PlayerView)
+@router.post("/player/skip/{item_id:item}", response_model=PlayerView)
 async def skip(item_id: str, svc: Svc) -> PlayerView:
     """The picture waiting in the queue ("Pomiń") is not shown this round."""
     svc.player.skip(item_id)
