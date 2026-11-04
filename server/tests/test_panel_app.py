@@ -1356,3 +1356,26 @@ async def test_the_frames_next_button_shows_the_next_work(tmp_path: Path) -> Non
     service.app.report("key", {"type": "keydown", "key": "Enter", "key_code": 13})
     await asyncio.sleep(0)
     assert asked == ["button"]
+
+
+def test_a_start_over_mdc_draws_the_picture_again(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    app = service.app
+    now = datetime(2026, 11, 4, 9, 6, tzinfo=UTC)
+    content = service.store.current()
+    assert content is not None
+    shown = content.file_id
+    # Woken by its own alarm: the picture is still on the screen.
+    answer = app.answer(AppHello(reason="start", charging=True, shown=shown), now)
+    assert not answer.redraw
+    # Started by the server over MDC: the install screen drew over it.
+    app._unanswered = 1
+    answer = app.answer(AppHello(reason="start", charging=True, shown=shown), now)
+    assert answer.redraw and answer.file_id == shown
+    # Once: the next question is an ordinary one.
+    answer = app.answer(AppHello(reason="poll", charging=True, shown=shown), now)
+    assert not answer.redraw
+    # A running app the server tried to start keeps its page.
+    app._unanswered = 1
+    answer = app.answer(AppHello(reason="poll", charging=True, shown=shown), now)
+    assert not answer.redraw

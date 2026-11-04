@@ -332,6 +332,13 @@
     } else if (answer.capture) {
       report("capture", { error: "not on the charger" });
     }
+    // Started over MDC by the server: the launcher's install screen drew
+    // over the picture this page remembers (2026-11-04, white after an
+    // update of the server).
+    if (answer.redraw) {
+      shown = null;
+      saved("screen", null);
+    }
     draw(answer, function () {
       if (answer.action === "wait" || answer.action === "stay") {
         waits = answer.action === "wait" ? waits + 1 : 0;
