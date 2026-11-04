@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
+from .library import museums
 from .library.models import ItemKind, PlaylistRules
 
 if TYPE_CHECKING:
@@ -26,7 +27,6 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 WIKIDATA = "https://www.wikidata.org/w/api.php"
-USER_AGENT = "Frame/1 (home art frame; https://github.com/artRybka/Frame)"
 STATE_KEY = "artist_births"
 # A miss is asked about again after this long (Wikidata grows).
 RECHECK = timedelta(days=30)
@@ -118,7 +118,9 @@ class Births:
     def look_up(self, artists: list[str], http: httpx.Client | None = None) -> int:
         """Ask Wikidata about ``artists``; how many answers were kept."""
         own = http is None
-        client = http or httpx.Client(timeout=20, headers={"User-Agent": USER_AGENT})
+        # The sources' shared client: Wikidata counts with Commons and
+        # Wikipedia against Wikimedia's limits (library.hosts).
+        client = http or museums.client()
         kept = 0
         try:
             for artist in artists:
