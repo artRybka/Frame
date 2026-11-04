@@ -263,6 +263,10 @@ class NextAnswer(BaseModel):
     # Take a screenshot and send it to /panel/capture (asked by the owner,
     # only with ``stay``: on the charger or kept awake).
     capture: bool = False
+    # Draw ``image`` even when the app remembers it on the screen: the
+    # server started the app over MDC and the launcher's install screen
+    # drew over the picture (2026-11-04, white after a server update).
+    redraw: bool = False
 
 
 class PackageInfo(BaseModel):
@@ -605,6 +609,9 @@ class PanelApp:
         """What the app shows and does next; it asked, so it is awake."""
         service = self.service
         now = now or datetime.now(UTC)
+        # Started over MDC since its last question: the launcher showed its
+        # install screen over the picture, which the new page does not know.
+        started = self._unanswered > 0 and hello.reason == "start"
         self._note_contact(hello, now)
         if hello.now:
             service.status.note_clock(hello.now, now)
@@ -621,6 +628,9 @@ class PanelApp:
                 "image": f"{service.settings.base_url()}{self.image_path(content)}",
                 "title": content.title,
             }
+            if started and hello.shown:
+                common["redraw"] = True
+                log.info("the frame's app was started over MDC: it draws %s again", content.file_id)
         if self._resting(now, still_up=hello.reason == "up"):
             return self._rest(now, common)
         if self.restart_requested:
