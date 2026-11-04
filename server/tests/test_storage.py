@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 from conftest import jpeg_bytes
@@ -97,6 +98,14 @@ def test_app_limits_win_over_frame_env_and_survive_restart(tmp_path: Path) -> No
         assert (svc.settings.catalogue_mb, svc.settings.image_cache_mb) == (1000, 500)
 
 
+def _trims(trims: list[int], count: int) -> list[int]:
+    """The trim runs as a background task after the response: wait for it."""
+    deadline = time.monotonic() + 5
+    while len(trims) < count and time.monotonic() < deadline:
+        time.sleep(0.01)
+    return trims
+
+
 def test_a_lower_limit_trims_now(tmp_path: Path, monkeypatch) -> None:
     app = create_app(_settings(tmp_path))
     with TestClient(app) as client:
@@ -106,13 +115,13 @@ def test_a_lower_limit_trims_now(tmp_path: Path, monkeypatch) -> None:
         client.put("/api/library/storage", json={"catalogue_mb": 3000})
         assert trims == []
         client.put("/api/library/storage", json={"originals_mb": 600})
-        assert trims == [1]
+        assert _trims(trims, 1) == [1]
         client.put("/api/library/storage", json={"catalogue_mb": 600, "originals_mb": 5000})
-        assert trims == [1, 1]
+        assert _trims(trims, 2) == [1, 1]
         client.put("/api/library/storage", json={"catalogue_mb": 1000})  # more room
         assert trims == [1, 1]
         client.delete("/api/library/storage")  # originals back to 3000 MB
-        assert trims == [1, 1, 1]
+        assert _trims(trims, 3) == [1, 1, 1]
 
 
 def test_the_one_limit_of_old_becomes_two(service: FrameService) -> None:
