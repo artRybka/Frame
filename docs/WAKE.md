@@ -893,6 +893,25 @@ i strefy (Africa/Casablanca) nie rusza: `setNTP` chce adresu IP serwera
 czasu i przywileju `networkbearerselection`, a budziki liczą się w
 lokalnym czasie ramki, który i tak równa się czasowi strony.
 
+**Pierwsze ustawienie zegara (2026-11-04 19:05 UTC):** `setCurrentTime`
+zadziałało już w paczce 2.0.5, bez przywileju `devicetimer` (`before_s`
+−89 673 997, `after_s` 0); kolejne budziki bez przesunięcia. Przy aktualizacji
+do 1.99.0 odpowiedź `reboot` (instalacja 2.0.6) przyszła w zatorze zapytań po
+restarcie serwera, a aplikacja w tym czasie uznała serwer za niedostępny
+(`offline: timeout`) i zasnęła na zasilaczu bez budzika (`plugged()` nie
+odczytał zasilacza w trakcie restartu). Od 1.100.1: po `rebootDevice()`
+aplikacja przez 5 min nie pyta (więc nie zasypia), `plugged()` bez odczytu
+bierze ostatni znany stan, a serwer ponawia `reboot` dla tej samej wersji po
+10 min, najwyżej 3 razy (`reboot_at`, `reboot_tries`). Instalacja przeszła
+po „Uruchom ramkę ponownie” (paczka 2.0.7 po samonaprawie serwera).
+
+**Odpięcie w trybie oszczędnym (2026-11-04 19:31 UTC):** ostatnie pytanie
+20:31:02 czasu polskiego na zasilaczu, po odpięciu panel od razu w głębokim śnie
+bez słowa do aplikacji (jak w E8). W trybie oszczędnym na zasilaczu nie było
+żadnego budzika, więc próbna zmiana 20:45 przepadła. Od 1.100.1 w trybie
+oszczędnym aplikacja na zasilaczu trzyma budzik na najbliższą zmianę
+(albo sprawdzenie), co najmniej 5 min naprzód.
+
 **Zrzut ekranu (E18, 2026-11-04 08:52 UTC):** działa. Prośba doszła przy
 najbliższym `/panel/next` (11 s), `captureScreen` 69 ms, `openFile` i
 `resolve` dają `SecurityError`, odczyt `XMLHttpRequest` z `file://` działa
