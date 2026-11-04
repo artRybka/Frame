@@ -31,10 +31,9 @@ log = logging.getLogger(__name__)
 #: are a guess well below what their bot walls took offence at.
 PACE = {
     "api.artic.edu": 1.0,
-    # Its IIIF server: a theme's thumbnails, the cards' originals. Cloudflare
-    # turned the home address away after a dozen pictures in six seconds
-    # (2026-11-04).
-    "www.artic.edu": 0.5,
+    # Its IIIF server: one picture at a time, a second apart, as the AIC's
+    # API docs ask ("Scraping Images"; one at a time: images.HOST_LIMITS).
+    "www.artic.edu": 1.0,
     "collectionapi.metmuseum.org": 0.25,
     "images.metmuseum.org": 0.25,
     # Asked for the Commons copy of a picture a museum refused.

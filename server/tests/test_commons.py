@@ -295,11 +295,26 @@ def test_repair_stored_items(tmp_path) -> None:
         title="Jan Kowalski w ogrodzie",
         artist="Jan Kowalski",
     )
-    items = (broken, other, wikidata, tagged, drawing, prefixed, linked, photo, named, catalogued)
+    iiif = "https://www.artic.edu/iiif/2/abc/full"
+    aic = Item(
+        id="aic:1",
+        source="aic",
+        source_id="1",
+        title="Snow",
+        image_url=f"{iiif}/full/0/default.jpg",
+        thumb_url=f"{iiif}/full/0/default.jpg",
+        width=562,
+    )
+    items = (
+        *(broken, other, wikidata, tagged, drawing, prefixed, linked, photo, named, catalogued),
+        aic,
+    )
     for item in (*items, selfie):
         lib.upsert(item)
 
-    assert repair_library(lib) == 8
+    assert repair_library(lib) == 9
+    assert lib.get("aic:1").image_url == f"{iiif}/400,/0/default.jpg"
+    assert lib.get("aic:1").thumb_url == f"{iiif}/400,/0/default.jpg"
     assert lib.get("wmc:10").title == "Skapiec"
     assert lib.get("europeana:2").title == "Babie lato"
     assert lib.get("upload:2").title == selfie.title

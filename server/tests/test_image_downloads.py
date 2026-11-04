@@ -82,7 +82,10 @@ def test_missing_thumbnail_is_not_retried(tmp_path: Path) -> None:
     assert calls == 1
 
 
-@pytest.mark.parametrize(("host", "limit"), [("upload.wikimedia.org", 2), ("www.artic.edu", 4)])
+@pytest.mark.parametrize(
+    ("host", "limit"),
+    [("upload.wikimedia.org", 2), ("www.artic.edu", 1), ("openaccess-cdn.clevelandart.org", 4)],
+)
 def test_parallel_downloads_per_host_are_limited(tmp_path: Path, host: str, limit: int) -> None:
     running = 0
     peak = 0

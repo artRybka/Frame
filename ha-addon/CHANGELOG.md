@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.95.5
+
+- Obrazy z Art Institute of Chicago pobierane tak, jak prosi ich
+  dokumentacja: tylko w dozwolonych szerokościach (miniatury 843 px,
+  oryginały do 1686 px), jeden naraz i co sekundę. Serwer prosił dotąd
+  o pełny rozmiar mniejszych grafik, a na takie pytanie muzeum odpowiadało
+  blokadą, przez którą znikały miniatury. Adresy zapisanych dzieł AIC
+  poprawiają się same.
+
 ## 1.95.4
 
 - Pasek wysyłki na ekranie blokady dochodzi do końca także przy uśpionej

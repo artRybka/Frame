@@ -24,6 +24,7 @@ from urllib.parse import quote, unquote, urlsplit
 
 import httpx
 
+from .aic import AIC_IIIF, AIC_ORIGINAL, AIC_THUMB, aic_picture
 from .commons import commons_html, commons_year, file_title
 from .hosts import Resting, guard
 from .lifespan import (
@@ -198,7 +199,7 @@ class ArtInstituteChicago(Museum):
     key = "aic"
     name = "Art Institute of Chicago"
     api = "https://api.artic.edu/api/v1"
-    iiif = "https://www.artic.edu/iiif/2"
+    iiif = AIC_IIIF
     fields = (
         "id,title,artist_title,artist_display,date_display,date_start,medium_display,"
         "artwork_type_title,style_titles,subject_titles,place_of_origin,credit_line,"
@@ -210,12 +211,7 @@ class ArtInstituteChicago(Museum):
             return None
         display = (d.get("artist_display") or "").split("\n")
         thumb = d.get("thumbnail") or {}
-        # The IIIF server refuses (403) a picture asked wider than it is.
         width = thumb.get("width")
-
-        def size(most: int) -> str:
-            return "full" if width and width <= most else f"{most},"
-
         return self._item(
             str(d["id"]),
             title=d.get("title") or "",
@@ -232,8 +228,8 @@ class ArtInstituteChicago(Museum):
             license="CC0 1.0",
             url=f"https://www.artic.edu/artworks/{d['id']}",
             description=strip_html(d.get("description") or d.get("short_description")),
-            image_url=f"{self.iiif}/{d['image_id']}/full/{size(1686)}/0/default.jpg",
-            thumb_url=f"{self.iiif}/{d['image_id']}/full/{size(600)}/0/default.jpg",
+            image_url=aic_picture(f"{self.iiif}/{d['image_id']}", AIC_ORIGINAL, width),
+            thumb_url=aic_picture(f"{self.iiif}/{d['image_id']}", AIC_THUMB, width),
             width=width,
             height=thumb.get("height"),
         )
