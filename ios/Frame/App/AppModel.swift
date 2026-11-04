@@ -108,6 +108,9 @@ final class AppModel {
     /// Works the server found no picture of anywhere (it answered 410):
     /// grids leave them out until the app starts again.
     private(set) var missingPictures: Set<String> = []
+    /// Works whose museum turned the server away for now (it answered 503),
+    /// and until when grids leave them out instead of an empty tile.
+    private(set) var pausedPictures: [String: Date] = [:]
     /// Goes up when the owner taps a picture that did not load: every
     /// picture on screen that failed tries again.
     private(set) var pictureRetries = 0
@@ -1638,6 +1641,23 @@ final class AppModel {
     func pictureMissing(_ itemID: String) {
         guard !missingPictures.contains(itemID) else { return }
         missingPictures.insert(itemID)
+    }
+
+    /// The work's museum turns the server away for a while (503): grids
+    /// leave it out for `seconds` (the server's Retry-After, or a few
+    /// minutes), then show it again and ask once more.
+    func picturePaused(_ itemID: String, for seconds: TimeInterval = 300) {
+        let until = Date().addingTimeInterval(min(max(seconds, 60), 1800))
+        pausedPictures = pausedPictures.filter { $0.value > Date() }
+        pausedPictures[itemID] = until
+    }
+
+    /// Whether grids leave the work out: no picture of it anywhere, or not
+    /// for now.
+    func hidesPicture(_ itemID: String) -> Bool {
+        if missingPictures.contains(itemID) { return true }
+        guard let until = pausedPictures[itemID] else { return false }
+        return until > Date()
     }
 
     /// Every picture on screen that failed tries again (a tap on one of them).

@@ -533,10 +533,16 @@ struct ArtImage: View {
                 return .loaded
             } catch {
                 if Task.isCancelled { return .cancelled }
-                if case let .http(status, _) = error as? BackendError, status == 410,
-                   let id = candidate.itemID {
-                    model.pictureMissing(id)
-                    missing = true
+                if case let .http(status, _) = error as? BackendError, let id = candidate.itemID {
+                    if status == 410 {
+                        model.pictureMissing(id)
+                        missing = true
+                    } else if status == 503 {
+                        // The museum turned the server away for now: asked
+                        // again only after the pause, not every few seconds.
+                        model.picturePaused(id)
+                        missing = true
+                    }
                 }
             }
         }

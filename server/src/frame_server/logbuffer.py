@@ -11,6 +11,10 @@ from collections import deque
 FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
 KEEP = 5000  # records, about 1.5 MB
 LONGEST = 4000  # characters of one record, traceback included
+#: Of a longer record, this much of its start is kept (the message and the
+#: first frames), the rest from its end: a traceback through Starlette's
+#: middleware is mostly its frames, and what failed is at the very end.
+HEAD = 1000
 
 
 class LogBuffer(logging.Handler):
@@ -23,7 +27,7 @@ class LogBuffer(logging.Handler):
 
     def emit(self, record: logging.LogRecord) -> None:
         try:
-            text = self.format(record)[:LONGEST]
+            text = _shorten(self.format(record))
         except Exception:
             self.handleError(record)
             return
@@ -44,6 +48,13 @@ class LogBuffer(logging.Handler):
             needle = grep.lower()
             texts = [t for t in texts if needle in t.lower()]
         return texts[-count:] if count > 0 else []
+
+
+def _shorten(text: str) -> str:
+    if len(text) <= LONGEST:
+        return text
+    cut = len(text) - (LONGEST - HEAD)
+    return f"{text[:HEAD]}\n  [... {cut - HEAD} characters left out ...]\n{text[cut:]}"
 
 
 _buffer: LogBuffer | None = None

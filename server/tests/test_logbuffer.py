@@ -57,3 +57,22 @@ def test_a_record_through_two_loggers_is_kept_once() -> None:
         buffer.handle(logging.LogRecord("x", logging.INFO, __file__, 1, f"r{n}", None, None))
     assert [line.rsplit(" ", 1)[-1] for line in buffer.lines(10)] == ["r1", "r2", "r3"]
     assert buffer.lines(0) == []
+
+
+def test_a_long_traceback_keeps_its_end() -> None:
+    """A failed request's traceback is mostly Starlette's middleware frames;
+    what failed is at its end (2026-11-04: cut off in the middle)."""
+    buffer = logbuffer.LogBuffer()
+    log = logging.getLogger("test.long")
+    log.addHandler(buffer)
+    try:
+        try:
+            raise ValueError("what failed")
+        except ValueError:
+            log.error("Exception in ASGI application\n%s", "  frame\n" * 2000, exc_info=True)
+    finally:
+        log.removeHandler(buffer)
+    [text] = buffer.lines(1)
+    assert "Exception in ASGI application" in text
+    assert text.rstrip().endswith("ValueError: what failed")
+    assert "characters left out" in text and len(text) < logbuffer.LONGEST + 100

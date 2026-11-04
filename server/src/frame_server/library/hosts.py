@@ -31,7 +31,10 @@ log = logging.getLogger(__name__)
 #: are a guess well below what their bot walls took offence at.
 PACE = {
     "api.artic.edu": 1.0,
-    "www.artic.edu": 0.25,
+    # Its IIIF server: a theme's thumbnails, the cards' originals. Cloudflare
+    # turned the home address away after a dozen pictures in six seconds
+    # (2026-11-04).
+    "www.artic.edu": 0.5,
     "collectionapi.metmuseum.org": 0.25,
     "images.metmuseum.org": 0.25,
     # Asked for the Commons copy of a picture a museum refused.
@@ -41,6 +44,11 @@ PACE = {
 #: still does, up to REST_MAX, and forgotten once it answers again.
 REST = 15 * 60.0
 REST_MAX = 4 * 3600.0
+#: While a host rests, one request this often still goes, to see whether it
+#: answers again: a wall that challenged one kind of request (a full-size
+#: original) or forgot us early lets the pictures through at once instead
+#: of after the whole rest. One a minute is far below anything that woke it.
+PROBE_EVERY = 60.0
 
 _asking = threading.local()
 
@@ -110,6 +118,8 @@ class HostGuard:
         self._order = itertools.count()
         #: Until when a host is left alone, and for how long it was (by host).
         self._resting: dict[str, tuple[float, float]] = {}
+        #: When a resting host may be asked once more, to see (by host).
+        self._probe_at: dict[str, float] = {}
 
     def resting(self, host: str) -> float:
         """Seconds until ``host`` is asked again; 0 when it may be now."""
@@ -117,18 +127,34 @@ class HostGuard:
             until, _ = self._resting.get(host, (0.0, 0.0))
             return max(until - self.clock(), 0.0)
 
+    def _left(self, host: str) -> float:
+        """Like :meth:`resting`, but lets one request through every
+        :data:`PROBE_EVERY` (it says 0 to that one)."""
+        with self._lock:
+            until, _ = self._resting.get(host, (0.0, 0.0))
+            now = self.clock()
+            left = max(until - now, 0.0)
+            if left and now >= self._probe_at.get(host, 0.0):
+                self._probe_at[host] = now + PROBE_EVERY
+                log.info(
+                    "%s rests %.0f min more; one request to see if it answers", host, left / 60
+                )
+                return 0.0
+            return left
+
     def before(self, request: httpx.Request) -> None:
         host = request.url.host
-        wait = self.resting(host)
+        wait = self._left(host)
         if wait:
             raise Resting(
                 f"{host} turned us away; not asked for {wait / 60:.0f} min", request=request
             )
+        probe = self.resting(host) > 0
         pace = self.pace.get(host)
         if not pace:
             return
         self._turn(host, pace)
-        wait = self.resting(host)
+        wait = 0.0 if probe else self.resting(host)
         if wait:  # walled while this one waited its turn
             raise Resting(
                 f"{host} turned us away; not asked for {wait / 60:.0f} min", request=request
@@ -173,7 +199,10 @@ class HostGuard:
             return  # a single picture's host: its refusal is the picture's
         if not walled(response):
             with self._lock:
-                self._resting.pop(host, None)
+                rested = self._resting.pop(host, None)
+                self._probe_at.pop(host, None)
+            if rested is not None and rested[0] > self.clock():
+                log.warning("%s answers again; asked as before", host)
             return
         with self._lock:
             until, rest = self._resting.get(host, (0.0, 0.0))
@@ -181,6 +210,7 @@ class HostGuard:
             if until <= now:  # not one of the requests already under way
                 rest = min(rest * 2, REST_MAX) if rest else REST
                 self._resting[host] = (now + rest, rest)
+                self._probe_at[host] = now + PROBE_EVERY
                 log.warning(
                     "%s turned us away (%s %s); leaving it alone for %.0f min",
                     host,

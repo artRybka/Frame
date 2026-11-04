@@ -11,6 +11,7 @@ import httpx
 import pytest
 from PIL import Image
 
+from frame_server.library.hosts import PROBE_EVERY
 from frame_server.library.images import GONE_FOR, Gone, HostGate, ImageCache
 from frame_server.library.models import Item
 
@@ -406,3 +407,52 @@ def test_works_with_no_picture_are_left_out_of_lists(service) -> None:
         assert [i["id"] for i in page["items"]] == [kept.id] and page["total"] == 1
         # The app is told, and leaves the tile out at once.
         assert client.get(f"/api/library/items/{gone.id}/thumb").status_code == 410
+
+
+def test_works_whose_museum_rests_are_left_out_until_it_answers(service) -> None:
+    """The AIC's wall turned us away (2026-11-04, "Zima i śnieg"): a work
+    whose thumbnail the server does not have is left out of lists while the
+    host rests, instead of an empty tile; one whose thumbnail is here stays.
+    The app, asking for a thumbnail meanwhile, is told when to ask again."""
+    from fastapi.testclient import TestClient
+
+    from frame_server.library.hosts import HostGuard
+    from frame_server.web import create_app
+    from frame_server.web.library_api import remote_items
+
+    app = create_app(service.settings)
+    svc = app.state.service
+    guard = HostGuard({"www.artic.edu": 0.0})
+    answer = [_challenge]
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url.host)
+        if request.url.host == "commons.wikimedia.org":
+            return httpx.Response(404, request=request)
+        return answer[0](request)
+
+    svc.images.http = lambda: httpx.Client(
+        transport=httpx.MockTransport(handler), event_hooks=guard.hooks()
+    )
+    svc.images.hosts = guard
+    svc.images.mirrors["aic"] = lambda item, thumb: [f"https://commons.wikimedia.org/{item.id}"]
+    here, waiting = _aic(7), _aic(8)
+    svc.images.thumb_path(here).write_bytes(_jpeg())
+    assert [r.item.id for r in remote_items(svc, [here, waiting])] == [here.id, waiting.id]
+    with TestClient(app) as client:
+        svc.library.upsert(waiting)
+        thumb = client.get(f"/api/library/items/{waiting.id}/thumb")
+        # The wall, then its Commons copy (none): not gone, not now.
+        assert thumb.status_code == 503 and int(thumb.headers["retry-after"]) > 60
+        assert seen == ["www.artic.edu", "commons.wikimedia.org"]
+        assert not svc.images.gone(waiting.id)
+        svc.library.delete(waiting.id)
+    assert [r.item.id for r in remote_items(svc, [here, waiting])] == [here.id]
+    # A study or the day's work is never left out.
+    assert remote_items(svc, [waiting], keep_hidden=True)[0].item.id == waiting.id
+    # The host answers again: the work is listed again.
+    answer[0] = lambda request: httpx.Response(200, content=_jpeg(), request=request)
+    guard.clock = lambda: time.monotonic() + PROBE_EVERY
+    assert svc.images.ensure_thumb(waiting).is_file()
+    assert [r.item.id for r in remote_items(svc, [here, waiting])] == [here.id, waiting.id]
