@@ -248,7 +248,7 @@ def facets(svc: Svc) -> Facets:
     return svc.library.facets()
 
 
-@router.get("/library/items/{item_id}", response_model=Item)
+@router.get("/library/items/{item_id:item}", response_model=Item)
 async def get_item(item_id: str, svc: Svc) -> Item:
     return svc.holders.fill(await _work(svc, item_id))
 
@@ -262,7 +262,7 @@ class HolderView(BaseModel):
     name: str = ""
 
 
-@router.post("/library/items/{item_id}/holder", response_model=HolderView)
+@router.post("/library/items/{item_id:item}/holder", response_model=HolderView)
 async def item_holder(
     item_id: str, svc: Svc, wait: Annotated[float, Query(ge=0, le=60)] = 0
 ) -> HolderView:
@@ -293,7 +293,7 @@ class PolishView(BaseModel):
 EARLY_POLL = 0.2
 
 
-@router.get("/library/items/{item_id}/polish", response_model=PolishView)
+@router.get("/library/items/{item_id:item}/polish", response_model=PolishView)
 async def item_polish(
     item_id: str,
     svc: Svc,
@@ -345,7 +345,7 @@ class SeenView(BaseModel):
     words: list[str] = Field(default_factory=list)  # Polish: things, places, mood
 
 
-@router.post("/library/items/{item_id}/describe", response_model=SeenView)
+@router.post("/library/items/{item_id:item}/describe", response_model=SeenView)
 async def describe_item(
     item_id: str, svc: Svc, wait: Annotated[float, Query(ge=0, le=60)] = 0
 ) -> SeenView:
@@ -393,7 +393,7 @@ class SharperView(BaseModel):
     held_by: str = ""
 
 
-@router.post("/library/items/{item_id}/sharpen", response_model=SharperView)
+@router.post("/library/items/{item_id:item}/sharpen", response_model=SharperView)
 async def sharpen_item(
     item_id: str, svc: Svc, wait: Annotated[float, Query(ge=0, le=60)] = 0
 ) -> SharperView:
@@ -418,7 +418,7 @@ async def sharpen_item(
     )
 
 
-@router.get("/library/items/{item_id}/copies")
+@router.get("/library/items/{item_id:item}/copies")
 async def item_copies(item_id: str, svc: Svc) -> StreamingResponse:
     """Every copy of the work's picture the sources have ("Szukaj lepszej
     kopii"), as they answer: :class:`CopyLine` per line (JSON lines)."""
@@ -458,7 +458,7 @@ class CopyPick(BaseModel):
     item_id: str
 
 
-@router.put("/library/items/{item_id}/copy", response_model=Item)
+@router.put("/library/items/{item_id:item}/copy", response_model=Item)
 async def choose_copy(item_id: str, pick: CopyPick, svc: Svc) -> Item:
     """The owner's pick for the work's picture: a copy from another source,
     or (its own id) the work's own. The work keeps its id, texts, hearts,
@@ -477,14 +477,14 @@ async def choose_copy(item_id: str, pick: CopyPick, svc: Svc) -> Item:
         raise HTTPException(502, f"copy unavailable: {err}") from err
 
 
-@router.delete("/library/items/{item_id}/copy", response_model=Item)
+@router.delete("/library/items/{item_id:item}/copy", response_model=Item)
 async def keep_own_picture(item_id: str, svc: Svc) -> Item:
     """Back to the work's own picture; no copy is looked for again."""
     item = await _work(svc, item_id)
     return await run_in_threadpool(svc.sharper.keep_own, item)
 
 
-@router.get("/library/items/{item_id}/copies/{copy_id}/spot", response_model=Spot)
+@router.get("/library/items/{item_id:item}/copies/{copy_id}/spot", response_model=Spot)
 async def copy_spot(
     item_id: str,
     copy_id: str,
@@ -508,7 +508,7 @@ async def copy_spot(
         raise HTTPException(502, f"picture unavailable: {err}") from err
 
 
-@router.patch("/library/items/{item_id}", response_model=Item)
+@router.patch("/library/items/{item_id:item}", response_model=Item)
 async def patch_item(item_id: str, patch: ItemPatch, svc: Svc) -> Item:
     item = await _work(svc, item_id, save=True)
     changes = patch.model_dump(exclude_none=True)
@@ -538,7 +538,7 @@ async def patch_item(item_id: str, patch: ItemPatch, svc: Svc) -> Item:
     return updated
 
 
-@router.delete("/library/items/{item_id}", dependencies=[Depends(require_owner)])
+@router.delete("/library/items/{item_id:item}", dependencies=[Depends(require_owner)])
 def delete_item(item_id: str, svc: Svc) -> dict[str, bool]:
     item = _item(svc, item_id)
     svc.library.delete(item_id)
@@ -546,7 +546,7 @@ def delete_item(item_id: str, svc: Svc) -> dict[str, bool]:
     return {"deleted": True}
 
 
-@router.get("/library/items/{item_id}/thumb")
+@router.get("/library/items/{item_id:item}/thumb")
 async def item_thumb(item_id: str, svc: Svc) -> FileResponse:
     item = await _work(svc, item_id, threads=THUMB_THREADS)
     try:
@@ -565,7 +565,7 @@ async def item_thumb(item_id: str, svc: Svc) -> FileResponse:
     return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "max-age=86400"})
 
 
-@router.get("/library/items/{item_id}/image")
+@router.get("/library/items/{item_id:item}/image")
 async def item_image(item_id: str, svc: Svc) -> FileResponse:
     """The original as the card shows it: before any download in the background."""
     item = await _work(svc, item_id, threads=SHOWN_THREADS)
@@ -597,7 +597,7 @@ def _prune(directory: Path, keep: int) -> None:
         old.unlink(missing_ok=True)
 
 
-@router.get("/library/items/{item_id}/preview")
+@router.get("/library/items/{item_id:item}/preview")
 async def item_preview(
     item_id: str,
     svc: Svc,
@@ -776,7 +776,7 @@ async def _plan_and_view(
     return _framing_view(item, orientation, plan, size, render_settings, automatic)
 
 
-@router.get("/library/items/{item_id}/framing", response_model=FramingView)
+@router.get("/library/items/{item_id:item}/framing", response_model=FramingView)
 async def get_framing(
     item_id: str, svc: Svc, orientation: Orientation | None = None, automatic: bool = False
 ) -> FramingView:
@@ -788,7 +788,7 @@ async def get_framing(
     return await _plan_and_view(svc, item, orientation, automatic)
 
 
-@router.put("/library/items/{item_id}/framing", response_model=FramingView)
+@router.put("/library/items/{item_id:item}/framing", response_model=FramingView)
 async def put_framing(item_id: str, update: FramingUpdate, svc: Svc) -> FramingView:
     """Save a corrected crop (FILL, or FIT with its shape) or the picture
     and its close-up (DESCRIPTION) for this picture."""
@@ -811,7 +811,7 @@ async def put_framing(item_id: str, update: FramingUpdate, svc: Svc) -> FramingV
     return await _plan_and_view(svc, item, update.orientation)
 
 
-@router.delete("/library/items/{item_id}/framing", response_model=FramingView)
+@router.delete("/library/items/{item_id:item}/framing", response_model=FramingView)
 async def reset_framing(item_id: str, svc: Svc, orientation: Orientation) -> FramingView:
     """Back to the automatic crop of the current mode for this orientation."""
     item = await _work(svc, item_id, save=True)
@@ -848,7 +848,7 @@ def _save_framing(
     return updated
 
 
-@router.post("/library/items/{item_id}/show", status_code=202)
+@router.post("/library/items/{item_id:item}/show", status_code=202)
 async def show_item(item_id: str, request: ShowRequest, svc: Svc) -> dict[str, Any]:
     item = await _work(svc, item_id, save=True)
     _remember_sent(svc, item)
@@ -856,7 +856,7 @@ async def show_item(item_id: str, request: ShowRequest, svc: Svc) -> dict[str, A
     return {"accepted": True, "item_id": item.id}
 
 
-@router.post("/library/items/{item_id}/queue", status_code=202)
+@router.post("/library/items/{item_id:item}/queue", status_code=202)
 async def queue_item(item_id: str, svc: Svc) -> dict[str, Any]:
     """The owner's "Dodaj do kolejki": the work is shown at the next change."""
     item = await _work(svc, item_id, save=True)

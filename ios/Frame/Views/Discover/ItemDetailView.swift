@@ -585,7 +585,7 @@ struct ItemDetailView: View {
         } label: {
             Label("Otwórz studium", systemImage: "sparkles")
         }
-        .buttonStyle(ActionButtonStyle())
+        .buttonStyle(ActionButtonStyle(fill: Theme.raised))
         .labelButtonMenu {
             Button("Przygotuj od nowa", systemImage: "arrow.clockwise") { prepareStudy(item, again: true) }
         }
@@ -643,7 +643,7 @@ struct ItemDetailView: View {
                     }
                 }
             }
-            .buttonStyle(ActionButtonStyle())
+            .buttonStyle(ActionButtonStyle(fill: Theme.raised))
             .labelStyle(ActionLabelStyle())
             .sensoryFeedback(.impact(weight: .light), trigger: studyTaps)
             .animation(.easeInOut(duration: 0.2), value: state.status)
