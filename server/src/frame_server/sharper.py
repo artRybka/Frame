@@ -87,6 +87,10 @@ THREADS = 2
 DAILY_WAIT = 300.0
 #: Works whose last look is kept in memory (also those not in the library).
 REMEMBERED = 2000
+#: Thumbnails made again from the copies in the works' place, once
+#: (:meth:`Sharper.thumbs_again`).
+THUMBS_KEY = "copy_thumbs"
+THUMBS_VERSION = 1
 
 Status = Literal["looking", "found", "none", "fine", "off"]
 
@@ -403,9 +407,11 @@ class Sharper:
             width=width,
             height=height,
             chosen=chosen,
+            thumb_url=copy.thumb_url,
         )
         updated = self.library.update(item.id, sharper=sharper) or stored
         self.images.adopt(updated, img)
+        updated = self._measure_again(updated)
         self._cut_again(item)
         self._remember(item, "chosen" if chosen else "found", copy.id, own)
         log.info(
@@ -432,7 +438,13 @@ class Sharper:
         own = self.own_size(stored)
         if stored.sharper is not None:
             stored = self.library.update(item.id, sharper=None) or stored
-            self.images.image_path(stored).unlink(missing_ok=True)  # the own downloaded again
+            self.images.drop_picture(stored)  # the own downloaded again, its thumbnail too
+            try:
+                self.images.ensure_thumb(stored, urgent=True)
+            except (httpx.HTTPError, OSError) as err:  # had when a list next asks
+                log.info("own thumbnail of %s: %s", item.id, err)
+            else:
+                stored = self._measure_again(stored)
             self._cut_again(item)
         self._remember(stored, "kept", "", own)
         return stored
@@ -447,6 +459,33 @@ class Sharper:
         if isinstance(own, list) and len(own) == 3:
             return int(own[0]), int(own[1]), int(own[2])
         return None
+
+    def thumbs_again(self) -> int:
+        """Once: the thumbnails of works whose picture a copy took before
+        thumbnails followed it, made from the copy (or had again), and their
+        colours measured from it; returns how many."""
+        if self.library.get_state(THUMBS_KEY, 0) >= THUMBS_VERSION:
+            return 0
+        done = 0
+        for item in self.library.query(include_excluded=True)[1]:
+            if item.sharper is None:
+                continue
+            if self.images.thumb_again(item):
+                self._measure_again(item)
+            done += 1
+        self.library.set_state(THUMBS_KEY, THUMBS_VERSION)
+        if done:
+            log.info("thumbnails of %d works made again from their copies", done)
+        return done
+
+    def _measure_again(self, item: Item) -> Item:
+        """The work's colours (dots, colour tags, the frame's preset) from
+        its thumbnail as it is now: another picture, other tones."""
+        try:
+            return self.importer.measure_again(item)
+        except OSError as err:  # a broken thumbnail: the colours from before
+            log.info("colours of %s: %s", item.id, err)
+            return item
 
     def _cut_again(self, item: Item) -> None:
         for old in self.details_dir.glob(f"{item.file_stem}-*.jpg"):

@@ -871,9 +871,16 @@ Mateusza 2026-11-04) „następny” = następne dzieło: aplikacja zgłasza `ke
 serwer (`PanelApp._button`, najwyżej raz na 15 s) wywołuje
 `player.next("button")`, a aplikacja pyta o obraz po 3 s. Czy naciśnięcie
 budzące uśpioną ramkę też dochodzi jako klawisz: nie sprawdzone.
-**Do sprawdzenia na baterii:** czy budzik według zegara
-ramki naprawdę ją budzi, także po głębokim śnie (zimny start może cofać jej
-zegar).
+**Budzik na baterii (E18, 2026-11-04 wieczorem, 1.95.3):** działa. Zasilacz
+odpięty 16:12 UTC, ramka od razu w głębokim śnie bez Wi-Fi; obraz zmieniony
+16:15 czekał na nią. Zapasowy budzik 17:30 CET (przesunięty o
+`shift_s` −89 674 046 s) obudził ją: 16:31:04 UTC `sssp_config.xml` (start
+systemu ok. 64 s), serwer uruchomił aplikację przez MDC, 16:31:16 `shown`
+nowego obrazu, 16:33:44 sen z czuwaniem Wi-Fi do 07:00. Drugi zapasowy
+budzik (18:00) obudził ją na 2 s (`reason=wake`, bez MDC i bez rysowania),
+zasnęła znowu; zadzwonił ok. 34 s przed pełną godziną według zegara
+serwera. W czuwaniu na baterii ramka jest w sieci (ARP), ale MDC 1515 nie
+odpowiada. Zimny start z głębokiego snu nie cofnął przesunięcia zegara.
 
 **Zrzut ekranu (E18, 2026-11-04 08:52 UTC):** działa. Prośba doszła przy
 najbliższym `/panel/next` (11 s), `captureScreen` 69 ms, `openFile` i

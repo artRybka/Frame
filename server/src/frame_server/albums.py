@@ -88,6 +88,8 @@ class Albums:
         self.forget_orphans()
         if changed:
             self.service.player.playlist_changed(playlist_id)
+        # New photos' towns, before the frame or the app shows them.
+        self.service.places.fill()
         return sync
 
     def forget_orphans(self) -> int:

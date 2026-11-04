@@ -31,6 +31,7 @@ from .library.icloud import only_copy
 from .library.images import Unavailable
 from .library.museums import Kind
 from .library.nationality import life_years, note_years
+from .library.photo_text import photo_line, photo_title
 from .library.repo import sent_key
 from .library.style import AUTO, auto_preset
 from .library.themes import SEARCHABLE, theme_of_the_day
@@ -176,8 +177,7 @@ def hold_from(spec: str | int | None) -> Hold | None:
 
 def caption_for(item: Item, polish: PolishText | None = None) -> str:
     if item.kind == ItemKind.PHOTO:
-        parts = [item.date_text, item.photo.caption if item.photo else ""]
-        return " · ".join(p for p in parts if p)
+        return " · ".join(p for p in (photo_title(item), photo_line(item)) if p)
     parts = [item.artist, polish.title if polish else item.title]
     text = " — ".join(p for p in parts if p)
     date = (polish.date if polish else "") or item.date_text
@@ -188,10 +188,8 @@ def text_block_for(item: Item, polish: PolishText | None = None) -> TextBlock:
     """What the DESCRIPTION mode prints on the mat; with ``polish``, in Polish."""
     if item.kind == ItemKind.PHOTO:
         info = item.photo
-        title = (info.caption if info and info.caption else "") or item.title
-        when = item.date_text or (info.taken_at[:10] if info and info.taken_at else "")
         who = info.contributor if info and info.contributor else ""
-        return TextBlock(title=title, meta=[m for m in (when, who) if m])
+        return TextBlock(title=photo_title(item), meta=[m for m in (photo_line(item), who) if m])
     # The author alone, then date · medium; a work the museum gives no date
     # for (not even "ca. 1660") shows its author's life years instead.
     life = life_years(item.artist_bio) if item.artist_bio else ""
@@ -792,7 +790,7 @@ class Player:
             self.service.prepare,
             await self._originals(board, settings),
             self.render_settings(item, settings),
-            title=item.title,
+            title=photo_title(item) if item.kind == ItemKind.PHOTO else item.title,
             description=caption_for(item),
             source=item.source,
             extra=extra,
@@ -1201,6 +1199,12 @@ class Player:
                 break
         return batches
 
+    def _fix_up(self) -> None:
+        """Once after an update: the pictures analysed again, then the
+        thumbnails of works shown from another source's copy made from it."""
+        self.rescore()
+        self.service.sharper.thumbs_again()
+
     def rescore(self) -> int:
         """Once per ``SCORE_VERSION``: analyse the library's pictures again
         from their thumbnails (add-on 0.12: colourful works first; 0.21:
@@ -1434,7 +1438,7 @@ class Player:
         grown: datetime | None = None
         ahead = False
         # A minute or so on a NAS for a large library: alongside, not first.
-        rescoring = asyncio.create_task(run_in_threadpool(self.rescore))
+        rescoring = asyncio.create_task(run_in_threadpool(self._fix_up))
         rescoring.add_done_callback(_log_failure)
         while True:
             try:

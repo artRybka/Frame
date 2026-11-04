@@ -45,7 +45,7 @@ enum PhotoSaver {
 
     /// The name the picture gets in Photos: artist and title.
     static func fileName(for item: Item) -> String {
-        let parts = [item.artist, item.title.isEmpty ? "Bez tytułu" : item.title]
+        let parts = [item.artist, item.displayTitle.isEmpty ? "Bez tytułu" : item.displayTitle]
             .filter { !$0.isEmpty }
             .joined(separator: " – ")
         let separators = CharacterSet(charactersIn: "/\\:?*\"<>|").union(.whitespacesAndNewlines)
