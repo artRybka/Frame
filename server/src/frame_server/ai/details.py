@@ -8,9 +8,11 @@ with the whole picture, its title and its text: a box that shows what it
 is about stays, one that misses is drawn again. One short question more;
 a page whose check fails keeps its boxes as they were.
 
-Pages written before the check get it when the owner asks ("Popraw
-detale", the held header "Detale"; Mateusz 2026-11-03: "Na żądanie,
-przytrzymaniem"): :class:`MendJob`, ahead of the background.
+Pages get it only when the owner asks ("Popraw detale", the held header
+"Detale"; Mateusz 2026-11-03: "Na żądanie, przytrzymaniem"):
+:class:`MendJob`, ahead of the background. New pages were checked as they
+were written until 1.94.1 (Mateusz 2026-11-04: boxes usually hit, the check
+is not worth its cost).
 """
 
 from __future__ import annotations
