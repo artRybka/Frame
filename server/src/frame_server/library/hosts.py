@@ -38,13 +38,20 @@ log = logging.getLogger(__name__)
 #: without an account across all wikis together (its robot policy).
 WIKIMEDIA = "wikimedia-api"
 WIKIMEDIA_HOSTS = frozenset({"commons.wikimedia.org", "www.wikidata.org", "meta.wikimedia.org"})
+#: Wikimedia's media files, counted as one host: originals come from
+#: upload.wikimedia.org, Special:FilePath's renditions from thumb.wikimedia.org.
+WIKIMEDIA_MEDIA = "wikimedia-media"
+MEDIA_HOSTS = frozenset({"upload.wikimedia.org", "thumb.wikimedia.org"})
 
 
 def lane(host: str) -> str:
-    """What ``host``'s pace and limit count against: itself, or the
-    Wikimedia wikis together (Commons, Wikidata, every Wikipedia)."""
+    """What ``host``'s pace and limit count against: itself, the Wikimedia
+    wikis together (Commons, Wikidata, every Wikipedia), or Wikimedia's
+    media hosts together."""
     if host in WIKIMEDIA_HOSTS or host.endswith(".wikipedia.org"):
         return WIKIMEDIA
+    if host in MEDIA_HOSTS:
+        return WIKIMEDIA_MEDIA
     return host
 
 
@@ -74,7 +81,7 @@ LIMITS = {
     # Unauthenticated clients: one request at a time to the Action API, at
     # most two downloads at a time of media files.
     WIKIMEDIA: 1,
-    "upload.wikimedia.org": 2,
+    WIKIMEDIA_MEDIA: 2,
 }
 #: The longest a host's ``Retry-After`` (on a 429) is kept to: api.data.gov
 #: blocks a key for an hour; longer waits are taken as an hour too.

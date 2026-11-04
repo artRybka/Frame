@@ -17,6 +17,7 @@ from frame_server.library.hosts import (
     PROBE_EVERY,
     REST,
     WIKIMEDIA,
+    WIKIMEDIA_MEDIA,
     HostGuard,
     Resting,
     as_asked,
@@ -308,7 +309,8 @@ def test_wikimedia_wikis_count_as_one_host() -> None:
     all wikis together: Commons, Wikidata and every Wikipedia share a lane."""
     assert lane("commons.wikimedia.org") == lane("www.wikidata.org") == WIKIMEDIA
     assert lane("pl.wikipedia.org") == WIKIMEDIA
-    assert lane("upload.wikimedia.org") == "upload.wikimedia.org"  # media: its own limit
+    # Media files: a lane of their own, originals and renditions together.
+    assert lane("upload.wikimedia.org") == lane("thumb.wikimedia.org") == WIKIMEDIA_MEDIA
     assert lane("api.artic.edu") == "api.artic.edu"
 
 
@@ -360,7 +362,7 @@ def test_a_failed_request_gives_its_slot_back() -> None:
 def test_a_redirect_within_the_lane_does_not_wait_for_itself() -> None:
     """Special:FilePath on Commons sends on to the file: the slot goes back
     with the redirect, before the next hop asks for one."""
-    guard = HostGuard({}, {WIKIMEDIA: 1, "upload.wikimedia.org": 1})
+    guard = HostGuard({}, {WIKIMEDIA: 1, WIKIMEDIA_MEDIA: 1})
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.host == "commons.wikimedia.org":
@@ -376,7 +378,7 @@ def test_a_redirect_within_the_lane_does_not_wait_for_itself() -> None:
             http.get, "https://commons.wikimedia.org/wiki/Special:FilePath/a.jpg"
         )
         assert done.result(timeout=5).content == b"jpeg"
-    assert guard._busy == {WIKIMEDIA: 0, "upload.wikimedia.org": 0}
+    assert guard._busy == {WIKIMEDIA: 0, WIKIMEDIA_MEDIA: 0}
 
 
 def test_a_429_is_waited_out_as_the_host_asks() -> None:
