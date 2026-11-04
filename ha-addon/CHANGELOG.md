@@ -4,7 +4,7 @@
 
 - Teraz: nad tytułem dzieła nazwa muzeum, w którym wisi, zamiast „Dzieło”;
   muzeum, tytuł i autor bliżej siebie, narodowość i lata życia tuż pod
-  nazwiskiem, bez linijki z techniką. Rok powstania na małym białym
+  nazwiskiem, bez linijki z techniką. Rok powstania na małym szarym
   znaczku na końcu tytułu, w Teraz i na karcie dzieła.
 
 ## 1.96.1

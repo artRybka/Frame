@@ -782,9 +782,9 @@ private struct EmptyCover: View {
     }
 }
 
-/// A work's title with its date at the end on a small white badge,
-/// "W oranżerii [1890]" (Mateusz 2026-11-04, round 2 variant 2: white,
-/// a soft shadow, thin figures): Teraz and the work's card. The badge moves
+/// A work's title with its date at the end on a small badge, "W oranżerii
+/// [1890]" (Mateusz 2026-11-04, variant 9: a light tint of ink, thin
+/// figures): Teraz and the work's card. The badge moves
 /// to the next line whole with the title's last word.
 struct TitleWithYear: View {
     let title: String
@@ -806,7 +806,7 @@ enum TitleYear {
         guard !date.isEmpty, let badge = badge(date, scheme: scheme, scale: scale) else { return plain }
         // An image inside the text wraps with it; it sits on the baseline,
         // lowered so the badge's middle meets the small letters'.
-        return (plain + Text(" ").font(font) + Text(badge).baselineOffset(-5))
+        return (plain + Text(" ").font(font) + Text(badge).baselineOffset(-3))
             .accessibilityLabel(Text("\(title), \(date)"))
     }
 
@@ -835,25 +835,22 @@ enum TitleYear {
     }
 }
 
-/// The year's badge: white on the cream card (a raised one in the dark),
-/// a soft shadow and no outline, thin figures.
+/// The year's badge: a light tint of the title's ink, no outline, figures
+/// thin in the title's colour; a label, not a button (Mateusz 2026-11-04,
+/// variant 9: a filled black one looked like "Szczegóły").
 private struct YearBadge: View {
     let date: String
     let dark: Bool
 
     var body: some View {
+        let ink = Color(hex: dark ? 0xF1ECE4 : 0x1D1B18)
         Text(date)
             .font(.system(size: 12.5, weight: .light))
             .monospacedDigit()
             .tracking(0.3)
-            .foregroundStyle(Color(hex: dark ? 0xC2BAAF : 0x6E675E))
-            .padding(.horizontal, 7)
+            .foregroundStyle(ink)
+            .padding(.horizontal, 6)
             .padding(.vertical, 2.5)
-            .background(
-                Color(hex: dark ? 0x2E2B28 : 0xFFFFFF),
-                in: RoundedRectangle(cornerRadius: 6, style: .continuous)
-            )
-            .shadow(color: .black.opacity(dark ? 0.5 : 0.16), radius: 1.5, y: 1)
-            .padding(3)  // room for the shadow
+            .background(ink.opacity(0.08), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
     }
 }
