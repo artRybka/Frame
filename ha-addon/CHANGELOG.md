@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.100.0
+
+- Nowe źródło dzieł: Courtauld Gallery z Londynu, ok. 580 obrazów w
+  pełnej rozdzielczości, m.in. „Bar w Folies-Bergère” Maneta, „Gracze w
+  karty” Cézanne'a i „Autoportret z zabandażowanym uchem” Van Gogha.
+  Tylko z „Użytkiem prywatnym” (licencja CC BY-NC). Courtauld nie ma API,
+  więc serwer po włączeniu raz powoli spisuje ich obrazy (poniżej
+  godziny) i raz w miesiącu sprawdza, czy doszły nowe.
+
 ## 1.99.1
 
 - Wellcome Collection pomija ilustracje medyczne: akwarele chorób skóry,

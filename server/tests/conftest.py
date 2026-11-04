@@ -26,6 +26,10 @@ def _no_gallery_downloads(monkeypatch: pytest.MonkeyPatch) -> None:
     from frame_server.library import nga
 
     monkeypatch.setattr(nga.INDEX, "ready", lambda path: path.is_file())
+    # Nor is the Courtauld's list of paintings written from its site.
+    from frame_server.library import courtauld
+
+    monkeypatch.setattr(courtauld.INDEX, "_start", lambda path: None)
 
 
 @pytest.fixture(autouse=True)
