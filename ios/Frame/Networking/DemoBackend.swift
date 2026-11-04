@@ -174,10 +174,17 @@ actor DemoBackend: FrameBackend {
         if !rules.styles.isEmpty && !overlaps(item.styles, rules.styles) { return false }
         if !rules.subjects.isEmpty && !overlaps(item.subjects, rules.subjects) { return false }
         // As the server: colours and moods one group, accents another, both must fit.
+        // "Wyłącznie" a third: every colour the work is painted in is one picked.
         let accents = rules.colors.filter { $0.hasPrefix(ColorTag.accentPrefix) }
-        let mainColors = rules.colors.filter { !$0.hasPrefix(ColorTag.accentPrefix) }
+        let only = rules.colors.filter { $0.hasPrefix(ColorTag.onlyPrefix) }
+        let mainColors = rules.colors.filter { !accents.contains($0) && !only.contains($0) }
         if !mainColors.isEmpty && Set(item.colorTags).isDisjoint(with: mainColors) { return false }
         if !accents.isEmpty && Set(item.colorTags).isDisjoint(with: accents) { return false }
+        if !only.isEmpty {
+            let painted = Set(item.colorTags.filter { $0.hasPrefix(ColorTag.onlyPrefix) })
+            if painted.isEmpty || !painted.isSubset(of: only)
+                || Set(item.colorTags).isDisjoint(with: only.map(ColorTag.family)) { return false }
+        }
         if !rules.terms.isEmpty && !DemoDiscover.matches(item, terms: rules.terms) { return false }
         if let from = rules.yearFrom, (item.year ?? Int.min) < from { return false }
         if let to = rules.yearTo, (item.year ?? Int.max) > to { return false }

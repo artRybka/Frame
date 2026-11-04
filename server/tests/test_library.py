@@ -291,6 +291,40 @@ def test_colour_and_accent_must_both_fit() -> None:
     assert not has_colours(red_on_brown, ["blue", "accent:red"])
 
 
+def test_only_colours_ask_for_pictures_painted_in_them_alone() -> None:
+    from frame_server.library.colors import painted_in, shown_tags
+
+    # The fewest families that make 80 % of the coloured pixels.
+    assert painted_in({"blue": 0.5, "teal": 0.3, "red": 0.04, "gray": 0.16}) == ["blue", "teal"]
+    assert painted_in({"blue": 0.4, "orange": 0.3, "gray": 0.3}) == ["blue", "orange"]
+    assert painted_in({"gray": 0.7, "white": 0.3}) == []
+
+    nocturne = ["blue", "gray", "only:blue", "cool"]
+    sea = ["blue", "teal", "accent:orange", "only:blue", "only:teal"]
+    harbour = ["blue", "orange", "only:blue", "only:orange"]
+    grey_sketch = ["gray", "white", "only:blue"]  # a touch of blue, no more
+    only_blue = ["only:blue", "only:teal"]
+    assert has_colours(nocturne, only_blue) and has_colours(sea, only_blue)
+    assert not has_colours(harbour, only_blue)
+    assert not has_colours(grey_sketch, only_blue)
+    assert not has_colours(sea, ["only:blue"])  # teal too
+    # With the other groups: warm and only red or orange.
+    assert not has_colours(nocturne, ["warm", "only:blue"])
+    # Never shown or counted.
+    assert shown_tags(sea) == ["blue", "teal", "accent:orange"]
+
+    # From a picture: blue sea and sky over grey rocks.
+    pixels = np.empty((200, 200, 3), np.uint8)
+    pixels[:] = (120, 120, 118)
+    pixels[:80] = (60, 110, 190)
+    pixels[80:150] = (30, 70, 150)
+    _, tags, _ = analyse(Image.fromarray(pixels))
+    assert "only:blue" in tags and has_colours(tags, ["only:blue", "only:teal"])
+    pixels[150:170, :60] = (190, 40, 30)  # a red boat
+    _, tags, _ = analyse(Image.fromarray(pixels))
+    assert has_colours(tags, ["only:blue", "only:teal", "only:red"])
+
+
 def test_yellowed_paper_is_not_warm() -> None:
     _, tags, _ = analyse(_etching([(238, 226, 198)]))
     assert "warm" not in tags and not any(t.startswith("accent:") for t in tags)

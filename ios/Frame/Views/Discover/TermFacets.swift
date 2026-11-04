@@ -57,8 +57,8 @@ enum TermFacet: String, CaseIterable, Identifiable, Sendable {
     /// The group in words: "Styl", "Styl: Ukiyo-e +2", "Epoka: 1700–1900".
     func label(_ tokens: [SearchToken], periods: [TermInfo]) -> String {
         guard let value = value(tokens, periods: periods) else { return title }
-        // "Akcent: czerwień" says what it is on its own.
-        if self == .color, tokens.first(where: holds)?.key.hasPrefix(ColorTag.accentPrefix) == true { return value }
+        // "Akcent: czerwień" and "Wyłącznie: błękit" say what they are on their own.
+        if self == .color, let first = tokens.first(where: holds), first.key != ColorTag.family(first.key) { return value }
         return "\(title): \(value)"
     }
 }
@@ -363,6 +363,11 @@ struct PanelGlass: View {
     }
 }
 
+/// The tabs of the Kolor sheet.
+enum ColourShade: Hashable {
+    case main, accent, only
+}
+
 /// What an open group holds, over the search field, as tall as what it
 /// holds (longer groups scroll inside it); its glass is PanelGlass.
 struct TermFacetPanel: View {
@@ -375,7 +380,9 @@ struct TermFacetPanel: View {
     var close: () -> Void
 
     @State private var filter = ""
-    @State private var accents = false
+    /// The Kolor sheet's tab: colours a work has much of, its accents, or
+    /// the only colours it is painted in.
+    @State private var shade = ColourShade.main
     /// Museums: the picked ones are left out ("Wykluczone"), with none
     /// picked yet (with some, their kind says it).
     @State private var leaveOut = false
@@ -415,10 +422,13 @@ struct TermFacetPanel: View {
         }
         .task {
             await model.loadVocabulary(fresh: true)
-            // Opened on an accent: show the accents.
-            if facet == .color, tokens.contains(where: { $0.kind == "color" && $0.key.hasPrefix(ColorTag.accentPrefix) }),
-               !tokens.contains(where: { $0.kind == "color" && ColorTag.families.contains($0.key) }) {
-                accents = true
+            // Opened on accents or "Wyłącznie" (and no plain colour): show those.
+            if facet == .color, !tokens.contains(where: { $0.kind == "color" && ColorTag.families.contains($0.key) }) {
+                if tokens.contains(where: { $0.kind == "color" && $0.key.hasPrefix(ColorTag.accentPrefix) }) {
+                    shade = .accent
+                } else if tokens.contains(where: { $0.kind == "color" && $0.key.hasPrefix(ColorTag.onlyPrefix) }) {
+                    shade = .only
+                }
             }
         }
     }
@@ -426,7 +436,7 @@ struct TermFacetPanel: View {
     private var footnote: String {
         switch facet {
         case .museum: "Nic nie wybrane: pytam wszystkie muzea."
-        case .color: "Wśród kolorów i nastrojów wystarczy jeden z wybranych, wśród akcentów też. Kolor i akcent muszą pasować razem: Błękit z akcentem czerwieni to niebieskie obrazy z czymś czerwonym."
+        case .color: "Wśród kolorów i nastrojów wystarczy jeden z wybranych, wśród akcentów też. Kolor i akcent muszą pasować razem: Błękit z akcentem czerwieni to niebieskie obrazy z czymś czerwonym. Wyłącznie: obrazy malowane tylko wybranymi kolorami, poza bielą, szarością i czernią."
         default: "Wybierz dowolnie wiele: wystarczy, że dzieło pasuje do jednego z nich."
         }
     }
@@ -512,29 +522,44 @@ struct TermFacetPanel: View {
     // MARK: Colours
 
     private var palette: some View {
-        let families = accents ? ColorTag.accentFamilies : ColorTag.families.filter(colors.contains)
-        let moods = colors.filter { !ColorTag.families.contains($0) }
-        let pickedAccents = tokens.filter { $0.kind == "color" && $0.key.hasPrefix(ColorTag.accentPrefix) }.count
-        let pickedMain = tokens.filter { $0.kind == "color" && ColorTag.families.contains($0.key) }.count
+        let families = switch shade {
+        case .main: ColorTag.families.filter(colors.contains)
+        case .accent: ColorTag.accentFamilies
+        case .only: ColorTag.onlyFamilies
+        }
+        // "only:" tags are never counted as facets; older servers' just in case.
+        let moods = colors.filter { !ColorTag.families.contains($0) && !$0.hasPrefix(ColorTag.onlyPrefix) }
+        func count(_ fits: (String) -> Bool) -> Int { tokens.filter { $0.kind == "color" && fits($0.key) }.count }
+        let pickedMain = count(ColorTag.families.contains)
+        let pickedAccents = count { $0.hasPrefix(ColorTag.accentPrefix) }
+        let pickedOnly = count { $0.hasPrefix(ColorTag.onlyPrefix) }
+        let hint = switch shade {
+        case .main: "Kolor, którego w obrazie jest dużo."
+        case .accent: "Kolor jako mały fragment obrazu."
+        case .only: "Obraz malowany tylko wybranymi kolorami. Wybierz kilka, np. błękit i turkus."
+        }
         return VStack(alignment: .leading, spacing: 14) {
-            Picker("Jak", selection: $accents) {
-                Text(pickedMain > 0 ? "Dominuje · \(pickedMain)" : "Dominuje").tag(false)
-                Text(pickedAccents > 0 ? "Tylko akcent · \(pickedAccents)" : "Tylko akcent").tag(true)
+            Picker("Jak", selection: $shade) {
+                Text(pickedMain > 0 ? "Dominuje · \(pickedMain)" : "Dominuje").tag(ColourShade.main)
+                Text(pickedAccents > 0 ? "Akcent · \(pickedAccents)" : "Akcent").tag(ColourShade.accent)
+                Text(pickedOnly > 0 ? "Wyłącznie · \(pickedOnly)" : "Wyłącznie").tag(ColourShade.only)
             }
             .pickerStyle(.segmented)
-            Text(accents
-                ? "Kolor jako mały fragment obrazu."
-                : "Kolor, którego w obrazie jest dużo.")
+            Text(hint)
                 .font(.footnote)
                 .foregroundStyle(Theme.inkSoft)
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 6), spacing: 12) {
                 ForEach(families, id: \.self) { family in
-                    let tag = accents ? ColorTag.accent(family) : family
+                    let tag = switch shade {
+                    case .main: family
+                    case .accent: ColorTag.accent(family)
+                    case .only: ColorTag.only(family)
+                    }
                     swatch(tag: tag, family: family)
                 }
             }
             // A mood is the whole work's, never an accent's: only under "Dominuje".
-            if !accents && !moods.isEmpty {
+            if shade == .main && !moods.isEmpty {
                 VStack(alignment: .leading, spacing: 10) {
                     Eyebrow("Nastrój")
                     // In pairs, one pair a row: Ciepłe–Chłodne, Żywe–Stonowane,

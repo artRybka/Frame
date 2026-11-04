@@ -40,6 +40,7 @@ from ..library.themes import (
     Theme,
     batch_of,
     browse_theme,
+    colour_themes,
     day_reason,
     liked,
     make_liked,
@@ -260,12 +261,14 @@ def work_out_cards(svc: FrameService, force: bool = False) -> dict[str, tuple[in
         if cards and not force and key == _cards_from:
             return cards  # just worked out by another request
         cards = {}
-        today = date.today().isoformat()
+        day = date.today()
+        today = day.isoformat()
         mine: dict[str, Theme] = {}
         for user in svc.users.users():  # everyone's "Bo lubisz"
             for found in make_liked(svc.library, svc.player.taste(user.id), user.id):
                 mine.setdefault(found.key, found)
-        for found in [*weekly_themes(svc.library, date.today()), *mine.values(), *THEMES]:
+        weekly = weekly_themes(svc.library, day)
+        for found in [*weekly, *mine.values(), *THEMES, *colour_themes(svc.library, day)]:
             total, items = svc.library.query(found.rules(), sort="suitability")
             cards[found.key] = (total, _cover(items, f"{today}:{found.key}"))
         _cards = (time.monotonic(), cards)
@@ -437,7 +440,8 @@ def _theme_list(svc: FrameService) -> list[ThemeCard]:
     # out with them).
     weekly = [t for t in weekly_themes(svc.library, date.today()) if t.key in cards]
     mine = [t for t in liked(svc.library) if t.key in cards]
-    ordered = sorted([*weekly, *mine, *THEMES], key=lambda t: GROUPS.index(t.group))
+    colours = [t for t in colour_themes(svc.library, date.today()) if t.key in cards]
+    ordered = sorted([*weekly, *mine, *THEMES, *colours], key=lambda t: GROUPS.index(t.group))
     return [_card(svc, t, cards, playlists) for t in ordered]
 
 
