@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from .battery import BatteryEstimate, BatteryLog, awake_mode
 from .device import MdcConnectionError, MdcError
 from .device.presence import connect_says_gone, on_network
+from .panel_config import clean_mac
 
 if TYPE_CHECKING:
     from .device import MdcClient
@@ -42,6 +43,8 @@ RANG_UNSEEN = timedelta(minutes=3)
 # reads 00 on the charger (E1 at 100 %, and while charging the bolt turned
 # into the plug after each MDC read), so the level decides.
 FULL_AT = 95
+# The panel's clock this far off the server's: told once in the log.
+CLOCK_OFF_S = 60
 
 # What was last read from the panel, kept across server restarts: a panel
 # asleep since then is still known to sleep with network standby on.
@@ -131,6 +134,10 @@ class DeviceStatus(BaseModel):
     # since then (ISO): it does not run or hangs, and no picture gets through
     # (2026-10-30: "Połączona" while the app had been frozen for 51 min).
     app_silent_since: str | None = None
+    # The panel's clock minus the server's, in seconds, from the app's last
+    # question: its alarms are set in its own time, and it has no NTP
+    # (webapis.timer.getNTP: off, E16), so a clock that drifts moves them.
+    clock_offset_s: float | None = None
 
 
 class PanelWifi(BaseModel):
@@ -143,6 +150,7 @@ class PanelWifi(BaseModel):
     ssid: str | None = None
     ip: str | None = None
     frequency: int | None = None  # MHz: 24xx is 2.4 GHz
+    mac: str | None = None  # of the Wi-Fi (webapis.network.getMac)
     # Where the server looks for the panel (its MDC address), and the SSID
     # the panel was last on at that address.
     expected_ip: str | None = None
@@ -182,6 +190,10 @@ def wifi_reading(
         return None
     frequency = number("frequency")
     try:
+        mac = clean_mac(text("mac"))
+    except ValueError:
+        mac = None
+    try:
         expected = str(ipaddress.ip_address(host)) if host else None
     except ValueError:  # a host name: the address cannot be compared
         expected = None
@@ -199,6 +211,7 @@ def wifi_reading(
         ssid=ssid,
         ip=ip,
         frequency=None if frequency is None else int(frequency),
+        mac=mac,
         expected_ip=expected,
         home_ssid=home,
         wrong_network=wrong,
@@ -233,6 +246,11 @@ class StatusMonitor:
         self.rang: Callable[[datetime, datetime], int] | None = None
         # Every battery reading: its level, and whether on battery (notifications).
         self.on_battery_level: Callable[[int, bool], None] | None = None
+        # The panel's MAC as its app read it (Wake-on-LAN), and a firmware
+        # other than the one read before (the frame's ways are known on 1130.7).
+        self.on_mac: Callable[[str], None] | None = None
+        self.on_firmware: Callable[[str, str], None] | None = None
+        self._clock_told = False
 
     def _configured(self) -> bool:
         s = self.panel.settings
@@ -314,7 +332,12 @@ class StatusMonitor:
                 await self._read_battery(mdc, status)
                 status.network_standby = await mdc.network_standby()
                 if not self._static_known:
-                    status.firmware = await mdc.software_version()
+                    before = self.status.firmware
+                    firmware = status.firmware = await mdc.software_version()
+                    if before and firmware and firmware != before:
+                        log.warning("the panel's firmware changed: %s -> %s", before, firmware)
+                        if self.on_firmware:
+                            self.on_firmware(before, firmware)
                     status.model = _readable(await mdc.model_name())
                     status.serial = await mdc.serial_number()
                     status.name = await mdc.device_name()
@@ -449,6 +472,17 @@ class StatusMonitor:
             )
         self.status.wifi = wifi
         self._remember()
+        if wifi.mac and self.on_mac:
+            self.on_mac(wifi.mac)
+
+    def note_clock(self, panel_ms: int, now: datetime) -> None:
+        """The app's own time as it asked: how far the panel's clock is off."""
+        offset = round(panel_ms / 1000 - now.timestamp(), 1)
+        self.status.clock_offset_s = offset
+        off = abs(offset) >= CLOCK_OFF_S
+        if off and not self._clock_told:
+            log.warning("the panel's clock is %+.0f s off the server's", offset)
+        self._clock_told = off
 
     def forget_wifi(self) -> None:
         """The panel left the app: nothing reads the Wi-Fi until it is back."""

@@ -1260,3 +1260,83 @@ def test_the_sleep_report_shows_at_once(tmp_path: Path) -> None:
     app.report("sleep", {"why": "plan"})
     service.power.publish_status()
     assert service.status.status.power_state == "standby"
+
+
+def test_the_panels_clock_is_measured_at_every_question(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    now = datetime(2026, 11, 4, 1, 0, tzinfo=UTC)
+    panel_ms = int(now.timestamp() * 1000) + 95_400  # 95 s ahead
+    service.app.answer(AppHello(reason="start", charging=True, now=panel_ms), now)
+    assert service.status.status.clock_offset_s == 95.4
+    service.app.answer(AppHello(reason="poll", charging=True), now)  # an older app.js
+    assert service.status.status.clock_offset_s == 95.4
+
+
+def test_the_panels_mac_fills_in_for_wake_on_lan(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    assert service.settings.device_mac is None
+    report = {"via": "webapis", "level": 3, "ssid": "IoT", "ip": "127.0.0.1", "mac": "aabbccddeeff"}
+    service.app.report("wifi", report)
+    assert service.settings.device_mac == "AA:BB:CC:DD:EE:FF"
+    assert service.status.status.wifi is not None
+    assert service.status.status.wifi.mac == "AA:BB:CC:DD:EE:FF"
+    # Kept over a restart; one set in the app is not overwritten.
+    again = _service(tmp_path)
+    assert again.settings.device_mac == "AA:BB:CC:DD:EE:FF"
+    again.settings.device_mac = "11:22:33:44:55:66"
+    again.app.report("wifi", {**report, "mac": "AA:BB:CC:DD:EE:00"})
+    assert again.settings.device_mac == "11:22:33:44:55:66"
+
+
+def test_a_screenshot_is_taken_only_when_asked_and_on_the_charger(tmp_path: Path) -> None:
+    from frame_server.web import create_app
+
+    service = _service(tmp_path)
+    app = create_app(service.settings)
+    with TestClient(app, client=PANEL_CLIENT) as client:
+        svc = app.state.service
+        first = client.get("/panel/next", params={"reason": "start", "charging": "true"})
+        assert not first.json()["capture"]
+        assert client.get("/api/debug/panel-capture.jpg").status_code == 404
+        asked = client.post("/api/debug/panel-capture").json()
+        assert asked == {"asked": True, "on_charger": True}
+        poll = client.get("/panel/next", params={"reason": "poll", "charging": "true"})
+        assert poll.json()["action"] == "stay" and poll.json()["capture"]
+        again = client.get("/panel/next", params={"reason": "poll", "charging": "true"})
+        assert not again.json()["capture"]  # once
+        assert not client.post("/panel/capture", content=b"<html>").json()["saved"]
+        jpeg = b"\xff\xd8\xff\xe0screenshot"
+        assert client.post("/panel/capture", content=jpeg).json()["saved"]
+        shot = client.get("/api/debug/panel-capture.jpg")
+        assert shot.status_code == 200 and shot.content == jpeg
+        assert svc.app.capture_path.exists()
+        # The probe is longer than the other reports and reaches the log whole.
+        probe = {"event": "probe", "part": "methods", "methods": {"epaper": "x" * 9000}}
+        assert client.post("/panel/report", content=json.dumps(probe)).status_code == 200
+
+
+async def test_new_firmware_is_told(tmp_path: Path, server_ssl: ssl.SSLContext) -> None:
+    firmware = {"now": b"S-RSEDWWC-1130.7"}
+
+    def handler(command: int, data: bytes) -> tuple[bool, bytes]:
+        if command == 0x1B:
+            return True, bytes([0x73, 0x00, 0x01, 0x01, 80, 0x02, 0x00])
+        if command == 0x0E:
+            return True, firmware["now"]
+        return True, b"\x01" if command == 0xB5 else b"X"
+
+    panel = FakePanel(server_ssl, handler=handler)
+    await panel.start()
+    try:
+        service = _service(tmp_path, panel.port)
+        told: list[tuple[str, str]] = []
+        service.status.on_firmware = lambda before, now: told.append((before, now))
+        await service.status.refresh(force=True)
+        assert service.status.status.firmware == "S-RSEDWWC-1130.7" and told == []
+        firmware["now"] = b"S-RSEDWWC-1131.2"
+        again = _service(tmp_path, panel.port)  # read once per run: a restart reads it again
+        again.status.on_firmware = lambda before, now: told.append((before, now))
+        await again.status.refresh(force=True)
+        assert told == [("S-RSEDWWC-1130.7", "S-RSEDWWC-1131.2")]
+    finally:
+        await panel.stop()

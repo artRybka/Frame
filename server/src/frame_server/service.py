@@ -199,6 +199,8 @@ class FrameService:
         # The owner's phone hears of the battery, failed sends, new pictures.
         self.notifier = Notifier(settings.data_dir, self.library)
         self.status.on_battery_level = self.notifier.battery
+        self.status.on_firmware = self.notifier.firmware
+        self.status.on_mac = self.panel_config.learn_mac
         self.progress.on_end = lambda stage, title, message: self.notifier.ended(
             stage == Stage.FAILED, title, message
         )

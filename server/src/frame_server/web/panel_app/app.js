@@ -155,6 +155,12 @@
     return q;
   }
 
+  function onCharger() {
+    var d = (typeof webapis !== "undefined" && webapis.deviced) ? webapis.deviced : null;
+    var source = d ? call(function () { return d.getBatteryPowerSource(); }) : null;
+    return !!(source && source.ok && source.value && source.value !== "NO_CHARGER");
+  }
+
   // Up again after a sleep with the Wi-Fi off: back on in standby, so that
   // Wake-on-LAN reaches the panel should it fall asleep on its own (E16),
   // and the auto sleep back to what it was.
@@ -211,6 +217,7 @@
         data.ssid = call(function () { return n.getWiFiSsid(); }).value;
         data.ip = call(function () { return n.getIp(); }).value;
         data.frequency = call(function () { return n.getWiFiFrequency(); }).value;
+        data.mac = call(function () { return n.getMac(); }).value;
         report("wifi", data);
         return;
       }
@@ -250,6 +257,7 @@
       "&code=" + encodeURIComponent(CODE) +
       "&screen=" + window.innerWidth + "x" + window.innerHeight + "@" + (window.devicePixelRatio || 1) +
       "&shown=" + encodeURIComponent(shown || "") +
+      "&now=" + Date.now() +
       (reason === "resume" || reason === "wake" ? "&gap=" + Math.round(gap / 1000) : "") +
       battery();
     attempt(q, 1);
@@ -292,6 +300,14 @@
     // On the charger: spare alarms, so that unplugged (it sleeps at once,
     // without the Wi-Fi) the frame wakes by itself (panel_app.py).
     if (answer.action === "stay" && ep && answer.wake_ms) spare([answer.wake_ms].concat(answer.wakes_ms || []));
+    // The probe and a screenshot only on the charger: "stay" is also a
+    // frame kept awake from the iOS app on battery.
+    if (answer.action === "stay" && onCharger()) {
+      if (saved("probed") !== CODE) setTimeout(probe, 5000);
+      if (answer.capture) setTimeout(capture, 3000);
+    } else if (answer.capture) {
+      report("capture", { error: "not on the charger" });
+    }
     draw(answer, function () {
       if (answer.action === "wait" || answer.action === "stay") {
         waits = answer.action === "wait" ? waits + 1 : 0;
@@ -512,41 +528,217 @@
     report("visibility", { state: document.visibilityState });
   });
 
-  // Once per version of this code: how the launcher sees this app and
-  // Samsung's own player (VXT, whose metadata gave the 1:1 page), to compare
-  // how each is set up (2026-10-30).
+  // A Tizen object as plain data: its values sit on getters of the
+  // prototype, which JSON.stringify does not see.
+  function plain(value, depth) {
+    if (value === null || value === undefined) return null;
+    var kind = typeof value;
+    if (kind === "function") return undefined;
+    if (kind !== "object") return value;
+    if ((depth || 0) > 2) return String(value);
+    if (Array.isArray(value)) {
+      return value.map(function (v) { return plain(v, (depth || 0) + 1); });
+    }
+    var keys = [];
+    for (var k in value) keys.push(k);
+    try {
+      for (var o = value; o && o !== Object.prototype; o = Object.getPrototypeOf(o)) {
+        keys = keys.concat(Object.getOwnPropertyNames(o));
+      }
+    } catch (e) { /* the keys for-in found */ }
+    var out = {};
+    keys.forEach(function (key) {
+      if (key === "constructor" || key in out) return;
+      var v;
+      try { v = value[key]; } catch (e) { v = String(e); }
+      if (typeof v !== "function") out[key] = plain(v, (depth || 0) + 1);
+    });
+    return out;
+  }
+
+  // The names of what each webapis module offers: undocumented getters
+  // (webapis.deviced is in no Samsung reference) show up here.
+  function methods() {
+    var out = {};
+    if (typeof webapis === "undefined") return out;
+    for (var name in webapis) {
+      var module;
+      try { module = webapis[name]; } catch (e) { continue; }
+      if (!module || typeof module !== "object") continue;
+      var list = [];
+      for (var k in module) {
+        try { if (typeof module[k] === "function") list.push(k); } catch (e) { /* skip */ }
+      }
+      out[name] = list.join(" ");
+    }
+    return out;
+  }
+
+  // Once per version of this code, on the charger only: what else the
+  // panel can tell (docs/WAKE.md, "Sonda odczytów"). Read only, every call
+  // on its own, async ones with a time limit; each part a report of its
+  // own, so a part that fails does not take the others with it.
   function probe() {
-    if (typeof tizen === "undefined" || !tizen.application) return;
     if (saved("probed") === CODE) return;
     saved("probed", CODE);
-    var a = tizen.application;
-    var vxt = "PbHvnmrROv.VXPlayer";
-    var data = {
-      visibility: document.visibilityState,
-      self: call(function () { var c = a.getCurrentApplication(); return { info: c.appInfo, context: c.contextId }; }),
-      selfMeta: call(function () { return a.getAppMetaData(); }),
-      vxt: call(function () { return a.getAppInfo(vxt); }),
-      vxtMeta: call(function () { return a.getAppMetaData(vxt); }),
-      vxtCerts: call(function () { return a.getAppCerts(vxt).map(function (c) { return c.type; }); })
+    var w = typeof webapis !== "undefined" ? webapis : {};
+    var get = function (module, names) {
+      var out = {};
+      if (!module) return { missing: true };
+      names.forEach(function (n) {
+        out[n] = call(function () { return plain(module[n]()); });
+      });
+      return out;
     };
+    var now = new Date();
+    report("probe", { part: "time", date: now.toString(), utc_ms: now.getTime(),
+      offset_min: now.getTimezoneOffset(),
+      timer: get(w.timer, ["getCurrentTime", "getNTP", "getDST", "getSystemTimeSyncTimeout"]) });
+    report("probe", { part: "epaper", epaper: get(w.epaper, ["getVersion", "getAutoSleepTime",
+      "getScreenRefreshTime", "getBatteryWarningIconDisplay", "getNetworkStandby", "isScheduledPlayBootReason"]) });
+    report("probe", { part: "system",
+      systemcontrol: get(w.systemcontrol, ["getVersion", "getButtonLock", "getOnScreenMenuOrientation",
+        "getCustomAppInfo", "isCustomAppDownloaded", "getMessageDisplay", "getAutoPowerOn"]),
+      productinfo: get(w.productinfo, ["getFirmware", "getRealModel", "getModelCode", "getLocalSet",
+        "isDisplayRotatorSupported"]) });
+    report("probe", { part: "network", network: get(w.network, ["getVersion", "getActiveConnectionType",
+      "isConnectedToGateway", "getIpMode", "getIp", "getSubnetMask", "getGateway", "getDns",
+      "getSecondaryDns", "getMac", "getTVName", "getWiFiSsid", "getWiFiSignalStrengthLevel",
+      "getWiFiFrequency", "getWiFiSecurityMode", "getWiFiEncryptionType"]) });
+    report("probe", { part: "methods", methods: methods() });
+    var t = typeof tizen !== "undefined" ? tizen : null;
+    if (!t) return;
+    var info = t.systeminfo;
+    var system = {
+      memory_total: info ? call(function () { return info.getTotalMemory(); }) : null,
+      memory_free: info ? call(function () { return info.getAvailableMemory(); }) : null,
+      sensors: t.sensorservice ? call(function () { return t.sensorservice.getAvailableSensors(); }) : { missing: true }
+    };
+    var props = ["STORAGE", "MEMORY", "CPU", "DEVICE_ORIENTATION", "DISPLAY", "BUILD", "LOCALE"];
+    var left = props.length;
     var sent = false;
-    var send = function (contexts) {
+    var send = function () {
       if (sent) return;
       sent = true;
-      data.running = contexts;
-      report("probe", data);
+      report("probe", { part: "systeminfo", systeminfo: system });
+    };
+    props.forEach(function (p) {
+      var done = function (value) {
+        if (system[p] !== undefined) return;
+        system[p] = value;
+        if (--left === 0) send();
+      };
+      var r = info ? call(function () {
+        info.getPropertyValue(p, function (v) { done(plain(v)); },
+          function (e) { done({ error: String(e && e.message ? e.message : e) }); });
+      }) : { ok: false, error: "no systeminfo" };
+      if (!r.ok) done({ error: r.error });
+    });
+    // After a wake systeminfo may never call back (E16).
+    setTimeout(send, 15000);
+    var a = t.application;
+    if (!a) return;
+    var vxt = "PbHvnmrROv.VXPlayer";
+    var apps = {
+      visibility: document.visibilityState,
+      self: call(function () { var c = a.getCurrentApplication(); return { info: plain(c.appInfo), context: c.contextId }; }),
+      vxt: call(function () { return plain(a.getAppInfo(vxt)); })
+    };
+    var told = false;
+    var tell = function (running) {
+      if (told) return;
+      told = true;
+      apps.running = running;
+      report("probe", { part: "apps", apps: apps });
     };
     var r = call(function () {
       a.getAppsContext(function (list) {
-        send(list.map(function (c) { return c.appId; }));
-      }, function (e) { send({ error: String(e) }); });
+        tell(list.map(function (c) { return c.appId; }));
+      }, function (e) { tell({ error: String(e) }); });
     });
-    if (!r.ok) send(r);
-    setTimeout(function () { send({ error: "no answer" }); }, 5000);
+    if (!r.ok) tell(r);
+    setTimeout(function () { tell({ error: "no answer" }); }, 5000);
+  }
+
+  // A screenshot of the panel, only when the owner asks for one (POST
+  // /api/debug/panel-capture) and only on the charger: in E16 captureScreen
+  // did not answer within 30 s, and it may hold the page up. The file goes
+  // to the server as it is (text/plain: a simple request, no preflight).
+  function capture() {
+    var sc = (typeof webapis !== "undefined" && webapis.systemcontrol) ? webapis.systemcontrol : null;
+    if (!sc) return report("capture", { error: "no systemcontrol" });
+    var started = Date.now();
+    var shot = call(function () { return sc.captureScreen("wgt-private-tmp"); });
+    var took = Date.now() - started;
+    report("capture", { result: shot, ms: took });
+    if (!shot.ok) return;
+    var fs = (typeof tizen !== "undefined") ? tizen.filesystem : null;
+    if (!fs) return report("capture", { error: "no filesystem" });
+    var upload = function (blob, how) {
+      var x = new XMLHttpRequest();
+      x.open("POST", SERVER + "/panel/capture", true);
+      x.setRequestHeader("Content-Type", "text/plain");
+      x.timeout = 120000;
+      x.onloadend = function () { report("capture", { uploaded: x.status, bytes: blob.size, via: how }); };
+      x.send(blob);
+    };
+    // The newer file API (Tizen 5+), else the older one.
+    var r = call(function () {
+      var h = fs.openFile("wgt-private-tmp/ScreenCapture.jpg", "r");
+      var blob = h.readBlob();
+      h.close();
+      return blob;
+    });
+    if (r.ok && r.value) return upload(r.value, "openFile");
+    var older = call(function () {
+      fs.resolve("wgt-private-tmp/ScreenCapture.jpg", function (file) {
+        file.openStream("r", function (stream) {
+          var bin = atob(stream.readBase64(stream.bytesAvailable));
+          stream.close();
+          var bytes = new Uint8Array(bin.length);
+          for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+          upload(new Blob([bytes], { type: "image/jpeg" }), "resolve");
+        }, function (e) { report("capture", { error: "openStream: " + String(e) }); });
+      }, function (e) { report("capture", { error: "resolve: " + String(e) }); }, "r");
+    });
+    report("capture", { openFile: r.ok ? "empty" : r.error, resolve: older.ok ? "asked" : older.error });
+  }
+
+  // The button on the frame and the battery as they change: for the log
+  // first (2026-11-04), to see whether they reach the page at all.
+  var keysTold = 0;
+  function onKey(e) {
+    if (keysTold >= 20) return;
+    keysTold++;
+    report("key", { type: e.type, key: e.key, code: e.keyCode, name: e.keyName });
+  }
+  document.addEventListener("keydown", onKey);
+  window.addEventListener("tizenhwkey", onKey);
+
+  var batteryTold = 0;
+  function watchBattery() {
+    var d = (typeof webapis !== "undefined" && webapis.deviced) ? webapis.deviced : null;
+    if (!d) return;
+    var tell = function (what) {
+      return function () {
+        if (batteryTold >= 60) return;
+        batteryTold++;
+        var args = [];
+        for (var i = 0; i < arguments.length; i++) args.push(plain(arguments[i]));
+        report("battery", {
+          what: what, args: args,
+          level: call(function () { return d.getBatteryCapacity(); }).value,
+          source: call(function () { return d.getBatteryPowerSource(); }).value
+        });
+      };
+    };
+    var a = call(function () { return d.addBatteryCapacityListener(tell("capacity")); });
+    var b = call(function () { return d.addChargingStatusListener(tell("charging")); });
+    if (!a.ok || !b.ok) report("battery", { what: "listen", capacity: a, charging: b });
   }
 
   window.FrameApp = { ask: ask, version: CODE };
   setInterval(heartbeat, HEARTBEAT_MS);
   ask("start");
-  setTimeout(probe, 30000);
+  watchBattery();
 })();

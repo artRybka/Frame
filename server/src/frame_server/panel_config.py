@@ -8,6 +8,7 @@ and status checks pick a change up with their next session.
 
 from __future__ import annotations
 
+import logging
 import re
 from typing import TYPE_CHECKING
 
@@ -17,7 +18,11 @@ if TYPE_CHECKING:
     from .config import Settings
     from .library import Library
 
+log = logging.getLogger(__name__)
+
 STATE_KEY = "panel_config"
+# The MAC the frame's app read on the panel, used while none is set.
+LEARNT_MAC_KEY = "panel_mac_learnt"
 _HOST = re.compile(r"^[A-Za-z0-9.\-]+$")  # an IPv4 address or a name
 _HEX = re.compile(r"^[0-9A-Fa-f]{12}$")
 
@@ -81,6 +86,7 @@ class PanelConfigStore:
         saved = library.get_state(STATE_KEY)
         if saved:
             self._apply(PanelConfig.model_validate(saved))
+        self._fill_mac()
 
     @property
     def current(self) -> PanelConfig:
@@ -123,7 +129,28 @@ class PanelConfigStore:
         old = self.current
         self.library.delete_state(STATE_KEY)
         self._apply(self.defaults)
+        self._fill_mac()
         return (old.host, old.port) != (self.defaults.host, self.defaults.port)
+
+    def learn_mac(self, mac: str) -> None:
+        """The panel's own MAC (its app read it): Wake-on-LAN uses it while
+        none is set; one set that differs is only logged, it may be right
+        for another way in (Ethernet)."""
+        learnt = self.library.get_state(LEARNT_MAC_KEY)
+        if learnt != mac:
+            self.library.set_state(LEARNT_MAC_KEY, mac)
+            current = self.settings.device_mac
+            if current and current != mac:
+                log.warning("the panel says its MAC is %s, Wake-on-LAN goes to %s", mac, current)
+        if not self.settings.device_mac:
+            log.info("the panel's MAC %s is used for Wake-on-LAN", mac)
+            self.settings.device_mac = mac
+
+    def _fill_mac(self) -> None:
+        if not self.settings.device_mac:
+            learnt = self.library.get_state(LEARNT_MAC_KEY)
+            if isinstance(learnt, str):
+                self.settings.device_mac = learnt
 
     def _apply(self, config: PanelConfig) -> None:
         s = self.settings
