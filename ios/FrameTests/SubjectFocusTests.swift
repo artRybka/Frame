@@ -15,6 +15,23 @@ final class SubjectFocusTests: XCTestCase {
         XCTAssertEqual(FocusedFill.shift(0.98, length: 300, box: 100), -200)
     }
 
+    /// "Teraz": the strips' tiles crop portraits around the face; a work
+    /// already about the tile's shape shows at once, centred.
+    func testNowStripCropsOnlyWorksOfAnotherShape() {
+        func item(_ width: Int?, _ height: Int?, aspect: Double? = nil) -> ItemSummary {
+            ItemSummary(
+                id: "w", kind: .artwork, source: "test", title: "", artist: "",
+                dateText: "", year: nil, colors: [], width: width, height: height,
+                favorite: false, aspect: aspect
+            )
+        }
+        XCTAssertTrue(Strip.cropsSubject(item(800, 1000)))  // a portrait
+        XCTAssertTrue(Strip.cropsSubject(item(2000, 900)))  // a panorama
+        XCTAssertFalse(Strip.cropsSubject(item(1300, 1000)))  // the tile's shape
+        XCTAssertFalse(Strip.cropsSubject(item(nil, nil, aspect: 1.25)))
+        XCTAssertTrue(Strip.cropsSubject(item(nil, nil)))  // not known yet
+    }
+
     func testPlainPictureFindsTheMiddle() async {
         let image = UIGraphicsImageRenderer(size: CGSize(width: 40, height: 80)).image { context in
             UIColor.gray.setFill()

@@ -23,6 +23,9 @@
   bez opisu. Opis musi mieć co najmniej 120 znaków i 10 słów, które
   mówią coś więcej niż tytuł, autor i data. Takie dzieła dostają nową
   notkę same, w tle.
+- Miniatury w Teraz („Następne” i „Ostatnio na ramce”) są kadrowane
+  wokół twarzy albo tego, co przyciąga wzrok, tak jak kafelki Odkrywaj,
+  zamiast przez środek. Portret nie traci już głowy.
 
 ## 1.94.1
 

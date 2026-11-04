@@ -1163,6 +1163,17 @@ struct Strip: View {
     /// Who put each picture on the frame, and when ("Ostatnio na ramce").
     var marks: [String: ShownMark] = [:]
 
+    static let tile = CGSize(width: 120, height: 92)
+
+    /// The tile cuts off enough of the work for the crop to matter: not
+    /// the same shape within a tenth, or a shape not known yet.
+    static func cropsSubject(_ item: ItemSummary) -> Bool {
+        let known = ((item.width ?? 0) > 0 && (item.height ?? 0) > 0) || (item.aspect ?? 0) > 0
+        guard known else { return true }
+        let ratio = item.aspectRatio / (tile.width / tile.height)
+        return ratio < 0.9 || ratio > 1.1
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Eyebrow(title)
@@ -1171,8 +1182,16 @@ struct Strip: View {
                     ForEach(items) { item in
                         NavigationLink(value: item.id) {
                             VStack(alignment: .leading, spacing: 6) {
-                                ArtImage(ref: .thumb(item.id), placeholder: item.placeholderColor, maxPixel: 400)
-                                    .frame(width: 120, height: 92)
+                                ArtImage(
+                                    ref: .thumb(item.id),
+                                    placeholder: item.placeholderColor,
+                                    maxPixel: 400,
+                                    // Like Odkrywaj's tiles: a portrait is
+                                    // cropped around the face, not through
+                                    // the middle.
+                                    subjectFocus: Self.cropsSubject(item)
+                                )
+                                    .frame(width: Self.tile.width, height: Self.tile.height)
                                     .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
                                     .overlay(alignment: .topLeading) {
                                         if queued.contains(item.id) {
