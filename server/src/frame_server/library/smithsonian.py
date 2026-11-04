@@ -21,6 +21,12 @@ IDS = "https://ids.si.edu/ids/deliveryService"
 UNITS = ("SAAM", "NPG", "FSG", "HMSG", "CHNDM", "NMAfA")  # FSG finds nothing yet
 
 
+def key_header(key: str) -> dict[str, str]:
+    """The api.data.gov key as its docs allow it: in a header, so that it
+    stays out of the server's log (an address lands there whole)."""
+    return {"X-Api-Key": key}
+
+
 class Smithsonian(Museum):
     key = "si"
     name = "Smithsonian"
@@ -125,7 +131,8 @@ class Smithsonian(Museum):
         query = " AND ".join([*words, "online_media_type:Images", f"({units})"])
         resp = self.http.get(
             f"{self.api}/category/art_design/search",
-            params={"q": query, "start": (page - 1) * limit, "rows": limit, "api_key": key},
+            params={"q": query, "start": (page - 1) * limit, "rows": limit},
+            headers=key_header(key),
         )
         resp.raise_for_status()
         body = resp.json().get("response") or {}
@@ -154,7 +161,7 @@ class Smithsonian(Museum):
         key = self.access.smithsonian_key
         if not key:
             return None
-        resp = self.http.get(f"{self.api}/content/{source_id}", params={"api_key": key})
+        resp = self.http.get(f"{self.api}/content/{source_id}", headers=key_header(key))
         if resp.status_code == 404:
             return None
         resp.raise_for_status()

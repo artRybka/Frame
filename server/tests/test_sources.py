@@ -126,7 +126,8 @@ def test_europeana_takes_works_free_in_the_eu() -> None:
     assert matisse.thumb_url.endswith("&size=w400")
     assert items[1].license == "Public Domain Mark 1.0"
     params = sent[0].url.params
-    assert params["wskey"] == "key" and params.get_list("qf") == [
+    assert sent[0].headers["x-api-key"] == "key" and "wskey" not in params
+    assert params.get_list("qf") == [
         "TYPE:IMAGE",
         "contentTier:(2 OR 3 OR 4)",
         '-PROVIDER:"OpenUp!"',  # botany: roses named "Claude Monet"

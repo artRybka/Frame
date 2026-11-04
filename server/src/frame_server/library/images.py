@@ -30,7 +30,13 @@ THUMB_SPARE = 500
 #: Downloads at once from one host. Commons answers more than two parallel
 #: media requests with 429; museum CDNs throttle bursts too.
 #: The AIC asks for one picture at a time (its API docs, "Scraping Images").
-HOST_LIMITS = {"upload.wikimedia.org": 2, "commons.wikimedia.org": 2, "www.artic.edu": 1}
+#: Commons' renditions (Special:FilePath) come from thumb.wikimedia.org.
+HOST_LIMITS = {
+    "upload.wikimedia.org": 2,
+    "thumb.wikimedia.org": 2,
+    "commons.wikimedia.org": 2,
+    "www.artic.edu": 1,
+}
 HOST_LIMIT = 4
 #: Extra downloads at once for what the owner looks at now (the card's
 #: original, a preview), so it never waits for the background's; hosts with

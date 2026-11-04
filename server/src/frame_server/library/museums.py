@@ -33,6 +33,7 @@ from .lifespan import (
     WIKIDATA_ENTITY,
     LifeDates,
     death_in_name,
+    europeana_key,
     free_in_eu,
 )
 from .markup import (
@@ -60,9 +61,11 @@ def strip_html(text: str | None) -> str:
 
 
 def client() -> httpx.Client:
-    return httpx.Client(
+    """A client for every source: our name and address in the headers
+    (Wikimedia and the AIC ask for them), the shared :data:`guard`'s paces,
+    rests and limits."""
+    return guard.client(
         headers={"User-Agent": USER_AGENT, "AIC-User-Agent": USER_AGENT},
-        event_hooks=guard.hooks(),
         timeout=30,
         follow_redirects=True,
     )
@@ -1104,7 +1107,6 @@ class Europeana(Museum):
         if start + limit > self.random_depth + 1:
             return 0, []
         params: list[tuple[str, str | int | float | bool | None]] = [
-            ("wskey", self.access.europeana_key),
             ("query", query.strip() or "*"),
             ("qf", "TYPE:IMAGE"),
             # Tier 1 is anything from 0.1 megapixel: thumbnails, not pictures.
@@ -1117,7 +1119,8 @@ class Europeana(Museum):
             ("rows", limit),
             ("start", start),
         ]
-        resp = self.http.get(self.api, params=params)
+        headers = europeana_key(self.access.europeana_key)
+        resp = self.http.get(self.api, params=params, headers=headers)
         resp.raise_for_status()
         body = resp.json()
         items = [i for d in body.get("items") or [] if (i := self._map(d))]

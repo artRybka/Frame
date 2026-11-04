@@ -16,10 +16,14 @@ from frame_server.library.aic import aic_width
 from frame_server.library.hosts import (
     PROBE_EVERY,
     REST,
+    WIKIMEDIA,
+    WIKIMEDIA_MEDIA,
     HostGuard,
     Resting,
     as_asked,
     is_urgent,
+    lane,
+    retry_after,
     urgently,
     walled,
 )
@@ -298,3 +302,105 @@ def test_urgency_follows_work_into_worker_threads() -> None:
             assert pool.submit(as_asked(is_urgent)).result() is True
             assert pool.submit(is_urgent).result() is False  # not passed on by itself
     assert is_urgent() is False
+
+
+def test_wikimedia_wikis_count_as_one_host() -> None:
+    """Wikimedia's robot policy limits programs without an account across
+    all wikis together: Commons, Wikidata and every Wikipedia share a lane."""
+    assert lane("commons.wikimedia.org") == lane("www.wikidata.org") == WIKIMEDIA
+    assert lane("pl.wikipedia.org") == WIKIMEDIA
+    # Media files: a lane of their own, originals and renditions together.
+    assert lane("upload.wikimedia.org") == lane("thumb.wikimedia.org") == WIKIMEDIA_MEDIA
+    assert lane("api.artic.edu") == "api.artic.edu"
+
+
+def test_a_limited_lane_sends_one_request_at_a_time() -> None:
+    """The Action API (and the AIC) one request at a time: the next waits
+    until the one under way is answered, whichever wiki it goes to."""
+    guard = HostGuard({}, {WIKIMEDIA: 1})
+    under_way = 0
+    most = 0
+    lock = threading.Lock()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal under_way, most
+        with lock:
+            under_way += 1
+            most = max(most, under_way)
+        time.sleep(0.05)
+        with lock:
+            under_way -= 1
+        return httpx.Response(200, json={})
+
+    hosts = ["commons.wikimedia.org", "www.wikidata.org", "pl.wikipedia.org"] * 3
+    with (
+        guard.client(transport=httpx.MockTransport(handler)) as http,
+        ThreadPoolExecutor(6) as pool,
+    ):
+        codes = list(pool.map(lambda h: http.get(f"https://{h}/w/api.php").status_code, hosts))
+    assert codes == [200] * len(hosts) and most == 1
+
+
+def test_a_failed_request_gives_its_slot_back() -> None:
+    guard = HostGuard({}, {"api.artic.edu": 1})
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise httpx.ConnectTimeout("slow", request=request)
+        return httpx.Response(200, json={})
+
+    with guard.client(transport=httpx.MockTransport(handler)) as http:
+        with pytest.raises(httpx.ConnectTimeout):
+            http.get(AIC_SEARCH)
+        done = ThreadPoolExecutor(1).submit(http.get, AIC_SEARCH)
+        assert done.result(timeout=5).status_code == 200
+
+
+def test_a_redirect_within_the_lane_does_not_wait_for_itself() -> None:
+    """Special:FilePath on Commons sends on to the file: the slot goes back
+    with the redirect, before the next hop asks for one."""
+    guard = HostGuard({}, {WIKIMEDIA: 1, WIKIMEDIA_MEDIA: 1})
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "commons.wikimedia.org":
+            if "FilePath" in request.url.path:
+                return httpx.Response(302, headers={"location": "https://www.wikidata.org/x"})
+            return httpx.Response(302, headers={"location": "https://upload.wikimedia.org/a.jpg"})
+        if request.url.host == "www.wikidata.org":
+            return httpx.Response(302, headers={"location": "https://commons.wikimedia.org/y"})
+        return httpx.Response(200, content=b"jpeg")
+
+    with guard.client(transport=httpx.MockTransport(handler), follow_redirects=True) as http:
+        done = ThreadPoolExecutor(1).submit(
+            http.get, "https://commons.wikimedia.org/wiki/Special:FilePath/a.jpg"
+        )
+        assert done.result(timeout=5).content == b"jpeg"
+    assert guard._busy == {WIKIMEDIA: 0, WIKIMEDIA_MEDIA: 0}
+
+
+def test_a_429_is_waited_out_as_the_host_asks() -> None:
+    """Every source asks for its Retry-After to be kept: the host is not
+    asked until then, not even the once-a-minute look."""
+    guard, clock = _guard({})
+    answer = [httpx.Response(429, headers={"retry-after": "120"})]
+    sent: list[str] = []
+    url = "https://api.si.edu/openaccess/api/v1.0/search"
+    with _client(guard, answer, sent) as http:
+        assert http.get(url).status_code == 429
+        assert guard.resting("api.si.edu") == pytest.approx(120)
+        clock.now += PROBE_EVERY
+        with pytest.raises(Resting):
+            http.get(url)
+        assert len(sent) == 1
+        clock.now += 61
+        answer[0] = httpx.Response(200, json={})
+        assert http.get(url).status_code == 200
+        assert len(sent) == 2
+    # Without a Retry-After nothing is assumed; a date works too.
+    plain = httpx.Response(429, request=httpx.Request("GET", url))
+    assert retry_after(plain) is None
+    dated = httpx.Response(429, headers={"retry-after": "Wed, 21 Oct 2015 07:28:00 GMT"})
+    assert retry_after(dated) == 0.0

@@ -328,7 +328,7 @@ def test_smithsonian_needs_a_key_and_takes_cc0_pictures() -> None:
     item = items[0]
     assert item.museum == "Smithsonian American Art Museum" and item.year == 1909
     assert item.image_url == "https://ids.si.edu/ids/deliveryService?id=SAAM-1909.7.35_1&max=2560"
-    assert sent[0].url.params["api_key"] == "k"
+    assert sent[0].headers["x-api-key"] == "k" and "api_key" not in sent[0].url.params
     assert 'date:"1880s" OR date:"1890s"' in sent[1].url.params["q"]
 
 
@@ -494,7 +494,8 @@ def test_a_source_key_is_asked_of_its_service() -> None:
     def answer(request: httpx.Request) -> httpx.Response:
         if request.method == "GET" and not request.url.params.get("q"):
             return httpx.Response(400)  # the search asked without its words
-        key = request.headers.get("auth-token") or request.url.params.get("api_key")
+        key = request.headers.get("auth-token") or request.headers.get("x-api-key")
+        assert "api_key" not in request.url.params  # out of the server's log
         if key == "down":
             return httpx.Response(503)
         return httpx.Response(200 if key == "good" else 403, json={})
