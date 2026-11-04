@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.94.2
+
+- Miniatury w Teraz („Następne” i „Ostatnio na ramce”) są kadrowane
+  wokół twarzy albo tego, co przyciąga wzrok, tak jak kafelki Odkrywaj,
+  zamiast przez środek. Portret nie traci już głowy.
+
 ## 1.94.1
 
 - Nowe studia i Studium dnia nie sprawdzają już osobno kadrów detali,
