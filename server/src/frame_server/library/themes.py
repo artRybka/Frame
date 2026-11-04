@@ -92,10 +92,54 @@ class Theme:
         if self.catalogue:
             return []
         if self.queries:
-            return list(self.queries)
+            return spread_searches(list(self.queries), self.artists)
         if self.artists:
-            return [(s, a) for a in self.artists for s in SEARCH_SOURCES]
+            searches = [(s, a) for a in self.artists for s in SEARCH_SOURCES]
+            return spread_searches(searches, self.artists)
         return [(s, q) for q in museum_queries(list(self.terms)) for s in SEARCH_SOURCES]
+
+
+#: Searches in a row that ask for different painters, where a theme has
+#: enough of them (a round of the theme stream asks four at once).
+ARTIST_SPREAD = 3
+
+
+def spread_searches(
+    searches: list[tuple[str, str]], artists: tuple[str, ...] | list[str]
+) -> list[tuple[str, str]]:
+    """``searches`` reordered so that the ones asked together look for
+    different painters, in different museums where they can: a set's first
+    round brings four painters, not two museums' worth of one, and a set of
+    a subject does not ask one museum twice in a row. Each next
+    search is for the painter asked for least so far, none of the last
+    :data:`ARTIST_SPREAD` if it can be, not in the last search's museum if
+    it can be, and otherwise the earliest. Searches naming no painter count
+    as their own (then only museums take turns)."""
+    folded = [(fold(a), fold(a.split()[-1])) for a in artists if a.split()]
+
+    def painter(query: str) -> str:
+        text = fold(query)
+        return next((name for name, last in folded if name in text or last in text), text)
+
+    left = [(source, query, painter(query)) for source, query in searches]
+    done: list[tuple[str, str, str]] = []
+    asked: Counter[str] = Counter()
+    while left:
+        recent = {who for _, _, who in done[-ARTIST_SPREAD:]}
+        museum = done[-1][0] if done else None
+        index = min(
+            range(len(left)),
+            key=lambda i: (
+                asked[left[i][2]],
+                left[i][2] in recent,
+                left[i][0] == museum,
+                i,
+            ),
+        )
+        picked = left.pop(index)
+        asked[picked[2]] += 1
+        done.append(picked)
+    return [(source, query) for source, query, _ in done]
 
 
 def _pack_queries(key: str) -> tuple[tuple[str, str], ...]:

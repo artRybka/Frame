@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.98.0
+
+- Zestawy w Odkrywaj (np. „Polskie międzywojnie”) są wymieszane: obok
+  siebie nie stoją dwa dzieła jednego autora ani jednego muzeum, o ile
+  jest czym je przedzielić, a rodzaje (obrazy, grafiki, rysunki) też się
+  przeplatają. U każdego autora dzieła idą od najwcześniejszego, więc
+  całość lekko płynie w czasie. Pierwsza porcja zestawu przynosi od razu
+  kilku różnych autorów, a pokazane dzieła nie przeskakują.
+- Wiersze „Motyw dnia” i „Dawno ich nie było” są wymieszane tak samo.
+
 ## 1.97.0
 
 - Odkrywaj → Kolor i nastrój pokazuje tylko obrazy, rysunki i akwarele,
