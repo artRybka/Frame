@@ -564,8 +564,14 @@ async def test_a_new_package_is_installed_by_a_reboot(
         # Installed, not started: the server starts it a minute later.
         await service.power.tick(now + timedelta(seconds=70))
         assert panel.received == START
-        # Once per version: a package that does not install reboots no more.
+        # Not again at once; again 10 min later while the older one asks
+        # (the answer may not have reached it), at most three times, so a
+        # package that does not install does not keep rebooting the panel.
         assert app.answer(hello, now=now + timedelta(minutes=2)).action == "stay"
+        assert app.answer(hello, now=now + timedelta(minutes=11)).action == "reboot"
+        assert app.answer(hello, now=now + timedelta(minutes=22)).action == "reboot"
+        assert app.answer(hello, now=now + timedelta(minutes=40)).action == "stay"
+        assert app.answer(hello, now=now + timedelta(hours=5)).action == "stay"
         new = AppHello(reason="start", build="2.0.1", charging=True)
         assert app.answer(new, now=now + timedelta(minutes=3)).action == "stay"
     finally:
@@ -926,7 +932,7 @@ async def test_spare_alarms_on_the_charger_wake_a_frame_unplugged(
     """Mateusz, 2026-10-29: unplugged, the frame sleeps at once without the
     Wi-Fi. On the charger in the online mode the app keeps spare alarms, so
     it wakes by itself and the server starts the app, back to the usual
-    sleep in the network. Not in the economy mode."""
+    sleep in the network. In the economy mode only the next change."""
 
     async def presence(host: str) -> bool | None:
         return False
@@ -966,13 +972,25 @@ async def test_spare_alarms_on_the_charger_wake_a_frame_unplugged(
         await service.power.tick(_at("2026-10-29T11:01:10"))
         assert panel.received == START
 
-        # Economy: no spare alarms (sleeping without the Wi-Fi is the point).
+        # Economy: just the next change (2026-11-04: unplugged there with no
+        # alarm, the frame slept until the button), never under 5 min ahead.
         service.player.save_settings(
-            FrameSettings(change_times=["07:00", "19:00"], quiet_start=None, power_mode="economy")
+            FrameSettings(
+                change_times=["07:00", "19:00"],
+                quiet_start=None,
+                power_mode="economy",
+                check_every_hours=0,
+            )
         )
         service.status.status.power_source = "ac"
-        answer = app.answer(AppHello(charging=True), now=_at("2026-10-29T12:00"))
-        assert answer.action == "stay" and answer.wake_ms is None and answer.wakes_ms == []
+        noon = _at("2026-10-29T12:00")
+        change = app.next_wake(noon).isoformat(timespec="seconds")
+        answer = app.answer(AppHello(charging=True), now=noon)
+        assert answer.action == "stay" and answer.wakes_ms == []
+        assert answer.wake_ms == _ms(change) and app.state.spare[-1] == change
+        soon = app.next_wake(noon) - timedelta(minutes=2)
+        answer = app.answer(AppHello(charging=True), now=soon)
+        assert answer.wake_ms is None or answer.wake_ms >= _ms(change) + 5 * 60000
     finally:
         await panel.stop()
 

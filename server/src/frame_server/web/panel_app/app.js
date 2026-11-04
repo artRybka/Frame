@@ -66,6 +66,8 @@
 
   var ep = (typeof webapis !== "undefined" && webapis.epaper) ? webapis.epaper : null;
   var busy = false;
+  var rebooting = 0;  // rebootDevice() called (ms): the panel goes down
+  var REBOOT_WAIT_MS = 5 * 60000;  // still up after this: ask again
   var busySince = 0;
   var gap = 0;  // the last heartbeat gap: how long the panel was down
   var waits = 0;
@@ -250,6 +252,14 @@
   }
 
   function ask(reason) {
+    // Going down to install: no question, so no sleep either.
+    var left = rebooting ? rebooting + REBOOT_WAIT_MS - Date.now() : 0;
+    if (left > 0) {
+      clearTimeout(timer);
+      timer = setTimeout(function () { ask("retry"); }, left);
+      return;
+    }
+    rebooting = 0;
     if (sleptAt) saved("alarms", null);  // down and up again since: gone
     sleptAt = 0;
     if (busy) return;
@@ -284,11 +294,18 @@
   }
 
   // The charger is in (getBatteryPowerSource); null when unknown.
+  // On the charger, else the last reading: a failed one (the panel going
+  // down for a reboot, 2026-11-04 19:00) is no reason to sleep there.
   function plugged() {
     var d = (typeof webapis !== "undefined" && webapis.deviced) ? webapis.deviced : null;
-    if (!d) return null;
-    var source = call(function () { return d.getBatteryPowerSource(); });
-    return source.ok && source.value ? source.value !== "NO_CHARGER" : null;
+    var source = d ? call(function () { return d.getBatteryPowerSource(); }) : null;
+    if (source && source.ok && source.value) {
+      var now = source.value !== "NO_CHARGER";
+      saved("plugged", now);
+      return now;
+    }
+    var last = saved("plugged");
+    return typeof last === "boolean" ? last : null;
   }
 
   // No server: sleep and try again later, a bit later each time. On the
@@ -549,12 +566,18 @@
 
   // A newer package is on the server: the launcher installs it as the panel
   // boots (and does not start it; the server does over MDC, E16).
+  // The panel takes a while to go down after rebootDevice() and the page
+  // runs on: a question timing out then put it to sleep instead, with no
+  // alarm, on the charger (2026-11-04 18:59, white until the button).
   function reboot() {
     var sc = (typeof webapis !== "undefined" && webapis.systemcontrol) ? webapis.systemcontrol : null;
     saved("screen", null);  // the boot and the install draw over it
+    clearTimeout(timer);
+    rebooting = Date.now();
     report("reboot", {}, function () {
       var r = sc ? call(function () { return sc.rebootDevice(); }) : { ok: false, error: "no systemcontrol" };
       if (!r.ok) {
+        rebooting = 0;
         report("error", { message: "rebootDevice failed", detail: r.error });
         timer = setTimeout(function () { ask("retry"); }, 60000);
       }

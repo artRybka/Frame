@@ -146,6 +146,10 @@ DOWN_AFTER_REPORT = timedelta(seconds=150)
 # at most this often.
 FROZEN_STARTS = 2
 REINSTALL_EVERY = timedelta(minutes=30)
+# A reboot for a newer package that did not happen (the app still asks
+# with the older one): told again this much later, at most this many times.
+REBOOT_RETRY = timedelta(minutes=10)
+REBOOT_TRIES = 3
 # Every MDC session keeps the panel up: starting a stuck app every few
 # minutes kept it awake all night on battery (2026-10-30, 97 % to 58 %).
 # Past ``FROZEN_STARTS`` on battery the starts space out, doubling from
@@ -173,8 +177,8 @@ ICON = base64.b64decode(
 )
 # Unplugged, the panel sleeps at once without the Wi-Fi and without a word to
 # the app (E8, 2026-10-29): nothing but the button would wake it. So on the
-# charger the app keeps spare alarms (in the online mode: in the economy one
-# sleeping without the Wi-Fi is the point) at every half hour (at least
+# charger the app keeps spare alarms (in the economy mode just the next
+# change or check, 2026-11-04) at every half hour (at least
 # ``SPARE_LEAD`` ahead, an alarm due as the panel goes down being lost, E16):
 # unplugged, the next one wakes it, the server starts the app, and from then
 # on it sleeps the usual way. Alarms cannot be cancelled: the ones left ring
@@ -210,6 +214,8 @@ class AppState(BaseModel):
     standby: bool = True  # network standby through that sleep
     missed_wake: str | None = None  # an alarm it did not show up for
     reboot_for: str | None = None  # the package version it last rebooted to install
+    reboot_at: str | None = None  # when it was told to, for that version (ISO)
+    reboot_tries: int = 0  # times told to, for that version
     installed_at: str | None = None  # the server last started it over MDC (ISO)
     mode: str | None = None  # the power mode it went to sleep in
     slept_at: str | None = None  # told to sleep (ISO)
@@ -648,7 +654,7 @@ class PanelApp:
             return self._reboot(None, now, common)
         package = self.package()
         newer = package is not None and hello.build and hello.build != package.version
-        if newer and package is not None and self.state.reboot_for != package.version:
+        if newer and package is not None and self._reboot_due(package.version, now):
             return self._reboot(package.version, now, common)
         if power.change_due(now):
             return self._awake(NextAnswer(action="wait", wait_s=_s(RETRY), **common))
@@ -665,8 +671,8 @@ class PanelApp:
                 self.capture_requested = False
                 answer.capture = True
                 log.info("the frame's app is asked for a screenshot")
-            if charger and service.player.settings.power_mode == "online":
-                spare = self._spare(now)
+            spare = self._spare(now) if charger else []
+            if spare:
                 answer.wake_ms = _ms(spare[0])
                 answer.wakes_ms = [_ms(a) for a in spare[1:]]
             return self._awake(answer)
@@ -794,6 +800,20 @@ class PanelApp:
             alarms.append(check if check is not None and check < change else change)
         return [a for a in alarms if a - now <= MAX_AHEAD]
 
+    def _reboot_due(self, version: str, now: datetime) -> bool:
+        """Reboot for ``version``: once, and again ``REBOOT_RETRY`` later
+        while the app still runs the older one (the answer may not have
+        reached it: 2026-11-04 18:58, a queue of questions after a restart
+        of the server, and the app slept instead), at most ``REBOOT_TRIES``
+        times, so a package that does not install cannot keep the panel
+        rebooting."""
+        state = self.state
+        if state.reboot_for != version:
+            return True
+        if state.reboot_tries >= REBOOT_TRIES or state.reboot_at is None:
+            return False
+        return now - datetime.fromisoformat(state.reboot_at) >= REBOOT_RETRY
+
     def _reboot(self, version: str | None, now: datetime, common: dict[str, object]) -> NextAnswer:
         """The app reboots the panel (``webapis.systemcontrol.rebootDevice``):
         for a newer package (``version``), which the launcher installs at the
@@ -803,7 +823,9 @@ class PanelApp:
         not install cannot keep the panel rebooting."""
         state = self.state
         if version is not None:
+            state.reboot_tries = state.reboot_tries + 1 if state.reboot_for == version else 1
             state.reboot_for = version
+            state.reboot_at = now.isoformat(timespec="seconds")
         state.asleep = True
         state.wake_at = now.isoformat(timespec="seconds")  # back in a minute
         state.wakes = []
@@ -1335,11 +1357,18 @@ class PanelApp:
 
     def _spare(self, now: datetime) -> list[datetime]:
         """The spare alarms the app on the charger keeps set (it sets each
-        only once): the next ``SPARE_ALARMS`` half hours at least
-        ``SPARE_LEAD`` ahead. Noted as set, the future ones only."""
-        step = SPARE_EVERY.total_seconds()
-        first = (now + SPARE_LEAD).timestamp() // step * step + step
-        alarms = [datetime.fromtimestamp(first + i * step, UTC) for i in range(SPARE_ALARMS)]
+        only once): in the online mode the next ``SPARE_ALARMS`` half hours
+        at least ``SPARE_LEAD`` ahead; in the economy mode the next change
+        (or check), so a frame unplugged sleeps without the Wi-Fi until then
+        (2026-11-04 20:31: unplugged with none, it slept until the button).
+        Noted as set, the future ones only."""
+        if self.service.player.settings.power_mode == "economy":
+            wake = self.next_wake(now)
+            alarms = [wake] if wake - now >= SPARE_LEAD else []
+        else:
+            step = SPARE_EVERY.total_seconds()
+            first = (now + SPARE_LEAD).timestamp() // step * step + step
+            alarms = [datetime.fromtimestamp(first + i * step, UTC) for i in range(SPARE_ALARMS)]
         state = self.state
         kept = {a for a in state.spare if datetime.fromisoformat(a) > now}
         spare = sorted(kept | {a.isoformat(timespec="seconds") for a in alarms})
