@@ -322,6 +322,13 @@ struct LiveBackend: FrameBackend {
         )
     }
 
+    func followSend(title: String, activityToken: String, sandbox: Bool) async throws {
+        try await send(
+            "/api/notifications/send-activity", method: "PUT",
+            body: SendActivityToken(token: activityToken, title: title, sandbox: sandbox)
+        )
+    }
+
     func themePage(key: String, page: Int) async throws -> ArtThemePage {
         try await get("/api/themes/\(key)", query: [URLQueryItem(name: "page", value: String(page))])
     }

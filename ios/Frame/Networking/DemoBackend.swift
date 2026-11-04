@@ -1014,6 +1014,8 @@ actor DemoBackend: FrameBackend {
     /// the card on while it runs.
     func followStudy(itemID: String, activityToken: String, sandbox: Bool) async throws {}
 
+    func followSend(title: String, activityToken: String, sandbox: Bool) async throws {}
+
     func themePlaylist(key: String, play: Bool) async throws -> ThemePlaylist {
         guard let theme = DemoDiscover.themes.first(where: { $0.key == key }) else {
             throw BackendError.notFound

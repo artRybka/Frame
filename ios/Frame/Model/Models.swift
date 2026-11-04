@@ -1767,6 +1767,14 @@ struct StudyActivityToken: Codable, Hashable, Sendable {
     var sandbox: Bool
 }
 
+/// `PUT /api/notifications/send-activity`: the send bar's push token and
+/// the picture it shows.
+struct SendActivityToken: Codable, Hashable, Sendable {
+    var token: String
+    var title: String
+    var sandbox: Bool
+}
+
 /// An idea for a playlist, `GET /api/themes`: browsed live from the
 /// museums, or made into a smart playlist with its rules.
 struct ArtTheme: Codable, Hashable, Sendable, Identifiable {

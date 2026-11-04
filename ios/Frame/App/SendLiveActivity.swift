@@ -3,7 +3,9 @@ import UIKit
 
 /// The bar following a picture to the frame, mirrored on the Lock Screen and
 /// in the Dynamic Island for when the phone goes back in the pocket. The app
-/// keeps it up to date while it runs; asleep, the bar moves on by itself
+/// keeps it up to date while it runs; its push token goes to the server
+/// (`onToken`), which moves it on and ends it with the app asleep too
+/// (notifications.py `push_send`). Without push the bar moves on by itself
 /// towards the end the server expects, and the result comes when the app is
 /// back (`AppModel.settleLiveActivity`).
 @MainActor
@@ -15,12 +17,22 @@ final class SendLiveActivity {
     private var starting: String?
     /// The work's small picture for the card (`ActivityPicture`), set by the model.
     var picture: ((String) async -> Data?)?
+    /// Leaves the card's push token on the server, with its picture's title.
+    var onToken: ((_ title: String, _ token: String) async -> Void)?
+    private var watching: Task<Void, Never>?
+    private var watchedID: String?
 
     init() {
         // One left from before the app was closed, still under way.
         activity = Activity<SendActivityAttributes>.activities.first {
             $0.activityState == .active || $0.activityState == .stale
         }
+    }
+
+    /// The card left from before the app was closed: its token goes to the
+    /// server again (set once `onToken` is).
+    func watchToken() {
+        if let activity, watchedID != activity.id { watchToken(activity) }
     }
 
     var isRunning: Bool {
@@ -87,10 +99,30 @@ final class SendLiveActivity {
         var image: Data?
         if let itemID, let picture { image = await picture(itemID) }
         if let activity, isRunning, activity.attributes.title == title { return }  // started meanwhile
-        let attributes = SendActivityAttributes(title: title, picture: image)
-        // Too big for ActivityKit after all: without the picture.
-        activity = (try? Activity.request(attributes: attributes, content: content))
-            ?? (image == nil ? nil : try? Activity.request(attributes: SendActivityAttributes(title: title), content: content))
+        // Pushed by the server too; without the push entitlement it still
+        // runs while the app is open. Too big for ActivityKit: without the picture.
+        var started: Activity<SendActivityAttributes>?
+        for picture in image == nil ? [nil] : [image, nil] {
+            let attributes = SendActivityAttributes(title: title, picture: picture)
+            started = (try? Activity.request(attributes: attributes, content: content, pushType: .token))
+                ?? (try? Activity.request(attributes: attributes, content: content))
+            if started != nil { break }
+        }
+        activity = started
+        if let started { watchToken(started) }
+    }
+
+    private func watchToken(_ activity: Activity<SendActivityAttributes>) {
+        watching?.cancel()
+        watchedID = activity.id
+        let title = activity.attributes.title
+        watching = Task { [weak self] in
+            for await data in activity.pushTokenUpdates {
+                if Task.isCancelled { return }
+                let token = data.map { String(format: "%02x", $0) }.joined()
+                await self?.onToken?(title, token)
+            }
+        }
     }
 }
 

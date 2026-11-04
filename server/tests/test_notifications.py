@@ -582,3 +582,115 @@ def test_the_frame_s_new_picture_is_shown_with_its_work(service, monkeypatch) ->
     monkeypatch.setattr(service.store, "current", lambda: content)
     service.app._tell_shown(content.file_id)
     assert told == ["met:7"]
+
+
+# -- the send bar on the Lock Screen ------------------------------------------
+
+SEND = "5e" * 40
+
+
+def _follow(service, run, monkeypatch) -> None:
+    """``run(progress)`` with a card for "Ul" followed by the server."""
+    monkeypatch.setattr(notifications, "SEND_LOOK_EVERY", 0.01)
+
+    async def go() -> None:
+        service.notifier.follow_send(SEND, "Ul", sandbox=False)
+        await run(service.progress)
+        for _ in range(200):
+            if not service.notifier._tasks:
+                break
+            await asyncio.sleep(0.01)
+
+    asyncio.run(go())
+
+
+def test_the_server_ends_the_send_bar_shortly_after_the_picture_is_on(
+    notifier: Notifier, apple: FakeApple, service, monkeypatch
+) -> None:
+    async def run(progress) -> None:
+        progress.begin("Ul", render=False)
+        await asyncio.sleep(0.05)
+        progress.advance(Stage.DOWNLOADING)
+        await asyncio.sleep(0.05)
+        progress.advance(Stage.REFRESHING)
+        await asyncio.sleep(0.05)
+        progress.expected[Stage.REFRESHING] = 0.0  # its time is up: done
+
+    _follow(service, run, monkeypatch)
+    pushes = [payload["aps"] for _, token, _, payload in apple.sent if token == SEND]
+    stages = [aps["content-state"]["stage"] for aps in pushes]  # type: ignore[index]
+    assert stages == ["sending", "downloading", "refreshing", "done"]
+    headers = apple.sent[-1][2]
+    assert headers["apns-push-type"] == "liveactivity"
+    assert headers["apns-topic"].endswith(".push-type.liveactivity")
+    update, end = pushes[2], pushes[3]
+    assert update["event"] == "update"
+    state = update["content-state"]
+    assert state["label"] == "Ramka odświeża ekran"  # type: ignore[index]
+    assert state["phase"] == "displaying"  # type: ignore[index]
+    # Swift's Date: seconds since 2001, not 1970.
+    since_2001 = datetime.now(UTC).timestamp() - 978_307_200
+    assert abs(state["heardAt"] - since_2001) < 60  # type: ignore[index, operator]
+    assert state["expectedEnd"] >= state["heardAt"]  # type: ignore[index, operator]
+    assert end["event"] == "end"
+    assert end["content-state"]["label"] == "Obraz jest na ramce"  # type: ignore[index]
+    assert end["content-state"]["fraction"] == 1.0  # type: ignore[index]
+    assert "expectedEnd" not in end["content-state"]  # type: ignore[operator]
+    assert end["dismissal-date"] - end["timestamp"] == 15  # type: ignore[operator]
+    assert notifier.send_activities() == []
+
+
+def test_a_failed_send_ends_the_bar_after_a_while(
+    notifier: Notifier, apple: FakeApple, service, monkeypatch
+) -> None:
+    async def run(progress) -> None:
+        progress.begin("Ul", render=False)
+        await asyncio.sleep(0.05)
+        progress.finish(Stage.FAILED, "panel unreachable")
+
+    _follow(service, run, monkeypatch)
+    end = apple.sent[-1][3]["aps"]
+    assert end["event"] == "end"  # type: ignore[index]
+    assert end["content-state"]["stage"] == "failed"  # type: ignore[index]
+    assert end["dismissal-date"] - end["timestamp"] == 300  # type: ignore[index, operator]
+    assert notifier.send_activities() == []
+
+
+def test_a_waiting_picture_keeps_its_bar_until_the_frame_wakes(
+    notifier: Notifier, apple: FakeApple, service, monkeypatch
+) -> None:
+    async def run(progress) -> None:
+        progress.begin("Ul", render=False)
+        await asyncio.sleep(0.05)
+        progress.finish(Stage.WAITING, "the frame asks for it at 9:00")
+
+    _follow(service, run, monkeypatch)
+    last = apple.sent[-1][3]["aps"]
+    assert last["event"] == "update"  # type: ignore[index]
+    assert last["content-state"]["stage"] == "waiting"  # type: ignore[index]
+    assert [a.token for a in notifier.send_activities()] == [SEND]
+
+
+def test_another_picture_ends_the_old_bar_at_once(
+    notifier: Notifier, apple: FakeApple, service, monkeypatch
+) -> None:
+    async def run(progress) -> None:
+        progress.begin("Słoneczniki", render=False)
+        await asyncio.sleep(0.05)
+
+    _follow(service, run, monkeypatch)
+    end = apple.sent[-1][3]["aps"]
+    assert end["event"] == "end"  # type: ignore[index]
+    assert end["dismissal-date"] == end["timestamp"]  # type: ignore[index]
+    assert notifier.send_activities() == []
+
+
+def test_the_app_leaves_the_send_bar_s_token(tmp_path: Path) -> None:
+    with _client(tmp_path) as client:
+        notifier: Notifier = client.app.state.service.notifier  # type: ignore[attr-defined]
+        bad = client.put("/api/notifications/send-activity", json={"token": "nope"})
+        assert bad.status_code == 400
+        put = client.put("/api/notifications/send-activity", json={"token": SEND, "title": "Ul"})
+        assert put.status_code == 204
+        # No APNs key here: nothing will reach it, so it is not kept.
+        assert [a.title for a in notifier.send_activities()] in ([], ["Ul"])

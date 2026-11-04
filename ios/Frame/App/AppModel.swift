@@ -199,6 +199,9 @@ final class AppModel {
             await self?.followStudyOnLockScreen(itemID: itemID, token: token)
         }
         liveActivity.picture = { [weak self] itemID in await self?.activityPicture(itemID) }
+        liveActivity.onToken = { [weak self] title, token in
+            await self?.followSendOnLockScreen(title: title, token: token)
+        }
         studyActivity.picture = { [weak self] itemID in await self?.activityPicture(itemID) }
     }
 
@@ -845,6 +848,11 @@ final class AppModel {
         return image.flatMap(ActivityPicture.data(from:))
     }
 
+    /// The send bar's push token, on the server (`SendLiveActivity.onToken`).
+    func followSendOnLockScreen(title: String, token: String) async {
+        try? await backend.followSend(title: title, activityToken: token, sandbox: PushCenter.sandbox)
+    }
+
     /// The app is open (again): Lock Screen cards whose work is over go,
     /// also any that iOS left up past their time or an earlier run of the
     /// app left behind. Cards still under way stay and are settled after.
@@ -857,6 +865,7 @@ final class AppModel {
     /// a picture is under way or waits for the frame, its result otherwise.
     func settleLiveActivity() async {
         guard liveActivity.isRunning, progressTask == nil else { return }
+        liveActivity.watchToken()
         guard let value = try? await backend.progress() else {
             liveActivity.finish(.idle)
             return

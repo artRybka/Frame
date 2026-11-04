@@ -205,6 +205,8 @@ class FrameService:
         self.progress.on_end = lambda stage, title, message: self.notifier.ended(
             stage == Stage.FAILED, title, message, self.progress.item_id
         )
+        self.progress.on_change = self.notifier.progress_changed
+        self.notifier.progress = self.progress.view
         self.progress.restore(self.library.get_state(PROGRESS_KEY, {}))
         self.progress.on_learn = lambda learned: self.library.set_state(PROGRESS_KEY, learned)
         self.progress.likely_asleep = lambda: self.status.sleeping

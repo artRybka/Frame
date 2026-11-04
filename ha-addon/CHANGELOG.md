@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.95.4
+
+- Pasek wysyłki na ekranie blokady dochodzi do końca także przy uśpionej
+  aplikacji: serwer sam przesuwa go przez kolejne etapy, na koniec pokazuje
+  zielone „Obraz jest na ramce” i po 15 sekundach pasek znika. Dotąd
+  zatrzymywał się na „Ramka odświeża ekran” do otwarcia aplikacji.
+- Potrzebny klucz APNs, jak przy powiadomieniach. Bez niego pasek działa
+  jak dotąd.
+
 ## 1.95.3
 
 - Po aktualizacji serwera ekran ramki nie zostaje biały także wtedy, gdy
