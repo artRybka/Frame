@@ -32,6 +32,12 @@ actor ImageLoader {
         let cache = NSCache<NSString, UIImage>()
         private let lock = NSLock()
         private var server: ServerRoute?
+        /// Works whose crop was saved since launch, and how many times: their
+        /// framed previews are kept under a new name each time.
+        private var reframeCounts: [String: Int] = [:]
+        /// Framed previews fetched past the disk cache since their work's
+        /// last crop, by address.
+        private var refetchedAt: [String: Int] = [:]
 
         private init() {
             cache.totalCostLimit = 160 * 1024 * 1024
@@ -41,6 +47,24 @@ actor ImageLoader {
         var route: ServerRoute? {
             get { lock.withLock { server } }
             set { lock.withLock { server = newValue } }
+        }
+
+        func reframe(_ itemID: String) {
+            lock.withLock { reframeCounts[itemID, default: 0] += 1 }
+        }
+
+        func reframes(_ itemID: String) -> Int {
+            lock.withLock { reframeCounts[itemID] ?? 0 }
+        }
+
+        /// The address must skip the disk cache: fetched there before the
+        /// work's last crop, or not at all since.
+        func stale(_ url: String, reframes: Int) -> Bool {
+            lock.withLock { refetchedAt[url] != reframes }
+        }
+
+        func refetched(_ url: String, reframes: Int) {
+            lock.withLock { refetchedAt[url] = reframes }
         }
     }
 
@@ -55,6 +79,35 @@ actor ImageLoader {
 
     private static var route: ServerRoute? { Memory.shared.route }
 
+    /// The work's crop was saved: its framed previews are drawn anew. The
+    /// one without a crop in the address (a study or card opened later,
+    /// the pictures coming up on "Teraz") stood an hour in the disk cache
+    /// and for the whole launch in memory, so the old crop came back.
+    /// `requests`: such addresses, dropped from the disk cache now so the
+    /// next launch does not find them either.
+    nonisolated static func reframed(_ itemID: String, requests: [URLRequest]) {
+        Memory.shared.reframe(itemID)
+        for request in requests {
+            URLCache.shared.removeCachedResponse(for: request)
+            if let other = route?.rebased(request) { URLCache.shared.removeCachedResponse(for: other) }
+        }
+    }
+
+    /// The work whose framed preview `request` asks for, with the times its
+    /// crop was saved since launch; nil for any other picture.
+    private static func reframes(_ request: URLRequest) -> (id: String, count: Int)? {
+        guard let url = request.url,
+              let path = URLComponents(url: url, resolvingAgainstBaseURL: false)?.percentEncodedPath,
+              path.hasSuffix("/preview")
+        else { return nil }
+        let parts = path.split(separator: "/")  // …/library/items/<id>/preview
+        guard parts.count >= 4, parts[parts.count - 3] == "items", parts[parts.count - 4] == "library",
+              let id = String(parts[parts.count - 2]).removingPercentEncoding
+        else { return nil }
+        let count = Memory.shared.reframes(id)
+        return count > 0 ? (id, count) : nil
+    }
+
     /// What the picture is kept under in memory: the server's own pictures
     /// by their path, not by the address they were asked at.
     private static func key(_ request: URLRequest, _ maxPixel: CGFloat) -> String {
@@ -66,13 +119,16 @@ actor ImageLoader {
                 url = "server:" + url.dropFirst(server.count)
             }
         }
+        if let reframed = reframes(request) { url += "~\(reframed.count)" }  // not the one from before the crop
         return "\(url)#\(Int(maxPixel))"
     }
 
     /// What a download is shared under: the address too, so a picture asked
-    /// again at the other address does not wait for one that went nowhere.
+    /// again at the other address does not wait for one that went nowhere;
+    /// not one started before the work's crop was saved.
     private static func downloadKey(_ request: URLRequest, _ maxPixel: CGFloat) -> String {
-        "\(request.url?.absoluteString ?? "")#\(Int(maxPixel))"
+        let reframed = reframes(request).map { "~\($0.count)" } ?? ""
+        return "\(request.url?.absoluteString ?? "")\(reframed)#\(Int(maxPixel))"
     }
 
     /// The picture loaded for `request` at `maxPixel`, if it is in memory,
@@ -94,8 +150,17 @@ actor ImageLoader {
             task = running.task
         } else {
             // Detached: downsampling runs beside this actor, not on it.
-            task = Task.detached(priority: priority == .high ? .userInitiated : .utility) {
+            // A framed preview first asked since its work's crop was saved
+            // skips the disk cache, which may hold it with the old crop.
+            var request = request
+            let address = request.url?.absoluteString ?? ""
+            let reframed = Self.reframes(request)?.count
+            if let reframed, Memory.shared.stale(address, reframes: reframed) {
+                request.cachePolicy = .reloadIgnoringLocalCacheData
+            }
+            task = Task.detached(priority: priority == .high ? .userInitiated : .utility) { [request] in
                 let data = try await Self.download(request, priority: priority)
+                if let reframed { Memory.shared.refetched(address, reframes: reframed) }
                 guard let image = Self.downsample(data, maxPixel: maxPixel) else {
                     throw BackendError.invalidResponse
                 }

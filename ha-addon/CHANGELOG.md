@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.92.2
+
+- Po zapisaniu nowego kadru podgląd „Na Twojej ramce” w Studium dzieła
+  (a także na karcie dzieła i przy przeglądaniu w Teraz) pokazuje nowy
+  kadr, a nie stary sprzed zmiany. Aplikacja nie bierze już tego podglądu
+  ze swojej pamięci, tylko prosi serwer o nowy.
+- Kadr przy zamykaniu po „Zapisz kadr” chwilę czeka na podgląd z nowym
+  kadrem, żeby ramka wróciła na miejsce już z nim.
+
 ## 1.92.1
 
 - Studium dzieła: podpis pod obrazem to same litery, bez czarnego pasa

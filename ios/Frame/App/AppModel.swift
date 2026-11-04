@@ -873,13 +873,24 @@ final class AppModel {
 
     /// Saves a crop edited in the app (or forgets it); the framing as the
     /// server has it now.
+    /// The work's previews kept from before are dropped: the one without
+    /// the crop in its address showed the old crop wherever it came up
+    /// again (the study's "Na Twojej ramce", the card, "Teraz").
     func applyFraming(itemID: String, _ change: FramingChange) async throws -> FramingView {
+        let saved: FramingView
         switch change {
         case let .save(orientation, crops):
-            try await backend.saveFraming(itemID: itemID, orientation: orientation, crops: crops)
+            saved = try await backend.saveFraming(itemID: itemID, orientation: orientation, crops: crops)
         case let .reset(orientation):
-            try await backend.resetFraming(itemID: itemID, orientation: orientation)
+            saved = try await backend.resetFraming(itemID: itemID, orientation: orientation)
         }
+        let previews: [ImageRef] = [
+            .framePreview(itemID, settings: settings),
+            .framePreview(itemID, settings: settings, ownLook: false),
+            .framePreview(itemID),
+        ]
+        ImageLoader.reframed(itemID, requests: previews.compactMap { backend.request(for: $0) })
+        return saved
     }
 
     func releaseHold() async {
