@@ -73,6 +73,9 @@ PACE = {
     # Place names of photos: "an absolute maximum of 1 request per second"
     # (its usage policy).
     "nominatim.openstreetmap.org": 1.0,
+    # No published rules and no API: its paintings' pages and pictures
+    # gently (library/courtauld.py).
+    "gallerycollections.courtauld.ac.uk": 0.5,
 }
 #: The most requests under way at once to a host (or :func:`lane`), where
 #: its owners ask for fewer than the server's threads would send. Only
@@ -86,6 +89,7 @@ LIMITS = {
     WIKIMEDIA: 1,
     WIKIMEDIA_MEDIA: 2,
     "nominatim.openstreetmap.org": 1,
+    "gallerycollections.courtauld.ac.uk": 2,
 }
 #: The longest a host's ``Retry-After`` (on a 429) is kept to: api.data.gov
 #: blocks a key for an hour; longer waits are taken as an hour too.

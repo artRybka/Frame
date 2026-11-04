@@ -189,7 +189,7 @@ class NightQueue:
 def tasks(service: FrameService) -> list[NightTask]:
     """The night's tasks, in order: first what changes the catalogue, then
     what is worked out from it."""
-    from .library import nga
+    from .library import courtauld, nga
     from .notifications import births_at_night
     from .web import discover_api
 
@@ -258,6 +258,7 @@ def tasks(service: FrameService) -> list[NightTask]:
         NightTask("catalogue", player.grow_at_night),
         NightTask("grouping", grouping),
         NightTask("nga", lambda night: nga.refresh_at_night(service.settings.data_dir)),
+        NightTask("courtauld", lambda night: courtauld.refresh_at_night(service.settings.data_dir)),
         NightTask("births", lambda night: births_at_night(service, night)),
         NightTask("daily", daily),
         NightTask("playlists", playlists),

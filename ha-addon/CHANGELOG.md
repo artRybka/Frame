@@ -10,6 +10,12 @@
   CC BY-NC. Pojawia się w Szukaj, przy artystach, motywach i playlistach,
   ale nie w losowych obrazach. Ilustracje medyczne (choroby skóry,
   anatomia, rany, narzędzia chirurgiczne) są pomijane.
+- Nowe źródło dzieł: Courtauld Gallery z Londynu, ok. 580 obrazów w
+  pełnej rozdzielczości, m.in. „Bar w Folies-Bergère” Maneta, „Gracze w
+  karty” Cézanne'a i „Autoportret z zabandażowanym uchem” Van Gogha.
+  Tylko z „Użytkiem prywatnym” (licencja CC BY-NC). Courtauld nie ma API,
+  więc serwer po włączeniu raz powoli spisuje ich obrazy (poniżej
+  godziny) i raz w miesiącu sprawdza, czy doszły nowe.
 
 ## 1.98.0
 
