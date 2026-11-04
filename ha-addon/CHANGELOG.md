@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.96.1
+
+- Przytrzymane guziki z obwódką („Przygotuj studium dzieła”, „Otwórz
+  studium”) mają w uniesionym podglądzie tło strony, a nie prześwitujące
+  przyciemnione tło za nimi.
+
 ## 1.96.0
 
 - Studium dnia za pół ceny: serwer w nocy wybiera dzieło na jutro i zamawia
