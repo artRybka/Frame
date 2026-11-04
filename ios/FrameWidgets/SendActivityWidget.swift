@@ -207,21 +207,17 @@ enum Palette {
     static let paper = dynamic(light: 0xF5F1EA, dark: 0x1D1B19)
     static let ink = dynamic(light: 0x1D1B18, dark: 0xF1ECE4)
     static let inkSoft = dynamic(light: 0x6E675E, dark: 0xA79F94)
-    static let vermilion = dynamic(light: 0xB8432F, dark: 0xE58A6F)
     static let good = dynamic(light: 0x3E7B56, dark: 0x7CC49A)
-    static let warn = dynamic(light: 0xB7832A, dark: 0xE2B45E)
 
+    /// Ink (white in the dark) while under way, as the app's bars; green
+    /// once the picture is on the frame.
     static func tint(_ state: SendActivityAttributes.ContentState) -> Color {
-        if state.isDone { return good }
-        if state.isWaiting { return warn }
-        return vermilion  // also failed: the app's "bad" is the same vermilion
+        state.isDone ? good : ink
     }
 
-    /// The island is always black: the dark variants.
+    /// The island is always black: white, green once done.
     static func islandTint(_ state: SendActivityAttributes.ContentState) -> Color {
-        if state.isDone { return Color(hex: 0x7CC49A) }
-        if state.isWaiting { return Color(hex: 0xE2B45E) }
-        return Color(hex: 0xE58A6F)
+        state.isDone ? Color(hex: 0x7CC49A) : .white
     }
 
     /// The line under the title.

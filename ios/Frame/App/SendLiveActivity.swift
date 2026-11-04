@@ -17,8 +17,10 @@ final class SendLiveActivity {
     var picture: ((String) async -> Data?)?
 
     init() {
-        // One left from before the app was closed.
-        activity = Activity<SendActivityAttributes>.activities.first
+        // One left from before the app was closed, still under way.
+        activity = Activity<SendActivityAttributes>.activities.first {
+            $0.activityState == .active || $0.activityState == .stale
+        }
     }
 
     var isRunning: Bool {
@@ -41,16 +43,31 @@ final class SendLiveActivity {
         await put(state, title: progress.title, itemID: progress.itemId, stale: stale)
     }
 
-    /// The run ended: its result stays on the Lock Screen for a while; with
-    /// nothing to say (idle) the card just goes.
+    /// How long a result stays on the Lock Screen once the run is over:
+    /// "Obraz jest na ramce" just long enough to be seen, a failure long
+    /// enough to read why. Then iOS takes the card away by itself.
+    static let doneFor: TimeInterval = 15
+    static let failedFor: TimeInterval = 5 * 60
+
+    /// The run ended: its result stays on the Lock Screen briefly, then goes
+    /// by itself; with nothing to say (idle) the card goes at once.
     func finish(_ progress: DisplayProgress) {
         guard let activity else { return }
         self.activity = nil
         let result = progress.isDone || progress.isFailed
         let content = ActivityContent(state: State(progress), staleDate: nil)
         let policy: ActivityUIDismissalPolicy = result
-            ? .after(.now.addingTimeInterval(progress.isDone ? 5 * 60 : 30 * 60)) : .immediate
+            ? .after(.now.addingTimeInterval(progress.isDone ? Self.doneFor : Self.failedFor)) : .immediate
         Task { await activity.end(result ? content : nil, dismissalPolicy: policy) }
+    }
+
+    /// Cards that should no longer be on the Lock Screen, cleared when the
+    /// app is back: results whose time is up but still shown, and cards
+    /// left behind by an earlier run of the app (only one is followed).
+    func tidy() {
+        for card in Activity<SendActivityAttributes>.activities where card.id != activity?.id {
+            Task { await card.end(nil, dismissalPolicy: .immediate) }
+        }
     }
 
     private func put(_ state: State, title: String, itemID: String?, stale: Date?) async {

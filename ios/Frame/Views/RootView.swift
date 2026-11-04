@@ -100,6 +100,7 @@ struct RootView: View {
             if let id = model.studySheet { StudySheet(itemID: id) }
         }
         .task {
+            model.tidyLiveActivities()
             await model.refreshAll()
             await model.settleLiveActivity()  // one left from before the app was closed
             await model.settleStudyActivities()
@@ -133,6 +134,7 @@ struct RootView: View {
             // Back from the background, maybe on another network.
             if old == .background, phase != .background {
                 Task {
+                    model.tidyLiveActivities()
                     await model.recheckServer()
                     await model.settleLiveActivity()
                     await model.settleStudyActivities()
