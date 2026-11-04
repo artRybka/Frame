@@ -44,6 +44,13 @@ class PhotoInfo(BaseModel):
     #: iCloud: checksum of the full-size picture, to ask for a fresh link
     #: (Apple's links expire) when the original is needed.
     asset: str | None = None
+    #: A few Polish words for what the photo shows ("Montaż drewnianej
+    #: ścianki"), written by the language model with its keywords: the
+    #: photo's title while it has no caption of its own.
+    title: str | None = None
+    #: The place its coordinates name ("Kraków", "Rzym, Włochy"), looked up
+    #: by the server (``places``); "" when nothing was found.
+    place: str | None = None
 
 
 class Look(BaseModel):
@@ -237,12 +244,20 @@ class ItemSummary(BaseModel):
     #: (``Item.sharper``), "" for its own. The app asks for the thumbnail
     #: again when it changes, instead of the one kept from before.
     picture: str = ""
+    #: A photo's line under its title: when and where ("29 października
+    #: 2026 · Kraków"); "" for works.
+    subtitle: str = ""
 
     @classmethod
     def of(cls, item: Item) -> ItemSummary:
-        summary = cls(**item.model_dump(include=set(cls.model_fields)))
+        from .photo_text import photo_line, photo_title
+
+        summary = cls(**item.model_dump(include=set(cls.model_fields) - {"subtitle"}))
         if item.sharper is not None:
             summary.picture = item.sharper.item_id
+        if item.kind == ItemKind.PHOTO:
+            summary.title = photo_title(item)
+            summary.subtitle = photo_line(item)
         return summary
 
 

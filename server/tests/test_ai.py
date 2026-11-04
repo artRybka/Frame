@@ -439,3 +439,42 @@ def test_the_background_looks_again_only_after_a_change(
         service.ai._do(service.ai._queue.get())
     minute_later()
     assert len(looks) == 3
+
+
+def test_a_photo_gets_a_title_with_its_keywords(service: FrameService, fake: FakeAnthropic) -> None:
+    _add(service, "icloud:1", kind=ItemKind.PHOTO, photo=PhotoInfo(place="Kraków"))
+    fake.answer = {**ANSWER, "title_pl": " montaż drewnianej ścianki."}
+    service.ai.run_one(KIND, "icloud:1")
+
+    schema = fake.asked[0]["output_config"]["format"]["schema"]
+    assert "title_pl" in schema["required"]
+    item = service.library.get("icloud:1")
+    assert item is not None and item.photo is not None
+    assert item.photo.title == "Montaż drewnianej ścianki"
+    assert item.photo.place == "Kraków"  # the rest of what is known stays
+    assert item.title == ""  # its own title stays the owner's
+
+    # Works are not asked for one.
+    _add(service, "met:1", title="Boats")
+    fake.answer = ANSWER
+    service.ai.run_one(KIND, "met:1")
+    assert "title_pl" not in fake.asked[1]["output_config"]["format"]["schema"]["properties"]
+
+
+def test_photos_tagged_before_titles_are_asked_again_works_not(
+    service: FrameService, fake: FakeAnthropic
+) -> None:
+    from frame_server.ai.keywords import KeywordsJob
+
+    _add(service, "icloud:1", kind=ItemKind.PHOTO)
+    _add(service, "met:1", title="Boats")
+    service.ai.run_one(KIND, "icloud:1")
+    service.ai.run_one(KIND, "met:1")
+    job = service.ai.jobs[KIND]
+    assert isinstance(job, KeywordsJob)
+    notes = service.library.notes(KIND)
+    for item_id in ("icloud:1", "met:1"):
+        old = notes[item_id].model_copy(update={"prompt_version": "kw-1"})
+        item = service.library.get(item_id)
+        assert item is not None
+        assert job.fresh(item, old) is (item.kind != ItemKind.PHOTO)

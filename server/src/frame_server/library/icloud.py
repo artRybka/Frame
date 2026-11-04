@@ -477,17 +477,14 @@ def sync_album(importer: Importer, url: str, job: Job | None = None) -> AlbumLis
     for photo in photos:
         item_id = f"icloud:{photo.guid}"
         known = library.get(item_id)
-        details = {
+        details: dict[str, object] = {
             "url": url,
             "museum": album.name,
             "image_url": photo.url,
             "thumb_url": photo.thumb_url,
         }
         if known is not None:
-            info = (known.photo or PhotoInfo()).model_copy(
-                update={"shared_at": photo.shared_at, "asset": photo.asset}
-            )
-            fresh[item_id] = {"photo": info, **details}
+            fresh[item_id] = details
             if job is not None:
                 job.done += 1
             continue
@@ -522,9 +519,22 @@ def sync_album(importer: Importer, url: str, job: Job | None = None) -> AlbumLis
             log.warning("album photo %s failed: %s", photo.guid, err)
             if job is not None:
                 job.failed += 1
+    by_id = {f"icloud:{p.guid}": p for p in photos}
     with library.batch():
         for item_id, changes in fresh.items():
-            library.update(item_id, **changes)
+            latest = library.get(item_id)
+            if latest is None:
+                continue
+            # From the latest copy: the photo's title and place may have
+            # been written meanwhile.
+            photo = by_id[item_id]
+            info = latest.photo or PhotoInfo()
+            update: dict[str, object] = {"shared_at": photo.shared_at, "asset": photo.asset}
+            if photo.caption and photo.caption != info.caption:
+                # A caption added in Photos later: the photo's title now.
+                update["caption"] = photo.caption
+                changes = {**changes, "title": photo.caption}
+            library.update(item_id, photo=info.model_copy(update=update), **changes)
     ids = [f"icloud:{p.guid}" for p in photos]
     return AlbumListing(album.name, [i for i in ids if library.has(i)], added)
 

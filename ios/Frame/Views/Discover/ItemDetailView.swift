@@ -335,8 +335,11 @@ struct ItemDetailView: View {
                 Eyebrow(held, color: Theme.vermilion)
             }
             // The year on a badge at the title's end, as below.
-            let date = nonEmpty(polish?.date) ?? summary.dateText
             let photo = summary.kind == .photo
+            // A photo's line under its title: when and where.
+            let date = photo
+                ? summary.subtitle ?? summary.dateText
+                : nonEmpty(polish?.date) ?? summary.dateText
             TitleWithYear(
                 title: nonEmpty(polish?.title) ?? (summary.shownTitle.isEmpty ? "Bez tytułu" : summary.shownTitle),
                 date: photo ? "" : date,
@@ -847,8 +850,8 @@ struct ItemDetailView: View {
             let original = OriginalTitle.of(item.title, shown: shown)
             // The year on a badge at its end (Mateusz 2026-11-04, as on
             // Teraz); a photo keeps its date on a line of its own.
-            let date = nonEmpty(shownPolish?.date) ?? item.dateText
             let photo = item.kind == .photo
+            let date = photo ? item.photoLine : nonEmpty(shownPolish?.date) ?? item.dateText
             TitleWithYear(
                 title: peeking ? original ?? shown : shown,
                 date: photo ? "" : date,
@@ -887,7 +890,7 @@ struct ItemDetailView: View {
 
     private func title(_ item: Item) -> String {
         nonEmpty(shownPolish?.title) ?? (showOriginal ? nil : earlyTitle)
-            ?? (item.title.isEmpty ? "Bez tytułu" : item.title)
+            ?? (item.displayTitle.isEmpty ? "Bez tytułu" : item.displayTitle)
     }
 
     private func nonEmpty(_ text: String?) -> String? {

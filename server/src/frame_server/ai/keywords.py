@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from ..library.models import ItemKind, Note
+from ..library.models import ItemKind, Note, PhotoInfo
 from ..library.vocabulary import TERMS, set_aside
 from .client import HAIKU, image_block, request
 from .jobs import NoteJob, text_hash
@@ -22,12 +22,17 @@ if TYPE_CHECKING:
     from ..library import Item
 
 KIND = "keywords"
-PROMPT_VERSION = "kw-1"
+#: kw-2: photos also get a short Polish title (``title_pl``).
+PROMPT_VERSION = "kw-2"
+#: Works' notes from before still hold: their question has not changed.
+ARTWORK_VERSIONS = frozenset({"kw-1", PROMPT_VERSION})
 #: Museum text sent along: enough to name a saint or a place.
 DESCRIPTION_CHARS = 600
 MAX_TAGS = 12
 MAX_SUBJECTS = 4
 MAX_MOOD = 2
+#: A photo's title, at most this many characters.
+MAX_TITLE = 60
 
 SUBJECTS = [t for t in TERMS if t.kind == "subject"]
 SEASONS = {
@@ -61,6 +66,12 @@ SCHEMA: dict[str, Any] = {
     "required": ["subjects", "tags_en", "tags_pl", "season", "time_of_day", "people", "mood_pl"],
     "additionalProperties": False,
 }
+#: Photos also get a title, for the tiles and the frame (no caption of their own).
+PHOTO_SCHEMA: dict[str, Any] = {
+    **SCHEMA,
+    "properties": {**SCHEMA["properties"], "title_pl": {"type": "string"}},
+    "required": [*SCHEMA["required"], "title_pl"],
+}
 
 
 def _subject_line(term: Any) -> str:
@@ -86,6 +97,11 @@ techniques, no artist names, no words like "painting", "artwork" or "photo".
 - mood_pl: at most 2 Polish words for the picture's mood (e.g. "spokój", "melancholia"), or \
 an empty list.
 - Never name or identify real people in photos; say "woman", "child" or "family" instead.
+- title_pl (asked for photos only): a title for the photo in a family album, in Polish, 2 to 5 \
+words, sentence case, no full stop: what is happening or what it shows, the most telling \
+thing first ("Montaż drewnianej ścianki", "Zachód słońca nad jeziorem", "Tort urodzinowy na \
+stole"). No names of people, no dates, no places you cannot read in the picture, no words \
+like "zdjęcie" or "fotografia".
 
 Subjects:
 """ + "\n".join(_subject_line(t) for t in SUBJECTS)
@@ -139,6 +155,14 @@ def words_and_terms(data: dict[str, Any]) -> tuple[list[str], list[str]]:
     return list(dict.fromkeys(words)), terms
 
 
+def photo_title(data: dict[str, Any]) -> str:
+    """The answer's title for a photo, tidied: "" when there is none."""
+    title = " ".join(str(data.get("title_pl") or "").split()).strip(' ."„”')
+    if len(title) > MAX_TITLE:
+        title = title[:MAX_TITLE].rsplit(" ", 1)[0]
+    return title[:1].upper() + title[1:]
+
+
 def polish_words(data: dict[str, Any]) -> list[str]:
     """What the card shows: the Polish tags and the mood."""
     words = _clean(data.get("tags_pl"), MAX_TAGS) + _clean(data.get("mood_pl"), MAX_MOOD)
@@ -173,10 +197,24 @@ class KeywordsJob(NoteJob):
     def source_hash(self, item: Item) -> str:
         return text_hash(_facts(item), item.thumb_url)
 
+    def fresh(self, item: Item, note: Note | None) -> bool:
+        """Photos tagged before they got titles are asked again; works not."""
+        if note is None or note.source_hash != self.source_hash(item):
+            return False
+        if item.kind == ItemKind.PHOTO:
+            return note.prompt_version == self.prompt_version
+        return note.prompt_version in ARTWORK_VERSIONS
+
     def params(self, item: Item) -> dict[str, Any]:
         content = [image_block(self.images, item), {"type": "text", "text": _facts(item)}]
-        return request(model=self.model, system=SYSTEM, content=content, schema=SCHEMA)
+        schema = PHOTO_SCHEMA if item.kind == ItemKind.PHOTO else SCHEMA
+        return request(model=self.model, system=SYSTEM, content=content, schema=schema)
 
     def apply(self, item: Item, note: Note) -> None:
         keywords, terms = words_and_terms(note.data)
-        self.library.update(item.id, keywords=keywords, terms=terms)
+        changes: dict[str, Any] = {"keywords": keywords, "terms": terms}
+        title = photo_title(note.data)
+        if item.kind == ItemKind.PHOTO and title:
+            latest = self.library.get(item.id) or item  # an album sync may have written since
+            changes["photo"] = (latest.photo or PhotoInfo()).model_copy(update={"title": title})
+        self.library.update(item.id, **changes)

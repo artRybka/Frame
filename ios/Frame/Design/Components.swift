@@ -188,7 +188,7 @@ struct ArtCard: View {
                         .font(.serif(15, weight: .medium))
                         .foregroundStyle(Theme.ink)
                         .lineLimit(2)
-                    Text(item.artist.isEmpty ? Names.source(item.source) : Names.artist(item.artist))
+                    Text(Self.byline(item))
                         .font(.caption)
                         .foregroundStyle(Theme.inkSoft)
                         .lineLimit(1)
@@ -201,6 +201,13 @@ struct ArtCard: View {
             // Another copy since the thumbnail was kept: had anew.
             if let picture = item.picture { model.pictureSeen(item.id, copy: picture) }
         }
+    }
+
+    /// The line under the title: a photo's day and town, a work's artist,
+    /// else where the picture is from.
+    static func byline(_ item: ItemSummary) -> String {
+        if item.kind == .photo, let line = item.subtitle, !line.isEmpty { return line }
+        return item.artist.isEmpty ? Names.source(item.source) : Names.artist(item.artist)
     }
 }
 
