@@ -868,14 +868,16 @@ class PanelApp:
 
     def _tell_shown(self, file_id: str) -> None:
         """The owner's phone hears of a picture new on the frame."""
-        from .notifications import shown_text
+        from .notifications import shown_item_id, shown_text
 
         service = self.service
         content = service.store.current()
         if content is not None and content.file_id != file_id:
             content = None
         title, artist = shown_text(service, content)
-        service.notifier.shown(title, artist, service.player.state.last_change_origin)
+        service.notifier.shown(
+            title, artist, service.player.state.last_change_origin, shown_item_id(content)
+        )
 
     # -- pictures -------------------------------------------------------------
 
