@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.97.1
+
+- Teraz: nad tytułem dzieła nazwa muzeum, w którym wisi, zamiast „Dzieło”;
+  muzeum, tytuł i autor bliżej siebie, narodowość i lata życia tuż pod
+  nazwiskiem, bez linijki z techniką. Rok powstania na małym szarym
+  znaczku na końcu tytułu, w Teraz i na karcie dzieła.
+- Szukaj → Kolor ma zakładki Kolorystyka, Dominuje i Akcent.
+  Kolorystyka to kolor na co najmniej 15% obrazu, razem z nastrojami.
+  Dominuje (wcześniej „Wyłącznie”) to obrazy malowane głównie wybranymi
+  kolorami: dają one 80% barw obrazu, a biel, szarość i czerń się nie
+  liczą.
+
 ## 1.97.0
 
 - Odkrywaj → Kolor i nastrój pokazuje tylko obrazy, rysunki i akwarele,

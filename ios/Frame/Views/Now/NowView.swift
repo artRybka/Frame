@@ -977,63 +977,74 @@ struct ArtworkInfo: View {
     }
     private var about: String { nonEmpty(shown?.full) ?? item.description }
     private var artistNote: String { nonEmpty(shown?.artistNote) ?? item.artistBio }
-    private var facts: String {
-        [nonEmpty(shown?.date) ?? item.dateText, nonEmpty(shown?.medium) ?? item.medium]
-            .filter { !$0.isEmpty }.joined(separator: " · ")
-    }
+    private var date: String { nonEmpty(shown?.date) ?? item.dateText }
 
     var body: some View {
         Card(padding: 22) {
-            HStack(alignment: .top) {
-                Eyebrow(Names.kind(item.kind), color: Theme.vermilion)
-                Spacer()
-                Button {
-                    Task {
-                        let new = !(favorite ?? item.favorite)
-                        favorite = new
-                        _ = await model.setFavorite(item.id, new)
+            // Museum, title and artist close together, as on the work's card.
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .top) {
+                    // The museum the work is in, as on the work's card
+                    // (Mateusz 2026-11-04: not "Dzieło"); nothing while it
+                    // is not known. A photo says what it is.
+                    let eyebrow = item.kind == .artwork ? item.museumShown : Names.kind(item.kind)
+                    if !eyebrow.isEmpty {
+                        Eyebrow(eyebrow, color: Theme.vermilion)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .transition(.opacity)
                     }
-                } label: {
-                    Image(systemName: (favorite ?? item.favorite) ? "heart.fill" : "heart")
-                        .font(.title3)
-                        .foregroundStyle((favorite ?? item.favorite) ? Theme.vermilion : Theme.inkSoft)
-                        .contentTransition(.symbolEffect(.replace))
+                    Spacer(minLength: 12)
+                    Button {
+                        Task {
+                            let new = !(favorite ?? item.favorite)
+                            favorite = new
+                            _ = await model.setFavorite(item.id, new)
+                        }
+                    } label: {
+                        Image(systemName: (favorite ?? item.favorite) ? "heart.fill" : "heart")
+                            .font(.title3)
+                            .foregroundStyle((favorite ?? item.favorite) ? Theme.vermilion : Theme.inkSoft)
+                            .contentTransition(.symbolEffect(.replace))
+                    }
+                    .accessibilityLabel("Ulubione")
                 }
-                .accessibilityLabel("Ulubione")
+                // The title opens the work's card, like "Szczegóły" below; held,
+                // it shows the museum's own until held again. The year on a
+                // badge at its end; a photo's date is in its facts.
+                let original = OriginalTitle.of(item.title, shown: title)
+                TitleWithYear(
+                    title: peeking ? original ?? title : title,
+                    date: item.kind == .photo ? "" : date,
+                    font: .serif(28, weight: .semibold)
+                )
+                    // A long title from the museum shows whole.
+                    .lineLimit(peeking ? nil : 3)
+                    .minimumScaleFactor(peeking ? 1 : 0.75)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: peeking)
+                    .contentTransition(.opacity)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .titlePeek(enabled: original != nil, peeking: $peeking) { open?() }
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityHint(Text("Otwiera kartę dzieła"))
+                if item.kind != .photo {
+                    // Nationality and years right under the name (Mateusz 2026-11-04).
+                    VStack(alignment: .leading, spacing: 0) {
+                        if !item.artist.isEmpty {
+                            // Their other works, on Discover's search.
+                            Text(Names.artist(item.artist)).font(.serif(18)).foregroundStyle(Theme.ink)
+                                .multilineTextAlignment(.leading)
+                                .artistPress { model.artistSearch = item.artist }
+                        }
+                        if !artistNote.isEmpty {
+                            Text(artistNote).font(.subheadline).foregroundStyle(Theme.inkSoft)
+                        }
+                    }
+                }
             }
-            // The title opens the work's card, like "Szczegóły" below; held,
-            // it shows the museum's own until held again.
-            let original = OriginalTitle.of(item.title, shown: title)
-            Text(peeking ? original ?? title : title)
-                .font(.serif(28, weight: .semibold))
-                .foregroundStyle(Theme.ink)
-                // A long title from the museum shows whole.
-                .lineLimit(peeking ? nil : 3)
-                .minimumScaleFactor(peeking ? 1 : 0.75)
-                .multilineTextAlignment(.leading)
-                .fixedSize(horizontal: false, vertical: peeking)
-                .contentTransition(.opacity)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .titlePeek(enabled: original != nil, peeking: $peeking) { open?() }
-                .accessibilityAddTraits(.isButton)
-                .accessibilityHint(Text("Otwiera kartę dzieła"))
+            // No medium here (Mateusz 2026-11-04): it is on the work's card.
             if item.kind == .photo {
                 PhotoFacts(item: item)
-            } else {
-                VStack(alignment: .leading, spacing: 3) {
-                    if !item.artist.isEmpty {
-                        // Their other works, on Discover's search.
-                        Text(Names.artist(item.artist)).font(.serif(18)).foregroundStyle(Theme.ink)
-                            .multilineTextAlignment(.leading)
-                            .artistPress { model.artistSearch = item.artist }
-                    }
-                    if !artistNote.isEmpty {
-                        Text(artistNote).font(.subheadline).foregroundStyle(Theme.inkSoft)
-                    }
-                }
-                Text(facts)
-                    .font(.subheadline)
-                    .foregroundStyle(Theme.inkSoft)
             }
             if !item.colors.isEmpty {
                 PaletteStrip(swatches: item.colors)
@@ -1062,18 +1073,8 @@ struct ArtworkInfo: View {
                     .accessibilityLabel(expanded ? "Zwiń" : "Czytaj więcej")
                 }
             }
+            // The museum is named above the title now: "Szczegóły" alone.
             HStack(alignment: .center, spacing: 12) {
-                if !item.museumShown.isEmpty {
-                    Label {
-                        Text(item.museumShown)
-                    } icon: {
-                        GroupMark(kind: "museum", side: 13)
-                    }
-                        .font(.caption)
-                        .foregroundStyle(Theme.inkSoft)
-                        .lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
                 Spacer(minLength: 0)
                 NavigationLink(value: item.id) {
                     HStack(spacing: 6) {

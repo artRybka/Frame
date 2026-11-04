@@ -174,7 +174,7 @@ actor DemoBackend: FrameBackend {
         if !rules.styles.isEmpty && !overlaps(item.styles, rules.styles) { return false }
         if !rules.subjects.isEmpty && !overlaps(item.subjects, rules.subjects) { return false }
         // As the server: colours and moods one group, accents another, both must fit.
-        // "Wyłącznie" a third: every colour the work is painted in is one picked.
+        // "Dominuje" a third: every colour the work is painted in is one picked.
         let accents = rules.colors.filter { $0.hasPrefix(ColorTag.accentPrefix) }
         let only = rules.colors.filter { $0.hasPrefix(ColorTag.onlyPrefix) }
         let mainColors = rules.colors.filter { !accents.contains($0) && !only.contains($0) }
