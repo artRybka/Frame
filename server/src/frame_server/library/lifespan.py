@@ -67,6 +67,12 @@ def _fold(name: str) -> str:
     return " ".join(plain.casefold().split())
 
 
+def europeana_key(key: str) -> dict[str, str]:
+    """The header that carries a Europeana key ("x-api-key", the way its
+    docs prefer; a key in the address also lands in the server's log)."""
+    return {"x-api-key": key}
+
+
 class LifeDates:
     """Death years of artists, by entity URI or by name; ``None`` when unknown
     or still alive."""
@@ -111,7 +117,7 @@ class LifeDates:
 
     def _europeana_agent(self, http: httpx.Client, number: str) -> int | None:
         resp = http.get(
-            f"{self.europeana}/agent/{number}.json", params={"wskey": self.europeana_key}
+            f"{self.europeana}/agent/{number}.json", headers=europeana_key(self.europeana_key)
         )
         if resp.status_code == 404:
             return None
@@ -122,12 +128,8 @@ class LifeDates:
         """Only an exact name match counts: a near miss could be anyone."""
         resp = http.get(
             f"{self.europeana}/search",
-            params={
-                "wskey": self.europeana_key,
-                "query": name,
-                "type": "agent",
-                "pageSize": 5,
-            },
+            params={"query": name, "type": "agent", "pageSize": 5},
+            headers=europeana_key(self.europeana_key),
         )
         resp.raise_for_status()
         wanted = _fold(name)

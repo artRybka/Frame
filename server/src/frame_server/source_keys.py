@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 import httpx
 
 from .ai.config import clean_key
+from .library import museums
 
 if TYPE_CHECKING:
     from .config import Settings
@@ -35,10 +36,11 @@ class KeyUnchecked(Exception):
     """The service did not answer, so the key could not be checked."""
 
 
-def _get(url: str, param: str, **query: str) -> Callable[[httpx.Client, str], httpx.Response]:
+def _get(url: str, header: str, **query: str) -> Callable[[httpx.Client, str], httpx.Response]:
     # All in ``params``: httpx drops a query string already in the URL when
     # given ``params``, and the search then fails without its words (400).
-    return lambda http, key: http.get(url, params={**query, param: key})
+    # The key in a header, as both services allow: out of the server's log.
+    return lambda http, key: http.get(url, params=query, headers={header: key})
 
 
 def _paris(http: httpx.Client, key: str) -> httpx.Response:
@@ -81,7 +83,7 @@ SOURCES: tuple[KeyedSource, ...] = (
         about="Muzea sztuki Smithsonian (sztuka amerykańska, portrety, sztuka Azji), "
         "obrazy CC0. Bez klucza to źródło jest wyłączone.",
         ask=_get(
-            "https://api.si.edu/openaccess/api/v1.0/search", "api_key", q="painting", rows="1"
+            "https://api.si.edu/openaccess/api/v1.0/search", "X-Api-Key", q="painting", rows="1"
         ),
     ),
     KeyedSource(
@@ -98,7 +100,10 @@ SOURCES: tuple[KeyedSource, ...] = (
         signup="https://pro.europeana.eu/page/get-api",
         about="Bez własnego klucza Europeana działa na wspólnym kluczu demo z niższymi limitami.",
         ask=_get(
-            "https://api.europeana.eu/record/v2/search.json", "wskey", query="painting", rows="1"
+            "https://api.europeana.eu/record/v2/search.json",
+            "x-api-key",
+            query="painting",
+            rows="1",
         ),
     ),
     KeyedSource(
@@ -144,7 +149,7 @@ class SourceKeys:
         """Ask the service with ``key``; raises if it refuses or is silent."""
         spec = BY_KEY[source]
         own = http is None
-        client = http or httpx.Client(timeout=15.0, follow_redirects=True)
+        client = http or museums.client()
         try:
             resp = spec.ask(client, key)
         except httpx.HTTPError as err:

@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.95.6
+
+- Serwer pyta źródła dzieł tak, jak proszą ich zasady dla programów, żeby
+  nie dostać blokady jak w AIC: do Wikimedia Commons, Wikidanych i Wikipedii
+  razem jedno zapytanie naraz i najwyżej cztery na sekundę, do Art Institute
+  of Chicago jedno naraz, a gdy serwis odpowie „za dużo zapytań” i powie, ile
+  czekać, serwer czeka tyle, zamiast ponawiać po kilku sekundach.
+- Klucze Europeany i Smithsonian idą w nagłówku zapytania, a nie w adresie,
+  więc nie trafiają już do logu serwera.
+
 ## 1.95.5
 
 - Obrazy z Art Institute of Chicago pobierane tak, jak prosi ich
