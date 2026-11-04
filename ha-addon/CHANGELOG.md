@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.93.0
+
+- Analiza kompozycji kosztuje około jednej trzeciej tego, co dotąd.
+  Opus patrzy na sam obraz, bez tekstów muzeum i Wikipedii, i wskazuje
+  miejsca, na których opiera się kompozycja. Haiku sprawdza, czy każdy
+  ślad trafia tam, gdzie mówi jego opis. Siatkę (połowy, trójpodział,
+  złoty podział) serwer wybiera sam, mierząc linie w obrazie, a Haiku
+  dopisuje o niej jedno zdanie. O tym, czy kompozycja jest spokojna czy
+  pełna ruchu, i o śladach ruchu decyduje Sonnet.
+- Dotychczasowe analizy zostają, jakie były. Nowe studia i „Wykonaj
+  ponowną analizę” idą już nową drogą.
+
 ## 1.92.1
 
 - Studium dzieła: podpis pod obrazem to same litery, bez czarnego pasa

@@ -1,13 +1,24 @@
 """The analysis of a work's composition ("Analiza kompozycji"): one take,
 drawn in pencil on the picture, with four to six sentences under it.
 
-Asked apart from the rest of the page (Mateusz 2026-11-02), with more
-thinking, so the model looks only at how the picture is built: the masses
-and their balance, the divisions, the one figure that orders it all,
-great clear rhythms, whether the composition is open or closed, still or
-moving, and what that does for the subject; the grids last, only as a
-measure. Then Claude checks its own marks drawn on the picture
-(``ai.check``).
+Asked apart from the rest of the page (Mateusz 2026-11-02), in steps, each
+by the cheapest model that does it well (Mateusz 2026-11-04, after two
+blind trials; about a third of what one long Opus answer and an Opus check
+cost):
+
+1. Opus, with medium thinking and the picture alone (no museum text, no
+   Wikipedia: they made it no better), draws the masses and their balance,
+   the divisions, the one figure that orders it all, great clear rhythms,
+   whether it is open or closed, and names the places it rests on (its
+   key points), each mark's points with what they lie on. No grids and no
+   movement: those are measured apart.
+2. Haiku checks every mark and place against what it was meant to lie on
+   (``ai.check``).
+3. The server finds the picture's own lines (``ai.lines``) and chooses the
+   grid by what lies on them and on the key points (``ai.grid``); Haiku
+   adds one sentence about it.
+4. Sonnet says whether the composition is still or moving and draws a
+   movement that really happens (``ai.motion``).
 
 Pages written before are written again (:class:`ComposeJob`) in the
 background, one by one, for the works the owner lets it (:data:`REWORK_KEY`:
@@ -26,27 +37,39 @@ import json
 import logging
 import time
 from collections.abc import Callable
-from dataclasses import replace
+from dataclasses import dataclass, replace
+from datetime import date
 from typing import TYPE_CHECKING, Any
 
 import anthropic
 
+from ..imaging.text import sentences
 from ..library.markup import strip_markup
 from ..library.models import Note
-from .check import answer_views, check, page_views
+from . import grid as grids
+from . import lines as found_lines
+from . import motion as motions
+from .check import CHECK_SIDE, answer_views, checked, page_views
+from .check import question as check_question
 from .client import OPUS, AiUnavailable, Answer, request
 from .daily import (
+    AXES,
     CHECK_ROUND,
     CHECKED,
-    POINTS,
+    MAX_KEYS,
     ROUND,
-    VIEW,
+    SHAPES,
     Context,
+    Key,
     View,
     _composition,
     _dicts,
+    _key,
     _list,
     _object,
+    _str,
+    _text,
+    _view,
     image_block,
     picture,
     sent_size,
@@ -56,7 +79,6 @@ from .daily import (
     KIND as DAILY,
 )
 from .jobs import NoteJob, Usage, text_hash
-from .pl_text import description
 from .study import KIND as STUDY
 
 if TYPE_CHECKING:
@@ -66,7 +88,7 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 KIND = "composition"
-PROMPT_VERSION = "composition-4"
+PROMPT_VERSION = "composition-5"
 #: The pages it is written into.
 PAGES = (DAILY, STUDY)
 #: The works whose pages written before may be written again: ``True`` for
@@ -84,152 +106,105 @@ VERSIONS = "composition_versions"
 SHOWN = "composition_shown"
 #: The owner picked the one shown: a rework of all pages leaves it be.
 CHOSEN = "composition_chosen"
+#: What each step of the last analysis cost (USD), kept in the page.
+COST = "composition_cost"
 #: How long the list of pages wanting their composition is kept between looks.
 PAGES_SECONDS = 30.0
-#: The analysis (picture, sources, much thinking), then its check.
-TYPICAL = Usage(input_tokens=26000, cache_read_input_tokens=5000, output_tokens=16000)
+#: All four steps, as if Opus answered them (about 0.12 USD).
+TYPICAL = Usage(input_tokens=9000, cache_read_input_tokens=2000, output_tokens=4000)
+#: The marks Opus may draw (movement is Sonnet's, ``ai.motion``).
+DRAWN = tuple(s for s in SHAPES if s not in ("motion", "underline"))
+MAIN = "główny"
 
-SYSTEM = (
-    """Piszesz „Analizę kompozycji” jednego dzieła do aplikacji domowej ramki: dla \
-miłośnika sztuki, który nie jest historykiem sztuki. Analizę rysujesz ołówkiem na obrazie: \
-aplikacja nakłada Twoje ślady na obraz, numeruje je i podpisuje, a pod obrazem pokazuje Twój \
-tekst. Naturalna, poprawna polszczyzna, jak w dobrym polskim muzeum; bez superlatywów i ozdobników.
+SYSTEM = """Piszesz „Analizę kompozycji” jednego dzieła do aplikacji domowej ramki, dla \
+miłośnika sztuki, który nie jest historykiem sztuki. Rysujesz ją ołówkiem na obrazie: aplikacja \
+nakłada Twoje ślady na obraz, numeruje je i podpisuje, a pod obrazem pokazuje tekst. Naturalna, \
+poprawna polszczyzna, jak w dobrym polskim muzeum, bez superlatywów.
 
-"""
-    + POINTS
-    + """ Kółko ma środek w środku rzeczy, a róg na krawędzi prostokąta, w który się ona \
-wpisuje; horyzont leży na horyzoncie; krawędź lub oś idzie po tej krawędzi lub osi; wierzchołki \
-trójkąta leżą na prawdziwych punktach formy (czubek głowy, łokieć, skraj szaty), nie obok; \
-kreska rytmu idzie po osi powtarzanej formy; promień perspektywy po prawdziwej krawędzi; oko \
-spirali leży na rzeczy, w którą spirala się zwija.
+Współrzędne podajesz w pikselach obrazu, który dostajesz (wymiary w danych: OBRAZ), od lewego \
+górnego rogu: x w prawo, y w dół. Każdy punkt stawiasz na konkretnym, nazwanym miejscu formy \
+(czubek głowy, łokieć, róg okna, linia horyzontu przy lewej krawędzi) i to miejsce wpisujesz \
+w "na". Punkt, którego nie umiesz tak nazwać, nie powstaje.
 
-JAK PATRZYSZ (w myślach, po kolei, zanim cokolwiek narysujesz)
-1. Źródła. Przeczytaj, co opis muzeum i Wikipedia mówią o kompozycji (rozdziały „Composition”, \
-„Kompozycja”, „Analysis”). Każde ich twierdzenie sprawdź na obrazie: co się zgadza, pokaż; \
-czego obraz nie potwierdza, pomiń.
-2. Format. Pionowy, poziomy, kwadratowy, wydłużony; czy układ go podkreśla (pion – \
-wertykalizm, szeroki pas – horyzontalizm).
-3. Z daleka, przez zmrużone oczy. Duże masy jasne i ciemne, główny motyw (dominanta) i 1–3 \
-akcenty. Gdzie leży ciężar obrazu i czym jest zrównoważony: symetria względem osi albo \
-równowaga mas (duża masa po jednej stronie, mała przeciwwaga po drugiej, jak na wadze z \
-ramieniem).
-4. Podziały. Linie, które naprawdę dzielą pole obrazu: horyzont lub linia brzegu (nisko, w \
-połowie, wysoko), krawędź stołu, ściany, kolumny, maszt, pień, rama okna lub drzwi (rama w \
-ramie), granica jasnej i ciemnej strefy, oś symetrii. Pasy poziome lub pionowe, plany \
-(pierwszy, drugi, dalszy), kulisy po bokach, wyraźny prostokąt (okno, otwór, ciemne pole). \
-Zmierz, gdzie leżą.
-5. Główny układ. Jedna figura, która porządkuje całość: trójkąt lub piramida, odwrócony \
-trójkąt lub V, jedna mocna przekątna, X przekątnych, krzyż (pion i poziom), koło lub owal \
-(formy ułożone w krąg), krzywa S lub zygzak (droga, rzeka, wygięcie postaci), litera L, układ \
-centralny, symetria osiowa, perspektywa zbieżna (krawędzie sufitu, ścian, podłogi, rzędy okien \
-lub kolumn, szereg postaci malejących w głąb biegną do jednego punktu zbiegu), układ \
-promienisty (linie rozchodzące się z jednego miejsca), klin, układ pasowy, szereg, układ \
-rozproszony (all-over). Takie linie zwykle nie są narysowane: wyznacza je kilka form ułożonych \
-w jednym kierunku, a oko je dopowiada. Uznaj układ tylko wtedy, gdy wyznaczają go co najmniej \
-trzy ważne formy albo jedna wielka, ciągła forma (krawędź, linia brzegu, ciało). Prowadź jego \
-linie przez środki i krawędzie tych form, nie obok, i kończ je tam, gdzie kończą się formy.
-6. Rytmy. Tylko duże i wyraźne, widoczne z kilku metrów: co najmniej trzy podobne formy \
-powtórzone w odstępach na dużej części obrazu (co najmniej jedna trzecia szerokości lub \
-wysokości). Najczęściej to rytm pionów: kolumny, pilastry, słupki balustrady, słupki i ramy \
-okien, stolarka fasady, maszty i żagle, pnie, stojące postacie; bywa też rytm grup postaci, \
-łuków, łodzi czy fal. Nazwij rodzaj: równy, malejący w głąb, naprzemienny (jasne – ciemne), \
-falujący. Drobne powtórzenia (szprosy okna, guziki, wzór tkaniny, cegły, liście) pomijasz, \
-chyba że wypełniają duży obszar i budują całość. Dwie podobne formy to echo, nie rytm. Formy, \
-które tylko przypadkiem stoją obok siebie (kilka drzew, kilka stołków), nie są rytmem: rytm \
-widać od razu, nie trzeba go szukać. Szereg sprzętów i przedmiotów (stołki, krzesła, ławki, \
-butelki, naczynia, lampy) nie jest rytmem obrazu, nawet gdy stoją równo i coś znaczą: \
-wspomnij o nim w tekście, ale nie rysuj go. Rytm budują formy, które niosą konstrukcję \
-obrazu: architektura, postacie, maszty, pnie w alei, łodzie, fale.
-7. Otwarta czy zamknięta. Zamknięta: ważne formy mieszczą się w polu, krawędzie ich nie tną, \
-układ wraca do środka (kulisy po bokach, łuk, ściana w głębi równoległa do obrazu, rama w \
-ramie, piony i poziomy powtarzające krawędzie obrazu); obraz jest skończoną całością. Otwarta: \
-krawędzie tną ważne formy (postać, łódź, drzewo, budynek), linie i ruch wychodzą poza obraz, \
-przestrzeń trwa dalej, kadr wygląda jak wycinek (japońskie drzeworyty, fotografia, \
-impresjoniści). Wiele obrazów łączy obie cechy: powiedz, która przeważa i po czym to widać.
-8. Ruch. Statyczna (przewaga pionów i poziomów, symetria, spokój) czy dynamiczna (skosy, łuki, \
-linie łamane, asymetria); dośrodkowa (kierunki prowadzą do środka) czy odśrodkowa (ku \
-krawędziom).
-9. Znaczenie. Co ten układ robi dla tematu (piramida daje postaci stałość; ucięty kadr każe \
-myśleć o świecie za krawędzią; rytm łodzi pokazuje siłę fali).
-10. Siatki na końcu i tylko jako pomiar. Złoty podział (0,382 i 0,618), trójpodział (1/3 i \
-2/3), połowy, 3×2 i 2×3. Ustaw "grid", gdy coś ważnego (horyzont, oś, wierzchołek układu, \
-dominanta, przecięcie linii) leży na linii siatki lub na przecięciu dwóch jej linii, i nazwij \
-to w tekście: do ok. 2% boku „na linii”, do ok. 5% „blisko linii”, dalej siatka nie pasuje. \
-Złoty podział i trójpodział leżą blisko siebie: wybierz ten, którego linia jest bliżej. Złota \
-spirala tylko wtedy, gdy jej łuki naprawdę biegną po kilku formach (zwinięta fala, \
-ślimacznica, zwinięta grupa postaci), a nie przez puste niebo; obróć ją i skręć w tę stronę, w \
-którą biegnie forma. Nie twierdź, że artysta celowo użył złotego podziału, jeśli nie mówią \
-tego źródła.
+JAK PRACUJESZ (krótko, bez rozważania wszystkich możliwości)
+1. Spójrz z daleka: duże masy jasne i ciemne, dominanta, gdzie leży ciężar i co go równoważy \
+(przeciwwaga: forma, plama lub pusta przestrzeń po drugiej stronie), mocne akcenty koloru, \
+które prowadzą wzrok albo wiążą obraz (powtórzona czerwień, jedyna jasna plama).
+2. Wybierz JEDEN główny układ, najmocniejszy i widoczny od razu (piramida, odwrócony trójkąt \
+lub V, przekątna, X, krzyż, owal, krzywa S, klin, perspektywa zbieżna, układ centralny lub \
+symetryczny, pasy, rozproszony). Uznaj go tylko, gdy wyznaczają go co najmniej trzy ważne \
+formy albo jedna wielka, ciągła forma.
+3. Dodaj najwyżej 2–4 ślady, które naprawdę dzielą pole albo powtarzają się: horyzont lub \
+brzeg, rama w ramie, duży rytm (co najmniej trzy podobne formy niosące konstrukcję: kolumny, \
+maszty, pnie, postacie; nie sprzęty i przedmioty, nie drobny wzór), otwartość ucięta \
+krawędzią, przeciwwaga, akcent koloru.
+4. Nie dopasowuj żadnych siatek (złoty podział, trójpodział, połowy) i nie pisz o nich; zrobi \
+to osobny krok na podstawie Twoich punktów kluczowych. Nie oceniaj też ruchu ani tego, czy \
+kompozycja jest statyczna czy dynamiczna, i nie rysuj ruchu; to też osobny krok. Złota \
+spirala tylko po prawdziwych, zwiniętych formach.
+5. Wskaż 3–6 punktów kluczowych: miejsca, na których naprawdę opiera się kompozycja \
+(dominanta, oko lub twarz głównej postaci, punkt zbiegu, wierzchołek głównego układu, linia \
+horyzontu, ważna pionowa krawędź). Każdy dokładnie na formie, z nazwą.
+Lepiej mniej i pewnie niż wzór przyłożony na siłę. Portret na gładkim tle: powiedz to wprost \
+i pokaż oś postaci, podział tła albo masę.
 
-UCZCIWOŚĆ
-Jakiś wzór da się przyłożyć do każdego obrazu, więc nazywasz tylko to, co ten obraz naprawdę \
-porządkuje. Każdy układ, podział i rytm wynika z konkretnych, nazwanych form. Lepiej mniej i \
-pewnie: czego nie widać wyraźnie, nie szukasz na siłę, tylko pomijasz. Gdy obraz nie ma \
-wyraźnej figury (portret na gładkim tle, układ rozproszony), powiedz to wprost i pokaż to, co \
-go porządkuje (oś postaci, podział tła, masa).
-
-ODPOWIEDŹ: "composition" z jednym ujęciem w "views":
+ODPOWIEDŹ: "composition" z jednym ujęciem w "views" (tekst bez słowa o siatkach i podziałach \
+pola):
 - "title": „Analiza kompozycji”.
-- "text": 4–6 zdań o kompozycji, konkretnie, ok. 450–800 znaków. Jedno z nich mówi, czy \
-kompozycja jest otwarta czy zamknięta i po czym to widać. Typ kompozycji możesz nazwać na \
-początku („Kompozycja zamknięta i statyczna, zbudowana na piramidzie.”), ale nie musisz: \
-zacznij od tego, co w tym obrazie najmocniejsze. Pozostałe zdania: główny układ i formy, które \
-go wyznaczają; podziały i rytmy (jeśli są); co układ robi dla tematu. Tekst nie twierdzi \
-niczego, czego nie widać na obrazie lub w śladach.
-- "grid": "golden", "thirds", "halves", "3x2", "2x3" na warunkach z punktu 10, inaczej "none".
-- "marks": 3–6 śladów, najpierw główny układ, potem podziały i rytm. Każdy ślad pokazuje jedną \
-rzecz z tekstu. Kształty:
-  "line" (2–12 punktów): horyzont, podział, oś, krawędź, przekątna, boki otwartego trójkąta lub \
-V (3 punkty: koniec boku, wierzchołek, koniec drugiego boku), krzywa S lub zygzak przez \
-kolejne formy. Może wychodzić poza obraz do połowy boku. Krawędzie, które zbiegają się w \
-perspektywie, rysuj jako "rays" do ich punktu zbiegu, gdy leży on w obrazie albo najwyżej pół \
-boku poza nim. Gdy punkt zbiegu leży dalej (klin budynku wsunięty w ulicę, długi stół \
-widziany z ukosa), narysuj klin dwiema osobnymi "line", po jednej na każdą zbiegającą się \
-krawędź (np. gzyms i cokół), każda od krawędzi obrazu do miejsca, gdzie forma się kończy: \
-klin jest głównym układem i zawsze ma swój ślad, a aplikacja rysuje proste linie z ostrymi \
-końcami. Klin lub V bez perspektywy (klin wody między dwoma brzegami) to "line" z 3 punktami: \
-koniec boku, wierzchołek, koniec drugiego boku.
-  "triangle" (3 wierzchołki): zamknięty trójkąt układu, może wychodzić poza obraz.
-  "loop" (środek i róg prostokąta, w który się wpisuje): wielki krąg lub owal układu, owal masy, \
-łuk sklepienia; wokół pojedynczej rzeczy tylko, gdy jest dominantą albo przeciwwagą.
-  "rect" (dwa przeciwległe rogi): rama w ramie (okno, drzwi, łuk, ciemna kulisa wokół jasnego \
-środka), bryła lub pas.
-  "rhythm" (3–12 par punktów, po kolei): po jednej parze na każdą powtarzaną formę, jej dół i \
-góra wzdłuż jej osi (stopa i szczyt kolumny, słupka, masztu, pnia, postaci). Aplikacja rysuje \
-przy każdej formie równoległą kreskę, lekko wyprostowaną i wydłużoną, bez linii, która je \
-łączy.
-  "rays" (punkt zbiegu, potem 2–8 dalekich końców): perspektywa zbieżna. Każdy promień biegnie \
-od końca po prawdziwej krawędzi (sufitu, ściany, kobierca, podłogi, rzędu okien, linii głów \
-lub stóp szeregu postaci) do punktu zbiegu.
-  "motion" (2–12 punktów po torze, grot na końcu): ruch, który dzieje się w obrazie (lot, \
-huśtanie, galop, fala, wiatr, taniec); aplikacja rysuje go zamaszystą strzałką ze smugami, \
-żeby było widać dynamikę.
-  "arrow" (2–12 punktów, grot na końcu): kierunek, który wychodzi poza obraz (kompozycja \
-otwarta) albo prowadzi do środka (dośrodkowa). Otwartość lub zamknięcie rysuj tylko wtedy, gdy \
-mocno decyduje o wyglądzie obrazu (ucięta wielka forma, wiatr ciągnący za krawędź, rama z \
-drzew wokół sceny); inaczej wystarczy zdanie w tekście. Nie rysuj strzałką drogi wzroku od \
-rzeczy do rzeczy.
-  "spiral" (3 punkty: początek najszerszego łuku, punkt na nim ćwierć obrotu dalej, oko): tylko \
-na warunkach z punktu 10; początek może leżeć w dowolnym kierunku od oka, więc spiralę \
-obracasz tak, by jej łuki szły po formie.
-  Czytelność: każdy ślad ma swoją drogę. Dwa ślady nie biegną po tej samej krawędzi ani tuż \
-obok siebie (np. bok klina i dolny bok prostokąta okna na tym samym parapecie, pion narożnika \
-na boku klina): zostaw ten, który mówi więcej, a drugą rzecz nazwij w tekście. Jedna rzecz ma \
-jeden ślad: nie otaczaj kółkiem tego, przez co biegnie już inna linia (łódź i jej maszt), i \
-nie dorysowuj linii po rzeczy tylko po to, żeby pokazać, że leży na linii siatki: siatka to \
-widać, a tekst to mówi. Strzałka otwartości idzie przez formę, \
-której nie zajmuje inny ślad, i jest długa (co najmniej jedna piąta boku), nie krótki \
-zaczep przy krawędzi. Mniej śladów, które czytają się od razu, jest lepsze niż sześć, które \
-się plączą.
-  Do każdego śladu "title" (1–3 słowa, np. „Piramida”, „Horyzont nisko”, „Rytm masztów”, „Punkt \
-zbiegu”, „Lot”, „Ucięta łódź”) i "text" (najwyżej 45 znaków)."""
-)
+- "text": 4–6 zdań, 450–800 znaków. Zacznij od tego, co w tym obrazie najmocniejsze. Jedno \
+zdanie mówi, czy kompozycja jest otwarta czy zamknięta i po czym to widać; jedno, co równoważy \
+dominantę albo jak działa kolor; jedno, co układ robi dla tematu. Bez zdania o statyce, \
+dynamice i ruchu. Nic, czego nie widać na obrazie lub w śladach.
+- "points": punkty kluczowe z punktu 5, najważniejszy pierwszy. Każdy: "x", "y" (piksele), \
+"na" (1–5 słów), "os": "x" gdy liczy się tylko położenie w poziomie (pionowa krawędź, oś \
+postaci), "y" gdy tylko wysokość (horyzont, linia stołu), "xy" dla punktu; "waga": "główny" \
+(najwyżej dwa) albo "ważny".
+- "marks": 3–6 śladów, najpierw główny układ. Każdy: "shape", "points", "title" (1–3 słowa), \
+"text" (najwyżej 45 znaków), "na" (lista: dla każdego punktu po kolei nazwa miejsca, na którym \
+leży, 1–5 słów).
+  "line" 2–12 punktów: horyzont, podział, oś, krawędź, przekątna, boki V lub klina (3 punkty: \
+koniec boku, wierzchołek, koniec drugiego), krzywa S przez kolejne formy; może wyjść poza \
+obraz do pół boku.
+  "triangle" 3 wierzchołki na prawdziwych punktach formy, może wyjść poza obraz.
+  "loop" środek i róg prostokąta, w który się wpisuje: wielki owal układu lub dominanta.
+  "rect" dwa przeciwległe rogi: rama w ramie, pas, bryła.
+  "rhythm" 3–12 par punktów: dół i góra każdej powtarzanej formy wzdłuż jej osi.
+  "rays" punkt zbiegu, potem 2–8 dalekich końców po prawdziwych krawędziach; gdy punkt zbiegu \
+leży dalej niż pół boku poza obrazem, zamiast tego dwie "line" po zbiegających się krawędziach.
+  "arrow" 2–12 punktów: kierunek wychodzący poza obraz, tylko gdy otwartość mocno decyduje o \
+wyglądzie; długi, co najmniej jedna piąta boku.
+  "spiral" 3 punkty: początek najszerszego łuku, punkt ćwierć obrotu dalej, oko.
+  Czytelność: dwa ślady nie biegną po tej samej krawędzi ani tuż obok siebie; jedna rzecz ma \
+jeden ślad."""
 
-SCHEMA = _object(composition=_object(views=_list(VIEW)))
+_POINT = _object(x={"type": "number"}, y={"type": "number"})
+_KEY = _object(
+    x={"type": "number"},
+    y={"type": "number"},
+    na=_str(),
+    os={"type": "string", "enum": list(AXES)},
+    waga={"type": "string", "enum": [MAIN, "ważny"]},
+)
+_VIEW = _object(
+    title=_str(),
+    text=_str(),
+    points=_list(_KEY),
+    marks=_list(
+        _object(
+            shape={"type": "string", "enum": list(DRAWN)},
+            points=_list(_POINT),
+            title=_str(),
+            text=_str(),
+            na=_list(_str()),
+        )
+    ),
+)
+SCHEMA = _object(composition=_object(views=_list(_VIEW)))
 
 
 def request_text(item: Item, context: Context) -> str:
-    """The work and what the museum and Wikipedia say of it."""
+    """The work: its picture's size, what it is and who made it (no
+    sources: the analysis looks at the picture alone)."""
     lines = [
         "DZIEŁO",
         f"Muzeum: {item.held_by or item.museum}",
@@ -241,23 +216,14 @@ def request_text(item: Item, context: Context) -> str:
     if context.size:
         w, h = context.size
         lines[:0] = [f"OBRAZ: {w} × {h} px (współrzędne w tych pikselach)", ""]
-    facts = context.facts
-    if facts and facts.title_pl:
-        lines.append(f"Polski tytuł z Wikidata: {facts.title_pl}")
-    if facts and (facts.depicts_pl or facts.depicts_en):
-        lines.append(f"Wikidata, co przedstawia: {', '.join(facts.depicts_pl + facts.depicts_en)}")
-    if text := description(item):
-        lines += ["", "OPIS MUZEUM", text]
-    if context.wiki_pl:
-        lines += ["", "WIKIPEDIA (pl) O DZIELE", context.wiki_pl]
-    if context.wiki_en:
-        lines += ["", "WIKIPEDIA (en) O DZIELE", context.wiki_en]
+    if context.facts and context.facts.title_pl:
+        lines.append(f"Polski tytuł z Wikidata: {context.facts.title_pl}")
     return "\n".join(lines)
 
 
 def question(images: ImageCache, item: Item, context: Context) -> dict[str, Any]:
     """The analysis of the work's composition: its picture as large as Opus
-    reads one (it points to the pixel) and what the sources say."""
+    reads one (it points to the pixel)."""
     img = picture(images, item)
     text = request_text(item, replace(context, size=img.size))
     params = request(
@@ -265,50 +231,188 @@ def question(images: ImageCache, item: Item, context: Context) -> dict[str, Any]
         system=SYSTEM,
         content=[image_block(img), {"type": "text", "text": text}],
         schema=SCHEMA,
-        max_tokens=32000,
-        effort="high",
+        max_tokens=24000,
+        effort="medium",
     )
-    params["timeout"] = 900.0  # much thinking: minutes
+    params["timeout"] = 600.0
     return params
+
+
+@dataclass
+class Draft:
+    """The analysis as Opus drew it: its take (no grid, no movement), the
+    places it rests on, and what each mark's points lie on, by its title."""
+
+    view: View
+    keys: list[Key]
+    na: dict[str, list[str]]
+
+
+def draft(data: dict[str, Any] | None, params: dict[str, Any]) -> Draft | None:
+    """The analysis of an answer (in pixels), or None when it has no take."""
+    if not data:
+        return None
+    size = sent_size(params)
+    fractions = to_fractions(data, size)
+    views = answer_views(fractions)
+    if not views:
+        return None
+    composition = data.get("composition")
+    raw = _dicts(composition.get("views")) if isinstance(composition, dict) else []
+    first = raw[0] if raw else {}
+    w, h = size if size is not None and fractions is not data else (1, 1)
+    keys = []
+    for p in _dicts(first.get("points")):
+        x, y = p.get("x"), p.get("y")
+        if not isinstance(x, int | float) or not isinstance(y, int | float):
+            continue
+        found = _key(
+            {
+                "x": x / w,
+                "y": y / h,
+                "title": p.get("na"),
+                "axis": p.get("os"),
+                "main": p.get("waga") == MAIN,
+            }
+        )
+        if found is not None:
+            keys.append(found)
+    na = {
+        _text(m.get("title"), 40): [_text(n, 60) for n in m.get("na") or [] if isinstance(n, str)]
+        for m in _dicts(first.get("marks"))
+    }
+    view = views[0].model_copy(update={"grid": "none", "keys": []})
+    return Draft(view=view, keys=keys[:MAX_KEYS], na=na)
 
 
 def take(data: dict[str, Any] | None, params: dict[str, Any]) -> list[View]:
     """The take of an answer (in pixels), as the app shows it: one or none."""
-    if data is None:
-        return []
-    return answer_views(to_fractions(data, sent_size(params)))
+    found = draft(data, params)
+    return [found.view] if found else []
+
+
+def _insert(said: list[str], sentence: str, after: int) -> None:
+    """``sentence`` after the ``after``-th of ``said`` (0: at the end)."""
+    said.insert(after if 1 <= after <= len(said) else len(said), sentence)
+
+
+def merged(
+    view: View,
+    choice: grids.Choice | None,
+    grid_sentence: tuple[str, int] | None,
+    movement: motions.Movement | None,
+) -> View:
+    """The take with the grid and movement steps put in: the movement's
+    sentence in place of the one that spoke of it (or where it said), the
+    grid's after the sentence it named, the movement's marks after the
+    analysis's."""
+    said = sentences(view.text)
+    inserted_at = 0
+    if movement is not None:
+        if 1 <= movement.replaces <= len(said):
+            said[movement.replaces - 1] = movement.sentence
+        else:
+            inserted_at = movement.where if 1 <= movement.where <= len(said) else len(said)
+            _insert(said, movement.sentence, movement.where)
+    if choice is not None and choice.grid != "none" and grid_sentence is not None:
+        sentence, after = grid_sentence
+        # Its place was named in the sentences before the movement's came in.
+        if 0 < inserted_at < after:
+            after += 1
+        _insert(said, sentence, after)
+    marks = [*view.marks, *(movement.marks if movement else [])]
+    update: dict[str, Any] = {"text": " ".join(said), "marks": marks}
+    if choice is not None:
+        update.update(grid=choice.grid, keys=choice.kept())
+    shown = view.model_copy(update=update)
+    return _view(shown.model_dump()) or shown
 
 
 def written(
-    images: ImageCache, item: Item, views: list[View], ask: Callable[[dict[str, Any]], Answer]
+    images: ImageCache,
+    item: Item,
+    found: Draft,
+    ask: Callable[[dict[str, Any]], Answer],
+    analysis_usd: float = 0.0,
 ) -> dict[str, Any]:
-    """The take checked by Claude over its marks drawn on the picture
-    (``ai.check``), as it goes into a page; as it was when the check
-    cannot be had."""
-    page = {"composition": {"views": [v.model_dump() for v in views]}}
-    try:
-        page = check(images, item, page, ask)
-    except (AiUnavailable, anthropic.APIError) as err:
-        log.warning("composition check of %s skipped: %s", item.id, err)
-    except Exception:  # the analysis is paid for: never lost to its check
-        log.exception("composition check of %s failed", item.id)
-    shown = page_views(page)
+    """The analysis checked, its grid chosen and its movement looked at, as
+    it goes into a page. Every step that cannot be had (the month's limit,
+    an error, an unusable answer) is left out: the analysis is paid for."""
+    img = picture(images, item, CHECK_SIDE)
+    costs = {"analysis": analysis_usd}
+    view, keys, changes = found.view, found.keys, list[str]()
+
+    def asked(step: str, params: dict[str, Any]) -> dict[str, Any] | None:
+        answer = ask(params)
+        costs[step] = costs.get(step, 0.0) + answer.cost_usd
+        return answer.data
+
+    def run(step: str, work: Callable[[], Any]) -> Any:
+        try:
+            return work()
+        except (AiUnavailable, anthropic.APIError) as err:
+            log.warning("composition %s of %s skipped: %s", step, item.id, err)
+        except Exception:  # the analysis is paid for: never lost to a later step
+            log.exception("composition %s of %s failed", step, item.id)
+        return None
+
+    looked = run(
+        "check",
+        lambda: checked(
+            view, keys, asked("check", check_question(img, view, keys, found.na)), img.size
+        ),
+    )
+    if looked is not None:
+        view, keys, changes = looked.view, looked.keys, looked.changes
+    said = sentences(view.text)
+    picture_lines = run("lines", lambda: found_lines.find(img))
+    choice = grids.choose(keys, picture_lines) if picture_lines is not None else None
+    grid_sentence = None
+    if choice is not None and choice.grid != "none":
+        grid_sentence = run(
+            "grid",
+            lambda: _grid_sentence(asked("grid", grids.question(img, choice, picture_lines, said))),
+        )
+    movement = None
+    if picture_lines is not None:
+        directions = run("directions", lambda: found_lines.directions(img))
+        if directions is not None:
+            params = motions.question(img, view, said, directions, picture_lines)
+            movement = run("motion", lambda: motions.movement(asked("motion", params), img.size))
+    shown = merged(view, choice, grid_sentence, movement)
+    log.info(
+        "composition of %s: %.3f USD (%s), grid %s, %d marks",
+        item.id,
+        sum(costs.values()),
+        ", ".join(f"{k} {v:.3f}" for k, v in costs.items()),
+        shown.grid,
+        len(shown.marks),
+    )
     return {
-        "composition": _composition(shown or views).model_dump(),
-        CHECKED: page.get(CHECKED, []),
+        "composition": _composition([shown]).model_dump(),
+        CHECKED: changes,
         CHECK_ROUND: ROUND,
+        COST: {k: round(v, 4) for k, v in costs.items()},
     }
+
+
+def _grid_sentence(data: dict[str, Any] | None) -> tuple[str, int] | None:
+    sentence = _text((data or {}).get("sentence"), 220)
+    where = (data or {}).get("where")
+    after = where if isinstance(where, int) and not isinstance(where, bool) else 0
+    return (sentence, after) if sentence else None
 
 
 def compose(
     images: ImageCache, item: Item, context: Context, ask: Callable[[dict[str, Any]], Answer]
 ) -> dict[str, Any]:
     """The composition of a page being written: what goes into it (its
-    take, what the check changed, the round), or nothing when the answer
-    is unusable."""
+    take, what the check changed, the round, what it cost), or nothing when
+    the answer is unusable."""
     params = question(images, item, context)
-    views = take(ask(params).data, params)
-    return written(images, item, views, ask) if views else {}
+    answer = ask(params)
+    found = draft(answer.data, params)
+    return written(images, item, found, ask, answer.cost_usd) if found else {}
 
 
 def failed(note: Note | None) -> bool:
@@ -365,7 +469,7 @@ class ComposeJob(NoteJob):
 
     def __init__(self, page: DailyJob) -> None:
         super().__init__(page.library, page.images, page.config)
-        #: The day's page job: what the sources say of a work.
+        #: The day's page job: what Wikidata says of a work.
         self.page = page
         self._pages: tuple[float, set[str]] = (0.0, set())
 
@@ -475,19 +579,20 @@ class ComposeJob(NoteJob):
         return text_hash(item.title, item.artist, item.date_text)
 
     def params(self, item: Item) -> dict[str, Any]:
-        return question(self.images, item, self.page.sources(item))
+        facts = self.page.wikidata.facts(self.page.http, item)
+        return question(self.images, item, Context(day=date.today(), facts=facts))
 
     def revise(
         self, item: Item, params: dict[str, Any], answer: Answer, ask: Callable[..., Answer]
     ) -> Answer:
-        views = take(answer.data, params)
-        if not views:
+        found = draft(answer.data, params)
+        if found is None:
             # Kept whole, to see why: the next analysis is not free.
             log.warning(
                 "composition of %s gave no take: %s", item.id, json.dumps(answer.data)[:2000]
             )
             return replace(answer, data={"unusable": True, "answer": answer.data})
-        return replace(answer, data=written(self.images, item, views, ask))
+        return replace(answer, data=written(self.images, item, found, ask, answer.cost_usd))
 
     def apply(self, item: Item, note: Note) -> None:
         """Puts the take in each of the work's pages wanting it, keeping the
