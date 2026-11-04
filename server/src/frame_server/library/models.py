@@ -82,7 +82,21 @@ class Framing(BaseModel):
 #: source says (``Item.museum``). The others gather pictures from many
 #: collections, and their name says only where the picture is from.
 COLLECTIONS = frozenset(
-    {"aic", "cma", "met", "rijks", "smk", "nga", "mnw", "mnk", "yale", "si", "paris", "vam"}
+    {
+        "aic",
+        "cma",
+        "met",
+        "rijks",
+        "smk",
+        "nga",
+        "mnw",
+        "mnk",
+        "yale",
+        "si",
+        "paris",
+        "vam",
+        "wellcome",
+    }
 )
 
 #: Openverse's museums, by the host of a work's page there.

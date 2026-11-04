@@ -1130,6 +1130,7 @@ actor DemoBackend: FrameBackend {
             Museum(key: "mnw", name: "Muzeum Narodowe w Warszawie"),
             Museum(key: "mnk", name: "Muzeum Narodowe w Krakowie"),
             Museum(key: "yale", name: "Yale"),
+            Museum(key: "wellcome", name: "Wellcome Collection"),
             Museum(key: "wmc", name: "Wikimedia Commons"),
             Museum(key: "europeana", name: "Europeana"),
             Museum(key: "openverse", name: "Openverse"),

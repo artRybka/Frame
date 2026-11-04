@@ -4,7 +4,7 @@ centimetres, drawn next to a sheet of A4 for scale.
 
 Looked up once per work, in the background when its page opens: the
 museum's own record where its API says it plainly (the Met, Cleveland,
-SMK, Chicago, the V&A, the national museums in Warsaw and Kraków), the
+SMK, Chicago, the V&A, the Wellcome Collection, the national museums in Warsaw and Kraków), the
 ``dimensions`` of a Commons page's {{Artwork}}; else Wikidata's height and
 width (P2048, P2049) of the work, found by the museum's record, the
 Commons page, the Commons file as its picture (P18), or last by its title,
@@ -385,6 +385,12 @@ def _muza(api: str) -> Callable[[httpx.Client, Item], RealSize | None]:
     return ask
 
 
+def _wellcome(http: httpx.Client, item: Item) -> RealSize | None:
+    resp = http.get(f"https://api.wellcomecollection.org/catalogue/v2/works/{item.source_id}")
+    resp.raise_for_status()
+    return parse(str(resp.json().get("physicalDescription") or ""))
+
+
 #: Museums whose own record says the size plainly.
 MUSEUMS: dict[str, Callable[[httpx.Client, Item], RealSize | None]] = {
     "met": _met,
@@ -392,6 +398,7 @@ MUSEUMS: dict[str, Callable[[httpx.Client, Item], RealSize | None]] = {
     "smk": _smk,
     "aic": _aic,
     "vam": _vam,
+    "wellcome": _wellcome,
     "mnw": _muza("https://cyfrowe-api.mnw.art.pl/api"),
     "mnk": _muza("https://api-zbiory.mnk.pl/api"),
 }

@@ -55,11 +55,13 @@ ALL = "all"
 #: Museums asked for works by the artists the owner likes (those on offer).
 TASTE_SOURCES = (
     *("aic", "cma", "met", "rijks", "europeana", "smk"),
-    *("nga", "mnw", "mnk", "yale", "si"),
+    *("nga", "mnw", "mnk", "yale", "si", "wellcome"),
 )
 #: Museums that draw random paintings for variety (those on offer). Paris
-#: Musées searches titles only, so it is not asked for artists.
-DRAW_SOURCES = (*TASTE_SOURCES, "paris")
+#: Musées searches titles only, so it is not asked for artists. The Wellcome
+#: Collection's paintings are often about medicine (operations, diseases),
+#: so it is asked for artists and themes but not for random paintings.
+DRAW_SOURCES = (*(s for s in TASTE_SOURCES if s != "wellcome"), "paris")
 #: Museums that can be asked for their most important works.
 HIGHLIGHT_SOURCES = ("met", "cma", "mnw", "mnk")
 #: How long a search waits for typed words to be translated (seconds); an
