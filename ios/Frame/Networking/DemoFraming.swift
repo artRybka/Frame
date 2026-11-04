@@ -55,8 +55,7 @@ enum DemoFraming {
     /// Museum-label text, as the server's `caption_for`.
     static func caption(for item: Item) -> String {
         if item.kind == .photo {
-            return [item.dateText, item.photo?.caption ?? ""].filter { !$0.isEmpty }
-                .joined(separator: " · ")
+            return [item.displayTitle, item.photoLine].filter { !$0.isEmpty }.joined(separator: " · ")
         }
         let text = [item.artist, item.title].filter { !$0.isEmpty }.joined(separator: " — ")
         return item.dateText.isEmpty ? text : "\(text), \(item.dateText)"
@@ -65,9 +64,8 @@ enum DemoFraming {
     /// What "Opis" prints, as the server's `text_block_for`.
     static func textBlock(for item: Item) -> TextBlock {
         if item.kind == .photo {
-            let title = (item.photo?.caption).flatMap { $0.isEmpty ? nil : $0 } ?? item.title
-            let when = item.dateText.isEmpty ? String((item.photo?.takenAt ?? "").prefix(10)) : item.dateText
-            return TextBlock(title: title, meta: [when, item.photo?.contributor ?? ""].filter { !$0.isEmpty })
+            let meta = [item.photoLine, item.photo?.contributor ?? ""].filter { !$0.isEmpty }
+            return TextBlock(title: item.displayTitle, meta: meta)
         }
         let detail = [item.dateText, item.medium].filter { !$0.isEmpty }.joined(separator: " · ")
         let body = item.description.isEmpty

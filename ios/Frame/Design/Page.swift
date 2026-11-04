@@ -113,7 +113,8 @@ extension PageGlow {
     /// thumbnail is not in memory.
     @MainActor
     static func colours(of ref: ImageRef, backend: any FrameBackend, maxPixel: CGFloat = 700) -> [ColorSwatch] {
-        guard let request = backend.request(for: ref), let key = request.url?.absoluteString else { return [] }
+        guard let request = backend.request(for: ref), request.url != nil else { return [] }
+        let key = ImageLoader.pictureKey(request)  // not the colours of the copy before
         if let known = fromThumbs[key] { return known }
         guard let image = ImageLoader.inMemory(for: request, maxPixel: maxPixel)?.cgImage else { return [] }
         let found = bands(of: image)

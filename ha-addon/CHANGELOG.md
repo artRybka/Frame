@@ -1,5 +1,43 @@
 # Changelog
 
+## 1.98.0
+
+- Zdjęcia z albumów iCloud nie są już „Bez tytułu / Album iCloud”. Claude,
+  który i tak ogląda każde zdjęcie przy słowach kluczowych, nadaje mu
+  krótki polski tytuł, np. „Montaż drewnianej ścianki”, a pod nim widać
+  dzień i miejsce: „29 października 2026 · Kraków”. Podpis dodany
+  w Zdjęciach zawsze wygrywa, także dopisany później. Bez Claude tytułem
+  jest dzień zrobienia zdjęcia.
+- Nazwę miejscowości serwer bierze ze współrzędnych zdjęcia
+  (OpenStreetMap, współrzędne zaokrąglone do ok. 1 km), po każdej
+  synchronizacji albumu i w nocy. Ten sam tytuł i miejsce pokazują
+  kafelki, karta zdjęcia, Teraz i ramka w trybie Opis. Zdjęcia, które
+  już są w bibliotece, dostają tytuły w tle.
+
+## 1.97.2
+
+- Po wybraniu lepszej kopii dzieła (Kopie dzieła → „Użyj tej kopii”) jego
+  miniatura w listach, siatkach i na Teraz od razu pokazuje nowe zdjęcie,
+  w jego tonacji i kolorach, z ramą, jeśli kopia ją obejmuje. Wcześniej
+  zostawała stara. Tak samo po „Przywróć zdjęcie muzeum” i po ostrzejszej
+  kopii znalezionej przez serwer. Kropki kolorów dzieła i tagi kolorów
+  liczą się na nowo z nowego zdjęcia.
+- Dzieła, którym kopię wybrano wcześniej, raz po aktualizacji serwera
+  dostają miniatury z kopii. Inny telefon domownika pobiera nową miniaturę,
+  gdy pierwszy raz pokaże to dzieło.
+
+## 1.97.1
+
+- Teraz: nad tytułem dzieła nazwa muzeum, w którym wisi, zamiast „Dzieło”;
+  muzeum, tytuł i autor bliżej siebie, narodowość i lata życia tuż pod
+  nazwiskiem, bez linijki z techniką. Rok powstania na małym szarym
+  znaczku na końcu tytułu, w Teraz i na karcie dzieła.
+- Szukaj → Kolor ma zakładki Kolorystyka, Dominuje i Akcent.
+  Kolorystyka to kolor na co najmniej 15% obrazu, razem z nastrojami.
+  Dominuje (wcześniej „Wyłącznie”) to obrazy malowane głównie wybranymi
+  kolorami: dają one 80% barw obrazu, a biel, szarość i czerń się nie
+  liczą.
+
 ## 1.97.0
 
 - Odkrywaj → Kolor i nastrój pokazuje tylko obrazy, rysunki i akwarele,

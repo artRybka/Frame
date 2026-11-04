@@ -57,7 +57,7 @@ enum TermFacet: String, CaseIterable, Identifiable, Sendable {
     /// The group in words: "Styl", "Styl: Ukiyo-e +2", "Epoka: 1700–1900".
     func label(_ tokens: [SearchToken], periods: [TermInfo]) -> String {
         guard let value = value(tokens, periods: periods) else { return title }
-        // "Akcent: czerwień" and "Wyłącznie: błękit" say what they are on their own.
+        // "Akcent: czerwień" and "Dominuje: błękit" say what they are on their own.
         if self == .color, let first = tokens.first(where: holds), first.key != ColorTag.family(first.key) { return value }
         return "\(title): \(value)"
     }
@@ -363,7 +363,9 @@ struct PanelGlass: View {
     }
 }
 
-/// The tabs of the Kolor sheet.
+/// The tabs of the Kolor sheet: Kolorystyka (a colour on 15% of the work,
+/// and the moods), Dominuje (the work painted mostly in the picked colours,
+/// "only:" tags) and Akcent.
 enum ColourShade: Hashable {
     case main, accent, only
 }
@@ -422,7 +424,7 @@ struct TermFacetPanel: View {
         }
         .task {
             await model.loadVocabulary(fresh: true)
-            // Opened on accents or "Wyłącznie" (and no plain colour): show those.
+            // Opened on accents or "Dominuje" (and no plain colour): show those.
             if facet == .color, !tokens.contains(where: { $0.kind == "color" && ColorTag.families.contains($0.key) }) {
                 if tokens.contains(where: { $0.kind == "color" && $0.key.hasPrefix(ColorTag.accentPrefix) }) {
                     shade = .accent
@@ -436,7 +438,7 @@ struct TermFacetPanel: View {
     private var footnote: String {
         switch facet {
         case .museum: "Nic nie wybrane: pytam wszystkie muzea."
-        case .color: "Wśród kolorów i nastrojów wystarczy jeden z wybranych, wśród akcentów też. Kolor i akcent muszą pasować razem: Błękit z akcentem czerwieni to niebieskie obrazy z czymś czerwonym. Wyłącznie: obrazy malowane tylko wybranymi kolorami, poza bielą, szarością i czernią."
+        case .color: "Wśród kolorów i nastrojów wystarczy jeden z wybranych, wśród akcentów też. Kolor i akcent muszą pasować razem: Błękit z akcentem czerwieni to niebieskie obrazy z czymś czerwonym. Dominuje: obrazy malowane głównie wybranymi kolorami, biel, szarość i czerń się nie liczą."
         default: "Wybierz dowolnie wiele: wystarczy, że dzieło pasuje do jednego z nich."
         }
     }
@@ -534,15 +536,15 @@ struct TermFacetPanel: View {
         let pickedAccents = count { $0.hasPrefix(ColorTag.accentPrefix) }
         let pickedOnly = count { $0.hasPrefix(ColorTag.onlyPrefix) }
         let hint = switch shade {
-        case .main: "Kolor, którego w obrazie jest dużo."
+        case .main: "Kolor, który zajmuje wyraźną część obrazu (co najmniej 15%)."
         case .accent: "Kolor jako mały fragment obrazu."
-        case .only: "Obraz malowany tylko wybranymi kolorami. Wybierz kilka, np. błękit i turkus."
+        case .only: "Obraz malowany głównie wybranymi kolorami (80% barw obrazu). Wybierz kilka, np. błękit i turkus."
         }
         return VStack(alignment: .leading, spacing: 14) {
             Picker("Jak", selection: $shade) {
-                Text(pickedMain > 0 ? "Dominuje · \(pickedMain)" : "Dominuje").tag(ColourShade.main)
+                Text(pickedMain > 0 ? "Kolorystyka · \(pickedMain)" : "Kolorystyka").tag(ColourShade.main)
+                Text(pickedOnly > 0 ? "Dominuje · \(pickedOnly)" : "Dominuje").tag(ColourShade.only)
                 Text(pickedAccents > 0 ? "Akcent · \(pickedAccents)" : "Akcent").tag(ColourShade.accent)
-                Text(pickedOnly > 0 ? "Wyłącznie · \(pickedOnly)" : "Wyłącznie").tag(ColourShade.only)
             }
             .pickerStyle(.segmented)
             Text(hint)
@@ -558,7 +560,7 @@ struct TermFacetPanel: View {
                     swatch(tag: tag, family: family)
                 }
             }
-            // A mood is the whole work's, never an accent's: only under "Dominuje".
+            // A mood is the whole work's, never an accent's: only under "Kolorystyka".
             if shade == .main && !moods.isEmpty {
                 VStack(alignment: .leading, spacing: 10) {
                     Eyebrow("Nastrój")

@@ -17,6 +17,8 @@ final class AppModel {
         static let serverPath = "serverPath"
         /// The household's Tailscale key, as the server last gave it.
         static let tailnetKey = "tailnetKey"
+        /// Which copy each work was last seen showing (`Item.sharper`).
+        static let pictureVersions = "pictureVersions"
     }
 
     enum Connection: Equatable {
@@ -114,6 +116,15 @@ final class AppModel {
     /// Goes up when the owner taps a picture that did not load: every
     /// picture on screen that failed tries again.
     private(set) var pictureRetries = 0
+    /// Works whose picture changed since launch (another copy took its
+    /// place), and how many times: their thumbnails and previews on screen
+    /// are had anew.
+    private(set) var pictureChanges: [String: Int] = [:]
+    /// Which copy each work showing one was last seen with (its id; works
+    /// showing their own are left out), kept across launches: a change made
+    /// on another phone is noticed here too.
+    @ObservationIgnored private var pictureVersions: [String: String] =
+        UserDefaults.standard.dictionary(forKey: Keys.pictureVersions) as? [String: String] ?? [:]
     /// Styles, subjects, periods and techniques to search by, with Polish names.
     var vocabulary: [TermInfo] = []
     var connection = Connection.unknown
@@ -1672,6 +1683,35 @@ final class AppModel {
     /// Every picture on screen that failed tries again (a tap on one of them).
     func retryPictures() {
         pictureRetries += 1
+    }
+
+    /// The owner picks another copy for the work's picture, or its own back
+    /// (`copyID` its own id): its thumbnail and previews follow at once.
+    func chooseCopy(itemID: String, copyID: String) async throws -> Item {
+        let updated = try await backend.chooseCopy(itemID: itemID, copyID: copyID)
+        pictureSeen(itemID, copy: updated.sharper?.itemId ?? "", changed: true)
+        return updated
+    }
+
+    /// The work was seen showing `copy` ("" its own picture). When that is
+    /// not the one it was seen with before (or `changed`), its thumbnail
+    /// and previews kept from before are dropped: they showed the old
+    /// picture, in other tones or with a frame round it (Mateusz
+    /// 2026-11-04). A work first seen with a copy is had anew once too:
+    /// its thumbnail may be from before the copy.
+    func pictureSeen(_ itemID: String, copy: String, changed: Bool = false) {
+        let known = pictureVersions[itemID]
+        guard changed || known != (copy.isEmpty ? nil : copy) else { return }
+        pictureVersions[itemID] = copy.isEmpty ? nil : copy
+        UserDefaults.standard.set(pictureVersions, forKey: Keys.pictureVersions)
+        let refs: [ImageRef] = [
+            .thumb(itemID),
+            .framePreview(itemID, settings: settings),
+            .framePreview(itemID, settings: settings, ownLook: false),
+            .framePreview(itemID),
+        ]
+        ImageLoader.repictured(itemID, requests: refs.compactMap { backend.request(for: $0) })
+        pictureChanges[itemID, default: 0] += 1
     }
 }
 

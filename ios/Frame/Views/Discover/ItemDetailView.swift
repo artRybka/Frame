@@ -195,7 +195,7 @@ struct ItemDetailView: View {
     /// The picture as it was: the work's own (its id) or a copy before.
     private func restorePicture(to copyID: String) async {
         do {
-            let updated = try await model.backend.chooseCopy(itemID: itemID, copyID: copyID)
+            let updated = try await model.chooseCopy(itemID: itemID, copyID: copyID)
             withAnimation(.easeInOut(duration: 0.4)) { item = updated }
             pictureSize = updated.sharper.map { ($0.width, $0.height) }
         } catch {
@@ -237,6 +237,7 @@ struct ItemDetailView: View {
                 showPolish(view, animated: false)
             }
             item = fresh
+            if fresh.kind == .artwork { model.pictureSeen(fresh.id, copy: fresh.sharper?.itemId ?? "") }
             holding = false
             if LaunchRoute.screen == "original" { opened = .original }  // CI screenshots
         } catch {
@@ -333,15 +334,22 @@ struct ItemDetailView: View {
             if !held.isEmpty {
                 Eyebrow(held, color: Theme.vermilion)
             }
-            Text(nonEmpty(polish?.title) ?? (summary.shownTitle.isEmpty ? "Bez tytułu" : summary.shownTitle))
-                .font(.serif(30, weight: .semibold))
-                .foregroundStyle(Theme.ink)
+            // The year on a badge at the title's end, as below.
+            let photo = summary.kind == .photo
+            // A photo's line under its title: when and where.
+            let date = photo
+                ? summary.subtitle ?? summary.dateText
+                : nonEmpty(polish?.date) ?? summary.dateText
+            TitleWithYear(
+                title: nonEmpty(polish?.title) ?? (summary.shownTitle.isEmpty ? "Bez tytułu" : summary.shownTitle),
+                date: photo ? "" : date,
+                font: .serif(30, weight: .semibold)
+            )
                 .fixedSize(horizontal: false, vertical: true)
             if !summary.artist.isEmpty {
                 Text(Names.artist(summary.artist)).font(.serif(19)).foregroundStyle(Theme.ink)
             }
-            let date = nonEmpty(polish?.date) ?? summary.dateText
-            if !date.isEmpty {
+            if photo, !date.isEmpty {
                 Text(date).font(.subheadline).foregroundStyle(Theme.inkSoft)
             }
         }
@@ -498,6 +506,7 @@ struct ItemDetailView: View {
             }
             if let copy = view.sharper {
                 item?.sharper = copy
+                model.pictureSeen(id, copy: copy.itemId)  // the lists' thumbnail too
                 return
             }
             if view.status != "looking" { return }
@@ -839,9 +848,15 @@ struct ItemDetailView: View {
             }
             let shown = title(item)
             let original = OriginalTitle.of(item.title, shown: shown)
-            Text(peeking ? original ?? shown : shown)
-                .font(.serif(30, weight: .semibold))
-                .foregroundStyle(Theme.ink)
+            // The year on a badge at its end (Mateusz 2026-11-04, as on
+            // Teraz); a photo keeps its date on a line of its own.
+            let photo = item.kind == .photo
+            let date = photo ? item.photoLine : nonEmpty(shownPolish?.date) ?? item.dateText
+            TitleWithYear(
+                title: peeking ? original ?? shown : shown,
+                date: photo ? "" : date,
+                font: .serif(30, weight: .semibold)
+            )
                 .fixedSize(horizontal: false, vertical: true)
                 // The museum's title fades into the Polish one.
                 .contentTransition(.opacity)
@@ -850,19 +865,23 @@ struct ItemDetailView: View {
                 .titleGlint(enabled: original != nil && !peeking)
                 // Held: the museum's own, until held again.
                 .titlePeek(enabled: original != nil, peeking: $peeking)
-            if !item.artist.isEmpty {
-                // Their other works, on Discover's search.
-                Text(Names.artist(item.artist)).font(.serif(19)).foregroundStyle(Theme.ink)
-                    .multilineTextAlignment(.leading)
-                    .artistPress { model.artistSearch = item.artist }
-            }
+            // Nationality and years right under the name, as on Teraz.
             let bio = nonEmpty(shownPolish?.artistNote) ?? item.artistBio
-            if !bio.isEmpty {
-                Text(bio).font(.subheadline).foregroundStyle(Theme.inkSoft)
-                    .contentTransition(.opacity)
+            if !item.artist.isEmpty || !bio.isEmpty {
+                VStack(alignment: .leading, spacing: 0) {
+                    if !item.artist.isEmpty {
+                        // Their other works, on Discover's search.
+                        Text(Names.artist(item.artist)).font(.serif(19)).foregroundStyle(Theme.ink)
+                            .multilineTextAlignment(.leading)
+                            .artistPress { model.artistSearch = item.artist }
+                    }
+                    if !bio.isEmpty {
+                        Text(bio).font(.subheadline).foregroundStyle(Theme.inkSoft)
+                            .contentTransition(.opacity)
+                    }
+                }
             }
-            let date = nonEmpty(shownPolish?.date) ?? item.dateText
-            if !date.isEmpty {
+            if photo, !date.isEmpty {
                 Text(date).font(.subheadline).foregroundStyle(Theme.inkSoft)
                     .contentTransition(.opacity)
             }
@@ -871,7 +890,7 @@ struct ItemDetailView: View {
 
     private func title(_ item: Item) -> String {
         nonEmpty(shownPolish?.title) ?? (showOriginal ? nil : earlyTitle)
-            ?? (item.title.isEmpty ? "Bez tytułu" : item.title)
+            ?? (item.displayTitle.isEmpty ? "Bez tytułu" : item.displayTitle)
     }
 
     private func nonEmpty(_ text: String?) -> String? {

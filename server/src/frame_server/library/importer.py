@@ -13,6 +13,7 @@ from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import wait as wait_for
 from dataclasses import dataclass, field, replace
 from itertools import chain, zip_longest
+from typing import Any
 
 import httpx
 from PIL import Image
@@ -234,6 +235,18 @@ class Importer:
     def add(self, item: Item) -> Item:
         """Download the thumbnail, analyse colours and store the item."""
         return self.library.upsert(self._analysed(item))
+
+    def measure_again(self, item: Item) -> Item:
+        """The stored work's colours, colour tags and tint from its thumbnail
+        as it is now (another picture took the place of the one before);
+        its size is the work's and stays."""
+        with Image.open(self.cache.ensure_thumb(item)) as thumb:
+            spread = tint_spread(thumb)
+            colors, tags, score = analyse(thumb, self.palette, spread)
+        changes: dict[str, Any] = {"colors": colors, "color_tags": tags, "tint_spread": spread}
+        if item.suitability is not None:
+            changes["suitability"] = score
+        return self.library.update(item.id, **changes) or item.model_copy(update=changes)
 
     def _analysed(self, item: Item) -> Item:
         with Image.open(self.cache.ensure_thumb(item)) as thumb:

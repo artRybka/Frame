@@ -161,7 +161,7 @@ enum ColorTag {
     static func accent(_ family: String) -> String { accentPrefix + family }
 
     /// Colours a picture is painted in ("only:blue"), as the server tags
-    /// them: never shown on a work. Picked under "Wyłącznie", they find
+    /// them: never shown on a work. Picked under "Dominuje", they find
     /// pictures painted in those colours alone (with white, grey, black).
     static let onlyPrefix = "only:"
     static let onlyFamilies = accentFamilies
@@ -193,7 +193,7 @@ enum ColorTag {
             return "Akcent: " + name(family(tag)).lowercased()
         }
         if tag.hasPrefix(onlyPrefix) {
-            return "Wyłącznie: " + name(family(tag)).lowercased()
+            return "Dominuje: " + name(family(tag)).lowercased()
         }
         return switch tag {
         case "red": "Czerwień"

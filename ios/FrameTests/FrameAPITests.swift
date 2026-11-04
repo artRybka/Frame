@@ -1195,6 +1195,28 @@ final class FrameAPITests: XCTestCase {
         XCTAssertEqual(sharper.heldBy, "Louvre")
     }
 
+    /// After another copy of a work's picture was picked, its thumbnail and
+    /// previews are kept under new names, its original and other works'
+    /// pictures under the old (Mateusz 2026-11-04: the old thumbnail stayed).
+    func testAPictureChangeRenamesTheWorksThumbnailAndPreviews() throws {
+        let base = "http://frame.local:8099/api/library/items"
+        let thumb = URLRequest(url: try XCTUnwrap(URL(string: "\(base)/test%3Arepicture/thumb")))
+        let preview = URLRequest(url: try XCTUnwrap(URL(string: "\(base)/test%3Arepicture/preview?orientation=portrait")))
+        let image = URLRequest(url: try XCTUnwrap(URL(string: "\(base)/test%3Arepicture/image")))
+        let other = URLRequest(url: try XCTUnwrap(URL(string: "\(base)/test%3Aother/thumb")))
+        let before = [thumb, preview, image, other].map { ImageLoader.pictureKey($0) }
+        ImageLoader.repictured("test:repicture", requests: [thumb])
+        let after = [thumb, preview, image, other].map { ImageLoader.pictureKey($0) }
+        XCTAssertNotEqual(after[0], before[0])
+        XCTAssertNotEqual(after[1], before[1])
+        XCTAssertEqual(after[2], before[2])
+        XCTAssertEqual(after[3], before[3])
+
+        let json = #"{"id": "aic:1", "kind": "artwork", "source": "aic", "title": "", "artist": "", "date_text": "", "year": null, "colors": [], "width": null, "height": null, "favorite": false, "suitability": null, "picture": "wmc:9"}"#
+        let summary = try LiveBackend.decoder().decode(ItemSummary.self, from: Data(json.utf8))
+        XCTAssertEqual(summary.picture, "wmc:9")
+    }
+
     func testDecodesThemePage() throws {
         let json = #"{"items": [], "more": true}"#
         let page = try LiveBackend.decoder().decode(ArtThemePage.self, from: Data(json.utf8))
