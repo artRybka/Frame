@@ -261,8 +261,7 @@ def last_sync(playlist_id: int, svc: Svc, user: CurrentUser) -> AlbumSync | None
 
 @router.post("/playlists/{playlist_id}/play", status_code=202)
 async def play(playlist_id: int, svc: Svc, user: CurrentUser) -> dict[str, Any]:
-    if _only_favorites(svc, _playlist(svc, playlist_id, user)):
-        raise HTTPException(409, "Ulubione zostają zawsze")
+    _playlist(svc, playlist_id, user)  # "Ulubione" too: only deleting it is refused
     settings = svc.player.settings
     settings.playlist_id = playlist_id
     svc.player.save_settings(settings)

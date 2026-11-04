@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.94.2
+
+- „Prezentuj na ramce” działa dla Ulubionych, z przytrzymania okładki
+  i z przycisku na stronie playlisty. Dotąd serwer odpowiadał
+  „Ulubione zostają zawsze”, jakby chodziło o usuwanie.
+
 ## 1.94.1
 
 - Nowe studia i Studium dnia nie sprawdzają już osobno kadrów detali,
