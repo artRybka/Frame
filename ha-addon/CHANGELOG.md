@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.94.2
+
+- Gdy muzeum podaje tylko jednozdaniową adnotację (tytuł, autor,
+  technika, data, np. „obraz olejny Paula Cézanne'a, 1888–1890; skan
+  w wysokiej rozdzielczości”), „O dziele” nie pokazuje już jej
+  tłumaczenia, tylko notkę napisaną z obrazu i danych, jak przy dziele
+  bez opisu. Opis musi mieć co najmniej 120 znaków i 10 słów, które
+  mówią coś więcej niż tytuł, autor i data. Takie dzieła dostają nową
+  notkę same, w tle.
+
 ## 1.94.1
 
 - Nowe studia i Studium dnia nie sprawdzają już osobno kadrów detali,
