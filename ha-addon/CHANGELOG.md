@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.93.0
+
+- Ramka na zasilaczu raz sprawdza, co jeszcze potrafi powiedzieć o sobie
+  (zegar i jego strefa, pamięć, wolne miejsce, sieć, czujniki, ustawienia),
+  i zapisuje to w logu serwera. Same odczyty, bez zmian w ustawieniach.
+- Serwer wie, o ile zegar ramki rozjeżdża się z jego zegarem, i pisze o tym
+  w logu przy różnicy ponad minutę: od zegara ramki zależą jej budziki.
+- Gdy w Konfiguracji nie ma adresu MAC ramki, serwer bierze go od samej
+  ramki i budzi ją nim przez sieć.
+- Nowe powiadomienie „Nowy firmware ramki”, gdy Samsung zaktualizuje
+  oprogramowanie ekranu (tylko właściciel).
+- Na próbę: zrzut ekranu ramki na żądanie z serwera, naciśnięcia przycisku
+  i zmiany baterii na żywo trafiają do logu.
+
 ## 1.92.1
 
 - Studium dzieła: podpis pod obrazem to same litery, bez czarnego pasa

@@ -798,6 +798,54 @@ i `0xC7 81 01`, dopóki aplikacja z NAS nie zapyta; to samo robi każde
 `OFF`, czy WoL wznawia aplikację w trybie Custom, jak aplikacja zachowuje się
 na ładowarce (czy „Sleep After” jej nie usypia).
 
+### Sonda odczytów (2026-11-04)
+
+Prośba Mateusza z 2026-11-03: co jeszcze da się odczytać z ramki
+(zestawienie: https://claude.ai/artifact/DZdSuXC7nMToUyvt7UKJHo). MDC jest
+prawie wyczerpane (temperatura `0x84`, czas pracy panelu `0x08`, stan
+`0x00`, błędy `0x0D`: NAK), więc reszta idzie przez aplikację. Wszystko
+poniżej to zmiana `app.js` na serwerze, bez nowego podpisu paczki.
+
+- **Sonda** (`probe()`): raz na wersję logiki, tylko na zasilaczu (odpowiedź
+  `stay`), same odczyty, każdy w `try`, asynchroniczne z limitem czasu.
+  Każda część to osobne zgłoszenie `probe` w logu serwera (`part`): `time`
+  (`Date`, `webapis.timer`), `epaper` (ustawienia), `system`
+  (`systemcontrol`, `productinfo`), `network` (brama, maska, DNS,
+  zabezpieczenie Wi-Fi, MAC), `methods` (nazwy funkcji każdego modułu
+  `webapis`, także nieopisanych jak `deviced`), `systeminfo` (`STORAGE`,
+  `MEMORY`, `CPU`, `DEVICE_ORIENTATION`, `DISPLAY`, `BUILD`, `LOCALE`,
+  pamięć, czujniki z `tizen.sensorservice`), `apps` (uruchomione aplikacje,
+  VXT). Odczyt: `GET /api/debug/log?grep=probe` z tokenem właściciela.
+- **Przycisk**: `keydown` i `tizenhwkey` zgłaszane jako `key` (najwyżej 20
+  na start strony), żeby sprawdzić, czy naciśnięcie w ogóle dociera do
+  strony.
+- **Bateria na żywo**: `webapis.deviced.addBatteryCapacityListener` i
+  `addChargingStatusListener` zgłaszane jako `battery` (najwyżej 60 na
+  start). Na razie tylko do logu: serwer nie zmienia na ich podstawie
+  `power_source`, bo „zasilacz” w ostatnim odczycie mówi mu, że ramka
+  zasnęła przez odpięcie (`_fell_asleep`).
+- **Zegar ramki**: każde `/panel/next` ma `now` (ms zegara ramki); serwer
+  trzyma różnicę w `clock_offset_s` w stanie ramki i raz pisze w logu, gdy
+  przekracza 60 s. Budziki są w czasie ramki, a ramka nie ma NTP.
+- **MAC**: zgłoszenie `wifi` ma `mac` (`webapis.network.getMac()`); gdy w
+  Konfiguracji nie ma MAC, serwer używa go do WoL (zapamiętany w
+  `panel_mac_learnt`), inny niż wpisany tylko zapisuje w logu.
+- **Firmware**: inny niż poprzednio odczytany przez MDC `0x0E` → ostrzeżenie
+  w logu i powiadomienie „Nowy firmware ramki” (tylko właściciel).
+- **Zrzut ekranu tylko na żądanie**: `POST /api/debug/panel-capture`
+  (właściciel) ustawia znacznik; przy następnym `stay` odpowiedź ma
+  `capture: true`, aplikacja wywołuje
+  `systemcontrol.captureScreen("wgt-private-tmp")`, czyta
+  `ScreenCapture.jpg` (`tizen.filesystem.openFile`, potem starszy
+  `resolve`) i wysyła na `POST /panel/capture`; obraz pod
+  `GET /api/debug/panel-capture.jpg`. Tylko na zasilaczu i nigdy sam, bo w
+  E16 `captureScreen` bez ścieżki nie odpowiedział przez 30 s i może
+  zatrzymać stronę (wtedy pomaga „Uruchom aplikację ponownie”, `0xC7 81 01`).
+
+**Do sprawdzenia na ramce (sesja na Macu):** wynik sondy w logu, czy
+przycisk daje `key`, czy listenery baterii odpowiadają, czy zrzut ekranu
+działa i czy pokazuje to, co widzi kamera.
+
 ## Polityka zasilania przez MDC (tryb Mobile, usunięta w 0.27.0)
 
 Historia: tak serwer usypiał i budził ramkę w trybie Mobile. Od 0.27.0 robi to
