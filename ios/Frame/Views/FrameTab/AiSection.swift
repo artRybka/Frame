@@ -49,7 +49,7 @@ struct AiSection: View {
                     Divider()
                     toggle(
                         "Studium dnia",
-                        hint: "Nowe studium dzieła na górze Odkrywaj, raz dziennie (Opus, ok. 3 USD miesięcznie).",
+                        hint: "Nowe studium dzieła na górze Odkrywaj, raz dziennie (Opus, zamawiane dzień wcześniej za pół ceny, ok. 4 USD miesięcznie).",
                         value: daily
                     ) { AiSettingsUpdate(daily: $0) }
                 }

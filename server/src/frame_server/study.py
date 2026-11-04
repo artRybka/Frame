@@ -32,7 +32,9 @@ log = logging.getLogger(__name__)
 
 STATE_KEY = "study_items"
 
-Status = Literal["off", "none", "waiting", "sources", "writing", "details", "ready", "failed"]
+Status = Literal[
+    "off", "none", "later", "waiting", "sources", "writing", "details", "ready", "failed"
+]
 #: The study is on its way.
 PENDING: tuple[Status, ...] = ("waiting", "sources", "writing", "details")
 FAILED = "Claude nie napisał studium tego dzieła."
@@ -57,6 +59,7 @@ class Study:
         self.on_step: Callable[[Item, Status, str], None] | None = None
         job.on_stage = self._staged
         daily.on_written = self.adopt
+        ai.on_later = self._made_later
 
     def requested(self, item_id: str) -> bool:
         return item_id in self.library.get_state(STATE_KEY, [])
@@ -88,7 +91,9 @@ class Study:
         for order, item_id in enumerate(self.library.get_state(STATE_KEY, [])):
             add(item_id, self.job, None, order)
         for item_id in set(self.daily.history().values()):
-            add(item_id, self.daily.job, self.daily.day_of(item_id), -1)
+            day = self.daily.day_of(item_id)
+            if day is None or day <= date.today():  # tomorrow's is shown tomorrow
+                add(item_id, self.daily.job, day, -1)
         ranked = sorted(found.values(), key=lambda entry: entry[0], reverse=True)
         return [(item, essay, day) for _, item, essay, day in ranked]
 
@@ -131,6 +136,33 @@ class Study:
             self._step(item, self.job.stages.get(item.id, "waiting"))  # type: ignore[arg-type]
         future.add_done_callback(lambda done: self._written(item.id, done))
         return future
+
+    def ask_later(self, item: Item) -> bool:
+        """Orders the work's study for later, for less ("Przygotuj na
+        później", Mateusz 2026-11-04): Claude's long questions go through
+        the Batch API at half price, mostly within minutes to hours; "Studium
+        gotowe" says when it is. False when Claude is off or it has one."""
+        if not self.job.enabled() or self.job.essay(item) is not None:
+            return False
+        with self._lock:
+            ids = list(self.library.get_state(STATE_KEY, []))
+            if item.id not in ids:
+                self.library.set_state(STATE_KEY, [*ids, item.id])
+            self._errors.pop(item.id, None)
+        if (borrowed := self._borrowed(item)) is not None:  # the day's page: its study now
+            self._written(item.id, borrowed)
+            return True
+        return self.ai.ask_later(item.id, KIND) or self.ai.later(KIND, item.id)
+
+    def _made_later(self, kind: str, item: Item) -> None:
+        """A note ordered for later is made: a study is cut and told ready
+        (or failed), a day's page becomes its work's study."""
+        if kind == KIND:
+            future: Future[Note | None] = Future()
+            future.set_result(self.library.note(item.id, KIND))
+            self._written(item.id, future)
+        elif kind == self.daily.job.kind:
+            self.daily.written_later(item)
 
     def _borrowed(self, item: Item) -> Future[Note | None] | None:
         """A work of the day already has its page: that is its study, with
@@ -209,6 +241,8 @@ class Study:
             return ("details" if item.id in self._cutting else "ready"), ""
         if item is not None and item.id in self._asking:
             return self.job.stages.get(item.id, "waiting"), ""  # type: ignore[return-value]
+        if item is not None and self.ai.later(KIND, item.id):
+            return "later", ""
         if item is not None and (error := self._errors.get(item.id)):
             return "failed", error
         if item is not None and self.requested(item.id) and self.job.failed(item):

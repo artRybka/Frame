@@ -35,14 +35,17 @@ Svc = Annotated[FrameService, Depends(service)]
 
 class StudyView(BaseModel):
     """Where the work's study is: "off" (no key), "none" (not asked for),
-    on its way ("waiting", "sources", "writing", "details"), "ready" (with
+    "later" (ordered for later, for less), on its way ("waiting",
+    "sources", "writing", "details"), "ready" (with
     the page in ``work``) or "failed" (``error`` says why)."""
 
     status: Status
     error: str = ""
     work: DailyWork | None = None
-    #: What a study costs, about (USD).
+    #: What a study costs, about (USD): now, and ordered for later (the
+    #: Batch API, "Przygotuj na później").
     cost_usd: float = 0.0
+    later_cost_usd: float = 0.0
     #: Studies a household member may still order today (None: no limit).
     studies_left: int | None = None
 
@@ -64,9 +67,15 @@ def _view(
         essay = svc.daily.job.essay(item) if today else None
         work = work.model_copy(update={"why_today": essay.why_today if essay else ""})
     cost = svc.study.job.estimate_usd(1, batch=False)
+    later = svc.study.job.estimate_usd(1, batch=True)
     left = svc.users.studies_left(user, date.today()) if user is not None else None
     return StudyView(
-        status=status, error=error, work=work, cost_usd=round(cost, 2), studies_left=left
+        status=status,
+        error=error,
+        work=work,
+        cost_usd=round(cost, 2),
+        later_cost_usd=round(later, 2),
+        studies_left=left,
     )
 
 
@@ -139,10 +148,14 @@ async def prepare_study(
     svc: Svc,
     user: CurrentUser,
     again: bool = False,
+    later: bool = False,
     wait: Annotated[float, Query(ge=0, le=60)] = 0,
 ) -> StudyView:
     """Asks Claude for the work's study (``again``: a new one, though there
-    is one); a museum work only looked at is kept in the library for it."""
+    is one; ``later``: for less, through the Batch API, "Przygotuj na
+    później"); a museum work only looked at is kept in the library for it.
+    One ordered for later and asked for again without ``later`` is made now,
+    what its batches answered not paid for again."""
     item = await find_work(svc, item_id)
     if not svc.study.job.enabled():
         raise HTTPException(409, "Claude jest wyłączony: dodaj klucz API w Konfiguracji.")
@@ -154,6 +167,12 @@ async def prepare_study(
         raise HTTPException(429, f"Na dziś to już {limit} studiów. Kolejne jutro.")
     if svc.library.get(item_id) is None:  # a museum work only looked at: pooled
         item = await run_in_threadpool(svc.importer.add, item.model_copy(update={"pooled": True}))
+    if later and not again:
+        if status == "none" or status == "failed":
+            ordered = await run_in_threadpool(svc.study.ask_later, item)
+            if ordered and new:
+                svc.users.ordered_study(user, today)
+        return await run_in_threadpool(_view, svc, item, user)
     future = await run_in_threadpool(svc.study.ask, item, again)
     if new and future is not None:
         svc.users.ordered_study(user, today)
