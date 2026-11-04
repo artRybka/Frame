@@ -842,6 +842,14 @@ poniżej to zmiana `app.js` na serwerze, bez nowego podpisu paczki.
   E16 `captureScreen` bez ścieżki nie odpowiedział przez 30 s i może
   zatrzymać stronę (wtedy pomaga „Uruchom aplikację ponownie”, `0xC7 81 01`).
 
+**Wynik pierwszej sondy (E18, 2026-11-04):** zob. EXPERIMENTS E18. Druga
+wersja sondy (1.94.2): lista funkcji w kawałkach po 2500 znaków (log trzyma
+4000 znaków linii), odczyty `remotepower` (`getPowerState`, wirtualny
+standby), test budzika na obu zegarach (2 h naprzód według zegara strony i
+według `timer.getCurrentTime()`, odczyt i od razu odwołanie; część `alarm`)
+oraz zrzut ekranu czytany przez `XMLHttpRequest` z `file://<ścieżka>`, którą
+zwraca `captureScreen`.
+
 **Do sprawdzenia na ramce (sesja na Macu):** wynik sondy w logu, czy
 przycisk daje `key`, czy listenery baterii odpowiadają, czy zrzut ekranu
 działa i czy pokazuje to, co widzi kamera.

@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.94.2
+
+- Druga sonda ramki (na zasilaczu, raz): sprawdza, według którego zegara
+  ramka liczy budziki (jej zegar systemowy stoi na 1 stycznia 2024, a
+  zapasowe budziki na zasilaczu się nie ustawiają), odczytuje stan zasilania
+  z modułu `remotepower` i zapisuje pełną listę funkcji ekranu w logu.
+- Zrzut ekranu na żądanie próbuje odczytać plik inną drogą, bo ramka nie
+  pozwalała aplikacji go otworzyć.
+
 ## 1.94.1
 
 - Nowe studia i Studium dnia nie sprawdzają już osobno kadrów detali,
