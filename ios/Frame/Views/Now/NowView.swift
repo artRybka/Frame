@@ -978,7 +978,6 @@ struct ArtworkInfo: View {
     private var about: String { nonEmpty(shown?.full) ?? item.description }
     private var artistNote: String { nonEmpty(shown?.artistNote) ?? item.artistBio }
     private var date: String { nonEmpty(shown?.date) ?? item.dateText }
-    private var medium: String { nonEmpty(shown?.medium) ?? item.medium }
 
     var body: some View {
         Card(padding: 22) {
@@ -1010,11 +1009,11 @@ struct ArtworkInfo: View {
                     .accessibilityLabel("Ulubione")
                 }
                 // The title opens the work's card, like "Szczegóły" below; held,
-                // it shows the museum's own until held again. The year at its
-                // end in small print; a photo's date is in its facts.
+                // it shows the museum's own until held again. The year on a
+                // badge at its end; a photo's date is in its facts.
                 let original = OriginalTitle.of(item.title, shown: title)
-                TitleYear.text(
-                    peeking ? original ?? title : title,
+                TitleWithYear(
+                    title: peeking ? original ?? title : title,
                     date: item.kind == .photo ? "" : date,
                     font: .serif(28, weight: .semibold)
                 )
@@ -1029,7 +1028,8 @@ struct ArtworkInfo: View {
                     .accessibilityAddTraits(.isButton)
                     .accessibilityHint(Text("Otwiera kartę dzieła"))
                 if item.kind != .photo {
-                    VStack(alignment: .leading, spacing: 3) {
+                    // Nationality and years right under the name (Mateusz 2026-11-04).
+                    VStack(alignment: .leading, spacing: 0) {
                         if !item.artist.isEmpty {
                             // Their other works, on Discover's search.
                             Text(Names.artist(item.artist)).font(.serif(18)).foregroundStyle(Theme.ink)
@@ -1042,12 +1042,9 @@ struct ArtworkInfo: View {
                     }
                 }
             }
+            // No medium here (Mateusz 2026-11-04): it is on the work's card.
             if item.kind == .photo {
                 PhotoFacts(item: item)
-            } else if !medium.isEmpty {
-                Text(medium)
-                    .font(.subheadline)
-                    .foregroundStyle(Theme.inkSoft)
             }
             if !item.colors.isEmpty {
                 PaletteStrip(swatches: item.colors)

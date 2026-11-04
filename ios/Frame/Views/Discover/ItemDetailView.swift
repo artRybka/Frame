@@ -333,11 +333,11 @@ struct ItemDetailView: View {
             if !held.isEmpty {
                 Eyebrow(held, color: Theme.vermilion)
             }
-            // The year at the title's end in small print, as below.
+            // The year on a badge at the title's end, as below.
             let date = nonEmpty(polish?.date) ?? summary.dateText
             let photo = summary.kind == .photo
-            TitleYear.text(
-                nonEmpty(polish?.title) ?? (summary.shownTitle.isEmpty ? "Bez tytułu" : summary.shownTitle),
+            TitleWithYear(
+                title: nonEmpty(polish?.title) ?? (summary.shownTitle.isEmpty ? "Bez tytułu" : summary.shownTitle),
                 date: photo ? "" : date,
                 font: .serif(30, weight: .semibold)
             )
@@ -843,12 +843,12 @@ struct ItemDetailView: View {
             }
             let shown = title(item)
             let original = OriginalTitle.of(item.title, shown: shown)
-            // The year at its end in small print (Mateusz 2026-11-04, as on
+            // The year on a badge at its end (Mateusz 2026-11-04, as on
             // Teraz); a photo keeps its date on a line of its own.
             let date = nonEmpty(shownPolish?.date) ?? item.dateText
             let photo = item.kind == .photo
-            TitleYear.text(
-                peeking ? original ?? shown : shown,
+            TitleWithYear(
+                title: peeking ? original ?? shown : shown,
                 date: photo ? "" : date,
                 font: .serif(30, weight: .semibold)
             )
@@ -860,16 +860,21 @@ struct ItemDetailView: View {
                 .titleGlint(enabled: original != nil && !peeking)
                 // Held: the museum's own, until held again.
                 .titlePeek(enabled: original != nil, peeking: $peeking)
-            if !item.artist.isEmpty {
-                // Their other works, on Discover's search.
-                Text(Names.artist(item.artist)).font(.serif(19)).foregroundStyle(Theme.ink)
-                    .multilineTextAlignment(.leading)
-                    .artistPress { model.artistSearch = item.artist }
-            }
+            // Nationality and years right under the name, as on Teraz.
             let bio = nonEmpty(shownPolish?.artistNote) ?? item.artistBio
-            if !bio.isEmpty {
-                Text(bio).font(.subheadline).foregroundStyle(Theme.inkSoft)
-                    .contentTransition(.opacity)
+            if !item.artist.isEmpty || !bio.isEmpty {
+                VStack(alignment: .leading, spacing: 0) {
+                    if !item.artist.isEmpty {
+                        // Their other works, on Discover's search.
+                        Text(Names.artist(item.artist)).font(.serif(19)).foregroundStyle(Theme.ink)
+                            .multilineTextAlignment(.leading)
+                            .artistPress { model.artistSearch = item.artist }
+                    }
+                    if !bio.isEmpty {
+                        Text(bio).font(.subheadline).foregroundStyle(Theme.inkSoft)
+                            .contentTransition(.opacity)
+                    }
+                }
             }
             if photo, !date.isEmpty {
                 Text(date).font(.subheadline).foregroundStyle(Theme.inkSoft)

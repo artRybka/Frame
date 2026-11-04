@@ -782,24 +782,78 @@ private struct EmptyCover: View {
     }
 }
 
-/// A work's title with its date at the end in small grey print, "W oranżerii
-/// 1890" (Mateusz 2026-11-04, variant A): Teraz and the work's card. The
-/// date moves to the next line whole with the title's last word, never
-/// broken itself ("ok. 1893–1894").
+/// A work's title with its date at the end on a small white badge,
+/// "W oranżerii [1890]" (Mateusz 2026-11-04, round 2 variant 2: white,
+/// a soft shadow, thin figures): Teraz and the work's card. The badge moves
+/// to the next line whole with the title's last word.
+struct TitleWithYear: View {
+    let title: String
+    let date: String
+    let font: Font
+    @Environment(\.colorScheme) private var scheme
+    @Environment(\.displayScale) private var scale
+
+    var body: some View {
+        TitleYear.text(title, date: date, font: font, scheme: scheme, scale: scale)
+    }
+}
+
+@MainActor
 enum TitleYear {
-    static func text(_ title: String, date: String, font: Font) -> Text {
-        let title = Text(title).font(font).foregroundStyle(Theme.ink)
+    static func text(_ title: String, date: String, font: Font, scheme: ColorScheme, scale: CGFloat) -> Text {
+        let plain = Text(title).font(font).foregroundStyle(Theme.ink)
         let date = unbroken(date)
-        guard !date.isEmpty else { return title }
-        return title + Text(" ").font(font)
-            + Text(date).font(.subheadline).foregroundStyle(Theme.inkSoft)
+        guard !date.isEmpty, let badge = badge(date, scheme: scheme, scale: scale) else { return plain }
+        // An image inside the text wraps with it; it sits on the baseline,
+        // lowered so the badge's middle meets the small letters'.
+        return (plain + Text(" ").font(font) + Text(badge).baselineOffset(-5))
+            .accessibilityLabel(Text("\(title), \(date)"))
     }
 
     /// No line break inside the date: spaces held, dashes joined.
-    static func unbroken(_ date: String) -> String {
+    nonisolated static func unbroken(_ date: String) -> String {
         date.trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: " ", with: "\u{00A0}")
             .replacingOccurrences(of: "–", with: "\u{2060}–\u{2060}")
             .replacingOccurrences(of: "-", with: "\u{2011}")
+    }
+
+    private static var drawn: [String: Image] = [:]
+
+    /// The badge drawn once per date, look and screen.
+    private static func badge(_ date: String, scheme: ColorScheme, scale: CGFloat) -> Image? {
+        let key = "\(date)|\(scheme == .dark)|\(scale)"
+        if let image = drawn[key] { return image }
+        let renderer = ImageRenderer(content: YearBadge(date: date, dark: scheme == .dark))
+        renderer.scale = scale
+        guard let cgImage = renderer.cgImage else { return nil }
+        // Decorative: VoiceOver reads the date from the text's label.
+        let image = Image(decorative: cgImage, scale: scale)
+        if drawn.count > 200 { drawn.removeAll() }
+        drawn[key] = image
+        return image
+    }
+}
+
+/// The year's badge: white on the cream card (a raised one in the dark),
+/// a soft shadow and no outline, thin figures.
+private struct YearBadge: View {
+    let date: String
+    let dark: Bool
+
+    var body: some View {
+        Text(date)
+            .font(.system(size: 12.5, weight: .light))
+            .monospacedDigit()
+            .tracking(0.3)
+            .foregroundStyle(Color(hex: dark ? 0xC2BAAF : 0x6E675E))
+            .padding(.horizontal, 7)
+            .padding(.vertical, 2.5)
+            .background(
+                Color(hex: dark ? 0x2E2B28 : 0xFFFFFF),
+                in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+            )
+            .shadow(color: .black.opacity(dark ? 0.5 : 0.16), radius: 1.5, y: 1)
+            .padding(3)  // room for the shadow
     }
 }

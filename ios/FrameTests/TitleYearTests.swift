@@ -1,7 +1,7 @@
 import XCTest
 @testable import Frame
 
-/// The year at a title's end ("W oranżerii 1890") moves to the next line
+/// The year badge at a title's end ("W oranżerii [1890]") moves to the next line
 /// whole: no break inside "ok. 1893–1894".
 final class TitleYearTests: XCTestCase {
     func testAPlainYearStaysAsItIs() {
