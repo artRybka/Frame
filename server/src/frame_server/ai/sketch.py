@@ -19,7 +19,8 @@ from typing import TYPE_CHECKING
 from PIL import Image, ImageDraw, ImageFont
 
 if TYPE_CHECKING:
-    from .daily import Mark, Spot, View
+    from .daily import Key, Mark, Spot, View
+    from .lines import Found
 
 #: The golden section and the thirds, as the app draws them.
 GOLDEN = (0.382, 0.618)
@@ -52,6 +53,10 @@ STRETCH = 1.2
 INK = (255, 0, 170)
 EDGE = (255, 255, 255)
 GRID = (0, 200, 255)
+#: The places the composition rests on (P1…) and the picture's own lines (L1…).
+KEY = (255, 220, 0)
+FOUND = (0, 230, 255)
+SLANT = (255, 120, 0)
 
 
 def _xy(spot: Spot, size: tuple[int, int]) -> tuple[float, float]:
@@ -257,6 +262,51 @@ def draw(picture: Image.Image, view: View) -> Image.Image:
         x, y = _number_spot(mark, size, radius)
         canvas.ellipse((x - radius, y - radius, x + radius, y + radius), fill=EDGE, outline=INK)
         canvas.text((x, y), str(number), fill=(0, 0, 0), font=font, anchor="mm")
+    return img
+
+
+def draw_keys(picture: Image.Image, keys: list[Key]) -> Image.Image:
+    """The picture with the places a take rests on as yellow rings, P1…"""
+    img = picture.convert("RGB").copy()
+    canvas = ImageDraw.Draw(img)
+    radius = max(8, img.width // 90)
+    font = _font(radius + 4)
+    for n, key in enumerate(keys, start=1):
+        x, y = key.x * img.width, key.y * img.height
+        box = (x - radius, y - radius, x + radius, y + radius)
+        canvas.ellipse(box, outline=(0, 0, 0), width=max(2, radius // 3) + 2)
+        canvas.ellipse(box, outline=KEY, width=max(2, radius // 3))
+        canvas.text(
+            (x + radius + 3, y - radius),
+            f"P{n}",
+            fill=KEY,
+            font=font,
+            stroke_width=2,
+            stroke_fill=(0, 0, 0),
+        )
+    return img
+
+
+def draw_found(picture: Image.Image, found: Found) -> Image.Image:
+    """The picture with its own lines (``ai.lines``): level and upright ones
+    turquoise and named L1…, slants orange."""
+    img = picture.convert("RGB").copy()
+    w, h = img.size
+    canvas = ImageDraw.Draw(img, "RGBA")
+    font = _font(max(14, w // 45))
+    for s in found.slants:
+        canvas.line(
+            [(s.x1 * w, s.y1 * h), (s.x2 * w, s.y2 * h)], fill=SLANT, width=max(2, w // 400)
+        )
+    for e in found.edges:
+        if e.axis == "y":
+            ends = [(e.start * w, e.pos * h), (e.end * w, e.pos * h)]
+            at = (e.start * w + 6, e.pos * h + 4)
+        else:
+            ends = [(e.pos * w, e.start * h), (e.pos * w, e.end * h)]
+            at = (e.pos * w + 6, e.start * h + 6)
+        canvas.line(ends, fill=FOUND, width=max(3, w // 300))
+        canvas.text(at, e.name, fill=FOUND, font=font, stroke_width=2, stroke_fill=(0, 0, 0))
     return img
 
 
@@ -527,6 +577,9 @@ def grid_fits(view: View) -> bool:
     for x, y in key_points(view):
         xs.append(x)
         ys.append(y)
+    for key in view.keys:  # what the grid was chosen by (``ai.grid``)
+        xs += [key.x] if "x" in key.axis else []
+        ys += [key.y] if "y" in key.axis else []
     return any(abs(x - cut) <= NEAR_LINE for x in xs for cut in across) or any(
         abs(y - cut) <= NEAR_LINE for y in ys for cut in down
     )

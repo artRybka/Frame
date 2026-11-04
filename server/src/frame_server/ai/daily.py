@@ -101,7 +101,8 @@ ROUND = 7
 #: without it that lacks them all was written before the second question
 #: and is asked for again once (:meth:`DailyJob.fresh`).
 INCOMPLETE = "incomplete"
-MAX_MARKS = 6
+#: Up to six of the analysis's own and two of its movement (``ai.motion``).
+MAX_MARKS = 8
 MAX_LINE_POINTS = 12
 #: A rhythm's beats (a pair of points each) and a perspective's rays.
 MAX_BEATS = 12
@@ -141,6 +142,12 @@ REACH = 0.5
 #: (3×3), halves (2×2), thirds across and halves down (3×2) and the other
 #: way round (2×3).
 GRIDS = ("none", "golden", "thirds", "halves", "3x2", "2x3")
+#: The places a take rests on (:class:`Key`), and their sides that count.
+MAX_KEYS = 10
+AXES = ("x", "y", "xy")
+#: A take's text: the analysis's four to six sentences, the grid's and the
+#: movement's added to them (``ai.composition``).
+TEXT_CHARS = 1500
 MAX_SIMILAR = 6
 #: Fragments worth a close look ("Detale"), and their sides (fractions).
 MAX_DETAILS = 3
@@ -382,6 +389,20 @@ class Mark(BaseModel):
         return self.points[len(self.points) // 2]
 
 
+class Key(Spot):
+    """A place the composition rests on (``ai.composition``): the dominant,
+    a face, a vanishing point, the horizon; or a long line the server found
+    in the picture (``ai.lines``). What the grid is chosen by (``ai.grid``)."""
+
+    title: str = ""
+    #: Which of its sides counts: "x" its place across only (an upright
+    #: edge, a figure's axis), "y" its height only (a horizon, a table's
+    #: edge), "xy" both (a point).
+    axis: str = "xy"
+    #: One of the (at most two) places it rests on most.
+    main: bool = False
+
+
 class View(BaseModel):
     """One take on the composition: its marks over the picture, a grid under
     them and a few sentences."""
@@ -390,6 +411,8 @@ class View(BaseModel):
     grid: str = "none"
     text: str = ""
     marks: list[Mark] = Field(default_factory=list)
+    #: What the grid was chosen by (not drawn; none on takes made before).
+    keys: list[Key] = Field(default_factory=list)
 
 
 class Composition(BaseModel):
@@ -726,13 +749,24 @@ def _mark(raw: dict[str, Any]) -> Mark | None:
     return Mark(shape=shape, points=spots, title=title, text=_text(raw.get("text"), 80))
 
 
+def _key(raw: dict[str, Any]) -> Key | None:
+    spot = _spot(raw)
+    if spot is None:
+        return None
+    axis = raw.get("axis") if raw.get("axis") in AXES else "xy"
+    title = _text(raw.get("title"), 60)
+    return Key(x=spot.x, y=spot.y, title=title, axis=str(axis), main=raw.get("main") is True)
+
+
 def _view(raw: dict[str, Any]) -> View | None:
     marks = [m for m in map(_mark, _dicts(raw.get("marks"))) if m is not None][:MAX_MARKS]
     title = _text(raw.get("title"), 40)
     if not marks or not title:
         return None
     grid = raw.get("grid") if raw.get("grid") in GRIDS else "none"
-    view = View(title=title, grid=str(grid), text=_text(raw.get("text"), 1000), marks=marks)
+    keys = [k for k in map(_key, _dicts(raw.get("keys"))) if k is not None][:MAX_KEYS]
+    text = _text(raw.get("text"), TEXT_CHARS)
+    view = View(title=title, grid=str(grid), text=text, marks=marks, keys=keys)
     # A grid drawn under a take that nothing in it lies on proves nothing.
     return view if grid_fits(view) else view.model_copy(update={"grid": "none"})
 
