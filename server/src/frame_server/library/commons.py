@@ -19,6 +19,7 @@ from html.parser import HTMLParser
 from typing import TYPE_CHECKING
 from urllib.parse import unquote
 
+from .aic import AIC_ORIGINAL, AIC_THUMB, aic_resized
 from .markup import (
     VECTOR,
     commons_rendition,
@@ -230,7 +231,9 @@ def file_title(name: str, artist: str, year: int | None = None) -> str:
 # 3: language prefixes in titles of any source ("en:Night Windows").
 # 4: the artist's name in front of titles ("Tadeusz Makowski Szewc"), as
 #    Commons file names have it.
-REPAIR_VERSION = 4
+# 5: AIC pictures asked in a width its IIIF server gives (``full/full``
+#    woke its Cloudflare, 2026-11-04).
+REPAIR_VERSION = 5
 REPAIR_STATE_KEY = "commons_text_repair"
 # The household's own photos: their captions are left as they were typed.
 OWN_SOURCES = frozenset({"upload", "icloud"})
@@ -255,6 +258,11 @@ def _repairs(item: Item) -> dict[str, object]:
             clean = strip_artist(title, artist)
         if clean != title:
             fixes["title"] = clean
+    if item.source == "aic":
+        for key, most in (("image_url", AIC_ORIGINAL), ("thumb_url", AIC_THUMB)):
+            url: str = getattr(item, key)
+            if (allowed := aic_resized(url, most, item.width)) != url:
+                fixes[key] = allowed
     drawing = item.source in ("wmc", "openverse") and extension(item.image_url) in VECTOR
     if drawing and (image_url := commons_rendition(item.image_url, 3840, item.width)):
         fixes["image_url"] = image_url
