@@ -520,9 +520,13 @@ extension View {
     /// Options under a long press on a label button ("Pokaż na ramce" held
     /// for longer). The lifted button keeps its nearly square corners: left
     /// alone, the system cuts it out with its own rounder ones, and the
-    /// corners pop back when the menu closes.
+    /// corners pop back when the menu closes. The paper under it: an
+    /// outlined button is otherwise lifted with nothing inside its frame,
+    /// the page dimmed behind showing through (Mateusz 2026-11-04, held
+    /// "Przygotuj studium dzieła"); on the page it looks the same.
     func labelButtonMenu<MenuItems: View>(@ViewBuilder _ items: () -> MenuItems) -> some View {
-        contentShape(.contextMenuPreview, LabelButton.shape)
+        background(Theme.paper, in: LabelButton.shape)
+            .contentShape(.contextMenuPreview, LabelButton.shape)
             .contextMenu(menuItems: items)
     }
 }
