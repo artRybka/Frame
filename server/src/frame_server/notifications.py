@@ -122,10 +122,11 @@ PICTURE_URL_MAX = 400
 
 # A study's Live Activity: with no word for this long it says to open the app.
 STUDY_STALE = timedelta(minutes=15)
-# Once over, how long it stays on the Lock Screen: ready (a tap opens it),
-# or why not.
-STUDY_READY_FOR = timedelta(hours=1)
-STUDY_FAILED_FOR = timedelta(minutes=15)
+# Once over, how long it stays on the Lock Screen before iOS takes it away:
+# ready (a tap opens it; the "Studium gotowe" notification stays), or why
+# not. As the app's own end (StudyLiveActivity.readyFor, failedFor).
+STUDY_READY_FOR = timedelta(minutes=2)
+STUDY_FAILED_FOR = timedelta(minutes=5)
 STUDY_ON_WAY = ("waiting", "sources", "writing", "details")
 
 # APNs answers meaning the token is no good any more.

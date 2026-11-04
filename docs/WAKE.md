@@ -869,9 +869,16 @@ budzące uśpioną ramkę też dochodzi jako klawisz: nie sprawdzone.
 ramki naprawdę ją budzi, także po głębokim śnie (zimny start może cofać jej
 zegar).
 
-**Do sprawdzenia na ramce (sesja na Macu):** wynik sondy w logu, czy
-przycisk daje `key`, czy listenery baterii odpowiadają, czy zrzut ekranu
-działa i czy pokazuje to, co widzi kamera.
+**Zrzut ekranu (E18, 2026-11-04 08:52 UTC):** działa. Prośba doszła przy
+najbliższym `/panel/next` (11 s), `captureScreen` 69 ms, `openFile` i
+`resolve` dają `SecurityError`, odczyt `XMLHttpRequest` z `file://` działa
+(263 553 B, `via: file-xhr`). Obraz ma 640×360 (1/4 ekranu w każdym
+wymiarze) i pokazuje to, co narysowała strona, w gładkich kolorach, bez
+rastra Spectra 6: nadaje się do sprawdzenia, co jest na ramce, nie do oceny
+wydruku.
+
+**Do sprawdzenia na ramce (sesja na Macu):** czy listenery baterii
+odpowiadają.
 
 ## Polityka zasilania przez MDC (tryb Mobile, usunięta w 0.27.0)
 
