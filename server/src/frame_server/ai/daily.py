@@ -1208,14 +1208,10 @@ class DailyJob(NoteJob):
                 log.warning("page of %s kept without %s", item.id, ", ".join(lacking))
                 data = {**data, INCOMPLETE: lacking}
         from .composition import compose
-        from .details import check as check_details
 
-        try:
-            data = check_details(self.images, item, data, ask)
-        except (AiUnavailable, anthropic.APIError) as err:
-            log.warning("details of %s not checked: %s", item.id, err)
-        except Exception:  # the page is paid for: never lost to its details' check
-            log.exception("details check of %s failed", item.id)
+        # Its details' boxes are not checked by themselves any more (Mateusz
+        # 2026-11-04: "zwykle trafiają"); the owner has a page's checked when
+        # asked ("Popraw detale", ``ai.details.MendJob``).
         data = {**data, "composition": {"views": []}}
         try:
             data.update(compose(self.images, item, context or self.sources(item), ask))

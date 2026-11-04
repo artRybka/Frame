@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.94.1
+
+- Nowe studia i Studium dnia nie sprawdzają już osobno kadrów detali,
+  bo zwykle trafiają. Każde studium kosztuje przez to około 7 centów
+  mniej. Kadr, który chybił, nadal poprawisz przytrzymaniem nagłówka
+  „Detale” i „Popraw detale”.
+
 ## 1.94.0
 
 - Powiadomienia o dziele pokazują jego miniaturę: zmiana dzieła na
