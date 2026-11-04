@@ -1538,6 +1538,7 @@ class WikiArt(Museum):
 
 # Collections added later live in modules of their own (they build on the
 # classes above).
+from .courtauld import CourtauldGallery  # noqa: E402
 from .muza import NationalMuseumKrakow, NationalMuseumWarsaw  # noqa: E402
 from .nga import NationalGalleryOfArt  # noqa: E402
 from .paris import ParisMusees  # noqa: E402
@@ -1561,6 +1562,7 @@ MUSEUMS: dict[str, type[Museum]] = {
         ParisMusees,
         VictoriaAndAlbert,
         WellcomeCollection,
+        CourtauldGallery,
         WikimediaCommons,
         Europeana,
         Openverse,

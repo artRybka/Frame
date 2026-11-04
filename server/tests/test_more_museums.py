@@ -13,6 +13,7 @@ from urllib.parse import parse_qs, unquote
 import httpx
 import pytest
 
+from frame_server.library import courtauld
 from frame_server.library.museums import Access, Discovery, available, museum
 from frame_server.library.muza import MuzaMuseum, NationalMuseumKrakow, NationalMuseumWarsaw, polish
 from frame_server.library.nga import NationalGalleryOfArt, build
@@ -457,6 +458,93 @@ def test_wellcome_titles_lose_the_description_of_the_picture() -> None:
         "Pen and ink drawing"
     )
     assert split_title("Dr. Ranby's house in Chiswick") == ("Dr. Ranby's house in Chiswick", "")
+
+
+def _courtauld_manifest(
+    title: str, maker: str, date: str, statement: str, width: int = 7506, height: int = 5559
+) -> dict[str, object]:
+    def pair(label: str, value: str) -> dict[str, object]:
+        return {"label": {"none": [label]}, "value": {"none": [value]}}
+
+    body = {
+        "id": "https://gallerycollections.courtauld.ac.uk/iiif/3/134471/full/max/0/default.jpg",
+        "width": width,
+        "height": height,
+    }
+    return {
+        "label": {"none": [title]},
+        "metadata": [
+            pair("Title", title),
+            pair("Maker", f" {maker}"),
+            pair("Production date", date),
+            pair("Medium", "oil on canvas\n"),
+            pair("Accession number", "P.1934.SC.234"),
+            pair("Dimensions", "Height: 96 cm (canvas)<br>Width: 130 cm (canvas)"),
+            pair("Credit", "Courtauld Gallery, London (Samuel Courtauld Trust)"),
+            pair("Copyright statement", statement),
+            pair("Label text", f"{maker}\u2019s <b>last</b> major painting."),
+        ],
+        "items": [{"items": [{"items": [{"body": body}]}]}],
+    }
+
+
+def test_courtauld_lists_its_paintings_and_searches_the_list(tmp_path: Path) -> None:
+    site = courtauld.SITE
+    sitemap = "".join(
+        f"<url><loc>{site}/{slug}</loc></url>"
+        for slug in ("object-p-1934-sc-234", "object-p-1984-ah-192", "object-p-1", "object-d-9")
+    )
+    manifests = {
+        "O2271": _courtauld_manifest(
+            "A Bar at the Folies-Bergère", "Édouard Manet", "1882", "Work in the public domain"
+        ),
+        "O5937": _courtauld_manifest(
+            "A Sybilline Courtyard", "Ivon Hitchens", "1974", "© The Estate. All rights reserved"
+        ),
+        "O1": _courtauld_manifest(
+            "Saint Jerome", "Circle of Orioli", "(circa) 1480", "", width=373, height=500
+        ),
+    }
+    pages = {"object-p-1934-sc-234": "O2271", "object-p-1984-ah-192": "O5937", "object-p-1": "O1"}
+    asked: list[str] = []
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        path = request.url.path.strip("/")
+        asked.append(path)
+        if path == "sitemap.xml":
+            return httpx.Response(200, text=f"<urlset>{sitemap}</urlset>")
+        if path in pages:
+            link = f"api/iiif/{pages[path]}/manifest.json"
+            return httpx.Response(200, text=f'<a href="{link}">{link}</a>')
+        if path.startswith("api/iiif/"):
+            return httpx.Response(200, json=manifests[path.split("/")[2]])
+        return httpx.Response(404)
+
+    path = courtauld.list_path(tmp_path)
+    with httpx.Client(transport=httpx.MockTransport(answer)) as http:
+        assert courtauld.build(path, http) == 2  # the small picture is no use
+        asked.clear()
+        assert courtauld.build(path, http) == 2
+    assert asked == ["sitemap.xml"]  # known paintings are not asked again
+
+    assert "courtauld" not in available(Access(data_dir=tmp_path))
+    access = Access(private_use=True, data_dir=tmp_path)
+    with httpx.Client(transport=httpx.MockTransport(answer)) as http:
+        gallery = museum("courtauld", http, access)
+        total, items = gallery.search("manet")
+        assert gallery.discover(Discovery(year_from=1900))[0] == 1
+        assert gallery.discover(Discovery(kind="print")) == (0, [])
+        work = gallery.fetch("p-1984-ah-192")
+    assert total == 1
+    bar = items[0]
+    assert bar.id == "courtauld:p-1934-sc-234" and bar.artist == "Édouard Manet"
+    assert bar.year == 1882 and bar.medium == "oil on canvas" and bar.license == "CC BY-NC 4.0"
+    assert bar.description == "Édouard Manet’s last major painting."
+    assert bar.credit == "Courtauld Gallery, London (Samuel Courtauld Trust), P.1934.SC.234"
+    assert bar.image_url == f"{site}/iiif/3/134471/full/!2560,2560/0/default.jpg"
+    assert bar.url == f"{site}/object-p-1934-sc-234" and bar.width == 7506
+    assert work is not None and work.license == "Prawa autorskie w mocy (użytek prywatny)"
+    assert courtauld.dimensions("Height: 96 cm (canvas)<br>Width: 130 cm (canvas)") == (96, 130)
 
 
 PARIS_WORK = {
