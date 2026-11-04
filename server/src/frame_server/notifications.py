@@ -16,21 +16,31 @@ A study being written is followed on the Lock Screen and in the Dynamic
 Island (a Live Activity the app starts): the app leaves the activity's own
 push token here (``Notifier.follow_study``) and each step of the study is
 pushed to it (``Notifier.study_step``), so it moves on with the app closed.
+
+A notification about a work carries its picture: the addresses the phone's
+notification extension (ios/FrameNotifications) tries in turn, the server's
+own thumbnail under a signed address (``PICTURE_PATH``, no token: the
+extension has none) and the museum's thumbnail, which also loads away from
+home (``Notifier.picture_urls``).
 """
 
 from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
+import hmac
 import json
 import logging
 import os
 import re
-from collections.abc import Coroutine
+import secrets
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
 from datetime import UTC, datetime, time, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from urllib.parse import quote
 
 import httpx
 from cryptography.hazmat.primitives import hashes, serialization
@@ -39,6 +49,7 @@ from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
 from pydantic import BaseModel
 
 from .births import search_name
+from .library.models import ItemKind, PlaylistRules
 from .library.viewer import OWNER_ID
 
 if TYPE_CHECKING:
@@ -103,6 +114,11 @@ UPDATE_KEY = "push_update_version"
 WEEK_SENT_KEY = "push_week_artist"
 BIRTHDAY_SENT_KEY = "push_birthday_day"
 STUDY_ACTIVITIES_KEY = "push_study_activities"
+PICTURE_SECRET_KEY = "push_picture_secret"
+#: A work's thumbnail for the notification extension: ``?id=&s=`` (web/app.py).
+PICTURE_PATH = "/push/picture"
+#: A museum's address longer than this stays out (the payload has 4 KB).
+PICTURE_URL_MAX = 400
 
 # A study's Live Activity: with no word for this long it says to open the app.
 STUDY_STALE = timedelta(minutes=15)
@@ -278,6 +294,9 @@ class Notifier:
         self.topic = topic
         self.transport = transport
         self._apns: Apns | None = None
+        #: The server's address as the phone at home reaches it
+        #: (``Settings.base_url``, set by the service); None: no own address.
+        self.base_url: Callable[[], str] | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._tasks: set[asyncio.Future[object]] = set()
 
@@ -384,6 +403,43 @@ class Notifier:
         """Whose phones want ``kind``."""
         return sorted({d.user for d in self.devices() if kind in d.kinds})
 
+    # -- pictures ------------------------------------------------------------
+
+    def _picture_secret(self) -> bytes:
+        secret = self.library.get_state(PICTURE_SECRET_KEY)
+        if not isinstance(secret, str) or not secret:
+            secret = secrets.token_hex(32)
+            self.library.set_state(PICTURE_SECRET_KEY, secret)
+        return secret.encode()
+
+    def picture_signature(self, item_id: str) -> str:
+        digest = hmac.new(self._picture_secret(), item_id.encode(), hashlib.sha256)
+        return digest.hexdigest()[:32]
+
+    def picture_allowed(self, item_id: str, signature: str) -> bool:
+        return hmac.compare_digest(self.picture_signature(item_id), signature)
+
+    def picture_urls(self, item_id: str | None) -> list[str]:
+        """Where the phone can fetch the picture of ``item_id``, best first:
+        the server's thumbnail (at home, and the only one of a photo from the
+        camera roll), then the museum's (anywhere)."""
+        item = self.library.get(item_id) if item_id else None
+        if item is None:
+            return []
+        urls: list[str] = []
+        if self.base_url is not None:
+            try:
+                base = self.base_url()
+            except OSError:
+                base = ""
+            if base:
+                sig = self.picture_signature(item.id)
+                urls.append(f"{base}{PICTURE_PATH}?id={quote(item.id, safe='')}&s={sig}")
+        own = item.thumb_url
+        if own.startswith(("https://", "http://")) and len(own) <= PICTURE_URL_MAX:
+            urls.append(own)
+        return urls
+
     # -- sending -------------------------------------------------------------
 
     def bind(self, loop: asyncio.AbstractEventLoop) -> None:
@@ -398,11 +454,14 @@ class Notifier:
         route: str | None = None,
         collapse: str | None = None,
         expires: datetime | None = None,
+        picture: str | None = None,
     ) -> None:
         """Send in the background, from the event loop or any thread."""
         if not self.wanted(kind):
             return
-        coro = self.send(kind, title, body, route=route, collapse=collapse, expires=expires)
+        coro = self.send(
+            kind, title, body, route=route, collapse=collapse, expires=expires, picture=picture
+        )
         self._spawn(coro)
 
     def _spawn(self, coro: Coroutine[Any, Any, object]) -> None:
@@ -434,11 +493,13 @@ class Notifier:
         expires: datetime | None = None,
         only: str | None = None,
         user: str | None = None,
+        picture: str | None = None,
     ) -> dict[str, Sent]:
         """To every phone that wants ``kind`` (``only``: that one, whatever
         it wants; ``user``: only that person's); a token APNs says is gone is
         forgotten. A token from the other environment (a build from Xcode)
-        is tried there too."""
+        is tried there too. ``picture``: the work whose thumbnail the phone
+        shows with it."""
         apns = self.apns()
         if apns is None:
             return {}
@@ -459,6 +520,9 @@ class Notifier:
         }
         if route:
             payload["route"] = route
+        if pictures := self.picture_urls(picture):
+            payload["aps"]["mutable-content"] = 1  # the extension adds the picture
+            payload["pictures"] = pictures
         results: dict[str, Sent] = {}
         async with apns.client() as client:
             for device in targets:
@@ -548,8 +612,10 @@ class Notifier:
         body = f"{what} {message}" if message else what
         self.notify("send_failed", "Błąd wysyłki", body, route="now")
 
-    def shown(self, title: str, artist: str, origin: str | None) -> None:
-        """The frame drew a picture it did not show before."""
+    def shown(
+        self, title: str, artist: str, origin: str | None, item_id: str | None = None
+    ) -> None:
+        """The frame drew a picture it did not show before (``item_id``'s)."""
         how = {"schedule": "z harmonogramu", "app": "z aplikacji"}.get(origin or "")
         body = " · ".join(p for p in (artist, f"zmiana {how}" if how else "") if p)
         self.notify(
@@ -558,6 +624,7 @@ class Notifier:
             body or "Ramka pokazuje nowy obraz.",
             collapse="changed",
             route="now",
+            picture=item_id,
         )
 
     def study_ready(self, item_id: str, title: str) -> None:
@@ -568,6 +635,7 @@ class Notifier:
             _ready_body(title),
             route=f"study/{item_id}",
             collapse=f"study-{item_id}"[:64],
+            picture=item_id,
         )
 
     # -- studies on the Lock Screen (Live Activity) ----------------------------
@@ -605,13 +673,17 @@ class Notifier:
             self._spawn(self._study_step(item_id, status, error, title))
 
     async def _study_step(self, item_id: str, status: str, error: str, title: str) -> None:
-        alert = None
+        await self.push_study(item_id, status, error)
+        # Told as a notification of its own, not inside the card's end: only
+        # a notification can carry the work's picture.
         if status == "ready" and self.wanted("study"):
-            alert = ("Studium gotowe", _ready_body(title))
-        results = await self.push_study(item_id, status, error, alert=alert)
-        if alert and not any(sent.ok for sent in results.values()):
             await self.send(
-                "study", *alert, route=f"study/{item_id}", collapse=f"study-{item_id}"[:64]
+                "study",
+                "Studium gotowe",
+                _ready_body(title),
+                route=f"study/{item_id}",
+                collapse=f"study-{item_id}"[:64],
+                picture=item_id,
             )
 
     async def push_study(
@@ -620,7 +692,6 @@ class Notifier:
         status: str,
         error: str = "",
         *,
-        alert: tuple[str, str] | None = None,
         only: str | None = None,
         now: datetime | None = None,
     ) -> dict[str, Sent]:
@@ -648,8 +719,6 @@ class Notifier:
             aps["dismissal-date"] = int((now + keep).timestamp())
         else:
             aps["stale-date"] = int((now + STUDY_STALE).timestamp())
-        if alert:
-            aps["alert"] = {"title": alert[0], "body": short(alert[1]), "sound": "default"}
         payload = {"aps": aps}
         results: dict[str, Sent] = {}
         async with apns.client() as client:
@@ -703,6 +772,12 @@ def works(count: int) -> str:
     return f"{count} dzieł"
 
 
+def shown_item_id(content: ContentInfo | None) -> str | None:
+    """The work behind the picture on the frame, when it is one."""
+    item_id = content.extra.get("item_id") if content is not None and content.extra else None
+    return str(item_id) if item_id else None
+
+
 def shown_text(service: FrameService, content: ContentInfo | None) -> tuple[str, str]:
     """Title and artist of the picture on the frame, in Polish where known."""
     if content is None:
@@ -740,7 +815,13 @@ async def daily_tick(service: FrameService, now: datetime | None = None) -> bool
     notifier.library.set_state(DAILY_KEY, day.isoformat())
     end_of_day = datetime.combine(day + timedelta(days=1), time(0), tz)
     await notifier.send(
-        "daily", f"Studium dnia: {title}", body, route="daily", collapse="daily", expires=end_of_day
+        "daily",
+        f"Studium dnia: {title}",
+        body,
+        route="daily",
+        collapse="daily",
+        expires=end_of_day,
+        picture=item.id,
     )
     return True
 
@@ -787,14 +868,26 @@ async def week_tick(service: FrameService, now: datetime | None = None) -> bool:
     if theme is None:
         return False
     body = theme.description.removeprefix("Artysta tygodnia.").strip() or "Zobacz w Odkrywaj."
+    _, works_of = await asyncio.to_thread(service.library.query, theme.rules())
     await notifier.send(
         "week_artist",
         f"Artysta tygodnia: {theme.name}",
         body,
         route=f"theme/{theme.key}",
         collapse="week_artist",
+        picture=_cover(works_of),
     )
     return True
+
+
+def _cover(items: list[Item]) -> str | None:
+    """The work to show with a notification about many: a favourite, then
+    one of the museum's most important, then the first."""
+    for wanted in (lambda i: i.favorite, lambda i: i.highlight, lambda i: True):
+        found = next((i for i in items if not i.excluded and wanted(i)), None)
+        if found is not None:
+            return found.id
+    return None
 
 
 async def births_tick(service: FrameService) -> int:
@@ -843,6 +936,8 @@ async def birthday_tick(service: FrameService, now: datetime | None = None) -> i
         born_today = service.births.today(day, [a for a, _ in favourites.most_common()])
         for artist, born in born_today[:BIRTHDAYS_MAX]:
             years = day.year - born.year
+            rules = PlaylistRules(kinds=[ItemKind.ARTWORK], artists=[artist], favorites_only=True)
+            _, hearted = await asyncio.to_thread(service.library.query, rules, user=user)
             await notifier.send(
                 "birthday",
                 f"Urodziny: {search_name(artist)}",
@@ -851,6 +946,7 @@ async def birthday_tick(service: FrameService, now: datetime | None = None) -> i
                 route=f"artist/{artist}",
                 collapse=f"birthday-{artist}"[:64],
                 user=user,
+                picture=_cover(hearted),
             )
             told += 1
     return told

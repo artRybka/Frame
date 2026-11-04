@@ -16,6 +16,7 @@ ios/Frame.xcodeproj/
 ios/Frame/Info.plist
 ios/Frame/Frame.entitlements
 ios/FrameWidgets/Info.plist
+ios/FrameNotifications/Info.plist
 xcuserdata/
 DerivedData/
 *.xcuserstate

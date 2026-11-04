@@ -58,6 +58,9 @@ struct CropScreen: View {
     /// The draft as it was when the screen opened, for "Anuluj".
     @State private var original: FramingDraft?
     @State private var loaded: ImageRef?
+    /// `preview` as the parent has it now: closing waits for the saved
+    /// crop's, which `self` in a task started before saving does not know.
+    @State private var latest: ImageRef?
     @State private var saving = false
     @State private var confirmingDiscard = false
     /// A landscape frame lies on its side here, larger on the upright
@@ -172,6 +175,7 @@ struct CropScreen: View {
             Button("Edytuj dalej", role: .cancel) {}
         }
         .onAppear { if original == nil { original = draft } }
+        .onChange(of: preview, initial: true) { latest = preview }
         .task {
             // One frame on the preview first, so it is seen to come out of it.
             try? await Task.sleep(for: .seconds(0.03))
@@ -253,10 +257,12 @@ struct CropScreen: View {
         guard !closing else { return }
         closing = true
         // A saved crop's preview first, so it lands as the card will show it.
+        // At least a moment: the parent hands over the saved crop's preview
+        // in the next update after saving.
         let waited = ContinuousClock.now
-        while loaded != preview, ContinuousClock.now - waited < .seconds(2) {
+        repeat {
             try? await Task.sleep(for: .seconds(0.05))
-        }
+        } while loaded != latest && ContinuousClock.now - waited < .seconds(2)
         if turned, aspectRatio > 1 {
             await animate(Self.turnBack, until: .logicallyComplete) { turned = false }
         }

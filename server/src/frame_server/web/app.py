@@ -16,6 +16,7 @@ from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
+import httpx
 from fastapi import (
     Depends,
     FastAPI,
@@ -35,6 +36,7 @@ from ..config import Settings
 from ..device import MdcError
 from ..imaging import PRESETS, RenderSettings, Strategy
 from ..imaging.layout import load_image
+from ..library.images import Gone
 from ..library.seed import seed_playlists
 from ..library.style import AUTO, preset_for_photo
 from ..night import NightQueue
@@ -234,6 +236,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if path is None:
             raise HTTPException(404)
         return FileResponse(path)
+
+    @app.get(notifications.PICTURE_PATH)
+    def push_picture(id: str, s: str) -> FileResponse:
+        """A work's thumbnail for a notification on the phone: the extension
+        that shows it has no token, the address is signed instead."""
+        item = service.library.get(id)
+        if item is None or not service.notifier.picture_allowed(id, s):
+            raise HTTPException(404)
+        try:
+            path = service.images.ensure_thumb(item)
+        except (Gone, httpx.HTTPError, OSError) as err:
+            raise HTTPException(502, f"thumbnail unavailable: {err}") from err
+        return FileResponse(path, media_type="image/jpeg")
 
     @app.get("/panel/next")
     async def panel_next(

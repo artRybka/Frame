@@ -198,6 +198,7 @@ class FrameService:
         self.status = StatusMonitor(self.panel, self.library)
         # The owner's phone hears of the battery, failed sends, new pictures.
         self.notifier = Notifier(settings.data_dir, self.library)
+        self.notifier.base_url = settings.base_url  # works' pictures for the phone
         self.status.on_battery_level = self.notifier.battery
         self.status.on_firmware = self.notifier.firmware
         self.status.on_mac = self.panel_config.learn_mac

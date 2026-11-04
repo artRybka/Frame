@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.94.0
+
+- Powiadomienia o dziele pokazują jego miniaturę: zmiana dzieła na
+  ramce, Studium dnia, Studium gotowe, Artysta tygodnia i Rocznica
+  urodzin (przy dwóch ostatnich jedno z ulubionych dzieł artysty).
+  W domu obrazek przychodzi z serwera, poza domem z muzeum; zdjęcie
+  z rolki poza domem przychodzi bez miniatury. Gdy obrazek nie zdąży
+  się pobrać, powiadomienie przychodzi jak dotąd, bez niego.
+- „Studium gotowe” przy karcie na ekranie blokady jest osobnym
+  powiadomieniem z miniaturą, a karta tylko się rozświetla.
+- Po zapisaniu nowego kadru podgląd „Na Twojej ramce” w Studium dzieła
+  (a także na karcie dzieła i przy przeglądaniu w Teraz) pokazuje nowy
+  kadr, a nie stary sprzed zmiany. Aplikacja nie bierze już tego podglądu
+  ze swojej pamięci, tylko prosi serwer o nowy.
+- Kadr przy zamykaniu po „Zapisz kadr” chwilę czeka na podgląd z nowym
+  kadrem, żeby ramka wróciła na miejsce już z nim.
+- Wymaga nowej aplikacji z TestFlight i nowej wersji serwera.
+
 ## 1.93.0
 
 - Analiza kompozycji kosztuje około jednej trzeciej tego, co dotąd.
