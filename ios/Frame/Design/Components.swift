@@ -486,10 +486,13 @@ enum LabelButton {
     /// Ink on paper, or paper on ink when filled (cream on black in the dark).
     static func foreground(_ filled: Bool) -> Color { filled ? Theme.paper : Theme.ink }
 
+    /// `fill`: under an outlined one, to make it stand out (`Theme.raised`).
     @ViewBuilder
-    static func background(_ filled: Bool) -> some View {
+    static func background(_ filled: Bool, fill: Color? = nil) -> some View {
         if filled {
             shape.fill(Theme.ink)
+        } else if let fill {
+            shape.fill(fill).overlay(shape.strokeBorder(Theme.ink, lineWidth: 1))
         } else {
             shape.strokeBorder(Theme.ink, lineWidth: 1)
         }
@@ -600,6 +603,8 @@ struct ActionButtonStyle: ButtonStyle {
     var wide = true
     var iconOnly = false
     var compact = false
+    /// Under an outlined one (`LabelButton.background`).
+    var fill: Color? = nil
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
@@ -609,7 +614,7 @@ struct ActionButtonStyle: ButtonStyle {
             .frame(width: iconOnly ? (compact ? 32 : 54) : nil)
             .padding(.horizontal, wide || iconOnly ? 0 : (compact ? 12 : 18))
             .padding(.vertical, compact ? 8 : 14)
-            .background(LabelButton.background(prominent))
+            .background(LabelButton.background(prominent, fill: fill))
             .contentShape(LabelButton.shape)
             .opacity(configuration.isPressed && !prominent ? 0.6 : 1)
             .scaleEffect(configuration.isPressed ? 0.97 : 1)
