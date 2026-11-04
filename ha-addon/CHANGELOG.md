@@ -8,6 +8,9 @@
   po 5 minutach. Powiadomienie „Studium gotowe” zostaje jak dotąd.
 - Po otwarciu aplikacji znikają od razu zakończone karty, także te, które
   zostały po czasie albo po wcześniejszym uruchomieniu aplikacji.
+- Live Activity na ekranie blokady i w Dynamic Island: pasek wysyłki na
+  ramkę i studium dzieła są białe (na jasnym ekranie blokady czarne)
+  zamiast czerwonych, a po sukcesie zielone.
 
 ## 1.95.1
 

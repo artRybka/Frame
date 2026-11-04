@@ -152,12 +152,14 @@ private enum StudyText {
         return state.line
     }
 
+    /// Ink (white in the dark) while under way, green once ready, as the
+    /// send card.
     static func tint(_ state: StudyActivityAttributes.ContentState) -> Color {
-        state.isReady ? Palette.good : Palette.vermilion
+        state.isReady ? Palette.good : Palette.ink
     }
 
-    /// The island is always black: the dark variants.
+    /// The island is always black: white, green once ready.
     static func islandTint(_ state: StudyActivityAttributes.ContentState) -> Color {
-        state.isReady ? Color(hex: 0x7CC49A) : Color(hex: 0xE58A6F)
+        state.isReady ? Color(hex: 0x7CC49A) : .white
     }
 }
