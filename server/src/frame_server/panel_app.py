@@ -146,6 +146,10 @@ DOWN_AFTER_REPORT = timedelta(seconds=150)
 # at most this often.
 FROZEN_STARTS = 2
 REINSTALL_EVERY = timedelta(minutes=30)
+# A reboot for a newer package that did not happen (the app still asks
+# with the older one): told again this much later, at most this many times.
+REBOOT_RETRY = timedelta(minutes=10)
+REBOOT_TRIES = 3
 # Every MDC session keeps the panel up: starting a stuck app every few
 # minutes kept it awake all night on battery (2026-10-30, 97 % to 58 %).
 # Past ``FROZEN_STARTS`` on battery the starts space out, doubling from
@@ -210,6 +214,8 @@ class AppState(BaseModel):
     standby: bool = True  # network standby through that sleep
     missed_wake: str | None = None  # an alarm it did not show up for
     reboot_for: str | None = None  # the package version it last rebooted to install
+    reboot_at: str | None = None  # when it was told to, for that version (ISO)
+    reboot_tries: int = 0  # times told to, for that version
     installed_at: str | None = None  # the server last started it over MDC (ISO)
     mode: str | None = None  # the power mode it went to sleep in
     slept_at: str | None = None  # told to sleep (ISO)
@@ -648,7 +654,7 @@ class PanelApp:
             return self._reboot(None, now, common)
         package = self.package()
         newer = package is not None and hello.build and hello.build != package.version
-        if newer and package is not None and self.state.reboot_for != package.version:
+        if newer and package is not None and self._reboot_due(package.version, now):
             return self._reboot(package.version, now, common)
         if power.change_due(now):
             return self._awake(NextAnswer(action="wait", wait_s=_s(RETRY), **common))
@@ -794,6 +800,20 @@ class PanelApp:
             alarms.append(check if check is not None and check < change else change)
         return [a for a in alarms if a - now <= MAX_AHEAD]
 
+    def _reboot_due(self, version: str, now: datetime) -> bool:
+        """Reboot for ``version``: once, and again ``REBOOT_RETRY`` later
+        while the app still runs the older one (the answer may not have
+        reached it: 2026-11-04 18:58, a queue of questions after a restart
+        of the server, and the app slept instead), at most ``REBOOT_TRIES``
+        times, so a package that does not install cannot keep the panel
+        rebooting."""
+        state = self.state
+        if state.reboot_for != version:
+            return True
+        if state.reboot_tries >= REBOOT_TRIES or state.reboot_at is None:
+            return False
+        return now - datetime.fromisoformat(state.reboot_at) >= REBOOT_RETRY
+
     def _reboot(self, version: str | None, now: datetime, common: dict[str, object]) -> NextAnswer:
         """The app reboots the panel (``webapis.systemcontrol.rebootDevice``):
         for a newer package (``version``), which the launcher installs at the
@@ -803,7 +823,9 @@ class PanelApp:
         not install cannot keep the panel rebooting."""
         state = self.state
         if version is not None:
+            state.reboot_tries = state.reboot_tries + 1 if state.reboot_for == version else 1
             state.reboot_for = version
+            state.reboot_at = now.isoformat(timespec="seconds")
         state.asleep = True
         state.wake_at = now.isoformat(timespec="seconds")  # back in a minute
         state.wakes = []

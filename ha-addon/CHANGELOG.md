@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.100.1
+
+- Ramka nie zasypia, gdy restartuje się, żeby zainstalować nową wersję
+  aplikacji. Wcześniej w zatorze zapytań po aktualizacji serwera zasnęła
+  na zasilaczu bez budzika i obudził ją dopiero guzik. Gdy restart do
+  instalacji nie dojdzie do skutku, serwer prosi o niego ponownie po
+  10 minutach, najwyżej trzy razy.
+
 ## 1.100.0
 
 - Nowe źródło dzieł: Courtauld Gallery z Londynu, ok. 580 obrazów w

@@ -564,8 +564,14 @@ async def test_a_new_package_is_installed_by_a_reboot(
         # Installed, not started: the server starts it a minute later.
         await service.power.tick(now + timedelta(seconds=70))
         assert panel.received == START
-        # Once per version: a package that does not install reboots no more.
+        # Not again at once; again 10 min later while the older one asks
+        # (the answer may not have reached it), at most three times, so a
+        # package that does not install does not keep rebooting the panel.
         assert app.answer(hello, now=now + timedelta(minutes=2)).action == "stay"
+        assert app.answer(hello, now=now + timedelta(minutes=11)).action == "reboot"
+        assert app.answer(hello, now=now + timedelta(minutes=22)).action == "reboot"
+        assert app.answer(hello, now=now + timedelta(minutes=40)).action == "stay"
+        assert app.answer(hello, now=now + timedelta(hours=5)).action == "stay"
         new = AppHello(reason="start", build="2.0.1", charging=True)
         assert app.answer(new, now=now + timedelta(minutes=3)).action == "stay"
     finally:
