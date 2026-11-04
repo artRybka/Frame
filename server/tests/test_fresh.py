@@ -329,3 +329,67 @@ def test_a_card_for_each_liked_artist(museums) -> None:  # noqa: F811
         assert made["playlist"]["name"] == "Bo lubisz: Claude Monet"
         mine = next(c for c in client.get("/api/themes").json() if c["key"] == card.key)
         assert mine["playlist_id"] == made["playlist"]["id"]
+
+
+def test_colour_cards_change_every_week_and_keep_to_paintings(service) -> None:
+    from frame_server.library.themes import (
+        COLOUR,
+        COLOUR_CARDS,
+        COLOUR_MIN,
+        COLOUR_POOL,
+        PAINTERLY_KEY,
+        colour_themes,
+        painterly_colour_playlists,
+    )
+
+    library = service.library
+    # Every card but those of "only" colours fits these: oil paintings and
+    # posters with every tag.
+    every = sorted({c for t in COLOUR_POOL for c in t.colors if not c.startswith("only:")})
+    fit = [t for t in COLOUR_POOL if not any(c.startswith("only:") for c in t.colors)]
+    with library.batch():
+        for n in range(COLOUR_MIN):
+            library.upsert(
+                _work(n, title=f"Sea {n}", medium="Oil on canvas", color_tags=every, pooled=True)
+            )
+            library.upsert(
+                _work(
+                    100 + n,
+                    title=f"Poster {n}",
+                    classification="Poster",
+                    medium="Color lithograph",
+                    color_tags=every,
+                    pooled=True,
+                )
+            )
+    day = date(2026, 11, 2)
+    cards = colour_themes(library, day)
+    assert len(cards) == COLOUR_CARDS and all(t.group == COLOUR for t in cards)
+    for card in cards:
+        found = library.query(card.rules())[1]
+        assert len(found) == COLOUR_MIN and all(i.title.startswith("Sea") for i in found)
+        assert card.searches() == []  # browsed in the catalogue
+    # The same all week, after a restart too; other cards the next weeks.
+    assert colour_themes(library, day + timedelta(days=6)) == cards
+    shown = {t.key for t in cards}
+    for week in range(1, len(fit) // COLOUR_CARDS):
+        later = {t.key for t in colour_themes(library, day + timedelta(weeks=week))}
+        assert len(later) == COLOUR_CARDS and not later & shown
+        shown |= later
+    assert shown <= {t.key for t in fit}
+    # A pool too small for new ones: the longest unshown come back.
+    assert len(colour_themes(library, day + timedelta(weeks=20))) == COLOUR_CARDS
+
+    # Playlists made from colour cards keep to paintings too, once.
+    from frame_server.library.models import Playlist
+
+    blues = library.save_playlist(
+        Playlist(name="W odcieniach błękitu", rules=PlaylistRules(colors=["blue", "teal"]))
+    )
+    mine = library.save_playlist(
+        Playlist(name="Moje niebieskie", rules=PlaylistRules(colors=["blue"]))
+    )
+    painterly_colour_playlists(library)
+    assert library.playlist(blues.id).rules.terms == ["technique:painting", "technique:drawing"]
+    assert library.playlist(mine.id).rules.terms == []
+    assert library.get_state(PAINTERLY_KEY)

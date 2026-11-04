@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.97.0
+
+- Odkrywaj → Kolor i nastrój pokazuje tylko obrazy, rysunki i akwarele,
+  bez plakatów, grafiki i zdjęć. Playlisty zrobione z tych kart (także
+  „W odcieniach błękitu” i „Ciepłe barwy”) też trzymają się teraz tych
+  technik.
+- Karty Kolor i nastrój zmieniają się co poniedziałek: cztery z 22
+  kolorystyk, tonacji i akcentów, każda z własną nazwą i opisem, np. „Sam
+  błękit”, „Barwy ziemi”, „Czerwień w zieleni”, „Światło w mroku”. Karta
+  pojawia się tylko wtedy, gdy w katalogu jest co najmniej 12 pasujących
+  dzieł, i nie wraca przez cztery tygodnie.
+- Szukaj → Kolor ma trzecią zakładkę „Wyłącznie”: obrazy malowane tylko
+  wybranymi kolorami (biel, szarość i czerń się nie liczą), np. wyłącznie
+  błękitem i turkusem. „Tylko akcent” nazywa się teraz „Akcent”. Serwer
+  raz przelicza kolory całej biblioteki.
+
 ## 1.96.2
 
 - Guziki studium na karcie dzieła („Przygotuj studium dzieła”, „Otwórz

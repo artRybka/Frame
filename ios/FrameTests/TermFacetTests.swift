@@ -90,7 +90,8 @@ final class TermFacetTests: XCTestCase {
     }
 
     func testColourTagsRowsGoColoursAccentsMoods() {
-        let tags = ["light", "accent:red", "warm", "brown", "colorful", "orange", "muted", "accent:blue"]
+        // "only:" tags (the colours a work is painted in) never show.
+        let tags = ["light", "accent:red", "warm", "brown", "colorful", "orange", "muted", "accent:blue", "only:orange"]
         XCTAssertEqual(ColorTag.rows(tags), [
             ["orange", "brown"],
             ["accent:red", "accent:blue"],
@@ -100,5 +101,14 @@ final class TermFacetTests: XCTestCase {
         let colorful = ColorTag.moods.firstIndex(of: "colorful")!
         XCTAssertEqual(ColorTag.moods[colorful + 1], "monochrome")
         XCTAssertEqual(colorful % 2, 0)
+    }
+
+    func testOnlyColoursNameThemselves() {
+        XCTAssertEqual(ColorTag.name("only:blue"), "Wyłącznie: błękit")
+        XCTAssertEqual(ColorTag.family("only:teal"), "teal")
+        XCTAssertEqual(ColorTag.family("accent:red"), "red")
+        XCTAssertEqual(ColorTag.family("blue"), "blue")
+        let tokens = [SearchToken(kind: "color", key: "only:blue", name: "Wyłącznie: błękit")]
+        XCTAssertEqual(TermFacet.color.label(tokens, periods: periods), "Wyłącznie: błękit")
     }
 }

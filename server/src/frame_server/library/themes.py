@@ -538,35 +538,6 @@ THEMES: list[Theme] = [
             *(("europeana", a) for a in POLISH_INTERWAR),
         ),
     ),
-    # Colour and mood: browsed in the catalogue, where colours are known
-    Theme(
-        "blue",
-        "W odcieniach błękitu",
-        "Niebo, woda i indygo.",
-        COLOUR,
-        colors=("blue", "teal"),
-    ),
-    Theme(
-        "warm",
-        "Ciepłe barwy",
-        "Ochra, czerwień i złoto.",
-        COLOUR,
-        colors=("warm",),
-    ),
-    Theme(
-        "light",
-        "Jasne i spokojne",
-        "Pastelowe, jasne obrazy na spokojne dni.",
-        COLOUR,
-        colors=("light",),
-    ),
-    Theme(
-        "vivid",
-        "Wyraziste barwy",
-        "Mocne kolory, w których ekran Spectra 6 czuje się najlepiej.",
-        COLOUR,
-        colors=("vivid",),
-    ),
     # Periods: browsed in the catalogue
     Theme(
         "17c",
@@ -591,15 +562,127 @@ THEMES: list[Theme] = [
     ),
 ]
 
-BY_KEY = {theme.key: theme for theme in THEMES}
+# -- colour and mood ---------------------------------------------------------------
+
+#: Colour cards show paintings, drawings and watercolours only (Mateusz,
+#: 2026-11-04): no posters, prints or photographs.
+PAINTERLY = ("technique:painting", "technique:drawing")
+
+
+def _colour(key: str, name: str, description: str, *colors: str) -> Theme:
+    """A card of "Kolor i nastrój": colours, moods, accents or "only:"
+    colours (:func:`colors.has_colours`), browsed in the catalogue, where
+    colours are known."""
+    return Theme(key, name, description, COLOUR, colors=colors, terms=PAINTERLY, catalogue=True)
+
+
+#: Colourings, tones and accents "Kolor i nastrój" draws its cards from,
+#: ``COLOUR_CARDS`` a week (:func:`colour_themes`).
+COLOUR_POOL: list[Theme] = [
+    _colour("blue", "W odcieniach błękitu", "Niebo, woda i indygo.", "blue", "teal"),
+    _colour("warm", "Ciepłe barwy", "Ochra, czerwień i złoto.", "warm"),
+    _colour("light", "Jasne i spokojne", "Pastelowe, jasne obrazy na spokojne dni.", "light"),
+    _colour(
+        "vivid",
+        "Wyraziste barwy",
+        "Mocne kolory, w których ekran Spectra 6 czuje się najlepiej.",
+        "vivid",
+    ),
+    _colour(
+        "only-blue",
+        "Sam błękit",
+        "Obrazy malowane wyłącznie błękitem i turkusem, z bielą i szarością.",
+        "only:blue",
+        "only:teal",
+    ),
+    _colour(
+        "only-green",
+        "Sama zieleń",
+        "Zielenie i turkusy, bez żadnej innej barwy.",
+        "only:green",
+        "only:teal",
+    ),
+    _colour(
+        "earth",
+        "Barwy ziemi",
+        "Umbra, ochra i brąz, jak u dawnych mistrzów.",
+        "only:brown",
+        "only:orange",
+        "only:yellow",
+    ),
+    _colour(
+        "fire",
+        "Czerwień i ogień",
+        "Obrazy w samych czerwieniach i oranżach.",
+        "warm",  # and so not a page of beige paper
+        "only:red",
+        "only:orange",
+    ),
+    _colour("greens", "Wszystkie zielenie", "Las, łąka i ogród w odcieniach zieleni.", "green"),
+    _colour("yellows", "Złoto i żółć", "Słoneczne pola, światło i złoto.", "yellow"),
+    _colour("pinks", "Róże i pudry", "Różowe chmury, kwiaty i suknie.", "pink"),
+    _colour("purples", "Fiolety i lawenda", "Zmierzchy, bzy i lawenda.", "purple"),
+    _colour("cool", "Chłodne tonacje", "Zieleń, błękit i fiolet, bez ciepłych barw.", "cool"),
+    _colour("muted", "Ciche barwy", "Przygaszone, stonowane kolory, które nie krzyczą.", "muted"),
+    _colour("dark", "Mroczne i nastrojowe", "Ciemne obrazy na długie wieczory.", "dark"),
+    _colour(
+        "monochrome",
+        "Jednym kolorem",
+        "Grisaille, sepia i obrazy malowane jedną barwą.",
+        "monochrome",
+    ),
+    _colour(
+        "colorful", "Cała paleta", "Obrazy, na których spotykają się wszystkie barwy.", "colorful"
+    ),
+    _colour(
+        "red-in-grey",
+        "Czerwień w szarości",
+        "Stonowane obrazy z jedną czerwoną plamą.",
+        "muted",
+        "accent:red",
+    ),
+    _colour(
+        "red-in-green",
+        "Czerwień w zieleni",
+        "Zielone pejzaże z czerwoną plamą: makiem, dachem, chustą.",
+        "green",
+        "accent:red",
+    ),
+    _colour(
+        "blue-gold",
+        "Błękit i złoto",
+        "Niebieskie obrazy rozświetlone odrobiną żółci.",
+        "blue",
+        "teal",
+        "accent:yellow",
+    ),
+    _colour(
+        "blue-orange",
+        "Błękit i pomarańcz",
+        "Barwy dopełniające: niebieskie obrazy z ciepłym blaskiem.",
+        "blue",
+        "teal",
+        "accent:orange",
+    ),
+    _colour(
+        "glow",
+        "Światło w mroku",
+        "Ciemne obrazy, w których błyska świeca, ogień albo złoto.",
+        "dark",
+        "accent:yellow",
+        "accent:orange",
+    ),
+]
+
+BY_KEY = {theme.key: theme for theme in [*THEMES, *COLOUR_POOL]}
 #: Themes the museums can be asked for, for the theme of the day and the
 #: catalogue's growth.
 SEARCHABLE = [theme for theme in THEMES if theme.searches()]
 
 
 def theme(key: str, library: Library | None = None) -> Theme:
-    """A theme by its key: one of ``THEMES``, of the week's or of "Bo lubisz"
-    (those two need ``library``)."""
+    """A theme by its key: one of ``THEMES`` or ``COLOUR_POOL``, of the
+    week's or of "Bo lubisz" (those two need ``library``)."""
     found = BY_KEY.get(key) or _weekly.get(key)
     if found is None and library is not None:
         weekly_themes(library, date.today())
@@ -946,6 +1029,79 @@ def new_artist_of_the_week(library: Library, day: date) -> Theme | None:
             old.name if old else "none",
         )
         return found
+
+
+# -- the week's colours ----------------------------------------------------------
+
+#: The colour cards of the week: {"week", "keys", "history"}.
+COLOURS_KEY = "colour_themes"
+#: Cards of "Kolor i nastrój" each week.
+COLOUR_CARDS = 4
+#: Least works of a colour card the catalogue must have.
+COLOUR_MIN = 12
+#: A colour card does not come back for this many weeks (while the pool
+#: has enough others).
+COLOUR_REPEAT = 4
+_colours_lock = threading.Lock()
+
+
+def make_colours(library: Library, week: str, history: list[str]) -> list[Theme]:
+    """``COLOUR_CARDS`` of ``COLOUR_POOL`` for ``week``, drawn from those
+    with ``COLOUR_MIN`` works in the catalogue: first those not shown in
+    the weeks of ``history`` (oldest first), then the longest unshown."""
+    fit = [t for t in COLOUR_POOL if library.query(t.rules(), limit=1)[0] >= COLOUR_MIN]
+    rng = random.Random(f"colours:{week}")
+    fresh = [t for t in fit if t.key not in history]
+    rng.shuffle(fresh)
+    # Then those shown the longest time ago.
+    seen = sorted((t for t in fit if t.key in history), key=lambda t: history.index(t.key))
+    return (fresh + seen)[:COLOUR_CARDS]
+
+
+def colour_themes(library: Library, day: date) -> list[Theme]:
+    """The cards of "Kolor i nastrój" for ``day``'s week: drawn once a week
+    and remembered in ``library``, so they change every Monday."""
+    week = week_of(day)
+    with _colours_lock:
+        stored: dict[str, Any] = library.get_state(COLOURS_KEY, {})
+        if stored.get("week") == week:
+            found = [BY_KEY[k] for k in stored.get("keys") or [] if k in BY_KEY]
+            if found:
+                return found
+        # The cards of the weeks before, oldest first (a week's own last).
+        history: list[str] = stored.get("history") or []
+        found = make_colours(library, week, history)
+        keys = [t.key for t in found]
+        history = [*(k for k in history if k not in keys), *keys][-COLOUR_REPEAT * COLOUR_CARDS :]
+        library.set_state(COLOURS_KEY, {"week": week, "keys": keys, "history": history})
+        log.info("colours of %s: %s", week, ", ".join(t.name for t in found) or "none")
+        return found
+
+
+#: Set once playlists of colour cards keep to paintings and drawings.
+PAINTERLY_KEY = "colour_playlists_painterly"
+
+
+def painterly_colour_playlists(library: Library) -> None:
+    """Once (1.97.0): playlists made from a colour card (the starters "W
+    odcieniach błękitu" and "Ciepłe barwy" too) keep to paintings, drawings
+    and watercolours, as the cards do now."""
+    if library.get_state(PAINTERLY_KEY, False):
+        return
+    by_name = {fold(t.name): t for t in COLOUR_POOL}
+    for playlist in library.playlists():
+        found = BY_KEY.get(playlist.theme or "") or by_name.get(fold(playlist.name))
+        rules = playlist.rules
+        if (
+            found is None
+            or found.group != COLOUR
+            or not rules.colors
+            or any(t.startswith("technique:") for t in rules.terms)
+        ):
+            continue
+        rules = rules.model_copy(update={"terms": [*rules.terms, *PAINTERLY]})
+        library.save_playlist(playlist.model_copy(update={"rules": rules}))
+    library.set_state(PAINTERLY_KEY, True)
 
 
 # -- "Bo lubisz" -----------------------------------------------------------------

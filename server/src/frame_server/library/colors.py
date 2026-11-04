@@ -38,8 +38,8 @@ COLOUR_SPREAD = (0.01, 0.035)
 COLOUR_CHROMA = 0.08
 #: Version of the colour analysis and suitability score; items analysed by
 #: an older one are analysed again (``Player.rescore``). 3: accents, ICC;
-#: 4: colour tags by area, accents tagged apart; 5: "colorful".
-SCORE_VERSION = 5
+#: 4: colour tags by area, accents tagged apart; 5: "colorful"; 6: "only:".
+SCORE_VERSION = 6
 
 #: A pixel counts towards a colour family from this OKLab chroma on, or
 #: this chroma / lightness for light ones: a greyish-blue sky does, a beige
@@ -53,6 +53,12 @@ COLOURING = 0.15
 #: never with the colour's own tag.
 ACCENT_TAG = "accent:"
 NEUTRALS = ("black", "gray", "white")
+#: Tags of the colours a picture is painted in (``"only:blue"``): the
+#: fewest colour families, largest first, that make ``ONLY_SHARE`` of its
+#: coloured pixels (neutrals aside). Never shown; a search for "Wyłącznie
+#: błękit i turkus" finds pictures whose such tags are all among those.
+ONLY_TAG = "only:"
+ONLY_SHARE = 0.8
 WARM_FAMILIES = ("red", "orange", "yellow", "brown", "pink")
 COOL_FAMILIES = ("green", "teal", "blue", "purple")
 #: A warm (cool) picture: its warm (cool) tones cover this much of it, the
@@ -271,6 +277,7 @@ def colour_tags(
     tags += [
         ACCENT_TAG + n for n in COLOR_FAMILIES if n in shown and n not in tags and n not in NEUTRALS
     ]
+    tags += [ONLY_TAG + n for n in painted_in(share)]
 
     chroma = np.hypot(lab[:, 1], lab[:, 2])
     mean_chroma = float(chroma.mean())
@@ -304,6 +311,25 @@ def colour_tags(
     return tags
 
 
+def painted_in(share: dict[str, float]) -> list[str]:
+    """The colour families a picture is painted in, from each one's share
+    of it: the fewest, largest first, that make ``ONLY_SHARE`` of its
+    coloured pixels. A blue Whistler nocturne is blue alone, Monet's sea at
+    Pourville blue and turquoise; a picture without colour, none."""
+    colours = sorted(
+        ((v, n) for n, v in share.items() if n not in NEUTRALS and v > 0), reverse=True
+    )
+    total = sum(v for v, _ in colours)
+    found: list[str] = []
+    held = 0.0
+    for value, name in colours:
+        if total <= 0 or held >= ONLY_SHARE * total:
+            break
+        found.append(name)
+        held += value
+    return found
+
+
 def colourful(lab: np.ndarray, spread: float) -> bool:
     """Whether a picture is in colours: several hues far apart, each on an
     accent's share of it at least (``HUE_SECTORS``). Black-and-white,
@@ -326,11 +352,31 @@ def has_colours(tags: list[str], wanted: list[str]) -> bool:
     of a group will do, but both groups must fit, so blue (or cool) with a
     red accent asks for blue pictures with something red. A colour and its
     accent exclude each other: "red accents" are pictures where red is
-    only an accent."""
+    only an accent. A third group, "only" (``"only:blue"``, ``"only:teal"``),
+    asks for pictures painted in those colours alone: every colour it is
+    painted in (:func:`painted_in`) is one of them, and one of them covers
+    a good part of it (its colour tag), so a grey drawing with a touch of
+    blue is not "only blue"."""
     have = set(tags)
     accents = {w for w in wanted if w.startswith(ACCENT_TAG)}
-    rest = set(wanted) - accents
-    return (not rest or bool(have & rest)) and (not accents or bool(have & accents))
+    only = {w for w in wanted if w.startswith(ONLY_TAG)}
+    rest = set(wanted) - accents - only
+    return (
+        (not rest or bool(have & rest))
+        and (not accents or bool(have & accents))
+        and (not only or _only(have, only))
+    )
+
+
+def _only(have: set[str], only: set[str]) -> bool:
+    painted = {t for t in have if t.startswith(ONLY_TAG)}
+    families = {t.removeprefix(ONLY_TAG) for t in only}
+    return bool(painted) and painted <= only and bool(have & families)
+
+
+def shown_tags(tags: list[str]) -> list[str]:
+    """``tags`` as the app shows and counts them: without "only:"."""
+    return [t for t in tags if not t.startswith(ONLY_TAG)]
 
 
 def _swatch(lab: np.ndarray, weight: float, accent: bool = False) -> ColorSwatch:
