@@ -353,8 +353,10 @@ struct MasonryGrid<Content: View>: View {
 
     var body: some View {
         LazyVStack(alignment: .leading, spacing: spacing + 6) {
-            // Works with no picture anywhere: an empty tile helps nobody.
-            let shown = model.missingPictures.isEmpty ? items : items.filter { !model.missingPictures.contains($0.id) }
+            // Works with no picture anywhere, or none for now (the museum
+            // turned the server away): an empty tile helps nobody.
+            let shown = model.missingPictures.isEmpty && model.pausedPictures.isEmpty
+                ? items : items.filter { !model.hidesPicture($0.id) }
             ForEach(Self.blocks(shown, columns: columns, columnWidth: columnWidth)) { block in
                 switch block {
                 case .columns(let buckets):

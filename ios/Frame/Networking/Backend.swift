@@ -138,6 +138,8 @@ protocol FrameBackend: Sendable {
     /// The push token of the Lock Screen card following the work's study:
     /// the server pushes each step to it.
     func followStudy(itemID: String, activityToken: String, sandbox: Bool) async throws
+    /// The send bar's push token: the server moves it on and ends it.
+    func followSend(title: String, activityToken: String, sandbox: Bool) async throws
     /// The smart playlist made from a theme (made now if there is none);
     /// `play` also puts it on the frame.
     func themePlaylist(key: String, play: Bool) async throws -> ThemePlaylist

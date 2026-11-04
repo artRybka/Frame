@@ -13,6 +13,7 @@ import httpx
 import pytest
 
 from frame_server.library.hosts import (
+    PROBE_EVERY,
     REST,
     HostGuard,
     Resting,
@@ -99,6 +100,37 @@ def test_walled_host_is_left_alone_for_a_while() -> None:
         answer[0] = httpx.Response(200, json={"data": [], "pagination": {"total": 0}})
         assert aic.search("monet") == (0, [])
         assert guard.resting("api.artic.edu") == 0
+
+
+def test_a_resting_host_is_asked_once_a_minute_whether_it_answers_again() -> None:
+    """A wall that challenged one request (a full-size original, 2026-11-04)
+    may let the next ones through: one request a minute still goes, and
+    once one is answered the host is asked as before, not after the rest."""
+    guard, clock = _guard({"www.artic.edu": 0.0})
+    answer = [httpx.Response(403, headers=CHALLENGE)]
+    sent: list[str] = []
+    thumb = "https://www.artic.edu/iiif/2/abc/full/600,/0/default.jpg"
+    with _client(guard, answer, sent) as http:
+        with pytest.raises(Resting):
+            http.get(thumb)
+        with pytest.raises(Resting):
+            http.get(thumb)
+        assert len(sent) == 1
+        # A minute on: one goes, still walled; the rest is not made longer.
+        clock.now += PROBE_EVERY
+        with pytest.raises(Resting):
+            http.get(thumb)
+        with pytest.raises(Resting):
+            http.get(thumb)
+        assert len(sent) == 2
+        assert guard.resting("www.artic.edu") == pytest.approx(REST - PROBE_EVERY)
+        # Another minute: it answers, and the host is free again.
+        clock.now += PROBE_EVERY
+        answer[0] = httpx.Response(200, content=b"jpeg")
+        assert http.get(thumb).status_code == 200
+        assert guard.resting("www.artic.edu") == 0
+        assert http.get(thumb).status_code == 200
+        assert len(sent) == 4
 
 
 def test_server_refusal_does_not_rest_the_host() -> None:

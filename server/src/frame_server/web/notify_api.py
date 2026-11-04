@@ -50,6 +50,15 @@ class DeviceUpdate(BaseModel):
     name: str = ""
 
 
+class SendActivityToken(BaseModel):
+    """A Live Activity following a picture to the frame, as iOS gave its
+    push token; ``title``: the picture it shows."""
+
+    token: str
+    title: str = ""
+    sandbox: bool = False
+
+
 class TestRequest(BaseModel):
     device: str
 
@@ -179,3 +188,15 @@ def describe(reason: str | None) -> str:
     if reason is None:
         return "nieznany błąd"
     return f"{hints[reason]} ({reason})" if reason in hints else reason
+
+
+@router.put("/send-activity", status_code=204)
+async def follow_send(body: SendActivityToken, svc: Svc) -> None:
+    """The Lock Screen bar following the picture on its way: the server
+    moves it on and ends it, also with the app asleep (without an APNs key
+    it moves on only while the app is open). Where the run is goes to it
+    at once."""
+    try:
+        svc.notifier.follow_send(body.token, body.title, sandbox=body.sandbox)
+    except PushError as err:
+        raise HTTPException(400, str(err)) from err

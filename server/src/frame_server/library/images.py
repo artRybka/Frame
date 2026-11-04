@@ -17,7 +17,7 @@ from PIL import Image
 
 from ..fsutil import own_files
 from ..imaging.layout import load_image
-from .hosts import Resting, is_urgent, urgently, walled
+from .hosts import HostGuard, Resting, guard, is_urgent, urgently, walled
 from .markup import commons_rendition
 from .models import Item
 
@@ -153,6 +153,8 @@ class ImageCache:
         self._gates: dict[str, HostGate] = {}
         self._guard = threading.Lock()
         self.sleep: Callable[[float], None] = time.sleep
+        #: The museums' manners (:mod:`.hosts`): which hosts rest now.
+        self.hosts: HostGuard = guard
 
     def _lock(self, key: str) -> threading.Lock:
         with self._guard:
@@ -221,6 +223,16 @@ class ImageCache:
         self._forget_gone(item)
         return path
 
+    def thumb_waits(self, item: Item) -> float:
+        """Seconds until the thumbnail can be had, when it is not here and
+        the host it comes from turned us away lately (:class:`Resting`);
+        0 when it is here or may be asked for now. Lists leave such works
+        out: the app would show an empty tile, and the phone at home asks
+        from the same address the wall turned away."""
+        if not item.thumb_url or self.thumb_path(item).is_file() or self.has_image(item):
+            return 0.0
+        return self.hosts.resting(urlsplit(item.thumb_url).hostname or "")
+
     def _addresses(self, item: Item, thumb: bool) -> list[str]:
         mirrors = self.mirrors.get(item.source)
         image_url = own_copy(item)
@@ -233,14 +245,21 @@ class ImageCache:
     def _thumbnail(self, item: Item, urgent: bool) -> Image.Image:
         urls = self._addresses(item, thumb=True)
         refused = True
+        resting: Resting | None = None
         for n, url in enumerate(urls, 1):
             try:
                 return self._download(url, urgent)
             except (httpx.HTTPError, OSError) as err:
                 refused = refused and _missing(err)
+                if isinstance(err, Resting):
+                    resting = resting or err
                 if n < len(urls):
                     log.info("thumbnail of %s from %s failed: %s; next address", item.id, url, err)
                     continue
+                if resting is not None and err is not resting:
+                    # A mirror failed too: the museum's wall is why there is
+                    # none, and it says when to ask again.
+                    raise resting from err
                 if not refused:
                     raise
                 self._mark_gone(item)
