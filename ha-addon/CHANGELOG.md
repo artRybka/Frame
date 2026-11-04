@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.98.0
+## 1.99.0
 
 - Zestawy w Odkrywaj (np. „Polskie międzywojnie”) są wymieszane: obok
   siebie nie stoją dwa dzieła jednego autora ani jednego muzeum, o ile
