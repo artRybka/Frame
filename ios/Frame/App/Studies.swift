@@ -13,7 +13,7 @@ extension AppModel {
         let card = beginStudyCard(itemID: itemID, title: title)
         do {
             let view = try await backend.prepareStudy(itemID: itemID, again: again)
-            studyActivity.start(itemID: itemID, title: title, status: view.status)
+            await studyActivity.start(itemID: itemID, title: title, status: view.status)
             await followStudy(itemID: itemID, title: title, from: view, card: card)
         } catch {
             studyCards[itemID] = nil
@@ -26,7 +26,7 @@ extension AppModel {
     func resumeStudy(itemID: String, title: String, view: StudyView) async {
         studies[itemID] = view
         guard view.isPending, studyCards[itemID] == nil else { return }
-        studyActivity.start(itemID: itemID, title: title, status: view.status)
+        await studyActivity.start(itemID: itemID, title: title, status: view.status)
         let card = beginStudyCard(itemID: itemID, title: title)
         await followStudy(itemID: itemID, title: title, from: view, card: card)
     }

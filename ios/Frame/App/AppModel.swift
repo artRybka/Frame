@@ -198,6 +198,8 @@ final class AppModel {
         studyActivity.onToken = { [weak self] itemID, token in
             await self?.followStudyOnLockScreen(itemID: itemID, token: token)
         }
+        liveActivity.picture = { [weak self] itemID in await self?.activityPicture(itemID) }
+        studyActivity.picture = { [weak self] itemID in await self?.activityPicture(itemID) }
     }
 
     private func connect(demo: Bool, url: String, remote: String, token: String) {
@@ -795,7 +797,7 @@ final class AppModel {
             if value.active {
                 seenActive = true
                 displayProgress = value
-                liveActivity.show(value)
+                await liveActivity.show(value)
             } else if seenActive || !expectingStart || Date.now.timeIntervalSince(started) > 20 {
                 if seenActive { await finishProgress(value) }
                 break
@@ -814,7 +816,7 @@ final class AppModel {
         displayProgress = value
         if value.isWaiting {
             await refreshPlayer()
-            liveActivity.wait(value, until: player?.delivery?.asleepUntilAt)
+            await liveActivity.wait(value, until: player?.delivery?.asleepUntilAt)
         } else {
             liveActivity.finish(value)
         }
@@ -824,6 +826,23 @@ final class AppModel {
         } else {
             try? await Task.sleep(for: .seconds(5))  // long enough to read why
         }
+    }
+
+    /// The work's thumbnail made small enough for a Live Activity; nil
+    /// without one in a few seconds (the card then goes without it).
+    func activityPicture(_ itemID: String) async -> Data? {
+        guard let request = backend.request(for: .thumb(itemID)) else { return nil }
+        let image = await withTaskGroup(of: UIImage?.self) { group in
+            group.addTask { try? await ImageLoader.shared.image(for: request, maxPixel: 264, priority: .high) }
+            group.addTask {
+                try? await Task.sleep(for: .seconds(3))
+                return nil
+            }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            return first
+        }
+        return image.flatMap(ActivityPicture.data(from:))
     }
 
     /// The Lock Screen card after a run, or when the app is back: on while
@@ -842,8 +861,11 @@ final class AppModel {
         if player?.delivery?.isWaiting == true {
             var waiting = value
             waiting.stage = "waiting"
-            if waiting.title.isEmpty { waiting.title = player?.current?.title ?? "" }
-            liveActivity.wait(waiting, until: player?.delivery?.asleepUntilAt)
+            if waiting.title.isEmpty {
+                waiting.title = player?.current?.title ?? ""
+                waiting.itemId = player?.current?.item?.id
+            }
+            await liveActivity.wait(waiting, until: player?.delivery?.asleepUntilAt)
         } else {
             liveActivity.finish(value)
         }

@@ -85,6 +85,9 @@ class DisplayProgress(BaseModel):
     message: str | None = None
     #: Who changed the picture: ``schedule`` or ``app``; None when unknown.
     origin: str | None = None
+    #: The work on its way, when it is one: the app's Lock Screen card
+    #: shows its thumbnail.
+    item_id: str | None = None
 
 
 class ProgressTracker:
@@ -104,6 +107,7 @@ class ProgressTracker:
         self._planned: list[Stage] = []
         self._title = ""
         self._origin: str | None = None
+        self._item_id: str | None = None
         self._message: str | None = None
         self._start = 0.0
         self._stage_start = 0.0
@@ -129,6 +133,11 @@ class ProgressTracker:
             elif key in ORDER and key != Stage.REFRESHING:
                 self.expected[Stage(key)] = float(value)
 
+    @property
+    def item_id(self) -> str | None:
+        """The work of the run under way or last ended."""
+        return self._item_id
+
     def begin(
         self,
         title: str,
@@ -137,14 +146,16 @@ class ProgressTracker:
         keep: bool = False,
         start: Stage | None = None,
         origin: str | None = None,
+        item_id: str | None = None,
     ) -> None:
         """A picture sets off. ``keep``: one with this title still being
         prepared (its original downloaded first) goes on as it is.
         ``start``: the stage it sets off at (a waiting picture the woken
         panel's app asked for: its download). ``origin``: who changed it,
-        ``schedule`` or ``app``."""
+        ``schedule`` or ``app``. ``item_id``: the work, when it is one."""
         if keep and self._stage == Stage.RENDERING and self._title == title:
             self._origin = origin or self._origin
+            self._item_id = item_id or self._item_id
             return
         now = self._clock()
         wake = self.likely_asleep() and start is None
@@ -158,6 +169,7 @@ class ProgressTracker:
         self._stage = self._planned[0]
         self._title = title
         self._origin = origin
+        self._item_id = item_id
         self._message = None
         self._start = self._stage_start = now
         self._end = None
@@ -274,4 +286,5 @@ class ProgressTracker:
             ),
             message=self._message,
             origin=self._origin,
+            item_id=self._item_id,
         )

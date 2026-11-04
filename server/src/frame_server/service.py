@@ -203,7 +203,7 @@ class FrameService:
         self.status.on_firmware = self.notifier.firmware
         self.status.on_mac = self.panel_config.learn_mac
         self.progress.on_end = lambda stage, title, message: self.notifier.ended(
-            stage == Stage.FAILED, title, message
+            stage == Stage.FAILED, title, message, self.progress.item_id
         )
         self.progress.restore(self.library.get_state(PROGRESS_KEY, {}))
         self.progress.on_learn = lambda learned: self.library.set_state(PROGRESS_KEY, learned)
@@ -430,7 +430,12 @@ class FrameService:
         url = f"{self.settings.base_url()}{self.app.image_path(content)}"
         app, power, progress = self.app, self.power, self.progress
         if not progress.active:
-            progress.begin(content.title, render=False, origin=self.player.state.last_change_origin)
+            progress.begin(
+                content.title,
+                render=False,
+                origin=self.player.state.last_change_origin,
+                item_id=notifications.shown_item_id(content),
+            )
         progress.advance(Stage.SENDING)
         file_id = content.file_id
         now = datetime.now(UTC)

@@ -10,7 +10,10 @@ struct StudyActivityWidget: Widget {
 
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: StudyActivityAttributes.self) { context in
-            StudyLockScreenCard(title: context.attributes.title, state: context.state, stale: context.isStale)
+            StudyLockScreenCard(
+                title: context.attributes.title, picture: context.attributes.picture,
+                state: context.state, stale: context.isStale
+            )
                 .activityBackgroundTint(Palette.paper)
                 .activitySystemActionForegroundColor(Palette.ink)
                 .widgetURL(context.state.isReady ? context.attributes.url : nil)
@@ -18,9 +21,11 @@ struct StudyActivityWidget: Widget {
             let state = context.state
             return DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
-                    StudyMark(state: state, island: true)
-                        .font(.title2)
-                        .padding(.leading, 4)
+                    ActivityThumb(data: context.attributes.picture, height: 40, ground: .black) {
+                        StudyMark(state: state, island: true)
+                    }
+                    .font(.title2)
+                    .padding(.leading, 4)
                 }
                 DynamicIslandExpandedRegion(.center) {
                     Text(StudyText.title(context.attributes.title))
@@ -39,8 +44,10 @@ struct StudyActivityWidget: Widget {
                     .padding(.horizontal, 4)
                 }
             } compactLeading: {
-                Image(systemName: "sparkles")
-                    .foregroundStyle(StudyText.islandTint(state))
+                ActivityPictureOnly(
+                    data: context.attributes.picture, height: 22,
+                    fallback: "sparkles", tint: StudyText.islandTint(state)
+                )
             } compactTrailing: {
                 StudyCompact(state: state)
             } minimal: {
@@ -56,13 +63,16 @@ struct StudyActivityWidget: Widget {
 /// The Lock Screen card: the work, what goes on and the three steps.
 private struct StudyLockScreenCard: View {
     let title: String
+    let picture: Data?
     let state: StudyActivityAttributes.ContentState
     let stale: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                StudyMark(state: state, island: false)
+            HStack(alignment: picture == nil ? .firstTextBaseline : .center, spacing: picture == nil ? 8 : 12) {
+                ActivityThumb(data: picture, height: 44) {
+                    StudyMark(state: state, island: false)
+                }
                 VStack(alignment: .leading, spacing: 2) {
                     Text(StudyText.title(title))
                         .font(.subheadline.weight(.semibold))
