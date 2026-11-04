@@ -51,6 +51,8 @@ struct StudyActivityAttributes: ActivityAttributes {
     var itemID: String
     /// The work's title, as on its card.
     var title: String
+    /// Its small picture (`ActivityPicture`), when the app had it in time.
+    var picture: Data? = nil
 
     /// Where a tap on the card goes: the app opens the study
     /// (`PushCenter.open`, as for the notification "Studium gotowe").

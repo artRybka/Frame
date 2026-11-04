@@ -18,17 +18,22 @@ struct SendActivityWidget: Widget {
 
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: SendActivityAttributes.self) { context in
-            LockScreenCard(title: context.attributes.title, state: context.state, stale: context.isStale)
+            LockScreenCard(
+                title: context.attributes.title, picture: context.attributes.picture,
+                state: context.state, stale: context.isStale
+            )
                 .activityBackgroundTint(Palette.paper)
                 .activitySystemActionForegroundColor(Palette.ink)
         } dynamicIsland: { context in
             let state = context.state
             return DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
-                    Image(systemName: "photo.fill")
-                        .font(.title2)
-                        .foregroundStyle(Palette.islandTint(state))
-                        .padding(.leading, 4)
+                    ActivityPictureOnly(
+                        data: context.attributes.picture, height: 40,
+                        fallback: "photo.fill", tint: Palette.islandTint(state)
+                    )
+                    .font(.title2)
+                    .padding(.leading, 4)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
                     TimeLeft(state: state)
@@ -54,8 +59,10 @@ struct SendActivityWidget: Widget {
                     .padding(.horizontal, 4)
                 }
             } compactLeading: {
-                Image(systemName: "photo.fill")
-                    .foregroundStyle(Palette.islandTint(state))
+                ActivityPictureOnly(
+                    data: context.attributes.picture, height: 22,
+                    fallback: "photo.fill", tint: Palette.islandTint(state)
+                )
             } compactTrailing: {
                 CompactMark(state: state)
             } minimal: {
@@ -69,14 +76,18 @@ struct SendActivityWidget: Widget {
 /// The Lock Screen card: what goes on, the bar and its three parts.
 private struct LockScreenCard: View {
     let title: String
+    /// The work's small picture, with the mark on its corner.
+    let picture: Data?
     let state: SendActivityAttributes.ContentState
     let stale: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Image(systemName: icon)
-                    .foregroundStyle(Palette.tint(state))
+            HStack(alignment: picture == nil ? .firstTextBaseline : .center, spacing: picture == nil ? 8 : 12) {
+                ActivityThumb(data: picture, height: 44) {
+                    Image(systemName: icon)
+                        .foregroundStyle(Palette.tint(state))
+                }
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title.isEmpty ? "Obraz na ramkę" : "„\(title)” na ramkę")
                         .font(.subheadline.weight(.semibold))

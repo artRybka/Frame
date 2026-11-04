@@ -594,6 +594,39 @@
     return out;
   }
 
+  // Which clock the panel's alarms run on (2026-11-04): webapis.timer
+  // says 2024-01-01 09:20 while the page's clock is right, and every spare
+  // alarm on the charger fails with UnknownError. One alarm 2 h ahead on
+  // each clock, read back and cancelled at once (cancelling works within
+  // the same awake period, E16); on the charger, so a stray one is harmless.
+  function alarmTest(w) {
+    if (!ep) return;
+    var out = {};
+    var tv = w.timer ? call(function () { return w.timer.getCurrentTime(); }) : null;
+    out.tv_now = tv;
+    var tryAt = function (d) {
+      var r = { at: d.toString() };
+      r.set = call(function () {
+        return ep.setScheduleWakeupTime({
+          year: d.getFullYear(), month: d.getMonth() + 1, day: d.getDate(),
+          hour: d.getHours(), minute: d.getMinutes(), second: d.getSeconds()
+        });
+      });
+      if (r.set.ok && r.set.value !== null) {
+        r.read = call(function () { return plain(ep.getScheduleWakeupTime(r.set.value)); });
+        r.cancel = call(function () { return ep.cancelScheduleWakeupTime(r.set.value); });
+      }
+      return r;
+    };
+    out.real_clock = tryAt(new Date(Date.now() + 2 * 3600000));
+    if (tv && tv.ok && tv.value && tv.value.year) {
+      var t = tv.value;
+      var base = new Date(t.year, t.month - 1, t.day, t.hour, t.minute, t.second || 0);
+      out.tv_clock = tryAt(new Date(base.getTime() + 2 * 3600000));
+    }
+    report("probe", { part: "alarm", alarm: out });
+  }
+
   // Once per version of this code, on the charger only: what else the
   // panel can tell (docs/WAKE.md, "Sonda odczytów"). Read only, every call
   // on its own, async ones with a time limit; each part a report of its
@@ -625,7 +658,22 @@
       "isConnectedToGateway", "getIpMode", "getIp", "getSubnetMask", "getGateway", "getDns",
       "getSecondaryDns", "getMac", "getTVName", "getWiFiSsid", "getWiFiSignalStrengthLevel",
       "getWiFiFrequency", "getWiFiSecurityMode", "getWiFiEncryptionType"]) });
-    report("probe", { part: "methods", methods: methods() });
+    // In pieces: the server's log keeps 4000 characters of a line.
+    var all = methods(), piece = {}, size = 0, n = 0;
+    Object.keys(all).forEach(function (name) {
+      if (size + all[name].length > 2500 && size > 0) {
+        report("probe", { part: "methods", n: ++n, methods: piece });
+        piece = {};
+        size = 0;
+      }
+      piece[name] = all[name];
+      size += all[name].length + name.length;
+    });
+    if (size) report("probe", { part: "methods", n: ++n, methods: piece });
+    report("probe", { part: "power", remotepower: get(w.remotepower, ["getVersion", "getPowerState",
+      "getVirtualStandbyMode", "getVirtualStandbyRebootTime", "getRemoteConfiguration"]),
+      timer: get(w.timer, ["getVersion"]) });
+    alarmTest(w);
     var t = typeof tizen !== "undefined" ? tizen : null;
     if (!t) return;
     var info = t.systeminfo;
@@ -693,7 +741,6 @@
     report("capture", { result: shot, ms: took });
     if (!shot.ok) return;
     var fs = (typeof tizen !== "undefined") ? tizen.filesystem : null;
-    if (!fs) return report("capture", { error: "no filesystem" });
     var upload = function (blob, how) {
       var x = new XMLHttpRequest();
       x.open("POST", SERVER + "/panel/capture", true);
@@ -702,6 +749,22 @@
       x.onloadend = function () { report("capture", { uploaded: x.status, bytes: blob.size, via: how }); };
       x.send(blob);
     };
+    // The page is a file:// origin: the file it names may read over XHR,
+    // without the filesystem privilege (openFile and resolve: SecurityError,
+    // 2026-11-04).
+    if (typeof shot.value === "string" && shot.value.charAt(0) === "/") {
+      var x = new XMLHttpRequest();
+      x.open("GET", "file://" + shot.value, true);
+      x.responseType = "blob";
+      x.timeout = 20000;
+      x.onloadend = function () {
+        var blob = x.response;
+        if (blob && blob.size > 0) return upload(blob, "file-xhr");
+        report("capture", { error: "file:// read", status: x.status, size: blob ? blob.size : null });
+      };
+      try { x.send(); } catch (e) { report("capture", { error: "file:// send: " + String(e) }); }
+    }
+    if (!fs) return report("capture", { error: "no filesystem" });
     // The newer file API (Tizen 5+), else the older one.
     var r = call(function () {
       var h = fs.openFile("wgt-private-tmp/ScreenCapture.jpg", "r");

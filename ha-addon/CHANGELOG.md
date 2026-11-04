@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.95.0
+
+- Pasek wysyłki na ekranie blokady i w wyspie pokazuje małą miniaturę
+  dzieła, które jedzie na ramkę, ze znaczkiem stanu na rogu (ptaszek,
+  krzyżyk, księżyc). Tak samo karta studium, które się pisze.
+- Powiadomienie „Błąd wysyłki” też ma miniaturę dzieła.
+- Gdy miniatura nie zdąży się pobrać, karta wygląda jak dotąd.
+- Druga sonda ramki (na zasilaczu, raz): sprawdza, według którego zegara
+  ramka liczy budziki (jej zegar systemowy stoi na 1 stycznia 2024, a
+  zapasowe budziki na zasilaczu się nie ustawiają), odczytuje stan zasilania
+  z modułu `remotepower` i zapisuje pełną listę funkcji ekranu w logu.
+- Zrzut ekranu na żądanie próbuje odczytać plik inną drogą, bo ramka nie
+  pozwalała aplikacji go otworzyć.
+- „Prezentuj na ramce” działa dla Ulubionych, z przytrzymania okładki
+  i z przycisku na stronie playlisty. Dotąd serwer odpowiadał
+  „Ulubione zostają zawsze”, jakby chodziło o usuwanie.
+- Gdy muzeum podaje tylko jednozdaniową adnotację (tytuł, autor,
+  technika, data, np. „obraz olejny Paula Cézanne'a, 1888–1890; skan
+  w wysokiej rozdzielczości”), „O dziele” nie pokazuje już jej
+  tłumaczenia, tylko notkę napisaną z obrazu i danych, jak przy dziele
+  bez opisu. Opis musi mieć co najmniej 120 znaków i 10 słów, które
+  mówią coś więcej niż tytuł, autor i data. Takie dzieła dostają nową
+  notkę same, w tle.
+- Miniatury w Teraz („Następne” i „Ostatnio na ramce”) są kadrowane
+  wokół twarzy albo tego, co przyciąga wzrok, tak jak kafelki Odkrywaj,
+  zamiast przez środek. Portret nie traci już głowy.
+
 ## 1.94.1
 
 - Nowe studia i Studium dnia nie sprawdzają już osobno kadrów detali,

@@ -47,4 +47,6 @@ struct SendActivityAttributes: ActivityAttributes {
 
     /// The work's title.
     var title: String
+    /// Its small picture (`ActivityPicture`), when the app had it in time.
+    var picture: Data? = nil
 }

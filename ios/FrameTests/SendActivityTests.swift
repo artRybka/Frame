@@ -1,3 +1,4 @@
+import UIKit
 import XCTest
 @testable import Frame
 
@@ -36,5 +37,43 @@ final class SendActivityTests: XCTestCase {
         let done = State(DisplayProgress(stage: "done", active: false, title: "Fala", fraction: 0.97))
         XCTAssertEqual(done.fraction, 1)
         XCTAssertNil(done.expectedEnd)
+    }
+
+    /// A busy painting (noise) still fits the card: ActivityKit keeps a
+    /// card's data under 4 KB, picture, title and state together.
+    func testTheWorksPictureFitsTheCard() throws {
+        let photo = UIGraphicsImageRenderer(size: CGSize(width: 900, height: 600)).image { context in
+            var rng = SystemRandomNumberGenerator()
+            for x in stride(from: 0, to: 900, by: 6) {
+                for y in stride(from: 0, to: 600, by: 6) {
+                    UIColor(
+                        red: .random(in: 0...1, using: &rng), green: .random(in: 0...1, using: &rng),
+                        blue: .random(in: 0...1, using: &rng), alpha: 1
+                    ).setFill()
+                    context.fill(CGRect(x: x, y: y, width: 6, height: 6))
+                }
+            }
+        }
+        let data = try XCTUnwrap(ActivityPicture.data(from: photo))
+        XCTAssertLessThanOrEqual(data.count, ActivityPicture.maxBytes)
+        let small = try XCTUnwrap(UIImage(data: data))
+        XCTAssertEqual(small.size.width / small.size.height, 1.5, accuracy: 0.05)  // its own proportions
+
+        let title = String(repeating: "Peasant Woman Cooking by a Fireplace ", count: 3)
+        let attributes = SendActivityAttributes(title: title, picture: data)
+        let state = State(stage: "waiting", phase: "loading", label: "Ładowanie obrazu na ramkę",
+                          fraction: 0.4, heardAt: .now, expectedEnd: .now, wakes: "jutro o 07:00")
+        let size = try JSONEncoder().encode(attributes).count + JSONEncoder().encode(state).count
+        XCTAssertLessThan(size, 4096)
+        let study = StudyActivityAttributes(itemID: "met:437984", title: title, picture: data)
+        XCTAssertLessThan(try JSONEncoder().encode(study).count, 3800)
+    }
+
+    /// The server names the work on its way (progress.py `item_id`).
+    func testTheProgressNamesItsWork() throws {
+        let json = #"{"stage": "rendering", "active": true, "title": "Ul", "fraction": 0.1, "item_id": "met:7"}"#
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        XCTAssertEqual(try decoder.decode(DisplayProgress.self, from: Data(json.utf8)).itemId, "met:7")
     }
 }
