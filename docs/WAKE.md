@@ -905,6 +905,13 @@ bierze ostatni znany stan, a serwer ponawia `reboot` dla tej samej wersji po
 10 min, najwyżej 3 razy (`reboot_at`, `reboot_tries`). Instalacja przeszła
 po „Uruchom ramkę ponownie” (paczka 2.0.7 po samonaprawie serwera).
 
+**Odpięcie w trybie oszczędnym (2026-11-04 19:31 UTC):** ostatnie pytanie
+20:31:02 czasu polskiego na zasilaczu, po odpięciu panel od razu w głębokim śnie
+bez słowa do aplikacji (jak w E8). W trybie oszczędnym na zasilaczu nie było
+żadnego budzika, więc próbna zmiana 20:45 przepadła. Od 1.100.1 w trybie
+oszczędnym aplikacja na zasilaczu trzyma budzik na najbliższą zmianę
+(albo sprawdzenie), co najmniej 5 min naprzód.
+
 **Zrzut ekranu (E18, 2026-11-04 08:52 UTC):** działa. Prośba doszła przy
 najbliższym `/panel/next` (11 s), `captureScreen` 69 ms, `openFile` i
 `resolve` dają `SecurityError`, odczyt `XMLHttpRequest` z `file://` działa

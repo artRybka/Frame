@@ -177,8 +177,8 @@ ICON = base64.b64decode(
 )
 # Unplugged, the panel sleeps at once without the Wi-Fi and without a word to
 # the app (E8, 2026-10-29): nothing but the button would wake it. So on the
-# charger the app keeps spare alarms (in the online mode: in the economy one
-# sleeping without the Wi-Fi is the point) at every half hour (at least
+# charger the app keeps spare alarms (in the economy mode just the next
+# change or check, 2026-11-04) at every half hour (at least
 # ``SPARE_LEAD`` ahead, an alarm due as the panel goes down being lost, E16):
 # unplugged, the next one wakes it, the server starts the app, and from then
 # on it sleeps the usual way. Alarms cannot be cancelled: the ones left ring
@@ -671,8 +671,8 @@ class PanelApp:
                 self.capture_requested = False
                 answer.capture = True
                 log.info("the frame's app is asked for a screenshot")
-            if charger and service.player.settings.power_mode == "online":
-                spare = self._spare(now)
+            spare = self._spare(now) if charger else []
+            if spare:
                 answer.wake_ms = _ms(spare[0])
                 answer.wakes_ms = [_ms(a) for a in spare[1:]]
             return self._awake(answer)
@@ -1357,11 +1357,18 @@ class PanelApp:
 
     def _spare(self, now: datetime) -> list[datetime]:
         """The spare alarms the app on the charger keeps set (it sets each
-        only once): the next ``SPARE_ALARMS`` half hours at least
-        ``SPARE_LEAD`` ahead. Noted as set, the future ones only."""
-        step = SPARE_EVERY.total_seconds()
-        first = (now + SPARE_LEAD).timestamp() // step * step + step
-        alarms = [datetime.fromtimestamp(first + i * step, UTC) for i in range(SPARE_ALARMS)]
+        only once): in the online mode the next ``SPARE_ALARMS`` half hours
+        at least ``SPARE_LEAD`` ahead; in the economy mode the next change
+        (or check), so a frame unplugged sleeps without the Wi-Fi until then
+        (2026-11-04 20:31: unplugged with none, it slept until the button).
+        Noted as set, the future ones only."""
+        if self.service.player.settings.power_mode == "economy":
+            wake = self.next_wake(now)
+            alarms = [wake] if wake - now >= SPARE_LEAD else []
+        else:
+            step = SPARE_EVERY.total_seconds()
+            first = (now + SPARE_LEAD).timestamp() // step * step + step
+            alarms = [datetime.fromtimestamp(first + i * step, UTC) for i in range(SPARE_ALARMS)]
         state = self.state
         kept = {a for a in state.spare if datetime.fromisoformat(a) > now}
         spare = sorted(kept | {a.isoformat(timespec="seconds") for a in alarms})

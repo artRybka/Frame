@@ -7,6 +7,9 @@
   na zasilaczu bez budzika i obudził ją dopiero guzik. Gdy restart do
   instalacji nie dojdzie do skutku, serwer prosi o niego ponownie po
   10 minutach, najwyżej trzy razy.
+- W trybie oszczędnym ramka na zasilaczu ma zawsze ustawiony budzik na
+  najbliższą zmianę. Po odpięciu Samsung usypia ją od razu, zanim zdąży
+  zapytać serwer, więc bez tego budziła się dopiero po naciśnięciu przycisku.
 
 ## 1.100.0
 
