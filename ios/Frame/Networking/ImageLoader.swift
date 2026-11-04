@@ -35,6 +35,9 @@ actor ImageLoader {
         /// Works whose crop was saved since launch, and how many times: their
         /// framed previews are kept under a new name each time.
         private var reframeCounts: [String: Int] = [:]
+        /// Works whose picture changed since launch (another copy of it),
+        /// and how many times: their thumbnails and framed previews too.
+        private var repictureCounts: [String: Int] = [:]
         /// Framed previews fetched past the disk cache since their work's
         /// last crop, by address.
         private var refetchedAt: [String: Int] = [:]
@@ -55,6 +58,14 @@ actor ImageLoader {
 
         func reframes(_ itemID: String) -> Int {
             lock.withLock { reframeCounts[itemID] ?? 0 }
+        }
+
+        func repicture(_ itemID: String) {
+            lock.withLock { repictureCounts[itemID, default: 0] += 1 }
+        }
+
+        func repictures(_ itemID: String) -> Int {
+            lock.withLock { repictureCounts[itemID] ?? 0 }
         }
 
         /// The address must skip the disk cache: fetched there before the
@@ -93,19 +104,44 @@ actor ImageLoader {
         }
     }
 
-    /// The work whose framed preview `request` asks for, with the times its
-    /// crop was saved since launch; nil for any other picture.
+    /// The work's picture changed (the owner picked another copy of it,
+    /// or the server found a sharper one): its thumbnail and framed
+    /// previews are had anew. The thumbnail stood a day in the disk cache
+    /// and for the whole launch in memory, so every list kept the old
+    /// picture, in other tones or with the frame round it (Mateusz
+    /// 2026-11-04). `requests`: such addresses, dropped from the disk cache
+    /// now so the next launch does not find them either.
+    nonisolated static func repictured(_ itemID: String, requests: [URLRequest]) {
+        Memory.shared.repicture(itemID)
+        for request in requests {
+            URLCache.shared.removeCachedResponse(for: request)
+            if let other = route?.rebased(request) { URLCache.shared.removeCachedResponse(for: other) }
+        }
+    }
+
+    /// The work whose framed preview or thumbnail `request` asks for, with
+    /// the times it changed since launch (a preview: its crop saved or its
+    /// picture changed; a thumbnail: its picture); nil for any other
+    /// picture, or one unchanged.
     private static func reframes(_ request: URLRequest) -> (id: String, count: Int)? {
         guard let url = request.url,
-              let path = URLComponents(url: url, resolvingAgainstBaseURL: false)?.percentEncodedPath,
-              path.hasSuffix("/preview")
+              let path = URLComponents(url: url, resolvingAgainstBaseURL: false)?.percentEncodedPath
         else { return nil }
+        let preview = path.hasSuffix("/preview")
+        guard preview || path.hasSuffix("/thumb") else { return nil }
         let parts = path.split(separator: "/")  // …/library/items/<id>/preview
         guard parts.count >= 4, parts[parts.count - 3] == "items", parts[parts.count - 4] == "library",
               let id = String(parts[parts.count - 2]).removingPercentEncoding
         else { return nil }
-        let count = Memory.shared.reframes(id)
+        let count = Memory.shared.repictures(id) + (preview ? Memory.shared.reframes(id) : 0)
         return count > 0 ? (id, count) : nil
+    }
+
+    /// What a picture's subject is remembered under: not where it was in
+    /// the work's picture before another copy took its place.
+    nonisolated static func pictureKey(_ request: URLRequest) -> String {
+        let changed = reframes(request).map { "~\($0.count)" } ?? ""
+        return (request.url?.absoluteString ?? "") + changed
     }
 
     /// What the picture is kept under in memory: the server's own pictures
@@ -151,7 +187,8 @@ actor ImageLoader {
         } else {
             // Detached: downsampling runs beside this actor, not on it.
             // A framed preview first asked since its work's crop was saved
-            // skips the disk cache, which may hold it with the old crop.
+            // (or a thumbnail since its picture changed) skips the disk
+            // cache, which may hold it with the old crop or picture.
             var request = request
             let address = request.url?.absoluteString ?? ""
             let reframed = Self.reframes(request)?.count
@@ -417,6 +454,8 @@ struct ArtImage: View {
     @State private var image: UIImage?
     /// The ref `image` was loaded for.
     @State private var shownRef: ImageRef?
+    /// `picture` when the image shown was loaded.
+    @State private var shownPicture = 0
     @State private var focus: UnitPoint = .center
     @State private var failed = false
 
@@ -424,8 +463,19 @@ struct ArtImage: View {
     /// (the card's original over the tile's thumbnail), which speaks for it.
     private var retries: Bool { failed && placeholder != .clear }
 
+    /// How many times the work's picture changed since launch (another
+    /// copy): a thumbnail or preview from before is had anew.
+    private var picture: Int {
+        switch ref {
+        case let .thumb(id), let .framePreview(id, _, _, _): model.pictureChanges[id] ?? 0
+        default: 0
+        }
+    }
+
     private struct Round: Hashable {
         let ref: ImageRef
+        /// The work's picture changed (another copy): asked for again.
+        let picture: Int
         let retries: Int
         /// A new address of the server: asked there again.
         let switches: Int
@@ -470,7 +520,7 @@ struct ArtImage: View {
             }
         }
         .animation(.easeOut(duration: 0.35), value: image != nil)
-        .task(id: Round(ref: ref, retries: model.pictureRetries, switches: model.serverSwitches)) {
+        .task(id: Round(ref: ref, picture: picture, retries: model.pictureRetries, switches: model.serverSwitches)) {
             await load()
         }
     }
@@ -481,8 +531,11 @@ struct ArtImage: View {
 
     private func load() async {
         let ref = ref
-        // Another round of retries: a picture already here stays.
-        if image != nil, shownRef == ref { return }
+        let picture = picture
+        // Another round of retries: a picture already here stays. One
+        // from before its work's picture changed is asked for again, and
+        // stays until the new one is here.
+        if image != nil, shownRef == ref, shownPicture == picture { return }
         failed = false
         var told = false
         for delay in [Duration.zero] + Self.retryDelays {
@@ -520,7 +573,7 @@ struct ArtImage: View {
                 } else if subjectFocus {
                     // The placeholder stays until the crop is known, so the
                     // picture fades in already framed instead of sliding.
-                    let point = await SubjectFocus.shared.point(in: loaded, key: request.url?.absoluteString ?? "")
+                    let point = await SubjectFocus.shared.point(in: loaded, key: ImageLoader.pictureKey(request))
                     if Task.isCancelled { return .cancelled }
                     focus = point
                 }
@@ -530,6 +583,7 @@ struct ArtImage: View {
                     image = loaded
                 }
                 shownRef = ref
+                shownPicture = picture
                 return .loaded
             } catch {
                 if Task.isCancelled { return .cancelled }

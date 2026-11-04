@@ -82,7 +82,7 @@ struct Item: Codable, Identifiable, Hashable, Sendable {
         ItemSummary(
             id: id, kind: kind, source: source, title: title, artist: artist, dateText: dateText,
             year: year, colors: colors, width: width, height: height, favorite: favorite,
-            suitability: suitability, heldBy: heldBy
+            suitability: suitability, heldBy: heldBy, picture: sharper?.itemId ?? ""
         )
     }
 }
@@ -246,6 +246,9 @@ struct ItemSummary: Codable, Identifiable, Hashable, Sendable {
     var aspect: Double? = nil
     /// `Item.heldBy`: the museum the work is in, "" when not known.
     var heldBy: String? = nil
+    /// Which copy the work shows (`Item.sharper`'s id), "" its own; nil
+    /// from a server before 1.97.2. A change drops the thumbnail kept.
+    var picture: String? = nil
 
     /// The title "Teraz" shows: Polish when there is one.
     var shownTitle: String { titlePl ?? title }

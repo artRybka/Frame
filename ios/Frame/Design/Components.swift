@@ -143,6 +143,7 @@ extension EnvironmentValues {
 
 /// Grid tile: the picture, title and artist.
 struct ArtCard: View {
+    @Environment(AppModel.self) private var model
     @Environment(\.artCardAspects) private var aspects
     let item: ItemSummary
     var showsCaption = true
@@ -195,7 +196,11 @@ struct ArtCard: View {
             }
         }
         // The card opened from here shows this much while it loads.
-        .onAppear { ItemPeeks.remember(item, thumb: ref ?? .thumb(item.id)) }
+        .onAppear {
+            ItemPeeks.remember(item, thumb: ref ?? .thumb(item.id))
+            // Another copy since the thumbnail was kept: had anew.
+            if let picture = item.picture { model.pictureSeen(item.id, copy: picture) }
+        }
     }
 }
 

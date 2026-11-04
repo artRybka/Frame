@@ -244,8 +244,9 @@ class ImageCache:
         mirrors = self.mirrors.get(item.source)
         image_url = own_copy(item)
         first = [item.thumb_url, image_url] if thumb else [image_url or item.thumb_url]
-        if item.sharper is not None and not thumb:  # the sharper copy first, the own after
-            first.insert(0, item.sharper.url)
+        if item.sharper is not None:  # the sharper copy first, the own after
+            copy = [item.sharper.thumb_url, item.sharper.url] if thumb else [item.sharper.url]
+            first[:0] = copy
         urls = [*first, *(mirrors(item, thumb) if mirrors else [])]
         return list(dict.fromkeys(u for u in urls if u))
 
@@ -414,14 +415,40 @@ class ImageCache:
 
     def adopt(self, item: Item, img: Image.Image) -> Path:
         """Keep ``img`` (a sharper copy, :mod:`frame_server.sharper`) as the
-        work's original."""
+        work's original, and its thumbnail from it: the one from before
+        showed the old picture in the app's lists (other tones, a frame
+        around it) long after the change (Mateusz, 2026-11-04)."""
         path = self.image_path(item)
         with self._lock(f"i:{item.id}"):
             _save_jpeg(img, path, IMAGE_MAX, 92)
             self._remember_size(item, img)
             self._failed.pop(item.id, None)
+        with self._lock(f"t:{item.id}"):
+            _save_jpeg(img, self.thumb_path(item), THUMB_MAX, 85)
         self._forget_gone(item)
         return path
+
+    def drop_picture(self, item: Item) -> None:
+        """Forget the work's original and thumbnail (another picture takes
+        their place): both are had again from its addresses."""
+        with self._lock(f"i:{item.id}"):
+            self.image_path(item).unlink(missing_ok=True)
+        with self._lock(f"t:{item.id}"):
+            self.thumb_path(item).unlink(missing_ok=True)
+
+    def thumb_again(self, item: Item) -> bool:
+        """The thumbnail made again from the original kept here, else
+        dropped to be had again from the work's addresses (the picture
+        changed under it); True when made here."""
+        local = self.image_path(item)
+        with self._lock(f"t:{item.id}"):
+            try:
+                img = load_image(local)
+            except OSError:
+                self.thumb_path(item).unlink(missing_ok=True)
+                return False
+            _save_jpeg(img, self.thumb_path(item), THUMB_MAX, 85)
+            return True
 
     def _original(self, item: Item, urgent: bool) -> Image.Image:
         fetch = self.fetchers.get(item.source)

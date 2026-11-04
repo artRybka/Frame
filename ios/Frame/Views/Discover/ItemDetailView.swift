@@ -195,7 +195,7 @@ struct ItemDetailView: View {
     /// The picture as it was: the work's own (its id) or a copy before.
     private func restorePicture(to copyID: String) async {
         do {
-            let updated = try await model.backend.chooseCopy(itemID: itemID, copyID: copyID)
+            let updated = try await model.chooseCopy(itemID: itemID, copyID: copyID)
             withAnimation(.easeInOut(duration: 0.4)) { item = updated }
             pictureSize = updated.sharper.map { ($0.width, $0.height) }
         } catch {
@@ -237,6 +237,7 @@ struct ItemDetailView: View {
                 showPolish(view, animated: false)
             }
             item = fresh
+            if fresh.kind == .artwork { model.pictureSeen(fresh.id, copy: fresh.sharper?.itemId ?? "") }
             holding = false
             if LaunchRoute.screen == "original" { opened = .original }  // CI screenshots
         } catch {
@@ -502,6 +503,7 @@ struct ItemDetailView: View {
             }
             if let copy = view.sharper {
                 item?.sharper = copy
+                model.pictureSeen(id, copy: copy.itemId)  // the lists' thumbnail too
                 return
             }
             if view.status != "looking" { return }

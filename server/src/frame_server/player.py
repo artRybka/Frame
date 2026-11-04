@@ -1201,6 +1201,12 @@ class Player:
                 break
         return batches
 
+    def _fix_up(self) -> None:
+        """Once after an update: the pictures analysed again, then the
+        thumbnails of works shown from another source's copy made from it."""
+        self.rescore()
+        self.service.sharper.thumbs_again()
+
     def rescore(self) -> int:
         """Once per ``SCORE_VERSION``: analyse the library's pictures again
         from their thumbnails (add-on 0.12: colourful works first; 0.21:
@@ -1434,7 +1440,7 @@ class Player:
         grown: datetime | None = None
         ahead = False
         # A minute or so on a NAS for a large library: alongside, not first.
-        rescoring = asyncio.create_task(run_in_threadpool(self.rescore))
+        rescoring = asyncio.create_task(run_in_threadpool(self._fix_up))
         rescoring.add_done_callback(_log_failure)
         while True:
             try:

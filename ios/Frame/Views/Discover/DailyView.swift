@@ -155,7 +155,7 @@ struct DailyView: View {
                         Task {
                             let id = card.id
                             do {
-                                self.card = try await model.backend.chooseCopy(itemID: id, copyID: id)
+                                self.card = try await model.chooseCopy(itemID: id, copyID: id)
                                 model.notices.done("Przywrócono zdjęcie muzeum")
                             } catch {
                                 model.show(error)
@@ -329,7 +329,10 @@ struct DailyView: View {
     private func loadCard() async {
         guard let work else { return }
         if card?.id != work.item.id { card = work.item.item }
-        if let fresh = try? await model.backend.item(id: work.item.id) { card = fresh }
+        if let fresh = try? await model.backend.item(id: work.item.id) {
+            card = fresh
+            model.pictureSeen(fresh.id, copy: fresh.sharper?.itemId ?? "")
+        }
     }
 
     /// Today's as Discover has it (another day's as last seen), then fresh;
