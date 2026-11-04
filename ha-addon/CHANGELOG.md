@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.97.2
+
+- Po wybraniu lepszej kopii dzieła (Kopie dzieła → „Użyj tej kopii”) jego
+  miniatura w listach, siatkach i na Teraz od razu pokazuje nowe zdjęcie,
+  w jego tonacji i kolorach, z ramą, jeśli kopia ją obejmuje. Wcześniej
+  zostawała stara. Tak samo po „Przywróć zdjęcie muzeum” i po ostrzejszej
+  kopii znalezionej przez serwer. Kropki kolorów dzieła i tagi kolorów
+  liczą się na nowo z nowego zdjęcia.
+- Dzieła, którym kopię wybrano wcześniej, raz po aktualizacji serwera
+  dostają miniatury z kopii. Inny telefon domownika pobiera nową miniaturę,
+  gdy pierwszy raz pokaże to dzieło.
+
 ## 1.97.0
 
 - Odkrywaj → Kolor i nastrój pokazuje tylko obrazy, rysunki i akwarele,

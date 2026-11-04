@@ -110,6 +110,9 @@ class SharperCopy(BaseModel):
     height: int
     #: Picked by the owner ("Szukaj lepszej kopii"), not found by the server.
     chosen: bool = False
+    #: The copy's small picture, for the work's thumbnail when it has to be
+    #: had again; "" for copies kept before it was noted (then ``url``).
+    thumb_url: str = ""
 
 
 class Item(BaseModel):
@@ -230,10 +233,17 @@ class ItemSummary(BaseModel):
     title_pl: str | None = None
     #: ``Item.held_by``: the museum the work is in, "" when not known.
     held_by: str = ""
+    #: Which picture the work shows: the id of the copy in its place
+    #: (``Item.sharper``), "" for its own. The app asks for the thumbnail
+    #: again when it changes, instead of the one kept from before.
+    picture: str = ""
 
     @classmethod
     def of(cls, item: Item) -> ItemSummary:
-        return cls(**item.model_dump(include=set(cls.model_fields)))
+        summary = cls(**item.model_dump(include=set(cls.model_fields)))
+        if item.sharper is not None:
+            summary.picture = item.sharper.item_id
+        return summary
 
 
 #: Terms for the owner's own works ("Moje" in the app's "+"): those with a

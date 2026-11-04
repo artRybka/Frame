@@ -200,6 +200,73 @@ def test_the_owner_picks_a_copy_and_goes_back(app: Any) -> None:
         assert max(img.size) == 1686
 
 
+#: The thumbnail of a copy in its frame (4400 × 3200), give or take rounding.
+FRAMED = [(640, 465), (640, 466)]
+
+
+def _thumb_size(client: TestClient, item_id: str) -> tuple[int, int]:
+    resp = client.get(f"/api/library/items/{item_id}/thumb")
+    assert resp.status_code == 200
+    with Image.open(io.BytesIO(resp.content)) as img:
+        return img.size
+
+
+def test_the_thumbnail_and_colours_follow_the_picked_copy(app: Any) -> None:
+    """The thumbnail from before showed the old picture in every list, in
+    other tones or without the frame round it (Mateusz, 2026-11-04)."""
+    client, service, web, _ = app
+    own = _own(service)
+    service.importer.measure_again(own)  # the colours of the work's own
+    assert _thumb_size(client, own.id) == (600, 400)
+    before = service.library.get(own.id)
+    assert before is not None and before.colors
+    # A copy in its frame, a dark brown round it: another shape, other colours.
+    framed = ImageOps.expand(_print(1, (3600, 2400)), border=400, fill=(70, 45, 20))
+    copy = _copy(9)
+    _offer(web, copy, framed)
+    service.importer.remember([copy])
+
+    client.put(f"/api/library/items/{own.id}/copy", json={"item_id": "wmc:9"})
+    assert _thumb_size(client, own.id) in FRAMED  # the copy's, frame and all
+    after = service.library.get(own.id)
+    assert after is not None and after.sharper is not None
+    assert after.sharper.thumb_url == copy.thumb_url
+    assert after.colors != before.colors
+    page = client.get("/api/library/items", params={"q": "Nymphs"}).json()
+    assert [i["picture"] for i in page["items"] if i["id"] == own.id] == ["wmc:9"]
+
+    # Had again from the copy's own small picture once dropped (pruned).
+    service.images.thumb_path(after).unlink()
+    service.images.image_path(after).unlink()
+    assert _thumb_size(client, own.id) == (600, 436)
+
+    # Back to the work's own: its thumbnail and colours come back.
+    client.put(f"/api/library/items/{own.id}/copy", json={"item_id": own.id})
+    assert _thumb_size(client, own.id) == (600, 400)
+    back = service.library.get(own.id)
+    assert back is not None and back.colors == before.colors
+    page = client.get("/api/library/items", params={"q": "Nymphs"}).json()
+    assert [i["picture"] for i in page["items"] if i["id"] == own.id] == [""]
+
+
+def test_thumbnails_kept_from_before_follow_their_copies_once(app: Any) -> None:
+    client, service, web, _ = app
+    own = _own(service)
+    copy = _copy(9)
+    framed = ImageOps.expand(_print(1, (3600, 2400)), border=400, fill=(70, 45, 20))
+    _offer(web, copy, framed)
+    service.importer.remember([copy])
+    client.put(f"/api/library/items/{own.id}/copy", json={"item_id": "wmc:9"})
+    stored = service.library.get(own.id)
+    assert stored is not None
+    # As a release before left it: the old thumbnail beside the copy.
+    service.images.thumb_path(stored).write_bytes(web[OWN_THUMB])
+    service.library.set_state("copy_thumbs", 0)
+    assert service.sharper.thumbs_again() == 1
+    assert _thumb_size(client, own.id) in FRAMED
+    assert service.sharper.thumbs_again() == 0  # once
+
+
 def test_a_copy_that_does_not_fit_can_be_picked_all_the_same(app: Any) -> None:
     client, service, web, _ = app
     own = _own(service)

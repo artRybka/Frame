@@ -735,7 +735,7 @@ struct CopyCompare: View {
         picking = true
         defer { picking = false }
         do {
-            let updated = try await model.backend.chooseCopy(itemID: item.id, copyID: copy.itemId)
+            let updated = try await model.chooseCopy(itemID: item.id, copyID: copy.itemId)
             chosen(updated)
         } catch {
             model.show(error)
