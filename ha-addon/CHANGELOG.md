@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.99.0
+
+- Nowe źródło dzieł: Wellcome Collection z Londynu, bez klucza. Daje
+  pełnowymiarowe obrazy z domeny publicznej: indyjskie gwasze, japońskie
+  drzeworyty (Hokusai, Kuniyoshi, Hiroshige, Utamaro), ryciny Dürera,
+  Rembrandta i Goi oraz angielską satyrę Hogartha, Gillraya i
+  Rowlandsona. Z „Użytkiem prywatnym” także dzieła na licencjach CC BY i
+  CC BY-NC. Pojawia się w Szukaj, przy artystach, motywach i playlistach,
+  ale nie w losowych obrazach, bo wiele prac dotyczy medycyny.
+
 ## 1.98.0
 
 - Zdjęcia z albumów iCloud nie są już „Bez tytułu / Album iCloud”. Claude,
