@@ -73,12 +73,19 @@ final class StudyLiveActivity {
         Task { await activity.update(content) }
     }
 
-    /// The study is over: "Gotowe" stays on the Lock Screen for an hour
-    /// (a tap opens it), a failure a quarter.
+    /// Once over, how long the card stays on the Lock Screen before iOS
+    /// takes it away: "Gotowe" (a tap opens it; the notification "Studium
+    /// gotowe" stays in the Notification Centre), or why not. As the
+    /// server's end push (notifications.py `STUDY_READY_FOR`, `STUDY_FAILED_FOR`).
+    static let readyFor: TimeInterval = 2 * 60
+    static let failedFor: TimeInterval = 5 * 60
+
+    /// The study is over: its result stays on the Lock Screen briefly, then
+    /// the card goes by itself.
     func finish(itemID: String, status: String, error: String? = nil) {
         guard let activity = activity(for: itemID) else { return }
         let state = State(status: status, error: error)
-        let keep: TimeInterval = state.isReady ? 60 * 60 : 15 * 60
+        let keep = state.isReady ? Self.readyFor : Self.failedFor
         Task {
             await activity.end(
                 ActivityContent(state: state, staleDate: nil),
@@ -91,6 +98,14 @@ final class StudyLiveActivity {
     func dismiss(itemID: String) {
         for activity in Activity<StudyActivityAttributes>.activities
         where activity.attributes.itemID == itemID && !activity.content.state.isActive {
+            Task { await activity.end(nil, dismissalPolicy: .immediate) }
+        }
+    }
+
+    /// The app is open again: finished cards still on the Lock Screen have
+    /// done their job (the result is in the app).
+    func tidy() {
+        for activity in Activity<StudyActivityAttributes>.activities where !activity.content.state.isActive {
             Task { await activity.end(nil, dismissalPolicy: .immediate) }
         }
     }

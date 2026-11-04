@@ -363,7 +363,7 @@ def test_a_study_moves_on_on_the_lock_screen(notifier: Notifier, apple: FakeAppl
     aps = payload["aps"]
     assert token == LIVE and aps["event"] == "end"  # type: ignore[index]
     assert aps["content-state"]["status"] == "ready"  # type: ignore[index]
-    assert aps["dismissal-date"] - aps["timestamp"] == 3600  # type: ignore[index, operator]
+    assert aps["dismissal-date"] - aps["timestamp"] == 120  # type: ignore[index, operator]
     assert "alert" not in aps  # type: ignore[operator]
     _, token, headers, payload = apple.sent[2]
     assert token == PHONE and headers["apns-push-type"] == "alert"

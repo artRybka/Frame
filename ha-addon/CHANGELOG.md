@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.95.1
+
+- Pasek wysyłki na ekranie blokady sam znika: po „Obraz jest na ramce”
+  po 15 sekundach, po błędzie po 5 minutach. Dotąd zostawał długo.
+- Karta studium po „Gotowe” znika po 2 minutach (była godzina), po błędzie
+  po 5 minutach. Powiadomienie „Studium gotowe” zostaje jak dotąd.
+- Po otwarciu aplikacji znikają od razu zakończone karty, także te, które
+  zostały po czasie albo po wcześniejszym uruchomieniu aplikacji.
+
 ## 1.95.0
 
 - Pasek wysyłki na ekranie blokady i w wyspie pokazuje małą miniaturę

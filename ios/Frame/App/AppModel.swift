@@ -845,6 +845,14 @@ final class AppModel {
         return image.flatMap(ActivityPicture.data(from:))
     }
 
+    /// The app is open (again): Lock Screen cards whose work is over go,
+    /// also any that iOS left up past their time or an earlier run of the
+    /// app left behind. Cards still under way stay and are settled after.
+    func tidyLiveActivities() {
+        liveActivity.tidy()
+        studyActivity.tidy()
+    }
+
     /// The Lock Screen card after a run, or when the app is back: on while
     /// a picture is under way or waits for the frame, its result otherwise.
     func settleLiveActivity() async {
