@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.102.3
+
+- Kontrola w trybie Oszczędnym, która nie przynosi nic nowego, kosztuje mniej
+  baterii. Ramka stała wtedy ok. 5 minut z włączonym Wi-Fi, zanim sama
+  zasnęła; teraz serwer usypia ją przez MDC kilkanaście sekund po tym, jak
+  się zgłosi. Obraz na ekranie się nie zmienia. Na zasilaczu ramka zostaje
+  obudzona jak dotąd. Gdyby ramka po takim uśpieniu nie obudziła się na
+  następną kontrolę, serwer to zauważy i wróci do starego sposobu.
+
 ## 1.102.2
 
 - Zamówiony zrzut ekranu ramki pokazuje obraz, a nie ekran startowy
