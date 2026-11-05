@@ -21,7 +21,14 @@ from PIL import Image, JpegImagePlugin
 
 from frame_server import status as status_module
 from frame_server.config import Settings
-from frame_server.device.mdc import CMD_CONTENT_DOWNLOAD, BatteryStatus
+from frame_server.device.mdc import (
+    CMD_CONTENT_DOWNLOAD,
+    CMD_NETWORK_STANDBY,
+    CMD_POWER,
+    CMD_STATUS,
+    SUB_BATTERY,
+    BatteryStatus,
+)
 from frame_server.imaging.pipeline import encode_image
 from frame_server.panel_app import AppHello
 from frame_server.progress import Stage
@@ -1526,11 +1533,12 @@ async def test_the_launchers_question_starts_the_app_at_once(
     """2026-11-05: after a cold boot the launcher fetches sssp_config.xml
     20-25 s after the Wi-Fi is back, before the alarm's time, and never
     starts the app itself. The server starts it then, not ``KICK_AFTER``
-    after the alarm; at a check with nothing new the panel is left alone."""
+    after the alarm; at a check with nothing new the panel is put to sleep."""
     panel = FakePanel(server_ssl)
     await panel.start()
     try:
         service = _service(tmp_path, panel.port)
+        service.app.empty_sleep_after = 0
         service.player.save_settings(
             FrameSettings(
                 change_times=["07:00", "19:00"],
@@ -1546,9 +1554,10 @@ async def test_the_launchers_question_starts_the_app_at_once(
         shown = BATTERY.model_copy(update={"shown": content.file_id})
         app.answer(shown, now=_at("2026-10-28T12:00"))
 
-        # The 14:00 check, nothing new: the launcher's question changes nothing.
+        # The 14:00 check, nothing new: the launcher's question starts nothing.
         await app.launcher_up(_at("2026-10-28T13:59:40"))
-        assert panel.received == []
+        assert (CMD_CONTENT_DOWNLOAD, b"\x81") not in panel.received
+        panel.received.clear()
 
         # The 19:00 change: started 20 s before the alarm's time ...
         await app.launcher_up(_at("2026-10-28T18:59:40"))
@@ -1664,3 +1673,139 @@ def test_a_failed_tizen_alarm_is_no_self_start(tmp_path: Path) -> None:
     assert not app.state.self_start
     app.report("sleep", {"launch": {"ok": False, "error": "no tizen.alarm"}})
     assert not app.state.self_start
+
+
+EMPTY_SLEEP = [(CMD_NETWORK_STANDBY, b"\x00"), (CMD_POWER, b"\x00")]
+
+
+def _battery_panel(server_ssl: ssl.SSLContext, plugged: bool) -> FakePanel:
+    def handler(command: int, data: bytes) -> tuple[bool, bytes]:
+        if command == CMD_STATUS and data == bytes([SUB_BATTERY]):
+            return True, bytes([SUB_BATTERY, 0, 0, 0, 80, 0, 0x02 if plugged else 0x00])
+        return True, b""
+
+    return FakePanel(server_ssl, handler=handler)
+
+
+async def test_an_empty_check_sleeps_over_mdc_at_once(
+    tmp_path: Path, server_ssl: ssl.SSLContext
+) -> None:
+    """2026-11-05: an economy check with nothing new kept the panel up ~5 min
+    with the Wi-Fi on (~1% of the battery). The server puts it to sleep over
+    MDC on the launcher's question; the next alarm showing up proves the
+    alarms survive that, one that does not stops it for good."""
+    panel = _battery_panel(server_ssl, plugged=False)
+    await panel.start()
+    try:
+        service = _service(tmp_path, panel.port)
+        service.app.empty_sleep_after = 0
+        service.player.save_settings(
+            FrameSettings(
+                change_times=["07:00", "19:00"],
+                power_mode="economy",
+                check_every_hours=2,
+                quiet_start=None,
+            )
+        )
+        _next_change(service, _at("2026-10-28T19:00"))
+        app = service.app
+        content = service.store.current()
+        assert content is not None
+        shown = BATTERY.model_copy(update={"shown": content.file_id})
+        assert app.answer(shown, now=_at("2026-10-28T12:00")).action == "sleep"
+        assert app.state.empty_sleep == "untested"
+
+        await app.launcher_up(_at("2026-10-28T13:59:40"))
+        assert panel.received[-2:] == EMPTY_SLEEP
+        put = app.state.empty_sleep_at
+        assert put is not None and datetime.fromisoformat(put) == _at("2026-10-28T14:00")
+        assert app.state.asleep and not app.state.wifi_lost
+
+        # 16:00: up again at the next alarm, so the alarms survived.
+        panel.received.clear()
+        await app.launcher_up(_at("2026-10-28T15:59:50"))
+        assert app.state.empty_sleep == "works"
+        assert panel.received[-2:] == EMPTY_SLEEP  # and that check sleeps too
+
+        # A launcher question long after an alarm is the button, not a check.
+        panel.received.clear()
+        app.state.empty_sleep_at = None
+        await app.launcher_up(_at("2026-10-28T16:30:00"))
+        assert (CMD_POWER, b"\x00") not in panel.received
+    finally:
+        await panel.stop()
+
+
+async def test_an_alarm_lost_after_an_empty_checks_sleep_stops_it(
+    tmp_path: Path, server_ssl: ssl.SSLContext
+) -> None:
+    panel = _battery_panel(server_ssl, plugged=False)
+    await panel.start()
+    try:
+        service = _service(tmp_path, panel.port)
+        service.app.empty_sleep_after = 0
+        service.player.save_settings(
+            FrameSettings(
+                change_times=["07:00", "19:00"],
+                power_mode="economy",
+                check_every_hours=2,
+                quiet_start=None,
+            )
+        )
+        _next_change(service, _at("2026-10-28T19:00"))
+        app = service.app
+        content = service.store.current()
+        assert content is not None
+        app.answer(
+            BATTERY.model_copy(update={"shown": content.file_id}), now=_at("2026-10-28T12:00")
+        )
+        await app.launcher_up(_at("2026-10-28T13:59:40"))
+        assert app.state.empty_sleep_at is not None
+
+        # Nothing at 16:00: still waiting at 16:05, given up at 16:13.
+        app._empty_sleep_missed(_at("2026-10-28T16:05"))
+        assert app.state.empty_sleep == "untested"
+        app._empty_sleep_missed(_at("2026-10-28T16:13"))
+        assert app.state.empty_sleep == "failed" and app.state.wifi_lost
+        assert app.state.empty_sleep_at is None
+
+        # Never again: the next check's panel is left alone.
+        app.state.wifi_lost = False
+        panel.received.clear()
+        await app.launcher_up(_at("2026-10-28T17:59:40"))
+        assert (CMD_POWER, b"\x00") not in panel.received
+    finally:
+        await panel.stop()
+
+
+async def test_an_empty_check_on_the_charger_stays_up(
+    tmp_path: Path, server_ssl: ssl.SSLContext
+) -> None:
+    """The last reading said battery, the charger went in since: the panel
+    stays up (read in the same MDC session)."""
+    panel = _battery_panel(server_ssl, plugged=True)
+    await panel.start()
+    try:
+        service = _service(tmp_path, panel.port)
+        service.app.empty_sleep_after = 0
+        service.player.save_settings(
+            FrameSettings(
+                change_times=["07:00", "19:00"],
+                power_mode="economy",
+                check_every_hours=2,
+                quiet_start=None,
+            )
+        )
+        _next_change(service, _at("2026-10-28T19:00"))
+        app = service.app
+        content = service.store.current()
+        assert content is not None
+        app.answer(
+            BATTERY.model_copy(update={"shown": content.file_id}), now=_at("2026-10-28T12:00")
+        )
+        await app.launcher_up(_at("2026-10-28T13:59:40"))
+        assert (CMD_STATUS, bytes([SUB_BATTERY])) in panel.received
+        assert (CMD_POWER, b"\x00") not in panel.received
+        assert app.state.empty_sleep_at is None
+    finally:
+        await panel.stop()
