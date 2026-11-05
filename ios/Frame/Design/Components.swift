@@ -710,7 +710,7 @@ struct EmptyStateView: View {
     }
 }
 
-/// A search that found nothing: one quiet line, and under it the choices
+/// A search that found nothing (Mateusz's words): one quiet line, and under it the choices
 /// that, given up, would find something, as chips crossed out with how
 /// many works the library has without them (Mateusz, szkic 13 T1). A tap
 /// gives the choice up.
@@ -720,12 +720,12 @@ struct NothingFound: View {
 
     var body: some View {
         VStack(spacing: 10) {
-            Text("Brak dzieł dla tych wyborów.")
+            Text("Brak dzieł spełniających kryteria")
                 .font(.serif(17).italic())
                 .foregroundStyle(Theme.inkSoft)
                 .multilineTextAlignment(.center)
             if !without.isEmpty {
-                Text(without.count == 1 ? "Bez niego coś się znajdzie:" : "Bez jednego z nich coś się znajdzie:")
+                Text("Usuń jedno z poniższych:")
                     .font(.caption)
                     .foregroundStyle(Theme.inkSoft)
                     .padding(.top, 8)

@@ -44,6 +44,11 @@ struct MuseumSearchView: View {
     /// Nothing found: each choice with how many works the library has
     /// without it (only those with some), to give one up with a tap.
     @State private var without: [(token: SearchToken, count: Int)] = []
+    /// The search whose answer is all in, museums and the counts above too.
+    @State private var settled: SearchKey?
+    /// Nothing found has stayed so for a moment: only then is it said, not
+    /// at the start of every search (Mateusz).
+    @State private var emptyShown = false
     @State private var lookup = TermLookup()
     @FocusState private var fieldFocused: Bool
     /// The groups over the field: hidden while scrolling the results.
@@ -201,6 +206,16 @@ struct MuseumSearchView: View {
             // Not tied to this view's task: it goes on while a work is open.
             loader = Task { await search(key) }
         }
+        // Said only once nothing found has lasted a moment.
+        .task(id: nothingFound) {
+            guard nothingFound else {
+                emptyShown = false
+                return
+            }
+            try? await Task.sleep(for: .milliseconds(700))
+            guard !Task.isCancelled, nothingFound else { return }
+            withAnimation(.easeOut(duration: 0.3)) { emptyShown = true }
+        }
         .onChange(of: model.artistSearch, initial: true) { _, artist in
             guard let artist else { return }
             var asked = PlaylistRules()
@@ -272,7 +287,7 @@ struct MuseumSearchView: View {
             // under them. Where a work comes from isn't shown.
             worksGrid(shownCatalogue, shownFromMuseums)
             // Only once nothing more can come.
-            if nothingFound {
+            if emptyShown {
                 NothingFound(without: without) { token in
                     withAnimation(.snappy) { tokens.wrappedValue.removeAll { $0 == token } }
                 }
@@ -306,7 +321,8 @@ struct MuseumSearchView: View {
 
     /// The search is over and found nothing.
     private var nothingFound: Bool {
-        asked && !searching && !asking && next.isEmpty && shownCatalogue.isEmpty && fromMuseums.isEmpty
+        asked && settled == searchKey && !searching && !asking && next.isEmpty
+            && shownCatalogue.isEmpty && fromMuseums.isEmpty
     }
 
     private var summary: String {
@@ -363,6 +379,7 @@ struct MuseumSearchView: View {
             let found = await withoutEach(tokens.wrappedValue)
             if !Task.isCancelled, key == searched { without = found }
         }
+        if !Task.isCancelled { settled = key }
     }
 
     /// How many works the library has without each chip in turn, those
