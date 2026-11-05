@@ -1015,7 +1015,7 @@ struct LevelSwatch: View {
 /// A pair of the Tonacja card: two mood swatches sunk in a grey track like
 /// a switch (the grey of the Kolorystyka/Tonacja picker); the picked one's
 /// ring fits in the track, the other fades. Under it one name for the pair
-/// ("Temperatura") and the picked side.
+/// ("Temperatura").
 struct TonePair: View {
     /// Between the two dots.
     private static let gap: CGFloat = 14
@@ -1040,18 +1040,13 @@ struct TonePair: View {
                         .shadow(.inner(color: .black.opacity(0.1), radius: 1.5, y: 1))
                 )
             )
-            // What the pair is about, and under it the picked side, like
-            // the level under a colour in Kolorystyka.
-            let side = moods.first(where: picked)
-            VStack(spacing: 1) {
-                Text(ColorTag.toneTitle(left))
-                    .font(.caption2.weight(side != nil ? .semibold : .regular))
-                    .foregroundStyle(side != nil ? Theme.ink : Theme.inkSoft)
-                Text(side.map { ColorTag.name($0).lowercased() } ?? " ")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(Theme.ink)
-            }
-            .lineLimit(1)
+            // What the pair is about; the picked side is told by its ring
+            // alone (Mateusz: no word for it).
+            let side = moods.contains(where: picked)
+            Text(ColorTag.toneTitle(left))
+                .font(.caption2.weight(side ? .semibold : .regular))
+                .foregroundStyle(side ? Theme.ink : Theme.inkSoft)
+                .lineLimit(1)
             .fixedSize()
         }
         .frame(maxWidth: .infinity)
