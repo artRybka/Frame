@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.102.1
+## 1.102.2
 
 - Zamówiony zrzut ekranu ramki pokazuje obraz, a nie ekran startowy
   Samsunga „Custom App”. Aplikacja robiła go za wcześnie: przy pobudce,
@@ -8,6 +8,15 @@
   ramka pokazała stronę. Teraz robi go minutę po narysowaniu obrazu tej
   pobudki i nie wcześniej niż 100 s po starcie; ramka czuwa na baterii do
   4 minut dłużej (było 3).
+
+## 1.102.1
+
+- Teraz po zmianie orientacji ramki (np. z poziomej na pionową) znowu
+  pokazuje duży podgląd ramki. Dopóki ramka ma na ekranie obraz
+  przygotowany dla starej orientacji (w trybie Oszczędnym nawet do
+  najbliższej pobudki), podgląd nie kurczył się już do malutkiej
+  miniatury: ramka ma kształt nowej orientacji, a stary obraz stoi w niej
+  z białym marginesem.
 
 ## 1.102.0
 

@@ -63,17 +63,22 @@ struct FramedArtwork<Inner: View>: View {
     @ViewBuilder var inner: Inner
 
     var body: some View {
-        Group {
-            if let ref {
-                ArtImage(
-                    ref: ref, placeholder: placeholder, maxPixel: 1600, contentMode: .fit, priority: .high,
-                    crossfade: crossfade
-                )
-            } else {
-                Rectangle().fill(placeholder.gradient)
-            }
-        }
+        // The screen's shape is the frame's own, whatever the picture's: one
+        // made for the other orientation (the panel still shows it after
+        // Orientacja changed) sits in it with the mat around, instead of
+        // giving the frame its own shape and shrinking it.
+        Color.clear
             .aspectRatio(aspectRatio, contentMode: .fit)
+            .overlay {
+                if let ref {
+                    ArtImage(
+                        ref: ref, placeholder: placeholder, maxPixel: 1600, contentMode: .fit, priority: .high,
+                        crossfade: crossfade
+                    )
+                } else {
+                    Rectangle().fill(placeholder.gradient)
+                }
+            }
             .overlay { inner }
             .padding(mat)
             .background(Theme.matWhite)
