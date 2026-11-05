@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.104.2
+
+- Grupy w Szukaj (Technika, Epoka, Styl, Kolor, Temat, Muzeum) wracają
+  w chwili, gdy palec puszcza ekran, a wyniki jeszcze suną siłą rozpędu.
+  Dotąd czekały, aż przewijanie całkiem stanie. Chowają się jak dotąd przy
+  przesuwaniu wyników palcem w dół. Tak samo w edytorze playlist.
+
 ## 1.104.1
 
 - Ramka nie przyjmuje samousypiania po 3 minutach (odrzuca też 2), więc
