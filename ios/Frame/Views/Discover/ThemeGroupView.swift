@@ -54,6 +54,7 @@ struct ThemeGroupView: View {
                         }
                     }
                     .buttonStyle(.plain)
+                    .drawWeekArtistAgainMenu(theme)
                 }
             }
             .pageWidth()

@@ -4,6 +4,7 @@ import SwiftUI
 /// (cropped around the place Claude named, else what draws the eye), its
 /// title and one sentence written to fit two lines, an arrow in the corner;
 /// the whole tile opens its page. Kept low, so the themes start right below it.
+/// Held, the owner can draw another one (`drawDailyAgainMenu`).
 struct DailyTile: View {
     let work: DailyWork
 
@@ -63,6 +64,7 @@ struct DailyTile: View {
         }
         .buttonStyle(.plain)
         .accessibilityHint("Studium dnia")
+        .drawDailyAgainMenu()
     }
 }
 
