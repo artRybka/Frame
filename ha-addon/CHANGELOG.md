@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.102.7
+
+- Harmonogram w trybie Oszczędnym: nagłówek godzin to „Godzina zmiany
+  obrazu” (przy kilku „Godziny zmiany obrazu”) zamiast „Pobudki i zmiany”.
+
 ## 1.102.6
 
 - Zmiana harmonogramu w czasie snu ramki w trybie Oszczędnym (dodana albo
