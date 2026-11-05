@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.101.0
+
+- Nowy panel Szukaj → Kolor z dwiema kartami. W Kolorystyce wybierasz do
+  trzech kolorów, a każde kolejne stuknięcie w próbkę mówi, ile go ma być:
+  akcent, wyraźny, dużo albo większość obrazu (pierścień wokół próbki
+  rośnie). Dwa kolory na „większość” to obrazy malowane głównie nimi
+  razem. W Tonacji są pary Ciepłe–Chłodne, Żywe–Stonowane, Kolorowe–Mono
+  i Ciemne–Jasne, z każdej najwyżej jedno. Wszystko, co wybrane, musi
+  pasować naraz.
+- „Mono” (wcześniej „Monochromia”) znajduje naprawdę obrazy jednym tonem:
+  czarno-białe, sepię, cyjanotypie i sangwinę, a nie ciemne obrazy olejne.
+  Serwer raz po aktualizacji przelicza kolory całej biblioteki.
+
 ## 1.100.1
 
 - Ramka nie zasypia, gdy restartuje się, żeby zainstalować nową wersję

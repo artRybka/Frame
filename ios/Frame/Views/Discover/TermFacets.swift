@@ -194,7 +194,7 @@ struct TermFacetBar: View {
     private static var launched: TermFacet? {
         switch LaunchRoute.screen {
         case "search-picker": .period
-        case "search-colors": .color
+        case "search-colors", "search-tones": .color
         case "search-museums": .museum
         case "search-styles": .style
         default: nil
@@ -363,11 +363,10 @@ struct PanelGlass: View {
     }
 }
 
-/// The tabs of the Kolor sheet: Kolorystyka (a colour on 15% of the work,
-/// and the moods), Dominuje (the work painted mostly in the picked colours,
-/// "only:" tags) and Akcent.
-enum ColourShade: Hashable {
-    case main, accent, only
+/// The cards of the Kolor sheet: Kolorystyka (colours at a level) and
+/// Tonacja (moods in pairs).
+enum ColourCard: Hashable {
+    case colours, tones
 }
 
 /// What an open group holds, over the search field, as tall as what it
@@ -382,9 +381,8 @@ struct TermFacetPanel: View {
     var close: () -> Void
 
     @State private var filter = ""
-    /// The Kolor sheet's tab: colours a work has much of, its accents, or
-    /// the only colours it is painted in.
-    @State private var shade = ColourShade.main
+    /// The Kolor sheet's card: Kolorystyka or Tonacja.
+    @State private var colourCard = ColourCard.colours
     /// Museums: the picked ones are left out ("Wykluczone"), with none
     /// picked yet (with some, their kind says it).
     @State private var leaveOut = false
@@ -409,10 +407,12 @@ struct TermFacetPanel: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     content
-                    Text(footnote)
-                        .font(.footnote)
-                        .foregroundStyle(Theme.inkSoft)
-                        .fixedSize(horizontal: false, vertical: true)
+                    if let footnote {
+                        Text(footnote)
+                            .font(.footnote)
+                            .foregroundStyle(Theme.inkSoft)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
                 .padding(.horizontal, 18)
                 .padding(.bottom, 18)
@@ -424,21 +424,19 @@ struct TermFacetPanel: View {
         }
         .task {
             await model.loadVocabulary(fresh: true)
-            // Opened on accents or "Dominuje" (and no plain colour): show those.
-            if facet == .color, !tokens.contains(where: { $0.kind == "color" && ColorTag.families.contains($0.key) }) {
-                if tokens.contains(where: { $0.kind == "color" && $0.key.hasPrefix(ColorTag.accentPrefix) }) {
-                    shade = .accent
-                } else if tokens.contains(where: { $0.kind == "color" && $0.key.hasPrefix(ColorTag.onlyPrefix) }) {
-                    shade = .only
-                }
+            // Opened with moods alone: show them.
+            if facet == .color, tokens.contains(where: { $0.kind == "color" }),
+               !tokens.contains(where: { $0.kind == "color" && ColorTag.level(of: $0.key) != nil }) {
+                colourCard = .tones
             }
         }
     }
 
-    private var footnote: String {
+    /// Under the group; the Kolor sheet says what it does by itself.
+    private var footnote: String? {
         switch facet {
         case .museum: "Nic nie wybrane: pytam wszystkie muzea."
-        case .color: "Wśród kolorów i nastrojów wystarczy jeden z wybranych, wśród akcentów też. Kolor i akcent muszą pasować razem: Błękit z akcentem czerwieni to niebieskie obrazy z czymś czerwonym. Dominuje: obrazy malowane głównie wybranymi kolorami, biel, szarość i czerń się nie liczą."
+        case .color: nil
         default: "Wybierz dowolnie wiele: wystarczy, że dzieło pasuje do jednego z nich."
         }
     }
@@ -523,58 +521,84 @@ struct TermFacetPanel: View {
 
     // MARK: Colours
 
+    /// The Kolor sheet (PLAN 3.3zzt): Kolorystyka, up to three colours
+    /// each at a level, picked by tapping the swatch again and again, its
+    /// ring growing; Tonacja, the moods in pairs, one of each at most.
     private var palette: some View {
-        let families = switch shade {
-        case .main: ColorTag.families.filter(colors.contains)
-        case .accent: ColorTag.accentFamilies
-        case .only: ColorTag.onlyFamilies
-        }
-        // "only:" tags are never counted as facets; older servers' just in case.
-        let moods = colors.filter { !ColorTag.families.contains($0) && !$0.hasPrefix(ColorTag.onlyPrefix) }
-        func count(_ fits: (String) -> Bool) -> Int { tokens.filter { $0.kind == "color" && fits($0.key) }.count }
-        let pickedMain = count(ColorTag.families.contains)
-        let pickedAccents = count { $0.hasPrefix(ColorTag.accentPrefix) }
-        let pickedOnly = count { $0.hasPrefix(ColorTag.onlyPrefix) }
-        let hint = switch shade {
-        case .main: "Kolor, który zajmuje wyraźną część obrazu (co najmniej 15%)."
-        case .accent: "Kolor jako mały fragment obrazu."
-        case .only: "Obraz malowany głównie wybranymi kolorami (80% barw obrazu). Wybierz kilka, np. błękit i turkus."
-        }
-        return VStack(alignment: .leading, spacing: 14) {
-            Picker("Jak", selection: $shade) {
-                Text(pickedMain > 0 ? "Kolorystyka · \(pickedMain)" : "Kolorystyka").tag(ColourShade.main)
-                Text(pickedOnly > 0 ? "Dominuje · \(pickedOnly)" : "Dominuje").tag(ColourShade.only)
-                Text(pickedAccents > 0 ? "Akcent · \(pickedAccents)" : "Akcent").tag(ColourShade.accent)
+        let colours = tokens.filter { $0.kind == "color" && ColorTag.level(of: $0.key) != nil }
+        let tones = tokens.filter { $0.kind == "color" && ColorTag.level(of: $0.key) == nil }
+        return VStack(alignment: .leading, spacing: 16) {
+            Picker("Jak", selection: $colourCard) {
+                Text(colours.isEmpty ? "Kolorystyka" : "Kolorystyka · \(Set(colours.map { ColorTag.family($0.key) }).count)")
+                    .tag(ColourCard.colours)
+                Text(tones.isEmpty ? "Tonacja" : "Tonacja · \(tones.count)").tag(ColourCard.tones)
             }
             .pickerStyle(.segmented)
-            Text(hint)
-                .font(.footnote)
-                .foregroundStyle(Theme.inkSoft)
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 6), spacing: 12) {
-                ForEach(families, id: \.self) { family in
-                    let tag = switch shade {
-                    case .main: family
-                    case .accent: ColorTag.accent(family)
-                    case .only: ColorTag.only(family)
-                    }
-                    swatch(tag: tag, family: family)
-                }
+            switch colourCard {
+            case .colours: colourGrid
+            case .tones: toneGrid
             }
-            // A mood is the whole work's, never an accent's: only under "Kolorystyka".
-            if shade == .main && !moods.isEmpty {
-                VStack(alignment: .leading, spacing: 10) {
-                    Eyebrow("Nastrój")
-                    // In pairs, one pair a row: Ciepłe–Chłodne, Żywe–Stonowane,
-                    // Kolorowe–Monochromia, Ciemne–Jasne.
-                    VStack(alignment: .leading, spacing: 8) {
-                        ForEach(Array(stride(from: 0, to: moods.count, by: 2)), id: \.self) { start in
-                            HStack(spacing: 8) {
-                                ForEach(moods[start ..< min(start + 2, moods.count)], id: \.self) { mood in
-                                    Chip(title: ColorTag.name(mood), colorTag: mood, selected: picked("color", mood)) {
-                                        toggle("color", mood, ColorTag.name(mood))
-                                    }
-                                }
+        }
+    }
+
+    /// The level a family is picked at, nil for none.
+    private func pickedLevel(_ family: String) -> ColorTag.Level? {
+        tokens.filter { $0.kind == "color" && ColorTag.family($0.key) == family }
+            .compactMap { ColorTag.level(of: $0.key) }
+            .max { $0.rawValue < $1.rawValue }
+    }
+
+    private var pickedFamilies: [String] {
+        ColorTag.families.filter { pickedLevel($0) != nil }
+    }
+
+    /// The family at ``level`` (nil: not picked), in place of its tokens
+    /// (older rules' too) and where the first of them was.
+    private func setLevel(_ family: String, _ level: ColorTag.Level?) {
+        let at = tokens.firstIndex { $0.kind == "color" && ColorTag.level(of: $0.key) != nil && ColorTag.family($0.key) == family }
+        tokens.removeAll { $0.kind == "color" && ColorTag.level(of: $0.key) != nil && ColorTag.family($0.key) == family }
+        guard let level else { return }
+        let key = ColorTag.level(family, level)
+        let token = SearchToken(kind: "color", key: key, name: ColorTag.name(key))
+        tokens.insert(token, at: min(at ?? tokens.count, tokens.count))
+    }
+
+    /// The next level of a tap: accent, clear, much, most, then off.
+    private func tap(_ family: String) {
+        let levels = ColorTag.Level.of(family)
+        guard let now = pickedLevel(family) else {
+            if pickedFamilies.count < ColorTag.maxLevels { setLevel(family, levels.first) }
+            return
+        }
+        let next = levels.firstIndex(of: now).map { $0 + 1 } ?? 0
+        setLevel(family, next < levels.count ? levels[next] : nil)
+    }
+
+    private var colourGrid: some View {
+        let families = ColorTag.families.filter { colors.contains($0) || pickedLevel($0) != nil }
+        let full = pickedFamilies.count >= ColorTag.maxLevels
+        return LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 2), count: 6), spacing: 10) {
+            ForEach(families, id: \.self) { family in
+                let level = pickedLevel(family)
+                LevelSwatch(family: family, level: level, dimmed: full && level == nil) {
+                    withAnimation(.snappy(duration: 0.25)) { tap(family) }
+                }
+                .contextMenu {
+                    ForEach(ColorTag.Level.of(family), id: \.self) { choice in
+                        Button {
+                            withAnimation(.snappy(duration: 0.25)) { setLevel(family, choice) }
+                        } label: {
+                            if choice == level {
+                                Label(choice.name.capitalized, systemImage: "checkmark")
+                            } else {
+                                Text(choice.name.capitalized)
                             }
+                        }
+                        .disabled(level == nil && full)
+                    }
+                    if level != nil {
+                        Button("Usuń", role: .destructive) {
+                            withAnimation(.snappy(duration: 0.25)) { setLevel(family, nil) }
                         }
                     }
                 }
@@ -582,37 +606,44 @@ struct TermFacetPanel: View {
         }
     }
 
-    private func swatch(tag: String, family: String) -> some View {
-        let on = picked("color", tag)
-        return Button {
-            toggle("color", tag, ColorTag.name(tag))
-        } label: {
-            VStack(spacing: 4) {
-                Circle()
-                    .fill(ColorTag.color(family))
-                    .frame(width: 34, height: 34)
-                    .overlay(Circle().strokeBorder(Theme.ink.opacity(0.25)))
-                    .padding(3)
-                    .overlay(Circle().strokeBorder(on ? Theme.ink : .clear, lineWidth: 2))
-                    .overlay {
-                        if on {
-                            Image(systemName: "checkmark")
-                                .font(.caption.weight(.bold))
-                                .foregroundStyle(["white", "yellow", "pink"].contains(family) ? Color(hex: 0x1D1B18) : .white)
-                        }
-                    }
-                Text(ColorTag.name(family))
-                    .font(.caption2.weight(on ? .semibold : .regular))
-                    .foregroundStyle(on ? Theme.ink : Theme.inkSoft)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+    /// A mood picked: from the Tonacja card ("tone:warm") or an older rule ("warm").
+    private func tonePicked(_ mood: String) -> Bool {
+        tokens.contains { $0.kind == "color" && ($0.key == ColorTag.tone(mood) || $0.key == mood) }
+    }
+
+    /// One of a pair: picking it lets go of the other; picked, a tap lets it go.
+    private func tapTone(_ mood: String, partner: String) {
+        let on = tonePicked(mood)
+        let at = tokens.firstIndex { $0.kind == "color" && [mood, partner].contains(ColorTag.family($0.key)) && ColorTag.level(of: $0.key) == nil }
+        tokens.removeAll { $0.kind == "color" && [mood, partner].contains(ColorTag.family($0.key)) && ColorTag.level(of: $0.key) == nil }
+        guard !on else { return }
+        let key = ColorTag.tone(mood)
+        tokens.insert(SearchToken(kind: "color", key: key, name: ColorTag.name(key)), at: min(at ?? tokens.count, tokens.count))
+    }
+
+    /// Three pairs in a row, Ciemne–Jasne alone under them.
+    private var toneGrid: some View {
+        let pairs = ColorTag.tonePairs
+        return VStack(spacing: 18) {
+            HStack(spacing: 0) {
+                ForEach(pairs.dropLast(), id: \.0) { pair in tonePair(pair) }
             }
-            .contentShape(Rectangle())
+            // Under the first column, two empty columns beside it.
+            if let last = pairs.last {
+                HStack(spacing: 0) {
+                    tonePair(last)
+                    ForEach(0..<2, id: \.self) { _ in Color.clear.frame(maxWidth: .infinity, maxHeight: 1) }
+                }
+            }
         }
-        .buttonStyle(.plain)
-        .sensoryFeedback(.selection, trigger: on)
-        .accessibilityLabel(ColorTag.name(tag))
-        .accessibilityAddTraits(on ? .isSelected : [])
+        .padding(.top, 4)
+    }
+
+    private func tonePair(_ pair: (String, String)) -> some View {
+        TonePair(left: pair.0, right: pair.1, picked: tonePicked) { mood in
+            let partner = mood == pair.0 ? pair.1 : pair.0
+            withAnimation(.snappy(duration: 0.25)) { tapTone(mood, partner: partner) }
+        }
     }
 
     // MARK: Museums
@@ -924,5 +955,132 @@ private struct Bracket: Shape {
         path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
         path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
         return path
+    }
+}
+
+/// A colour in the Kolor sheet: its swatch, the ring of its level around
+/// it (one quarter an accent, the whole ring most of the work) on a pale
+/// track, its name and level under it.
+struct LevelSwatch: View {
+    let family: String
+    let level: ColorTag.Level?
+    var dimmed = false
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 3) {
+                ZStack {
+                    if let level {
+                        Circle().stroke(Theme.hairline, lineWidth: 3.5)
+                        Circle()
+                            .trim(from: 0, to: level.fraction)
+                            .stroke(ColorTag.ring(family), style: StrokeStyle(lineWidth: 3.5, lineCap: .round))
+                            .rotationEffect(.degrees(-90))
+                    }
+                    Circle()
+                        .fill(ColorTag.color(family))
+                        .overlay(Circle().strokeBorder(Theme.ink.opacity(0.22)))
+                        .frame(width: 34, height: 34)
+                    if level != nil {
+                        Image(systemName: "checkmark")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(ColorTag.light(family) ? Color(hex: 0x1D1B18) : .white)
+                    }
+                }
+                .frame(width: 46, height: 46)
+                Text(ColorTag.name(family))
+                    .font(.caption2.weight(level != nil ? .semibold : .regular))
+                    .foregroundStyle(level != nil ? Theme.ink : Theme.inkSoft)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                Text(level?.name ?? " ")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(Theme.ink)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+            .opacity(dimmed ? 0.3 : 1)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .sensoryFeedback(.selection, trigger: level)
+        .accessibilityLabel(ColorTag.name(family))
+        .accessibilityValue(level?.name ?? "nie wybrany")
+        .accessibilityHint("Stuknij, by było go więcej; po większości kolor się wyłącza.")
+        .accessibilityAddTraits(level != nil ? .isSelected : [])
+    }
+}
+
+/// A pair of the Tonacja card: two mood swatches sunk in a grey track like
+/// a switch (the grey of the Kolorystyka/Tonacja picker); the picked one's
+/// ring fits in the track, the other fades.
+struct TonePair: View {
+    /// Between the two dots; with the track's inset, room for their names.
+    private static let gap: CGFloat = 14
+    /// Track around the dots, enough for the picked ring.
+    private static let inset: CGFloat = 7
+
+    let left: String
+    let right: String
+    let picked: (String) -> Bool
+    let action: (String) -> Void
+
+    var body: some View {
+        let moods = [left, right]
+        VStack(spacing: 7) {
+            HStack(spacing: Self.gap) {
+                ForEach(moods, id: \.self) { mood in dot(mood, other: mood == left ? right : left) }
+            }
+            .padding(Self.inset)
+            .background(
+                Capsule().fill(
+                    Theme.ink.opacity(0.07)
+                        .shadow(.inner(color: .black.opacity(0.1), radius: 1.5, y: 1))
+                )
+            )
+            // Each name centred under its dot, wider than it.
+            HStack(spacing: Self.gap) {
+                ForEach(moods, id: \.self) { mood in
+                    let on = picked(mood)
+                    let off = picked(mood == left ? right : left)
+                    Text(ColorTag.name(mood))
+                        .font(.caption2.weight(on ? .semibold : .regular))
+                        .foregroundStyle(on ? Theme.ink : Theme.inkSoft)
+                        .opacity(off ? 0.45 : 1)
+                        .lineLimit(1)
+                        .fixedSize()
+                        .frame(width: 34)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func dot(_ mood: String, other: String) -> some View {
+        let on = picked(mood)
+        let off = picked(other)
+        return Button { action(mood) } label: {
+            ZStack {
+                MoodFill(tag: mood)
+                    .overlay(Circle().strokeBorder(Theme.ink.opacity(0.2)))
+                if on {
+                    Circle()
+                        .stroke(ColorTag.ring(mood), lineWidth: 3.5)
+                        .padding(-5)
+                    Image(systemName: "checkmark")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(ColorTag.light(mood) ? Color(hex: 0x1D1B18) : .white)
+                        .shadow(color: .black.opacity(ColorTag.light(mood) ? 0 : 0.5), radius: 1)
+                }
+            }
+            .frame(width: 34, height: 34)
+            .opacity(off ? 0.38 : 1)
+            .contentShape(Circle().inset(by: -8))
+        }
+        .buttonStyle(.plain)
+        .sensoryFeedback(.selection, trigger: on)
+        .accessibilityLabel(ColorTag.name(mood))
+        .accessibilityAddTraits(on ? .isSelected : [])
     }
 }

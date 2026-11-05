@@ -97,7 +97,7 @@ final class TermFacetTests: XCTestCase {
             ["accent:red", "accent:blue"],
             ["warm", "muted", "colorful", "light"],
         ])
-        // Moods in pairs: Kolorowe beside Monochromia.
+        // Moods in pairs: Kolorowe beside Mono.
         let colorful = ColorTag.moods.firstIndex(of: "colorful")!
         XCTAssertEqual(ColorTag.moods[colorful + 1], "monochrome")
         XCTAssertEqual(colorful % 2, 0)
@@ -110,5 +110,29 @@ final class TermFacetTests: XCTestCase {
         XCTAssertEqual(ColorTag.family("blue"), "blue")
         let tokens = [SearchToken(kind: "color", key: "only:blue", name: "Dominuje: błękit")]
         XCTAssertEqual(TermFacet.color.label(tokens, periods: periods), "Dominuje: błękit")
+    }
+
+    func testColoursAtLevels() {
+        XCTAssertEqual(ColorTag.name("blue@much"), "Błękit · dużo")
+        XCTAssertEqual(ColorTag.name("red@accent"), "Czerwień · akcent")
+        XCTAssertEqual(ColorTag.name("tone:warm"), "Ciepłe")
+        XCTAssertEqual(ColorTag.name("monochrome"), "Mono")
+        XCTAssertEqual(ColorTag.family("blue@most"), "blue")
+        XCTAssertEqual(ColorTag.family("tone:dark"), "dark")
+        XCTAssertEqual(ColorTag.level(of: "blue@much"), .much)
+        // Older rules show at the level nearest to what they ask.
+        XCTAssertEqual(ColorTag.level(of: "accent:red"), .accent)
+        XCTAssertEqual(ColorTag.level(of: "blue"), .clear)
+        XCTAssertEqual(ColorTag.level(of: "only:blue"), .most)
+        XCTAssertNil(ColorTag.level(of: "warm"))
+        XCTAssertNil(ColorTag.level(of: "tone:warm"))
+        // White, grey and black are never an accent.
+        XCTAssertEqual(ColorTag.Level.of("white"), [.clear, .much, .most])
+        XCTAssertEqual(ColorTag.Level.of("blue").first, .accent)
+        let tokens = [
+            SearchToken(kind: "color", key: "blue@much", name: "Błękit · dużo"),
+            SearchToken(kind: "color", key: "tone:warm", name: "Ciepłe"),
+        ]
+        XCTAssertEqual(TermFacet.color.label(tokens, periods: periods), "Błękit · dużo +1")
     }
 }

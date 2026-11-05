@@ -1223,11 +1223,16 @@ class Player:
                     spread = item.tint_spread
                     if spread is None:
                         spread = tint_spread(img)
-                    colors, tags, value = analyse(img, self.service.palette, spread)
+                    colors, tags, value, shares = analyse(img, self.service.palette, spread)
             except OSError:
                 log.warning("rescore: cannot read %s", path)
                 continue
-            changes: dict[str, Any] = {"colors": colors, "color_tags": tags, "tint_spread": spread}
+            changes: dict[str, Any] = {
+                "colors": colors,
+                "color_tags": tags,
+                "color_shares": shares,
+                "tint_spread": spread,
+            }
             if item.suitability is not None:
                 changes["suitability"] = value
             analysed[item.id] = changes

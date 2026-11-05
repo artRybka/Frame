@@ -231,7 +231,7 @@ def test_analyse_blue_picture() -> None:
     import io
 
     img = Image.open(io.BytesIO(jpeg_bytes((40, 80, 200))))
-    swatches, tags, score = analyse(img)
+    swatches, tags, score, _ = analyse(img)
     assert "blue" in tags and "cool" in tags
     assert swatches[0].hex.startswith("#") and 0 <= score <= 1
 
@@ -249,7 +249,7 @@ def test_analyse_finds_small_vivid_accents() -> None:
     pixels[110:150, 100:130] = (120, 32, 28)  # skirt
     noise = rng.integers(-6, 7, pixels.shape)
     img = Image.fromarray(np.clip(pixels.astype(int) + noise, 0, 255).astype(np.uint8))
-    swatches, tags, _ = analyse(img)
+    swatches, tags, _, _ = analyse(img)
     dominant = [s for s in swatches if not s.accent]
     accents = [s for s in swatches if s.accent]
     assert 1 <= len(dominant) <= 4 and swatches[: len(dominant)] == dominant  # dominant first
@@ -269,8 +269,8 @@ def test_colour_tags_go_by_area() -> None:
         pixels[100 : 100 + robe_rows, 60:140] = (40, 70, 170)
         return Image.fromarray(pixels)
 
-    _, wide, _ = analyse(altarpiece(100))
-    _, narrow, _ = analyse(altarpiece(10))
+    _, wide, _, _ = analyse(altarpiece(100))
+    _, narrow, _, _ = analyse(altarpiece(10))
     assert "blue" in wide and "accent:blue" not in wide
     assert "blue" not in narrow and "accent:blue" in narrow and "warm" in narrow
     assert has_colours(narrow, ["accent:blue"]) and not has_colours(narrow, ["blue"])
@@ -318,15 +318,15 @@ def test_only_colours_ask_for_pictures_painted_in_them_alone() -> None:
     pixels[:] = (120, 120, 118)
     pixels[:80] = (60, 110, 190)
     pixels[80:150] = (30, 70, 150)
-    _, tags, _ = analyse(Image.fromarray(pixels))
+    _, tags, _, _ = analyse(Image.fromarray(pixels))
     assert "only:blue" in tags and has_colours(tags, ["only:blue", "only:teal"])
     pixels[150:170, :60] = (190, 40, 30)  # a red boat
-    _, tags, _ = analyse(Image.fromarray(pixels))
+    _, tags, _, _ = analyse(Image.fromarray(pixels))
     assert has_colours(tags, ["only:blue", "only:teal", "only:red"])
 
 
 def test_yellowed_paper_is_not_warm() -> None:
-    _, tags, _ = analyse(_etching([(238, 226, 198)]))
+    _, tags, _, _ = analyse(_etching([(238, 226, 198)]))
     assert "warm" not in tags and not any(t.startswith("accent:") for t in tags)
 
 
@@ -345,19 +345,80 @@ def test_colourful_needs_several_hues_far_apart() -> None:
     red, blue, green = (170, 40, 35), (40, 70, 160), (60, 120, 60)
     brown = (110, 70, 40)
     # A Madonna's red and blue with green grass: a few percent each will do.
-    _, madonna, _ = analyse(print_with((red, 8), (blue, 8), (green, 8)))
+    _, madonna, _, _ = analyse(print_with((red, 8), (blue, 8), (green, 8)))
     assert "colorful" in madonna and "monochrome" not in madonna
     # Black and white, sepia on old paper and a two-tone print are not.
-    _, etching, _ = analyse(_etching([(238, 226, 198)]))
-    _, two_tone, _ = analyse(print_with((blue, 40), (brown, 40)))
-    _, chalk, _ = analyse(print_with((red, 60)))
+    _, etching, _, _ = analyse(_etching([(238, 226, 198)]))
+    _, two_tone, _, _ = analyse(print_with((blue, 40), (brown, 40)))
+    _, chalk, _, _ = analyse(print_with((red, 60)))
     for tags in (etching, two_tone, chalk):
         assert "colorful" not in tags
     assert has_colours(madonna, ["colorful"]) and not has_colours(two_tone, ["colorful"])
 
 
+def test_colours_at_levels() -> None:
+    # A blue sea with a red boat, on grey rocks.
+    shares = {"blue": 0.45, "teal": 0.1, "red": 0.04, "gray": 0.35, "white": 0.06}
+    tags = ["blue", "accent:red", "cool"]
+    assert has_colours(tags, ["blue@much", "red@accent"], shares)
+    assert has_colours(tags, ["teal@clear"], shares)
+    assert not has_colours(tags, ["blue@clear"], shares)  # more than that
+    assert not has_colours(tags, ["red@clear"], shares)  # less than that
+    assert not has_colours(tags, ["yellow@accent"], shares)
+    assert not has_colours(tags, ["blue@much", "yellow@accent"], shares)  # both must fit
+    # Most of its colours (grey and white aside) are blue, and blue and teal.
+    assert has_colours(tags, ["blue@most"], shares)
+    assert has_colours(tags, ["blue@most", "teal@most"], shares)
+    assert not has_colours(tags, ["teal@most"], shares)
+    assert not has_colours(tags, ["blue@most", "red@most"], shares)  # red too little
+    # A grey drawing with a touch of blue is not "mostly blue".
+    assert not has_colours(["gray"], ["blue@most"], {"gray": 0.9, "blue": 0.05})
+    # A neutral at "most" counts the whole picture.
+    assert has_colours(["white"], ["white@most"], {"white": 0.7, "gray": 0.3})
+    assert not has_colours(tags, ["gray@most"], shares)
+    # No shares (not analysed yet): no level fits.
+    assert not has_colours(tags, ["blue@much"])
+
+
+def test_tones_must_all_fit() -> None:
+    tags = ["blue", "cool", "dark", "muted"]
+    assert has_colours(tags, ["tone:cool", "tone:dark"])
+    assert not has_colours(tags, ["tone:cool", "tone:light"])
+    assert has_colours(tags, ["tone:cool", "blue@much"], {"blue": 0.4})
+    # Older rules keep their meaning: one colour or mood of the group will do.
+    assert has_colours(tags, ["warm", "blue"])
+    assert has_colours(tags, ["light", "dark"])
+
+
+def test_monochrome_is_one_tone() -> None:
+    def toned(light: tuple[int, int, int], dark: tuple[int, int, int]) -> Image.Image:
+        # A photograph in one tone: a gradient from ``light`` to ``dark``.
+        ramp = np.linspace(0, 1, 200)[:, None, None]
+        pixels = (1 - ramp) * np.array(light) + ramp * np.array(dark)
+        return Image.fromarray(np.repeat(pixels, 200, 1).astype(np.uint8))
+
+    sepia = analyse(toned((236, 222, 192), (70, 45, 25))).tags
+    cyanotype = analyse(toned((225, 235, 245), (35, 65, 110))).tags
+    grey = analyse(toned((240, 240, 240), (20, 20, 20))).tags
+    for tags in (sepia, cyanotype, grey):
+        assert "monochrome" in tags and "colorful" not in tags
+    # A brown picture with a blue sky is two tones, not one.
+    pixels = np.asarray(toned((236, 222, 192), (70, 45, 25))).copy()
+    pixels[:50] = (90, 140, 200)
+    assert "monochrome" not in analyse(Image.fromarray(pixels)).tags
+
+
+def test_analysis_gives_colour_shares() -> None:
+    pixels = np.empty((200, 200, 3), np.uint8)
+    pixels[:] = (120, 120, 118)
+    pixels[:100] = (40, 80, 170)
+    shares = analyse(Image.fromarray(pixels)).shares
+    assert 0.45 <= shares["blue"] <= 0.55 and 0.45 <= shares["gray"] <= 0.55
+    assert "red" not in shares
+
+
 def test_monochrome_pictures_have_no_accents() -> None:
-    swatches, _, _ = analyse(_etching([(238, 226, 198)]))
+    swatches, _, _, _ = analyse(_etching([(238, 226, 198)]))
     assert swatches and not any(s.accent for s in swatches)
 
 
@@ -915,7 +976,7 @@ def test_colourful_works_score_best_on_epaper() -> None:
     # a colourful one makes it.
     assert etching <= 0.5 and grey <= 0.5
     assert print_ >= 0.72
-    _, _, analysed = analyse(_etching([(238, 226, 198)]))
+    _, _, analysed, _ = analyse(_etching([(238, 226, 198)]))
     assert analysed == etching
 
 

@@ -161,12 +161,19 @@ struct MuseumSearchView: View {
                 rules.artists = ["Utagawa Hiroshige"]
             }
             // CI screenshots: a group's choice alone, the X next to the field.
-            if ["search-chosen", "search-colors"].contains(LaunchRoute.screen), rules.colors.isEmpty {
-                rules.colors = ["blue"]
+            if LaunchRoute.screen == "search-chosen", rules.colors.isEmpty {
+                rules.colors = ["blue@much"]
+            }
+            // CI screenshots: the Kolor sheet's two cards.
+            if LaunchRoute.screen == "search-colors", rules.colors.isEmpty {
+                rules.colors = ["blue@much", "red@accent"]
+            }
+            if LaunchRoute.screen == "search-tones", rules.colors.isEmpty {
+                rules.colors = ["tone:warm", "tone:dark"]
             }
             // CI screenshots: every museum but the Met, with a colour.
             if LaunchRoute.screen == "search-museums", rules.excludeSources.isEmpty {
-                rules.colors = ["blue"]
+                rules.colors = ["blue@much"]
                 rules.excludeSources = ["met"]
             }
         }
