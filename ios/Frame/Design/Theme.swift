@@ -407,9 +407,13 @@ extension ColorTag {
         case "muted":
             spread([0xA18E8D, 0xAB9E93, 0xB0AA9A, 0x9F9199, 0xBCB3AD, 0x91988D, 0x948F99, 0x848D97, 0x7C8A8A])
         case "neutral":
-            // The grey of paper, flat: no colour either way, and not a ball
-            // (szkic 16, M1a).
-            AnyShapeStyle(Color(hex: 0xCFC9BF))
+            // The grey of paper, nearly flat, lighter to darker on the
+            // slant like Ciepłe and Chłodne beside it (szkic 16, M1b); the
+            // warm and cool touches at its rim are ``MoodFill``'s.
+            AnyShapeStyle(LinearGradient(
+                colors: [Color(hex: 0xD8D2C8), Color(hex: 0xC2BCB2)],
+                startPoint: .topLeading, endPoint: .bottomTrailing
+            ))
         case "medium":
             AnyShapeStyle(EllipticalGradient(
                 stops: [
@@ -516,6 +520,26 @@ struct MoodFill: View {
         GeometryReader { proxy in
             if ["colorful", "monochrome"].contains(mood), proxy.size.width >= 20 {
                 HalftoneDot(black: mood == "monochrome")
+            } else if mood == "neutral" {
+                // Neutralne: a mere touch of warm on the left rim and of
+                // cool on the right (Mateusz 2026-11-05 19:43).
+                Circle().fill(ColorTag.fill(tag))
+                    .overlay(
+                        Circle().strokeBorder(
+                            LinearGradient(
+                                stops: [
+                                    .init(color: Color(hex: 0xFF9A1F).opacity(0.45), location: 0),
+                                    .init(color: .clear, location: 0.42),
+                                    .init(color: .clear, location: 0.58),
+                                    .init(color: Color(hex: 0x5F8CC0).opacity(0.45), location: 1),
+                                ],
+                                startPoint: .leading, endPoint: .trailing
+                            ),
+                            lineWidth: max(proxy.size.width * 0.09, 1)
+                        )
+                        .blur(radius: proxy.size.width * 0.03)
+                    )
+                    .clipShape(Circle())
             } else {
                 Circle().fill(ColorTag.fill(tag))
             }

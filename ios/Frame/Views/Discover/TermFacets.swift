@@ -536,14 +536,24 @@ struct TermFacetPanel: View {
             Picker("Jak", selection: $colourCard) {
                 Text(colours.isEmpty ? "Kolorystyka" : "Kolorystyka · \(Set(colours.map { ColorTag.family($0.key) }).count)")
                     .tag(ColourCard.colours)
-                Text(tones.isEmpty ? "Tonacja" : "Tonacja · \(tones.count)").tag(ColourCard.tones)
+                Text(tones.isEmpty ? "Tonacja" : "Tonacja · \(toneGroupsPicked(tones))").tag(ColourCard.tones)
             }
             .pickerStyle(.segmented)
-            switch colourCard {
-            case .colours: colourGrid
-            case .tones: toneGrid
+            // Both cards laid out, the other one unseen, so the sheet keeps
+            // one height when switching (Mateusz 2026-11-05).
+            ZStack(alignment: .top) {
+                colourGrid.cardShown(colourCard == .colours)
+                toneGrid.cardShown(colourCard == .tones)
             }
         }
+    }
+
+    /// How many Tonacja groups the tokens pick a side of (Ciemne and Średnie
+    /// are one).
+    private func toneGroupsPicked(_ tones: [SearchToken]) -> Int {
+        Set(tones.map { token in
+            ColorTag.toneGroups.firstIndex { $0.contains(ColorTag.family(token.key)) } ?? -1
+        }).count
     }
 
     /// The level a family is picked at, nil for none.
@@ -1120,5 +1130,15 @@ struct ToneGroup: View {
         .sensoryFeedback(.selection, trigger: on)
         .accessibilityLabel(ColorTag.name(mood))
         .accessibilityAddTraits(on ? .isSelected : [])
+    }
+}
+
+private extension View {
+    /// One of the Kolor sheet's cards: laid out either way, seen and
+    /// touched only when it is the one picked.
+    func cardShown(_ shown: Bool) -> some View {
+        opacity(shown ? 1 : 0)
+            .allowsHitTesting(shown)
+            .accessibilityHidden(!shown)
     }
 }
