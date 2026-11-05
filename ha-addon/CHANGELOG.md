@@ -2,8 +2,9 @@
 
 ## 1.102.7
 
-- Harmonogram w trybie Oszczędnym: nagłówek godzin to „Godzina zmiany
-  obrazu” (przy kilku „Godziny zmiany obrazu”) zamiast „Pobudki i zmiany”.
+- Harmonogram: nagłówek godzin to „Godzina zmiany obrazu” (przy kilku
+  „Godziny zmiany obrazu”) w obu trybach, zamiast „Pobudki i zmiany”
+  w Oszczędnym i „Godzina zmiany” w Online.
 
 ## 1.102.6
 
