@@ -113,7 +113,7 @@ final class TermFacetTests: XCTestCase {
     }
 
     func testColoursAtLevels() {
-        XCTAssertEqual(ColorTag.name("blue@much"), "Błękit · sporo")
+        XCTAssertEqual(ColorTag.name("blue@much"), "Błękit · wyraźny")
         XCTAssertEqual(ColorTag.name("red@accent"), "Czerwień · akcent")
         XCTAssertEqual(ColorTag.name("tone:warm"), "Ciepłe")
         XCTAssertEqual(ColorTag.name("monochrome"), "Mono")
@@ -131,9 +131,9 @@ final class TermFacetTests: XCTestCase {
         XCTAssertEqual(ColorTag.Level.of("white"), [.clear, .much, .most])
         XCTAssertEqual(ColorTag.Level.of("blue").first, .accent)
         let tokens = [
-            SearchToken(kind: "color", key: "blue@much", name: "Błękit · sporo"),
+            SearchToken(kind: "color", key: "blue@much", name: "Błękit · wyraźny"),
             SearchToken(kind: "color", key: "tone:warm", name: "Ciepłe"),
         ]
-        XCTAssertEqual(TermFacet.color.label(tokens, periods: periods), "Błękit · sporo +1")
+        XCTAssertEqual(TermFacet.color.label(tokens, periods: periods), "Błękit · wyraźny +1")
     }
 }

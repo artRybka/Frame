@@ -4,8 +4,8 @@
 
 - Nowy panel Szukaj → Kolor z dwiema kartami. W Kolorystyce wybierasz do
   trzech kolorów, a każde kolejne stuknięcie w próbkę mówi, ile go ma być:
-  akcent, trochę, sporo albo dominuje (pierścień wokół próbki rośnie).
-  Dwa kolory na „dominuje” to obrazy malowane głównie nimi
+  akcent, obecny, wyraźny albo główny (pierścień wokół próbki rośnie).
+  Dwa kolory jako „główny” to obrazy malowane głównie nimi
   razem. W Tonacji są cztery przełączniki: Temperatura (ciepłe albo
   chłodne), Nasycenie (żywe albo stonowane), Barwność (kolorowe albo mono)
   i Jasność (ciemne albo jasne). Wszystko, co wybrane, musi

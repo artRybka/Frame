@@ -183,13 +183,13 @@ enum ColorTag {
             }
         }
 
-        /// "Błękit · sporo".
+        /// "Błękit · wyraźny".
         var name: String {
             switch self {
             case .accent: "akcent"
-            case .clear: "trochę"
-            case .much: "sporo"
-            case .most: "dominuje"
+            case .clear: "obecny"
+            case .much: "wyraźny"
+            case .most: "główny"
             }
         }
 
