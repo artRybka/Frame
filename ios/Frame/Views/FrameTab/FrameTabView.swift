@@ -1081,8 +1081,9 @@ struct ScheduleSection: View {
     }
 
     private var changeTimesTitle: String {
-        if settings.isEconomy { return "Pobudki i zmiany" }
-        return settings.changeTimes.count > 1 ? "Godziny zmiany" : "Godzina zmiany"
+        let many = settings.changeTimes.count > 1
+        if settings.isEconomy { return many ? "Godziny zmiany obrazu" : "Godzina zmiany obrazu" }
+        return many ? "Godziny zmiany" : "Godzina zmiany"
     }
 
     private func changeTime(at index: Int) -> Binding<Date> {

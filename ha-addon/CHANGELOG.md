@@ -16,6 +16,8 @@
   średnia z całego (dotąd prawie nigdy nie wypadało).
 - Po aktualizacji serwer raz przelicza kolory całej biblioteki. Do końca
   przeliczenia Tonacja działa po staremu.
+- Harmonogram w trybie Oszczędnym: nagłówek godzin to „Godzina zmiany
+  obrazu” (przy kilku „Godziny zmiany obrazu”) zamiast „Pobudki i zmiany”.
 
 ## 1.102.6
 
