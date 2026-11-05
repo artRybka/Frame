@@ -312,7 +312,7 @@ class StatusMonitor:
         estimate = self.battery.estimate(
             status.battery_level,
             on_battery,
-            plan(activity.awake_per_wake(), activity.sends_per_day(now), activity.check_up()),
+            plan(activity.awake_per_wake(), activity.sends_per_day(now), activity.check_up(now)),
             now=now,
             silent_wakes=self._silent_wakes(now),
         )

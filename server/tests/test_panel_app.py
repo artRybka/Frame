@@ -1733,6 +1733,9 @@ async def test_an_empty_check_sleeps_over_mdc_at_once(
         put = app.state.empty_sleep_at
         assert put is not None and datetime.fromisoformat(put) == _at("2026-10-28T14:00")
         assert app.state.asleep and not app.state.wifi_lost
+        # The battery books it as up from a little before 14:00 to 13:59:40.
+        slept = service.status.battery.activity.checks_slept
+        assert [minutes for _, minutes in slept] == [pytest.approx(10 / 60, abs=0.01)]
 
         # A picture sent after the check waits for 16:00: 14:00 was not
         # missed (no "Ramka nie obudziła się", no nudges as for a lost app).
@@ -1790,6 +1793,7 @@ async def test_an_alarm_lost_after_an_empty_checks_sleep_stops_it(
         app._empty_sleep_missed(_at("2026-10-28T16:13"))
         assert app.state.empty_sleep == "failed" and app.state.wifi_lost
         assert app.state.empty_sleep_at is None
+        assert service.status.battery.activity.checks_slept == []  # its own 5 min again
 
         # Never again: the next check's panel is left alone.
         app.state.wifi_lost = False
