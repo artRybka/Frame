@@ -1411,3 +1411,24 @@ def test_a_start_over_mdc_draws_the_picture_again(tmp_path: Path) -> None:
     app._unanswered = 1
     answer = app.answer(AppHello(reason="poll", charging=True, shown=shown), now)
     assert not answer.redraw
+
+
+def test_the_app_says_which_picture_it_remembers(tmp_path: Path) -> None:
+    """2026-11-05: /panel/next dropped ``shown``, so after a start over MDC
+    the app was never told to draw again and a cold-started frame stayed
+    white (the launcher's screen had drawn over the picture)."""
+    from frame_server.web import create_app
+
+    service = _service(tmp_path)
+    app = create_app(service.settings)
+    svc = app.state.service
+    content = svc.store.current()
+    assert content is not None
+    query = {"reason": "start", "build": "2.0.7", "charging": "true", "shown": content.file_id}
+    with TestClient(app, client=PANEL_CLIENT) as client:
+        svc.app._unanswered = 1  # started over MDC
+        answer = client.get("/panel/next", params=query).json()
+        assert answer["redraw"] is True and answer["file_id"] == content.file_id
+        assert svc.app.state.shown == content.file_id
+        answer = client.get("/panel/next", params=query | {"reason": "poll"}).json()
+        assert answer["redraw"] is False
