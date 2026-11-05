@@ -4,7 +4,8 @@ import SwiftUI
 /// when the server's pick does not suit: the owner holds the tile in
 /// Odkrywaj. The household has no such menu (as with "Wykonaj ponowną
 /// analizę"). The server keeps the new one for the day (the week) and never
-/// draws the old one back that day (week).
+/// draws the old one back that day (week). Only the button in the menu,
+/// no hint and no question about the cost (Mateusz 2026-11-05).
 extension View {
     /// On the study of the day's tile.
     func drawDailyAgainMenu() -> some View {
@@ -19,39 +20,18 @@ extension View {
 
 private struct DrawDailyAgainMenu: ViewModifier {
     @Environment(AppModel.self) private var model
-    @State private var confirm = false
 
     func body(content: Content) -> some View {
         if model.isOwner {
             content
                 .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
                 .contextMenu {
-                    Section("Inne dzieło na dziś, innego artysty. Jutro serwer wybierze jak zwykle.") {
-                        Button("Wylosuj inne", systemImage: "shuffle") { ask() }
-                            .disabled(model.drawingDaily)
-                    }
+                    Button("Wylosuj inne", systemImage: "shuffle") { draw() }
+                        .disabled(model.drawingDaily)
                 }
-                .accessibilityAction(named: "Wylosuj inne Studium dnia") { ask() }
-                .confirmationDialog("Wylosować inne Studium dnia?", isPresented: $confirm, titleVisibility: .visible) {
-                    Button("Wylosuj inne") { draw() }
-                    Button("Anuluj", role: .cancel) {}
-                } message: {
-                    Text("Claude napisze studium nowego dzieła od razu, jak co dzień (Opus, około 0,25 USD z miesięcznego limitu). Dotychczasowe studium zostaje w „Studia dzieł”.")
-                }
+                .accessibilityAction(named: "Wylosuj inne Studium dnia") { draw() }
         } else {
             content
-        }
-    }
-
-    /// Asks first when Claude will write the new study (it costs).
-    private func ask() {
-        Task {
-            if model.aiSettings == nil { await model.loadAiSettings() }
-            if let ai = model.aiSettings, ai.keySet, ai.daily == true {
-                confirm = true
-            } else {
-                draw()
-            }
         }
     }
 
@@ -69,10 +49,8 @@ private struct DrawWeekArtistAgainMenu: ViewModifier {
             content
                 .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .contextMenu {
-                    Section("Inny artysta do końca tygodnia. Inne karty „Dziś dla Ciebie” zostają.") {
-                        Button("Wylosuj innego", systemImage: "shuffle") { draw() }
-                            .disabled(model.drawingWeekArtist)
-                    }
+                    Button("Wylosuj innego", systemImage: "shuffle") { draw() }
+                        .disabled(model.drawingWeekArtist)
                 }
                 .accessibilityAction(named: "Wylosuj innego Artystę tygodnia") { draw() }
         } else {
