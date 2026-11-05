@@ -298,10 +298,11 @@ class StatusMonitor:
         self.battery.sent(now or datetime.now(UTC))
 
     def estimate_battery(
-        self, plan: Callable[[float, float], DayPlan], now: datetime | None = None
+        self, plan: Callable[[float, float, float], DayPlan], now: datetime | None = None
     ) -> None:
         """How long the battery lasts at ``plan`` (a day at the schedule for
-        the hours a wake keeps the panel up and the pictures sent a day),
+        the hours a wake and an empty check keep the panel up and the
+        pictures sent a day),
         and its level ``now`` while the panel sleeps and reads nothing
         (``BatteryEstimate.level``)."""
         now = now or datetime.now(UTC)
@@ -311,7 +312,7 @@ class StatusMonitor:
         estimate = self.battery.estimate(
             status.battery_level,
             on_battery,
-            plan(activity.awake_per_wake(), activity.sends_per_day(now)),
+            plan(activity.awake_per_wake(), activity.sends_per_day(now), activity.check_up()),
             now=now,
             silent_wakes=self._silent_wakes(now),
         )

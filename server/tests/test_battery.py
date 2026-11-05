@@ -23,10 +23,11 @@ def test_a_day_at_the_schedule() -> None:
     economy = plan.totals()
     assert economy[0] == 0 and economy[1] > 23
     assert economy[3] == pytest.approx(8.0, abs=0.2) and economy[4] == pytest.approx(1.0, abs=0.2)
-    # 8:00 … 20:00, none in the checks' quiet hours; each up five minutes.
+    # 8:00 … 20:00, none in the checks' quiet hours; each up 3.5 minutes
+    # (three idle minutes, app.js AUTO_SLEEP, after half a minute's boot).
     assert plan.checks == pytest.approx(7.0, abs=0.2)
     assert plan.changes == pytest.approx(1.0, abs=0.2)
-    assert plan.check[2] == pytest.approx(7 * 2.5 / 60, abs=0.02)
+    assert plan.check[2] == pytest.approx(7 * 3.5 / 60, abs=0.02)
     assert sum(day_plan(FrameSettings(), START, awake, off=True).totals()[2:]) == 0
     rest = day_plan(FrameSettings(), START, awake, rest_until=START + timedelta(days=2)).totals()
     assert rest[1] > online[1] and rest[3] < online[3]
@@ -97,9 +98,9 @@ def test_wakes_and_pictures_are_counted() -> None:
     log.track(START + timedelta(hours=4), "awake", silent_wakes=1)
     log.drew()
     totals = log.activity.at(START + timedelta(hours=4, minutes=3))
-    # The check that rang meanwhile kept it up two and a half minutes on the Wi-Fi.
-    assert totals[1] == pytest.approx(4 - 2 / 60 - 2.5 / 60)
-    assert totals[2] == pytest.approx(7.5 / 60)
+    # The check that rang meanwhile kept it up 3.5 minutes on the Wi-Fi.
+    assert totals[1] == pytest.approx(4 - 2 / 60 - 3.5 / 60)
+    assert totals[2] == pytest.approx(8.5 / 60)
     assert totals[3:] == [2, 1]
 
 
@@ -246,3 +247,18 @@ def test_a_realistic_economy_day_from_the_assumptions() -> None:
     assert kinds[0] == "checks" and "changes" in kinds and "deep" in kinds
     checks = next(line for line in estimate.day.lines if line.kind == "checks")
     assert checks.each == pytest.approx(estimate.costs.per_check, abs=0.01)
+
+
+def test_an_empty_check_lasts_as_the_app_set_the_panels_sleep() -> None:
+    """3 minutes idle; a panel refusing it keeps 5."""
+    log = BatteryLog(None)
+    assert log.activity.check_up() == pytest.approx(3.5 / 60)
+    log.auto_sleep({"ok": True, "value": "5MIN", "refused": "2MIN"})
+    assert log.activity.check_up() == pytest.approx(5.5 / 60)
+    log.auto_sleep({"ok": True, "value": None})  # a sleep in the network: nothing said
+    log.auto_sleep("junk")
+    assert log.activity.check_idle_minutes == 5
+    settings = FrameSettings(power_mode="economy", check_every_hours=2)
+    longer = day_plan(settings, START, 0.05, check_up=log.activity.check_up())
+    shorter = day_plan(settings, START, 0.05)
+    assert longer.check[2] == pytest.approx(5.5 / 3.5 * shorter.check[2], rel=0.01)

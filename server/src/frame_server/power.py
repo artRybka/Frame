@@ -125,8 +125,14 @@ class PowerManager:
         settings = self.service.player.settings
         now = datetime.now(UTC)
         self.service.status.estimate_battery(
-            lambda awake, sends: day_plan(
-                settings, now, awake, rest_until=rest, off=state.off, sends_per_day=sends
+            lambda awake, sends, check: day_plan(
+                settings,
+                now,
+                awake,
+                rest_until=rest,
+                off=state.off,
+                sends_per_day=sends,
+                check_up=check,
             ),
             now,
         )

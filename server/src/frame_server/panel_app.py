@@ -965,6 +965,7 @@ class PanelApp:
         if event == "sleep":
             self._sleep_reported = datetime.now(UTC)
             self.service.status.note_sleep(deep=not self.state.standby)
+            self.service.status.battery.auto_sleep(data.get("autoSleep"))
             if _launch_set(data.get("launch")):
                 state = self.state
                 state.self_start = True
