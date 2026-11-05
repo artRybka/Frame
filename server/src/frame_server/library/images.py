@@ -17,6 +17,7 @@ from PIL import Image
 
 from ..fsutil import dir_bytes, own_files
 from ..imaging.layout import load_image
+from .aic import aic_fallback
 from .hosts import HostGuard, Resting, guard, is_urgent, urgently, walled
 from .markup import commons_rendition
 from .models import Item
@@ -261,6 +262,8 @@ class ImageCache:
         mirrors = self.mirrors.get(item.source)
         image_url = own_copy(item)
         first = [item.thumb_url, image_url] if thumb else [image_url or item.thumb_url]
+        if not thumb and (allowed := aic_fallback(image_url, item.width)):
+            first.append(allowed)  # the download size refused: the API's widest
         if item.sharper is not None:  # the sharper copy first, the own after
             copy = [item.sharper.thumb_url, item.sharper.url] if thumb else [item.sharper.url]
             first[:0] = copy

@@ -213,7 +213,8 @@ struct CopyView: Codable, Hashable, Sendable, Identifiable {
     /// a like title), "unseen" (its thumbnail could not be had).
     var notes: [String]
     /// "current" (shown now), "own" (the work's own, while a copy stands
-    /// in for it), "copy".
+    /// in for it), "larger" (the work's own in a larger file from its own
+    /// museum than the one kept on the server), "copy".
     var role: String
     var chosen: Bool
 
@@ -221,6 +222,11 @@ struct CopyView: Codable, Hashable, Sendable, Identifiable {
     var side: Int { max(width, height) }
     var isCurrent: Bool { role == "current" }
     var isOwn: Bool { role == "own" }
+    /// The museum's own picture in a larger file (an AIC work kept at
+    /// 1686 px before its download size was asked).
+    var isLarger: Bool { role == "larger" }
+    /// The work's own picture, whichever file: its thumbnail is the work's.
+    var isMuseums: Bool { isOwn || isLarger }
     /// What can be picked: any copy once judged, those that do not fit too
     /// (the owner has seen it and decides), but not one whose picture could
     /// not be had.

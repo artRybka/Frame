@@ -1741,6 +1741,7 @@ final class AppModel {
         UserDefaults.standard.set(pictureVersions, forKey: Keys.pictureVersions)
         let refs: [ImageRef] = [
             .thumb(itemID),
+            .image(itemID),  // the own picture in a larger file (2026-11-05)
             .framePreview(itemID, settings: settings),
             .framePreview(itemID, settings: settings, ownLook: false),
             .framePreview(itemID),

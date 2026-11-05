@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.104.0
+
+- Dzieła z Art Institute of Chicago przychodzą w większym rozmiarze, takim
+  jak z przycisku „Pobierz” na stronie muzeum (do 3000 px zamiast 1686 px).
+  Najwięcej zyskują detale w studium dzieła, ale ramka też dostaje
+  ostrzejszy obraz. Gdyby muzeum odmówiło większego rozmiaru, serwer bierze
+  jak dotąd 1686 px.
+- Zdjęcia, które serwer już ma, zostają w starym rozmiarze, ale „Szukaj
+  lepszej kopii” w menu „…” karty dzieła pokazuje dla nich „Większe zdjęcie
+  muzeum” wśród lepszych kopii. Można je porównać jak każdą kopię
+  i pobrać przyciskiem „Pobierz większe zdjęcie”.
+
 ## 1.103.0
 
 - Karta Tonacja w Szukaj → Kolor nie ma już grupy „pomiędzy”. Każde
