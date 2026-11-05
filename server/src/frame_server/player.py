@@ -829,9 +829,9 @@ class Player:
             raise RuntimeError(PANEL_NOT_SET)
         outcome = await self.service.push_current(wait=120)
         if not outcome.fetched:
-            log.warning("%s (%s)", outcome.message, outcome.content_url)
-            state.last_error = outcome.message
-            self._save_state(state)
+            # Waiting for the frame to wake (economy, asleep, away) is no
+            # error: the app says when it shows, the failures raise instead.
+            log.info("waiting for the frame: %s (%s)", outcome.message, outcome.content_url)
 
     async def _guarded(
         self, label: str, state: PlayerState, work: Callable[[], Awaitable[None]]

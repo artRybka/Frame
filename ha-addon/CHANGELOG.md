@@ -2,10 +2,22 @@
 
 ## 1.101.1
 
-- Komunikaty serwera przy wysyłce obrazu są po polsku. Zamiast „the frame
-  asks for it at 10:00” pasek wysyłki mówi „Ramka pobierze go o 10:00.”;
-  po polsku są też komunikaty o braku certyfikatów Samsunga i o ramce bez
-  ustawionego adresu.
+- Obraz wysłany do ramki śpiącej w trybie oszczędnym nie jest już
+  „błędem wysyłki”. Zamiast czerwonej karty „Nie udało się wysłać obrazu”
+  pasek wysyłki kończy się zegarem i napisem „Pojawi się dziś o 10:00”,
+  a guzik „Pokaż na ramce” na karcie dzieła i w Studium dnia pokazuje
+  „Pojawi się o 10:00”, dopóki ramka nie wyświetli obrazu. Serwer nie
+  pokazuje kroku „Łączę się z ramką”, gdy ramka śpi bez Wi-Fi.
+- Pod czekającym obrazem w Teraz są dwie linie: kiedy się pojawi i „Aby
+  pokazać obraz wcześniej, naciśnij przycisk na ramce.”. Znikają
+  powtórzona „Pobudka ramki” i „Następna zmiana”. Karta ramki śpiącej w
+  Oszczędnym nazywa się „Ramka w trybie oszczędnym”.
+- „Prezentuj” playlistę przy śpiącej ramce mówi, kiedy pojawi się pierwszy
+  obraz. Ekran blokady: „Pojawi się dziś o 10:00”.
+- W całej aplikacji „przycisk na ramce” zamiast „guzik” i „przycisk z
+  tyłu ramki”, „pobudka” zamiast „budzik”.
+- Komunikaty serwera przy wysyłce obrazu są po polsku, także o braku
+  certyfikatów Samsunga i o ramce bez ustawionego adresu.
 
 ## 1.101.0
 

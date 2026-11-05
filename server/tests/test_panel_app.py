@@ -214,6 +214,44 @@ def test_economy_wakes_for_checks_with_the_wifi_off(tmp_path: Path) -> None:
     assert answer.wake_at == _at("2026-10-28T16:00").isoformat()
 
 
+def test_a_picture_for_the_economy_sleep_waits_without_an_error(tmp_path: Path) -> None:
+    """Asleep with the Wi-Fi off in the economy mode, a picture waits for
+    the next wake: nothing is sent ("Łączę się z ramką" is skipped), the
+    bar says when, and the app gets no error card."""
+    service = _service(tmp_path)
+    service.player.save_settings(
+        FrameSettings(
+            change_times=["07:00", "19:00"],
+            power_mode="economy",
+            check_every_hours=4,
+            quiet_start=None,
+        )
+    )
+    now = datetime.now(UTC)
+    _next_change(service, now + timedelta(hours=5))
+    service.app.answer(BATTERY, now=now)
+    assert service.app.deep_asleep()
+    _fetch(service)
+    service.store.publish(b"png", "png", title="Pejzaż")
+    stages: list[Stage] = []
+    advance = service.progress.advance
+
+    def record(stage: Stage) -> None:
+        stages.append(stage)
+        advance(stage)
+
+    service.progress.advance = record  # type: ignore[method-assign]
+    state = service.player.state
+    asyncio.run(service.player._push(state))
+    assert Stage.SENDING not in stages
+    assert state.last_error is None
+    view = service.progress.view()
+    assert view.stage == Stage.WAITING
+    assert view.message == "Ramka jest w trybie oszczędnym."
+    assert view.wakes_at == service.app.wakes_at().isoformat()  # type: ignore[union-attr]
+    assert _player_view(service).delivery.state == "waiting"
+
+
 def test_charger_stays_awake_and_a_change_is_waited_for(tmp_path: Path) -> None:
     service = _service(tmp_path)
     now = _at("2026-10-28T12:00")
@@ -244,10 +282,11 @@ def test_a_waiting_picture_goes_out_at_the_wake(tmp_path: Path) -> None:
     async def push() -> None:
         outcome = await service.push_current(wait=0)
         assert not outcome.pushed
-        assert "pobierze go o" in outcome.message
+        assert outcome.message == "Ramka nie odpowiada."
 
     asyncio.run(push())
     assert service.power.state.pending_push
+    assert service.progress.view().wakes_at == service.app.wakes_at().isoformat()  # type: ignore[union-attr]
     delivery = _player_view(service).delivery
     assert delivery.state == "waiting"
     wake = service.app.wakes_at()
