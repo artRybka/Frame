@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.100.3
+
+- Próba samodzielnego startu aplikacji ramki po głębokim śnie. Launcher
+  Samsunga sam jej nie uruchamia, więc aplikacja przed snem bez Wi-Fi
+  zostawia budzik systemu Tizen, który ma ją uruchomić. Ramka dostaje przy
+  tym nową wersję aplikacji (zainstaluje się sama). Do sprawdzenia w nocy
+  na baterii.
+
+## 1.100.2
+
+- Po wyłączeniu i włączeniu ramki przyciskiem (i po każdym innym zimnym
+  starcie) ekran nie zostaje już biały. Ekran startu Samsunga zamazywał
+  obraz, a serwer nie wiedział, który obraz aplikacja pamięta, więc nie
+  kazał jej narysować go ponownie.
+
 ## 1.100.1
 
 - Ramka nie zasypia, gdy restartuje się, żeby zainstalować nową wersję

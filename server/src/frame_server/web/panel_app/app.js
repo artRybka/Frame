@@ -209,6 +209,52 @@
     });
   }
 
+  // After a cold boot (an alarm from a sleep with the Wi-Fi off, the
+  // button) the launcher never starts the app, the server does over MDC
+  // some 80 s later (E19, 2026-11-05). Test (PLAN 2.6j): Tizen's own alarm
+  // manager starts the app it names when it does not run, so each panel
+  // alarm of such a sleep gets one, half a minute later (the panel alarm
+  // rings 20-40 s early, the launcher is up ~45-60 s after it), by the
+  // panel's clock like the panel alarms (privilege alarm, package with it
+  // on). Tizen's alarms, unlike the panel's, can be removed: the old ones
+  // go first.
+  var LAUNCH_AFTER_MS = 30000;
+
+  function launchAlarms(times) {
+    var t = typeof tizen !== "undefined" ? tizen : null;
+    if (!t || !t.alarm || !t.application) return { ok: false, error: "no tizen.alarm" };
+    var app = call(function () { return t.application.getCurrentApplication().appInfo.id; });
+    if (!app.ok) return app;
+    var cleared = call(function () { return t.alarm.removeAll(); });
+    var shift = panelShift();
+    var set = times.map(function (ms) {
+      var at = new Date(ms + LAUNCH_AFTER_MS + shift);
+      var r = call(function () { return t.alarm.add(new t.AlarmAbsolute(at), app.value); });
+      return r.ok ? at.toTimeString().slice(0, 8) : r.error;
+    });
+    return { ok: true, app: app.value, cleared: cleared.ok ? true : cleared.error, set: set, shift_s: Math.round(shift / 1000) };
+  }
+
+  // How this start came about, for the test of Tizen's alarms: the app
+  // control it was started with and the alarms Tizen still holds.
+  function launchReport() {
+    var t = typeof tizen !== "undefined" ? tizen : null;
+    if (!t || !t.application) return;
+    var r = {};
+    r.control = call(function () {
+      var c = t.application.getCurrentApplication().getRequestedAppControl();
+      return c && c.appControl ? { operation: c.appControl.operation, caller: c.callerAppId } : null;
+    });
+    r.alarms = t.alarm ? call(function () {
+      return t.alarm.getAll().map(function (a) {
+        return a.getNextScheduledDate ? String(a.getNextScheduledDate()) : String(a.id);
+      });
+    }) : { ok: false, error: "no tizen.alarm" };
+    r.boot = ep ? call(function () { return ep.isScheduledPlayBootReason(); }) : null;
+    r.page_ms = Math.round(performance.now());
+    report("launch", r);
+  }
+
   // The panel's Wi-Fi for the iOS app (signal, network, address): from
   // webapis.network, which needs the privilege network.public (package
   // 1.2.0+), else from tizen.systeminfo (signal 0-1, no frequency).
@@ -619,6 +665,7 @@
       // nothing new, one set before a rest) boots the panel cold: it goes
       // back to sleep by itself, sooner than after its usual 20 minutes.
       if (standby === "OFF") r.autoSleep = shortAutoSleep();
+      if (standby === "OFF" && wakeMs) r.launch = launchAlarms([wakeMs].concat(more || []));
     }
     report("sleep", r, function () {
       last = Date.now();
@@ -936,4 +983,5 @@
   setInterval(heartbeat, HEARTBEAT_MS);
   ask("start");
   watchBattery();
+  launchReport();
 })();

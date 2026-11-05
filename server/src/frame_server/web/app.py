@@ -263,9 +263,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         battery: int | None = None,
         charging: bool | None = None,
         now: int | None = None,
+        shown: str | None = None,
     ) -> NextAnswer:
         """The Frame app, at every start and wake: what to show, and when to
-        wake next."""
+        wake next. ``shown``: the picture its page remembers on the screen
+        (without it the server never told a freshly started app to draw it
+        again: white after a cold start, 2026-11-05)."""
         hello = AppHello(
             reason=reason,
             build=build,
@@ -274,6 +277,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             battery=battery,
             charging=charging,
             now=now,
+            shown=shown,
         )
         return await service.app.ask(hello)
 
