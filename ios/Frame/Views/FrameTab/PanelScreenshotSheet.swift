@@ -3,8 +3,10 @@ import SwiftUI
 /// Konfiguracja → Aplikacja ramki → „Pokaż ekran ramki”: a screenshot of
 /// the frame's screen as its app drew it. The app takes it at its next
 /// question on the charger (every 10 s there), at least a minute after its
-/// last drawing (one taken sooner was still white, 2026-11-04). It is
-/// 640×360 in smooth colours: what the page shows, not the e-paper's dots.
+/// last drawing (one taken sooner was still white, 2026-11-04). On battery
+/// it is ordered for the next wake, which then lasts a little longer
+/// (2026-11-05). It is 640×360 in smooth colours: what the page shows, not
+/// the e-paper's dots.
 struct PanelScreenshotSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
@@ -12,7 +14,9 @@ struct PanelScreenshotSheet: View {
     private enum Phase: Equatable {
         case asking
         case waiting
-        case notOnCharger
+        /// On battery: the next wake (ISO) can take one when ordered.
+        case canOrder(String?)
+        case ordered(String?)
         case done
         case late
         case failed(String)
@@ -98,10 +102,25 @@ struct PanelScreenshotSheet: View {
                     .font(.subheadline)
                     .foregroundStyle(Theme.ink)
             }
-        case .notOnCharger:
-            Text("Ramka nie jest na zasilaczu, więc teraz zrzutu nie zrobi. Zrobi go sama, gdy ją podłączysz.")
+        case let .canOrder(wake):
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Ramka śpi na baterii, więc teraz zrzutu nie zrobi.")
+                    .font(.subheadline)
+                    .foregroundStyle(Theme.ink)
+                Button {
+                    Task { await order() }
+                } label: {
+                    Label("Zamów zrzut przy następnej pobudce", systemImage: "camera.viewfinder")
+                }
+                .buttonStyle(PrimaryButtonStyle())
+                Text("Zrobi go przy najbliższej pobudce\(Self.at(wake)) i poczuwa wtedy do 3 minut dłużej, co kosztuje trochę baterii.")
+                    .font(.caption)
+                    .foregroundStyle(Theme.inkSoft)
+            }
+        case let .ordered(wake):
+            Text("Zrzut zamówiony. Ramka zrobi go przy najbliższej pobudce\(Self.at(wake)) i wtedy pojawi się tutaj. Na zasilaczu zrobi go od razu.")
                 .font(.subheadline)
-                .foregroundStyle(Theme.warn)
+                .foregroundStyle(Theme.ink)
         case .late:
             Text("Ramka nie przysłała zrzutu. Spróbuj za chwilę.")
                 .font(.subheadline)
@@ -115,14 +134,39 @@ struct PanelScreenshotSheet: View {
         }
     }
 
+    /// " o 14:00" for the next wake, when the server knows it.
+    private static func at(_ wake: String?) -> String {
+        When.clock(wake).map { " o \($0)" } ?? ""
+    }
+
+    /// On battery: for the next wake, not now.
+    private func order() async {
+        phase = .asking
+        do {
+            let asked = try await model.backend.askPanelScreenshot()
+            phase = .ordered(asked.wakeAt)
+        } catch is CancellationError {
+            return
+        } catch {
+            let (title, detail) = Notices.words(for: error)
+            phase = .failed([title, detail].compactMap { $0 }.joined(separator: ". "))
+        }
+    }
+
     private func take() async {
         phase = .asking
         do {
             let before = try await model.backend.panelScreenshot()
             shot = before
+            guard before.onCharger else {
+                // Asleep on battery: ordered only on purpose (it costs a
+                // longer wake), not just by looking.
+                phase = before.askedAt == nil ? .canOrder(before.wakeAt) : .ordered(before.wakeAt)
+                return
+            }
             let asked = try await model.backend.askPanelScreenshot()
             guard asked.onCharger else {
-                phase = .notOnCharger
+                phase = .ordered(asked.wakeAt)
                 return
             }
             phase = .waiting

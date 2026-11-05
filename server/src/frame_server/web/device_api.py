@@ -97,7 +97,8 @@ def get_screenshot(svc: Svc) -> ScreenshotView:
 @router.post("/screenshot", response_model=ScreenshotView)
 def ask_screenshot(svc: Svc) -> ScreenshotView:
     """The frame's app takes a screenshot at its next question on the
-    charger and sends it; ``taken_at`` changes once it is in."""
+    charger, or on battery at its next wake, and sends it; ``taken_at``
+    changes once it is in."""
     return svc.app.ask_capture()
 
 

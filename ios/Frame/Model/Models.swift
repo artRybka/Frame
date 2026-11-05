@@ -886,6 +886,8 @@ struct PanelScreenshot: Codable, Hashable, Sendable {
     /// The last one the server holds.
     var takenAt: String?
     var onCharger: Bool
+    /// Asleep: its next alarm, when it takes one ordered on battery.
+    var wakeAt: String? = nil
 }
 
 /// The package the server built and signed for the panel.

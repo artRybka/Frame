@@ -912,6 +912,14 @@ bez słowa do aplikacji (jak w E8). W trybie oszczędnym na zasilaczu nie było
 oszczędnym aplikacja na zasilaczu trzyma budzik na najbliższą zmianę
 (albo sprawdzenie), co najmniej 5 min naprzód.
 
+**Zrzut zamówiony na baterii (1.102.0, 2026-11-05):** śpiąca na baterii ramka
+nie zrobi zrzutu od razu, więc aplikacja iOS go zamawia (`POST
+/api/device/screenshot`, `capture_asked` w stanie). Przy najbliższej pobudce
+serwer uruchamia aplikację także przy sprawdzeniu bez nowości (`_rung`),
+odpowiada `stay` z `capture` i trzyma ramkę obudzoną, aż zrzut dojdzie, najwyżej
+3 min (`CAPTURE_AWAKE`); bez zrzutu próbuje znowu dopiero przy następnej
+pobudce. `GET /api/device/screenshot` podaje `wake_at`, godzinę najbliższego budzika.
+
 **Zrzut ekranu (E18, 2026-11-04 08:52 UTC):** działa. Prośba doszła przy
 najbliższym `/panel/next` (11 s), `captureScreen` 69 ms, `openFile` i
 `resolve` dają `SecurityError`, odczyt `XMLHttpRequest` z `file://` działa
