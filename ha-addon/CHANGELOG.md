@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.104.1
+
+- Nowa karta Bateria (po dotknięciu kafelka). Na górze ile dni zostało
+  i do kiedy mniej więcej starczy, z rozsądnym zakresem. Pod spodem wykres
+  odczytów z ostatniego tygodnia na baterii z przewidywanym spadkiem do
+  zera.
+- „Dzień ramki” to jedna lista: puste kontrole, zmiany obrazu, obrazy
+  wysłane z aplikacji, czuwanie i sen, przy każdej ile razy na dobę, ile
+  kosztuje raz i ile razem, najdroższe na górze, z dopiskiem „zmierzone”
+  albo „założenie”.
+- „Trafność”: ostatnia doba na baterii, ile ramka naprawdę zużyła, a ile
+  wynikało z wyliczeń.
+
 ## 1.104.0
 
 - Dzieła z Art Institute of Chicago przychodzą w większym rozmiarze, takim
