@@ -7,6 +7,7 @@ import base64
 import json
 from datetime import UTC, datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import httpx
 import pytest
@@ -168,7 +169,7 @@ def test_a_failed_send_is_told(service) -> None:
     service.progress.begin("Słoneczniki", render=False)
     service.progress.finish(Stage.FAILED, "panel unreachable")
     service.progress.begin("Ul", render=False)
-    service.progress.finish(Stage.WAITING, "the frame asks for it at 9:00")
+    service.progress.finish(Stage.WAITING, "Ramka pobierze go o 9:00.")
     assert told == [("send_failed", "„Słoneczniki” nie dotarł na ramkę. panel unreachable")]
 
 
@@ -662,7 +663,7 @@ def test_a_waiting_picture_keeps_its_bar_until_the_frame_wakes(
     async def run(progress) -> None:
         progress.begin("Ul", render=False)
         await asyncio.sleep(0.05)
-        progress.finish(Stage.WAITING, "the frame asks for it at 9:00")
+        progress.finish(Stage.WAITING, "Ramka pobierze go o 9:00.")
 
     _follow(service, run, monkeypatch)
     last = apple.sent[-1][3]["aps"]
@@ -694,3 +695,19 @@ def test_the_app_leaves_the_send_bar_s_token(tmp_path: Path) -> None:
         assert put.status_code == 204
         # No APNs key here: nothing will reach it, so it is not kept.
         assert [a.title for a in notifier.send_activities()] in ([], ["Ul"])
+
+
+def test_a_waiting_card_says_when_the_picture_shows() -> None:
+    from frame_server.notifications import polish_at, send_state
+    from frame_server.progress import DisplayProgress
+
+    warsaw = ZoneInfo("Europe/Warsaw")
+    now = datetime(2026, 11, 5, 8, 25, tzinfo=UTC)  # 9:25 in Warsaw, a Thursday
+    assert polish_at(datetime(2026, 11, 5, 9, 0, tzinfo=UTC), now, warsaw) == "dziś o 10:00"
+    assert polish_at(datetime(2026, 11, 6, 1, 45, tzinfo=UTC), now, warsaw) == "jutro o 02:45"
+    assert polish_at(datetime(2026, 11, 7, 6, 0, tzinfo=UTC), now, warsaw) == "w sobotę o 07:00"
+    view = DisplayProgress(stage=Stage.WAITING, wakes_at="2026-11-05T09:00:00+00:00")
+    state = send_state(view, now, warsaw)
+    assert state["label"] == "Pojawi się dziś o 10:00"
+    assert state["wakes"] == "dziś o 10:00"
+    assert "wakes" not in send_state(DisplayProgress(stage=Stage.WAITING), now, warsaw)

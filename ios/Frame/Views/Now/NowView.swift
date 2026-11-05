@@ -166,7 +166,12 @@ struct NowView: View {
                         }
                         if offset == 0, undelivered == nil, let device = model.status?.device,
                            device.powerState == "deep_sleep" {
-                            FrameAsleepNote(off: device.switchedOff == true)
+                            FrameAsleepNote(
+                                off: device.switchedOff == true,
+                                // Asleep for the economy mode, not "Głęboki sen" or unplugged.
+                                economy: model.settings?.isEconomy == true && device.restUntil == nil
+                                    && device.wifiLost != true
+                            )
                                 .transition(.opacity)
                         }
                         if offset == 0, let device = model.status?.device, let pending = modePendingText(device) {
@@ -499,7 +504,9 @@ struct NowView: View {
                 .frame(maxWidth: model.isPortrait ? 420 : .infinity)
                 .transition(.opacity)
             }
-            if undelivered != nil {
+            // A picture waiting for the frame is the next change itself: no
+            // "Następna zmiana" under it, only a pin that can be undone.
+            if let undelivered, !undelivered.isWaiting || player?.hold != nil {
                 schedule
             }
         }
@@ -690,7 +697,8 @@ struct NowView: View {
     /// the next change (a check between changes, "Sprawdzenia"): the
     /// "Ramka śpi" card below no longer says when.
     private var wakeLine: String? {
-        guard offset == 0, let device = model.status?.device, device.powerState == "deep_sleep",
+        guard offset == 0, undelivered?.isWaiting != true,  // its line above says when
+              let device = model.status?.device, device.powerState == "deep_sleep",
               let wake = When.date(device.wakeAt), let at = When.schedule(device.wakeAt)
         else { return nil }
         if player?.hold == nil, let next = When.date(player?.nextChangeAt),
@@ -861,6 +869,8 @@ struct OnFrameNote: View {
 struct FrameAsleepNote: View {
     /// Switched off from the app ("Wyłącz ramkę"): no alarm, only the button.
     var off = false
+    /// Asleep between the economy mode's wakes.
+    var economy = false
 
     var body: some View {
         Card(padding: 14) {
@@ -870,8 +880,8 @@ struct FrameAsleepNote: View {
                     .foregroundStyle(Theme.inkSoft)
                     .frame(width: 32)
                 VStack(alignment: .leading, spacing: 4) {
-                    Eyebrow(off ? "Ramka wyłączona" : "Ramka śpi")
-                    Text(off ? "Włączysz ją guzikiem na ramce" : "Aby zmienić obraz wcześniej, naciśnij guzik na ramce")
+                    Eyebrow(off ? "Ramka wyłączona" : economy ? "Ramka w trybie oszczędnym" : "Ramka śpi")
+                    Text(off ? "Włączysz ją przyciskiem na ramce" : "Aby zmienić obraz wcześniej, naciśnij przycisk na ramce")
                         .font(.serif(17, weight: .semibold))
                         .foregroundStyle(Theme.ink)
                         .fixedSize(horizontal: false, vertical: true)

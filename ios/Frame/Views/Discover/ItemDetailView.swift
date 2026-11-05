@@ -917,16 +917,18 @@ struct ItemDetailView: View {
     /// It gives way under the finger, a spinner while the picture is on its
     /// way and a tick once it went out.
     private var showButton: some View {
-        Button {
+        // Sent while the frame sleeps: says when it shows until it does.
+        let waiting = sending ? nil : model.waitingLabel(for: itemID)
+        return Button {
             Task { await show(.untilNextChange) }
         } label: {
             Label {
-                Text(sending ? "Wysyłam…" : sent == .done ? "Wysłano" : "Pokaż na ramce")
+                Text(sending ? "Wysyłam…" : waiting ?? (sent == .done ? "Wysłano" : "Pokaż na ramce"))
             } icon: {
                 if sending {
                     ProgressView().tint(Theme.paper)
                 } else {
-                    Image(systemName: sent == .done ? "checkmark" : "photo.fill")
+                    Image(systemName: waiting != nil ? "clock" : sent == .done ? "checkmark" : "photo.fill")
                         .contentTransition(.symbolEffect(.replace))
                 }
             }

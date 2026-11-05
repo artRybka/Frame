@@ -274,7 +274,7 @@ struct FrameTabView: View {
             return device.onNetwork == true ? "Śpi w sieci · wysyłka ją obudzi" : "Śpi · czeka na sygnał budzenia"
         case "deep_sleep":
             if device.switchedOff == true { return "Wyłączona · włączysz ją przyciskiem na ramce" }
-            if let alarm = When.at(device.wakeAt) { return "Śpi bez Wi-Fi · budzik \(alarm), wcześniej przycisk" }
+            if let alarm = When.at(device.wakeAt) { return "Śpi bez Wi-Fi · pobudka \(alarm), wcześniej przycisk" }
             return "Śpi bez Wi-Fi · obudzi ją przycisk na ramce"
         case "offline":
             return device.onNetwork == false ? "Nie ma jej w sieci Wi-Fi" : "Nie odpowiada — śpi lub poza siecią"
@@ -406,7 +406,7 @@ struct FrameTabView: View {
             Button("Wyłącz", role: .destructive) { Task { await model.restFrame(hours: nil) } }
             Button("Anuluj", role: .cancel) {}
         } message: {
-            Text("Ramka zaśnie bez Wi-Fi i bez budzika: obraz zostanie, ale nie zmieni się, a z aplikacji nie da się jej obudzić. Włączysz ją dopiero przyciskiem z tyłu ramki.")
+            Text("Ramka zaśnie bez Wi-Fi i sama się nie obudzi: obraz zostanie, ale nie zmieni się, a z aplikacji nie da się jej obudzić. Włączysz ją dopiero przyciskiem na ramce.")
         }
     }
 
@@ -2083,7 +2083,7 @@ func modePendingText(_ device: DeviceStatus) -> String? {
     let name = mode == "economy" ? "Oszczędny" : "Online"
     let when = When.at(device.wakeAt).map { " (\($0))" } ?? ""
     let asleep = device.powerState == "deep_sleep" ? " Teraz śpi bez Wi-Fi i zmiana do niej nie dotrze." : ""
-    return "Ramka przejdzie w tryb \(name) przy najbliższej pobudce\(when) albo po naciśnięciu guzika na ramce.\(asleep)"
+    return "Ramka przejdzie w tryb \(name) przy najbliższej pobudce\(when) albo po naciśnięciu przycisku na ramce.\(asleep)"
 }
 
 func certificatesText(_ expires: String) -> String {
@@ -2156,7 +2156,7 @@ struct PanelAppSection: View {
                     if Self.waitsForButton(package: package.version, onFrame: app.state.build) {
                         // A restart from the server does not install it: only
                         // a cold start by the button does (E19b, 2026-11-05).
-                        Text("Nowa wersja czeka na instalację. Przytrzymaj guzik ramki ok. 6 s, aż się wyłączy, a potem ok. 3 s, aż mrugnie zielona dioda. Ramka pobierze ją przy starcie.")
+                        Text("Nowa wersja czeka na instalację. Przytrzymaj przycisk na ramce ok. 6 s, aż się wyłączy, a potem ok. 3 s, aż mrugnie zielona dioda. Ramka pobierze ją przy starcie.")
                             .font(.caption)
                             .foregroundStyle(Theme.warn)
                     }

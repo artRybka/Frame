@@ -11,7 +11,8 @@ struct DisplayProgressBar: View {
         VStack(alignment: .leading, spacing: compact ? 7 : 10) {
             HStack(alignment: .center, spacing: compact ? 11 : 8) {
                 if let mark {
-                    NoticeMark(kind: mark)
+                    // Waiting for the frame's wake is no warning: a clock.
+                    NoticeMark(kind: mark, symbol: progress.isWaiting ? "clock" : nil)
                 } else if compact {
                     ProgressView()
                         .controlSize(.small)
@@ -55,7 +56,7 @@ struct DisplayProgressBar: View {
     /// Ended or held up: said by the same soft disc as the cards'.
     private var mark: Notice.Kind? {
         if progress.isFailed { return .error }
-        if progress.isWaiting { return .warning }
+        if progress.isWaiting { return .info }
         if progress.isDone { return .done }
         return nil
     }

@@ -37,7 +37,7 @@ import re
 import secrets
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
-from datetime import UTC, datetime, time, timedelta
+from datetime import UTC, datetime, time, timedelta, tzinfo
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from urllib.parse import quote
@@ -214,12 +214,40 @@ def apple_time(moment: datetime) -> float:
     return round(moment.timestamp() - APPLE_EPOCH, 3)
 
 
-def send_state(view: DisplayProgress, now: datetime) -> dict[str, Any]:
+_WEEKDAYS = (
+    "w poniedziałek",
+    "we wtorek",
+    "w środę",
+    "w czwartek",
+    "w piątek",
+    "w sobotę",
+    "w niedzielę",
+)
+
+
+def polish_at(moment: datetime, now: datetime, tz: tzinfo) -> str:
+    """ "dziś o 10:00", "jutro o 07:00", "w piątek o 07:00", as the app's
+    ``When.at``."""
+    local, today = moment.astimezone(tz), now.astimezone(tz).date()
+    clock = f"{local:%H:%M}"
+    if local.date() == today:
+        return f"dziś o {clock}"
+    if local.date() == today + timedelta(days=1):
+        return f"jutro o {clock}"
+    return f"{_WEEKDAYS[local.weekday()]} o {clock}"
+
+
+def send_state(view: DisplayProgress, now: datetime, tz: tzinfo = UTC) -> dict[str, Any]:
     """The card's content, as the app's SendActivityAttributes.ContentState."""
     done = view.stage == Stage.DONE
+    label = SEND_LABELS.get(view.stage.value, "")
+    wakes = None
+    if view.stage == Stage.WAITING and view.wakes_at:
+        wakes = polish_at(datetime.fromisoformat(view.wakes_at), now, tz)
+        label = f"Pojawi się {wakes}"
     state: dict[str, Any] = {
         "stage": view.stage.value,
-        "label": SEND_LABELS.get(view.stage.value, ""),
+        "label": label,
         "fraction": 1.0 if done else view.fraction,
         "heardAt": apple_time(now),
     }
@@ -227,6 +255,8 @@ def send_state(view: DisplayProgress, now: datetime) -> dict[str, Any]:
         state["phase"] = view.phase
     if view.active and view.seconds_left is not None:
         state["expectedEnd"] = apple_time(now + timedelta(seconds=view.seconds_left))
+    if wakes is not None:
+        state["wakes"] = wakes
     return state
 
 
@@ -365,6 +395,9 @@ class Notifier:
         #: Where the picture on its way is (``ProgressTracker.view``, set by
         #: the service): the Lock Screen card follows it.
         self.progress: Callable[[], DisplayProgress] | None = None
+        #: The frame's time zone (``FrameSettings.tz``, set by the service):
+        #: "dziś o 10:00" on the Lock Screen card.
+        self.tz: Callable[[], tzinfo] | None = None
         self._send_following = False
         self._send_again = False
 
@@ -895,7 +928,7 @@ class Notifier:
             return {}
         now = now or datetime.now(UTC)
         over = view.stage in (Stage.DONE, Stage.FAILED)
-        state = send_state(view, now)
+        state = send_state(view, now, self.tz() if self.tz is not None else UTC)
         results: dict[str, Sent] = {}
         gone: set[str] = set()
         async with apns.client() as client:

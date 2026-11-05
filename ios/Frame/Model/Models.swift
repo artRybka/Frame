@@ -614,20 +614,20 @@ struct Delivery: Codable, Hashable, Sendable {
         let why: String
         switch state {
         case "waiting":
-            let button = "Wcześniej: naciśnij krótko przycisk z tyłu ramki."
+            let button = "Aby pokazać obraz wcześniej, naciśnij przycisk na ramce."
             if noApp == true {
                 why = Self.noCertificates
             } else if missedWakeAt != nil, let wake = When.at(asleepUntilAt) {
                 why = "Spróbuje znowu \(wake). \(button)"
             } else if wifiLost == true {
                 let alarm = When.at(asleepUntilAt).map { " Inaczej pobierze go \($0)." } ?? ""
-                why = "Ramka śpi głęboko (tak zasypia po odpięciu zasilacza) i sygnał budzenia jej nie budzi. Naciśnij krótko przycisk z tyłu ramki, obraz trafi na nią zaraz potem.\(alarm)"
+                why = "Ramka śpi głęboko (tak zasypia po odpięciu zasilacza) i sygnał budzenia jej nie budzi. Naciśnij przycisk na ramce, obraz trafi na nią zaraz potem.\(alarm)"
             } else if deepSleep == true, asleepUntilAt == nil {
-                why = "Ramka śpi bez Wi-Fi. Naciśnij krótko przycisk z tyłu ramki, obraz trafi na nią zaraz potem."
+                why = "Ramka śpi bez Wi-Fi. Naciśnij przycisk na ramce, obraz trafi na nią zaraz potem."
             } else if asleepUntilAt != nil, deepSleep == false {
                 why = "Ramka śpi i nie odpowiedziała na sygnał budzenia. Pobierze obraz przy najbliższej pobudce. \(button)"
             } else if asleepUntilAt != nil {
-                why = "Ramka śpi bez Wi-Fi, żeby oszczędzać baterię. \(button)"
+                why = button  // "Pojawi się dziś o 10:00" above says when
             } else {
                 why = asleepUntil.map { "Ramka śpi do \($0), obraz trafi na nią po przebudzeniu." }
                     ?? "Ramka nie odpowiada, obraz trafi na nią, gdy się obudzi. \(button)"
@@ -663,6 +663,8 @@ struct DisplayProgress: Codable, Hashable, Sendable {
     var origin: String? = nil
     /// The work on its way, when it is one (older servers: nil).
     var itemId: String? = nil
+    /// Waiting: when the frame wakes and asks for the picture (1.101.1+).
+    var wakesAt: String? = nil
 
     static let idle = DisplayProgress(stage: "idle", active: false, title: "", fraction: 0)
 
@@ -689,7 +691,7 @@ struct DisplayProgress: Codable, Hashable, Sendable {
         case "downloading": "Ramka pobiera obraz"
         case "refreshing": "Ramka odświeża ekran"
         case "done": "Obraz jest na ramce"
-        case "waiting": "Obraz poczeka, aż ramka się obudzi"
+        case "waiting": When.at(wakesAt).map { "Pojawi się \($0)" } ?? "Obraz poczeka, aż ramka się obudzi"
         case "failed": "Nie udało się wysłać obrazu"
         default: ""
         }
