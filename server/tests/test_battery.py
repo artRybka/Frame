@@ -27,7 +27,7 @@ def test_a_day_at_the_schedule() -> None:
     # (three idle minutes, app.js AUTO_SLEEP, after half a minute's boot).
     assert plan.checks == pytest.approx(7.0, abs=0.2)
     assert plan.changes == pytest.approx(1.0, abs=0.2)
-    assert plan.check[2] == pytest.approx(7 * 3.5 / 60, abs=0.02)
+    assert plan.check[2] == pytest.approx(7 * 5.5 / 60, abs=0.02)
     assert sum(day_plan(FrameSettings(), START, awake, off=True).totals()[2:]) == 0
     rest = day_plan(FrameSettings(), START, awake, rest_until=START + timedelta(days=2)).totals()
     assert rest[1] > online[1] and rest[3] < online[3]
@@ -98,9 +98,9 @@ def test_wakes_and_pictures_are_counted() -> None:
     log.track(START + timedelta(hours=4), "awake", silent_wakes=1)
     log.drew()
     totals = log.activity.at(START + timedelta(hours=4, minutes=3))
-    # The check that rang meanwhile kept it up 3.5 minutes on the Wi-Fi.
-    assert totals[1] == pytest.approx(4 - 2 / 60 - 3.5 / 60)
-    assert totals[2] == pytest.approx(8.5 / 60)
+    # The check that rang meanwhile kept it up 5.5 minutes on the Wi-Fi.
+    assert totals[1] == pytest.approx(4 - 2 / 60 - 5.5 / 60)
+    assert totals[2] == pytest.approx(10.5 / 60)
     assert totals[3:] == [2, 1]
 
 
@@ -250,15 +250,34 @@ def test_a_realistic_economy_day_from_the_assumptions() -> None:
 
 
 def test_an_empty_check_lasts_as_the_app_set_the_panels_sleep() -> None:
-    """3 minutes idle; a panel refusing it keeps 5."""
+    """5 minutes idle until the app says otherwise."""
     log = BatteryLog(None)
-    assert log.activity.check_up() == pytest.approx(3.5 / 60)
-    log.auto_sleep({"ok": True, "value": "5MIN", "refused": "2MIN"})
     assert log.activity.check_up() == pytest.approx(5.5 / 60)
+    log.auto_sleep({"ok": True, "value": "10MIN", "refused": "5MIN"})
+    assert log.activity.check_up() == pytest.approx(10.5 / 60)
     log.auto_sleep({"ok": True, "value": None})  # a sleep in the network: nothing said
     log.auto_sleep("junk")
-    assert log.activity.check_idle_minutes == 5
+    assert log.activity.check_idle_minutes == 10
     settings = FrameSettings(power_mode="economy", check_every_hours=2)
     longer = day_plan(settings, START, 0.05, check_up=log.activity.check_up())
     shorter = day_plan(settings, START, 0.05)
-    assert longer.check[2] == pytest.approx(5.5 / 3.5 * shorter.check[2], rel=0.01)
+    assert longer.check[2] == pytest.approx(10.5 / 5.5 * shorter.check[2], rel=0.01)
+
+
+def test_an_empty_check_put_to_sleep_over_mdc_lasts_as_seen() -> None:
+    """Since 1.104.1 the server puts an empty check to sleep at once: about
+    a minute up, not the panel's own 5 minutes; back to those when it no
+    longer does, or has not for days."""
+    log = BatteryLog(None)
+    log.auto_sleep({"ok": True, "value": "5MIN"})
+    alarm = START
+    for minutes in (0.75, 1.0, 0.5):
+        assert log.activity.check_up(alarm) == pytest.approx(5.5 / 60)  # not yet 3
+        log.check_slept(alarm + timedelta(minutes=minutes), alarm)
+        alarm += timedelta(hours=2)
+    assert log.activity.check_up(alarm) == pytest.approx(1.25 / 60)
+    assert log.activity.check_up(alarm + timedelta(days=3)) == pytest.approx(5.5 / 60)
+    log.check_slept(alarm + timedelta(hours=1), alarm)  # not an empty check's time
+    assert len(log.activity.checks_slept) == 3
+    log.checks_stay_up()
+    assert log.activity.check_up(alarm) == pytest.approx(5.5 / 60)

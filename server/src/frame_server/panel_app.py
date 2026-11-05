@@ -1508,6 +1508,7 @@ class PanelApp:
         state.empty_sleep_at = alarm.isoformat(timespec="seconds")
         self._save(state)
         status.note_sleep(deep=True)
+        status.battery.check_slept(now + timedelta(seconds=self.empty_sleep_after), alarm)
         later = [a for a in _alarms(state) if a > alarm]
         log.info(
             "empty check at %s: the panel sleeps again over MDC at once (next alarm %s, %s)",
@@ -1542,6 +1543,7 @@ class PanelApp:
         state.empty_sleep_at = None
         if later:
             state.empty_sleep = "failed"
+            self.service.status.battery.checks_stay_up()
             state.wifi_lost = True
             log.warning(
                 "the frame did not wake at %s after an empty check's MDC sleep: its alarms "

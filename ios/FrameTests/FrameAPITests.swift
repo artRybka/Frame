@@ -664,6 +664,21 @@ final class FrameAPITests: XCTestCase {
         XCTAssertEqual(BatteryText.count(1, one: "zmiana", few: "zmiany", many: "zmian"), "1 zmiana")
     }
 
+    func testBatteryDayLinesReadingsAndCheckDecode() throws {
+        let json = #"{"configured": true, "battery": {"per_day":7.0,"days":12.1,"days_low":9.2,"days_high":16.4,"full_days":14.3,"full_days_low":10.8,"full_days_high":19.3,"hours_measured":98.0,"readings":36,"costs":{"standby_per_day":41.0,"deep_per_day":0.5,"per_wake":0.55,"per_change":0.15,"learnt":[0.98,0.1,0.6,0.3],"per_change_wake":0.7,"per_check":0.72,"app_awake_minutes":3.0,"check_minutes":3.5},"day":{"standby_hours":0.0,"deep_hours":23.3,"wakes":9.0,"changes":2.0,"standby_cost":0.0,"deep_cost":0.47,"wakes_cost":6.1,"changes_cost":0.3,"checks":7.0,"sends":1.0,"lines":[{"kind":"checks","count":7.0,"each":0.72,"cost":5.0},{"kind":"changes","count":2.0,"each":0.7,"cost":1.4}]},"recent":[["2026-11-04T21:00:00+00:00",90],["2026-11-05T21:00:00+00:00",87]],"check":{"hours":24.0,"used":6.0,"expected":7.1}}}"#
+        let status = try LiveBackend.decoder().decode(DeviceStatus.self, from: Data(json.utf8))
+        let battery = try XCTUnwrap(status.battery)
+        XCTAssertEqual(battery.day.lines?.map(\.kind), ["checks", "changes"])
+        XCTAssertEqual(battery.recent?.last?.level, 87)
+        XCTAssertNotNil(battery.recent?.first?.date)
+        XCTAssertEqual(battery.check?.used, 6.0)
+        XCTAssertEqual(battery.costs.checkMinutes, 3.5)
+        XCTAssertEqual(BatteryText.every(0.5), "co 2 dni")
+        XCTAssertEqual(BatteryText.minutes(3.5), "3,5 min")
+        XCTAssertEqual(BatteryText.lineTitle("checks"), "Puste kontrole")
+        XCTAssertEqual(BatteryText.lastSpan(24), "Ostatnia doba")
+    }
+
     func testBatteryEstimatedWhileAsleepDecodes() throws {
         let json = #"{"configured": true, "battery_level": 80, "battery": {"per_day":10.0,"days":7.8,"full_days":10.0,"full_days_low":8.0,"full_days_high":12.0,"hours_measured":40.0,"readings":20,"costs":{"standby_per_day":12.0,"deep_per_day":0.12,"per_wake":0.25,"per_change":0.3,"learnt":[0.7,0.0,0.3,0.2]},"day":{"standby_hours":15.0,"deep_hours":9.0,"wakes":2.0,"changes":1.0,"standby_cost":7.5,"deep_cost":0.04,"wakes_cost":0.5,"changes_cost":0.3},"level":78,"read_level":80,"read_at":"2026-11-02T00:10:00+00:00"}}"#
         let status = try LiveBackend.decoder().decode(DeviceStatus.self, from: Data(json.utf8))
