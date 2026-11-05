@@ -28,6 +28,8 @@ struct MuseumSearchView: View {
     /// The museums are still answering.
     @State private var asking = false
     @State private var loadingMore = false
+    /// Rounds of museum pages in a row that brought no work.
+    @State private var emptyRounds = 0
     /// The results' end is less than a screen away: time to ask for more.
     @State private var nearEnd = false
     /// What the results are for, so that coming back from a work doesn't
@@ -337,6 +339,7 @@ struct MuseumSearchView: View {
     private func search(_ key: SearchKey) async {
         results = []
         next = [:]
+        emptyRounds = 0
         guard !key.rules.isEmpty || !key.sources.isEmpty else {
             catalogue = nil
             searching = false
@@ -359,6 +362,13 @@ struct MuseumSearchView: View {
         }
         if !Task.isCancelled { searching = false }
         await museumsAnswered
+        // Nothing in the library nor on the museums' first pages: their
+        // further pages won't do better. With colours asked the server looks
+        // through random works page after page, and "Szukam…" spun for good
+        // on a mix nothing fits (Mono with turquoise, 2026-11-05).
+        if !Task.isCancelled, key == searched, (catalogue?.total ?? 0) == 0, results.isEmpty {
+            next = [:]
+        }
         if !Task.isCancelled { asking = false }
         without = []
         if !Task.isCancelled, (catalogue?.total ?? 0) == 0, results.isEmpty {
@@ -433,13 +443,23 @@ struct MuseumSearchView: View {
             let pages = next
             await loadMore(key)
             loadingMore = false
-            let moved = key != searched || results.count != found || next != pages
+            guard key == searched else {
+                moreIfNeeded()
+                return
+            }
+            emptyRounds = results.count == found ? emptyRounds + 1 : 0
+            // Rounds that bring nothing in a row: the museums have no more
+            // that fits, however many pages they still have.
+            if emptyRounds >= Self.emptyRoundsLimit { next = [:] }
+            let moved = results.count != found || next != pages
             moreIfNeeded(after: moved ? .zero : Self.retryPause)
         }
     }
 
     /// How long a round that brought nothing waits before the next.
     private static let retryPause: Duration = .seconds(10)
+    /// Rounds bringing no work after which the museums are asked no more.
+    private static let emptyRoundsLimit = 3
 
     /// The next page of each museum that has more.
     @MainActor

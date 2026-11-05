@@ -408,6 +408,21 @@ def test_monochrome_is_one_tone() -> None:
     assert "monochrome" not in analyse(Image.fromarray(pixels)).tags
 
 
+def test_a_faded_colour_print_is_not_monochrome() -> None:
+    # A Japanese print gone pale: a pink and a blue-grey robe on yellowed
+    # paper, black hair. All of it faint and warm, yet in colours.
+    pixels = np.empty((200, 200, 3), np.uint8)
+    pixels[:] = (234, 222, 194)
+    pixels[20:90, 20:120] = (228, 212, 196)
+    pixels[100:180, 60:160] = (192, 194, 190)
+    pixels[30:60, 130:180] = (40, 36, 34)
+    assert "monochrome" not in analyse(Image.fromarray(pixels)).tags
+    # The same print in sepia ink alone stays monochrome.
+    pixels[20:90, 20:120] = (200, 184, 156)
+    pixels[100:180, 60:160] = (150, 132, 104)
+    assert "monochrome" in analyse(Image.fromarray(pixels)).tags
+
+
 def test_analysis_gives_colour_shares() -> None:
     pixels = np.empty((200, 200, 3), np.uint8)
     pixels[:] = (120, 120, 118)
