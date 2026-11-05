@@ -97,9 +97,9 @@ def test_wakes_and_pictures_are_counted() -> None:
     log.track(START + timedelta(hours=4), "awake", silent_wakes=1)
     log.drew()
     totals = log.activity.at(START + timedelta(hours=4, minutes=3))
-    # The check that rang meanwhile kept it up five minutes on the Wi-Fi.
+    # The check that rang meanwhile kept it up two and a half minutes on the Wi-Fi.
     assert totals[1] == pytest.approx(4 - 2 / 60 - 2.5 / 60)
-    assert totals[2] == pytest.approx(10 / 60)
+    assert totals[2] == pytest.approx(7.5 / 60)
     assert totals[3:] == [2, 1]
 
 
