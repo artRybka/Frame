@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.103.1
+
+- Po powrocie do aplikacji z tła Teraz od razu pokazuje obraz, który
+  jest na ramce. Dotąd po zmianie z harmonogramu, np. w trybie
+  Oszczędnym, przez półtorej minuty (czasem dłużej) widać było poprzednie
+  dzieło.
+
 ## 1.103.0
 
 - Karta Tonacja w Szukaj → Kolor nie ma już grupy „pomiędzy”. Każde
