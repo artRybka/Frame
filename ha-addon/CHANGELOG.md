@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.100.6
+
+- Ekran ramki nie robi się biały w nocy na baterii. Aplikacja ramki
+  uruchamiała się sama także przy kontrolach bez nowego obrazu. Jej świeża
+  strona była biała, a obrazu, który pamiętała, nie rysowała drugi raz.
+  Teraz przy każdym starcie aplikacji serwer każe narysować obraz od nowa.
+- Budzik, który sam uruchamia aplikację, jest ustawiany tylko na pobudkę,
+  przy której aplikacja i tak musi działać (zmiana obrazu). Przy zwykłej
+  kontroli ramka znowu zasypia sama, bez odświeżania ekranu.
+
 ## 1.100.5
 
 - Ramka nie czeka na odpowiedź serwera, gdy ten zapisuje coś dłużej w
