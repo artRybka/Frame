@@ -107,6 +107,10 @@ RING_EARLY = timedelta(minutes=2)
 # battery). A launcher question this long after the alarm's time is not its
 # wake (the button).
 EMPTY_SLEEP_AFTER = timedelta(seconds=15)
+# Off since 2026-11-05 21:00: the camera saw the picture gone after the MDC
+# sleep, the screen a flat yellow with a faint ghost of it (an e-paper
+# refresh cut short). The empty check is left alone again (~5 min up).
+EMPTY_SLEEP = False
 EMPTY_CHECK_FOR = timedelta(minutes=3)
 # "Obudź ramkę" keeps the woken app awake (asking every ``POLL``) this long.
 KEEP_AWAKE = timedelta(minutes=10)
@@ -1407,6 +1411,8 @@ class PanelApp:
         ``EMPTY_CHECK_FOR`` ago, asleep with the Wi-Fi off, on battery, no
         new package waiting."""
         state = self.state
+        if not EMPTY_SLEEP:
+            return None
         if not state.asleep or state.standby or state.wifi_lost or state.empty_sleep == "failed":
             return None
         if self.service.status.status.power_source == "ac":

@@ -20,6 +20,7 @@ from fake_panel import FakePanel
 from fastapi.testclient import TestClient
 from PIL import Image, JpegImagePlugin
 
+from frame_server import panel_app as panel_app_module
 from frame_server import status as status_module
 from frame_server.config import Settings
 from frame_server.device.mdc import (
@@ -1529,7 +1530,7 @@ def test_the_app_says_which_picture_it_remembers(tmp_path: Path) -> None:
 
 
 async def test_the_launchers_question_starts_the_app_at_once(
-    tmp_path: Path, server_ssl: ssl.SSLContext
+    tmp_path: Path, server_ssl: ssl.SSLContext, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """2026-11-05: after a cold boot the launcher fetches sssp_config.xml
     20-25 s after the Wi-Fi is back, before the alarm's time, and never
@@ -1540,6 +1541,7 @@ async def test_the_launchers_question_starts_the_app_at_once(
     try:
         service = _service(tmp_path, panel.port)
         service.app.empty_sleep_after = 0
+        monkeypatch.setattr(panel_app_module, "EMPTY_SLEEP", True)
         service.player.save_settings(
             FrameSettings(
                 change_times=["07:00", "19:00"],
@@ -1689,7 +1691,7 @@ def _battery_panel(server_ssl: ssl.SSLContext, plugged: bool) -> FakePanel:
 
 
 async def test_an_empty_check_sleeps_over_mdc_at_once(
-    tmp_path: Path, server_ssl: ssl.SSLContext
+    tmp_path: Path, server_ssl: ssl.SSLContext, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """2026-11-05: an economy check with nothing new kept the panel up ~5 min
     with the Wi-Fi on (~1% of the battery). The server puts it to sleep over
@@ -1700,6 +1702,7 @@ async def test_an_empty_check_sleeps_over_mdc_at_once(
     try:
         service = _service(tmp_path, panel.port)
         service.app.empty_sleep_after = 0
+        monkeypatch.setattr(panel_app_module, "EMPTY_SLEEP", True)
         service.player.save_settings(
             FrameSettings(
                 change_times=["07:00", "19:00"],
@@ -1745,13 +1748,14 @@ async def test_an_empty_check_sleeps_over_mdc_at_once(
 
 
 async def test_an_alarm_lost_after_an_empty_checks_sleep_stops_it(
-    tmp_path: Path, server_ssl: ssl.SSLContext
+    tmp_path: Path, server_ssl: ssl.SSLContext, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     panel = _battery_panel(server_ssl, plugged=False)
     await panel.start()
     try:
         service = _service(tmp_path, panel.port)
         service.app.empty_sleep_after = 0
+        monkeypatch.setattr(panel_app_module, "EMPTY_SLEEP", True)
         service.player.save_settings(
             FrameSettings(
                 change_times=["07:00", "19:00"],
@@ -1787,11 +1791,44 @@ async def test_an_alarm_lost_after_an_empty_checks_sleep_stops_it(
 
 
 async def test_an_empty_check_on_the_charger_stays_up(
-    tmp_path: Path, server_ssl: ssl.SSLContext
+    tmp_path: Path, server_ssl: ssl.SSLContext, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The last reading said battery, the charger went in since: the panel
     stays up (read in the same MDC session)."""
     panel = _battery_panel(server_ssl, plugged=True)
+    await panel.start()
+    try:
+        service = _service(tmp_path, panel.port)
+        service.app.empty_sleep_after = 0
+        monkeypatch.setattr(panel_app_module, "EMPTY_SLEEP", True)
+        service.player.save_settings(
+            FrameSettings(
+                change_times=["07:00", "19:00"],
+                power_mode="economy",
+                check_every_hours=2,
+                quiet_start=None,
+            )
+        )
+        _next_change(service, _at("2026-10-28T19:00"))
+        app = service.app
+        content = service.store.current()
+        assert content is not None
+        app.answer(
+            BATTERY.model_copy(update={"shown": content.file_id}), now=_at("2026-10-28T12:00")
+        )
+        await app.launcher_up(_at("2026-10-28T13:59:40"))
+        assert (CMD_STATUS, bytes([SUB_BATTERY])) in panel.received
+        assert (CMD_POWER, b"\x00") not in panel.received
+        assert app.state.empty_sleep_at is None
+    finally:
+        await panel.stop()
+
+
+async def test_an_empty_check_is_left_alone(tmp_path: Path, server_ssl: ssl.SSLContext) -> None:
+    """2026-11-05 21:00: put to sleep over MDC 16 s after the launcher's
+    question, the panel lost its picture (flat yellow, a faint ghost): the
+    empty check is left alone again."""
+    panel = _battery_panel(server_ssl, plugged=False)
     await panel.start()
     try:
         service = _service(tmp_path, panel.port)
@@ -1812,8 +1849,7 @@ async def test_an_empty_check_on_the_charger_stays_up(
             BATTERY.model_copy(update={"shown": content.file_id}), now=_at("2026-10-28T12:00")
         )
         await app.launcher_up(_at("2026-10-28T13:59:40"))
-        assert (CMD_STATUS, bytes([SUB_BATTERY])) in panel.received
-        assert (CMD_POWER, b"\x00") not in panel.received
+        assert panel.received == []
         assert app.state.empty_sleep_at is None
     finally:
         await panel.stop()

@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.102.5
+
+- Serwer znowu nie usypia ramki przez MDC przy pustej kontroli w trybie
+  Oszczędnym (wycofane z 1.102.3). Kamera pokazała, że po takim uśpieniu
+  obraz znikał, a ekran zostawał jednolicie żółty. Ramka po pustej
+  kontroli sama zasypia po ok. 5 minutach, jak wcześniej.
+
 ## 1.102.4
 
 - Gdy po pustej kontroli, przy której serwer uśpił ramkę, wyślesz nowy
