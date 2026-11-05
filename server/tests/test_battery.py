@@ -26,7 +26,7 @@ def test_a_day_at_the_schedule() -> None:
     # 8:00 … 20:00, none in the checks' quiet hours; each up five minutes.
     assert plan.checks == pytest.approx(7.0, abs=0.2)
     assert plan.changes == pytest.approx(1.0, abs=0.2)
-    assert plan.check[2] == pytest.approx(7 * 5 / 60, abs=0.02)
+    assert plan.check[2] == pytest.approx(7 * 2.5 / 60, abs=0.02)
     assert sum(day_plan(FrameSettings(), START, awake, off=True).totals()[2:]) == 0
     rest = day_plan(FrameSettings(), START, awake, rest_until=START + timedelta(days=2)).totals()
     assert rest[1] > online[1] and rest[3] < online[3]
@@ -98,7 +98,7 @@ def test_wakes_and_pictures_are_counted() -> None:
     log.drew()
     totals = log.activity.at(START + timedelta(hours=4, minutes=3))
     # The check that rang meanwhile kept it up five minutes on the Wi-Fi.
-    assert totals[1] == pytest.approx(4 - 2 / 60 - 5 / 60)
+    assert totals[1] == pytest.approx(4 - 2 / 60 - 2.5 / 60)
     assert totals[2] == pytest.approx(10 / 60)
     assert totals[3:] == [2, 1]
 

@@ -50,9 +50,10 @@ MIN_WAKES_SEEN = 3
 WAKES_KEPT = 30
 LONGEST_WAKE = timedelta(minutes=30)
 # An economy check with nothing new: the app does not run, the panel stays up
-# on the Wi-Fi until Samsung's own sleep (app.js ``AUTO_SLEEP``) and sleeps on.
-# The server sees only the alarm that rang (``silent_wakes``).
-CHECK_UP = timedelta(minutes=5)
+# on the Wi-Fi until Samsung's own sleep (app.js ``AUTO_SLEEP``, 2 idle
+# minutes since 1.103.0, plus ~30 s of boot) and sleeps on. The server sees
+# only the alarm that rang (``silent_wakes``).
+CHECK_UP = timedelta(minutes=2, seconds=30)
 # Pictures sent from the app: so many a day, as in the last two weeks (a
 # burst within ``SEND_BURST`` is one wake), on top of the schedule.
 SENDS_FOR = timedelta(days=14)
