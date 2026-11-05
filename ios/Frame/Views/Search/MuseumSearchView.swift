@@ -53,6 +53,8 @@ struct MuseumSearchView: View {
     @State private var emptyShown = false
     @State private var lookup = TermLookup()
     @FocusState private var fieldFocused: Bool
+    /// The groups over the field: hidden while scrolling the results.
+    @State private var groupsShown = true
     /// The screen's height, for how tall an open group may be.
     @State private var height: CGFloat = 760
     /// Where the squares start, from the top of the scrolled content.
@@ -129,6 +131,7 @@ struct MuseumSearchView: View {
         }
         .scrollPosition($position)
         .scrollDismissesKeyboard(.immediately)
+        .hidesOnScroll($groupsShown)
         // Before the end shows, so the next works are mostly there already.
         .onScrollGeometryChange(for: Bool.self) { geometry in
             geometry.contentSize.height - geometry.visibleRect.maxY < geometry.containerSize.height
@@ -138,20 +141,31 @@ struct MuseumSearchView: View {
         }
         .paperPage()
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            // Always there, also while scrolling (Mateusz): the results'
-            // end stays above them.
+            // Hidden, the groups keep their room: the results' end (and the
+            // squares there) stays above them when they come back. (Taken
+            // out, they gave it up, and coming back covered the end.)
             TermFacetBar(
                 tokens: tokens, museums: museums, colors: ColorTag.families + ColorTag.moods,
                 focus: $fieldFocused, panelHeight: height * TermFacetBar.panelShare
             )
             .padding(.horizontal, Theme.gutter)
             // While typing the suggestions take their place (keeping the room).
-            .opacity(lookup.suggesting(fieldFocused) ? 0 : 1)
+            .opacity(groupsShown && !lookup.suggesting(fieldFocused) ? 1 : 0)
+            .offset(y: groupsShown ? 0 : 48)
+            .allowsHitTesting(groupsShown)
+            .accessibilityHidden(!groupsShown)
         }
         // Measured outside the groups' inset: an open group grows it.
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
         .termSuggestions(lookup, tokens: tokens, focused: $fieldFocused)
         .termSearch(lookup, tokens: tokens, focused: $fieldFocused)
+        // Tapping the field brings the groups back, as does asking nothing.
+        .onChange(of: fieldFocused) { _, focused in
+            if focused, !groupsShown { withAnimation(.snappy) { groupsShown = true } }
+        }
+        .onChange(of: asked) { _, asked in
+            if !asked, !groupsShown { withAnimation(.snappy) { groupsShown = true } }
+        }
         // A first page shorter than the screen asks for the next at once.
         .onChange(of: asking) { moreIfNeeded() }
         .task {

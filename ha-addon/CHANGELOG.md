@@ -13,6 +13,9 @@
   od razu pokazuje się „Brak dzieł spełniających kryteria” z pastylkami.
   Muzea przestają też dociągać kolejne strony po trzech pustych rundach z
   rzędu.
+- Grupy w Szukaj znowu chowają się przy przewijaniu wyników, ale wracają
+  od razu, gdy wyniki się zatrzymają (wcześniej po 1,2 s). Tak samo
+  w edytorze playlist.
 
 ## 1.101.3
 

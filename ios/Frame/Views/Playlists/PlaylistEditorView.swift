@@ -30,6 +30,8 @@ struct PlaylistEditorView: View {
     @State private var lookup = TermLookup()
     @FocusState private var fieldFocused: Bool
     @FocusState private var descriptionFocused: Bool
+    /// The groups over the field: hidden while scrolling the works.
+    @State private var groupsShown = true
     /// "Wybrane · N" was tapped: up to the playlist's works.
     @State private var showChosen = 0
     /// Where the squares start, from the top of the scrolled content.
@@ -148,17 +150,25 @@ struct PlaylistEditorView: View {
                     .coordinateSpace(.named(Self.content))
                 }
                 .scrollDismissesKeyboard(.immediately)
+                .hidesOnScroll($groupsShown)
                 .paperPage()
                 .modifier(EditorSearch(
                     enabled: playlist.kind != .album,
                     lookup: lookup,
                     tokens: tokens,
                     focused: $fieldFocused,
-                    groupsShown: !nameFocused && !descriptionFocused,
+                    groupsShown: groupsShown && !nameFocused && !descriptionFocused,
                     museums: museums
                 ))
                 .onChange(of: showChosen) {
                     withAnimation(.snappy) { scroller.scrollTo(Self.chosenID, anchor: .top) }
+                }
+                // Tapping the field brings the groups back, as does asking nothing.
+                .onChange(of: fieldFocused) { _, focused in
+                    if focused, !groupsShown { withAnimation(.snappy) { groupsShown = true } }
+                }
+                .onChange(of: asked) { _, asked in
+                    if !asked, !groupsShown { withAnimation(.snappy) { groupsShown = true } }
                 }
                 .navigationTitle(playlist.id == nil ? "Nowa playlista" : "Edycja playlisty")
                 .navigationBarTitleDisplayMode(.inline)
