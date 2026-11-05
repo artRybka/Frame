@@ -1386,6 +1386,51 @@ def test_a_screenshot_is_taken_only_when_asked_and_on_the_charger(tmp_path: Path
         assert client.post("/panel/report", content=json.dumps(probe)).status_code == 200
 
 
+def test_a_screenshot_ordered_on_battery_is_taken_at_the_next_wake(tmp_path: Path) -> None:
+    """Mateusz, 2026-11-05: "zamówienie" zrzutu przy kolejnym budzeniu. On
+    battery the order waits for the next wake (over a restart of the
+    server), the frame stays up for it, and sleeps once it is in; a try
+    that brings nothing keeps it up ``CAPTURE_AWAKE`` at most, once a wake."""
+    from frame_server.panel_app import CAPTURE_AWAKE
+
+    service = _service(tmp_path)
+    service.player.save_settings(
+        FrameSettings(
+            change_times=["07:00"], quiet_start=None, power_mode="economy", check_every_hours=1
+        )
+    )
+    now = _at("2026-11-05T12:00")
+    first = service.app.answer(BATTERY, now=now)
+    assert first.action == "sleep" and not first.capture and first.wake_at
+    view = service.app.ask_capture(now + timedelta(minutes=1))
+    assert view.asked_at and not view.on_charger and view.wake_at == first.wake_at
+
+    app = _service(tmp_path).app  # the server restarted
+    wake = datetime.fromisoformat(first.wake_at)
+    assert len(first.wakes_ms) > 1  # a check with nothing new, yet the app is started
+    assert app._rung(wake) == wake
+    answer = app.answer(BATTERY, now=wake)
+    assert answer.action == "stay" and answer.capture
+    later = app.answer(BATTERY, now=wake + timedelta(seconds=70))
+    assert later.action == "stay" and not later.capture
+    assert app.save_capture(b"\xff\xd8\xff\xe0screenshot")
+    assert app.screenshot(wake).asked_at is None and app.state.capture_asked is None
+    slept = app.answer(BATTERY, now=wake + timedelta(seconds=80))
+    assert slept.action == "sleep" and not slept.capture
+
+    # Nothing comes: up for CAPTURE_AWAKE, then asleep, and asked again
+    # at the following wake only.
+    time.sleep(0.01)
+    app.ask_capture()  # now: newer than the screenshot's file time
+    again = datetime.fromisoformat(slept.wake_at or "")
+    assert app.answer(BATTERY, now=again).capture
+    late = again + CAPTURE_AWAKE + timedelta(seconds=1)
+    gone = app.answer(BATTERY, now=late)
+    assert gone.action == "sleep" and not gone.capture
+    next_wake = datetime.fromisoformat(gone.wake_at or "")
+    assert app.answer(BATTERY, now=next_wake).capture
+
+
 async def test_new_firmware_is_told(tmp_path: Path, server_ssl: ssl.SSLContext) -> None:
     firmware = {"now": b"S-RSEDWWC-1130.7"}
 

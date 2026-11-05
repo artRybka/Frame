@@ -63,6 +63,7 @@
   var STILL_UP_MS = 4 * 60000;
   // A screenshot a minute after a drawing at the earliest (capture()).
   var CAPTURE_SETTLE_MS = 60000;
+  var capturing = false;  // a screenshot waits for CAPTURE_SETTLE_MS
 
   var ep = (typeof webapis !== "undefined" && webapis.epaper) ? webapis.epaper : null;
   var busy = false;
@@ -389,15 +390,19 @@
     // On the charger: spare alarms, so that unplugged (it sleeps at once,
     // without the Wi-Fi) the frame wakes by itself (panel_app.py).
     if (answer.action === "stay" && ep && answer.wake_ms) spare([answer.wake_ms].concat(answer.wakes_ms || []));
-    // The probe and a screenshot only on the charger: "stay" is also a
-    // frame kept awake from the iOS app on battery.
-    if (answer.action === "stay" && onCharger()) {
-      if (saved("probed") !== CODE) setTimeout(probe, 5000);
-      // A minute after a drawing at the earliest: 33 s after one the
-      // screenshot was still all white (2026-11-04).
-      if (answer.capture) setTimeout(capture, Math.max(3000, drawnAt + CAPTURE_SETTLE_MS - Date.now()));
-    } else if (answer.capture) {
-      report("capture", { error: "not on the charger" });
+    // The probe only on the charger: "stay" is also a frame kept awake
+    // from the iOS app on battery.
+    if (answer.action === "stay" && onCharger() && saved("probed") !== CODE) setTimeout(probe, 5000);
+    // A screenshot when asked: on battery the server keeps the frame up for
+    // it (an order from the iOS app). A minute after a drawing at the
+    // earliest: 33 s after one the screenshot was still all white
+    // (2026-11-04). One at a time: the answers come every 10 s.
+    if (answer.action === "stay" && answer.capture && !capturing) {
+      capturing = true;
+      setTimeout(function () {
+        capturing = false;
+        capture();
+      }, Math.max(3000, drawnAt + CAPTURE_SETTLE_MS - Date.now()));
     }
     // Started over MDC by the server: the launcher's install screen drew
     // over the picture this page remembers (2026-11-04, white after an
