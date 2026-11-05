@@ -185,7 +185,7 @@ struct MuseumSearchView: View {
             }
             // CI screenshots: nothing found, and what to give up.
             if LaunchRoute.screen == "search-empty", rules.colors.isEmpty {
-                rules.colors = ["blue@most", "brown@much", "tone:vivid"]
+                rules.colors = ["orange@clear", "yellow@clear", "tone:muted"]
             }
             // CI screenshots: every museum but the Met, with a colour.
             if LaunchRoute.screen == "search-museums", rules.excludeSources.isEmpty {
