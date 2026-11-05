@@ -65,7 +65,7 @@ PROGRESS_KEY = "progress_expected"
 #: Set once the Courtauld's white pictures kept before 1.100.7 are removed.
 COURTAULD_WHITE_KEY = "courtauld_white_removed"
 NO_CERTIFICATES = (
-    "no app for the frame: copy the Samsung certificates to data/panel-app/certs on the server"
+    "Ramka nie ma aplikacji Frame: wgraj certyfikaty Samsunga w Konfiguracji → Aplikacja ramki."
 )
 
 
@@ -439,7 +439,7 @@ class FrameService:
         app gets it installed and started first."""
         content = self.store.current()
         if content is None:
-            raise RuntimeError("nothing published yet")
+            raise RuntimeError("Nie ma jeszcze obrazu do wysłania.")
         url = f"{self.settings.base_url()}{self.app.image_path(content)}"
         app, power, progress = self.app, self.power, self.progress
         if not progress.active:
@@ -499,9 +499,7 @@ class FrameService:
         power.mark_pending(True)
         wake = app.wakes_at()
         when = wake.astimezone(self.player.settings.tz()).strftime("%H:%M") if wake else None
-        message = (
-            f"the frame asks for it at {when}" if when else "the frame asks for it when it wakes"
-        )
+        message = f"Ramka pobierze go o {when}." if when else "Ramka pobierze go, gdy się obudzi."
         progress.finish(Stage.WAITING, message)
         return PushOutcome(content, pushed=False, fetched=False, content_url=url, message=message)
 

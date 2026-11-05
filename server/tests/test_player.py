@@ -377,7 +377,7 @@ async def test_timed_hold_ends_with_the_next_picture(service) -> None:
 async def test_push_without_panel_reports_an_error(service) -> None:
     _add(service, 1, (200, 40, 40), "Ala")
     await service.player.next()
-    assert "panel not configured" in (service.player.state.last_error or "")
+    assert "nie jest jeszcze ustawiona" in (service.player.state.last_error or "")
 
 
 def test_public_host_accepts_a_url() -> None:

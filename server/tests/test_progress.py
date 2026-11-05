@@ -191,7 +191,7 @@ async def test_unreachable_panel_leaves_the_picture_waiting(service) -> None:
 
     # No Samsung certificates: no app to start, and the app says so.
     outcome = await service.push_current(wait=1)
-    assert not outcome.pushed and "certificates" in outcome.message
+    assert not outcome.pushed and "certyfikaty" in outcome.message
     from frame_server.web.player_api import _delivery
 
     delivery = _delivery(service, service.store.current())
@@ -202,7 +202,7 @@ async def test_unreachable_panel_leaves_the_picture_waiting(service) -> None:
     outcome = await service.push_current(wait=1)
     assert not outcome.pushed
     view = service.progress.view()
-    assert view.stage == Stage.WAITING and "when it wakes" in (view.message or "")
+    assert view.stage == Stage.WAITING and "gdy się obudzi" in (view.message or "")
     assert service.power.state.pending_push
 
 
@@ -236,4 +236,4 @@ async def test_player_failure_ends_the_run(service) -> None:
     service.importer.add_upload(jpeg_bytes((200, 40, 40)), kind=ItemKind.OWN, title="A")
     await service.player.next()  # no panel configured
     view = service.progress.view()
-    assert view.stage == Stage.FAILED and "not configured" in (view.message or "")
+    assert view.stage == Stage.FAILED and "nie jest jeszcze ustawiona" in (view.message or "")

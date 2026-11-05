@@ -1527,7 +1527,9 @@ class PanelApp:
         the package (when the version differs) and starts the app at once.
         ``waking``: Wake-on-LAN when the panel does not answer."""
         if self.ensure_package() is None:
-            raise MdcError("no app package: upload the Samsung certificates first")
+            raise MdcError(
+                "Ramka nie ma aplikacji Frame: wgraj certyfikaty Samsunga w Konfiguracji."
+            )
         panel = self.service.panel
         async with panel.waking_session() if waking else panel.session() as mdc:
             await mdc.set_custom_app_url(self.app_url())

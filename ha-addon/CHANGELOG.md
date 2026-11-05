@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.100.9
+
+- Komunikaty serwera przy wysyłce obrazu są po polsku. Zamiast „the frame
+  asks for it at 10:00” pasek wysyłki mówi „Ramka pobierze go o 10:00.”;
+  po polsku są też komunikaty o braku certyfikatów Samsunga i o ramce bez
+  ustawionego adresu.
+
 ## 1.100.8
 
 - „Wylosuj inne” Studium dnia i „Wylosuj innego” Artystę tygodnia

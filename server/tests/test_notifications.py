@@ -168,7 +168,7 @@ def test_a_failed_send_is_told(service) -> None:
     service.progress.begin("Słoneczniki", render=False)
     service.progress.finish(Stage.FAILED, "panel unreachable")
     service.progress.begin("Ul", render=False)
-    service.progress.finish(Stage.WAITING, "the frame asks for it at 9:00")
+    service.progress.finish(Stage.WAITING, "Ramka pobierze go o 9:00.")
     assert told == [("send_failed", "„Słoneczniki” nie dotarł na ramkę. panel unreachable")]
 
 
@@ -662,7 +662,7 @@ def test_a_waiting_picture_keeps_its_bar_until_the_frame_wakes(
     async def run(progress) -> None:
         progress.begin("Ul", render=False)
         await asyncio.sleep(0.05)
-        progress.finish(Stage.WAITING, "the frame asks for it at 9:00")
+        progress.finish(Stage.WAITING, "Ramka pobierze go o 9:00.")
 
     _follow(service, run, monkeypatch)
     last = apple.sent[-1][3]["aps"]

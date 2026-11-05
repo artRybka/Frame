@@ -50,6 +50,8 @@ log = logging.getLogger(__name__)
 SETTINGS_KEY = "settings"
 STATE_KEY = "player"
 HISTORY_MAX = 50
+#: Said in the app (the send bar, a card) when no panel is set up yet.
+PANEL_NOT_SET = "Ramka nie jest jeszcze ustawiona: podaj jej adres w Połączeniu z ekranem."
 #: Next pictures whose originals are downloaded ahead of their turn.
 PREFETCH = 8  # as many as "Następne" shows in the app
 #: When no picture can be shown (offline, nothing cached), try again after this.
@@ -824,7 +826,7 @@ class Player:
 
     async def _push(self, state: PlayerState) -> None:
         if not self.service.device_configured:
-            raise RuntimeError("panel not configured (FRAME_DEVICE_HOST / FRAME_DEVICE_PIN)")
+            raise RuntimeError(PANEL_NOT_SET)
         outcome = await self.service.push_current(wait=120)
         if not outcome.fetched:
             log.warning("%s (%s)", outcome.message, outcome.content_url)

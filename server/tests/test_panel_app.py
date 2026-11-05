@@ -244,7 +244,7 @@ def test_a_waiting_picture_goes_out_at_the_wake(tmp_path: Path) -> None:
     async def push() -> None:
         outcome = await service.push_current(wait=0)
         assert not outcome.pushed
-        assert "asks for it at" in outcome.message
+        assert "pobierze go o" in outcome.message
 
     asyncio.run(push())
     assert service.power.state.pending_push
@@ -315,7 +315,7 @@ async def test_the_server_installs_and_starts_the_app(
     await panel.start()
     try:
         service = _service(tmp_path, panel.port)
-        with pytest.raises(Exception, match="certificates"):
+        with pytest.raises(Exception, match="certyfikaty"):
             await service.app.install()
         service.app.store_package(b"PK\x03\x04signed", "2.0.0")
         await service.app.install()
