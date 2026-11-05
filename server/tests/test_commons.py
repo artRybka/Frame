@@ -305,6 +305,17 @@ def test_repair_stored_items(tmp_path) -> None:
         thumb_url=f"{iiif}/full/0/default.jpg",
         width=562,
     )
+    # Stored at the API's widest before 2026-11-05: the download size now.
+    wide = aic.model_copy(
+        update={
+            "id": "aic:2",
+            "source_id": "2",
+            "image_url": f"{iiif}/1686,/0/default.jpg",
+            "thumb_url": f"{iiif}/843,/0/default.jpg",
+            "width": 2975,
+            "height": 2250,
+        }
+    )
     scan = "https://gallerycollections.courtauld.ac.uk/iiif/3/134252"
     small = Item(
         id="courtauld:p-1966-gp-264-2",
@@ -317,16 +328,18 @@ def test_repair_stored_items(tmp_path) -> None:
     large = small.model_copy(update={"id": "courtauld:p-1", "source_id": "p-1", "width": 7506})
     items = (
         *(broken, other, wikidata, tagged, drawing, prefixed, linked, photo, named, catalogued),
-        *(aic, small, large),
+        *(aic, wide, small, large),
     )
     for item in (*items, selfie):
         lib.upsert(item)
 
-    assert repair_library(lib) == 10
+    assert repair_library(lib) == 11
     assert lib.get(small.id).image_url == f"{scan}/full/max/0/default.jpg"
     assert lib.get(large.id).image_url == large.image_url
     assert lib.get("aic:1").image_url == f"{iiif}/400,/0/default.jpg"
     assert lib.get("aic:1").thumb_url == f"{iiif}/400,/0/default.jpg"
+    assert lib.get("aic:2").image_url == f"{iiif}/!3000,3000/0/default.jpg"
+    assert lib.get("aic:2").thumb_url == wide.thumb_url
     assert lib.get("wmc:10").title == "Skapiec"
     assert lib.get("europeana:2").title == "Babie lato"
     assert lib.get("upload:2").title == selfie.title

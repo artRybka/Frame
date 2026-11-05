@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.104.0
+
+- Dzieła z Art Institute of Chicago przychodzą w większym rozmiarze, takim
+  jak z przycisku „Pobierz” na stronie muzeum (do 3000 px zamiast 1686 px).
+  Najwięcej zyskują detale w studium dzieła, ale ramka też dostaje
+  ostrzejszy obraz. Gdyby muzeum odmówiło większego rozmiaru, serwer bierze
+  jak dotąd 1686 px.
+- Zdjęcia, które serwer już ma, zostają w starym rozmiarze, ale „Szukaj
+  lepszej kopii” w menu „…” karty dzieła pokazuje dla nich „Większe zdjęcie
+  muzeum” wśród lepszych kopii. Można je porównać jak każdą kopię
+  i pobrać przyciskiem „Pobierz większe zdjęcie”.
+- Nowe źródło dzieł: Luwr, tylko z „Użytkiem prywatnym”. Uzupełnia
+  Commons: bierze ok. 7500 obrazów z Luwru, których na Commons nie ma albo
+  są tam mniejsze niż zdjęcia Luwru (1500 px), np. szkice olejne
+  Valenciennes’a, Oudry, Prud’hon, Hubert Robert. Słynne obrazy w lepszej
+  jakości zostają z Commons.
+- Pierwsze spisanie obrazów trwa ok. godziny w tle, potem serwer sprawdza
+  nowe raz w miesiącu w nocy. Pomija zdjęcia innych instytucji (warunki
+  Luwru wymagają na nie ich zgody).
+- Karta dzieła z Luwru pokazuje prawdziwy rozmiar z wymiarów Luwru.
+
 ## 1.103.1
 
 - Po powrocie do aplikacji z tła Teraz od razu pokazuje obraz, który
@@ -7,13 +28,18 @@
   Oszczędnym, przez półtorej minuty (czasem dłużej) widać było poprzednie
   dzieło.
 - Kafelek Bateria pokazuje realny czas pracy dla każdego harmonogramu, od
-  obecnego poziomu baterii. Wcześniej serwer brał każdą pobudkę za ok.
-  pół godziny przytomności, bo liczył też godziny na zasilaczu, i np. przy
+  obecnego poziomu baterii. Wcześniej serwer brał każdą pobudkę za ok. pół
+  godziny przytomności, bo liczył też godziny na zasilaczu, i np. przy
   harmonogramie testowym wychodziło 1,3 dnia zamiast ok. 4. Teraz czas
   pobudki to mediana z ostatnich pobudek na baterii, pusta kontrola liczy
-  się jako ok. 2,5 minuty w sieci, a obrazy wysłane z aplikacji jako średnia
-  z ostatnich dwóch tygodni. Założenia startowe pochodzą z testów tej
-  ramki.
+  się tak długo, jak ustawiła ją aplikacja ramki (3 albo 5 min), a obrazy
+  wysłane z aplikacji jako średnia z ostatnich dwóch tygodni. Założenia
+  startowe pochodzą z testów tej ramki.
+- Ramka nie przyjęła samousypiania po 2 minutach (Samsung pozwala tylko na
+  3, 5, 10, 20, 30 albo 60 minut) i przy pustej kontroli dalej czekała 5
+  minut. Teraz zasypia po 3 minutach, najkrótszym możliwym czasie, co
+  oszczędza ok. 2 minuty Wi-Fi na każdej kontroli bez nowego obrazu.
+  Szacunek pobudek w Ramce liczy kontrolę jako ok. 3,5 minuty.
 
 ## 1.103.0
 

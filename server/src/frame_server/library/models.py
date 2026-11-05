@@ -104,6 +104,7 @@ COLLECTIONS = frozenset(
         "vam",
         "wellcome",
         "courtauld",
+        "louvre",
     }
 )
 

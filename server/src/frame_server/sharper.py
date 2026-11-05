@@ -35,7 +35,7 @@ from .imaging.layout import load_image
 from .library import Item, ItemKind
 from .library.colors import tint_spread
 from .library.duplicates import same_work, surname
-from .library.images import BYTES, IMAGE_MAX, display_copy
+from .library.images import BYTES, IMAGE_MAX, display_copy, own_copy
 from .library.likeness import Likeness
 from .library.models import Note, SharperCopy
 from .library.vocabulary import artist_matches, is_copy, is_photograph, is_reproduction
@@ -447,6 +447,22 @@ class Sharper:
                 stored = self._measure_again(stored)
             self._cut_again(item)
         self._remember(stored, "kept", "", own)
+        return stored
+
+    def own_again(self, item: Item) -> Item:
+        """The work's own picture downloaded again from its source, in place
+        of a smaller one kept from before (an AIC work's download size,
+        Mateusz 2026-11-05) or of a copy standing in for it."""
+        stored = self.library.get(item.id) or item
+        own = self.own_size(stored)
+        img = self.images.sample(own_copy(stored), urgent=True)
+        if stored.sharper is not None:
+            stored = self.library.update(item.id, sharper=None) or stored
+        self.images.adopt(stored, img)
+        stored = self._measure_again(stored)
+        self._cut_again(item)
+        self._remember(stored, "kept", "", own)
+        log.info("own picture of %s again: %d×%d", item.id, *img.size)
         return stored
 
     def own_size(self, item: Item) -> tuple[int, int, int] | None:

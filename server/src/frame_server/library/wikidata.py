@@ -32,6 +32,7 @@ PROPERTIES = {
     "cma": "P11110",  # Cleveland Museum of Art ID: the accession number
     "rijks": "P13234",  # Rijksmuseum ID (Linked Art)
     "wikiart": "P6002",  # WikiArt ID: "artist/work"
+    "louvre": "P9394",  # Louvre Museum ARK ID: the number without "cl"
 }
 
 #: P21 (sex or gender) values.

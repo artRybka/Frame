@@ -312,6 +312,7 @@ struct CopiesSheet: View {
         case "vam": "V&A"
         case "wellcome": "Wellcome"
         case "courtauld": "Courtauld"
+        case "louvre": "Luwr"
         default: Names.source(key)
         }
     }
@@ -329,7 +330,7 @@ struct CopyRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            ArtImage(ref: .thumb(copy.isOwn ? work.id : copy.itemId), placeholder: Theme.mat, maxPixel: 240)
+            ArtImage(ref: .thumb(copy.isMuseums ? work.id : copy.itemId), placeholder: Theme.mat, maxPixel: 240)
                 .frame(width: 74, height: 56)
                 .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
             VStack(alignment: .leading, spacing: 3) {
@@ -386,6 +387,7 @@ struct CopyRow: View {
         guard copy.width > 0, copy.height > 0 else { return "rozmiar nieznany" }
         var text = "\(copy.width) × \(copy.height) px"
         if copy.isOwn { text += " · zdjęcie muzeum" }
+        if copy.isLarger { text += " · plik z muzeum" }
         return text
     }
 
@@ -441,6 +443,7 @@ struct CopyRow: View {
         case "reproduction": CopyTag.Tag(text: "Reprodukcja", tone: .bad)
         case "other": CopyTag.Tag(text: "Inne dzieło", tone: .bad)
         case "unseen": CopyTag.Tag(text: "Nie udało się porównać", tone: .bad)
+        case "larger": CopyTag.Tag(text: "Większe zdjęcie muzeum", tone: .good)
         default: nil
         }
     }
@@ -555,7 +558,15 @@ struct CopyCompare: View {
         .task { await load(x: nil, y: nil) }
     }
 
-    private var otherLabel: String { copy.isOwn ? "Zdjęcie muzeum" : "Ta kopia" }
+    private var otherLabel: String {
+        copy.isOwn ? "Zdjęcie muzeum" : copy.isLarger ? "Większe zdjęcie" : "Ta kopia"
+    }
+
+    private var chooseLabel: String {
+        if copy.isOwn { return "Przywróć zdjęcie muzeum" }
+        if copy.isLarger { return "Pobierz większe zdjęcie" }
+        return copy.fits ? "Użyj tej kopii" : "Użyj mimo to"
+    }
 
     private var chooseButton: some View {
         Button {
@@ -563,7 +574,7 @@ struct CopyCompare: View {
         } label: {
             HStack(spacing: 8) {
                 if picking { ProgressView().tint(copy.fits ? Theme.paper : Theme.ink) }
-                Text(copy.isOwn ? "Przywróć zdjęcie muzeum" : copy.fits ? "Użyj tej kopii" : "Użyj mimo to")
+                Text(chooseLabel)
             }
         }
         .disabled(picking)
@@ -707,7 +718,7 @@ struct CopyCompare: View {
     }
 
     private var crop: String {
-        if copy.notes.contains("whole") || copy.isOwn { return "cały obraz" }
+        if copy.notes.contains("whole") || copy.isMuseums { return "cały obraz" }
         for note in ["fragment", "page", "turned"] where copy.notes.contains(note) {
             return CopyRow.noteTag(note)?.text.lowercased() ?? note
         }
@@ -715,7 +726,7 @@ struct CopyCompare: View {
     }
 
     private var colours: String {
-        if copy.notes.contains("colours") || copy.isOwn { return "zgodne" }
+        if copy.notes.contains("colours") || copy.isMuseums { return "zgodne" }
         for note in ["colour-off", "grey", "coloured"] where copy.notes.contains(note) {
             return CopyRow.noteTag(note)?.text.lowercased() ?? note
         }

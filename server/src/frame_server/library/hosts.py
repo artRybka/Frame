@@ -76,6 +76,9 @@ PACE = {
     # No published rules and no API: its paintings' pages and pictures
     # gently (library/courtauld.py).
     "gallerycollections.courtauld.ac.uk": 0.5,
+    # No published rules (a bot wall on its search pages): entries (JSON) and
+    # photographs gently, as from the Courtauld (library/louvre.py).
+    "collections.louvre.fr": 0.5,
 }
 #: The most requests under way at once to a host (or :func:`lane`), where
 #: its owners ask for fewer than the server's threads would send. Only
@@ -90,6 +93,7 @@ LIMITS = {
     WIKIMEDIA_MEDIA: 2,
     "nominatim.openstreetmap.org": 1,
     "gallerycollections.courtauld.ac.uk": 2,
+    "collections.louvre.fr": 2,
 }
 #: The longest a host's ``Retry-After`` (on a 429) is kept to: api.data.gov
 #: blocks a key for an hour; longer waits are taken as an hour too.
