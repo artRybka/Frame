@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.104.0
+
+- Nowe źródło dzieł: Luwr, tylko z „Użytkiem prywatnym”. Uzupełnia
+  Commons: bierze ok. 7500 obrazów z Luwru, których na Commons nie ma albo
+  są tam mniejsze niż zdjęcia Luwru (1500 px), np. szkice olejne
+  Valenciennes’a, Oudry, Prud’hon, Hubert Robert. Słynne obrazy w lepszej
+  jakości zostają z Commons.
+- Pierwsze spisanie obrazów trwa ok. godziny w tle, potem serwer sprawdza
+  nowe raz w miesiącu w nocy. Pomija zdjęcia innych instytucji (warunki
+  Luwru wymagają na nie ich zgody).
+- Karta dzieła z Luwru pokazuje prawdziwy rozmiar z wymiarów Luwru.
+
 ## 1.103.0
 
 - Karta Tonacja w Szukaj → Kolor nie ma już grupy „pomiędzy”. Każde

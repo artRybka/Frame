@@ -42,6 +42,7 @@ RANKS = {
     "vam": 0,
     "wellcome": 0,
     "courtauld": 0,
+    "louvre": 0,
     "europeana": 1,
     "wmc": 2,
     "openverse": 3,
