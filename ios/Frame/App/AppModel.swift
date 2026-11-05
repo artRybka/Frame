@@ -1455,21 +1455,31 @@ final class AppModel {
         await loadAiSettings()
     }
 
-    // MARK: Drawn again (Konfiguracja)
+    // MARK: Drawn again (held tiles in Odkrywaj, owner only)
 
     /// The artist of the week as Discover last loaded it.
     var weekArtist: ArtTheme? {
         themes?.first { $0.key.hasPrefix(ArtTheme.weekArtistPrefix) }
     }
 
+    /// A new study of the day or artist of the week is being drawn: the
+    /// held tile's menu waits for it.
+    private(set) var drawingDaily = false
+    private(set) var drawingWeekArtist = false
+
     /// Another study of the day for today, drawn by the server now;
     /// Discover shows it at once.
     func drawDailyAgain() async {
+        guard !drawingDaily else { return }
+        drawingDaily = true
+        defer { drawingDaily = false }
+        let card = notices.begin("Losuję inne Studium dnia")
         do {
             let drawn = try await backend.dailyAgain()
-            notices.done("Nowe Studium dnia", drawn.title)
             await refreshDiscover(force: true)
+            notices.end(card, .done, "Nowe Studium dnia", drawn.title)
         } catch {
+            notices.drop(card)
             showDrawn(error, nothingLeft: "Na dziś nie ma innego dzieła", "Wszystkie pasujące były już Studium dnia w ostatnim roku.")
         }
     }
@@ -1477,11 +1487,16 @@ final class AppModel {
     /// Another artist of the week, drawn by the server now; Discover shows
     /// them at once.
     func drawWeekArtistAgain() async {
+        guard !drawingWeekArtist else { return }
+        drawingWeekArtist = true
+        defer { drawingWeekArtist = false }
+        let card = notices.begin("Losuję innego Artystę tygodnia")
         do {
             let drawn = try await backend.weekArtistAgain()
-            notices.done("Nowy Artysta tygodnia", drawn.name)
             await refreshDiscover(force: true)
+            notices.end(card, .done, "Nowy Artysta tygodnia", drawn.name)
         } catch {
+            notices.drop(card)
             showDrawn(error, nothingLeft: "Nie ma innego artysty na ten tydzień", "Żaden inny nie ma w bibliotece co najmniej 12 dzieł albo był już niedawno.")
         }
     }

@@ -73,6 +73,7 @@ struct SuggestionsView: View {
                                     .frame(width: 172)
                                 }
                                 .buttonStyle(.plain)
+                                .drawWeekArtistAgainMenu(theme)
                             }
                         }
                         .fixedSize(horizontal: false, vertical: true)
