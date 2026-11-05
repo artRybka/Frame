@@ -56,7 +56,7 @@ ALL = "all"
 #: Museums asked for works by the artists the owner likes (those on offer).
 TASTE_SOURCES = (
     *("aic", "cma", "met", "rijks", "europeana", "smk"),
-    *("nga", "mnw", "mnk", "yale", "si", "wellcome", "courtauld"),
+    *("nga", "mnw", "mnk", "yale", "si", "wellcome", "courtauld", "louvre"),
 )
 #: Museums that draw random paintings for variety (those on offer). Paris
 #: Musées searches titles only, so it is not asked for artists. The Wellcome
