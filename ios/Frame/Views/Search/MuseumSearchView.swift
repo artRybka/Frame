@@ -263,8 +263,8 @@ struct MuseumSearchView: View {
             // Only once nothing more can come.
             if !searching, !asking, next.isEmpty, shownCatalogue.isEmpty, fromMuseums.isEmpty {
                 EmptyStateView(
-                    title: "Nic tu nie ma",
-                    message: "Usuń któryś z chipów albo poszukaj innymi słowami.",
+                    title: "Brak dzieł",
+                    message: "Zmień albo usuń któryś wybór.",
                     systemImage: "magnifyingglass"
                 )
             }

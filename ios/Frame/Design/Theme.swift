@@ -183,13 +183,13 @@ enum ColorTag {
             }
         }
 
-        /// "Błękit · dużo".
+        /// "Błękit · sporo".
         var name: String {
             switch self {
             case .accent: "akcent"
-            case .clear: "wyraźny"
-            case .much: "dużo"
-            case .most: "większość"
+            case .clear: "trochę"
+            case .much: "sporo"
+            case .most: "dominuje"
             }
         }
 
@@ -337,7 +337,7 @@ extension ColorTag {
     /// How a tag's dot is filled: a colour family flat, the moods with a
     /// look of their own so they read at a glance (PLAN 3.3zw, 3.3zzt):
     /// Ciepłe from golden yellow through orange to red, Chłodne from ice to
-    /// blue, Żywe a colour wheel and Stonowane the same wheel greyed,
+    /// blue, Żywe colours spread in a mesh and Stonowane the same greyed,
     /// Kolorowe a printer's raster of cyan, magenta and yellow, Mono one of
     /// black (``HalftoneDot``; small dots: quarters).
     static func fill(_ tag: String) -> AnyShapeStyle {
@@ -361,9 +361,19 @@ extension ColorTag {
                 startPoint: .topLeading, endPoint: .bottomTrailing
             ))
         case "vivid":
-            wheel([0xC8443A, 0xE08A3A, 0xE2B84A, 0x6E9F55, 0x3B8A86, 0x3C6FA8, 0x7C5A9E, 0xC8443A])
+            spread([0xC8443A, 0xE08A3A, 0xE2B84A, 0xB5508A, 0xE3A27A, 0x6E9F55, 0x7C5A9E, 0x3C6FA8, 0x3B8A86])
         case "muted":
-            wheel([0xC88378, 0xD4A678, 0xD6BD80, 0x9CB086, 0x82A69E, 0x8298AF, 0xA28EAA, 0xC88378])
+            spread([0xC88378, 0xD4A678, 0xD6BD80, 0xB98A9E, 0xD2B49A, 0x9CB086, 0xA28EAA, 0x8298AF, 0x82A69E])
+        case "light":
+            // Paper in light: white where it falls, warm cream away from it.
+            AnyShapeStyle(EllipticalGradient(
+                stops: [
+                    .init(color: .white, location: 0),
+                    .init(color: Color(hex: 0xFBF8F1), location: 0.35),
+                    .init(color: Color(hex: 0xE9E1D2), location: 1),
+                ],
+                center: UnitPoint(x: 0.32, y: 0.28), startRadiusFraction: 0, endRadiusFraction: 0.85
+            ))
         case "colorful":
             quarters([0x00AEEF, 0xEC008C, 0xFFE600, 0x00B85C])
         case "monochrome":
@@ -373,8 +383,16 @@ extension ColorTag {
         }
     }
 
-    private static func wheel(_ colours: [UInt32]) -> AnyShapeStyle {
-        AnyShapeStyle(AngularGradient(colors: colours.map { Color(hex: $0) }, center: .center, angle: .degrees(-120)))
+    /// Colours spread over the dot in patches that melt into each other,
+    /// with no point they run to (Mateusz: not a cone): a 3×3 mesh, row by
+    /// row, the rim going round the hues and a soft blend in the middle.
+    private static func spread(_ colours: [UInt32]) -> AnyShapeStyle {
+        let points: [SIMD2<Float>] = [
+            [0, 0], [0.5, 0], [1, 0],
+            [0, 0.5], [0.5, 0.5], [1, 0.5],
+            [0, 1], [0.5, 1], [1, 1],
+        ]
+        return AnyShapeStyle(MeshGradient(width: 3, height: 3, points: points, colors: colours.map { Color(hex: $0) }))
     }
 
     /// Four colours in quarters, from the top clockwise.

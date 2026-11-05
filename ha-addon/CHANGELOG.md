@@ -4,12 +4,12 @@
 
 - Nowy panel Szukaj → Kolor z dwiema kartami. W Kolorystyce wybierasz do
   trzech kolorów, a każde kolejne stuknięcie w próbkę mówi, ile go ma być:
-  akcent, wyraźny, dużo albo większość obrazu (pierścień wokół próbki
-  rośnie). Dwa kolory na „większość” to obrazy malowane głównie nimi
+  akcent, trochę, sporo albo dominuje (pierścień wokół próbki rośnie).
+  Dwa kolory na „dominuje” to obrazy malowane głównie nimi
   razem. W Tonacji są cztery przełączniki: Temperatura (ciepłe albo
   chłodne), Nasycenie (żywe albo stonowane), Barwność (kolorowe albo mono)
   i Jasność (ciemne albo jasne). Wszystko, co wybrane, musi
-  pasować naraz.
+  pasować naraz. Pusty wynik wyszukiwania mówi krótko „Brak dzieł”.
 - „Mono” (wcześniej „Monochromia”) znajduje naprawdę obrazy jednym tonem:
   czarno-białe, sepię, cyjanotypie i sangwinę, a nie ciemne obrazy olejne.
   Serwer raz po aktualizacji przelicza kolory całej biblioteki.
