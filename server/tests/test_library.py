@@ -9,7 +9,7 @@ from PIL import Image
 
 from frame_server.imaging.color import linear_to_oklab, u8_to_linear
 from frame_server.library import Item, ItemKind, Library, Playlist, PlaylistKind, PlaylistRules
-from frame_server.library.colors import analyse, family, has_colours
+from frame_server.library.colors import TONE_GROUPS, TONE_TAG, analyse, family, has_colours
 from frame_server.library.models import MINE_FAVORITES, MINE_PLAYLISTS
 from frame_server.library.museums import (
     MUSEUMS,
@@ -388,6 +388,42 @@ def test_tones_must_all_fit() -> None:
     # Older rules keep their meaning: one colour or mood of the group will do.
     assert has_colours(tags, ["warm", "blue"])
     assert has_colours(tags, ["light", "dark"])
+
+    # Analysed with the Tonacja sides: those count, the plain moods not.
+    sided = [*tags, "tone:cool", "tone:muted", "tone:colorful", "tone:medium"]
+    assert has_colours(sided, ["tone:cool", "tone:medium"])
+    assert not has_colours(sided, ["tone:cool", "tone:dark"])
+    # Two sides of one group: either will do; every group asked must fit.
+    assert has_colours(sided, ["tone:dark", "tone:medium"])
+    assert has_colours(sided, ["tone:dark", "tone:medium", "tone:cool"])
+    assert not has_colours(sided, ["tone:dark", "tone:medium", "tone:warm"])
+    assert not has_colours(sided, ["tone:dark", "tone:light"])
+
+
+def test_every_picture_has_one_side_of_each_tone_group() -> None:
+    def tones(pixels: np.ndarray) -> set[str]:
+        tags = analyse(Image.fromarray(pixels.astype(np.uint8))).tags
+        return {t.removeprefix(TONE_TAG) for t in tags if t.startswith(TONE_TAG)}
+
+    plain = np.full((200, 200, 3), 128)
+    grey = tones(plain)
+    assert grey == {"neutral", "muted", "monochrome", "medium"}
+    for group in TONE_GROUPS:
+        assert len(grey & set(group)) == 1
+    sunset = plain.copy()
+    sunset[:] = (235, 120, 40)
+    assert {"warm", "vivid"} <= tones(sunset)
+    night = plain.copy()
+    night[:] = (25, 40, 90)
+    assert {"cool", "dark"} <= tones(night)
+    paper = plain.copy()
+    paper[:] = (246, 242, 234)
+    assert "light" in tones(paper)
+    # Kolorowe is everything Mono is not.
+    patches = plain.copy()
+    for i, colour in enumerate([(200, 40, 40), (40, 80, 200), (40, 160, 60), (230, 200, 40)]):
+        patches[i * 50 : (i + 1) * 50] = colour
+    assert "colorful" in tones(patches) and "monochrome" not in tones(patches)
 
 
 def test_monochrome_is_one_tone() -> None:

@@ -151,6 +151,8 @@ enum ColorTag {
         "gray", "white",
     ]
     static let moods = ["warm", "cool", "vivid", "muted", "colorful", "monochrome", "dark", "light"]
+    /// The Tonacja card's middles, between a group's ends ("tone:neutral").
+    static let middles = ["neutral", "moderate", "medium"]
     /// Tags of colours that are only an accent of a picture ("accent:red");
     /// a picture has either a colour's own tag or its accent tag.
     static let accentPrefix = "accent:"
@@ -250,10 +252,14 @@ enum ColorTag {
 
     static func tone(_ mood: String) -> String { tonePrefix + mood }
 
-    /// The Tonacja card's pairs, one of each at most.
-    static let tonePairs = [("warm", "cool"), ("vivid", "muted"), ("colorful", "monochrome"), ("dark", "light")]
+    /// The Tonacja card's groups, one of each at most; every work is on one
+    /// side of each (the server's ``TONE_GROUPS``).
+    static let toneGroups = [
+        ["warm", "neutral", "cool"], ["vivid", "moderate", "muted"], ["colorful", "monochrome"],
+        ["dark", "medium", "light"],
+    ]
 
-    /// What a Tonacja pair is about, under its two dots ("Temperatura").
+    /// What a Tonacja group is about, under its dots ("Temperatura").
     static func toneTitle(_ left: String) -> String {
         switch left {
         case "warm": "Temperatura"
@@ -281,10 +287,13 @@ enum ColorTag {
     static func rows(_ tags: [String]) -> [[String]] {
         let accents = accentFamilies.map(accent)
         let known = Set(families + accents + moods)
+        // Not the Tonacja sides ("tone:warm"): every work has four, the
+        // plain moods say what stands out.
         return [
             families.filter(tags.contains),
             accents.filter(tags.contains),
-            moods.filter(tags.contains) + tags.filter { !known.contains($0) && !$0.hasPrefix(onlyPrefix) },
+            moods.filter(tags.contains)
+                + tags.filter { !known.contains($0) && !$0.hasPrefix(onlyPrefix) && !$0.hasPrefix(tonePrefix) },
         ]
     }
 
@@ -322,6 +331,9 @@ enum ColorTag {
         case "monochrome": "Mono"
         case "dark": "Ciemne"
         case "light": "Jasne"
+        case "neutral": "Neutralne"
+        case "moderate": "Umiarkowane"
+        case "medium": "Średnie"
         default: tag
         }
     }
@@ -351,6 +363,9 @@ enum ColorTag {
         case "monochrome": Color(hex: 0x6A6762)
         case "dark": Color(hex: 0x2E2B28)
         case "light": Color(hex: 0xEDE6D8)
+        case "neutral": Color(hex: 0xCFC9BF)
+        case "moderate": Color(hex: 0xCB8E6F)
+        case "medium": Color(hex: 0x8A847B)
         default: Theme.mat
         }
     }
@@ -383,10 +398,31 @@ extension ColorTag {
                 ],
                 startPoint: .topLeading, endPoint: .bottomTrailing
             ))
+        // Żywe pure and full, Stonowane all but grey, Umiarkowane between
+        // (szkic 16: before, the three were too alike).
         case "vivid":
-            spread([0xC8443A, 0xE08A3A, 0xE2B84A, 0xB5508A, 0xE3A27A, 0x6E9F55, 0x7C5A9E, 0x3C6FA8, 0x3B8A86])
+            spread([0xFF1503, 0xFF891B, 0xFFC52D, 0xDD2890, 0xFF9B5E, 0x64BD37, 0x7C3FB9, 0x116DD3, 0x1BAAA2])
+        case "moderate":
+            spread([0xB95A53, 0xCE9057, 0xD1B365, 0xAC638D, 0xD8AB8F, 0x769C62, 0x81679B, 0x4D75A1, 0x488784])
         case "muted":
-            spread([0xC88378, 0xD4A678, 0xD6BD80, 0xB98A9E, 0xD2B49A, 0x9CB086, 0xA28EAA, 0x8298AF, 0x82A69E])
+            spread([0xA18E8D, 0xAB9E93, 0xB0AA9A, 0x9F9199, 0xBCB3AD, 0x91988D, 0x948F99, 0x848D97, 0x7C8A8A])
+        case "neutral":
+            // The grey of paper, nearly flat, lighter to darker on the
+            // slant like Ciepłe and Chłodne beside it (szkic 16, M1b); the
+            // warm and cool touches at its rim are ``MoodFill``'s.
+            AnyShapeStyle(LinearGradient(
+                colors: [Color(hex: 0xD8D2C8), Color(hex: 0xC2BCB2)],
+                startPoint: .topLeading, endPoint: .bottomTrailing
+            ))
+        case "medium":
+            AnyShapeStyle(EllipticalGradient(
+                stops: [
+                    .init(color: Color(hex: 0xA9A49C), location: 0),
+                    .init(color: Color(hex: 0x8A847B), location: 0.6),
+                    .init(color: Color(hex: 0x6F6A62), location: 1),
+                ],
+                center: UnitPoint(x: 0.32, y: 0.28), startRadiusFraction: 0, endRadiusFraction: 0.9
+            ))
         case "light":
             // Paper in light: white where it falls, warm cream away from it.
             AnyShapeStyle(EllipticalGradient(
@@ -440,6 +476,8 @@ extension ColorTag {
         case "cool": AnyShapeStyle(Color(hex: 0x3F6FA8))
         case "vivid": fill("vivid")
         case "muted": fill("muted")
+        case "moderate": fill("moderate")
+        case "neutral", "medium": AnyShapeStyle(Color(hex: 0x8A847B))
         case "colorful": AnyShapeStyle(Color(hex: 0xEC008C))
         // Ink: black in light mode, light on the dark sheet, where a black
         // ring around a black dot would not show.
@@ -451,7 +489,7 @@ extension ColorTag {
 
     /// Light swatches carry a dark tick.
     static func light(_ tag: String) -> Bool {
-        ["white", "yellow", "pink", "light", "cool"].contains(family(tag))
+        ["white", "yellow", "pink", "light", "cool", "neutral"].contains(family(tag))
     }
 }
 
@@ -482,6 +520,41 @@ struct MoodFill: View {
         GeometryReader { proxy in
             if ["colorful", "monochrome"].contains(mood), proxy.size.width >= 20 {
                 HalftoneDot(black: mood == "monochrome")
+            } else if mood == "neutral" {
+                // Neutralne: a mere touch of warm on the left rim and of
+                // cool on the right (Mateusz 2026-11-05 19:43). The arcs are
+                // sharp right at the rim and fade softly inward (19:46): a
+                // radial mask instead of a blur, which would smear the edge.
+                Circle().fill(ColorTag.fill(tag))
+                    .overlay(
+                        Circle()
+                            .fill(
+                                LinearGradient(
+                                    stops: [
+                                        .init(color: Color(hex: 0xFF9A1F).opacity(0.45), location: 0),
+                                        .init(color: .clear, location: 0.42),
+                                        .init(color: .clear, location: 0.58),
+                                        .init(color: Color(hex: 0x5F8CC0).opacity(0.45), location: 1),
+                                    ],
+                                    startPoint: .leading, endPoint: .trailing
+                                )
+                            )
+                            .mask(
+                                Circle().fill(
+                                    RadialGradient(
+                                        stops: [
+                                            .init(color: .clear, location: 0.62),
+                                            .init(color: .black.opacity(0.35), location: 0.82),
+                                            .init(color: .black, location: 1),
+                                        ],
+                                        center: .center,
+                                        startRadius: 0,
+                                        endRadius: proxy.size.width / 2
+                                    )
+                                )
+                            )
+                    )
+                    .clipShape(Circle())
             } else {
                 Circle().fill(ColorTag.fill(tag))
             }

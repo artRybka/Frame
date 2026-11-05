@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.103.0
+
+- Karta Tonacja w Szukaj → Kolor nie ma już grupy „pomiędzy”. Każde
+  dzieło jest w każdej grupie dokładnie w jednym kółku, więc kółka razem
+  dają całą bibliotekę. Temperatura, Nasycenie i Jasność mają trzecie,
+  środkowe kółko: Ciepłe · Neutralne · Chłodne, Żywe · Umiarkowane ·
+  Stonowane, Ciemne · Średnie · Jasne. Barwność zostaje na dwa: Kolorowe
+  to wszystko poza Mono. Grupy stoją po dwie w rzędzie.
+- W grupie można wybrać dwa sąsiednie kółka, np. Ciemne i Średnie: obejmuje
+  je jeden pierścień, a nad wynikami stoi żeton „Ciemne albo średnie”.
+- Kropki Nasycenia wyraźniej się różnią: Żywe w czystych barwach,
+  Stonowane prawie szare. Neutralne to płaska szarość.
+- „Żywe” znów coś znajduje: liczy się najbarwniejsza część obrazu, a nie
+  średnia z całego (dotąd prawie nigdy nie wypadało).
+- Po aktualizacji serwer raz przelicza kolory całej biblioteki. Do końca
+  przeliczenia Tonacja działa po staremu.
+
 ## 1.102.6
 
 - Zmiana harmonogramu w czasie snu ramki w trybie Oszczędnym (dodana albo

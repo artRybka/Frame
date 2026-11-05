@@ -536,14 +536,24 @@ struct TermFacetPanel: View {
             Picker("Jak", selection: $colourCard) {
                 Text(colours.isEmpty ? "Kolorystyka" : "Kolorystyka · \(Set(colours.map { ColorTag.family($0.key) }).count)")
                     .tag(ColourCard.colours)
-                Text(tones.isEmpty ? "Tonacja" : "Tonacja · \(tones.count)").tag(ColourCard.tones)
+                Text(tones.isEmpty ? "Tonacja" : "Tonacja · \(toneGroupsPicked(tones))").tag(ColourCard.tones)
             }
             .pickerStyle(.segmented)
-            switch colourCard {
-            case .colours: colourGrid
-            case .tones: toneGrid
+            // Both cards laid out, the other one unseen, so the sheet keeps
+            // one height when switching (Mateusz 2026-11-05).
+            ZStack(alignment: .top) {
+                colourGrid.cardShown(colourCard == .colours)
+                toneGrid.cardShown(colourCard == .tones)
             }
         }
+    }
+
+    /// How many Tonacja groups the tokens pick a side of (Ciemne and Średnie
+    /// are one).
+    private func toneGroupsPicked(_ tones: [SearchToken]) -> Int {
+        Set(tones.map { token in
+            ColorTag.toneGroups.firstIndex { $0.contains(ColorTag.family(token.key)) } ?? -1
+        }).count
     }
 
     /// The level a family is picked at, nil for none.
@@ -616,38 +626,48 @@ struct TermFacetPanel: View {
         tokens.contains { $0.kind == "color" && ($0.key == ColorTag.tone(mood) || $0.key == mood) }
     }
 
-    /// One of a pair: picking it lets go of the other; picked, a tap lets it go.
-    private func tapTone(_ mood: String, partner: String) {
-        let on = tonePicked(mood)
-        let at = tokens.firstIndex { $0.kind == "color" && [mood, partner].contains(ColorTag.family($0.key)) && ColorTag.level(of: $0.key) == nil }
-        tokens.removeAll { $0.kind == "color" && [mood, partner].contains(ColorTag.family($0.key)) && ColorTag.level(of: $0.key) == nil }
-        guard !on else { return }
-        let key = ColorTag.tone(mood)
-        tokens.insert(SearchToken(kind: "color", key: key, name: ColorTag.name(key)), at: min(at ?? tokens.count, tokens.count))
+    /// A tap turns a side of a group on or off; sides of one group are
+    /// either-or (Ciemne or Średnie). All of a group is the same as none,
+    /// so the tap that would pick the last one leaves it alone picked.
+    private func tapTone(_ mood: String, group: [String]) {
+        let inGroup = { (token: SearchToken) in
+            token.kind == "color" && group.contains(ColorTag.family(token.key)) && ColorTag.level(of: token.key) == nil
+        }
+        let at = tokens.firstIndex(where: inGroup)
+        if tonePicked(mood) {
+            tokens.removeAll { inGroup($0) && ColorTag.family($0.key) == mood }
+            return
+        }
+        // Older rules' plain moods ("warm") turn into the card's tokens.
+        var picked = group.filter(tonePicked) + [mood]
+        // All of a group is none; two ends without the middle no range.
+        let ends = Set([group.first, group.last].compactMap { $0 })
+        if picked.count == group.count || (group.count > 2 && Set(picked) == ends) { picked = [mood] }
+        tokens.removeAll(where: inGroup)
+        let added = group.filter(picked.contains).map { side in
+            let key = ColorTag.tone(side)
+            return SearchToken(kind: "color", key: key, name: ColorTag.name(key))
+        }
+        tokens.insert(contentsOf: added, at: min(at ?? tokens.count, tokens.count))
     }
 
-    /// Three pairs in a row, Ciemne–Jasne alone under them.
+    /// Two groups in a row (szkic 14, T1): Temperatura and Nasycenie, then
+    /// Barwność and Jasność.
     private var toneGrid: some View {
-        let pairs = ColorTag.tonePairs
+        let groups = ColorTag.toneGroups
         return VStack(spacing: 18) {
-            HStack(spacing: 0) {
-                ForEach(pairs.dropLast(), id: \.0) { pair in tonePair(pair) }
-            }
-            // Under the first column, two empty columns beside it.
-            if let last = pairs.last {
-                HStack(spacing: 0) {
-                    tonePair(last)
-                    ForEach(0..<2, id: \.self) { _ in Color.clear.frame(maxWidth: .infinity, maxHeight: 1) }
+            ForEach(Array(stride(from: 0, to: groups.count, by: 2)), id: \.self) { start in
+                HStack(spacing: 8) {
+                    ForEach(groups[start..<min(start + 2, groups.count)], id: \.self) { group in toneGroup(group) }
                 }
             }
         }
         .padding(.top, 4)
     }
 
-    private func tonePair(_ pair: (String, String)) -> some View {
-        TonePair(left: pair.0, right: pair.1, picked: tonePicked) { mood in
-            let partner = mood == pair.0 ? pair.1 : pair.0
-            withAnimation(.snappy(duration: 0.25)) { tapTone(mood, partner: partner) }
+    private func toneGroup(_ group: [String]) -> some View {
+        ToneGroup(moods: group, picked: tonePicked) { mood in
+            withAnimation(.snappy(duration: 0.25)) { tapTone(mood, group: group) }
         }
     }
 
@@ -1017,28 +1037,31 @@ struct LevelSwatch: View {
     }
 }
 
-/// A pair of the Tonacja card: two mood swatches sunk in a grey track like
-/// a switch (the grey of the Kolorystyka/Tonacja picker); the picked one's
-/// ring fits in the track, the other fades. Under it one name for the pair
-/// ("Temperatura").
-struct TonePair: View {
-    /// Between the two dots.
-    private static let gap: CGFloat = 14
+/// A group of the Tonacja card: two or three mood swatches sunk in a grey
+/// track like a switch (the grey of the Kolorystyka/Tonacja picker); the
+/// picked one's ring fits in the track, the others fade. Every work is on
+/// one side of each group, the middle one where the ends aren't all of it
+/// (Mateusz 2026-11-05). Under it one name for the group ("Temperatura").
+struct ToneGroup: View {
+    /// Between the dots.
+    private static let gap: CGFloat = 12
     /// Track around the dots, enough for the picked ring.
     private static let inset: CGFloat = 7
+    private static let size: CGFloat = 34
+    /// How far a ring stands off its dots.
+    private static let ringOut: CGFloat = 5
 
-    let left: String
-    let right: String
+    let moods: [String]
     let picked: (String) -> Bool
     let action: (String) -> Void
 
     var body: some View {
-        let moods = [left, right]
         VStack(spacing: 7) {
             HStack(spacing: Self.gap) {
-                ForEach(moods, id: \.self) { mood in dot(mood, other: mood == left ? right : left) }
+                ForEach(moods, id: \.self) { mood in dot(mood, ringed: range == nil) }
             }
             .padding(Self.inset)
+            .overlay(alignment: .topLeading) { rangeRing }
             .background(
                 Capsule().fill(
                     Theme.ink.opacity(0.07)
@@ -1048,7 +1071,7 @@ struct TonePair: View {
             // What the pair is about; the picked side is told by its ring
             // alone (Mateusz: no word for it).
             let side = moods.contains(where: picked)
-            Text(ColorTag.toneTitle(left))
+            Text(ColorTag.toneTitle(moods[0]))
                 .font(.caption2.weight(side ? .semibold : .regular))
                 .foregroundStyle(side ? Theme.ink : Theme.inkSoft)
                 .lineLimit(1)
@@ -1057,24 +1080,49 @@ struct TonePair: View {
         .frame(maxWidth: .infinity)
     }
 
-    private func dot(_ mood: String, other: String) -> some View {
+    /// Two neighbours picked (Ciemne and Średnie): their indices, held in
+    /// one ring like a range from–to (szkic 15, W2).
+    private var range: ClosedRange<Int>? {
+        let on = moods.indices.filter { picked(moods[$0]) }
+        guard on.count > 1, let first = on.first, let last = on.last else { return nil }
+        return first...last
+    }
+
+    @ViewBuilder private var rangeRing: some View {
+        if let range {
+            let step = Self.size + Self.gap
+            Capsule()
+                .stroke(Theme.ink, lineWidth: 3.5)
+                .frame(
+                    width: CGFloat(range.count - 1) * step + Self.size + 2 * Self.ringOut,
+                    height: Self.size + 2 * Self.ringOut
+                )
+                .offset(x: Self.inset - Self.ringOut + CGFloat(range.lowerBound) * step, y: Self.inset - Self.ringOut)
+                .allowsHitTesting(false)
+                .transition(.opacity)
+        }
+    }
+
+    private func dot(_ mood: String, ringed: Bool) -> some View {
         let on = picked(mood)
-        let off = picked(other)
+        let off = !on && moods.contains(where: picked)
         return Button { action(mood) } label: {
             ZStack {
                 MoodFill(tag: mood)
                     .overlay(Circle().strokeBorder(Theme.ink.opacity(0.2)))
                 if on {
-                    Circle()
-                        .stroke(ColorTag.ring(mood), lineWidth: 3.5)
-                        .padding(-5)
+                    if ringed {
+                        Circle()
+                            .stroke(ColorTag.ring(mood), lineWidth: 3.5)
+                            .padding(-Self.ringOut)
+                    }
                     Image(systemName: "checkmark")
                         .font(.caption.weight(.bold))
                         .foregroundStyle(ColorTag.light(mood) ? Color(hex: 0x1D1B18) : .white)
                         .shadow(color: .black.opacity(ColorTag.light(mood) ? 0 : 0.5), radius: 1)
                 }
             }
-            .frame(width: 34, height: 34)
+            .frame(width: Self.size, height: Self.size)
             .opacity(off ? 0.38 : 1)
             .contentShape(Circle().inset(by: -8))
         }
@@ -1082,5 +1130,15 @@ struct TonePair: View {
         .sensoryFeedback(.selection, trigger: on)
         .accessibilityLabel(ColorTag.name(mood))
         .accessibilityAddTraits(on ? .isSelected : [])
+    }
+}
+
+private extension View {
+    /// One of the Kolor sheet's cards: laid out either way, seen and
+    /// touched only when it is the one picked.
+    func cardShown(_ shown: Bool) -> some View {
+        opacity(shown ? 1 : 0)
+            .allowsHitTesting(shown)
+            .accessibilityHidden(!shown)
     }
 }

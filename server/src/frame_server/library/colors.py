@@ -43,8 +43,9 @@ COLOUR_CHROMA = 0.08
 #: an older one are analysed again (``Player.rescore``). 3: accents, ICC;
 #: 4: colour tags by area, accents tagged apart; 5: "colorful"; 6: "only:";
 #: 7: each family's share (``Item.color_shares``), "monochrome" by hue;
-#: 8: "monochrome" seen against its paper (``toned``).
-SCORE_VERSION = 8
+#: 8: "monochrome" seen against its paper (``toned``); 9: Tonacja sides
+#: (``"tone:neutral"``, ``tone_sides``).
+SCORE_VERSION = 9
 
 #: A pixel counts towards a colour family from this OKLab chroma on, or
 #: this chroma / lightness for light ones: a greyish-blue sky does, a beige
@@ -146,6 +147,34 @@ LEVEL_MOST_EACH = 0.1
 LEVEL_MOST_AREA = 0.12
 #: Moods asked from the Tonacja card (``"tone:warm"``): every one must fit.
 TONE_TAG = "tone:"
+#: The Tonacja card's groups: each picture is on exactly one side of each
+#: (Mateusz 2026-11-05: Kolorowe and Mono together are the whole library,
+#: likewise the others, with a middle where the ends are not the whole of
+#: it). Stored as ``"tone:<side>"`` tags; the plain moods above stay as
+#: they were for playlists and colour cards, which want the plain cases.
+TONE_GROUPS = (
+    ("warm", "neutral", "cool"),
+    ("vivid", "moderate", "muted"),
+    ("colorful", "monochrome"),
+    ("dark", "medium", "light"),
+)
+#: Temperatura: the picture's colour along the warm (orange, OKLab hue
+#: ``TONE_WARM_HUE``) to cool axis, chroma-weighted mean; warm from
+#: ``TONE_WARM``, cool below ``TONE_COOL`` (a little below zero: plain
+#: grey is neutral). Old art is mostly warm: of 490 Cleveland works 51%
+#: warm, 45% neutral, 4% cool.
+TONE_WARM_HUE = 60.0
+TONE_WARM = 0.025
+TONE_COOL = -0.002
+#: Nasycenie: the chroma of the picture's most colourful tenth; vivid from
+#: ``TONE_VIVID_CHROMA``, muted below ``TONE_MUTED_CHROMA`` (16% / 52% /
+#: 33% of the Cleveland works).
+TONE_VIVID_CHROMA = 0.065
+TONE_MUTED_CHROMA = 0.035
+#: Jasność: mean lightness; dark below ``TONE_DARK``, light from
+#: ``TONE_LIGHT`` (20% / 59% / 21%).
+TONE_DARK = 0.53
+TONE_LIGHT = 0.72
 
 #: Dominant colours closer than this (``_distance``) read as one.
 MERGE = 0.06
@@ -389,7 +418,26 @@ def colour_tags(
         tags.append("dark")
     elif mean_light > 0.8:
         tags.append("light")
-    return tags
+    return tags + [TONE_TAG + side for side in tone_sides(lab, "monochrome" in tags)]
+
+
+def tone_sides(lab: np.ndarray, monochrome: bool) -> list[str]:
+    """The picture's side of each Tonacja group (``TONE_GROUPS``), one each."""
+    chroma = np.hypot(lab[:, 1], lab[:, 2])
+    hue = np.arctan2(lab[:, 2], lab[:, 1])
+    warmth = float((chroma * np.cos(hue - np.radians(TONE_WARM_HUE))).mean())
+    vivid = float(np.percentile(chroma, 90))
+    light = float(lab[:, 0].mean())
+    return [
+        "warm" if warmth >= TONE_WARM else "cool" if warmth < TONE_COOL else "neutral",
+        "vivid"
+        if vivid >= TONE_VIVID_CHROMA
+        else "muted"
+        if vivid < TONE_MUTED_CHROMA
+        else "moderate",
+        "monochrome" if monochrome else "colorful",
+        "dark" if light < TONE_DARK else "light" if light >= TONE_LIGHT else "medium",
+    ]
 
 
 def painted_in(share: dict[str, float]) -> list[str]:
@@ -511,8 +559,9 @@ def has_colours(tags: list[str], wanted: list[str], shares: dict[str, float] | N
     blue is not "only blue"."""
     have = set(tags)
     levels = [w for w in wanted if LEVEL_MARK in w]
-    tones = {w.removeprefix(TONE_TAG) for w in wanted if w.startswith(TONE_TAG)}
-    if not tones <= have or (levels and not at_levels(have, shares or {}, levels)):
+    if not _tones_fit(have, {w.removeprefix(TONE_TAG) for w in wanted if w.startswith(TONE_TAG)}):
+        return False
+    if levels and not at_levels(have, shares or {}, levels):
         return False
     old = [w for w in wanted if LEVEL_MARK not in w and not w.startswith(TONE_TAG)]
     accents = {w for w in old if w.startswith(ACCENT_TAG)}
@@ -523,6 +572,25 @@ def has_colours(tags: list[str], wanted: list[str], shares: dict[str, float] | N
         and (not accents or bool(have & accents))
         and (not only or _only(have, only))
     )
+
+
+def _tones_fit(have: set[str], sides: set[str]) -> bool:
+    """Whether a picture is on the asked sides of the Tonacja groups: in
+    each group asked, one of its sides (Ciemne or Średnie); every group
+    asked must fit. Analysed before the sides, its plain moods stand in."""
+    sided = any(t.startswith(TONE_TAG) for t in have)
+    for group in TONE_GROUPS:
+        asked = sides & set(group)
+        if not asked:
+            continue
+        if sided:
+            if not any(TONE_TAG + side in have for side in asked):
+                return False
+        elif not asked & have:
+            return False
+    # A side of no group (an older app's mood): it must fit too.
+    rest = sides - {side for group in TONE_GROUPS for side in group}
+    return all((TONE_TAG + side in have) or side in have for side in rest)
 
 
 def level(family: str, at: str) -> str:
@@ -571,8 +639,9 @@ def _only(have: set[str], only: set[str]) -> bool:
 
 
 def shown_tags(tags: list[str]) -> list[str]:
-    """``tags`` as the app shows and counts them: without "only:"."""
-    return [t for t in tags if not t.startswith(ONLY_TAG)]
+    """``tags`` as the app shows and counts them: without "only:" and the
+    Tonacja sides ("tone:")."""
+    return [t for t in tags if not t.startswith((ONLY_TAG, TONE_TAG))]
 
 
 def _swatch(lab: np.ndarray, weight: float, accent: bool = False) -> ColorSwatch:
