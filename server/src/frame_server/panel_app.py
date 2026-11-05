@@ -100,9 +100,9 @@ KICK_EVERY = timedelta(minutes=2)
 # alarm (nights of 2026-11-04/05: ~80 s lost at every change). An alarm
 # counts this long before its time.
 RING_EARLY = timedelta(minutes=2)
-# An economy check with nothing new: left alone the panel stays up ~3 min
-# with the Wi-Fi on (app.js AUTO_SLEEP, 5 min until 1.103.2) and goes back
-# to sleep without redrawing.
+# An economy check with nothing new: left alone the panel stays up ~5.5 min
+# with the Wi-Fi on (app.js AUTO_SLEEP, the panel refuses shorter) and goes
+# back to sleep without redrawing.
 # The server puts it to sleep over MDC this long after the launcher's
 # question instead (2026-11-05, Mateusz: an empty check cost ~1% of the
 # battery). A launcher question this long after the alarm's time is not its
@@ -110,8 +110,11 @@ RING_EARLY = timedelta(minutes=2)
 EMPTY_SLEEP_AFTER = timedelta(seconds=15)
 # Off since 2026-11-05 21:00: the camera saw the picture gone after the MDC
 # sleep, the screen a flat yellow with a faint ghost of it (an e-paper
-# refresh cut short). The empty check is left alone again (AUTO_SLEEP).
-EMPTY_SLEEP = False
+# refresh cut short; app.js had moved Samsung's daily refresh to that very
+# check). On again since 1.104.1 (Mateusz 2026-11-06 00:05): the refresh
+# rides on the last alarm of a sleep, and only a check the app's "sleep"
+# report says carries no refresh is put to sleep (``refresh_for``).
+EMPTY_SLEEP = True
 EMPTY_CHECK_FOR = timedelta(minutes=3)
 # "Obudź ramkę" keeps the woken app awake (asking every ``POLL``) this long.
 KEEP_AWAKE = timedelta(minutes=10)
@@ -240,6 +243,17 @@ def _launch_set(launch: object) -> bool:
     return any(isinstance(t, str) and _CLOCK.fullmatch(t) for t in times)
 
 
+def _refresh_for(data: dict[str, object]) -> str | None:
+    """A "sleep" report's ``refreshFor`` (ms), when the refresh was set or
+    already there (``refresh`` null or ok)."""
+    at, refresh = data.get("refreshFor"), data.get("refresh")
+    if not isinstance(at, int | float) or isinstance(at, bool):
+        return None
+    if refresh is not None and not (isinstance(refresh, dict) and refresh.get("ok") is True):
+        return None
+    return datetime.fromtimestamp(at / 1000, UTC).isoformat(timespec="seconds")
+
+
 class AppState(BaseModel):
     active: bool = False  # the panel's content comes from our app
     seen_at: str | None = None  # the app's last question (ISO)
@@ -286,6 +300,10 @@ class AppState(BaseModel):
     # wake at the next one; not done again).
     empty_sleep_at: str | None = None
     empty_sleep: Literal["untested", "works", "failed"] = "untested"
+    # The alarm Samsung's daily refresh rides on this sleep (ISO), as its
+    # "sleep" report says (app.js since 1.104.1). None: not said, an empty
+    # check is left alone (a sleep mid-refresh, 2026-11-05 21:00, yellow).
+    refresh_for: str | None = None
 
 
 class AppHello(BaseModel):
@@ -767,6 +785,7 @@ class PanelApp:
         state.slept_at = now.isoformat(timespec="seconds")
         state.wifi_lost = False
         state.self_start = False  # until its "sleep" report says so
+        state.refresh_for = None  # likewise
         self._save(state)
         return NextAnswer(
             action="sleep",
@@ -855,6 +874,7 @@ class PanelApp:
         state.slept_at = state.rested_at
         state.wifi_lost = False
         state.self_start = False  # until its "sleep" report says so
+        state.refresh_for = None  # likewise
         self._save(state)
         return NextAnswer(
             action="sleep",
@@ -966,10 +986,10 @@ class PanelApp:
             self._sleep_reported = datetime.now(UTC)
             self.service.status.note_sleep(deep=not self.state.standby)
             self.service.status.battery.auto_sleep(data.get("autoSleep"))
-            if _launch_set(data.get("launch")):
-                state = self.state
-                state.self_start = True
-                self._save(state)
+            state = self.state
+            state.self_start = _launch_set(data.get("launch")) or state.self_start
+            state.refresh_for = _refresh_for(data)
+            self._save(state)
         elif event == "progress":
             loaded, total = data.get("loaded"), data.get("total")
             if isinstance(loaded, int | float) and isinstance(total, int | float) and total > 0:
@@ -1442,7 +1462,12 @@ class PanelApp:
         if package is not None and state.build is not None and state.build != package.version:
             return None  # the launcher may be installing the new package
         alarms = _alarms(state)[:-1]
-        return next((a for a in alarms if a - STRAY_BEFORE <= now <= a + EMPTY_CHECK_FOR), None)
+        alarm = next((a for a in alarms if a - STRAY_BEFORE <= now <= a + EMPTY_CHECK_FOR), None)
+        if alarm is None or state.refresh_for is None:
+            return None  # an older app.js may have put the refresh on it
+        if abs(datetime.fromisoformat(state.refresh_for) - alarm) < timedelta(minutes=1):
+            return None  # Samsung's refresh: a sleep cuts it short
+        return alarm
 
     async def _sleep_empty_check(self, now: datetime) -> None:
         """An economy check with nothing new: to sleep over MDC at once

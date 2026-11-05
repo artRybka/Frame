@@ -39,10 +39,11 @@
   // (Mateusz: "sprawdzenie bez zmiany obrazu teraz sporo kosztuje"). Not
   // shorter: at a wake that needs it the app starts up to ~90 s after the
   // panel (Tizen's alarm, 22:20 that evening), and has to beat this. A
-  // panel refusing it keeps the old value. The setter takes only OFF, 3MIN,
+  // panel refusing it keeps the old value. Samsung documents only OFF, 3MIN,
   // 5MIN, 10MIN, 20MIN, 30MIN, 60MIN: "2MIN" threw TypeMismatchError
-  // (2026-11-05 23:02).
-  var AUTO_SLEEP = "3MIN";
+  // (2026-11-05 23:02), and this panel (firmware 1130.7) refused "3MIN" too
+  // with UnknownError (23:48). 5 minutes is the shortest it takes.
+  var AUTO_SLEEP = "5MIN";
   var AUTO_SLEEP_FALLBACK = "5MIN";
   var ATTEMPTS = 4;
   var ATTEMPT_DELAY_MS = 5000;
@@ -214,8 +215,11 @@
 
   // Samsung's daily screen refresh (03:00 out of the box) wakes the panel
   // on its own, also from a sleep with the Wi-Fi off (2026-10-31: up for
-  // 5 minutes at 03:00 before a 07:00 alarm). Moved to the time of the
-  // next wake, it rides along with a wake that happens anyway.
+  // 5 minutes at 03:00 before a 07:00 alarm). Moved to the time of a wake
+  // that happens anyway: the last alarm of the sleep, where the app runs.
+  // Not a check with nothing new before it: that one is meant to go back to
+  // sleep untouched, and a sleep mid-refresh left the screen a flat yellow
+  // (2026-11-05 21:00, the refresh moved to an empty check).
   function refreshAt(ms) {
     var d = new Date(ms);
     var now = call(function () { return ep.getScreenRefreshTime(); });
@@ -673,7 +677,11 @@
       }
       if (wakeMs) {
         r.alarm = arm(wakeMs);
-        r.refresh = refreshAt(wakeMs);
+        var refreshFor = more && more.length ? more[more.length - 1] : wakeMs;
+        r.refresh = refreshAt(refreshFor);
+        // The server puts an empty check to sleep over MDC only when it
+        // knows no refresh rides on it.
+        r.refreshFor = refreshFor;
       }
       if (more && more.length) {
         r.more = more.map(function (ms) {
