@@ -12,21 +12,33 @@ Only the paintings (~580, ``object-p-…``; Mateusz 2026-11-04: "Tylko
 obrazy"). The server writes them to a small JSON file under the data folder
 once, slowly (two requests a work, paced: under an hour), and looks for
 new ones once a month ("sprawdzenie katalogu raz na miesiąc wystarczy").
+
+Some of its scans are CMYK files, which its IIIF server reads as RGBA with
+nothing opaque: their JPEGs come out plain white (Borghese di Piero's
+predella, P.1966.GP.264; 2026-11-05). The tiles take the picture the
+object's page prints (``v0_high.jpg``, 768 px, drawn right), and the
+original comes as PNG, whose four channels are the CMYK ones
+(:func:`repair`).
 """
 
 from __future__ import annotations
 
+import html
+import io
 import json
 import logging
 import os
 import re
 import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 import httpx
+from PIL import Image
 
+from .images import BYTES
 from .models import Item
 from .museums import PRIVATE_LICENCE, Access, Discovery, Museum, client, strip_html
 
@@ -36,6 +48,16 @@ SITE = "https://gallerycollections.courtauld.ac.uk"
 #: Paintings' pages: "object-p-1934-sc-234" for P.1934.SC.234.
 _PAINTING = re.compile(rf"<loc>\s*{re.escape(SITE)}/(object-p-[a-z0-9-]+)\s*</loc>")
 _MANIFEST = re.compile(r"api/iiif/(O\d+)/manifest\.json")
+#: The picture the object's page prints, drawn by the site itself.
+_PRINTED = re.compile(r'<img\b[^>]*\bid="print-image"[^>]*>')
+_SRC = re.compile(r'\bsrc="([^"]+)"')
+HOST = "gallerycollections.courtauld.ac.uk"
+#: A picture from its IIIF server: …/iiif/3/<media>/<region>/<size>/0/default.jpg.
+_IIIF_JPEG = re.compile(rf"^{re.escape(SITE)}/iiif/3/[^/]+/.+/default\.jpg$")
+#: The longest side of an original asked for (the frame's 2560 px).
+ORIGINAL = 2560
+#: A picture whose every pixel is at least this light is no picture.
+BLANK = 250
 #: Looked at again after this long (the night's task, or a search).
 REFRESH_SECONDS = 30 * 24 * 3600
 RETRY_SECONDS = 6 * 3600
@@ -83,6 +105,14 @@ def record(manifest: dict[str, Any]) -> dict[str, Any] | None:
     }
 
 
+def printed(page: str) -> str:
+    """The address of the picture the object's page prints ("" without one)."""
+    tag = _PRINTED.search(page)
+    src = _SRC.search(tag.group(0)) if tag else None
+    url = html.unescape(src.group(1)) if src else ""
+    return url if url.startswith(f"{SITE}/") else ""
+
+
 def look(http: httpx.Client, slug: str) -> dict[str, Any] | None:
     """One painting's record: its page names the manifest."""
     page = http.get(f"{SITE}/{slug}")
@@ -96,7 +126,45 @@ def look(http: httpx.Client, slug: str) -> dict[str, Any] | None:
     if resp.status_code == 404:
         return None
     resp.raise_for_status()
-    return record(resp.json())
+    work = record(resp.json())
+    if work is not None:
+        work["picture"] = printed(page.text)
+    return work
+
+
+def original_url(iiif: str, width: int | None, height: int | None) -> str:
+    """The picture at most 2560 px: IIIF 3 does not enlarge without "^",
+    so a smaller scan is asked whole (``!2560,2560`` of it is a 400)."""
+    small = bool(width and height) and max(width or 0, height or 0) <= ORIGINAL
+    return f"{iiif}/full/{'max' if small else f'!{ORIGINAL},{ORIGINAL}'}/0/default.jpg"
+
+
+def blank(img: Image.Image) -> bool:
+    """Whether every pixel is (nearly) white."""
+    darkest = img.convert("L").getextrema()[0]
+    return isinstance(darkest, int | float) and darkest >= BLANK
+
+
+def from_cmyk_png(data: bytes) -> Image.Image:
+    """A PNG of a CMYK scan as the IIIF server gives it: its four channels,
+    taken for RGBA, are cyan, magenta, yellow and black."""
+    img = Image.open(io.BytesIO(data))
+    if img.mode != "RGBA":
+        raise OSError(f"a {img.mode} PNG, not a CMYK scan read as RGBA")
+    fixed = Image.merge("CMYK", img.split()).convert("RGB")
+    if blank(fixed):
+        raise OSError("the PNG is white too")
+    fixed.info[BYTES] = len(data)
+    return fixed
+
+
+def repair(url: str, img: Image.Image, fetch: Callable[[str], bytes]) -> Image.Image:
+    """The IIIF server's white JPEG of a CMYK scan, asked again as PNG and
+    read right; any other picture as it came (:attr:`ImageCache.repairs`)."""
+    if not _IIIF_JPEG.match(url) or not blank(img):
+        return img
+    log.info("courtauld: %s came white; asking for the PNG", url)
+    return from_cmyk_png(fetch(url.removesuffix(".jpg") + ".png"))
 
 
 def dimensions(text: str) -> tuple[float, float] | None:
@@ -125,8 +193,17 @@ def build(path: Path, http: httpx.Client) -> int:
         raise RuntimeError("the sitemap lists no paintings")
     works: dict[str, dict[str, Any] | None] = {}
     for slug in slugs:
+        work = known.get(slug)
+        if work is not None and "picture" not in work:
+            # Listed before the tiles took the page's picture (1.100.7).
+            try:
+                page = http.get(f"{SITE}/{slug}")
+                page.raise_for_status()
+                work["picture"] = printed(page.text)
+            except httpx.HTTPError as err:
+                log.warning("courtauld: picture of %s left for next time: %s", slug, err)
         if slug in known:
-            works[slug] = known[slug]
+            works[slug] = work
             continue
         try:
             works[slug] = look(http, slug)
@@ -137,6 +214,23 @@ def build(path: Path, http: httpx.Client) -> int:
     tmp.write_text(json.dumps(works, ensure_ascii=False))
     os.replace(tmp, path)
     return sum(1 for w in works.values() if w)
+
+
+def forget_white(folders: list[Path]) -> int:
+    """Remove the gallery's pictures kept white (before :func:`repair`), so
+    they are downloaded again; how many went."""
+    gone = 0
+    for folder in folders:
+        for path in folder.glob("courtauld_*.jpg"):
+            try:
+                with Image.open(path) as img:
+                    white = blank(img)
+            except OSError:
+                continue
+            if white:
+                path.unlink(missing_ok=True)
+                gone += 1
+    return gone
 
 
 class _Index:
@@ -166,6 +260,9 @@ class _Index:
                 return {}
             loaded = (path, stamp, {k: v for k, v in raw.items() if v})
             self._loaded = loaded
+            unseen = any("picture" not in w for w in loaded[2].values())
+            if unseen and time.time() - stamp > RETRY_SECONDS:
+                self._start(path)  # listed before the tiles took the page's picture
         return loaded[2]
 
     def _start(self, path: Path) -> None:
@@ -244,8 +341,10 @@ class CourtauldGallery(Museum):
             license=LICENCE if w.get("free") else PRIVATE_LICENCE,
             url=f"{SITE}/{slug}",
             description=w.get("about") or "",
-            image_url=f"{iiif}/full/!2560,2560/0/default.jpg",
-            thumb_url=f"{iiif}/full/!600,600/0/default.jpg",
+            image_url=original_url(iiif, w.get("width"), w.get("height")),
+            # The page's own picture: the IIIF one of a CMYK scan is white,
+            # and the phone takes tiles straight from the gallery.
+            thumb_url=w.get("picture") or f"{iiif}/full/!600,600/0/default.jpg",
             width=w.get("width"),
             height=w.get("height"),
         )

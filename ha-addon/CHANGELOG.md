@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.100.7
+
+- Obrazy z Courtauld Gallery nie są już białe. Część skanów galerii jest
+  zapisana w CMYK i jej serwer obrazów oddaje je jako białe pola. Kafelki
+  biorą teraz obraz ze strony dzieła, a oryginał serwer pobiera jako PNG i
+  sam przelicza kolory. Białe obrazy zapisane wcześniej pobierają się na
+  nowo.
+- Oryginały mniejszych obrazów z Courtauld pobierają się w pełnym
+  rozmiarze, a nie jako rozmyta miniatura.
+
 ## 1.100.6
 
 - Ekran ramki nie robi się biały w nocy na baterii. Aplikacja ramki

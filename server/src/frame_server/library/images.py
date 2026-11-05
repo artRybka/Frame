@@ -61,6 +61,10 @@ COMMONS_WIDTH = 3840
 BYTES = "frame_bytes"
 
 
+#: (address, picture as read, download another address) -> the picture.
+Repair = Callable[[str, Image.Image, Callable[[str], bytes]], Image.Image]
+
+
 class Unavailable(OSError):
     """The original cannot be had from anywhere: the host refuses programs
     (a "verify you are human" page), the file is gone, or it was tried
@@ -144,6 +148,10 @@ class ImageCache:
         #: an aggregator's copy of a museum's file. Called with the item and
         #: whether a thumbnail will do.
         self.mirrors: dict[str, Callable[[Item, bool], list[str]]] = {}
+        #: Hosts that serve some pictures wrong, and how to set them right:
+        #: called with the address, the picture as read and a way to
+        #: download another address (the Courtauld's CMYK scans come white).
+        self.repairs: dict[str, Repair] = {}
         #: When an original last failed to download (by item id).
         self._failed: dict[str, float] = {}
         self.clock: Callable[[], float] = time.monotonic
@@ -181,7 +189,7 @@ class ImageCache:
                 self._gates[host] = HostGate(limit, extra)
             return self._gates[host]
 
-    def _download(self, url: str, urgent: bool = False) -> Image.Image:
+    def _fetch(self, url: str, urgent: bool = False) -> bytes:
         """A few downloads per host at a time, ``urgent`` ones first; throttled
         ones are tried again after the wait the host asks for (a few seconds
         at most)."""
@@ -203,13 +211,22 @@ class ImageCache:
                     self.sleep(_retry_after(resp, attempt))
                     continue
                 resp.raise_for_status()
-                try:
-                    img = load_image(resp.content)
-                except Image.DecompressionBombError as err:
-                    raise TooLarge(f"{url}: {err}") from err
-                img.info[BYTES] = len(resp.content)
-                return img
+                return resp.content
         raise AssertionError("unreachable")
+
+    def _download(self, url: str, urgent: bool = False) -> Image.Image:
+        """The picture at ``url``, set right when its host serves some wrong
+        (:attr:`repairs`)."""
+        data = self._fetch(url, urgent)
+        try:
+            img = load_image(data)
+        except Image.DecompressionBombError as err:
+            raise TooLarge(f"{url}: {err}") from err
+        img.info[BYTES] = len(data)
+        repair = self.repairs.get(urlsplit(url).hostname or "")
+        if repair is not None:
+            img = repair(url, img, lambda other: self._fetch(other, urgent))
+        return img
 
     def sample(self, url: str, urgent: bool = False) -> Image.Image:
         """A picture downloaded to be looked at, not kept."""
