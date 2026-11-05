@@ -422,14 +422,19 @@ struct TermFacetPanel: View {
             .scrollDismissesKeyboard(.interactively)
             .frame(height: min(height, max(maxHeight - Self.header, 160)))
         }
-        .task {
-            await model.loadVocabulary(fresh: true)
-            // Opened with moods alone: show them.
-            if facet == .color, tokens.contains(where: { $0.kind == "color" }),
-               !tokens.contains(where: { $0.kind == "color" && ColorTag.level(of: $0.key) != nil }) {
-                colourCard = .tones
-            }
+        .task { await model.loadVocabulary(fresh: true) }
+        // Opened (or first filled) with moods alone: show them. Later
+        // changes keep the card the person is on.
+        .onChange(of: colourKeys, initial: true) { old, keys in
+            guard facet == .color, old == keys || old.isEmpty, !keys.isEmpty,
+                  !keys.contains(where: { ColorTag.level(of: $0) != nil }) else { return }
+            colourCard = .tones
         }
+    }
+
+    /// The Kolor sheet's picks, colours and moods.
+    private var colourKeys: [String] {
+        tokens.filter { $0.kind == "color" }.map(\.key)
     }
 
     /// Under the group; the Kolor sheet says what it does by itself.
