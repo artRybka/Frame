@@ -41,6 +41,14 @@ struct MuseumSearchView: View {
     /// itself, so it clears them.
     @State private var hidden: Set<String> = []
     @State private var editing: Playlist?
+    /// Nothing found: each choice with how many works the library has
+    /// without it (only those with some), to give one up with a tap.
+    @State private var without: [(token: SearchToken, count: Int)] = []
+    /// The search whose answer is all in, museums and the counts above too.
+    @State private var settled: SearchKey?
+    /// Nothing found has stayed so for a moment: only then is it said, not
+    /// at the start of every search (Mateusz).
+    @State private var emptyShown = false
     @State private var lookup = TermLookup()
     @FocusState private var fieldFocused: Bool
     /// The groups over the field: hidden while scrolling the results.
@@ -62,13 +70,17 @@ struct MuseumSearchView: View {
                 tokens += rules.excludeSources.map { SearchToken.museum($0, name: museumName($0), out: true) }
                 return tokens
             },
-            set: { tokens in
-                rules.setTokens(tokens)
-                rules.colors = tokens.filter { $0.kind == "color" }.map(\.key)
-                rules.excludeSources = tokens.filter { $0.kind == SearchToken.museumOut }.map(\.key)
-                sources = tokens.filter { $0.kind == "museum" }.map(\.key)
-            }
+            set: { tokens in (rules, sources) = rulesAsked(by: tokens) }
         )
+    }
+
+    /// The rules and museums the chips ask for.
+    private func rulesAsked(by tokens: [SearchToken]) -> (PlaylistRules, [String]) {
+        var rules = rules
+        rules.setTokens(tokens)
+        rules.colors = tokens.filter { $0.kind == "color" }.map(\.key)
+        rules.excludeSources = tokens.filter { $0.kind == SearchToken.museumOut }.map(\.key)
+        return (rules, tokens.filter { $0.kind == "museum" }.map(\.key))
     }
 
     private func museumName(_ key: String) -> String {
@@ -161,12 +173,23 @@ struct MuseumSearchView: View {
                 rules.artists = ["Utagawa Hiroshige"]
             }
             // CI screenshots: a group's choice alone, the X next to the field.
-            if ["search-chosen", "search-colors"].contains(LaunchRoute.screen), rules.colors.isEmpty {
-                rules.colors = ["blue"]
+            if LaunchRoute.screen == "search-chosen", rules.colors.isEmpty {
+                rules.colors = ["blue@much"]
+            }
+            // CI screenshots: the Kolor sheet's two cards.
+            if LaunchRoute.screen == "search-colors", rules.colors.isEmpty {
+                rules.colors = ["brown@much", "gray@clear"]
+            }
+            if LaunchRoute.screen == "search-tones", rules.colors.isEmpty {
+                rules.colors = ["tone:warm", "tone:dark"]
+            }
+            // CI screenshots: nothing found, and what to give up.
+            if LaunchRoute.screen == "search-empty", rules.colors.isEmpty {
+                rules.colors = ["orange@clear", "yellow@clear", "tone:muted"]
             }
             // CI screenshots: every museum but the Met, with a colour.
             if LaunchRoute.screen == "search-museums", rules.excludeSources.isEmpty {
-                rules.colors = ["blue"]
+                rules.colors = ["blue@much"]
                 rules.excludeSources = ["met"]
             }
         }
@@ -182,6 +205,16 @@ struct MuseumSearchView: View {
             loader?.cancel()
             // Not tied to this view's task: it goes on while a work is open.
             loader = Task { await search(key) }
+        }
+        // Said only once nothing found has lasted a moment.
+        .task(id: nothingFound) {
+            guard nothingFound else {
+                emptyShown = false
+                return
+            }
+            try? await Task.sleep(for: .milliseconds(700))
+            guard !Task.isCancelled, nothingFound else { return }
+            withAnimation(.easeOut(duration: 0.3)) { emptyShown = true }
         }
         .onChange(of: model.artistSearch, initial: true) { _, artist in
             guard let artist else { return }
@@ -234,7 +267,7 @@ struct MuseumSearchView: View {
                 }
                 TokenSummary(tokens: tokens.wrappedValue)
             }
-            if asked {
+            if asked, !nothingFound {
                 Button {
                     // The same search, museums included; the playlist asks
                     // them for what it misses up to its limit.
@@ -254,12 +287,10 @@ struct MuseumSearchView: View {
             // under them. Where a work comes from isn't shown.
             worksGrid(shownCatalogue, shownFromMuseums)
             // Only once nothing more can come.
-            if !searching, !asking, next.isEmpty, shownCatalogue.isEmpty, fromMuseums.isEmpty {
-                EmptyStateView(
-                    title: "Nic tu nie ma",
-                    message: "Usuń któryś z chipów albo poszukaj innymi słowami.",
-                    systemImage: "magnifyingglass"
-                )
+            if emptyShown {
+                NothingFound(without: without) { token in
+                    withAnimation(.snappy) { tokens.wrappedValue.removeAll { $0 == token } }
+                }
             }
             if searching || asking || !next.isEmpty {
                 // The squares say "waiting" (Mateusz): while the search is
@@ -286,6 +317,12 @@ struct MuseumSearchView: View {
             }
             .overlay(alignment: .topTrailing) { heart(summary) }
         }
+    }
+
+    /// The search is over and found nothing.
+    private var nothingFound: Bool {
+        asked && settled == searchKey && !searching && !asking && next.isEmpty
+            && shownCatalogue.isEmpty && fromMuseums.isEmpty
     }
 
     private var summary: String {
@@ -337,6 +374,38 @@ struct MuseumSearchView: View {
         if !Task.isCancelled { searching = false }
         await museumsAnswered
         if !Task.isCancelled { asking = false }
+        without = []
+        if !Task.isCancelled, (catalogue?.total ?? 0) == 0, results.isEmpty {
+            let found = await withoutEach(tokens.wrappedValue)
+            if !Task.isCancelled, key == searched { without = found }
+        }
+        if !Task.isCancelled { settled = key }
+    }
+
+    /// How many works the library has without each chip in turn, those
+    /// with some (a single chip given up is no search at all).
+    @MainActor
+    private func withoutEach(_ all: [SearchToken]) async -> [(token: SearchToken, count: Int)] {
+        guard all.count > 1 else { return [] }
+        let asks = all.prefix(6).map { token in
+            let (rules, sources) = rulesAsked(by: all.filter { $0 != token })
+            var query = LibraryQuery(rules: rules)
+            query.sources = sources
+            query.limit = 1
+            return (token, query)
+        }
+        let backend = model.backend
+        var counts: [Int: Int] = [:]
+        await withTaskGroup(of: (Int, Int).self) { group in
+            for (index, ask) in asks.enumerated() {
+                group.addTask { (index, (try? await backend.items(ask.1).total) ?? 0) }
+            }
+            for await (index, count) in group { counts[index] = count }
+        }
+        return asks.enumerated().compactMap { index, ask in
+            let count = counts[index] ?? 0
+            return count > 0 ? (ask.0, count) : nil
+        }
     }
 
     /// Takes in the museums' answers as each comes.

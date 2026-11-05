@@ -165,6 +165,9 @@ class Item(BaseModel):
     height: int | None = None
     colors: list[ColorSwatch] = Field(default_factory=list)
     color_tags: list[str] = Field(default_factory=list)
+    #: Each colour family's share of the picture (colors.colour_shares), for
+    #: colours asked at a level ("blue@much").
+    color_shares: dict[str, float] = Field(default_factory=dict)
     #: What a language model sees in the picture (ai.keywords): words in
     #: English and Polish searched with the rest of the text, and the
     #: vocabulary's subjects (``"subject:sea"``) it found.

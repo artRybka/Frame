@@ -170,7 +170,7 @@ class Importer:
         #: ``tint_spread`` of works looked at in search results, by id.
         self._spreads: OrderedDict[str, float] = OrderedDict()
         #: Colour tags of works looked at in search results, by id.
-        self._tags: OrderedDict[str, list[str]] = OrderedDict()
+        self._tags: OrderedDict[str, tuple[list[str], dict[str, float]]] = OrderedDict()
         #: Width / height of works whose source gave no size, from their
         #: thumbnails, by id.
         self._aspects: OrderedDict[str, float] = OrderedDict()
@@ -242,8 +242,13 @@ class Importer:
         its size is the work's and stays."""
         with Image.open(self.cache.ensure_thumb(item)) as thumb:
             spread = tint_spread(thumb)
-            colors, tags, score = analyse(thumb, self.palette, spread)
-        changes: dict[str, Any] = {"colors": colors, "color_tags": tags, "tint_spread": spread}
+            colors, tags, score, shares = analyse(thumb, self.palette, spread)
+        changes: dict[str, Any] = {
+            "colors": colors,
+            "color_tags": tags,
+            "color_shares": shares,
+            "tint_spread": spread,
+        }
         if item.suitability is not None:
             changes["suitability"] = score
         return self.library.update(item.id, **changes) or item.model_copy(update=changes)
@@ -251,7 +256,7 @@ class Importer:
     def _analysed(self, item: Item) -> Item:
         with Image.open(self.cache.ensure_thumb(item)) as thumb:
             spread = tint_spread(thumb)
-            colors, tags, score = analyse(thumb, self.palette, spread)
+            colors, tags, score, shares = analyse(thumb, self.palette, spread)
             width, height = item.width, item.height
             if not width or not height:
                 width, height = thumb.size
@@ -259,6 +264,7 @@ class Importer:
             update={
                 "colors": colors,
                 "color_tags": tags,
+                "color_shares": shares,
                 "suitability": score,
                 "tint_spread": spread,
                 "width": width,
@@ -303,32 +309,32 @@ class Importer:
                 self._spreads.popitem(last=False)
         return spread
 
-    def color_tags_of(self, item: Item) -> list[str] | None:
-        """``item``'s colour tags, from the library, memory or a small
-        thumbnail; None when the thumbnail cannot be had."""
-        if item.color_tags:
-            return item.color_tags
+    def colours_of(self, item: Item) -> tuple[list[str], dict[str, float]] | None:
+        """``item``'s colour tags and shares, from the library, memory or a
+        small thumbnail; None when the thumbnail cannot be had."""
+        if item.color_tags and item.color_shares:
+            return item.color_tags, item.color_shares
         stored = self.library.get(item.id)
-        if stored is not None and stored.color_tags:
-            return stored.color_tags
+        if stored is not None and stored.color_tags and stored.color_shares:
+            return stored.color_tags, stored.color_shares
         with self._remote_lock:
             if item.id in self._tags:
                 return self._tags[item.id]
         try:
             with self.cache.sample(small_thumb(item)) as img:
                 spread = tint_spread(img)
-                _, tags, _ = analyse(img, self.palette, spread)
+                _, tags, _, shares = analyse(img, self.palette, spread)
                 self._remember_aspect(item, img)
         except (httpx.HTTPError, OSError, ValueError) as err:
             log.info("no thumbnail of %s to look at: %s", item.id, err)
             return None
         with self._remote_lock:
-            self._tags[item.id] = tags
+            self._tags[item.id] = (tags, shares)
             self._spreads[item.id] = spread
             for memo in (self._tags, self._spreads):
                 while len(memo) > SPREAD_MEMO:
                     memo.popitem(last=False)
-        return tags
+        return tags, shares
 
     def _remember_aspect(self, item: Item, img: Image.Image) -> None:
         width, height = img.size
@@ -401,9 +407,11 @@ class Importer:
         if not colors or not items:
             return items
         with ThreadPoolExecutor(min(len(items), 16)) as pool:
-            found = list(pool.map(as_asked(self.color_tags_of), items))
+            found = list(pool.map(as_asked(self.colours_of), items))
         return [
-            i for i, tags in zip(items, found, strict=True) if tags and has_colours(tags, colors)
+            i
+            for i, colours in zip(items, found, strict=True)
+            if colours and colours[0] and has_colours(colours[0], colors, colours[1])
         ]
 
     def without_grey(self, items: list[Item]) -> list[Item]:
