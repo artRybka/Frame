@@ -36,6 +36,15 @@ def test_dir_bytes_skips_nas_entries(tmp_path: Path) -> None:
     assert dir_bytes(tmp_path / "missing") == 0
 
 
+def test_dir_bytes_of_one_kind(tmp_path: Path) -> None:
+    (tmp_path / "a.jpg").write_bytes(b"x" * 100)
+    (tmp_path / "a.jpg.tmp").write_bytes(b"x" * 7)
+    (tmp_path / "sizes.json").write_bytes(b"x" * 3)
+    (tmp_path / "sub.jpg").mkdir()
+    assert dir_bytes(tmp_path, ".jpg") == 100
+    assert dir_bytes(tmp_path) == 110
+
+
 def test_usage_is_measured_once_in_a_while(service: FrameService) -> None:
     item = service.library.upsert(Item(id="aic:1", source="aic", source_id="1"))
     service.images.store(item, jpeg_bytes((200, 40, 40)))

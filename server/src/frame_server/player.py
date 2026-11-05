@@ -942,7 +942,7 @@ class Player:
             await run_in_threadpool(self.trim_cache, not self.at_night)
         except OSError as err:
             log.warning("trimming the image cache failed: %s", err)
-        self.top_up()
+        await run_in_threadpool(self.top_up)
 
     # -- pools: works the server picks from museums --------------------------
 
@@ -1448,8 +1448,12 @@ class Player:
                     await self.render_ahead()
                 if grown is None or utcnow() - grown >= CATALOGUE_EVERY:
                     grown = utcnow()
-                    self.grow_catalogue()
-                    self.top_up()
+                    # Off the event loop: the size of the thumbnails is a
+                    # walk over the disk, a top-up queries the whole
+                    # catalogue; the frame's questions do not wait for them
+                    # (104 s after a start, 2026-11-04).
+                    await run_in_threadpool(self.grow_catalogue)
+                    await run_in_threadpool(self.top_up)
             except Exception:
                 log.exception("scheduler tick failed")
             await asyncio.sleep(period)

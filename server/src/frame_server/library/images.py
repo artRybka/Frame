@@ -15,7 +15,7 @@ from urllib.parse import urlsplit
 import httpx
 from PIL import Image
 
-from ..fsutil import own_files
+from ..fsutil import dir_bytes, own_files
 from ..imaging.layout import load_image
 from .hosts import HostGuard, Resting, guard, is_urgent, urgently, walled
 from .markup import commons_rendition
@@ -523,7 +523,10 @@ class ImageCache:
         return removed
 
     def thumbs_size(self) -> int:
-        return sum(p.stat().st_size for p in own_files(self.thumbs, "*.jpg"))
+        """Bytes of the catalogue's thumbnails: one stat per file (a glob and
+        two stats took over a minute on the NAS's cold disk after a start,
+        2026-11-04)."""
+        return dir_bytes(self.thumbs, ".jpg")
 
     def prune_thumbs(self, keep: Iterable[Item], spare: int = THUMB_SPARE) -> int:
         """Delete all but the ``spare`` newest thumbnails of works outside

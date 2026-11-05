@@ -33,10 +33,11 @@ def own_dirs(directory: Path) -> Iterator[Path]:
             yield path
 
 
-def dir_bytes(directory: Path) -> int:
+def dir_bytes(directory: Path, suffix: str = "") -> int:
     """Bytes in the regular files directly in ``directory`` (none when it is
-    missing), without the entries of a NAS or another OS. One directory read
-    and one stat per file: the cheapest walk on a slow disk."""
+    missing), without the entries of a NAS or another OS; with ``suffix``
+    only the files ending in it. One directory read and one stat per file:
+    the cheapest walk on a slow disk."""
     total = 0
     try:
         entries = os.scandir(directory)
@@ -44,7 +45,7 @@ def dir_bytes(directory: Path) -> int:
         return 0
     with entries:
         for entry in entries:
-            if entry.name.startswith(_FOREIGN_PREFIXES):
+            if entry.name.startswith(_FOREIGN_PREFIXES) or not entry.name.endswith(suffix):
                 continue
             try:
                 if entry.is_file(follow_symlinks=False):

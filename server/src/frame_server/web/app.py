@@ -40,6 +40,7 @@ from ..library.images import Gone
 from ..library.seed import seed_playlists
 from ..library.style import AUTO, preset_for_photo
 from ..library.themes import painterly_colour_playlists
+from ..loopwatch import LoopWatch
 from ..night import NightQueue
 from ..night import tasks as night_tasks
 from ..panel_app import CODE_VERSION, WIDGET, AppHello, NextAnswer, app_code
@@ -105,7 +106,9 @@ async def poll_status(service: FrameService) -> None:
 async def sync_albums_periodically(service: FrameService, minutes: int = 30) -> None:
     await asyncio.sleep(20)
     while True:
-        service.albums.sync_all()
+        # Reads the playlists from the library: never on the event loop,
+        # which would wait for the library's lock.
+        await run_in_threadpool(service.albums.sync_all)
         await asyncio.sleep(minutes * 60)
 
 
@@ -132,6 +135,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 asyncio.create_task(poll_status(service)),
                 asyncio.create_task(sync_albums_periodically(service)),
                 asyncio.create_task(notifications.watch(service)),
+                # A loop held up by work that belongs in a thread: in the log.
+                asyncio.create_task(LoopWatch().run()),
             ]
             service.ai.start()
         service.app.ensure_package()  # built and signed here (panel_package.py)
