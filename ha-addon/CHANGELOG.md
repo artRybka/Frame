@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.103.0
+
+- Kafelek Bateria pokazuje realny czas pracy dla każdego harmonogramu, od
+  obecnego poziomu baterii. Wcześniej serwer brał każdą pobudkę za ok.
+  pół godziny przytomności, bo liczył też godziny na zasilaczu, i np. przy
+  harmonogramie testowym wychodziło 1,3 dnia zamiast ok. 4. Teraz czas
+  pobudki to mediana z ostatnich pobudek na baterii, pusta kontrola liczy
+  się jako ok. 5 minut w sieci, a obrazy wysłane z aplikacji jako średnia
+  z ostatnich dwóch tygodni. Założenia startowe pochodzą z testów tej
+  ramki.
+
 ## 1.102.6
 
 - Zmiana harmonogramu w czasie snu ramki w trybie Oszczędnym (dodana albo

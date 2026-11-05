@@ -76,3 +76,12 @@ def test_a_long_traceback_keeps_its_end() -> None:
     assert "Exception in ASGI application" in text
     assert text.rstrip().endswith("ValueError: what failed")
     assert "characters left out" in text and len(text) < logbuffer.LONGEST + 100
+
+
+def test_the_owner_reads_what_the_battery_estimate_learns_from(tmp_path: Path) -> None:
+    settings = Settings(data_dir=tmp_path, seed_library=False, scheduler=False, api_token="secret")
+    with TestClient(create_app(settings)) as client:
+        assert client.get("/api/debug/battery").status_code == 401
+        data = client.get("/api/debug/battery", headers=OWNER).json()
+        assert data["runs"] == [] and "wake_minutes" in data["activity"]
+        assert len(data["fit"]["mean"]) == 5
