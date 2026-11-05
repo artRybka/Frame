@@ -28,6 +28,8 @@ struct MuseumSearchView: View {
     /// The museums are still answering.
     @State private var asking = false
     @State private var loadingMore = false
+    /// Rounds of museum pages in a row that brought no work.
+    @State private var emptyRounds = 0
     /// The results' end is less than a screen away: time to ask for more.
     @State private var nearEnd = false
     /// What the results are for, so that coming back from a work doesn't
@@ -51,6 +53,8 @@ struct MuseumSearchView: View {
     @State private var emptyShown = false
     @State private var lookup = TermLookup()
     @FocusState private var fieldFocused: Bool
+    /// The groups over the field: hidden while scrolling the results.
+    @State private var groupsShown = true
     /// The screen's height, for how tall an open group may be.
     @State private var height: CGFloat = 760
     /// Where the squares start, from the top of the scrolled content.
@@ -127,6 +131,7 @@ struct MuseumSearchView: View {
         }
         .scrollPosition($position)
         .scrollDismissesKeyboard(.immediately)
+        .hidesOnScroll($groupsShown)
         // Before the end shows, so the next works are mostly there already.
         .onScrollGeometryChange(for: Bool.self) { geometry in
             geometry.contentSize.height - geometry.visibleRect.maxY < geometry.containerSize.height
@@ -136,20 +141,31 @@ struct MuseumSearchView: View {
         }
         .paperPage()
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            // Always there, also while scrolling (Mateusz): the results'
-            // end stays above them.
+            // Hidden, the groups keep their room: the results' end (and the
+            // squares there) stays above them when they come back. (Taken
+            // out, they gave it up, and coming back covered the end.)
             TermFacetBar(
                 tokens: tokens, museums: museums, colors: ColorTag.families + ColorTag.moods,
                 focus: $fieldFocused, panelHeight: height * TermFacetBar.panelShare
             )
             .padding(.horizontal, Theme.gutter)
             // While typing the suggestions take their place (keeping the room).
-            .opacity(lookup.suggesting(fieldFocused) ? 0 : 1)
+            .opacity(groupsShown && !lookup.suggesting(fieldFocused) ? 1 : 0)
+            .offset(y: groupsShown ? 0 : 48)
+            .allowsHitTesting(groupsShown)
+            .accessibilityHidden(!groupsShown)
         }
         // Measured outside the groups' inset: an open group grows it.
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
         .termSuggestions(lookup, tokens: tokens, focused: $fieldFocused)
         .termSearch(lookup, tokens: tokens, focused: $fieldFocused)
+        // Tapping the field brings the groups back, as does asking nothing.
+        .onChange(of: fieldFocused) { _, focused in
+            if focused, !groupsShown { withAnimation(.snappy) { groupsShown = true } }
+        }
+        .onChange(of: asked) { _, asked in
+            if !asked, !groupsShown { withAnimation(.snappy) { groupsShown = true } }
+        }
         // A first page shorter than the screen asks for the next at once.
         .onChange(of: asking) { moreIfNeeded() }
         .task {
@@ -337,6 +353,7 @@ struct MuseumSearchView: View {
     private func search(_ key: SearchKey) async {
         results = []
         next = [:]
+        emptyRounds = 0
         guard !key.rules.isEmpty || !key.sources.isEmpty else {
             catalogue = nil
             searching = false
@@ -359,6 +376,13 @@ struct MuseumSearchView: View {
         }
         if !Task.isCancelled { searching = false }
         await museumsAnswered
+        // Nothing in the library nor on the museums' first pages: their
+        // further pages won't do better. With colours asked the server looks
+        // through random works page after page, and "Szukam…" spun for good
+        // on a mix nothing fits (Mono with turquoise, 2026-11-05).
+        if !Task.isCancelled, key == searched, (catalogue?.total ?? 0) == 0, results.isEmpty {
+            next = [:]
+        }
         if !Task.isCancelled { asking = false }
         without = []
         if !Task.isCancelled, (catalogue?.total ?? 0) == 0, results.isEmpty {
@@ -433,13 +457,23 @@ struct MuseumSearchView: View {
             let pages = next
             await loadMore(key)
             loadingMore = false
-            let moved = key != searched || results.count != found || next != pages
+            guard key == searched else {
+                moreIfNeeded()
+                return
+            }
+            emptyRounds = results.count == found ? emptyRounds + 1 : 0
+            // Rounds that bring nothing in a row: the museums have no more
+            // that fits, however many pages they still have.
+            if emptyRounds >= Self.emptyRoundsLimit { next = [:] }
+            let moved = results.count != found || next != pages
             moreIfNeeded(after: moved ? .zero : Self.retryPause)
         }
     }
 
     /// How long a round that brought nothing waits before the next.
     private static let retryPause: Duration = .seconds(10)
+    /// Rounds bringing no work after which the museums are asked no more.
+    private static let emptyRoundsLimit = 3
 
     /// The next page of each museum that has more.
     @MainActor

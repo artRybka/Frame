@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.101.4
+
+- Mono w Szukaj → Kolor → Tonacja to naprawdę skala szarości, sepia albo
+  duotone. Serwer patrzy na kolory tak, jak oko widzi je na papierze:
+  wyblakłe japońskie drzeworyty, portrety z różową szarfą czy czerwoną
+  różą i inne stonowane, ale wielobarwne dzieła nie są już Mono. Po
+  aktualizacji serwer raz przelicza kolory całej biblioteki (w logu
+  „rescore: … pictures analysed again”).
+- Wyszukiwanie, któremu nic nie odpowiada, nie kręci się bez końca. Gdy
+  biblioteka nic nie ma, a pierwsza runda muzeów też nic nie przyniosła,
+  od razu pokazuje się „Brak dzieł spełniających kryteria” z pastylkami.
+  Muzea przestają też dociągać kolejne strony po trzech pustych rundach z
+  rzędu.
+- Grupy w Szukaj znowu chowają się przy przewijaniu wyników, ale wracają
+  od razu, gdy wyniki się zatrzymają (wcześniej po 1,2 s). Tak samo
+  w edytorze playlist.
+
 ## 1.101.3
 
 - Menu po przytrzymaniu kafelka Studium dnia i karty Artysty tygodnia ma

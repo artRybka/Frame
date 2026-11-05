@@ -485,3 +485,34 @@ struct TokenSummary: View {
         }
     }
 }
+
+extension View {
+    /// The groups over the search field: they hide at the first scroll down
+    /// through the results and come back the moment the scrolling stops
+    /// (Mateusz: "wracać dosłownie od razu"), when the field is tapped or
+    /// nothing is asked any more, as `shown` says.
+    func hidesOnScroll(_ shown: Binding<Bool>) -> some View {
+        modifier(HidesOnScroll(shown: shown))
+    }
+}
+
+private struct HidesOnScroll: ViewModifier {
+    @Binding var shown: Bool
+    /// The finger moves the content (or it glides on after it).
+    @State private var moving = false
+
+    func body(content: Content) -> some View {
+        content
+            .onScrollPhaseChange { _, phase in
+                moving = phase == .interacting || phase == .decelerating
+                guard phase == .idle, !shown else { return }
+                withAnimation(.snappy) { shown = true }
+            }
+            .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                geometry.contentOffset.y + geometry.contentInsets.top
+            } action: { old, new in
+                guard moving, shown, new > 24, new > old + 1 else { return }
+                withAnimation(.snappy) { shown = false }
+            }
+    }
+}
