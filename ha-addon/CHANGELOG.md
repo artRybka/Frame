@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.100.4
+
+- Serwer odpowiada od razu po starcie. Dotąd przez ok. 1,5 minuty po
+  uruchomieniu kontenera stał: liczył rozmiar miniatur katalogu na dysku
+  NAS i sprawdzał albumy iCloud w głównej pętli, więc ramka i aplikacja
+  czekały, a serwer uznawał, że zegar ramki się spóźnia. Ta praca idzie
+  teraz w tle, a liczenie miniatur jest kilka razy szybsze. Gdyby serwer
+  znów stanął na dłużej niż 5 s, w logu pojawi się, gdzie.
+
 ## 1.100.3
 
 - Próba samodzielnego startu aplikacji ramki po głębokim śnie. Launcher
