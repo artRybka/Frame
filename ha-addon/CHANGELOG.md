@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.101.1
+
+- Grupy w Szukaj (Technika, Epoka, Styl, Kolor, Temat, Muzeum) są zawsze
+  widoczne, także przy przewijaniu wyników. Tak samo w edytorze playlist.
+
 ## 1.101.0
 
 - Nowy panel Szukaj → Kolor z dwiema kartami. W Kolorystyce wybierasz do
