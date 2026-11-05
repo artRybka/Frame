@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.104.1
+
+- Ramka nie przyjmuje samousypiania po 3 minutach (odrzuca też 2), więc
+  aplikacja od razu ustawia 5 minut, najkrótszy czas, jaki ta ramka bierze.
+  Szacunek pod harmonogramem liczy puste sprawdzenie jako ok. 5,5 minuty
+  Wi-Fi.
+- Codzienne odświeżanie ekranu Samsunga ramka robi teraz przy pobudce ze
+  zmianą obrazu, a nie przy pierwszym sprawdzeniu po niej. Puste
+  sprawdzenie nie odświeża już ekranu.
+- Serwer znowu usypia puste sprawdzenie przez MDC zaraz po pobudce, zamiast
+  czekać 5 minut z Wi-Fi. Żółty ekran 5 listopada o 21:00 wypadł właśnie w
+  czasie przeniesionego na takie sprawdzenie odświeżania. Teraz serwer usypia
+  tylko sprawdzenie, o którym ramka powiedziała przed snem, że nie ma na nim
+  odświeżania; po starej aplikacji ramki zostawia je w spokoju.
+
 ## 1.104.0
 
 - Dzieła z Art Institute of Chicago przychodzą w większym rozmiarze, takim
