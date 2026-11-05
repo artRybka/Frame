@@ -32,7 +32,7 @@ from frame_server.device.mdc import (
     BatteryStatus,
 )
 from frame_server.imaging.pipeline import encode_image
-from frame_server.panel_app import AppHello
+from frame_server.panel_app import AppHello, PanelApp
 from frame_server.progress import Stage
 from frame_server.schedule import FrameSettings
 from frame_server.service import FrameService
@@ -1556,6 +1556,7 @@ async def test_the_launchers_question_starts_the_app_at_once(
         assert content is not None
         shown = BATTERY.model_copy(update={"shown": content.file_id})
         app.answer(shown, now=_at("2026-10-28T12:00"))
+        _refresh_on_last(app)
 
         # The 14:00 check, nothing new: the launcher's question starts nothing.
         await app.launcher_up(_at("2026-10-28T13:59:40"))
@@ -1690,6 +1691,13 @@ def _battery_panel(server_ssl: ssl.SSLContext, plugged: bool) -> FakePanel:
     return FakePanel(server_ssl, handler=handler)
 
 
+def _refresh_on_last(app: PanelApp) -> None:
+    """The app's "sleep" report: Samsung's refresh rides on the last alarm."""
+    last = datetime.fromisoformat(app.state.wakes[-1])
+    app.report("sleep", {"refresh": None, "refreshFor": int(last.timestamp() * 1000)})
+    app._sleep_reported = None  # reported now, the test's clock is in 2026-10
+
+
 async def test_an_empty_check_sleeps_over_mdc_at_once(
     tmp_path: Path, server_ssl: ssl.SSLContext, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1718,6 +1726,7 @@ async def test_an_empty_check_sleeps_over_mdc_at_once(
         shown = BATTERY.model_copy(update={"shown": content.file_id})
         assert app.answer(shown, now=_at("2026-10-28T12:00")).action == "sleep"
         assert app.state.empty_sleep == "untested"
+        _refresh_on_last(app)
 
         await app.launcher_up(_at("2026-10-28T13:59:40"))
         assert panel.received[-2:] == EMPTY_SLEEP
@@ -1771,6 +1780,7 @@ async def test_an_alarm_lost_after_an_empty_checks_sleep_stops_it(
         app.answer(
             BATTERY.model_copy(update={"shown": content.file_id}), now=_at("2026-10-28T12:00")
         )
+        _refresh_on_last(app)
         await app.launcher_up(_at("2026-10-28T13:59:40"))
         assert app.state.empty_sleep_at is not None
 
@@ -1816,6 +1826,7 @@ async def test_an_empty_check_on_the_charger_stays_up(
         app.answer(
             BATTERY.model_copy(update={"shown": content.file_id}), now=_at("2026-10-28T12:00")
         )
+        _refresh_on_last(app)
         await app.launcher_up(_at("2026-10-28T13:59:40"))
         assert (CMD_STATUS, bytes([SUB_BATTERY])) in panel.received
         assert (CMD_POWER, b"\x00") not in panel.received
@@ -1824,10 +1835,15 @@ async def test_an_empty_check_on_the_charger_stays_up(
         await panel.stop()
 
 
-async def test_an_empty_check_is_left_alone(tmp_path: Path, server_ssl: ssl.SSLContext) -> None:
+@pytest.mark.parametrize("refresh_on", [None, "first", "failed"])
+async def test_an_empty_check_with_a_refresh_is_left_alone(
+    tmp_path: Path, server_ssl: ssl.SSLContext, refresh_on: str | None
+) -> None:
     """2026-11-05 21:00: put to sleep over MDC 16 s after the launcher's
     question, the panel lost its picture (flat yellow, a faint ghost): the
-    empty check is left alone again."""
+    app had moved Samsung's daily refresh to that very check. A check the
+    refresh may ride on (an older app.js says nothing, the refresh is on it,
+    setting it failed) is left alone."""
     panel = _battery_panel(server_ssl, plugged=False)
     await panel.start()
     try:
@@ -1848,6 +1864,13 @@ async def test_an_empty_check_is_left_alone(tmp_path: Path, server_ssl: ssl.SSLC
         app.answer(
             BATTERY.model_copy(update={"shown": content.file_id}), now=_at("2026-10-28T12:00")
         )
+        first = int(datetime.fromisoformat(app.state.wakes[0]).timestamp() * 1000)
+        last = int(datetime.fromisoformat(app.state.wakes[-1]).timestamp() * 1000)
+        if refresh_on == "first":
+            app.report("sleep", {"refresh": {"ok": True}, "refreshFor": first})
+        elif refresh_on == "failed":
+            app.report("sleep", {"refresh": {"ok": False, "error": "x"}, "refreshFor": last})
+        app._sleep_reported = None
         await app.launcher_up(_at("2026-10-28T13:59:40"))
         assert panel.received == []
         assert app.state.empty_sleep_at is None
