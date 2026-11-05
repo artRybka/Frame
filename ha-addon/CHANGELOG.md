@@ -10,8 +10,9 @@
   chłodne), Nasycenie (żywe albo stonowane), Barwność (kolorowe albo mono)
   i Jasność (ciemne albo jasne). Wszystko, co wybrane, musi
   pasować naraz. Gdy nic się nie znajdzie,
-  Szukaj pokazuje pustą ścianę i wybory, bez których coś się znajdzie
-  (z liczbą dzieł); stuknięcie usuwa taki wybór.
+  Szukaj pisze „Brak dzieł dla tych wyborów.” i pokazuje pastylki
+  wyborów, bez których coś się znajdzie (z liczbą dzieł); stuknięcie
+  usuwa taki wybór.
 - „Mono” (wcześniej „Monochromia”) znajduje naprawdę obrazy jednym tonem:
   czarno-białe, sepię, cyjanotypie i sangwinę, a nie ciemne obrazy olejne.
   Serwer raz po aktualizacji przelicza kolory całej biblioteki.

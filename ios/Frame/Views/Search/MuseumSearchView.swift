@@ -273,8 +273,7 @@ struct MuseumSearchView: View {
             worksGrid(shownCatalogue, shownFromMuseums)
             // Only once nothing more can come.
             if nothingFound {
-                EmptyWall(without: without.map { ($0.token.name, $0.count) }) { index in
-                    let token = without[index].token
+                NothingFound(without: without) { token in
                     withAnimation(.snappy) { tokens.wrappedValue.removeAll { $0 == token } }
                 }
             }

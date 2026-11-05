@@ -710,78 +710,51 @@ struct EmptyStateView: View {
     }
 }
 
-/// A search that found nothing: an empty frame on a nail, "Pusta ściana",
-/// and the choices that, given up, would find something, with how many
-/// works (Mateusz, szkic 12 W4). A tap on one gives it up.
-struct EmptyWall: View {
-    /// A chip's name and the works without it.
-    let without: [(name: String, count: Int)]
-    let giveUp: (Int) -> Void
+/// A search that found nothing: one quiet line, and under it the choices
+/// that, given up, would find something, as chips crossed out with how
+/// many works the library has without them (Mateusz, szkic 13 T1). A tap
+/// gives the choice up.
+struct NothingFound: View {
+    let without: [(token: SearchToken, count: Int)]
+    let giveUp: (SearchToken) -> Void
 
     var body: some View {
         VStack(spacing: 10) {
-            EmptyFrameDrawing()
-                .frame(width: 96, height: 96)
-            Text("Pusta ściana").font(.serif(20, weight: .semibold)).foregroundStyle(Theme.ink)
-            if without.isEmpty {
-                Text("Żadne dzieło nie pasuje do wszystkich wyborów naraz.")
-                    .font(.subheadline)
+            Text("Brak dzieł dla tych wyborów.")
+                .font(.serif(17).italic())
+                .foregroundStyle(Theme.inkSoft)
+                .multilineTextAlignment(.center)
+            if !without.isEmpty {
+                Text(without.count == 1 ? "Bez niego coś się znajdzie:" : "Bez jednego z nich coś się znajdzie:")
+                    .font(.caption)
                     .foregroundStyle(Theme.inkSoft)
-                    .multilineTextAlignment(.center)
-            } else {
-                Text("Bez jednego wyboru coś zawiśnie:")
-                    .font(.subheadline)
-                    .foregroundStyle(Theme.inkSoft)
-                VStack(spacing: 0) {
-                    ForEach(Array(without.enumerated()), id: \.offset) { index, row in
-                        Button { giveUp(index) } label: {
-                            HStack {
-                                Text("bez \(Text(row.name).fontWeight(.semibold).foregroundStyle(Theme.ink))")
-                                    .foregroundStyle(Theme.inkSoft)
-                                Spacer(minLength: 12)
-                                Text(Names.works(row.count)).fontWeight(.semibold).foregroundStyle(Theme.ink)
-                                Image(systemName: "chevron.right")
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(Theme.inkSoft)
+                    .padding(.top, 8)
+                ForEach(without, id: \.token) { row in
+                    Button { giveUp(row.token) } label: {
+                        HStack(spacing: 6) {
+                            if row.token.kind == "color" {
+                                ColorTagDot(tag: row.token.key, size: 9, stroke: nil)
                             }
-                            .font(.subheadline)
-                            .padding(.vertical, 12)
-                            .contentShape(Rectangle())
+                            Text(row.token.shownName)
+                                .strikethrough(color: Theme.ink.opacity(0.45))
+                                .foregroundStyle(Theme.ink)
+                            Text("→ \(row.count)").foregroundStyle(Theme.inkSoft)
                         }
-                        .buttonStyle(.plain)
-                        .overlay(alignment: .top) { Divider().overlay(Theme.hairline) }
+                        .font(.footnote)
+                        .lineLimit(1)
+                        .padding(.horizontal, 11)
+                        .padding(.vertical, 6)
+                        .background(Theme.ink.opacity(0.06), in: Capsule())
+                        .contentShape(Capsule())
                     }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Bez: \(row.token.shownName), \(Names.works(row.count))")
                 }
-                .overlay(alignment: .bottom) { Divider().overlay(Theme.hairline) }
-                .padding(.top, 4)
             }
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 28)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 56)
         .frame(maxWidth: .infinity)
-    }
-}
-
-/// A thin drawing of an empty picture frame hanging on a nail.
-struct EmptyFrameDrawing: View {
-    var body: some View {
-        Canvas { context, size in
-            let s = min(size.width, size.height) / 120
-            func point(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: x * s, y: y * s) }
-            let ink = GraphicsContext.Shading.color(Theme.inkSoft)
-            context.fill(Path(ellipseIn: CGRect(x: 57.8 * s, y: 11.8 * s, width: 4.4 * s, height: 4.4 * s)), with: ink)
-            var cord = Path()
-            cord.move(to: point(30, 40))
-            cord.addLine(to: point(60, 16))
-            cord.addLine(to: point(90, 40))
-            context.stroke(cord, with: ink, lineWidth: 1.2 * s)
-            context.stroke(Path(CGRect(x: 22 * s, y: 40 * s, width: 76 * s, height: 62 * s)), with: ink, lineWidth: 1.6 * s)
-            context.stroke(
-                Path(CGRect(x: 31 * s, y: 49 * s, width: 58 * s, height: 44 * s)), with: ink,
-                style: StrokeStyle(lineWidth: 1.4 * s, dash: [3 * s, 3 * s])
-            )
-        }
-        .accessibilityHidden(true)
     }
 }
 
