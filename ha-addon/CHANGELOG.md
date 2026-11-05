@@ -3,8 +3,8 @@
 ## 1.103.2
 
 - Pierścień wybranego „Żywe” w karcie Tonacja nie jest już ucięty w rogach.
-- Kropki Tonacji stoją w tych samych miejscach co kółka Kolorystyki, więc
-  przy przełączaniu kart nic nie skacze: Neutralne tam, gdzie Pomarańcz,
+- Środkowe kropki Tonacji stoją tam, gdzie kółka Kolorystyki, więc przy
+  przełączaniu kart nie skaczą: Neutralne tam, gdzie Pomarańcz,
   Umiarkowane na Turkusie, Średnie na Szarościach.
 
 ## 1.103.1

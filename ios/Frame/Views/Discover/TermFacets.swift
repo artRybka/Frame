@@ -652,8 +652,9 @@ struct TermFacetPanel: View {
     }
 
     /// Two groups in a row (szkic 14, T1): Temperatura and Nasycenie, then
-    /// Barwność and Jasność. Laid on the six columns and the rows of
-    /// Kolorystyka, so switching cards the dots stay put (Neutralne where
+    /// Barwność and Jasność. Each half of the six Kolorystyka columns holds
+    /// a group with its middle dot on the middle column, on Kolorystyka's
+    /// rows, so switching cards the middles stay put (Neutralne where
     /// Pomarańcz is, Umiarkowane on Turkus; Mateusz 2026-11-05 23:32).
     private var toneGrid: some View {
         let groups = ColorTag.toneGroups
@@ -1046,6 +1047,8 @@ struct LevelSwatch: View {
 struct ToneGroup: View {
     /// Between Kolorystyka's columns (its grid's spacing).
     static let columnGap: CGFloat = 2
+    /// Between the dots.
+    private static let gap: CGFloat = 12
     /// Track around the dots, enough for the picked ring.
     private static let inset: CGFloat = 7
     private static let size: CGFloat = 34
@@ -1062,9 +1065,11 @@ struct ToneGroup: View {
         // Like a Kolorystyka swatch: the dots, a name, a second line.
         VStack(spacing: 3) {
             GeometryReader { proxy in
-                // Three of the six columns: three dots sit on them, two
-                // (Barwność) in the middle.
-                let step = (proxy.size.width - 2 * Self.columnGap) / 3 + Self.columnGap
+                // The middle dot on the middle of three columns (Neutralne
+                // where Pomarańcz is); the ends close to it, not out on the
+                // columns, which would spread them too far (Mateusz 23:37).
+                // Two dots (Barwność) either side of the middle.
+                let step = Self.size + Self.gap
                 let mid = proxy.size.width / 2
                 let y = proxy.size.height / 2
                 let x = { (index: Int) in mid + (CGFloat(index) - CGFloat(moods.count - 1) / 2) * step }
