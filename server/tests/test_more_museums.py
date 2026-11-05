@@ -834,12 +834,20 @@ def _louvre_row(
     }
 
 
-def _louvre_entry(title: str, credit: str, start: int) -> dict[str, object]:
+def _louvre_entry(
+    title: str,
+    credit: str,
+    start: int | None,
+    creator: tuple[str, str] = ("VALENCIENNES Pierre-Henri de", "Q1386458"),
+    period: str = "",
+) -> dict[str, object]:
     media = "https://collections.louvre.fr/media/cache"
     return {
         "title": title,
-        "creator": [{"label": "VALENCIENNES Pierre-Henri de", "wikidata": "Q1386458"}],
-        "dateCreated": [{"startYear": start, "endYear": start + 4, "text": ""}],
+        "creator": [{"label": creator[0], "wikidata": creator[1]}],
+        "dateCreated": [
+            {"startYear": start, "endYear": start + 4 if start else None, "text": period}
+        ],
         "materialsAndTechniques": "huile sur papier marouflé sur carton",
         "objectNumber": [{"value": "RF 2908", "type": "Numéro principal"}],
         "room": "Salle 711, Aile Denon, Niveau 1",
@@ -891,6 +899,15 @@ def test_louvre_takes_the_paintings_commons_lacks(tmp_path: Path) -> None:
         ),
         # Not on Commons; a modern work still in copyright.
         _louvre_row("010069999", "Q2", "Q2", "anonymous", "1970"),
+        # An unknown author: Wikidata's blank node; the date a French period.
+        _louvre_row(
+            "010068888",
+            "Q5",
+            "Piero di Lorenzo de' Medici",
+            "http://www.wikidata.org/.well-known/genid/46375a1257e7eeb3",
+            "",
+        ),
+        _louvre_row("010068888", "Q5", "Piero di Lorenzo de' Medici", "Q42", ""),
         # Another institution's photograph only.
         _louvre_row("010065555", "Q3", "Portrait of a man", "Jacques-Louis David", "1825"),
         # Gone from the Louvre's site.
@@ -900,7 +917,16 @@ def test_louvre_takes_the_paintings_commons_lacks(tmp_path: Path) -> None:
         "010061111": _louvre_entry(
             "Rome, le Colisée", "© 2009 GrandPalaisRmn (musée du Louvre) / Hervé Lewandowski", 1782
         ),
-        "010069999": _louvre_entry("Plafond", "© Musée du Louvre / Antoine Mongodin", 1953),
+        "010069999": _louvre_entry(
+            "Plafond", "© Musée du Louvre / Antoine Mongodin", 1953, creator=("France", "")
+        ),
+        "010068888": _louvre_entry(
+            "Portrait de Piero di Lorenzo de Médicis",
+            "© Musée du Louvre / Angèle Dequier",
+            None,
+            creator=("Hals, Frans", "Q167654"),
+            period="2e moitié du XVe siècle",
+        ),
         "010065555": _louvre_entry(
             "Portrait d'homme", "© GrandPalaisRmn (musée d'Orsay) / Martine Beck-Coppola", 1790
         ),
@@ -945,14 +971,14 @@ def test_louvre_takes_the_paintings_commons_lacks(tmp_path: Path) -> None:
 
     path = louvre.list_path(tmp_path)
     with httpx.Client(transport=httpx.MockTransport(answer)) as http:
-        assert louvre.build(path, http) == 2
+        assert louvre.build(path, http) == 3
         louvre_asked = sorted(a for a in asked if a.startswith("collections"))
         assert louvre_asked == [
             f"collections.louvre.fr/ark:/53355/cl{ark}.json"
-            for ark in ("010060404", "010061111", "010065555", "010069999")
+            for ark in ("010060404", "010061111", "010065555", "010068888", "010069999")
         ]  # never the Mona Lisa: Commons has it in full size
         asked.clear()
-        assert louvre.build(path, http) == 2
+        assert louvre.build(path, http) == 3
     assert not any(a.startswith("collections") for a in asked)  # entries are not asked again
     assert json.loads(path.read_text())["complete"] is True
 
@@ -966,6 +992,7 @@ def test_louvre_takes_the_paintings_commons_lacks(tmp_path: Path) -> None:
         assert gallery.discover(Discovery(kind="print")) == (0, [])
         assert gallery.fetch("010062370") is None and gallery.fetch("010065555") is None
         modern = gallery.fetch("010069999")
+        piero = gallery.fetch("010068888")
         size = _louvre(http, items[0])
     assert total == 1
     rome = items[0]
@@ -979,8 +1006,30 @@ def test_louvre_takes_the_paintings_commons_lacks(tmp_path: Path) -> None:
     assert rome.thumb_url.endswith("/small/1/2/whole_OG.JPG")
     assert record_id(rome) == ("P9394", "010061111")
     assert size is not None and (size.height, size.width) == (25.0, 38.0)
+    # A school ("France") is no author.
     assert modern is not None and modern.title == "Plafond" and modern.artist == ""
     assert modern.license == "Prawa autorskie w mocy (użytek prywatny)"
+    assert piero is not None and piero.artist == "Frans Hals"  # the Louvre's name
+    assert piero.date_text == "1450–1499" and piero.year == 1450
+    assert gallery.search("1450")[0] == 1
+
+    # A list of 1.104.0 (Wikidata's blank node for the author, the French
+    # period, no "year_end"): shown right at once, its records looked up again.
+    listed = json.loads(path.read_text())
+    listed.pop("format")
+    old = listed["works"]["010068888"]
+    old["artist"] = "http://www.wikidata.org/.well-known/genid/46375a1257e7eeb3"
+    old["work"].pop("year_end")
+    old["work"].update(date="2e moitié du XVe siècle", year=None, artist_fr="France")
+    path.write_text(json.dumps(listed))
+    with httpx.Client(transport=httpx.MockTransport(answer)) as http:
+        before = museum("louvre", http, access).fetch("010068888")
+        assert before is not None and before.artist == "" and before.date_text == "1450–1499"
+        assert before.year == 1450
+        asked.clear()
+        assert louvre.build(path, http) == 3
+    assert sum(a.startswith("collections") for a in asked) == 3  # records, not the gone one
+    assert json.loads(path.read_text())["format"] == louvre.FORMAT
 
 
 def test_louvre_list_cut_short_is_finished(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -996,7 +1045,12 @@ def test_louvre_list_cut_short_is_finished(tmp_path: Path, monkeypatch: pytest.M
     path.write_text(json.dumps({"complete": False, "works": {"1": {"commons": 0, "work": work}}}))
     started.clear()
     assert list(index.works(path)) == ["1"] and started == [path]  # a restart cut it short
-    path.write_text(json.dumps({"complete": True, "works": {"1": {"commons": 0, "work": work}}}))
+    done = {"complete": True, "works": {"1": {"commons": 0, "work": work}}}
+    path.write_text(json.dumps(done))  # finished, but in the format of 1.104.0
+    started.clear()
+    os.utime(path, (time.time() + 2, time.time() + 2))
+    assert list(index.works(path)) == ["1"] and started == [path]
+    path.write_text(json.dumps({**done, "format": louvre.FORMAT}))
     started.clear()
     os.utime(path, (time.time() + 5, time.time() + 5))
     assert list(index.works(path)) == ["1"] and started == []
@@ -1022,3 +1076,22 @@ def test_louvre_waits_for_commons_when_asked_to() -> None:
     with httpx.Client(transport=httpx.MockTransport(lambda r: answers.pop(0))) as http:
         assert louvre.commons_sizes(http, ["A.jpg"], sleep=waits.append) == {"A.jpg": 2000}
     assert waits == [31.0]
+
+
+def test_louvre_works_kept_before_1_104_1_are_repaired() -> None:
+    from frame_server.library.commons import _repairs
+    from frame_server.library.models import Item, ItemKind
+
+    item = Item(
+        id="louvre:010068888",
+        kind=ItemKind.ARTWORK,
+        source="louvre",
+        source_id="010068888",
+        title="Piero di Lorenzo de' Medici",
+        artist="http://www.wikidata.org/.well-known/genid/46375a1257e7eeb3",
+        date_text="2e moitié du XVe siècle",
+        year=None,
+    )
+    assert _repairs(item) == {"artist": "", "date_text": "1450–1499", "year": 1450}
+    fine = item.model_copy(update={"artist": "Frans Hals", "date_text": "1503–1519", "year": 1503})
+    assert _repairs(fine) == {}

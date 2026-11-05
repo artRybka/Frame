@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.104.2
+
+- Dzieła z Luwru nie pokazują już adresu „wikidata.org/.well-known/genid/…”
+  zamiast autora. Gdy Wikidane nie znają autora, bierzemy nazwisko z Luwru
+  („Hals, Frans” → „Frans Hals”). Nazwa szkoły, np. „France”, nie
+  udaje autora.
+- Daty dzieł z Luwru są cyframi, np. „1450–1499” zamiast „2e moitié du XVe
+  siècle”, więc działa z nimi wyszukiwanie po latach. Dzieła już zapisane
+  w bibliotece poprawiają się same po aktualizacji. Spis obrazów Luwru
+  pobiera się raz jeszcze w tle (ok. godziny).
+
 ## 1.104.1
 
 - Ramka nie przyjmuje samousypiania po 3 minutach (odrzuca też 2), więc
