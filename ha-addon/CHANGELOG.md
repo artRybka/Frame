@@ -20,6 +20,14 @@
   usypia ją przez MDC, to ok. minuty (mediana z ostatnich kontroli), a nie
   5,5 minuty Wi-Fi. Gdy przestaje usypiać albo nie usypiał od dwóch dni,
   wraca do czasu samousypiania ramki.
+- Dzieła z Luwru nie pokazują już adresu „wikidata.org/.well-known/genid/…”
+  zamiast autora. Gdy Wikidane nie znają autora, bierzemy nazwisko z Luwru
+  („Hals, Frans” → „Frans Hals”). Nazwa szkoły, np. „France”, nie
+  udaje autora.
+- Daty dzieł z Luwru są cyframi, np. „1450–1499” zamiast „2e moitié du XVe
+  siècle”, więc działa z nimi wyszukiwanie po latach. Dzieła już zapisane
+  w bibliotece poprawiają się same po aktualizacji. Spis obrazów Luwru
+  pobiera się raz jeszcze w tle (ok. godziny).
 
 ## 1.104.1
 

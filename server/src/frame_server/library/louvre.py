@@ -83,6 +83,75 @@ NAME = "Luwr"
 _ANONYMOUS = {"anonymous", "anonyme", "unknown"}
 _QID = re.compile(r"^Q\d+$")
 _UNITS = {"m": 100.0, "cm": 1.0, "mm": 0.1}
+#: The list's records: 2 has the years as numbers ("year_end") and the
+#: Louvre's own name of the author (1.104.2); older lists are looked up
+#: again (Mateusz 2026-11-05: "W wielu działach pojawia się wikidata",
+#: "Daty opisowo, po francusku").
+FORMAT = 2
+_ROMAN = {"I": 1, "V": 5, "X": 10, "L": 50, "C": 100}
+#: "2e moitié du XVe siècle", "1er quart du XVIIe siècle", "fin du XVe siècle".
+_PART = re.compile(
+    r"(?:\b(\d)\s*(?:er|e|ème|eme)\s+(quart|tiers|moitié)|\b(début|milieu|fin))\s+du\s+"
+    r"([IVXLC]+)\s*(?:e|ème|eme)\s+siècle",
+    re.IGNORECASE,
+)
+_CENTURY = re.compile(r"\b([IVXLC]+)\s*(?:e|ème|eme)\s+siècle", re.IGNORECASE)
+_PARTS = {"quart": 4, "tiers": 3, "moitié": 2}
+#: Years of a century "début", "milieu" and "fin" stand for.
+_LOOSE = {"début": (0, 25), "milieu": (40, 60), "fin": (75, 99)}
+
+
+def _roman(text: str) -> int:
+    values = [_ROMAN[c] for c in text.upper()]
+    return sum(-v if v < nxt else v for v, nxt in zip(values, [*values[1:], 0], strict=True))
+
+
+def french_years(text: str) -> tuple[int, int] | None:
+    """The years a French period names: "2e moitié du XVe siècle" ->
+    (1450, 1499), "XVIIe siècle" -> (1600, 1699), "vers 1500" -> (1500, 1500)."""
+    if found := _PART.search(text):
+        number, part, loose, roman = found.groups()
+        start = (_roman(roman) - 1) * 100
+        if loose:
+            first, last = _LOOSE[loose.casefold()]
+            return start + first, start + last
+        k = _PARTS[part.casefold()]
+        n = min(max(int(number), 1), k)
+        return start + round((n - 1) * 100 / k), start + round(n * 100 / k) - 1
+    if found := _CENTURY.search(text):
+        start = (_roman(found.group(1)) - 1) * 100
+        return start, start + 99
+    if found := re.search(r"\b(1[0-9]{3}|[5-9][0-9]{2})\b", text):
+        return int(found.group(1)), int(found.group(1))
+    return None
+
+
+def years_text(start: int, end: int | None) -> str:
+    """ "1503" or "1503–1519"."""
+    return f"{start}–{end}" if end and end != start else str(start)
+
+
+def clean_artist(name: str | None) -> str:
+    """Wikidata's label of an author, "" for an unknown one: an "unknown
+    value" comes as a blank node's address (".well-known/genid/…")."""
+    name = (name or "").strip()
+    if not name or name.startswith("http") or _QID.match(name):
+        return ""
+    return "" if name.casefold() in _ANONYMOUS else name
+
+
+def person(label: str) -> str:
+    """The Louvre's name of an author as one writes it: "Hals, Frans" ->
+    "Frans Hals", "VALENCIENNES Pierre-Henri de" -> "Pierre-Henri de
+    Valenciennes", "Léonard de Vinci (Leonardo …)" -> "Léonard de Vinci"."""
+    name = re.sub(r"\s*\(.*?\)\s*", " ", label).strip()
+    if "," in name:
+        last, _, first = name.partition(",")
+        name = f"{first.strip()} {last.strip()}".strip()
+    elif found := re.match(r"^((?:[A-ZÀ-ÖØ-Þ'’-]{2,}\s+)+)(.*[a-zà-ÿ].*)$", name):
+        last, first = found.groups()
+        name = f"{first.strip()} {last.strip().title()}"
+    return re.sub(r"\s+", " ", name).strip()
 
 
 def _value(row: dict[str, str], key: str) -> str:
@@ -103,8 +172,7 @@ def paintings(rows: Iterable[dict[str, str]]) -> dict[str, dict[str, Any]]:
         title = _value(row, "workLabel")
         if title and not _QID.match(title):
             entry["title"] = entry["title"] or title
-        artist = _value(row, "creatorLabel")
-        if artist and not _QID.match(artist) and artist.casefold() not in _ANONYMOUS:
+        if artist := clean_artist(_value(row, "creatorLabel")):
             entry["artist"] = entry["artist"] or artist
         if died := re.match(r"^-?(\d{3,4})-", _value(row, "died")):
             entry["died"] = max(entry.get("died") or 0, int(died.group(1)))
@@ -198,16 +266,20 @@ def record(entry: dict[str, Any]) -> dict[str, Any] | None:
     dates = entry.get("dateCreated") or [{}]
     first = dates[0] if dates else {}
     start, end = first.get("startYear"), first.get("endYear")
-    years = f"{start}–{end}" if start and end and start != end else str(start or "")
+    if not isinstance(start, int):
+        start, end = french_years(str(first.get("text") or "")) or (None, None)
+    end = end if isinstance(end, int) and start is not None and end >= start else start
     numbers = entry.get("objectNumber") or []
     number = next((str(n.get("value")) for n in numbers if n.get("value")), "")
-    creators = [c for c in entry.get("creator") or [] if c.get("label")]
+    # Named people (with Wikidata), not "France" or "Italie" for a school.
+    creators = [c for c in entry.get("creator") or [] if c.get("label") and c.get("wikidata")]
     size = size_cm(entry.get("dimension") or [])
     return {
         "title_fr": str(entry.get("title") or "").strip(),
-        "artist_fr": str(creators[0]["label"]).strip() if creators else "",
-        "date": str(first.get("text") or "").strip() or years,
-        "year": int(start) if isinstance(start, int) else None,
+        "artist_fr": person(str(creators[0]["label"])) if creators else "",
+        "date": years_text(start, end) if start is not None else str(first.get("text") or ""),
+        "year": start,
+        "year_end": end,
         "medium": str(entry.get("materialsAndTechniques") or "").strip(),
         "number": number,
         "room": str(entry.get("room") or "").strip(),
@@ -258,7 +330,9 @@ def build(path: Path, http: httpx.Client) -> int:
     sizes asked again, entries already looked up kept, new ones wanted
     looked up (paced by ``hosts.PACE``), gone ones dropped. Returns how
     many the frame takes."""
-    old = _read(path).get("works") or {}
+    listed = _read(path)
+    old = listed.get("works") or {}
+    current = listed.get("format") == FORMAT
     # CSV: a third of the JSON's 8 MB.
     resp = http.get(SPARQL, params={"query": QUERY}, headers={"Accept": "text/csv"}, timeout=180)
     resp.raise_for_status()
@@ -269,10 +343,12 @@ def build(path: Path, http: httpx.Client) -> int:
     works: dict[str, dict[str, Any]] = {}
     for ark, entry in found.items():
         entry["commons"] = sizes.get(entry.pop("file", ""), 0)
-        if "work" in (old.get(ark) or {}):
-            entry["work"] = old[ark]["work"]
+        known = old.get(ark) or {}
+        # Records of an older list are looked up again (no photo stays none).
+        if "work" in known and (current or known["work"] is None):
+            entry["work"] = known["work"]
         works[ark] = entry
-    data = {"complete": False, "works": works}
+    data = {"complete": False, "format": FORMAT, "works": works}
     _write(path, data)
     looked = 0
     for ark, entry in works.items():
@@ -289,6 +365,11 @@ def build(path: Path, http: httpx.Client) -> int:
     data["complete"] = True
     _write(path, data)
     return sum(1 for e in works.values() if e.get("work") and wanted(e))
+
+
+def finished(data: dict[str, Any]) -> bool:
+    """Whether the list was written to the end, in today's format."""
+    return bool(data.get("complete")) and data.get("format") == FORMAT
 
 
 class _Index:
@@ -311,7 +392,7 @@ class _Index:
         loaded = self._loaded
         if loaded is None or loaded[0] != path or loaded[1] != stamp:
             data = _read(path)
-            if not data.get("complete") or time.time() - stamp >= REFRESH_SECONDS:
+            if not finished(data) or time.time() - stamp >= REFRESH_SECONDS:
                 self._start(path)
             taken = {
                 ark: {
@@ -361,7 +442,7 @@ class _Index:
         if not path.is_file():
             return False
         old = time.time() - path.stat().st_mtime >= REFRESH_SECONDS
-        if not old and _read(path).get("complete"):
+        if not old and finished(_read(path)):
             return False
         if not self._claim():
             return False
@@ -404,12 +485,24 @@ class Louvre(Museum):
         return year is not None and year < 1850
 
     def _map(self, ark: str, w: dict[str, Any]) -> Item:
+        year = w.get("year")
+        if "year_end" in w:
+            date = years_text(year, w["year_end"]) if year is not None else w.get("date") or ""
+        else:  # listed before 1.104.2: the French period
+            span = french_years(str(w.get("date") or ""))
+            date = years_text(*span) if span else str(w.get("date") or "")
+            year = year if year is not None else (span[0] if span else None)
+        # The Louvre's name where Wikidata has none (its older records named
+        # a school, "France", in its place).
+        artist = clean_artist(w.get("artist"))
+        if not artist and "year_end" in w:
+            artist = str(w.get("artist_fr") or "")
         return self._item(
             ark,
             title=w.get("title") or w.get("title_fr") or "",
-            artist=w.get("artist") or "",
-            date_text=w.get("date") or "",
-            year=w.get("year"),
+            artist=artist,
+            date_text=date,
+            year=year,
             medium=w.get("medium") or "",
             classification="Painting",
             credit=", ".join(
