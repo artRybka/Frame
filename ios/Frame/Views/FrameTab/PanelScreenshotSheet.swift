@@ -113,7 +113,7 @@ struct PanelScreenshotSheet: View {
                     Label("Zamów zrzut przy następnej pobudce", systemImage: "camera.viewfinder")
                 }
                 .buttonStyle(PrimaryButtonStyle())
-                Text("Zrobi go przy najbliższej pobudce\(Self.at(wake)) i poczuwa wtedy do 3 minut dłużej, co kosztuje trochę baterii.")
+                Text("Zrobi go przy najbliższej pobudce\(Self.at(wake)) i poczuwa wtedy do 4 minut dłużej, co kosztuje trochę baterii.")
                     .font(.caption)
                     .foregroundStyle(Theme.inkSoft)
             }
