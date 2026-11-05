@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.100.2
+## 1.100.4
 
 - Serwer odpowiada od razu po starcie. Dotąd przez ok. 1,5 minuty po
   uruchomieniu kontenera stał: liczył rozmiar miniatur katalogu na dysku
