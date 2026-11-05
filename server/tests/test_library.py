@@ -975,3 +975,44 @@ def test_playlist_counts_lag_behind_the_catalogue_only(tmp_path) -> None:
     lib.counts_may_lag = False  # tests and a server without its background: always fresh
     lib.upsert(_item(4, artist="Nobody"))
     assert lib.playlist_summary(narrower).item_count == 1
+
+
+def test_state_is_read_while_another_thread_writes(tmp_path) -> None:
+    """2026-11-05: the frame's question read the app's state on the event
+    loop and waited 6 s for a long write elsewhere. The key/value state is
+    read from memory, never waiting for the library's lock; a value written
+    inside a batch that fails is forgotten."""
+    import threading
+    import time
+
+    lib = Library(tmp_path / "lib.db")
+    lib.set_state("a", {"n": 1})
+    inside, done = threading.Event(), threading.Event()
+
+    def long_write() -> None:
+        with lib.batch():
+            lib.set_state("b", 2)
+            inside.set()
+            done.wait(5)
+
+    writer = threading.Thread(target=long_write)
+    writer.start()
+    assert inside.wait(5)
+    try:
+        started = time.monotonic()
+        assert lib.get_state("a") == {"n": 1}
+        assert lib.get_state("b") == 2
+        assert time.monotonic() - started < 1  # without waiting for the batch
+    finally:
+        done.set()
+        writer.join()
+    assert Library(tmp_path / "lib.db").get_state("b") == 2  # on the disk too
+
+    try:
+        with lib.batch():
+            lib.set_state("c", 3)
+            lib.delete_state("a")
+            raise RuntimeError("failed")
+    except RuntimeError:
+        pass
+    assert lib.get_state("c") is None and lib.get_state("a") == {"n": 1}

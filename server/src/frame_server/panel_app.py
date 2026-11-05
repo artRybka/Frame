@@ -1230,8 +1230,10 @@ class PanelApp:
         while it asks (it was heard just now), goes down after being told
         to sleep, or around an alarm, and not again too soon."""
         state = self.state
-        heard = self.heard_at
-        if not state.active or (heard is not None and now - heard < HEARD_EVERY):
+        # Not heard since the server started: it asks within a poll or two
+        # (9 s after a restart it was started anew for nothing, 2026-11-05).
+        heard = self.heard_at or self.started_at
+        if not state.active or now - heard < HEARD_EVERY:
             return
         if _settling(state, now) or _near_alarm(state, now):
             return
