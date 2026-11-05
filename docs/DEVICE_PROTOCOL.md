@@ -33,6 +33,8 @@ Ekran obsługuje **jedną sesję naraz** i trzyma martwą sesję zarezerwowaną 
 30–60 s. Dlatego łączymy się na krótko, ponawiamy połączenie z odstępem i nie
 wysyłamy komend szybciej niż co ~0,3 s.
 
+Wyjątek z E19 (2026-11-05, firmware 1130.7, zaraz po zimnym starcie): przy otwartej sesji z Maca ramka przyjęła drugą sesję od serwera i odpowiadała obu. Trzymanie sesji nie blokuje więc innych klientów.
+
 | Komenda | Dane | Znaczenie | Status |
 |---|---|---|---|
 | `0x0B` | – | numer seryjny | potwierdzone (społeczność) |

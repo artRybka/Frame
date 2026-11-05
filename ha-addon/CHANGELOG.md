@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.100.2
+
+- Po wyłączeniu i włączeniu ramki przyciskiem (i po każdym innym zimnym
+  starcie) ekran nie zostaje już biały. Ekran startu Samsunga zamazywał
+  obraz, a serwer nie wiedział, który obraz aplikacja pamięta, więc nie
+  kazał jej narysować go ponownie.
+
 ## 1.100.1
 
 - Ramka nie zasypia, gdy restartuje się, żeby zainstalować nową wersję
