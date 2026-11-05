@@ -711,9 +711,9 @@ struct EmptyStateView: View {
 }
 
 /// A search that found nothing (Mateusz's words): one quiet line, and under it the choices
-/// that, given up, would find something, as chips crossed out with how
-/// many works the library has without them (Mateusz, szkic 13 T1). A tap
-/// gives the choice up.
+/// that, given up, would find something, as chips with how many works
+/// the library has without them ("Pomarańcz · obecny · 3 dzieła"; no
+/// strike-through, Mateusz). A tap gives the choice up.
 struct NothingFound: View {
     let without: [(token: SearchToken, count: Int)]
     let giveUp: (SearchToken) -> Void
@@ -735,10 +735,8 @@ struct NothingFound: View {
                             if row.token.kind == "color" {
                                 ColorTagDot(tag: row.token.key, size: 9, stroke: nil)
                             }
-                            Text(row.token.shownName)
-                                .strikethrough(color: Theme.ink.opacity(0.45))
-                                .foregroundStyle(Theme.ink)
-                            Text("→ \(row.count)").foregroundStyle(Theme.inkSoft)
+                            Text(row.token.shownName).foregroundStyle(Theme.ink)
+                            Text("· " + Names.works(row.count)).foregroundStyle(Theme.inkSoft)
                         }
                         .font(.footnote)
                         .lineLimit(1)
