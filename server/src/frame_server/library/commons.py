@@ -233,7 +233,9 @@ def file_title(name: str, artist: str, year: int | None = None) -> str:
 #    Commons file names have it.
 # 5: AIC pictures asked in a width its IIIF server gives (``full/full``
 #    woke its Cloudflare, 2026-11-04).
-REPAIR_VERSION = 5
+# 6: Courtauld originals smaller than 2560 px asked whole (``!2560,2560``
+#    is a 400 from its IIIF 3 server, 2026-11-05).
+REPAIR_VERSION = 6
 REPAIR_STATE_KEY = "commons_text_repair"
 # The household's own photos: their captions are left as they were typed.
 OWN_SOURCES = frozenset({"upload", "icloud"})
@@ -263,6 +265,9 @@ def _repairs(item: Item) -> dict[str, object]:
             url: str = getattr(item, key)
             if (allowed := aic_resized(url, most, item.width)) != url:
                 fixes[key] = allowed
+    small = item.width and item.height and max(item.width, item.height) <= 2560
+    if item.source == "courtauld" and small and "/full/!2560,2560/" in item.image_url:
+        fixes["image_url"] = item.image_url.replace("/full/!2560,2560/", "/full/max/")
     drawing = item.source in ("wmc", "openverse") and extension(item.image_url) in VECTOR
     if drawing and (image_url := commons_rendition(item.image_url, 3840, item.width)):
         fixes["image_url"] = image_url

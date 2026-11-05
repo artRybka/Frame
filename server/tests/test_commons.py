@@ -305,14 +305,26 @@ def test_repair_stored_items(tmp_path) -> None:
         thumb_url=f"{iiif}/full/0/default.jpg",
         width=562,
     )
+    scan = "https://gallerycollections.courtauld.ac.uk/iiif/3/134252"
+    small = Item(
+        id="courtauld:p-1966-gp-264-2",
+        source="courtauld",
+        source_id="p-1966-gp-264-2",
+        image_url=f"{scan}/full/!2560,2560/0/default.jpg",
+        width=1797,
+        height=1564,
+    )
+    large = small.model_copy(update={"id": "courtauld:p-1", "source_id": "p-1", "width": 7506})
     items = (
         *(broken, other, wikidata, tagged, drawing, prefixed, linked, photo, named, catalogued),
-        aic,
+        *(aic, small, large),
     )
     for item in (*items, selfie):
         lib.upsert(item)
 
-    assert repair_library(lib) == 9
+    assert repair_library(lib) == 10
+    assert lib.get(small.id).image_url == f"{scan}/full/max/0/default.jpg"
+    assert lib.get(large.id).image_url == large.image_url
     assert lib.get("aic:1").image_url == f"{iiif}/400,/0/default.jpg"
     assert lib.get("aic:1").thumb_url == f"{iiif}/400,/0/default.jpg"
     assert lib.get("wmc:10").title == "Skapiec"
