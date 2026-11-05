@@ -115,6 +115,7 @@ jobs:
             capture search-picker 8 "search-picker-$appearance"
             capture search-colors 8 "search-colors-$appearance"
             capture search-tones 8 "search-tones-$appearance"
+            capture search-empty 8 "search-empty-$appearance"
             capture search-styles 8 "search-styles-$appearance"
             capture search-chosen 8 "search-chosen-$appearance"
             capture search-museums 8 "search-museums-$appearance"

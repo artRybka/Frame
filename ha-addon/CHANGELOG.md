@@ -9,7 +9,9 @@
   razem. W Tonacji są cztery przełączniki: Temperatura (ciepłe albo
   chłodne), Nasycenie (żywe albo stonowane), Barwność (kolorowe albo mono)
   i Jasność (ciemne albo jasne). Wszystko, co wybrane, musi
-  pasować naraz. Pusty wynik wyszukiwania mówi krótko „Brak dzieł”.
+  pasować naraz. Gdy nic się nie znajdzie,
+  Szukaj pokazuje pustą ścianę i wybory, bez których coś się znajdzie
+  (z liczbą dzieł); stuknięcie usuwa taki wybór.
 - „Mono” (wcześniej „Monochromia”) znajduje naprawdę obrazy jednym tonem:
   czarno-białe, sepię, cyjanotypie i sangwinę, a nie ciemne obrazy olejne.
   Serwer raz po aktualizacji przelicza kolory całej biblioteki.

@@ -710,6 +710,81 @@ struct EmptyStateView: View {
     }
 }
 
+/// A search that found nothing: an empty frame on a nail, "Pusta ściana",
+/// and the choices that, given up, would find something, with how many
+/// works (Mateusz, szkic 12 W4). A tap on one gives it up.
+struct EmptyWall: View {
+    /// A chip's name and the works without it.
+    let without: [(name: String, count: Int)]
+    let giveUp: (Int) -> Void
+
+    var body: some View {
+        VStack(spacing: 10) {
+            EmptyFrameDrawing()
+                .frame(width: 96, height: 96)
+            Text("Pusta ściana").font(.serif(20, weight: .semibold)).foregroundStyle(Theme.ink)
+            if without.isEmpty {
+                Text("Żadne dzieło nie pasuje do wszystkich wyborów naraz.")
+                    .font(.subheadline)
+                    .foregroundStyle(Theme.inkSoft)
+                    .multilineTextAlignment(.center)
+            } else {
+                Text("Bez jednego wyboru coś zawiśnie:")
+                    .font(.subheadline)
+                    .foregroundStyle(Theme.inkSoft)
+                VStack(spacing: 0) {
+                    ForEach(Array(without.enumerated()), id: \.offset) { index, row in
+                        Button { giveUp(index) } label: {
+                            HStack {
+                                Text("bez \(Text(row.name).fontWeight(.semibold).foregroundStyle(Theme.ink))")
+                                    .foregroundStyle(Theme.inkSoft)
+                                Spacer(minLength: 12)
+                                Text(Names.works(row.count)).fontWeight(.semibold).foregroundStyle(Theme.ink)
+                                Image(systemName: "chevron.right")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(Theme.inkSoft)
+                            }
+                            .font(.subheadline)
+                            .padding(.vertical, 12)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .overlay(alignment: .top) { Divider().overlay(Theme.hairline) }
+                    }
+                }
+                .overlay(alignment: .bottom) { Divider().overlay(Theme.hairline) }
+                .padding(.top, 4)
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 28)
+        .frame(maxWidth: .infinity)
+    }
+}
+
+/// A thin drawing of an empty picture frame hanging on a nail.
+struct EmptyFrameDrawing: View {
+    var body: some View {
+        Canvas { context, size in
+            let s = min(size.width, size.height) / 120
+            func point(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: x * s, y: y * s) }
+            let ink = GraphicsContext.Shading.color(Theme.inkSoft)
+            context.fill(Path(ellipseIn: CGRect(x: 57.8 * s, y: 11.8 * s, width: 4.4 * s, height: 4.4 * s)), with: ink)
+            var cord = Path()
+            cord.move(to: point(30, 40))
+            cord.addLine(to: point(60, 16))
+            cord.addLine(to: point(90, 40))
+            context.stroke(cord, with: ink, lineWidth: 1.2 * s)
+            context.stroke(Path(CGRect(x: 22 * s, y: 40 * s, width: 76 * s, height: 62 * s)), with: ink, lineWidth: 1.6 * s)
+            context.stroke(
+                Path(CGRect(x: 31 * s, y: 49 * s, width: 58 * s, height: 44 * s)), with: ink,
+                style: StrokeStyle(lineWidth: 1.4 * s, dash: [3 * s, 3 * s])
+            )
+        }
+        .accessibilityHidden(true)
+    }
+}
+
 /// 2×2 collage of playlist covers, each cropped around its subject.
 /// Playlist cover: up to four works, laid out by how many there are. An
 /// empty playlist gets a monogram on a mat instead of blank tiles.
