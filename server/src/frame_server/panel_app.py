@@ -20,8 +20,9 @@ picture again (~40 s of blinking). So for such a sleep the app sets the
 alarms for every economy check up to the next change at once, and at a
 check with nothing new the server does not start it: the panel just goes
 back to sleep by itself, unredrawn. At the last of those alarms it always
-starts the app, which sets the next ones. The app keeps the picture it
-shows across starts and does not draw the same one again.
+starts the app, which sets the next ones (and Tizen's alarm for it, so
+it starts by itself, PLAN 2.6j). Its new page is white, so at every start
+the server has it draw its picture again (``redraw``).
 
 With ``base_screen_resolution`` "always" in its config.xml the app's page is
 2560x1440, so it gets the very picture the Mobile source shows (passthrough
@@ -269,9 +270,10 @@ class NextAnswer(BaseModel):
     # Take a screenshot and send it to /panel/capture (asked by the owner,
     # only with ``stay``: on the charger or kept awake).
     capture: bool = False
-    # Draw ``image`` even when the app remembers it on the screen: the
-    # server started the app over MDC and the launcher's install screen
-    # drew over the picture (2026-11-04, white after a server update).
+    # Draw ``image`` even when the app remembers it on the screen: the app
+    # just started (over MDC, by the launcher or by Tizen's alarm) and its
+    # new page or the launcher's install screen drew over the picture
+    # (2026-11-04, white after a server update; 2026-11-05, white all night).
     redraw: bool = False
 
 
@@ -648,9 +650,12 @@ class PanelApp:
                 "image": f"{service.settings.base_url()}{self.image_path(content)}",
                 "title": content.title,
             }
-            if started and hello.shown:
+            if hello.reason == "start" and hello.shown:
+                # Any start is a new, white page, whoever started it: the
+                # server over MDC, the launcher or Tizen's alarm (2026-11-05,
+                # white all night after self-starts at checks with nothing new).
                 common["redraw"] = True
-                log.info("the frame's app was started over MDC: it draws %s again", content.file_id)
+                log.info("the frame's app started: it draws %s again", content.file_id)
         if self._resting(now, still_up=hello.reason == "up"):
             return self._rest(now, common)
         if self.restart_requested:

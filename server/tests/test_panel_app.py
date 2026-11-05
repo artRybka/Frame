@@ -1390,16 +1390,18 @@ async def test_the_frames_next_button_shows_the_next_work(tmp_path: Path) -> Non
     assert asked == ["button"]
 
 
-def test_a_start_over_mdc_draws_the_picture_again(tmp_path: Path) -> None:
+def test_every_start_draws_the_picture_again(tmp_path: Path) -> None:
+    """2026-11-05: Tizen's alarm started the app at checks with nothing
+    new; its new page was white and, told nothing, it drew nothing."""
     service = _service(tmp_path)
     app = service.app
     now = datetime(2026, 11, 4, 9, 6, tzinfo=UTC)
     content = service.store.current()
     assert content is not None
     shown = content.file_id
-    # Woken by its own alarm: the picture is still on the screen.
+    # Started by itself (the launcher, Tizen's alarm): a new, white page.
     answer = app.answer(AppHello(reason="start", charging=True, shown=shown), now)
-    assert not answer.redraw
+    assert answer.redraw and answer.file_id == shown
     # Started by the server over MDC: the install screen drew over it.
     app._unanswered = 1
     answer = app.answer(AppHello(reason="start", charging=True, shown=shown), now)
