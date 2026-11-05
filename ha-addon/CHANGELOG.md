@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.103.0
+
+- Karta Tonacja w Szukaj → Kolor nie ma już grupy „pomiędzy”. Każde
+  dzieło jest w każdej grupie dokładnie w jednym kółku, więc kółka razem
+  dają całą bibliotekę. Temperatura, Nasycenie i Jasność mają trzecie,
+  środkowe kółko: Ciepłe · Neutralne · Chłodne, Żywe · Umiarkowane ·
+  Stonowane, Ciemne · Średnie · Jasne. Barwność zostaje na dwa: Kolorowe
+  to wszystko poza Mono. Grupy stoją po dwie w rzędzie.
+- W grupie można wybrać dwa sąsiednie kółka, np. Ciemne i Średnie: obejmuje
+  je jeden pierścień, a nad wynikami stoi żeton „Ciemne albo średnie”.
+- Kropki Nasycenia wyraźniej się różnią: Żywe w czystych barwach,
+  Stonowane prawie szare. Neutralne to płaska szarość.
+- „Żywe” znów coś znajduje: liczy się najbarwniejsza część obrazu, a nie
+  średnia z całego (dotąd prawie nigdy nie wypadało).
+- Po aktualizacji serwer raz przelicza kolory całej biblioteki. Do końca
+  przeliczenia Tonacja działa po staremu.
+- Harmonogram: nagłówek godzin to „Godzina zmiany obrazu” (przy kilku
+  „Godziny zmiany obrazu”) w obu trybach, zamiast „Pobudki i zmiany”
+  w Oszczędnym i „Godzina zmiany” w Online.
+- Kontrola w trybie Oszczędnym, która nie przynosi nic nowego, kosztuje
+  mniej baterii. Ramka po takiej pobudce zasypia sama po 2 minutach
+  bezczynności zamiast po 5. Gdyby ramka nie przyjęła 2 minut, zostaje
+  przy 5. Przy kontroli z nowym obrazem aplikacja wstaje wcześniej, więc
+  to jej nie przeszkadza.
+- Podsumowanie pod paskiem pobudek (Ramka → Harmonogram) liczy czas Wi-Fi
+  według pomiarów: ok. 3,5 min na zmianę i 2,5 min na kontrolę.
+
 ## 1.102.6
 
 - Zmiana harmonogramu w czasie snu ramki w trybie Oszczędnym (dodana albo

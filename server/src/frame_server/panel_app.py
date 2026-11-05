@@ -100,8 +100,9 @@ KICK_EVERY = timedelta(minutes=2)
 # alarm (nights of 2026-11-04/05: ~80 s lost at every change). An alarm
 # counts this long before its time.
 RING_EARLY = timedelta(minutes=2)
-# An economy check with nothing new: left alone the panel stays up ~5 min
-# with the Wi-Fi on (AUTO_SLEEP) and goes back to sleep without redrawing.
+# An economy check with nothing new: left alone the panel stays up ~2 min
+# with the Wi-Fi on (app.js AUTO_SLEEP, 5 min until 1.102.7) and goes back
+# to sleep without redrawing.
 # The server puts it to sleep over MDC this long after the launcher's
 # question instead (2026-11-05, Mateusz: an empty check cost ~1% of the
 # battery). A launcher question this long after the alarm's time is not its
@@ -109,7 +110,7 @@ RING_EARLY = timedelta(minutes=2)
 EMPTY_SLEEP_AFTER = timedelta(seconds=15)
 # Off since 2026-11-05 21:00: the camera saw the picture gone after the MDC
 # sleep, the screen a flat yellow with a faint ghost of it (an e-paper
-# refresh cut short). The empty check is left alone again (~5 min up).
+# refresh cut short). The empty check is left alone again (AUTO_SLEEP).
 EMPTY_SLEEP = False
 EMPTY_CHECK_FOR = timedelta(minutes=3)
 # "Obudź ramkę" keeps the woken app awake (asking every ``POLL``) this long.
