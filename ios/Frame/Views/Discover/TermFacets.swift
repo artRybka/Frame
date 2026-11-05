@@ -594,9 +594,9 @@ struct TermFacetPanel: View {
                             withAnimation(.snappy(duration: 0.25)) { setLevel(family, choice) }
                         } label: {
                             if choice == level {
-                                Label(choice.name.capitalized, systemImage: "checkmark")
+                                Label(choice.name(for: family).capitalized, systemImage: "checkmark")
                             } else {
-                                Text(choice.name.capitalized)
+                                Text(choice.name(for: family).capitalized)
                             }
                         }
                         .disabled(level == nil && full)
@@ -999,7 +999,7 @@ struct LevelSwatch: View {
                     .foregroundStyle(level != nil ? Theme.ink : Theme.inkSoft)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
-                Text(level?.name ?? " ")
+                Text(level?.name(for: family) ?? " ")
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(Theme.ink)
                     .lineLimit(1)
@@ -1011,7 +1011,7 @@ struct LevelSwatch: View {
         .buttonStyle(.plain)
         .sensoryFeedback(.selection, trigger: level)
         .accessibilityLabel(ColorTag.name(family))
-        .accessibilityValue(level?.name ?? "nie wybrany")
+        .accessibilityValue(level?.name(for: family) ?? "nie wybrany")
         .accessibilityHint("Stuknij, by było go więcej; po większości kolor się wyłącza.")
         .accessibilityAddTraits(level != nil ? .isSelected : [])
     }

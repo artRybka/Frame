@@ -193,6 +193,18 @@ enum ColorTag {
             }
         }
 
+        /// The word agreeing with the colour's name: "Szarości · obecne",
+        /// "Czerwień · obecna", "Błękit · obecny" (Mateusz).
+        func name(for family: String) -> String {
+            guard self != .accent else { return name }
+            let stem = String(name.dropLast())
+            return switch ColorTag.gender(family) {
+            case .feminine: stem + "a"
+            case .plural: stem + "e"
+            case .masculine: name
+            }
+        }
+
         /// How much of the ring around the swatch it fills.
         var fraction: Double { Double(rawValue + 1) / Double(Self.allCases.count) }
 
@@ -204,6 +216,17 @@ enum ColorTag {
 
     static let neutrals = ["black", "gray", "white"]
     static let levelMark = "@"
+
+    enum Gender { case masculine, feminine, plural }
+
+    /// The grammatical gender of a colour's Polish name, for the level word.
+    static func gender(_ family: String) -> Gender {
+        switch family {
+        case "red", "yellow", "green", "black", "white": .feminine
+        case "gray": .plural
+        default: .masculine
+        }
+    }
     /// Colours picked at once in the Kolor sheet, at most.
     static let maxLevels = 3
 
@@ -273,7 +296,7 @@ enum ColorTag {
             return "Dominuje: " + name(family(tag)).lowercased()
         }
         if tag.contains(levelMark), let level = level(of: tag) {
-            return name(family(tag)) + " · " + level.name
+            return name(family(tag)) + " · " + level.name(for: family(tag))
         }
         if tag.hasPrefix(tonePrefix) {
             return name(family(tag))
