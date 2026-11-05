@@ -507,7 +507,7 @@ final class FrameAPITests: XCTestCase {
         let wake = ISO8601DateFormatter().string(from: Date.now.addingTimeInterval(3 * 3600 + 600))
         delivery = Delivery(state: "waiting", asleepUntil: "19:00", asleepUntilAt: wake)
         XCTAssertTrue(delivery.headline.hasPrefix("Pojawi się "))
-        XCTAssertTrue(delivery.explanation.contains("przycisk"))
+        XCTAssertEqual(delivery.explanation, "Aby pokazać obraz wcześniej, naciśnij przycisk na ramce.")
         delivery.missedWakeAt = wake
         XCTAssertTrue(delivery.headline.hasPrefix("Ramka nie obudziła się o "))
         XCTAssertTrue(delivery.explanation.hasPrefix("Spróbuje znowu "))
@@ -604,7 +604,7 @@ final class FrameAPITests: XCTestCase {
         XCTAssertEqual(status.modePending, "online")
         XCTAssertEqual(
             modePendingText(status),
-            "Ramka przejdzie w tryb Online przy najbliższej pobudce albo po naciśnięciu guzika na ramce. Teraz śpi bez Wi-Fi i zmiana do niej nie dotrze."
+            "Ramka przejdzie w tryb Online przy najbliższej pobudce albo po naciśnięciu przycisku na ramce. Teraz śpi bez Wi-Fi i zmiana do niej nie dotrze."
         )
     }
 
@@ -683,6 +683,12 @@ final class FrameAPITests: XCTestCase {
         progress = DisplayProgress(stage: "done", active: false, title: "", fraction: 1)
         XCTAssertEqual(progress.phaseIndex, DisplayProgress.phases.count)
         XCTAssertEqual(progress.stageLabel, "Obraz jest na ramce")
+        // Waiting for the economy mode's wake: when it shows, not a warning.
+        let wake = ISO8601DateFormatter().string(from: Date.now.addingTimeInterval(60))
+        progress = DisplayProgress(stage: "waiting", active: false, title: "", fraction: 0.2, wakesAt: wake)
+        XCTAssertTrue(progress.stageLabel.hasPrefix("Pojawi się "))
+        progress.wakesAt = nil
+        XCTAssertEqual(progress.stageLabel, "Obraz poczeka, aż ramka się obudzi")
     }
 
     func testPanelAddressChecks() {

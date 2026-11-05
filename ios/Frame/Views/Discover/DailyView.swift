@@ -614,16 +614,18 @@ struct DailyView: View {
 
     /// "Pokaż na ramce" (held: for longer), at the end by "Na Twojej ramce".
     private func showButton(_ work: DailyWork) -> some View {
-        Button {
+        // Sent while the frame sleeps: says when it shows until it does.
+        let waiting = sending ? nil : model.waitingLabel(for: work.item.id)
+        return Button {
             Task { await show(work, .untilNextChange) }
         } label: {
             Label {
-                Text(sending ? "Wysyłam…" : sent == true ? "Wysłano" : "Pokaż na ramce")
+                Text(sending ? "Wysyłam…" : waiting ?? (sent == true ? "Wysłano" : "Pokaż na ramce"))
             } icon: {
                 if sending {
                     ProgressView().tint(Theme.paper)
                 } else {
-                    Image(systemName: sent == true ? "checkmark" : "photo.fill")
+                    Image(systemName: waiting != nil ? "clock" : sent == true ? "checkmark" : "photo.fill")
                 }
             }
         }

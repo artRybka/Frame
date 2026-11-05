@@ -142,7 +142,7 @@ async def test_player_shows_boards_of_photos(service) -> None:
     first = await player.next()
     state = player.state
     # Tests have no panel, so the only error allowed is the push reporting that.
-    assert first is not None and "panel not configured" in (state.last_error or "")
+    assert first is not None and "nie jest jeszcze ustawiona" in (state.last_error or "")
     board = [state.current_item_id, *state.current_group]
     assert len(board) == 3 and len(set(board)) == 3
     assert not set(board) & set(state.queue)  # taken out of the rotation

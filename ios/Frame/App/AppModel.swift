@@ -694,12 +694,13 @@ final class AppModel {
             return (
                 alarm.map { "Ramka śpi głęboko, sama obudzi się \($0)" } ?? "Ramka śpi głęboko",
                 "Po odpięciu zasilacza sygnał budzenia jej nie budzi. "
-                    + (alarm == nil ? "Obudzi" : "Wcześniej obudzi") + " ją krótkie naciśnięcie przycisku z tyłu."
+                    + (alarm == nil ? "Obudzi" : "Wcześniej obudzi") + " ją naciśnięcie przycisku na ramce."
             )
         }
         return (
             "Ramka w głębokim śnie",
-            "Wi-Fi jest wyłączone. Obudzi ją " + (alarm.map { "budzik \($0) lub przycisk." } ?? "tylko przycisk.")
+            "Wi-Fi jest wyłączone. "
+                + (alarm.map { "Pobudka \($0), wcześniej obudzi ją przycisk na ramce." } ?? "Obudzi ją tylko przycisk na ramce.")
         )
     }
 
@@ -967,6 +968,23 @@ final class AppModel {
         return player?.lastError?.isEmpty ?? true
     }
 
+    /// "Pojawi się o 10:00" on the buttons of a work sent while the frame
+    /// sleeps, until the frame shows it (or another one is sent); nil
+    /// otherwise. Without a known wake: "Czeka na ramkę".
+    func waitingLabel(for itemID: String) -> String? {
+        guard let player, player.current?.item?.id == itemID,
+              let delivery = player.delivery, delivery.isWaiting
+        else { return nil }
+        return When.clock(delivery.asleepUntilAt).map { "Pojawi się o \($0)" } ?? "Czeka na ramkę"
+    }
+
+    /// The line under "Teraz prezentowane" while the frame sleeps.
+    private var firstShowsLine: String? {
+        guard let delivery = player?.delivery, delivery.isWaiting, let at = When.at(delivery.asleepUntilAt)
+        else { return nil }
+        return "Pierwszy obraz pojawi się \(at)."
+    }
+
     /// Whether the work was added with "Dodaj do kolejki" and waits its turn.
     func isQueued(_ itemID: String) -> Bool {
         player?.queued?.contains(itemID) ?? false
@@ -1013,6 +1031,7 @@ final class AppModel {
         settings?.playlistId = playlist.id
         notices.done("Teraz prezentowane: \(playlist.name)")
         await followPlayer()
+        if let firstShowsLine { notices.done("Teraz prezentowane: \(playlist.name)", firstShowsLine) }
     }
 
     /// "Propozycje" in Playlisty: back to the rotation from Discover.
@@ -1026,6 +1045,7 @@ final class AppModel {
         settings?.playlistId = nil
         notices.done("Teraz prezentowane: Propozycje")
         await followPlayer()
+        if let firstShowsLine { notices.done("Teraz prezentowane: Propozycje", firstShowsLine) }
     }
 
     /// The works next in Propozycje, for its cover in Playlisty.
@@ -1555,7 +1575,7 @@ final class AppModel {
             } else {
                 notices.end(
                     card, .warning, "Ramka nie reaguje na budzenie",
-                    "Na baterii bywa zawodny. Naciśnij krótko przycisk z tyłu ramki."
+                    "Na baterii bywa zawodny. Naciśnij przycisk na ramce."
                 )
             }
             await refreshStatus(live: false)
@@ -1633,7 +1653,7 @@ final class AppModel {
             } else {
                 notices.end(
                     card, .warning, "Ramka nie odpowiada",
-                    "Naciśnij krótko przycisk z tyłu ramki i spróbuj jeszcze raz."
+                    "Naciśnij przycisk na ramce i spróbuj jeszcze raz."
                 )
             }
             await refreshStatus(live: false)

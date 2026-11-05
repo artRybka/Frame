@@ -44,7 +44,7 @@ from ..loopwatch import LoopWatch
 from ..night import NightQueue
 from ..night import tasks as night_tasks
 from ..panel_app import CODE_VERSION, WIDGET, AppHello, NextAnswer, app_code
-from ..player import hold_from
+from ..player import PANEL_NOT_SET, hold_from
 from ..power import WakeResult
 from ..progress import DisplayProgress, Stage
 from ..service import FrameService, outcome_json
@@ -419,7 +419,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise
         service.player.note_external(hold_from(hold))
         if not push or not service.device_configured:
-            message = "" if not push else "panel not configured"
+            message = "" if not push else PANEL_NOT_SET
             if push:
                 service.progress.finish(Stage.FAILED, message)
             return {"content": asdict(content), "pushed": False, "message": message}

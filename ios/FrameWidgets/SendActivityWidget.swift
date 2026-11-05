@@ -223,7 +223,7 @@ enum Palette {
     /// The line under the title.
     static func line(_ state: SendActivityAttributes.ContentState, stale: Bool) -> String {
         if state.isWaiting {
-            return state.wakes.map { "Czeka na ramkę, obudzi się \($0)" } ?? "Obraz poczeka, aż ramka się obudzi"
+            return state.wakes.map { "Pojawi się \($0)" } ?? "Obraz poczeka, aż ramka się obudzi"
         }
         if stale, state.isActive { return "Otwórz aplikację, żeby sprawdzić, czy dotarł" }
         return state.label

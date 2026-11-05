@@ -160,9 +160,11 @@ struct NoticeCard: View {
 /// The kind of a card: its glyph in paper on a small disc of soft colour.
 struct NoticeMark: View {
     let kind: Notice.Kind
+    /// Another glyph on the kind's disc (a clock for a picture that waits).
+    var symbol: String? = nil
 
     var body: some View {
-        Image(systemName: glyph)
+        Image(systemName: symbol ?? glyph)
             .font(.system(size: 10, weight: .heavy))
             .foregroundStyle(Theme.paper)
             .frame(width: 20, height: 20)

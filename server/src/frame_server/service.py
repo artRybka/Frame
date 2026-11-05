@@ -8,7 +8,7 @@ import logging
 from collections.abc import AsyncIterator, Callable, Coroutine
 from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, tzinfo
 from pathlib import Path
 
 from PIL import Image
@@ -65,7 +65,7 @@ PROGRESS_KEY = "progress_expected"
 #: Set once the Courtauld's white pictures kept before 1.100.7 are removed.
 COURTAULD_WHITE_KEY = "courtauld_white_removed"
 NO_CERTIFICATES = (
-    "no app for the frame: copy the Samsung certificates to data/panel-app/certs on the server"
+    "Ramka nie ma aplikacji Frame: wgraj certyfikaty Samsunga w Konfiguracji → Aplikacja ramki."
 )
 
 
@@ -216,6 +216,7 @@ class FrameService:
         )
         self.progress.on_change = self.notifier.progress_changed
         self.notifier.progress = self.progress.view
+        self.notifier.tz = self._tz
         self.progress.restore(self.library.get_state(PROGRESS_KEY, {}))
         self.progress.on_learn = lambda learned: self.library.set_state(PROGRESS_KEY, learned)
         self.progress.likely_asleep = lambda: self.status.sleeping
@@ -439,7 +440,7 @@ class FrameService:
         app gets it installed and started first."""
         content = self.store.current()
         if content is None:
-            raise RuntimeError("nothing published yet")
+            raise RuntimeError("Nie ma jeszcze obrazu do wysłania.")
         url = f"{self.settings.base_url()}{self.app.image_path(content)}"
         app, power, progress = self.app, self.power, self.progress
         if not progress.active:
@@ -449,11 +450,13 @@ class FrameService:
                 origin=self.player.state.last_change_origin,
                 item_id=notifications.shown_item_id(content),
             )
-        progress.advance(Stage.SENDING)
         file_id = content.file_id
         now = datetime.now(UTC)
         wake = app.wakes_at()
         ringing = wake is not None and abs(wake - now) < WAKE_SOON
+        if not (app.active and app.deep_asleep() and not ringing):
+            # Asleep with the Wi-Fi off nothing is sent: no "Łączę się z ramką".
+            progress.advance(Stage.SENDING)
         self.store.expect_fetch(file_id)
         timeout = 0.0
         if not app.active and app.ensure_package() is None:
@@ -498,12 +501,26 @@ class FrameService:
             return PushOutcome(content, pushed=True, fetched=True, content_url=url)
         power.mark_pending(True)
         wake = app.wakes_at()
-        when = wake.astimezone(self.player.settings.tz()).strftime("%H:%M") if wake else None
-        message = (
-            f"the frame asks for it at {when}" if when else "the frame asks for it when it wakes"
-        )
-        progress.finish(Stage.WAITING, message)
+        message = self._waiting_reason(wake)
+        progress.finish(Stage.WAITING, message, wakes_at=wake)
         return PushOutcome(content, pushed=False, fetched=False, content_url=url, message=message)
+
+    def _tz(self) -> tzinfo:
+        return self.player.settings.tz()
+
+    def _waiting_reason(self, wake: datetime | None) -> str:
+        """Why a picture waits, under "Pojawi się dziś o 10:00" in the app
+        (the bar says when): said in Polish, as the app shows it."""
+        app = self.app
+        if app.deep_asleep():
+            economy = self.player.settings.power_mode == "economy"
+            rest = app.state.off or app.state.rest_until is not None
+            if economy and not app.state.wifi_lost and not rest:
+                return "Ramka jest w trybie oszczędnym."
+            return "Ramka śpi bez Wi-Fi."
+        if wake is not None:
+            return "Ramka nie odpowiada."
+        return "Ramka pobierze go, gdy się obudzi."
 
     def ensure_initial_content(self) -> None:
         """Publish a placeholder so the panel's URL never 404s on a fresh install."""

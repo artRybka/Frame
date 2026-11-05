@@ -119,7 +119,7 @@ struct RootView: View {
             let wake = model.notices.begin("Budzę ramkę", "Na baterii trwa to do 3 minut")
             model.notices.warn(
                 "Ramka śpi głęboko, sama obudzi się jutro o 7:00",
-                "Po odpięciu zasilacza sygnał budzenia jej nie budzi. Wcześniej obudzi ją krótkie naciśnięcie przycisku z tyłu."
+                "Po odpięciu zasilacza sygnał budzenia jej nie budzi. Wcześniej obudzi ją naciśnięcie przycisku na ramce."
             )
             try? await Task.sleep(for: .seconds(4))
             model.notices.end(wake, .done, "Ramka się obudziła")

@@ -88,6 +88,9 @@ class DisplayProgress(BaseModel):
     #: The work on its way, when it is one: the app's Lock Screen card
     #: shows its thumbnail.
     item_id: str | None = None
+    #: Waiting: when the frame wakes and asks for the picture ("Pojawi się
+    #: dziś o 10:00" in the app); None when nobody knows.
+    wakes_at: str | None = None
 
 
 class ProgressTracker:
@@ -111,6 +114,7 @@ class ProgressTracker:
         self._origin: str | None = None
         self._item_id: str | None = None
         self._message: str | None = None
+        self._wakes_at: str | None = None
         self._start = 0.0
         self._stage_start = 0.0
         self._end: float | None = None
@@ -173,6 +177,7 @@ class ProgressTracker:
         self._origin = origin
         self._item_id = item_id
         self._message = None
+        self._wakes_at = None
         self._start = self._stage_start = now
         self._end = None
         self._shown = 0.0
@@ -231,8 +236,11 @@ class ProgressTracker:
             return self.failed_connect
         return self.expected[stage]
 
-    def finish(self, stage: Stage, message: str | None = None) -> None:
-        """End the run: DONE, WAITING or FAILED (IDLE: forget it)."""
+    def finish(
+        self, stage: Stage, message: str | None = None, *, wakes_at: datetime | None = None
+    ) -> None:
+        """End the run: DONE, WAITING or FAILED (IDLE: forget it).
+        ``wakes_at``: waiting, when the frame wakes for the picture."""
         if stage == Stage.IDLE:
             self._stage = Stage.IDLE
             return
@@ -242,6 +250,7 @@ class ProgressTracker:
         self._shown = 1.0 if stage == Stage.DONE else max(self._shown, self._fraction(now))
         self._stage = stage
         self._message = message
+        self._wakes_at = _stamp(wakes_at) if wakes_at is not None else None
         self._end = now
         if self.on_end:
             try:
@@ -299,4 +308,5 @@ class ProgressTracker:
             message=self._message,
             origin=self._origin,
             item_id=self._item_id,
+            wakes_at=self._wakes_at if self._stage == Stage.WAITING else None,
         )
