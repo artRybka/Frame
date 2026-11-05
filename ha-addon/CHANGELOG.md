@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.102.4
+
+- Gdy po pustej kontroli, przy której serwer uśpił ramkę, wyślesz nowy
+  obraz, aplikacja nie pisze już „Ramka nie obudziła się o …”. Ramka
+  wstała o czasie, a obraz czeka na najbliższą pobudkę, jak w trybie
+  Oszczędnym. Serwer nie próbuje też co 5 minut uruchamiać śpiącej ramki.
+
 ## 1.102.3
 
 - Kontrola w trybie Oszczędnym, która nie przynosi nic nowego, kosztuje mniej

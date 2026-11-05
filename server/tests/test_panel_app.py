@@ -9,6 +9,7 @@ import json
 import ssl
 import time
 import zipfile
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -1720,6 +1721,13 @@ async def test_an_empty_check_sleeps_over_mdc_at_once(
         put = app.state.empty_sleep_at
         assert put is not None and datetime.fromisoformat(put) == _at("2026-10-28T14:00")
         assert app.state.asleep and not app.state.wifi_lost
+
+        # A picture sent after the check waits for 16:00: 14:00 was not
+        # missed (no "Ramka nie obudziła się", no nudges as for a lost app).
+        service.store.current = lambda: replace(content, file_id="new")  # type: ignore[method-assign]
+        await app.tick(_at("2026-10-28T14:30"))
+        assert app.state.missed_wake is None and app._nudged is None
+        del service.store.current
 
         # 16:00: up again at the next alarm, so the alarms survived.
         panel.received.clear()
