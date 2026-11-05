@@ -477,17 +477,38 @@ final class AppModel {
 
     /// Back in the app or on another network: checks which of the server's
     /// addresses answers now, and reloads when that changed or the server
-    /// was out of reach (then with the spinner, as at launch).
-    func recheckServer() async {
+    /// was out of reach (then with the spinner, as at launch). True when it
+    /// reloaded.
+    @discardableResult
+    func recheckServer() async -> Bool {
         // Out of reach before: maybe not any more.
         if case .failed = connection, !accessLost, !connecting {
             await refreshAll()
-            return
+            return true
         }
-        guard let route, route.hasRemote, connection != .unknown else { return }
+        guard let route, route.hasRemote, connection != .unknown else { return false }
         let before = route.active
-        guard let found = await route.resolve() else { return }
-        if found != before || connection != .connected { await refreshAll() }
+        guard let found = await route.resolve() else { return false }
+        guard found != before || connection != .connected else { return false }
+        await refreshAll()
+        return true
+    }
+
+    /// Back from the background. The frame may have changed pictures
+    /// meanwhile (the schedule, a check in Oszczędny, another phone), so
+    /// "Teraz" asks the server at once instead of showing the picture the
+    /// app was left with until the schedule's own follow-up, a minute and a
+    /// half later.
+    func cameBack() async {
+        tidyLiveActivities()
+        let reloaded = await recheckServer()
+        if !reloaded, !demoMode, connection == .connected {
+            await refreshPlayer()
+            if player?.progress?.active == true { trackProgress() }
+            await followStatus()
+        }
+        await settleLiveActivity()
+        await settleStudyActivities()
     }
 
     private func watchNetwork() {

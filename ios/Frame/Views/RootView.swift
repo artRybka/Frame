@@ -133,12 +133,7 @@ struct RootView: View {
             if phase == .background { model.rememberNow() }
             // Back from the background, maybe on another network.
             if old == .background, phase != .background {
-                Task {
-                    model.tidyLiveActivities()
-                    await model.recheckServer()
-                    await model.settleLiveActivity()
-                    await model.settleStudyActivities()
-                }
+                Task { await model.cameBack() }
             }
         }
     }
