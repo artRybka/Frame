@@ -100,8 +100,8 @@ KICK_EVERY = timedelta(minutes=2)
 # alarm (nights of 2026-11-04/05: ~80 s lost at every change). An alarm
 # counts this long before its time.
 RING_EARLY = timedelta(minutes=2)
-# An economy check with nothing new: left alone the panel stays up ~2 min
-# with the Wi-Fi on (app.js AUTO_SLEEP, 5 min until 1.102.7) and goes back
+# An economy check with nothing new: left alone the panel stays up ~3 min
+# with the Wi-Fi on (app.js AUTO_SLEEP, 5 min until 1.103.2) and goes back
 # to sleep without redrawing.
 # The server puts it to sleep over MDC this long after the launcher's
 # question instead (2026-11-05, Mateusz: an empty check cost ~1% of the
