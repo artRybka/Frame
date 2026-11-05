@@ -710,6 +710,52 @@ struct EmptyStateView: View {
     }
 }
 
+/// A search that found nothing (Mateusz's words): one quiet line, and under it the choices
+/// that, given up, would find something, as chips with how many works
+/// the library has without them ("Pomarańcz · obecny · 3 dzieła"; no
+/// strike-through, Mateusz). A tap gives the choice up.
+struct NothingFound: View {
+    let without: [(token: SearchToken, count: Int)]
+    let giveUp: (SearchToken) -> Void
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Text("Brak dzieł spełniających kryteria")
+                .font(.serif(17).italic())
+                .foregroundStyle(Theme.inkSoft)
+                .multilineTextAlignment(.center)
+            if !without.isEmpty {
+                Text("Usuń jedno z poniższych:")
+                    .font(.caption)
+                    .foregroundStyle(Theme.inkSoft)
+                    .padding(.top, 8)
+                ForEach(without, id: \.token) { row in
+                    Button { giveUp(row.token) } label: {
+                        HStack(spacing: 6) {
+                            if row.token.kind == "color" {
+                                ColorTagDot(tag: row.token.key, size: 9, stroke: nil)
+                            }
+                            Text(row.token.shownName).foregroundStyle(Theme.ink)
+                            Text("· " + Names.works(row.count)).foregroundStyle(Theme.inkSoft)
+                        }
+                        .font(.footnote)
+                        .lineLimit(1)
+                        .padding(.horizontal, 11)
+                        .padding(.vertical, 6)
+                        .background(Theme.ink.opacity(0.06), in: Capsule())
+                        .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Bez: \(row.token.shownName), \(Names.works(row.count))")
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 56)
+        .frame(maxWidth: .infinity)
+    }
+}
+
 /// 2×2 collage of playlist covers, each cropped around its subject.
 /// Playlist cover: up to four works, laid out by how many there are. An
 /// empty playlist gets a monogram on a mat instead of blank tiles.

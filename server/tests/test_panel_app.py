@@ -1434,3 +1434,149 @@ def test_the_app_says_which_picture_it_remembers(tmp_path: Path) -> None:
         assert svc.app.state.shown == content.file_id
         answer = client.get("/panel/next", params=query | {"reason": "poll"}).json()
         assert answer["redraw"] is False
+
+
+async def test_the_launchers_question_starts_the_app_at_once(
+    tmp_path: Path, server_ssl: ssl.SSLContext
+) -> None:
+    """2026-11-05: after a cold boot the launcher fetches sssp_config.xml
+    20-25 s after the Wi-Fi is back, before the alarm's time, and never
+    starts the app itself. The server starts it then, not ``KICK_AFTER``
+    after the alarm; at a check with nothing new the panel is left alone."""
+    panel = FakePanel(server_ssl)
+    await panel.start()
+    try:
+        service = _service(tmp_path, panel.port)
+        service.player.save_settings(
+            FrameSettings(
+                change_times=["07:00", "19:00"],
+                power_mode="economy",
+                check_every_hours=2,
+                quiet_start=None,
+            )
+        )
+        _next_change(service, _at("2026-10-28T19:00"))
+        app = service.app
+        content = service.store.current()
+        assert content is not None
+        shown = BATTERY.model_copy(update={"shown": content.file_id})
+        app.answer(shown, now=_at("2026-10-28T12:00"))
+
+        # The 14:00 check, nothing new: the launcher's question changes nothing.
+        await app.launcher_up(_at("2026-10-28T13:59:40"))
+        assert panel.received == []
+
+        # The 19:00 change: started 20 s before the alarm's time ...
+        await app.launcher_up(_at("2026-10-28T18:59:40"))
+        assert panel.received == START
+        # ... and not again by the alarm's own start, nor by another look.
+        await service.power.tick(_at("2026-10-28T19:01:00"))
+        await app.launcher_up(_at("2026-10-28T19:00:10"))
+        assert panel.received == START
+
+        # It asks: a later look of the launcher (it checks at some sleeps)
+        # starts nothing.
+        app.answer(BATTERY, now=_at("2026-10-28T19:00:20"))
+        panel.received.clear()
+        await app.launcher_up(_at("2026-10-28T19:00:40"))
+        assert panel.received == []
+    finally:
+        await panel.stop()
+
+
+async def test_the_launchers_question_after_the_button_starts_the_app(
+    tmp_path: Path, server_ssl: ssl.SSLContext
+) -> None:
+    panel = FakePanel(server_ssl)
+    await panel.start()
+    try:
+        service = _service(tmp_path, panel.port)
+        service.player.save_settings(
+            FrameSettings(change_times=["07:00", "19:00"], power_mode="economy", quiet_start=None)
+        )
+        _next_change(service, _at("2026-10-28T19:00"))
+        app = service.app
+        content = service.store.current()
+        assert content is not None
+        shown = BATTERY.model_copy(update={"shown": content.file_id})
+        app.answer(shown, now=_at("2026-10-28T12:00"))
+        await app.launcher_up(_at("2026-10-28T15:00"))
+        assert panel.received == START
+        # The minute's look for the button does not start it again.
+        await service.power.tick(_at("2026-10-28T15:00:30"))
+        assert panel.received == START
+    finally:
+        await panel.stop()
+
+
+def test_only_the_panels_launcher_counts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from frame_server.web import create_app
+
+    service = _service(tmp_path)
+    app = create_app(service.settings)
+    svc = app.state.service
+    svc.app.store_package(b"PK\x03\x04signed", "2.0.0")
+    asked: list[bool] = []
+    monkeypatch.setattr(svc.app, "launcher_asked", lambda: asked.append(True))
+    with TestClient(app) as client:  # its address is "testclient"
+        assert client.get("/panel/app/sssp_config.xml").status_code == 200
+        assert asked == []
+        svc.settings.device_host = "testclient"
+        assert client.get("/panel/app/sssp_config.xml").status_code == 200
+        assert asked == [True]
+
+
+async def test_an_app_starting_itself_is_not_started_by_the_launchers_question(
+    tmp_path: Path, server_ssl: ssl.SSLContext
+) -> None:
+    """Tizen's alarm starts the app at the last alarm of a sleep (PLAN 2.6j):
+    the server leaves that one to it (``KICK_AFTER`` later if it stays
+    silent), but a check with something new it starts at once."""
+    panel = FakePanel(server_ssl)
+    await panel.start()
+    try:
+        service = _service(tmp_path, panel.port)
+        service.player.save_settings(
+            FrameSettings(
+                change_times=["07:00", "19:00"],
+                power_mode="economy",
+                check_every_hours=2,
+                quiet_start=None,
+            )
+        )
+        _next_change(service, _at("2026-10-28T19:00"))
+        app = service.app
+        content = service.store.current()
+        assert content is not None
+        shown = BATTERY.model_copy(update={"shown": content.file_id})
+        answer = app.answer(shown, now=_at("2026-10-28T12:00"))
+        assert answer.action == "sleep" and not app.state.self_start
+        launch = {"ok": True, "cleared": True, "set": ["19:00:30"]}
+        app.report("sleep", {"why": "plan", "launch": launch})
+        assert app.state.self_start
+        app._sleep_reported = _at("2026-10-28T12:00:30")  # reported on the test's clock
+
+        # A picture sent before the 14:00 check: started at the launcher's question.
+        service.power.mark_pending(True)
+        await app.launcher_up(_at("2026-10-28T13:59:40"))
+        assert panel.received == START
+        service.power.mark_pending(False)
+        panel.received.clear()
+        app._kicked = None
+
+        # The 19:00 change: Tizen's alarm starts it, the server waits ...
+        await app.launcher_up(_at("2026-10-28T18:59:40"))
+        assert panel.received == []
+        # ... and starts it itself only when it stays silent.
+        await service.power.tick(_at("2026-10-28T19:01:10"))
+        assert panel.received == START
+    finally:
+        await panel.stop()
+
+
+def test_a_failed_tizen_alarm_is_no_self_start(tmp_path: Path) -> None:
+    app = _service(tmp_path).app
+    app.report("sleep", {"launch": {"ok": True, "set": ["InvalidValuesError: past"]}})
+    assert not app.state.self_start
+    app.report("sleep", {"launch": {"ok": False, "error": "no tizen.alarm"}})
+    assert not app.state.self_start

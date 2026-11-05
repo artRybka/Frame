@@ -173,18 +173,7 @@ actor DemoBackend: FrameBackend {
         }
         if !rules.styles.isEmpty && !overlaps(item.styles, rules.styles) { return false }
         if !rules.subjects.isEmpty && !overlaps(item.subjects, rules.subjects) { return false }
-        // As the server: colours and moods one group, accents another, both must fit.
-        // "Dominuje" a third: every colour the work is painted in is one picked.
-        let accents = rules.colors.filter { $0.hasPrefix(ColorTag.accentPrefix) }
-        let only = rules.colors.filter { $0.hasPrefix(ColorTag.onlyPrefix) }
-        let mainColors = rules.colors.filter { !accents.contains($0) && !only.contains($0) }
-        if !mainColors.isEmpty && Set(item.colorTags).isDisjoint(with: mainColors) { return false }
-        if !accents.isEmpty && Set(item.colorTags).isDisjoint(with: accents) { return false }
-        if !only.isEmpty {
-            let painted = Set(item.colorTags.filter { $0.hasPrefix(ColorTag.onlyPrefix) })
-            if painted.isEmpty || !painted.isSubset(of: only)
-                || Set(item.colorTags).isDisjoint(with: only.map(ColorTag.family)) { return false }
-        }
+        if !Self.fitsColours(item.colorTags, rules.colors) { return false }
         if !rules.terms.isEmpty && !DemoDiscover.matches(item, terms: rules.terms) { return false }
         if let from = rules.yearFrom, (item.year ?? Int.min) < from { return false }
         if let to = rules.yearTo, (item.year ?? Int.max) > to { return false }
@@ -194,6 +183,39 @@ actor DemoBackend: FrameBackend {
             for word in rules.query.lowercased().split(separator: " ") where !haystack.contains(word) {
                 return false
             }
+        }
+        return true
+    }
+
+    /// As the server (`colors.has_colours`), from the tags alone: a colour
+    /// at a level ("blue@much") and a Tonacja mood ("tone:warm") must each
+    /// fit; older rules keep their groups: colours and moods one, accents
+    /// another, "Dominuje" a third.
+    static func fitsColours(_ tags: [String], _ wanted: [String]) -> Bool {
+        let have = Set(tags)
+        for token in wanted {
+            if token.hasPrefix(ColorTag.tonePrefix) {
+                if !have.contains(ColorTag.family(token)) { return false }
+            } else if token.contains(ColorTag.levelMark), let level = ColorTag.level(of: token) {
+                let family = ColorTag.family(token)
+                let fits = switch level {
+                case .accent: have.contains(ColorTag.accent(family))
+                case .clear, .much: have.contains(family)
+                case .most: have.contains(family) && have.contains(ColorTag.only(family))
+                }
+                if !fits { return false }
+            }
+        }
+        let old = wanted.filter { !$0.hasPrefix(ColorTag.tonePrefix) && !$0.contains(ColorTag.levelMark) }
+        let accents = old.filter { $0.hasPrefix(ColorTag.accentPrefix) }
+        let only = old.filter { $0.hasPrefix(ColorTag.onlyPrefix) }
+        let mainColors = old.filter { !accents.contains($0) && !only.contains($0) }
+        if !mainColors.isEmpty && have.isDisjoint(with: mainColors) { return false }
+        if !accents.isEmpty && have.isDisjoint(with: accents) { return false }
+        if !only.isEmpty {
+            let painted = Set(tags.filter { $0.hasPrefix(ColorTag.onlyPrefix) })
+            if painted.isEmpty || !painted.isSubset(of: only)
+                || have.isDisjoint(with: only.map(ColorTag.family)) { return false }
         }
         return true
     }

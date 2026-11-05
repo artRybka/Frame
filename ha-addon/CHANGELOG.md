@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.101.0
+
+- Nowy panel Szukaj → Kolor z dwiema kartami. W Kolorystyce wybierasz do
+  trzech kolorów, a każde kolejne stuknięcie w próbkę mówi, ile go ma być:
+  akcent, obecny, wyraźny albo główny (pierścień wokół próbki rośnie).
+  Dwa kolory jako „główny” to obrazy malowane głównie nimi
+  razem. W Tonacji są cztery przełączniki: Temperatura (ciepłe albo
+  chłodne), Nasycenie (żywe albo stonowane), Barwność (kolorowe albo mono)
+  i Jasność (ciemne albo jasne). Wszystko, co wybrane, musi
+  pasować naraz. Gdy nic się nie znajdzie,
+  Szukaj pisze „Brak dzieł spełniających kryteria” i pokazuje pastylki
+  wyborów, bez których coś się znajdzie (z liczbą dzieł); stuknięcie
+  usuwa taki wybór. Komunikat pojawia się dopiero po zakończonym
+  wyszukiwaniu.
+- „Mono” (wcześniej „Monochromia”) znajduje naprawdę obrazy jednym tonem:
+  czarno-białe, sepię, cyjanotypie i sangwinę, a nie ciemne obrazy olejne.
+  Serwer raz po aktualizacji przelicza kolory całej biblioteki.
+- Gdy przy kontroli w trybie Oszczędnym czeka nowy obraz, serwer uruchamia
+  aplikację ramki od razu, gdy ramka zgłosi się po pobudce, a nie minutę
+  później. Tak samo po włączeniu ramki guzikiem.
+- Przy zmianie obrazu serwer nie wtrąca się: aplikacja wstaje wtedy sama
+  ze swojego budzika, a serwer uruchamia ją tylko, gdy milczy.
+- Konfiguracja → Aplikacja ramki: gdy na serwerze czeka nowa wersja
+  aplikacji, a ramka ma starszą, pojawia się prośba o wyłączenie
+  i włączenie ramki guzikiem. Tylko wtedy ramka ją instaluje.
+
 ## 1.100.8
 
 - „Wylosuj inne” Studium dnia i „Wylosuj innego” Artystę tygodnia
