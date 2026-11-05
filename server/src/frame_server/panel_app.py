@@ -92,6 +92,14 @@ MAX_ALARMS = 12
 # the wake is missed.
 KICK_AFTER = timedelta(seconds=60)
 KICK_EVERY = timedelta(minutes=2)
+# The launcher asks for ``sssp_config.xml`` some 20-25 s after a cold boot
+# (an alarm rings 20-40 s early, so before the alarm's time) and then waits:
+# it never starts the app itself, with the server up or down (2026-11-05,
+# 12.5 minutes after the button). Its question is the moment the panel can
+# take a start: the app asks ~10 s later instead of ``KICK_AFTER`` after the
+# alarm (nights of 2026-11-04/05: ~80 s lost at every change). An alarm
+# counts this long before its time.
+RING_EARLY = timedelta(minutes=2)
 # "Obudź ramkę" keeps the woken app awake (asking every ``POLL``) this long.
 KEEP_AWAKE = timedelta(minutes=10)
 # "Sprawdź stan" keeps it up this long after it asks: a picture sent right
@@ -201,6 +209,20 @@ SHOWN_WAIT = 300.0
 BUTTON_EVERY = timedelta(seconds=15)
 
 
+_CLOCK = re.compile(r"\d\d:\d\d:\d\d")
+
+
+def _launch_set(launch: object) -> bool:
+    """A "sleep" report's ``launch``: Tizen's alarm to start the app was set
+    (``{"ok": true, "set": ["08:20:30"]}``, an error in place of a time)."""
+    if not isinstance(launch, dict) or launch.get("ok") is not True:
+        return False
+    times = launch.get("set")
+    if not isinstance(times, list):
+        return False
+    return any(isinstance(t, str) and _CLOCK.fullmatch(t) for t in times)
+
+
 class AppState(BaseModel):
     active: bool = False  # the panel's content comes from our app
     seen_at: str | None = None  # the app's last question (ISO)
@@ -230,6 +252,10 @@ class AppState(BaseModel):
     rest_until: str | None = None
     off: bool = False
     rested_at: str | None = None  # put to sleep for it (None: not yet)
+    # The app set Tizen's alarm to start itself at the last alarm of this
+    # sleep (its "sleep" report, PLAN 2.6j): the server does not start it
+    # on the launcher's question there, only ``KICK_AFTER`` later if silent.
+    self_start: bool = False
     # Alarms set before the rest, still to ring (they cannot be cancelled).
     stray: list[str] = []
     # Spare alarms set on the charger (ISO), for a frame unplugged.
@@ -655,7 +681,8 @@ class PanelApp:
                 # server over MDC, the launcher or Tizen's alarm (2026-11-05,
                 # white all night after self-starts at checks with nothing new).
                 common["redraw"] = True
-                log.info("the frame's app started: it draws %s again", content.file_id)
+                if hello.shown == content.file_id:
+                    log.info("the frame's app started: it draws %s again", content.file_id)
         if self._resting(now, still_up=hello.reason == "up"):
             return self._rest(now, common)
         if self.restart_requested:
@@ -702,6 +729,7 @@ class PanelApp:
         state.mode = self.service.player.settings.power_mode
         state.slept_at = now.isoformat(timespec="seconds")
         state.wifi_lost = False
+        state.self_start = False  # until its "sleep" report says so
         self._save(state)
         return NextAnswer(
             action="sleep",
@@ -789,6 +817,7 @@ class PanelApp:
         state.mode = self.service.player.settings.power_mode
         state.slept_at = state.rested_at
         state.wifi_lost = False
+        state.self_start = False  # until its "sleep" report says so
         self._save(state)
         return NextAnswer(
             action="sleep",
@@ -898,6 +927,10 @@ class PanelApp:
         if event == "sleep":
             self._sleep_reported = datetime.now(UTC)
             self.service.status.note_sleep(deep=not self.state.standby)
+            if _launch_set(data.get("launch")):
+                state = self.state
+                state.self_start = True
+                self._save(state)
         elif event == "progress":
             loaded, total = data.get("loaded"), data.get("total")
             if isinstance(loaded, int | float) and isinstance(total, int | float) and total > 0:
@@ -1220,13 +1253,19 @@ class PanelApp:
         settled, no alarm about to ring or ringing (at a check with nothing
         new the panel is left alone), and not looked for a while: time to
         see whether the button woke it."""
+        if not self._button_wake(now):
+            return False
+        return self._looked is None or now - self._looked >= BUTTON_LOOK_EVERY
+
+    def _button_wake(self, now: datetime) -> bool:
+        """Up now, the panel was woken by the button: asleep with the Wi-Fi
+        off (or in the network with a picture waiting), settled, and no
+        alarm about to ring or ringing."""
         state = self.state
         waiting = self.service.power.state.pending_push
         if not state.asleep or (state.standby and not waiting):
             return False
-        if _settling(state, now) or _near_alarm(state, now):
-            return False
-        return self._looked is None or now - self._looked >= BUTTON_LOOK_EVERY
+        return not (_settling(state, now) or _near_alarm(state, now))
 
     async def panel_up(self, now: datetime) -> None:
         """The panel answered MDC (a status look): it is up. An app asleep as
@@ -1248,6 +1287,42 @@ class PanelApp:
             return
         self._kicked = now
         await self._kick(why="did not run although the panel is up")
+
+    def launcher_asked(self) -> None:
+        """The panel's launcher fetched ``sssp_config.xml``: started at once
+        when the server would start the app anyway a little later
+        (``RING_EARLY``), in the background."""
+        task = asyncio.create_task(self.launcher_up(datetime.now(UTC)))
+        self._waiting.add(task)
+        task.add_done_callback(self._waiting.discard)
+
+    async def launcher_up(self, now: datetime) -> None:
+        """The launcher is up and waits (a cold boot: it does not start the
+        app itself): the app is started now after an alarm it has to run
+        for, after the button, or silent while awake. Not while it is heard
+        from (the launcher also looks at some goToSleep() and restarts the
+        app itself), goes down, or was started moments ago (``KICK_EVERY``);
+        at a check with nothing new the panel is left to go back to sleep."""
+        state = self.state
+        heard = self.heard_at
+        if not state.active or (heard is not None and now - heard < HEARD_EVERY):
+            return
+        if self._going_down(now) or self._backing_off(now):
+            return
+        if self._kicked is not None and now - self._kicked < KICK_EVERY:
+            return
+        if not state.asleep:
+            await self.panel_up(now)
+            return
+        rung = self._rung(now + RING_EARLY)
+        if rung is not None and state.self_start and rung == _alarms(state)[-1]:
+            return  # Tizen's alarm starts it ~30 s after the alarm's time
+        if rung is not None:
+            self._kicked = now
+            await self._kick(why="was not started by the launcher after its alarm")
+        elif self._button_wake(now):
+            self._kicked = self._looked = now
+            await self._kick(quiet=True)
 
     def _stuck_after_reinstall(self) -> bool:
         reinstalled = self._reinstalled

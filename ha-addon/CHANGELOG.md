@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.100.9
+
+- Gdy przy kontroli w trybie Oszczędnym czeka nowy obraz, serwer uruchamia
+  aplikację ramki od razu, gdy ramka zgłosi się po pobudce, a nie minutę
+  później. Tak samo po włączeniu ramki guzikiem.
+- Przy zmianie obrazu serwer nie wtrąca się: aplikacja wstaje wtedy sama
+  ze swojego budzika, a serwer uruchamia ją tylko, gdy milczy.
+- Konfiguracja → Aplikacja ramki: gdy na serwerze czeka nowa wersja
+  aplikacji, a ramka ma starszą, pojawia się prośba o wyłączenie
+  i włączenie ramki guzikiem. Tylko wtedy ramka ją instaluje.
+
 ## 1.100.8
 
 - „Wylosuj inne” Studium dnia i „Wylosuj innego” Artystę tygodnia
