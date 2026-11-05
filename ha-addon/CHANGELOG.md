@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.102.6
+
+- Zmiana harmonogramu w czasie snu ramki w trybie Oszczędnym (dodana albo
+  przesunięta zmiana, inne godziny sprawdzeń) dociera do ramki przy
+  najbliższej kontroli. Budziki ustawia sobie sama aplikacja ramki przed
+  zaśnięciem, więc serwer uruchamia ją wtedy, a ona ustawia budziki według
+  nowego planu. Wcześniej, np. zmiana dodana na 22:10, czekała do
+  następnej zmiany z dawnego planu.
+
 ## 1.102.5
 
 - Serwer znowu nie usypia ramki przez MDC przy pustej kontroli w trybie

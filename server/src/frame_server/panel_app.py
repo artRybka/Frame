@@ -1322,7 +1322,26 @@ class PanelApp:
             return wake  # asleep without the Wi-Fi by itself: back to the usual sleep
         if state.capture_asked is not None:
             return wake  # a screenshot ordered from the iOS app
+        if self._plan_changed(wake):
+            return wake  # it sets the alarms of the new plan
         return None
+
+    def _plan_changed(self, wake: datetime) -> bool:
+        """The alarms after ``wake``, set by the app before this sleep, are
+        not the plan now: a change added or moved, other check hours. Only
+        the app sets alarms, so it is started at this check (2026-11-05: a
+        change added for 22:10 while the frame slept would have waited for
+        the 23:00 check). Compared as far as both lists go: a list cut at
+        ``MAX_ALARMS`` is no change."""
+        state = self.state
+        if state.standby:
+            return False
+        later = [a for a in _alarms(state) if a > wake]
+        if not later:
+            return False
+        planned = [a for a in self.alarms(wake, self.next_wake(wake)) if a > wake]
+        count = min(len(later), len(planned))
+        return later[:count] != planned[:count] or not planned
 
     def _button_look_due(self, now: datetime) -> bool:
         """Asleep with the Wi-Fi off (a rest, the economy mode, quiet hours,
