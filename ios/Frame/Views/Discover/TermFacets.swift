@@ -616,38 +616,33 @@ struct TermFacetPanel: View {
         tokens.contains { $0.kind == "color" && ($0.key == ColorTag.tone(mood) || $0.key == mood) }
     }
 
-    /// One of a pair: picking it lets go of the other; picked, a tap lets it go.
-    private func tapTone(_ mood: String, partner: String) {
+    /// One of a group: picking it lets go of the others; picked, a tap lets it go.
+    private func tapTone(_ mood: String, group: [String]) {
         let on = tonePicked(mood)
-        let at = tokens.firstIndex { $0.kind == "color" && [mood, partner].contains(ColorTag.family($0.key)) && ColorTag.level(of: $0.key) == nil }
-        tokens.removeAll { $0.kind == "color" && [mood, partner].contains(ColorTag.family($0.key)) && ColorTag.level(of: $0.key) == nil }
+        let at = tokens.firstIndex { $0.kind == "color" && group.contains(ColorTag.family($0.key)) && ColorTag.level(of: $0.key) == nil }
+        tokens.removeAll { $0.kind == "color" && group.contains(ColorTag.family($0.key)) && ColorTag.level(of: $0.key) == nil }
         guard !on else { return }
         let key = ColorTag.tone(mood)
         tokens.insert(SearchToken(kind: "color", key: key, name: ColorTag.name(key)), at: min(at ?? tokens.count, tokens.count))
     }
 
-    /// Three pairs in a row, Ciemne–Jasne alone under them.
+    /// Two groups in a row (szkic 14, T1): Temperatura and Nasycenie, then
+    /// Barwność and Jasność.
     private var toneGrid: some View {
-        let pairs = ColorTag.tonePairs
+        let groups = ColorTag.toneGroups
         return VStack(spacing: 18) {
-            HStack(spacing: 0) {
-                ForEach(pairs.dropLast(), id: \.0) { pair in tonePair(pair) }
-            }
-            // Under the first column, two empty columns beside it.
-            if let last = pairs.last {
-                HStack(spacing: 0) {
-                    tonePair(last)
-                    ForEach(0..<2, id: \.self) { _ in Color.clear.frame(maxWidth: .infinity, maxHeight: 1) }
+            ForEach(Array(stride(from: 0, to: groups.count, by: 2)), id: \.self) { start in
+                HStack(spacing: 8) {
+                    ForEach(groups[start..<min(start + 2, groups.count)], id: \.self) { group in toneGroup(group) }
                 }
             }
         }
         .padding(.top, 4)
     }
 
-    private func tonePair(_ pair: (String, String)) -> some View {
-        TonePair(left: pair.0, right: pair.1, picked: tonePicked) { mood in
-            let partner = mood == pair.0 ? pair.1 : pair.0
-            withAnimation(.snappy(duration: 0.25)) { tapTone(mood, partner: partner) }
+    private func toneGroup(_ group: [String]) -> some View {
+        ToneGroup(moods: group, picked: tonePicked) { mood in
+            withAnimation(.snappy(duration: 0.25)) { tapTone(mood, group: group) }
         }
     }
 
@@ -1017,26 +1012,25 @@ struct LevelSwatch: View {
     }
 }
 
-/// A pair of the Tonacja card: two mood swatches sunk in a grey track like
-/// a switch (the grey of the Kolorystyka/Tonacja picker); the picked one's
-/// ring fits in the track, the other fades. Under it one name for the pair
-/// ("Temperatura").
-struct TonePair: View {
-    /// Between the two dots.
-    private static let gap: CGFloat = 14
+/// A group of the Tonacja card: two or three mood swatches sunk in a grey
+/// track like a switch (the grey of the Kolorystyka/Tonacja picker); the
+/// picked one's ring fits in the track, the others fade. Every work is on
+/// one side of each group, the middle one where the ends aren't all of it
+/// (Mateusz 2026-11-05). Under it one name for the group ("Temperatura").
+struct ToneGroup: View {
+    /// Between the dots.
+    private static let gap: CGFloat = 12
     /// Track around the dots, enough for the picked ring.
     private static let inset: CGFloat = 7
 
-    let left: String
-    let right: String
+    let moods: [String]
     let picked: (String) -> Bool
     let action: (String) -> Void
 
     var body: some View {
-        let moods = [left, right]
         VStack(spacing: 7) {
             HStack(spacing: Self.gap) {
-                ForEach(moods, id: \.self) { mood in dot(mood, other: mood == left ? right : left) }
+                ForEach(moods, id: \.self) { mood in dot(mood) }
             }
             .padding(Self.inset)
             .background(
@@ -1048,7 +1042,7 @@ struct TonePair: View {
             // What the pair is about; the picked side is told by its ring
             // alone (Mateusz: no word for it).
             let side = moods.contains(where: picked)
-            Text(ColorTag.toneTitle(left))
+            Text(ColorTag.toneTitle(moods[0]))
                 .font(.caption2.weight(side ? .semibold : .regular))
                 .foregroundStyle(side ? Theme.ink : Theme.inkSoft)
                 .lineLimit(1)
@@ -1057,9 +1051,9 @@ struct TonePair: View {
         .frame(maxWidth: .infinity)
     }
 
-    private func dot(_ mood: String, other: String) -> some View {
+    private func dot(_ mood: String) -> some View {
         let on = picked(mood)
-        let off = picked(other)
+        let off = !on && moods.contains(where: picked)
         return Button { action(mood) } label: {
             ZStack {
                 MoodFill(tag: mood)

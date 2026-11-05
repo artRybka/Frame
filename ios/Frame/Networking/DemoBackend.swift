@@ -193,9 +193,12 @@ actor DemoBackend: FrameBackend {
     /// another, "Dominuje" a third.
     static func fitsColours(_ tags: [String], _ wanted: [String]) -> Bool {
         let have = Set(tags)
+        // Analysed with the Tonacja sides ("tone:neutral"): those count;
+        // before them, the plain moods stand in.
+        let sided = tags.contains { $0.hasPrefix(ColorTag.tonePrefix) }
         for token in wanted {
             if token.hasPrefix(ColorTag.tonePrefix) {
-                if !have.contains(ColorTag.family(token)) { return false }
+                if !have.contains(sided ? token : ColorTag.family(token)) { return false }
             } else if token.contains(ColorTag.levelMark), let level = ColorTag.level(of: token) {
                 let family = ColorTag.family(token)
                 let fits = switch level {
