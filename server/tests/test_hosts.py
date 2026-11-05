@@ -196,10 +196,12 @@ def test_resting_host_is_not_tried_again_by_the_image_cache(tmp_path: Path) -> N
 def test_aic_asks_only_the_widths_its_iiif_server_gives() -> None:
     """Its API docs allow 112, 200, 400, 600, 800, 843 (1200, 1686 for public
     domain), 843 recommended; ``full/full`` woke its Cloudflare (2026-11-04),
-    and a width beyond the picture's its server refuses."""
+    and a width beyond the picture's its server refuses. The original of a
+    larger picture comes in the website's download size, fit into 3000×3000
+    (2026-11-05), unless 1686 is wider (a tall narrow scroll)."""
 
-    def record(width: int | None) -> dict:
-        thumb = {"width": width, "height": 3000} if width else {}
+    def record(width: int | None, height: int = 3000) -> dict:
+        thumb = {"width": width, "height": height} if width else {}
         return {
             "id": 22961,
             "title": "Hanging scroll",
@@ -210,8 +212,8 @@ def test_aic_asks_only_the_widths_its_iiif_server_gives() -> None:
 
     aic = ArtInstituteChicago(httpx.Client())
 
-    def sizes(width: int | None) -> tuple[str, str]:
-        item = aic._map(record(width))
+    def sizes(width: int | None, height: int = 3000) -> tuple[str, str]:
+        item = aic._map(record(width, height))
         assert item is not None
         return item.thumb_url.split("/full/")[1], item.image_url.split("/full/")[1]
 
@@ -219,7 +221,10 @@ def test_aic_asks_only_the_widths_its_iiif_server_gives() -> None:
     assert sizes(843) == ("843,/0/default.jpg", "843,/0/default.jpg")
     assert sizes(1200) == ("843,/0/default.jpg", "1200,/0/default.jpg")
     assert sizes(1500) == ("843,/0/default.jpg", "1200,/0/default.jpg")
-    assert sizes(6679) == ("843,/0/default.jpg", "1686,/0/default.jpg")
+    assert sizes(6679) == ("843,/0/default.jpg", "!3000,3000/0/default.jpg")
+    assert sizes(2975, 2250) == ("843,/0/default.jpg", "!3000,3000/0/default.jpg")
+    assert sizes(1800, 1000) == ("843,/0/default.jpg", "!3000,3000/0/default.jpg")
+    assert sizes(1800, 4000) == ("843,/0/default.jpg", "1686,/0/default.jpg")  # 1350 at 3000
     assert sizes(None) == ("843,/0/default.jpg", "1686,/0/default.jpg")
     assert aic_width(843, 90) == 112  # smaller than any: the smallest
 

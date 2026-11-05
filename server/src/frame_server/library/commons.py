@@ -19,7 +19,7 @@ from html.parser import HTMLParser
 from typing import TYPE_CHECKING
 from urllib.parse import unquote
 
-from .aic import AIC_ORIGINAL, AIC_THUMB, aic_resized
+from .aic import AIC_THUMB, aic_original_resized, aic_resized
 from .markup import (
     VECTOR,
     commons_rendition,
@@ -235,7 +235,9 @@ def file_title(name: str, artist: str, year: int | None = None) -> str:
 #    woke its Cloudflare, 2026-11-04).
 # 6: Courtauld originals smaller than 2560 px asked whole (``!2560,2560``
 #    is a 400 from its IIIF 3 server, 2026-11-05).
-REPAIR_VERSION = 6
+# 7: AIC originals in the website's download size (``!3000,3000``) when
+#    larger than 1686 px (Mateusz 2026-11-05); the pictures kept here stay.
+REPAIR_VERSION = 7
 REPAIR_STATE_KEY = "commons_text_repair"
 # The household's own photos: their captions are left as they were typed.
 OWN_SOURCES = frozenset({"upload", "icloud"})
@@ -261,10 +263,12 @@ def _repairs(item: Item) -> dict[str, object]:
         if clean != title:
             fixes["title"] = clean
     if item.source == "aic":
-        for key, most in (("image_url", AIC_ORIGINAL), ("thumb_url", AIC_THUMB)):
-            url: str = getattr(item, key)
-            if (allowed := aic_resized(url, most, item.width)) != url:
-                fixes[key] = allowed
+        if (original := aic_original_resized(item.image_url, item.width, item.height)) != (
+            item.image_url
+        ):
+            fixes["image_url"] = original
+        if (thumb := aic_resized(item.thumb_url, AIC_THUMB, item.width)) != item.thumb_url:
+            fixes["thumb_url"] = thumb
     small = item.width and item.height and max(item.width, item.height) <= 2560
     if item.source == "courtauld" and small and "/full/!2560,2560/" in item.image_url:
         fixes["image_url"] = item.image_url.replace("/full/!2560,2560/", "/full/max/")

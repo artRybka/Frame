@@ -6,7 +6,9 @@ from __future__ import annotations
 import csv
 import io
 import json
+import os
 import sqlite3
+import time
 from pathlib import Path
 from urllib.parse import parse_qs, unquote
 
@@ -814,3 +816,209 @@ def test_wikiart_keys_are_two_codes_and_open_a_session(monkeypatch: pytest.Monke
         assert wikiart.search("Klee") == (0, [])
     logins = [r for r in sent if r.url.path.endswith("/login")]
     assert len(logins) == 3  # two checks (no colon: not asked), one session for both
+
+
+FILE_PATH = "http://commons.wikimedia.org/wiki/Special:FilePath/"
+
+
+def _louvre_row(
+    ark: str, qid: str, title: str, creator: str, died: str, file: str = ""
+) -> dict[str, str]:
+    return {
+        "ark": ark,
+        "work": f"http://www.wikidata.org/entity/{qid}",
+        "workLabel": title,
+        "file": FILE_PATH + file.replace(" ", "%20") if file else "",
+        "creatorLabel": creator,
+        "died": f"{died}-01-01T00:00:00Z" if died else "",
+    }
+
+
+def _louvre_entry(title: str, credit: str, start: int) -> dict[str, object]:
+    media = "https://collections.louvre.fr/media/cache"
+    return {
+        "title": title,
+        "creator": [{"label": "VALENCIENNES Pierre-Henri de", "wikidata": "Q1386458"}],
+        "dateCreated": [{"startYear": start, "endYear": start + 4, "text": ""}],
+        "materialsAndTechniques": "huile sur papier marouflé sur carton",
+        "objectNumber": [{"value": "RF 2908", "type": "Numéro principal"}],
+        "room": "Salle 711, Aile Denon, Niveau 1",
+        "dimension": [
+            {"type": "Hauteur", "value": "0,25", "unit": "m"},
+            {"type": "Hauteur avec accessoire", "value": "0,4", "unit": "m"},
+            {"type": "Largeur", "value": "38", "unit": "cm"},
+        ],
+        "image": [
+            {
+                "urlImage": f"{media}/large/1/2/detail_OG.JPG",
+                "urlThumbnail": f"{media}/small/1/2/detail_OG.JPG",
+                "copyright": credit,
+                "type": "détail",
+                "position": 1,
+            },
+            {
+                "urlImage": f"{media}/large/1/2/whole_OG.JPG",
+                "urlThumbnail": f"{media}/small/1/2/whole_OG.JPG",
+                "copyright": credit,
+                "type": "face, recto, avers, avant ; vue d'ensemble",
+                "position": 0,
+            },
+        ],
+    }
+
+
+def test_louvre_takes_the_paintings_commons_lacks(tmp_path: Path) -> None:
+    from frame_server.library import louvre
+    from frame_server.library.wikidata import record_id
+    from frame_server.sizes import _louvre
+
+    rows = [
+        # On Commons in full size: Commons keeps it.
+        _louvre_row(
+            "010062370", "Q12418", "Mona Lisa", "Leonardo da Vinci", "1519", "Mona_Lisa.jpg"
+        ),
+        # On Commons, but small; two authors, the later death counts.
+        _louvre_row(
+            "010061111",
+            "Q1",
+            "Rome, the Colosseum",
+            "Pierre-Henri de Valenciennes",
+            "1819",
+            "Valenciennes small.jpg",
+        ),
+        _louvre_row(
+            "010061111", "Q1", "Rome, the Colosseum", "Q999", "1830", "Valenciennes small.jpg"
+        ),
+        # Not on Commons; a modern work still in copyright.
+        _louvre_row("010069999", "Q2", "Q2", "anonymous", "1970"),
+        # Another institution's photograph only.
+        _louvre_row("010065555", "Q3", "Portrait of a man", "Jacques-Louis David", "1825"),
+        # Gone from the Louvre's site.
+        _louvre_row("010060404", "Q4", "Lost", "Somebody", "1700"),
+    ]
+    entries = {
+        "010061111": _louvre_entry(
+            "Rome, le Colisée", "© 2009 GrandPalaisRmn (musée du Louvre) / Hervé Lewandowski", 1782
+        ),
+        "010069999": _louvre_entry("Plafond", "© Musée du Louvre / Antoine Mongodin", 1953),
+        "010065555": _louvre_entry(
+            "Portrait d'homme", "© GrandPalaisRmn (musée d'Orsay) / Martine Beck-Coppola", 1790
+        ),
+    }
+    asked: list[str] = []
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        host, path = request.url.host, request.url.path
+        asked.append(f"{host}{path}")
+        if host == "query.wikidata.org":
+            assert "P9394" in request.url.params["query"]
+            out = io.StringIO()
+            writer = csv.DictWriter(out, fieldnames=list(rows[0]))
+            writer.writeheader()
+            writer.writerows(rows)
+            return httpx.Response(200, text=out.getvalue())
+        if host == "commons.wikimedia.org":
+            titles = parse_qs(request.content.decode())["titles"][0].split("|")
+            assert sorted(titles) == ["File:Mona_Lisa.jpg", "File:Valenciennes small.jpg"]
+            return httpx.Response(
+                200,
+                json={
+                    "query": {
+                        "normalized": [{"from": "File:Mona_Lisa.jpg", "to": "File:Mona Lisa.jpg"}],
+                        "pages": {
+                            "1": {
+                                "title": "File:Mona Lisa.jpg",
+                                "imageinfo": [{"width": 7479, "height": 11146}],
+                            },
+                            "2": {
+                                "title": "File:Valenciennes small.jpg",
+                                "imageinfo": [{"width": 800, "height": 540}],
+                            },
+                        },
+                    }
+                },
+            )
+        ark = path.removeprefix("/ark:/53355/cl").removesuffix(".json")
+        if ark in entries:
+            return httpx.Response(200, json=entries[ark])
+        return httpx.Response(404)
+
+    path = louvre.list_path(tmp_path)
+    with httpx.Client(transport=httpx.MockTransport(answer)) as http:
+        assert louvre.build(path, http) == 2
+        louvre_asked = sorted(a for a in asked if a.startswith("collections"))
+        assert louvre_asked == [
+            f"collections.louvre.fr/ark:/53355/cl{ark}.json"
+            for ark in ("010060404", "010061111", "010065555", "010069999")
+        ]  # never the Mona Lisa: Commons has it in full size
+        asked.clear()
+        assert louvre.build(path, http) == 2
+    assert not any(a.startswith("collections") for a in asked)  # entries are not asked again
+    assert json.loads(path.read_text())["complete"] is True
+
+    assert "louvre" not in available(Access(data_dir=tmp_path))
+    access = Access(private_use=True, data_dir=tmp_path)
+    with httpx.Client(transport=httpx.MockTransport(answer)) as http:
+        gallery = museum("louvre", http, access)
+        total, items = gallery.search("colisée")
+        assert gallery.search("colosseum")[0] == 1  # English title from Wikidata
+        assert gallery.discover(Discovery(year_from=1900))[0] == 1
+        assert gallery.discover(Discovery(kind="print")) == (0, [])
+        assert gallery.fetch("010062370") is None and gallery.fetch("010065555") is None
+        modern = gallery.fetch("010069999")
+        size = _louvre(http, items[0])
+    assert total == 1
+    rome = items[0]
+    assert rome.id == "louvre:010061111" and rome.museum == "Luwr"
+    assert rome.title == "Rome, the Colosseum" and rome.artist == "Pierre-Henri de Valenciennes"
+    assert rome.year == 1782 and rome.date_text == "1782–1786"
+    assert rome.license == louvre.LICENCE and rome.classification == "Painting"
+    assert rome.credit == "© 2009 GrandPalaisRmn (musée du Louvre) / Hervé Lewandowski, RF 2908"
+    assert rome.url == "https://collections.louvre.fr/ark:/53355/cl010061111"
+    assert rome.image_url.endswith("/large/1/2/whole_OG.JPG")  # the whole work, not the detail
+    assert rome.thumb_url.endswith("/small/1/2/whole_OG.JPG")
+    assert record_id(rome) == ("P9394", "010061111")
+    assert size is not None and (size.height, size.width) == (25.0, 38.0)
+    assert modern is not None and modern.title == "Plafond" and modern.artist == ""
+    assert modern.license == "Prawa autorskie w mocy (użytek prywatny)"
+
+
+def test_louvre_list_cut_short_is_finished(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from frame_server.library import louvre
+
+    started: list[Path] = []
+    index = louvre._Index()
+    monkeypatch.setattr(index, "_start", started.append)
+    path = louvre.list_path(tmp_path)
+    assert index.works(path) == {} and started == [path]  # no list yet
+    path.parent.mkdir(parents=True)
+    work = {"image": "x", "thumb": "y", "title_fr": "A"}
+    path.write_text(json.dumps({"complete": False, "works": {"1": {"commons": 0, "work": work}}}))
+    started.clear()
+    assert list(index.works(path)) == ["1"] and started == [path]  # a restart cut it short
+    path.write_text(json.dumps({"complete": True, "works": {"1": {"commons": 0, "work": work}}}))
+    started.clear()
+    os.utime(path, (time.time() + 5, time.time() + 5))
+    assert list(index.works(path)) == ["1"] and started == []
+
+
+def test_louvre_waits_for_commons_when_asked_to() -> None:
+    from frame_server.library import louvre
+
+    answers = [
+        httpx.Response(429, headers={"Retry-After": "30"}),
+        httpx.Response(
+            200,
+            json={
+                "query": {
+                    "pages": {
+                        "1": {"title": "File:A.jpg", "imageinfo": [{"width": 900, "height": 2000}]}
+                    }
+                }
+            },
+        ),
+    ]
+    waits: list[float] = []
+    with httpx.Client(transport=httpx.MockTransport(lambda r: answers.pop(0))) as http:
+        assert louvre.commons_sizes(http, ["A.jpg"], sleep=waits.append) == {"A.jpg": 2000}
+    assert waits == [31.0]

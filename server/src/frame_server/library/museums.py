@@ -24,7 +24,7 @@ from urllib.parse import quote, unquote, urlsplit
 
 import httpx
 
-from .aic import AIC_IIIF, AIC_ORIGINAL, AIC_THUMB, aic_picture
+from .aic import AIC_IIIF, AIC_THUMB, aic_original, aic_picture
 from .commons import commons_html, commons_year, file_title
 from .hosts import Resting, guard
 from .lifespan import (
@@ -231,7 +231,7 @@ class ArtInstituteChicago(Museum):
             license="CC0 1.0",
             url=f"https://www.artic.edu/artworks/{d['id']}",
             description=strip_html(d.get("description") or d.get("short_description")),
-            image_url=aic_picture(f"{self.iiif}/{d['image_id']}", AIC_ORIGINAL, width),
+            image_url=aic_original(f"{self.iiif}/{d['image_id']}", width, thumb.get("height")),
             thumb_url=aic_picture(f"{self.iiif}/{d['image_id']}", AIC_THUMB, width),
             width=width,
             height=thumb.get("height"),
@@ -1539,6 +1539,7 @@ class WikiArt(Museum):
 # Collections added later live in modules of their own (they build on the
 # classes above).
 from .courtauld import CourtauldGallery  # noqa: E402
+from .louvre import Louvre  # noqa: E402
 from .muza import NationalMuseumKrakow, NationalMuseumWarsaw  # noqa: E402
 from .nga import NationalGalleryOfArt  # noqa: E402
 from .paris import ParisMusees  # noqa: E402
@@ -1563,6 +1564,7 @@ MUSEUMS: dict[str, type[Museum]] = {
         VictoriaAndAlbert,
         WellcomeCollection,
         CourtauldGallery,
+        Louvre,
         WikimediaCommons,
         Europeana,
         Openverse,

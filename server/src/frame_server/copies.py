@@ -31,6 +31,7 @@ from pydantic import BaseModel, Field
 
 from .imaging.layout import load_image
 from .library import Item, ItemKind
+from .library.aic import aic_large_size
 from .library.duplicates import surname
 from .library.images import IMAGE_MAX, display_copy, own_copy
 from .library.likeness import WHOLE_TURN, Fit, keypoints
@@ -58,6 +59,9 @@ KEPT_ANSWERS = 200
 #: Sources whose search looks for the whole query in the title alone: asked
 #: for the title only, the artist is checked on what they find.
 TITLE_ONLY = ("paris",)
+#: How much larger the own source's file must be than the one kept here
+#: to be offered (``Copies.larger``).
+LARGER_BY = 1.1
 #: Copies judged at once (thumbnails downloaded, keypoints compared).
 JUDGES = 4
 #: The close-up's side, in pixels of the picture at the frame's scale.
@@ -66,7 +70,10 @@ SPOT = 320
 KEPT = 4
 
 Verdict = Literal["checking", "better", "warn", "worse", "off"]
-Role = Literal["copy", "current", "own"]
+Role = Literal["copy", "current", "own", "larger"]
+#: The id of the work's own picture in a larger file from its own source
+#: (``Copies.larger``): the work's id and this.
+LARGER = "~larger"
 
 
 class CopyView(BaseModel):
@@ -81,7 +88,9 @@ class CopyView(BaseModel):
     "colour-off", "reproduction", "other" (another picture: the same title,
     another work), "unseen" (its thumbnail could not be had).
     ``role``: "current" (the picture shown now), "own" (the work's own
-    picture, while a copy stands in for it), "copy"."""
+    picture, while a copy stands in for it), "larger" (the work's own
+    picture in a larger file than the one kept here, from its own source:
+    an AIC work in its website's download size), "copy"."""
 
     item_id: str
     source: str
@@ -178,6 +187,8 @@ class Copies:
         if stored.sharper is not None:
             emit(CopyLine(kind="copy", copy=self.own(stored)))
         quality = Quality(current.width and max(current.width, current.height), current.bits)
+        if (larger := self.larger(stored, quality)) is not None:
+            emit(CopyLine(kind="copy", copy=larger))
         seen = {stored.id, *([stored.sharper.item_id] if stored.sharper else [])}
         measured = [MEASURED]
         lock = threading.Lock()
@@ -350,6 +361,31 @@ class Copies:
             role="own",
         )
 
+    def larger(self, item: Item, current: Quality) -> CopyView | None:
+        """The work's own picture in a larger file than the one kept here,
+        when its source has one (an AIC work kept at 1686 px before its
+        download size was asked, Mateusz 2026-11-05); None otherwise."""
+        size = aic_large_size(own_copy(item), item.width, item.height)
+        if size is None:
+            return None
+        kept = self.sharper.own_size(item)
+        if kept is None or max(size) < max(kept[0], kept[1]) * LARGER_BY:
+            return None  # not downloaded yet (it comes large), or not larger
+        side = max(size)
+        better = gain(Quality(side), current)
+        return CopyView(
+            item_id=item.id + LARGER,
+            source=item.source,
+            museum=item.museum,
+            url=item.url,
+            width=size[0],
+            height=size[1],
+            gain=better,
+            verdict="better" if better is not None and better > 1 else "worse",
+            notes=["whole", "colours", "larger"],
+            role="larger",
+        )
+
     def view(self, copy: Item, current: Quality, verdict: Verdict, role: Role = "copy") -> CopyView:
         width, height = copy.width or 0, copy.height or 0
         return CopyView(
@@ -456,6 +492,8 @@ class Copies:
         stored = self.sharper.library.get(item.id) or item
         if copy_id == stored.id:
             return self.sharper.keep_own(stored)
+        if copy_id == stored.id + LARGER:
+            return self.sharper.own_again(stored)
         copy = self.sharper.importer.resolve(copy_id)
         if copy is None or not display_copy(copy):
             raise LookupError(copy_id)
@@ -470,7 +508,8 @@ class Copies:
         picture), the same place of each. Raises LookupError for no such
         copy."""
         stored = self.sharper.library.get(item.id) or item
-        if copy_id == stored.id and stored.sharper is not None:
+        own = copy_id == stored.id and stored.sharper is not None
+        if own or copy_id == stored.id + LARGER:
             copy = stored.model_copy(update={"sharper": None})  # the work's own
             url = own_copy(stored)
         else:
