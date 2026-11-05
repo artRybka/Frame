@@ -313,13 +313,13 @@ actor DemoBackend: FrameBackend {
                 fullDays: 14.3, fullDaysLow: 10.8, fullDaysHigh: 19.3, hoursMeasured: 98, readings: 36,
                 costs: BatteryCosts(
                     standbyPerDay: 41, deepPerDay: 0.5, perWake: 0.55, perChange: 0.15, learnt: [0.98, 0.1, 0.62, 0.3],
-                    perChangeWake: 0.7, perCheck: 0.72, appAwakeMinutes: 3.0, checkMinutes: 2.5
+                    perChangeWake: 0.7, perCheck: 0.76, appAwakeMinutes: 3.0, checkMinutes: 5.5
                 ),
                 day: BatteryDay(
                     standbyHours: 0, deepHours: 23.3, wakes: 9, changes: 2,
                     standbyCost: 0, deepCost: 0.47, wakesCost: 6.1, changesCost: 0.3,
                     lines: [
-                        BatteryLine(kind: "checks", count: 7, each: 0.72, cost: 5.0),
+                        BatteryLine(kind: "checks", count: 7, each: 0.76, cost: 5.3),
                         BatteryLine(kind: "changes", count: 2, each: 0.7, cost: 1.4),
                         BatteryLine(kind: "deep", count: 23.3, each: 0.02, cost: 0.47),
                         BatteryLine(kind: "sends", count: 1, each: 0.15, cost: 0.15),

@@ -341,7 +341,7 @@ struct BatteryChart: View {
             let start = points.first?.0 ?? now.addingTimeInterval(-7 * 86400)
             let ahead = min(high ?? days ?? 0, max((days ?? 0) * 1.6, 1), 120)
             let end = days == nil ? now : now.addingTimeInterval(ahead * 86400)
-            let left: CGFloat = 32, bottom: CGFloat = 18
+            let left: CGFloat = 38, bottom: CGFloat = 18
             let width = geometry.size.width - left - 4, height = geometry.size.height - bottom - 6
             let span = max(end.timeIntervalSince(start), 3600)
             let x = { (date: Date) -> CGFloat in left + width * CGFloat(date.timeIntervalSince(start) / span) }
@@ -356,6 +356,8 @@ struct BatteryChart: View {
                     Text(mark == 0 ? "0" : "\(Int(mark))%")
                         .font(.system(size: 10))
                         .foregroundStyle(Theme.inkSoft)
+                        .lineLimit(1)
+                        .fixedSize()
                         .frame(width: left - 6, alignment: .trailing)
                         .position(x: (left - 6) / 2, y: y(mark))
                 }
