@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.100.5
+
+- Ramka nie czeka na odpowiedź serwera, gdy ten zapisuje coś dłużej w
+  tle. Po wydaniu 1.100.4 zdarzyła się jeszcze jedna 6-sekundowa przerwa
+  zaraz po aktualizacji.
+- Zaraz po restarcie serwer nie uruchamia aplikacji ramki na nowo, tylko
+  czeka półtorej minuty, aż sama się odezwie.
+
 ## 1.100.4
 
 - Serwer odpowiada od razu po starcie. Dotąd przez ok. 1,5 minuty po
