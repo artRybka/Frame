@@ -453,10 +453,14 @@ struct MoodFill: View {
 struct HalftoneDot: View {
     var black = false
 
-    private var inks: [(Color, Double, Double)] {
+    /// Ink, screen angle in degrees, and the phase of its growing dots.
+    private var inks: [(Color, CGFloat, CGFloat)] {
         if black { return [(Color(hex: 0x1D1B18), 45, 0.8)] }
-        return zip([0x00AEEF, 0xEC008C, 0xFFE600] as [UInt32], [(15.0, 0.3), (75.0, 1.9), (0.0, 3.6)])
-            .map { (Color(hex: $0), $1.0, $1.1) }
+        return [
+            (Color(hex: 0x00AEEF), 15, 0.3),
+            (Color(hex: 0xEC008C), 75, 1.9),
+            (Color(hex: 0xFFE600), 0, 3.6),
+        ]
     }
 
     var body: some View {
@@ -469,16 +473,20 @@ struct HalftoneDot: View {
             context.blendMode = .multiply
             for (index, ink) in inks.enumerated() {
                 let (colour, degrees, phase) = ink
-                let angle = degrees * .pi / 180
+                let angle: CGFloat = degrees * .pi / 180
+                let (cosA, sinA) = (cos(angle), sin(angle))
+                let (cosP, sinP) = (cos(phase), sin(phase))
                 let reach = Int(side / step) + 4
                 var dots = Path()
                 for i in -reach ... reach {
                     for j in -reach ... reach {
-                        let x = r + (Double(i) * cos(angle) - Double(j) * sin(angle)) * step
-                        let y = r + (Double(i) * sin(angle) + Double(j) * cos(angle)) * step
+                        let (u, v) = (CGFloat(i), CGFloat(j))
+                        let x: CGFloat = r + (u * cosA - v * sinA) * step
+                        let y: CGFloat = r + (u * sinA + v * cosA) * step
                         guard x > -step, x < side + step, y > -step, y < side + step else { continue }
-                        let wave = 0.5 + 0.5 * sin((x * cos(phase) + y * sin(phase)) / side * .pi * 1.6 + Double(index))
-                        let radius = step * 0.5 * (0.35 + 0.65 * wave)
+                        let along: CGFloat = (x * cosP + y * sinP) / side
+                        let wave: CGFloat = 0.5 + 0.5 * sin(along * .pi * 1.6 + CGFloat(index))
+                        let radius: CGFloat = step * 0.5 * (0.35 + 0.65 * wave)
                         dots.addEllipse(in: CGRect(x: x - radius, y: y - radius, width: 2 * radius, height: 2 * radius))
                     }
                 }
