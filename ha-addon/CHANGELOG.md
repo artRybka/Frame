@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.102.1
+
+- Teraz po zmianie orientacji ramki (np. z poziomej na pionową) znowu
+  pokazuje duży podgląd ramki. Dopóki ramka ma na ekranie obraz
+  przygotowany dla starej orientacji (w trybie Oszczędnym nawet do
+  najbliższej pobudki), podgląd nie kurczył się już do malutkiej
+  miniatury: ramka ma kształt nowej orientacji, a stary obraz stoi w niej
+  z białym marginesem.
+
 ## 1.102.0
 
 - Zrzut ekranu ramki można zamówić także wtedy, gdy ramka śpi na baterii
