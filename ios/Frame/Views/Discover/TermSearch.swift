@@ -506,10 +506,11 @@ struct TokenSummary: View {
 }
 
 extension View {
-    /// The groups over the search field: they hide at the first scroll down
-    /// through the results and come back the moment the scrolling stops
-    /// (Mateusz: "wracać dosłownie od razu"), when the field is tapped or
-    /// nothing is asked any more, as `shown` says.
+    /// The groups over the search field: they hide while the finger drags
+    /// the results down and come back the moment it lets go, while the
+    /// page still glides on (Mateusz: "gdy mojego palca nie ma już na
+    /// ekranie"), when the field is tapped or nothing is asked any more,
+    /// as `shown` says.
     func hidesOnScroll(_ shown: Binding<Bool>) -> some View {
         modifier(HidesOnScroll(shown: shown))
     }
@@ -517,20 +518,22 @@ extension View {
 
 private struct HidesOnScroll: ViewModifier {
     @Binding var shown: Bool
-    /// The finger moves the content (or it glides on after it).
-    @State private var moving = false
+    /// The finger is on the page and moves it.
+    @State private var dragging = false
 
     func body(content: Content) -> some View {
         content
             .onScrollPhaseChange { _, phase in
-                moving = phase == .interacting || phase == .decelerating
-                guard phase == .idle, !shown else { return }
+                dragging = phase == .interacting
+                // Lifting the finger (gliding on, settling or stopping)
+                // brings them back; a touch that only rests does not.
+                guard !dragging, phase != .tracking, !shown else { return }
                 withAnimation(.snappy) { shown = true }
             }
             .onScrollGeometryChange(for: CGFloat.self) { geometry in
                 geometry.contentOffset.y + geometry.contentInsets.top
             } action: { old, new in
-                guard moving, shown, new > 24, new > old + 1 else { return }
+                guard dragging, shown, new > 24, new > old + 1 else { return }
                 withAnimation(.snappy) { shown = false }
             }
     }
