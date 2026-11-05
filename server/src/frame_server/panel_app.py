@@ -1227,6 +1227,12 @@ class PanelApp:
             self.service.power.publish_status()
         # The alarm that last rang, if the app has to run for it.
         wake = self._rung(now) if state.asleep else None
+        put = state.empty_sleep_at
+        if wake is not None and put is not None and wake <= datetime.fromisoformat(put):
+            # Up at it with nothing new and put to sleep: a picture sent
+            # since waits for the next alarm, this one was not missed
+            # (2026-11-05 18:00, "Ramka nie obudziła się o 18:00").
+            wake = None
         missed = wake is not None and now >= wake + MISSED_AFTER
         rung = wake.isoformat(timespec="seconds") if wake is not None else None
         if state.active and missed and state.missed_wake != rung:
