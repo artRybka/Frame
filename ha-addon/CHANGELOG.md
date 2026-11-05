@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.101.4
+
+- Grupy w Szukaj znowu chowają się przy przewijaniu wyników, ale wracają
+  od razu, gdy wyniki się zatrzymają (wcześniej po 1,2 s). Tak samo
+  w edytorze playlist.
+
 ## 1.101.3
 
 - Menu po przytrzymaniu kafelka Studium dnia i karty Artysty tygodnia ma
