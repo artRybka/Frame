@@ -34,9 +34,14 @@
   // panel is really down is lost (E16), so keep a margin of 4 minutes.
   var MIN_AHEAD_MS = 4 * 60000;
   // Woken by an alarm with nothing new, the panel is left alone and goes
-  // back to sleep after this much idleness (20 minutes as set by hand). The
-  // server starts the app a minute or three after an alarm that needs it.
-  var AUTO_SLEEP = "5MIN";
+  // back to sleep after this much idleness (20 minutes as set by hand).
+  // 5 minutes until 2026-11-05: an empty check cost ~1% of the battery
+  // (Mateusz: "sprawdzenie bez zmiany obrazu teraz sporo kosztuje"). Not
+  // shorter: at a wake that needs it the app starts up to ~90 s after the
+  // panel (Tizen's alarm, 22:20 that evening), and has to beat this. A
+  // panel refusing it keeps the old value.
+  var AUTO_SLEEP = "2MIN";
+  var AUTO_SLEEP_FALLBACK = "5MIN";
   var ATTEMPTS = 4;
   var ATTEMPT_DELAY_MS = 5000;
   // On the charger without the server: ask again after 1, 2, ... minutes, at
@@ -198,7 +203,11 @@
     if (!now.ok || now.value === null) return now;
     var minutes = Number(now.value);
     if (!saved("autoSleep")) saved("autoSleep", minutes > 0 ? minutes + "MIN" : "OFF");
-    return call(function () { return ep.setAutoSleepTime(AUTO_SLEEP); });
+    var set = call(function () { return ep.setAutoSleepTime(AUTO_SLEEP); });
+    var read = call(function () { return ep.getAutoSleepTime(); });
+    if (set.ok && read.ok && Number(read.value) === parseInt(AUTO_SLEEP, 10)) return { ok: true, value: AUTO_SLEEP };
+    var back = call(function () { return ep.setAutoSleepTime(AUTO_SLEEP_FALLBACK); });
+    return { ok: back.ok, value: AUTO_SLEEP_FALLBACK, refused: AUTO_SLEEP, tried: set, read: read, error: back.error };
   }
 
   // Samsung's daily screen refresh (03:00 out of the box) wakes the panel
