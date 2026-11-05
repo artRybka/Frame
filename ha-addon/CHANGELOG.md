@@ -8,6 +8,10 @@
   środkowe kółko: Ciepłe · Neutralne · Chłodne, Żywe · Umiarkowane ·
   Stonowane, Ciemne · Średnie · Jasne. Barwność zostaje na dwa: Kolorowe
   to wszystko poza Mono. Grupy stoją po dwie w rzędzie.
+- W grupie można wybrać dwa sąsiednie kółka, np. Ciemne i Średnie: obejmuje
+  je jeden pierścień, a nad wynikami stoi żeton „Ciemne albo średnie”.
+- Kropki Nasycenia wyraźniej się różnią: Żywe w czystych barwach,
+  Stonowane prawie szare. Neutralne to płaska szarość.
 - „Żywe” znów coś znajduje: liczy się najbarwniejsza część obrazu, a nie
   średnia z całego (dotąd prawie nigdy nie wypadało).
 - Po aktualizacji serwer raz przelicza kolory całej biblioteki. Do końca

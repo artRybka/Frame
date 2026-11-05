@@ -630,7 +630,9 @@ struct TermFacetPanel: View {
         }
         // Older rules' plain moods ("warm") turn into the card's tokens.
         var picked = group.filter(tonePicked) + [mood]
-        if picked.count == group.count { picked = [mood] }
+        // All of a group is none; two ends without the middle no range.
+        let ends = Set([group.first, group.last].compactMap { $0 })
+        if picked.count == group.count || (group.count > 2 && Set(picked) == ends) { picked = [mood] }
         tokens.removeAll(where: inGroup)
         let added = group.filter(picked.contains).map { side in
             let key = ColorTag.tone(side)
@@ -1035,6 +1037,9 @@ struct ToneGroup: View {
     private static let gap: CGFloat = 12
     /// Track around the dots, enough for the picked ring.
     private static let inset: CGFloat = 7
+    private static let size: CGFloat = 34
+    /// How far a ring stands off its dots.
+    private static let ringOut: CGFloat = 5
 
     let moods: [String]
     let picked: (String) -> Bool
@@ -1043,9 +1048,10 @@ struct ToneGroup: View {
     var body: some View {
         VStack(spacing: 7) {
             HStack(spacing: Self.gap) {
-                ForEach(moods, id: \.self) { mood in dot(mood) }
+                ForEach(moods, id: \.self) { mood in dot(mood, ringed: range == nil) }
             }
             .padding(Self.inset)
+            .overlay(alignment: .topLeading) { rangeRing }
             .background(
                 Capsule().fill(
                     Theme.ink.opacity(0.07)
@@ -1064,7 +1070,30 @@ struct ToneGroup: View {
         .frame(maxWidth: .infinity)
     }
 
-    private func dot(_ mood: String) -> some View {
+    /// Two neighbours picked (Ciemne and Średnie): their indices, held in
+    /// one ring like a range from–to (szkic 15, W2).
+    private var range: ClosedRange<Int>? {
+        let on = moods.indices.filter { picked(moods[$0]) }
+        guard on.count > 1, let first = on.first, let last = on.last else { return nil }
+        return first...last
+    }
+
+    @ViewBuilder private var rangeRing: some View {
+        if let range {
+            let step = Self.size + Self.gap
+            Capsule()
+                .stroke(Theme.ink, lineWidth: 3.5)
+                .frame(
+                    width: CGFloat(range.count - 1) * step + Self.size + 2 * Self.ringOut,
+                    height: Self.size + 2 * Self.ringOut
+                )
+                .offset(x: Self.inset - Self.ringOut + CGFloat(range.lowerBound) * step, y: Self.inset - Self.ringOut)
+                .allowsHitTesting(false)
+                .transition(.opacity)
+        }
+    }
+
+    private func dot(_ mood: String, ringed: Bool) -> some View {
         let on = picked(mood)
         let off = !on && moods.contains(where: picked)
         return Button { action(mood) } label: {
@@ -1072,16 +1101,18 @@ struct ToneGroup: View {
                 MoodFill(tag: mood)
                     .overlay(Circle().strokeBorder(Theme.ink.opacity(0.2)))
                 if on {
-                    Circle()
-                        .stroke(ColorTag.ring(mood), lineWidth: 3.5)
-                        .padding(-5)
+                    if ringed {
+                        Circle()
+                            .stroke(ColorTag.ring(mood), lineWidth: 3.5)
+                            .padding(-Self.ringOut)
+                    }
                     Image(systemName: "checkmark")
                         .font(.caption.weight(.bold))
                         .foregroundStyle(ColorTag.light(mood) ? Color(hex: 0x1D1B18) : .white)
                         .shadow(color: .black.opacity(ColorTag.light(mood) ? 0 : 0.5), radius: 1)
                 }
             }
-            .frame(width: 34, height: 34)
+            .frame(width: Self.size, height: Self.size)
             .opacity(off ? 0.38 : 1)
             .contentShape(Circle().inset(by: -8))
         }

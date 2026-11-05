@@ -466,12 +466,12 @@ struct TokenSummary: View {
     var body: some View {
         if !tokens.isEmpty {
             FlowLayout(spacing: 4) {
-                ForEach(tokens) { token in
+                ForEach(shown, id: \.token.id) { item in
                     HStack(spacing: 4) {
-                        if token.kind == "color" {
-                            ColorTagDot(tag: token.key, size: 8, stroke: nil)
+                        if item.token.kind == "color" {
+                            ColorTagDot(tag: item.token.key, size: 8, stroke: nil)
                         }
-                        Text(token.shownName).lineLimit(1)
+                        Text(item.name).lineLimit(1)
                     }
                     .font(.caption2.weight(.medium))
                     .foregroundStyle(Theme.inkSoft)
@@ -481,7 +481,26 @@ struct TokenSummary: View {
                 }
             }
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Szukasz: " + tokens.map(\.shownName).joined(separator: ", "))
+            .accessibilityLabel("Szukasz: " + shown.map(\.name).joined(separator: ", "))
+        }
+    }
+
+    /// The tokens as capsules: sides of one Tonacja group in one, "Ciemne
+    /// albo średnie" (szkic 15, W2).
+    private var shown: [(token: SearchToken, name: String)] {
+        var done: Set<String> = []
+        return tokens.compactMap { token in
+            guard token.kind == "color", token.key.hasPrefix(ColorTag.tonePrefix),
+                  let group = ColorTag.toneGroups.first(where: { $0.contains(ColorTag.family(token.key)) })
+            else { return (token, token.shownName) }
+            let title = group[0]
+            guard !done.contains(title) else { return nil }
+            done.insert(title)
+            let sides = group.filter { side in tokens.contains { $0.kind == "color" && $0.key == ColorTag.tone(side) } }
+            let names = sides.enumerated().map { index, side in
+                index == 0 ? ColorTag.name(side) : ColorTag.name(side).lowercased()
+            }
+            return (token, names.joined(separator: " albo "))
         }
     }
 }

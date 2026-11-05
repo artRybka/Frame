@@ -398,23 +398,18 @@ extension ColorTag {
                 ],
                 startPoint: .topLeading, endPoint: .bottomTrailing
             ))
+        // Żywe pure and full, Stonowane all but grey, Umiarkowane between
+        // (szkic 16: before, the three were too alike).
         case "vivid":
-            spread([0xC8443A, 0xE08A3A, 0xE2B84A, 0xB5508A, 0xE3A27A, 0x6E9F55, 0x7C5A9E, 0x3C6FA8, 0x3B8A86])
-        case "muted":
-            spread([0xC88378, 0xD4A678, 0xD6BD80, 0xB98A9E, 0xD2B49A, 0x9CB086, 0xA28EAA, 0x8298AF, 0x82A69E])
+            spread([0xFF1503, 0xFF891B, 0xFFC52D, 0xDD2890, 0xFF9B5E, 0x64BD37, 0x7C3FB9, 0x116DD3, 0x1BAAA2])
         case "moderate":
-            // Halfway between Żywe and Stonowane.
-            spread([0xC86359, 0xDA9859, 0xDCBA65, 0xB76D94, 0xDAAB8A, 0x85A76D, 0x8F74A4, 0x5F83AB, 0x5E9892])
+            spread([0xB95A53, 0xCE9057, 0xD1B365, 0xAC638D, 0xD8AB8F, 0x769C62, 0x81679B, 0x4D75A1, 0x488784])
+        case "muted":
+            spread([0xA18E8D, 0xAB9E93, 0xB0AA9A, 0x9F9199, 0xBCB3AD, 0x91988D, 0x948F99, 0x848D97, 0x7C8A8A])
         case "neutral":
-            // The grey of paper, no colour either way (szkic 14, M1).
-            AnyShapeStyle(EllipticalGradient(
-                stops: [
-                    .init(color: Color(hex: 0xF3EFE8), location: 0),
-                    .init(color: Color(hex: 0xCFC9BF), location: 0.55),
-                    .init(color: Color(hex: 0xA39D93), location: 1),
-                ],
-                center: UnitPoint(x: 0.32, y: 0.28), startRadiusFraction: 0, endRadiusFraction: 0.9
-            ))
+            // The grey of paper, flat: no colour either way, and not a ball
+            // (szkic 16, M1a).
+            AnyShapeStyle(Color(hex: 0xCFC9BF))
         case "medium":
             AnyShapeStyle(EllipticalGradient(
                 stops: [

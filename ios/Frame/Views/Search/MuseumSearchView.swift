@@ -183,7 +183,7 @@ struct MuseumSearchView: View {
                 rules.colors = ["brown@much", "gray@clear"]
             }
             if LaunchRoute.screen == "search-tones", rules.colors.isEmpty {
-                rules.colors = ["tone:neutral", "tone:monochrome"]
+                rules.colors = ["tone:neutral", "tone:dark", "tone:medium"]
             }
             // CI screenshots: nothing found, and what to give up.
             if LaunchRoute.screen == "search-empty", rules.colors.isEmpty {
