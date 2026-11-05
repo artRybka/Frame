@@ -15,6 +15,7 @@ first minute and its range narrows as the readings come in.
 from __future__ import annotations
 
 import math
+import re
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Literal
 
@@ -30,17 +31,43 @@ if TYPE_CHECKING:
 # What is counted, in this order everywhere: hours asleep in the network,
 # hours asleep without the Wi-Fi, hours awake, wakes, pictures drawn.
 FEATURES = ("standby_h", "deep_h", "awake_h", "wakes", "changes")
-# Their cost in percent, until the frame's own readings say otherwise:
-# network standby 1.5-2 %/h and awake ~4 %/h as samsung-epaper-calendar
-# measured on an EM32DX; Samsung's ~200 days at a change a day in deep sleep
-# leaves little for the sleep itself (docs/WAKE.md). Wide on purpose.
-PRIOR_MEAN = np.array([1.5, 0.005, 4.0, 0.05, 0.3])
-PRIOR_SD = np.array([1.0, 0.02, 3.0, 0.1, 0.3])
+# Their cost in percent, until the frame's own readings say otherwise,
+# from our frame's tests (2026-11-05, docs/EXPERIMENTS.md): network standby
+# ~41 %/day (1.5-2 %/h on another EM32DX too); held awake ~6 %/h (E17,
+# 97 -> 58 % in ~6.5 h); a wake with its picture ~0.6 % (a night of eight,
+# 100 -> 95 %); an empty check ~0.8 % (cold boot, ~5 min on the Wi-Fi);
+# Samsung's ~200 days at a change a day leaves ~0.5 %/day for deep sleep.
+# Wide on purpose.
+PRIOR_MEAN = np.array([1.7, 0.02, 5.0, 0.3, 0.15])
+PRIOR_SD = np.array([1.0, 0.03, 3.0, 0.3, 0.3])
 # One reading: whole percent, and the level sags while the panel is awake.
 NOISE = 0.6
-# Until there are wakes enough to tell, a wake keeps the panel up this long.
-AWAKE_PER_WAKE = timedelta(minutes=3)
-MIN_WAKES_SEEN = 5
+# A wake that runs the app keeps the panel up from its first question to its
+# "sleep" report: as measured on battery (the median of the last few), this
+# long until there are enough. Longer than ``LONGEST_WAKE``: someone kept it
+# up ("Obudź ramkę", a test), not the wake's own time.
+APP_AWAKE = timedelta(minutes=3)
+MIN_WAKES_SEEN = 3
+WAKES_KEPT = 30
+LONGEST_WAKE = timedelta(minutes=30)
+# An economy check with nothing new: the app does not run, the panel stays up
+# on the Wi-Fi until Samsung's own sleep and sleeps on. The server sees only
+# the alarm that rang (``silent_wakes``). The app sets that sleep (app.js
+# ``AUTO_SLEEP``: 3 minutes, Samsung takes only 3/5/10/20/30/60; 5 where the
+# panel refuses it) and says which in its "sleep" report; the panel is up
+# ``CHECK_BOOT`` before the idle minutes start counting.
+CHECK_IDLE = timedelta(minutes=3)
+CHECK_BOOT = timedelta(seconds=30)
+CHECK_UP = CHECK_IDLE + CHECK_BOOT
+# Pictures sent from the app: so many a day, as in the last two weeks (a
+# burst within ``SEND_BURST`` is one wake), on top of the schedule.
+SENDS_FOR = timedelta(days=14)
+SENDS_MIN_DAYS = 3
+SEND_BURST = timedelta(minutes=10)
+# The last stretch on battery against what the costs say it should have used.
+CHECK_SPAN = timedelta(hours=24)
+CHECK_MIN = timedelta(hours=12)
+RECENT_FOR = timedelta(days=7)
 
 ACTIVITY_KEY = "battery_activity"
 RUNS_KEY = "battery_runs"
@@ -58,15 +85,34 @@ PLAN_DAYS = 7
 Mode = Literal["awake", "standby", "deep"]
 
 
+LineKind = Literal["standby", "deep", "checks", "changes", "sends", "wakes"]
+
+
 class BatteryCosts(BaseModel):
     """What each thing costs, in percent of a full battery."""
 
     standby_per_day: float  # a day asleep in the network
     deep_per_day: float  # a day asleep without the Wi-Fi
-    per_wake: float  # a wake, with the time it keeps the panel up
-    per_change: float  # drawing a picture
+    per_wake: float  # a wake that runs the app, with the time it keeps the panel up
+    per_change: float  # drawing a picture, on top of its wake
     # 0 (still the assumption) to 1 (measured), in the order above.
     learnt: list[float]
+    # A scheduled change whole (its wake, the app up, the drawing), an
+    # economy check with nothing new, and the minutes behind them.
+    per_change_wake: float = 0.0
+    per_check: float = 0.0
+    app_awake_minutes: float = 0.0
+    check_minutes: float = 0.0
+
+
+class BatteryLine(BaseModel):
+    """One thing in a day at the schedule set: how many (or hours), each
+    costs, and in all."""
+
+    kind: LineKind
+    count: float  # hours for standby and deep
+    each: float  # percent, per hour for standby and deep
+    cost: float  # percent a day
 
 
 class BatteryDay(BaseModel):
@@ -78,8 +124,21 @@ class BatteryDay(BaseModel):
     changes: float
     standby_cost: float
     deep_cost: float
-    wakes_cost: float
-    changes_cost: float
+    wakes_cost: float  # every wake and its time up, drawing aside
+    changes_cost: float  # the drawing alone
+    checks: float = 0.0
+    sends: float = 0.0  # pictures sent from the app, as usual lately
+    # What makes the day, most costly first (the battery sheet).
+    lines: list[BatteryLine] = []
+
+
+class BatteryCheck(BaseModel):
+    """The last stretch on battery: the percent used, and what the costs
+    learnt say it should have been."""
+
+    hours: float
+    used: float
+    expected: float
 
 
 class BatteryEstimate(BaseModel):
@@ -103,10 +162,22 @@ class BatteryEstimate(BaseModel):
     level: int | None = None
     read_level: int | None = None
     read_at: str | None = None
+    # The readings on battery of the last week, ``[time, level]``, and how
+    # the costs fit the last day of them.
+    recent: list[tuple[str, int]] = []
+    check: BatteryCheck | None = None
 
 
 def _hours(delta: timedelta) -> float:
     return max(delta / timedelta(hours=1), 0.0)
+
+
+def _median(values: list[float]) -> float:
+    ordered = sorted(values)
+    middle = len(ordered) // 2
+    if len(ordered) % 2:
+        return ordered[middle]
+    return (ordered[middle - 1] + ordered[middle]) / 2
 
 
 class Activity(BaseModel):
@@ -115,25 +186,57 @@ class Activity(BaseModel):
     mode: Mode | None = None
     since: str | None = None
     totals: list[float] = [0.0] * len(FEATURES)
+    # Awake after a wake on battery (not the charger, not a look): its
+    # minutes up count for the wakes that run the app.
+    woke: bool = False
+    wake_minutes: list[float] = []
+    # Pictures sent from the app (ISO times), and since when they are noted.
+    sent: list[str] = []
+    sent_since: str | None = None
+    # The panel's own sleep after an empty check, as the app last set it.
+    check_idle_minutes: float | None = None
 
-    def at(self, now: datetime) -> list[float]:
-        """The totals with the time in the current mode up to ``now``."""
+    def check_up(self) -> float:
+        """Hours an economy check with nothing new keeps the panel up."""
+        if self.check_idle_minutes is None:
+            return _hours(CHECK_UP)
+        return _hours(timedelta(minutes=self.check_idle_minutes) + CHECK_BOOT)
+
+    def at(self, now: datetime, silent_wakes: int = 0) -> list[float]:
+        """The totals with the time in the current mode up to ``now``, and
+        the economy checks that rang meanwhile (``silent_wakes``)."""
         totals = list(self.totals)
         if self.mode is not None and self.since is not None:
             index = {"standby": 0, "deep": 1, "awake": 2}[self.mode]
-            totals[index] += _hours(now - datetime.fromisoformat(self.since))
+            spent = _hours(now - datetime.fromisoformat(self.since))
+            totals[index] += spent
+            if silent_wakes and self.mode == "deep":
+                # Each check kept it up on the Wi-Fi for a while, unseen.
+                up = min(silent_wakes * self.check_up(), spent)
+                totals[1] -= up
+                totals[2] += up
+        totals[3] += silent_wakes
         return totals
 
-    def change(self, now: datetime, mode: Mode, silent_wakes: int = 0) -> bool:
+    def change(
+        self, now: datetime, mode: Mode, silent_wakes: int = 0, on_battery: bool = True
+    ) -> bool:
         """The panel is now ``mode``; whether that is news. A sleep ending
         in waking up is a wake; ``silent_wakes``: alarms that woke it in
-        the meantime and let it sleep on without asking (economy checks)."""
+        the meantime and let it sleep on without asking (economy checks).
+        A wake on battery that ends in a sleep tells how long a wake lasts."""
         if mode == self.mode:
             return False
-        self.totals = self.at(now)
-        if mode == "awake" and self.mode in ("standby", "deep"):
+        if self.mode == "awake" and self.woke and on_battery and self.since is not None:
+            up = now - datetime.fromisoformat(self.since)
+            if timedelta(0) < up <= LONGEST_WAKE:
+                self.wake_minutes = [*self.wake_minutes, round(up / timedelta(minutes=1), 2)]
+                self.wake_minutes = self.wake_minutes[-WAKES_KEPT:]
+        self.totals = self.at(now, silent_wakes)
+        woke = mode == "awake" and self.mode in ("standby", "deep")
+        if woke:
             self.totals[3] += 1
-        self.totals[3] += silent_wakes
+        self.woke = woke and on_battery
         self.mode = mode
         self.since = now.isoformat(timespec="seconds")
         return True
@@ -142,11 +245,29 @@ class Activity(BaseModel):
         self.totals[4] += 1
 
     def awake_per_wake(self) -> float:
-        """Hours a wake keeps the panel up, as seen so far."""
-        wakes = self.totals[3]
-        if wakes < MIN_WAKES_SEEN:
-            return _hours(AWAKE_PER_WAKE)
-        return min(self.totals[2] / wakes, 1.0)
+        """Hours a wake that runs the app keeps the panel up, on battery."""
+        if len(self.wake_minutes) < MIN_WAKES_SEEN:
+            return _hours(APP_AWAKE)
+        return _median(self.wake_minutes) / 60
+
+    def note_sent(self, now: datetime) -> None:
+        if self.sent_since is None:
+            self.sent_since = now.isoformat(timespec="seconds")
+        last = datetime.fromisoformat(self.sent[-1]) if self.sent else None
+        if last is not None and timedelta(0) <= now - last < SEND_BURST:
+            return  # the same burst: one wake takes them all
+        oldest = now - SENDS_FOR
+        kept = [s for s in self.sent if datetime.fromisoformat(s) >= oldest]
+        self.sent = [*kept, now.isoformat(timespec="seconds")]
+
+    def sends_per_day(self, now: datetime) -> float:
+        """Pictures sent from the app a day, as in the last two weeks."""
+        if self.sent_since is None:
+            return 0.0
+        noted = now - datetime.fromisoformat(self.sent_since)
+        days = min(max(_hours(noted) / 24, SENDS_MIN_DAYS), SENDS_FOR / timedelta(days=1))
+        oldest = now - SENDS_FOR
+        return sum(datetime.fromisoformat(s) >= oldest for s in self.sent) / days
 
 
 class Fit(BaseModel):
@@ -215,17 +336,36 @@ class BatteryLog:
         if self.library is not None:
             self.library.set_state(ACTIVITY_KEY, self.activity.model_dump())
 
-    def track(self, now: datetime, mode: Mode | None, silent_wakes: int = 0) -> None:
+    def track(
+        self, now: datetime, mode: Mode | None, silent_wakes: int = 0, on_battery: bool = True
+    ) -> None:
         if mode is None:
             return
         since = self.activity.since
         if since is not None and now < datetime.fromisoformat(since):
             now = datetime.fromisoformat(since)  # a clock gone back: no time passed
-        if self.activity.change(now, mode, silent_wakes):
+        if self.activity.change(now, mode, silent_wakes, on_battery):
             self._save_activity()
 
     def drew(self) -> None:
         self.activity.drew()
+        self._save_activity()
+
+    def auto_sleep(self, report: object) -> None:
+        """The app's "sleep" report says how long the panel stays up idle
+        (``autoSleep``: ``{"value": "2MIN"}``): an empty check's time up."""
+        value = report.get("value") if isinstance(report, dict) else None
+        match = re.fullmatch(r"(\d+)MIN", value) if isinstance(value, str) else None
+        if match is None:
+            return
+        minutes = float(match.group(1))
+        if minutes != self.activity.check_idle_minutes:
+            self.activity.check_idle_minutes = minutes
+            self._save_activity()
+
+    def sent(self, now: datetime) -> None:
+        """A picture sent from the app (not the schedule's)."""
+        self.activity.note_sent(now)
         self._save_activity()
 
     def note(self, now: datetime, level: int, on_battery: bool) -> None:
@@ -263,7 +403,9 @@ class BatteryLog:
             self._fit = fit(self.runs)
         return self._fit
 
-    def since_reading(self, now: datetime, mean: np.ndarray) -> tuple[list[float], float] | None:
+    def since_reading(
+        self, now: datetime, mean: np.ndarray, silent_wakes: int = 0
+    ) -> tuple[list[float], float] | None:
         """The last reading on battery and the percent used since, by what
         the panel has done meanwhile at the costs ``mean``; only while it
         sleeps, when nothing new is read."""
@@ -272,29 +414,60 @@ class BatteryLog:
             return None
         if self.activity.mode not in ("standby", "deep"):
             return None  # awake, the panel reads its battery itself
-        done = np.array(self.activity.at(now)) - np.array(last[2:])
+        done = np.array(self.activity.at(now, silent_wakes)) - np.array(last[2:])
         return last, float(np.clip(done, 0.0, None) @ mean)
+
+    def recent(self, now: datetime) -> list[tuple[str, int]]:
+        """The readings on battery of the last week, oldest first."""
+        oldest = (now - RECENT_FOR).timestamp()
+        return [
+            (datetime.fromtimestamp(row[0], UTC).isoformat(timespec="seconds"), int(row[1]))
+            for run in self.runs
+            for row in run
+            if row[0] >= oldest
+        ]
+
+    def check(self, mean: np.ndarray) -> BatteryCheck | None:
+        """The last day of the latest run on battery: the percent it used
+        against what the costs ``mean`` make of what the panel did."""
+        if not self.runs:
+            return None
+        run = self.runs[-1]
+        last = run[-1]
+        start = next((r for r in run if last[0] - r[0] <= CHECK_SPAN.total_seconds()), None)
+        if start is None or last[0] - start[0] < CHECK_MIN.total_seconds():
+            return None
+        done = np.clip(np.array(last[2:]) - np.array(start[2:]), 0.0, None)
+        return BatteryCheck(
+            hours=round((last[0] - start[0]) / 3600, 1),
+            used=round(start[1] - last[1], 1),
+            expected=round(float(done @ mean), 1),
+        )
 
     def estimate(
         self,
         level: int | None,
         on_battery: bool,
-        plan: list[float],
+        plan: DayPlan,
         now: datetime | None = None,
+        silent_wakes: int = 0,
     ) -> BatteryEstimate:
-        """The days ``level`` lasts at ``plan`` (a day's totals). With
-        ``now``, a level that stood still since the last reading on battery
-        (the panel asleep) gives way to the level estimated for ``now``."""
+        """The days ``level`` lasts at ``plan`` (a day at the schedule).
+        With ``now``, a level that stood still since the last reading on
+        battery (the panel asleep, ``silent_wakes`` checks since) gives way
+        to the level estimated for ``now``."""
         model = self.fit()
         mean, cov = np.array(model.mean), np.array(model.cov)
         guess: int | None = None
-        reading = self.since_reading(now, mean) if now is not None and on_battery else None
+        reading = (
+            self.since_reading(now, mean, silent_wakes) if now is not None and on_battery else None
+        )
         if reading is not None:
             last, used = reading
             estimated = max(math.floor(last[1] - used + 0.5), 0)
             if estimated < last[1]:
                 guess = estimated
-        day = np.array(plan)
+        day = np.array(plan.totals())
         per_day = max(float(day @ mean), 0.01)
         spread = 1.28 * float(np.sqrt(max(day @ cov @ day, 0.0)))  # 80 % of the likely range
         low_rate, high_rate = max(per_day - spread, per_day / 4), per_day + spread
@@ -309,7 +482,10 @@ class BatteryLog:
         full, full_low, full_high = days(100)
         now_level = guess if guess is not None else level
         left = days(now_level) if on_battery and now_level is not None else (None, None, None)
-        per_wake = mean[3] + mean[2] * self.activity.awake_per_wake()
+        app_awake = self.activity.awake_per_wake()
+        per_wake = mean[3] + mean[2] * app_awake
+        check_up = self.activity.check_up()
+        per_check = mean[3] + mean[2] * check_up
         learnt = 1 - np.sqrt(np.diag(cov)) / PRIOR_SD
         costs = BatteryCosts(
             standby_per_day=round(mean[0] * 24, 2),
@@ -320,8 +496,12 @@ class BatteryLog:
                 round(float(v), 2)
                 for v in (learnt[0], learnt[1], max(learnt[2], learnt[3]), learnt[4])
             ],
+            per_change_wake=round(per_wake + mean[4], 3),
+            per_check=round(per_check, 3),
+            app_awake_minutes=round(app_awake * 60, 1),
+            check_minutes=round(check_up * 60, 1),
         )
-        awake = day[2] * mean[2]
+        draws = day[4] * mean[4]
         return BatteryEstimate(
             per_day=round(per_day, 2),
             days=left[0],
@@ -340,8 +520,11 @@ class BatteryLog:
                 changes=round(day[4], 1),
                 standby_cost=round(day[0] * mean[0], 2),
                 deep_cost=round(day[1] * mean[1], 2),
-                wakes_cost=round(day[3] * mean[3] + awake, 2),
-                changes_cost=round(day[4] * mean[4], 2),
+                wakes_cost=round(day[3] * mean[3] + day[2] * mean[2], 2),
+                changes_cost=round(draws, 2),
+                checks=round(plan.checks, 1),
+                sends=round(plan.sends, 2),
+                lines=plan.lines(mean),
             ),
             level=guess,
             read_level=int(reading[0][1]) if guess is not None and reading else None,
@@ -350,7 +533,51 @@ class BatteryLog:
                 if guess is not None and reading
                 else None
             ),
+            recent=self.recent(now) if now is not None else [],
+            check=self.check(mean),
         )
+
+
+class DayPlan(BaseModel):
+    """A day on battery at the schedule set, by what makes it: each a day's
+    totals of ``FEATURES`` and how many."""
+
+    standby_hours: float = 0.0
+    deep_hours: float = 0.0
+    checks: float = 0.0
+    check: list[float] = [0.0] * len(FEATURES)
+    changes: float = 0.0
+    change: list[float] = [0.0] * len(FEATURES)
+    # Wakes that run the app with nothing to draw (the online mode's quiet
+    # hours begin).
+    wakes: float = 0.0
+    wake: list[float] = [0.0] * len(FEATURES)
+    sends: float = 0.0
+    send: list[float] = [0.0] * len(FEATURES)
+
+    def totals(self) -> list[float]:
+        totals = np.array([self.standby_hours, self.deep_hours, 0.0, 0.0, 0.0])
+        for part in (self.check, self.change, self.wake, self.send):
+            totals += np.array(part)
+        return [float(v) for v in totals]
+
+    def lines(self, mean: np.ndarray) -> list[BatteryLine]:
+        def line(kind: LineKind, count: float, part: list[float] | float) -> BatteryLine:
+            cost = float(np.array(part) @ mean) if isinstance(part, list) else part
+            each = cost / count if count else 0.0
+            return BatteryLine(
+                kind=kind, count=round(count, 2), each=round(each, 3), cost=round(cost, 2)
+            )
+
+        lines = [
+            line("standby", self.standby_hours, self.standby_hours * float(mean[0])),
+            line("deep", self.deep_hours, self.deep_hours * float(mean[1])),
+            line("checks", self.checks, self.check),
+            line("changes", self.changes, self.change),
+            line("wakes", self.wakes, self.wake),
+            line("sends", self.sends, self.send),
+        ]
+        return sorted((x for x in lines if x.count > 0), key=lambda x: -x.cost)
 
 
 def day_plan(
@@ -359,45 +586,91 @@ def day_plan(
     awake_per_wake: float,
     rest_until: datetime | None = None,
     off: bool = False,
-) -> list[float]:
-    """A day's totals on battery at ``settings``, averaged over the next
+    sends_per_day: float = 0.0,
+    check_up: float | None = None,
+) -> DayPlan:
+    """A day on battery at ``settings``, averaged over the next
     ``PLAN_DAYS``: the wakes the app sets (changes, economy checks, the
     start of quiet hours in the online mode) and the sleep between them,
-    with the Wi-Fi off in the economy mode and in quiet hours. A rest
+    with the Wi-Fi off in the economy mode and in quiet hours. A change
+    runs the app (``awake_per_wake`` hours) and draws; an economy check
+    with nothing new keeps the panel up ``check_up`` hours (``CHECK_UP``)
+    without the app.
+    Pictures sent from the app (``sends_per_day``): out of the online
+    mode's network standby each wakes it, runs the app and draws; in the
+    economy mode a check takes it (the app runs there instead of the empty
+    check), and without checks it waits for the next change. A rest
     ("Głęboki sen") sleeps without the Wi-Fi until it ends; off, for good."""
-    end = now + timedelta(days=PLAN_DAYS)
-    totals = [0.0] * len(FEATURES)
+    plan = DayPlan()
     if off:
-        return [0.0, 24.0, 0.0, 0.0, 0.0]
+        plan.deep_hours = 24.0
+        return plan
+    end = now + timedelta(days=PLAN_DAYS)
     t = now
     if rest_until is not None and rest_until > now:
         t = min(rest_until, end)
-        totals[1] += _hours(t - now)
+        plan.deep_hours += _hours(t - now)
     change = next_change(t, settings)
     hours = quiet_hours(settings)
     tz = settings.tz()
+    check_up = _hours(CHECK_UP) if check_up is None else check_up
+    standby_hours = 0.0
+    check = np.zeros(len(FEATURES))
+    changing = np.zeros(len(FEATURES))
+    waking = np.zeros(len(FEATURES))
+    checks = changes = wakes = 0
     while t < end:
-        wakes = [change]
-        check = next_check(t, settings)
-        if check is not None:
-            wakes.append(check)
+        moments = [change]
+        next_one = next_check(t, settings)
+        if next_one is not None:
+            moments.append(next_one)
         if hours is not None and not in_quiet_hours(t, settings):
             local = t.astimezone(tz)
             start = datetime.combine(local.date(), hours[0], tzinfo=tz)
-            wakes.append(start if start > local else start + timedelta(days=1))
-        wake = min(wakes)
+            moments.append(start if start > local else start + timedelta(days=1))
+        wake = min(moments)
         deep = settings.power_mode == "economy" or in_quiet_hours(t, settings)
-        totals[1 if deep else 0] += _hours(min(wake, end) - t)
+        asleep = _hours(min(wake, end) - t)
+        if deep:
+            plan.deep_hours += asleep
+        else:
+            standby_hours += asleep
         if wake >= end:
             break
-        totals[2] += awake_per_wake
-        totals[3] += 1
         if wake == change:
-            totals[4] += 1
+            changes += 1
+            changing += [0, 0, awake_per_wake, 1, 1]
             change = next_change(change, settings)
-        t = wake + timedelta(hours=awake_per_wake)
+            up = awake_per_wake
+        elif wake == next_one:
+            checks += 1
+            check += [0, 0, check_up, 1, 0]
+            up = check_up
+        else:
+            wakes += 1
+            waking += [0, 0, awake_per_wake, 1, 0]
+            up = awake_per_wake
+        t = wake + timedelta(hours=up)
     days = _hours(end - now) / 24
-    return [v / days for v in totals]
+    plan.standby_hours = standby_hours / days
+    plan.deep_hours /= days
+    plan.checks, plan.check = checks / days, list(check / days)
+    plan.changes, plan.change = changes / days, list(changing / days)
+    plan.wakes, plan.wake = wakes / days, list(waking / days)
+    if sends_per_day > 0:
+        if settings.power_mode == "economy":
+            # A check runs the app and draws instead of sleeping on; none
+            # left (or no checks): the picture waits for the next change.
+            plan.sends = min(sends_per_day, plan.checks)
+            extra = [0.0, 0.0, max(awake_per_wake - check_up, 0.0), 0.0, 1.0]
+        else:
+            # Woken out of network standby; in quiet hours it waits.
+            awake_share = 1 - plan.deep_hours / 24 if plan.deep_hours < 24 else 0.0
+            plan.sends = sends_per_day * awake_share
+            # Up instead of asleep in the network.
+            extra = [-awake_per_wake, 0.0, awake_per_wake, 1.0, 1.0]
+        plan.send = [plan.sends * v for v in extra]
+    return plan
 
 
 def awake_mode(power_state: str | None) -> Mode | None:

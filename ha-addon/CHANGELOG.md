@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.103.1
+
+- Po powrocie do aplikacji z tła Teraz od razu pokazuje obraz, który
+  jest na ramce. Dotąd po zmianie z harmonogramu, np. w trybie
+  Oszczędnym, przez półtorej minuty (czasem dłużej) widać było poprzednie
+  dzieło.
+- Kafelek Bateria pokazuje realny czas pracy dla każdego harmonogramu, od
+  obecnego poziomu baterii. Wcześniej serwer brał każdą pobudkę za ok. pół
+  godziny przytomności, bo liczył też godziny na zasilaczu, i np. przy
+  harmonogramie testowym wychodziło 1,3 dnia zamiast ok. 4. Teraz czas
+  pobudki to mediana z ostatnich pobudek na baterii, pusta kontrola liczy
+  się tak długo, jak ustawiła ją aplikacja ramki (3 albo 5 min), a obrazy
+  wysłane z aplikacji jako średnia z ostatnich dwóch tygodni. Założenia
+  startowe pochodzą z testów tej ramki.
+- Ramka nie przyjęła samousypiania po 2 minutach (Samsung pozwala tylko na
+  3, 5, 10, 20, 30 albo 60 minut) i przy pustej kontroli dalej czekała 5
+  minut. Teraz zasypia po 3 minutach, najkrótszym możliwym czasie, co
+  oszczędza ok. 2 minuty Wi-Fi na każdej kontroli bez nowego obrazu.
+  Szacunek pobudek w Ramce liczy kontrolę jako ok. 3,5 minuty.
+
 ## 1.103.0
 
 - Karta Tonacja w Szukaj → Kolor nie ma już grupy „pomiędzy”. Każde

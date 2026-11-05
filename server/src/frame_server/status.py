@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel
 
-from .battery import BatteryEstimate, BatteryLog, awake_mode
+from .battery import BatteryEstimate, BatteryLog, DayPlan, awake_mode
 from .device import MdcConnectionError, MdcError
 from .device.presence import connect_says_gone, on_network
 from .panel_config import clean_mac
@@ -272,34 +272,49 @@ class StatusMonitor:
         if self.library is not None:
             self.library.set_state(STATUS_KEY, self.status.model_dump(include=REMEMBERED))
 
-    def _follow(self, now: datetime) -> None:
+    def _follow(self, now: datetime, status: DeviceStatus | None = None) -> None:
         """Tell the battery log what the panel does now. A wake from a sleep
         without the Wi-Fi may come after alarms that rang unseen (economy
         checks with nothing new: the panel slept on without the app)."""
-        mode = awake_mode(self.status.power_state)
+        status = status or self.status
+        mode = awake_mode(status.power_state)
+        silent = self._silent_wakes(now) if mode != self.battery.activity.mode else 0
+        on_battery = status.power_source == "battery" and not status.charging
+        self.battery.track(now, mode, silent, on_battery)
+
+    def _silent_wakes(self, now: datetime) -> int:
+        """Economy checks that rang in the sleep without the Wi-Fi going on."""
         activity = self.battery.activity
-        silent = 0
-        if mode != activity.mode and activity.mode == "deep" and activity.since and self.rang:
-            silent = self.rang(datetime.fromisoformat(activity.since), now - RANG_UNSEEN)
-        self.battery.track(now, mode, silent)
+        if activity.mode != "deep" or not activity.since or not self.rang:
+            return 0
+        return self.rang(datetime.fromisoformat(activity.since), now - RANG_UNSEEN)
 
     def note_drawn(self) -> None:
         """The app drew a picture: the costliest thing it does."""
         self.battery.drew()
 
+    def note_sent(self, now: datetime | None = None) -> None:
+        """A picture sent from the app: on top of the schedule's."""
+        self.battery.sent(now or datetime.now(UTC))
+
     def estimate_battery(
-        self, plan: Callable[[float], list[float]], now: datetime | None = None
+        self, plan: Callable[[float, float, float], DayPlan], now: datetime | None = None
     ) -> None:
-        """How long the battery lasts at ``plan`` (a day's totals for the
-        hours a wake keeps the panel up), and its level ``now`` while the
-        panel sleeps and reads nothing (``BatteryEstimate.level``)."""
+        """How long the battery lasts at ``plan`` (a day at the schedule for
+        the hours a wake and an empty check keep the panel up and the
+        pictures sent a day),
+        and its level ``now`` while the panel sleeps and reads nothing
+        (``BatteryEstimate.level``)."""
+        now = now or datetime.now(UTC)
         status = self.status
         on_battery = status.power_source == "battery" and not status.charging
+        activity = self.battery.activity
         estimate = self.battery.estimate(
             status.battery_level,
             on_battery,
-            plan(self.battery.activity.awake_per_wake()),
-            now=now or datetime.now(UTC),
+            plan(activity.awake_per_wake(), activity.sends_per_day(now), activity.check_up()),
+            now=now,
+            silent_wakes=self._silent_wakes(now),
         )
         status.battery = estimate
         status.battery_per_day = estimate.per_day if on_battery else None
@@ -345,9 +360,9 @@ class StatusMonitor:
             status.reachable = True
             status.last_seen = status.checked_at
             status.error = None
-            self._track_battery(status, datetime.now(UTC))
             status.power_state = "online"
             status.on_network = True
+            self._track_battery(status, datetime.now(UTC))
             self._slept_at = None
         except MdcError as err:
             status.reachable = False
@@ -451,6 +466,8 @@ class StatusMonitor:
         """Note the level for the battery log (battery.py)."""
         if status.battery_level is None or status.power_source is None:
             return
+        # Awake first: the reading closes the sleep before it, checks and all.
+        self._follow(now, status)
         on_battery = status.power_source == "battery" and not status.charging
         self.battery.note(now, status.battery_level, on_battery)
         if self.on_battery_level:

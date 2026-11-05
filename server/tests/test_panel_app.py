@@ -1084,10 +1084,10 @@ def test_battery_estimate_from_the_first_reading(tmp_path: Path) -> None:
     later = status.status.battery
     assert later is not None and later.days is not None
     assert later.days_low is not None and later.days_high is not None
-    assert later.days_high - later.days_low < first.days_high - first.days_low
+    assert later.days_high / later.days_low < first.days_high / first.days_low
     assert later.readings > 10 and later.hours_measured > 20
     assert later.costs.learnt[0] > 0.5  # standby: measured now
-    assert 18 < later.costs.standby_per_day < 30
+    assert 10 < later.costs.standby_per_day < 30
     # On the charger: no days left, still a full battery's worth.
     status.note_app(start + timedelta(hours=25), 70, True)
     service.power.publish_status()

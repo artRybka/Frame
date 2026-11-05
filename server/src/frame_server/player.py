@@ -159,6 +159,12 @@ class PlayerState(BaseModel):
     last_error: str | None = None
 
 
+# Pictures the owner sends from the app (not the schedule, the end of a
+# timed hold, nor the button on the frame, which is up already): each is one
+# more wake for the battery.
+SENT_FROM_APP = frozenset({"app", "manual", "playlist", "previous"})
+
+
 def origin_of(reason: str) -> str:
     """Who changed the picture, for the app: the schedule (a timed change,
     also the end of a timed hold) or the owner from the app (everything else:
@@ -689,6 +695,8 @@ class Player:
                 for shown in board:
                     self.library.record_shown(shown.id, reason)
                 self._save_state(state)
+                if reason in SENT_FROM_APP:
+                    self.service.status.note_sent(now)  # a wake on top of the schedule
                 await self._push(state)
 
             await self._guarded(item.id, state, work)
