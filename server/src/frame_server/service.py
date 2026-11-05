@@ -32,7 +32,7 @@ from .imaging import Palette, RenderSettings, get_palette, render, render_multi
 from .imaging.pipeline import encode_image
 from .kept import KeptOriginals
 from .later import LaterWorks
-from .library import ImageCache, Importer, Library
+from .library import ImageCache, Importer, Library, courtauld
 from .library.commons import repair_library
 from .library.museums import Access, europeana_mirrors
 from .library.museums import client as museum_client
@@ -62,6 +62,8 @@ PREVIEW_MAX = 1280
 # The Frame app's alarm rings this close to a push: it will ask by itself.
 WAKE_SOON = timedelta(minutes=3)
 PROGRESS_KEY = "progress_expected"
+#: Set once the Courtauld's white pictures kept before 1.100.7 are removed.
+COURTAULD_WHITE_KEY = "courtauld_white_removed"
 NO_CERTIFICATES = (
     "no app for the frame: copy the Samsung certificates to data/panel-app/certs on the server"
 )
@@ -178,6 +180,12 @@ class FrameService:
         self.panel_config = PanelConfigStore(settings, self.library)
         self.images = ImageCache(settings.data_dir / "library", museum_client)
         self.images.mirrors["europeana"] = europeana_mirrors
+        # The Courtauld's CMYK scans come white as JPEG: asked again as PNG.
+        self.images.repairs[courtauld.HOST] = courtauld.repair
+        if not self.library.get_state(COURTAULD_WHITE_KEY):
+            if white := courtauld.forget_white([self.images.thumbs, self.images.images]):
+                log.info("removed %d white Courtauld pictures", white)
+            self.library.set_state(COURTAULD_WHITE_KEY, True)
         # The museums' pictures as Commons keeps them, when a museum's image
         # server turns us away (the AIC's IIIF behind a Cloudflare challenge).
         copies = CommonsCopies(lambda: self.images.http())
