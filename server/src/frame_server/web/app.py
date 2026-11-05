@@ -500,6 +500,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def panel_requests() -> list[dict[str, object]]:
         return [asdict(r) for r in service.store.recent_requests]
 
+    @app.get("/api/debug/battery", dependencies=[Depends(require_owner)])
+    def battery_data() -> dict[str, object]:
+        """What the battery estimate is learnt from (battery.py): the
+        readings on battery, the panel's activity and the costs fitted."""
+        log = service.status.battery
+        return {
+            "runs": log.runs,
+            "activity": log.activity.model_dump(),
+            "fit": log.fit().model_dump(),
+        }
+
     log_buffer = logbuffer.install()
 
     @app.get(

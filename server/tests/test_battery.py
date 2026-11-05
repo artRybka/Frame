@@ -15,16 +15,79 @@ START = datetime(2026, 10, 28, 6, 0, tzinfo=UTC)
 
 def test_a_day_at_the_schedule() -> None:
     awake = 0.05
-    online = day_plan(FrameSettings(), START, awake)
+    online = day_plan(FrameSettings(), START, awake).totals()
     # 07:00 change, 22:00 quiet hours: the Wi-Fi off until the morning.
     assert online[3] == pytest.approx(2.0, abs=0.2) and online[4] == pytest.approx(1.0, abs=0.2)
     assert online[0] == pytest.approx(15, abs=0.2) and online[1] == pytest.approx(9, abs=0.2)
-    economy = day_plan(FrameSettings(power_mode="economy", check_every_hours=2), START, awake)
+    plan = day_plan(FrameSettings(power_mode="economy", check_every_hours=2), START, awake)
+    economy = plan.totals()
     assert economy[0] == 0 and economy[1] > 23
     assert economy[3] == pytest.approx(8.0, abs=0.2) and economy[4] == pytest.approx(1.0, abs=0.2)
-    assert sum(day_plan(FrameSettings(), START, awake, off=True)[2:]) == 0
-    rest = day_plan(FrameSettings(), START, awake, rest_until=START + timedelta(days=2))
+    # 8:00 … 20:00, none in the checks' quiet hours; each up five minutes.
+    assert plan.checks == pytest.approx(7.0, abs=0.2)
+    assert plan.changes == pytest.approx(1.0, abs=0.2)
+    assert plan.check[2] == pytest.approx(7 * 5 / 60, abs=0.02)
+    assert sum(day_plan(FrameSettings(), START, awake, off=True).totals()[2:]) == 0
+    rest = day_plan(FrameSettings(), START, awake, rest_until=START + timedelta(days=2)).totals()
     assert rest[1] > online[1] and rest[3] < online[3]
+
+
+def test_any_schedule_makes_its_day() -> None:
+    """A change every other day and a check every six hours: half a change
+    and two checks a day (12:00, 18:00; 0:00 and 6:00 are in quiet hours)."""
+    settings = FrameSettings(
+        power_mode="economy", change_every_days=2, check_every_hours=6, change_times=["08:00"]
+    )
+    plan = day_plan(settings, START, 0.05)
+    assert plan.changes == pytest.approx(0.5, abs=0.1)
+    assert plan.checks == pytest.approx(2.0, abs=0.2)
+    assert plan.standby_hours == 0 and plan.deep_hours > 23.5
+
+
+def test_pictures_sent_from_the_app_add_to_the_day() -> None:
+    economy = FrameSettings(power_mode="economy", check_every_hours=4)
+    plain = day_plan(economy, START, 0.05)
+    sent = day_plan(economy, START, 0.05, sends_per_day=2)
+    # A check runs the app and draws instead of sleeping on.
+    assert sent.sends == 2 and sent.totals()[4] == pytest.approx(plain.totals()[4] + 2)
+    assert sent.totals()[3] == pytest.approx(plain.totals()[3])
+    # Without checks the picture waits for the next change: nothing more.
+    none = FrameSettings(power_mode="economy")
+    assert day_plan(none, START, 0.05, sends_per_day=2).sends == 0
+    # Online, each wakes the frame out of network standby.
+    online = day_plan(FrameSettings(), START, 0.05, sends_per_day=2)
+    plain_online = day_plan(FrameSettings(), START, 0.05)
+    assert online.sends == pytest.approx(2 * 15 / 24, abs=0.1)
+    assert online.totals()[3] == pytest.approx(plain_online.totals()[3] + online.sends)
+
+
+def test_a_wake_lasts_as_long_as_on_battery() -> None:
+    """Hours on the charger (the app never sleeps there) and a frame kept
+    up on purpose say nothing about how long a wake keeps it up."""
+    log = BatteryLog(None)
+    t = START
+    log.track(t, "awake", on_battery=False)
+    t += timedelta(hours=10)
+    for minutes in (2.5, 3.5, 3.0, 25.0, 45.0):
+        log.track(t, "deep")
+        t += timedelta(hours=1)
+        log.track(t, "awake")
+        t += timedelta(minutes=minutes)
+    log.track(t, "deep")
+    # 45 minutes is someone keeping it up: left out; the median of the rest.
+    assert log.activity.wake_minutes == [2.5, 3.5, 3.0, 25.0]
+    assert log.activity.awake_per_wake() == pytest.approx(3.25 / 60)
+
+
+def test_pictures_sent_are_counted_a_day() -> None:
+    log = BatteryLog(None)
+    t = START
+    for minutes in (0, 3, 60, 24 * 60):  # 0 and 3: one burst, one wake
+        log.sent(t + timedelta(minutes=minutes))
+    # Three wakes, counted over at least three days.
+    assert log.activity.sends_per_day(t + timedelta(days=1, hours=1)) == pytest.approx(1.0)
+    assert log.activity.sends_per_day(t + timedelta(days=6)) == pytest.approx(0.5)
+    assert log.activity.sends_per_day(t + timedelta(days=20)) == 0
 
 
 def test_wakes_and_pictures_are_counted() -> None:
@@ -34,8 +97,9 @@ def test_wakes_and_pictures_are_counted() -> None:
     log.track(START + timedelta(hours=4), "awake", silent_wakes=1)
     log.drew()
     totals = log.activity.at(START + timedelta(hours=4, minutes=3))
-    assert totals[1] == pytest.approx(4 - 2 / 60)
-    assert totals[2] == pytest.approx(5 / 60)
+    # The check that rang meanwhile kept it up five minutes on the Wi-Fi.
+    assert totals[1] == pytest.approx(4 - 2 / 60 - 5 / 60)
+    assert totals[2] == pytest.approx(10 / 60)
     assert totals[3:] == [2, 1]
 
 
@@ -99,7 +163,7 @@ def test_asleep_the_level_is_estimated_from_the_last_reading() -> None:
     later = START + timedelta(hours=8, minutes=2)
     asleep = log.estimate(80, True, plan, now=later)
     standby = asleep.costs.standby_per_day / 24
-    awake = 4.0 * 2 / 60  # the prior, two minutes
+    awake = 5.0 * 2 / 60  # the prior, two minutes
     assert asleep.level == math.floor(80 - 8 * standby - awake + 0.5)
     assert asleep.read_level == 80 and asleep.read_at == START.isoformat()
     assert asleep.days == pytest.approx(asleep.level / asleep.per_day, abs=0.1)
@@ -144,3 +208,41 @@ def test_awake_the_reading_holds() -> None:
     log.note(START, 80, True)
     plan = day_plan(FrameSettings(), START, 0.05)
     assert log.estimate(80, True, plan, now=START + timedelta(days=5)).level is None
+
+
+def test_the_last_day_is_checked_against_the_costs() -> None:
+    log = BatteryLog(None)
+    t = START
+    log.track(t, "awake")
+    log.note(t, 90, True)
+    level = 90.0
+    for _ in range(12):
+        log.track(t, "deep")
+        t += timedelta(hours=2)
+        log.track(t, "awake")
+        t += timedelta(minutes=3)
+        log.drew()
+        level -= 0.7
+        log.note(t, math.floor(level), True)
+    estimate = log.estimate(math.floor(level), True, day_plan(FrameSettings(), t, 0.05), now=t)
+    assert estimate.check is not None
+    assert estimate.check.hours >= 12 and estimate.check.used == pytest.approx(8, abs=1)
+    assert estimate.check.expected > 0
+    assert estimate.recent[0] == (START.isoformat(), 90)
+
+
+def test_a_realistic_economy_day_from_the_assumptions() -> None:
+    """Two changes, a check every two hours and quiet nights: about two
+    weeks on a full battery (2026-11-05 tests), not the 4 days of a wake
+    taken for half an hour."""
+    settings = FrameSettings(
+        power_mode="economy", change_times=["02:45", "08:20"], check_every_hours=2
+    )
+    log = BatteryLog(None)
+    estimate = log.estimate(100, True, day_plan(settings, START, 3 / 60))
+    assert 5 <= estimate.per_day <= 10
+    assert 10 <= estimate.full_days <= 20
+    kinds = [line.kind for line in estimate.day.lines]
+    assert kinds[0] == "checks" and "changes" in kinds and "deep" in kinds
+    checks = next(line for line in estimate.day.lines if line.kind == "checks")
+    assert checks.each == pytest.approx(estimate.costs.per_check, abs=0.01)
