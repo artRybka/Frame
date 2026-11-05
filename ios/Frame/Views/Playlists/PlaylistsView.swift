@@ -304,7 +304,13 @@ extension PlaylistKind {
     }
 }
 
-/// Large card for the playlist the frame presents (or Propozycje).
+/// Card for the playlist the frame presents (or Propozycje), J1 from the
+/// sketches (Mateusz 2026-11-05, `teraz-prezentowane-kafelek/szkic-7.png`):
+/// the cover's four works as a 2×2 square flush with the card's left edge,
+/// a third of the card wide and as tall as the card; beside it on white
+/// "Teraz prezentowane", the name and, at the bottom, the count next to the
+/// arrow. The card is always a third as tall as it is wide, so a long name
+/// shrinks a little and then ends in an ellipsis instead of growing it.
 struct NowPlayingCard<Cover: View>: View {
     let title: String
     let subtitle: String
@@ -312,37 +318,58 @@ struct NowPlayingCard<Cover: View>: View {
     var opens = true
     @ViewBuilder let cover: Cover
 
+    private static var shape: RoundedRectangle { RoundedRectangle(cornerRadius: 14, style: .continuous) }
+
     var body: some View {
-        HStack(spacing: 16) {
-            cover
-                .frame(width: 112, height: 112)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 6) {
-                    Image(systemName: "photo.fill")
-                    Eyebrow("Teraz prezentowane", color: Theme.vermilion)
+        Color.clear
+            .aspectRatio(3, contentMode: .fit)
+            .overlay {
+                GeometryReader { geo in
+                    let side = geo.size.height
+                    HStack(spacing: 0) {
+                        cover
+                            .frame(width: side, height: side)
+                            .clipped()
+                        text
+                            .padding(.leading, 16)
+                            .padding(.trailing, 12)
+                            .padding(.vertical, 11)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    }
                 }
-                .foregroundStyle(Theme.vermilion)
-                Text(title)
-                    .font(.serif(24, weight: .semibold))
-                    .foregroundStyle(Theme.ink)
-                    .lineLimit(2)
+            }
+            .background(Theme.card)
+            .clipShape(Self.shape)
+            .overlay(Self.shape.strokeBorder(Theme.hairline))
+            .shadow(color: .black.opacity(0.06), radius: 16, y: 8)
+            .padding(.top, 6)
+            .accessibilityElement(children: .combine)
+    }
+
+    private var text: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Eyebrow("Teraz prezentowane", color: Theme.vermilion)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+            Text(title)
+                .font(.serif(21, weight: .semibold))
+                .foregroundStyle(Theme.ink)
+                .lineLimit(2)
+                .minimumScaleFactor(0.8)
+                .multilineTextAlignment(.leading)
+            Spacer(minLength: 0)
+            HStack(alignment: .center, spacing: 8) {
                 Text(subtitle)
                     .font(.subheadline)
                     .foregroundStyle(Theme.inkSoft)
-            }
-            Spacer(minLength: 0)
-            if opens {
-                // In the bottom corner, as on the study of the day (as tall as the cover).
-                CardArrow()
-                    .frame(height: 112, alignment: .bottom)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+                Spacer(minLength: 0)
+                if opens {
+                    CardArrow()
+                }
             }
         }
-        .padding(16)
-        .background(Theme.card, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(Theme.hairline))
-        .shadow(color: .black.opacity(0.06), radius: 16, y: 8)
-        .padding(.top, 6)
     }
 }
 
@@ -491,6 +518,7 @@ struct SuggestionsCover: View {
                         ForEach(0 ..< 2, id: \.self) { column in
                             tile(row * 2 + column)
                                 .frame(width: side, height: height)
+                                .scaleEffect(CoverZoom.scale)
                                 .clipped()
                         }
                     }

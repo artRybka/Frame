@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.104.2
+
+- Nowa karta „Teraz prezentowane” na górze Playlist: niski pas na całą
+  szerokość. Z lewej cztery dzieła okładki jako kwadrat 2×2 od krawędzi
+  karty, z prawej napis „Teraz prezentowane”, nazwa playlisty, liczba dzieł
+  i strzałka. Długa nazwa dostaje trochę mniejsze litery, a karta zostaje
+  tej samej wysokości.
+- Dzieła na okładkach playlist, Propozycji i kart propozycji w Odkrywaj są
+  lekko przybliżone, więc ramki i marginesy ze skanów muzeów nie wchodzą
+  w małe kwadraty.
+
 ## 1.104.1
 
 - Ramka nie przyjmuje samousypiania po 3 minutach (odrzuca też 2), więc
