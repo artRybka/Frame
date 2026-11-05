@@ -628,6 +628,10 @@ class PanelApp:
         # Started over MDC since its last question: the launcher showed its
         # install screen over the picture, which the new page does not know.
         started = self._unanswered > 0 and hello.reason == "start"
+        if hello.reason == "start" and not started:
+            # The launcher (or Tizen's alarm, PLAN 2.6j) started it, not the
+            # server: after a cold boot that is what the test looks for.
+            log.info("the frame's app started without a start over MDC")
         self._note_contact(hello, now)
         if hello.now:
             service.status.note_clock(hello.now, now)

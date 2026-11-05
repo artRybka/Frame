@@ -16,6 +16,13 @@
     <!-- webapis.timer.setCurrentTime: its clock stood at 2024-01-01 and the
          panel's alarms go by it (E18, 2026-11-04). -->
     <tizen:privilege name="http://developer.samsung.com/privilege/devicetimer"/>
+    <!-- Test (PLAN 2.6j, E19): after a cold boot the launcher never starts
+         the app. Tizen's alarm manager may (tizen.alarm with the app's id,
+         app.js launchAlarms), and Samsung's prelaunch, which the VXT Player
+         declares, may load it at boot. -->
+    <tizen:privilege name="http://tizen.org/privilege/alarm"/>
+    <tizen:privilege name="http://tizen.org/privilege/application.launch"/>
+    <tizen:metadata key="http://samsung.com/tv/metadata/prelaunch.support" value="true"/>
     <tizen:metadata key="http://samsung.com/tv/metadata/application/epaper.support" value="true"/>
     <!-- A 2560x1440 page, so pictures are shown 1:1 (without it 1920x1080, E16). -->
     <tizen:metadata key="http://tizen.org/metadata/app_ui_type/base_screen_resolution" value="always"/>
