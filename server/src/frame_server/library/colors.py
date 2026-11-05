@@ -42,8 +42,9 @@ COLOUR_CHROMA = 0.08
 #: Version of the colour analysis and suitability score; items analysed by
 #: an older one are analysed again (``Player.rescore``). 3: accents, ICC;
 #: 4: colour tags by area, accents tagged apart; 5: "colorful"; 6: "only:";
-#: 7: each family's share (``Item.color_shares``), "monochrome" by hue.
-SCORE_VERSION = 7
+#: 7: each family's share (``Item.color_shares``), "monochrome" by hue;
+#: 8: "monochrome" seen against its paper (``toned``).
+SCORE_VERSION = 8
 
 #: A pixel counts towards a colour family from this OKLab chroma on, or
 #: this chroma / lightness for light ones: a greyish-blue sky does, a beige
@@ -101,6 +102,29 @@ MONO_SPREAD = 12.0
 MONO_VIVID = 0.01
 MONO_VIVID_CHROMA = 0.1
 MONO_ACCENT_HUE = 40.0
+
+#: A monochrome picture's colours seen as the eye sees them, against its
+#: paper (the median tint of its lightest ``PAPER_LIGHTEST`` share, taken
+#: away in proportion to lightness): a faded woodblock print's pinks and
+#: blue-greys stand out from its yellowed paper, though all of them are
+#: faint and warm. Of the pixels that then show a tint (``TONED_CHROMA``)
+#: it is one of: a duotone, ``TONED_LINE`` of them on one line through the
+#: paper within ``TONED_LINE_DEGREES``; one tone, ``TONED_HUE`` of them
+#: within ``TONED_HUE_DEGREES``; or colour that goes with lightness alone,
+#: as in an old photograph's warm lights and purple darks: at most
+#: ``TONED_ASTRAY`` of the picture is ``TONED_CHROMA`` away from the median
+#: colour of its lightness band (``TONED_BAND`` wide). Tried on 308 Cleveland
+#: works the rule before took for monochrome: 34 of 43 coloured ones (Japanese
+#: prints, portraits, watercolours) went, 1 stayed; of 265 monochrome ones
+#: 204 stayed, those gone mostly old photographs toned unevenly on their mount.
+PAPER_LIGHTEST = 0.4
+TONED_CHROMA = 0.015
+TONED_LINE = 0.9
+TONED_LINE_DEGREES = 20.0
+TONED_HUE = 0.95
+TONED_HUE_DEGREES = 45.0
+TONED_ASTRAY = 0.02
+TONED_BAND = 0.08
 
 #: How much of a picture a colour covers, in four levels the Kolor sheet
 #: offers (``"blue@much"``): an accent (a small, vivid part: an accent
@@ -393,13 +417,15 @@ def single_tone(
     """Whether a picture is monochrome: greys alone, or one tint (sepia, a
     cyanotype, red chalk, grisaille), see ``MONO_SPREAD``. Old photographs
     tint their lights and darks a little apart, so the spread is weighted
-    by chroma: their faint greys count for little."""
+    by chroma: their faint greys count for little. Faint colours on
+    yellowed paper hide in that, so the colours are looked at against the
+    paper too (``toned``)."""
     chroma = np.hypot(lab[:, 1], lab[:, 2])
     if float((chroma >= MONO_VIVID_CHROMA).mean()) >= MONO_VIVID:
         return False
     tinted = chroma >= MONO_CHROMA
     if spread < COLOUR_SPREAD[0] or tinted.mean() < 0.01:
-        return True
+        return toned(lab)
     hue = np.radians(_hue(lab[tinted]))
     weight = chroma[tinted] ** 2
     centre = np.arctan2((weight * np.sin(hue)).sum(), (weight * np.cos(hue)).sum())
@@ -407,10 +433,47 @@ def single_tone(
     if float(np.sqrt((weight * off**2).sum() / weight.sum())) > MONO_SPREAD:
         return False
     centre_deg = float(np.degrees(centre)) % 360
-    return all(
+    return toned(lab) and all(
         abs((float(_hue(c)) - centre_deg + 180) % 360 - 180) <= MONO_ACCENT_HUE
         for c, _, _ in accents
     )
+
+
+def toned(lab: np.ndarray) -> bool:
+    """Whether a picture's colours, seen against its paper, are one tone, a
+    duotone or a tone that follows lightness (see ``PAPER_LIGHTEST``)."""
+    light = lab[:, 0]
+    ab = lab[:, 1:]
+    lightest = light >= np.percentile(light, 100 * (1 - PAPER_LIGHTEST))
+    paper = np.median(ab[lightest], axis=0)
+    seen = ab - np.outer(np.clip(light / light[lightest].mean(), 0, 1), paper)
+    tinted = np.hypot(seen[:, 0], seen[:, 1]) >= TONED_CHROMA
+    if tinted.mean() < 0.01:
+        return True
+    hue = np.degrees(np.arctan2(seen[tinted, 1], seen[tinted, 0]))
+    if (
+        _arc(hue % 180, 180, TONED_LINE) <= TONED_LINE_DEGREES
+        or _arc(hue % 360, 360, TONED_HUE) <= TONED_HUE_DEGREES
+    ):
+        return True
+    band = np.minimum((light / TONED_BAND).astype(int), int(1 / TONED_BAND))
+    astray = np.zeros(len(light), dtype=bool)
+    for value in np.unique(band):
+        inside = band == value
+        off = ab[inside] - np.median(ab[inside], axis=0)
+        astray[inside] = np.hypot(off[:, 0], off[:, 1]) >= TONED_CHROMA
+    return float(astray.mean()) <= TONED_ASTRAY
+
+
+def _arc(angles: np.ndarray, turn: float, share: float) -> float:
+    """The narrowest arc of a circle ``turn`` degrees round that holds
+    ``share`` of ``angles``."""
+    ordered = np.sort(angles)
+    count = len(ordered)
+    span = max(int(np.ceil(share * count)), 1)
+    wrapped = np.concatenate([ordered, ordered + turn])
+    starts = np.arange(count)
+    return float((wrapped[starts + span - 1] - wrapped[starts]).min())
 
 
 def colourful(lab: np.ndarray, spread: float) -> bool:
