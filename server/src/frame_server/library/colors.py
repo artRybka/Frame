@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+from typing import NamedTuple
+
 import numpy as np
 from PIL import Image
 
@@ -38,8 +41,9 @@ COLOUR_SPREAD = (0.01, 0.035)
 COLOUR_CHROMA = 0.08
 #: Version of the colour analysis and suitability score; items analysed by
 #: an older one are analysed again (``Player.rescore``). 3: accents, ICC;
-#: 4: colour tags by area, accents tagged apart; 5: "colorful"; 6: "only:".
-SCORE_VERSION = 6
+#: 4: colour tags by area, accents tagged apart; 5: "colorful"; 6: "only:";
+#: 7: each family's share (``Item.color_shares``), "monochrome" by hue.
+SCORE_VERSION = 7
 
 #: A pixel counts towards a colour family from this OKLab chroma on, or
 #: this chroma / lightness for light ones: a greyish-blue sky does, a beige
@@ -83,6 +87,41 @@ HUE_SECTORS = (
 HUE_CHROMA = 0.03
 HUE_AREA = 0.005
 COLOURFUL_HUES = 3
+
+#: A monochrome picture (black and white, sepia, a cyanotype, red chalk,
+#: grisaille) has its tinted pixels (``MONO_CHROMA`` on) of one hue: their
+#: spread around it, weighted by chroma squared, at most ``MONO_SPREAD``
+#: degrees; nothing vivid (``MONO_VIVID`` of it at chroma ``MONO_VIVID_CHROMA``)
+#: and no accent of another hue (``MONO_ACCENT_HUE`` degrees away). Tried
+#: on 409 Cleveland works: almost all old photographs, etchings, chalk and
+#: ink drawings, and two thirds of cyanotypes; brown old-master portraits
+#: are close to it and a fifth of the paintings still count.
+MONO_CHROMA = 0.025
+MONO_SPREAD = 12.0
+MONO_VIVID = 0.01
+MONO_VIVID_CHROMA = 0.1
+MONO_ACCENT_HUE = 40.0
+
+#: How much of a picture a colour covers, in four levels the Kolor sheet
+#: offers (``"blue@much"``): an accent (a small, vivid part: an accent
+#: tag, at most ``LEVEL_ACCENT`` of the picture), clear, much, and most.
+#: Clear and much are bands of the picture's area, overlapping a little as
+#: the analysis only estimates; "most" is the share of the picture's
+#: colours (white, grey and black aside) and several colours asked at it
+#: share it: blue and teal "most" are pictures painted mostly in the two.
+LEVELS = ("accent", "clear", "much", "most")
+LEVEL_MARK = "@"
+LEVEL_ACCENT = 0.1
+LEVEL_CLEAR = (0.08, 0.33)
+LEVEL_MUCH = (0.28, 0.62)
+LEVEL_MOST = 0.6
+#: Each colour asked at "most" covers this much of the picture's colours,
+#: and together they this much of the picture (no grey drawing with a touch
+#: of blue is "mostly blue").
+LEVEL_MOST_EACH = 0.1
+LEVEL_MOST_AREA = 0.12
+#: Moods asked from the Tonacja card (``"tone:warm"``): every one must fit.
+TONE_TAG = "tone:"
 
 #: Dominant colours closer than this (``_distance``) read as one.
 MERGE = 0.06
@@ -209,12 +248,21 @@ def score(img: Image.Image, palette: Palette = EM32DX, spread: float | None = No
     return suitability(linear, linear_to_oklab(linear), spread, palette)
 
 
-def analyse(
-    img: Image.Image, palette: Palette = EM32DX, spread: float | None = None
-) -> tuple[list[ColorSwatch], list[str], float]:
-    """Dominant colours then accents, colour/mood tags and a 0..1 e-paper
-    suitability score; ``spread`` is the picture's ``tint_spread`` if
-    already known."""
+class Analysis(NamedTuple):
+    """What ``analyse`` finds in a picture."""
+
+    swatches: list[ColorSwatch]
+    tags: list[str]
+    #: The 0..1 e-paper suitability score.
+    score: float
+    #: Each colour family's share of the picture (``color_shares``).
+    shares: dict[str, float]
+
+
+def analyse(img: Image.Image, palette: Palette = EM32DX, spread: float | None = None) -> Analysis:
+    """Dominant colours then accents, colour/mood tags, a 0..1 e-paper
+    suitability score and the colour families' shares; ``spread`` is the
+    picture's ``tint_spread`` if already known."""
     if spread is None:
         spread = tint_spread(img)
     linear = _sample(img)
@@ -225,11 +273,20 @@ def analyse(
     accents = accent_colours(fine, dominant)
     swatches = [_swatch(c, w) for c, w in dominant]
     swatches += [_swatch(c, w, accent=True) for c, w, _ in accents]
-    return (
+    return Analysis(
         swatches,
         colour_tags(fine, spread, dominant, accents),
         suitability(linear, lab, spread, palette),
+        colour_shares(fine, spread),
     )
+
+
+def colour_shares(lab: np.ndarray, spread: float) -> dict[str, float]:
+    """Each colour family's share of the picture (``pixel_families``), the
+    ones it has, to three places."""
+    names = pixel_families(lab, spread)
+    shares = {n: round(float((names == n).mean()), 3) for n in COLOR_FAMILIES}
+    return {n: v for n, v in shares.items() if v > 0}
 
 
 def pixel_families(lab: np.ndarray, spread: float) -> np.ndarray:
@@ -285,7 +342,7 @@ def colour_tags(
     in_colours = colourful(lab, spread)
     if in_colours:
         tags.append("colorful")
-    if mean_chroma < 0.03 and not in_colours:
+    if not in_colours and single_tone(lab, spread, accents):
         tags.append("monochrome")
     elif mean_chroma > 0.1:
         tags.append("vivid")
@@ -330,6 +387,32 @@ def painted_in(share: dict[str, float]) -> list[str]:
     return found
 
 
+def single_tone(
+    lab: np.ndarray, spread: float, accents: Sequence[tuple[np.ndarray, float, str]] = ()
+) -> bool:
+    """Whether a picture is monochrome: greys alone, or one tint (sepia, a
+    cyanotype, red chalk, grisaille), see ``MONO_SPREAD``. Old photographs
+    tint their lights and darks a little apart, so the spread is weighted
+    by chroma: their faint greys count for little."""
+    chroma = np.hypot(lab[:, 1], lab[:, 2])
+    if float((chroma >= MONO_VIVID_CHROMA).mean()) >= MONO_VIVID:
+        return False
+    tinted = chroma >= MONO_CHROMA
+    if spread < COLOUR_SPREAD[0] or tinted.mean() < 0.01:
+        return True
+    hue = np.radians(_hue(lab[tinted]))
+    weight = chroma[tinted] ** 2
+    centre = np.arctan2((weight * np.sin(hue)).sum(), (weight * np.cos(hue)).sum())
+    off = np.degrees((hue - centre + np.pi) % (2 * np.pi) - np.pi)
+    if float(np.sqrt((weight * off**2).sum() / weight.sum())) > MONO_SPREAD:
+        return False
+    centre_deg = float(np.degrees(centre)) % 360
+    return all(
+        abs((float(_hue(c)) - centre_deg + 180) % 360 - 180) <= MONO_ACCENT_HUE
+        for c, _, _ in accents
+    )
+
+
 def colourful(lab: np.ndarray, spread: float) -> bool:
     """Whether a picture is in colours: several hues far apart, each on an
     accent's share of it at least (``HUE_SECTORS``). Black-and-white,
@@ -346,8 +429,14 @@ def colourful(lab: np.ndarray, spread: float) -> bool:
     return found >= COLOURFUL_HUES
 
 
-def has_colours(tags: list[str], wanted: list[str]) -> bool:
-    """Whether a picture with ``tags`` fits the ``wanted`` colours, moods
+def has_colours(tags: list[str], wanted: list[str], shares: dict[str, float] | None = None) -> bool:
+    """Whether a picture with ``tags`` and colour ``shares`` fits the
+    ``wanted`` colours and moods. The Kolor sheet asks for colours at a
+    level (``"blue@much"``, :func:`at_levels`) and moods from the Tonacja
+    card (``"tone:warm"``): every one of them must fit. Older rules
+    (playlists, colour cards) keep their meaning, below.
+
+    Whether a picture with ``tags`` fits the ``wanted`` colours, moods
     and accents. Colours and moods are one group, accents another: any one
     of a group will do, but both groups must fit, so blue (or cool) with a
     red accent asks for blue pictures with something red. A colour and its
@@ -358,14 +447,58 @@ def has_colours(tags: list[str], wanted: list[str]) -> bool:
     a good part of it (its colour tag), so a grey drawing with a touch of
     blue is not "only blue"."""
     have = set(tags)
-    accents = {w for w in wanted if w.startswith(ACCENT_TAG)}
-    only = {w for w in wanted if w.startswith(ONLY_TAG)}
-    rest = set(wanted) - accents - only
+    levels = [w for w in wanted if LEVEL_MARK in w]
+    tones = {w.removeprefix(TONE_TAG) for w in wanted if w.startswith(TONE_TAG)}
+    if not tones <= have or (levels and not at_levels(have, shares or {}, levels)):
+        return False
+    old = [w for w in wanted if LEVEL_MARK not in w and not w.startswith(TONE_TAG)]
+    accents = {w for w in old if w.startswith(ACCENT_TAG)}
+    only = {w for w in old if w.startswith(ONLY_TAG)}
+    rest = set(old) - accents - only
     return (
         (not rest or bool(have & rest))
         and (not accents or bool(have & accents))
         and (not only or _only(have, only))
     )
+
+
+def level(family: str, at: str) -> str:
+    """The token of ``family`` at a level: ``level("blue", "much")``."""
+    return f"{family}{LEVEL_MARK}{at}"
+
+
+def at_levels(have: set[str], shares: dict[str, float], wanted: list[str]) -> bool:
+    """Whether a picture with tags ``have`` and ``shares`` has each colour
+    at its asked level (``LEVELS``); colours asked at "most" together."""
+    most: list[str] = []
+    for token in wanted:
+        family, _, at = token.partition(LEVEL_MARK)
+        share = shares.get(family, 0.0)
+        if at == "most":
+            most.append(family)
+        elif at == "accent":
+            if ACCENT_TAG + family not in have or share > LEVEL_ACCENT:
+                return False
+        elif at in ("clear", "much"):
+            low, high = LEVEL_CLEAR if at == "clear" else LEVEL_MUCH
+            if not low <= share <= high:
+                return False
+        else:
+            return False
+    return not most or _mostly(shares, most)
+
+
+def _mostly(shares: dict[str, float], families: list[str]) -> bool:
+    """Whether ``families`` together make most of a picture: of its colours
+    (white, grey and black aside), or of all of it when one is a neutral."""
+    picked = [shares.get(f, 0.0) for f in families]
+    if any(f in NEUTRALS for f in families):
+        whole = sum(shares.values()) or 1.0
+    else:
+        whole = sum(v for f, v in shares.items() if f not in NEUTRALS)
+    if whole <= 0 or sum(picked) < LEVEL_MOST_AREA:
+        return False
+    return sum(picked) >= LEVEL_MOST * whole and all(v >= LEVEL_MOST_EACH * whole for v in picked)
 
 
 def _only(have: set[str], only: set[str]) -> bool:

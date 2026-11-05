@@ -215,7 +215,7 @@ def matches(
         return False
     if rules.subjects and not _fold(item.subjects) & _fold(rules.subjects):
         return False
-    if rules.colors and not has_colours(item.color_tags, rules.colors):
+    if rules.colors and not has_colours(item.color_tags, rules.colors, item.color_shares):
         return False
     if rules.terms and not matches_terms(item, rules.terms):
         return False

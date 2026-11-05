@@ -2120,6 +2120,12 @@ struct PanelAppSection: View {
     @State private var uploading = false
     @State private var showingScreen = false
 
+    /// The server built a package the frame does not run yet.
+    static func waitsForButton(package: String, onFrame: String?) -> Bool {
+        guard let onFrame, !onFrame.isEmpty else { return false }
+        return onFrame != package
+    }
+
     private var certificatesUntil: String? {
         let dates = (app.certificates ?? []).compactMap { When.date($0.expiresAt) }
         return dates.min()?.formatted(.dateTime.day().month(.wide).year().locale(Locale(identifier: "pl_PL")))
@@ -2147,6 +2153,13 @@ struct PanelAppSection: View {
                     Text("Wersja \(package.version) zbudowana na serwerze\(app.state.build.map { ", na ramce \($0)" } ?? "").")
                         .font(.caption)
                         .foregroundStyle(Theme.inkSoft)
+                    if Self.waitsForButton(package: package.version, onFrame: app.state.build) {
+                        // A restart from the server does not install it: only
+                        // a cold start by the button does (E19b, 2026-11-05).
+                        Text("Nowa wersja czeka na instalację. Przytrzymaj guzik ramki ok. 6 s, aż się wyłączy, a potem ok. 3 s, aż mrugnie zielona dioda. Ramka pobierze ją przy starcie.")
+                            .font(.caption)
+                            .foregroundStyle(Theme.warn)
+                    }
                 } else {
                     Text("Na serwerze nie ma jeszcze certyfikatów Samsunga, więc nie zbuduje aplikacji. Wgraj author.p12 i distributor.p12 poniżej albo skopiuj je z password.txt do folderu data/panel-app/certs serwera (np. File Station).")
                         .font(.caption)

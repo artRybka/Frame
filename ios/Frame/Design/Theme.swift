@@ -168,10 +168,110 @@ enum ColorTag {
 
     static func only(_ family: String) -> String { onlyPrefix + family }
 
-    /// The family a tag is of: "blue" for "blue", "accent:blue", "only:blue".
+    /// How much of a work a colour asked for in the Kolor sheet covers,
+    /// "blue@much" (server `colors.LEVELS`): a small accent, clear, much,
+    /// most of its colours. White, grey and black are never an accent.
+    enum Level: Int, CaseIterable {
+        case accent, clear, much, most
+
+        var key: String {
+            switch self {
+            case .accent: "accent"
+            case .clear: "clear"
+            case .much: "much"
+            case .most: "most"
+            }
+        }
+
+        /// "Błękit · wyraźny".
+        var name: String {
+            switch self {
+            case .accent: "akcent"
+            case .clear: "obecny"
+            case .much: "wyraźny"
+            case .most: "główny"
+            }
+        }
+
+        /// The word agreeing with the colour's name: "Szarości · obecne",
+        /// "Czerwień · obecna", "Błękit · obecny" (Mateusz).
+        func name(for family: String) -> String {
+            guard self != .accent else { return name }
+            let stem = String(name.dropLast())
+            return switch ColorTag.gender(family) {
+            case .feminine: stem + "a"
+            case .plural: stem + "e"
+            case .masculine: name
+            }
+        }
+
+        /// How much of the ring around the swatch it fills.
+        var fraction: Double { Double(rawValue + 1) / Double(Self.allCases.count) }
+
+        /// The levels a family can take: no accent of white, grey or black.
+        static func of(_ family: String) -> [Level] {
+            neutrals.contains(family) ? [.clear, .much, .most] : allCases
+        }
+    }
+
+    static let neutrals = ["black", "gray", "white"]
+    static let levelMark = "@"
+
+    enum Gender { case masculine, feminine, plural }
+
+    /// The grammatical gender of a colour's Polish name, for the level word.
+    static func gender(_ family: String) -> Gender {
+        switch family {
+        case "red", "yellow", "green", "black", "white": .feminine
+        case "gray": .plural
+        default: .masculine
+        }
+    }
+    /// Colours picked at once in the Kolor sheet, at most.
+    static let maxLevels = 3
+
+    static func level(_ family: String, _ level: Level) -> String { family + levelMark + level.key }
+
+    /// The level of a colour tag as the Kolor sheet shows it: "blue@much",
+    /// and older rules' "accent:blue", "blue" and "only:blue" at the
+    /// level nearest to what they ask.
+    static func level(of tag: String) -> Level? {
+        if let mark = tag.range(of: levelMark) {
+            return Level.allCases.first { $0.key == tag[mark.upperBound...] }
+        }
+        if tag.hasPrefix(accentPrefix) { return .accent }
+        if tag.hasPrefix(onlyPrefix) { return .most }
+        return families.contains(tag) ? .clear : nil
+    }
+
+    /// Moods asked from the Tonacja card ("tone:warm"): every one must fit
+    /// (older rules' plain "warm" is one of a group).
+    static let tonePrefix = "tone:"
+
+    static func tone(_ mood: String) -> String { tonePrefix + mood }
+
+    /// The Tonacja card's pairs, one of each at most.
+    static let tonePairs = [("warm", "cool"), ("vivid", "muted"), ("colorful", "monochrome"), ("dark", "light")]
+
+    /// What a Tonacja pair is about, under its two dots ("Temperatura").
+    static func toneTitle(_ left: String) -> String {
+        switch left {
+        case "warm": "Temperatura"
+        case "vivid": "Nasycenie"
+        case "colorful": "Barwność"
+        case "dark": "Jasność"
+        default: name(left)
+        }
+    }
+
+    /// The family a tag is of: "blue" for "blue", "accent:blue", "only:blue",
+    /// "blue@much"; the mood for "tone:warm".
     static func family(_ tag: String) -> String {
-        for prefix in [accentPrefix, onlyPrefix] where tag.hasPrefix(prefix) {
+        for prefix in [accentPrefix, onlyPrefix, tonePrefix] where tag.hasPrefix(prefix) {
             return String(tag.dropFirst(prefix.count))
+        }
+        if let mark = tag.range(of: levelMark) {
+            return String(tag[..<mark.lowerBound])
         }
         return tag
     }
@@ -195,6 +295,12 @@ enum ColorTag {
         if tag.hasPrefix(onlyPrefix) {
             return "Dominuje: " + name(family(tag)).lowercased()
         }
+        if tag.contains(levelMark), let level = level(of: tag) {
+            return name(family(tag)) + " · " + level.name(for: family(tag))
+        }
+        if tag.hasPrefix(tonePrefix) {
+            return name(family(tag))
+        }
         return switch tag {
         case "red": "Czerwień"
         case "orange": "Pomarańcz"
@@ -213,7 +319,7 @@ enum ColorTag {
         case "cool": "Chłodne"
         case "vivid": "Żywe"
         case "muted": "Stonowane"
-        case "monochrome": "Monochromia"
+        case "monochrome": "Mono"
         case "dark": "Ciemne"
         case "light": "Jasne"
         default: tag
@@ -238,7 +344,7 @@ enum ColorTag {
         case "gray": Color(hex: 0x8E8A84)
         case "white": Color(hex: 0xF4F0E8)
         case "colorful": Color(hex: 0x6E9F55)
-        case "warm": Color(hex: 0xD27B4C)
+        case "warm": Color(hex: 0xFF9A1F)
         case "cool": Color(hex: 0x9CC3E4)
         case "vivid": Color(hex: 0xFF4A2E)
         case "muted": Color(hex: 0xA9A497)
@@ -252,14 +358,20 @@ enum ColorTag {
 
 extension ColorTag {
     /// How a tag's dot is filled: a colour family flat, the moods with a
-    /// look of their own so they read at a glance (PLAN 3.3zw): Ciepłe from
-    /// apricot to brick red, Chłodne from ice to blue, Żywe one glowing
-    /// red, Stonowane greyed beige to grey green, Kolorowe a colour wheel.
+    /// look of their own so they read at a glance (PLAN 3.3zw, 3.3zzt):
+    /// Ciepłe from golden yellow through orange to red, Chłodne from ice to
+    /// blue, Żywe colours spread in a mesh and Stonowane the same greyed,
+    /// Kolorowe a printer's raster of cyan, magenta and yellow, Mono one of
+    /// black (``HalftoneDot``; small dots: quarters).
     static func fill(_ tag: String) -> AnyShapeStyle {
-        switch tag {
+        switch family(tag) {
         case "warm":
             AnyShapeStyle(LinearGradient(
-                colors: [Color(hex: 0xEBAA6B), Color(hex: 0xD27B4C), Color(hex: 0xB8483A)],
+                stops: [
+                    .init(color: Color(hex: 0xFFD24A), location: 0),
+                    .init(color: Color(hex: 0xFF9A1F), location: 0.45),
+                    .init(color: Color(hex: 0xF2462B), location: 1),
+                ],
                 startPoint: .topLeading, endPoint: .bottomTrailing
             ))
         case "cool":
@@ -272,32 +384,74 @@ extension ColorTag {
                 startPoint: .topLeading, endPoint: .bottomTrailing
             ))
         case "vivid":
+            spread([0xC8443A, 0xE08A3A, 0xE2B84A, 0xB5508A, 0xE3A27A, 0x6E9F55, 0x7C5A9E, 0x3C6FA8, 0x3B8A86])
+        case "muted":
+            spread([0xC88378, 0xD4A678, 0xD6BD80, 0xB98A9E, 0xD2B49A, 0x9CB086, 0xA28EAA, 0x8298AF, 0x82A69E])
+        case "light":
+            // Paper in light: white where it falls, warm cream away from it.
             AnyShapeStyle(EllipticalGradient(
                 stops: [
-                    .init(color: Color(hex: 0xFFB36B), location: 0),
-                    .init(color: Color(hex: 0xFF4A2E), location: 0.38),
-                    .init(color: Color(hex: 0xD8102E), location: 1),
+                    .init(color: .white, location: 0),
+                    .init(color: Color(hex: 0xFBF8F1), location: 0.35),
+                    .init(color: Color(hex: 0xE9E1D2), location: 1),
                 ],
-                center: UnitPoint(x: 0.32, y: 0.3), startRadiusFraction: 0, endRadiusFraction: 0.95
-            ))
-        case "muted":
-            AnyShapeStyle(LinearGradient(
-                stops: [
-                    .init(color: Color(hex: 0xCBBFAE), location: 0),
-                    .init(color: Color(hex: 0xA9A497), location: 0.55),
-                    .init(color: Color(hex: 0x858B83), location: 1),
-                ],
-                startPoint: .topLeading, endPoint: .bottomTrailing
+                center: UnitPoint(x: 0.32, y: 0.28), startRadiusFraction: 0, endRadiusFraction: 0.85
             ))
         case "colorful":
-            AnyShapeStyle(AngularGradient(
-                colors: ([0xC8443A, 0xE08A3A, 0xE2B84A, 0x6E9F55, 0x3B8A86, 0x3C6FA8, 0x7C5A9E, 0xC8443A] as [UInt32])
-                    .map { Color(hex: $0) },
-                center: .center, angle: .degrees(-120)
-            ))
+            quarters([0x00AEEF, 0xEC008C, 0xFFE600, 0x00B85C])
+        case "monochrome":
+            quarters([0x1D1B18, 0x6A6762, 0xB3AEA6, 0xF4F0E8])
         default:
             AnyShapeStyle(color(tag))
         }
+    }
+
+    /// Colours spread over the dot in patches that melt into each other,
+    /// with no point they run to (Mateusz: not a cone): a 3×3 mesh, row by
+    /// row, the rim going round the hues and a soft blend in the middle.
+    private static func spread(_ colours: [UInt32]) -> AnyShapeStyle {
+        let points: [SIMD2<Float>] = [
+            [0, 0], [0.5, 0], [1, 0],
+            [0, 0.5], [0.5, 0.5], [1, 0.5],
+            [0, 1], [0.5, 1], [1, 1],
+        ]
+        return AnyShapeStyle(MeshGradient(width: 3, height: 3, points: points, colors: colours.map { Color(hex: $0) }))
+    }
+
+    /// Four colours in quarters, from the top clockwise.
+    private static func quarters(_ colours: [UInt32]) -> AnyShapeStyle {
+        let stops = colours.enumerated().flatMap { index, hex in
+            let colour = Color(hex: hex)
+            return [
+                Gradient.Stop(color: colour, location: Double(index) / 4),
+                Gradient.Stop(color: colour, location: Double(index + 1) / 4),
+            ]
+        }
+        return AnyShapeStyle(AngularGradient(stops: stops, center: .center, angle: .degrees(-90)))
+    }
+
+    /// The ring around a picked swatch in the Kolor sheet: the colour
+    /// itself, a mood in its strongest tone.
+    static func ring(_ tag: String) -> AnyShapeStyle {
+        switch family(tag) {
+        case "white": AnyShapeStyle(Color(hex: 0xBDB4A6))
+        case "yellow": AnyShapeStyle(Color(hex: 0xD4AE2E))
+        case "warm": AnyShapeStyle(Color(hex: 0xF2662B))
+        case "cool": AnyShapeStyle(Color(hex: 0x3F6FA8))
+        case "vivid": fill("vivid")
+        case "muted": fill("muted")
+        case "colorful": AnyShapeStyle(Color(hex: 0xEC008C))
+        // Ink: black in light mode, light on the dark sheet, where a black
+        // ring around a black dot would not show.
+        case "monochrome", "black", "dark": AnyShapeStyle(Theme.ink)
+        case "light": AnyShapeStyle(Color(hex: 0xBDB4A6))
+        default: AnyShapeStyle(color(tag))
+        }
+    }
+
+    /// Light swatches carry a dark tick.
+    static func light(_ tag: String) -> Bool {
+        ["white", "yellow", "pink", "light", "cool"].contains(family(tag))
     }
 }
 
@@ -310,12 +464,78 @@ struct ColorTagDot: View {
     var lineWidth: CGFloat = 0.75
 
     var body: some View {
-        Circle()
-            .fill(ColorTag.fill(tag))
+        MoodFill(tag: tag)
             .frame(width: size, height: size)
             .overlay {
                 if let stroke { Circle().strokeBorder(stroke, lineWidth: lineWidth) }
             }
+    }
+}
+
+/// A tag's round fill: Kolorowe and Mono, from 20 pt on, as a printer's
+/// raster (``HalftoneDot``), the rest as ``ColorTag.fill``.
+struct MoodFill: View {
+    let tag: String
+
+    var body: some View {
+        let mood = ColorTag.family(tag)
+        GeometryReader { proxy in
+            if ["colorful", "monochrome"].contains(mood), proxy.size.width >= 20 {
+                HalftoneDot(black: mood == "monochrome")
+            } else {
+                Circle().fill(ColorTag.fill(tag))
+            }
+        }
+    }
+}
+
+/// A printer's raster in a circle: cyan, magenta and yellow dots, each
+/// ink at its own screen angle, growing and shrinking across it so the
+/// inks mix as in print (Kolorowe); ``black`` one ink, black (Mono).
+struct HalftoneDot: View {
+    var black = false
+
+    /// Ink, screen angle in degrees, and the phase of its growing dots.
+    private var inks: [(Color, CGFloat, CGFloat)] {
+        if black { return [(Color(hex: 0x1D1B18), 45, 0.8)] }
+        return [
+            (Color(hex: 0x00AEEF), 15, 0.3),
+            (Color(hex: 0xEC008C), 75, 1.9),
+            (Color(hex: 0xFFE600), 0, 3.6),
+        ]
+    }
+
+    var body: some View {
+        Canvas { context, size in
+            let side = min(size.width, size.height)
+            let r = side / 2
+            let step = side / 8
+            context.clip(to: Path(ellipseIn: CGRect(x: 0, y: 0, width: side, height: side)))
+            context.fill(Path(CGRect(x: 0, y: 0, width: side, height: side)), with: .color(Color(hex: 0xFBF8F2)))
+            context.blendMode = .multiply
+            for (index, ink) in inks.enumerated() {
+                let (colour, degrees, phase) = ink
+                let angle: CGFloat = degrees * .pi / 180
+                let (cosA, sinA) = (cos(angle), sin(angle))
+                let (cosP, sinP) = (cos(phase), sin(phase))
+                let reach = Int(side / step) + 4
+                var dots = Path()
+                for i in -reach ... reach {
+                    for j in -reach ... reach {
+                        let (u, v) = (CGFloat(i), CGFloat(j))
+                        let x: CGFloat = r + (u * cosA - v * sinA) * step
+                        let y: CGFloat = r + (u * sinA + v * cosA) * step
+                        guard x > -step, x < side + step, y > -step, y < side + step else { continue }
+                        let along: CGFloat = (x * cosP + y * sinP) / side
+                        let wave: CGFloat = 0.5 + 0.5 * sin(along * .pi * 1.6 + CGFloat(index))
+                        let radius: CGFloat = step * 0.5 * (0.35 + 0.65 * wave)
+                        dots.addEllipse(in: CGRect(x: x - radius, y: y - radius, width: 2 * radius, height: 2 * radius))
+                    }
+                }
+                context.fill(dots, with: .color(colour))
+            }
+        }
+        .accessibilityHidden(true)
     }
 }
 

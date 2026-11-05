@@ -315,10 +315,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return FileResponse(path, media_type="image/jpeg")
 
     @app.get("/panel/app/sssp_config.xml")
-    def panel_app_config() -> Response:
+    async def panel_app_config(request: Request) -> Response:
         xml = service.app.sssp_config()
         if xml is None:
             raise HTTPException(404, "no app package uploaded")
+        # The launcher of a panel just booted: it does not start the app
+        # itself, the server does (only the panel's own address counts).
+        client = request.client.host if request.client else None
+        if client and client == service.settings.device_host:
+            service.app.launcher_asked()
         return Response(xml, media_type="application/xml")
 
     @app.get(f"/panel/app/{WIDGET}.wgt")
