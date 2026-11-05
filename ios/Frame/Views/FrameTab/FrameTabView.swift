@@ -85,7 +85,12 @@ struct FrameTabView: View {
             }
             .sheet(isPresented: $showingBattery) {
                 if let device, let battery = device.battery {
-                    BatteryView(estimate: battery, onBattery: device.powerSource == "battery" && device.charging != true)
+                    BatteryView(
+                        estimate: battery,
+                        onBattery: device.powerSource == "battery" && device.charging != true,
+                        economy: model.settings?.isEconomy == true,
+                        charging: device.charging == true
+                    )
                 }
             }
             // In a task of its own: SwiftUI cancels the refresh's task when the

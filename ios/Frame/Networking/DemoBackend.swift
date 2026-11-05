@@ -307,19 +307,30 @@ actor DemoBackend: FrameBackend {
                 readAt: now, signal: 0.6, level: 3, ssid: "Frame_IoT", ip: "192.0.2.20",
                 frequency: 2437, expectedIp: "192.0.2.20", homeSsid: "Frame_IoT", wrongNetwork: false
             ),
-            batteryPerDay: 8.4, batteryDays: 9.0,
+            batteryPerDay: 7.0, batteryDays: 12.1,
             battery: BatteryEstimate(
-                perDay: 8.4, days: 9.0, daysLow: 7.2, daysHigh: 12.1,
-                fullDays: 11.9, fullDaysLow: 9.5, fullDaysHigh: 15.9, hoursMeasured: 30, readings: 18,
-                costs: BatteryCosts(standbyPerDay: 12.5, deepPerDay: 0.1, perWake: 0.21, perChange: 0.34, learnt: [0.72, 0.0, 0.31, 0.25]),
+                perDay: 7.0, days: 12.1, daysLow: 9.2, daysHigh: 16.4,
+                fullDays: 14.3, fullDaysLow: 10.8, fullDaysHigh: 19.3, hoursMeasured: 98, readings: 36,
+                costs: BatteryCosts(
+                    standbyPerDay: 41, deepPerDay: 0.5, perWake: 0.55, perChange: 0.15, learnt: [0.98, 0.1, 0.62, 0.3],
+                    perChangeWake: 0.7, perCheck: 0.72, appAwakeMinutes: 3.0, checkMinutes: 2.5
+                ),
                 day: BatteryDay(
-                    standbyHours: 15, deepHours: 9, wakes: 2, changes: 1,
-                    standbyCost: 7.8, deepCost: 0.04, wakesCost: 0.42, changesCost: 0.34
+                    standbyHours: 0, deepHours: 23.3, wakes: 9, changes: 2,
+                    standbyCost: 0, deepCost: 0.47, wakesCost: 6.1, changesCost: 0.3,
+                    lines: [
+                        BatteryLine(kind: "checks", count: 7, each: 0.72, cost: 5.0),
+                        BatteryLine(kind: "changes", count: 2, each: 0.7, cost: 1.4),
+                        BatteryLine(kind: "deep", count: 23.3, each: 0.02, cost: 0.47),
+                        BatteryLine(kind: "sends", count: 1, each: 0.15, cost: 0.15),
+                    ]
                 ),
                 // Asleep, the level is the server's estimate since the last reading.
                 level: demoAsleep ? 72 : nil,
                 readLevel: demoAsleep ? 76 : nil,
-                readAt: demoAsleep ? ISO8601DateFormatter().string(from: .now.addingTimeInterval(-5 * 3600)) : nil
+                readAt: demoAsleep ? ISO8601DateFormatter().string(from: .now.addingTimeInterval(-5 * 3600)) : nil,
+                recent: Self.demoReadings(),
+                check: BatteryCheck(hours: 24, used: 6, expected: 7.1)
             )
         )
         let server = ServerStatus(
@@ -327,6 +338,16 @@ actor DemoBackend: FrameBackend {
             playlists: playlistsByID.count, jobsRunning: 0, palette: "spectra6-reference"
         )
         return StatusView(device: device, server: server)
+    }
+
+    /// A week on battery, charged once: whole-percent readings at the wakes.
+    private static func demoReadings() -> [BatteryReading] {
+        let formatter = ISO8601DateFormatter()
+        let levels = [96, 92, 89, 100, 100, 97, 94, 91, 88, 85, 82, 79, 76]
+        return levels.enumerated().map { index, level in
+            let at = Date.now.addingTimeInterval(Double(index - levels.count + 1) * 12 * 3600 - 3600)
+            return BatteryReading(at: formatter.string(from: at), level: level)
+        }
     }
 
     func player() async throws -> PlayerView {
