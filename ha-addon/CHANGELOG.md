@@ -6,8 +6,9 @@
   trzech kolorów, a każde kolejne stuknięcie w próbkę mówi, ile go ma być:
   akcent, wyraźny, dużo albo większość obrazu (pierścień wokół próbki
   rośnie). Dwa kolory na „większość” to obrazy malowane głównie nimi
-  razem. W Tonacji są pary Ciepłe–Chłodne, Żywe–Stonowane, Kolorowe–Mono
-  i Ciemne–Jasne, z każdej najwyżej jedno. Wszystko, co wybrane, musi
+  razem. W Tonacji są cztery przełączniki: Temperatura (ciepłe albo
+  chłodne), Nasycenie (żywe albo stonowane), Barwność (kolorowe albo mono)
+  i Jasność (ciemne albo jasne). Wszystko, co wybrane, musi
   pasować naraz.
 - „Mono” (wcześniej „Monochromia”) znajduje naprawdę obrazy jednym tonem:
   czarno-białe, sepię, cyjanotypie i sangwinę, a nie ciemne obrazy olejne.

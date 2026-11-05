@@ -117,6 +117,7 @@ final class TermFacetTests: XCTestCase {
         XCTAssertEqual(ColorTag.name("red@accent"), "Czerwień · akcent")
         XCTAssertEqual(ColorTag.name("tone:warm"), "Ciepłe")
         XCTAssertEqual(ColorTag.name("monochrome"), "Mono")
+        XCTAssertEqual(ColorTag.tonePairs.map { ColorTag.toneTitle($0.0) }, ["Temperatura", "Nasycenie", "Barwność", "Jasność"])
         XCTAssertEqual(ColorTag.family("blue@most"), "blue")
         XCTAssertEqual(ColorTag.family("tone:dark"), "dark")
         XCTAssertEqual(ColorTag.level(of: "blue@much"), .much)

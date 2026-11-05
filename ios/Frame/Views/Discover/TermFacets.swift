@@ -1014,9 +1014,10 @@ struct LevelSwatch: View {
 
 /// A pair of the Tonacja card: two mood swatches sunk in a grey track like
 /// a switch (the grey of the Kolorystyka/Tonacja picker); the picked one's
-/// ring fits in the track, the other fades.
+/// ring fits in the track, the other fades. Under it one name for the pair
+/// ("Temperatura") and the picked side.
 struct TonePair: View {
-    /// Between the two dots; with the track's inset, room for their names.
+    /// Between the two dots.
     private static let gap: CGFloat = 14
     /// Track around the dots, enough for the picked ring.
     private static let inset: CGFloat = 7
@@ -1039,20 +1040,19 @@ struct TonePair: View {
                         .shadow(.inner(color: .black.opacity(0.1), radius: 1.5, y: 1))
                 )
             )
-            // Each name centred under its dot, wider than it.
-            HStack(spacing: Self.gap) {
-                ForEach(moods, id: \.self) { mood in
-                    let on = picked(mood)
-                    let off = picked(mood == left ? right : left)
-                    Text(ColorTag.name(mood))
-                        .font(.caption2.weight(on ? .semibold : .regular))
-                        .foregroundStyle(on ? Theme.ink : Theme.inkSoft)
-                        .opacity(off ? 0.45 : 1)
-                        .lineLimit(1)
-                        .fixedSize()
-                        .frame(width: 34)
-                }
+            // What the pair is about, and under it the picked side, like
+            // the level under a colour in Kolorystyka.
+            let side = moods.first(where: picked)
+            VStack(spacing: 1) {
+                Text(ColorTag.toneTitle(left))
+                    .font(.caption2.weight(side != nil ? .semibold : .regular))
+                    .foregroundStyle(side != nil ? Theme.ink : Theme.inkSoft)
+                Text(side.map { ColorTag.name($0).lowercased() } ?? " ")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(Theme.ink)
             }
+            .lineLimit(1)
+            .fixedSize()
         }
         .frame(maxWidth: .infinity)
     }

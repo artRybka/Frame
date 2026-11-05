@@ -230,6 +230,17 @@ enum ColorTag {
     /// The Tonacja card's pairs, one of each at most.
     static let tonePairs = [("warm", "cool"), ("vivid", "muted"), ("colorful", "monochrome"), ("dark", "light")]
 
+    /// What a Tonacja pair is about, under its two dots ("Temperatura").
+    static func toneTitle(_ left: String) -> String {
+        switch left {
+        case "warm": "Temperatura"
+        case "vivid": "Nasycenie"
+        case "colorful": "Barwność"
+        case "dark": "Jasność"
+        default: name(left)
+        }
+    }
+
     /// The family a tag is of: "blue" for "blue", "accent:blue", "only:blue",
     /// "blue@much"; the mood for "tone:warm".
     static func family(_ tag: String) -> String {
