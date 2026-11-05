@@ -6,6 +6,20 @@
   w chwili, gdy palec puszcza ekran, a wyniki jeszcze suną siłą rozpędu.
   Dotąd czekały, aż przewijanie całkiem stanie. Chowają się jak dotąd przy
   przesuwaniu wyników palcem w dół. Tak samo w edytorze playlist.
+- Nowa karta Bateria (po dotknięciu kafelka). Na górze ile dni zostało
+  i do kiedy mniej więcej starczy, z rozsądnym zakresem. Pod spodem wykres
+  odczytów z ostatniego tygodnia na baterii z przewidywanym spadkiem do
+  zera.
+- „Dzień ramki” to jedna lista: puste kontrole, zmiany obrazu, obrazy
+  wysłane z aplikacji, czuwanie i sen, przy każdej ile razy na dobę, ile
+  kosztuje raz i ile razem, najdroższe na górze, z dopiskiem „zmierzone”
+  albo „założenie”.
+- „Trafność”: ostatnia doba na baterii, ile ramka naprawdę zużyła, a ile
+  wynikało z wyliczeń.
+- Bateria liczy pustą kontrolę tak długo, jak naprawdę trwa: gdy serwer
+  usypia ją przez MDC, to ok. minuty (mediana z ostatnich kontroli), a nie
+  5,5 minuty Wi-Fi. Gdy przestaje usypiać albo nie usypiał od dwóch dni,
+  wraca do czasu samousypiania ramki.
 
 ## 1.104.1
 
