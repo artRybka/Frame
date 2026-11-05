@@ -61,8 +61,13 @@
   // a picture sent right after a status check: silent until the button).
   // Ask again instead of waiting for a wake that already happened.
   var STILL_UP_MS = 4 * 60000;
-  // A screenshot a minute after a drawing at the earliest (capture()).
+  // A screenshot a minute after a drawing at the earliest (capture()): 33 s
+  // after one it was still all white (2026-11-04).
   var CAPTURE_SETTLE_MS = 60000;
+  // ...and 100 s after the page loaded: started by the launcher, the panel
+  // shows Samsung's "Custom App" screen for ~70 s, and a screenshot then
+  // is that screen (2026-11-05 16:00, a check bringing a new picture).
+  var CAPTURE_START_MS = 100000;
   var capturing = false;  // a screenshot waits for CAPTURE_SETTLE_MS
 
   var ep = (typeof webapis !== "undefined" && webapis.epaper) ? webapis.epaper : null;
@@ -394,16 +399,10 @@
     // from the iOS app on battery.
     if (answer.action === "stay" && onCharger() && saved("probed") !== CODE) setTimeout(probe, 5000);
     // A screenshot when asked: on battery the server keeps the frame up for
-    // it (an order from the iOS app). A minute after a drawing at the
-    // earliest: 33 s after one the screenshot was still all white
-    // (2026-11-04). One at a time: the answers come every 10 s.
-    if (answer.action === "stay" && answer.capture && !capturing) {
-      capturing = true;
-      setTimeout(function () {
-        capturing = false;
-        capture();
-      }, Math.max(3000, drawnAt + CAPTURE_SETTLE_MS - Date.now()));
-    }
+    // it (an order from the iOS app). One at a time: the answers come every
+    // 10 s. Timed once the answer's picture is drawn (capture after draw()).
+    var shoot = answer.action === "stay" && answer.capture && !capturing;
+    if (shoot) capturing = true;
     // Started over MDC by the server: the launcher's install screen drew
     // over the picture this page remembers (2026-11-04, white after an
     // update of the server).
@@ -412,6 +411,12 @@
       saved("screen", null);
     }
     draw(answer, function () {
+      if (shoot) {
+        setTimeout(function () {
+          capturing = false;
+          capture();
+        }, captureDelay());
+      }
       if (answer.action === "wait" || answer.action === "stay") {
         waits = answer.action === "wait" ? waits + 1 : 0;
         if (waits > MAX_WAITS) {
@@ -891,6 +896,11 @@
   // /api/debug/panel-capture) and only on the charger: in E16 captureScreen
   // did not answer within 30 s, and it may hold the page up. The file goes
   // to the server as it is (text/plain: a simple request, no preflight).
+  function captureDelay() {
+    var now = Date.now();
+    return Math.max(3000, drawnAt + CAPTURE_SETTLE_MS - now, loadedAt + CAPTURE_START_MS - now);
+  }
+
   function capture() {
     var sc = (typeof webapis !== "undefined" && webapis.systemcontrol) ? webapis.systemcontrol : null;
     if (!sc) return report("capture", { error: "no systemcontrol" });

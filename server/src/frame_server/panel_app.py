@@ -196,8 +196,9 @@ SPARE_EVERY = timedelta(minutes=30)
 SPARE_LEAD = timedelta(minutes=5)
 SPARE_ALARMS = 2
 # A screenshot ordered on battery: the wake it is taken at lasts this much
-# longer (the app takes it a minute after drawing, ~0.3 MB to send).
-CAPTURE_AWAKE = timedelta(minutes=3)
+# longer (the app takes it a minute after drawing the wake's picture and
+# 100 s after its start at the earliest, ~0.3 MB to send; app.js).
+CAPTURE_AWAKE = timedelta(minutes=4)
 # A full-colour (passthrough) picture goes to the app as a JPEG (4:4:4): ~1 MB
 # instead of 3-4 MB of PNG over the panel's weak Wi-Fi (60-215 KB/s), and
 # the loss does not show (E16). A dithered one, a handful of inks, stays the
