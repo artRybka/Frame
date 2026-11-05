@@ -1017,9 +1017,11 @@ struct ScheduleSection: View {
         let changes = settings.changeMinutes.count
         let checks = settings.checkMinutes.count
         let count = changes + checks
-        // About a minute and a half of Wi-Fi for a change (joining, the
-        // picture, back to sleep), half a minute for a check with nothing to show.
-        let minutes = max(1, Int((Double(changes) * 1.5 + Double(checks) * 0.5).rounded()))
+        // Measured 2026-11-05 (ping): ~3.5 min of Wi-Fi for a change
+        // (boot, the app, the picture, back to sleep); a check with nothing
+        // to show boots and sleeps by itself after 2 idle minutes (app.js
+        // AUTO_SLEEP), ~2.5 min.
+        let minutes = max(1, Int((Double(changes) * 3.5 + Double(checks) * 2.5).rounded()))
         let summary = "\(count) \(Names.wakes(count)) dziennie, Wi-Fi łącznie ok. \(minutes) min na dobę."
         guard let every = settings.checkEveryHours, every > 0 else { return summary }
         guard checks > 0 else {

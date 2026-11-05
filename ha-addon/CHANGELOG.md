@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.102.7
+
+- Kontrola w trybie Oszczędnym, która nie przynosi nic nowego, kosztuje
+  mniej baterii. Ramka po takiej pobudce zasypia sama po 2 minutach
+  bezczynności zamiast po 5. Gdyby ramka nie przyjęła 2 minut, zostaje
+  przy 5. Przy kontroli z nowym obrazem aplikacja wstaje wcześniej, więc
+  to jej nie przeszkadza.
+- Podsumowanie pod paskiem pobudek (Ramka → Harmonogram) liczy czas Wi-Fi
+  według pomiarów: ok. 3,5 min na zmianę i 2,5 min na kontrolę.
+
 ## 1.102.6
 
 - Zmiana harmonogramu w czasie snu ramki w trybie Oszczędnym (dodana albo
