@@ -195,6 +195,9 @@ ICON = base64.b64decode(
 SPARE_EVERY = timedelta(minutes=30)
 SPARE_LEAD = timedelta(minutes=5)
 SPARE_ALARMS = 2
+# A screenshot ordered on battery: the wake it is taken at lasts this much
+# longer (the app takes it a minute after drawing, ~0.3 MB to send).
+CAPTURE_AWAKE = timedelta(minutes=3)
 # A full-colour (passthrough) picture goes to the app as a JPEG (4:4:4): ~1 MB
 # instead of 3-4 MB of PNG over the panel's weak Wi-Fi (60-215 KB/s), and
 # the loss does not show (E16). A dithered one, a handful of inks, stays the
@@ -260,6 +263,9 @@ class AppState(BaseModel):
     stray: list[str] = []
     # Spare alarms set on the charger (ISO), for a frame unplugged.
     spare: list[str] = []
+    # The owner asked for a screenshot (ISO), not taken yet: on the charger
+    # at the next question, on battery at the next wake (it stays up for it).
+    capture_asked: str | None = None
 
 
 class AppHello(BaseModel):
@@ -294,7 +300,7 @@ class NextAnswer(BaseModel):
     standby: Literal["ON", "OFF"] = "ON"
     code: str = ""  # app.js on the server: a different one is loaded at once
     # Take a screenshot and send it to /panel/capture (asked by the owner,
-    # only with ``stay``: on the charger or kept awake).
+    # only with ``stay``: on the charger, or on battery kept up for it).
     capture: bool = False
     # Draw ``image`` even when the app remembers it on the screen: the app
     # just started (over MDC, by the launcher or by Tizen's alarm) and its
@@ -305,11 +311,13 @@ class NextAnswer(BaseModel):
 
 class ScreenshotView(BaseModel):
     """The frame's screen as its app drew it (Konfiguracja → Aplikacja
-    ramki → „Pokaż ekran ramki”): 640x360, taken only on the charger."""
+    ramki → „Pokaż ekran ramki”): 640x360, on the charger at once, on
+    battery at the next wake."""
 
     asked_at: str | None = None  # asked and not taken yet (ISO)
     taken_at: str | None = None  # the last screenshot (ISO)
     on_charger: bool = False
+    wake_at: str | None = None  # asleep: its next alarm (ISO), when it takes one
 
 
 class PackageInfo(BaseModel):
@@ -344,9 +352,10 @@ class PanelApp:
     def __init__(self, service: FrameService) -> None:
         self.service = service
         self.dir: Path = service.settings.data_dir / "panel-app"
-        # The owner asked for a screenshot of the panel (answer.capture).
-        self.capture_requested = False
-        self.capture_asked_at: datetime | None = None
+        # The app was told to take the screenshot asked for (answer.capture),
+        # and on battery kept up for it until then.
+        self._capture_sent: datetime | None = None
+        self._capture_awake_until: datetime | None = None
         self._button_at: datetime | None = None
         self.contact = asyncio.Event()  # set at every question of the app
         self.contacts = 0  # questions so far, to wait for the next one
@@ -701,10 +710,16 @@ class PanelApp:
             self._look_until = None
         awake = self.awake_until is not None and now < self.awake_until
         charger = service.status.status.power_source == "ac"
+        capture = self._capture_due(now, charger)
+        if capture and not charger and not self.sleep_requested:
+            # Ordered from the iOS app: up a little longer at this wake.
+            self._capture_awake_until = now + CAPTURE_AWAKE
+        up = self._capture_awake_until
+        awake = awake or (up is not None and now < up)
         if not self.sleep_requested and (awake or charger):
             answer = NextAnswer(action="stay", wait_s=_s(POLL), **common)
-            if self.capture_requested:
-                self.capture_requested = False
+            if capture:
+                self._capture_sent = now
                 answer.capture = True
                 log.info("the frame's app is asked for a screenshot")
             spare = self._spare(now) if charger else []
@@ -719,6 +734,7 @@ class PanelApp:
             return self._awake(NextAnswer(action="wait", wait_s=wait, **common))
         self.sleep_requested = False
         self.awake_until = None
+        self._capture_awake_until = None
         standby = not self._deep(now)
         alarms = [wake] if standby else self.alarms(now, wake)
         state = self.state
@@ -974,24 +990,49 @@ class PanelApp:
     def capture_path(self) -> Path:
         return self.dir / "screenshot.jpg"
 
-    def ask_capture(self) -> ScreenshotView:
-        """A screenshot at the app's next question with ``stay`` (on the
-        charger every 10 s), at least a minute after its last drawing."""
-        self.capture_requested = True
-        self.capture_asked_at = datetime.now(UTC)
-        return self.screenshot()
+    def ask_capture(self, now: datetime | None = None) -> ScreenshotView:
+        """A screenshot at least a minute after the app's last drawing: on
+        the charger at its next question (every 10 s), on battery at its
+        next wake, which then lasts ``CAPTURE_AWAKE`` longer (2026-11-05,
+        Mateusz: "zamówienie" zrzutu przy kolejnym budzeniu). Kept over a
+        restart of the server."""
+        now = now or datetime.now(UTC)
+        state = self.state
+        state.capture_asked = now.isoformat()
+        self._save(state)
+        self._capture_sent = None
+        return self.screenshot(now)
 
-    def screenshot(self) -> ScreenshotView:
+    def _capture_due(self, now: datetime, charger: bool) -> bool:
+        """Asked for and not sent to the app yet: on the charger, again
+        ``CAPTURE_AWAKE`` after a try that brought nothing; on battery once
+        per wake (a failing app would keep the frame up for good)."""
+        if self.state.capture_asked is None:
+            return False
+        sent = self._capture_sent
+        if sent is None:
+            return True
+        if charger:
+            return now - sent >= CAPTURE_AWAKE
+        slept = self.state.slept_at
+        return slept is not None and sent < datetime.fromisoformat(slept)
+
+    def screenshot(self, now: datetime | None = None) -> ScreenshotView:
+        now = now or datetime.now(UTC)
+        state = self.state
         taken = None
         if self.capture_path.exists():
             taken = datetime.fromtimestamp(self.capture_path.stat().st_mtime, UTC)
-        asked = self.capture_asked_at
+        asked = datetime.fromisoformat(state.capture_asked) if state.capture_asked else None
         if asked is not None and taken is not None and taken >= asked:
-            asked = self.capture_asked_at = None
+            asked = state.capture_asked = None
+            self._save(state)
+        wake = self.wakes_at(now) if state.asleep else None
         return ScreenshotView(
             asked_at=asked.isoformat(timespec="seconds") if asked else None,
             taken_at=taken.isoformat(timespec="seconds") if taken else None,
             on_charger=self.service.status.status.power_source == "ac",
+            wake_at=wake.isoformat(timespec="seconds") if wake else None,
         )
 
     def save_capture(self, data: bytes) -> bool:
@@ -1004,6 +1045,12 @@ class PanelApp:
         tmp.write_bytes(data)
         tmp.replace(self.capture_path)
         log.info("panel app capture: %d bytes", len(data))
+        state = self.state
+        if state.capture_asked is not None:
+            state.capture_asked = None
+            self._save(state)
+        # Taken: on battery the next question puts it to sleep.
+        self._capture_sent = self._capture_awake_until = None
         return True
 
     def _tell_shown(self, file_id: str) -> None:
@@ -1245,6 +1292,8 @@ class PanelApp:
         news = new or power.state.pending_push or power.change_due(now)
         if news or self.mode_pending() is not None or self.rest_pending() or state.wifi_lost:
             return wake  # asleep without the Wi-Fi by itself: back to the usual sleep
+        if state.capture_asked is not None:
+            return wake  # a screenshot ordered from the iOS app
         return None
 
     def _button_look_due(self, now: datetime) -> bool:

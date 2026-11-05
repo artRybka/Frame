@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.102.0
+
+- Zrzut ekranu ramki można zamówić także wtedy, gdy ramka śpi na baterii
+  (Konfiguracja → Aplikacja ramki → „Pokaż ekran ramki” → „Zamów zrzut przy
+  następnej pobudce”). Ramka robi go przy najbliższej pobudce i czuwa wtedy
+  do 3 minut dłużej. Zamówienie przetrwa restart serwera.
+
 ## 1.101.2
 
 - Grupy w Szukaj (Technika, Epoka, Styl, Kolor, Temat, Muzeum) są zawsze
