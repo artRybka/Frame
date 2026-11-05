@@ -1927,7 +1927,6 @@ struct ConnectionSettingsView: View {
                     if let settings = model.settings {
                         SourcesSection(settings: settings)
                     }
-                    DiscoverPicksSection()
                     if let storage = model.libraryStorage {
                         LibrarySizeSection(storage: storage)
                     }

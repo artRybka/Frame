@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.100.8
+
+- „Wylosuj inne” Studium dnia i „Wylosuj innego” Artystę tygodnia
+  przeniesione z Konfiguracji do menu po przytrzymaniu kafelka Studium
+  dnia i karty Artysty tygodnia w Odkrywaj. Menu ma tylko właściciel.
+
 ## 1.100.6
 
 - Ekran ramki nie robi się biały w nocy na baterii. Aplikacja ramki
