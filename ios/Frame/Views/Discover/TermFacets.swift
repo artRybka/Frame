@@ -1047,7 +1047,7 @@ struct TonePair: View {
                 .font(.caption2.weight(side ? .semibold : .regular))
                 .foregroundStyle(side ? Theme.ink : Theme.inkSoft)
                 .lineLimit(1)
-            .fixedSize()
+                .fixedSize()
         }
         .frame(maxWidth: .infinity)
     }
