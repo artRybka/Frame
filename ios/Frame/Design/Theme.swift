@@ -400,8 +400,9 @@ extension ColorTag {
         case "vivid": fill("vivid")
         case "muted": fill("muted")
         case "colorful": AnyShapeStyle(Color(hex: 0xEC008C))
-        case "monochrome", "black": AnyShapeStyle(Color(hex: 0x1D1B18))
-        case "dark": AnyShapeStyle(Color(hex: 0x2E2B28))
+        // Ink: black in light mode, light on the dark sheet, where a black
+        // ring around a black dot would not show.
+        case "monochrome", "black", "dark": AnyShapeStyle(Theme.ink)
         case "light": AnyShapeStyle(Color(hex: 0xBDB4A6))
         default: AnyShapeStyle(color(tag))
         }
