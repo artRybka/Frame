@@ -522,22 +522,37 @@ struct MoodFill: View {
                 HalftoneDot(black: mood == "monochrome")
             } else if mood == "neutral" {
                 // Neutralne: a mere touch of warm on the left rim and of
-                // cool on the right (Mateusz 2026-11-05 19:43).
+                // cool on the right (Mateusz 2026-11-05 19:43). The arcs are
+                // sharp right at the rim and fade softly inward (19:46): a
+                // radial mask instead of a blur, which would smear the edge.
                 Circle().fill(ColorTag.fill(tag))
                     .overlay(
-                        Circle().strokeBorder(
-                            LinearGradient(
-                                stops: [
-                                    .init(color: Color(hex: 0xFF9A1F).opacity(0.45), location: 0),
-                                    .init(color: .clear, location: 0.42),
-                                    .init(color: .clear, location: 0.58),
-                                    .init(color: Color(hex: 0x5F8CC0).opacity(0.45), location: 1),
-                                ],
-                                startPoint: .leading, endPoint: .trailing
-                            ),
-                            lineWidth: max(proxy.size.width * 0.09, 1)
-                        )
-                        .blur(radius: proxy.size.width * 0.03)
+                        Circle()
+                            .fill(
+                                LinearGradient(
+                                    stops: [
+                                        .init(color: Color(hex: 0xFF9A1F).opacity(0.45), location: 0),
+                                        .init(color: .clear, location: 0.42),
+                                        .init(color: .clear, location: 0.58),
+                                        .init(color: Color(hex: 0x5F8CC0).opacity(0.45), location: 1),
+                                    ],
+                                    startPoint: .leading, endPoint: .trailing
+                                )
+                            )
+                            .mask(
+                                Circle().fill(
+                                    RadialGradient(
+                                        stops: [
+                                            .init(color: .clear, location: 0.62),
+                                            .init(color: .black.opacity(0.35), location: 0.82),
+                                            .init(color: .black, location: 1),
+                                        ],
+                                        center: .center,
+                                        startRadius: 0,
+                                        endRadius: proxy.size.width / 2
+                                    )
+                                )
+                            )
                     )
                     .clipShape(Circle())
             } else {
