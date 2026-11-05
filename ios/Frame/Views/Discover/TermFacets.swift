@@ -616,14 +616,27 @@ struct TermFacetPanel: View {
         tokens.contains { $0.kind == "color" && ($0.key == ColorTag.tone(mood) || $0.key == mood) }
     }
 
-    /// One of a group: picking it lets go of the others; picked, a tap lets it go.
+    /// A tap turns a side of a group on or off; sides of one group are
+    /// either-or (Ciemne or Średnie). All of a group is the same as none,
+    /// so the tap that would pick the last one leaves it alone picked.
     private func tapTone(_ mood: String, group: [String]) {
-        let on = tonePicked(mood)
-        let at = tokens.firstIndex { $0.kind == "color" && group.contains(ColorTag.family($0.key)) && ColorTag.level(of: $0.key) == nil }
-        tokens.removeAll { $0.kind == "color" && group.contains(ColorTag.family($0.key)) && ColorTag.level(of: $0.key) == nil }
-        guard !on else { return }
-        let key = ColorTag.tone(mood)
-        tokens.insert(SearchToken(kind: "color", key: key, name: ColorTag.name(key)), at: min(at ?? tokens.count, tokens.count))
+        let inGroup = { (token: SearchToken) in
+            token.kind == "color" && group.contains(ColorTag.family(token.key)) && ColorTag.level(of: token.key) == nil
+        }
+        let at = tokens.firstIndex(where: inGroup)
+        if tonePicked(mood) {
+            tokens.removeAll { inGroup($0) && ColorTag.family($0.key) == mood }
+            return
+        }
+        // Older rules' plain moods ("warm") turn into the card's tokens.
+        var picked = group.filter(tonePicked) + [mood]
+        if picked.count == group.count { picked = [mood] }
+        tokens.removeAll(where: inGroup)
+        let added = group.filter(picked.contains).map { side in
+            let key = ColorTag.tone(side)
+            return SearchToken(kind: "color", key: key, name: ColorTag.name(key))
+        }
+        tokens.insert(contentsOf: added, at: min(at ?? tokens.count, tokens.count))
     }
 
     /// Two groups in a row (szkic 14, T1): Temperatura and Nasycenie, then

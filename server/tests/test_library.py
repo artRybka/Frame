@@ -393,6 +393,11 @@ def test_tones_must_all_fit() -> None:
     sided = [*tags, "tone:cool", "tone:muted", "tone:colorful", "tone:medium"]
     assert has_colours(sided, ["tone:cool", "tone:medium"])
     assert not has_colours(sided, ["tone:cool", "tone:dark"])
+    # Two sides of one group: either will do; every group asked must fit.
+    assert has_colours(sided, ["tone:dark", "tone:medium"])
+    assert has_colours(sided, ["tone:dark", "tone:medium", "tone:cool"])
+    assert not has_colours(sided, ["tone:dark", "tone:medium", "tone:warm"])
+    assert not has_colours(sided, ["tone:dark", "tone:light"])
 
 
 def test_every_picture_has_one_side_of_each_tone_group() -> None:

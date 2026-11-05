@@ -559,11 +559,9 @@ def has_colours(tags: list[str], wanted: list[str], shares: dict[str, float] | N
     blue is not "only blue"."""
     have = set(tags)
     levels = [w for w in wanted if LEVEL_MARK in w]
-    tones = {w for w in wanted if w.startswith(TONE_TAG)}
-    if not any(t.startswith(TONE_TAG) for t in have):
-        # Analysed before the Tonacja sides: the plain moods stand in.
-        tones = {t.removeprefix(TONE_TAG) for t in tones}
-    if not tones <= have or (levels and not at_levels(have, shares or {}, levels)):
+    if not _tones_fit(have, {w.removeprefix(TONE_TAG) for w in wanted if w.startswith(TONE_TAG)}):
+        return False
+    if levels and not at_levels(have, shares or {}, levels):
         return False
     old = [w for w in wanted if LEVEL_MARK not in w and not w.startswith(TONE_TAG)]
     accents = {w for w in old if w.startswith(ACCENT_TAG)}
@@ -574,6 +572,25 @@ def has_colours(tags: list[str], wanted: list[str], shares: dict[str, float] | N
         and (not accents or bool(have & accents))
         and (not only or _only(have, only))
     )
+
+
+def _tones_fit(have: set[str], sides: set[str]) -> bool:
+    """Whether a picture is on the asked sides of the Tonacja groups: in
+    each group asked, one of its sides (Ciemne or Średnie); every group
+    asked must fit. Analysed before the sides, its plain moods stand in."""
+    sided = any(t.startswith(TONE_TAG) for t in have)
+    for group in TONE_GROUPS:
+        asked = sides & set(group)
+        if not asked:
+            continue
+        if sided:
+            if not any(TONE_TAG + side in have for side in asked):
+                return False
+        elif not asked & have:
+            return False
+    # A side of no group (an older app's mood): it must fit too.
+    rest = sides - {side for group in TONE_GROUPS for side in group}
+    return all((TONE_TAG + side in have) or side in have for side in rest)
 
 
 def level(family: str, at: str) -> str:

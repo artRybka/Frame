@@ -196,9 +196,17 @@ actor DemoBackend: FrameBackend {
         // Analysed with the Tonacja sides ("tone:neutral"): those count;
         // before them, the plain moods stand in.
         let sided = tags.contains { $0.hasPrefix(ColorTag.tonePrefix) }
+        // Sides of one group: either will do (Ciemne or Średnie).
+        let tones = wanted.filter { $0.hasPrefix(ColorTag.tonePrefix) }
+        for group in ColorTag.toneGroups {
+            let asked = tones.filter { group.contains(ColorTag.family($0)) }
+            if !asked.isEmpty, !asked.contains(where: { have.contains(sided ? $0 : ColorTag.family($0)) }) {
+                return false
+            }
+        }
         for token in wanted {
             if token.hasPrefix(ColorTag.tonePrefix) {
-                if !have.contains(sided ? token : ColorTag.family(token)) { return false }
+                continue
             } else if token.contains(ColorTag.levelMark), let level = ColorTag.level(of: token) {
                 let family = ColorTag.family(token)
                 let fits = switch level {
