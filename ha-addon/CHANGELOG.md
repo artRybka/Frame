@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.101.3
+
+- Menu po przytrzymaniu kafelka Studium dnia i karty Artysty tygodnia ma
+  sam guzik „Wylosuj inne” / „Wylosuj innego”, bez dopisku nad nim.
+  Losowanie Studium dnia nie pyta już o koszt.
+
 ## 1.101.2
 
 - Grupy w Szukaj (Technika, Epoka, Styl, Kolor, Temat, Muzeum) są zawsze
