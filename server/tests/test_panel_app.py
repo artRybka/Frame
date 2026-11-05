@@ -1853,3 +1853,50 @@ async def test_an_empty_check_is_left_alone(tmp_path: Path, server_ssl: ssl.SSLC
         assert app.state.empty_sleep_at is None
     finally:
         await panel.stop()
+
+
+@pytest.mark.parametrize(
+    "settings",
+    [
+        # A change added during the sleep (2026-11-05: 22:10 added at 21:27).
+        {"change_times": ["07:00", "15:00", "19:00"], "check_every_hours": 2},
+        # Checks every hour instead of every two.
+        {"change_times": ["07:00", "19:00"], "check_every_hours": 1},
+    ],
+)
+async def test_a_plan_changed_during_the_sleep_starts_the_app_at_a_check(
+    tmp_path: Path, server_ssl: ssl.SSLContext, settings: dict[str, object]
+) -> None:
+    """Only the app sets the panel's alarms, before it sleeps: at a check
+    whose later alarms are not the plan now it is started to set new ones."""
+    panel = FakePanel(server_ssl)
+    await panel.start()
+    try:
+        service = _service(tmp_path, panel.port)
+        service.player.save_settings(
+            FrameSettings(
+                change_times=["07:00", "19:00"],
+                power_mode="economy",
+                check_every_hours=2,
+                quiet_start=None,
+            )
+        )
+        _next_change(service, _at("2026-10-28T19:00"))
+        app = service.app
+        content = service.store.current()
+        assert content is not None
+        app.answer(
+            BATTERY.model_copy(update={"shown": content.file_id}), now=_at("2026-10-28T12:00")
+        )
+        assert app.state.asleep
+
+        service.player.save_settings(
+            FrameSettings(power_mode="economy", quiet_start=None, **settings)  # type: ignore[arg-type]
+        )
+        _next_change(
+            service, _at("2026-10-28T15:00" if "15:00" in str(settings) else "2026-10-28T19:00")
+        )
+        await app.launcher_up(_at("2026-10-28T13:59:40"))
+        assert panel.received == START
+    finally:
+        await panel.stop()
