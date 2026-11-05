@@ -39,8 +39,10 @@
   // (Mateusz: "sprawdzenie bez zmiany obrazu teraz sporo kosztuje"). Not
   // shorter: at a wake that needs it the app starts up to ~90 s after the
   // panel (Tizen's alarm, 22:20 that evening), and has to beat this. A
-  // panel refusing it keeps the old value.
-  var AUTO_SLEEP = "2MIN";
+  // panel refusing it keeps the old value. The setter takes only OFF, 3MIN,
+  // 5MIN, 10MIN, 20MIN, 30MIN, 60MIN: "2MIN" threw TypeMismatchError
+  // (2026-11-05 23:02).
+  var AUTO_SLEEP = "3MIN";
   var AUTO_SLEEP_FALLBACK = "5MIN";
   var ATTEMPTS = 4;
   var ATTEMPT_DELAY_MS = 5000;

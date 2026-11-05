@@ -1,5 +1,6 @@
 # Changelog
 
+<<<<<<< HEAD
 ## 1.103.1
 
 - Po powrocie do aplikacji z tła Teraz od razu pokazuje obraz, który
@@ -14,6 +15,15 @@
   się tak długo, jak ustawiła ją aplikacja ramki (3 albo 5 min), a obrazy
   wysłane z aplikacji jako średnia z ostatnich dwóch tygodni. Założenia
   startowe pochodzą z testów tej ramki.
+=======
+## 1.103.2
+
+- Ramka nie przyjęła samousypiania po 2 minutach (Samsung pozwala tylko na
+  3, 5, 10, 20, 30 albo 60 minut) i przy pustej kontroli dalej czekała 5
+  minut. Teraz zasypia po 3 minutach, najkrótszym możliwym czasie, co
+  oszczędza ok. 2 minuty Wi-Fi na każdej kontroli bez nowego obrazu.
+  Szacunek pobudek w Ramce liczy kontrolę jako ok. 3,5 minuty.
+>>>>>>> origin/claude/project-thread-892dwe
 
 ## 1.103.0
 
