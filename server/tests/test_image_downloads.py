@@ -459,3 +459,23 @@ def test_works_whose_museum_rests_are_left_out_until_it_answers(service) -> None
     guard.clock = lambda: time.monotonic() + PROBE_EVERY
     assert svc.images.ensure_thumb(waiting).is_file()
     assert [r.item.id for r in remote_items(svc, [here, waiting])] == [here.id, waiting.id]
+
+
+def test_an_aic_original_refused_in_the_download_size_comes_at_1686(tmp_path: Path) -> None:
+    """The website's download size (``!3000,3000``) first; if the IIIF server
+    ever refuses it, the API's widest width (1686), not the thumbnail."""
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(str(request.url))
+        if "!3000,3000" in str(request.url):
+            return httpx.Response(400, text="size not allowed")
+        return httpx.Response(200, content=_jpeg())
+
+    cache = ImageCache(tmp_path, lambda: httpx.Client(transport=httpx.MockTransport(handler)))
+    iiif = "https://www.artic.edu/iiif/2/id7"
+    item = _aic(7).model_copy(
+        update={"image_url": f"{iiif}/full/!3000,3000/0/default.jpg", "width": 2975}
+    )
+    assert cache.ensure_image(item).is_file()
+    assert seen == [f"{iiif}/full/!3000,3000/0/default.jpg", f"{iiif}/full/1686,/0/default.jpg"]
