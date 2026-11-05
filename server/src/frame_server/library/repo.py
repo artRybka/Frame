@@ -312,6 +312,8 @@ class Library:
         self._works_dropped_by = "start"
         self._works_drops = 0
         self._conn: sqlite3.Connection | None = None
+        #: The key/value table, read once (:meth:`_kv_rows`).
+        self._kv: dict[str, str] | None = None
         self._depth = 0  # nested _db() blocks share the outermost transaction
         self._favorites: dict[str, set[str]] | None = None
         #: Goes up with every change of an item (for the suggestions' index).
@@ -340,6 +342,7 @@ class Library:
         with self._db() as db:
             db.executescript(SCHEMA)
         self._move_favorites()
+        self._kv_rows()  # read once here, never on the event loop
 
     @contextmanager
     def _db(self) -> Iterator[sqlite3.Connection]:
@@ -366,6 +369,7 @@ class Library:
                     yield conn
             except BaseException:
                 self._items = None  # the cache may hold rolled back changes
+                self._kv = None
                 self._drop_works("a rolled back write")
                 self._version += 1
                 self._catalogue_version += 1
@@ -932,20 +936,31 @@ class Library:
 
     # -- key/value state ----------------------------------------------------
 
+    def _kv_rows(self) -> dict[str, str]:
+        """The key/value table as kept in memory: read without the library's
+        lock, so that the frame's question on the event loop never waits for
+        a long write elsewhere (6 s after a start, 2026-11-05)."""
+        kv = self._kv
+        if kv is None:
+            with self._db() as db:
+                rows = db.execute("SELECT key, value FROM kv").fetchall()
+            kv = self._kv = dict(rows)
+        return kv
+
     def get_state(self, key: str, default: Any = None) -> Any:
-        with self._db() as db:
-            row = db.execute("SELECT value FROM kv WHERE key = ?", (key,)).fetchone()
-        return default if row is None else json.loads(row[0])
+        text = self._kv_rows().get(key)
+        return default if text is None else json.loads(text)
 
     def set_state(self, key: str, value: Any) -> None:
+        text = json.dumps(value)
         with self._db() as db:
-            db.execute(
-                "INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)", (key, json.dumps(value))
-            )
+            db.execute("INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)", (key, text))
+            self._kv_rows()[key] = text
 
     def delete_state(self, key: str) -> None:
         with self._db() as db:
             db.execute("DELETE FROM kv WHERE key = ?", (key,))
+            self._kv_rows().pop(key, None)
 
     def sent_photo_ids(self) -> set[str]:
         """Photos sent once that were shown or queued: those in anyone's

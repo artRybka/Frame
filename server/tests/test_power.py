@@ -699,3 +699,28 @@ def test_mode_changed_while_asleep(tmp_path: Path) -> None:
     # It wakes and asks: it is in the online mode now.
     service.app.answer(AppHello(reason="wake", build="2.0.0", charging=True))
     assert status.mode_pending is None
+
+
+async def test_a_restarted_server_waits_for_the_app_before_starting_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """2026-11-05, 1.100.4: 9 s after a restart a status look found the panel
+    up and started its app over MDC, though the app asks within a poll or
+    two. Not heard since the start counts from the start."""
+    service = FrameService(_settings(tmp_path, 1))
+    app = service.app
+    app.store_package(b"PK\x03\x04signed", "2.0.0")
+    state = app.state
+    state.active, state.asleep = True, False
+    app._save(state)
+    kicks: list[str] = []
+
+    async def kick(why: str) -> None:
+        kicks.append(why)
+
+    monkeypatch.setattr(app, "_kick", kick)
+    app.heard_at = None
+    await app.panel_up(app.started_at + timedelta(seconds=9))
+    assert kicks == []
+    await app.panel_up(app.started_at + timedelta(minutes=2))
+    assert kicks == ["did not run although the panel is up"]
