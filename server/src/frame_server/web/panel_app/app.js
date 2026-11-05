@@ -665,7 +665,11 @@
       // nothing new, one set before a rest) boots the panel cold: it goes
       // back to sleep by itself, sooner than after its usual 20 minutes.
       if (standby === "OFF") r.autoSleep = shortAutoSleep();
-      if (standby === "OFF" && wakeMs) r.launch = launchAlarms([wakeMs].concat(more || []));
+      // Tizen's alarm starts the app only at the last one, which the server
+      // would start it for anyway: at a check with nothing new the panel has
+      // to go back to sleep untouched, a start there draws a white page over
+      // the picture (2026-11-05, white all night).
+      if (standby === "OFF" && wakeMs) r.launch = launchAlarms([more && more.length ? more[more.length - 1] : wakeMs]);
     }
     report("sleep", r, function () {
       last = Date.now();
