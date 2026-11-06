@@ -698,6 +698,12 @@ class Player:
                 state.last_error = None
                 for shown in board:
                     self.library.record_shown(shown.id, reason)
+                # Shown now (e.g. sent from the app) while waiting its turn in
+                # the rotation: to the back, or the schedule shows it again
+                # the same day.
+                ids = {shown.id for shown in board}
+                if again := [i for i in state.queue if i in ids]:
+                    state.queue = [i for i in state.queue if i not in ids] + again
                 self._save_state(state)
                 if reason in SENT_FROM_APP:
                     self.service.status.note_sent(now)  # a wake on top of the schedule

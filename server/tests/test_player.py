@@ -115,6 +115,26 @@ async def test_a_change_made_early_counts_the_next_from_its_time(service) -> Non
     assert after == next_change(due, player.settings) and after > due
 
 
+async def test_a_work_sent_from_the_app_goes_to_the_back_of_the_rotation(service) -> None:
+    """2026-11-06: a work sent from the app at 07:32 came round again with
+    the 09:45 change, although the rotation avoids repeats for 14 days."""
+    a = _add(service, 1, (200, 40, 40), "Ala")
+    b = _add(service, 2, (40, 40, 200), "Ola")
+    c = _add(service, 3, (40, 160, 40), "Ela")
+    player = service.player
+    settings = player.settings
+    settings.shuffle = False
+    player.save_settings(settings)
+    state = player.state
+    state.queue = [a.id, b.id, c.id]
+    player._save_state(state)
+
+    await player.show(a, "app")
+    assert player.state.queue == [b.id, c.id, a.id]
+    shown = await player.next("schedule")
+    assert shown is not None and shown.id == b.id
+
+
 async def test_rotation_next_previous_and_history(service) -> None:
     a = _add(service, 1, (200, 40, 40), "Ala")
     b = _add(service, 2, (40, 40, 200), "Ola")
