@@ -101,8 +101,19 @@ enum DemoDiscover {
             rules: PlaylistRules(colors: ["blue"])
         ),
         theme(
+            "ancient-egypt", "Starożytny Egipt", "Grobowce w Tebach, ok. 1400 p.n.e.", group: "Epoki",
+            rules: PlaylistRules(terms: ["period:egypt", "technique:painting"]),
+            section: ("Starożytność i Bizancjum", "3100 p.n.e.–1453")
+        ),
+        theme(
+            "fayum", "Portrety fajumskie", "Enkaustyka na desce, 50–250 n.e.", group: "Epoki",
+            rules: PlaylistRules(terms: ["period:ancient", "technique:painting"]),
+            section: ("Starożytność i Bizancjum", "3100 p.n.e.–1453")
+        ),
+        theme(
             "belle-epoque", "Belle Époque", "Paryż i Europa w latach 1880–1914.", group: "Epoki",
-            rules: PlaylistRules(terms: ["period:belle-epoque"])
+            rules: PlaylistRules(terms: ["period:belle-epoque"]),
+            section: ("Średniowiecze i dalej", "od 1250")
         ),
     ]
 
@@ -111,11 +122,15 @@ enum DemoDiscover {
     }
 
     private static func theme(
-        _ key: String, _ name: String, _ description: String, group: String, rules: PlaylistRules
+        _ key: String, _ name: String, _ description: String, group: String, rules: PlaylistRules,
+        section: (name: String, years: String)? = nil
     ) -> ArtTheme {
         var rules = rules
         rules.kinds = [.artwork]
-        return ArtTheme(key: key, name: name, description: description, group: group, rules: rules)
+        return ArtTheme(
+            key: key, name: name, description: description, group: group, rules: rules,
+            section: section?.name, sectionYears: section?.years
+        )
     }
 
     static func term(_ key: String) -> TermInfo? {

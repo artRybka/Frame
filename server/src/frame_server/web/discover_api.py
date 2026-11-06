@@ -38,12 +38,16 @@ from ..library.museums import Discovery, Kind
 from ..library.themes import (
     GROUPS,
     OTHER_ART_THEMES,
+    SECTION_YEARS,
     THEMES,
     Theme,
     batch_of,
     browse_theme,
     colour_themes,
+    curated,
+    curated_seen,
     day_reason,
+    for_you,
     liked,
     make_liked,
     new_artist_of_the_week,
@@ -51,7 +55,6 @@ from ..library.themes import (
     search_page,
     theme,
     theme_of_the_day,
-    weekly_themes,
 )
 from ..library.viewer import viewer_id
 from ..library.vocabulary import (
@@ -123,6 +126,10 @@ class ThemeCard(BaseModel):
     #: The owner's playlist made from this theme, if any.
     playlist_id: int | None = None
     rules: PlaylistRules | None = None
+    #: The part of its group's page it stands in ("Starożytność i Bizancjum"),
+    #: and that part's years.
+    section: str = ""
+    section_years: str = ""
 
 
 class SuggestionRow(BaseModel):
@@ -237,8 +244,10 @@ def _since(days: int) -> str:
 def _cards_key(svc: FrameService) -> tuple[object, ...]:
     """The cards stay as worked out while this stays: the day (covers and
     the week's themes), the catalogue's works, everyone's hearts ("Bo
-    lubisz"). A picture shown or a work described does not change it."""
-    return (date.today(), *svc.library.catalogue_stamp())
+    lubisz"). A picture shown or a work described does not change it; the
+    curator's new cards do (with the day, so at once)."""
+    made = tuple(t.key for t in curated(svc.library))
+    return ((date.today(), made), *svc.library.catalogue_stamp())
 
 
 def _cards_stale(svc: FrameService, stamp: float) -> bool:
@@ -270,7 +279,7 @@ def work_out_cards(svc: FrameService, force: bool = False) -> dict[str, tuple[in
         for user in svc.users.users():  # everyone's "Bo lubisz"
             for found in make_liked(svc.library, svc.player.taste(user.id), user.id):
                 mine.setdefault(found.key, found)
-        weekly = weekly_themes(svc.library, day)
+        weekly = for_you(svc.library, day)
         others = [*mine.values(), *THEMES, *OTHER_ART_THEMES, *colour_themes(svc.library, day)]
         for found in [*weekly, *others]:
             total, items = svc.library.query(found.rules(), sort="suitability")
@@ -308,6 +317,8 @@ def _card(
         cover=_light(remote_items(svc, cover)),
         playlist_id=playlist.id if playlist else None,
         rules=found.rules(),
+        section=found.section,
+        section_years=SECTION_YEARS.get(found.section, ""),
     )
 
 
@@ -444,7 +455,7 @@ def _theme_list(svc: FrameService) -> list[ThemeCard]:
     playlists = svc.library.playlists(viewer_id())
     # The week's themes and "Bo lubisz" once the cards have them (worked
     # out with them).
-    weekly = [t for t in weekly_themes(svc.library, date.today()) if t.key in cards]
+    weekly = [t for t in for_you(svc.library, date.today()) if t.key in cards]
     mine = [t for t in liked(svc.library) if t.key in cards]
     colours = [t for t in colour_themes(svc.library, date.today()) if t.key in cards]
     every = [*weekly, *mine, *THEMES, *OTHER_ART_THEMES, *colours]
@@ -467,11 +478,16 @@ def warm_up(svc: FrameService) -> None:
     suggestion_rows(svc)
 
 
-def _theme(key: str, svc: FrameService) -> Theme:
+def _theme(key: str, svc: FrameService, page: int = 0) -> Theme:
+    """The theme ``key``; its first ``page`` opened marks the curator's
+    card as seen (made again the next night)."""
     try:
-        return theme(key, svc.library)
+        found = theme(key, svc.library)
     except KeyError as err:
         raise HTTPException(404, str(err)) from err
+    if page == 1:
+        curated_seen(svc.library, key)
+    return found
 
 
 def _new_artist(svc: FrameService) -> ThemeCard | None:
@@ -507,7 +523,7 @@ async def week_artist_again(svc: Svc) -> ThemeCard:
 @router.get("/themes/{key}", response_model=ThemePage)
 async def theme_page(key: str, svc: Svc, page: Annotated[int, Query(ge=1)] = 1) -> ThemePage:
     """A theme, page by page, from the museums (or the catalogue)."""
-    found = await run_in_threadpool(_theme, key, svc)
+    found = await run_in_threadpool(_theme, key, svc, page)
     try:
         items, following = await run_in_threadpool(
             urgent_call(browse_theme), svc.importer, found, page, ROW_SIZE
@@ -529,7 +545,7 @@ async def stream_theme(
     :class:`ThemeLine` with each one's works as it comes, then a last line
     with the page to ask for next."""
     asked = time.monotonic()
-    found = await run_in_threadpool(_theme, key, svc)
+    found = await run_in_threadpool(_theme, key, svc, page)
     if not found.searches():  # the catalogue: one page at once
         items, following = await run_in_threadpool(
             browse_theme, svc.importer, found, page, ROW_SIZE

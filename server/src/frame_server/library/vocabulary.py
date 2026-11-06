@@ -391,6 +391,8 @@ TERMS: list[Term] = [
         "painting*",
         "oil on",
         "tempera",
+        "fresco*",
+        "encaustic",
         "schilderij*",
         "obraz",
     ),
@@ -516,7 +518,7 @@ def _is_reproduction(title: str, classification: str) -> bool:
 
 #: Words for paintings in museums' types and materials.
 _PAINTING = re.compile(
-    r"\b(paintings?|oil|oils|olej\w*|tempera|canvas|płótn\w*|gouache|acrylic|fresco)\b",
+    r"\b(paintings?|oil|oils|olej\w*|tempera|canvas|płótn\w*|gouache|acrylic|fresco|encaustic)\b",
     re.IGNORECASE,
 )
 #: Pictures with less tint spread (``colors.tint_spread``) have no colour of
@@ -635,9 +637,15 @@ _DECORATIVE = re.compile(
     r"textiles?|tapestr\w*|embroider\w*|lace|velvet|costumes?|dress\w*|\w*wear|accessor\w*|"
     r"fans?|furniture|metalwork|"
     r"silver|glass|jewel\w*|enamels?|lacquer|jade|arms|armou?r|coins?|medals?|amulets?|"
-    r"glyptic|tools|funerary|ritual|miscellaneous|ceramik\w*|porcelan\w*|tkanin\w*|rzemiosło)\b",
+    r"glyptic|tools|funerary|ritual|miscellaneous|ceramik\w*|porcelan\w*|tkanin\w*|rzemiosło|"
+    # A whole mummy with its portrait inserted is no picture.
+    r"mumm(?:y|ies)|human remains)\b",
     re.IGNORECASE,
 )
+
+
+#: Wall paintings, as museums write them.
+_MURAL = re.compile(r"\b(fresco(?:es|s)?|wall paintings?|murals?|fresk\w*)\b", re.IGNORECASE)
 
 
 def object_category(item: Item) -> str | None:
@@ -656,6 +664,10 @@ def _object_category(classification: str, title: str, medium: str) -> str | None
     if _is_photograph(classification, medium):
         return PHOTOGRAPHY
     if _object_technique(classification, ""):
+        return None
+    # The Met files Boscoreale's walls as "Miscellaneous-Stone": a fresco
+    # is a picture whatever its museum's type.
+    if _MURAL.search(f"{classification} {medium} {title}"):
         return None
     if _SCULPTURE.search(classification):
         return SCULPTURE

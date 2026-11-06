@@ -23,7 +23,7 @@ from .artists import is_artist
 from .importer import Importer
 from .models import Item, ItemKind, PlaylistRules
 from .nationality import artist_note
-from .repo import Library
+from .repo import Library, matches
 from .seed import MORE_POLISH_PAINTERS, PACKS, POLISH_PAINTERS
 from .viewer import OWNER_ID, viewer_id
 from .vocabulary import (
@@ -34,6 +34,7 @@ from .vocabulary import (
     PHOTOGRAPHY,
     SCULPTURE,
     TERMS,
+    Term,
     artist_matches,
     fold,
     museum_queries,
@@ -83,6 +84,11 @@ class Theme:
     catalogue: bool = False
     #: The name of a playlist made from it, when not the theme's own.
     playlist: str = ""
+    #: The part of its group's page it stands in ("Starożytność i Bizancjum").
+    section: str = ""
+    #: The museums' answers kept only when they fit the theme's rules (an
+    #: icon search brings enamels and Russian icons of 1800 too).
+    strict: bool = False
 
     def rules(self) -> PlaylistRules:
         return PlaylistRules(
@@ -213,6 +219,40 @@ POLISH_INTERWAR = (
 
 #: The group of the theme of the day (made in the app) and the week's
 #: themes; "Na ten tydzień" before it was renamed.
+#: Painters of Rome, Greece and Egypt as the 18th and 19th centuries saw them.
+ANTIQUITY_PAINTERS = (
+    "Alma-Tadema",
+    "Gérôme",
+    "Siemiradzki",
+    "Hubert Robert",
+    "Jacques-Louis David",
+    "Puvis de Chavannes",
+    "Poynter",
+    "Leighton",
+    "Panini",
+    "Styka",
+)
+#: Italy's painters on gold, from the Byzantine manner to Giotto's heirs.
+GOLD_GROUND = (
+    "Duccio",
+    "Giotto",
+    "Cimabue",
+    "Simone Martini",
+    "Pietro Lorenzetti",
+    "Ambrogio Lorenzetti",
+    "Berlinghiero",
+    "Segna di Buonaventura",
+    "Bernardo Daddi",
+    "Lippo Memmi",
+    "Paolo Veneziano",
+    "Taddeo Gaddi",
+)
+#: The parts of the "Epoki" page.
+ANTIQUITY = "Starożytność i Bizancjum"
+LATER = "Średniowiecze i dalej"
+#: The years beside each part's name.
+SECTION_YEARS = {ANTIQUITY: "3100 p.n.e.–1453", LATER: "od 1250"}
+
 WEEKLY = "Dziś dla Ciebie"
 LIKES = "Bo lubisz"
 STYLES = "Kierunki i style"
@@ -550,6 +590,17 @@ THEMES: list[Theme] = [
         terms=("subject:animals",),
     ),
     Theme(
+        "antiquity-painted",
+        "Antyk oczami malarzy",
+        "David, Robert, Gérôme, Alma-Tadema, Siemiradzki.",
+        SUBJECTS,
+        artists=ANTIQUITY_PAINTERS,
+        queries=(
+            *((s, a) for a in ANTIQUITY_PAINTERS[:6] for s in SEARCH_SOURCES),
+            *_national(("Siemiradzki", "Styka")),
+        ),
+    ),
+    Theme(
         "portraits",
         "Portrety",
         "Twarze od Rembrandta po Boznańską i Sargenta.",
@@ -593,13 +644,109 @@ THEMES: list[Theme] = [
             *(("europeana", a) for a in POLISH_INTERWAR),
         ),
     ),
-    # Periods: browsed in the catalogue
+    # Periods, in the order of time (Mateusz 2026-11-06): antiquity and
+    # Byzantium from the museums (the catalogue has few of their pictures),
+    # the rest browsed in the catalogue. Pictures only: vases, sculpture,
+    # enamels and manuscripts stay in their own group.
+    Theme(
+        "ancient-egypt",
+        "Starożytny Egipt",
+        "Grobowce w Tebach, ok. 1400 p.n.e.",
+        PERIODS,
+        terms=("period:egypt", "technique:painting"),
+        # The Met's copies of the tomb paintings, made in Thebes 1907–1937.
+        queries=(
+            ("met", "Facsimile tomb"),
+            ("met", "Nina de Garis Davies"),
+            ("met", "Charles K. Wilkinson facsimile"),
+            ("met", "Norman de Garis Davies"),
+        ),
+        section=ANTIQUITY,
+        strict=True,
+    ),
+    Theme(
+        "fayum",
+        "Portrety fajumskie",
+        "Enkaustyka na desce, 50–250 n.e.",
+        PERIODS,
+        terms=("period:ancient", "technique:painting"),
+        query="portrait",
+        queries=(
+            ("met", "mummy portrait"),
+            ("getty", "Romano-Egyptian portrait"),
+            ("wmc", "Category:Fayum mummy portraits"),
+            ("met", "encaustic portrait"),
+        ),
+        section=ANTIQUITY,
+        strict=True,
+    ),
+    Theme(
+        "roman-frescoes",
+        "Freski Rzymu i Pompejów",
+        "Wille w Boscoreale i Pompejach, I w. p.n.e.",
+        PERIODS,
+        terms=("period:rome", "technique:painting"),
+        queries=(
+            ("met", "Boscoreale wall painting"),
+            ("met", "Roman wall painting fresco"),
+            ("met", "fresco Pompeii"),
+            ("wmc", "Category:Ancient Roman frescos"),
+        ),
+        section=ANTIQUITY,
+        strict=True,
+    ),
+    Theme(
+        "byzantine-icons",
+        "Ikony Bizancjum",
+        "Konstantynopol, Kreta i Ruś na złocie.",
+        PERIODS,
+        # Painted icons, also those of Crete and Rus' after 1453: the
+        # museums have few from Byzantium itself (the Met's are enamels).
+        terms=("period:medieval", "period:15c", "period:16c", "period:17c", "technique:painting"),
+        query="icon",
+        queries=(
+            ("cma", "Byzantine icon"),
+            ("met", "Byzantine icon tempera"),
+            ("cma", "icon tempera"),
+            ("wmc", "Category:Byzantine icons"),
+            ("met", "icon Virgin Hodegetria"),
+        ),
+        section=ANTIQUITY,
+        strict=True,
+    ),
+    Theme(
+        "gold-ground",
+        "Złote tło: od ikony do Giotta",
+        "Duccio, Giotto, Simone Martini, 1250–1400.",
+        PERIODS,
+        artists=GOLD_GROUND,
+        terms=("technique:painting",),
+        section=LATER,
+        strict=True,
+    ),
+    Theme(
+        "15c",
+        "Wczesny renesans, XV wiek",
+        "Fra Angelico, Botticelli, van Eyck, Memling, 1400–1500.",
+        PERIODS,
+        terms=("period:15c",),
+        section=LATER,
+    ),
+    Theme(
+        "16c",
+        "Renesans i manieryzm, XVI wiek",
+        "Tycjan, Dürer, Holbein, Bruegel, Bronzino, 1500–1600.",
+        PERIODS,
+        terms=("period:16c",),
+        section=LATER,
+    ),
     Theme(
         "17c",
         "Złoty wiek, XVII wiek",
         "Barok i holenderski złoty wiek, 1600–1700.",
         PERIODS,
         terms=("period:17c",),
+        section=LATER,
     ),
     Theme(
         "18c",
@@ -607,6 +754,23 @@ THEMES: list[Theme] = [
         "Rokoko, weduty i klasycyzm, 1700–1800.",
         PERIODS,
         terms=("period:18c",),
+        section=LATER,
+    ),
+    Theme(
+        "early-19c",
+        "Pierwsza połowa XIX wieku",
+        "Goya, Turner, Friedrich, Ingres, Delacroix, 1800–1850.",
+        PERIODS,
+        terms=("period:1800-1850",),
+        section=LATER,
+    ),
+    Theme(
+        "late-19c",
+        "Druga połowa XIX wieku",
+        "Courbet, Millet, Manet, Matejko, Monet, 1850–1900.",
+        PERIODS,
+        terms=("period:1850-1900",),
+        section=LATER,
     ),
     Theme(
         "belle-epoque",
@@ -614,6 +778,15 @@ THEMES: list[Theme] = [
         "Paryż i Europa w latach 1880–1914.",
         PERIODS,
         terms=("period:belle-epoque",),
+        section=LATER,
+    ),
+    Theme(
+        "interwar",
+        "Międzywojnie",
+        "Kandinsky, Klee, Mondrian, Witkacy i późny Monet, 1918–1939.",
+        PERIODS,
+        terms=("period:interwar",),
+        section=LATER,
     ),
 ]
 
@@ -730,6 +903,15 @@ COLOUR_POOL: list[Theme] = [
 ]
 
 
+#: The parts of the group's page, by technique.
+OTHER_ART_SECTIONS = {
+    MANUSCRIPTS: "Rękopisy i miniatury",
+    PHOTOGRAPHY: "Fotografia",
+    SCULPTURE: "Rzeźba",
+    DECORATIVE: "Ceramika i rzemiosło",
+}
+
+
 def _other(
     key: str,
     name: str,
@@ -749,6 +931,7 @@ def _other(
         name,
         description,
         OTHER_ARTS,
+        section=OTHER_ART_SECTIONS[category],
         artists=artists,
         terms=(category, *terms),
         colors=colors,
@@ -986,12 +1169,29 @@ BY_KEY = {theme.key: theme for theme in [*THEMES, *OTHER_ART_THEMES, *COLOUR_POO
 SEARCHABLE = [theme for theme in THEMES if theme.searches()]
 
 
+#: Works a card needs in the catalogue for a full cover.
+COVER_MIN = 8
+
+
+def thin_searches(library: Library) -> list[tuple[str, str]]:
+    """The first searches of the themes kept to their rules (antiquity)
+    that the catalogue has too few works of for a cover: asked first when
+    the catalogue grows at night, so their cards are not left empty."""
+    return [
+        search
+        for t in THEMES
+        if t.strict and t.searches() and library.query(t.rules())[0] < COVER_MIN
+        for search in t.searches()[:2]
+    ]
+
+
 def theme(key: str, library: Library | None = None) -> Theme:
     """A theme by its key: one of ``THEMES`` or ``COLOUR_POOL``, of the
     week's or of "Bo lubisz" (those two need ``library``)."""
     found = BY_KEY.get(key) or _weekly.get(key)
     if found is None and library is not None:
         weekly_themes(library, date.today())
+        curated(library)
         mine = [*liked(library), *liked(library, OWNER_ID)]
         found = _weekly.get(key) or next((t for t in mine if t.key == key), None)
     if found is None:
@@ -1029,12 +1229,15 @@ class Occasion:
 #: (first day, last day) as (month, day), the occasion and its theme.
 OCCASIONS: tuple[tuple[tuple[int, int], tuple[int, int], str, str], ...] = (
     ((1, 1), (1, 1), "Nowy Rok", "night"),
+    ((1, 7), (1, 7), "Prawosławne Boże Narodzenie", "byzantine-icons"),
     ((2, 14), (2, 14), "Walentynki", "flowers"),
     ((3, 21), (3, 21), "Pierwszy dzień wiosny", "spring"),
+    ((4, 21), (4, 21), "Urodziny Rzymu", "roman-frescoes"),
     ((5, 3), (5, 3), "Święto Konstytucji 3 Maja", "polish"),
     ((6, 21), (6, 21), "Pierwszy dzień lata", "summer"),
     ((9, 23), (9, 23), "Pierwszy dzień jesieni", "autumn"),
     ((11, 1), (11, 2), "Wszystkich Świętych", "autumn"),
+    ((11, 4), (11, 4), "Rocznica odkrycia grobowca Tutanchamona", "ancient-egypt"),
     ((11, 11), (11, 11), "Narodowe Święto Niepodległości", "polish"),
     ((12, 22), (12, 22), "Pierwszy dzień zimy", "winter"),
     ((12, 24), (12, 26), "Boże Narodzenie", "winter"),
@@ -1337,6 +1540,181 @@ def new_artist_of_the_week(library: Library, day: date) -> Theme | None:
         return found
 
 
+# -- the curator's cards -----------------------------------------------------------
+
+#: Cards a language model proposed for "Dziś dla Ciebie" (``ai/curator.py``),
+#: as the server checked them: {"cards": [{"theme", "made", "seen"}],
+#: "history": [keys], "order": {...}}.
+CURATED_KEY = "curated_themes"
+CURATED_PREFIX = "curator-"
+#: The curator's cards at a time; they stand in for as many of the week's
+#: pairs of terms (Mateusz 2026-11-06: "Dziś dla Ciebie" does not grow).
+CURATED_CARDS = 2
+#: A card is made again after this many days, or the night after someone
+#: opened it (Mateusz 2026-11-06).
+CURATED_DAYS = 7
+#: Cards not made again for as long as this many newer ones.
+CURATED_REPEAT = 60
+#: Terms a card may be made of: styles, subjects, periods (not of one
+#: country in Asia) and the techniques of pictures. Never manuscripts,
+#: photographs, sculpture or crafts: those keep to their own group.
+CURATED_KINDS = ("style", "subject", "period")
+CURATED_TECHNIQUES = (
+    "technique:painting",
+    "technique:drawing",
+    "technique:print",
+    "technique:poster",
+)
+#: Lengths the cards have room for (two lines each in the app).
+CURATED_NAME = 40
+CURATED_DESCRIPTION = 70
+
+_curated_lock = threading.Lock()
+
+
+def curated_terms() -> list[Term]:
+    """The terms the curator may use."""
+    return [
+        t
+        for t in TERMS
+        if (t.kind in CURATED_KINDS and t.region != "east-asia" and not t.key.startswith("years:"))
+        or t.key in CURATED_TECHNIQUES
+    ]
+
+
+def _curated_state(library: Library) -> dict[str, Any]:
+    return dict(library.get_state(CURATED_KEY, {}) or {})
+
+
+def curated(library: Library) -> list[Theme]:
+    """The curator's cards now shown, in "Dziś dla Ciebie"."""
+    cards = _curated_state(library).get("cards") or []
+    themes = [replace(_theme_from(c["theme"]), group=WEEKLY) for c in cards]
+    _weekly.update({t.key: t for t in themes})
+    return themes
+
+
+def for_you(library: Library, day: date) -> list[Theme]:
+    """ "Dziś dla Ciebie" without the theme of the day (the app puts it
+    first): the artist of the week, the curator's cards, then as many of
+    the week's pairs of terms as the curator left room for."""
+    weekly = weekly_themes(library, day)
+    mine = curated(library)
+    artists = [t for t in weekly if t.key.startswith(ARTIST_PREFIX)]
+    mixes = [t for t in weekly if not t.key.startswith(ARTIST_PREFIX)]
+    return [*artists, *mine, *mixes[: max(0, WEEKLY_MIXES - len(mine))]]
+
+
+def curated_seen(library: Library, key: str) -> bool:
+    """Someone opened the curator's card ``key``: it is made again the
+    next night. Whether it was one."""
+    if not key.startswith(CURATED_PREFIX):
+        return False
+    with _curated_lock:
+        state = _curated_state(library)
+        cards = state.get("cards") or []
+        hit = next((c for c in cards if c["theme"]["key"] == key), None)
+        if hit is None or hit.get("seen"):
+            return hit is not None
+        hit["seen"] = True
+        library.set_state(CURATED_KEY, {**state, "cards": cards})
+    return True
+
+
+def curated_due(library: Library, day: date) -> int:
+    """How many of the curator's cards are to be made for ``day``: those
+    missing, opened, or a week old."""
+    cards = _curated_state(library).get("cards") or []
+    since = (day - timedelta(days=CURATED_DAYS)).isoformat()
+    kept = [c for c in cards if not c.get("seen") and c.get("made", "") > since]
+    return CURATED_CARDS - min(len(kept), CURATED_CARDS)
+
+
+def curated_history(library: Library) -> list[str]:
+    """Names of the curator's cards so far, the latest last."""
+    return list(_curated_state(library).get("history") or [])
+
+
+def put_curated(library: Library, made: list[Theme], day: date) -> list[Theme]:
+    """The new cards in place of those due (``curated_due``); the others
+    stay. Returns the cards now shown."""
+    with _curated_lock:
+        state = _curated_state(library)
+        since = (day - timedelta(days=CURATED_DAYS)).isoformat()
+        cards = [
+            c for c in state.get("cards") or [] if not c.get("seen") and c.get("made", "") > since
+        ]
+        room = CURATED_CARDS - len(cards)
+        new: list[dict[str, Any]] = [
+            {"theme": asdict(t), "made": day.isoformat(), "seen": False} for t in made[:room]
+        ]
+        cards = (cards + new)[:CURATED_CARDS]
+        history = [*(state.get("history") or []), *(t.name for t in made[:room])]
+        library.set_state(
+            CURATED_KEY, {**state, "cards": cards, "history": history[-CURATED_REPEAT:]}
+        )
+    if new:
+        log.info("curator: %s", ", ".join(t.name for t in made[:room]))
+    return curated(library)
+
+
+@dataclass(frozen=True)
+class Proposal:
+    """A card as the curator wrote it, before the server checks it."""
+
+    name: str
+    description: str
+    terms: tuple[str, ...] = ()
+    artists: tuple[str, ...] = ()
+
+
+def check_proposals(
+    library: Library, proposals: list[Proposal], artists: list[str], day: date
+) -> list[Theme]:
+    """The proposals that make good cards, in their order: only known terms
+    and the catalogue's own artists (``artists``, as it spells them), short
+    enough for the card, not a theme there is already or was lately, and
+    with at least ``WEEKLY_MIN`` works in the catalogue."""
+    allowed = {t.key for t in curated_terms()}
+    taken = {fold(t.name) for t in [*THEMES, *for_you(library, day), *curated(library)]}
+    taken |= {fold(name) for name in curated_history(library)}
+    made = {frozenset(t.terms) for t in [*THEMES, *for_you(library, day)] if not t.artists}
+    found: list[Theme] = []
+    for p in proposals:
+        name, description = " ".join(p.name.split()), " ".join(p.description.split())
+        terms = tuple(dict.fromkeys(t for t in p.terms if t in allowed))
+        named = tuple(
+            dict.fromkeys(a for wanted in p.artists for a in artists if artist_matches(a, [wanted]))
+        )
+        reason = ""
+        if not name or len(name) > CURATED_NAME or len(description) > CURATED_DESCRIPTION:
+            reason = "too long"
+        elif len(terms) < len(p.terms) or len(named) < len(p.artists):
+            reason = "unknown terms or artists"
+        elif not (len(terms) >= 2 or len(named) >= 3 or (terms and len(named) >= 2)):
+            reason = "too broad"
+        elif fold(name) in taken or (not named and frozenset(terms) in made):
+            reason = "made before"
+        if not reason:
+            theme = Theme(
+                f"{CURATED_PREFIX}{_slug(name)}",
+                name,
+                description,
+                WEEKLY,
+                artists=named,
+                terms=terms,
+                catalogue=True,
+            )
+            if library.query(theme.rules())[0] < WEEKLY_MIN:
+                reason = "too few works"
+        if reason:
+            log.info("curator: %r left out (%s)", p.name, reason)
+            continue
+        taken.add(fold(name))
+        found.append(theme)
+    return found
+
+
 # -- the week's colours ----------------------------------------------------------
 
 #: The colour cards of the week: {"week", "keys", "history"}.
@@ -1532,8 +1910,13 @@ def search_page(
     total, items = importer.search(source, query, limit=limit, page=round_)
     asked = [k for k in found.terms if k in OBJECT_CATEGORIES]
     if asked:  # "Sztuki inne": the theme's technique only
-        return [i for i in items if object_category(i) in asked and not set_aside(i, asked)], total
-    return [i for i in items if not set_aside(i)], total
+        kept = [i for i in items if object_category(i) in asked and not set_aside(i, asked)]
+    else:
+        kept = [i for i in items if not set_aside(i)]
+    if found.strict:
+        rules = found.rules()
+        kept = [i for i in kept if matches(i, rules)]
+    return kept, total
 
 
 def page_after(found: Theme, page: int, total: int, limit: int = 24) -> int | None:

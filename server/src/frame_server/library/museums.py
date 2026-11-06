@@ -470,7 +470,8 @@ class MetropolitanMuseum(Museum):
             classification=d.get("classification") or d.get("objectName") or "",
             styles=styles,
             subjects=[t["term"] for t in d.get("tags") or [] if t.get("term")],
-            culture=d.get("culture") or "",
+            # The Egyptian department leaves its works' culture out.
+            culture=d.get("culture") or self.cultures.get(d.get("department") or "", ""),
             credit=d.get("creditLine") or "",
             license="CC0 1.0",
             url=d.get("objectURL") or "",
@@ -481,6 +482,8 @@ class MetropolitanMuseum(Museum):
         )
 
     page_size = 24  # every result is one more request
+    #: A department's culture, for works that name none.
+    cultures: ClassVar[dict[str, str]] = {"Egyptian Art": "Egyptian"}
 
     def search(self, query: str, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
         return self._search({"q": query}, limit, page)
