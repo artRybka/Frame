@@ -313,6 +313,7 @@ struct CopiesSheet: View {
         case "wellcome": "Wellcome"
         case "courtauld": "Courtauld"
         case "louvre": "Luwr"
+        case "loc": "LoC"
         default: Names.source(key)
         }
     }

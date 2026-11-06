@@ -163,7 +163,7 @@ class Copies:
         self.likeness = sharper.likeness
         importer = sharper.importer
         #: The sources asked, and one source's results for a query.
-        self.sources: Callable[[], list[str]] = importer.sources
+        self.sources: Callable[[], list[str]] = importer.asked_sources
         self.search_in: Callable[[str, str, int], list[Item]] = lambda key, query, n: (
             importer.search(key, query, n, wait=LATE)[1]
         )

@@ -105,6 +105,7 @@ COLLECTIONS = frozenset(
         "wellcome",
         "courtauld",
         "louvre",
+        "loc",
     }
 )
 
