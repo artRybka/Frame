@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.111.12
+
+- Konfiguracja → Wyświetlanie dzieł: pod „Jaśniejsze dzieła” suwak
+  „Siła rozjaśnienia” (od 1,1× do 3×, domyślnie 1,6×).
+
 ## 1.111.11
 
 - Sztuczne podbicie HDR usunięte. Słoneczko na pełnym ekranie tylko

@@ -1712,6 +1712,7 @@ private extension UIFont {
 /// (`ArtGlow`).
 struct ViewerSection: View {
     @AppStorage(ArtGlow.key) private var glow = true
+    @AppStorage(ArtGlow.gainKey) private var gain = ArtGlow.defaultGain
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -1726,6 +1727,30 @@ struct ViewerSection: View {
                     }
                 }
                 .tint(Theme.ink)
+                if glow {
+                    Divider()
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text("Siła rozjaśnienia")
+                            Spacer()
+                            Text(ArtGlow.label(gain))
+                                .monospacedDigit()
+                                .foregroundStyle(Theme.inkSoft)
+                        }
+                        Slider(value: $gain, in: ArtGlow.gains, step: 0.1) {
+                            Text("Siła rozjaśnienia")
+                        } minimumValueLabel: {
+                            Text("Słabiej").font(.caption)
+                        } maximumValueLabel: {
+                            Text("Mocniej").font(.caption)
+                        }
+                        .tint(Theme.ink)
+                        .accessibilityValue(ArtGlow.label(gain))
+                        Text("Ile razy jaśniej od strony świeci dzieło. Powyżej możliwości ekranu iPhone przycina. Domyślnie 1,6×.")
+                            .font(.caption)
+                            .foregroundStyle(Theme.inkSoft)
+                    }
+                }
             }
         }
     }
