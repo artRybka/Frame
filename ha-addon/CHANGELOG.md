@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.104.4
+
+- Grupy w Szukaj chowają się też przy przesuwaniu wyników w górę, nie
+  tylko w dół.
+- Po puszczeniu palca grupy wracają po pół sekundy, a nie od razu.
+- Kiedy wyniki po mocnym pociągnięciu pędzą bardzo szybko, grupy zostają
+  schowane i wracają dopiero, gdy lista zwolni albo stanie. Tak samo
+  w edytorze playlist.
+
 ## 1.104.3
 
 - Pierścień wybranego „Żywe” w karcie Tonacja nie jest już ucięty w rogach.
