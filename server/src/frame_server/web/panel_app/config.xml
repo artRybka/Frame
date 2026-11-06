@@ -26,6 +26,15 @@
     <tizen:metadata key="http://samsung.com/tv/metadata/application/epaper.support" value="true"/>
     <!-- A 2560x1440 page, so pictures are shown 1:1 (without it 1920x1080, E16). -->
     <tizen:metadata key="http://tizen.org/metadata/app_ui_type/base_screen_resolution" value="always"/>
+    <!-- Test (PLAN 2.6r): every start of the app drew a launch screen first
+         (navy, a spinner or an icon) and the picture only after it, two
+         refreshes of the e-paper per change (camera, 2026-11-06). A launch
+         screen of our own, fully transparent, kept until window.screen.show()
+         (app.js reveal(), once the picture is on the page): the panel may
+         keep the old picture until then and refresh once. -->
+    <tizen:launch_screen ready_when="custom">
+        <tizen:ls_default background_image="blank.png" image="blank.png" image_border="0px stretch"/>
+    </tizen:launch_screen>
     <tizen:profile name="tv-samsung"/>
     <!-- background-support: with "disable" Tizen stops the page's JS whenever
          the launcher puts it in the background (around a sleep), and after a

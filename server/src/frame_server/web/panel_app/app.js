@@ -125,6 +125,20 @@
     if (!el || el.textContent === (text || "")) return;
     el.textContent = text || "";
     drawnAt = Date.now();
+    if (text) reveal();
+  }
+
+  // The package's launch screen (config.xml, ready_when "custom") covers the
+  // page until this: called once the page has something to show, so the
+  // panel draws the new picture without a launch screen before it (PLAN
+  // 2.6r). A no-op without a launch screen and in older packages.
+  var revealed = false;
+  function reveal() {
+    if (revealed) return;
+    revealed = true;
+    try {
+      if (window.screen && window.screen.show) window.screen.show();
+    } catch (e) {}
   }
 
   function report(event, data, done) {
@@ -511,6 +525,7 @@
           img.style.cssText = "position:fixed;left:0;top:0;width:" + w + "px;height:" + h + "px;display:block" +
             (exact ? ";image-rendering:pixelated" : "");
           old.parentNode.replaceChild(img, old);
+          reveal();
           drawnAt = Date.now();
           note("");
           shown = answer.file_id;

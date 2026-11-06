@@ -209,6 +209,10 @@ CERTIFICATES_WARN = timedelta(days=60)
 ICON = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNgYGAAAAAEAAH2FzhVAAAAAElFTkSuQmCC"
 )
+# The launch screen in config.xml: a fully transparent 1x1 PNG.
+BLANK = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAXpeqz8AAAAASUVORK5CYII="
+)
 # Unplugged, the panel sleeps at once without the Wi-Fi and without a word to
 # the app (E8, 2026-10-29): nothing but the button would wake it. So on the
 # charger the app keeps spare alarms (in the economy mode just the next
@@ -547,6 +551,7 @@ class PanelApp:
         )
         return {
             "app.js": app_code(),
+            "blank.png": BLANK,
             "config.js": where.encode(),
             "config.xml": config.encode(),
             "icon.png": ICON,

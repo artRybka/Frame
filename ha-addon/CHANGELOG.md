@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.105.0
+
+- Próba zmiany obrazu jednym odświeżeniem zamiast dwóch. Nowa paczka
+  aplikacji ramki ma własny, przezroczysty ekran startu, który znika
+  dopiero wtedy, gdy nowy obraz jest gotowy. Jeśli ramka go uwzględni,
+  nie narysuje już granatowego ekranu ładowania przed obrazem. Paczka
+  instaluje się po włączeniu ramki przyciskiem.
+
 ## 1.104.9
 
 - Dzieło wysłane na ramkę z aplikacji nie wraca już z harmonogramem
