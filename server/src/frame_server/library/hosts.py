@@ -83,6 +83,8 @@ PACE = {
     # (loc.gov/apis, "Working within limits"); pictures without rules.
     "www.loc.gov": 1.0,
     "tile.loc.gov": 0.25,
+    # No published rules; the site's own search, gently.
+    "www.getty.edu": 0.5,
 }
 #: The most requests under way at once to a host (or :func:`lane`), where
 #: its owners ask for fewer than the server's threads would send. Only

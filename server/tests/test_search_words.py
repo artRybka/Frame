@@ -138,7 +138,9 @@ def test_museums_are_asked_in_their_languages(
 ) -> None:
     asked: dict[str, str] = {}
 
-    def search(source: str, query: str, limit: int = 24, page: int = 1, wait: Any = None) -> Any:
+    def search(
+        source: str, query: str, limit: int = 24, page: int = 1, wait: Any = None, kind: str = "any"
+    ) -> Any:
         asked[source] = query
         return 0, []
 

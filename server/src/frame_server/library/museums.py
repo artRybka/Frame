@@ -174,6 +174,14 @@ class Museum(ABC):
     def fetch(self, source_id: str) -> Item | None:
         """One work by its id in the museum's collection."""
 
+    def search_kind(
+        self, query: str, kind: Kind, limit: int = 20, page: int = 1
+    ) -> tuple[int, list[Item]]:
+        """:meth:`search` when a search asks for one kind (Fotografia):
+        sources whose results don't say what each work is search that kind
+        alone (the Getty)."""
+        return self.search(query, limit, page)
+
     def discover(self, spec: Discovery, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
         """Works matching ``spec`` (in any order); returns (total, items).
 
@@ -1555,6 +1563,7 @@ class WikiArt(Museum):
 # Collections added later live in modules of their own (they build on the
 # classes above).
 from .courtauld import CourtauldGallery  # noqa: E402
+from .getty import GettyMuseum  # noqa: E402
 from .loc import LibraryOfCongress  # noqa: E402
 from .louvre import Louvre  # noqa: E402
 from .muza import NationalMuseumKrakow, NationalMuseumWarsaw  # noqa: E402
@@ -1581,6 +1590,7 @@ MUSEUMS: dict[str, type[Museum]] = {
         VictoriaAndAlbert,
         WellcomeCollection,
         CourtauldGallery,
+        GettyMuseum,
         Louvre,
         LibraryOfCongress,
         WikimediaCommons,
