@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.111.1
+
+- Sztuczne podbicie HDR dobiera się samo do każdego dzieła. W ciemnym
+  obrazie wydobywa jaśniejsze partie (twarz, światło świecy), w jasnym
+  podbija tylko same światła i delikatniej, a gdy duża część obrazu
+  świeciłaby naraz (niebo, jasne tło), łagodnieje. Barwy i przejścia
+  w światłach zostają, równy obraz bez wyraźnych świateł nie zmienia się.
+
 ## 1.111.0
 
 - „Użytek prywatny” w Konfiguracji znosi teraz ograniczenia licencji
