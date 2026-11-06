@@ -688,6 +688,7 @@ enum Names {
         case "wellcome": "Wellcome Collection"
         case "courtauld": "Courtauld Gallery"
         case "louvre": "Luwr"
+        case "loc": "Library of Congress"
         case "wikiart": "WikiArt"
         case "upload": "Własne"
         case "icloud": "Album iCloud"

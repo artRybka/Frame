@@ -846,7 +846,7 @@ class MuseumSearch:
         total = fitting = 0
         at: int | None = page
         # The words typed, in each museum's language ("gitara": "guitar").
-        named = keys or importer.sources()
+        named = keys or importer.asked_sources(self.spec.kind)
         typed = importer.typed(rules.query, named) if rules.query.strip() else {}
         while at is not None and left > 0:
             text = museum_text(rules, at)
@@ -937,7 +937,10 @@ async def search_museums(
     thumbnails have the colours."""
     search = museum_search(svc, q, artist, term, color, year_from, year_to, source, limit, skip)
     # With none left out, no keys still means every museum.
-    keys = search.asked(svc.importer.sources()) if search.skip else search.keys
+    # Sources of one kind only (the Library of Congress's photographs) just
+    # when that kind is asked for.
+    offered = svc.importer.asked_sources(search.spec.kind)
+    keys = search.asked(offered) if search.skip else search.keys
     if search.empty or (search.skip and not keys):
         return MuseumAnswer(source=ALL, total=0, items=[])
     total, items, failed, next_ = await run_in_threadpool(urgent_call(search.ask), svc, keys, page)
@@ -971,7 +974,7 @@ async def stream_museums(
     pages of each museum. A work comes once, from whichever museum answers
     first, unless a more reliable one brings it later (``replaces``)."""
     search = museum_search(svc, q, artist, term, color, year_from, year_to, source, limit, skip)
-    keys = search.asked(svc.importer.sources())
+    keys = search.asked(svc.importer.asked_sources(search.spec.kind))
     copies = len(search.keys) != 1
     shown = shown_in(search.rules, page)
     if page == 1:

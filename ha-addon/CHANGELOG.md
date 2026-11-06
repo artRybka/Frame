@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.106.0
+## 1.107.0
 
 - Nowy wygląd karty Szukaj → Technika: zamiast ośmiu kapsułek każda
   technika ma okrągłą miniaturę dzieła i nazwę pod spodem, po cztery
@@ -9,6 +9,34 @@
   i miniatury, Fotografia, Rzeźba oraz Ceramika i rzemiosło. Wybrana
   technika ma otok jak kolory w karcie Kolor, a przycisk „Technika” nad
   polem wyszukiwania pokazuje małe kółka z dziełami wybranych technik.
+
+## 1.106.0
+
+- Nowe źródło zdjęć: Library of Congress. Pytamy je tylko wtedy, gdy w
+  Szukaj (albo w playliście) wybierzesz Technika → Fotografia, więc nie
+  spowalnia innych wyszukiwań i nie zapycha katalogu. Bez wpisanych słów
+  losuje ze zbiorów znanych fotografów: kolorowe i czarno-białe zdjęcia
+  FSA/OWI (Dorothea Lange, Walker Evans, Jack Delano), kolorowa Rosja
+  Prokudina-Gorskiego, fotochromy z lat 1890–1910, szklane negatywy z wojny
+  secesyjnej, Frances Benjamin Johnston i Lewis Hine. Wpisane słowa szukają
+  we wszystkich jego zdjęciach. Bierzemy tylko zdjęcia bez ograniczeń
+  praw („No known restrictions”), w pełnej rozdzielczości skanu, do
+  2560 px. Z włączonym „Użytkiem prywatnym” także zdjęcia, których praw
+  biblioteka nie sprawdziła albo które mogą być chronione (np. portrety
+  Carla Van Vechtena, Edward S. Curtis), jeśli pokazuje je poza swoim
+  budynkiem w dużym rozmiarze.
+
+## 1.105.1
+
+- Szukaj → Technika → „Rękopisy i miniatury” znowu coś znajduje. Katalog
+  nie trzyma rękopisów, a muzea nie były o nie pytane, więc wynik był
+  pusty. Teraz pytamy te, które umieją je wybrać: Met (rękopisy ze
+  wszystkich działów, m.in. perskie i indyjskie), Rijksmuseum, V&A
+  (wycięte karty i miniatury z kodeksów), Cleveland, Art Institute of
+  Chicago i Smithsonian. Znalezione rękopisy nadal nie trafiają do
+  katalogu ani do Propozycji.
+- Muzea, które nie mają danej techniki (np. Yale czy Paris Musées
+  rękopisów), nie podsuwają w jej miejsce malarstwa.
 
 ## 1.105.0
 

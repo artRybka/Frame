@@ -201,6 +201,11 @@ class Importer:
         """Keys of the sources on offer now."""
         return list(available(self.access()))
 
+    def asked_sources(self, kind: Kind = "any") -> list[str]:
+        """The sources on offer that a search for ``kind`` asks: those of one
+        kind only (``Museum.only``) just for that kind."""
+        return [k for k in self.sources() if MUSEUMS[k].only in (None, kind)]
+
     def remember(self, items: Iterable[Item]) -> None:
         with self._remote_lock:
             for item in items:
@@ -479,7 +484,7 @@ class Importer:
     def _from_all(
         self, ask: Callable[[str], tuple[int, list[Item]]], keys: list[str] | None = None
     ) -> tuple[int, list[Item], list[str]]:
-        keys = keys or self.sources()
+        keys = keys or self.asked_sources()
         with ThreadPoolExecutor(len(keys)) as pool:
             futures = {k: pool.submit(as_asked(ask), k) for k in keys}
         found: list[list[Item]] = []
@@ -546,7 +551,7 @@ class Importer:
         self, source: str, query: str, limit: int, job: Job | None = None
     ) -> list[Item]:
         if source == ALL:
-            keys = self.sources()
+            keys = self.asked_sources()
             share = -(-limit // len(keys))
             found = []
             for key in keys:
@@ -607,9 +612,11 @@ class Importer:
         pick, from every museum the rules allow."""
         rng = rng or random.Random()
         offered = self.sources()
-        # Test-only sources just when the playlist names them.
+        # Test-only sources just when the playlist names them, sources of
+        # one kind only when it asks for that kind.
+        asked = self.asked_sources(museum_kind(rules.terms))
         sources = [s for s in rules.sources if s in offered] or [
-            s for s in offered if not MUSEUMS[s].testing
+            s for s in asked if not MUSEUMS[s].testing
         ]
         sources = [s for s in sources if s not in rules.exclude_sources]
         # Colours and suitability are only known once the thumbnail is in.

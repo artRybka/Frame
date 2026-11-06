@@ -44,6 +44,7 @@ class Smithsonian(Museum):
         "poster": "Posters",
         "photograph": "Photographs",
         "sculpture": "Sculpture",
+        "manuscript": "Manuscripts",
     }
     units: ClassVar[dict[str, str]] = {
         "SAAM": "Smithsonian American Art Museum",
@@ -144,7 +145,7 @@ class Smithsonian(Museum):
         return self._get(words, limit, page)
 
     def discover(self, spec: Discovery, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
-        if spec.highlight or spec.kind == "decorative":
+        if spec.highlight or (spec.kind != "any" and spec.kind not in self.kinds):
             return 0, []
         words = [f'object_type:"{self.kinds.get(spec.kind, "Paintings")}"']
         if spec.style.strip():

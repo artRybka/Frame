@@ -557,7 +557,7 @@ struct TermFacetPanel: View {
 
     // MARK: Techniques
 
-    /// The Technika sheet (PLAN 3.3zzz2): a work in a circle for each
+    /// The Technika sheet (PLAN 3.3zzz4): a work in a circle for each
     /// technique, four to a row; first the pictures, then the other things
     /// (manuscripts, photographs, sculpture, crafts), which the search leaves
     /// out unless picked. A technique the app has no work for is a chip.
