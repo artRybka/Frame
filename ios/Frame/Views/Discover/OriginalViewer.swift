@@ -3,10 +3,19 @@ import UIKit
 
 /// The original on a dark screen of its own, opened filling the screen:
 /// pinch out or double-tap to see it whole, pinch or double-tap to look
-/// closer, drag to look around, tap to hide the caption.
+/// closer, drag to look around, tap to hide the caption. The sun button
+/// brightens the screen to full while the viewer is open (remembered).
 struct OriginalViewer: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
+    @AppStorage(ScreenBoost.key) private var brighten = false
+    @AppStorage(ScreenBoost.hdrKey) private var hdrAllowed = false
+    /// The picture redrawn brighter than white (`HDRBoost`) while the sun
+    /// is on and Konfiguracja allows it.
+    @State private var boosted: UIImage?
+
+    private var hdr: Bool { brighten && hdrAllowed }
     let item: Item
     @State private var image: UIImage?
     @State private var failed = false
@@ -16,7 +25,7 @@ struct OriginalViewer: View {
         ZStack {
             Color.black.ignoresSafeArea()
             if let image {
-                ZoomableImage(image: image) {
+                ZoomableImage(image: hdr ? boosted ?? image : image, highDynamicRange: hdr && boosted != nil) {
                     withAnimation(.easeInOut(duration: 0.2)) { chrome.toggle() }
                 }
                 .ignoresSafeArea()
@@ -30,18 +39,32 @@ struct OriginalViewer: View {
         }
         .overlay(alignment: .topTrailing) {
             if chrome {
-                Button {
-                    dismiss()
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.headline)
-                        .foregroundStyle(.white)
-                        .frame(width: 40, height: 40)
-                        .background(.black.opacity(0.5), in: Circle())
+                HStack(spacing: 10) {
+                    Button {
+                        brighten.toggle()
+                    } label: {
+                        Image(systemName: brighten ? "sun.max.fill" : "sun.max")
+                            .font(.headline)
+                            .foregroundStyle(brighten ? .yellow : .white)
+                            .frame(width: 40, height: 40)
+                            .background(.black.opacity(0.5), in: Circle())
+                            .contentTransition(.symbolEffect(.replace))
+                    }
+                    .accessibilityLabel("Rozjaśnij ekran")
+                    .accessibilityAddTraits(brighten ? .isSelected : [])
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.headline)
+                            .foregroundStyle(.white)
+                            .frame(width: 40, height: 40)
+                            .background(.black.opacity(0.5), in: Circle())
+                    }
+                    .accessibilityLabel("Zamknij")
                 }
                 .padding(.trailing, 16)
                 .padding(.top, 8)
-                .accessibilityLabel("Zamknij")
                 .transition(.opacity)
             }
         }
@@ -49,7 +72,34 @@ struct OriginalViewer: View {
             if chrome { caption.transition(.opacity) }
         }
         .statusBarHidden(!chrome)
+        .sensoryFeedback(.selection, trigger: brighten)
         .task(id: item.id) { await load() }
+        .task(id: BoostJob(image: image.map(ObjectIdentifier.init), on: hdr)) {
+            guard hdr, let image else {
+                boosted = nil
+                return
+            }
+            // The last boosted copy stays up until the sharper one is ready.
+            if let lifted = await HDRBoost.render(image, headroom: ScreenBoost.shared.headroom),
+               !Task.isCancelled {
+                boosted = lifted
+            }
+        }
+        .onAppear { if brighten { ScreenBoost.shared.raise() } }
+        .onDisappear { ScreenBoost.shared.restore() }
+        .onChange(of: brighten) { _, on in
+            if on { ScreenBoost.shared.raise() } else { ScreenBoost.shared.restore() }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            // iOS gives the owner's brightness back in the background.
+            if phase == .background { ScreenBoost.shared.forget() }
+            if phase == .active, brighten { ScreenBoost.shared.raise() }
+        }
+    }
+
+    private struct BoostJob: Equatable {
+        let image: ObjectIdentifier?
+        let on: Bool
     }
 
     private var caption: some View {
@@ -100,13 +150,15 @@ struct OriginalViewer: View {
 /// see it whole and to zoom back in on a spot, single tap for `onTap`.
 struct ZoomableImage: UIViewRepresentable {
     let image: UIImage
+    /// Lets an HDR picture light above the screen's white (`HDRBoost`).
+    var highDynamicRange = false
     var onTap: () -> Void = {}
 
     func makeUIView(context: Context) -> ZoomScrollView { ZoomScrollView() }
 
     func updateUIView(_ view: ZoomScrollView, context: Context) {
         view.onTap = onTap
-        view.show(image)
+        view.show(image, highDynamicRange: highDynamicRange)
     }
 }
 
@@ -144,7 +196,8 @@ final class ZoomScrollView: UIScrollView, UIScrollViewDelegate {
 
     /// A sharper copy of the same picture keeps the zoom and place; another
     /// shape is fitted afresh.
-    func show(_ image: UIImage) {
+    func show(_ image: UIImage, highDynamicRange: Bool = false) {
+        imageView.preferredImageDynamicRange = highDynamicRange ? .high : .standard
         guard imageView.image !== image else { return }
         let sameShape = imageView.image.map {
             abs($0.size.width / max($0.size.height, 1) - image.size.width / max(image.size.height, 1)) < 0.01
