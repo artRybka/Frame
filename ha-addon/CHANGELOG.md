@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.110.1
+
+- Dzieło na cały ekran ma obok krzyżyka słoneczko: rozjaśnia ekran do
+  maksimum na czas oglądania, a po zamknięciu wraca Twoja jasność.
+  Wybór jest zapamiętany.
+- Konfiguracja → Pełny ekran → „Sztuczne „podbicie” w HDR”: słoneczko
+  dodatkowo sprawia, że najjaśniejsze miejsca obrazu świecą mocniej niż
+  biel ekranu (na telefonach z HDR, poza trybem niskiego zużycia energii).
+  Ciemne i średnie tony zostają. Domyślnie wyłączone.
+
 ## 1.110.0
 
 - Nowa grupa „Sztuki inne” w Odkrywaj, zaraz po „Grafika i plakat”:
