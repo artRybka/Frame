@@ -278,11 +278,14 @@ struct ItemDetailView: View {
         let peek = ItemPeeks.tiles[itemID]
         return VStack(alignment: .leading, spacing: 24) {
             VStack(spacing: 12) {
-                ArtImage(
-                    ref: peek?.thumb ?? .thumb(itemID), placeholder: peek?.summary.placeholderColor ?? Theme.mat,
-                    maxPixel: 700, contentMode: .fit, priority: .high
-                )
+                Color.clear
                     .aspectRatio(CGFloat(peek?.summary.aspectRatio ?? 4.0 / 3.0), contentMode: .fit)
+                    .overlay {
+                        ArtImage(
+                            ref: peek?.thumb ?? .thumb(itemID), placeholder: peek?.summary.placeholderColor ?? Theme.mat,
+                            maxPixel: 700, contentMode: .fit, priority: .high
+                        )
+                    }
                     .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                     .shadow(color: .black.opacity(0.22), radius: 16, y: 12)
                     .frame(maxHeight: 460)
@@ -731,17 +734,26 @@ struct ItemDetailView: View {
                     // original until it is here.
                     // A sharper copy, found while the card is open, fades in
                     // over the museum's own.
-                    ArtImage(
-                        ref: item.originalRef, fallback: .thumb(item.id), placeholder: .clear,
-                        maxPixel: 1800, contentMode: .fit, priority: .high, crossfade: true
-                    )
-                        .background {
-                            ArtImage(
-                                ref: ItemPeeks.tiles[item.id]?.thumb ?? .thumb(item.id),
-                                placeholder: item.placeholderColor, maxPixel: 700, contentMode: .fit, priority: .high
-                            )
-                        }
+                    // The box sets the size, the picture only fills it: an
+                    // `.aspectRatio` on the picture itself takes the size the
+                    // picture reports, so a guessed shape (4:3 for a museum
+                    // that gives no size) shrank a portrait leaf to a stamp.
+                    Color.clear
                         .aspectRatio(CGFloat(aspect(item)), contentMode: .fit)
+                        .overlay {
+                            ArtImage(
+                                ref: item.originalRef, fallback: .thumb(item.id), placeholder: .clear,
+                                maxPixel: 1800, contentMode: .fit, priority: .high, crossfade: true
+                            )
+                                .background {
+                                    ArtImage(
+                                        ref: ItemPeeks.tiles[item.id]?.thumb ?? .thumb(item.id),
+                                        placeholder: item.placeholderColor, maxPixel: 700,
+                                        contentMode: .fit, priority: .high
+                                    )
+                                }
+                        }
+                        .contentShape(Rectangle())
                         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                         // The whole screen grows out of it ("pop").
                         .matchedTransitionSource(id: item.id, in: zoomSpace) {
@@ -830,9 +842,14 @@ struct ItemDetailView: View {
             : "Podgląd w oryginalnych kolorach. Kolory dopasowuje dopiero ekran."
     }
 
+    /// The picture's shape: the one shown (a sharper copy's or the
+    /// source's as downloaded), the museum's size, else the tile's, measured
+    /// on its thumbnail by the server when the museum gives no size (V&A):
+    /// without it such a work would come as landscape.
     private func aspect(_ item: Item) -> Double {
-        guard let w = item.width, let h = item.height, w > 0, h > 0 else { return 4 / 3 }
-        return Double(w) / Double(h)
+        if let size = pictureSize, size.0 > 0, size.1 > 0 { return Double(size.0) / Double(size.1) }
+        if let w = item.width, let h = item.height, w > 0, h > 0 { return Double(w) / Double(h) }
+        return ItemPeeks.tiles[item.id]?.summary.aspectRatio ?? 4 / 3
     }
 
     private func titleBlock(_ item: Item) -> some View {
