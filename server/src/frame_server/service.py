@@ -36,7 +36,7 @@ from .later import LaterWorks
 from .library import ImageCache, Importer, Library, courtauld
 from .library.commons import repair_library
 from .library.loc import loc_mirrors
-from .library.museums import Access, europeana_mirrors
+from .library.museums import PRIVATE_LICENCE, TEST_LICENCE, Access, WikiArt, europeana_mirrors
 from .library.museums import client as museum_client
 from .library.wikidata import PROPERTIES, CommonsCopies
 from .night import NightQueue
@@ -66,6 +66,9 @@ WAKE_SOON = timedelta(minutes=3)
 PROGRESS_KEY = "progress_expected"
 #: Set once the Courtauld's white pictures kept before 1.100.7 are removed.
 COURTAULD_WHITE_KEY = "courtauld_white_removed"
+#: Set once the works of the test switches (WikiArt, "Bez limitu 70 lat")
+#: carry the licences of "Użytek prywatny" (1.111.0).
+TEST_LICENCES_KEY = "test_licences_relabelled"
 NO_CERTIFICATES = (
     "Ramka nie ma aplikacji Frame: wgraj certyfikaty Samsunga w Konfiguracji → Aplikacja ramki."
 )
@@ -78,6 +81,24 @@ class PushOutcome:
     fetched: bool
     content_url: str
     message: str = ""
+
+
+def relabel_test_licences(library: Library) -> int:
+    """Works let in by the test switches "WikiArt" and "Bez limitu 70 lat",
+    folded into "Użytek prywatny" in 1.111.0, carry its licences; returns
+    how many changed."""
+    _, items = library.query(include_excluded=True)
+    moved = 0
+    for item in items:
+        if item.source == "wikiart" and item.license == WikiArt.test_licence:
+            licence = WikiArt.licence
+        elif item.source == "europeana" and item.license.startswith(TEST_LICENCE):
+            licence = PRIVATE_LICENCE + item.license.removeprefix(TEST_LICENCE)
+        else:
+            continue
+        library.upsert(item.model_copy(update={"license": licence}))
+        moved += 1
+    return moved
 
 
 class Panel:
@@ -189,6 +210,10 @@ class FrameService:
             if white := courtauld.forget_white([self.images.thumbs, self.images.images]):
                 log.info("removed %d white Courtauld pictures", white)
             self.library.set_state(COURTAULD_WHITE_KEY, True)
+        if not self.library.get_state(TEST_LICENCES_KEY):
+            if moved := relabel_test_licences(self.library):
+                log.info("%d works of the test switches now under private use", moved)
+            self.library.set_state(TEST_LICENCES_KEY, True)
         # The museums' pictures as Commons keeps them, when a museum's image
         # server turns us away (the AIC's IIIF behind a Cloudflare challenge).
         copies = CommonsCopies(lambda: self.images.http())
@@ -310,8 +335,6 @@ class FrameService:
             wikiart = (access, secret)
         return Access(
             private_use=chosen.private_use,
-            wikiart=chosen.wikiart,
-            ignore_term=chosen.ignore_term,
             europeana_key=keys.get("europeana") or config.europeana_key,
             openverse_app=app,
             smithsonian_key=keys.get("si") or "",

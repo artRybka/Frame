@@ -1770,14 +1770,6 @@ struct SourcesSection: View {
         Binding(get: { settings.privateUse ?? false }, set: { on in save { $0.privateUse = on } })
     }
 
-    private var wikiart: Binding<Bool> {
-        Binding(get: { settings.wikiart ?? false }, set: { on in save { $0.wikiart = on } })
-    }
-
-    private var ignoreTerm: Binding<Bool> {
-        Binding(get: { settings.ignoreTerm ?? false }, set: { on in save { $0.ignoreTerm = on } })
-    }
-
     private func save(_ change: (inout FrameSettings) -> Void) {
         var new = settings
         change(&new)
@@ -1788,7 +1780,7 @@ struct SourcesSection: View {
         VStack(alignment: .leading, spacing: 16) {
             SectionHeader(title: "Źródła dzieł")
             Card {
-                Text("Muzea, Wikimedia Commons, Europeana i Openverse dają dzieła wolne do pokazywania: domenę publiczną (w UE 70 lat po śmierci twórcy), a przy użytku prywatnym także licencje Creative Commons i prace chronione z muzeów, które je udostępniają.")
+                Text("Muzea, Wikimedia Commons, Europeana i Openverse dają dzieła wolne do pokazywania: domenę publiczną (w UE 70 lat po śmierci twórcy). Przy użytku prywatnym także licencje Creative Commons, prace wciąż chronione, które muzea same udostępniają, i WikiArt.")
                     .font(.caption)
                     .foregroundStyle(Theme.inkSoft)
                 Divider()
@@ -1797,7 +1789,7 @@ struct SourcesSection: View {
                         Text("Użytek prywatny")
                         Text(
                             privateUse.wrappedValue
-                                ? "Z Wikimedia Commons, Europeany i Openverse także dzieła na wolnych licencjach (np. CC BY-SA), z podanym autorem. Muzea Narodowe w Warszawie i Krakowie, Rijksmuseum, SMK i V&A także prace wciąż chronione prawem autorskim, tylko do oglądania w domu."
+                                ? "Z Wikimedia Commons i Openverse także dzieła na wolnych licencjach (np. CC BY-SA), z podanym autorem. Muzea Narodowe w Warszawie i Krakowie, Rijksmuseum, SMK, Europeana, Getty, Luwr i inne także prace wciąż chronione prawem autorskim, a WikiArt także sztukę współczesną. Tylko do oglądania w domu."
                                 : "Tylko dzieła w domenie publicznej (CC0). Opisy w oryginale, po angielsku."
                         )
                         .font(.caption)
@@ -1805,28 +1797,6 @@ struct SourcesSection: View {
                     }
                 }
                 .tint(Theme.ink)
-                Divider()
-                Toggle(isOn: wikiart) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("WikiArt (tylko testy)")
-                        Text("Wyłącznie do testów panelu na nowszej sztuce. WikiArt pokazuje dzieła chronione prawem autorskim bez licencji, więc nie trafiają one do Propozycji, a po wyłączeniu przełącznika znikają z biblioteki.")
-                            .font(.caption)
-                            .foregroundStyle(Theme.inkSoft)
-                    }
-                }
-                .tint(Theme.ink)
-                if settings.ignoreTerm != nil {
-                    Divider()
-                    Toggle(isOn: ignoreTerm) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Bez limitu 70 lat (tylko testy)")
-                            Text("Wyłącznie do testów, jak aplikacja będzie działać za kilka lat. Europeana daje wtedy także dzieła twórców zmarłych mniej niż 70 lat temu, wciąż chronione prawem autorskim. Mają w opisie „Tylko do testów” i rok, od którego będą wolne, a po wyłączeniu przełącznika znikają z biblioteki.")
-                                .font(.caption)
-                                .foregroundStyle(ignoreTerm.wrappedValue ? Theme.warn : Theme.inkSoft)
-                        }
-                    }
-                    .tint(Theme.ink)
-                }
                 ForEach(model.sourceKeys) { source in
                     Divider()
                     SourceKeyRow(source: source)

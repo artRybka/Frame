@@ -62,12 +62,13 @@ ALL = "all"
 TASTE_SOURCES = (
     *("aic", "cma", "met", "rijks", "europeana", "smk"),
     *("nga", "mnw", "mnk", "yale", "si", "wellcome", "courtauld", "louvre", "getty"),
+    "wikiart",
 )
 #: Museums that draw random paintings for variety (those on offer). Paris
 #: Musées searches titles only, so it is not asked for artists. The Wellcome
 #: Collection's paintings are often about medicine (operations, diseases),
 #: so it is asked for artists and themes but not for random paintings.
-DRAW_SOURCES = (*(s for s in TASTE_SOURCES if s != "wellcome"), "paris")
+DRAW_SOURCES = (*(s for s in TASTE_SOURCES if s not in ("wellcome", "wikiart")), "paris")
 #: Museums that can be asked for their most important works.
 HIGHLIGHT_SOURCES = ("met", "cma", "mnw", "mnk")
 #: How long a search waits for typed words to be translated (seconds); an
@@ -678,12 +679,9 @@ class Importer:
         pick, from every museum the rules allow."""
         rng = rng or random.Random()
         offered = self.sources()
-        # Test-only sources just when the playlist names them, sources of
-        # one kind only when it asks for that kind.
-        asked = self.asked_sources(museum_kind(rules.terms))
-        sources = [s for s in rules.sources if s in offered] or [
-            s for s in asked if not MUSEUMS[s].testing
-        ]
+        # Sources of one kind only when it asks for that kind.
+        named = [s for s in rules.sources if s in offered]
+        sources = named or self.asked_sources(museum_kind(rules.terms))
         sources = [s for s in sources if s not in rules.exclude_sources]
         # Colours and suitability are only known once the thumbnail is in.
         cheap = rules.model_copy(update={"colors": [], "min_suitability": None})
@@ -704,6 +702,7 @@ class Importer:
                 texts = [*rules.styles, *rules.subjects, *museum_queries(rules.terms)] or [""]
                 year_from, year_to = span(rules)
                 kind = museum_kind(rules.terms)
+                # Sources that cannot filter (WikiArt) just when named.
                 streams = [
                     m.random_draw(
                         Discovery(
@@ -717,6 +716,7 @@ class Importer:
                     )
                     for text in texts
                     for m in museums
+                    if m.draws or named
                 ]
             rng.shuffle(streams)
             self._take(
@@ -792,7 +792,7 @@ class Importer:
         technique are taken."""
         rng = rng or random.Random()
         kind = TECHNIQUE_KINDS[category]
-        offered = [s for s in self.asked_sources(kind) if not MUSEUMS[s].testing]
+        offered = [s for s in self.asked_sources(kind) if MUSEUMS[s].draws]
         with self.http() as http:
 
             def source(key: str) -> Museum:

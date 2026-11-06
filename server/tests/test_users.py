@@ -143,7 +143,11 @@ def test_a_member_changes_the_schedule_not_the_sources(tmp_path: Path) -> None:
         saved = client.put("/api/settings", json=settings, headers=member)
         assert saved.status_code == 200, saved.text
         assert saved.json()["change_times"] == ["08:00"]
-        for field, value in [("name", "Ramka Pauliny"), ("wikiart", True), ("private_use", True)]:
+        for field, value in [
+            ("name", "Ramka Pauliny"),
+            ("timezone", "Europe/London"),
+            ("private_use", True),
+        ]:
             changed = {**saved.json(), field: value}
             assert client.put("/api/settings", json=changed, headers=member).status_code == 403
         assert (

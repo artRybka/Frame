@@ -1347,15 +1347,10 @@ struct FrameSettings: Codable, Hashable, Sendable {
     var photo: Presentation
     var timezone: String
     var statusPollMinutes: Int
-    /// Only seen at home: also accept freely licensed, not public-domain works.
+    /// Only seen at home: also freely licensed works, works still in
+    /// copyright that their collections publish, and WikiArt. (The test
+    /// switches WikiArt and "Bez limitu 70 lat" went into it in 1.111.0.)
     var privateUse: Bool? = nil
-    /// WikiArt as a source, only to test the panel; its works leave the
-    /// library when switched off.
-    var wikiart: Bool? = nil
-    /// Only to test the app as it will be in some years: Europeana also gives
-    /// works whose authors died less than 70 years ago; they leave the
-    /// library when switched off. nil: a server before it.
-    var ignoreTerm: Bool? = nil
     /// The frame's name in the app; nil: the name the panel reports.
     var name: String? = nil
     /// "online" or "economy" ("Oszczędny": on battery the frame sleeps with
@@ -1415,8 +1410,6 @@ extension FrameSettings {
         follow(\.timezone)
         follow(\.statusPollMinutes)
         follow(\.privateUse)
-        follow(\.wikiart)
-        follow(\.ignoreTerm)
         follow(\.name)
         follow(\.powerMode)
         follow(\.checkEveryHours)
@@ -1429,8 +1422,7 @@ extension FrameSettings {
 extension FrameSettings {
     private enum CodingKeys: String, CodingKey {
         case playlistId, changeTimes, changeEveryDays, quietStart, shuffle, avoidRepeatDays
-        case orientation, rotation, art, photo, timezone, statusPollMinutes, privateUse, wikiart, name
-        case ignoreTerm
+        case orientation, rotation, art, photo, timezone, statusPollMinutes, privateUse, name
         case powerMode, checkEveryHours, checkQuietStart, checkQuietEnd
         case quietEnd  // older servers: decoded only
     }
@@ -1452,8 +1444,6 @@ extension FrameSettings {
         timezone = try c.decode(String.self, forKey: .timezone)
         statusPollMinutes = try c.decode(Int.self, forKey: .statusPollMinutes)
         privateUse = try c.decodeIfPresent(Bool.self, forKey: .privateUse)
-        wikiart = try c.decodeIfPresent(Bool.self, forKey: .wikiart)
-        ignoreTerm = try c.decodeIfPresent(Bool.self, forKey: .ignoreTerm)
         name = try c.decodeIfPresent(String.self, forKey: .name)
         powerMode = try c.decodeIfPresent(String.self, forKey: .powerMode)
         checkEveryHours = try c.decodeIfPresent(Int.self, forKey: .checkEveryHours)
@@ -1476,8 +1466,6 @@ extension FrameSettings {
         try c.encode(timezone, forKey: .timezone)
         try c.encode(statusPollMinutes, forKey: .statusPollMinutes)
         try c.encodeIfPresent(privateUse, forKey: .privateUse)
-        try c.encodeIfPresent(wikiart, forKey: .wikiart)
-        try c.encodeIfPresent(ignoreTerm, forKey: .ignoreTerm)
         try c.encodeIfPresent(name, forKey: .name)
         try c.encodeIfPresent(powerMode, forKey: .powerMode)
         try c.encodeIfPresent(checkEveryHours, forKey: .checkEveryHours)
