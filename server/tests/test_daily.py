@@ -1243,3 +1243,57 @@ def test_the_owner_has_the_details_of_an_older_page_checked(tmp_path: Any) -> No
         assert not job.wanted(item)  # done once
         work = client.get("/api/study/met:1").json()["work"]
         assert work["details_pending"] is False and len(work["details"]) == len(essay.details)
+
+
+def test_same_time_shows_other_cultures(
+    offline: FrameService, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A European's row has works from other cultural circles (Mateusz
+    2026-11-06): nearest in time first, looked for further when there are
+    none so near, from different circles first, where the row is seen."""
+    monkeypatch.setattr(daily_module, "SAME_TIME", 5)
+    milkmaid = _add(
+        offline, "met:1", title="The Milkmaid", artist="Johannes Vermeer",
+        artist_bio="Dutch, Delft 1632–1675 Delft", year=1658,
+    )  # fmt: skip
+    for n, (artist, bio, year) in enumerate(
+        [
+            ("Rembrandt", "Dutch, 1606–1669", 1658),
+            ("Velázquez", "Spanish, 1599–1660", 1656),
+            ("Poussin", "French, 1594–1665", 1660),
+            ("Claude", "French, 1600–1682", 1657),
+            ("Ter Borch", "Dutch, 1617–1681", 1659),
+            ("Ruisdael", "Dutch, 1628–1682", 1661),
+        ]
+    ):
+        _add(offline, f"e:{n}", title=f"West {n}", artist=artist, artist_bio=bio, year=year)
+    _add(
+        offline, "a:1", title="Hawk", artist="Kano Tan'yū", culture="Japan", year=1675,
+    )  # fmt: skip
+    _add(
+        offline, "a:2", title="Lotus", artist="Wang Shimin", artist_bio="Chinese, 1592–1680",
+        year=1670,
+    )  # fmt: skip
+    _add(
+        offline, "a:3", title="Shah", artist="Hashim", culture="India (Deccan)", year=1678,
+    )  # fmt: skip
+    _add(
+        offline,
+        "a:4",
+        title="Plum",
+        artist="Ogata Kōrin",
+        artist_bio="Japanese, 1658–1716",
+        year=1700,
+    )  # fmt: skip  (too far apart)
+    _add(
+        offline, "j:1", title="Bridge", artist="Someone", styles=["Japonisme"], year=1658,
+    )  # fmt: skip
+    picked = offline.daily.same_time(milkmaid)
+    ids = [w.id for w in picked]
+    assert len(ids) == 5
+    assert "a:4" not in ids
+    # Two from other circles, second and fifth: East Asia's nearer one
+    # (1670 or 1675), then India rather than the other East Asian.
+    assert ids[1] in {"a:1", "a:2"} and ids[4] == "a:3"
+    assert "j:1" not in ids[1:2]  # Japonisme is a European's
+    assert offline.daily.same_time(milkmaid) == picked  # the same each time

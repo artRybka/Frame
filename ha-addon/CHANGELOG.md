@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.105.0
+
+- „Inni w tym samym czasie” w Studium dzieła pokazuje też dzieła z innych
+  kręgów kulturowych: przy Europejczyku np. coś z Japonii, Chin, Indii
+  czy Persji. Takie dzieła są dwa z dziesięciu, z dwóch różnych kręgów,
+  i drugie w rzędzie widać od razu, bez przewijania. Gdy w katalogu nie
+  ma nic z tych samych lat, szukamy do 25 lat obok (rok jest pod
+  miniaturą).
+
 ## 1.104.9
 
 - Dzieło wysłane na ramkę z aplikacji nie wraca już z harmonogramem
