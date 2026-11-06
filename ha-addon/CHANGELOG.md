@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.107.1
+
+- Karta dzieła z muzeum, które nie podaje wymiarów zdjęcia (np. V&A,
+  rękopisy i miniatury), nie zmniejsza już obrazu po sekundzie do małego
+  znaczka na środku. Karta bierze kształt obrazu z kafelka, z którego ją
+  otwarto, albo z pobranego zdjęcia, a gdyby go jeszcze nie znała, obraz
+  wypełnia całe dostępne miejsce w swoich proporcjach.
+
 ## 1.107.0
 
 - Nowy wygląd karty Szukaj → Technika: zamiast ośmiu kapsułek każda
