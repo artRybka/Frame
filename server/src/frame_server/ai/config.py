@@ -32,6 +32,8 @@ class AiConfig(BaseModel):
     daily: bool = True
     #: Polish words typed in Szukaj translated for the museums abroad (Haiku).
     search_words: bool = True
+    #: Discover's curator: two cards of "Dziś dla Ciebie" (Opus, Batch API, nightly).
+    curator: bool = True
     #: Nothing more is asked once this month's cost reaches it.
     monthly_limit_usd: float = Field(5.0, ge=0, le=1000)
 
@@ -44,6 +46,7 @@ class AiConfigUpdate(BaseModel):
     keywords_photos: bool | None = None
     daily: bool | None = None
     search_words: bool | None = None
+    curator: bool | None = None
     monthly_limit_usd: float | None = Field(None, ge=0, le=1000)
 
 
@@ -91,6 +94,8 @@ class AiConfigStore:
             return config.daily
         if kind == "search_words":
             return config.search_words
+        if kind == "curator":
+            return config.curator
         return True
 
     def update(self, update: AiConfigUpdate) -> AiConfig:

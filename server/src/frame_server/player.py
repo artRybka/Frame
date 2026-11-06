@@ -34,7 +34,7 @@ from .library.nationality import life_years, note_years
 from .library.photo_text import photo_line, photo_title
 from .library.repo import sent_key
 from .library.style import AUTO, auto_preset
-from .library.themes import SEARCHABLE, theme_of_the_day
+from .library.themes import SEARCHABLE, theme_of_the_day, thin_searches
 from .library.viewer import OWNER_ID
 from .library.vocabulary import HIGHLIGHT, set_aside
 from .progress import Stage
@@ -1183,6 +1183,8 @@ class Player:
             self.library.set_state(HIGHLIGHTS_KEY, utcnow().isoformat())
         queries = [search for theme in SEARCHABLE for search in theme.searches()]
         queries = random.sample(queries, min(8, len(queries)))
+        if night:  # antiquity's cards need works of their own for a cover
+            queries = [*thin_searches(self.library), *queries]
 
         def grow(job: Job) -> None:
             if highlights:

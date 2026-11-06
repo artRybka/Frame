@@ -1127,6 +1127,8 @@ struct AiSettings: Codable, Hashable, Sendable {
     /// Polish words typed in Szukaj translated for the museums abroad; nil
     /// from older servers.
     var searchWords: Bool?
+    /// Discover's curator: two cards of "Dziś dla Ciebie"; nil from older servers.
+    var curator: Bool?
     var monthlyLimitUsd: Double
     /// This month.
     var spentUsd: Double
@@ -1144,6 +1146,7 @@ struct AiSettingsUpdate: Encodable, Sendable {
     var keywordsPhotos: Bool?
     var daily: Bool?
     var searchWords: Bool?
+    var curator: Bool?
     var monthlyLimitUsd: Double?
 }
 
@@ -1915,6 +1918,11 @@ struct ArtTheme: Codable, Hashable, Sendable, Identifiable {
     /// The playlist already made from it.
     var playlistId: Int?
     var rules: PlaylistRules?
+    /// The part of its group's page it stands in ("Starożytność i
+    /// Bizancjum"); nil from older servers and for groups of one part.
+    var section: String?
+    /// That part's years ("od 1250").
+    var sectionYears: String?
     var id: String { key }
 
     /// The artist of the week's key starts with it (`library/themes.py`).

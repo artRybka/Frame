@@ -44,17 +44,50 @@ struct ThemeGroupView: View {
 
     private let columns = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
 
+    /// The group's parts in the server's order ("Epoki": antiquity first);
+    /// one part without a name for groups that have none.
+    private var sections: [ThemeSection] {
+        var found: [ThemeSection] = []
+        for theme in themes {
+            let name = theme.section ?? ""
+            if let at = found.firstIndex(where: { $0.name == name }) {
+                found[at].themes.append(theme)
+            } else {
+                found.append(ThemeSection(name: name, years: theme.sectionYears ?? "", themes: [theme]))
+            }
+        }
+        return found
+    }
+
     var body: some View {
         ScrollView {
-            LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
-                ForEach(themes) { theme in
-                    NavigationLink(value: theme) {
-                        ThemeCard(theme: theme) {
-                            _ = await ThemeActions.makePlaylist(theme, play: false, model: model)
+            LazyVStack(alignment: .leading, spacing: 12) {
+                ForEach(sections) { section in
+                    if !section.name.isEmpty {
+                        HStack(alignment: .firstTextBaseline) {
+                            Text(section.name.uppercased())
+                                .font(.caption.weight(.semibold))
+                                .tracking(1.1)
+                            Spacer()
+                            Text(section.years)
+                                .font(.footnote)
+                        }
+                        .foregroundStyle(Theme.inkSoft)
+                        .padding(.top, section.id == sections.first?.id ? 0 : 12)
+                        .accessibilityElement(children: .combine)
+                        .accessibilityAddTraits(.isHeader)
+                    }
+                    LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
+                        ForEach(section.themes) { theme in
+                            NavigationLink(value: theme) {
+                                ThemeCard(theme: theme) {
+                                    _ = await ThemeActions.makePlaylist(theme, play: false, model: model)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            .drawWeekArtistAgainMenu(theme)
                         }
                     }
-                    .buttonStyle(.plain)
-                    .drawWeekArtistAgainMenu(theme)
                 }
             }
             .pageWidth()
@@ -74,6 +107,14 @@ struct ThemeGroupView: View {
         .navigationTitle(name)
         .refreshable { await model.refreshDiscover(force: true) }
     }
+}
+
+/// A part of a group's page: its name, years and cards.
+private struct ThemeSection: Identifiable {
+    let name: String
+    let years: String
+    var themes: [ArtTheme]
+    var id: String { name }
 }
 
 /// A suggestion row's works as a grid, for rows that have no theme to browse.
