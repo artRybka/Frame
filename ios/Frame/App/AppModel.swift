@@ -100,6 +100,9 @@ final class AppModel {
     /// Each playlist's works as last opened: shown at once when it opens
     /// again while fresh ones load.
     var playlistDetails: [Int: PlaylistDetail] = [:]
+    /// Each Odkrywaj set as last left (`ThemeView`): shown at once when it
+    /// opens again soon after, while the next works load.
+    @ObservationIgnored var themeVisits: [String: ThemeVisit] = [:]
     /// Goes up when a work is liked, unliked, left out or brought back:
     /// views listing a playlist's works load them again.
     private(set) var libraryRevision = 0
@@ -275,6 +278,7 @@ final class AppModel {
         me = nil
         playlists = []
         playlistDetails = [:]
+        themeVisits = [:]
         facets = .empty
         vocabulary = []
         restoreNow()

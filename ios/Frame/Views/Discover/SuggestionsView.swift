@@ -470,6 +470,20 @@ struct SuggestionRowView: View {
 /// A theme browsed from the museums (or the catalogue), its works shown as
 /// each museum answers and more asked for while the end is near, with
 /// buttons that make it a playlist.
+/// An Odkrywaj set as it was left: its works, in their order, and where
+/// asking had got to.
+struct ThemeVisit {
+    var weave: WorkWeave
+    var page: Int
+    var more: Bool
+    var at = Date()
+
+    /// How long a set opened again shows what it had at once (the server
+    /// keeps museums' answers for 3 hours, the catalogue's pages until it
+    /// changes).
+    static let fresh: TimeInterval = 30 * 60
+}
+
 struct ThemeView: View {
     @Environment(AppModel.self) private var model
     let theme: ArtTheme
@@ -558,9 +572,29 @@ struct ThemeView: View {
         .task { playlistID = theme.playlistId }
         .onAppear {
             shown = true
+            restore()
             moreIfNeeded()
         }
-        .onDisappear { shown = false }
+        .onDisappear {
+            shown = false
+            remember()
+        }
+    }
+
+    /// Opened again soon after: the works it had show at once (the round
+    /// being asked when it was left is asked again; copies are left out).
+    private func restore() {
+        guard weave.shown.isEmpty, !loading, let visit = model.themeVisits[theme.key],
+            Date().timeIntervalSince(visit.at) < ThemeVisit.fresh
+        else { return }
+        weave = visit.weave
+        page = visit.page
+        more = visit.more
+    }
+
+    private func remember() {
+        guard !weave.shown.isEmpty else { return }
+        model.themeVisits[theme.key] = ThemeVisit(weave: weave, page: page, more: more)
     }
 
     private var stopped: Bool { failures >= Self.failuresToStop && !loading }
@@ -626,6 +660,7 @@ struct ThemeView: View {
             }
             let answered = await loadMore()
             loading = false
+            remember()
             if answered {
                 failures = 0
             } else {

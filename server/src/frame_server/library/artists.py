@@ -14,7 +14,7 @@ import re
 from functools import lru_cache
 
 from .nationality import NATIONALITIES
-from .vocabulary import fold
+from .vocabulary import PER_WORK, fold
 
 #: Words for "unknown", "anonymous" and "various" in museums' languages
 #: (folded: lower case, no accents).
@@ -330,7 +330,7 @@ _TIMES = frozenset(
 )
 
 
-@lru_cache(maxsize=1 << 15)
+@lru_cache(maxsize=PER_WORK)
 def is_artist(name: str) -> bool:
     """``name`` names someone: not "Unknown", "Desconegut", "Fotògraf
     desconegut", "Japanese, Edo period", "Workshop of Rubens" or "Detroit
