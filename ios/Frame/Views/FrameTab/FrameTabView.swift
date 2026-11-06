@@ -1716,7 +1716,7 @@ struct ViewerSection: View {
                 Toggle(isOn: $hdrBoost) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Sztuczne „podbicie” w HDR")
-                        Text("Słoneczko na dziele otwartym na cały ekran sprawia, że najjaśniejsze miejsca obrazu świecą mocniej niż biel ekranu. Ciemne i średnie tony zostają, ale dzieło wygląda inaczej niż oryginał i ramka. Nie działa w trybie niskiego zużycia energii.")
+                        Text("Słoneczko na dziele otwartym na cały ekran sprawia, że jasne miejsca obrazu świecą mocniej niż biel ekranu. Siłę i zasięg aplikacja dobiera do każdego dzieła: w ciemnym obrazie wydobywa jaśniejsze partie, w jasnym tylko same światła i delikatniej. Dzieło wygląda inaczej niż oryginał i ramka. Nie działa w trybie niskiego zużycia energii.")
                             .font(.caption)
                             .foregroundStyle(Theme.inkSoft)
                     }
