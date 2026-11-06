@@ -507,11 +507,10 @@ struct TokenSummary: View {
 
 extension View {
     /// The groups over the search field: they hide while the finger drags
-    /// the results either way, or while the page flies by very fast, and
-    /// come back half a second after the finger lets go, once the page
-    /// glides on slowly enough (Mateusz: "Dodaj 0,5 sekundy", "przy bardzo
-    /// szybkim przewijaniu także chowaj"). Tapping the field or asking
-    /// nothing any more brings them back too, as `shown` says.
+    /// the results either way and come back a second after it lets go,
+    /// however fast the page still glides (Mateusz: "Usuńmy chowanie przy
+    /// pędzącym ekranie. Wydłużmy czas powrotu"). Tapping the field or
+    /// asking nothing any more brings them back too, as `shown` says.
     func hidesOnScroll(_ shown: Binding<Bool>) -> some View {
         modifier(HidesOnScroll(shown: shown))
     }
@@ -519,25 +518,20 @@ extension View {
 
 private struct HidesOnScroll: ViewModifier {
     @Binding var shown: Bool
-    /// How the page moves, kept out of SwiftUI's sight: it changes every
-    /// frame and must not redraw anything.
-    @State private var motion = ScrollMotion()
+    /// The finger is on the page and moves it.
+    @State private var dragging = false
     @State private var comeBack: Task<Void, Never>?
 
     /// How long the groups stay away after the finger lets go.
-    private static let pause: Duration = .milliseconds(500)
-    /// Points a second above which the page flies by too fast for them.
-    private static let fast: Double = 2500
+    private static let pause: Duration = .seconds(1)
     /// Near the top of the results they never hide.
     private static let top: CGFloat = 24
 
     func body(content: Content) -> some View {
         content
             .onScrollPhaseChange { old, phase in
-                motion.phase = phase
-                if phase == .idle { motion.speed = 0 }
-                let touching = phase == .interacting || phase == .tracking
-                if touching {
+                dragging = phase == .interacting
+                if phase == .interacting || phase == .tracking {
                     comeBack?.cancel()
                 } else if old == .interacting || old == .tracking {
                     returnLater()
@@ -546,50 +540,18 @@ private struct HidesOnScroll: ViewModifier {
             .onScrollGeometryChange(for: CGFloat.self) { geometry in
                 geometry.contentOffset.y + geometry.contentInsets.top
             } action: { old, new in
-                motion.measure(new)
-                guard shown, new > Self.top, abs(new - old) > 1 else { return }
-                if motion.phase == .interacting || motion.speed > Self.fast {
-                    withAnimation(.snappy) { shown = false }
-                    if motion.phase != .interacting { returnLater() }
-                }
+                guard dragging, shown, new > Self.top, abs(new - old) > 1 else { return }
+                withAnimation(.snappy) { shown = false }
             }
     }
 
-    /// Brings the groups back half a second from now, or later while the
-    /// page still flies by fast; a new touch cancels it.
+    /// Brings the groups back a second from now; a new touch cancels it.
     private func returnLater() {
         comeBack?.cancel()
         comeBack = Task {
             try? await Task.sleep(for: Self.pause)
-            while !Task.isCancelled, motion.phase == .decelerating, motion.speed > Self.fast {
-                try? await Task.sleep(for: .milliseconds(50))
-            }
-            guard !Task.isCancelled, motion.phase != .interacting,
-                  motion.phase != .tracking, !shown else { return }
+            guard !Task.isCancelled, !dragging, !shown else { return }
             withAnimation(.snappy) { shown = true }
         }
-    }
-}
-
-/// The scroll phase and a smoothed speed in points a second, measured from
-/// the offsets the page reports frame by frame.
-@MainActor
-private final class ScrollMotion {
-    var phase: ScrollPhase = .idle
-    var speed: Double = 0
-    private var offset: CGFloat = 0
-    private var time: TimeInterval = 0
-
-    func measure(_ new: CGFloat) {
-        let now = ProcessInfo.processInfo.systemUptime
-        let interval = now - time
-        if interval > 0, interval < 0.25 {
-            let instant = Double(abs(new - offset)) / interval
-            speed = speed * 0.5 + instant * 0.5
-        } else {
-            speed = 0
-        }
-        offset = new
-        time = now
     }
 }
