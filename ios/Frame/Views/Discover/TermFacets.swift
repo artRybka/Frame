@@ -1100,6 +1100,18 @@ struct TechniqueSwatch: View {
     private static let side: CGFloat = 60
     private static let ring: CGFloat = 74
 
+    /// A one-letter word ("i", "w", "z") never ends a line: it keeps to the
+    /// next word ("Rysunki / i akwarele", not "Rysunki i / akwarele").
+    static func bound(_ text: String) -> String {
+        let words = text.split(separator: " ", omittingEmptySubsequences: false)
+        var out = ""
+        for (index, word) in words.enumerated() {
+            out += word
+            if index < words.count - 1 { out += word.count == 1 ? "\u{00A0}" : " " }
+        }
+        return out
+    }
+
     var body: some View {
         Button(action: action) {
             VStack(spacing: 4) {
@@ -1117,7 +1129,7 @@ struct TechniqueSwatch: View {
                         .overlay(Circle().strokeBorder(Theme.ink.opacity(0.22), lineWidth: 0.5))
                 }
                 .frame(width: Self.ring, height: Self.ring)
-                Text(name)
+                Text(Self.bound(name))
                     .font(.caption.weight(picked ? .semibold : .regular))
                     .foregroundStyle(picked ? Theme.ink : Theme.inkSoft)
                     .multilineTextAlignment(.center)
