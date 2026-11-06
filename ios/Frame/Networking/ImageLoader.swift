@@ -447,6 +447,9 @@ struct ArtImage: View {
     /// A new picture fades in over the one before instead of taking its
     /// place at once ("Teraz" from the last launch, then the fresh one).
     var crossfade = false
+    /// The artwork itself (the work's card, the study): shown a little
+    /// brighter than the page (`ArtGlow`) when Konfiguracja allows it.
+    var brighten = false
 
     /// Pauses before the picture is asked for again on its own.
     static let retryDelays: [Duration] = [.seconds(4), .seconds(15), .seconds(45)]
@@ -458,6 +461,16 @@ struct ArtImage: View {
     @State private var shownPicture = 0
     @State private var focus: UnitPoint = .center
     @State private var failed = false
+    @AppStorage(ArtGlow.key) private var glowAllowed = true
+    /// The brighter copy of the picture shown (`brighten`).
+    @State private var glowing: UIImage?
+
+    private var glows: Bool { brighten && glowAllowed }
+
+    private struct GlowJob: Equatable {
+        let image: ObjectIdentifier?
+        let on: Bool
+    }
 
     /// Failed, and shows it: a clear placeholder lies over another picture
     /// (the card's original over the tile's thumbnail), which speaks for it.
@@ -491,12 +504,20 @@ struct ArtImage: View {
         return ImageLoader.inMemory(for: request, maxPixel: maxPixel)
     }
 
+    /// What is drawn: the brighter copy once made (from the cache at once
+    /// when it was made before), else the picture itself.
+    private var drawn: UIImage? {
+        guard let shown else { return nil }
+        guard glows else { return shown }
+        return ArtGlow.cached(shown) ?? glowing ?? shown
+    }
+
     var body: some View {
         ZStack {
-            if let image = shown, subjectFocus || focusPoint != nil, contentMode == .fill {
+            if let image = drawn, subjectFocus || focusPoint != nil, contentMode == .fill {
                 FocusedFill(image: image, focus: focusPoint ?? focus)
                     .transition(.opacity)
-            } else if let image = shown {
+            } else if let image = drawn {
                 Image(uiImage: image)
                     .resizable()
                     .aspectRatio(contentMode: contentMode)
@@ -520,6 +541,18 @@ struct ArtImage: View {
             }
         }
         .animation(.easeOut(duration: 0.35), value: image != nil)
+        .allowedDynamicRange(glows ? .high : nil)
+        .task(id: GlowJob(image: shown.map(ObjectIdentifier.init), on: glows)) {
+            guard glows, let source = shown else {
+                glowing = nil
+                return
+            }
+            if ArtGlow.cached(source) != nil { return }
+            // The last brighter copy stays up until this one is ready.
+            if let lit = await ArtGlow.image(source), !Task.isCancelled {
+                withAnimation(.easeInOut(duration: 0.25)) { glowing = lit }
+            }
+        }
         .task(id: Round(ref: ref, picture: picture, retries: model.pictureRetries, switches: model.serverSwitches)) {
             await load()
         }

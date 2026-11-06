@@ -1707,37 +1707,25 @@ private extension UIFont {
     }
 }
 
-/// Konfiguracja → Pełny ekran, kept on this phone: may the sun button of
-/// the full-screen viewer also lift the picture above white (`HDRBoost`).
+/// Konfiguracja → Wyświetlanie dzieł, kept on this phone: the artwork on
+/// the work's card and in the study a little brighter than the page
+/// (`ArtGlow`).
 struct ViewerSection: View {
-    @AppStorage(ScreenBoost.hdrKey) private var hdrBoost = false
-    @AppStorage(ScreenBoost.keepKey) private var keepBrightness = false
+    @AppStorage(ArtGlow.key) private var glow = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            SectionHeader(title: "Pełny ekran", subtitle: "Tylko w aplikacji na tym telefonie")
+            SectionHeader(title: "Wyświetlanie dzieł", subtitle: "Tylko w aplikacji na tym telefonie")
             Card {
-                Toggle(isOn: $hdrBoost) {
+                Toggle(isOn: $glow) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Sztuczne „podbicie” w HDR")
-                        Text("Słoneczko na dziele otwartym na cały ekran sprawia, że jasne miejsca obrazu świecą mocniej niż biel ekranu. Siłę i zasięg aplikacja dobiera do każdego dzieła: w ciemnym obrazie wydobywa jaśniejsze partie, w jasnym tylko same światła i delikatniej. Dzieło wygląda inaczej niż oryginał i ramka. Nie działa w trybie niskiego zużycia energii.")
+                        Text("Jaśniejsze dzieła")
+                        Text("Na karcie dzieła i w studium obraz i jego detale świecą trochę jaśniej niż strona wokół, równo na całej powierzchni. Działa na ekranach z HDR, poza trybem niskiego zużycia energii.")
                             .font(.caption)
                             .foregroundStyle(Theme.inkSoft)
                     }
                 }
                 .tint(Theme.ink)
-                if hdrBoost {
-                    Divider()
-                    Toggle(isOn: $keepBrightness) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Bez podnoszenia jasności")
-                            Text("Słoneczko tylko podbija obraz w HDR, a jasność ekranu zostaje Twoja. Przy niższej jasności iPhone ma więcej zapasu, więc podbicie bywa wtedy wyraźniejsze.")
-                                .font(.caption)
-                                .foregroundStyle(Theme.inkSoft)
-                        }
-                    }
-                    .tint(Theme.ink)
-                }
             }
         }
     }

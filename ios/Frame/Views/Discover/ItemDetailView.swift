@@ -283,7 +283,7 @@ struct ItemDetailView: View {
                     .overlay {
                         ArtImage(
                             ref: peek?.thumb ?? .thumb(itemID), placeholder: peek?.summary.placeholderColor ?? Theme.mat,
-                            maxPixel: 700, contentMode: .fit, priority: .high
+                            maxPixel: 700, contentMode: .fit, priority: .high, brighten: true
                         )
                     }
                     .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
@@ -743,13 +743,13 @@ struct ItemDetailView: View {
                         .overlay {
                             ArtImage(
                                 ref: item.originalRef, fallback: .thumb(item.id), placeholder: .clear,
-                                maxPixel: 1800, contentMode: .fit, priority: .high, crossfade: true
+                                maxPixel: 1800, contentMode: .fit, priority: .high, crossfade: true, brighten: true
                             )
                                 .background {
                                     ArtImage(
                                         ref: ItemPeeks.tiles[item.id]?.thumb ?? .thumb(item.id),
                                         placeholder: item.placeholderColor, maxPixel: 700,
-                                        contentMode: .fit, priority: .high
+                                        contentMode: .fit, priority: .high, brighten: true
                                     )
                                 }
                         }
