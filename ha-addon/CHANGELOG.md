@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.109.0
+
+- Odkrywaj → „Epoki” zaczynają się od starożytności i idą po kolei
+  w czasie: Starożytny Egipt (malowidła z grobowców w Tebach), Portrety
+  fajumskie, Freski Rzymu i Pompejów, Ikony Bizancjum i Złote tło (Duccio,
+  Giotto), a dalej brakujące dotąd XV i XVI wiek, obie połowy XIX wieku
+  i Międzywojnie. Strona grupy dzieli karty na „Starożytność i Bizancjum”
+  oraz „Średniowiecze i dalej”. Karty antyku biorą tylko malarstwo: wazy,
+  rzeźby, emalie i rękopisy zostają w swojej grupie.
+- Nowa karta „Antyk oczami malarzy” w Tematach (Alma-Tadema, Gérôme,
+  Siemiradzki, Hubert Robert, David). Motyw dnia 7 stycznia, 21 kwietnia
+  i 4 listopada sięga po Bizancjum, Rzym i Egipt.
+- Kurator Odkrywaj: dwie karty w „Dziś dla Ciebie” układa Claude, z myślą,
+  której reguły nie wymyślą (np. portrety przez dwa tysiące lat). Karta
+  zmienia się po tygodniu albo następnego dnia po tym, jak ją obejrzysz.
+  Zamawiana nocą za pół ceny (ok. 0,40–2,70 USD miesięcznie), wyłączana
+  w Konfiguracji → AI. Bez klucza Odkrywaj wygląda jak dotąd.
+
 ## 1.108.0
 
 - Nowe źródło: J. Paul Getty Museum (Los Angeles), około 92 000 dzieł

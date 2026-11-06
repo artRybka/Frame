@@ -267,6 +267,9 @@ def tasks(service: FrameService) -> list[NightTask]:
         NightTask("sharper", sharper),
         NightTask("museums", museums),
         NightTask("places", places),
+        # Waits for its batch while the night is quiet (an hour at most),
+        # so that "themes" works out the new cards' covers.
+        NightTask("curator", service.curator.at_night),
         NightTask("themes", themes),
         NightTask("suggestions", suggestions),
         # Last: downloads, gently, in whatever time the night has left.
