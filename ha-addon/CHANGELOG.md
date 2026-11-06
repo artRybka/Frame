@@ -6,6 +6,9 @@
   lat są ciemniejsze, a paski okresów w wybranym zakresie mają pełny
   kolor. Okresy stoją trochę ciaśniej, a sama karta jest nieco wyższa,
   więc wszystko mieści się na jednym ekranie. Pod kartą Epoka nie ma już dopisku „Wybierz dowolnie wiele…”.
+- Serwer odczytuje rok także z dat zapisanych słowami, np. „18th century”,
+  „late 16th century”, „ca. 1890s” czy „pierwsza dekada XX wieku”. Około
+  200–250 dzieł, głównie z Europeany i Yale, trafi przez to do Epoki.
 
 ## 1.110.0
 

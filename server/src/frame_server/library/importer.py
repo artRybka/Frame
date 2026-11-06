@@ -20,6 +20,8 @@ from PIL import Image
 
 from ..imaging.palette import Palette
 from .colors import analyse, has_colours, tint_spread
+from .commons import OWN_SOURCES
+from .dates import text_year
 from .duplicates import dedupe, rank
 from .hosts import as_asked
 from .images import ImageCache
@@ -285,8 +287,13 @@ class Importer:
             width, height = item.width, item.height
             if not width or not height:
                 width, height = thumb.size
+        year = item.year
+        if year is None and item.source not in OWN_SOURCES:
+            # Dates in words the source's reader left without a year.
+            year = text_year(item.date_text)
         return item.model_copy(
             update={
+                "year": year,
                 "colors": colors,
                 "color_tags": tags,
                 "color_shares": shares,
