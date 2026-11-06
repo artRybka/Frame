@@ -232,7 +232,9 @@ def test_a_new_server_version_is_told_once(
     )
     assert asyncio.run(notifications.update_tick(service))
     assert not asyncio.run(notifications.update_tick(service))
-    assert apple.sent[0][3]["aps"]["alert"]["title"] == "Nowa wersja serwera: 1.48.0"  # type: ignore[index]
+    alert = apple.sent[0][3]["aps"]["alert"]  # type: ignore[index]
+    assert alert["title"] == "Nowa wersja serwera ramki"  # type: ignore[index]
+    assert alert["body"].startswith("Wersja 1.48.0 czeka na instalację.")  # type: ignore[index]
 
 
 # -- the API -------------------------------------------------------------------

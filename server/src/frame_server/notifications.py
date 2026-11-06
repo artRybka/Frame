@@ -1060,8 +1060,8 @@ async def update_tick(service: FrameService) -> bool:
     notifier.library.set_state(UPDATE_KEY, version)
     await notifier.send(
         "server_update",
-        f"Nowa wersja serwera: {version}",
-        f"Teraz działa {view.version}. Zainstaluj w aplikacji: Ramka → kafelek Serwer.",
+        "Nowa wersja serwera ramki",
+        f"Wersja {version} czeka na instalację. Stuknij i wybierz „Aktualizuj serwer”.",
         route="server",
         collapse="server_update",
     )
