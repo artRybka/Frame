@@ -33,6 +33,11 @@
   // JS runs up to ~130 s after goToSleep() and an alarm due before the
   // panel is really down is lost (E16), so keep a margin of 4 minutes.
   var MIN_AHEAD_MS = 4 * 60000;
+  // A plan older than this when the app may finally sleep (it waited for the
+  // refresh to settle, up to 150 s after a start): ask once more first. A
+  // change time added meanwhile was missed (2026-11-06 21:14, 21:30 added a
+  // minute after the start's answer, the sleep at 21:15 set 12:00).
+  var PLAN_FRESH_MS = 30000;
   // Woken by an alarm with nothing new, the panel is left alone and goes
   // back to sleep after this much idleness (20 minutes as set by hand).
   // 5 minutes until 2026-11-05: an empty check cost ~1% of the battery
@@ -90,6 +95,7 @@
   var timer = null;
   var last = Date.now();
   var drawnAt = 0;  // the last change of the screen
+  var plannedAt = 0;  // when the answer with the sleep plan came
   var loadedAt = Date.now();
   var wifiAt = 0;
   var sleptAt = 0;  // goToSleep() called and no question since
@@ -370,6 +376,7 @@
   function attempt(q, n) {
     getJson(SERVER + "/panel/next?" + q, function (answer) {
       busy = false;
+      plannedAt = Date.now();
       saved("failures", 0);
       act(answer);
     }, function (why) {
@@ -684,6 +691,10 @@
     if (settle > 0) {
       clearTimeout(timer);
       timer = setTimeout(function () { sleep(wakeMs, standby, why, more); }, settle);
+      return;
+    }
+    if (why === "plan" && Date.now() - plannedAt > PLAN_FRESH_MS) {
+      ask("poll");  // the plan may have changed while the refresh settled
       return;
     }
     if (wakeMs && wakeMs - Date.now() < MIN_AHEAD_MS) {
