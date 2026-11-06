@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.104.8
+
+- Ramka obudzona na zmianę obrazu dostaje nowy obraz od razu, a nie
+  dopiero o równej godzinie. Wcześniej, budząc się ok. 1,5 minuty przed
+  czasem, najpierw rysowała jeszcze raz stary obraz, a dopiero potem nowy.
+  Teraz zmiana to jedno odświeżenie mniej i ok. minuty krócej z Wi-Fi.
+- Aplikacja ramki próbuje jeszcze raz ustawić samousypianie po 3 minutach
+  (dwa razy przed każdym snem). Jeśli ramka znów odmówi, zostaje 5 minut.
+
 ## 1.104.7
 
 - Daty dzieł starożytnych z Luwru też są cyframi: „Ie s. ap. J.-C.” to

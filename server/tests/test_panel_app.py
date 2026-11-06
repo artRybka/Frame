@@ -1927,3 +1927,32 @@ async def test_a_plan_changed_during_the_sleep_starts_the_app_at_a_check(
         assert panel.received == START
     finally:
         await panel.stop()
+
+
+@pytest.mark.parametrize(
+    ("reason", "ahead", "early"),
+    [
+        ("wake", timedelta(seconds=90), True),
+        ("start", timedelta(minutes=2, seconds=50), True),
+        ("wake", timedelta(minutes=4), False),
+        ("wake", timedelta(seconds=-10), False),  # due already: the scheduler's
+        ("poll", timedelta(seconds=90), False),
+    ],
+)
+async def test_woken_for_a_change_it_is_made_at_once(
+    tmp_path: Path, reason: str, ahead: timedelta, early: bool
+) -> None:
+    """2026-11-06 01:00, camera: woken ~1.5 min before the change, the panel
+    drew the old picture again, then the new one at the change's time. A
+    start or wake that close to a change gets the change at once."""
+    service = _service(tmp_path)
+    now = datetime.now(UTC)
+    _next_change(service, now + ahead)
+    made: list[bool] = []
+
+    async def next_early() -> None:
+        made.append(True)
+
+    service.player.next_early = next_early  # type: ignore[method-assign]
+    await service.app._change_early(AppHello(reason=reason), now)
+    assert made == ([True] if early else [])
