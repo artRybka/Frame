@@ -1,12 +1,24 @@
 # Changelog
 
-## 1.111.7
+## 1.111.8
 
 - Godzina zmiany dodana w aplikacji tuż po pobudce ramki nie przepada.
   Ramka po starcie czeka do 2,5 minuty, aż ekran się odświeży, i dopiero
   potem zasypia; dotąd zasypiała z planem sprzed tej chwili i nie
   ustawiała budzika na nową godzinę (21:30 dodane o 21:14 zostało
   pominięte). Teraz przed zaśnięciem pyta serwer jeszcze raz o plan.
+- Paczka aplikacji ramki (test) ma ustawienia odtwarzacza VXT Samsunga
+  przepisane dokładnie tak, jak on je deklaruje; wcześniejsza kopia
+  miała jeden klucz pod złym adresem. Sprawdzamy, czy ekran startu
+  Samsunga przed obrazem zniknie. Nowa paczka instaluje się po
+  przytrzymaniu guzika na ramce.
+
+## 1.111.7
+
+- Sztuczne podbicie HDR jest płynniejsze. Rozjaśnia całe jasne obszary
+  obrazu (niebo, okno, twarz) i łagodnie przechodzi w resztę, zamiast
+  zapalać pojedyncze małe plamki. Ciemne linie i cienie obok świateł
+  nie dostają poświaty, a najmocniejsze podbicie jest niższe (do 2,4×).
 
 ## 1.111.6
 
