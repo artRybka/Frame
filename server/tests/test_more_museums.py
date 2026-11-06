@@ -1007,7 +1007,7 @@ def test_louvre_takes_the_paintings_commons_lacks(tmp_path: Path) -> None:
     assert record_id(rome) == ("P9394", "010061111")
     assert size is not None and (size.height, size.width) == (25.0, 38.0)
     # A school ("France") is no author.
-    assert modern is not None and modern.title == "Plafond" and modern.artist == ""
+    assert modern is not None and modern.title == "Plafond" and modern.artist == "Anonim"
     assert modern.license == "Prawa autorskie w mocy (użytek prywatny)"
     assert piero is not None and piero.artist == "Frans Hals"  # the Louvre's name
     assert piero.date_text == "1450–1499" and piero.year == 1450
@@ -1024,7 +1024,7 @@ def test_louvre_takes_the_paintings_commons_lacks(tmp_path: Path) -> None:
     path.write_text(json.dumps(listed))
     with httpx.Client(transport=httpx.MockTransport(answer)) as http:
         before = museum("louvre", http, access).fetch("010068888")
-        assert before is not None and before.artist == "" and before.date_text == "1450–1499"
+        assert before is not None and before.artist == "Anonim" and before.date_text == "1450–1499"
         assert before.year == 1450
         asked.clear()
         assert louvre.build(path, http) == 3
@@ -1092,6 +1092,44 @@ def test_louvre_works_kept_before_1_104_1_are_repaired() -> None:
         date_text="2e moitié du XVe siècle",
         year=None,
     )
-    assert _repairs(item) == {"artist": "", "date_text": "1450–1499", "year": 1450}
+    assert _repairs(item) == {"artist": "Anonim", "date_text": "1450–1499", "year": 1450}
+    # Antiquity's centuries, "Anonim" for no author, a capital to the title.
+    wall = item.model_copy(
+        update={"title": "peinture murale", "artist": "", "date_text": "Ie s. ap. J.-C.", "year": 1}
+    )
+    assert _repairs(wall) == {
+        "artist": "Anonim",
+        "title": "Peinture murale",
+        "date_text": "1–100 n.e.",
+    }
+    done = wall.model_copy(
+        update={"artist": "Anonim", "title": "Peinture murale", "date_text": "1–100 n.e."}
+    )
+    assert _repairs(done) == {}
     fine = item.model_copy(update={"artist": "Frans Hals", "date_text": "1503–1519", "year": 1503})
     assert _repairs(fine) == {}
+
+
+def test_louvre_periods_and_authors_read_as_people_write_them() -> None:
+    from frame_server.library.louvre import french_years, named, years_text
+
+    def period(text: str) -> str | None:
+        span = french_years(text)
+        return years_text(*span) if span else None
+
+    assert period("Ie s. ap. J.-C.") == "1–100 n.e."
+    assert period("4e quart IIe s. ap. J.-C. (?)") == "175–199 n.e."
+    assert period("Ier s. av. J.-C.") == "100–1 p.n.e."
+    assert period("2e moitié du Ier siècle avant J.-C.") == "50–1 p.n.e."
+    assert period("Milieu du XVe siècle") == "1440–1460"
+    assert period("1er tiers du XVIIe siècle") == "1600–1632"
+    assert period("vers 1500") == "1500" and period("50 av. J.-C.") == "50 p.n.e."
+    assert period("époque romaine") is None
+    assert years_text(-50, 20) == "50 p.n.e.–20 n.e."
+
+    assert named({"label": "Hals, Frans", "wikidata": ""})
+    assert named({"label": "VALENCIENNES Pierre-Henri de", "wikidata": ""})
+    assert not named({"label": "Anonyme", "wikidata": "Q4233718"})
+    assert not named({"label": "Allemagne Rhin", "wikidata": "", "linkType": "École de"})
+    assert not named({"label": "Italie", "wikidata": ""})
+    assert not named({"label": "RAPHAEL", "attributionLevel": "Ancienne attribution"})
