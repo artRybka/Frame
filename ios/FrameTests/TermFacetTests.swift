@@ -38,7 +38,7 @@ final class TermFacetTests: XCTestCase {
         // Rome's end near the piece's.
         let axis = PeriodAxis.split(periods).axis
         XCTAssertEqual(PeriodAxis.position(-3100, on: axis), 0)
-        XCTAssertEqual(PeriodAxis.position(477, on: axis), 1277.0 / 1300 / 11, accuracy: 0.001)
+        XCTAssertEqual(PeriodAxis.position(477, on: axis), 0.7 * 1277.0 / 1300 / 10.7, accuracy: 0.001)
         XCTAssertEqual(PeriodAxis.span(["period:ancient", "period:medieval"], periods: periods), "do 1400")
     }
 
@@ -53,11 +53,62 @@ final class TermFacetTests: XCTestCase {
         XCTAssertEqual(split.axis.count, 11)
         XCTAssertEqual(split.named.map(\.name), ["Belle Époque", "Edo", "Ming"])
         XCTAssertEqual(PeriodAxis.years(named[1]), "1603–1868")
-        // Where a year falls on the axis of eleven equal pieces.
-        XCTAssertEqual(PeriodAxis.position(1400, on: split.axis), 2.0 / 11, accuracy: 0.001)
-        XCTAssertEqual(PeriodAxis.position(1650, on: split.axis), 4.5 / 11, accuracy: 0.001)
-        XCTAssertEqual(PeriodAxis.position(1368, on: split.axis), (1 + 868.0 / 900) / 11, accuracy: 0.001)
+        // Where a year falls on the axis: pieces up to 1600 weigh 0.7, up to
+        // 1800 0.9, up to 1945 1.3 and the last 0.9, 10.7 in all.
+        XCTAssertEqual(PeriodAxis.position(1400, on: split.axis), 1.4 / 10.7, accuracy: 0.001)
+        XCTAssertEqual(PeriodAxis.position(1650, on: split.axis), 3.25 / 10.7, accuracy: 0.001)
+        XCTAssertEqual(PeriodAxis.position(1368, on: split.axis), (0.7 + 0.7 * 868.0 / 900) / 10.7, accuracy: 0.001)
         XCTAssertEqual(PeriodAxis.position(2100, on: split.axis), 1)
+        let edges = PeriodAxis.edges(split.axis)
+        XCTAssertEqual(edges.count, 12)
+        XCTAssertEqual(edges.first, 0)
+        XCTAssertEqual(edges.last, 1)
+        XCTAssertEqual(edges[6], 4.6 / 10.7, accuracy: 0.001)
+    }
+
+    func testTheSheetsTopSaysWhatIsPicked() {
+        func heading(_ keys: [String], extra: [SearchToken] = []) -> (title: String, aside: String?) {
+            let tokens = keys.compactMap { key in periods.first { $0.key == key } }
+                .map { SearchToken(kind: "period", key: $0.key, name: $0.name) } + extra
+            return PeriodAxis.heading(tokens, periods: periods)
+        }
+        XCTAssertEqual(heading([]).title, "Dowolna epoka")
+        XCTAssertNil(heading([]).aside)
+        XCTAssertEqual(heading(["period:17c"]).title, "XVII wiek")
+        XCTAssertEqual(heading(["period:17c"]).aside, "1600–1700")
+        XCTAssertEqual(heading(["period:ancient"]).aside, "do 500")
+        XCTAssertNil(heading(["period:1800-1850"]).aside)
+        XCTAssertEqual(heading(["period:17c", "period:18c"]).title, "1600–1800")
+        XCTAssertEqual(heading(["period:17c", "period:18c"]).aside, "XVII i XVIII wiek")
+        XCTAssertEqual(heading(["period:15c", "period:16c", "period:17c"]).aside, "XV–XVII wiek")
+        XCTAssertEqual(heading(["period:1800-1850", "period:1850-1900"]).title, "1800–1900")
+        XCTAssertNil(heading(["period:18c", "period:1800-1850"]).aside)
+        XCTAssertEqual(heading(["period:belle-epoque"]).title, "Belle Époque")
+        XCTAssertEqual(heading(["period:belle-epoque"]).aside, "1880–1914")
+        XCTAssertEqual(heading(["period:belle-epoque", "period:interwar"]).title, "Belle Époque, Międzywojnie")
+        XCTAssertEqual(heading(["period:1850-1900", "period:belle-epoque"]).title, "1850–1900")
+        XCTAssertEqual(heading(["period:1850-1900", "period:belle-epoque"]).aside, "+ Belle Époque")
+        let years = SearchToken(kind: "period", key: "years:1880-1914", name: "1880–1914")
+        XCTAssertEqual(heading(["period:17c"], extra: [years]).title, "XVII wiek, 1880–1914")
+    }
+
+    func testNamedPeriodsShareRowsWhereTheyKeepClear() {
+        let items = [
+            PeriodAxis.LaneItem(key: "ming", from: 10, to: 60, label: 40),
+            PeriodAxis.LaneItem(key: "edo", from: 50, to: 150, label: 30),
+            PeriodAxis.LaneItem(key: "meiji", from: 160, to: 180, label: 40),
+            PeriodAxis.LaneItem(key: "late", from: 280, to: 290, label: 50),
+            PeriodAxis.LaneItem(key: "wide", from: 0, to: 300, label: 60),
+        ]
+        let placed = PeriodAxis.pack(items, width: 300)
+        XCTAssertEqual(placed.map(\.row), [0, 1, 0, 1, 2])
+        // Name right of the capsule when it fits, else left, else inside.
+        XCTAssertEqual(placed[0].side, .right)
+        XCTAssertEqual(placed[0].labelX, 67)
+        XCTAssertEqual(placed[3].side, .left)
+        XCTAssertEqual(placed[3].labelX, 223)
+        XCTAssertEqual(placed[4].side, .inside)
+        XCTAssertEqual(placed[4].taken, 0 ... 300)
     }
 
     func testOlderPlaylistsMineTermsStayInTheField() {
