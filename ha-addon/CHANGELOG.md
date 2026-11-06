@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.111.3
+
+- Sztuczne podbicie HDR jest płynniejsze. Rozjaśnia całe jasne obszary
+  obrazu (niebo, okno, twarz) i łagodnie przechodzi w resztę, zamiast
+  zapalać pojedyncze małe plamki. Ciemne linie i cienie obok świateł
+  nie dostają poświaty, a najmocniejsze podbicie jest niższe (do 2,4×).
+
 ## 1.111.2
 
 - Ciemne, ciepłe obrazy olejne (np. „Studium starca w profilu”
