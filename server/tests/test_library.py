@@ -983,6 +983,20 @@ def test_tint_spread_tells_monochrome_from_colour() -> None:
         assert tint_spread(img) > 2 * MONOCHROME_SPREAD
 
 
+def test_tint_strength_tells_sepia_from_black_and_white() -> None:
+    from frame_server.library.colors import tint_strength
+    from frame_server.library.style import NEUTRAL_TINT, preset_for_photo
+
+    grey = _gradient((0, 0, 0), (255, 255, 255))
+    faintly_warm = _gradient((20, 20, 20), (250, 247, 240))
+    sepia = _gradient((40, 25, 10), (235, 215, 180))
+    albumen = _gradient((60, 40, 25), (230, 210, 175))
+    assert tint_strength(grey) < NEUTRAL_TINT and tint_strength(faintly_warm) < NEUTRAL_TINT
+    assert tint_strength(sepia) > 2 * NEUTRAL_TINT and tint_strength(albumen) > 2 * NEUTRAL_TINT
+    assert preset_for_photo(grey) == "bw"
+    assert preset_for_photo(sepia) == "photo"
+
+
 def test_auto_preset_by_kind_metadata_and_colour() -> None:
     from frame_server.library.style import auto_preset
 
@@ -1006,6 +1020,12 @@ def test_auto_preset_by_kind_metadata_and_colour() -> None:
     assert auto_preset(item(spread=0.011, medium="olej na desce")) == "painting"
     # Only a black-and-white copy of a painting goes black and white.
     assert auto_preset(item(spread=0.003, classification="Painting")) == "bw"
+    # One tint only: black and white when faint, kept when sepia.
+    etching = item(spread=0.004, classification="Print", medium="Etching")
+    assert auto_preset(etching, tint=0.01) == "bw"
+    assert auto_preset(etching, tint=0.03) == "graphic"
+    assert auto_preset(item(spread=0.004, medium="Albumen print"), tint=0.03) == "photo"
+    assert auto_preset(item(spread=0.004, medium="pen and brown ink"), tint=0.04) == "painting"
     # Not measured yet: by kind and metadata only.
     assert auto_preset(item(spread=None, medium="Lithograph")) == "graphic"  # type: ignore[arg-type]
     # "Painting" is not a print, "sketch" is not Dutch "ets".
