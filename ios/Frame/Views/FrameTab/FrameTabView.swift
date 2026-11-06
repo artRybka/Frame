@@ -548,6 +548,7 @@ struct FrameTabView: View {
                     }
                     .font(.caption)
                     .lineLimit(2)
+                    .minimumScaleFactor(0.85)
                 }
             }
         }
@@ -601,7 +602,10 @@ struct FrameTabView: View {
         }
         let checked = When.ago(update.checkedAt).map { "sprawdzono \($0)" }
         if update.offersUpdate {
-            return ("arrow.down.circle.fill", Theme.ink, version, "jest \(latest)", nil, false)
+            // "do" and the version stay together, so in the narrow tile it
+            // wraps as "Dostępna aktualizacja / do 1.111.2".
+            let note = update.latestVersion.map { "Dostępna aktualizacja do\u{00A0}\($0)" } ?? "Dostępna aktualizacja"
+            return ("arrow.down.circle.fill", Theme.ink, version, note, nil, false)
         }
         if update.state == "failed" {
             return ("exclamationmark.triangle", Theme.warn, version, "nie udało się", checked, false)

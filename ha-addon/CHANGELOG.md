@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.111.5
+
+- Na kafelku Serwer w zakładce Ramka, gdy czeka nowsza wersja, pod
+  numerem obecnej jest teraz napis „Dostępna aktualizacja do 1.111.2”
+  (z numerem nowej wersji) zamiast krótkiego „jest 1.111.2”.
+
 ## 1.111.4
 
 - Fotografie w sepii, stare odbitki i rysunki brązowym tuszem lub na
