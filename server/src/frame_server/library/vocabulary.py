@@ -23,7 +23,7 @@ from .models import Item, ItemKind
 from .museums import Kind
 
 TermKind = Literal["style", "subject", "period", "technique", "tag"]
-Region = Literal["europe", "poland", "east-asia"]
+Region = Literal["antiquity", "europe", "poland", "east-asia"]
 #: discovery kinds (museums.Kind) of techniques that museums can filter by.
 TECHNIQUE_KINDS: dict[str, Kind] = {
     "technique:painting": "painting",
@@ -116,12 +116,41 @@ PLACES: dict[str, tuple[str, re.Pattern[str]]] = {
             r"\b(china|chinese|chiny|chi[nń]sk\w*|chinesisch\w*|chinois\w*)\b", re.IGNORECASE
         ),
     ),
+    # Antiquity's, as museums write a work's culture ("Egyptian", "Greek,
+    # Attic", "Roman", "Byzantine") in English, French, German or Polish.
+    "egypt": (
+        "egyptian",
+        re.compile(r"\b(egypt\w*|[ée]gypt\w*|[äa]gypt\w*|egipt\w*|fayum|faiyum)\b", re.IGNORECASE),
+    ),
+    "greece": (
+        "greek",
+        re.compile(
+            r"\b(greek|greece|grec\w*|griech\w*|grecj\w*|greck\w*|attic|hellenistic|"
+            r"corinthian|boeotian|cycladic|minoan|mycenaean)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    "rome": (
+        "roman",
+        re.compile(
+            r"\b(roman|romain\w*|r[öo]misch\w*|rzymsk\w*|pompeii\w*|pomp[eé]i\w*)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    "byzantium": (
+        "byzantine",
+        re.compile(r"\b(byzantin\w*|bizanty\w*|constantinople)\b", re.IGNORECASE),
+    ),
 }
 #: Styles that tell the place on their own.
 _PLACE_TERMS = {
     "poland": ("style:young-poland",),
     "japan": ("style:ukiyo-e", "style:shin-hanga"),
     "china": (),
+    "egypt": (),
+    "greece": (),
+    "rome": (),
+    "byzantium": (),
 }
 
 
@@ -312,7 +341,8 @@ TERMS: list[Term] = [
     _t("subject:hunting", "Polowanie", "hunt*"),
     _t("subject:theatre", "Teatr i aktorzy", "kabuki", "actor*", "theater", "theatre"),
     # Periods: the pieces of the time line, one after another
-    _p("period:medieval", "Średniowiecze", None, 1399),
+    _p("period:ancient", "Starożytność", None, 499),
+    _p("period:medieval", "Średniowiecze", 500, 1399),
     _p("period:15c", "XV wiek", 1400, 1499),
     _p("period:16c", "XVI wiek", 1500, 1599),
     _p("period:17c", "XVII wiek", 1600, 1699),
@@ -326,8 +356,13 @@ TERMS: list[Term] = [
     # and grows by a year every January (once the server restarts).
     _p("period:post-1945", f"1945–{last_free_year()}", 1945, last_free_year()),
     # Named periods across them. Renesans, Barok, Romantyzm or Młoda Polska
-    # are styles already. Europe's are years only; Poland's, Japan's and
-    # China's need the place too.
+    # are styles already. Europe's are years only; antiquity's, Poland's,
+    # Japan's and China's need the place too. Years before Christ are
+    # negative, as works' years are (louvre.french_years).
+    _named("period:egypt", "Starożytny Egipt", -3100, -30, "antiquity", "egypt"),
+    _named("period:greece", "Starożytna Grecja", -800, -31, "antiquity", "greece"),
+    _named("period:rome", "Starożytny Rzym", -509, 476, "antiquity", "rome"),
+    _named("period:byzantium", "Bizancjum", 330, 1453, "antiquity", "byzantium"),
     _named("period:thirty-years-war", "Wojna trzydziestoletnia", 1618, 1648, "europe"),
     _named("period:enlightenment", "Oświecenie", 1715, 1789, "europe"),
     _named("period:napoleonic", "Epoka napoleońska", 1799, 1815, "europe"),

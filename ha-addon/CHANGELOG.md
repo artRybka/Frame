@@ -20,6 +20,13 @@
   i drugie w rzędzie widać od razu, bez przewijania. Gdy w katalogu nie
   ma nic z tych samych lat, szukamy do 25 lat obok (rok jest pod
   miniaturą).
+- Szukaj → Epoka zaczyna się od starożytności. Na osi czasu przed
+  średniowieczem jest odcinek „Starożytność” (do 500 roku), a
+  średniowiecze to lata 500–1400. Dotąd dzieła starożytne, np. z Luwru,
+  wpadały do średniowiecza.
+- Nowa grupa okresów „Starożytność i Bizancjum”: Starożytny Egipt,
+  Starożytna Grecja, Starożytny Rzym i Bizancjum. Lata przed naszą erą
+  mają dopisek „p.n.e.”.
 
 ## 1.104.9
 

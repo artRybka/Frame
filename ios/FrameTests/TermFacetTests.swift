@@ -3,7 +3,8 @@ import XCTest
 
 final class TermFacetTests: XCTestCase {
     private let periods = [
-        TermInfo(key: "period:medieval", kind: "period", name: "Średniowiecze", yearTo: 1399),
+        TermInfo(key: "period:ancient", kind: "period", name: "Starożytność", yearTo: 499),
+        TermInfo(key: "period:medieval", kind: "period", name: "Średniowiecze", yearFrom: 500, yearTo: 1399),
         TermInfo(key: "period:15c", kind: "period", name: "XV wiek", yearFrom: 1400, yearTo: 1499),
         TermInfo(key: "period:16c", kind: "period", name: "XVI wiek", yearFrom: 1500, yearTo: 1599),
         TermInfo(key: "period:17c", kind: "period", name: "XVII wiek", yearFrom: 1600, yearTo: 1699),
@@ -19,9 +20,26 @@ final class TermFacetTests: XCTestCase {
 
     func testPeriodsThatFollowOneAnotherMakeTheAxis() {
         let split = PeriodAxis.split(periods)
-        XCTAssertEqual(split.axis.count, 10)
+        XCTAssertEqual(split.axis.count, 11)
         XCTAssertEqual(split.named.map(\.name), ["Belle Époque", "Międzywojnie"])
-        XCTAssertEqual(split.axis.map(PeriodAxis.mark).first, "śr.")
+        XCTAssertEqual(split.axis.map(PeriodAxis.mark).prefix(3), ["staroż.", "500", "1400"])
+        // An older server's axis starts with the Middle Ages.
+        let older = TermInfo(key: "period:medieval", kind: "period", name: "Średniowiecze", yearTo: 1399)
+        XCTAssertEqual(PeriodAxis.mark(older), "śr.")
+    }
+
+    func testAntiquitysYearsReadWithTheEra() {
+        let egypt = TermInfo(key: "period:egypt", kind: "period", name: "Starożytny Egipt", yearFrom: -3100, yearTo: -30, region: "antiquity")
+        let rome = TermInfo(key: "period:rome", kind: "period", name: "Starożytny Rzym", yearFrom: -509, yearTo: 476, region: "antiquity")
+        XCTAssertEqual(PeriodAxis.years(egypt), "3100–30 p.n.e.")
+        XCTAssertEqual(PeriodAxis.years(rome), "509 p.n.e.–476 n.e.")
+        XCTAssertEqual(PeriodAxis.regions.first?.id, "antiquity")
+        // In the oldest piece (1300 years up to 500): Egypt from its start,
+        // Rome's end near the piece's.
+        let axis = PeriodAxis.split(periods).axis
+        XCTAssertEqual(PeriodAxis.position(-3100, on: axis), 0)
+        XCTAssertEqual(PeriodAxis.position(477, on: axis), 1277.0 / 1300 / 11, accuracy: 0.001)
+        XCTAssertEqual(PeriodAxis.span(["period:ancient", "period:medieval"], periods: periods), "do 1400")
     }
 
     func testNamedPeriodsComeInTheServersGroups() {
@@ -32,13 +50,13 @@ final class TermFacetTests: XCTestCase {
         ]
         let withRegions = periods.filter { !["period:belle-epoque", "period:interwar"].contains($0.key) } + named
         let split = PeriodAxis.split(withRegions)
-        XCTAssertEqual(split.axis.count, 10)
+        XCTAssertEqual(split.axis.count, 11)
         XCTAssertEqual(split.named.map(\.name), ["Belle Époque", "Edo", "Ming"])
         XCTAssertEqual(PeriodAxis.years(named[1]), "1603–1868")
-        // Where a year falls on the axis of ten equal pieces.
-        XCTAssertEqual(PeriodAxis.position(1400, on: split.axis), 0.1, accuracy: 0.001)
-        XCTAssertEqual(PeriodAxis.position(1650, on: split.axis), 0.35, accuracy: 0.001)
-        XCTAssertEqual(PeriodAxis.position(1368, on: split.axis), 0.068, accuracy: 0.001)
+        // Where a year falls on the axis of eleven equal pieces.
+        XCTAssertEqual(PeriodAxis.position(1400, on: split.axis), 2.0 / 11, accuracy: 0.001)
+        XCTAssertEqual(PeriodAxis.position(1650, on: split.axis), 4.5 / 11, accuracy: 0.001)
+        XCTAssertEqual(PeriodAxis.position(1368, on: split.axis), (1 + 868.0 / 900) / 11, accuracy: 0.001)
         XCTAssertEqual(PeriodAxis.position(2100, on: split.axis), 1)
     }
 
@@ -50,7 +68,8 @@ final class TermFacetTests: XCTestCase {
 
     func testPiecesSideBySideReadAsOneSpan() {
         XCTAssertEqual(PeriodAxis.span(["period:18c", "period:1850-1900", "period:1800-1850"], periods: periods), "1700–1900")
-        XCTAssertEqual(PeriodAxis.span(["period:medieval", "period:15c"], periods: periods), "do 1500")
+        XCTAssertEqual(PeriodAxis.span(["period:medieval", "period:15c"], periods: periods), "500–1500")
+        XCTAssertEqual(PeriodAxis.span(["period:ancient", "period:medieval", "period:15c"], periods: periods), "do 1500")
         XCTAssertEqual(PeriodAxis.span(["period:1930-1945", "period:post-1945"], periods: periods), "1930–1955")
         // A gap, or a named period: no span.
         XCTAssertNil(PeriodAxis.span(["period:16c", "period:18c"], periods: periods))
