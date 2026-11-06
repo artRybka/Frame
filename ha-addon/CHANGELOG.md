@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.111.13
+
+- „Pierwsze kolory” w Sztukach innych bierze zdjęcia z całych kolekcji
+  Library of Congress: kolorowe zdjęcia Prokudina-Gorskiego, fotochromy,
+  autochromy i kolorowe slajdy z lat 40. Dotąd wyszukiwanie słów
+  znajdowało tylko kilka, a na karcie były 2.
+- Karty Propozycji z mniej niż 4 dziełami nie są pokazywane, zamiast
+  szarych pól na okładce. W nocy serwer najpierw dobiera dzieła takich
+  kart w Sztukach innych, więc wracają same.
+- Wyszukiwanie zdjęć w Library of Congress nie kończy się już po kilku
+  stronach.
+
 ## 1.111.12
 
 - Paczka aplikacji ramki wraca do ustawień sprzed testu VXT. Dokładna

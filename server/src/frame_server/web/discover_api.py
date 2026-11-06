@@ -38,6 +38,7 @@ from ..library.mix import mixed
 from ..library.museums import Discovery, Kind
 from ..library.repo import Hidden, Library
 from ..library.themes import (
+    CARD_MIN,
     GROUPS,
     OTHER_ART_THEMES,
     SECTION_YEARS,
@@ -516,6 +517,10 @@ def _theme_list(svc: FrameService) -> list[ThemeCard]:
     every = [*weekly, *mine, *THEMES, *OTHER_ART_THEMES, *colours]
     private = svc.player.settings.private_use
     every = [t for t in every if private or not t.private]
+    # A card with too few works for a cover is not shown (it comes back
+    # once the catalogue has them; the night looks for those of "Sztuki
+    # inne" first, Player._add_other_art).
+    every = [t for t in every if cards.get(t.key, (0, []))[0] >= CARD_MIN]
     ordered = sorted(every, key=lambda t: GROUPS.index(t.group))
     hidden = svc.library.hidden()  # once, not for each card
     return [_card(svc, t, cards, playlists, hidden) for t in ordered]

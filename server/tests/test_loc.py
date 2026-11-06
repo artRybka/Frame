@@ -135,6 +135,36 @@ def test_draws_take_turns_between_collections_and_only_for_photographs() -> None
         assert asked[0].url.path == "/photos/" and asked[0].url.params["q"] == "Lange"
 
 
+def test_a_search_of_one_collection() -> None:
+    # "Pierwsze kolory": the words "photochrom" brought the Detroit Photochrom
+    # Company's buildings, "Prokudin-Gorskii" 66 of his 2610 (2026-11-06).
+    asked: list[httpx.Request] = []
+    composite = f"{SERVICE}pnp/prokc/20100/20159"
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        asked.append(request)
+        machine = _result(
+            number_lccn=["2018679999"],
+            image_url=[f"{composite}r.jpg#h=626&w=640", f"{composite}v.jpg#h=1002&w=1024"],
+        )
+        return httpx.Response(
+            200,
+            json={"pagination": {"of": 2610, "total": 66}, "results": [_result(), machine]},
+        )
+
+    with httpx.Client(transport=httpx.MockTransport(answer)) as http:
+        loc = LibraryOfCongress(http)
+        total, items = loc.search("collection:prokudin-gorskii three-color", page=2)
+        assert asked[0].url.path == "/collections/prokudin-gorskii/"
+        assert asked[0].url.params["q"] == "three-color" and asked[0].url.params["sp"] == "2"
+        # How many works, not pages; a plate put together by machine: never.
+        assert total == 2610 and [i.id for i in items] == ["loc:2017877382"]
+        asked.clear()
+        loc.search("collection:photochrom-prints")
+        assert asked[0].url.path == "/collections/photochrom-prints/"
+        assert "q" not in asked[0].url.params
+
+
 def test_only_a_search_for_photographs_asks_it(tmp_path: Path) -> None:
     importer = Importer(Library(tmp_path / "lib.db"), None, None)  # type: ignore[arg-type]
     assert "loc" in importer.sources()

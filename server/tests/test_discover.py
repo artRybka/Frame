@@ -324,10 +324,11 @@ def test_catalogue_leaves_manuscripts_out(museums) -> None:  # noqa: F811
     assert service.player.drop_set_aside() == 1
 
 
-def test_theme_playlists_and_terms(museums) -> None:  # noqa: F811
+def test_theme_playlists_and_terms(museums, monkeypatch) -> None:  # noqa: F811
     from frame_server.web import create_app, discover_api
 
     service = museums
+    monkeypatch.setattr(discover_api, "CARD_MIN", 0)  # every card, however empty
     app = create_app(service.settings)
     app.state.service = service
     discover_api._theme_rows.clear()
