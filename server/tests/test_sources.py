@@ -138,10 +138,15 @@ def test_europeana_takes_works_free_in_the_eu() -> None:
         "what:(painting OR drawing OR print OR poster)",  # no medals or stamps
     ]
 
-    # Free licences only for private use; without death years only marked works.
+    # Private use: free licences and works still in copyright too.
     with _europeana(records, []) as http:
         licensed = Europeana(http, access=Access(private_use=True)).search("x")[1]
-    assert [i.license for i in licensed] == ["Public Domain Mark 1.0", "CC BY-SA 4.0"]
+    assert [i.license for i in licensed] == [
+        "Prawa autorskie w mocy (użytek prywatny)",
+        "Prawa autorskie w mocy (użytek prywatny)",
+        "Public Domain Mark 1.0",
+        "CC BY-SA 4.0",
+    ]
 
 
 def test_europeana_takes_free_works_whatever_their_photo_licence() -> None:
@@ -167,7 +172,7 @@ def test_europeana_takes_free_works_whatever_their_photo_licence() -> None:
     assert items[1].artist == "Wassily Kandinsky"
 
 
-def test_europeana_takes_protected_works_only_while_the_term_is_off_for_tests() -> None:
+def test_europeana_takes_protected_works_only_for_private_use() -> None:
     in_copyright = "http://rightsstatements.org/vocab/InC/1.0/"
     records = [
         _europeana_record(in_copyright, [WARHOL], id="/1/warhol"),
@@ -176,10 +181,14 @@ def test_europeana_takes_protected_works_only_while_the_term_is_off_for_tests() 
     access = Access(life=LifeDates("key"), europeana_key="key")
     with _europeana(records, []) as http:
         assert Europeana(http, access=access).search("x")[1] == []
-        tests = Europeana(http, access=replace(access, ignore_term=True)).search("x")[1]
-    # Still only authors known to have died: the living stay out.
-    assert [(i.id, i.license) for i in tests] == [
-        ("europeana:1~warhol", "Tylko do testów, w UE wolne od 2058 (twórca zm. 1987)")
+        private = Europeana(http, access=replace(access, private_use=True)).search("x")[1]
+    # The provider publishes them: a lawful source for a copy seen at home.
+    assert [(i.id, i.license) for i in private] == [
+        (
+            "europeana:1~warhol",
+            "Prawa autorskie w mocy (użytek prywatny), w UE wolne od 2058 (twórca zm. 1987)",
+        ),
+        ("europeana:1~unknown", "Prawa autorskie w mocy (użytek prywatny)"),
     ]
 
 
@@ -268,16 +277,15 @@ def test_europeana_discovery_and_fetch() -> None:
     assert discover.get_list("qf")[6:] == ["what:painting", "YEAR:[* TO 1955]"]
     assert fetch["query"] == 'europeana_id:"/2048047/Clasate_e91c"'
 
-    # Browsing with nothing asked: openly licensed images only.
+    # Browsing with nothing asked: public-domain images only, but every
+    # image with private use.
     sent.clear()
     with _europeana([record], sent) as http:
         Europeana(http).discover(Discovery())
         Europeana(http, private_use=True).discover(Discovery())
     public, licensed = sent[0].url.params, sent[1].url.params
     assert public["query"] == "*" and public.get_list("qf")[-1] == "RIGHTS:*publicdomain*"
-    assert licensed.get_list("qf")[-1] == (
-        "RIGHTS:(*publicdomain* OR *creativecommons.org/licenses*)"
-    )
+    assert not any(q.startswith("RIGHTS:") for q in licensed.get_list("qf"))
 
 
 def _openverse_result(n: int, licence: str) -> dict:
@@ -321,9 +329,9 @@ def test_openverse_licences_follow_private_use() -> None:
     assert len(sent) == 2  # dates can't be filtered: not even asked
 
 
-def test_wikiart_only_while_switched_on_and_pages_by_token() -> None:
+def test_wikiart_only_for_private_use_and_pages_by_token() -> None:
     assert "wikiart" not in available(Access())
-    assert "wikiart" in available(Access(wikiart=True))
+    assert "wikiart" in available(Access(private_use=True))
     with pytest.raises(KeyError):
         museum("wikiart", httpx.Client())
 
@@ -349,13 +357,13 @@ def test_wikiart_only_while_switched_on_and_pages_by_token() -> None:
 
     WikiArt._tokens.clear()
     with _client(handler) as http:
-        source = museum("wikiart", http, Access(wikiart=True))
+        source = museum("wikiart", http, Access(private_use=True))
         total, items = source.search("rothko", limit=24, page=3)  # works 48-71
     assert [i.source_id for i in items] == [f"wa{n}" for n in range(48, 72)]
     assert total == 120
     first = items[0]
     assert first.image_url == "https://uploads.wikiart.org/images/mark-rothko/no-48.jpg"
-    assert first.license == "Tylko do testów ramki (WikiArt)"
+    assert first.license == "WikiArt (użytek prywatny)"
     assert first.url == "https://www.wikiart.org/en/mark-rothko/no-48"
 
 
@@ -371,7 +379,7 @@ def test_wikiart_browses_most_viewed_with_tokens_decoded() -> None:
 
     WikiArt._tokens.clear()
     with _client(handler, sent) as http:
-        source = museum("wikiart", http, Access(wikiart=True))
+        source = museum("wikiart", http, Access(private_use=True))
         total, items = source.discover(Discovery(), limit=24, page=3)
         assert source.search("  ") == (0, [])
     assert len(items) == 24 and total == 120
@@ -458,7 +466,7 @@ def test_search_asks_the_chosen_museums_and_judges_colours(service, monkeypatch)
         assert client.get("/api/discover/search", params={"source": "nowhere"}).status_code == 404
 
 
-def test_wikiart_switch_lists_it_and_switching_off_removes_its_works(service) -> None:
+def test_private_use_brings_wikiart_and_its_works_stay(service) -> None:
     from frame_server.web import create_app
 
     app = create_app(service.settings)
@@ -468,43 +476,40 @@ def test_wikiart_switch_lists_it_and_switching_off_removes_its_works(service) ->
         assert "europeana" in keys and "openverse" in keys and "wikiart" not in keys
 
         settings = client.get("/api/settings").json()
-        assert settings["wikiart"] is False
-        settings["wikiart"] = True
+        assert "wikiart" not in settings and "ignore_term" not in settings
+        settings["private_use"] = True
         client.put("/api/settings", json=settings)
         assert "wikiart" in [m["key"] for m in client.get("/api/museums").json()]
 
         svc.library.upsert(Item(id="wikiart:wa1", source="wikiart", source_id="wa1"))
-        svc.library.upsert(Item(id="aic:1", source="aic", source_id="1"))
-        settings["wikiart"] = False
+        settings["private_use"] = False
         client.put("/api/settings", json=settings)
-        assert not svc.library.has("wikiart:wa1") and svc.library.has("aic:1")
+        # Like the V&A's: kept, just no new ones.
+        assert svc.library.has("wikiart:wa1")
         assert client.get("/api/museums/wikiart/search", params={"q": "x"}).status_code == 404
-
-
-def test_switching_the_term_back_on_removes_the_protected_works(service) -> None:
-    from frame_server.web import create_app
-
-    app = create_app(service.settings)
-    svc = app.state.service
-    with TestClient(app) as client:
-        settings = client.get("/api/settings").json()
-        assert settings["ignore_term"] is False
+        # An older app still sending the test switches is heard without them.
+        settings["wikiart"] = True
         settings["ignore_term"] = True
-        client.put("/api/settings", json=settings)
-        assert svc.importer.access().ignore_term
+        assert client.put("/api/settings", json=settings).status_code == 200
 
-        protected = "Tylko do testów, w UE wolne od 2058 (twórca zm. 1987)"
-        svc.library.upsert(
-            Item(id="europeana:1~w", source="europeana", source_id="1~w", license=protected)
-        )
-        free = "Domena publiczna w UE (twórca zm. 1954)"
-        svc.library.upsert(
-            Item(id="europeana:1~m", source="europeana", source_id="1~m", license=free)
-        )
-        settings["ignore_term"] = False
-        client.put("/api/settings", json=settings)
-        assert not svc.library.has("europeana:1~w") and svc.library.has("europeana:1~m")
-        assert not svc.importer.access().ignore_term
+
+def test_works_of_the_test_switches_move_under_private_use(service) -> None:
+    from frame_server.service import relabel_test_licences
+
+    library = service.library
+    tests = "Tylko do testów, w UE wolne od 2058 (twórca zm. 1987)"
+    library.upsert(Item(id="europeana:1~w", source="europeana", source_id="1~w", license=tests))
+    free = "Domena publiczna w UE (twórca zm. 1954)"
+    library.upsert(Item(id="europeana:1~m", source="europeana", source_id="1~m", license=free))
+    old = "Tylko do testów ramki (WikiArt)"
+    library.upsert(Item(id="wikiart:wa1", source="wikiart", source_id="wa1", license=old))
+    assert relabel_test_licences(library) == 2
+    assert library.get("europeana:1~w").license == (
+        "Prawa autorskie w mocy (użytek prywatny), w UE wolne od 2058 (twórca zm. 1987)"
+    )
+    assert library.get("europeana:1~m").license == free
+    assert library.get("wikiart:wa1").license == "WikiArt (użytek prywatny)"
+    assert relabel_test_licences(library) == 0
 
 
 def test_colours_look_deeper_and_the_stream_answers_museum_by_museum(service, monkeypatch) -> None:

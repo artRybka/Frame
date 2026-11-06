@@ -2,9 +2,10 @@
 
 Only works free to show are returned: public domain / CC0, public domain in
 the EU (author dead for more than 70 years), and with ``private_use`` also
-works under free licences and works still in copyright whose museum publishes
-full pictures of them (``PRIVATE_LICENCE``). Every museum maps its records onto :class:`Item`
-(without colours; those are computed from the thumbnail at import time).
+works under free licences, works still in copyright whose museum publishes
+full pictures of them (``PRIVATE_LICENCE``) and WikiArt. Every museum maps
+its records onto :class:`Item` (without colours; those are computed from the
+thumbnail at import time).
 """
 
 from __future__ import annotations
@@ -91,13 +92,10 @@ Kind = Literal[
 class Access:
     """What the owner lets sources return, and how to reach them."""
 
-    #: The frame is only seen at home: also free licences (CC BY-SA and the like).
+    #: The frame is only seen at home: also free licences (CC BY-SA and the
+    #: like), works still in copyright that their collections publish, and
+    #: WikiArt.
     private_use: bool = False
-    #: WikiArt, only to test the panel (it shows works without licences).
-    wikiart: bool = False
-    #: Only to test the app as it will be in some years: works whose authors
-    #: died less than 70 years ago count too, marked with ``TEST_LICENCE``.
-    ignore_term: bool = False
     #: Death years for the EU rule; without it only works marked free count.
     life: LifeDates | None = None
     europeana_key: str = "api2demo"
@@ -143,8 +141,10 @@ class Museum(ABC):
     #: How deep random draws reach into results (search engines stop paging
     #: at 10 000).
     random_depth = 10_000
-    #: Only offered while the owner has switched it on for tests.
-    testing: ClassVar[bool] = False
+    #: Drawn from at random for playlists and Odkrywaj; a source that cannot
+    #: filter by kind or years (WikiArt) is only searched, unless a playlist
+    #: names it.
+    draws: ClassVar[bool] = True
     #: Marks its most important works and can be asked for only those.
     highlights: ClassVar[bool] = False
     #: The language its search understands: Polish words typed in Szukaj
@@ -157,7 +157,7 @@ class Museum(ABC):
     @classmethod
     def offered(cls, access: Access) -> bool:
         """Whether the owner's choices and keys let this source answer."""
-        return not cls.testing or access.wikiart
+        return True
 
     def __init__(
         self, http: httpx.Client, private_use: bool = False, access: Access | None = None
@@ -947,8 +947,8 @@ PUBLIC_MARKS = {
 }
 
 
-#: Start of the licence of works let in only while the 70-year term is
-#: switched off for tests; they leave the library with the switch.
+#: Start of the licence of works once let in by the test switch "Bez limitu
+#: 70 lat" (until 1.111.0); they now carry ``PRIVATE_LICENCE``.
 TEST_LICENCE = "Tylko do testów"
 #: Works still in copyright whose pictures their museum publishes itself, let
 #: in with ``private_use``: the frame is seen at home only, and Polish law
@@ -982,9 +982,10 @@ class Europeana(Museum):
 
     Besides works marked free it takes those whose authors died more than 70
     years ago (the EU rule): many providers still mark Kandinsky or Matisse
-    "in copyright". With ``Access.ignore_term`` (tests only) any author's
-    death will do. Without a key of its own (``FRAME_EUROPEANA_KEY``, free
-    at europeana.eu) it uses the shared demo key.
+    "in copyright". With ``private_use`` every work its providers publish
+    comes, those still in copyright marked ``PRIVATE_LICENCE``. Without a
+    key of its own (``FRAME_EUROPEANA_KEY``, free at europeana.eu) it uses
+    the shared demo key.
     """
 
     key = "europeana"
@@ -1075,9 +1076,14 @@ class Europeana(Museum):
         died = self._death(d)
         if died is not None and free_in_eu(died):
             return f"Domena publiczna w UE (twórca zm. {died})"
-        if died is not None and self.access.ignore_term:
-            return f"{TEST_LICENCE}, w UE wolne od {died + TERM_YEARS + 1} (twórca zm. {died})"
-        return ""
+        if not self.private_use:
+            return ""
+        # Still in copyright (or its rights not evaluated): its provider
+        # publishes the picture, a lawful source for a copy seen at home.
+        if died is not None:
+            free = died + TERM_YEARS + 1
+            return f"{PRIVATE_LICENCE}, w UE wolne od {free} (twórca zm. {died})"
+        return PRIVATE_LICENCE
 
     def _map(self, d: dict[str, Any]) -> Item | None:
         image = _first(d.get("edmIsShownBy"))
@@ -1168,13 +1174,10 @@ class Europeana(Museum):
             low = "*" if spec.year_from is None else spec.year_from
             high = "*" if spec.year_to is None else spec.year_to
             qf.append(f"YEAR:[{low} TO {high}]")
-        elif not spec.style.strip():
+        elif not spec.style.strip() and not self.private_use:
             # Nothing to narrow by: most images are still in copyright, so ask
-            # for openly licensed ones or the pages come back empty.
-            free = "*publicdomain*"
-            if self.private_use:
-                free = f"({free} OR *creativecommons.org/licenses*)"
-            qf.append(f"RIGHTS:{free}")
+            # for public-domain ones or the pages come back empty.
+            qf.append("RIGHTS:*publicdomain*")
         return self._get(spec.style, qf, limit, page)
 
     def fetch(self, source_id: str) -> Item | None:
@@ -1428,21 +1431,29 @@ class StatensMuseum(Museum):
 
 
 class WikiArt(Museum):
-    """WikiArt, only to test the panel with newer art.
+    """WikiArt: newer art too, offered with "Użytek prywatny" (Mateusz,
+    2026-11-06: the frame is seen at home only).
 
-    WikiArt shows works still under copyright without licences, so it is no
-    lawful source for keeping copies: it is offered only while switched on in
-    the app, never feeds Suggestions, and its works leave the library when it
-    is switched off again.
+    Mostly old works free anywhere; those still in copyright it shows without
+    licences. Searched for artists (Szukaj, playlists, liked artists in
+    Odkrywaj) but not drawn from at random: it cannot filter by kind or
+    years. A museum's copy of a work wins over WikiArt's (``duplicates``).
     """
 
     key = "wikiart"
     name = "WikiArt"
-    testing = True
+    draws = False
     api = "https://www.wikiart.org/en/api/2"
     #: WikiArt's own pages hold 60 works.
     page_size = 60
-    licence = "Tylko do testów ramki (WikiArt)"
+    licence = "WikiArt (użytek prywatny)"
+    #: What its works were marked with while it was a test source.
+    test_licence = "Tylko do testów ramki (WikiArt)"
+
+    @classmethod
+    def offered(cls, access: Access) -> bool:
+        return access.private_use
+
     #: (search, page) -> token that asks for that page.
     _tokens: ClassVar[dict[tuple[str, int], str]] = {}
     #: Session keys by access code: (key, when it was given). WikiArt gives
@@ -1551,7 +1562,9 @@ class WikiArt(Museum):
         return self._results(term, limit, page) if term else (0, [])
 
     def discover(self, spec: Discovery, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
-        """Works of a style; with nothing asked, the most viewed paintings."""
+        """Paintings of a style; with nothing asked, the most viewed ones."""
+        if spec.highlight or spec.kind not in ("any", "painting"):
+            return 0, []
         return self._results(spec.style.strip(), limit, page)
 
     def fetch(self, source_id: str) -> Item | None:
@@ -1606,7 +1619,7 @@ MUSEUMS: dict[str, type[Museum]] = {
 
 
 def available(access: Access) -> dict[str, type[Museum]]:
-    """The sources on offer: test-only ones just while switched on, those
+    """The sources on offer: those of "Użytek prywatny" just with it, those
     needing a key just with one."""
     return {k: m for k, m in MUSEUMS.items() if m.offered(access)}
 

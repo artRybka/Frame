@@ -27,7 +27,7 @@ enum DemoDiscover {
         TermInfo(key: "period:1850-1900", kind: "period", name: "1850–1900", yearFrom: 1850, yearTo: 1899),
         TermInfo(key: "period:1900-1930", kind: "period", name: "1900–1930", yearFrom: 1900, yearTo: 1930),
         TermInfo(key: "period:1930-1945", kind: "period", name: "1930–1945", yearFrom: 1930, yearTo: 1944),
-        TermInfo(key: "period:post-1945", kind: "period", name: "1945–1955", yearFrom: 1945, yearTo: 1955),
+        TermInfo(key: "period:post-1945", kind: "period", name: "Po 1945", yearFrom: 1945, yearTo: 2026),
         TermInfo(key: "period:egypt", kind: "period", name: "Starożytny Egipt", yearFrom: -3100, yearTo: -30, region: "antiquity"),
         TermInfo(key: "period:greece", kind: "period", name: "Starożytna Grecja", yearFrom: -800, yearTo: -31, region: "antiquity"),
         TermInfo(key: "period:rome", kind: "period", name: "Starożytny Rzym", yearFrom: -509, yearTo: 476, region: "antiquity"),

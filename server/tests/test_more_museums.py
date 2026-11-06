@@ -811,7 +811,7 @@ def test_wikiart_keys_are_two_codes_and_open_a_session(monkeypatch: pytest.Monke
         for bad in ("acc:wrong", "accsec"):
             with pytest.raises(KeyRejected):
                 keys.check("wikiart", bad, http)
-        wikiart = museum("wikiart", http, Access(wikiart=True, wikiart_keys=("acc", "sec")))
+        wikiart = museum("wikiart", http, Access(private_use=True, wikiart_keys=("acc", "sec")))
         assert wikiart.search("Rothko") == (0, [])
         assert wikiart.search("Klee") == (0, [])
     logins = [r for r in sent if r.url.path.endswith("/login")]

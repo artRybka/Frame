@@ -89,6 +89,9 @@ class Theme:
     #: The museums' answers kept only when they fit the theme's rules (an
     #: icon search brings enamels and Russian icons of 1800 too).
     strict: bool = False
+    #: Shown only with "Użytek prywatny": its works are still in copyright,
+    #: and only WikiArt and the collections that publish such works have them.
+    private: bool = False
 
     def rules(self) -> PlaylistRules:
         return PlaylistRules(
@@ -205,6 +208,41 @@ AVANT_GARDE = (
     "Jawlensky",
     "Oskar Schlemmer",
     "van Doesburg",
+)
+#: Painters of the 20th and 21st centuries, most still in copyright: with
+#: "Użytek prywatny" from WikiArt, SMK and the Rijksmuseum (Mateusz
+#: 2026-11-06).
+CONTEMPORARY = (
+    "Pablo Picasso",
+    "Edward Hopper",
+    "René Magritte",
+    "Salvador Dalí",
+    "Joan Miró",
+    "Marc Chagall",
+    "Georgia O'Keeffe",
+    "Tamara de Lempicka",
+    "Mark Rothko",
+    "Jackson Pollock",
+    "Francis Bacon",
+    "Andy Warhol",
+    "Roy Lichtenstein",
+    "David Hockney",
+    "Gerhard Richter",
+)
+#: Polish painters after 1945, in Warsaw's and Kraków's national museums.
+POLISH_POSTWAR = (
+    "Andrzej Wróblewski",
+    "Jerzy Nowosielski",
+    "Tadeusz Kantor",
+    "Wojciech Fangor",
+    "Maria Jarema",
+    "Tadeusz Brzozowski",
+    "Henryk Stażewski",
+    "Jan Lebenstein",
+    "Zdzisław Beksiński",
+    "Roman Opałka",
+    "Jerzy Duda-Gracz",
+    "Edward Dwurnik",
 )
 POLISH_INTERWAR = (
     "Władysław Strzemiński",
@@ -419,6 +457,15 @@ THEMES: list[Theme] = [
         artists=AVANT_GARDE,
         # Europeana first: its later works are free by the EU rule.
         queries=tuple((s, a) for a in AVANT_GARDE for s in ("europeana", "aic", "cma")),
+    ),
+    Theme(
+        "contemporary",
+        "Sztuka współczesna",
+        "Picasso, Hopper, Magritte, Dalí, Rothko, Warhol, Hockney, Richter i inni: XX i XXI wiek.",
+        STYLES,
+        artists=CONTEMPORARY,
+        queries=tuple((s, a) for a in CONTEMPORARY for s in ("wikiart", "smk", "rijks")),
+        private=True,
     ),
     # Prints and posters
     Theme(
@@ -643,6 +690,15 @@ THEMES: list[Theme] = [
             *_commons(POLISH_INTERWAR),
             *(("europeana", a) for a in POLISH_INTERWAR),
         ),
+    ),
+    Theme(
+        "polish-postwar",
+        "Polska sztuka powojenna",
+        "Wróblewski, Nowosielski, Kantor, Fangor, Jarema, Beksiński, Opałka, Dwurnik i inni.",
+        POLISH,
+        artists=POLISH_POSTWAR,
+        queries=(*_national(POLISH_POSTWAR), *(("wikiart", a) for a in POLISH_POSTWAR)),
+        private=True,
     ),
     # Periods, in the order of time (Mateusz 2026-11-06): antiquity and
     # Byzantium from the museums (the catalogue has few of their pictures),
@@ -1304,7 +1360,8 @@ def _pick_day(day: date, days: dict[str, str]) -> Theme:
     for repeat in (DAY_REPEAT, DAY_REPEAT // 3, 0):
         since = (day - timedelta(days=repeat)).isoformat()
         recent = {key for when, key in days.items() if since <= when < today}
-        weights = [_day_weight(t, now, recent) for t in THEMES]
+        # Not those of "Użytek prywatny": the day's theme is everyone's.
+        weights = [0.0 if t.private else _day_weight(t, now, recent) for t in THEMES]
         if any(weights):
             break
     return random.Random(day.toordinal()).choices(THEMES, weights)[0]

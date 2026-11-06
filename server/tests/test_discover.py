@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import itertools
+from datetime import date
 
 import pytest
 from fastapi.testclient import TestClient
@@ -10,7 +11,6 @@ from test_pools import _wait, museums  # noqa: F401  (fixture)
 
 from frame_server.library import Item, ItemKind, PlaylistRules
 from frame_server.library.importer import span
-from frame_server.library.lifespan import last_free_year
 from frame_server.library.repo import matches
 from frame_server.library.themes import (
     ARTIST_SPREAD,
@@ -334,8 +334,17 @@ def test_theme_playlists_and_terms(museums) -> None:  # noqa: F811
     discover_api._cards = (0.0, {})
     with TestClient(app) as client:
         cards = client.get("/api/themes").json()
-        assert len(cards) == len(THEMES) + len(OTHER_ART_THEMES)
+        # Without "Użytek prywatny", none of the themes of works in copyright.
+        private = [t.key for t in THEMES if t.private]
+        assert private == ["contemporary", "polish-postwar"]
+        assert len(cards) == len(THEMES) - len(private) + len(OTHER_ART_THEMES)
         assert [c["group"] for c in cards] == sorted((c["group"] for c in cards), key=GROUPS.index)
+        assert client.get("/api/themes/contemporary").status_code == 404
+        settings = client.get("/api/settings").json()
+        client.put("/api/settings", json={**settings, "private_use": True})
+        keys = [c["key"] for c in client.get("/api/themes").json()]
+        assert "contemporary" in keys and "polish-postwar" in keys
+        client.put("/api/settings", json=settings)
         made = client.post("/api/themes/romanticism/playlist", json={}).json()
         assert made["playlist"]["theme"] == "romanticism" and made["job_id"]
         _wait(service.importer.jobs[made["job_id"]])
@@ -516,12 +525,15 @@ def test_a_sets_searches_asked_together_are_for_different_painters() -> None:
     assert len({query for _, query in first}) == len(plain.artists)
 
 
-def test_periods_reach_the_last_year_free_in_the_eu() -> None:
+def test_the_last_period_reaches_this_year() -> None:
+    """With "Użytek prywatny" sources give works still in copyright, so
+    the period after 1945 no longer stops at the last free death year."""
     late = term("period:post-1945")
-    assert late is not None and late.year_to == last_free_year()
-    assert late.name == f"1945–{last_free_year()}"
+    assert late is not None and late.year_to == date.today().year
+    assert late.name == "Po 1945"
     composition = _work(1, title="Composition", year=1950)
     assert matches(composition, PlaylistRules(terms=["period:post-1945"]))
+    assert matches(_work(3, title="Untitled", year=1987), PlaylistRules(terms=["period:post-1945"]))
     assert matches(_work(2, title="Unism", year=1934), PlaylistRules(terms=["period:interwar"]))
     assert not matches(composition, PlaylistRules(terms=["period:1930-1945"]))
     # Later styles, and their museum words.
