@@ -236,7 +236,9 @@ def test_a_picture_for_the_economy_sleep_waits_without_an_error(tmp_path: Path) 
             quiet_start=None,
         )
     )
-    now = datetime.now(UTC)
+    # A fixed time: a few minutes before a change or a check the app waits
+    # awake instead (failed at 14:56 UTC on 2026-11-06).
+    now = _at("2026-10-28T12:00")
     _next_change(service, now + timedelta(hours=5))
     service.app.answer(BATTERY, now=now)
     assert service.app.deep_asleep()
