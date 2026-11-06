@@ -112,6 +112,9 @@ def test_the_nga_index_is_rebuilt_at_night_before_a_search_would(tmp_path, monke
         return 1
 
     monkeypatch.setattr(nga, "build", build)
+    # A build another test's thread left failing (offline) waits an hour.
+    monkeypatch.setattr(nga.INDEX, "failed_at", 0.0)
+    monkeypatch.setattr(nga.INDEX, "building", False)
     path = tmp_path / "nga" / "collection.sqlite"
     assert not nga.refresh_at_night(tmp_path)  # never searched: left to a search
     path.parent.mkdir()
