@@ -272,7 +272,7 @@ class NationalGalleryOfArt(Museum):
         return self._query(where, args, limit, page)
 
     def discover(self, spec: Discovery, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
-        if spec.highlight or spec.kind == "poster":
+        if spec.highlight or (spec.kind != "any" and spec.kind not in self.kinds):
             return 0, []
         where, args = self._words(spec.style)
         kinds = self.kinds.get(spec.kind, ("Painting", "Drawing", "Print"))
