@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.104.7
+
+- Daty dzieł starożytnych z Luwru też są cyframi: „Ie s. ap. J.-C.” to
+  teraz „1–100 n.e.”, a „Ier s. av. J.-C.” to „100–1 p.n.e.”.
+- Dzieła z Luwru bez znanego autora mają w miejscu autora „Anonim”, a nie
+  „Luwr”. Gdy Luwr podaje autora, a Wikidane go nie znają, pokazujemy
+  nazwisko z Luwru także wtedy, gdy autor nie ma wpisu w Wikidanych.
+  Nazwa szkoły, np. „Allemagne Rhin”, nie udaje autora.
+- Tytuły z Luwru zaczynają się wielką literą („Peinture murale”).
+- Dzieła już zapisane w bibliotece poprawiają się same. Spis Luwru
+  pobiera się raz jeszcze w tle (ok. godziny).
+
 ## 1.104.6
 
 - Grupy w Szukaj wracają sekundę po puszczeniu palca (dotąd pół

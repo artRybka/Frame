@@ -87,15 +87,28 @@ _UNITS = {"m": 100.0, "cm": 1.0, "mm": 0.1}
 #: Louvre's own name of the author (1.104.2); older lists are looked up
 #: again (Mateusz 2026-11-05: "W wielu działach pojawia się wikidata",
 #: "Daty opisowo, po francusku").
-FORMAT = 2
+#: 3: authors without Wikidata kept when the Louvre names a person, not a
+#: school ("Allemagne Rhin") or "Anonyme" (1.104.7; Mateusz 2026-11-06:
+#: "Dla części wyszukań jako autor pojawia się Luwr").
+FORMAT = 3
+#: "VALENCIENNES Pierre-Henri de": the surname in capitals first.
+_SURNAME = re.compile(r"^((?:[A-ZÀ-ÖØ-Þ'’-]{2,}\s+)+)(.*[a-zà-ÿ].*)$")
 _ROMAN = {"I": 1, "V": 5, "X": 10, "L": 50, "C": 100}
-#: "2e moitié du XVe siècle", "1er quart du XVIIe siècle", "fin du XVe siècle".
+#: A century: "XVe siècle", "Ie s." (the antiquities' way).
+_CENT = r"([IVXLC]+)\s*(?:er|e|ème|eme)?\s+(?:siècle\b|s\.)"
+#: "2e moitié du XVe siècle", "1er quart du XVIIe siècle", "fin du XVe siècle",
+#: "4e quart IIe s. ap. J.-C.".
 _PART = re.compile(
-    r"(?:\b(\d)\s*(?:er|e|ème|eme)\s+(quart|tiers|moitié)|\b(début|milieu|fin))\s+du\s+"
-    r"([IVXLC]+)\s*(?:e|ème|eme)\s+siècle",
+    r"(?:\b(\d)\s*(?:er|e|ème|eme)\s+(quart|tiers|moitié)|\b(début|milieu|fin))\s+(?:du\s+)?"
+    + _CENT,
     re.IGNORECASE,
 )
-_CENTURY = re.compile(r"\b([IVXLC]+)\s*(?:e|ème|eme)\s+siècle", re.IGNORECASE)
+_CENTURY = re.compile(r"\b" + _CENT, re.IGNORECASE)
+_BC = re.compile(r"\bav(?:\.|ant)\s*J\.?\s*-?\s*C", re.IGNORECASE)
+_AD = re.compile(r"\b(?:ap(?:\.|rès)\s*J\.?\s*-?\s*C|apr\.\s*J)", re.IGNORECASE)
+#: What stands in a work's author place without naming one: the app shows
+#: the source's name for an empty one, which read as "Luwr" for the author.
+ANONYMOUS = "Anonim"
 _PARTS = {"quart": 4, "tiers": 3, "moitié": 2}
 #: Years of a century "début", "milieu" and "fin" stand for.
 _LOOSE = {"début": (0, 25), "milieu": (40, 60), "fin": (75, 99)}
@@ -106,29 +119,48 @@ def _roman(text: str) -> int:
     return sum(-v if v < nxt else v for v, nxt in zip(values, [*values[1:], 0], strict=True))
 
 
+def _span(century: int, first: int, last: int, bc: bool) -> tuple[int, int]:
+    """Years ``first``…``last`` (0–99) into a century; before Christ the
+    century runs from -100·n up."""
+    base = -100 * century if bc else 100 * (century - 1)
+    start, end = base + first, base + last
+    if not bc and century == 1:  # no year 0: the 1st century is 1–100
+        start, end = max(start, 1), end + (1 if last == 99 else 0)
+    return start, end
+
+
 def french_years(text: str) -> tuple[int, int] | None:
-    """The years a French period names: "2e moitié du XVe siècle" ->
-    (1450, 1499), "XVIIe siècle" -> (1600, 1699), "vers 1500" -> (1500, 1500)."""
+    """The years a French period names, negative before Christ: "2e moitié
+    du XVe siècle" -> (1450, 1499), "XVIIe siècle" -> (1600, 1699), "Ie s.
+    ap. J.-C." -> (1, 100), "Ier s. av. J.-C." -> (-100, -1), "vers 1500"
+    -> (1500, 1500)."""
+    bc = bool(_BC.search(text))
     if found := _PART.search(text):
         number, part, loose, roman = found.groups()
-        start = (_roman(roman) - 1) * 100
         if loose:
-            first, last = _LOOSE[loose.casefold()]
-            return start + first, start + last
+            return _span(_roman(roman), *_LOOSE[loose.casefold()], bc)
         k = _PARTS[part.casefold()]
         n = min(max(int(number), 1), k)
-        return start + round((n - 1) * 100 / k), start + round(n * 100 / k) - 1
+        return _span(_roman(roman), round((n - 1) * 100 / k), round(n * 100 / k) - 1, bc)
     if found := _CENTURY.search(text):
-        start = (_roman(found.group(1)) - 1) * 100
-        return start, start + 99
-    if found := re.search(r"\b(1[0-9]{3}|[5-9][0-9]{2})\b", text):
-        return int(found.group(1)), int(found.group(1))
+        return _span(_roman(found.group(1)), 0, 99, bc)
+    era = bc or bool(_AD.search(text))
+    if found := re.search(r"\b(1[0-9]{3}|[5-9][0-9]{2})\b" if not era else r"\b(\d{1,4})\b", text):
+        year = -int(found.group(1)) if bc else int(found.group(1))
+        return year, year
     return None
 
 
 def years_text(start: int, end: int | None) -> str:
-    """ "1503" or "1503–1519"."""
-    return f"{start}–{end}" if end and end != start else str(start)
+    """ "1503", "1503–1519"; early years with the era: "1–100 n.e.",
+    "100–1 p.n.e.", "50 p.n.e.–20 n.e."."""
+    end = start if end is None else end
+    if end < 0:
+        return f"{-start}–{-end} p.n.e." if end != start else f"{-start} p.n.e."
+    if start < 0:
+        return f"{-start} p.n.e.–{end} n.e."
+    era = " n.e." if end < 500 else ""
+    return (f"{start}–{end}" if end != start else str(start)) + era
 
 
 def clean_artist(name: str | None) -> str:
@@ -140,6 +172,31 @@ def clean_artist(name: str | None) -> str:
     return "" if name.casefold() in _ANONYMOUS else name
 
 
+def nobody(name: str) -> bool:
+    """Whether ``name`` names no one: "Anonyme", "Anonim", "Inconnu"."""
+    from .artists import NOBODY as NAMELESS  # artists -> museums -> here
+    from .vocabulary import fold
+
+    words = set(re.findall(r"[^\W\d_]+", fold(name)))
+    return not words or bool(words & NAMELESS)
+
+
+def named(creator: dict[str, Any]) -> bool:
+    """Whether the Louvre's creator is a person in today's attribution: one
+    with Wikidata, or written "Hals, Frans" or "VALENCIENNES Pierre-Henri
+    de"; not a school ("Allemagne Rhin", "Italie") nor "Anonyme"."""
+    label = str(creator.get("label") or "").strip()
+    if not label or nobody(label):
+        return False
+    level = str(creator.get("attributionLevel") or "").casefold()
+    if "ancienne" in level or "autre" in level:
+        return False
+    if str(creator.get("linkType") or "").casefold().startswith("école"):
+        return False
+    bare = re.sub(r"\(.*?\)", "", label)
+    return bool(creator.get("wikidata")) or "," in bare or bool(_SURNAME.match(bare.strip()))
+
+
 def person(label: str) -> str:
     """The Louvre's name of an author as one writes it: "Hals, Frans" ->
     "Frans Hals", "VALENCIENNES Pierre-Henri de" -> "Pierre-Henri de
@@ -148,7 +205,7 @@ def person(label: str) -> str:
     if "," in name:
         last, _, first = name.partition(",")
         name = f"{first.strip()} {last.strip()}".strip()
-    elif found := re.match(r"^((?:[A-ZÀ-ÖØ-Þ'’-]{2,}\s+)+)(.*[a-zà-ÿ].*)$", name):
+    elif found := _SURNAME.match(name):
         last, first = found.groups()
         name = f"{first.strip()} {last.strip().title()}"
     return re.sub(r"\s+", " ", name).strip()
@@ -271,8 +328,7 @@ def record(entry: dict[str, Any]) -> dict[str, Any] | None:
     end = end if isinstance(end, int) and start is not None and end >= start else start
     numbers = entry.get("objectNumber") or []
     number = next((str(n.get("value")) for n in numbers if n.get("value")), "")
-    # Named people (with Wikidata), not "France" or "Italie" for a school.
-    creators = [c for c in entry.get("creator") or [] if c.get("label") and c.get("wikidata")]
+    creators = [c for c in entry.get("creator") or [] if named(c)]
     size = size_cm(entry.get("dimension") or [])
     return {
         "title_fr": str(entry.get("title") or "").strip(),
@@ -486,21 +542,23 @@ class Louvre(Museum):
 
     def _map(self, ark: str, w: dict[str, Any]) -> Item:
         year = w.get("year")
-        if "year_end" in w:
-            date = years_text(year, w["year_end"]) if year is not None else w.get("date") or ""
-        else:  # listed before 1.104.2: the French period
+        if "year_end" in w and year is not None:
+            date = years_text(year, w["year_end"])
+        else:  # the French period (records before 1.104.2, entries without years)
             span = french_years(str(w.get("date") or ""))
             date = years_text(*span) if span else str(w.get("date") or "")
             year = year if year is not None else (span[0] if span else None)
-        # The Louvre's name where Wikidata has none (its older records named
-        # a school, "France", in its place).
+        # The Louvre's name where Wikidata has none (its records before
+        # 1.104.2 named a school, "France", in its place), else "Anonim".
         artist = clean_artist(w.get("artist"))
-        if not artist and "year_end" in w:
-            artist = str(w.get("artist_fr") or "")
+        if not artist and "year_end" in w and not nobody(str(w.get("artist_fr") or "")):
+            artist = str(w.get("artist_fr"))
+        title = str(w.get("title") or w.get("title_fr") or "")
         return self._item(
             ark,
-            title=w.get("title") or w.get("title_fr") or "",
-            artist=artist,
+            # Wikidata's French labels are often lower case: "peinture murale".
+            title=title[:1].upper() + title[1:],
+            artist=artist or ANONYMOUS,
             date_text=date,
             year=year,
             medium=w.get("medium") or "",
