@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.111.3
+
+- Fotografie w sepii, stare odbitki i rysunki brązowym tuszem lub na
+  kremowym papierze zostają na ramce w swoim ciepłym tonie. Skalę
+  szarości dostają tylko naprawdę czarno-białe zdjęcia, ryciny
+  i rysunki.
+
 ## 1.111.2
 
 - Ciemne, ciepłe obrazy olejne (np. „Studium starca w profilu”

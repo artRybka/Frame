@@ -7,19 +7,25 @@ import re
 
 from PIL import Image
 
-from .colors import tint_spread
+from .colors import tint_spread, tint_strength
 from .models import Item, ItemKind
 from .vocabulary import GREY_PAINTING_SPREAD, is_painting
 
 #: Presentation.preset value: choose for each picture.
 AUTO = "auto"
 
-#: Below this tint spread a picture has no colour of its own (pencil, ink,
-#: etchings, B&W and sepia photos): black and white ink only. Paintings are
+#: Below this tint spread a picture has no colour of its own beyond one tint
+#: (pencil, ink, etchings, B&W and sepia photos). Paintings are
 #: measured against ``GREY_PAINTING_SPREAD`` instead: a dark, warm oil (Rembrandt's
 #: "Study of an Old Man in Profile", ~0.012) lies on one brown line just like
 #: a sepia photo, yet its browns, ochres and flesh are colour.
 MONOCHROME_SPREAD = 0.012
+#: ... and only a picture tinted less than this (``colors.tint_strength``) is
+#: black and white. Sepia, albumen and salted paper prints, brown ink and
+#: chalk on cream or blue paper keep their tone (Mateusz 2026-11-06: "Sepia
+#: powinna jednak zostać sepią"); measured on Cleveland's scans, neutral
+#: prints and photos lie at 0.008–0.015, visibly warm ones from 0.017 up.
+NEUTRAL_TINT = 0.015
 
 # Matched as word starts in classification, medium and styles; museums
 # describe works in English, Dutch (Rijksmuseum), French and Polish.
@@ -33,12 +39,21 @@ _GRAPHIC = re.compile(
 )
 
 
-def auto_preset(item: Item) -> str:
-    """The preset for ``item``: colourless pictures in black and white,
-    photos as photos, prints and posters as graphics, the rest as paintings.
-    A painting goes black and white only when its picture is a grey copy."""
+def toned_only(item: Item) -> bool:
+    """Whether ``item``'s picture has no colour of its own beyond one tint
+    (pencil, ink, etchings, B&W and sepia photos); it is black and white
+    when that tint is faint too (``NEUTRAL_TINT``). A painting counts only
+    when its picture is a grey copy."""
     limit = GREY_PAINTING_SPREAD if is_painting(item) else MONOCHROME_SPREAD
-    if item.tint_spread is not None and item.tint_spread < limit:
+    return item.tint_spread is not None and item.tint_spread < limit
+
+
+def auto_preset(item: Item, tint: float | None = None) -> str:
+    """The preset for ``item``: black-and-white pictures in black and white,
+    photos as photos, prints and posters as graphics, the rest as paintings.
+    ``tint`` is the picture's ``colors.tint_strength``; without it a picture
+    with one tint only counts as black and white."""
+    if toned_only(item) and (tint is None or tint < NEUTRAL_TINT):
         return "bw"
     if item.kind == ItemKind.PHOTO:
         return "photo"
@@ -51,5 +66,7 @@ def auto_preset(item: Item) -> str:
 
 
 def preset_for_photo(img: Image.Image) -> str:
-    """A one-off photo sent from the phone: B&W ones in black and white."""
-    return "bw" if tint_spread(img) < MONOCHROME_SPREAD else "photo"
+    """A one-off photo sent from the phone: B&W ones in black and white,
+    sepia ones as photos."""
+    grey = tint_spread(img) < MONOCHROME_SPREAD and tint_strength(img) < NEUTRAL_TINT
+    return "bw" if grey else "photo"
