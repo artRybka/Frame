@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.110.3
+
+- Konfiguracja → Pełny ekran: pod „Sztuczne „podbicie” w HDR” nowy
+  przełącznik „Bez podnoszenia jasności”. Słoneczko tylko podbija obraz
+  w HDR, a jasność ekranu zostaje Twoja.
+
 ## 1.110.2
 
 - Powiadomienie o nowej wersji serwera mówi prościej: „Nowa wersja

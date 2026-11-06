@@ -1707,6 +1707,7 @@ private extension UIFont {
 /// the full-screen viewer also lift the picture above white (`HDRBoost`).
 struct ViewerSection: View {
     @AppStorage(ScreenBoost.hdrKey) private var hdrBoost = false
+    @AppStorage(ScreenBoost.keepKey) private var keepBrightness = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -1715,12 +1716,24 @@ struct ViewerSection: View {
                 Toggle(isOn: $hdrBoost) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Sztuczne „podbicie” w HDR")
-                        Text("Słoneczko na dziele otwartym na cały ekran rozjaśnia ekran i dodatkowo sprawia, że najjaśniejsze miejsca obrazu świecą mocniej niż biel ekranu. Ciemne i średnie tony zostają, ale dzieło wygląda inaczej niż oryginał i ramka. Nie działa w trybie niskiego zużycia energii.")
+                        Text("Słoneczko na dziele otwartym na cały ekran sprawia, że najjaśniejsze miejsca obrazu świecą mocniej niż biel ekranu. Ciemne i średnie tony zostają, ale dzieło wygląda inaczej niż oryginał i ramka. Nie działa w trybie niskiego zużycia energii.")
                             .font(.caption)
                             .foregroundStyle(Theme.inkSoft)
                     }
                 }
                 .tint(Theme.ink)
+                if hdrBoost {
+                    Divider()
+                    Toggle(isOn: $keepBrightness) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Bez podnoszenia jasności")
+                            Text("Słoneczko tylko podbija obraz w HDR, a jasność ekranu zostaje Twoja. Przy niższej jasności iPhone ma więcej zapasu, więc podbicie bywa wtedy wyraźniejsze.")
+                                .font(.caption)
+                                .foregroundStyle(Theme.inkSoft)
+                        }
+                    }
+                    .tint(Theme.ink)
+                }
             }
         }
     }
