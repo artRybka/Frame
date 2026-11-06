@@ -58,6 +58,18 @@ struct WorkWeave {
         show(.apart)
     }
 
+    /// The first few works shown, painters apart if they can be but one
+    /// museum's side by side, when the other answers keep the page waiting
+    /// (`SuggestionsView` after a few seconds): a set whose searches all ask
+    /// one museum (antiquity: the Met, which takes long) would otherwise
+    /// show one work and the squares until the whole round is in.
+    mutating func showFirst() {
+        while shown.count < Self.fewestPerRound, let next = pick(.painterApart) ?? pick(.any) {
+            shown.append(held.remove(at: next))
+            thisRound += 1
+        }
+    }
+
     /// A round of answers is over: `more` when another round may follow.
     /// After the last round, or one that showed too little, everything
     /// held is shown; when much is held, one museum's works may come

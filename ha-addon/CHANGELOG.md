@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.110.5
+
+- Czytelniejsza oś czasu w Szukaj → Epoka: nazwy okresów spoza wybranych
+  lat są ciemniejsze, a paski okresów w wybranym zakresie mają pełny
+  kolor. Okresy stoją trochę ciaśniej, a sama karta jest nieco wyższa,
+  więc wszystko mieści się na jednym ekranie. Pod kartą Epoka nie ma już dopisku „Wybierz dowolnie wiele…”.
+- Serwer odczytuje rok także z dat zapisanych słowami, np. „18th century”,
+  „late 16th century”, „ca. 1890s” czy „pierwsza dekada XX wieku”. Około
+  200–250 dzieł, głównie z Europeany i Yale, trafi przez to do Epoki.
+
+## 1.110.4
+
+- Nowe karty Epok (Egipt, Fajum, Freski Rzymu, Ikony) i tematy „Sztuk
+  innych” nie stoją już puste: zaczynają się od dzieł z katalogu, a to,
+  co muzea znajdą, zostaje w katalogu na następny raz. Drugie wejście
+  w tę samą kartę przez 3 godziny nie czeka na muzea, a dzieła jednego
+  muzeum pojawiają się po 2 sekundach, nie dopiero na końcu.
+
 ## 1.110.3
 
 - Konfiguracja → Pełny ekran: pod „Sztuczne „podbicie” w HDR” nowy

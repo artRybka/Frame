@@ -243,7 +243,9 @@ def file_title(name: str, artist: str, year: int | None = None) -> str:
 # 9: Louvre dates of antiquity ("Ie s. ap. J.-C." -> "1–100 n.e."), "Anonim"
 #    for no author (the app showed "Luwr" in its place), titles from a
 #    capital ("peinture murale"; Mateusz 2026-11-06).
-REPAIR_VERSION = 9
+# 10: years of any source from dates in words ("18th century", "ca. 1890s",
+#     "pierwsza dekada XX wieku"): works without one were never in Epoka.
+REPAIR_VERSION = 10
 REPAIR_STATE_KEY = "commons_text_repair"
 # The household's own photos: their captions are left as they were typed.
 OWN_SOURCES = frozenset({"upload", "icloud"})
@@ -266,6 +268,16 @@ def _louvre_repairs(item: Item) -> dict[str, object]:
 
 
 def _repairs(item: Item) -> dict[str, object]:
+    from .dates import text_year
+
+    fixes = _source_repairs(item)
+    unknown = item.year is None and "year" not in fixes and item.source not in OWN_SOURCES
+    if unknown and (year := text_year(str(fixes.get("date_text", item.date_text)))) is not None:
+        fixes["year"] = year
+    return fixes
+
+
+def _source_repairs(item: Item) -> dict[str, object]:
     fixes: dict[str, object] = {}
     for key in ("title", "artist"):
         value: str = getattr(item, key)

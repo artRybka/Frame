@@ -1898,6 +1898,17 @@ def browse_theme(
         page = following
 
 
+def kept_close(found: Theme) -> bool:
+    """A theme browsed in the museums whose works the catalogue holds too:
+    antiquity (``strict``) and "Sztuki inne". Its set opens with the
+    catalogue's works at once (the Met, which most of their searches ask,
+    takes seconds a page), and what the museums found joins the catalogue
+    for its cover and the next visit."""
+    return bool(found.searches()) and (
+        found.strict or any(k in OBJECT_CATEGORIES for k in found.terms)
+    )
+
+
 def search_page(
     importer: Importer, found: Theme, page: int, limit: int = 24
 ) -> tuple[list[Item], int]:

@@ -346,6 +346,10 @@ struct TermFacetBar: View {
     /// How much of the screen between the title and the tab bar an open
     /// group may take (Epoka's periods need most of it).
     static let panelShare: CGFloat = 0.85
+    /// Epoka may take all of that room: its time line and all four groups of
+    /// lanes then fit without scrolling (at 94% Japonia i Chiny was still
+    /// below the edge).
+    static let periodGrowth: CGFloat = 1 / panelShare
 
     /// CI's screenshots of a group's panel.
     private static var launched: TermFacet? {
@@ -391,7 +395,8 @@ struct TermFacetBar: View {
             // and back into it (PanelGlass).
             if let open {
                 TermFacetPanel(
-                    facet: open, tokens: $tokens, museums: museums, colors: colors, maxHeight: panelHeight,
+                    facet: open, tokens: $tokens, museums: museums, colors: colors,
+                    maxHeight: open == .period ? panelHeight * Self.periodGrowth : panelHeight,
                     close: close
                 )
                 // The words come in once the glass has grown, and go first.
@@ -613,7 +618,8 @@ struct TermFacetPanel: View {
     private var footnote: String? {
         switch facet {
         case .museum: "Nic nie wybrane: pytam wszystkie muzea."
-        case .color, .technique: nil
+        // Epoka says it with its beads and band.
+        case .color, .technique, .period: nil
         default: "Wybierz dowolnie wiele: wystarczy, że dzieło pasuje do jednego z nich."
         }
     }
@@ -1022,7 +1028,7 @@ struct PeriodPicker: View {
     /// The axis' line from the top; the band starts on it.
     private static let rail: CGFloat = 10
     private static let bead: CGFloat = 15
-    private static let rowHeight: CGFloat = 21
+    private static let rowHeight: CGFloat = 16
     /// Narrower than this the two years go as one under the left bead.
     private static let narrow: CGFloat = 40
 
@@ -1058,7 +1064,7 @@ struct PeriodPicker: View {
                 }
             }
             OfferedWidth(fallback: width > 0 ? width : 320) {
-                VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 10) {
                     if !axis.isEmpty, width > 0 {
                         line(axis, edges: edges, range: range, brackets: named.filter { picked($0.key) })
                     }
@@ -1288,7 +1294,7 @@ struct PeriodPicker: View {
         let placed = PeriodAxis.pack(items, width: width)
         let rows = (placed.map(\.row).max() ?? -1) + 1
         let years = range.map { (axis[$0.lowerBound].yearFrom ?? Int.min, axis[$0.upperBound].yearTo ?? Int.max) }
-        return VStack(alignment: .leading, spacing: 7) {
+        return VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 7) {
                 Circle().fill(region.colour).frame(width: 8, height: 8)
                 Eyebrow(region.title)
@@ -1310,36 +1316,44 @@ struct PeriodPicker: View {
     private func laneItem(_ period: TermInfo, _ place: PeriodAxis.Placed, colour: Color, faded: Bool) -> some View {
         let on = picked(period.key)
         let inside = place.side == .inside
-        let height: CGFloat = inside ? 19 : (on ? 11 : 9)
+        let height: CGFloat = inside ? 14 : (on ? 10 : 8)
         let start = place.taken.lowerBound
         return Button {
             toggle(period)
         } label: {
             ZStack(alignment: .topLeading) {
                 Capsule()
-                    .fill(colour.opacity(inside ? (on ? 0.6 : 0.35) : (on ? 0.85 : 0.55)))
+                    .fill(colour.opacity(capsuleOpacity(on: on, inside: inside, faded: faded)))
                     .frame(width: place.to - place.from, height: height)
                     .overlay {
                         if on {
-                            Capsule().stroke(colour, lineWidth: 1.5).padding(-3.5)
+                            Capsule().stroke(colour, lineWidth: 1.5).padding(-3)
                         }
                     }
                     .offset(x: place.from - start, y: (Self.rowHeight - height) / 2)
                 Text(period.name)
                     .font(.system(size: 12, weight: on ? .semibold : .medium))
-                    .foregroundStyle(Theme.ink)
+                    // Outside the years picked: softer, but still easy to read.
+                    .foregroundStyle(faded ? Theme.inkSoft : Theme.ink)
                     .fixedSize()
-                    .offset(x: place.labelX - start, y: 3)
+                    .offset(x: place.labelX - start, y: 1.5)
             }
             .frame(width: place.taken.upperBound - start, height: Self.rowHeight, alignment: .topLeading)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .opacity(faded ? 0.32 : 1)
         .offset(x: start, y: CGFloat(place.row) * Self.rowHeight)
         .sensoryFeedback(.selection, trigger: on)
         .accessibilityLabel("\(period.name), \(PeriodAxis.years(period))")
         .accessibilityAddTraits(on ? .isSelected : [])
+    }
+
+    /// A capsule's colour: full in the years picked (and picked ones),
+    /// pale outside them; the long ones with the name inside lighter.
+    private func capsuleOpacity(on: Bool, inside: Bool, faded: Bool) -> Double {
+        if inside { return on ? 0.6 : (faded ? 0.18 : 0.42) }
+        if on { return 1 }
+        return faded ? 0.25 : 0.9
     }
 
     /// How wide a name is on its lane, bold as when picked.

@@ -7,6 +7,7 @@ import random
 import re
 import secrets
 import threading
+import time
 from collections import OrderedDict
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from concurrent.futures import ThreadPoolExecutor
@@ -20,6 +21,8 @@ from PIL import Image
 
 from ..imaging.palette import Palette
 from .colors import analyse, has_colours, tint_spread
+from .commons import OWN_SOURCES
+from .dates import text_year
 from .duplicates import dedupe, rank
 from .hosts import as_asked
 from .images import ImageCache
@@ -82,6 +85,11 @@ SPREAD_MEMO = 20_000
 SEARCHED_QUEUE = 400
 #: Works a search showed that were taken or left out, not looked at again.
 SEARCHED_MEMO = 5_000
+#: Museum searches answered lately, kept for the same page asked again (a
+#: set of Odkrywaj opened once more): how many and how long. The Met asks
+#: for each of a page's 24 works on its own, so a page takes it seconds.
+SEARCH_MEMO = 300
+SEARCH_SECONDS = 3 * 3600.0
 #: How long a search's answer waits for the shapes of works whose museum
 #: gives no size (Europeana, the Met, the Rijksmuseum...), measured on their
 #: thumbnails; those not measured by then come as landscape and are known
@@ -194,6 +202,11 @@ class Importer:
         #: Techniques of "Sztuki inne" with room left in the catalogue: works
         #: of them a search showed are kept too.
         self._searched_room: tuple[str, ...] = ()
+        #: Pages of museum searches (:data:`SEARCH_MEMO`): when asked, how
+        #: many in all, the works.
+        self._pages: OrderedDict[tuple[str, str, int, int, str], tuple[float, int, list[Item]]] = (
+            OrderedDict()
+        )
         #: Words typed in Szukaj in the museums' languages (the language
         #: model's, set by the service); none: asked as typed.
         self.translate: Callable[[str, float], Wording] | None = None
@@ -285,8 +298,13 @@ class Importer:
             width, height = item.width, item.height
             if not width or not height:
                 width, height = thumb.size
+        year = item.year
+        if year is None and item.source not in OWN_SOURCES:
+            # Dates in words the source's reader left without a year.
+            year = text_year(item.date_text)
         return item.model_copy(
             update={
+                "year": year,
                 "colors": colors,
                 "color_tags": tags,
                 "color_shares": shares,
@@ -308,7 +326,13 @@ class Importer:
     ) -> tuple[int, list[Item]]:
         """``limit`` works from ``source``; ``wait``: seconds the source may
         take to answer, when not the client's own; ``kind``: what the
-        search asks for (Fotografia: photographs)."""
+        search asks for (Fotografia: photographs). A page asked lately
+        comes from memory (:data:`SEARCH_SECONDS`)."""
+        memo = (source, query, limit, page, kind)
+        with self._remote_lock:
+            kept = self._pages.get(memo)
+            if kept is not None and time.monotonic() - kept[0] < SEARCH_SECONDS:
+                return kept[1], list(kept[2])
         with self.http() as http:
             if wait is not None:
                 http.timeout = httpx.Timeout(wait)
@@ -319,6 +343,12 @@ class Importer:
                 total, items = found.search_kind(query, kind, limit=limit, page=page)
         items = self.without_grey([i for i in items if not is_copy(i)])
         self.remember(items)
+        if items:
+            with self._remote_lock:
+                self._pages[memo] = (time.monotonic(), total, list(items))
+                self._pages.move_to_end(memo)
+                while len(self._pages) > SEARCH_MEMO:
+                    self._pages.popitem(last=False)
         return total, items
 
     def spread_of(self, item: Item) -> float | None:
