@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.108.0
+
+- Nowa oś czasu w Szukaj → Epoka. Zamiast rzędu kafelków jest oś
+  z podziałką i dwoma koralikami: przeciągnij koralik, żeby zmienić
+  początek albo koniec, przesuń palcem po osi, żeby zaznaczyć kilka
+  odcinków, stuknij odcinek, żeby wybrać tylko jego. Skrajne lata stoją
+  pod koralikami. Nazwane okresy (Starożytność i Bizancjum, Europa,
+  Polska, Japonia i Chiny) leżą na torach w tej samej skali, z nazwą obok,
+  a jasny pas od osi w dół pokazuje, które z nich mieszczą się w wybranych
+  latach; te poza nimi bledną. U góry karty zostaje sam wybór, np.
+  „1600–1800” z szarym „XVII i XVIII wiek” obok, bez podpowiedzi.
+
 ## 1.107.0
 
 - Nowy wygląd karty Szukaj → Technika: zamiast ośmiu kapsułek każda

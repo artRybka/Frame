@@ -189,6 +189,10 @@ struct MuseumSearchView: View {
             if LaunchRoute.screen == "search-empty", rules.colors.isEmpty {
                 rules.colors = ["orange@clear", "yellow@clear", "tone:muted"]
             }
+            // CI screenshots: the Epoka sheet with two centuries between the beads.
+            if LaunchRoute.screen == "search-picker", rules.terms.isEmpty {
+                rules.terms = ["period:17c", "period:18c"]
+            }
             // CI screenshots: the Technika sheet with two picked.
             if LaunchRoute.screen == "search-techniques", rules.terms.isEmpty {
                 rules.terms = ["technique:painting", "technique:drawing"]
