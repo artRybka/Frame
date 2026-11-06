@@ -216,7 +216,9 @@ class ParisMusees(Museum):
 
     def discover(self, spec: Discovery, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
         # Styles are not named in the records; nor are highlights.
-        if spec.highlight or spec.style.strip() or spec.kind == "decorative":
+        if spec.highlight or spec.style.strip():
+            return 0, []
+        if spec.kind != "any" and spec.kind not in self.kinds:
             return 0, []
         conditions = [self._types(self.kinds.get(spec.kind, self.pictures))]
         if spec.year_from is not None:

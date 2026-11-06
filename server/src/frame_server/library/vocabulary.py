@@ -33,6 +33,7 @@ TECHNIQUE_KINDS: dict[str, Kind] = {
     "technique:photography": "photograph",
     "technique:sculpture": "sculpture",
     "technique:decorative": "decorative",
+    "technique:manuscripts": "manuscript",
 }
 MANUSCRIPTS = "technique:manuscripts"
 PHOTOGRAPHY = "technique:photography"

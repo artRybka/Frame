@@ -72,9 +72,18 @@ def client() -> httpx.Client:
 
 
 #: What to draw: pictures (the frame's own) and, only when asked for,
-#: photographs, sculpture and decorative arts (ceramics, textiles, glass…).
+#: photographs, sculpture, decorative arts (ceramics, textiles, glass…) and
+#: pages and miniatures of manuscripts.
 Kind = Literal[
-    "any", "painting", "print", "drawing", "poster", "photograph", "sculpture", "decorative"
+    "any",
+    "painting",
+    "print",
+    "drawing",
+    "poster",
+    "photograph",
+    "sculpture",
+    "decorative",
+    "manuscript",
 ]
 
 
@@ -290,8 +299,8 @@ class ArtInstituteChicago(Museum):
         if spec.style.strip():
             fields = ("style_titles", "term_titles", "subject_titles", "classification_titles")
             must.append(self._text(spec.style, fields))
-        if spec.kind == "poster":
-            must.append(self._text("poster", ("classification_titles", "term_titles")))
+        if spec.kind in ("poster", "manuscript"):
+            must.append(self._text(spec.kind, ("classification_titles", "term_titles")))
         elif spec.kind in self.artwork_types:
             must.append({"match": {"artwork_type_title": self.artwork_types[spec.kind]}})
         elif spec.kind == "decorative":
@@ -386,6 +395,7 @@ class ClevelandMuseum(Museum):
         "photograph": "Photograph",
         "sculpture": "Sculpture",
         "decorative": "Ceramic",  # one type per request
+        "manuscript": "Manuscript",
     }
 
     def search(self, query: str, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
@@ -477,8 +487,9 @@ class MetropolitanMuseum(Museum):
     }
 
     def discover(self, spec: Discovery, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
-        # Posters share a department with prints, sculpture with crafts.
-        word = spec.kind if spec.kind in ("poster", "sculpture") else ""
+        # Posters share a department with prints, sculpture with crafts;
+        # manuscripts are in several (Islamic, Asian, Medieval Art).
+        word = spec.kind if spec.kind in ("poster", "sculpture", "manuscript") else ""
         params: dict[str, Any] = {"q": " ".join(w for w in (spec.style.strip(), word) if w) or "*"}
         if spec.kind in self.departments:
             params["departmentId"] = self.departments[spec.kind]
