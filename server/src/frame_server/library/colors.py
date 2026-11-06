@@ -751,6 +751,14 @@ def accent_colours(
     return sorted(accents, key=lambda a: -a[1])
 
 
+def tint_strength(img: Image.Image) -> float:
+    """How strongly the whole picture is tinted (median OKLab chroma): ~0 for
+    a neutral black-and-white photo or print, ~0.02 and up for sepia, old
+    albumen prints, brown ink and cream or tinted paper."""
+    lab = linear_to_oklab(_sample(img, 128))
+    return round(float(np.median(np.hypot(lab[:, 1], lab[:, 2]))), 4)
+
+
 def tint_spread(img: Image.Image) -> float:
     """How far the colours stray from a faint single tint (OKLab chroma, 95th
     percentile): ~0 for drawings, etchings, black-and-white and sepia photos,

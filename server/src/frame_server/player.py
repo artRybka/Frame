@@ -27,14 +27,14 @@ from .imaging.text import TextBlock
 from .kept import kept_ids
 from .library import AlbumOrder, Item, ItemKind, Job, Note, Playlist, PlaylistKind, PlaylistRules
 from .library.artists import is_artist
-from .library.colors import SCORE_VERSION, analyse, tint_spread
+from .library.colors import SCORE_VERSION, analyse, tint_spread, tint_strength
 from .library.icloud import only_copy
 from .library.images import Unavailable
 from .library.museums import Kind
 from .library.nationality import life_years, note_years
 from .library.photo_text import photo_line, photo_title
 from .library.repo import sent_key
-from .library.style import AUTO, auto_preset
+from .library.style import AUTO, auto_preset, toned_only
 from .library.themes import SEARCHABLE, other_art_searches, theme_of_the_day, thin_searches
 from .library.viewer import OWNER_ID
 from .library.vocabulary import (
@@ -638,7 +638,14 @@ class Player:
                 with Image.open(thumb) as img:
                     spread = tint_spread(img)
                 item = self.library.update(item.id, tint_spread=spread) or item
-        return auto_preset(item)
+        tint = None
+        if toned_only(item):
+            # Black and white or sepia: how strong the tint is tells them apart.
+            thumb = self.service.images.thumb_path(item)
+            if thumb.is_file():
+                with Image.open(thumb) as img:
+                    tint = tint_strength(img)
+        return auto_preset(item, tint)
 
     def render_settings(self, item: Item, settings: FrameSettings) -> RenderSettings:
         pres = self.presentation(item, settings)

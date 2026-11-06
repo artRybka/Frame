@@ -652,6 +652,10 @@ def test_auto_style_follows_the_picture(service) -> None:
     assert old is not None and old.tint_spread is None
     assert player.preset_for(old, settings) == "bw"
     assert service.library.get(grey.id).tint_spread is not None
+    # Sepia keeps its tone: one tint only, but a strong one.
+    sepia = service.importer.add_upload(jpeg_bytes((150, 115, 75)), kind=ItemKind.PHOTO)
+    assert sepia.tint_spread is not None and sepia.tint_spread < 0.012
+    assert player.preset_for(sepia, settings) == "photo"
 
 
 def test_styles_are_always_automatic(service) -> None:

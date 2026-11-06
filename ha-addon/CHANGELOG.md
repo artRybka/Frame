@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.111.5
+
+- Na kafelku Serwer w zakładce Ramka, gdy czeka nowsza wersja, pod
+  numerem obecnej jest teraz napis „Dostępna aktualizacja do 1.111.2”
+  (z numerem nowej wersji) zamiast krótkiego „jest 1.111.2”.
+
+## 1.111.4
+
+- Fotografie w sepii, stare odbitki i rysunki brązowym tuszem lub na
+  kremowym papierze zostają na ramce w swoim ciepłym tonie. Skalę
+  szarości dostają tylko naprawdę czarno-białe zdjęcia, ryciny
+  i rysunki.
+
+## 1.111.3
+
+- Druga próba zmiany obrazu jednym odświeżeniem. Przezroczysty ekran
+  startu z 1.105.0 nic nie zmienił: ramka i tak rysuje swój granatowy
+  ekran ładowania przy każdym starcie aplikacji. Nowa paczka aplikacji
+  ramki przejmuje ustawienia odtwarzacza VXT Samsunga, który rysuje
+  obraz bez tego ekranu, i odczytuje, jak zbudowane są odtwarzacze
+  Samsunga na ramce. Paczka instaluje się po włączeniu ramki przyciskiem.
+
 ## 1.111.2
 
 - Ciemne, ciepłe obrazy olejne (np. „Studium starca w profilu”
