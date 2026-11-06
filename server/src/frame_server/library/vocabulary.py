@@ -676,6 +676,14 @@ def _object_category(classification: str, title: str, medium: str) -> str | None
     return None
 
 
+def other_art(item: Item) -> bool:
+    """A work of "Sztuki inne" (a manuscript, photograph, sculpture or piece
+    of decorative art): it keeps to its own group in Odkrywaj, Szukaj with
+    its technique and playlists that ask for it, never a study, the work of
+    the day or Discover's other cards (Mateusz 2026-11-06, "własny sos")."""
+    return object_category(item) is not None
+
+
 def set_aside(item: Item, keys: list[str] | tuple[str, ...] = ()) -> bool:
     """Left out of the catalogue and searches: copies always; manuscripts,
     photographs, sculpture and decorative arts unless ``keys`` ask for them."""

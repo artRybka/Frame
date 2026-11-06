@@ -37,6 +37,7 @@ from ..library.mix import mixed
 from ..library.museums import Discovery, Kind
 from ..library.themes import (
     GROUPS,
+    OTHER_ART_THEMES,
     SECTION_YEARS,
     THEMES,
     Theme,
@@ -63,6 +64,7 @@ from ..library.vocabulary import (
     fold,
     museum_kind,
     museum_queries,
+    other_art,
     set_aside,
     suggest,
 )
@@ -278,7 +280,8 @@ def work_out_cards(svc: FrameService, force: bool = False) -> dict[str, tuple[in
             for found in make_liked(svc.library, svc.player.taste(user.id), user.id):
                 mine.setdefault(found.key, found)
         weekly = for_you(svc.library, day)
-        for found in [*weekly, *mine.values(), *THEMES, *colour_themes(svc.library, day)]:
+        others = [*mine.values(), *THEMES, *OTHER_ART_THEMES, *colour_themes(svc.library, day)]
+        for found in [*weekly, *others]:
             total, items = svc.library.query(found.rules(), sort="suitability")
             cards[found.key] = (total, _cover(items, f"{today}:{found.key}"))
         _cards = (time.monotonic(), cards)
@@ -360,7 +363,9 @@ def _back_row(svc: FrameService, day: date) -> SuggestionRow | None:
     back = [
         i
         for i in svc.library.query(rules)[1]
-        if (i.id in hearts or not i.pooled) and (i.last_shown_at or i.added_at or since) < since
+        if (i.id in hearts or not i.pooled)
+        and (i.last_shown_at or i.added_at or since) < since
+        and not other_art(i)  # "Sztuki inne" keep to their own group
     ]
     if len(back) < ROW_MIN:
         return None
@@ -453,7 +458,8 @@ def _theme_list(svc: FrameService) -> list[ThemeCard]:
     weekly = [t for t in for_you(svc.library, date.today()) if t.key in cards]
     mine = [t for t in liked(svc.library) if t.key in cards]
     colours = [t for t in colour_themes(svc.library, date.today()) if t.key in cards]
-    ordered = sorted([*weekly, *mine, *THEMES, *colours], key=lambda t: GROUPS.index(t.group))
+    every = [*weekly, *mine, *THEMES, *OTHER_ART_THEMES, *colours]
+    ordered = sorted(every, key=lambda t: GROUPS.index(t.group))
     return [_card(svc, t, cards, playlists) for t in ordered]
 
 
