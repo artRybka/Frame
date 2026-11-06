@@ -1,11 +1,76 @@
 # Changelog
 
-## 1.103.2
+## 1.104.3
 
 - Pierścień wybranego „Żywe” w karcie Tonacja nie jest już ucięty w rogach.
 - Środkowe kropki Tonacji stoją tam, gdzie kółka Kolorystyki, więc przy
   przełączaniu kart nie skaczą: Neutralne tam, gdzie Pomarańcz,
   Umiarkowane na Turkusie, Średnie na Szarościach.
+
+## 1.104.2
+
+- Grupy w Szukaj (Technika, Epoka, Styl, Kolor, Temat, Muzeum) wracają
+  w chwili, gdy palec puszcza ekran, a wyniki jeszcze suną siłą rozpędu.
+  Dotąd czekały, aż przewijanie całkiem stanie. Chowają się jak dotąd przy
+  przesuwaniu wyników palcem w dół. Tak samo w edytorze playlist.
+- Nowa karta Bateria (po dotknięciu kafelka). Na górze ile dni zostało
+  i do kiedy mniej więcej starczy, z rozsądnym zakresem. Pod spodem wykres
+  odczytów z ostatniego tygodnia na baterii z przewidywanym spadkiem do
+  zera.
+- „Dzień ramki” to jedna lista: puste kontrole, zmiany obrazu, obrazy
+  wysłane z aplikacji, czuwanie i sen, przy każdej ile razy na dobę, ile
+  kosztuje raz i ile razem, najdroższe na górze, z dopiskiem „zmierzone”
+  albo „założenie”.
+- „Trafność”: ostatnia doba na baterii, ile ramka naprawdę zużyła, a ile
+  wynikało z wyliczeń.
+- Bateria liczy pustą kontrolę tak długo, jak naprawdę trwa: gdy serwer
+  usypia ją przez MDC, to ok. minuty (mediana z ostatnich kontroli), a nie
+  5,5 minuty Wi-Fi. Gdy przestaje usypiać albo nie usypiał od dwóch dni,
+  wraca do czasu samousypiania ramki.
+- Dzieła z Luwru nie pokazują już adresu „wikidata.org/.well-known/genid/…”
+  zamiast autora. Gdy Wikidane nie znają autora, bierzemy nazwisko z Luwru
+  („Hals, Frans” → „Frans Hals”). Nazwa szkoły, np. „France”, nie
+  udaje autora.
+- Daty dzieł z Luwru są cyframi, np. „1450–1499” zamiast „2e moitié du XVe
+  siècle”, więc działa z nimi wyszukiwanie po latach. Dzieła już zapisane
+  w bibliotece poprawiają się same po aktualizacji. Spis obrazów Luwru
+  pobiera się raz jeszcze w tle (ok. godziny).
+
+## 1.104.1
+
+- Ramka nie przyjmuje samousypiania po 3 minutach (odrzuca też 2), więc
+  aplikacja od razu ustawia 5 minut, najkrótszy czas, jaki ta ramka bierze.
+  Szacunek pod harmonogramem liczy puste sprawdzenie jako ok. 5,5 minuty
+  Wi-Fi.
+- Codzienne odświeżanie ekranu Samsunga ramka robi teraz przy pobudce ze
+  zmianą obrazu, a nie przy pierwszym sprawdzeniu po niej. Puste
+  sprawdzenie nie odświeża już ekranu.
+- Serwer znowu usypia puste sprawdzenie przez MDC zaraz po pobudce, zamiast
+  czekać 5 minut z Wi-Fi. Żółty ekran 5 listopada o 21:00 wypadł właśnie w
+  czasie przeniesionego na takie sprawdzenie odświeżania. Teraz serwer usypia
+  tylko sprawdzenie, o którym ramka powiedziała przed snem, że nie ma na nim
+  odświeżania; po starej aplikacji ramki zostawia je w spokoju.
+
+## 1.104.0
+
+- Dzieła z Art Institute of Chicago przychodzą w większym rozmiarze, takim
+  jak z przycisku „Pobierz” na stronie muzeum (do 3000 px zamiast 1686 px).
+  Najwięcej zyskują detale w studium dzieła, ale ramka też dostaje
+  ostrzejszy obraz. Gdyby muzeum odmówiło większego rozmiaru, serwer bierze
+  jak dotąd 1686 px.
+- Zdjęcia, które serwer już ma, zostają w starym rozmiarze, ale „Szukaj
+  lepszej kopii” w menu „…” karty dzieła pokazuje dla nich „Większe zdjęcie
+  muzeum” wśród lepszych kopii. Można je porównać jak każdą kopię
+  i pobrać przyciskiem „Pobierz większe zdjęcie”.
+- Nowe źródło dzieł: Luwr, tylko z „Użytkiem prywatnym”. Uzupełnia
+  Commons: bierze ok. 7500 obrazów z Luwru, których na Commons nie ma albo
+  są tam mniejsze niż zdjęcia Luwru (1500 px), np. szkice olejne
+  Valenciennes’a, Oudry, Prud’hon, Hubert Robert. Słynne obrazy w lepszej
+  jakości zostają z Commons.
+- Pierwsze spisanie obrazów trwa ok. godziny w tle, potem serwer sprawdza
+  nowe raz w miesiącu w nocy. Pomija zdjęcia innych instytucji (warunki
+  Luwru wymagają na nie ich zgody).
+- Karta dzieła z Luwru pokazuje prawdziwy rozmiar z wymiarów Luwru.
 
 ## 1.103.1
 

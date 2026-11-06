@@ -4,7 +4,7 @@ centimetres, drawn next to a sheet of A4 for scale.
 
 Looked up once per work, in the background when its page opens: the museum's
 own record where its API says it plainly (the Met, Cleveland, SMK, Chicago,
-the V&A, the Wellcome Collection, the Courtauld, the national museums in
+the V&A, the Wellcome Collection, the Courtauld, the Louvre, the national museums in
 Warsaw and Kraków), the ``dimensions`` of a Commons page's {{Artwork}}; else
 Wikidata's height and width (P2048, P2049) of the work, found by the
 museum's record, the Commons page, the Commons file as its picture (P18), or
@@ -399,6 +399,14 @@ def _courtauld(http: httpx.Client, item: Item) -> RealSize | None:
     return RealSize(height=sides[0], width=sides[1]) if sides else None
 
 
+def _louvre(http: httpx.Client, item: Item) -> RealSize | None:
+    from .library.louvre import look
+
+    found = look(http, item.source_id)
+    sides = found.get("size") if found else None
+    return RealSize(height=sides[0], width=sides[1]) if sides else None
+
+
 #: Museums whose own record says the size plainly.
 MUSEUMS: dict[str, Callable[[httpx.Client, Item], RealSize | None]] = {
     "met": _met,
@@ -408,6 +416,7 @@ MUSEUMS: dict[str, Callable[[httpx.Client, Item], RealSize | None]] = {
     "vam": _vam,
     "wellcome": _wellcome,
     "courtauld": _courtauld,
+    "louvre": _louvre,
     "mnw": _muza("https://cyfrowe-api.mnw.art.pl/api"),
     "mnk": _muza("https://api-zbiory.mnk.pl/api"),
 }

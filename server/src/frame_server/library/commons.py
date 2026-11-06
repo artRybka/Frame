@@ -19,7 +19,7 @@ from html.parser import HTMLParser
 from typing import TYPE_CHECKING
 from urllib.parse import unquote
 
-from .aic import AIC_ORIGINAL, AIC_THUMB, aic_resized
+from .aic import AIC_THUMB, aic_original_resized, aic_resized
 from .markup import (
     VECTOR,
     commons_rendition,
@@ -235,10 +235,30 @@ def file_title(name: str, artist: str, year: int | None = None) -> str:
 #    woke its Cloudflare, 2026-11-04).
 # 6: Courtauld originals smaller than 2560 px asked whole (``!2560,2560``
 #    is a 400 from its IIIF 3 server, 2026-11-05).
-REPAIR_VERSION = 6
+# 7: AIC originals in the website's download size (``!3000,3000``) when
+#    larger than 1686 px (Mateusz 2026-11-05); the pictures kept here stay.
+# 8: Louvre works with an unknown author as Wikidata's blank node
+#    (".well-known/genid/…") and French periods for dates ("2e moitié du
+#    XVe siècle" -> "1450–1499"; Mateusz 2026-11-05).
+REPAIR_VERSION = 8
 REPAIR_STATE_KEY = "commons_text_repair"
 # The household's own photos: their captions are left as they were typed.
 OWN_SOURCES = frozenset({"upload", "icloud"})
+
+
+def _louvre_repairs(item: Item) -> dict[str, object]:
+    from .louvre import clean_artist, french_years, years_text
+
+    fixes: dict[str, object] = {}
+    if item.artist and not clean_artist(item.artist):
+        fixes["artist"] = ""
+    if not re.fullmatch(r"\d{3,4}(?:–\d{3,4})?", item.date_text or "") and (
+        span := french_years(item.date_text or "")
+    ):
+        fixes["date_text"] = years_text(*span)
+        if item.year is None:
+            fixes["year"] = span[0]
+    return fixes
 
 
 def _repairs(item: Item) -> dict[str, object]:
@@ -261,13 +281,17 @@ def _repairs(item: Item) -> dict[str, object]:
         if clean != title:
             fixes["title"] = clean
     if item.source == "aic":
-        for key, most in (("image_url", AIC_ORIGINAL), ("thumb_url", AIC_THUMB)):
-            url: str = getattr(item, key)
-            if (allowed := aic_resized(url, most, item.width)) != url:
-                fixes[key] = allowed
+        if (original := aic_original_resized(item.image_url, item.width, item.height)) != (
+            item.image_url
+        ):
+            fixes["image_url"] = original
+        if (thumb := aic_resized(item.thumb_url, AIC_THUMB, item.width)) != item.thumb_url:
+            fixes["thumb_url"] = thumb
     small = item.width and item.height and max(item.width, item.height) <= 2560
     if item.source == "courtauld" and small and "/full/!2560,2560/" in item.image_url:
         fixes["image_url"] = item.image_url.replace("/full/!2560,2560/", "/full/max/")
+    if item.source == "louvre":
+        fixes.update(_louvre_repairs(item))
     drawing = item.source in ("wmc", "openverse") and extension(item.image_url) in VECTOR
     if drawing and (image_url := commons_rendition(item.image_url, 3840, item.width)):
         fixes["image_url"] = image_url

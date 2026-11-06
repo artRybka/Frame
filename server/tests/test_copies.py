@@ -307,3 +307,34 @@ def test_one_spot_in_both_pictures_at_the_frames_scale(app: Any) -> None:
     )
     corner = asked.json()
     assert corner["x"] == pytest.approx(0.1) and corner["y"] == pytest.approx(0.9)
+
+
+def test_an_aic_work_kept_at_1686_offers_its_download_size(app: Any) -> None:
+    """Kept at the API's 1686 px before the website's download size was
+    asked (Mateusz 2026-11-05): the list offers the museum's own larger file,
+    and picking it downloads it again in place of the small one."""
+    client, service, web, _ = app
+    own = _own(service)
+    client.get(f"/api/library/items/{own.id}/image")  # kept at 1686, as before
+    large = "https://www.artic.edu/iiif/2/abc/full/!3000,3000/0/default.jpg"
+    stored = service.library.update(own.id, image_url=large, width=2975, height=1983)
+    assert stored is not None
+    web[large] = _jpeg(_print(1, (2975, 1983)), 85)
+
+    copies = _final(_lines(client, own.id))
+    larger = copies[own.id + "~larger"]
+    assert larger["role"] == "larger" and larger["verdict"] == "better"
+    assert (larger["width"], larger["height"]) == (2975, 1983)
+    assert larger["gain"] == round(2560 / 1686, 2)
+    assert larger["notes"] == ["whole", "colours", "larger"]
+
+    spot = client.get(f"/api/library/items/{own.id}/copies/{own.id}~larger/spot")
+    assert spot.status_code == 200
+
+    item = client.put(f"/api/library/items/{own.id}/copy", json={"item_id": own.id + "~larger"})
+    assert item.status_code == 200 and item.json()["sharper"] is None
+    with Image.open(service.images.image_path(service.library.get(own.id))) as img:
+        assert max(img.size) == 2560
+    assert service.images.source_size(service.library.get(own.id))[:2] == (2975, 1983)
+    # Kept large now: not offered again.
+    assert own.id + "~larger" not in _final(_lines(client, own.id))

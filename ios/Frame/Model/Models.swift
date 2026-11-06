@@ -213,7 +213,8 @@ struct CopyView: Codable, Hashable, Sendable, Identifiable {
     /// a like title), "unseen" (its thumbnail could not be had).
     var notes: [String]
     /// "current" (shown now), "own" (the work's own, while a copy stands
-    /// in for it), "copy".
+    /// in for it), "larger" (the work's own in a larger file from its own
+    /// museum than the one kept on the server), "copy".
     var role: String
     var chosen: Bool
 
@@ -221,6 +222,11 @@ struct CopyView: Codable, Hashable, Sendable, Identifiable {
     var side: Int { max(width, height) }
     var isCurrent: Bool { role == "current" }
     var isOwn: Bool { role == "own" }
+    /// The museum's own picture in a larger file (an AIC work kept at
+    /// 1686 px before its download size was asked).
+    var isLarger: Bool { role == "larger" }
+    /// The work's own picture, whichever file: its thumbnail is the work's.
+    var isMuseums: Bool { isOwn || isLarger }
     /// What can be picked: any copy once judged, those that do not fit too
     /// (the owner has seen it and decides), but not one whose picture could
     /// not be had.
@@ -779,6 +785,43 @@ struct BatteryEstimate: Codable, Hashable, Sendable {
     var level: Int? = nil
     var readLevel: Int? = nil
     var readAt: String? = nil
+    /// The readings on battery of the last week, oldest first (1.103.1+).
+    var recent: [BatteryReading]? = nil
+    /// The last day on battery: used against what the costs make of it.
+    var check: BatteryCheck? = nil
+}
+
+/// One reading of the level on battery; the server sends `["<ISO>", 87]`.
+struct BatteryReading: Codable, Hashable, Sendable {
+    var at: String
+    var level: Int
+
+    init(at: String, level: Int) {
+        self.at = at
+        self.level = level
+    }
+
+    init(from decoder: Decoder) throws {
+        var pair = try decoder.unkeyedContainer()
+        at = try pair.decode(String.self)
+        level = try pair.decode(Int.self)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var pair = encoder.unkeyedContainer()
+        try pair.encode(at)
+        try pair.encode(level)
+    }
+
+    var date: Date? { When.date(at) }
+}
+
+/// The last day on battery: percent used, and what the costs learnt say it
+/// should have been for what the frame did.
+struct BatteryCheck: Codable, Hashable, Sendable {
+    var hours: Double
+    var used: Double
+    var expected: Double
 }
 
 /// In percent of a full battery; `learnt` 0 (still the assumption) to 1
@@ -789,6 +832,12 @@ struct BatteryCosts: Codable, Hashable, Sendable {
     var perWake: Double
     var perChange: Double
     var learnt: [Double]
+    /// A scheduled change whole, an empty economy check, and the minutes
+    /// each keeps the frame up (1.103.1+).
+    var perChangeWake: Double? = nil
+    var perCheck: Double? = nil
+    var appAwakeMinutes: Double? = nil
+    var checkMinutes: Double? = nil
 }
 
 /// A day at the schedule set and what each part of it costs (percent).
@@ -801,6 +850,19 @@ struct BatteryDay: Codable, Hashable, Sendable {
     var deepCost: Double
     var wakesCost: Double
     var changesCost: Double
+    /// What makes the day, most costly first (1.103.1+).
+    var lines: [BatteryLine]? = nil
+}
+
+/// One thing in a day of the frame's: `kind` standby, deep, checks,
+/// changes, wakes or sends; `count` (hours for standby and deep), what each
+/// costs (per hour for those two) and the day's total, in percent.
+struct BatteryLine: Codable, Hashable, Sendable, Identifiable {
+    var kind: String
+    var count: Double
+    var each: Double
+    var cost: Double
+    var id: String { kind }
 }
 
 /// "Głęboki sen" / "Wyłącz ramkę": until when (nil: switched off), and

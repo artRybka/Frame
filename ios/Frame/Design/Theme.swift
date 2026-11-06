@@ -687,6 +687,7 @@ enum Names {
         case "vam": "Victoria and Albert Museum"
         case "wellcome": "Wellcome Collection"
         case "courtauld": "Courtauld Gallery"
+        case "louvre": "Luwr"
         case "wikiart": "WikiArt"
         case "upload": "Własne"
         case "icloud": "Album iCloud"

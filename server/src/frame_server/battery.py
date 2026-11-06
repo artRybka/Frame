@@ -53,12 +53,18 @@ LONGEST_WAKE = timedelta(minutes=30)
 # An economy check with nothing new: the app does not run, the panel stays up
 # on the Wi-Fi until Samsung's own sleep and sleeps on. The server sees only
 # the alarm that rang (``silent_wakes``). The app sets that sleep (app.js
-# ``AUTO_SLEEP``: 3 minutes, Samsung takes only 3/5/10/20/30/60; 5 where the
-# panel refuses it) and says which in its "sleep" report; the panel is up
-# ``CHECK_BOOT`` before the idle minutes start counting.
-CHECK_IDLE = timedelta(minutes=3)
+# ``AUTO_SLEEP``: 5 minutes, the shortest our panel takes; it refused 2 and
+# 3) and says which in its "sleep" report; the panel is up ``CHECK_BOOT``
+# before the idle minutes start counting.
+CHECK_IDLE = timedelta(minutes=5)
 CHECK_BOOT = timedelta(seconds=30)
 CHECK_UP = CHECK_IDLE + CHECK_BOOT
+# Since 1.104.1 the server puts an empty check to sleep over MDC as soon as
+# the launcher is up (panel_app ``_sleep_empty_check``): then it lasts as
+# long as seen there (the median of the last few, from ``CHECK_BOOT`` before
+# the alarm to the sleep), not the panel's own sleep. Seen at least
+# ``MIN_WAKES_SEEN`` times, the last within ``CHECKS_SEEN_FOR``.
+CHECKS_SEEN_FOR = timedelta(days=2)
 # Pictures sent from the app: so many a day, as in the last two weeks (a
 # burst within ``SEND_BURST`` is one wake), on top of the schedule.
 SENDS_FOR = timedelta(days=14)
@@ -195,9 +201,16 @@ class Activity(BaseModel):
     sent_since: str | None = None
     # The panel's own sleep after an empty check, as the app last set it.
     check_idle_minutes: float | None = None
+    # Empty checks the server put to sleep over MDC: (ISO time, minutes up).
+    checks_slept: list[tuple[str, float]] = []
 
-    def check_up(self) -> float:
+    def check_up(self, now: datetime | None = None) -> float:
         """Hours an economy check with nothing new keeps the panel up."""
+        slept = self.checks_slept
+        if len(slept) >= MIN_WAKES_SEEN and (
+            now is None or now - datetime.fromisoformat(slept[-1][0]) <= CHECKS_SEEN_FOR
+        ):
+            return _median([minutes for _, minutes in slept]) / 60
         if self.check_idle_minutes is None:
             return _hours(CHECK_UP)
         return _hours(timedelta(minutes=self.check_idle_minutes) + CHECK_BOOT)
@@ -212,7 +225,7 @@ class Activity(BaseModel):
             totals[index] += spent
             if silent_wakes and self.mode == "deep":
                 # Each check kept it up on the Wi-Fi for a while, unseen.
-                up = min(silent_wakes * self.check_up(), spent)
+                up = min(silent_wakes * self.check_up(now), spent)
                 totals[1] -= up
                 totals[2] += up
         totals[3] += silent_wakes
@@ -363,6 +376,24 @@ class BatteryLog:
             self.activity.check_idle_minutes = minutes
             self._save_activity()
 
+    def check_slept(self, now: datetime, alarm: datetime) -> None:
+        """An empty check put to sleep over MDC at ``now``: up since a little
+        before its ``alarm``."""
+        up = now - alarm + CHECK_BOOT
+        if not timedelta(0) < up <= LONGEST_WAKE:
+            return
+        seen = (now.isoformat(timespec="seconds"), round(up / timedelta(minutes=1), 2))
+        slept = [*self.activity.checks_slept, seen]
+        self.activity.checks_slept = slept[-WAKES_KEPT:]
+        self._save_activity()
+
+    def checks_stay_up(self) -> None:
+        """Empty checks are no longer put to sleep over MDC: back to the
+        panel's own sleep."""
+        if self.activity.checks_slept:
+            self.activity.checks_slept = []
+            self._save_activity()
+
     def sent(self, now: datetime) -> None:
         """A picture sent from the app (not the schedule's)."""
         self.activity.note_sent(now)
@@ -484,7 +515,7 @@ class BatteryLog:
         left = days(now_level) if on_battery and now_level is not None else (None, None, None)
         app_awake = self.activity.awake_per_wake()
         per_wake = mean[3] + mean[2] * app_awake
-        check_up = self.activity.check_up()
+        check_up = self.activity.check_up(now)
         per_check = mean[3] + mean[2] * check_up
         learnt = 1 - np.sqrt(np.diag(cov)) / PRIOR_SD
         costs = BatteryCosts(
