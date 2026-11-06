@@ -1,7 +1,12 @@
 # Changelog
 
-## 1.104.10
+## 1.105.0
 
+- Próba zmiany obrazu jednym odświeżeniem zamiast dwóch. Nowa paczka
+  aplikacji ramki ma własny, przezroczysty ekran startu, który znika
+  dopiero wtedy, gdy nowy obraz jest gotowy. Jeśli ramka go uwzględni,
+  nie narysuje już granatowego ekranu ładowania przed obrazem. Paczka
+  instaluje się po włączeniu ramki przyciskiem.
 - Grupy w Szukaj wracają tym szybciej, im wolniej przesuwała się lista,
   gdy puszczasz palec: po powolnym przeciągnięciu już po ćwierć sekundy,
   po mocnym pociągnięciu jak dotąd po sekundzie, a pomiędzy płynnie.
