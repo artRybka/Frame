@@ -34,6 +34,7 @@ from .kept import KeptOriginals
 from .later import LaterWorks
 from .library import ImageCache, Importer, Library, courtauld
 from .library.commons import repair_library
+from .library.loc import loc_mirrors
 from .library.museums import Access, europeana_mirrors
 from .library.museums import client as museum_client
 from .library.wikidata import PROPERTIES, CommonsCopies
@@ -180,6 +181,7 @@ class FrameService:
         self.panel_config = PanelConfigStore(settings, self.library)
         self.images = ImageCache(settings.data_dir / "library", museum_client)
         self.images.mirrors["europeana"] = europeana_mirrors
+        self.images.mirrors["loc"] = loc_mirrors
         # The Courtauld's CMYK scans come white as JPEG: asked again as PNG.
         self.images.repairs[courtauld.HOST] = courtauld.repair
         if not self.library.get_state(COURTAULD_WHITE_KEY):
