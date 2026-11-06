@@ -1000,6 +1000,12 @@ def test_auto_preset_by_kind_metadata_and_colour() -> None:
     # No colour of its own: black and white, whatever it is.
     assert auto_preset(item(spread=0.004, classification="Print", medium="Etching")) == "bw"
     assert auto_preset(item(ItemKind.PHOTO, spread=0.002)) == "bw"
+    # A dark, warm oil lies on one brown line like a sepia photo: still colour.
+    rembrandt = item(spread=0.011, classification="Painting", medium="oil on panel")
+    assert auto_preset(rembrandt) == "painting"
+    assert auto_preset(item(spread=0.011, medium="olej na desce")) == "painting"
+    # Only a black-and-white copy of a painting goes black and white.
+    assert auto_preset(item(spread=0.003, classification="Painting")) == "bw"
     # Not measured yet: by kind and metadata only.
     assert auto_preset(item(spread=None, medium="Lithograph")) == "graphic"  # type: ignore[arg-type]
     # "Painting" is not a print, "sketch" is not Dutch "ets".
