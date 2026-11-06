@@ -2,6 +2,11 @@
 
 ## 1.104.5
 
+- Serwer znowu nie usypia pustego sprawdzenia przez MDC. W nocy 6 listopada
+  o 2:00 obraz zatrzymał się w połowie odświeżania. Kamera pokazała, że
+  ramka po każdej pobudce sama dwa razy odświeża ekran (ekran ładowania
+  Samsunga, potem znowu obraz), a uśpienie ok. 35 s po budziku przerywa to
+  drugie odświeżenie. Puste sprawdzenie znowu trwa ok. 5 minut.
 - Grupy w Szukaj chowają się też przy przesuwaniu wyników w górę, nie
   tylko w dół.
 - Po puszczeniu palca grupy wracają po pół sekundy, a nie od razu.
