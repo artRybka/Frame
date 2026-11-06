@@ -761,6 +761,15 @@ struct NothingFound: View {
     }
 }
 
+/// How far each picture of a cover is enlarged inside its tile, around the
+/// middle: museum scans often carry a strip of the frame, the mount or the
+/// photographer's backdrop at the edge, and a few percent more keeps it out
+/// of the small squares (Mateusz 2026-11-05). Playlist collages, Propozycje
+/// and the theme cards in Odkrywaj.
+enum CoverZoom {
+    static let scale: CGFloat = 1.12
+}
+
 /// 2×2 collage of playlist covers, each cropped around its subject.
 /// Playlist cover: up to four works, laid out by how many there are. An
 /// empty playlist gets a monogram on a mat instead of blank tiles.
@@ -812,6 +821,7 @@ struct Collage: View {
     private func tile(_ index: Int, _ width: CGFloat, _ height: CGFloat) -> some View {
         let picture = ArtImage(ref: .thumb(itemIDs[index]), maxPixel: 400, subjectFocus: true)
             .frame(width: width, height: height)
+            .scaleEffect(CoverZoom.scale)
             .clipped()
             .contentShape(Rectangle())  // taps only where the tile shows
         if opensWorks {

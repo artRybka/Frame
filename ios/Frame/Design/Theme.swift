@@ -401,11 +401,11 @@ extension ColorTag {
         // Żywe pure and full, Stonowane all but grey, Umiarkowane between
         // (szkic 16: before, the three were too alike).
         case "vivid":
-            spread([0xFF1503, 0xFF891B, 0xFFC52D, 0xDD2890, 0xFF9B5E, 0x64BD37, 0x7C3FB9, 0x116DD3, 0x1BAAA2])
+            spread(vivid)
         case "moderate":
-            spread([0xB95A53, 0xCE9057, 0xD1B365, 0xAC638D, 0xD8AB8F, 0x769C62, 0x81679B, 0x4D75A1, 0x488784])
+            spread(moderate)
         case "muted":
-            spread([0xA18E8D, 0xAB9E93, 0xB0AA9A, 0x9F9199, 0xBCB3AD, 0x91988D, 0x948F99, 0x848D97, 0x7C8A8A])
+            spread(muted)
         case "neutral":
             // The grey of paper, nearly flat, lighter to darker on the
             // slant like Ciepłe and Chłodne beside it (szkic 16, M1b); the
@@ -442,6 +442,17 @@ extension ColorTag {
         }
     }
 
+    /// The 3×3 meshes of Nasycenie, row by row.
+    private static let vivid: [UInt32] = [0xFF1503, 0xFF891B, 0xFFC52D, 0xDD2890, 0xFF9B5E, 0x64BD37, 0x7C3FB9, 0x116DD3, 0x1BAAA2]
+    private static let moderate: [UInt32] = [0xB95A53, 0xCE9057, 0xD1B365, 0xAC638D, 0xD8AB8F, 0x769C62, 0x81679B, 0x4D75A1, 0x488784]
+    private static let muted: [UInt32] = [0xA18E8D, 0xAB9E93, 0xB0AA9A, 0x9F9199, 0xBCB3AD, 0x91988D, 0x948F99, 0x848D97, 0x7C8A8A]
+
+    /// A mesh's rim hues going round from the top, clockwise, for a ring.
+    private static func rimRing(_ mesh: [UInt32]) -> AnyShapeStyle {
+        let rim = [1, 2, 5, 8, 7, 6, 3, 0, 1].map { Color(hex: mesh[$0]) }
+        return AnyShapeStyle(AngularGradient(colors: rim, center: .center, angle: .degrees(-90)))
+    }
+
     /// Colours spread over the dot in patches that melt into each other,
     /// with no point they run to (Mateusz: not a cone): a 3×3 mesh, row by
     /// row, the rim going round the hues and a soft blend in the middle.
@@ -474,9 +485,12 @@ extension ColorTag {
         case "yellow": AnyShapeStyle(Color(hex: 0xD4AE2E))
         case "warm": AnyShapeStyle(Color(hex: 0xF2662B))
         case "cool": AnyShapeStyle(Color(hex: 0x3F6FA8))
-        case "vivid": fill("vivid")
-        case "muted": fill("muted")
-        case "moderate": fill("moderate")
+        // The mesh of the dot would only cover the dot's own square and cut
+        // the ring at its corners (Mateusz 2026-11-05 23:25): the same hues
+        // going round instead.
+        case "vivid": rimRing(vivid)
+        case "muted": rimRing(muted)
+        case "moderate": rimRing(moderate)
         case "neutral", "medium": AnyShapeStyle(Color(hex: 0x8A847B))
         case "colorful": AnyShapeStyle(Color(hex: 0xEC008C))
         // Ink: black in light mode, light on the dark sheet, where a black

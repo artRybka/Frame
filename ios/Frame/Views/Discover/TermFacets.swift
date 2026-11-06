@@ -652,17 +652,19 @@ struct TermFacetPanel: View {
     }
 
     /// Two groups in a row (szkic 14, T1): Temperatura and Nasycenie, then
-    /// Barwność and Jasność.
+    /// Barwność and Jasność. Each half of the six Kolorystyka columns holds
+    /// a group with its middle dot on the middle column, on Kolorystyka's
+    /// rows, so switching cards the middles stay put (Neutralne where
+    /// Pomarańcz is, Umiarkowane on Turkus; Mateusz 2026-11-05 23:32).
     private var toneGrid: some View {
         let groups = ColorTag.toneGroups
-        return VStack(spacing: 18) {
+        return VStack(spacing: 10) {
             ForEach(Array(stride(from: 0, to: groups.count, by: 2)), id: \.self) { start in
-                HStack(spacing: 8) {
+                HStack(spacing: ToneGroup.columnGap) {
                     ForEach(groups[start..<min(start + 2, groups.count)], id: \.self) { group in toneGroup(group) }
                 }
             }
         }
-        .padding(.top, 4)
     }
 
     private func toneGroup(_ group: [String]) -> some View {
@@ -1043,6 +1045,8 @@ struct LevelSwatch: View {
 /// one side of each group, the middle one where the ends aren't all of it
 /// (Mateusz 2026-11-05). Under it one name for the group ("Temperatura").
 struct ToneGroup: View {
+    /// Between Kolorystyka's columns (its grid's spacing).
+    static let columnGap: CGFloat = 2
     /// Between the dots.
     private static let gap: CGFloat = 12
     /// Track around the dots, enough for the picked ring.
@@ -1050,32 +1054,67 @@ struct ToneGroup: View {
     private static let size: CGFloat = 34
     /// How far a ring stands off its dots.
     private static let ringOut: CGFloat = 5
+    /// A Kolorystyka swatch's frame, so the rows line up.
+    private static let cell: CGFloat = 46
 
     let moods: [String]
     let picked: (String) -> Bool
     let action: (String) -> Void
 
     var body: some View {
-        VStack(spacing: 7) {
-            HStack(spacing: Self.gap) {
-                ForEach(moods, id: \.self) { mood in dot(mood, ringed: range == nil) }
+        // Like a Kolorystyka swatch: the dots, a name, a second line.
+        VStack(spacing: 3) {
+            GeometryReader { proxy in
+                // The middle dot on the middle of three columns (Neutralne
+                // where Pomarańcz is); the ends close to it, not out on the
+                // columns, which would spread them too far (Mateusz 23:37).
+                // Two dots (Barwność) either side of the middle.
+                let step = Self.size + Self.gap
+                let mid = proxy.size.width / 2
+                let y = proxy.size.height / 2
+                let x = { (index: Int) in mid + (CGFloat(index) - CGFloat(moods.count - 1) / 2) * step }
+                ZStack {
+                    Capsule()
+                        .fill(
+                            Theme.ink.opacity(0.07)
+                                .shadow(.inner(color: .black.opacity(0.1), radius: 1.5, y: 1))
+                        )
+                        .frame(
+                            width: CGFloat(moods.count - 1) * step + Self.size + 2 * Self.inset,
+                            height: Self.size + 2 * Self.inset
+                        )
+                        .position(x: mid, y: y)
+                    ForEach(Array(moods.enumerated()), id: \.element) { index, mood in
+                        dot(mood, ringed: range == nil).position(x: x(index), y: y)
+                    }
+                    if let range {
+                        Capsule()
+                            .stroke(Theme.ink, lineWidth: 3.5)
+                            .frame(
+                                width: CGFloat(range.count - 1) * step + Self.size + 2 * Self.ringOut,
+                                height: Self.size + 2 * Self.ringOut
+                            )
+                            .position(x: (x(range.lowerBound) + x(range.upperBound)) / 2, y: y)
+                            .allowsHitTesting(false)
+                            .transition(.opacity)
+                    }
+                }
             }
-            .padding(Self.inset)
-            .overlay(alignment: .topLeading) { rangeRing }
-            .background(
-                Capsule().fill(
-                    Theme.ink.opacity(0.07)
-                        .shadow(.inner(color: .black.opacity(0.1), radius: 1.5, y: 1))
-                )
-            )
-            // What the pair is about; the picked side is told by its ring
-            // alone (Mateusz: no word for it).
+            .frame(height: Self.cell)
+            // What the group is about; the picked side is told by its ring
+            // alone (Mateusz: no word for it). A little lower than a
+            // colour's name, clear of the track.
             let side = moods.contains(where: picked)
             Text(ColorTag.toneTitle(moods[0]))
                 .font(.caption2.weight(side ? .semibold : .regular))
                 .foregroundStyle(side ? Theme.ink : Theme.inkSoft)
                 .lineLimit(1)
                 .fixedSize()
+                .offset(y: 4)
+            // Kolorystyka's level line, so a row is as tall as its row.
+            Text(" ")
+                .font(.caption2.weight(.semibold))
+                .accessibilityHidden(true)
         }
         .frame(maxWidth: .infinity)
     }
@@ -1086,21 +1125,6 @@ struct ToneGroup: View {
         let on = moods.indices.filter { picked(moods[$0]) }
         guard on.count > 1, let first = on.first, let last = on.last else { return nil }
         return first...last
-    }
-
-    @ViewBuilder private var rangeRing: some View {
-        if let range {
-            let step = Self.size + Self.gap
-            Capsule()
-                .stroke(Theme.ink, lineWidth: 3.5)
-                .frame(
-                    width: CGFloat(range.count - 1) * step + Self.size + 2 * Self.ringOut,
-                    height: Self.size + 2 * Self.ringOut
-                )
-                .offset(x: Self.inset - Self.ringOut + CGFloat(range.lowerBound) * step, y: Self.inset - Self.ringOut)
-                .allowsHitTesting(false)
-                .transition(.opacity)
-        }
     }
 
     private func dot(_ mood: String, ringed: Bool) -> some View {

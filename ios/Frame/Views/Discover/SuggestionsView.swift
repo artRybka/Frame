@@ -288,6 +288,7 @@ struct ThemeCard: View {
                                         maxPixel: 240,
                                         subjectFocus: true
                                     )
+                                    .scaleEffect(CoverZoom.scale)
                                 } else {
                                     Theme.mat
                                 }
