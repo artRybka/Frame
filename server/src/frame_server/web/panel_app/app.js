@@ -934,6 +934,35 @@
     setTimeout(function () { tell({ error: "no answer" }); }, 5000);
   }
 
+  // Samsung's own players on the frame draw a picture without the navy
+  // launch screen our app gets at every start (E2 against E20b): what they
+  // declare, to copy (PLAN 2.6r). Read-only, once per code and package, on
+  // any start.
+  var PLAYERS = ["PbHvnmrROv.VXPlayer", "com.samsung.ep.epd-cms-client"];
+  function probePlayers() {
+    if (saved("players") === CODE + BUILD) return;
+    saved("players", CODE + BUILD);
+    var t = typeof tizen !== "undefined" ? tizen : null;
+    if (!t || !t.application) return report("probe", { part: "players", error: "no tizen.application" });
+    var a = t.application;
+    var own = call(function () { return a.getCurrentApplication().appInfo.id; });
+    [own.ok ? own.value : "FrmFrame01.Frame"].concat(PLAYERS).forEach(function (id) {
+      var info = call(function () { return plain(a.getAppInfo(id)); });
+      var meta = call(function () {
+        return a.getAppMetaData(id).map(function (m) { return [m.key, m.value]; });
+      });
+      var pkg = call(function () {
+        var p = t.package.getPackageInfo(info.ok && info.value ? info.value.packageId : id.split(".")[0]);
+        return { id: p.id, name: p.name, version: p.version, type: p.type, appIds: p.appIds,
+          preloaded: p.preloaded, removable: p.removable, totalSize: p.totalSize };
+      });
+      var cert = call(function () {
+        return a.getAppCerts(id).map(function (c) { return c.type; });
+      });
+      report("probe", { part: "players", app: id, info: info, meta: meta, package: pkg, certs: cert });
+    });
+  }
+
   // A screenshot of the panel, only when the owner asks for one (POST
   // /api/debug/panel-capture) and only on the charger: in E16 captureScreen
   // did not answer within 30 s, and it may hold the page up. The file goes
@@ -1043,6 +1072,7 @@
   window.FrameApp = { ask: ask, version: CODE };
   setInterval(heartbeat, HEARTBEAT_MS);
   ask("start");
+  setTimeout(probePlayers, 20000);
   watchBattery();
   launchReport();
 })();

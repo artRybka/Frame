@@ -446,9 +446,8 @@ def test_panel_routes(tmp_path: Path) -> None:
         with zipfile.ZipFile(io.BytesIO(wgt)) as z:
             assert 'version="2.0.0"' in z.read("config.xml").decode()
             assert b"http://127.0.0.1:8099" in z.read("config.js")
-            # The launch screen, kept until the picture is on the page (2.6r).
-            assert 'ready_when="custom"' in z.read("config.xml").decode()
-            assert Image.open(io.BytesIO(z.read("blank.png"))).getpixel((0, 0))[3] == 0
+            # The VXT Player's metadata, copied (2.6r).
+            assert "background.rendering.support" in z.read("config.xml").decode()
         code = client.get("/panel/app/app.js")
         assert code.text.startswith("window.FRAME_CODE = ")
 

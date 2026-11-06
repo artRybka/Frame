@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.111.3
+
+- Druga próba zmiany obrazu jednym odświeżeniem. Przezroczysty ekran
+  startu z 1.105.0 nic nie zmienił: ramka i tak rysuje swój granatowy
+  ekran ładowania przy każdym starcie aplikacji. Nowa paczka aplikacji
+  ramki przejmuje ustawienia odtwarzacza VXT Samsunga, który rysuje
+  obraz bez tego ekranu, i odczytuje, jak zbudowane są odtwarzacze
+  Samsunga na ramce. Paczka instaluje się po włączeniu ramki przyciskiem.
+
 ## 1.111.2
 
 - Ciemne, ciepłe obrazy olejne (np. „Studium starca w profilu”
