@@ -1708,6 +1708,7 @@ private extension UIFont {
 struct ViewerSection: View {
     @AppStorage(ScreenBoost.hdrKey) private var hdrBoost = false
     @AppStorage(ScreenBoost.keepKey) private var keepBrightness = false
+    @AppStorage(ScreenBoost.strengthKey) private var strength = HDRBoost.defaultStrength
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -1723,6 +1724,28 @@ struct ViewerSection: View {
                 }
                 .tint(Theme.ink)
                 if hdrBoost {
+                    Divider()
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text("Siła podbicia")
+                            Spacer()
+                            Text(HDRBoost.label(strength))
+                                .monospacedDigit()
+                                .foregroundStyle(Theme.inkSoft)
+                        }
+                        Slider(value: $strength, in: HDRBoost.strengths, step: 0.1) {
+                            Text("Siła podbicia")
+                        } minimumValueLabel: {
+                            Text("Delikatnie").font(.caption)
+                        } maximumValueLabel: {
+                            Text("Mocno").font(.caption)
+                        }
+                        .tint(Theme.ink)
+                        .accessibilityValue(HDRBoost.label(strength))
+                        Text("Ile razy jaśniej od bieli ekranu świeci biel obrazu. Powyżej możliwości ekranu iPhone przycina. Na pełnym ekranie ten sam suwak otwiera przytrzymanie słoneczka.")
+                            .font(.caption)
+                            .foregroundStyle(Theme.inkSoft)
+                    }
                     Divider()
                     Toggle(isOn: $keepBrightness) {
                         VStack(alignment: .leading, spacing: 2) {

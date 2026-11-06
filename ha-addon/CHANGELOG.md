@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.110.7
+
+- Siłą sztucznego podbicia HDR można sterować: suwak „Siła podbicia”
+  (od delikatnego 1,3× do mocnego 4×) w Konfiguracji → Pełny ekran,
+  a na pełnym ekranie ten sam suwak pokazuje przytrzymanie słoneczka.
+
 ## 1.110.6
 
 - Więcej antyku w Odkrywaj → Epoki. Karty starożytności pytają też Getty,

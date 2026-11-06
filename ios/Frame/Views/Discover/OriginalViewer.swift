@@ -13,6 +13,9 @@ struct OriginalViewer: View {
     @AppStorage(ScreenBoost.key) private var brighten = false
     @AppStorage(ScreenBoost.hdrKey) private var hdrAllowed = false
     @AppStorage(ScreenBoost.keepKey) private var keepBrightness = false
+    @AppStorage(ScreenBoost.strengthKey) private var strength = HDRBoost.defaultStrength
+    /// The strength slider under the sun, opened by holding it.
+    @State private var tuning = false
     /// The picture redrawn brighter than white (`HDRBoost`) while the sun
     /// is on and Konfiguracja allows it.
     @State private var boosted: UIImage?
@@ -45,18 +48,21 @@ struct OriginalViewer: View {
         .overlay(alignment: .topTrailing) {
             if chrome {
                 HStack(spacing: 10) {
-                    Button {
-                        brighten.toggle()
-                    } label: {
-                        Image(systemName: brighten ? "sun.max.fill" : "sun.max")
-                            .font(.headline)
-                            .foregroundStyle(brighten ? .yellow : .white)
-                            .frame(width: 40, height: 40)
-                            .background(.black.opacity(0.5), in: Circle())
-                            .contentTransition(.symbolEffect(.replace))
-                    }
-                    .accessibilityLabel(hdrAllowed && keepBrightness ? "Podbij obraz w HDR" : "Rozjaśnij ekran")
-                    .accessibilityAddTraits(brighten ? .isSelected : [])
+                    Image(systemName: brighten ? "sun.max.fill" : "sun.max")
+                        .font(.headline)
+                        .foregroundStyle(brighten ? .yellow : .white)
+                        .frame(width: 40, height: 40)
+                        .background(.black.opacity(0.5), in: Circle())
+                        .contentTransition(.symbolEffect(.replace))
+                        .contentShape(Circle())
+                        .onTapGesture { brighten.toggle() }
+                        .onLongPressGesture(minimumDuration: 0.4) { holdSun() }
+                        .accessibilityElement()
+                        .accessibilityAddTraits(.isButton)
+                        .accessibilityLabel(hdrAllowed && keepBrightness ? "Podbij obraz w HDR" : "Rozjaśnij ekran")
+                        .accessibilityAddTraits(brighten ? .isSelected : [])
+                        .accessibilityAction { brighten.toggle() }
+                        .accessibilityAction(named: "Siła podbicia") { holdSun() }
                     Button {
                         dismiss()
                     } label: {
@@ -67,6 +73,13 @@ struct OriginalViewer: View {
                             .background(.black.opacity(0.5), in: Circle())
                     }
                     .accessibilityLabel("Zamknij")
+                }
+                .overlay(alignment: .topTrailing) {
+                    if tuning && hdr {
+                        strengthSlider
+                            .padding(.top, 50)
+                            .transition(.opacity.combined(with: .move(edge: .top)))
+                    }
                 }
                 .padding(.trailing, 16)
                 .padding(.top, 8)
@@ -79,16 +92,27 @@ struct OriginalViewer: View {
         .statusBarHidden(!chrome)
         .sensoryFeedback(.selection, trigger: brighten)
         .task(id: item.id) { await load() }
-        .task(id: BoostJob(image: image.map(ObjectIdentifier.init), on: hdr)) {
+        .task(id: BoostJob(image: image.map(ObjectIdentifier.init), on: hdr, strength: (strength * 10).rounded())) {
             guard hdr, let image else {
                 boosted = nil
                 return
             }
+            // A slider being dragged: draw only where it stops.
+            if boosted != nil {
+                try? await Task.sleep(for: .milliseconds(120))
+                if Task.isCancelled { return }
+            }
             // The last boosted copy stays up until the sharper one is ready.
-            if let lifted = await HDRBoost.render(image, headroom: ScreenBoost.shared.headroom),
+            if let lifted = await HDRBoost.render(image, strength: strength, headroom: ScreenBoost.shared.headroom),
                !Task.isCancelled {
                 boosted = lifted
             }
+        }
+        .task(id: TuneJob(open: tuning, strength: strength)) {
+            // The slider goes away by itself a few seconds after the last move.
+            guard tuning else { return }
+            try? await Task.sleep(for: .seconds(4))
+            if !Task.isCancelled { withAnimation(.easeOut(duration: 0.2)) { tuning = false } }
         }
         .onAppear { if raises { ScreenBoost.shared.raise() } }
         .onDisappear { ScreenBoost.shared.restore() }
@@ -105,6 +129,43 @@ struct OriginalViewer: View {
     private struct BoostJob: Equatable {
         let image: ObjectIdentifier?
         let on: Bool
+        let strength: Double
+    }
+
+    private struct TuneJob: Equatable {
+        let open: Bool
+        let strength: Double
+    }
+
+    /// Holding the sun: with the HDR lift allowed, the strength slider (and
+    /// the sun on, so the change is seen); otherwise just the sun.
+    private func holdSun() {
+        guard hdrAllowed else {
+            brighten.toggle()
+            return
+        }
+        brighten = true
+        withAnimation(.easeOut(duration: 0.2)) { tuning.toggle() }
+    }
+
+    private var strengthSlider: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text("Siła podbicia")
+                Spacer()
+                Text(HDRBoost.label(strength)).monospacedDigit()
+            }
+            .font(.caption)
+            .foregroundStyle(.white.opacity(0.85))
+            Slider(value: $strength, in: HDRBoost.strengths, step: 0.1)
+                .tint(.yellow)
+                .accessibilityLabel("Siła podbicia")
+                .accessibilityValue(HDRBoost.label(strength))
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .frame(width: 240)
+        .background(.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 14))
     }
 
     private var caption: some View {

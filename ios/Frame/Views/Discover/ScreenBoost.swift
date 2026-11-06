@@ -17,6 +17,9 @@ final class ScreenBoost {
     /// With the HDR lift on: the sun leaves the screen's brightness alone
     /// and only lifts the picture.
     static let keepKey = "viewer.keepBrightness"
+    /// How many times brighter than white the picture's white goes
+    /// (`HDRBoost.strengths`), set in Konfiguracja or by holding the sun.
+    static let strengthKey = "viewer.hdrStrength"
 
     private var boosted = false
     /// The owner's brightness, kept until the glide back to it ends (a
@@ -83,14 +86,21 @@ final class ScreenBoost {
 /// dynamic range. Not how the original or the frame look: a choice in
 /// Konfiguracja, off by default.
 enum HDRBoost {
-    /// At most this much brighter than white (about one and a half stops).
-    static let maxGain: CGFloat = 2.8
+    /// The strength's range and its default (about one and a half stops);
+    /// above the screen's headroom iOS clips anyway.
+    static let strengths: ClosedRange<Double> = 1.3...4
+    static let defaultStrength: Double = 2.8
     /// The longest side of the boosted copy: half floats take 8 bytes a
     /// pixel, a 4096 px original would take over 100 MB.
     static let maxSide: CGFloat = 3072
 
-    static func render(_ image: UIImage, headroom: CGFloat) async -> UIImage? {
-        let gain = min(maxGain, headroom)
+    /// "2,8×", as Polish writes it.
+    static func label(_ strength: Double) -> String {
+        strength.formatted(.number.precision(.fractionLength(1)).locale(Locale(identifier: "pl_PL"))) + "×"
+    }
+
+    static func render(_ image: UIImage, strength: Double, headroom: CGFloat) async -> UIImage? {
+        let gain = min(CGFloat(strengths.clamped(strength)), headroom)
         guard gain > 1.05, let cg = image.cgImage else { return nil }
         let scale = image.scale
         let orientation = image.imageOrientation
@@ -119,4 +129,8 @@ enum HDRBoost {
         else { return nil }
         return context.createCGImage(output, from: output.extent.integral, format: .RGBAh, colorSpace: space)
     }
+}
+
+extension ClosedRange where Bound == Double {
+    func clamped(_ value: Double) -> Double { Swift.min(upperBound, Swift.max(lowerBound, value)) }
 }
