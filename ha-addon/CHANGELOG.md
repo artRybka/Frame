@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.111.3
+
+- Na kafelku Serwer w zakładce Ramka, gdy czeka nowsza wersja, pod
+  numerem obecnej jest teraz napis „Dostępna aktualizacja do 1.111.2”
+  (z numerem nowej wersji) zamiast krótkiego „jest 1.111.2”.
+
 ## 1.111.2
 
 - Ciemne, ciepłe obrazy olejne (np. „Studium starca w profilu”
