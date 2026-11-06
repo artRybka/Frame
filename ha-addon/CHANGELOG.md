@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.111.7
+
+- Godzina zmiany dodana w aplikacji tuż po pobudce ramki nie przepada.
+  Ramka po starcie czeka do 2,5 minuty, aż ekran się odświeży, i dopiero
+  potem zasypia; dotąd zasypiała z planem sprzed tej chwili i nie
+  ustawiała budzika na nową godzinę (21:30 dodane o 21:14 zostało
+  pominięte). Teraz przed zaśnięciem pyta serwer jeszcze raz o plan.
+
 ## 1.111.6
 
 - Zestawy w Odkrywaj otwierają się szybciej. Każdy zaczyna się od dzieł,
