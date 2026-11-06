@@ -1703,6 +1703,29 @@ private extension UIFont {
     }
 }
 
+/// Konfiguracja → Pełny ekran, kept on this phone: may the sun button of
+/// the full-screen viewer also lift the picture above white (`HDRBoost`).
+struct ViewerSection: View {
+    @AppStorage(ScreenBoost.hdrKey) private var hdrBoost = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            SectionHeader(title: "Pełny ekran", subtitle: "Tylko w aplikacji na tym telefonie")
+            Card {
+                Toggle(isOn: $hdrBoost) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Sztuczne „podbicie” w HDR")
+                        Text("Słoneczko na dziele otwartym na cały ekran rozjaśnia ekran i dodatkowo sprawia, że najjaśniejsze miejsca obrazu świecą mocniej niż biel ekranu. Ciemne i średnie tony zostają, ale dzieło wygląda inaczej niż oryginał i ramka. Nie działa w trybie niskiego zużycia energii.")
+                            .font(.caption)
+                            .foregroundStyle(Theme.inkSoft)
+                    }
+                }
+                .tint(Theme.ink)
+            }
+        }
+    }
+}
+
 /// Switches for fun, kept on this phone (artists' first names in Polish,
 /// `NameStyle`): in Konfiguracja and in a household member's "Mój dostęp".
 struct FunSection: View {
@@ -1939,6 +1962,7 @@ struct ConnectionSettingsView: View {
                     if let ai = model.aiSettings {
                         AiSection(settings: ai)
                     }
+                    ViewerSection()
                     FunSection()
                 }
                 .pageWidth()
