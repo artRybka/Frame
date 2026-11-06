@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.108.0
+
+- Nowe źródło: J. Paul Getty Museum (Los Angeles), około 92 000 dzieł
+  w domenie publicznej w pełnej rozdzielczości. Najwięcej daje dla
+  Fotografii (XIX-wieczni mistrzowie: Talbot, Cameron, Le Gray, Nadar,
+  Atget, Watkins; bez stereografii) i dla „Rękopisów i miniatur” (karty
+  i miniatury iluminowanych rękopisów, np. Księgi godzinek), a do tego
+  słynne obrazy i rysunki (m.in. „Irysy” Van Gogha). Zdjęcia i rękopisy
+  nadal nie trafiają do katalogu, są szukane tylko w muzeach. Z „Użytkiem
+  prywatnym” także dzieła spoza programu Open Content.
+
 ## 1.107.1
 
 - Karta dzieła z muzeum, które nie podaje wymiarów zdjęcia (np. V&A,

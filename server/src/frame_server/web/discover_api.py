@@ -854,7 +854,9 @@ class MuseumSearch:
             round_ = (at - 1) // len(rules.artists) + 1 if rules.artists else at
             if text:
                 texts = {k: museum_text(rules, at, typed.get(k)) for k in named}
-                count, items, failed = importer.search_all(texts, asked, round_, keys)
+                count, items, failed = importer.search_all(
+                    texts, asked, round_, keys, kind=self.spec.kind
+                )
             else:
                 count, items, failed = importer.discover_all(self.spec, asked, at, keys)
             total = total or count

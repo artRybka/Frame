@@ -716,7 +716,7 @@ struct PlaylistEditorView: View {
         let museums: Set<String> = [
             "aic", "cma", "met", "rijks", "wmc", "europeana", "openverse", "smk", "wikiart",
             "nga", "mnw", "mnk", "yale", "si", "paris", "vam", "wellcome", "courtauld", "louvre",
-            "loc",
+            "loc", "getty",
         ]
         if !rules.sources.isEmpty, museums.isDisjoint(with: rules.sources) {
             return "Reguły nie dopuszczają żadnego muzeum."
