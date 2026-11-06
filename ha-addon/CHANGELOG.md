@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.104.4
+## 1.104.5
 
 - Grupy w Szukaj chowają się też przy przesuwaniu wyników w górę, nie
   tylko w dół.
