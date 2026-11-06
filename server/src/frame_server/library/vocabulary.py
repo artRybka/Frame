@@ -14,11 +14,11 @@ from __future__ import annotations
 import re
 import unicodedata
 from dataclasses import dataclass
+from datetime import date
 from functools import cache, cached_property, lru_cache
 from itertools import product
 from typing import Literal
 
-from .lifespan import last_free_year
 from .models import Item, ItemKind
 from .museums import Kind
 
@@ -354,10 +354,10 @@ TERMS: list[Term] = [
     _p("period:1850-1900", "1850–1900", 1850, 1899),
     _p("period:1900-1930", "1900–1930", 1900, 1930),
     _p("period:1930-1945", "1930–1945", 1930, 1944),
-    # Later works are free in Poland 70 years after their author's death
-    # (lifespan.py), so the last period ends with this year's free deaths
-    # and grows by a year every January (once the server restarts).
-    _p("period:post-1945", f"1945–{last_free_year()}", 1945, last_free_year()),
+    # Up to this year: with "Użytek prywatny" sources give works still in
+    # copyright too; without it they give only free ones anyway. (Until
+    # 1.111.0 it ended with the last free death year, 1955 in 2026.)
+    _p("period:post-1945", "Po 1945", 1945, date.today().year),
     # Named periods across them. Renesans, Barok, Romantyzm or Młoda Polska
     # are styles already. Europe's are years only; antiquity's, Poland's,
     # Japan's and China's need the place too. Years before Christ are

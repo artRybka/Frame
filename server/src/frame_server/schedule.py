@@ -84,15 +84,11 @@ class FrameSettings(BaseModel):
     timezone: str = "Europe/Warsaw"
     status_poll_minutes: int = Field(15, ge=0, le=1440)  # 0 = only on demand
     # The frame is only seen at home: also accept works that are free to use
-    # but not public domain (e.g. CC BY-SA on Wikimedia Commons).
+    # but not public domain (e.g. CC BY-SA on Wikimedia Commons), works still
+    # in copyright that their collections publish, and WikiArt. (The test
+    # switches "wikiart" and "ignore_term" went into it in 1.111.0; saved
+    # settings that still carry them are read without them.)
     private_use: bool = False
-    # WikiArt as a source, only to test the panel with newer art; its works
-    # leave the library when this is switched off.
-    wikiart: bool = False
-    # Only to test the app as it will be in some years: Europeana also gives
-    # works whose authors died less than 70 years ago (still protected);
-    # they leave the library when this is switched off.
-    ignore_term: bool = False
     # The frame's name in the app; None: the name the panel reports.
     name: str | None = Field(None, max_length=40)
 

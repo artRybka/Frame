@@ -70,7 +70,7 @@ def _fake(key: str) -> type[Museum]:
 
 @pytest.fixture
 def museums(service, monkeypatch):
-    for key in [k for k, m in MUSEUMS.items() if not m.testing]:
+    for key in [k for k, m in MUSEUMS.items() if m.draws]:
         monkeypatch.setitem(MUSEUMS, key, _fake(key))
     pictures = [_picture(n) for n in range(len(COLOURS))]
 
