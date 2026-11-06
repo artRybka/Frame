@@ -26,19 +26,12 @@
     <tizen:metadata key="http://samsung.com/tv/metadata/application/epaper.support" value="true"/>
     <!-- A 2560x1440 page, so pictures are shown 1:1 (without it 1920x1080, E16). -->
     <tizen:metadata key="http://tizen.org/metadata/app_ui_type/base_screen_resolution" value="always"/>
-    <!-- Test (PLAN 2.6r): every start of the app drew Samsung's navy launch
-         screen first and the picture after it, two refreshes of the e-paper
-         per change (camera, 2026-11-06); a transparent tizen:launch_screen
-         of our own changed nothing (1.105.0). Samsung's own player draws a
-         picture without it (E2): the VXT Player's metadata, copied as its
-         package declares it (probePlayers, 2026-11-06 21:13; 2.0.10 had
-         background.rendering.support under samsung.com/tv and changed
-         nothing). Only epaper.support stays "true": the Custom mode needs it. -->
-    <tizen:metadata key="http://tizen.org/metadata/settings/background.rendering.support" value="5000"/>
-    <tizen:metadata key="http://samsung.com/tv/metadata/disable.bgtimer.throttle" value="true"/>
-    <tizen:metadata key="http://samsung.com/tv/metadata/use.network" value="false"/>
-    <tizen:metadata key="http://samsung.com/tv/metadata/screen/orientation" value="all"/>
-    <tizen:metadata key="http://samsung.com/tv/metadata/discardable.memory.limit" value="128"/>
+    <!-- PLAN 2.6r: Samsung's navy launch screen before the page stays with
+         every metadata tried (a transparent launch_screen in 2.0.9, VXT's
+         keys in 2.0.10 and exactly as VXT declares them in 2.0.11). The
+         exact copy also made the frame start the app by itself at every
+         wake (2026-11-06 23:00, an empty check drew the launch screen and
+         the same picture again): taken out, as in 2.0.8. -->
     <!-- Read-only: app.js probePlayers() reads what Samsung's players declare. -->
     <tizen:privilege name="http://tizen.org/privilege/application.info"/>
     <tizen:privilege name="http://tizen.org/privilege/packagemanager.info"/>
