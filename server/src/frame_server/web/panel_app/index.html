@@ -33,12 +33,6 @@
   remote.onerror = local;
   document.body.appendChild(remote);
   setTimeout(local, 20000);
-  // The launch screen (config.xml, ready_when "custom") stays until
-  // window.screen.show(). app.js calls it once the picture is on the page;
-  // this, whatever happens, well before the app may sleep (150 s).
-  setTimeout(function () {
-    try { if (window.screen.show) window.screen.show(); } catch (e) {}
-  }, 60000);
 })();
 </script>
 </body>
