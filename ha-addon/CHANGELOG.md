@@ -1,7 +1,13 @@
 # Changelog
 
-## 1.104.4
+## 1.104.5
 
+- Grupy w Szukaj chowają się też przy przesuwaniu wyników w górę, nie
+  tylko w dół.
+- Po puszczeniu palca grupy wracają po pół sekundy, a nie od razu.
+- Kiedy wyniki po mocnym pociągnięciu pędzą bardzo szybko, grupy zostają
+  schowane i wracają dopiero, gdy lista zwolni albo stanie. Tak samo
+  w edytorze playlist.
 - Karta „Ukryte” na końcu Playlist pokazuje ukryte dzieła i ich liczbę od
   razu po otwarciu aplikacji, a nie „brak”. Dotąd odświeżała się dopiero po
   wejściu w nią i powrocie. Przy następnym uruchomieniu okładka jest gotowa
