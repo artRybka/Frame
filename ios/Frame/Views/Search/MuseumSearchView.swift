@@ -189,6 +189,10 @@ struct MuseumSearchView: View {
             if LaunchRoute.screen == "search-empty", rules.colors.isEmpty {
                 rules.colors = ["orange@clear", "yellow@clear", "tone:muted"]
             }
+            // CI screenshots: the Technika sheet with two picked.
+            if LaunchRoute.screen == "search-techniques", rules.terms.isEmpty {
+                rules.terms = ["technique:painting", "technique:drawing"]
+            }
             // CI screenshots: every museum but the Met, with a colour.
             if LaunchRoute.screen == "search-museums", rules.excludeSources.isEmpty {
                 rules.colors = ["blue@much"]

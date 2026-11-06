@@ -163,4 +163,18 @@ final class TermFacetTests: XCTestCase {
         ]
         XCTAssertEqual(TermFacet.color.label(tokens, periods: periods), "Błękit · wyraźny +1")
     }
+
+    func testTechniquesHaveTheirWorkAndTheOtherThingsApart() {
+        XCTAssertEqual(TechniqueArt.asset("technique:painting"), "technique-painting")
+        XCTAssertEqual(TechniqueArt.asset("technique:decorative"), "technique-decorative")
+        XCTAssertNil(TechniqueArt.asset("technique:mosaic"))
+        XCTAssertNil(TechniqueArt.asset("style:impressionism"))
+        XCTAssertTrue(TechniqueArt.objects.contains("technique:photography"))
+        XCTAssertFalse(TechniqueArt.objects.contains("technique:poster"))
+    }
+
+    func testOneLetterWordsKeepToTheNextWord() {
+        XCTAssertEqual(TechniqueSwatch.bound("Rysunki i akwarele"), "Rysunki i\u{00A0}akwarele")
+        XCTAssertEqual(TechniqueSwatch.bound("Malarstwo"), "Malarstwo")
+    }
 }
