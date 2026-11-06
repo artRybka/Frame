@@ -4,18 +4,23 @@ import UIKit
 /// The original on a dark screen of its own, opened filling the screen:
 /// pinch out or double-tap to see it whole, pinch or double-tap to look
 /// closer, drag to look around, tap to hide the caption. The sun button
-/// brightens the screen to full while the viewer is open (remembered).
+/// brightens the screen to full while the viewer is open (remembered), and
+/// with Konfiguracja's HDR lift also lifts the picture, or only that.
 struct OriginalViewer: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage(ScreenBoost.key) private var brighten = false
     @AppStorage(ScreenBoost.hdrKey) private var hdrAllowed = false
+    @AppStorage(ScreenBoost.keepKey) private var keepBrightness = false
     /// The picture redrawn brighter than white (`HDRBoost`) while the sun
     /// is on and Konfiguracja allows it.
     @State private var boosted: UIImage?
 
     private var hdr: Bool { brighten && hdrAllowed }
+    /// The sun raises the screen's brightness unless Konfiguracja asks for
+    /// the HDR lift alone.
+    private var raises: Bool { brighten && !(hdrAllowed && keepBrightness) }
     let item: Item
     @State private var image: UIImage?
     @State private var failed = false
@@ -50,7 +55,7 @@ struct OriginalViewer: View {
                             .background(.black.opacity(0.5), in: Circle())
                             .contentTransition(.symbolEffect(.replace))
                     }
-                    .accessibilityLabel("Rozjaśnij ekran")
+                    .accessibilityLabel(hdrAllowed && keepBrightness ? "Podbij obraz w HDR" : "Rozjaśnij ekran")
                     .accessibilityAddTraits(brighten ? .isSelected : [])
                     Button {
                         dismiss()
@@ -85,15 +90,15 @@ struct OriginalViewer: View {
                 boosted = lifted
             }
         }
-        .onAppear { if brighten { ScreenBoost.shared.raise() } }
+        .onAppear { if raises { ScreenBoost.shared.raise() } }
         .onDisappear { ScreenBoost.shared.restore() }
-        .onChange(of: brighten) { _, on in
+        .onChange(of: raises) { _, on in
             if on { ScreenBoost.shared.raise() } else { ScreenBoost.shared.restore() }
         }
         .onChange(of: scenePhase) { _, phase in
             // iOS gives the owner's brightness back in the background.
             if phase == .background { ScreenBoost.shared.forget() }
-            if phase == .active, brighten { ScreenBoost.shared.raise() }
+            if phase == .active, raises { ScreenBoost.shared.raise() }
         }
     }
 
