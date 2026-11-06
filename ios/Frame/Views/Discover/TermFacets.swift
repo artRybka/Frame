@@ -346,9 +346,10 @@ struct TermFacetBar: View {
     /// How much of the screen between the title and the tab bar an open
     /// group may take (Epoka's periods need most of it).
     static let panelShare: CGFloat = 0.85
-    /// Epoka may be a little taller than the others (to about 94% of that
-    /// room): its time line and lanes then fit without scrolling.
-    static let periodGrowth: CGFloat = 1.1
+    /// Epoka may take all of that room: its time line and all four groups of
+    /// lanes then fit without scrolling (at 94% Japonia i Chiny was still
+    /// below the edge).
+    static let periodGrowth: CGFloat = 1 / panelShare
 
     /// CI's screenshots of a group's panel.
     private static var launched: TermFacet? {
@@ -1027,7 +1028,7 @@ struct PeriodPicker: View {
     /// The axis' line from the top; the band starts on it.
     private static let rail: CGFloat = 10
     private static let bead: CGFloat = 15
-    private static let rowHeight: CGFloat = 18
+    private static let rowHeight: CGFloat = 16
     /// Narrower than this the two years go as one under the left bead.
     private static let narrow: CGFloat = 40
 
@@ -1315,7 +1316,7 @@ struct PeriodPicker: View {
     private func laneItem(_ period: TermInfo, _ place: PeriodAxis.Placed, colour: Color, faded: Bool) -> some View {
         let on = picked(period.key)
         let inside = place.side == .inside
-        let height: CGFloat = inside ? 15 : (on ? 10 : 8)
+        let height: CGFloat = inside ? 14 : (on ? 10 : 8)
         let start = place.taken.lowerBound
         return Button {
             toggle(period)
