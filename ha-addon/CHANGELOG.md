@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.109.1
+
+- Pobieranie oryginałów Ulubionych i playlist w tle nie zatrzymuje się
+  już na dobre, gdy jedno dzieło nie ma żadnego adresu zdjęcia albo jego
+  pobranie kończy się nietypowym błędem. Wcześniej po takim dziele żadne
+  kolejne nie było pobierane aż do restartu serwera (nocne pobieranie
+  działało dalej).
+- Testy serwera nie łączą się już z prawdziwymi muzeami i nie padają
+  losowo przez wpisy w logu z innych testów.
+
 ## 1.109.0
 
 - Odkrywaj → „Epoki” zaczynają się od starożytności i idą po kolei

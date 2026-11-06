@@ -492,7 +492,9 @@ class ImageCache:
                     raise
                 self._failed[item.id] = self.clock()
                 raise Unavailable(f"original of {item.id} unavailable: {err}") from err
-        raise AssertionError("unreachable")
+        # A work with no address at all (2026-11-06: it ended the thread
+        # fetching the kept works' originals, which then never ran again).
+        raise Unavailable(f"no address for the original of {item.id}")
 
     def picture(self, item: Item, urgent: bool = False) -> tuple[Path, bool]:
         """The original, or its thumbnail when the original cannot be had
