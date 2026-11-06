@@ -17,6 +17,7 @@ from typing import Any, ClassVar
 
 import httpx
 
+from .dates import text_year
 from .hosts import Resting, as_asked
 from .models import Item
 from .museums import Discovery, Museum
@@ -83,6 +84,8 @@ class YaleMuseums(Museum):
             found = re.search(r",\s*([^,]*\d{3,4}[^,]*)$", self._text(m.get("label")))
             date = found.group(1).strip() if found else ""
         year = re.search(r"-?\d{3,4}", date)
+        # "1401–1391 B.C.": before Christ, which the bare number is not.
+        before_christ = text_year(date) if re.search(r"B\.\s?C", date) else None
         homepage = (m.get("homepage") or [{}])[0].get("id") or ""
         width = canvas.get("width")
         return self._item(
@@ -91,7 +94,11 @@ class YaleMuseums(Museum):
             artist=creator,
             artist_bio=bio,
             date_text=date,
-            year=int(year.group(0)) if year else None,
+            year=before_christ
+            if before_christ is not None
+            else int(year.group(0))
+            if year
+            else None,
             medium=meta.get("Medium", ""),
             classification=meta.get("Classification") or meta.get("Collection", ""),
             culture=meta.get("Culture", ""),
