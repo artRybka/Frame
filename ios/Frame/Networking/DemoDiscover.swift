@@ -34,8 +34,12 @@ enum DemoDiscover {
         TermInfo(key: "period:meiji", kind: "period", name: "Meiji", yearFrom: 1868, yearTo: 1912, region: "east-asia"),
         term("technique:painting", "technique", "Malarstwo", ["painting", "oil on"]),
         term("technique:print", "technique", "Grafika", ["print", "woodblock", "lithograph"]),
+        term("technique:drawing", "technique", "Rysunki i akwarele", ["drawing", "watercolo", "chalk", "graphite"]),
         term("technique:poster", "technique", "Plakaty", ["poster"]),
         term("technique:manuscripts", "technique", "Rękopisy i miniatury", ["manuscript"]),
+        term("technique:photography", "technique", "Fotografia", ["photograph"]),
+        term("technique:sculpture", "technique", "Rzeźba", ["sculpture", "statue"]),
+        term("technique:decorative", "technique", "Ceramika i rzemiosło", ["ceramic", "porcelain", "textile"]),
     ]
 
     static let themes: [ArtTheme] = [
