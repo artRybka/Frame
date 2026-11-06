@@ -16,6 +16,7 @@ from PIL import Image
 from . import notifications
 from .ai import AiConfigStore, AiWorker, Claude, DailyJob, KeywordsJob, PlTextJob
 from .ai.composition import ComposeJob
+from .ai.curator import Curator
 from .ai.details import MendJob
 from .ai.extras import ExtrasJob
 from .ai.search_words import SearchWords
@@ -246,6 +247,8 @@ class FrameService:
             DailyJob(self.library, self.images, self.ai_config),
         )
         self.ai.register(self.daily.job)
+        # Discover's curator: two cards of "Dziś dla Ciebie", ordered at night.
+        self.curator = Curator(self.library, self.claude, self.ai_config, self.player.taste)
         # What the pages say a work led to, looked up in the museums and on Wikipedia.
         self.later = LaterWorks(self.library, lambda q, n: self.importer.search_all(q, n))
         self.daily.later = self.later

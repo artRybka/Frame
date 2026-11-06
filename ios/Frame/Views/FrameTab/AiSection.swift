@@ -61,6 +61,14 @@ struct AiSection: View {
                         value: searchWords
                     ) { AiSettingsUpdate(searchWords: $0) }
                 }
+                if let curator = settings.curator {
+                    Divider()
+                    toggle(
+                        "Kurator Odkrywaj",
+                        hint: "Dwie karty w „Dziś dla Ciebie” raz w tygodniu, a obejrzana wraca nowa następnego dnia (Opus, zamawiane nocą za pół ceny, do ok. 3 USD miesięcznie).",
+                        value: curator
+                    ) { AiSettingsUpdate(curator: $0) }
+                }
                 Divider()
                 spending
                 Divider()
