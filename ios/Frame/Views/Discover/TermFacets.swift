@@ -1057,18 +1057,23 @@ struct PeriodPicker: View {
                         .lineLimit(1)
                 }
             }
-            VStack(alignment: .leading, spacing: 14) {
-                if !axis.isEmpty, width > 0 {
-                    line(axis, edges: edges, range: range, brackets: named.filter { picked($0.key) })
-                }
-                if width > 0 {
-                    ForEach(regions) { region in
-                        lanes(region, named.filter { $0.region == region.id }, axis: axis, range: range)
+            OfferedWidth(fallback: width > 0 ? width : 320) {
+                VStack(alignment: .leading, spacing: 14) {
+                    if !axis.isEmpty, width > 0 {
+                        line(axis, edges: edges, range: range, brackets: named.filter { picked($0.key) })
+                    }
+                    if width > 0 {
+                        ForEach(regions) { region in
+                            lanes(region, named.filter { $0.region == region.id }, axis: axis, range: range)
+                        }
                     }
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { offered in
+                // Only a real width: the axis and lanes are drawn to it.
+                guard offered.isFinite, offered > 0, abs(offered - width) > 0.5 else { return }
+                width = min(offered, 1200)
+            }
             .background(alignment: .topLeading) {
                 if let range, width > 0, edges.count > range.upperBound + 1 {
                     // The years picked, from the axis down through the lanes.
@@ -1349,6 +1354,25 @@ struct PeriodPicker: View {
         } else {
             tokens.append(SearchToken(kind: "period", key: period.key, name: period.name))
         }
+    }
+}
+
+/// Takes the width it is offered, never more: a finite one, or when asked
+/// for its ideal size (no width, or an endless one) the last width it had.
+/// The time line and its lanes are drawn to that width, so it must not
+/// grow with them.
+private struct OfferedWidth: Layout {
+    var fallback: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width.flatMap { $0.isFinite ? $0 : nil } ?? fallback
+        let height = subviews.first?.sizeThatFits(ProposedViewSize(width: width, height: nil)).height ?? 0
+        return CGSize(width: width, height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        subviews.first?.place(at: bounds.origin, anchor: .topLeading,
+                              proposal: ProposedViewSize(width: bounds.width, height: nil))
     }
 }
 
