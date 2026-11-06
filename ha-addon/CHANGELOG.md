@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.104.10
+
+- Grupy w Szukaj wracają tym szybciej, im wolniej przesuwała się lista,
+  gdy puszczasz palec: po powolnym przeciągnięciu już po ćwierć sekundy,
+  po mocnym pociągnięciu jak dotąd po sekundzie, a pomiędzy płynnie.
+  Tak samo w edytorze playlist.
+
 ## 1.104.9
 
 - Dzieło wysłane na ramkę z aplikacji nie wraca już z harmonogramem

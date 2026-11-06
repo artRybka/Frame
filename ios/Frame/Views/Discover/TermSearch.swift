@@ -507,10 +507,12 @@ struct TokenSummary: View {
 
 extension View {
     /// The groups over the search field: they hide while the finger drags
-    /// the results either way and come back a second after it lets go,
-    /// however fast the page still glides (Mateusz: "Usuńmy chowanie przy
-    /// pędzącym ekranie. Wydłużmy czas powrotu"). Tapping the field or
-    /// asking nothing any more brings them back too, as `shown` says.
+    /// the results either way and come back after it lets go: in a quarter
+    /// of a second when the finger just lets the list rest, up to a second
+    /// when it flings the list on, smoothly in between (Mateusz: "płynną
+    /// zależność czasu od puszczenia palca połączoną z prędkością lecącej
+    /// listy"). Tapping the field or asking nothing any more brings them
+    /// back too, as `shown` says.
     func hidesOnScroll(_ shown: Binding<Bool>) -> some View {
         modifier(HidesOnScroll(shown: shown))
     }
@@ -520,12 +522,23 @@ private struct HidesOnScroll: ViewModifier {
     @Binding var shown: Bool
     /// The finger is on the page and moves it.
     @State private var dragging = false
+    /// How fast the page moves, kept out of SwiftUI's sight: it changes
+    /// every frame and must not redraw anything.
+    @State private var speed = ScrollSpeed()
     @State private var comeBack: Task<Void, Never>?
 
-    /// How long the groups stay away after the finger lets go.
-    private static let pause: Duration = .seconds(1)
     /// Near the top of the results they never hide.
     private static let top: CGFloat = 24
+
+    /// How long the groups stay away after the finger lets go the page
+    /// moving at `speed` points a second: 0.25 s up to a slow 300 pt/s,
+    /// 1 s from a fling of 3000 pt/s, eased between the two.
+    static func pause(after speed: Double) -> Duration {
+        let slow = 300.0, fast = 3000.0
+        let t = min(max((speed - slow) / (fast - slow), 0), 1)
+        let eased = t * t * (3 - 2 * t)
+        return .milliseconds(Int((0.25 + 0.75 * eased) * 1000))
+    }
 
     func body(content: Content) -> some View {
         content
@@ -534,24 +547,50 @@ private struct HidesOnScroll: ViewModifier {
                 if phase == .interacting || phase == .tracking {
                     comeBack?.cancel()
                 } else if old == .interacting || old == .tracking {
-                    returnLater()
+                    returnLater(after: Self.pause(after: speed.now))
                 }
             }
             .onScrollGeometryChange(for: CGFloat.self) { geometry in
                 geometry.contentOffset.y + geometry.contentInsets.top
             } action: { old, new in
+                speed.measure(new)
                 guard dragging, shown, new > Self.top, abs(new - old) > 1 else { return }
                 withAnimation(.snappy) { shown = false }
             }
     }
 
-    /// Brings the groups back a second from now; a new touch cancels it.
-    private func returnLater() {
+    /// Brings the groups back after `pause`; a new touch cancels it.
+    private func returnLater(after pause: Duration) {
         comeBack?.cancel()
         comeBack = Task {
-            try? await Task.sleep(for: Self.pause)
+            try? await Task.sleep(for: pause)
             guard !Task.isCancelled, !dragging, !shown else { return }
             withAnimation(.snappy) { shown = true }
         }
+    }
+}
+
+/// A smoothed speed in points a second, from the offsets the page reports
+/// frame by frame; a page that stopped reporting has stopped moving.
+@MainActor
+private final class ScrollSpeed {
+    private var speed: Double = 0
+    private var offset: CGFloat = 0
+    private var time: TimeInterval = 0
+
+    var now: Double {
+        ProcessInfo.processInfo.systemUptime - time < 0.1 ? speed : 0
+    }
+
+    func measure(_ new: CGFloat) {
+        let at = ProcessInfo.processInfo.systemUptime
+        let interval = at - time
+        if interval > 0, interval < 0.1 {
+            speed = speed * 0.5 + Double(abs(new - offset)) / interval * 0.5
+        } else {
+            speed = 0
+        }
+        offset = new
+        time = at
     }
 }
