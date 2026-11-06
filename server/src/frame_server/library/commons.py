@@ -240,21 +240,25 @@ def file_title(name: str, artist: str, year: int | None = None) -> str:
 # 8: Louvre works with an unknown author as Wikidata's blank node
 #    (".well-known/genid/…") and French periods for dates ("2e moitié du
 #    XVe siècle" -> "1450–1499"; Mateusz 2026-11-05).
-REPAIR_VERSION = 8
+# 9: Louvre dates of antiquity ("Ie s. ap. J.-C." -> "1–100 n.e."), "Anonim"
+#    for no author (the app showed "Luwr" in its place), titles from a
+#    capital ("peinture murale"; Mateusz 2026-11-06).
+REPAIR_VERSION = 9
 REPAIR_STATE_KEY = "commons_text_repair"
 # The household's own photos: their captions are left as they were typed.
 OWN_SOURCES = frozenset({"upload", "icloud"})
 
 
 def _louvre_repairs(item: Item) -> dict[str, object]:
-    from .louvre import clean_artist, french_years, years_text
+    from .louvre import ANONYMOUS, clean_artist, french_years, nobody, years_text
 
     fixes: dict[str, object] = {}
-    if item.artist and not clean_artist(item.artist):
-        fixes["artist"] = ""
-    if not re.fullmatch(r"\d{3,4}(?:–\d{3,4})?", item.date_text or "") and (
-        span := french_years(item.date_text or "")
-    ):
+    if item.artist != ANONYMOUS and (not clean_artist(item.artist) or nobody(item.artist)):
+        fixes["artist"] = ANONYMOUS
+    if item.title[:1].islower():
+        fixes["title"] = item.title[:1].upper() + item.title[1:]
+    plain = re.fullmatch(r"\d{1,4}(?:–\d{1,4})?(?: (?:p\.)?n\.e\.)?", item.date_text or "")
+    if not plain and (span := french_years(item.date_text or "")):
         fixes["date_text"] = years_text(*span)
         if item.year is None:
             fixes["year"] = span[0]
