@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.105.0
+
+- Szukaj → Epoka zaczyna się od starożytności. Na osi czasu przed
+  średniowieczem jest odcinek „Starożytność” (do 500 roku), a
+  średniowiecze to lata 500–1400. Dotąd dzieła starożytne, np. z Luwru,
+  wpadały do średniowiecza.
+- Nowa grupa okresów „Starożytność i Bizancjum”: Starożytny Egipt,
+  Starożytna Grecja, Starożytny Rzym i Bizancjum. Lata przed naszą erą
+  mają dopisek „p.n.e.”.
+
 ## 1.104.9
 
 - Dzieło wysłane na ramkę z aplikacji nie wraca już z harmonogramem

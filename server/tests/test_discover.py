@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from test_pools import _wait, museums  # noqa: F401  (fixture)
 
 from frame_server.library import Item, ItemKind, PlaylistRules
+from frame_server.library.importer import span
 from frame_server.library.lifespan import last_free_year
 from frame_server.library.repo import matches
 from frame_server.library.themes import (
@@ -548,8 +549,35 @@ def test_named_periods_of_one_country_need_the_place_too() -> None:
     # Museums are asked with the country's word.
     assert museum_queries(["period:edo", "period:meiji"]) == ["japanese"]
     assert museum_queries(["period:edo", "period:17c"]) == []
-    # The app's Epoka sheet: twenty named periods in three groups.
+    # The app's Epoka sheet: twenty-four named periods in four groups.
     named = [t for t in TERMS if t.kind == "period" and t.region]
-    assert len(named) == 20
-    assert {t.region for t in named} == {"europe", "poland", "east-asia"}
+    assert len(named) == 24
+    assert {t.region for t in named} == {"antiquity", "europe", "poland", "east-asia"}
     assert all(t.region is None for t in TERMS if t.kind == "period" and t not in named)
+
+
+def test_antiquity_comes_before_the_middle_ages() -> None:
+    fayum = _work(1, title="Portrait of a Woman", year=150, culture="Roman, Egypt")
+    krater = _work(2, title="Krater", year=-440, culture="Greek, Attic")
+    papyrus = _work(3, title="Book of the Dead", year=-1250, culture="Egyptian")
+    icon = _work(4, title="Virgin Hodegetria", year=1350, culture="Byzantine")
+    madonna = _work(5, title="Madonna", year=1350, artist_bio="Italian, Siena")
+    ancient = PlaylistRules(terms=["period:ancient"])
+    assert all(matches(w, ancient) for w in (fayum, krater, papyrus))
+    assert not matches(icon, ancient)
+    medieval = PlaylistRules(terms=["period:medieval"])
+    assert matches(icon, medieval) and matches(madonna, medieval)
+    assert not matches(fayum, medieval)
+    # Named periods of antiquity need the culture too.
+    assert matches(krater, PlaylistRules(terms=["period:greece"]))
+    assert not matches(papyrus, PlaylistRules(terms=["period:greece"]))
+    assert matches(papyrus, PlaylistRules(terms=["period:egypt"]))
+    assert matches(fayum, PlaylistRules(terms=["period:rome"]))
+    assert matches(icon, PlaylistRules(terms=["period:byzantium"]))
+    assert not matches(madonna, PlaylistRules(terms=["period:byzantium"]))
+    assert museum_queries(["period:egypt", "period:greece"]) == ["egyptian", "greek"]
+    # Museums' date filters know no years before Christ: the start is left
+    # open and the end is year 1.
+    assert span(PlaylistRules(terms=["period:egypt"])) == (None, 1)
+    assert span(PlaylistRules(terms=["period:rome"])) == (None, 476)
+    assert span(PlaylistRules(terms=["period:ancient"])) == (None, 499)

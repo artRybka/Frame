@@ -74,6 +74,7 @@ enum PeriodAxis {
 
     /// The named periods' groups, in order.
     static let regions = [
+        Region(id: "antiquity", title: "Starożytność i Bizancjum"),
         Region(id: "europe", title: "Europa"),
         Region(id: "poland", title: "Polska"),
         Region(id: "east-asia", title: "Japonia i Chiny"),
@@ -109,15 +110,27 @@ enum PeriodAxis {
     /// but 1930 and the last free year as they are.
     static func shownEnd(_ year: Int) -> Int { (year + 1) % 50 == 0 ? year + 1 : year }
 
-    /// A named period's years: "1880–1914".
+    /// A named period's years: "1880–1914"; before Christ (negative
+    /// years) with the era: "3100–30 p.n.e.", "509 p.n.e.–476 n.e.".
     static func years(_ period: TermInfo) -> String {
         switch (period.yearFrom, period.yearTo) {
+        case let (from?, to?) where to < 0: "\(-from)–\(-to) p.n.e."
+        case let (from?, to?) where from < 0: "\(-from) p.n.e.–\(to) n.e."
         case let (from?, to?): "\(from)–\(to)"
-        case let (nil, to?): "do \(to)"
-        case let (from?, nil): "od \(from)"
+        case let (nil, to?): "do \(year(to))"
+        case let (from?, nil): "od \(year(from))"
         case (nil, nil): ""
         }
     }
+
+    /// One year, before Christ with the era: "30 p.n.e.".
+    static func year(_ value: Int) -> String {
+        value < 0 ? "\(-value) p.n.e." : "\(value)"
+    }
+
+    /// How many years a piece of the axis with no start of its own (the
+    /// oldest, "do 500") stands for, so named periods in it get their place.
+    static let openStart = 1300
 
     /// Where a year falls on the axis, from 0 (its start) to 1 (its end):
     /// the pieces are of equal width, so within its piece.
@@ -127,7 +140,7 @@ enum PeriodAxis {
             let to = piece.yearTo ?? Int.max
             guard year <= to else { continue }
             let end = piece.yearTo.map { $0 + 1 } ?? (year + 1)
-            let start = piece.yearFrom ?? min(end - 100, year)
+            let start = piece.yearFrom ?? (end - openStart)
             if year < start, index == 0 { return 0 }
             let within = CGFloat(year - start) / CGFloat(max(end - start, 1))
             return (CGFloat(index) + min(max(within, 0), 1)) / CGFloat(axis.count)
@@ -135,9 +148,11 @@ enum PeriodAxis {
         return 1
     }
 
-    /// Under each piece of the axis: where it starts.
+    /// Under each piece of the axis: where it starts; the oldest piece, with
+    /// no start, by its name ("staroż.", "śr." from an older server).
     static func mark(_ period: TermInfo) -> String {
-        period.yearFrom.map(String.init) ?? "śr."
+        if let from = period.yearFrom { return year(from) }
+        return (period.yearTo ?? 0) < 1000 ? "staroż." : "śr."
     }
 
     /// Picked keys as one span when they are pieces of the axis side by side:

@@ -834,8 +834,10 @@ class Rijksmuseum(Museum):
     def _decades(self, spec: Discovery) -> list[int | None]:
         if spec.year_from is None and spec.year_to is None:
             return [None]
-        first = (spec.year_from if spec.year_from is not None else 1000) // 10 * 10
         last = spec.year_to if spec.year_to is not None else 2000
+        # Antiquity (up to 499) asks for its last century.
+        start = spec.year_from if spec.year_from is not None else max(0, min(1000, last - 100))
+        first = start // 10 * 10
         return list(range(first, last + 1, 10))
 
     def discover(self, spec: Discovery, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:

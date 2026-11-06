@@ -150,8 +150,10 @@ class Smithsonian(Museum):
         if spec.style.strip():
             words.insert(0, f"({spec.style.strip()})")
         if spec.year_from is not None or spec.year_to is not None:
-            first = (spec.year_from if spec.year_from is not None else 1500) // 10 * 10
             last = spec.year_to if spec.year_to is not None else 2000
+            # Antiquity (up to 499): its last 500 years, in 50 decades.
+            start = spec.year_from if spec.year_from is not None else max(0, min(1500, last - 500))
+            first = start // 10 * 10
             decades = [f'date:"{d}s"' for d in range(first, last + 1, 10)]
             if len(decades) <= 60:
                 words.append(f"({' OR '.join(decades)})")
