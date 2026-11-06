@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.111.0
+
+- „Użytek prywatny” w Konfiguracji znosi teraz ograniczenia licencji
+  wszędzie, gdzie źródło samo publikuje obraz: Europeana daje też prace
+  wciąż chronione prawem autorskim (z opisem „Prawa autorskie w mocy
+  (użytek prywatny)”), a WikiArt jest zwykłym źródłem w Szukaj,
+  playlistach i propozycjach ulubionych autorów.
+- Z Konfiguracji znikają przełączniki „WikiArt (tylko testy)” i „Bez
+  limitu 70 lat (tylko testy)”: zastępuje je Użytek prywatny. Dzieła,
+  które przez nie trafiły do biblioteki, zostają.
+- Nowe karty w Odkrywaj przy Użytku prywatnym: „Sztuka współczesna”
+  (Picasso, Hopper, Magritte, Rothko, Warhol, Hockney, Richter i inni)
+  i „Polska sztuka powojenna” (Wróblewski, Nowosielski, Kantor, Fangor,
+  Beksiński, Opałka, Dwurnik i inni).
+- Okres „Po 1945” sięga do dziś, a nie tylko do 1955 roku.
+
 ## 1.110.6
 
 - Więcej antyku w Odkrywaj → Epoki. Karty starożytności pytają też Getty,

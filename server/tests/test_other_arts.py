@@ -90,7 +90,7 @@ def test_themes_of_other_arts_keep_to_their_group() -> None:
 
 def test_the_catalogue_keeps_a_share_of_other_arts(museums, monkeypatch) -> None:  # noqa: F811
     service = museums
-    for key in [k for k, m in MUSEUMS.items() if not m.testing]:
+    for key in [k for k, m in MUSEUMS.items() if m.draws]:
         monkeypatch.setitem(MUSEUMS, key, _objects(key))
     library, player = service.library, service.player
     _paintings(library, 200)

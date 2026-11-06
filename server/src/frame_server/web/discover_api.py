@@ -460,6 +460,8 @@ def _theme_list(svc: FrameService) -> list[ThemeCard]:
     mine = [t for t in liked(svc.library) if t.key in cards]
     colours = [t for t in colour_themes(svc.library, date.today()) if t.key in cards]
     every = [*weekly, *mine, *THEMES, *OTHER_ART_THEMES, *colours]
+    private = svc.player.settings.private_use
+    every = [t for t in every if private or not t.private]
     ordered = sorted(every, key=lambda t: GROUPS.index(t.group))
     return [_card(svc, t, cards, playlists) for t in ordered]
 
@@ -486,6 +488,8 @@ def _theme(key: str, svc: FrameService, page: int = 0) -> Theme:
         found = theme(key, svc.library)
     except KeyError as err:
         raise HTTPException(404, str(err)) from err
+    if found.private and not svc.player.settings.private_use:
+        raise HTTPException(404, f"{key}: only with private use")
     if page == 1:
         curated_seen(svc.library, key)
     return found

@@ -10,8 +10,7 @@ from pydantic import BaseModel
 
 from .. import build_version
 from ..ai import PolishText
-from ..library import Item, ItemSummary, PlaylistRules, PlaylistSummary
-from ..library.museums import TEST_LICENCE
+from ..library import Item, ItemSummary, PlaylistSummary
 from ..player import Hold, hold_from, origin_of
 from ..progress import DisplayProgress
 from ..schedule import FrameSettings
@@ -266,19 +265,6 @@ async def put_settings(settings: FrameSettings, svc: Svc, user: CurrentUser) -> 
         _member_may(svc, user, old, settings)
     saved = player.save_settings(settings)
     svc.power.publish_status()  # a mode the sleeping frame takes on later
-    if old.wikiart and not saved.wikiart:
-        # WikiArt was only for tests: its copies go with the switch.
-        _, tests = svc.library.query(PlaylistRules(sources=["wikiart"]), include_excluded=True)
-        for item in tests:
-            svc.library.delete(item.id)
-            svc.images.remove(item)
-    if old.ignore_term and not saved.ignore_term:
-        # So were the works still protected in the EU.
-        _, found = svc.library.query(PlaylistRules(sources=["europeana"]), include_excluded=True)
-        for item in found:
-            if item.license.startswith(TEST_LICENCE):
-                svc.library.delete(item.id)
-                svc.images.remove(item)
     if player.needs_restyle(old, saved):
         # The screen was turned: the picture on it is redrawn to match.
         svc.background(player.restyle())
@@ -290,9 +276,7 @@ async def put_settings(settings: FrameSettings, svc: Svc, user: CurrentUser) -> 
 
 #: Settings of Konfiguracja and the frame's name: the owner's (Mateusz,
 #: 2026-10-31); a member changes the schedule, presentation and screen.
-OWNER_SETTINGS = frozenset(
-    {"name", "private_use", "wikiart", "ignore_term", "timezone", "status_poll_minutes"}
-)
+OWNER_SETTINGS = frozenset({"name", "private_use", "timezone", "status_poll_minutes"})
 
 
 def _member_may(svc: FrameService, user: User, old: FrameSettings, new: FrameSettings) -> None:

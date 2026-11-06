@@ -110,7 +110,8 @@ SOURCES: tuple[KeyedSource, ...] = (
         key="wikiart",
         name="WikiArt",
         signup="https://www.wikiart.org/en/App/GetApi",
-        about="Tylko do testów ramki. Wpisz Access code i Secret code połączone dwukropkiem, "
+        about="Działa przy użytku prywatnym. Wpisz Access code i Secret code połączone "
+        "dwukropkiem, "
         "np. abc123:xyz789 (konto na wikiart.org → API → Obtain your keys). Bez kluczy "
         "WikiArt dzieli darmowy limit ze wszystkimi i często odmawia.",
         ask=_wikiart,
