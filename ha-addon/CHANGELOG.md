@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.111.12
+
+- Paczka aplikacji ramki wraca do ustawień sprzed testu VXT. Dokładna
+  kopia ustawień odtwarzacza VXT (1.111.8) nie usunęła ekranu startu
+  Samsunga, a sprawiła, że ramka uruchamiała aplikację przy każdej
+  pobudce. Puste sprawdzenia rysowały wtedy ekran startu i ten sam
+  obraz jeszcze raz, co kosztowało baterię. Nowa paczka instaluje się
+  po przytrzymaniu guzika na ramce.
+
 ## 1.111.11
 
 - Sztuczne podbicie HDR usunięte. Słoneczko na pełnym ekranie tylko
