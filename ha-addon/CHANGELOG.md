@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.105.1
+
+- Szukaj → Technika → „Rękopisy i miniatury” znowu coś znajduje. Katalog
+  nie trzyma rękopisów, a muzea nie były o nie pytane, więc wynik był
+  pusty. Teraz pytamy te, które umieją je wybrać: Met (rękopisy ze
+  wszystkich działów, m.in. perskie i indyjskie), Rijksmuseum, V&A
+  (wycięte karty i miniatury z kodeksów), Cleveland, Art Institute of
+  Chicago i Smithsonian. Znalezione rękopisy nadal nie trafiają do
+  katalogu ani do Propozycji.
+- Muzea, które nie mają danej techniki (np. Yale czy Paris Musées
+  rękopisów), nie podsuwają w jej miejsce malarstwa.
+
 ## 1.105.0
 
 - Próba zmiany obrazu jednym odświeżeniem zamiast dwóch. Nowa paczka
