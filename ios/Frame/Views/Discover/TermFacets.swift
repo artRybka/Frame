@@ -1023,7 +1023,7 @@ struct PeriodPicker: View {
     /// The axis' line from the top; the band starts on it.
     private static let rail: CGFloat = 10
     private static let bead: CGFloat = 15
-    private static let rowHeight: CGFloat = 21
+    private static let rowHeight: CGFloat = 16
     /// Narrower than this the two years go as one under the left bead.
     private static let narrow: CGFloat = 40
 
@@ -1059,7 +1059,7 @@ struct PeriodPicker: View {
                 }
             }
             OfferedWidth(fallback: width > 0 ? width : 320) {
-                VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 10) {
                     if !axis.isEmpty, width > 0 {
                         line(axis, edges: edges, range: range, brackets: named.filter { picked($0.key) })
                     }
@@ -1289,7 +1289,7 @@ struct PeriodPicker: View {
         let placed = PeriodAxis.pack(items, width: width)
         let rows = (placed.map(\.row).max() ?? -1) + 1
         let years = range.map { (axis[$0.lowerBound].yearFrom ?? Int.min, axis[$0.upperBound].yearTo ?? Int.max) }
-        return VStack(alignment: .leading, spacing: 7) {
+        return VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 7) {
                 Circle().fill(region.colour).frame(width: 8, height: 8)
                 Eyebrow(region.title)
@@ -1311,7 +1311,7 @@ struct PeriodPicker: View {
     private func laneItem(_ period: TermInfo, _ place: PeriodAxis.Placed, colour: Color, faded: Bool) -> some View {
         let on = picked(period.key)
         let inside = place.side == .inside
-        let height: CGFloat = inside ? 19 : (on ? 11 : 9)
+        let height: CGFloat = inside ? 14 : (on ? 9 : 7)
         let start = place.taken.lowerBound
         return Button {
             toggle(period)
@@ -1322,16 +1322,16 @@ struct PeriodPicker: View {
                     .frame(width: place.to - place.from, height: height)
                     .overlay {
                         if on {
-                            Capsule().stroke(colour, lineWidth: 1.5).padding(-3.5)
+                            Capsule().stroke(colour, lineWidth: 1.5).padding(-3)
                         }
                     }
                     .offset(x: place.from - start, y: (Self.rowHeight - height) / 2)
                 Text(period.name)
-                    .font(.system(size: 12, weight: on ? .semibold : .medium))
+                    .font(.system(size: 11.5, weight: on ? .semibold : .medium))
                     // Outside the years picked: softer, but still easy to read.
                     .foregroundStyle(faded ? Theme.inkSoft : Theme.ink)
                     .fixedSize()
-                    .offset(x: place.labelX - start, y: 3)
+                    .offset(x: place.labelX - start, y: 1)
             }
             .frame(width: place.taken.upperBound - start, height: Self.rowHeight, alignment: .topLeading)
             .contentShape(Rectangle())
@@ -1353,7 +1353,7 @@ struct PeriodPicker: View {
 
     /// How wide a name is on its lane, bold as when picked.
     private static func labelWidth(_ name: String) -> CGFloat {
-        let font = UIFont.systemFont(ofSize: 12, weight: .semibold)
+        let font = UIFont.systemFont(ofSize: 11.5, weight: .semibold)
         return ceil((name as NSString).size(withAttributes: [.font: font]).width)
     }
 
