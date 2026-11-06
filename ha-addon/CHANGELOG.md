@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.104.4
+
+- Karta „Ukryte” na końcu Playlist pokazuje ukryte dzieła i ich liczbę od
+  razu po otwarciu aplikacji, a nie „brak”. Dotąd odświeżała się dopiero po
+  wejściu w nią i powrocie. Przy następnym uruchomieniu okładka jest gotowa
+  od razu, zanim serwer odpowie.
+
 ## 1.104.3
 
 - Pierścień wybranego „Żywe” w karcie Tonacja nie jest już ucięty w rogach.

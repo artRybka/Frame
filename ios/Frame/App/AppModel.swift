@@ -310,6 +310,7 @@ final class AppModel {
         let status = Task { try? await backend.status(refresh: false) }
         let settings = Task { try? await backend.settings() }
         let playlists = Task { try? await backend.playlists() }
+        let hidden = Task { try? await backend.hiddenItems() }
         let facets = Task { try? await backend.facets() }
         let panelConfig = Task { try? await backend.panelConfig() }
         let me = Task { () -> Result<Me, Error> in
@@ -333,6 +334,9 @@ final class AppModel {
         self.status = await status.value
         self.settings = await settings.value
         if let found = await playlists.value { setPlaylists(found) }  // else the last ones stay
+        // "Ukryte" is a card in Playlisty too: loaded with them, not only
+        // when it is opened.
+        if let found = await hidden.value { setHidden(found.items) }
         self.facets = await facets.value ?? .empty
         self.panelConfig = await panelConfig.value
         rememberNow()
@@ -645,6 +649,7 @@ final class AppModel {
         studyList = saved?.studies
         discoverLoadedAt = nil
         playlists = (demoMode ? nil : PlaylistsCache.load(server: serverURL)) ?? []
+        hidden = (demoMode ? nil : HiddenCache.load(server: serverURL)) ?? []
     }
 
     func refreshPlayer() async {
@@ -733,13 +738,20 @@ final class AppModel {
 
     func refreshPlaylists() async {
         if let value = try? await backend.playlists() { setPlaylists(value) }
-        if let value = try? await backend.hiddenItems() { hidden = value.items }
+        if let value = try? await backend.hiddenItems() { setHidden(value.items) }
     }
 
     /// The playlists as the server sent them, kept for the next launch.
     private func setPlaylists(_ value: [PlaylistSummary]) {
         playlists = value
         if !demoMode { PlaylistsCache.save(value, server: serverURL) }
+    }
+
+    /// The hidden works as the server sent them, kept for the next launch:
+    /// the "Ukryte" card shows its cover at once, not "brak".
+    private func setHidden(_ value: [ItemSummary]) {
+        hidden = value
+        if !demoMode { HiddenCache.save(value, server: serverURL) }
     }
 
     func refreshFacets() async {
