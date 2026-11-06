@@ -14,6 +14,9 @@ final class ScreenBoost {
     /// Konfiguracja → Pełny ekran: the sun also lifts the picture's light
     /// parts above the screen's white (`HDRBoost`).
     static let hdrKey = "viewer.hdrBoost"
+    /// With the HDR lift on: the sun leaves the screen's brightness alone
+    /// and only lifts the picture.
+    static let keepKey = "viewer.keepBrightness"
 
     private var boosted = false
     /// The owner's brightness, kept until the glide back to it ends (a
