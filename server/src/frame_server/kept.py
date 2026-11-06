@@ -179,6 +179,8 @@ class KeptOriginals:
                 room -= self._download(item)
             except httpx.HTTPError as err:  # the host is resting: the night tries again
                 log.info("kept: original of %s left for the night: %s", item_id, err)
+            except Exception:  # never the end of the thread: it would not start again
+                log.exception("kept: original of %s failed", item_id)
 
     def at_night(self, night: Night) -> int:
         """The night's task: the kept works' missing originals; how many."""

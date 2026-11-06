@@ -39,7 +39,7 @@ async def test_a_loop_that_moves_is_quiet(caplog: pytest.LogCaptureFixture) -> N
         held_up(0.05)
         await asyncio.sleep(0.05)
     task.cancel()
-    assert not caplog.records
+    assert not [r for r in caplog.records if r.name == "frame_server.loopwatch"]
 
 
 async def test_a_long_stall_is_shown_again(caplog: pytest.LogCaptureFixture) -> None:

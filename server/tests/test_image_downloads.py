@@ -479,3 +479,18 @@ def test_an_aic_original_refused_in_the_download_size_comes_at_1686(tmp_path: Pa
     )
     assert cache.ensure_image(item).is_file()
     assert seen == [f"{iiif}/full/!3000,3000/0/default.jpg", f"{iiif}/full/1686,/0/default.jpg"]
+
+
+def test_a_work_without_an_address_has_no_original(tmp_path: Path) -> None:
+    """Not an error that ends the thread fetching kept works' originals
+    (2026-11-06: an AssertionError did, and it never ran again)."""
+    from frame_server.library.images import Unavailable
+
+    cache = ImageCache(tmp_path, lambda: httpx.Client(transport=httpx.MockTransport(_refuse)))
+    item = _item(7).model_copy(update={"thumb_url": "", "image_url": ""})
+    with pytest.raises(Unavailable):
+        cache.ensure_image(item)
+
+
+def _refuse(request: httpx.Request) -> httpx.Response:
+    raise AssertionError(f"asked {request.url}")
