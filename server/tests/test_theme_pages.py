@@ -111,7 +111,8 @@ def test_every_set_opens_with_the_catalogues_works_before_the_museums(service, m
     assert lines[-1]["end"] and not lines[-1]["failed"]
 
 
-def test_covers_leave_out_what_the_app_does_not_read(service) -> None:
+def test_covers_leave_out_what_the_app_does_not_read(service, monkeypatch) -> None:
+    monkeypatch.setattr(discover_api, "CARD_MIN", 0)
     _paintings(service, 1)
     service.library.update("met:0", keywords=["sea", "morze"], terms=["subject:sea"])
     discover_api._cards = (0.0, {})
@@ -124,3 +125,15 @@ def test_a_works_texts_are_remembered_for_a_whole_catalogue() -> None:
     # A smaller cache, scanned in order over more works, keeps none of them.
     assert PER_WORK >= 200_000
     assert _is_manuscript.cache_info().maxsize == PER_WORK
+
+
+def test_cards_with_too_few_works_are_not_shown(service, monkeypatch) -> None:
+    # "Pierwsze kolory" with 2 works and two grey squares (Mateusz 2026-11-06).
+    two = _paintings(service, 2)
+    four = _paintings(service, 4, start=10)
+    thin, full = THEMES[0], THEMES[1]
+    cards = {thin.key: (2, two), full.key: (4, four)}
+    monkeypatch.setattr(discover_api, "_theme_cards", lambda svc: cards)
+    keys = [c.key for c in discover_api._theme_list(service)]
+    assert keys == [full.key]
+    assert discover_api.CARD_MIN == 4

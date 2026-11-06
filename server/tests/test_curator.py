@@ -234,7 +234,11 @@ def _answer(fake_client: FakeAnthropic, data: dict[str, Any]) -> None:
     fake_client.messages.batches.results = results
 
 
-def test_the_curator_orders_at_night_and_its_cards_pass_the_checks(service, fake) -> None:  # noqa: F811
+def test_the_curator_orders_at_night_and_its_cards_pass_the_checks(
+    service,
+    fake,  # noqa: F811
+    monkeypatch,
+) -> None:
     _catalogue(service)
     library = service.library
     curator: Curator = service.curator
@@ -272,6 +276,7 @@ def test_the_curator_orders_at_night_and_its_cards_pass_the_checks(service, fake
     from frame_server.web import create_app, discover_api
 
     discover_api._cards = (0.0, {})  # not another test's
+    monkeypatch.setattr(discover_api, "CARD_MIN", 0)  # the epochs' cards, however empty
     app = create_app(service.settings)
     app.state.service = service
     with TestClient(app) as client:

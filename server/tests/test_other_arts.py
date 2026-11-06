@@ -14,12 +14,14 @@ from test_pools import _fake, _wait, museums  # noqa: F401  (fixture)
 from frame_server.library import Item, Job, PlaylistRules
 from frame_server.library.museums import MUSEUMS, Discovery
 from frame_server.library.themes import (
+    COVER_MIN,
     GROUPS,
     OTHER_ART_THEMES,
     OTHER_ARTS,
     PRINTS,
     THEMES,
     other_art_searches,
+    thin_other_art,
 )
 from frame_server.library.vocabulary import (
     DECORATIVE,
@@ -90,6 +92,7 @@ def test_themes_of_other_arts_keep_to_their_group() -> None:
 
 def test_the_catalogue_keeps_a_share_of_other_arts(museums, monkeypatch) -> None:  # noqa: F811
     service = museums
+    monkeypatch.setattr("frame_server.player.thin_other_art", lambda library: [])
     for key in [k for k, m in MUSEUMS.items() if m.draws]:
         monkeypatch.setitem(MUSEUMS, key, _objects(key))
     library, player = service.library, service.player
@@ -143,3 +146,40 @@ def test_other_arts_have_no_study_nor_painting_cards(museums) -> None:  # noqa: 
     assert service.daily.choose(date(2026, 11, 6)) is None or (
         service.daily.choose(date(2026, 11, 6)).id != bust.id
     )
+
+
+def test_thin_cards_of_other_arts_are_filled_first(museums, monkeypatch) -> None:  # noqa: F811
+    # "Pierwsze kolory" had 2 works (Mateusz 2026-11-06): the night looks
+    # for the works of such cards first, whatever room their technique has.
+    service = museums
+    library, player = service.library, service.player
+    colours = next(t for t in OTHER_ART_THEMES if t.key == "first-colours")
+    thin = dict(thin_other_art(library))
+    assert thin[colours] == 0
+    assert not any(t.catalogue for t in thin)  # the technique's own card has no searches
+    with library.batch():
+        for n in range(COVER_MIN):
+            library.upsert(
+                _work(
+                    700 + n,
+                    classification="Photograph",
+                    medium="1 photograph : autochrome, color",
+                    year=1910,
+                    color_tags=["colorful"],
+                    pooled=True,
+                )
+            )
+    assert colours not in dict(thin_other_art(library))
+
+    asked: list[tuple[str, int]] = []
+
+    def collect(category, searches, count, job, fits) -> None:
+        asked.append((category, count))
+        assert list(searches)
+
+    monkeypatch.setattr(service.importer, "collect_searched", collect)
+    monkeypatch.setattr(player, "other_art_room", lambda fresh=False: {})  # all full
+    player._add_other_art(Job(id="test", description="catalogue"))
+    assert asked and all(count <= COVER_MIN for _, count in asked)
+    assert {c for c, _ in asked} <= set(OBJECT_CATEGORIES)
+    assert len(asked) == len(thin_other_art(library))

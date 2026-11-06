@@ -816,6 +816,35 @@ class Importer:
                 terms=[category],
             )
 
+    def collect_searched(
+        self,
+        category: str,
+        searches: Iterable[tuple[str, str]],
+        count: int,
+        job: Job,
+        fits: Callable[[Item], bool],
+    ) -> None:
+        """Add up to ``count`` works (``pooled``) of one technique of "Sztuki
+        inne" that a theme's ``searches`` find and that ``fits`` (its rules,
+        once analysed: "Pierwsze kolory" wants colour): a card the catalogue
+        has too few works of."""
+        offered = self.asked_sources(TECHNIQUE_KINDS[category])
+        with self.http() as http:
+            streams = [
+                _search_stream(museum(s, http, self.access()), q)
+                for s, q in searches
+                if s in offered
+            ]
+            self._take(
+                streams,
+                count,
+                job,
+                before=lambda item: object_category(item) == category,
+                after=fits,
+                pooled=True,
+                terms=[category],
+            )
+
     def discover_all(
         self, spec: Discovery, limit: int = 8, page: int = 1, keys: list[str] | None = None
     ) -> tuple[int, list[Item], list[str]]:

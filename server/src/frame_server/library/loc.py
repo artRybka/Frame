@@ -6,7 +6,8 @@ Its JSON API (www.loc.gov ``?fo=json``) needs no key. A search result
 carries the rights advisory, so only works with "No known restrictions"
 and not restricted to the library's own rooms are taken, and only
 photographs (negatives, slides, autochromes, photochroms…), never its
-prints, drawings and books. Words typed search all its photographs; a draw
+prints, drawings and books. Words typed search all its photographs
+(``collection:<slug> words`` just one collection's); a draw
 without words takes turns between collections of known photographers:
 FSA/OWI in colour and black and white (Lange, Evans, Delano), Prokudin-
 Gorsky's colour photographs of Russia, the photochroms, the Civil War glass
@@ -45,6 +46,12 @@ COLLECTIONS: dict[str, str] = {
 }
 #: Results asked for a page of words: some are prints or restricted.
 SEARCH_PAGE = 40
+#: A search of one collection: "collection:prokudin-gorskii three-color"
+#: (the collection's slug, then words, if any, within it). The words of all
+#: photographs bring what merely names it: "photochrom" brought the
+#: Detroit Photochrom Company's own buildings, "Prokudin-Gorskii" 66 of his
+#: 2610 (Mateusz 2026-11-06: "Pierwsze kolory" had 2 works).
+COLLECTION = "collection:"
 
 #: Photographs by their material: negatives and slides are shown as
 #: positives. Stereographs are two pictures side by side: never.
@@ -54,6 +61,10 @@ _PHOTO = re.compile(
     re.IGNORECASE,
 )
 _STEREO = re.compile(r"\bstereo\w*", re.IGNORECASE)
+#: Prokudin-Gorsky's plates put together by machine (2004): the whole plate
+#: with fringes of red, green and blue round it. The ones put together by
+#: hand ("ppem", "ppmsc") are cropped and aligned.
+_RAW_COMPOSITE = "/pnp/prokc/"
 #: What a contributor's name ends with: "Lange, Dorothea, photographer".
 _ROLE = re.compile(r",?\s*(photographer|creator|artist|publisher|author)\.?$", re.IGNORECASE)
 
@@ -146,7 +157,7 @@ class LibraryOfCongress(Museum):
         if not _PHOTO.search(what) or _STEREO.search(what):
             return None
         found = pictures(d)
-        if found is None:
+        if found is None or _RAW_COMPOSITE in found[1]:
             return None
         creators = d.get("creators") or []
         names = [c.get("title", "") for c in creators if isinstance(c, dict)]
@@ -189,19 +200,26 @@ class LibraryOfCongress(Museum):
         resp.raise_for_status()
         body = resp.json()
         results = [r for r in body.get("results") or [] if isinstance(r, dict)]
-        return int((body.get("pagination") or {}).get("total") or 0), results
+        # "of" is how many results there are, "total" how many pages.
+        pagination = body.get("pagination") or {}
+        return int(pagination.get("of") or pagination.get("total") or 0), results
 
     def search(self, query: str, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
-        if not query.strip():
+        query = query.strip()
+        if query.startswith(COLLECTION):
+            slug, _, words = query.removeprefix(COLLECTION).partition(" ")
+            return self._words(words.strip(), {}, page, f"/collections/{slug.strip('/')}/")
+        if not query:
             return self.discover(Discovery(kind="photograph"), limit, page)
-        return self._words(query.strip(), {}, page)
+        return self._words(query, {}, page)
 
-    def _words(self, words: str, params: dict[str, Any], page: int) -> tuple[int, list[Item]]:
+    def _words(
+        self, words: str, params: dict[str, Any], page: int, path: str = "/photos/"
+    ) -> tuple[int, list[Item]]:
         # Pages of a fixed size, so that the next page follows on; what is
         # restricted or no photograph is left out of each.
-        total, results = self._get(
-            "/photos/", {"q": words, "fa": "online-format:image", **params}, SEARCH_PAGE, page
-        )
+        asked = {"fa": "online-format:image", **params, **({"q": words} if words else {})}
+        total, results = self._get(path, asked, SEARCH_PAGE, page)
         return total, [i for r in results if (i := self._map(r))]
 
     def discover(self, spec: Discovery, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
