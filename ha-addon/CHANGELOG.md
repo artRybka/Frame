@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.111.10
+
+- Test: gdy ramka śpi, pobranie obrazu przez wbudowany odtwarzacz
+  Samsunga (polecenie MDC z Maca) nie uruchamia już aplikacji ramki,
+  więc widać, jak odtwarzacz rysuje obraz sam. Serwer może też podać
+  odtwarzaczowi wcześniejszy obraz (`content.json?file=…`), żeby test
+  pokazał prawdziwą zmianę.
+
 ## 1.111.9
 
 - Oś czasu w Epoce: zakres przy prawym końcu („Po 1945”) nie jest już

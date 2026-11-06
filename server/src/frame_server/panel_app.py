@@ -1881,8 +1881,16 @@ class PanelApp:
 
     def left(self) -> None:
         """The panel fetched content.json: its launcher is on another source
-        (Mobile), not the app. The next tick starts the app again."""
+        (Mobile), not the app. The next tick starts the app again. Not while
+        the app sleeps (a test of Samsung's player drawing the picture)."""
         state = self.state
+        if state.active and state.asleep:
+            # Content pushed over MDC (0xC7 53 80) at a wake the app does not
+            # run for: the source stays Custom (read 81 01 before and after,
+            # 2026-11-06 22:00), and starting the app drew the launcher's
+            # screen over the player's picture 5 s later (PLAN 2.6t).
+            log.info("the panel fetched content.json while the app sleeps: left alone")
+            return
         self._nudged = None
         if state.active:
             state.active = False
