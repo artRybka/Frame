@@ -30,6 +30,17 @@ enum PlaylistsCache {
     }
 }
 
+/// The hidden works ("Ukryte" in Playlisty) of each server, from the last launch.
+enum HiddenCache {
+    static func load(server: String) -> [ItemSummary]? {
+        CacheFile.load([ItemSummary].self, "hidden", server: server)
+    }
+
+    static func save(_ items: [ItemSummary], server: String) {
+        CacheFile.save(items, "hidden", server: server)
+    }
+}
+
 /// A screen kept per server in Caches, as the server sent it.
 enum CacheFile {
     private static func url(_ name: String, server: String) -> URL? {
