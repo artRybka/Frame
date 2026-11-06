@@ -127,6 +127,15 @@ final class TermFacetTests: XCTestCase {
         XCTAssertNil(PeriodAxis.span(["period:1850-1900", "period:belle-epoque"], periods: periods))
     }
 
+    func testASpanUpToThisYearEndsWithObecnie() {
+        XCTAssertEqual(PeriodAxis.endYear(2026, now: 2026), "obecnie")
+        XCTAssertEqual(PeriodAxis.endYear(1955, now: 2026), "1955")
+        XCTAssertEqual(PeriodAxis.endYear(1399, now: 2026), "1400")
+        let now = TermInfo(key: "period:post-1945", kind: "period", name: "Po 1945", yearFrom: 1945, yearTo: PeriodAxis.thisYear)
+        XCTAssertEqual(PeriodAxis.endMark(now), "obecnie")
+        XCTAssertEqual(PeriodAxis.years(now), "1945–obecnie")
+    }
+
     func testButtonsSayWhatIsPicked() {
         let tokens = [
             SearchToken(kind: "artist", key: "Hiroshige", name: "Hiroshige"),
