@@ -496,6 +496,9 @@ struct ThemeView: View {
     private static let failuresToStop = 3
     /// How long a round no museum answered waits before the next.
     private static let retryPause: Duration = .seconds(10)
+    /// How long the first works of one museum wait for another museum's
+    /// before they are shown side by side (`WorkWeave.showFirst`).
+    private static let firstWorksWait: Duration = .seconds(2)
 
     var body: some View {
         ScrollView {
@@ -636,6 +639,11 @@ struct ThemeView: View {
     /// museum answers. False when no museum did.
     @MainActor
     private func loadMore() async -> Bool {
+        let firstWorks = Task { @MainActor in
+            try? await Task.sleep(for: Self.firstWorksWait)
+            if !Task.isCancelled { weave.showFirst() }
+        }
+        defer { firstWorks.cancel() }
         do {
             for try await line in try await model.backend.themeLines(key: theme.key, page: page) {
                 weave.add(line.items)

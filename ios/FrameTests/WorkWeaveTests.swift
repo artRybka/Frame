@@ -74,6 +74,17 @@ final class WorkWeaveTests: XCTestCase {
         XCTAssertEqual(weave.shown.count, 10)
     }
 
+    func testTheFirstWorksOfOneMuseumComeWhenTheOthersAreLate() {
+        // Antiquity: the Met answers first, and the others take long.
+        var weave = WorkWeave()
+        weave.add((0..<10).flatMap { works("Painter \($0)", 1, museum: "The Met") })
+        XCTAssertEqual(weave.shown.count, 1)
+        weave.showFirst()
+        XCTAssertEqual(weave.shown.count, WorkWeave.fewestPerRound)
+        weave.showFirst()  // only the first few
+        XCTAssertEqual(weave.shown.count, WorkWeave.fewestPerRound)
+    }
+
     func testKindsTakeTurnsWhenTheyCan() {
         var weave = WorkWeave()
         weave.add(
