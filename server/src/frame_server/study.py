@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Literal
 
 from .ai.client import AiUnavailable
 from .ai.study import KIND, StudyJob
+from .library.vocabulary import other_art
 
 if TYPE_CHECKING:
     from .ai import AiWorker
@@ -241,6 +242,8 @@ class Study:
             return ("details" if item.id in self._cutting else "ready"), ""
         if item is not None and item.id in self._asking:
             return self.job.stages.get(item.id, "waiting"), ""  # type: ignore[return-value]
+        if item is not None and other_art(item):
+            return "off", ""  # "Sztuki inne" have no study (Mateusz 2026-11-06)
         if item is not None and self.ai.later(KIND, item.id):
             return "later", ""
         if item is not None and (error := self._errors.get(item.id)):

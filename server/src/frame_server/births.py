@@ -20,6 +20,7 @@ import httpx
 
 from .library import museums
 from .library.models import ItemKind, PlaylistRules
+from .library.vocabulary import other_art
 
 if TYPE_CHECKING:
     from .library import Item, Library
@@ -95,7 +96,7 @@ class Births:
         else:
             rules = PlaylistRules(kinds=[ItemKind.ARTWORK], favorites_only=True)
             items = self.library.query(rules, user=user)[1]
-        return Counter(i.artist for i in items if i.artist)
+        return Counter(i.artist for i in items if i.artist and not other_art(i))
 
     def _years(self, artist: str) -> list[int]:
         rules = PlaylistRules(kinds=[ItemKind.ARTWORK], artists=[artist])
