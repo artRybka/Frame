@@ -351,7 +351,7 @@ TERMS: list[Term] = [
     # Techniques
     _t(
         "technique:painting",
-        "Obrazy",
+        "Malarstwo",
         "painting*",
         "oil on",
         "tempera",

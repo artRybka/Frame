@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.104.10
+
+- W Szukaj → Technika (i w edytorze playlist) „Obrazy” nazywają się teraz
+  „Malarstwo”. Wybór działa tak samo: dzieła, które muzeum opisuje jako
+  malarstwo (olej, tempera i podobne). Zapisane playlisty i wybory zostają.
+
 ## 1.104.9
 
 - Dzieło wysłane na ramkę z aplikacji nie wraca już z harmonogramem

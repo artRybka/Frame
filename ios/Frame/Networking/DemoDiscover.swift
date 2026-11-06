@@ -27,7 +27,7 @@ enum DemoDiscover {
         TermInfo(key: "period:pl-partitions", kind: "period", name: "Zabory", yearFrom: 1795, yearTo: 1918, region: "poland"),
         TermInfo(key: "period:edo", kind: "period", name: "Edo", yearFrom: 1603, yearTo: 1868, region: "east-asia"),
         TermInfo(key: "period:meiji", kind: "period", name: "Meiji", yearFrom: 1868, yearTo: 1912, region: "east-asia"),
-        term("technique:painting", "technique", "Obrazy", ["painting", "oil on"]),
+        term("technique:painting", "technique", "Malarstwo", ["painting", "oil on"]),
         term("technique:print", "technique", "Grafika", ["print", "woodblock", "lithograph"]),
         term("technique:poster", "technique", "Plakaty", ["poster"]),
         term("technique:manuscripts", "technique", "Rękopisy i miniatury", ["manuscript"]),
