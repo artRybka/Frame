@@ -613,7 +613,8 @@ struct TermFacetPanel: View {
     private var footnote: String? {
         switch facet {
         case .museum: "Nic nie wybrane: pytam wszystkie muzea."
-        case .color, .technique: nil
+        // Epoka says it with its beads and band.
+        case .color, .technique, .period: nil
         default: "Wybierz dowolnie wiele: wystarczy, że dzieło pasuje do jednego z nich."
         }
     }
@@ -1317,7 +1318,7 @@ struct PeriodPicker: View {
         } label: {
             ZStack(alignment: .topLeading) {
                 Capsule()
-                    .fill(colour.opacity(inside ? (on ? 0.6 : 0.35) : (on ? 0.85 : 0.55)))
+                    .fill(colour.opacity(capsuleOpacity(on: on, inside: inside, faded: faded)))
                     .frame(width: place.to - place.from, height: height)
                     .overlay {
                         if on {
@@ -1327,7 +1328,8 @@ struct PeriodPicker: View {
                     .offset(x: place.from - start, y: (Self.rowHeight - height) / 2)
                 Text(period.name)
                     .font(.system(size: 12, weight: on ? .semibold : .medium))
-                    .foregroundStyle(Theme.ink)
+                    // Outside the years picked: softer, but still easy to read.
+                    .foregroundStyle(faded ? Theme.inkSoft : Theme.ink)
                     .fixedSize()
                     .offset(x: place.labelX - start, y: 3)
             }
@@ -1335,11 +1337,18 @@ struct PeriodPicker: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .opacity(faded ? 0.32 : 1)
         .offset(x: start, y: CGFloat(place.row) * Self.rowHeight)
         .sensoryFeedback(.selection, trigger: on)
         .accessibilityLabel("\(period.name), \(PeriodAxis.years(period))")
         .accessibilityAddTraits(on ? .isSelected : [])
+    }
+
+    /// A capsule's colour: full in the years picked (and picked ones),
+    /// pale outside them; the long ones with the name inside lighter.
+    private func capsuleOpacity(on: Bool, inside: Bool, faded: Bool) -> Double {
+        if inside { return on ? 0.6 : (faded ? 0.18 : 0.42) }
+        if on { return 1 }
+        return faded ? 0.25 : 0.9
     }
 
     /// How wide a name is on its lane, bold as when picked.

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.110.1
+
+- Czytelniejsza oś czasu w Szukaj → Epoka: nazwy okresów spoza wybranych
+  lat są ciemniejsze, a paski okresów w wybranym zakresie mają pełny
+  kolor. Pod kartą Epoka nie ma już dopisku „Wybierz dowolnie wiele…”.
+
 ## 1.110.0
 
 - Nowa grupa „Sztuki inne” w Odkrywaj, zaraz po „Grafika i plakat”:
