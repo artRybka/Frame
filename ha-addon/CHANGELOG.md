@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.106.0
+
+- Nowe źródło zdjęć: Library of Congress. Pytamy je tylko wtedy, gdy w
+  Szukaj (albo w playliście) wybierzesz Technika → Fotografia, więc nie
+  spowalnia innych wyszukiwań i nie zapycha katalogu. Bez wpisanych słów
+  losuje ze zbiorów znanych fotografów: kolorowe i czarno-białe zdjęcia
+  FSA/OWI (Dorothea Lange, Walker Evans, Jack Delano), kolorowa Rosja
+  Prokudina-Gorskiego, fotochromy z lat 1890–1910, szklane negatywy z wojny
+  secesyjnej, Frances Benjamin Johnston i Lewis Hine. Wpisane słowa szukają
+  we wszystkich jego zdjęciach. Bierzemy tylko zdjęcia bez ograniczeń
+  praw („No known restrictions”), w pełnej rozdzielczości skanu, do
+  2560 px. Z włączonym „Użytkiem prywatnym” także zdjęcia, których praw
+  biblioteka nie sprawdziła albo które mogą być chronione (np. portrety
+  Carla Van Vechtena, Edward S. Curtis), jeśli pokazuje je poza swoim
+  budynkiem w dużym rozmiarze.
+
 ## 1.105.1
 
 - Szukaj → Technika → „Rękopisy i miniatury” znowu coś znajduje. Katalog

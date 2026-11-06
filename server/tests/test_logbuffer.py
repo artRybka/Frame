@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterator
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from frame_server import logbuffer
@@ -12,6 +14,19 @@ from frame_server.config import Settings
 from frame_server.web import create_app
 
 OWNER = {"Authorization": "Bearer secret"}
+
+
+@pytest.fixture(autouse=True)
+def _own_buffer(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """The process has one buffer: a test's app gets a new one, without what
+    the tests before it logged. Threads other tests left behind can still log
+    into it while it runs (2026-11-06: an import between the lines below),
+    so what a test reads it picks out by its own logger or words."""
+    monkeypatch.setattr(logbuffer, "_buffer", None)
+    yield
+    if (buffer := logbuffer._buffer) is not None:
+        for logger in (logging.getLogger(), logging.getLogger("uvicorn.error")):
+            logger.removeHandler(buffer)
 
 
 def test_the_owner_reads_the_recent_log(tmp_path: Path) -> None:
@@ -27,8 +42,9 @@ def test_the_owner_reads_the_recent_log(tmp_path: Path) -> None:
         assert text.count("Exception in ASGI application") == 1
         found = client.get("/api/debug/log", params={"grep": "DID NOT ASK"}, headers=OWNER).text
         assert found.count("\n") == 1 and "did not ask" in found
-        last = client.get("/api/debug/log", params={"lines": 1}, headers=OWNER).text
-        assert last.strip().endswith("Exception in ASGI application")
+        mine = {"lines": 1, "grep": "frame_server.test"}
+        last = client.get("/api/debug/log", params=mine, headers=OWNER).text
+        assert last.count("\n") == 1 and last.strip().endswith("something else")
 
 
 def test_the_log_survives_uvicorns_logging_setup(tmp_path: Path) -> None:

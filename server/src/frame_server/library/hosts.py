@@ -79,6 +79,10 @@ PACE = {
     # No published rules (a bot wall on its search pages): entries (JSON) and
     # photographs gently, as from the Courtauld (library/louvre.py).
     "collections.louvre.fr": 0.5,
+    # Searches: at most 20 in 10 s and 80 a minute, or an hour's block
+    # (loc.gov/apis, "Working within limits"); pictures without rules.
+    "www.loc.gov": 1.0,
+    "tile.loc.gov": 0.25,
 }
 #: The most requests under way at once to a host (or :func:`lane`), where
 #: its owners ask for fewer than the server's threads would send. Only
@@ -94,6 +98,7 @@ LIMITS = {
     "nominatim.openstreetmap.org": 1,
     "gallerycollections.courtauld.ac.uk": 2,
     "collections.louvre.fr": 2,
+    "www.loc.gov": 1,
 }
 #: The longest a host's ``Retry-After`` (on a 429) is kept to: api.data.gov
 #: blocks a key for an hour; longer waits are taken as an hour too.

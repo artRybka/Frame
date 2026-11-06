@@ -150,6 +150,9 @@ class Museum(ABC):
     #: The language its search understands: Polish words typed in Szukaj
     #: are translated for the others (``Wording``).
     language: ClassVar[str] = "en"
+    #: A source of one kind only (the Library of Congress's photographs):
+    #: asked just when that kind is, never by every search.
+    only: ClassVar[Kind | None] = None
 
     @classmethod
     def offered(cls, access: Access) -> bool:
@@ -1552,6 +1555,7 @@ class WikiArt(Museum):
 # Collections added later live in modules of their own (they build on the
 # classes above).
 from .courtauld import CourtauldGallery  # noqa: E402
+from .loc import LibraryOfCongress  # noqa: E402
 from .louvre import Louvre  # noqa: E402
 from .muza import NationalMuseumKrakow, NationalMuseumWarsaw  # noqa: E402
 from .nga import NationalGalleryOfArt  # noqa: E402
@@ -1578,6 +1582,7 @@ MUSEUMS: dict[str, type[Museum]] = {
         WellcomeCollection,
         CourtauldGallery,
         Louvre,
+        LibraryOfCongress,
         WikimediaCommons,
         Europeana,
         Openverse,

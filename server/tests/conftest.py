@@ -1,4 +1,5 @@
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -6,6 +7,9 @@ from PIL import Image
 
 # Lets tests import helper modules (fake_panel) that live next to them.
 sys.path.insert(0, str(Path(__file__).parent))
+
+#: Hosts the tests' own servers run on (uvicorn in the end-to-end test).
+LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1", "testserver"}
 
 
 def jpeg_bytes(color: tuple[int, int, int], size: tuple[int, int] = (320, 240)) -> bytes:
@@ -19,20 +23,45 @@ def jpeg_bytes(color: tuple[int, int, int], size: tuple[int, int] = (320, 240)) 
     return buf.getvalue()
 
 
-@pytest.fixture(autouse=True)
-def _no_gallery_downloads(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The National Gallery of Art's index is downloaded (~230 MB) on first
-    use; tests that want one build it from fake files themselves."""
-    from frame_server.library import nga
+@pytest.fixture(autouse=True, scope="session")
+def _offline() -> Iterator[None]:
+    """No test reaches the internet, nor the background threads a test's
+    service leaves behind: those outlive the test (and its ``monkeypatch``),
+    and once asked the real museums (Yale answered 403) and logged it in the
+    middle of another test, which read the log (2026-11-06). A request to
+    anything but this machine fails at once as if offline.
 
-    monkeypatch.setattr(nga.INDEX, "ready", lambda path: path.is_file())
-    # Nor is the Courtauld's list of paintings written from its site.
-    from frame_server.library import courtauld
+    Nor is a big index built from a museum's site: the National Gallery of
+    Art's (~230 MB), the Courtauld's or the Louvre's lists. Tests that want
+    one build it from fake files themselves."""
+    import httpx
 
-    monkeypatch.setattr(courtauld.INDEX, "_start", lambda path: None)
-    from frame_server.library import louvre
+    from frame_server.library import courtauld, louvre, nga
 
-    monkeypatch.setattr(louvre.INDEX, "_start", lambda path: None)
+    def local(request: httpx.Request) -> None:
+        if request.url.host not in LOCAL_HOSTS:
+            raise httpx.ConnectError(f"tests are offline: {request.url.host}", request=request)
+
+    sync = httpx.HTTPTransport.handle_request
+    async_ = httpx.AsyncHTTPTransport.handle_async_request
+
+    def handle(self: httpx.HTTPTransport, request: httpx.Request) -> httpx.Response:
+        local(request)
+        return sync(self, request)
+
+    async def handle_async(
+        self: httpx.AsyncHTTPTransport, request: httpx.Request
+    ) -> httpx.Response:
+        local(request)
+        return await async_(self, request)
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(httpx.HTTPTransport, "handle_request", handle)
+        patch.setattr(httpx.AsyncHTTPTransport, "handle_async_request", handle_async)
+        patch.setattr(nga.INDEX, "ready", lambda path: path.is_file())
+        patch.setattr(courtauld.INDEX, "_start", lambda path: None)
+        patch.setattr(louvre.INDEX, "_start", lambda path: None)
+        yield
 
 
 @pytest.fixture(autouse=True)
