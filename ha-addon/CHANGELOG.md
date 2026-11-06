@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.104.6
+
+- Grupy w Szukaj wracają sekundę po puszczeniu palca (dotąd pół
+  sekundy), także gdy lista jeszcze się przewija.
+- Szybko przewijana lista nie trzyma już grup schowanych dłużej. Grupy
+  chowają się tylko wtedy, gdy palec przesuwa wyniki. Tak samo
+  w edytorze playlist.
+
 ## 1.104.5
 
 - Serwer znowu nie usypia pustego sprawdzenia przez MDC. W nocy 6 listopada
