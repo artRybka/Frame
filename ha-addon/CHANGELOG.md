@@ -6,6 +6,9 @@
   gdy puszczasz palec: po powolnym przeciągnięciu już po ćwierć sekundy,
   po mocnym pociągnięciu jak dotąd po sekundzie, a pomiędzy płynnie.
   Tak samo w edytorze playlist.
+- W Szukaj → Technika (i w edytorze playlist) „Obrazy” nazywają się teraz
+  „Malarstwo”. Wybór działa tak samo: dzieła, które muzeum opisuje jako
+  malarstwo (olej, tempera i podobne). Zapisane playlisty i wybory zostają.
 
 ## 1.104.9
 
