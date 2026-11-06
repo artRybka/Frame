@@ -795,6 +795,9 @@ def test_discovery_year_check() -> None:
         1860,
         1870,
     ]
+    # Antiquity (up to 499) asks for its last century, not for nothing.
+    assert Rijksmuseum(httpx.Client())._decades(Discovery(year_to=499))[0] == 390
+    assert Rijksmuseum(httpx.Client())._decades(Discovery(year_to=1)) == [0]
 
 
 def test_draw_takes_turns_and_skips_known_or_weak(tmp_path) -> None:

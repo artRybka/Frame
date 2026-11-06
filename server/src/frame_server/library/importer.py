@@ -105,12 +105,19 @@ def small_thumb(item: Item) -> str:
 
 
 def span(rules: PlaylistRules) -> tuple[int | None, int | None]:
-    """The years ``rules`` allow: their own range within their periods'."""
+    """The years to ask museums for ``rules``: their own range within their
+    periods'. Most museums' date filters know no years before Christ, so
+    such a start is left open and such an end is year 1; what comes back is
+    checked against the exact years anyway."""
     start, end = years(rules.terms)
     if rules.year_from is not None:
         start = rules.year_from if start is None else max(start, rules.year_from)
     if rules.year_to is not None:
         end = rules.year_to if end is None else min(end, rules.year_to)
+    if start is not None and start < 1:
+        start = None
+    if end is not None and end < 1:
+        end = 1
     return start, end
 
 

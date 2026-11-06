@@ -1,5 +1,33 @@
 # Changelog
 
+## 1.105.0
+
+- Próba zmiany obrazu jednym odświeżeniem zamiast dwóch. Nowa paczka
+  aplikacji ramki ma własny, przezroczysty ekran startu, który znika
+  dopiero wtedy, gdy nowy obraz jest gotowy. Jeśli ramka go uwzględni,
+  nie narysuje już granatowego ekranu ładowania przed obrazem. Paczka
+  instaluje się po włączeniu ramki przyciskiem.
+- Grupy w Szukaj wracają tym szybciej, im wolniej przesuwała się lista,
+  gdy puszczasz palec: po powolnym przeciągnięciu już po ćwierć sekundy,
+  po mocnym pociągnięciu jak dotąd po sekundzie, a pomiędzy płynnie.
+  Tak samo w edytorze playlist.
+- W Szukaj → Technika (i w edytorze playlist) „Obrazy” nazywają się teraz
+  „Malarstwo”. Wybór działa tak samo: dzieła, które muzeum opisuje jako
+  malarstwo (olej, tempera i podobne). Zapisane playlisty i wybory zostają.
+- „Inni w tym samym czasie” w Studium dzieła pokazuje też dzieła z innych
+  kręgów kulturowych: przy Europejczyku np. coś z Japonii, Chin, Indii
+  czy Persji. Takie dzieła są dwa z dziesięciu, z dwóch różnych kręgów,
+  i drugie w rzędzie widać od razu, bez przewijania. Gdy w katalogu nie
+  ma nic z tych samych lat, szukamy do 25 lat obok (rok jest pod
+  miniaturą).
+- Szukaj → Epoka zaczyna się od starożytności. Na osi czasu przed
+  średniowieczem jest odcinek „Starożytność” (do 500 roku), a
+  średniowiecze to lata 500–1400. Dotąd dzieła starożytne, np. z Luwru,
+  wpadały do średniowiecza.
+- Nowa grupa okresów „Starożytność i Bizancjum”: Starożytny Egipt,
+  Starożytna Grecja, Starożytny Rzym i Bizancjum. Lata przed naszą erą
+  mają dopisek „p.n.e.”.
+
 ## 1.104.9
 
 - Dzieło wysłane na ramkę z aplikacji nie wraca już z harmonogramem
