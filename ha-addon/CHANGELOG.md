@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.104.4
+
+- Serwer znowu nie usypia pustego sprawdzenia przez MDC. W nocy 6 listopada
+  o 2:00 obraz zatrzymał się w połowie odświeżania. Kamera pokazała, że
+  ramka po każdej pobudce sama dwa razy odświeża ekran (ekran ładowania
+  Samsunga, potem znowu obraz), a uśpienie ok. 35 s po budziku przerywa to
+  drugie odświeżenie. Puste sprawdzenie znowu trwa ok. 5 minut.
+
 ## 1.104.3
 
 - Pierścień wybranego „Żywe” w karcie Tonacja nie jest już ucięty w rogach.

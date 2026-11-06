@@ -114,7 +114,11 @@ EMPTY_SLEEP_AFTER = timedelta(seconds=15)
 # check). On again since 1.104.1 (Mateusz 2026-11-06 00:05): the refresh
 # rides on the last alarm of a sleep, and only a check the app's "sleep"
 # report says carries no refresh is put to sleep (``refresh_for``).
-EMPTY_SLEEP = True
+# Off again since 2026-11-06 02:00: the picture stopped half redrawn. A cold
+# boot redraws the screen twice by itself (Samsung's loading screen, then
+# the page again, 0:59:00 and 0:59:40-1:00:10 on the camera at the 01:00
+# change), and the MDC sleep ~35 s after the alarm cuts into that.
+EMPTY_SLEEP = False
 EMPTY_CHECK_FOR = timedelta(minutes=3)
 # "Obudź ramkę" keeps the woken app awake (asking every ``POLL``) this long.
 KEEP_AWAKE = timedelta(minutes=10)
