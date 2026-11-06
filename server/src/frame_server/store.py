@@ -200,7 +200,20 @@ class ContentStore:
         tmp.replace(path)
         return path
 
-    def manifest(self, base_url: str) -> Manifest | None:
+    def manifest(self, base_url: str, file_id: str | None = None) -> Manifest | None:
+        """The Mobile manifest of the current picture, or of an earlier
+        ``file_id`` still kept (a test of Samsung's player, PLAN 2.6t)."""
+        if file_id is not None:
+            path = self.panel_file(file_id)
+            if path is None:
+                return None
+            item = ManifestItem(
+                image_url=f"{base_url}/panel/images/{path.name}",
+                file_id=path.stem,
+                file_name=path.name,
+                file_size=path.stat().st_size,
+            )
+            return Manifest.single(item, manifest_id=path.stem)
         info = self.current()
         if info is None:
             return None

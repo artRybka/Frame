@@ -230,11 +230,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # -- panel ---------------------------------------------------------------
 
     @app.get("/panel/content.json")
-    def panel_manifest() -> Response:
+    def panel_manifest(file: str | None = None) -> Response:
         """The Mobile source's manifest. The frame runs our app; this only
         keeps a panel that fell back to Mobile showing the current picture
-        until the server has started the app again."""
-        manifest = service.store.manifest(settings.base_url())
+        until the server has started the app again. ``file``: an earlier
+        picture, for a test of Samsung's player (PLAN 2.6t)."""
+        if file is not None and not file.isalnum():
+            raise HTTPException(404)
+        manifest = service.store.manifest(settings.base_url(), file)
         if manifest is None:
             raise HTTPException(404)
         return Response(manifest.encode(), media_type="application/json")

@@ -472,6 +472,20 @@ def test_panel_routes(tmp_path: Path) -> None:
         assert client.get("/panel/content.json").status_code == 200
         assert not svc.app.active
 
+        # Asleep, the fetch is content pushed over MDC at a wake the app does
+        # not run for (the source stays Custom): the app is left alone.
+        client.get("/panel/next", params={"reason": "start", "charging": "true"})
+        state = svc.app.state
+        state.asleep = True
+        svc.app._save(state)
+        current = svc.store.current()
+        assert current is not None
+        earlier = client.get("/panel/content.json", params={"file": current.file_id})
+        assert earlier.status_code == 200 and current.file_name in earlier.text
+        assert svc.app.active and svc.app.state.asleep
+        assert client.get("/panel/content.json", params={"file": "none"}).status_code == 404
+        assert client.get("/panel/content.json", params={"file": "*"}).status_code == 404
+
 
 def test_never_sleeps_for_less_than_five_minutes(tmp_path: Path) -> None:
     service = _service(tmp_path)
