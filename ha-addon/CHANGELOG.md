@@ -11,7 +11,10 @@
   secesyjnej, Frances Benjamin Johnston i Lewis Hine. Wpisane słowa szukają
   we wszystkich jego zdjęciach. Bierzemy tylko zdjęcia bez ograniczeń
   praw („No known restrictions”), w pełnej rozdzielczości skanu, do
-  2560 px.
+  2560 px. Z włączonym „Użytkiem prywatnym” także zdjęcia, których praw
+  biblioteka nie sprawdziła albo które mogą być chronione (np. portrety
+  Carla Van Vechtena, Edward S. Curtis), jeśli pokazuje je poza swoim
+  budynkiem w dużym rozmiarze.
 
 ## 1.105.1
 

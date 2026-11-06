@@ -24,7 +24,7 @@ import re
 from typing import Any, ClassVar
 
 from .models import Item
-from .museums import Discovery, Kind, Museum
+from .museums import PRIVATE_LICENCE, Discovery, Kind, Museum
 
 API = "https://www.loc.gov"
 IIIF = "https://tile.loc.gov/image-services/iiif"
@@ -135,7 +135,11 @@ class LibraryOfCongress(Museum):
         # A search result keeps half its facts under "item".
         d = {**(d.get("item") or {}), **{k: v for k, v in d.items() if k != "item"}}
         number = _one(d.get("number_lccn")) or _one(d.get("control_number"))
-        if not number.isdigit() or not free(d):
+        # Shown offsite only as a stamp-sized thumbnail: never.
+        if not number.isdigit() or d.get("access_restricted"):
+            return None
+        # Rights not evaluated or perhaps restricted: only with private use.
+        if not free(d) and not self.private_use:
             return None
         medium = _joined(d.get("medium"))
         what = f"{medium} {_joined(d.get('genre'))}"
@@ -166,7 +170,7 @@ class LibraryOfCongress(Museum):
             subjects=list(dict.fromkeys(h.split("--")[0] for h in headings))[:8],
             culture="",
             credit=_one(d.get("source_collection")) or _one(d.get("part_of")) or self.name,
-            license="No known restrictions",
+            license="No known restrictions" if free(d) else PRIVATE_LICENCE,
             url=f"{API}/item/{number}/",
             description=_joined(d.get("summary")),
             image_url=image,
