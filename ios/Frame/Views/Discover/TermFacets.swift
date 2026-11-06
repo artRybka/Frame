@@ -113,13 +113,21 @@ enum PeriodAxis {
     /// but 1930 and the last free year as they are.
     static func shownEnd(_ year: Int) -> Int { (year + 1) % 50 == 0 ? year + 1 : year }
 
+    /// How a span's end reads: "1400", "1955"; one that runs up to this
+    /// year reads "obecnie" ("1945–obecnie").
+    static func endYear(_ to: Int, now: Int = PeriodAxis.thisYear) -> String {
+        to >= now ? "obecnie" : year(shownEnd(to))
+    }
+
+    static var thisYear: Int { Calendar.current.component(.year, from: .now) }
+
     /// A named period's years: "1880–1914"; before Christ (negative
     /// years) with the era: "3100–30 p.n.e.", "509 p.n.e.–476 n.e.".
     static func years(_ period: TermInfo) -> String {
         switch (period.yearFrom, period.yearTo) {
         case let (from?, to?) where to < 0: "\(-from)–\(-to) p.n.e."
         case let (from?, to?) where from < 0: "\(-from) p.n.e.–\(to) n.e."
-        case let (from?, to?): "\(from)–\(to)"
+        case let (from?, to?): "\(from)–\(to >= thisYear ? "obecnie" : "\(to)")"
         case let (nil, to?): "do \(year(to))"
         case let (from?, nil): "od \(year(from))"
         case (nil, nil): ""
@@ -178,9 +186,9 @@ enum PeriodAxis {
     }
 
     /// Where a piece of the axis ends, for the year under the right bead:
-    /// "1400", "1955".
+    /// "1400", "1955", "obecnie".
     static func endMark(_ period: TermInfo) -> String {
-        period.yearTo.map { year(shownEnd($0)) } ?? "dziś"
+        period.yearTo.map { endYear($0) } ?? "obecnie"
     }
 
     /// The top of the Epoka sheet: what is picked and, in grey beside it,
@@ -214,8 +222,8 @@ enum PeriodAxis {
             // "1800–1850" already says its years.
             guard !piece.name.contains(where: \.isNumber) else { return (title, nil) }
             switch (piece.yearFrom, piece.yearTo) {
-            case let (from?, to?): return (title, "\(year(from))–\(year(shownEnd(to)))")
-            case let (nil, to?): return (title, "do \(year(shownEnd(to)))")
+            case let (from?, to?): return (title, "\(year(from))–\(endYear(to))")
+            case let (nil, to?): return (title, "do \(endYear(to))")
             default: return (title, nil)
             }
         }
@@ -306,7 +314,7 @@ enum PeriodAxis {
               high - low + 1 == indices.count
         else { return nil }
         let from = axis[low].yearFrom
-        let to = axis[high].yearTo.map(shownEnd)
+        let to = axis[high].yearTo.map { endYear($0) }
         switch (from, to) {
         case let (from?, to?): return "\(from)–\(to)"
         case let (nil, to?): return "do \(to)"
@@ -1029,7 +1037,7 @@ struct PeriodPicker: View {
     private static let rail: CGFloat = 10
     private static let bead: CGFloat = 15
     private static let rowHeight: CGFloat = 16
-    /// Narrower than this the two years go as one under the left bead.
+    /// Narrower than this the two years go as one label, under the beads.
     private static let narrow: CGFloat = 40
 
     private var periods: [TermInfo] { model.vocabulary.filter { $0.kind == "period" } }
@@ -1130,11 +1138,14 @@ struct PeriodPicker: View {
         let high = range?.upperBound ?? axis.count - 1
         let x0 = edges[low] * width
         let x1 = edges[high + 1] * width
-        let narrow = x1 - x0 < Self.narrow
-        let showBrackets = !brackets.isEmpty && !(range != nil && narrow)
-        let labelsTop = rail + (showBrackets ? 14 : 10)
         let left = PeriodAxis.mark(axis[low])
         let right = PeriodAxis.endMark(axis[high])
+        // About 7 pt a character: room for the left year centred on its
+        // bead and the right one ("obecnie" is long) up to its bead.
+        let room = CGFloat(left.count) * 3.5 + CGFloat(right.count) * 7
+        let narrow = x1 - x0 < max(Self.narrow, room)
+        let showBrackets = !brackets.isEmpty && !(range != nil && narrow)
+        let labelsTop = rail + (showBrackets ? 14 : 10)
         let ink = range == nil ? Theme.inkSoft : Theme.ink
         return ZStack(alignment: .topLeading) {
             Capsule()
@@ -1167,9 +1178,14 @@ struct PeriodPicker: View {
             bead(at: x1)
             Group {
                 if narrow {
+                    // In the right half it ends at the right bead, so
+                    // "1945–obecnie" stays inside the sheet.
+                    let box = width
+                    let trailing = x1 > width / 2
                     Text("\(left)–\(right)")
                         .fixedSize()
-                        .offset(x: x0 - Self.bead / 2, y: labelsTop)
+                        .frame(width: box, alignment: trailing ? .trailing : .leading)
+                        .offset(x: trailing ? x1 + Self.bead / 2 - box : x0 - Self.bead / 2, y: labelsTop)
                 } else {
                     yearLabel(left, at: x0, top: labelsTop, leading: x0 < 24)
                     yearLabel(right, at: x1, top: labelsTop, trailing: x1 > width - 24)

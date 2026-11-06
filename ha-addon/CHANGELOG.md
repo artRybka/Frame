@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.111.9
+
+- Oś czasu w Epoce: zakres przy prawym końcu („Po 1945”) nie jest już
+  ucinany przy krawędzi arkusza, napis kończy się pod prawym koralikiem.
+  Zakres sięgający bieżącego roku pisze się „1945–obecnie” zamiast
+  „1945–2026”.
+
 ## 1.111.8
 
 - Godzina zmiany dodana w aplikacji tuż po pobudce ramki nie przepada.
