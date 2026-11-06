@@ -555,7 +555,7 @@ struct DailyView: View {
                 if let under {
                     ArtImage(
                         ref: under, fallback: underFallback, placeholder: item?.placeholderColor ?? Theme.mat,
-                        maxPixel: 700, priority: .high
+                        maxPixel: 700, priority: .high, brighten: true
                     )
                 } else {
                     Rectangle().fill(Theme.mat).breathing()
@@ -569,7 +569,8 @@ struct DailyView: View {
                         placeholder: .clear,
                         maxPixel: Self.originalPixels,
                         priority: .high,
-                        crossfade: true
+                        crossfade: true,
+                        brighten: true
                     )
                 }
             }
@@ -1042,7 +1043,7 @@ struct DailyView: View {
                         Color.clear
                             .frame(width: width, height: 250)
                             .overlay {
-                                ArtImage(ref: .path(detail.image), placeholder: item.placeholderColor, maxPixel: 1200)
+                                ArtImage(ref: .path(detail.image), placeholder: item.placeholderColor, maxPixel: 1200, brighten: true)
                             }
                             .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
                             .padding(.bottom, 5)
