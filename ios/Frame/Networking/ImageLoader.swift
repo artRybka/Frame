@@ -462,6 +462,7 @@ struct ArtImage: View {
     @State private var focus: UnitPoint = .center
     @State private var failed = false
     @AppStorage(ArtGlow.key) private var glowAllowed = true
+    @AppStorage(ArtGlow.gainKey) private var glowGain = ArtGlow.defaultGain
     /// The brighter copy of the picture shown (`brighten`).
     @State private var glowing: UIImage?
 
@@ -470,6 +471,7 @@ struct ArtImage: View {
     private struct GlowJob: Equatable {
         let image: ObjectIdentifier?
         let on: Bool
+        let gain: Double
     }
 
     /// Failed, and shows it: a clear placeholder lies over another picture
@@ -509,7 +511,7 @@ struct ArtImage: View {
     private var drawn: UIImage? {
         guard let shown else { return nil }
         guard glows else { return shown }
-        return ArtGlow.cached(shown) ?? glowing ?? shown
+        return ArtGlow.cached(shown, gain: glowGain) ?? glowing ?? shown
     }
 
     var body: some View {
@@ -542,14 +544,14 @@ struct ArtImage: View {
         }
         .animation(.easeOut(duration: 0.35), value: image != nil)
         .allowedDynamicRange(glows ? .high : nil)
-        .task(id: GlowJob(image: shown.map(ObjectIdentifier.init), on: glows)) {
+        .task(id: GlowJob(image: shown.map(ObjectIdentifier.init), on: glows, gain: glowGain)) {
             guard glows, let source = shown else {
                 glowing = nil
                 return
             }
-            if ArtGlow.cached(source) != nil { return }
+            if ArtGlow.cached(source, gain: glowGain) != nil { return }
             // The last brighter copy stays up until this one is ready.
-            if let lit = await ArtGlow.image(source), !Task.isCancelled {
+            if let lit = await ArtGlow.image(source, gain: glowGain), !Task.isCancelled {
                 withAnimation(.easeInOut(duration: 0.25)) { glowing = lit }
             }
         }

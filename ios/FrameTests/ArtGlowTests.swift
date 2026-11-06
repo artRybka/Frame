@@ -26,4 +26,9 @@ final class ArtGlowTests: XCTestCase {
         XCTAssertEqual(red(1) / grey, 1.6, accuracy: 0.03)
         XCTAssertEqual(red(2), 0, accuracy: 0.001)
     }
+
+    func testTheGainReadsAsPolishWrites() {
+        XCTAssertEqual(ArtGlow.label(1.6), "1,6×")
+        XCTAssertTrue(ArtGlow.gains.contains(ArtGlow.defaultGain))
+    }
 }

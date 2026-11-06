@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.111.13
+
+- Konfiguracja → Wyświetlanie dzieł: pod „Jaśniejsze dzieła” suwak
+  „Siła rozjaśnienia” (od 1,1× do 3×, domyślnie 1,6×).
+
 ## 1.111.12
 
 - Paczka aplikacji ramki wraca do ustawień sprzed testu VXT. Dokładna
