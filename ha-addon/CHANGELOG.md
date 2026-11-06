@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.111.7
+
+- Sztuczne podbicie HDR jest płynniejsze. Rozjaśnia całe jasne obszary
+  obrazu (niebo, okno, twarz) i łagodnie przechodzi w resztę, zamiast
+  zapalać pojedyncze małe plamki. Ciemne linie i cienie obok świateł
+  nie dostają poświaty, a najmocniejsze podbicie jest niższe (do 2,4×).
+
 ## 1.111.6
 
 - Zestawy w Odkrywaj otwierają się szybciej. Każdy zaczyna się od dzieł,
