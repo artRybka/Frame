@@ -71,7 +71,7 @@ final class ScreenBoost {
 
 /// The artwork on the work's card and in the study a little brighter than
 /// the page around it: the whole picture, evenly (an exposure lift in
-/// linear light, `gain` times), drawn as an extended-range copy that the
+/// linear light, the gain set in Konfiguracja), drawn as an extended-range copy that the
 /// screen shows above its usual white where it has the headroom (EDR). No
 /// part of the picture is lifted more than another, so it looks like the
 /// same picture in more light. Konfiguracja → Wyświetlanie dzieł, on by
@@ -79,30 +79,51 @@ final class ScreenBoost {
 /// Mode.
 enum ArtGlow {
     static let key = "art.glow"
+    /// How many times brighter, set in Konfiguracja (`gains`).
+    static let gainKey = "art.glowGain"
     /// About two thirds of a stop.
-    static let gain: CGFloat = 1.6
+    static let defaultGain: Double = 1.6
+    static let gains: ClosedRange<Double> = 1.1...3
 
-    private static let cache: NSCache<UIImage, UIImage> = {
-        let cache = NSCache<UIImage, UIImage>()
+    /// "1,6×", as Polish writes it.
+    static func label(_ gain: Double) -> String {
+        gain.formatted(.number.precision(.fractionLength(1)).locale(Locale(identifier: "pl_PL"))) + "×"
+    }
+
+    /// A brighter copy and the gain it was asked with.
+    private final class Lit {
+        let image: UIImage
+        let gain: Double
+        init(_ image: UIImage, gain: Double) {
+            self.image = image
+            self.gain = gain
+        }
+    }
+
+    private static let cache: NSCache<UIImage, Lit> = {
+        let cache = NSCache<UIImage, Lit>()
         cache.totalCostLimit = 160 * 1024 * 1024
         return cache
     }()
     private static let context = CIContext(options: [.cacheIntermediates: false])
 
-    /// The brighter copy made before, if any.
-    static func cached(_ image: UIImage) -> UIImage? { cache.object(forKey: image) }
+    /// The brighter copy made before at this gain, if any.
+    static func cached(_ image: UIImage, gain: Double) -> UIImage? {
+        guard let lit = cache.object(forKey: image), abs(lit.gain - gain) < 0.001 else { return nil }
+        return lit.image
+    }
 
-    static func image(_ image: UIImage) async -> UIImage? {
-        if let done = cache.object(forKey: image) { return done }
+    static func image(_ image: UIImage, gain asked: Double) async -> UIImage? {
+        if let done = cached(image, gain: asked) { return done }
         let headroom = await ScreenBoost.shared.headroom
-        let gain = min(Self.gain, headroom * 0.9)
+        let gain = min(CGFloat(asked), headroom * 0.9)
         guard gain > 1.05, let cg = image.cgImage else { return nil }
         let scale = image.scale
         let orientation = image.imageOrientation
         guard let out = await Task.detached(priority: .userInitiated, operation: { render(cg, gain: gain) }).value
         else { return nil }
         let result = UIImage(cgImage: out, scale: scale, orientation: orientation)
-        cache.setObject(result, forKey: image, cost: out.bytesPerRow * out.height)
+        cache.setObject(Lit(result, gain: asked), forKey: image, cost: out.bytesPerRow * out.height)
         return result
     }
 
