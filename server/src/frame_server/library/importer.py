@@ -56,7 +56,7 @@ ALL = "all"
 #: Museums asked for works by the artists the owner likes (those on offer).
 TASTE_SOURCES = (
     *("aic", "cma", "met", "rijks", "europeana", "smk"),
-    *("nga", "mnw", "mnk", "yale", "si", "wellcome", "courtauld", "louvre"),
+    *("nga", "mnw", "mnk", "yale", "si", "wellcome", "courtauld", "louvre", "getty"),
 )
 #: Museums that draw random paintings for variety (those on offer). Paris
 #: Musées searches titles only, so it is not asked for artists. The Wellcome
@@ -130,12 +130,15 @@ def fill_queries(rules: PlaylistRules) -> list[str]:
     return [t for t in dict.fromkeys(texts) if t]
 
 
-def _search_stream(source: Museum, query: str) -> Iterator[Item]:
-    """A museum's search results, page after page."""
+def _search_stream(source: Museum, query: str, kind: Kind = "any") -> Iterator[Item]:
+    """A museum's search results, page after page (of ``kind``, when one)."""
     size = min(source.page_size, 24)
     page = 1
     while True:
-        total, items = source.search(query, limit=size, page=page)
+        if kind == "any":
+            total, items = source.search(query, limit=size, page=page)
+        else:
+            total, items = source.search_kind(query, kind, limit=size, page=page)
         yield from items
         if page * size >= total:
             return
@@ -285,14 +288,25 @@ class Importer:
         )
 
     def search(
-        self, source: str, query: str, limit: int = 24, page: int = 1, wait: float | None = None
+        self,
+        source: str,
+        query: str,
+        limit: int = 24,
+        page: int = 1,
+        wait: float | None = None,
+        kind: Kind = "any",
     ) -> tuple[int, list[Item]]:
         """``limit`` works from ``source``; ``wait``: seconds the source may
-        take to answer, when not the client's own."""
+        take to answer, when not the client's own; ``kind``: what the
+        search asks for (Fotografia: photographs)."""
         with self.http() as http:
             if wait is not None:
                 http.timeout = httpx.Timeout(wait)
-            total, items = museum(source, http, self.access()).search(query, limit=limit, page=page)
+            found = museum(source, http, self.access())
+            if kind == "any":
+                total, items = found.search(query, limit=limit, page=page)
+            else:
+                total, items = found.search_kind(query, kind, limit=limit, page=page)
         items = self.without_grey([i for i in items if not is_copy(i)])
         self.remember(items)
         return total, items
@@ -451,14 +465,16 @@ class Importer:
         limit: int = 8,
         page: int = 1,
         keys: list[str] | None = None,
+        kind: Kind = "any",
     ) -> tuple[int, list[Item], list[str]]:
         """``limit`` results from every museum (or those of ``keys``) at
         once, interleaved; returns (total, items, museums that failed).
-        ``query``: one text for all, or each museum's own (:meth:`typed`)."""
+        ``query``: one text for all, or each museum's own (:meth:`typed`);
+        ``kind``: what the search asks for, when one kind."""
 
         def ask(key: str) -> tuple[int, list[Item]]:
             text = query if isinstance(query, str) else query.get(key, "")
-            return self.search(key, text, limit, page)
+            return self.search(key, text, limit, page, kind=kind)
 
         return self._from_all(ask, keys)
 
@@ -632,7 +648,8 @@ class Importer:
                 # style or subject), then by the artist or words alone.
                 alone = rules.artists or [rules.query]
                 queries = list(dict.fromkeys([*fill_queries(rules), *alone]))
-                streams = [_search_stream(m, q) for q in queries for m in museums]
+                kind = museum_kind(rules.terms)
+                streams = [_search_stream(m, q, kind) for q in queries for m in museums]
             else:
                 texts = [*rules.styles, *rules.subjects, *museum_queries(rules.terms)] or [""]
                 year_from, year_to = span(rules)

@@ -44,6 +44,7 @@ RANKS = {
     "courtauld": 0,
     "louvre": 0,
     "loc": 0,
+    "getty": 0,
     "europeana": 1,
     "wmc": 2,
     "openverse": 3,
