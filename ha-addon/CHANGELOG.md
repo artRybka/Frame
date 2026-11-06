@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.110.2
+
+- Powiadomienie o nowej wersji serwera mówi prościej: „Nowa wersja
+  serwera ramki”, a pod spodem „Wersja 1.110.2 czeka na instalację.
+  Stuknij i wybierz „Aktualizuj serwer”.”
+
 ## 1.110.1
 
 - Dzieło na cały ekran ma obok krzyżyka słoneczko: rozjaśnia ekran do
