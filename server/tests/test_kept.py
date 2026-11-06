@@ -136,6 +136,26 @@ def test_a_new_favourite_is_downloaded_at_once(museum) -> None:
     assert service.images.has_image(work)
 
 
+def test_a_work_that_fails_oddly_does_not_end_the_downloads(museum, monkeypatch) -> None:
+    """2026-11-06: an unexpected error ended the thread with its flag still
+    set, and no kept work was downloaded again until a restart."""
+    service = museum
+    odd, fine = _work(service, "odd"), _work(service, "fine")
+    ensure = service.images.ensure_image
+
+    def failing(item: Item, *args, **kwargs):
+        if item.id == odd.id:
+            raise RuntimeError("odd")
+        return ensure(item, *args, **kwargs)
+
+    monkeypatch.setattr(service.images, "ensure_image", failing)
+    service.kept.soon([odd.id, fine.id])
+    deadline = time.monotonic() + 10
+    while not service.images.has_image(fine) and time.monotonic() < deadline:
+        time.sleep(0.02)
+    assert service.images.has_image(fine)
+
+
 def test_kept_originals_are_the_nights_last_task(service) -> None:
     assert tasks(service)[-1].name == "kept originals"
 
