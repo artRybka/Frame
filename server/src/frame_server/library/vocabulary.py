@@ -134,7 +134,9 @@ PLACES: dict[str, tuple[str, re.Pattern[str]]] = {
     "rome": (
         "roman",
         re.compile(
-            r"\b(roman|romain\w*|r[öo]misch\w*|rzymsk\w*|pompeii\w*|pomp[eé]i\w*)\b",
+            # Dura-Europos: a Roman garrison town (Yale: "Syrian, Dura-Europos").
+            r"\b(roman|romain\w*|r[öo]misch\w*|rzymsk\w*|pompeii\w*|pomp[eé]i\w*|"
+            r"dura[- ]europos)\b",
             re.IGNORECASE,
         ),
     ),
@@ -393,6 +395,11 @@ TERMS: list[Term] = [
         "tempera",
         "fresco*",
         "encaustic",
+        # The V&A's types: "Icon", "Coloured wax on panel" (Fayum).
+        "icon",
+        "icons",
+        "wax on panel",
+        "mummy portrait*",
         "schilderij*",
         "obraz",
     ),
@@ -638,8 +645,9 @@ _DECORATIVE = re.compile(
     r"fans?|furniture|metalwork|"
     r"silver|glass|jewel\w*|enamels?|lacquer|jade|arms|armou?r|coins?|medals?|amulets?|"
     r"glyptic|tools|funerary|ritual|miscellaneous|ceramik\w*|porcelan\w*|tkanin\w*|rzemiosło|"
-    # A whole mummy with its portrait inserted is no picture.
-    r"mumm(?:y|ies)|human remains)\b",
+    # A whole mummy with its portrait inserted is no picture; a mummy
+    # portrait (the V&A's type of a Fayum panel) is.
+    r"mumm(?:y|ies)(?!\s+portraits?)|human remains)\b",
     re.IGNORECASE,
 )
 
