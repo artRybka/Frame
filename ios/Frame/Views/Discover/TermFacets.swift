@@ -346,6 +346,9 @@ struct TermFacetBar: View {
     /// How much of the screen between the title and the tab bar an open
     /// group may take (Epoka's periods need most of it).
     static let panelShare: CGFloat = 0.85
+    /// Epoka may be a little taller than the others (to about 94% of that
+    /// room): its time line and lanes then fit without scrolling.
+    static let periodGrowth: CGFloat = 1.1
 
     /// CI's screenshots of a group's panel.
     private static var launched: TermFacet? {
@@ -391,7 +394,8 @@ struct TermFacetBar: View {
             // and back into it (PanelGlass).
             if let open {
                 TermFacetPanel(
-                    facet: open, tokens: $tokens, museums: museums, colors: colors, maxHeight: panelHeight,
+                    facet: open, tokens: $tokens, museums: museums, colors: colors,
+                    maxHeight: open == .period ? panelHeight * Self.periodGrowth : panelHeight,
                     close: close
                 )
                 // The words come in once the glass has grown, and go first.
@@ -1023,7 +1027,7 @@ struct PeriodPicker: View {
     /// The axis' line from the top; the band starts on it.
     private static let rail: CGFloat = 10
     private static let bead: CGFloat = 15
-    private static let rowHeight: CGFloat = 16
+    private static let rowHeight: CGFloat = 18
     /// Narrower than this the two years go as one under the left bead.
     private static let narrow: CGFloat = 40
 
@@ -1311,7 +1315,7 @@ struct PeriodPicker: View {
     private func laneItem(_ period: TermInfo, _ place: PeriodAxis.Placed, colour: Color, faded: Bool) -> some View {
         let on = picked(period.key)
         let inside = place.side == .inside
-        let height: CGFloat = inside ? 14 : (on ? 9 : 7)
+        let height: CGFloat = inside ? 15 : (on ? 10 : 8)
         let start = place.taken.lowerBound
         return Button {
             toggle(period)
@@ -1327,11 +1331,11 @@ struct PeriodPicker: View {
                     }
                     .offset(x: place.from - start, y: (Self.rowHeight - height) / 2)
                 Text(period.name)
-                    .font(.system(size: 11.5, weight: on ? .semibold : .medium))
+                    .font(.system(size: 12, weight: on ? .semibold : .medium))
                     // Outside the years picked: softer, but still easy to read.
                     .foregroundStyle(faded ? Theme.inkSoft : Theme.ink)
                     .fixedSize()
-                    .offset(x: place.labelX - start, y: 1)
+                    .offset(x: place.labelX - start, y: 1.5)
             }
             .frame(width: place.taken.upperBound - start, height: Self.rowHeight, alignment: .topLeading)
             .contentShape(Rectangle())
@@ -1353,7 +1357,7 @@ struct PeriodPicker: View {
 
     /// How wide a name is on its lane, bold as when picked.
     private static func labelWidth(_ name: String) -> CGFloat {
-        let font = UIFont.systemFont(ofSize: 11.5, weight: .semibold)
+        let font = UIFont.systemFont(ofSize: 12, weight: .semibold)
         return ceil((name as NSString).size(withAttributes: [.font: font]).width)
     }
 
