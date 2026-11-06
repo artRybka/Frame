@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import httpx
+import pytest
 from fastapi.testclient import TestClient
 from test_ai import GOOD_KEY, FakeAnthropic, _message, fake  # noqa: F401  (fixture)
 
@@ -332,3 +333,75 @@ def test_antiquity_is_looked_for_first_while_its_cards_have_no_cover(service) ->
                 )
             )
     assert ("met", "Facsimile tomb") not in thin_searches(service.library)
+
+
+@pytest.mark.parametrize("key", ["ancient-egypt", "books-of-hours"])
+def test_kept_close_sets_open_with_the_catalogue_and_keep_what_the_museums_found(
+    service, monkeypatch, key
+) -> None:
+    import json
+
+    from frame_server.library.themes import kept_close
+    from frame_server.web import create_app, discover_api
+
+    assert kept_close(BY_KEY.get(key) or theme(key, service.library))
+    egypt = key == "ancient-egypt"
+    with service.library.batch():
+        for n in range(3):
+            service.library.upsert(
+                _work(
+                    f"met:{n}",
+                    title=f"Facsimile painting {n}" if egypt else f"Leaf from a Book of Hours {n}",
+                    year=-1400 if egypt else 1450,
+                    medium="Tempera on paper" if egypt else "Tempera and gold on parchment",
+                    classification="Facsimile" if egypt else "Manuscripts and Illuminations",
+                    culture="Egyptian" if egypt else "French",
+                    pooled=True,
+                )
+            )
+    found = _work(
+        "met:900",
+        title="Nakht and his wife, Tomb of Nakht",
+        year=-1410,
+        medium="Tempera on paper",
+        classification="Facsimile",
+        culture="Egyptian",
+        thumb_url="https://images.metmuseum.org/900.jpg",
+    )
+    monkeypatch.setattr(service.importer, "search", lambda *a, **k: (1, [found]))
+    monkeypatch.setattr(service.importer, "measure", lambda *a, **k: None)
+    kept: list[Item] = []
+    monkeypatch.setattr(service.player, "keep_searched", lambda items: kept.extend(items))
+    discover_api._cards = (0.0, {})
+    app = create_app(service.settings)
+    app.state.service = service
+    with TestClient(app) as client:
+        reply = client.get(f"/api/themes/{key}/stream?page=1")
+    lines = [json.loads(line) for line in reply.text.splitlines() if line]
+    first = {i["item"]["id"] for i in lines[0]["items"]}
+    assert first == {"met:0", "met:1", "met:2"}  # at once, from the catalogue
+    assert lines[-1]["end"]
+    if egypt:
+        later = {i["item"]["id"] for line in lines[1:] for i in line.get("items") or []}
+        assert "met:900" in later
+        assert found in kept  # into the catalogue, for the cover and next time
+
+
+def test_a_museum_page_asked_again_comes_from_memory(service, monkeypatch) -> None:
+    from frame_server.library import importer as importer_module
+
+    asked: list[str] = []
+    work = _work("met:7", title="Fresco", medium="Fresco", year=-50)
+
+    class Met:
+        def search(self, query: str, limit: int = 24, page: int = 1) -> tuple[int, list[Item]]:
+            asked.append(query)
+            return 1, [work]
+
+    monkeypatch.setattr(importer_module, "museum", lambda *a: Met())
+    importer = service.importer
+    assert importer.search("met", "Boscoreale wall painting") == (1, [work])
+    assert importer.search("met", "Boscoreale wall painting") == (1, [work])
+    assert asked == ["Boscoreale wall painting"]
+    importer.search("met", "Boscoreale wall painting", page=2)
+    assert len(asked) == 2

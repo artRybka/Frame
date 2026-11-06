@@ -48,6 +48,7 @@ from ..library.themes import (
     curated_seen,
     day_reason,
     for_you,
+    kept_close,
     liked,
     make_liked,
     new_artist_of_the_week,
@@ -531,6 +532,8 @@ async def theme_page(key: str, svc: Svc, page: Annotated[int, Query(ge=1)] = 1) 
     except (httpx.HTTPError, ValueError) as err:
         raise HTTPException(502, f"{key}: {err}") from err
     await run_in_threadpool(svc.importer.measure, items)
+    if kept_close(found):
+        svc.player.keep_searched(items)
     return ThemePage(
         items=remote_items(svc, items), more=following is not None, next_page=following
     )
@@ -559,6 +562,7 @@ async def stream_theme(
         return StreamingResponse(once(), media_type="application/x-ndjson")
 
     pages = batch_of(found, page, THEME_BATCH)
+    close = kept_close(found)
     loop = asyncio.get_running_loop()
     #: Works as they come; True or False when a search is over (answered or not).
     lines_: asyncio.Queue[ThemeLine | bool] = asyncio.Queue()
@@ -579,6 +583,8 @@ async def stream_theme(
             started.setdefault("at", time.monotonic())
             items, total = search_page(svc.importer, found, at, ROW_SIZE)
             ok = True
+            if close:  # antiquity, Sztuki inne: what was found stays for next time
+                svc.player.keep_searched(items)
             if at == pages[-1]:
                 last_total[0] = total
             if items and not gone.is_set():
@@ -593,10 +599,22 @@ async def stream_theme(
         finally:
             loop.call_soon_threadsafe(lines_.put_nowait, ok)
 
+    def stocked() -> list[Item]:
+        """The works the catalogue holds (:func:`kept_close`), shown before
+        the museums answer; the museums' copies of them are left out by the
+        app."""
+        return svc.library.query(found.rules(), sort="suitability", limit=ROW_SIZE)[1]
+
     async def lines() -> AsyncIterator[str]:
         asking = [asyncio.ensure_future(run_in_threadpool(urgent_call(ask), at)) for at in pages]
         answered = False
         try:
+            if close and page == 1:
+                held = await run_in_threadpool(stocked)
+                if held:
+                    answered = True
+                    sent[0] = len(held)
+                    yield ThemeLine(items=remote_items(svc, held)).model_dump_json() + "\n"
             left = len(asking)
             while left:
                 line = await lines_.get()
@@ -618,7 +636,7 @@ async def stream_theme(
                 key,
                 pages[0],
                 pages[-1],
-                "+".join(str(sent.get(at, 0)) for at in pages),
+                "+".join(str(sent.get(at, 0)) for at in [*([0] if 0 in sent else []), *pages]),
                 time.monotonic() - asked,
                 started.get("at", asked) - asked,
                 "" if answered else ", no museum answered",

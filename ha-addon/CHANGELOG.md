@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.110.4
+
+- Nowe karty Epok (Egipt, Fajum, Freski Rzymu, Ikony) i tematy „Sztuk
+  innych” nie stoją już puste: zaczynają się od dzieł z katalogu, a to,
+  co muzea znajdą, zostaje w katalogu na następny raz. Drugie wejście
+  w tę samą kartę przez 3 godziny nie czeka na muzea, a dzieła jednego
+  muzeum pojawiają się po 2 sekundach, nie dopiero na końcu.
+
 ## 1.110.3
 
 - Konfiguracja → Pełny ekran: pod „Sztuczne „podbicie” w HDR” nowy
