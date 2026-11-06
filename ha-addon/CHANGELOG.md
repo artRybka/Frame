@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.111.1
+
+- Ciemne, ciepłe obrazy olejne (np. „Studium starca w profilu”
+  Rembrandta) nie trafiają już na ramkę w skali szarości. Czarno-białe
+  są tylko rysunki, ryciny i fotografie bez własnego koloru, a obraz
+  malarski tylko wtedy, gdy samo jego zdjęcie jest czarno-białą kopią.
+
 ## 1.111.0
 
 - „Użytek prywatny” w Konfiguracji znosi teraz ograniczenia licencji

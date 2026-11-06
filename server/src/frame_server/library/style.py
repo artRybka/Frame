@@ -9,12 +9,16 @@ from PIL import Image
 
 from .colors import tint_spread
 from .models import Item, ItemKind
+from .vocabulary import GREY_PAINTING_SPREAD, is_painting
 
 #: Presentation.preset value: choose for each picture.
 AUTO = "auto"
 
 #: Below this tint spread a picture has no colour of its own (pencil, ink,
-#: etchings, B&W and sepia photos): black and white ink only.
+#: etchings, B&W and sepia photos): black and white ink only. Paintings are
+#: measured against ``GREY_PAINTING_SPREAD`` instead: a dark, warm oil (Rembrandt's
+#: "Study of an Old Man in Profile", ~0.012) lies on one brown line just like
+#: a sepia photo, yet its browns, ochres and flesh are colour.
 MONOCHROME_SPREAD = 0.012
 
 # Matched as word starts in classification, medium and styles; museums
@@ -31,8 +35,10 @@ _GRAPHIC = re.compile(
 
 def auto_preset(item: Item) -> str:
     """The preset for ``item``: colourless pictures in black and white,
-    photos as photos, prints and posters as graphics, the rest as paintings."""
-    if item.tint_spread is not None and item.tint_spread < MONOCHROME_SPREAD:
+    photos as photos, prints and posters as graphics, the rest as paintings.
+    A painting goes black and white only when its picture is a grey copy."""
+    limit = GREY_PAINTING_SPREAD if is_painting(item) else MONOCHROME_SPREAD
+    if item.tint_spread is not None and item.tint_spread < limit:
         return "bw"
     if item.kind == ItemKind.PHOTO:
         return "photo"
