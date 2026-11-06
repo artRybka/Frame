@@ -42,8 +42,10 @@
   // panel refusing it keeps the old value. Samsung documents only OFF, 3MIN,
   // 5MIN, 10MIN, 20MIN, 30MIN, 60MIN: "2MIN" threw TypeMismatchError
   // (2026-11-05 23:02), and this panel (firmware 1130.7) refused "3MIN" too
-  // with UnknownError (23:48). 5 minutes is the shortest it takes.
-  var AUTO_SLEEP = "5MIN";
+  // with UnknownError (23:48). Tried again (Mateusz 2026-11-06: maybe a
+  // passing fault), twice per sleep; 5 minutes is the fallback.
+  var AUTO_SLEEP = "3MIN";
+  var AUTO_SLEEP_TRIES = 2;
   var AUTO_SLEEP_FALLBACK = "5MIN";
   var ATTEMPTS = 4;
   var ATTEMPT_DELAY_MS = 5000;
@@ -206,11 +208,17 @@
     if (!now.ok || now.value === null) return now;
     var minutes = Number(now.value);
     if (!saved("autoSleep")) saved("autoSleep", minutes > 0 ? minutes + "MIN" : "OFF");
-    var set = call(function () { return ep.setAutoSleepTime(AUTO_SLEEP); });
-    var read = call(function () { return ep.getAutoSleepTime(); });
-    if (set.ok && read.ok && Number(read.value) === parseInt(AUTO_SLEEP, 10)) return { ok: true, value: AUTO_SLEEP };
+    var set, read, errors = [];
+    for (var i = 0; i < AUTO_SLEEP_TRIES; i++) {
+      set = call(function () { return ep.setAutoSleepTime(AUTO_SLEEP); });
+      read = call(function () { return ep.getAutoSleepTime(); });
+      if (set.ok && read.ok && Number(read.value) === parseInt(AUTO_SLEEP, 10)) {
+        return { ok: true, value: AUTO_SLEEP, tries: i + 1, errors: errors };
+      }
+      errors.push(set.ok ? "read " + (read.ok ? read.value : read.error) : set.error);
+    }
     var back = call(function () { return ep.setAutoSleepTime(AUTO_SLEEP_FALLBACK); });
-    return { ok: back.ok, value: AUTO_SLEEP_FALLBACK, refused: AUTO_SLEEP, tried: set, read: read, error: back.error };
+    return { ok: back.ok, value: AUTO_SLEEP_FALLBACK, refused: AUTO_SLEEP, errors: errors, read: read, error: back.error };
   }
 
   // Samsung's daily screen refresh (03:00 out of the box) wakes the panel

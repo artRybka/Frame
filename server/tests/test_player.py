@@ -100,6 +100,21 @@ def _add(service, n: int, color: tuple[int, int, int], artist: str):
     )
 
 
+async def test_a_change_made_early_counts_the_next_from_its_time(service) -> None:
+    """2026-11-06: the panel woke ~2 min before a change. Made early, the
+    change after it is the next one after its own time, not the same one."""
+    _add(service, 1, (200, 40, 40), "Ala")
+    _add(service, 2, (40, 40, 200), "Ola")
+    player = service.player
+    due = next_change(datetime.now(UTC), player.settings)
+    state = player.state
+    state.next_change_at = due.isoformat(timespec="seconds")
+    player._save_state(state)
+    assert await player.next_early() is not None
+    after = datetime.fromisoformat(player.state.next_change_at or "")
+    assert after == next_change(due, player.settings) and after > due
+
+
 async def test_rotation_next_previous_and_history(service) -> None:
     a = _add(service, 1, (200, 40, 40), "Ala")
     b = _add(service, 2, (40, 40, 200), "Ola")

@@ -257,6 +257,9 @@ class Player:
         #: What the line was last checked for new works with (by day).
         self._caught_up_from: tuple[object, ...] = ()
         self._changes = 0  # under way: from the download of the original to the push
+        #: A change made early (:meth:`next_early`): the one after it counts
+        #: from the time this one was due, not from now.
+        self._due_at: datetime | None = None
 
     @property
     def busy(self) -> bool:
@@ -690,7 +693,8 @@ class Player:
                 now = utcnow()
                 state.last_change_at = now.isoformat(timespec="seconds")
                 state.last_change_origin = origin_of(reason)
-                state.next_change_at = next_change(now, settings).isoformat(timespec="seconds")
+                base = max(now, self._due_at) if self._due_at is not None else now
+                state.next_change_at = next_change(base, settings).isoformat(timespec="seconds")
                 state.last_error = None
                 for shown in board:
                     self.library.record_shown(shown.id, reason)
@@ -1440,6 +1444,17 @@ class Player:
             return
         if now >= datetime.fromisoformat(state.next_change_at):
             await self.next("schedule")
+
+    async def next_early(self) -> Item | None:
+        """The scheduled change now, a little before its time: the panel woke
+        for it (its alarm rings early, its clock may run fast). The change
+        after it is counted from this one's time."""
+        due = self.state.next_change_at
+        self._due_at = datetime.fromisoformat(due) if due is not None else None
+        try:
+            return await self.next("schedule")
+        finally:
+            self._due_at = None
 
     def change_starting(self, now: datetime) -> bool:
         """A picture is being shown, or a change was due just now: the panel
