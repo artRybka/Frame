@@ -1103,11 +1103,13 @@ OTHER_ART_THEMES: list[Theme] = [
         "Pierwsze kolory",
         "Prokudin-Gorski, fotochromy, autochromy i kolorowe slajdy FSA.",
         PHOTOGRAPHY,
-        ("loc", "Prokudin-Gorskii"),
-        ("loc", "photochrom"),
+        # Whole collections of the Library of Congress (loc.COLLECTION): its
+        # words alone found 2 of them (Mateusz 2026-11-06).
+        ("loc", "collection:prokudin-gorskii three-color"),
+        ("loc", "collection:photochrom-prints"),
+        ("loc", "autochrome"),
+        ("loc", "collection:fsa-owi-color-photographs"),
         ("cma", "autochrome"),
-        ("met", "autochrome"),
-        ("loc", "Kodachrome"),
         terms=("years:1850-1950",),
         colors=("colorful",),
     ),
@@ -1238,6 +1240,10 @@ SEARCHABLE = [theme for theme in THEMES if theme.searches()]
 
 #: Works a card needs in the catalogue for a full cover.
 COVER_MIN = 8
+#: Works a card needs in the catalogue to be shown at all: four fill its
+#: cover; with fewer it looked unfinished (Mateusz 2026-11-06: "Pierwsze
+#: kolory" with 2 works and two grey squares, "lepiej go nie pokazywać").
+CARD_MIN = 4
 
 
 def thin_searches(library: Library) -> list[tuple[str, str]]:
@@ -1250,6 +1256,19 @@ def thin_searches(library: Library) -> list[tuple[str, str]]:
         if t.strict and t.searches() and library.query(t.rules())[0] < COVER_MIN
         for search in t.searches()[:2]
     ]
+
+
+def thin_other_art(library: Library) -> list[tuple[Theme, int]]:
+    """The themes of "Sztuki inne" browsed in the museums that the
+    catalogue has too few works of for a cover, with how many it has: the
+    night takes their works in first (``Player._add_other_art``), whatever
+    room their technique has, so that their hidden cards (:data:`CARD_MIN`)
+    come back."""
+    thin = []
+    for t in OTHER_ART_THEMES:
+        if t.searches() and (count := library.query(t.rules())[0]) < COVER_MIN:
+            thin.append((t, count))
+    return thin
 
 
 def theme(key: str, library: Library | None = None) -> Theme:

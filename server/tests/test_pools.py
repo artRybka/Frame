@@ -258,11 +258,14 @@ def test_clean_start_deletes_the_old_museum_works(service) -> None:
     assert service.player.reset_library() == 0  # once
 
 
-def test_discover_endpoints(museums, caplog: pytest.LogCaptureFixture) -> None:
+def test_discover_endpoints(
+    museums, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
     caplog.set_level(logging.INFO, logger="frame_server.web.discover_api")
     from frame_server.web import create_app, discover_api
 
     service = museums
+    monkeypatch.setattr(discover_api, "CARD_MIN", 0)  # every card, however empty
     app = create_app(service.settings)
     app.state.service = service
     discover_api._theme_rows.clear()

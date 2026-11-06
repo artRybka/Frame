@@ -12,6 +12,7 @@ from collections import Counter
 from collections.abc import Awaitable, Callable, Iterable, Iterator
 from concurrent.futures import Future
 from datetime import UTC, datetime, timedelta
+from functools import partial
 from typing import TYPE_CHECKING, Any
 
 import httpx
@@ -33,9 +34,16 @@ from .library.images import Unavailable
 from .library.museums import Kind
 from .library.nationality import life_years, note_years
 from .library.photo_text import photo_line, photo_title
-from .library.repo import sent_key
+from .library.repo import matches, sent_key
 from .library.style import AUTO, auto_preset, toned_only
-from .library.themes import SEARCHABLE, other_art_searches, theme_of_the_day, thin_searches
+from .library.themes import (
+    COVER_MIN,
+    SEARCHABLE,
+    other_art_searches,
+    theme_of_the_day,
+    thin_other_art,
+    thin_searches,
+)
 from .library.viewer import OWNER_ID
 from .library.vocabulary import (
     DECORATIVE,
@@ -1126,7 +1134,23 @@ class Player:
 
     def _add_other_art(self, job: Job) -> None:
         """Top up each technique of "Sztuki inne" towards its share of the
-        catalogue, :data:`OTHER_ART_BATCH` works at a time."""
+        catalogue, :data:`OTHER_ART_BATCH` works at a time; first the
+        works of the themes whose cards have too few for a cover, whatever
+        room (their technique keeps to its share by :meth:`trim_other_art`
+        the next night, the works seen least going first)."""
+        for found, count in thin_other_art(self.library):
+            category = next(k for k in found.terms if k in OBJECT_CATEGORIES)
+            rules = found.rules()
+            part = Job(id=job.id, description=f"other arts: {found.key}")
+            self.service.importer.collect_searched(
+                category,
+                found.searches(),
+                COVER_MIN - count,
+                part,
+                fits=partial(matches, rules=rules),
+            )
+            job.item_ids += part.item_ids
+            log.info("catalogue: %d works for %s taken in", len(part.item_ids), found.key)
         searches = other_art_searches()
         for category, missing in self.other_art_room(fresh=True).items():
             part = Job(id=job.id, description="other arts")  # its own count
