@@ -120,6 +120,11 @@ EMPTY_SLEEP_AFTER = timedelta(seconds=15)
 # change), and the MDC sleep ~35 s after the alarm cuts into that.
 EMPTY_SLEEP = False
 EMPTY_CHECK_FOR = timedelta(minutes=3)
+# Woken by its alarm this long before a change (the alarm rings 20-40 s
+# early, the panel's clock ran 138 s fast on 2026-11-06): the change is
+# made at once. The app waits for the answer this long at most.
+CHANGE_EARLY = timedelta(minutes=3)
+CHANGE_EARLY_WAIT = 20.0
 # "Obudź ramkę" keeps the woken app awake (asking every ``POLL``) this long.
 KEEP_AWAKE = timedelta(minutes=10)
 # "Sprawdź stan" keeps it up this long after it asks: a picture sent right
@@ -425,6 +430,8 @@ class PanelApp:
         self._shown: dict[str, asyncio.Event] = {}
         self._waiting: set[asyncio.Task[None]] = set()
         self.empty_sleep_after = EMPTY_SLEEP_AFTER.total_seconds()
+        self.change_early_wait = CHANGE_EARLY_WAIT
+        self._early: asyncio.Task[object] | None = None
 
     # -- persisted state ------------------------------------------------------
 
@@ -671,11 +678,34 @@ class PanelApp:
                 await asyncio.wait_for(status.refresh(force=True), BATTERY_TIMEOUT)
             except (TimeoutError, MdcError) as err:
                 log.info("no battery reading for the app: %s", err)
+        await self._change_early(hello, now)
         waiting = self.service.power.state.pending_push
         answer = self.answer(hello)
         if waiting and answer.action != "reboot" and answer.file_id not in (None, hello.shown):
             self._deliver(answer)
         return answer
+
+    async def _change_early(self, hello: AppHello, now: datetime) -> None:
+        """Woken for a change a little before its time: the new picture at
+        once. Waiting for the time cost a redraw of the old picture first
+        (2026-11-06 01:00 on the camera: launcher screen, old picture, new
+        picture, ~1 min longer up). Waits ``CHANGE_EARLY_WAIT`` at most for
+        the picture; a slower one is still shown, the app asks again."""
+        if hello.reason not in ("start", "wake"):
+            return
+        player = self.service.player
+        if player.busy or self.service.power.state.pending_push:
+            return
+        state = player.state
+        if state.hold is not None and state.hold.active(now):
+            return
+        due = state.next_change_at
+        if due is None or not timedelta(0) < datetime.fromisoformat(due) - now <= CHANGE_EARLY:
+            return
+        log.info("woken for the change at %s: shown now", due)
+        task = asyncio.create_task(player.next_early())
+        self._early = task  # keep a reference until it ends
+        await asyncio.wait({task}, timeout=self.change_early_wait)
 
     def _deliver(self, answer: NextAnswer) -> None:
         """The picture that waited for the panel goes to it now (it woke:
