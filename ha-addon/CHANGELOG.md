@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.111.8
+
+- Sztuczne podbicie HDR usunięte. Słoneczko na pełnym ekranie tylko
+  rozjaśnia ekran, a jasność zaczyna wracać od razu, gdy zamykasz pełny
+  ekran (krzyżykiem albo przesunięciem w dół), nie dopiero po zamknięciu.
+- Na karcie dzieła i w studium obraz i jego detale świecą trochę jaśniej
+  niż strona wokół, równo na całej powierzchni (na ekranach z HDR).
+  Konfiguracja → Wyświetlanie dzieł → „Jaśniejsze dzieła”, domyślnie
+  włączone.
+
 ## 1.111.7
 
 - Sztuczne podbicie HDR jest płynniejsze. Rozjaśnia całe jasne obszary
