@@ -13,6 +13,7 @@ from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import Annotated
+from weakref import WeakKeyDictionary
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -35,6 +36,7 @@ from ..library.hosts import urgent_call
 from ..library.importer import ALL, span
 from ..library.mix import mixed
 from ..library.museums import Discovery, Kind
+from ..library.repo import Hidden, Library
 from ..library.themes import (
     GROUPS,
     OTHER_ART_THEMES,
@@ -84,6 +86,8 @@ ROW_SIZE = 24
 #: A theme's stream asks this many of its searches at once, each one's
 #: works sent as it answers.
 THEME_BATCH = 4
+#: How long a set's museums wait for its catalogue's works (shown first).
+CATALOGUE_HEAD_START = 0.5
 #: Theme covers and counts are worked out again (in the background) after
 #: this many seconds.
 CARDS_TTL = 600.0
@@ -114,6 +118,43 @@ _cards_from: tuple[object, ...] = ()
 _rows: dict[str, tuple[tuple[object, ...], list[SuggestionRow]]] = {}
 #: One worker on the cards at a time.
 _cards_lock = threading.Lock()
+#: Pages of themes kept at most (every card's first page, a few more).
+PAGES_KEPT = 400
+
+#: A theme's page of the catalogue for one person (:func:`_page_key`).
+PageKey = tuple[str, str, int, str]
+
+
+class _ThemePages:
+    """One library's pages of themes as last worked out
+    (:func:`catalogue_page`): (catalogue stamp, how many works fit, the
+    page's works) by :func:`_page_key`."""
+
+    def __init__(self) -> None:
+        self.lock = threading.Lock()
+        self.kept: OrderedDict[PageKey, tuple[tuple[int, int], int, list[Item]]] = OrderedDict()
+        #: Pages being worked out again in the background.
+        self.working: set[PageKey] = set()
+
+    def keep(self, key: PageKey, stamp: tuple[int, int], total: int, items: list[Item]) -> None:
+        with self.lock:
+            self.kept[key] = (stamp, total, items)
+            self.kept.move_to_end(key)
+            while len(self.kept) > PAGES_KEPT:
+                self.kept.popitem(last=False)
+
+
+#: By library (a test's own, the server's one).
+_theme_pages: WeakKeyDictionary[Library, _ThemePages] = WeakKeyDictionary()
+_theme_pages_lock = threading.Lock()
+
+
+def _pages_of(library: Library) -> _ThemePages:
+    with _theme_pages_lock:
+        pages = _theme_pages.get(library)
+        if pages is None:
+            pages = _theme_pages[library] = _ThemePages()
+        return pages
 
 
 class ThemeCard(BaseModel):
@@ -212,15 +253,22 @@ def _theme_playlist(
     return None
 
 
+#: What rows and covers leave out of a work: the long texts, which only the
+#: work's own page shows (and loads itself), and what only the server uses
+#: (the app reads none of it). /api/themes was 692 KB on the NAS.
+_HEAVY: dict[str, object] = {
+    "description": "",
+    "artist_bio": "",
+    "keywords": [],
+    "terms": [],
+    "color_shares": {},
+    "framing": {},
+}
+
+
 def _light(items: list[RemoteItem]) -> list[RemoteItem]:
-    """Works for rows and covers: without the long texts, which only the
-    work's own page shows (and loads itself)."""
-    return [
-        r.model_copy(
-            update={"item": r.item.model_copy(update={"description": "", "artist_bio": ""})}
-        )
-        for r in items
-    ]
+    """Works for rows and covers, without :data:`_HEAVY`."""
+    return [r.model_copy(update={"item": r.item.model_copy(update=_HEAVY)}) for r in items]
 
 
 def _cover(items: list[Item], seed: str = "") -> list[Item]:
@@ -282,9 +330,13 @@ def work_out_cards(svc: FrameService, force: bool = False) -> dict[str, tuple[in
                 mine.setdefault(found.key, found)
         weekly = for_you(svc.library, day)
         others = [*mine.values(), *THEMES, *OTHER_ART_THEMES, *colour_themes(svc.library, day)]
+        pages = _pages_of(svc.library)
         for found in [*weekly, *others]:
+            stamp = svc.library.catalogue_stamp()
             total, items = svc.library.query(found.rules(), sort="suitability")
             cards[found.key] = (total, _cover(items, f"{today}:{found.key}"))
+            # The same query is the theme's first page: its set opens at once.
+            pages.keep(_page_key(found, 1, viewer_id()), stamp, total, items[:ROW_SIZE])
         _cards = (time.monotonic(), cards)
         _cards_from = key
         return cards
@@ -306,7 +358,9 @@ def _card(
     found: Theme,
     cards: dict[str, tuple[int, list[Item]]],
     playlists: list[Playlist],
+    hidden: Hidden | None = None,
 ) -> ThemeCard:
+    """``hidden``: the hidden works, when worked out once for many cards."""
     count, cover = cards.get(found.key, (0, []))
     playlist = _theme_playlist(svc, found, playlists)
     return ThemeCard(
@@ -315,7 +369,7 @@ def _card(
         description=found.description,
         group=found.group,
         count=count,
-        cover=_light(remote_items(svc, cover)),
+        cover=_light(remote_items(svc, cover, hidden=hidden)),
         playlist_id=playlist.id if playlist else None,
         rules=found.rules(),
         section=found.section,
@@ -463,7 +517,61 @@ def _theme_list(svc: FrameService) -> list[ThemeCard]:
     private = svc.player.settings.private_use
     every = [t for t in every if private or not t.private]
     ordered = sorted(every, key=lambda t: GROUPS.index(t.group))
-    return [_card(svc, t, cards, playlists) for t in ordered]
+    hidden = svc.library.hidden()  # once, not for each card
+    return [_card(svc, t, cards, playlists, hidden) for t in ordered]
+
+
+def _page_key(found: Theme, page: int, user: str) -> PageKey:
+    """A theme's page of the catalogue for ``user``: by the theme's rules too
+    (the curator's and "Bo lubisz" cards keep their key with new rules)."""
+    return (found.key, found.rules().model_dump_json(), page, user)
+
+
+def _work_out_page(svc: FrameService, found: Theme, page: int, user: str) -> tuple[int, list[Item]]:
+    pages = _pages_of(svc.library)
+    key = _page_key(found, page, user)
+    try:
+        stamp = svc.library.catalogue_stamp()
+        total, items = svc.library.query(
+            found.rules(),
+            sort="suitability",
+            offset=(page - 1) * ROW_SIZE,
+            limit=ROW_SIZE,
+            user=user,
+        )
+        pages.keep(key, stamp, total, items)
+        return total, items
+    finally:
+        with pages.lock:
+            pages.working.discard(key)
+
+
+def catalogue_page(svc: FrameService, found: Theme, page: int = 1) -> tuple[list[Item], bool]:
+    """A page of the catalogue's works that fit ``found``, best first, and
+    whether more follow. A query of the whole catalogue takes seconds on the
+    NAS (Mateusz 2026-11-06: a set took ~10 s to show its first works), so
+    the page as last worked out comes at once, also after the catalogue
+    changed (works the server adds in the background); it is worked out
+    again in the background then, for the next visit. The cards
+    (:func:`work_out_cards`) work out every theme's first page."""
+    pages = _pages_of(svc.library)
+    user = viewer_id()
+    key = _page_key(found, page, user)
+    with pages.lock:
+        kept = pages.kept.get(key)
+        stale = kept is not None and kept[0] != svc.library.catalogue_stamp()
+        again = stale and key not in pages.working
+        if again:
+            pages.working.add(key)
+    if kept is None:
+        total, items = _work_out_page(svc, found, page, user)
+    else:
+        _, total, items = kept
+        if again:
+            threading.Thread(
+                target=_work_out_page, args=(svc, found, page, user), daemon=True
+            ).start()
+    return items, page * ROW_SIZE < total
 
 
 @router.get("/themes", response_model=list[ThemeCard])
@@ -529,6 +637,11 @@ async def week_artist_again(svc: Svc) -> ThemeCard:
 async def theme_page(key: str, svc: Svc, page: Annotated[int, Query(ge=1)] = 1) -> ThemePage:
     """A theme, page by page, from the museums (or the catalogue)."""
     found = await run_in_threadpool(_theme, key, svc, page)
+    if not found.searches():
+        items, more = await run_in_threadpool(catalogue_page, svc, found, page)
+        return ThemePage(
+            items=remote_items(svc, items), more=more, next_page=page + 1 if more else None
+        )
     try:
         items, following = await run_in_threadpool(
             urgent_call(browse_theme), svc.importer, found, page, ROW_SIZE
@@ -554,13 +667,19 @@ async def stream_theme(
     asked = time.monotonic()
     found = await run_in_threadpool(_theme, key, svc, page)
     if not found.searches():  # the catalogue: one page at once
-        items, following = await run_in_threadpool(
-            browse_theme, svc.importer, found, page, ROW_SIZE
+        items, more = await run_in_threadpool(catalogue_page, svc, found, page)
+        line = await run_in_threadpool(lambda: ThemeLine(items=remote_items(svc, items)))
+        log.info(
+            "theme %s, catalogue page %d: %d works in %.1f s",
+            key,
+            page,
+            len(line.items),
+            time.monotonic() - asked,
         )
 
         async def once() -> AsyncIterator[str]:
-            yield ThemeLine(items=remote_items(svc, items)).model_dump_json() + "\n"
-            last = ThemeLine(end=True, more=following is not None, next_page=following)
+            yield line.model_dump_json() + "\n"
+            last = ThemeLine(end=True, more=more, next_page=page + 1 if more else None)
             yield last.model_dump_json() + "\n"
 
         return StreamingResponse(once(), media_type="application/x-ndjson")
@@ -603,22 +722,36 @@ async def stream_theme(
         finally:
             loop.call_soon_threadsafe(lines_.put_nowait, ok)
 
-    def stocked() -> list[Item]:
-        """The works the catalogue holds (:func:`kept_close`), shown before
-        the museums answer; the museums' copies of them are left out by the
-        app."""
-        return svc.library.query(found.rules(), sort="suitability", limit=ROW_SIZE)[1]
+    def stocked() -> None:
+        """The works of the set the catalogue holds, shown before the
+        museums answer (its page as last worked out comes at once, and a
+        slow one does not hold the museums' lines up); the museums' copies
+        of them are left out by the app. Every set opens with them: the
+        museums take 1–4 s, more while the server is busy (Mateusz
+        2026-11-06: ~10 s to the first works)."""
+        held: list[Item] = []
+        try:
+            if not gone.is_set():
+                held = catalogue_page(svc, found, 1)[0]
+            if held and not gone.is_set():
+                line = ThemeLine(items=remote_items(svc, held))
+                sent[0] = len(line.items)
+                loop.call_soon_threadsafe(lines_.put_nowait, line)
+        except Exception:
+            log.exception("theme %s: the catalogue's works failed", key)
+        finally:
+            loop.call_soon_threadsafe(lines_.put_nowait, bool(held))
 
     async def lines() -> AsyncIterator[str]:
-        asking = [asyncio.ensure_future(run_in_threadpool(urgent_call(ask), at)) for at in pages]
+        asking = []
+        if page == 1:
+            # A head start, so that its line comes first (at once when it
+            # was worked out before); a slow one does not hold the museums.
+            asking.append(asyncio.ensure_future(run_in_threadpool(stocked)))
+            await asyncio.wait(asking, timeout=CATALOGUE_HEAD_START)
+        asking += [asyncio.ensure_future(run_in_threadpool(urgent_call(ask), at)) for at in pages]
         answered = False
         try:
-            if close and page == 1:
-                held = await run_in_threadpool(stocked)
-                if held:
-                    answered = True
-                    sent[0] = len(held)
-                    yield ThemeLine(items=remote_items(svc, held)).model_dump_json() + "\n"
             left = len(asking)
             while left:
                 line = await lines_.get()
