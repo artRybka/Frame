@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.104.9
+
+- Dzieło wysłane na ramkę z aplikacji nie wraca już z harmonogramem
+  tego samego dnia. Dotąd czekało dalej w kolejce i mogło pojawić się
+  znowu po kilku godzinach, mimo ustawienia „bez powtórek przez 14 dni”.
+  Teraz idzie na koniec kolejki.
+- Samousypianie po 3 minutach ramka odrzuca za każdym razem, więc
+  zostaje 5 minut (sprawdzone trzy razy z rzędu).
+
 ## 1.104.8
 
 - Ramka obudzona na zmianę obrazu dostaje nowy obraz od razu, a nie
