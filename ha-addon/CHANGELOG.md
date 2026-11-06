@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.109.0
+
+- Nowa grupa „Sztuki inne” w Odkrywaj, zaraz po „Grafika i plakat”:
+  karty Rękopisy i miniatury, Fotografia, Rzeźba oraz Ceramika i
+  rzemiosło, a za nimi 15 propozycji, np. Godzinki i kalendarze,
+  Pierwsze kolory, Wit Stwosz i gotyckie drewno, Błękit i biel.
+- Katalog na serwerze trzyma teraz trochę dzieł tych czterech technik,
+  razem 6% katalogu (fotografia 2%, rękopisy 1,6%, rzeźba i ceramika
+  po 1,2%), żeby Szukaj z wybraną techniką miał je od razu. Dobierają się
+  stopniowo, głównie nocą.
+- Te dzieła żyją „we własnym sosie”: nie mają studium dzieła, nie są
+  dziełem dnia i nie trafiają do innych grup Odkrywaj, rotacji ani
+  playlist o malarstwie, tylko do swojej grupy, Szukaj z ich techniką i
+  playlist z nich zrobionych.
+
 ## 1.108.0
 
 - Nowe źródło: J. Paul Getty Museum (Los Angeles), około 92 000 dzieł

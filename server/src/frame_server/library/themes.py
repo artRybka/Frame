@@ -27,11 +27,18 @@ from .repo import Library
 from .seed import MORE_POLISH_PAINTERS, PACKS, POLISH_PAINTERS
 from .viewer import OWNER_ID, viewer_id
 from .vocabulary import (
+    DECORATIVE,
     HIGHLIGHT,
+    MANUSCRIPTS,
+    OBJECT_CATEGORIES,
+    PHOTOGRAPHY,
+    SCULPTURE,
     TERMS,
     artist_matches,
     fold,
     museum_queries,
+    object_category,
+    other_art,
     set_aside,
     term_matches,
     text_of,
@@ -50,6 +57,7 @@ GROUPS = (
     "Bo lubisz",
     "Kierunki i style",
     "Grafika i plakat",
+    "Sztuki inne",
     "Tematy",
     "Sztuka polska",
     "Kolor i nastrój",
@@ -209,6 +217,9 @@ WEEKLY = "Dziś dla Ciebie"
 LIKES = "Bo lubisz"
 STYLES = "Kierunki i style"
 PRINTS = "Grafika i plakat"
+#: Manuscripts, photographs, sculpture and decorative arts, in their own
+#: group only (Mateusz 2026-11-06).
+OTHER_ARTS = "Sztuki inne"
 SUBJECTS = "Tematy"
 POLISH = "Sztuka polska"
 COLOUR = "Kolor i nastrój"
@@ -718,7 +729,258 @@ COLOUR_POOL: list[Theme] = [
     ),
 ]
 
-BY_KEY = {theme.key: theme for theme in [*THEMES, *COLOUR_POOL]}
+
+def _other(
+    key: str,
+    name: str,
+    description: str,
+    category: str,
+    *queries: tuple[str, str],
+    terms: tuple[str, ...] = (),
+    artists: tuple[str, ...] = (),
+    query: str = "",
+    colors: tuple[str, ...] = (),
+) -> Theme:
+    """A theme of "Sztuki inne": works of one technique (``category``),
+    browsed in the museums by ``queries``; without them, the catalogue's
+    works of the technique (the technique's own card)."""
+    return Theme(
+        key,
+        name,
+        description,
+        OTHER_ARTS,
+        artists=artists,
+        terms=(category, *terms),
+        colors=colors,
+        queries=queries,
+        query=query,
+        catalogue=not queries,
+    )
+
+
+#: "Sztuki inne": a card for each technique, then themes of it. Apart from
+#: :data:`THEMES` so that none of them becomes the theme of the day, a card
+#: of "Bo lubisz" or a search of the catalogue's growth.
+OTHER_ART_THEMES: list[Theme] = [
+    _other(
+        "other-manuscripts",
+        "Rękopisy i miniatury",
+        "Karty ksiąg, inicjały i miniatury ze zbiorów muzeów.",
+        MANUSCRIPTS,
+    ),
+    _other(
+        "other-photography",
+        "Fotografia",
+        "Od pierwszych odbitek Talbota po kolorowe slajdy lat 40.",
+        PHOTOGRAPHY,
+    ),
+    _other(
+        "other-sculpture",
+        "Rzeźba",
+        "Marmur, brąz i drewno z pięciu tysięcy lat.",
+        SCULPTURE,
+    ),
+    _other(
+        "other-decorative",
+        "Ceramika i rzemiosło",
+        "Porcelana, wazy, tkaniny i szkło z pracowni całego świata.",
+        DECORATIVE,
+    ),
+    _other(
+        "books-of-hours",
+        "Godzinki i kalendarze",
+        "Limburgowie, Mistrz Boucicaut i miesiące prac w polu.",
+        MANUSCRIPTS,
+        ("cma", "book of hours"),
+        ("met", "book of hours"),
+        ("getty", "book of hours"),
+        ("cma", "calendar page"),
+        ("vam", "book of hours"),
+        query="hours",
+    ),
+    _other(
+        "persian-miniatures",
+        "Miniatura perska",
+        "Szahname Ferdousiego i Chamsa Nizamiego z Tabrizu, Szirazu i Kazwinu.",
+        MANUSCRIPTS,
+        ("cma", "shahnama"),
+        ("met", "shahnama"),
+        ("cma", "khamsa"),
+        ("met", "khamsa"),
+        ("aic", "shahnama"),
+        query="iran",
+    ),
+    _other(
+        "initials",
+        "Inicjały i antyfonarze",
+        "Złote litery, nuty i święci zamknięci w inicjale.",
+        MANUSCRIPTS,
+        ("cma", "historiated initial"),
+        ("met", "historiated initial"),
+        ("getty", "initial"),
+        ("cma", "antiphonary"),
+        ("vam", "manuscript cutting initial"),
+        query="initial",
+    ),
+    _other(
+        "photo-pioneers",
+        "Pionierzy fotografii",
+        "Talbot, Julia Margaret Cameron, Nadar i Le Gray.",
+        PHOTOGRAPHY,
+        *(
+            (s, a)
+            for a in ("Talbot", "Julia Margaret Cameron", "Nadar", "Le Gray")
+            for s in ("cma", "getty", "met")
+        ),
+        artists=(
+            "William Henry Fox Talbot",
+            "Julia Margaret Cameron",
+            "Nadar",
+            "Gustave Le Gray",
+            "Roger Fenton",
+        ),
+    ),
+    _other(
+        "atget-paris",
+        "Paryż Atgeta",
+        "Uliczki, bramy i nabrzeża: Atget, Marville, Baldus, Nègre.",
+        PHOTOGRAPHY,
+        *((s, a) for a in ("Atget", "Marville", "Baldus") for s in ("cma", "getty", "met")),
+        artists=("Eugène Atget", "Charles Marville", "Édouard Baldus", "Charles Nègre"),
+    ),
+    _other(
+        "first-colours",
+        "Pierwsze kolory",
+        "Prokudin-Gorski, fotochromy, autochromy i kolorowe slajdy FSA.",
+        PHOTOGRAPHY,
+        ("loc", "Prokudin-Gorskii"),
+        ("loc", "photochrom"),
+        ("cma", "autochrome"),
+        ("met", "autochrome"),
+        ("loc", "Kodachrome"),
+        terms=("years:1850-1950",),
+        colors=("colorful",),
+    ),
+    _other(
+        "america-lens",
+        "Ameryka w obiektywie",
+        "Dorothea Lange, Lewis Hine, Walker Evans i Stieglitz.",
+        PHOTOGRAPHY,
+        ("loc", "Dorothea Lange"),
+        ("loc", "Lewis Hine"),
+        ("cma", "Walker Evans"),
+        ("met", "Walker Evans"),
+        ("cma", "Stieglitz"),
+        artists=("Dorothea Lange", "Lewis Hine", "Walker Evans", "Alfred Stieglitz", "Paul Strand"),
+    ),
+    _other(
+        "rodin",
+        "Rodin i jego czasy",
+        "Rodin, Camille Claudel, Carpeaux i tancerki Degasa w brązie.",
+        SCULPTURE,
+        ("cma", "Rodin"),
+        ("met", "Rodin bronze"),
+        ("aic", "Rodin"),
+        ("cma", "Carpeaux"),
+        ("met", "Camille Claudel"),
+        artists=("Rodin", "Camille Claudel", "Carpeaux", "Degas", "Dalou", "Barye"),
+    ),
+    _other(
+        "gothic-wood",
+        "Wit Stwosz i gotyckie drewno",
+        "Stwosz, Riemenschneider i malowane Madonny z lipowego drewna.",
+        SCULPTURE,
+        ("cma", "Riemenschneider"),
+        ("met", "Riemenschneider"),
+        ("cma", "Veit Stoss"),
+        ("cma", "limewood"),
+        ("met", "limewood"),
+        terms=("years:1250-1550",),
+        query="wood",
+    ),
+    _other(
+        "antique-sculpture",
+        "Antyk: marmur i brąz",
+        "Egipt faraonów, greckie brązy i portrety Rzymian.",
+        SCULPTURE,
+        ("cma", "Roman marble"),
+        ("met", "Greek bronze statuette"),
+        ("cma", "Egypt statue"),
+        ("met", "Roman portrait head"),
+        terms=("period:egypt", "period:greece", "period:rome"),
+    ),
+    _other(
+        "buddhas",
+        "Buddowie Azji",
+        "Gandhara, Chiny i Japonia: Budda i bodhisattwowie.",
+        SCULPTURE,
+        ("cma", "Buddha"),
+        ("met", "Buddha"),
+        ("aic", "Buddha"),
+        ("cma", "Bodhisattva"),
+        query="buddh",
+    ),
+    _other(
+        "blue-white",
+        "Błękit i biel",
+        "Kobalt na porcelanie: Jingdezhen, Iznik i Delft.",
+        DECORATIVE,
+        ("cma", "blue and white"),
+        ("met", "blue-and-white porcelain"),
+        ("cma", "Iznik"),
+        ("met", "Iznik"),
+        ("cma", "Delft"),
+        query="blue",
+    ),
+    _other(
+        "greek-vases",
+        "Wazy greckie",
+        "Czarnofigurowe amfory, czerwonofigurowe czary, białe lekyty.",
+        DECORATIVE,
+        ("cma", "amphora"),
+        ("met", "terracotta amphora"),
+        ("cma", "lekythos"),
+        ("met", "kylix"),
+        ("aic", "amphora"),
+        terms=("period:greece",),
+    ),
+    _other(
+        "porcelain",
+        "Miśnia i Sèvres",
+        "Dworska porcelana XVIII wieku: figurki, wazy i serwisy.",
+        DECORATIVE,
+        ("cma", "Meissen"),
+        ("met", "Meissen"),
+        ("cma", "Sevres"),
+        ("met", "Sèvres"),
+        terms=("years:1700-1820",),
+        query="porcelain",
+    ),
+    _other(
+        "textiles",
+        "Tkaniny i wzory",
+        "William Morris, gobeliny i perskie hafty.",
+        DECORATIVE,
+        ("cma", "William Morris"),
+        ("vam", "William Morris textile"),
+        ("cma", "tapestry"),
+        ("met", "tapestry"),
+        query="textil",
+    ),
+]
+
+
+def other_art_searches() -> dict[str, list[tuple[str, str]]]:
+    """The searches of the themes of "Sztuki inne", by technique: what the
+    catalogue's works of each come from first."""
+    found: dict[str, list[tuple[str, str]]] = {}
+    for t in OTHER_ART_THEMES:
+        category = next(k for k in t.terms if k in OBJECT_CATEGORIES)
+        found.setdefault(category, []).extend(t.searches())
+    return found
+
+
+BY_KEY = {theme.key: theme for theme in [*THEMES, *OTHER_ART_THEMES, *COLOUR_POOL]}
 #: Themes the museums can be asked for, for the theme of the day and the
 #: catalogue's growth.
 SEARCHABLE = [theme for theme in THEMES if theme.searches()]
@@ -900,7 +1162,7 @@ def _theme_from(data: dict[str, Any]) -> Theme:
 def _artist_of_the_week(items: list[Item], rng: random.Random, history: set[str]) -> Theme | None:
     """An artist with ``WEEKLY_MIN`` good works in the catalogue, not shown
     lately; those no theme names twice as likely."""
-    counts = Counter(i.artist for i in items if is_artist(i.artist))
+    counts = Counter(i.artist for i in items if is_artist(i.artist) and not other_art(i))
     named = [a for t in THEMES for a in t.artists]
     found = [
         a for a, n in counts.items() if n >= WEEKLY_MIN and f"week-artist-{_slug(a)}" not in history
@@ -1268,6 +1530,9 @@ def search_page(
     source, query = searches[(page - 1) % len(searches)]
     round_ = (page - 1) // len(searches) + 1
     total, items = importer.search(source, query, limit=limit, page=round_)
+    asked = [k for k in found.terms if k in OBJECT_CATEGORIES]
+    if asked:  # "Sztuki inne": the theme's technique only
+        return [i for i in items if object_category(i) in asked and not set_aside(i, asked)], total
     return [i for i in items if not set_aside(i)], total
 
 

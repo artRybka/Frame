@@ -73,6 +73,18 @@ enum DemoDiscover {
             group: "Grafika i plakat", rules: PlaylistRules(artists: ["Toulouse-Lautrec", "Mucha"])
         ),
         theme(
+            "other-photography", "Fotografia", "Od pierwszych odbitek Talbota po kolorowe slajdy lat 40.",
+            group: "Sztuki inne", rules: PlaylistRules(terms: ["technique:photography"])
+        ),
+        theme(
+            "other-sculpture", "Rzeźba", "Marmur, brąz i drewno z pięciu tysięcy lat.",
+            group: "Sztuki inne", rules: PlaylistRules(terms: ["technique:sculpture"])
+        ),
+        theme(
+            "blue-white", "Błękit i biel", "Kobalt na porcelanie: Jingdezhen, Iznik i Delft.",
+            group: "Sztuki inne", rules: PlaylistRules(terms: ["technique:decorative"])
+        ),
+        theme(
             "sea", "Morze i statki", "Fale, porty i żagle.", group: "Tematy",
             rules: PlaylistRules(terms: ["subject:sea"])
         ),

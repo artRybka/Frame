@@ -39,11 +39,13 @@ from .museums import (
 from .repo import Library, matches, now_iso
 from .vocabulary import (
     HIGHLIGHT,
+    TECHNIQUE_KINDS,
     is_copy,
     is_grey_copy,
     may_be_grey_copy,
     museum_kind,
     museum_queries,
+    object_category,
     set_aside,
     years,
 )
@@ -189,6 +191,9 @@ class Importer:
         self._searched_seen: OrderedDict[str, None] = OrderedDict()
         self._searched_lock = threading.Lock()
         self._searching: threading.Thread | None = None
+        #: Techniques of "Sztuki inne" with room left in the catalogue: works
+        #: of them a search showed are kept too.
+        self._searched_room: tuple[str, ...] = ()
         #: Words typed in Szukaj in the museums' languages (the language
         #: model's, set by the service); none: asked as typed.
         self.translate: Callable[[str, float], Wording] | None = None
@@ -208,6 +213,11 @@ class Importer:
         """The sources on offer that a search for ``kind`` asks: those of one
         kind only (``Museum.only``) just for that kind."""
         return [k for k in self.sources() if MUSEUMS[k].only in (None, kind)]
+
+    def known(self, item_id: str) -> Item | None:
+        """A museum work a search showed lately, without asking the museum."""
+        with self._remote_lock:
+            return self._remote.get(item_id)
 
     def remember(self, items: Iterable[Item]) -> None:
         with self._remote_lock:
@@ -727,6 +737,45 @@ class Importer:
                 pooled=True,
             )
 
+    def collect_other_art(
+        self,
+        category: str,
+        count: int,
+        job: Job,
+        queries: Iterable[tuple[str, str]] = (),
+        rng: random.Random | None = None,
+    ) -> None:
+        """Add ``count`` works (``pooled``) of one technique of "Sztuki inne"
+        (one of ``OBJECT_CATEGORIES``), taking turns between the museums'
+        most important works of that kind, the searches ``queries`` (of the
+        group's themes) and random draws of the kind; only works of that
+        technique are taken."""
+        rng = rng or random.Random()
+        kind = TECHNIQUE_KINDS[category]
+        offered = [s for s in self.asked_sources(kind) if not MUSEUMS[s].testing]
+        with self.http() as http:
+
+            def source(key: str) -> Museum:
+                return museum(key, http, self.access())
+
+            streams = [
+                source(s).random_draw(Discovery(kind=kind, highlight=True), rng)
+                for s in HIGHLIGHT_SOURCES
+                if s in offered
+            ]
+            streams += [_search_stream(source(s), q) for s, q in queries if s in offered]
+            streams += [source(s).random_draw(Discovery(kind=kind), rng) for s in offered]
+            rng.shuffle(streams)
+            self._take(
+                streams,
+                count,
+                job,
+                before=lambda item: object_category(item) == category,
+                after=lambda item: True,
+                pooled=True,
+                terms=[category],
+            )
+
     def discover_all(
         self, spec: Discovery, limit: int = 8, page: int = 1, keys: list[str] | None = None
     ) -> tuple[int, list[Item], list[str]]:
@@ -797,13 +846,15 @@ class Importer:
                 job.done += 1
                 job.item_ids.append(item.id)
 
-    def keep_searched(self, items: Iterable[Item]) -> None:
+    def keep_searched(self, items: Iterable[Item], room: Iterable[str] = ()) -> None:
         """Works a search showed, into the catalogue (``pooled``) in the
         background, one at a time so the museums aren't hurried: what the
         owner looks for beats a random draw. As with the catalogue's own
-        draws, copies, manuscripts and the like and black-and-white copies
-        are left out, however the works would do on e-paper."""
+        draws, copies and black-and-white copies are left out, however the
+        works would do on e-paper, and manuscripts and the like unless
+        their technique has ``room`` (of "Sztuki inne") left."""
         with self._searched_lock:
+            self._searched_room = tuple(room)
             for item in items:
                 if item.id in self._searched or item.id in self._searched_seen:
                     continue
@@ -837,6 +888,7 @@ class Importer:
                     before=lambda item: True,
                     after=lambda item: True,
                     pooled=True,
+                    terms=list(self._searched_room),
                 )
             except Exception:
                 log.exception("keeping searched works failed")

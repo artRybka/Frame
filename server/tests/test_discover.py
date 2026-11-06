@@ -18,6 +18,8 @@ from frame_server.library.themes import (
     COLOUR_POOL,
     GROUPS,
     LIKES,
+    OTHER_ART_THEMES,
+    OTHER_ARTS,
     THEMES,
     WEEKLY,
     theme_of_the_day,
@@ -117,7 +119,8 @@ def test_terms_are_suggested_in_polish_and_english() -> None:
     # Every theme's terms are known.
     assert all(t in BY_KEY for theme in THEMES for t in theme.terms)
     # Made, not fixed: the week's themes, "Bo lubisz" and the week's colours.
-    assert {theme.group for theme in THEMES} == set(GROUPS) - {WEEKLY, LIKES, COLOUR}
+    assert {theme.group for theme in THEMES} == set(GROUPS) - {WEEKLY, LIKES, COLOUR, OTHER_ARTS}
+    assert {theme.group for theme in OTHER_ART_THEMES} == {OTHER_ARTS}
     assert {theme.group for theme in COLOUR_POOL} == {COLOUR}
     assert theme_of_the_day.__name__  # importable
 
@@ -307,8 +310,9 @@ def test_catalogue_leaves_manuscripts_out(museums) -> None:  # noqa: F811
     asked = library.query(PlaylistRules(terms=["technique:manuscripts"]))[1]
     assert {i.id for i in asked} == {page.id, kept.id}
 
-    assert service.player.drop_set_aside() == 5
-    assert library.get(page.id) is None and library.get(photo.id) is None
+    assert service.player.drop_set_aside() == 3
+    # Pages of manuscripts and photographs belong to "Sztuki inne" now.
+    assert library.get(page.id) is not None and library.get(photo.id) is not None
     assert library.get(plate.id) is None and library.get(stamps.id) is None
     assert library.get(marburg.id) is None
     assert library.get(kept.id) is not None
@@ -330,7 +334,7 @@ def test_theme_playlists_and_terms(museums) -> None:  # noqa: F811
     discover_api._cards = (0.0, {})
     with TestClient(app) as client:
         cards = client.get("/api/themes").json()
-        assert len(cards) == len(THEMES)
+        assert len(cards) == len(THEMES) + len(OTHER_ART_THEMES)
         assert [c["group"] for c in cards] == sorted((c["group"] for c in cards), key=GROUPS.index)
         made = client.post("/api/themes/romanticism/playlist", json={}).json()
         assert made["playlist"]["theme"] == "romanticism" and made["job_id"]
@@ -391,7 +395,7 @@ def test_discover_does_not_wait_for_slow_work(museums, monkeypatch) -> None:  # 
         if discover_api._cards[1] is not old:
             break
         time.sleep(0.05)
-    assert set(discover_api._cards[1]) == {t.key for t in THEMES}
+    assert set(discover_api._cards[1]) == {t.key for t in [*THEMES, *OTHER_ART_THEMES]}
 
     # The theme of the day from the catalogue when it has enough works.
     blue = Theme("blue-test", "Błękity", "", GROUPS[0], colors=("blue",))

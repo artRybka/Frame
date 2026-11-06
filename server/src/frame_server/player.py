@@ -7,6 +7,7 @@ import contextlib
 import logging
 import random
 import threading
+import time
 from collections import Counter
 from collections.abc import Awaitable, Callable, Iterable, Iterator
 from concurrent.futures import Future
@@ -34,9 +35,19 @@ from .library.nationality import life_years, note_years
 from .library.photo_text import photo_line, photo_title
 from .library.repo import sent_key
 from .library.style import AUTO, auto_preset
-from .library.themes import SEARCHABLE, theme_of_the_day
+from .library.themes import SEARCHABLE, other_art_searches, theme_of_the_day
 from .library.viewer import OWNER_ID
-from .library.vocabulary import HIGHLIGHT, set_aside
+from .library.vocabulary import (
+    DECORATIVE,
+    HIGHLIGHT,
+    MANUSCRIPTS,
+    OBJECT_CATEGORIES,
+    PHOTOGRAPHY,
+    SCULPTURE,
+    object_category,
+    other_art,
+    set_aside,
+)
 from .progress import Stage
 from .schedule import FrameSettings, Presentation, in_quiet_hours, next_change
 
@@ -112,6 +123,13 @@ CATALOGUE_TURNOVER = 60
 CATALOGUE_TURNOVER_EVERY = timedelta(hours=6)
 #: When a full catalogue last took works in.
 TURNOVER_KEY = "catalogue_turnover"
+#: "Sztuki inne": the share of the catalogue's works each technique keeps,
+#: so that Szukaj has some at once (Mateusz 2026-11-06: 6 % in all, 5:4:3:3).
+OTHER_ART_SHARES = {PHOTOGRAPHY: 0.02, MANUSCRIPTS: 0.016, SCULPTURE: 0.012, DECORATIVE: 0.012}
+#: Works of one technique taken in at a time.
+OTHER_ART_BATCH = 40
+#: How long the room each technique has is trusted (seconds), for searches.
+OTHER_ART_ROOM_FOR = 600.0
 #: At night a full catalogue takes in a day's works at once ...
 NIGHT_TURNOVER = CATALOGUE_TURNOVER * 4
 #: ... and one still filling up at most this many batches.
@@ -254,6 +272,8 @@ class Player:
         #: The catalogue was full when last measured: by day (with the
         #: night queue) the files are not counted again until the night.
         self._full = False
+        #: When the room of "Sztuki inne" was counted (monotonic), and it.
+        self._other_art_room: tuple[float, dict[str, int]] = (0.0, {})
         #: What the line was last checked for new works with (by day).
         self._caught_up_from: tuple[object, ...] = ()
         self._changes = 0  # under way: from the download of the original to the push
@@ -432,7 +452,7 @@ class Player:
         scores: Counter[str] = Counter()
         hearts = None if user is None else self.library.favorites(user)
         for item in self.library.query(PlaylistRules(kinds=[ItemKind.ARTWORK]))[1]:
-            if is_artist(item.artist):
+            if is_artist(item.artist) and not other_art(item):
                 liked = item.favorite if hearts is None else item.id in hearts
                 scores[item.artist] += 3 * liked + (not item.pooled)
         searched: Counter[str] = Counter()
@@ -1071,10 +1091,76 @@ class Player:
 
     def keep_searched(self, items: Iterable[Item]) -> None:
         """Works a search showed join the catalogue in the background (as
-        the catalogue's own draws do, so not while tests run the server)."""
+        the catalogue's own draws do, so not while tests run the server);
+        those of "Sztuki inne" while their technique has room."""
         settings = self.service.settings
         if settings.scheduler and settings.catalogue_mb:
-            self.service.importer.keep_searched(items)
+            self.service.importer.keep_searched(items, room=self.other_art_room())
+
+    def _catalogue_works(self) -> list[Item]:
+        """The works the server picked (``pooled``), excluded ones too."""
+        return [i for i in self.library.query(include_excluded=True)[1] if i.pooled]
+
+    def other_art_room(self, fresh: bool = False) -> dict[str, int]:
+        """How many more works each technique of "Sztuki inne" may have in
+        the catalogue (only those with room), as last counted within
+        :data:`OTHER_ART_ROOM_FOR` unless ``fresh``."""
+        counted, room = self._other_art_room
+        if fresh or time.monotonic() - counted >= OTHER_ART_ROOM_FOR or counted == 0.0:
+            works = self._catalogue_works()
+            have = Counter(c for i in works if (c := object_category(i)) is not None)
+            room = {
+                key: wanted - have[key]
+                for key, share in OTHER_ART_SHARES.items()
+                if (wanted := int(share * len(works))) > have[key]
+            }
+            self._other_art_room = (time.monotonic(), room)
+        return room
+
+    def _add_other_art(self, job: Job) -> None:
+        """Top up each technique of "Sztuki inne" towards its share of the
+        catalogue, :data:`OTHER_ART_BATCH` works at a time."""
+        searches = other_art_searches()
+        for category, missing in self.other_art_room(fresh=True).items():
+            part = Job(id=job.id, description="other arts")  # its own count
+            self.service.importer.collect_other_art(
+                category, min(missing, OTHER_ART_BATCH), part, queries=searches.get(category, ())
+            )
+            job.item_ids += part.item_ids
+            log.info("catalogue: %d works of %s taken in", len(part.item_ids), category)
+        self.other_art_room(fresh=True)
+
+    def trim_other_art(self) -> int:
+        """Keep each technique of "Sztuki inne" within its share of the
+        catalogue (after the limit was lowered, or searches kept many):
+        the ones seen least lately go first, never those the owner kept,
+        liked, framed or put in a playlist. Returns how many went."""
+        works = self._catalogue_works()
+        protected = self._protected()
+        images = self.service.images
+        gone: list[Item] = []
+        for category, share in OTHER_ART_SHARES.items():
+            own = [i for i in works if object_category(i) == category]
+            over = len(own) - int(share * len(works))
+            if over <= 0:
+                continue
+            spare = [
+                i
+                for i in own
+                if not i.show_count and not i.favorite and not i.framing and i.id not in protected
+            ]
+
+            def order(item: Item) -> tuple[bool, float, str]:
+                seen = images.used_at(item)
+                return seen is not None, seen or 0.0, item.added_at
+
+            spare.sort(key=order)
+            gone += spare[:over]
+        if gone:
+            self._forget(gone)
+            self._other_art_room = (0.0, {})
+            log.info("catalogue: %d works of Sztuki inne over their share deleted", len(gone))
+        return len(gone)
 
     def searched_for(self, artists: list[str], user: str = OWNER_ID) -> None:
         """Artists ``user`` asked for in Szukaj count towards their
@@ -1195,6 +1281,8 @@ class Player:
                     kinds=CATALOGUE_KINDS,
                     highlights=CATALOGUE_HIGHLIGHTS,
                 )
+                self.trim_other_art()
+                self._add_other_art(job)
             if full:
                 self.trim_catalogue()
 
@@ -1312,7 +1400,11 @@ class Player:
         gone = [
             i
             for i in self.library.query(include_excluded=True)[1]
-            if i.pooled and set_aside(i) and not i.favorite and not i.framing and i.id not in kept
+            if i.pooled
+            and set_aside(i, OBJECT_CATEGORIES)  # "Sztuki inne" stay (2026-11-06)
+            and not i.favorite
+            and not i.framing
+            and i.id not in kept
         ]
         self._forget(gone)
         log.info("catalogue: %d photographs, copies and manuscript pages deleted", len(gone))

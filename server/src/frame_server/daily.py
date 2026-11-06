@@ -39,7 +39,7 @@ from .library.cultures import circle
 from .library.images import display_copy
 from .library.models import Note
 from .library.nationality import NATIONALITIES
-from .library.vocabulary import artist_matches, is_photograph
+from .library.vocabulary import artist_matches, is_photograph, other_art
 
 if TYPE_CHECKING:
     from .ai import AiWorker
@@ -235,6 +235,7 @@ class Daily:
             and i.look is None
             and i.artist
             and not is_photograph(i)
+            and not other_art(i)  # "Sztuki inne" keep to their own group
             and max(i.width or MIN_SIDE, i.height or MIN_SIDE) >= MIN_SIDE
             and not (recent_artists and artist_matches(i.artist, recent_artists))
         ]

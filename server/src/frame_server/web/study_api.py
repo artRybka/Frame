@@ -20,6 +20,7 @@ from ..ai.daily import Detail
 from ..ai.details import KIND as MEND
 from ..library import Item
 from ..library.markup import strip_markup
+from ..library.vocabulary import other_art
 from ..notifications import PushError
 from ..service import FrameService
 from ..study import PENDING, Status
@@ -138,6 +139,8 @@ async def study(
     lists under its text (``DailyWork.partial``), at once; the app asks for
     them next."""
     item = svc.library.get(item_id)
+    if item is None and (seen := svc.importer.known(item_id)) is not None and other_art(seen):
+        item = seen  # a museum work of "Sztuki inne" only looked at: no study
     await _wait(svc, item, wait)
     return await run_in_threadpool(_view, svc, item, user, lists)
 
@@ -157,6 +160,8 @@ async def prepare_study(
     One ordered for later and asked for again without ``later`` is made now,
     what its batches answered not paid for again."""
     item = await find_work(svc, item_id)
+    if other_art(item):
+        raise HTTPException(409, "Rękopisy, fotografie, rzeźby i rzemiosło nie mają studium.")
     if not svc.study.job.enabled():
         raise HTTPException(409, "Claude jest wyłączony: dodaj klucz API w Konfiguracji.")
     status, _ = await run_in_threadpool(svc.study.status, svc.library.get(item_id))

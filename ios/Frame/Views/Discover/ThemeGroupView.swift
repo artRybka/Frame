@@ -5,6 +5,24 @@ struct ThemeGroupRoute: Hashable {
     let name: String
 }
 
+/// "Sztuki inne": manuscripts, photographs, sculpture and decorative arts,
+/// kept to their own group in Odkrywaj (the server's ``OTHER_ART_THEMES``).
+enum OtherArts {
+    static let group = "Sztuki inne"
+    static let techniques: [(key: String, name: String)] = [
+        ("technique:manuscripts", "Rękopisy i miniatury"),
+        ("technique:photography", "Fotografia"),
+        ("technique:sculpture", "Rzeźba"),
+        ("technique:decorative", "Ceramika i rzemiosło"),
+    ]
+
+    /// The technique of "Sztuki inne" a theme is of, if any.
+    static func technique(of theme: ArtTheme) -> String? {
+        guard theme.group == group, let terms = theme.rules?.terms else { return nil }
+        return techniques.first { terms.contains($0.key) }?.key
+    }
+}
+
 /// Opens the works of a suggestion row with no theme behind it ("Dawno ich nie było").
 struct SuggestionRowRoute: Hashable {
     let key: String
@@ -44,17 +62,41 @@ struct ThemeGroupView: View {
 
     private let columns = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
 
+    /// "Sztuki inne" in a section for each technique; other groups in one.
+    private var sections: [(title: String?, themes: [ArtTheme])] {
+        let found = OtherArts.techniques.compactMap { technique -> (title: String?, themes: [ArtTheme])? in
+            let own = themes.filter { OtherArts.technique(of: $0) == technique.key }
+            return own.isEmpty ? nil : (title: technique.name, themes: own)
+        }
+        let rest = themes.filter { OtherArts.technique(of: $0) == nil }
+        if found.isEmpty { return [(title: nil, themes: themes)] }
+        return rest.isEmpty ? found : found + [(title: nil, themes: rest)]
+    }
+
     var body: some View {
         ScrollView {
-            LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
-                ForEach(themes) { theme in
-                    NavigationLink(value: theme) {
-                        ThemeCard(theme: theme) {
-                            _ = await ThemeActions.makePlaylist(theme, play: false, model: model)
+            VStack(alignment: .leading, spacing: 12) {
+                ForEach(Array(sections.enumerated()), id: \.offset) { _, section in
+                    if let title = section.title {
+                        Text(title)
+                            .font(.caption.weight(.semibold))
+                            .textCase(.uppercase)
+                            .tracking(1)
+                            .foregroundStyle(Theme.inkSoft)
+                            .padding(.top, 8)
+                            .accessibilityAddTraits(.isHeader)
+                    }
+                    LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
+                        ForEach(section.themes) { theme in
+                            NavigationLink(value: theme) {
+                                ThemeCard(theme: theme) {
+                                    _ = await ThemeActions.makePlaylist(theme, play: false, model: model)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            .drawWeekArtistAgainMenu(theme)
                         }
                     }
-                    .buttonStyle(.plain)
-                    .drawWeekArtistAgainMenu(theme)
                 }
             }
             .pageWidth()
