@@ -212,6 +212,7 @@ struct TermFacetBar: View {
         case "search-colors", "search-tones": .color
         case "search-museums": .museum
         case "search-styles": .style
+        case "search-techniques": .technique
         default: nil
         }
     }
@@ -312,15 +313,29 @@ struct TermFacetBar: View {
             open = facet
         } label: {
             // Picked, the symbol stands for the group's name: "✎ Olej +1";
-            // Kolor shows the picked colours' dots instead.
+            // Kolor shows the picked colours' dots instead, Technika the
+            // picked techniques' works in small circles.
             HStack(spacing: 5) {
                 let swatches = facet == .color ? picked.map(\.key) : []
+                let works = facet == .technique ? picked.compactMap { TechniqueArt.asset($0.key) } : []
                 if !swatches.isEmpty {
                     HStack(spacing: 3) {
                         ForEach(Array(swatches.prefix(3)), id: \.self) { tag in
                             ColorTagDot(tag: tag, size: 8, stroke: .white.opacity(0.7), lineWidth: 1)
                         }
                     }
+                } else if !works.isEmpty {
+                    HStack(spacing: -6) {
+                        ForEach(Array(works.prefix(3)), id: \.self) { asset in
+                            Image(asset)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 17, height: 17)
+                                .clipShape(Circle())
+                                .overlay(Circle().stroke(.white.opacity(0.75), lineWidth: 1.5))
+                        }
+                    }
+                    .accessibilityHidden(true)
                 } else {
                     GroupMark(kind: facet.rawValue, bold: on)
                         .font(.subheadline.weight(on ? .semibold : .regular))
@@ -456,14 +471,15 @@ struct TermFacetPanel: View {
     private var footnote: String? {
         switch facet {
         case .museum: "Nic nie wybrane: pytam wszystkie muzea."
-        case .color: nil
+        case .color, .technique: nil
         default: "Wybierz dowolnie wiele: wystarczy, że dzieło pasuje do jednego z nich."
         }
     }
 
     @ViewBuilder private var content: some View {
         switch facet {
-        case .technique, .style, .subject: terms
+        case .technique: techniques
+        case .style, .subject: terms
         case .period: PeriodPicker(tokens: $tokens)
         case .color: palette
         case .museum: museumList
@@ -535,6 +551,56 @@ struct TermFacetPanel: View {
                 Text("Nic takiego. Wpisz to w pole wyszukiwania: znajdę to jako słowo.")
                     .font(.footnote)
                     .foregroundStyle(Theme.inkSoft)
+            }
+        }
+    }
+
+    // MARK: Techniques
+
+    /// The Technika sheet (PLAN 3.3zzz4): a work in a circle for each
+    /// technique, four to a row; first the pictures, then the other things
+    /// (manuscripts, photographs, sculpture, crafts), which the search leaves
+    /// out unless picked. A technique the app has no work for is a chip.
+    private var techniques: some View {
+        let all = model.vocabulary.filter { $0.kind == "technique" }
+        let drawn = all.filter { TechniqueArt.asset($0.key) != nil }
+        let pictures = drawn.filter { !TechniqueArt.objects.contains($0.key) }
+        let objects = drawn.filter { TechniqueArt.objects.contains($0.key) }
+        let rest = all.filter { TechniqueArt.asset($0.key) == nil }
+        return VStack(alignment: .leading, spacing: 8) {
+            techniqueGrid(pictures)
+            if !objects.isEmpty {
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Eyebrow("Inne")
+                    Text("· dostępne wyłącznie po wybraniu")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.inkSoft)
+                }
+                .padding(.top, 6)
+                .padding(.leading, 4)
+                techniqueGrid(objects)
+            }
+            if !rest.isEmpty {
+                FlowLayout(spacing: 8) {
+                    ForEach(rest) { term in
+                        Chip(title: term.name, selected: picked(term.kind, term.key)) {
+                            toggle(term.kind, term.key, term.name)
+                        }
+                    }
+                }
+                .padding(.top, 6)
+            }
+        }
+    }
+
+    private func techniqueGrid(_ terms: [TermInfo]) -> some View {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 2), count: 4), alignment: .center, spacing: 8) {
+            ForEach(terms) { term in
+                if let asset = TechniqueArt.asset(term.key) {
+                    TechniqueSwatch(name: term.name, asset: asset, picked: picked(term.kind, term.key)) {
+                        withAnimation(.snappy(duration: 0.25)) { toggle(term.kind, term.key, term.name) }
+                    }
+                }
             }
         }
     }
@@ -997,6 +1063,86 @@ private struct Bracket: Shape {
         path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
         path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
         return path
+    }
+}
+
+/// The works that stand for the techniques in the Technika sheet and on
+/// its button: public-domain museum images in the app's assets
+/// ("technique-painting": Vermeer's Girl with a Pearl Earring).
+enum TechniqueArt {
+    /// The things that are no pictures; the search leaves them out unless
+    /// picked (the server's `OBJECT_CATEGORIES`).
+    static let objects: Set<String> = [
+        "technique:manuscripts", "technique:photography", "technique:sculpture", "technique:decorative",
+    ]
+
+    private static let drawn: Set<String> = [
+        "painting", "print", "drawing", "poster", "manuscripts", "photography", "sculpture", "decorative",
+    ]
+
+    /// The asset's name for a technique, nil for one with no work.
+    static func asset(_ key: String) -> String? {
+        guard key.hasPrefix("technique:") else { return nil }
+        let name = String(key.dropFirst("technique:".count))
+        return drawn.contains(name) ? "technique-\(name)" : nil
+    }
+}
+
+/// A technique in the Technika sheet: a work in a circle, picked with a
+/// ring like a colour's in the Kolor sheet (Mateusz 2026-11-06, C2), its
+/// name under it.
+struct TechniqueSwatch: View {
+    let name: String
+    let asset: String
+    let picked: Bool
+    let action: () -> Void
+
+    private static let side: CGFloat = 60
+    private static let ring: CGFloat = 74
+
+    /// A one-letter word ("i", "w", "z") never ends a line: it keeps to the
+    /// next word ("Rysunki / i akwarele", not "Rysunki i / akwarele").
+    static func bound(_ text: String) -> String {
+        let words = text.split(separator: " ", omittingEmptySubsequences: false)
+        var out = ""
+        for (index, word) in words.enumerated() {
+            out += word
+            if index < words.count - 1 { out += word.count == 1 ? "\u{00A0}" : " " }
+        }
+        return out
+    }
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 4) {
+                ZStack {
+                    if picked {
+                        Circle()
+                            .strokeBorder(Theme.ink, lineWidth: 3.5)
+                            .transition(.opacity)
+                    }
+                    Image(asset)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: Self.side, height: Self.side)
+                        .clipShape(Circle())
+                        .overlay(Circle().strokeBorder(Theme.ink.opacity(0.22), lineWidth: 0.5))
+                }
+                .frame(width: Self.ring, height: Self.ring)
+                Text(Self.bound(name))
+                    .font(.caption.weight(picked ? .semibold : .regular))
+                    .foregroundStyle(picked ? Theme.ink : Theme.inkSoft)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2, reservesSpace: true)
+                    .minimumScaleFactor(0.85)
+            }
+            .frame(maxWidth: .infinity)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .sensoryFeedback(.selection, trigger: picked)
+        .accessibilityLabel(name)
+        .accessibilityAddTraits(picked ? .isSelected : [])
     }
 }
 

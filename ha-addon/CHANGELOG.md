@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.107.0
+
+- Nowy wygląd karty Szukaj → Technika: zamiast ośmiu kapsułek każda
+  technika ma okrągłą miniaturę dzieła i nazwę pod spodem, po cztery
+  w rzędzie. U góry Malarstwo, Grafika, Rysunki i akwarele oraz Plakaty,
+  niżej pod napisem „Inne · dostępne wyłącznie po wybraniu” Rękopisy
+  i miniatury, Fotografia, Rzeźba oraz Ceramika i rzemiosło. Wybrana
+  technika ma otok jak kolory w karcie Kolor, a przycisk „Technika” nad
+  polem wyszukiwania pokazuje małe kółka z dziełami wybranych technik.
+
 ## 1.106.0
 
 - Nowe źródło zdjęć: Library of Congress. Pytamy je tylko wtedy, gdy w
