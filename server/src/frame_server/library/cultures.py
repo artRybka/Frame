@@ -17,7 +17,7 @@ from functools import lru_cache
 from typing import Literal
 
 from .models import Item
-from .vocabulary import fold
+from .vocabulary import PER_WORK, fold
 
 Circle = Literal[
     "west",
@@ -114,7 +114,7 @@ for _circle, _words in _WORDS.items():
 _LONGEST = max(len(w.split()) for w in _CIRCLE_OF)
 
 
-@lru_cache(maxsize=1 << 14)
+@lru_cache(maxsize=PER_WORK)
 def _circle_in(text: str) -> Circle | None:
     """The circle of the first word of ``text`` that names one; pairs of
     words first ("South African" is not "African" alone, "Song dynasty"

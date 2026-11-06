@@ -22,7 +22,7 @@ from urllib.parse import unquote
 from .artists import NOBODY as NAMELESS
 from .artists import ROLES
 from .models import Item, ItemKind
-from .vocabulary import fold
+from .vocabulary import PER_WORK, fold
 
 #: Lower is more reliable: museums describe their own works; Europeana
 #: passes on what its member collections say; Commons, Openverse and WikiArt
@@ -145,13 +145,13 @@ def _clean_name(artist: str) -> str:
     return " ".join(re.findall(r"[^\W\d_]+", name))
 
 
-@lru_cache(maxsize=1 << 15)
+@lru_cache(maxsize=PER_WORK)
 def artist_words(artist: str) -> frozenset[str]:
     words = frozenset(_clean_name(artist).split())
     return frozenset() if words <= NOBODY else words
 
 
-@lru_cache(maxsize=1 << 15)
+@lru_cache(maxsize=PER_WORK)
 def surname(artist: str) -> str:
     """The last word of the name: what most sources agree on."""
     words = _clean_name(artist).split()
@@ -169,7 +169,7 @@ def _names(part: str, artist: str) -> bool:
     return words <= name or (surname(artist) in words and len(words - name) <= 2)
 
 
-@lru_cache(maxsize=1 << 16)
+@lru_cache(maxsize=PER_WORK)
 def title_key(title: str, artist: str = "") -> str:
     """The title's words without articles, dates, brackets and, in Commons
     file names, the artist: "Claude Monet - The Water Lilies (1906) - Google
@@ -188,7 +188,7 @@ def title_key(title: str, artist: str = "") -> str:
     return " ".join(w for w in words if not re.fullmatch(r"\d{4}", w))
 
 
-@lru_cache(maxsize=1 << 16)
+@lru_cache(maxsize=PER_WORK)
 def _link(url: str) -> str:
     """A page or picture's address written one way."""
     link = unquote(url).strip().casefold()

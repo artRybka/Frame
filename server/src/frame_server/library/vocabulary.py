@@ -44,6 +44,14 @@ HIGHLIGHT = "tag:highlight"
 #: Works that are not pictures: shown only when one of these is asked for.
 OBJECT_CATEGORIES = (MANUSCRIPTS, PHOTOGRAPHY, SCULPTURE, DECORATIVE)
 
+#: Size of the caches of what a work's texts say (``is_manuscript``,
+#: ``object_category``…), asked of every work on every query of the
+#: catalogue: above the number of works the catalogue holds. A smaller LRU
+#: cache scanned in order over more works keeps none of them (51 000 works
+#: on the NAS, 2026-11-06: every query of the catalogue ran each regular
+#: expression again, 2–3 s a query).
+PER_WORK = 1 << 18
+
 
 @dataclass(frozen=True)
 class Term:
@@ -470,7 +478,7 @@ def is_manuscript(item: Item) -> bool:
 
 
 # Asked of every work on every query of the catalogue: remembered by text.
-@lru_cache(maxsize=1 << 15)
+@lru_cache(maxsize=PER_WORK)
 def _is_manuscript(classification: str, title: str, medium: str) -> bool:
     return bool(_MANUSCRIPT.search(" ".join((classification, title, medium))))
 
@@ -491,7 +499,7 @@ def is_photograph(item: Item) -> bool:
     return item.kind == ItemKind.ARTWORK and _is_photograph(item.classification, item.medium)
 
 
-@lru_cache(maxsize=1 << 15)
+@lru_cache(maxsize=PER_WORK)
 def _is_photograph(classification: str, medium: str) -> bool:
     return bool(_PHOTOGRAPH.search(" ".join((classification, medium))))
 
@@ -518,7 +526,7 @@ def is_reproduction(item: Item) -> bool:
     return item.kind == ItemKind.ARTWORK and _is_reproduction(item.title, item.classification)
 
 
-@lru_cache(maxsize=1 << 15)
+@lru_cache(maxsize=PER_WORK)
 def _is_reproduction(title: str, classification: str) -> bool:
     return bool(_REPRODUCTION.search(f"{title} {classification}"))
 
@@ -584,7 +592,7 @@ def is_painting(item: Item) -> bool:
     return item.kind == ItemKind.ARTWORK and _is_painting(item.classification, item.medium)
 
 
-@lru_cache(maxsize=1 << 15)
+@lru_cache(maxsize=PER_WORK)
 def _is_painting(classification: str, medium: str) -> bool:
     return bool(_PAINTING.search(f"{classification} {medium}"))
 
@@ -616,7 +624,12 @@ def is_postal(item: Item) -> bool:
     else: a photograph of an object, never a picture for the frame."""
     if item.source == "europeana" and item.credit in NOT_ART_PROVIDERS:
         return True
-    return item.kind == ItemKind.ARTWORK and bool(_POSTAL.search(item.classification))
+    return item.kind == ItemKind.ARTWORK and _is_postal(item.classification)
+
+
+@lru_cache(maxsize=PER_WORK)
+def _is_postal(classification: str) -> bool:
+    return bool(_POSTAL.search(classification))
 
 
 def is_copy(item: Item) -> bool:
@@ -665,7 +678,7 @@ def object_category(item: Item) -> str | None:
     return _object_category(item.classification, item.title, item.medium)
 
 
-@lru_cache(maxsize=1 << 15)
+@lru_cache(maxsize=PER_WORK)
 def _object_category(classification: str, title: str, medium: str) -> str | None:
     if _is_manuscript(classification, title, medium):
         return MANUSCRIPTS
@@ -766,7 +779,7 @@ def _technique_matches(found: Term, item: Item) -> bool:
     return bool(pattern.search(" ".join((item.title, *item.styles, *item.subjects))))
 
 
-@lru_cache(maxsize=1 << 15)
+@lru_cache(maxsize=PER_WORK)
 def _object_technique(classification: str, medium: str) -> bool:
     text = f"{classification} {medium}"
     return any(

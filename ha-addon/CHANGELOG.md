@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.111.1
+
+- Zestawy w Odkrywaj otwierają się szybciej. Każdy zaczyna się od dzieł,
+  które ma już katalog na ramce, zanim odpowiedzą muzea, a pierwsza
+  strona zestawu jest gotowa od razu (serwer liczy ją razem z kartami
+  i przy kolejnym wejściu nie przelicza całego katalogu od nowa).
+- Przeszukiwanie katalogu jest ok. dwa razy szybsze, a lista kart
+  Odkrywaj jest lżejsza, więc mniej spowalnia zestaw otwierany zaraz po
+  wejściu w zakładkę.
+- Zestaw otwarty ponownie w ciągu pół godziny od razu pokazuje dzieła,
+  które miał, i dociąga dalsze.
+
 ## 1.111.0
 
 - „Użytek prywatny” w Konfiguracji znosi teraz ograniczenia licencji

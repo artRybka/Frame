@@ -93,7 +93,11 @@ class RemoteItem(BaseModel):
 
 
 def remote_items(
-    svc: FrameService, items: list[Item], copies: bool = True, keep_hidden: bool = False
+    svc: FrameService,
+    items: list[Item],
+    copies: bool = True,
+    keep_hidden: bool = False,
+    hidden: Hidden | None = None,
 ) -> list[RemoteItem]:
     """Works found for the app, each once, marked whether the library holds
     them (and whether the owner likes them). With ``copies`` (results from
@@ -103,10 +107,14 @@ def remote_items(
     (``ImageCache.gone``), and so are hidden works and their copies
     ("Ukryj dzieło"), unless ``keep_hidden``; without it also those whose
     thumbnail is not here while its museum turned us away
-    (``ImageCache.thumb_waits``): they would be empty tiles for now."""
+    (``ImageCache.thumb_waits``): they would be empty tiles for now.
+    ``hidden``: :meth:`Library.hidden`, when worked out once for many calls."""
     found: dict[str, RemoteItem] = {}
     gone = svc.images.gone_ids()
-    hidden = Hidden() if keep_hidden else svc.library.hidden()
+    if keep_hidden:
+        hidden = Hidden()
+    elif hidden is None:
+        hidden = svc.library.hidden()
     for item in items:
         if item.id in gone or item in hidden:
             continue
