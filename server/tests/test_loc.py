@@ -16,7 +16,7 @@ from frame_server.library.loc import (
     loc_mirrors,
     person,
 )
-from frame_server.library.museums import Discovery
+from frame_server.library.museums import PRIVATE_LICENCE, Access, Discovery
 from frame_server.library.repo import Library
 from frame_server.library.vocabulary import PHOTOGRAPHY, category_fits, set_aside
 
@@ -85,6 +85,17 @@ def test_restricted_prints_and_captions_are_left_out() -> None:
     stereo = {"medium": ["1 photographic print on stereo card"], "genre": ["Stereographs"]}
     assert loc._map(_result(item=stereo)) is None
     assert loc._map(_result(number_lccn=[], id="http://www.loc.gov/item/fsa1998/PP/")) is None
+
+
+def test_photographs_not_cleared_only_for_private_use() -> None:
+    unknown = _result(item={"rights_advisory": "Rights status not evaluated."})
+    assert LibraryOfCongress(httpx.Client())._map(unknown) is None
+    home = LibraryOfCongress(httpx.Client(), access=Access(private_use=True))
+    work = home._map(unknown)
+    assert work is not None and work.license == PRIVATE_LICENCE
+    assert home._map(_result()).license == "No known restrictions"  # type: ignore[union-attr]
+    # Only a thumbnail outside the library: not even then.
+    assert home._map(_result(access_restricted=True)) is None
 
 
 def test_names_of_photographers() -> None:
