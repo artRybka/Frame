@@ -35,6 +35,7 @@ from .imaging.align import align
 from .imaging.layout import load_image
 from .library import Item, ItemKind, PlaylistRules
 from .library.artists import is_artist
+from .library.cultures import circle
 from .library.images import display_copy
 from .library.models import Note
 from .library.nationality import NATIONALITIES
@@ -72,6 +73,14 @@ SAME_TIME = 10
 SAME_TIME_YEARS = 5
 #: The catalogue's works of those years looked among.
 SAME_TIME_POOL = 300
+#: Of those, from other cultural circles than the work's (Mateusz
+#: 2026-11-06: "przy twórcy europejskim także coś z Azji"); looked for
+#: further either side when the catalogue has none so near.
+OTHER_CIRCLES = 2
+OTHER_CIRCLE_YEARS = 25
+#: Where they stand in the row: the second, seen without scrolling, and
+#: the fifth.
+OTHER_CIRCLE_PLACES = (1, 4)
 #: How often the background picks the day's work and asks for its page.
 TICK_SECONDS = 1800.0
 #: The fragments' pictures ("Detale"): their longer side, and how long kept.
@@ -123,7 +132,8 @@ class Daily:
         job.candidates = self.candidates
         self._lock = threading.Lock()
         self._candidates: dict[str, list[str]] = {}
-        self._same_time: dict[str, list[str]] = {}
+        #: Per work: the ids of its years, and of other circles (``same_time``).
+        self._same_time: dict[str, tuple[list[str], list[str]]] = {}
         self._stop = threading.Event()
         self._cutting = threading.Lock()
         self.details_dir = job.images.thumbs.parent / "details"
@@ -273,52 +283,95 @@ class Daily:
         :data:`SAME_TIME_YEARS` of ``item``, by other artists, each by
         another: from other countries than the work's and one another's
         first, the owner's favourites and the museums' highlights ahead,
-        in an order kept for the work. None of ``skip`` (shown elsewhere
-        on the page); none for a work without a year."""
+        in an order kept for the work. Among them up to
+        :data:`OTHER_CIRCLES` from other cultural circles than the work's
+        (a European's row has something from Asia; Mateusz 2026-11-06),
+        looked for up to :data:`OTHER_CIRCLE_YEARS` either side when
+        nothing nearer is had, and placed where the row is seen without
+        scrolling. None of ``skip`` (shown elsewhere on the page); none for
+        a work without a year."""
         if not item.year:
             return []
         if item.id not in self._same_time:
-            rules = PlaylistRules(
-                kinds=[ItemKind.ARTWORK],
-                year_from=item.year - SAME_TIME_YEARS,
-                year_to=item.year + SAME_TIME_YEARS,
-            )
-            seed = zlib.crc32(item.id.encode())
-            found = self.library.query(rules, sort="random", seed=seed, limit=SAME_TIME_POOL)[1]
-            found.sort(key=lambda i: (not i.favorite, not i.highlight))  # stable
-            self._same_time[item.id] = [i.id for i in found]
+            self._same_time[item.id] = self._same_time_pool(item)
+        near_ids, far_ids = self._same_time[item.id]
         hidden = self.library.hidden()
         skip = skip or set()
-        pool = [
-            other
-            for i in self._same_time[item.id]
-            if (other := self.library.get(i)) is not None
-            and other.id != item.id
-            and other.id not in skip
-            and other.look is None
-            and not other.excluded
-            and other not in hidden
-            and not is_photograph(other)
-            and is_artist(other.artist)
-            and not same_artist(item, other)
-        ]
+
+        def fits(ids: list[str]) -> list[Item]:
+            return [
+                other
+                for i in ids
+                if (other := self.library.get(i)) is not None
+                and other.id != item.id
+                and other.id not in skip
+                and other.look is None
+                and not other.excluded
+                and other not in hidden
+                and not is_photograph(other)
+                and is_artist(other.artist)
+                and not same_artist(item, other)
+            ]
+
+        near_pool, far_pool = fits(near_ids), fits(far_ids)
+        far: list[Item] = []
+        circles: set[str] = set()
+        for strict in (True, False):
+            for other in far_pool:
+                if len(far) == min(OTHER_CIRCLES, SAME_TIME):
+                    break
+                found = circle(other)
+                if (
+                    other in far
+                    or any(same_artist(p, other) for p in far)
+                    or (strict and found in circles)
+                ):
+                    continue
+                far.append(other)
+                circles.add(found or "")
         picked: list[Item] = []
         countries = {c} if (c := country(item)) else set()
+        countries |= {c for p in far if (c := country(p))}
+        wanted = SAME_TIME - len(far)
         for strict in (True, False):
-            for other in pool:
-                if len(picked) == SAME_TIME:
-                    return picked
+            for other in near_pool:
+                if len(picked) == wanted:
+                    break
                 where = country(other)
                 if (
                     other in picked
-                    or any(same_artist(p, other) for p in picked)
+                    or other in far
+                    or any(same_artist(p, other) for p in [*picked, *far])
                     or (strict and (not where or where in countries))
                 ):
                     continue
                 picked.append(other)
                 if where:
                     countries.add(where)
+        for place, other in zip(OTHER_CIRCLE_PLACES, far, strict=False):
+            picked.insert(min(place, len(picked)), other)
         return picked
+
+    def _same_time_pool(self, item: Item) -> tuple[list[str], list[str]]:
+        """The works looked among for ``item``'s "Inni w tym samym czasie":
+        those of its years in an order drawn for it (favourites and
+        highlights ahead), and those of other cultural circles, nearest in
+        time first."""
+        assert item.year is not None
+        rules = PlaylistRules(
+            kinds=[ItemKind.ARTWORK],
+            year_from=item.year - OTHER_CIRCLE_YEARS,
+            year_to=item.year + OTHER_CIRCLE_YEARS,
+        )
+        seed = zlib.crc32(item.id.encode())
+        found = self.library.query(rules, sort="random", seed=seed)[1]
+        found.sort(key=lambda i: (not i.favorite, not i.highlight))  # stable
+        near = [i.id for i in found if abs((i.year or 0) - item.year) <= SAME_TIME_YEARS]
+        # An unknown work's circle: the West's, as most of the catalogue.
+        home = circle(item) or "west"
+        far = [i for i in found if (where := circle(i)) is not None and where != home]
+        far.sort(key=lambda i: _years_apart(i, item))  # stable: the order drawn stays
+        return near[:SAME_TIME_POOL], [i.id for i in far[:SAME_TIME_POOL]]
 
     # -- its page ------------------------------------------------------------
 
@@ -505,6 +558,13 @@ class Daily:
 
     def stop(self) -> None:
         self._stop.set()
+
+
+def _years_apart(item: Item, other: Item) -> int:
+    """How far apart the two were made, in steps of :data:`SAME_TIME_YEARS`
+    beyond the first (the nearer works first, drawn order kept within)."""
+    apart = abs((item.year or 0) - (other.year or 0))
+    return 0 if apart <= SAME_TIME_YEARS else 1 + apart // (2 * SAME_TIME_YEARS)
 
 
 def same_artist(item: Item, other: Item) -> bool:

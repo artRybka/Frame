@@ -14,6 +14,12 @@
 - W Szukaj → Technika (i w edytorze playlist) „Obrazy” nazywają się teraz
   „Malarstwo”. Wybór działa tak samo: dzieła, które muzeum opisuje jako
   malarstwo (olej, tempera i podobne). Zapisane playlisty i wybory zostają.
+- „Inni w tym samym czasie” w Studium dzieła pokazuje też dzieła z innych
+  kręgów kulturowych: przy Europejczyku np. coś z Japonii, Chin, Indii
+  czy Persji. Takie dzieła są dwa z dziesięciu, z dwóch różnych kręgów,
+  i drugie w rzędzie widać od razu, bez przewijania. Gdy w katalogu nie
+  ma nic z tych samych lat, szukamy do 25 lat obok (rok jest pod
+  miniaturą).
 
 ## 1.104.9
 
