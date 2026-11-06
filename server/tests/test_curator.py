@@ -318,7 +318,7 @@ def test_antiquity_is_looked_for_first_while_its_cards_have_no_cover(service) ->
     from frame_server.library.themes import COVER_MIN, thin_searches
 
     searches = thin_searches(service.library)
-    assert ("met", "Facsimile tomb") in searches and ("met", "mummy portrait") in searches
+    assert ("met", "Facsimile tomb") in searches and ("getty", "mummy portrait") in searches
     with service.library.batch():
         for n in range(COVER_MIN):
             service.library.upsert(
@@ -405,3 +405,90 @@ def test_a_museum_page_asked_again_comes_from_memory(service, monkeypatch) -> No
     assert asked == ["Boscoreale wall painting"]
     importer.search("met", "Boscoreale wall painting", page=2)
     assert len(asked) == 2
+
+
+def test_antiquity_from_getty_yale_and_the_v_and_a_fits_its_cards() -> None:
+    """Works dated in words, before Christ at Yale, and the V&A's types."""
+    from frame_server.library.importer import dated
+
+    getty = dated(
+        _work(
+            "getty:1",
+            title="Fresco Fragment",
+            date_text="1st century A.D.",
+            classification="Painting",
+            culture="Roman",
+        )
+    )
+    assert getty.year == 1 and matches(getty, BY_KEY["roman-frescoes"].rules())
+    dura = _work(
+        "yale:2",
+        title="Baptistery wall painting: Christ Walking on Water",
+        year=232,
+        medium="Paint on plaster",
+        classification="Paintings",
+        culture="Syrian, Dura-Europos",
+    )
+    assert matches(dura, BY_KEY["roman-frescoes"].rules())
+    fayum = dated(
+        _work(
+            "vam:3",
+            title="Fayum Mummy Portrait",
+            date_text="4th century",
+            classification="Mummy Portrait",
+            culture="Egypt",
+        )
+    )
+    assert not set_aside(fayum) and matches(fayum, BY_KEY["fayum"].rules())
+    icon = dated(
+        _work(
+            "vam:4",
+            title="Icon of 'Saint Paraskeve'",
+            date_text="16th century with later renovation",
+            classification="Icon",
+            culture="Greece",
+        )
+    )
+    assert matches(icon, BY_KEY["byzantine-icons"].rules())
+    late = dated(
+        _work("vam:5", title="St Gerasimos", date_text="19th century", classification="Icon")
+    )
+    assert not matches(late, BY_KEY["byzantine-icons"].rules())
+
+
+def test_yale_dates_before_christ_are_before_christ() -> None:
+    from frame_server.library.yale import YaleMuseums
+
+    def entry(label: str, value: str) -> dict[str, Any]:
+        return {"label": {"en": [label]}, "value": {"none": [value]}}
+
+    manifest = {
+        "label": {"none": ["Wall painting fragment showing three offering bearers"]},
+        "metadata": [
+            entry("Date", "1401–1391 B.C."),
+            entry("Classification", "Paintings"),
+            entry("Copyright Statement", "Public Domain"),
+        ],
+        "items": [
+            {
+                "width": 3000,
+                "height": 2000,
+                "items": [
+                    {
+                        "items": [
+                            {
+                                "body": {
+                                    "service": [
+                                        {"id": "https://images.collections.yale.edu/iiif/2/x"}
+                                    ]
+                                }
+                            }
+                        ]
+                    }
+                ],
+            }
+        ],
+    }
+    with httpx.Client() as http:
+        item = YaleMuseums(http)._map("yuag:1", manifest)
+    assert item is not None and item.year == -1401

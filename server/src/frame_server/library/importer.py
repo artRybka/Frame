@@ -169,6 +169,16 @@ class Job:
     item_ids: list[str] = field(default_factory=list)
 
 
+def dated(item: Item) -> Item:
+    """``item`` with the year its date in words gives ("1st century A.D.",
+    Getty, V&A, Yale), when its source's reader left none: as an imported
+    work gets it, so that a set of a period (Epoki) keeps it."""
+    if item.year is not None or item.source in OWN_SOURCES or not item.date_text:
+        return item
+    year = text_year(item.date_text)
+    return item if year is None else item.model_copy(update={"year": year})
+
+
 class Importer:
     def __init__(
         self,
@@ -341,7 +351,7 @@ class Importer:
                 total, items = found.search(query, limit=limit, page=page)
             else:
                 total, items = found.search_kind(query, kind, limit=limit, page=page)
-        items = self.without_grey([i for i in items if not is_copy(i)])
+        items = self.without_grey([dated(i) for i in items if not is_copy(i)])
         self.remember(items)
         if items:
             with self._remote_lock:

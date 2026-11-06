@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.110.6
+
+- Więcej antyku w Odkrywaj → Epoki. Karty starożytności pytają też Getty,
+  Yale i V&A, więc we Freskach Rzymu są freski z Pompejów, Boscoreale
+  i Dura-Europos, a w Portretach fajumskich portrety z Getty i Yale.
+  Wcześniej te dzieła odpadały, bo muzea podają ich datę tylko słowami
+  („1st century A.D.”), a Yale zapisywał daty p.n.e. jako naszej ery.
+  Ikony z V&A też już się liczą jako malarstwo.
+
 ## 1.110.5
 
 - Czytelniejsza oś czasu w Szukaj → Epoka: nazwy okresów spoza wybranych
