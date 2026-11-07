@@ -50,10 +50,8 @@ KEPT = (
 )
 #: Results a request: the most the API gives (loc.gov/apis, 2026-11-07).
 PAGE = 1000
-#: Read again after this long.
-REFRESH_SECONDS = 90 * 24 * 3600
-#: The night reads them again this old, before a draw would.
-NIGHT_REFRESH_SECONDS = REFRESH_SECONDS - 36 * 3600
+#: The night reads them again this old.
+NIGHT_REFRESH_SECONDS = 90 * 24 * 3600 - 36 * 3600
 #: After a failed build, the next try waits this long.
 RETRY_SECONDS = 6 * 3600
 #: The fields of a result :meth:`.loc.LibraryOfCongress._map` reads.
@@ -271,29 +269,20 @@ class _Index:
         self._open: dict[Path, tuple[float, LocIndex]] = {}
 
     def get(self, folder: Path) -> LocIndex | None:
-        """The index under ``folder``; None while there is none yet (its
-        first build starts then, in the background). An old one is read
-        again at night (:func:`refresh_at_night`), or behind when the night
-        missed it."""
+        """The index under ``folder``; None while there is none yet. It is
+        built and read again only at night (:func:`refresh_at_night`): built
+        behind a draw, it asked the LoC twice during its block on 2026-11-07
+        and so started the block's hour again."""
         path = index_path(folder)
         if not path.is_file():
-            self._start(path)
             return None
         stamp = path.stat().st_mtime
-        if time.time() - stamp >= REFRESH_SECONDS:
-            self._start(path)
         with self.lock:
             kept = self._open.get(path)
             if kept is None or kept[0] != stamp:  # rebuilt meanwhile
                 kept = (stamp, LocIndex(path))
                 self._open[path] = kept
             return kept[1]
-
-    def _start(self, path: Path) -> None:
-        if self._claim():
-            threading.Thread(
-                target=self._build, args=(path,), name="loc-index", daemon=True
-            ).start()
 
     def _claim(self) -> bool:
         with self.lock:
@@ -320,7 +309,7 @@ class _Index:
 
     def refresh(self, folder: Path, older: float = NIGHT_REFRESH_SECONDS) -> bool:
         """The night's task: the collections read again before the index
-        gets REFRESH_SECONDS old (or for the first time). Whether there is
+        gets three months old (or for the first time). Whether there is
         an index."""
         path = index_path(folder)
         if path.is_file() and time.time() - path.stat().st_mtime < older:

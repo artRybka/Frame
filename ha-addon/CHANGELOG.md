@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.121.4
+
+- Serwer pamięta po aktualizacji, które muzeum go zablokowało i na jak
+  długo, więc nie puka do niego od nowa po restarcie. Muzeum, które blokuje
+  ponownie w ciągu kilku godzin, odpoczywa dwa razy dłużej; Art Institute
+  of Chicago odpoczywa od razu pół godziny.
+- Źródło, które seryjnie odpowiada błędami serwera, dostaje 10 minut
+  przerwy.
+- Kolekcje Library of Congress serwer pobiera do siebie tylko w nocy.
+
 ## 1.121.3
 
 - Zdjęcia: passe-partout zaczyna się od 10 mm, przy wyborze Passe-partout

@@ -30,9 +30,12 @@ from frame_server.library.hosts import (
 from frame_server.library.images import ImageCache
 from frame_server.library.models import Item, ItemKind
 from frame_server.library.museums import ArtInstituteChicago, MetropolitanMuseum
+from frame_server.library.policy import LONG_BLOCKS
 
 AIC_SEARCH = "https://api.artic.edu/api/v1/artworks/search"
 MET_OBJECT = "https://collectionapi.metmuseum.org/public/collection/v1/objects/1"
+#: The AIC's API rests half an hour, not asked meanwhile.
+AIC_REST = LONG_BLOCKS["api.artic.edu"]
 
 CHALLENGE = httpx.Headers(
     {"server": "cloudflare", "cf-mitigated": "challenge", "content-type": "text/html"}
@@ -94,14 +97,19 @@ def test_walled_host_is_left_alone_for_a_while() -> None:
         with pytest.raises(Resting):
             MetropolitanMuseum(http).fetch("1")
         assert sent[-1] == MET_OBJECT
+        # Its rest is long and without a request a minute to see (2026-11-07).
+        clock.now += PROBE_EVERY
+        with pytest.raises(Resting):
+            aic.search("monet")
+        assert len(sent) == 2
         # Still walled after the rest: twice as long a rest.
-        clock.now += REST + 1
+        clock.now += AIC_REST + 1
         with pytest.raises(Resting):
             aic.search("monet")
         assert len(sent) == 3
-        assert guard.resting("api.artic.edu") == pytest.approx(2 * REST)
+        assert guard.resting("api.artic.edu") == pytest.approx(2 * AIC_REST)
         # It answers again: forgotten.
-        clock.now += 2 * REST + 1
+        clock.now += 2 * AIC_REST + 1
         answer[0] = httpx.Response(200, json={"data": [], "pagination": {"total": 0}})
         assert aic.search("monet") == (0, [])
         assert guard.resting("api.artic.edu") == 0

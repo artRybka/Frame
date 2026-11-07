@@ -98,7 +98,9 @@ SOURCES: tuple[Source, ...] = (
         "2026-11-04",
         {
             # 1.2 s, not 1.0: a hair under its 60 a minute, not on it.
-            "api.artic.edu": Host(pace=1.2, limit=1, wall_403=True),
+            # 2026-11-07: let in after a quarter of an hour and turned away
+            # again within minutes, eight times; half an hour, no probes.
+            "api.artic.edu": Host(pace=1.2, limit=1, wall_403=True, long_block=HOUR / 2),
             "www.artic.edu": Host(pace=1.0, limit=1, images=1),
         },
         domains=("artic.edu",),
