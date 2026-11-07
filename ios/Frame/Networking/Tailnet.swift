@@ -8,7 +8,8 @@ import UIKit
 /// own, run by libtailscale inside the app, instead of the Tailscale app and
 /// its VPN. So it needs no other app and works next to another VPN.
 ///
-/// Only requests to the "Spoza domu" address go through it, and only when
+/// Only requests to the server's Tailscale address (`AppModel.remoteURL`,
+/// Konfiguracja → Serwer → Dostęp spoza domu) go through it, and only when
 /// that is a Tailscale address; everything else (the home address, museums)
 /// goes as before. The node joins the tailnet with the household's auth key,
 /// given once by the owner in Konfiguracja and read from the server by every

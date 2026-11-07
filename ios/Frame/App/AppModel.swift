@@ -34,6 +34,9 @@ final class AppModel {
     var serverURL: String
     /// Optional second address used away from home, e.g. the NAS in Tailscale.
     var remoteURL: String
+    /// `remoteURL` as last applied: the field shows "Zapisz adres" while
+    /// they differ.
+    private(set) var savedRemoteURL: String
     var apiToken: String
     var demoMode: Bool
     private(set) var backend: any FrameBackend
@@ -201,6 +204,7 @@ final class AppModel {
         let demo = forcedDemo || Self.serverAddress(url) == nil
         serverURL = url
         remoteURL = remote
+        savedRemoteURL = remote
         apiToken = token
         demoMode = demo
         backend = DemoBackend()
@@ -264,6 +268,7 @@ final class AppModel {
         demoMode = Self.serverAddress(serverURL) == nil
         UserDefaults.standard.set(serverURL, forKey: Keys.serverURL)
         UserDefaults.standard.set(remoteURL, forKey: Keys.remoteURL)
+        savedRemoteURL = remoteURL
         UserDefaults.standard.set(demoMode, forKey: Keys.demoMode)
         KeychainStore.write(Keys.apiToken, value: apiToken)
         connect(demo: demoMode, url: serverURL, remote: remoteURL, token: apiToken)

@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.113.2
+
+- Konfiguracja → Serwer: pole z kropkami ma podpis „Token API”. To
+  hasło, którym aplikacja przedstawia się serwerowi.
+- Adres serwera spoza domu jest teraz w karcie „Dostęp spoza domu”, obok
+  Tailscale, jako „Adres serwera w Tailscale” (zapisuje go „Zapisz adres”).
+  Karta „Serwer ramki” ma już tylko adres w domu, token i „Połącz”.
+
 ## 1.113.1
 
 - Adres MAC ramki nie musi być wpisywany: aplikacja ramki odczytuje go
