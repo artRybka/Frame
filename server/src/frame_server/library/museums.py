@@ -631,6 +631,16 @@ class WikimediaCommons(Museum):
         r"gartenlaube",
         re.IGNORECASE,
     )
+    #: Files described as works of art that are archives' papers and
+    #: diagrams: the US National Archives' scans (forms, reports, dog tags)
+    #: and chemistry (Mateusz 2026-11-07, Szukaj "bednarski"). Words typed
+    #: find them; a chosen category doesn't.
+    not_art = re.compile(
+        r"national archives|\bnara\b|records administration|textual reference|file unit|"
+        r"record group|missing air crew|dog tags?|identification tags?|chemical|chemistry|"
+        r"structural formula|organic synthesis|\bdiagrams?\b|\bcharts?\b|scanned documents",
+        re.IGNORECASE,
+    )
     #: Category queries whose works are not paintings, and what they are.
     category_kinds: ClassVar[dict[str, str]] = {"Drawings": "Drawing", "Prints": "Print"}
     #: Category (``Category:``) and category tree (``deepcat:``) queries of
@@ -642,6 +652,25 @@ class WikimediaCommons(Museum):
     #: …and big enough for the frame (long side; Commons has many 600 px
     #: scans of cabinet cards, 2026-11-07).
     photo_min_side = 1500
+    #: …and not older than photography: prints and caricatures of 1800 come
+    #: with the Library of Congress's photographs (2026-11-07).
+    photo_after = 1839
+    #: Files among photographs that are something else (Library of Congress
+    #: uploads: prints, posters, maps).
+    not_photo = re.compile(
+        r"lithograph|engraving|etching|woodcut|aquatint|mezzotint|cartoon|caricature|"
+        r"poster|drawing|\bmaps?\b",
+        re.IGNORECASE,
+    )
+    #: Old photographs drawn without words (Fotografia alone), taking turns:
+    #: the Library of Congress's uploads (626 000 files, 30 of 50 old,
+    #: public-domain and big) and photographs whose US copyright ran out
+    #: (68 000, 21 of 50); {{Photograph}} alone gave 0 of 50 (checked from
+    #: the home address, 2026-11-07).
+    photo_draws = (
+        'filetype:bitmap hastemplate:"LOC-image"',
+        'filetype:bitmap hastemplate:Photograph hastemplate:"PD-US-expired"',
+    )
     #: How a photograph was made, from its categories and description: the
     #: colour processes are what "Pierwsze kolory" asks for (EARLY_COLOUR).
     processes: ClassVar[tuple[tuple[re.Pattern[str], str], ...]] = (
@@ -704,6 +733,17 @@ class WikimediaCommons(Museum):
             return None
         if classification == "Painting" and self.printed_copy.search(categories):
             return None
+        if not any_year:  # words typed: not a collection someone chose
+            told = " ".join(
+                (
+                    categories,
+                    self._meta(info, "Credit"),
+                    self._meta(info, "Artist"),
+                    str(page.get("title", "")),
+                )
+            )
+            if self.not_art.search(told):
+                return None
         licence = self._meta(info, "LicenseShortName")
         public = "public domain" in licence.casefold() or "cc0" in licence.casefold()
         # Everything on Commons is freely licensed; attribution is kept in
@@ -716,8 +756,10 @@ class WikimediaCommons(Museum):
         medium = ""
         if photo:
             side = max(int(info.get("width") or 0), int(info.get("height") or 0))
-            old = year is not None and year < self.photo_before
+            old = year is not None and self.photo_after <= year < self.photo_before
             if side < self.photo_min_side or not (old or any_year):
+                return None
+            if not any_year and self.not_photo.search(f"{categories} {page.get('title', '')}"):
                 return None
             told = f"{categories} {self._meta(info, 'ImageDescription')}"
             medium = next((m for p, m in self.processes if p.search(told)), "Photograph")
@@ -768,7 +810,36 @@ class WikimediaCommons(Museum):
             return 0, []
         return self.search(query, limit, page)
 
-    def _search(self, query: str, limit: int, page: int, photos: bool) -> tuple[int, list[Item]]:
+    def discover(self, spec: Discovery, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
+        """Old photographs (Fotografia without words): :data:`photo_draws`
+        taking turns page by page; Commons draws nothing else (Mateusz
+        2026-11-07: Fotografia + Wikimedia Commons found 0 works)."""
+        if spec.kind != "photograph" or spec.highlight:
+            return 0, []
+        draw = self.photo_draws[(page - 1) % len(self.photo_draws)]
+        turn = (page - 1) // len(self.photo_draws) + 1
+        words = f"{spec.style.strip()} {draw}".strip()
+        total, items = self._search(words, limit, turn, photos=True, words=words)
+        # Both have far more than a search reaches (10 000).
+        more = total > turn * limit
+        return (len(self.photo_draws) * self.random_depth if more else turn * limit), items
+
+    def random_draw(self, spec: Discovery, rng: random.Random) -> Iterator[Item]:
+        """Pages of :meth:`discover` taken at random, as deep as Commons'
+        search reaches."""
+        if spec.kind != "photograph" or spec.highlight:
+            return
+        size = min(self.page_size, 24)
+        pages = list(range(1, len(self.photo_draws) * self.random_depth // size + 1))
+        rng.shuffle(pages)
+        for page in pages[:40]:
+            _, items = self.discover(spec, limit=size, page=page)
+            rng.shuffle(items)
+            yield from items
+
+    def _search(
+        self, query: str, limit: int, page: int, photos: bool, words: str | None = None
+    ) -> tuple[int, list[Item]]:
         artist_hint = ""
         classification = "Photograph" if photos else "Painting"
         offset = (page - 1) * limit
@@ -778,7 +849,9 @@ class WikimediaCommons(Museum):
                 classification = self.category_kinds.get(by.group(1), classification)
             body = self._category_page(query, limit, offset)
         else:
-            if query.startswith("deepcat:"):  # a category and those under it
+            if words is not None:
+                pass  # asked as it is (:meth:`discover`)
+            elif query.startswith("deepcat:"):  # a category and those under it
                 words = f"{query} filetype:bitmap"
             elif photos:
                 # Files described as photographs ({{Photograph}}): 3.3
