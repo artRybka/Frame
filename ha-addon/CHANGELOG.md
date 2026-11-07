@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.121.6
+
+- Kadr otwiera się płynniej: okienka kadru są widoczne od początku lotu
+  ramki, bez plakietki „Wczytuję podgląd…” w połowie animacji i bez
+  mignięcia podglądu w chwili dotknięcia.
+- Ekran Kadru nie ma już napisu „Kadr” u góry.
+
 ## 1.121.5
 
 - Fotografia w Szukaj sięga też do całej Wikimedia Commons: stare zdjęcia

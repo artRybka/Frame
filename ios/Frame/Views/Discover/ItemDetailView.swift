@@ -26,6 +26,9 @@ struct ItemDetailView: View {
     @State private var loadedPreview: ImageRef?
     @State private var saving = false
     @State private var opened: Opened?
+    /// Cropping's frame has left the preview (`CropScreen.onOpen`): only
+    /// then is the preview hidden under it.
+    @State private var cropAway = false
     /// Where the "Na ramce" preview is on the screen, for cropping to fly from.
     @State private var cropHome: CGRect?
     /// Held open, the preview had grown a touch: the frame starts that size.
@@ -811,8 +814,8 @@ struct ItemDetailView: View {
                     aspectRatio: model.isPortrait ? 9.0 / 16.0 : 16.0 / 9.0,
                     placeholder: item.placeholderColor,
                     onFrame: model.player?.current?.item?.id == item.id,
-                    draft: $draft, save: saveFromCropScreen, home: cropHome,
-                    onClose: { opened = nil }, homeGrow: cropGrow
+                    draft: $draft, save: saveFromCropScreen, home: cropHome, previewLoaded: loadedPreview,
+                    onOpen: { cropAway = true }, onClose: { opened = nil }, homeGrow: cropGrow
                 )
             }
         }
@@ -839,11 +842,14 @@ struct ItemDetailView: View {
             }
         }
         // Under the crop screen's frame while it is open: that one flies.
-        .opacity(opened == .crop ? 0 : 1)
+        .opacity(opened == .crop && cropAway ? 0 : 1)
         // Tap or hold (the phone taps closer and closer), like the picture.
         .picturePress(enabled: cropping) { held in
             cropGrow = held ? PressHold.pictureGrow : 1
-            CropScreen.present { opened = .crop }
+            CropScreen.present {
+                cropAway = false
+                opened = .crop
+            }
         }
         // Cropping's frame comes out of it and goes back onto it. Out here,
         // so the place is the preview's own, not grown by the press.
