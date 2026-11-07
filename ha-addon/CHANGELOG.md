@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.114.0
+
+- Serwer szuka dzieł Met we własnym katalogu na NAS-ie: raz w miesiącu
+  pobiera otwarty spis zbiorów Met (ok. 340 MB, 260 tys. dzieł z domeny
+  publicznej) i przeszukuje go w kilka milisekund, zamiast pytać
+  wyszukiwarkę Met. Met dostaje już tylko pytania o znalezione dzieła.
+- Gdy spis znajduje mało dzieł, serwer pyta wyszukiwarkę Met jak dawniej,
+  ale pomija dzieła, które według spisu nie są w domenie publicznej (np.
+  dla „Monet” żadne z pierwszych ośmiu wyników nie było).
+
 ## 1.113.5
 
 - Serwer pamięta opisy dzieł z Met i pyta o każde dzieło tylko raz na 90
