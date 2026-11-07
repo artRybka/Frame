@@ -1,14 +1,25 @@
 """The Met's open data, searched at home.
 
 The Met publishes its whole collection as one CSV file (CC0, ~340 MB,
-github.com/metmuseum/openaccess). The server reads it once a month,
-keeps the public-domain works' texts in an SQLite full-text index under
-the data folder and searches that instead of the Met's search API: a
+github.com/metmuseum/openaccess). The server asks for it every three months
+and reads it only when it changed (the file's ETag, a hash of its content:
+304 otherwise; Mateusz 2026-11-07: less often, less data), keeps the
+public-domain works' texts in an SQLite full-text index (92 MB) under the
+data folder and searches that instead of the Met's search API: a
 search costs the Met nothing and takes milliseconds instead of seconds
 (Mateusz 2026-11-07, after the Met's bot wall turned the home address
 away). The file has no pictures: each work found is still asked of the
 Met once (``/v1/objects/<id>``, kept by :mod:`.met_objects`), and works
-that turn out to have no picture are left out of the next searches.
+that turn out to have no picture are left out of the next searches, also
+after the index is built again.
+
+The file has no changes of its own to fetch: the Met API's ``metadataDate``
+lists the works changed since a day (2896 in our four departments in a
+month, 2026-11-07), but asking each of them would be thousands of requests a
+month to the API whose bot wall turned us away; the file costs the Met
+nothing. Works the Met adds reach the index within three months; the words
+the index knows too few works for still go to the Met's own search
+(``MET_LOCAL_MIN``).
 """
 
 from __future__ import annotations
@@ -29,8 +40,8 @@ import httpx
 log = logging.getLogger(__name__)
 
 URL = "https://media.githubusercontent.com/media/metmuseum/openaccess/master/MetObjects.csv"
-#: Read again after this long (the file changes a little every few days).
-REFRESH_SECONDS = 30 * 24 * 3600
+#: Asked for again after this long (and read only when it changed).
+REFRESH_SECONDS = 90 * 24 * 3600
 #: After a failed build, the next try waits this long.
 RETRY_SECONDS = 6 * 3600
 #: The night reads the file again this old, before a search would.
@@ -76,17 +87,35 @@ def _year(text: str) -> int | None:
     return int(text) if re.fullmatch(r"-?\d+", text) else None
 
 
-def _rows(http: httpx.Client) -> Iterator[dict[str, str]]:
-    """The file's rows, read as they arrive."""
-    with http.stream("GET", URL, timeout=300) as resp:
+class Unchanged(Exception):
+    """The file is the one the index was built from (304)."""
+
+
+def _rows(
+    http: httpx.Client, etag: str = "", seen: dict[str, str] | None = None
+) -> Iterator[dict[str, str]]:
+    """The file's rows, read as they arrive; :class:`Unchanged` when it is
+    still the one of ``etag``. Its new ETag goes to ``seen``."""
+    headers = {"If-None-Match": etag} if etag else {}
+    with http.stream("GET", URL, headers=headers, timeout=300) as resp:
+        if resp.status_code == 304:
+            raise Unchanged
         resp.raise_for_status()
+        if seen is not None:
+            seen["etag"] = resp.headers.get("etag", "")
         resp.encoding = "utf-8-sig"
         yield from csv.DictReader(resp.iter_lines())
 
 
+def etag_path(path: Path) -> Path:
+    """Where the ETag of the file ``path`` was built from is kept."""
+    return path.with_suffix(".etag")
+
+
 def build(path: Path, rows: Iterator[dict[str, str]]) -> int:
     """The index of the public-domain works of ``rows`` written to
-    ``path``; returns how many works it holds."""
+    ``path``; returns how many works it holds. Works the index there now
+    knows to have no picture keep that mark."""
     csv.field_size_limit(1 << 24)
     tmp = path.with_suffix(".tmp")
     tmp.unlink(missing_ok=True)
@@ -141,8 +170,30 @@ def build(path: Path, rows: Iterator[dict[str, str]]) -> int:
         count += len(works)
         flush()
         db.execute("INSERT INTO texts (texts) VALUES ('optimize')")
+        db.commit()
+        if path.is_file():
+            _carry_marks(db, path)
     os.replace(tmp, path)
     return count
+
+
+def _carry_marks(db: sqlite3.Connection, old: Path) -> None:
+    """The works ``old`` knows to have no picture, marked in ``db`` too: the
+    Met is not asked about them again after a rebuild."""
+    try:
+        db.execute("ATTACH DATABASE ? AS old", (str(old),))
+    except sqlite3.Error as err:
+        log.warning("met: marks of the old index not carried over: %s", err)
+        return
+    try:
+        db.execute(
+            "UPDATE works SET picture = 0 WHERE id IN (SELECT id FROM old.works WHERE picture = 0)"
+        )
+        db.commit()
+    except sqlite3.Error as err:
+        log.warning("met: marks of the old index not carried over: %s", err)
+    finally:
+        db.execute("DETACH DATABASE old")
 
 
 def match(words: str) -> str:
@@ -279,9 +330,17 @@ class _Index:
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
             started = time.monotonic()
+            etag_file = etag_path(path)
+            etag = etag_file.read_text().strip() if path.is_file() and etag_file.is_file() else ""
+            seen: dict[str, str] = {}
             with client() as http:
-                count = build(path, _rows(http))
+                count = build(path, _rows(http, etag, seen))
+            etag_file.write_text(seen.get("etag", ""))
             log.info("met: %d works indexed in %.0f s", count, time.monotonic() - started)
+        except Unchanged:
+            path.with_suffix(".tmp").unlink(missing_ok=True)
+            os.utime(path)  # fresh for another REFRESH_SECONDS
+            log.info("met: the open data has not changed; the index stays")
         except Exception:
             log.exception("met: building the index failed")
             self.failed_at = time.time()
@@ -289,9 +348,9 @@ class _Index:
             self.building = False
 
     def refresh(self, folder: Path, older: float = NIGHT_REFRESH_SECONDS) -> bool:
-        """The night's task: the file read again before it gets a month
-        old (or for the first time), so that it never falls on a search.
-        Whether it was built."""
+        """The night's task: the file asked for again before the index gets
+        REFRESH_SECONDS old (or for the first time), so that it never falls
+        on a search; read only when it changed. Whether there is an index."""
         path = index_path(folder)
         if path.is_file() and time.time() - path.stat().st_mtime < older:
             return False

@@ -10,12 +10,12 @@ picture) is asked :func:`urgently`: it takes the next free turn at a host
 before the background's requests still waiting (imports, sharper copies),
 which can be dozens at the AIC's one request a second.
 
-Each source's own rules for programs (checked 2026-11-04, PLAN 3.3m3) set
-the numbers below: the AIC's API docs ("Scraping Images", 60 requests a
-minute, one picture at a time), Wikimedia's robot policy (the wikis' Action
-API one request at a time and below five a second for all wikis together,
-media at most two at a time), WikiArt's free package (four a second, 400 an
-hour) and everyone's ``Retry-After`` on a 429.
+The numbers come from each source's own rules for programs, gathered in
+:mod:`.policy`: paces, how many at once, fixed blocks, and quotas over an
+hour or a day (Paris Musées, the Smithsonian, Openverse, WikiArt), of which
+the background leaves a share for what the owner waits for. Everyone's
+``Retry-After`` on a 429 is kept to. Once a day the log says how many
+requests went to each host and how many were turned away.
 """
 
 from __future__ import annotations
@@ -23,25 +23,33 @@ from __future__ import annotations
 import contextlib
 import heapq
 import itertools
+import json
 import logging
+import os
 import threading
 import time
+from collections import deque
 from collections.abc import Callable, Iterator
 from email.utils import parsedate_to_datetime
+from pathlib import Path
 from typing import Any
 
 import httpx
 
-log = logging.getLogger(__name__)
+from .policy import (
+    BUDGETS,
+    DEFAULT_LIMIT,
+    LIMITS,
+    LONG_BLOCKS,
+    MEDIA_HOSTS,
+    PACE,
+    WIKIMEDIA,
+    WIKIMEDIA_HOSTS,
+    WIKIMEDIA_MEDIA,
+    Budget,
+)
 
-#: The Wikimedia wikis' API, counted as one host: Wikimedia limits programs
-#: without an account across all wikis together (its robot policy).
-WIKIMEDIA = "wikimedia-api"
-WIKIMEDIA_HOSTS = frozenset({"commons.wikimedia.org", "www.wikidata.org", "meta.wikimedia.org"})
-#: Wikimedia's media files, counted as one host: originals come from
-#: upload.wikimedia.org, Special:FilePath's renditions from thumb.wikimedia.org.
-WIKIMEDIA_MEDIA = "wikimedia-media"
-MEDIA_HOSTS = frozenset({"upload.wikimedia.org", "thumb.wikimedia.org"})
+log = logging.getLogger(__name__)
 
 
 def lane(host: str) -> str:
@@ -55,60 +63,6 @@ def lane(host: str) -> str:
     return host
 
 
-#: The hosts asked in bulk (or :func:`lane`), and the least time between two
-#: requests to one, in seconds. The AIC API asks for at most 60 requests a
-#: minute; the Met for at most 80 a second; Wikimedia for below 5 a second;
-#: WikiArt's free keys take 400 an hour. The Met's pace is a guess well below
-#: what its bot wall took offence at.
-PACE = {
-    "api.artic.edu": 1.0,
-    # Its IIIF server: one picture at a time, a second apart, as the AIC's
-    # API docs ask ("Scraping Images"; one at a time: LIMITS).
-    "www.artic.edu": 1.0,
-    "collectionapi.metmuseum.org": 0.25,
-    "images.metmuseum.org": 0.25,
-    # Commons searches, Wikidata facts, Wikipedia intros: all one lane.
-    WIKIMEDIA: 0.25,
-    "www.wikiart.org": 1.0,
-    # Place names of photos: "an absolute maximum of 1 request per second"
-    # (its usage policy).
-    "nominatim.openstreetmap.org": 1.0,
-    # No published rules and no API: its paintings' pages and pictures
-    # gently (library/courtauld.py).
-    "gallerycollections.courtauld.ac.uk": 0.5,
-    # No published rules (a bot wall on its search pages): entries (JSON) and
-    # photographs gently, as from the Courtauld (library/louvre.py).
-    "collections.louvre.fr": 0.5,
-    # loc.gov/apis "Working within limits" (read again 2026-11-07, after a
-    # "403 challenge" for the home address): the JSON API 20 requests a
-    # minute, image and storage services 150 a minute, else an hour's
-    # block. The pace of 1 s and 0.25 s kept to an older reading (20 in
-    # 10 s, 80 a minute) that the page no longer says.
-    "www.loc.gov": 3.5,
-    "tile.loc.gov": 0.5,
-    # No published rules; the site's own search, gently.
-    "www.getty.edu": 0.5,
-}
-#: The most requests under way at once to a host (or :func:`lane`), where
-#: its owners ask for fewer than the server's threads would send. Only
-#: clients made by :meth:`HostGuard.client` keep to it.
-LIMITS = {
-    # "Avoid running multiple scrapers in parallel"; one picture at a time.
-    "api.artic.edu": 1,
-    "www.artic.edu": 1,
-    # Unauthenticated clients: one request at a time to the Action API, at
-    # most two downloads at a time of media files.
-    WIKIMEDIA: 1,
-    WIKIMEDIA_MEDIA: 2,
-    "nominatim.openstreetmap.org": 1,
-    "gallerycollections.courtauld.ac.uk": 2,
-    "collections.louvre.fr": 2,
-    "www.loc.gov": 1,
-    # One at a time: its search pages are a request a work, and several sets
-    # asked at once came to hundreds a minute, which its bot wall (Imperva)
-    # turned away (2026-11-07).
-    "collectionapi.metmuseum.org": 1,
-}
 #: The longest a host's ``Retry-After`` (on a 429) is kept to: api.data.gov
 #: blocks a key for an hour; longer waits are taken as an hour too.
 THROTTLED_MAX = 3600.0
@@ -116,11 +70,6 @@ THROTTLED_MAX = 3600.0
 #: still does, up to REST_MAX, and forgotten once it answers again.
 REST = 15 * 60.0
 REST_MAX = 4 * 3600.0
-#: Hosts whose block lasts a fixed time (loc.gov: an hour; under load it
-#: may answer 429 or a CAPTCHA page even below its rates): rested that long
-#: at once, also after a 429 without Retry-After, and not looked at once a
-#: minute meanwhile (a request during a block may start its count again).
-LONG_BLOCKS: dict[str, float] = {"www.loc.gov": 3600.0}
 #: While a host rests, one request this often still goes, to see whether it
 #: answers again: a wall that challenged one kind of request (a full-size
 #: original) or forgot us early lets the pictures through at once instead
@@ -186,6 +135,18 @@ class Resting(httpx.TransportError):
     worth trying again later."""
 
 
+class OverBudget(Resting):
+    """The host's quota for the hour or the day is spent (for the background,
+    its share of it): asked again once older requests fall out of the window."""
+
+
+#: Quotas spent are written down at most this often (seconds), so that a
+#: restart does not start them afresh.
+BUDGET_SAVE_EVERY = 30.0
+#: A spent quota is told in the log at most this often per host (seconds).
+BUDGET_LOG_EVERY = 600.0
+
+
 def walled(resp: httpx.Response) -> bool:
     """Whether a 403 is a bot wall's (Cloudflare's challenge or block page,
     Imperva's), not the server's own answer (the AIC's IIIF server says 403
@@ -223,12 +184,30 @@ class GuardedClient(httpx.Client):
 
 class HostGuard:
     def __init__(
-        self, pace: dict[str, float] | None = None, limits: dict[str, int] | None = None
+        self,
+        pace: dict[str, float] | None = None,
+        limits: dict[str, int] | None = None,
+        default_limit: int | None = None,
+        budgets: dict[str, Budget] | None = None,
     ) -> None:
         self.pace = PACE if pace is None else pace
         self.limits = LIMITS if limits is None else limits
+        #: Requests at once to a host without a limit of its own.
+        self.default_limit = default_limit
+        self.budgets: dict[str, Budget] = {} if budgets is None else budgets
         self.clock: Callable[[], float] = time.monotonic
         self.sleep: Callable[[float], None] = time.sleep
+        #: The time of day of quotas (they outlive a restart) and of the tally.
+        self.wall: Callable[[], float] = time.time
+        #: When each counted request of a quota went (by host).
+        self._spent: dict[str, deque[float]] = {}
+        self._budget_file: Path | None = None
+        self._budget_saved = 0.0
+        self._budget_told: dict[str, float] = {}
+        #: Today's requests by host: sent, walled, throttled (429), refused
+        #: while resting or over quota, bytes.
+        self._tally: dict[str, list[int]] = {}
+        self._tally_day = ""
         self._lock = threading.Lock()
         #: When the next request to a host may go (by host).
         self._next: dict[str, float] = {}
@@ -266,16 +245,28 @@ class HostGuard:
 
     def before(self, request: httpx.Request) -> None:
         host = request.url.host
+        try:
+            self._before(request, host)
+        except Resting:
+            self._count(host, refused=1)
+            raise
+
+    def _before(self, request: httpx.Request, host: str) -> None:
         wait = self._left(host)
         if wait:
             raise Resting(
                 f"{host} turned us away; not asked for {wait / 60:.0f} min", request=request
             )
+        self._spend(host, request)
         probe = self.resting(host) > 0
         key = lane(host)
         pace = self.pace.get(key, 0.0)
         held = getattr(_held, "lanes", None)
-        limit = self.limits.get(key) if held is not None and key not in held else None
+        limit = (
+            self.limits.get(key, self.default_limit)
+            if held is not None and key not in held
+            else None
+        )
         if not pace and not limit:
             return
         self._turn(key, pace, limit)
@@ -286,6 +277,139 @@ class HostGuard:
         if wait:  # walled while this one waited its turn
             raise Resting(
                 f"{host} turned us away; not asked for {wait / 60:.0f} min", request=request
+            )
+
+    # -- quotas ----------------------------------------------------------------
+
+    def keep_budgets(self, path: Path) -> None:
+        """Quotas spent are written to ``path`` (and read from it now), so
+        that a restart does not start them afresh."""
+        self._budget_file = path
+        try:
+            saved = json.loads(path.read_text())
+        except (OSError, ValueError):
+            return
+        now = self.wall()
+        with self._lock:
+            for host, times in saved.items():
+                budget = self.budgets.get(host)
+                if budget is None or not isinstance(times, list):
+                    continue
+                kept = sorted(float(t) for t in times if now - float(t) < budget.window)
+                self._spent[host] = deque(kept)
+
+    def spent(self, host: str) -> int:
+        """Requests to ``host`` counted against its quota's window now."""
+        budget = self.budgets.get(host)
+        if budget is None:
+            return 0
+        now = self.wall()
+        with self._lock:
+            times = self._spent.get(host, deque())
+            return sum(1 for t in times if t > now - budget.window)
+
+    def _spend(self, host: str, request: httpx.Request) -> None:
+        """Counts this request against ``host``'s quota, or refuses it when
+        the quota (the background's share of it) is spent."""
+        budget = self.budgets.get(host)
+        if budget is None:
+            return
+        if budget.anonymous_only and "authorization" in request.headers:
+            return
+        now = self.wall()
+        allowed = budget.count if is_urgent() else budget.background
+        with self._lock:
+            times = self._spent.setdefault(host, deque())
+            while times and times[0] <= now - budget.window:
+                times.popleft()
+            over = len(times) >= allowed
+            if over:
+                # One more fits when the oldest of the last ``allowed`` falls out.
+                wait = times[len(times) - allowed] + budget.window - now if allowed else 0.0
+                tell = now - self._budget_told.get(host, 0.0) >= BUDGET_LOG_EVERY
+                if tell:
+                    self._budget_told[host] = now
+            else:
+                times.append(now)
+            snapshot = None
+            if self._budget_file is not None and now - self._budget_saved >= BUDGET_SAVE_EVERY:
+                self._budget_saved = now
+                snapshot = {h: list(t) for h, t in self._spent.items()}
+        if snapshot is not None:
+            self._save_budgets(snapshot)
+        if over:
+            who = "" if is_urgent() else "the background's share of "
+            if tell:
+                log.warning(
+                    "%s: %s%d requests in %.0f h spent; not asked for %.0f min",
+                    host,
+                    who,
+                    allowed,
+                    budget.window / 3600,
+                    wait / 60,
+                )
+            raise OverBudget(f"{host}: {who}its quota is spent", request=request)
+
+    def _save_budgets(self, snapshot: dict[str, list[float]]) -> None:
+        path = self._budget_file
+        if path is None:
+            return
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = path.with_suffix(".tmp")
+            tmp.write_text(json.dumps(snapshot))
+            os.replace(tmp, path)
+        except OSError as err:
+            log.warning("quotas not written to %s: %s", path, err)
+
+    # -- the day's tally -----------------------------------------------------
+
+    def _count(
+        self,
+        host: str,
+        sent: int = 0,
+        walls: int = 0,
+        throttled: int = 0,
+        refused: int = 0,
+        size: int = 0,
+    ) -> None:
+        day = time.strftime("%Y-%m-%d", time.localtime(self.wall()))
+        with self._lock:
+            done: dict[str, list[int]] = {}
+            gone = self._tally_day
+            if day != self._tally_day:
+                done, self._tally = self._tally, {}
+                self._tally_day = day
+            row = self._tally.setdefault(host, [0, 0, 0, 0, 0])
+            for n, value in enumerate((sent, walls, throttled, refused, size)):
+                row[n] += value
+        if done:
+            self._tell(gone, done)
+
+    def tally(self) -> dict[str, dict[str, int]]:
+        """Today's requests by host (for the log and the debug API)."""
+        with self._lock:
+            return {
+                host: dict(
+                    zip(("sent", "walled", "throttled", "refused", "bytes"), row, strict=True)
+                )
+                for host, row in self._tally.items()
+            }
+
+    @staticmethod
+    def _tell(day: str, tally: dict[str, list[int]]) -> None:
+        for host, (sent, walls, throttled, refused, size) in sorted(
+            tally.items(), key=lambda kv: -kv[1][0]
+        ):
+            log.info(
+                "hosts %s: %s %d sent, %d walled, %d throttled, %d refused, %.1f MB",
+                day,
+                host,
+                sent,
+                walls,
+                throttled,
+                refused,
+                size / 1e6,
             )
 
     def release(self, key: str) -> None:
@@ -338,6 +462,17 @@ class HostGuard:
 
     def after(self, response: httpx.Response) -> None:
         host = response.request.url.host
+        try:
+            size = int(response.headers.get("content-length") or 0)
+        except ValueError:
+            size = 0
+        self._count(
+            host,
+            sent=1,
+            walls=int(walled(response)),
+            throttled=int(response.status_code == 429),
+            size=size,
+        )
         key = lane(host)
         held = getattr(_held, "lanes", None)
         if held and key in held:
@@ -392,4 +527,4 @@ class HostGuard:
 
 
 #: Shared by every client of the process: the museums see one address.
-guard = HostGuard()
+guard = HostGuard(default_limit=DEFAULT_LIMIT, budgets=BUDGETS)

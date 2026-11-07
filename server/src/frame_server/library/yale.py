@@ -21,10 +21,15 @@ from .dates import text_year
 from .hosts import Resting, as_asked
 from .models import Item
 from .museums import Discovery, Museum
+from .records import Records, records
 
 MANIFESTS = "https://manifests.collections.yale.edu"
 #: Collections whose works are taken (LUX also holds books and specimens).
 MUSEUMS = ("ycba", "yuag")
+#: LUX object records, by their address: the manifest path each names (kept
+#: a year: it does not change), so a page of results is one request.
+LUX_RECORDS = "yale-lux"
+PATH_DAYS = 365
 
 
 class YaleMuseums(Museum):
@@ -125,14 +130,26 @@ class YaleMuseums(Museum):
         item = super()._item(source_id, **fields)
         return item.model_copy(update={"museum": museum})
 
+    def _kept(self) -> Records | None:
+        return records(self.access.data_dir) if self.access.data_dir else None
+
     def _manifest(self, record: str) -> str | None:
-        """The manifest path (``ycba/obj/34``) of a LUX object record."""
+        """The manifest path (``ycba/obj/34``) of a LUX object record; which
+        manifest a record names does not change (library/records.py)."""
+        kept = self._kept()
+        if kept is not None:
+            known, path = kept.get(LUX_RECORDS, record, days=PATH_DAYS)
+            if known:
+                return str(path) if path else None
         resp = self.http.get(record)
         if resp.status_code == 404:
             return None
         resp.raise_for_status()
         found = re.search(rf"{MANIFESTS}/(?:v\d/)?((?:{'|'.join(MUSEUMS)})/obj/\d+)", resp.text)
-        return found.group(1) if found else None
+        path = found.group(1) if found else ""
+        if kept is not None:
+            kept.put(LUX_RECORDS, record, path)
+        return path or None
 
     def _one(self, record: str) -> Item | None:
         path = self._manifest(record)
@@ -194,8 +211,18 @@ class YaleMuseums(Museum):
         museum, _, number = source_id.partition("-")
         if museum not in MUSEUMS or not number.isdigit():
             return None
+        kept = self._kept()
+        if kept is not None:
+            found, manifest = kept.get(self.key, source_id)
+            if found:
+                return None if manifest is None else self._map(source_id, manifest)
         resp = self.http.get(f"{MANIFESTS}/{museum}/obj/{number}")
         if resp.status_code == 404:
+            if kept is not None:
+                kept.put(self.key, source_id, None)
             return None
         resp.raise_for_status()
-        return self._map(source_id, resp.json())
+        manifest = resp.json()
+        if kept is not None and isinstance(manifest, dict):
+            kept.put(self.key, source_id, manifest)
+        return self._map(source_id, manifest)
