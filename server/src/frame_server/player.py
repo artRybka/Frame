@@ -1136,6 +1136,13 @@ class Player:
         if settings.scheduler and settings.catalogue_mb:
             self.service.importer.keep_searched(items, room=self.other_art_room(), found=found)
 
+    def keep_spare(self, items: Iterable[Item]) -> None:
+        """Works a search brought but did not show join the catalogue too,
+        after the shown ones (:meth:`Importer.keep_spare`)."""
+        settings = self.service.settings
+        if settings.scheduler and settings.catalogue_mb:
+            self.service.importer.keep_spare(items, room=self.other_art_room())
+
     def _catalogue_works(self) -> list[Item]:
         """The works the server picked (``pooled``), excluded ones too."""
         return [i for i in self.library.query(include_excluded=True)[1] if i.pooled]

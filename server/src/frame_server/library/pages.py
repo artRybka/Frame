@@ -45,8 +45,10 @@ PAGES_VERSION = "2"
 #: pictures, what is left out), so that its kept pages are asked again.
 #: Museums not named read as "1".
 READINGS: dict[str, str] = {
-    # 2026-11-07: old photographs (Fotografia, photo categories).
-    "wmc": "2",
+    # 2026-11-07: old photographs (Fotografia, photo categories); 3: the
+    # artist's visible name only ("Nieznany", not "NieznanyUnknown author");
+    # 4: archive papers and chemical diagrams left out.
+    "wmc": "4",
 }
 
 

@@ -1,5 +1,35 @@
 # Changelog
 
+## 1.122.0
+
+- Dzieła, które muzea przyniosły w Szukaj, ale nie pasowały do wyboru
+  (inny kolor, inne lata albo epoka, tagi, technika, inny autor), trafiają
+  do katalogu, jeśli ich miniatura jest już na serwerze. Nie kosztuje to
+  żadnego dodatkowego zapytania do muzeów, a katalog rośnie z tego, o co
+  i tak pytaliśmy. Dzieła pokazane w Szukaj idą do katalogu pierwsze.
+
+## 1.121.8
+
+- „Kopie dzieła” znowu pytają wszystkie źródła. Od 1.121.0 szukanie stawało
+  na 3/20: muzea w sieci czekały, aż przestaniesz używać aplikacji, a po
+  20 s wszystkie zgłaszały brak odpowiedzi.
+- Szukaj, Odkrywaj i kopie nie czekają już na tę samą stronę wyników, którą
+  akurat pobiera praca w tle.
+
+## 1.121.7
+
+- Fotografia z Wikimedia Commons działa też bez wpisanych słów: serwer
+  losuje stare zdjęcia (m.in. z zasobów Library of Congress na Commons),
+  bez rycin, plakatów i map.
+- Szukanie w Wikimedia Commons pomija skany dokumentów z archiwów
+  (formularze, nieśmiertelniki) i diagramy chemiczne.
+- Miniatury w Szukaj nie zostają już puste: gdy serwer pobierał tę samą
+  miniaturę w tle i czekał, aż przestaniesz korzystać z aplikacji, kafelek
+  czekał razem z nim. Teraz po chwili serwer pobiera ją od razu dla
+  aplikacji. To samo dotyczy obrazu na karcie dzieła.
+- Zdjęcia z Wikimedia Commons bez znanego autora mają podpis „Nieznany”
+  zamiast „NieznanyUnknown author”; zapisane wcześniej dzieła są poprawione.
+
 ## 1.121.6
 
 - Kadr otwiera się płynniej: okienka kadru są widoczne od początku lotu

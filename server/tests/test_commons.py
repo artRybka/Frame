@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import random
+
 import httpx
 
 from frame_server.library import Item, Library
@@ -247,6 +249,52 @@ def test_wikimedia_file_without_a_title_is_named_without_the_artist() -> None:
     assert (item.title, item.artist, item.year) == ("Skapiec", "Tadeusz Makowski", 1932)
 
 
+def test_wikimedia_unknown_author_shows_only_the_visible_name() -> None:
+    """{{Unknown|author}} hides its English name next to the Polish one:
+    "NieznanyUnknown author" on the tile (Mateusz 2026-11-07)."""
+    page = {
+        "pageid": 12,
+        "title": "File:Kraków, most Krakusa, finalny widok ogólny.jpg",
+        "imageinfo": [
+            {
+                "url": "https://upload/full.jpg",
+                "width": 1500,
+                "height": 574,
+                "extmetadata": {
+                    "Artist": {
+                        "value": '<div class="fn value">\nNieznany'
+                        '<span style="display: none;">Unknown author</span></div>'
+                    },
+                    "DateTimeOriginal": {"value": "1913"},
+                    "LicenseShortName": {"value": "Public domain"},
+                },
+            }
+        ],
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"query": {"pages": {"12": page}}})
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http:
+        _, items = WikimediaCommons(http).search_kind("kraków", "photograph")
+    assert items[0].artist == "Nieznany"
+
+
+def test_glued_unknown_artists_kept_before_are_repaired(tmp_path) -> None:
+    lib = Library(tmp_path / "lib.db")
+    lib.upsert(Item(id="wmc:20", source="wmc", source_id="20", artist="NieznanyUnknown author"))
+    lib.upsert(Item(id="wmc:21", source="wmc", source_id="21", artist="AnonimowyAnonymous"))
+    lib.upsert(Item(id="wmc:22", source="wmc", source_id="22", artist="Unknown author"))
+    lib.upsert(Item(id="met:20", source="met", source_id="20", artist="NieznanyUnknown author"))
+    repair_library(lib)
+    assert [lib.get(i).artist for i in ("wmc:20", "wmc:21", "wmc:22", "met:20")] == [
+        "Nieznany",
+        "Anonimowy",
+        "Unknown author",
+        "NieznanyUnknown author",
+    ]
+
+
 def test_repair_stored_items(tmp_path) -> None:
     lib = Library(tmp_path / "lib.db")
     broken = Item(
@@ -390,6 +438,41 @@ def test_wikimedia_search_leaves_photographs_out() -> None:
         _, items = WikimediaCommons(http).search("sea")
     assert [i.title for i in items] == ["Work 1"]
     assert "hastemplate:Artwork" in sent[0].url.params["gsrsearch"]
+
+
+def test_wikimedia_search_leaves_archives_papers_and_diagrams_out() -> None:
+    """Szukaj "bednarski" showed the US National Archives' scanned forms,
+    a dog tag and a chemical synthesis (Mateusz 2026-11-07)."""
+
+    def page(n: int, categories: str, credit: str = "") -> dict:
+        info = {
+            "url": f"https://upload/{n}.jpg",
+            "extmetadata": {
+                "ObjectName": {"value": f"Work {n}"},
+                "LicenseShortName": {"value": "Public domain"},
+                "Categories": {"value": categories},
+                "Credit": {"value": credit},
+            },
+        }
+        return {"pageid": n, "title": f"File:{n}.jpg", "imageinfo": [info]}
+
+    pages = {
+        "1": page(1, "Paintings by Kazimierz Bednarski|Portraits"),
+        "2": page(2, "Missing Air Crew Reports", "National Archives and Records Administration"),
+        "3": page(3, "Files from the National Archives at College Park - Textual Reference"),
+        "4": page(4, "Dog tags|World War II"),
+        "5": page(5, "Organic synthesis|Chemical diagrams"),
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"query": {"pages": pages}})
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http:
+        _, items = WikimediaCommons(http).search("bednarski")
+        # A chosen collection is taken as it is.
+        _, chosen = WikimediaCommons(http).search("Category:Dog tags")
+    assert [i.title for i in items] == ["Work 1"]
+    assert len(chosen) == 5
 
 
 def test_wikimedia_leaves_printed_copies_of_paintings_out() -> None:
@@ -611,3 +694,40 @@ def test_photo_categories_are_read_as_photographs() -> None:
         # A photograph shown in a search is found again by its id.
         assert commons.fetch("1") is not None
         assert commons.fetch("1").classification == "Photograph"
+
+
+def test_old_photographs_are_drawn_without_words() -> None:
+    """Fotografia with Wikimedia Commons alone found nothing (Mateusz
+    2026-11-07): Commons draws old photographs too, from the Library of
+    Congress's uploads and photographs whose US copyright ran out, without
+    the prints and posters among them."""
+    from frame_server.library.museums import Discovery
+
+    pages = {
+        "1": _photo(1, "1862", categories="Civil War photographs"),
+        "2": _photo(2, "1801", categories="Political cartoons"),
+        "3": _photo(3, "1910", categories="Lithographs in the Library of Congress"),
+        "4": _photo(4, "1910", categories="National Child Labor Committee"),
+    }
+    sent: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        sent.append(request)
+        return httpx.Response(200, json={"query": {"pages": pages}, "continue": {}})
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http:
+        commons = WikimediaCommons(http)
+        photos = Discovery(kind="photograph")
+        total, items = commons.discover(photos, limit=24, page=1)
+        assert [i.title for i in items] == ["Photo 1", "Photo 4"]
+        assert total > 10_000
+        assert 'hastemplate:"LOC-image"' in sent[-1].url.params["gsrsearch"]
+        commons.discover(photos, limit=24, page=2)
+        assert 'hastemplate:"PD-US-expired"' in sent[-1].url.params["gsrsearch"]
+        assert sent[-1].url.params["gsroffset"] == "0"
+        commons.discover(photos, limit=24, page=3)
+        assert sent[-1].url.params["gsroffset"] == "24"
+        # Paintings are drawn from elsewhere.
+        assert commons.discover(Discovery(), limit=24) == (0, [])
+        drawn = commons.random_draw(photos, random.Random(1))
+        assert next(drawn).classification == "Photograph"

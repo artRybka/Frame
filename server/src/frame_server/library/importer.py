@@ -24,7 +24,7 @@ from .colors import analyse, has_colours, tint_spread
 from .commons import OWN_SOURCES
 from .dates import text_year
 from .duplicates import dedupe, rank
-from .hosts import as_asked
+from .hosts import as_asked, deferrable
 from .images import ImageCache
 from .lifespan import LifeDates
 from .models import Item, ItemKind, Look, PhotoInfo, PlaylistRules
@@ -87,6 +87,12 @@ SPREAD_MEMO = 20_000
 SEARCHED_QUEUE = 400
 #: Works a search showed that were taken or left out, not looked at again.
 SEARCHED_MEMO = 5_000
+#: Works a search brought but did not show (another colour, other years,
+#: another artist) whose thumbnail is here already, waiting to join the
+#: catalogue after the shown ones; more are left out ...
+SPARE_QUEUE = 400
+#: ... and this many are taken at a time, so works shown meanwhile go first.
+SPARE_BATCH = 24
 #: Museum searches answered lately, kept for the same page asked again (a
 #: set of Odkrywaj opened once more): how many and how long. The Met asks
 #: for each of a page's 24 works on its own, so a page takes it seconds.
@@ -209,6 +215,8 @@ class Importer:
         self._aspects: OrderedDict[str, float] = OrderedDict()
         #: Works a search showed, on their way into the catalogue.
         self._searched: OrderedDict[str, Item] = OrderedDict()
+        #: Works a search brought but did not show (:meth:`keep_spare`).
+        self._spare: OrderedDict[str, Item] = OrderedDict()
         self._searched_seen: OrderedDict[str, None] = OrderedDict()
         self._searched_lock = threading.Lock()
         self._searching: threading.Thread | None = None
@@ -222,9 +230,11 @@ class Importer:
         ] = OrderedDict()
         #: Pages kept on disk that are asked again behind (library/pages.py).
         self._asking: set[tuple[str, str, int, int, str, bool]] = set()
-        #: Pages being asked for now: another asking for the same one waits
-        #: for that answer instead of asking the museum again.
-        self._inflight: dict[tuple[str, str, int, int, str, bool], Future[Any]] = {}
+        #: Pages being asked for now, and whether by work that may wait (the
+        #: background's): another asking for the same one waits for that
+        #: answer instead of asking the museum again, unless it may not wait
+        #: and that one may.
+        self._inflight: dict[tuple[str, str, int, int, str, bool], tuple[Future[Any], bool]] = {}
         #: Words typed in Szukaj in the museums' languages (the language
         #: model's, set by the service); none: asked as typed.
         self.translate: Callable[[str, float], Wording] | None = None
@@ -373,11 +383,20 @@ class Importer:
         """The museum's page of ``memo``, kept in memory and on disk; asked
         once when several want it at the same time (a set's stream, the
         same page asked again behind, the catalogue)."""
+        may_wait = deferrable()
         with self._remote_lock:
-            asking = self._inflight.get(memo)
-            mine = asking is None
-            if asking is None:
-                asking = self._inflight[memo] = Future()
+            other = self._inflight.get(memo)
+            # The background's request waits while the app is in use
+            # (hosts.HostGuard.wait_calm): what the app waits for never
+            # waits behind it, it asks on its own (2026-11-07: the copies'
+            # searches stood until the app was left alone).
+            if other is not None and (may_wait or not other[1]):
+                asking = other[0]
+                mine = False
+            else:
+                entry: tuple[Future[Any], bool] = (Future(), may_wait)
+                asking, mine = entry[0], True
+                self._inflight[memo] = entry
         if not mine:
             total, items = asking.result()
             return total, list(items)
@@ -388,7 +407,8 @@ class Importer:
             raise
         finally:
             with self._remote_lock:
-                self._inflight.pop(memo, None)
+                if self._inflight.get(memo) is entry:
+                    del self._inflight[memo]
         asking.set_result(found)
         return found[0], list(found[1])
 
@@ -1055,22 +1075,52 @@ class Importer:
                     break
                 if found and found not in item.found_for:
                     item = item.model_copy(update={"found_for": [*item.found_for, found]})
+                self._spare.pop(item.id, None)
                 self._searched[item.id] = item
-            if not self._searched or (self._searching and self._searching.is_alive()):
-                return
-            self._searching = threading.Thread(
-                target=self._take_searched, name="searched", daemon=True
-            )
-            self._searching.start()
+            self._start_searched()
+
+    def keep_spare(self, items: Iterable[Item], room: Iterable[str] = ()) -> None:
+        """Works a search brought but did not show (another colour, other
+        years, another artist: :meth:`.search.MuseumSearch.pages`) into the
+        catalogue (``pooled``) like :meth:`keep_searched`'s, after them:
+        the museum was asked for them already (Mateusz 2026-11-07). Only
+        those whose thumbnail is here, so they cost no request; they
+        remember no search, as they don't fit it."""
+        here = [i for i in items if self.cache.thumb_path(i).is_file()]
+        with self._searched_lock:
+            self._searched_room = tuple(room)
+            for item in here:
+                if (
+                    item.id in self._searched
+                    or item.id in self._spare
+                    or item.id in self._searched_seen
+                ):
+                    continue
+                if len(self._spare) >= SPARE_QUEUE:
+                    break
+                self._spare[item.id] = item
+            self._start_searched()
+
+    def _start_searched(self) -> None:
+        """Starts taking works in, unless it is under way (with
+        ``_searched_lock`` held)."""
+        if not (self._searched or self._spare) or (self._searching and self._searching.is_alive()):
+            return
+        self._searching = threading.Thread(target=self._take_searched, name="searched", daemon=True)
+        self._searching.start()
 
     def _take_searched(self) -> None:
         while True:
             with self._searched_lock:
-                if not self._searched:
+                if self._searched:
+                    batch = list(self._searched.values())
+                    self._searched.clear()
+                elif self._spare:
+                    count = min(SPARE_BATCH, len(self._spare))
+                    batch = [self._spare.popitem(last=False)[1] for _ in range(count)]
+                else:
                     self._searching = None
                     return
-                batch = list(self._searched.values())
-                self._searched.clear()
                 for item in batch:
                     self._searched_seen[item.id] = None
                 while len(self._searched_seen) > SEARCHED_MEMO:
