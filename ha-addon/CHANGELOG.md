@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.114.0
+
+- Analiza kompozycji w studium dzieła jest pisana jednym głosem. Dotąd
+  kroki analizy doklejały do tekstu własne zdania („Budowa jest…”, zdanie
+  o siatce), a prompt wyliczał zdania po kolei, więc połowa studiów
+  zaczynała się od „Najmocniej działa…”. Teraz ślady, siatkę i ruch nadal
+  sprawdzają osobne kroki, a na końcu Opus pisze z nich cały tekst. Wie,
+  jak zaczynały się ostatnie studia, i nie zaczyna tak samo. Kosztuje to
+  ok. 0,015 USD więcej na studium. Studium zamówione na później idzie
+  przez jeszcze jeden pakiet (tekst), więc bywa gotowe nieco później.
+- Studia napisane wcześniej dostaną w tle nowy tekst kompozycji, z tymi
+  samymi śladami na obrazie (ok. 0,65 USD za 42 studia).
+- Tło dzieła nie zaczyna się już od „Obraz powstał…”, a „Na ramce” mówi
+  konkretnie, co wyjdzie dobrze, a co straci, bez formuły o rastrze.
+
 ## 1.113.3
 
 - „Pierwsze kolory” pokazują tylko zdjęcia z prawdziwych procesów

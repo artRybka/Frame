@@ -19,6 +19,7 @@ from .ai.composition import ComposeJob
 from .ai.curator import Curator
 from .ai.details import MendJob
 from .ai.extras import ExtrasJob
+from .ai.prose import ProseJob
 from .ai.search_words import SearchWords
 from .ai.study import StudyJob
 from .albums import Albums
@@ -310,6 +311,10 @@ class FrameService:
         # lets it) and for pages left without one.
         self.compose = ComposeJob(self.daily.job)
         self.ai.register(self.compose)
+        # The composition text of pages written before, rewritten once in one
+        # voice (their marks stay).
+        self.prose = ProseJob(self.daily.job)
+        self.ai.register(self.prose)
         # The artist's line of life and the work's paints for pages written
         # before the page's question asked for them.
         self.extras = ExtrasJob(self.daily.job)

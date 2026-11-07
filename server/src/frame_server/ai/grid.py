@@ -1,5 +1,4 @@
-"""The grid under a composition, chosen by the server, and one sentence
-about it written by Haiku.
+"""The grid under a composition, chosen by the server.
 
 A model asked to fit the golden section or the thirds finds one in nearly
 every picture: something always lies near some line. So the analysis
@@ -9,21 +8,19 @@ edge), and the grid is measured here: the places are first moved onto the
 picture's own lines found in code (``ai.lines``) when one runs within
 :data:`SNAP`, strong boundaries in the middle of the picture that no place
 names count as well, and a grid is kept only when the main place and one
-more lie on its lines, or three do (:func:`pick`). Haiku then says in one
-sentence what lies on it, in the tone of the text; it changes nothing else.
+more lie on its lines, or three do (:func:`pick`). What lies on it goes to
+the writer of the text (``ai.prose``) as a fact; it no longer gets a
+sentence of its own (Haiku's, put in after the first one: Mateusz
+2026-11-07).
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
 
-from PIL import Image
-
-from .client import HAIKU, request
-from .daily import Key, _object, _str, image_block
+from .daily import Key
 from .lines import Edge, Found
-from .sketch import CUTS, NEAR_LINE, ON_LINE, draw_found, draw_keys
+from .sketch import CUTS, NEAR_LINE, ON_LINE
 
 #: A place counting on one side moves onto a line of the picture this near.
 SNAP = 0.03
@@ -160,67 +157,3 @@ def choose(keys: list[Key], found: Found) -> Choice:
     held = snap(keys, found.edges)
     held += free(held, found.edges)
     return Choice(grid=pick(held), held=held)
-
-
-SYSTEM = """Dopisujesz do gotowej analizy kompozycji jednego dzieła jedno zdanie o siatce. \
-Siatkę wybrał już program: zmierzył, że punkty kluczowe obrazu (i proste linie znalezione w \
-obrazie) leżą na jej liniach. Ty siatki nie zmieniasz i analizy nie poprawiasz.
-
-Dostajesz: obraz z żółtymi kółkami punktów kluczowych (P1, P2…) i turkusowymi liniami \
-znalezionymi w obrazie (L1…), tekst analizy z ponumerowanymi zdaniami, nazwę siatki i listę \
-tego, co leży na jej liniach (z odległością w ułamkach boku).
-
-Zasady:
-1. Jedno zdanie, najwyżej 160 znaków, po polsku, w tonie tekstu analizy, dla miłośnika sztuki. \
-Nazwij formę i linię („twarz leży na lewej linii trójpodziału”, „krawędź stołu biegnie po \
-dolnej linii złotego podziału”). Mów tylko o tym, co leży na linii (do 0,02); co leży blisko \
-(do 0,05), nazywaj „blisko linii” albo pomiń.
-2. Linia L… z obrazu to prawdziwa krawędź albo granica (blat, horyzont, rama okna). Nazwij ją \
-po tym, czym jest na obrazie, nie numerem.
-3. Nie pisz, że artysta świadomie użył siatki. Nie powtarzaj tego, co już mówi tekst.
-4. "where": numer zdania tekstu, po którym ma stać Twoje (1, 2…), albo 0 na koniec. Najlepiej \
-po zdaniu o głównym układzie.
-
-Odpowiedź JSON: {"sentence": "...", "where": 0}"""
-
-SCHEMA = _object(sentence=_str(), where={"type": "integer"})
-
-
-def _named(h: Held, held: list[Held]) -> str:
-    if h.free and h.edge is not None:
-        return f"{h.edge.name} (linia w obrazie: {h.edge.kind})"
-    points = [x for x in held if not x.free]
-    kind = "główny" if h.key.main else "ważny"
-    on = f", leży na linii {h.edge.name} w obrazie" if h.edge is not None else ""
-    return f"P{points.index(h) + 1} {h.key.title} ({kind}){on}"
-
-
-def _cuts(cuts: tuple[float, ...]) -> str:
-    return ", ".join(f"{c:.3f}" for c in cuts)
-
-
-def question(img: Image.Image, choice: Choice, found: Found, said: list[str]) -> dict[str, Any]:
-    """Haiku's sentence about the grid: the picture with the key points and
-    its own lines, the numbered sentences, what lies on the grid's lines."""
-    points = [h.key for h in choice.held if not h.free]
-    drawn = draw_keys(draw_found(img, found), points)
-    across, down = CUTS[choice.grid]
-    lines = [
-        f"OBRAZ: {img.width} × {img.height} px",
-        "Tekst analizy (zdania ponumerowane):",
-        *(f"{n}. {s}" for n, s in enumerate(said, start=1)),
-        f"Siatka wybrana przez program: {choice.grid} = {NAMES[choice.grid]}. Jej linie: "
-        f"pionowe x = {_cuts(across)}; poziome y = {_cuts(down)}.",
-        "Co leży na liniach tej siatki albo blisko:",
-    ]
-    for h in choice.held:
-        for side, d, cut in hits(h.key, choice.grid):
-            if d <= NEAR_LINE:
-                where = "na linii" if d <= ON_LINE else "blisko"
-                kind = "pionowa" if side == "x" else "pozioma"
-                lines.append(
-                    f"- {_named(h, choice.held)}: {kind} linia {cut:.3f}, "
-                    f"odległość {d:.3f} ({where})"
-                )
-    content = [image_block(drawn), {"type": "text", "text": "\n".join(lines)}]
-    return request(model=HAIKU, system=SYSTEM, content=content, schema=SCHEMA, max_tokens=4000)

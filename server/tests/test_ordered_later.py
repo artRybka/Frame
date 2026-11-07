@@ -94,8 +94,14 @@ def test_a_study_ordered_for_later_goes_through_batches(tmp_path: Path) -> None:
         assert client.get("/api/study/met:1").json()["status"] == "later"
 
         svc.ai.poll_batches()  # the analysis in: the short steps asked at once
+        assert list(fake.batches) == ["batch_1", "batch_2", "batch_3"]
+        (text,) = [r["params"] for r in fake.batches["batch_3"]]
+        assert text["model"] == OPUS and composing(text)  # its text, written last
+        assert client.get("/api/study/met:1").json()["status"] == "later"
+
+        svc.ai.poll_batches()  # the text in: the page made
         view = _ready(client, "met:1")
-        assert len(got) == 2
+        assert len(got) == 3
         assert all(p["model"] != OPUS for p in fake.asked), [p["model"] for p in fake.asked]
         assert fake.asked and all(composing(p) for p in fake.asked)
         assert svc.library.get_state(LATER_KEY, {}) == {}
@@ -133,7 +139,7 @@ def test_a_study_ordered_for_later_can_be_made_now(tmp_path: Path) -> None:
         assert view["work"]["title"] == "Wielka fala w Kanagawie"
         assert written(fake) == []  # the page from its batch
         analyses = [p for p in fake.asked if p["model"] == OPUS]
-        assert len(analyses) == 1 and composing(analyses[0])
+        assert len(analyses) == 2 and all(composing(p) for p in analyses)  # analysis, text
         assert svc.library.get_state(LATER_KEY, {}) == {}
         note = svc.library.note("met:1", KIND)
 
@@ -158,8 +164,8 @@ def test_tomorrows_page_is_ordered_for_later_and_kept_for_its_day(tmp_path: Path
 
         svc.ai._advance_all()
         fake.ended = True
-        svc.ai.poll_batches()
-        svc.ai.poll_batches()
+        for _ in range(3):  # the page, its analysis, its text
+            svc.ai.poll_batches()
         assert svc.daily.job.essay(tomorrow) is not None
         assert not svc.ai.later(DAILY, tomorrow.id)
         # Not a study before its day.

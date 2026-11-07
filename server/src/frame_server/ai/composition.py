@@ -15,10 +15,12 @@ cost):
 2. Haiku checks every mark and place against what it was meant to lie on
    (``ai.check``).
 3. The server finds the picture's own lines (``ai.lines``) and chooses the
-   grid by what lies on them and on the key points (``ai.grid``); Haiku
-   adds one sentence about it.
+   grid by what lies on them and on the key points (``ai.grid``).
 4. Sonnet says whether the composition is still or moving and draws a
    movement that really happens (``ai.motion``).
+5. Opus, with little thinking and no picture, writes the text from the
+   draft and what the steps found, in one voice (``ai.prose``): the steps
+   no longer add sentences of their own (Mateusz 2026-11-07).
 
 Pages written before are written again (:class:`ComposeJob`) in the
 background, one by one, for the works the owner lets it (:data:`REWORK_KEY`:
@@ -49,6 +51,7 @@ from ..library.models import Note
 from . import grid as grids
 from . import lines as found_lines
 from . import motion as motions
+from . import prose
 from .check import CHECK_SIDE, answer_views, checked, page_views
 from .check import question as check_question
 from .client import OPUS, AiUnavailable, Answer, request
@@ -110,8 +113,8 @@ CHOSEN = "composition_chosen"
 COST = "composition_cost"
 #: How long the list of pages wanting their composition is kept between looks.
 PAGES_SECONDS = 30.0
-#: All four steps, as if Opus answered them (about 0.12 USD).
-TYPICAL = Usage(input_tokens=9000, cache_read_input_tokens=2000, output_tokens=4000)
+#: All five steps, as if Opus answered them (about 0.14 USD).
+TYPICAL = Usage(input_tokens=10500, cache_read_input_tokens=3200, output_tokens=4600)
 #: The marks Opus may draw (movement is Sonnet's, ``ai.motion``).
 DRAWN = tuple(s for s in SHAPES if s not in ("motion", "underline"))
 MAIN = "główny"
@@ -151,10 +154,10 @@ i pokaż oś postaci, podział tła albo masę.
 ODPOWIEDŹ: "composition" z jednym ujęciem w "views" (tekst bez słowa o siatkach i podziałach \
 pola):
 - "title": „Analiza kompozycji”.
-- "text": 4–6 zdań, 450–800 znaków. Zacznij od tego, co w tym obrazie najmocniejsze. Jedno \
-zdanie mówi, czy kompozycja jest otwarta czy zamknięta i po czym to widać; jedno, co równoważy \
-dominantę albo jak działa kolor; jedno, co układ robi dla tematu. Bez zdania o statyce, \
-dynamice i ruchu. Nic, czego nie widać na obrazie lub w śladach.
+- "text": brudnopis, 4–6 zdań, 450–800 znaków; ostateczny tekst napisze z niego osobny krok. \
+Ma zawierać: czy kompozycja jest otwarta czy zamknięta i po czym to widać; co równoważy \
+dominantę albo jak działa kolor; co układ robi dla tematu. Konkretnie, bez wstępów i ocen. Bez \
+zdania o statyce, dynamice i ruchu. Nic, czego nie widać na obrazie lub w śladach.
 - "points": punkty kluczowe z punktu 5, najważniejszy pierwszy. Każdy: "x", "y" (piksele), \
 "na" (1–5 słów), "os": "x" gdy liczy się tylko położenie w poziomie (pionowa krawędź, oś \
 postaci), "y" gdy tylko wysokość (horyzont, linia stołu), "xy" dla punktu; "waga": "główny" \
@@ -299,29 +302,21 @@ def _insert(said: list[str], sentence: str, after: int) -> None:
 def merged(
     view: View,
     choice: grids.Choice | None,
-    grid_sentence: tuple[str, int] | None,
     movement: motions.Movement | None,
+    said: bool = True,
 ) -> View:
-    """The take with the grid and movement steps put in: the movement's
-    sentence in place of the one that spoke of it (or where it said), the
-    grid's after the sentence it named, the movement's marks after the
-    analysis's."""
-    said = sentences(view.text)
-    inserted_at = 0
-    if movement is not None:
-        if 1 <= movement.replaces <= len(said):
-            said[movement.replaces - 1] = movement.sentence
+    """The take with the grid and movement steps put in: the grid and the
+    places it was chosen by, the movement's marks after the analysis's and,
+    when ``said``, its sentence in place of the one that spoke of it (or
+    where it said)."""
+    out = sentences(view.text)
+    if movement is not None and said:
+        if 1 <= movement.replaces <= len(out):
+            out[movement.replaces - 1] = movement.sentence
         else:
-            inserted_at = movement.where if 1 <= movement.where <= len(said) else len(said)
-            _insert(said, movement.sentence, movement.where)
-    if choice is not None and choice.grid != "none" and grid_sentence is not None:
-        sentence, after = grid_sentence
-        # Its place was named in the sentences before the movement's came in.
-        if 0 < inserted_at < after:
-            after += 1
-        _insert(said, sentence, after)
+            _insert(out, movement.sentence, movement.where)
     marks = [*view.marks, *(movement.marks if movement else [])]
-    update: dict[str, Any] = {"text": " ".join(said), "marks": marks}
+    update: dict[str, Any] = {"text": " ".join(out), "marks": marks}
     if choice is not None:
         update.update(grid=choice.grid, keys=choice.kept())
     shown = view.model_copy(update=update)
@@ -334,6 +329,7 @@ def written(
     found: Draft,
     ask: Callable[[dict[str, Any]], Answer],
     analysis_usd: float = 0.0,
+    recent: list[str] | None = None,
 ) -> dict[str, Any]:
     """The analysis checked, its grid chosen and its movement looked at, as
     it goes into a page. Every step that cannot be had (the month's limit,
@@ -364,22 +360,30 @@ def written(
     )
     if looked is not None:
         view, keys, changes = looked.view, looked.keys, looked.changes
-    said = sentences(view.text)
     picture_lines = run("lines", lambda: found_lines.find(img))
     choice = grids.choose(keys, picture_lines) if picture_lines is not None else None
-    grid_sentence = None
-    if choice is not None and choice.grid != "none":
-        grid_sentence = run(
-            "grid",
-            lambda: _grid_sentence(asked("grid", grids.question(img, choice, picture_lines, said))),
-        )
     movement = None
     if picture_lines is not None:
         directions = run("directions", lambda: found_lines.directions(img))
         if directions is not None:
+            said = sentences(view.text)
             params = motions.question(img, view, said, directions, picture_lines)
             movement = run("motion", lambda: motions.movement(asked("motion", params), img.size))
-    shown = merged(view, choice, grid_sentence, movement)
+    # The grid and the movement are facts; the text is written last, in one voice.
+    with_grid = merged(view, choice, None)
+    facts = prose.grid_facts(choice.grid, choice.held) if choice is not None else []
+    text = run(
+        "text",
+        lambda: prose.prose(
+            asked("text", prose.question(item, with_grid, facts, movement, recent or []))
+        ),
+    )
+    # Without it, the draft with the movement's sentence put in.
+    shown = (
+        merged(with_grid.model_copy(update={"text": text}), None, movement, said=False)
+        if text
+        else merged(view, choice, movement)
+    )
     log.info(
         "composition of %s: %.3f USD (%s), grid %s, %d marks",
         item.id,
@@ -393,18 +397,16 @@ def written(
         CHECKED: changes,
         CHECK_ROUND: ROUND,
         COST: {k: round(v, 4) for k, v in costs.items()},
+        **({prose.PROSE_KEY: prose.PROSE} if text else {}),
     }
 
 
-def _grid_sentence(data: dict[str, Any] | None) -> tuple[str, int] | None:
-    sentence = _text((data or {}).get("sentence"), 220)
-    where = (data or {}).get("where")
-    after = where if isinstance(where, int) and not isinstance(where, bool) else 0
-    return (sentence, after) if sentence else None
-
-
 def compose(
-    images: ImageCache, item: Item, context: Context, ask: Callable[[dict[str, Any]], Answer]
+    images: ImageCache,
+    item: Item,
+    context: Context,
+    ask: Callable[[dict[str, Any]], Answer],
+    recent: list[str] | None = None,
 ) -> dict[str, Any]:
     """The composition of a page being written: what goes into it (its
     take, what the check changed, the round, what it cost), or nothing when
@@ -412,7 +414,7 @@ def compose(
     params = question(images, item, context)
     answer = ask(params)
     found = draft(answer.data, params)
-    return written(images, item, found, ask, answer.cost_usd) if found else {}
+    return written(images, item, found, ask, answer.cost_usd, recent) if found else {}
 
 
 def failed(note: Note | None) -> bool:
@@ -591,7 +593,9 @@ class ComposeJob(NoteJob):
                 "composition of %s gave no take: %s", item.id, json.dumps(answer.data)[:2000]
             )
             return replace(answer, data={"unusable": True, "answer": answer.data})
-        return replace(answer, data=written(self.images, item, found, ask, answer.cost_usd))
+        recent = prose.recent_openings(self.library, but=item.id)
+        data = written(self.images, item, found, ask, answer.cost_usd, recent)
+        return replace(answer, data=data)
 
     def apply(self, item: Item, note: Note) -> None:
         """Puts the take in each of the work's pages wanting it, keeping the

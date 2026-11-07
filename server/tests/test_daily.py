@@ -190,9 +190,11 @@ ANSWER_PX = pixels(ANSWER)
 
 
 def composing(params: dict[str, Any]) -> bool:
-    """A question about the composition: its analysis, its check, its grid's
-    sentence or its movement."""
-    return params["system"][0]["text"].startswith(("Sprawdzasz", "Piszesz „Analizę", "Dopisujesz"))
+    """A question about the composition: its analysis, its check, its
+    movement or its text written last."""
+    return params["system"][0]["text"].startswith(
+        ("Sprawdzasz", "Piszesz „Analizę", "Dopisujesz", "Piszesz ostateczny tekst")
+    )
 
 
 def written(fake: FakeAnthropic) -> list[dict[str, Any]]:
@@ -524,13 +526,14 @@ def test_claude_writes_the_page(tmp_path: Path) -> None:
         assert asked["timeout"] > 120
         assert "Analizy kompozycji tu nie piszesz" in asked["system"][0]["text"]
         # Its composition asked apart, then checked over the marks drawn on
-        # the picture (the clean picture, then the take drawn), then its movement.
+        # the picture (the clean picture, then the take drawn), then its movement,
+        # then its text written in one voice.
         analysis, check, *rest = [p for p in fake.asked if p not in written(fake)]
         assert analysis["system"][0]["text"].startswith("Piszesz „Analizę kompozycji”")
         assert analysis["messages"][0]["content"][0]["type"] == "image"
         images = [b for b in check["messages"][0]["content"] if b["type"] == "image"]
         assert len(images) == 2 and check["model"] == HAIKU
-        assert rest and rest[-1]["model"] == SONNET
+        assert [p["model"] for p in rest][-2:] == [SONNET, OPUS]
 
         # Asked once: the page is kept.
         client.get("/api/daily")
