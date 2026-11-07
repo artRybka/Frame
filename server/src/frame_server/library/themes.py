@@ -1113,6 +1113,11 @@ OTHER_ART_THEMES: list[Theme] = [
         ("loc", "collection:photochrom-prints"),
         ("loc", "autochrome"),
         ("loc", "collection:fsa-owi-color-photographs"),
+        # The same collections on Wikimedia Commons, which answers while the
+        # LoC rests (2026-11-07; categories checked from the home address).
+        ("wmc", 'deepcat:"Photographs by Sergey Prokudin-Gorsky"'),
+        ("wmc", "Category:Photochrom pictures from the Library of Congress"),
+        ("wmc", "Category:Color photographs from the Farm Security Administration"),
         ("cma", "autochrome"),
         ("cma", "photochrom"),
         ("aic", "autochrome"),

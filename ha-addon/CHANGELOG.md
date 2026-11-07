@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.121.5
+
+- Fotografia w Szukaj sięga też do całej Wikimedia Commons: stare zdjęcia
+  w domenie publicznej (sprzed 1930), dość duże dla ramki.
+- „Pierwsze kolory” biorą też zdjęcia Prokudina-Gorskiego, fotochromy i
+  kolorowe zdjęcia FSA z Commons, więc są pełne, nawet gdy Library of
+  Congress odpoczywa.
+
 ## 1.121.4
 
 - Serwer pamięta po aktualizacji, które muzeum go zablokowało i na jak
