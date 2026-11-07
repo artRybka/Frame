@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.119.3
+
+- Jaśniejsze dzieła wchodzą płynnie bez etapu jasnych partii: przez
+  chwilę obraz jest zwykły, a potem w około sekundę całe dzieło równo
+  dochodzi do siły ustawionej w Konfiguracji.
+
 ## 1.119.2
 
 - Biała ramka w podglądach ma grubość w proporcji do obrazu, wszędzie taką
