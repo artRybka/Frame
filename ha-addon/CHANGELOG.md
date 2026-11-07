@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.113.5
+
+- Serwer pamięta opisy dzieł z Met i pyta o każde dzieło tylko raz na 90
+  dni. Ponowne wejście w zestaw nie pyta już Met o te same dzieła.
+- Do Met idzie jedno zapytanie naraz, zamiast serii przy otwieraniu kilku
+  zestawów. Rano 7 listopada zapora Met zablokowała domowy adres.
+
 ## 1.113.4
 
 - Serwer trzyma się aktualnych zasad Library of Congress: najwyżej 17
