@@ -102,13 +102,6 @@ struct ConnectionSettingsView: View {
                 .padding(.bottom, 40)
             }
             .paperPage()
-            .task { await model.loadLibraryStorage() }
-            .task { await model.loadPanelApp() }
-            .task { await model.loadServerUpdate() }
-            .task { await model.loadAiSettings() }
-            .task { await model.loadSourceKeys() }
-            .task { await model.loadNotifications() }
-            .task { await model.syncTailnet() }
             .navigationTitle("Konfiguracja")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -120,6 +113,15 @@ struct ConnectionSettingsView: View {
                 SettingsPageView(page: page)
             }
         }
+        // On the stack, not the list: the list's tasks stop when a page
+        // opens over it (and never start when one opens right away).
+        .task { await model.loadLibraryStorage() }
+        .task { await model.loadPanelApp() }
+        .task { await model.loadServerUpdate() }
+        .task { await model.loadAiSettings() }
+        .task { await model.loadSourceKeys() }
+        .task { await model.loadNotifications() }
+        .task { await model.syncTailnet() }
     }
 }
 
