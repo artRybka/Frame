@@ -71,6 +71,8 @@ struct NoticeCard: View {
             // A bar only when the share done is known; otherwise the spinner says it all.
             if let fraction = notice.fraction {
                 NoticeBar(fraction: fraction)
+            } else if let span = notice.span {
+                NoticeTimerBar(span: span)
             }
         }
         .padding(.horizontal, 16)
@@ -226,6 +228,22 @@ private struct NoticeBar: View {
         }
         .frame(height: 6)
         .animation(.linear(duration: 0.6), value: fraction)
+    }
+}
+
+/// A bar that fills by itself over the time the work should take (a
+/// study being written: the server says until when), full past its end.
+private struct NoticeTimerBar: View {
+    let span: ClosedRange<Date>
+
+    var body: some View {
+        ProgressView(timerInterval: span, countsDown: false) {
+            EmptyView()
+        } currentValueLabel: {
+            EmptyView()
+        }
+        .progressViewStyle(.linear)
+        .tint(Theme.ink)
     }
 }
 

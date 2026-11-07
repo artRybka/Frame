@@ -13,7 +13,7 @@ extension AppModel {
         let card = beginStudyCard(itemID: itemID, title: title)
         do {
             let view = try await backend.prepareStudy(itemID: itemID, again: again, later: false)
-            await studyActivity.start(itemID: itemID, title: title, status: view.status)
+            await studyActivity.start(itemID: itemID, title: title, state: view.activityState)
             await followStudy(itemID: itemID, title: title, from: view, card: card)
         } catch {
             studyCards[itemID] = nil
@@ -53,7 +53,7 @@ extension AppModel {
     func resumeStudy(itemID: String, title: String, view: StudyView) async {
         studies[itemID] = view
         guard view.isPending, studyCards[itemID] == nil else { return }
-        await studyActivity.start(itemID: itemID, title: title, status: view.status)
+        await studyActivity.start(itemID: itemID, title: title, state: view.activityState)
         let card = beginStudyCard(itemID: itemID, title: title)
         await followStudy(itemID: itemID, title: title, from: view, card: card)
     }
@@ -107,7 +107,8 @@ extension AppModel {
 
     private func beginStudyCard(itemID: String, title: String) -> Notice.ID {
         if let ready = studyReadyCards.removeValue(forKey: itemID) { notices.close(ready) }
-        let card = notices.begin(Self.studyStep("waiting"), Self.studyDetail(title, step: "waiting"))
+        let waiting = StudyActivityAttributes.ContentState(status: "waiting", part: "waiting")
+        let card = notices.begin(Self.studyStep(waiting), Self.studyDetail(title, state: waiting))
         studyCards[itemID] = card
         studies[itemID]?.status = "waiting"
         return card
@@ -121,13 +122,15 @@ extension AppModel {
         var misses = 0
         studies[itemID] = view
         while view.isPending {
+            let state = view.activityState
             notices.update(
-                card, title: Self.studyStep(view.status), detail: Self.studyDetail(title, step: view.status),
-                count: Self.studyCount(view.status)
+                card, title: Self.studyStep(state), detail: Self.studyDetail(title, state: state),
+                count: Self.studyCount(state), span: .some(state.timerRange)
             )
-            studyActivity.update(itemID: itemID, status: view.status)
+            studyActivity.update(itemID: itemID, state: state)
             do {
-                view = try await backend.study(itemID: itemID, wait: 25)
+                // Back sooner while Claude writes it: "jeszcze ok. …" moves on.
+                view = try await backend.study(itemID: itemID, wait: state.timerRange == nil ? 25 : 10)
                 misses = 0
                 studies[itemID] = view
             } catch let error where !error.isCancellation && misses < 6 {
@@ -156,27 +159,35 @@ extension AppModel {
         }
     }
 
-    private static func studyStep(_ status: String) -> String {
-        switch status {
-        case "sources": "Zbieram źródła"
-        case "writing": "Claude pisze studium"
-        case "details": "Wycinam detale z oryginału"
-        default: "Czekam na Claude’a"
+    /// What goes on now, as the Lock Screen says it.
+    private static func studyStep(_ state: StudyActivityAttributes.ContentState) -> String {
+        if let part = state.part, let line = StudyActivityAttributes.ContentState.partLines[part] { return line }
+        switch state.status {
+        case "sources": return "Zbieram źródła"
+        case "writing": return "Claude pisze studium"
+        case "details": return "Wycinam detale z oryginału"
+        default: return "Czekam na Claude’a"
         }
     }
 
-    /// "2 z 3" at the card's end, as the Lock Screen counts the steps.
-    private static func studyCount(_ status: String) -> String {
-        let steps = StudyActivityAttributes.ContentState.steps
-        guard let index = steps.firstIndex(where: { $0.key == status }) else { return "" }
-        return "\(index + 1) z \(steps.count)"
+    /// "3 z 4" at the card's end, as the Lock Screen counts the steps.
+    private static func studyCount(_ state: StudyActivityAttributes.ContentState) -> String {
+        guard let index = state.stepIndex, index < StudyActivityAttributes.ContentState.steps.count else { return "" }
+        return "\(index + 1) z \(StudyActivityAttributes.ContentState.steps.count)"
     }
 
-    private static func studyDetail(_ title: String, step: String) -> String {
-        switch step {
-        case "sources": "„\(title)” · muzeum, Wikidata, Wikipedia"
-        case "writing": "„\(title)” · zwykle 1–3 minuty"
-        default: "„\(title)”"
+    /// The work and how long it has left: "„Uliczka” · jeszcze ok. 1½ min",
+    /// "trwa dłużej niż zwykle" once past the end the server expected.
+    nonisolated static func studyDetail(_ title: String, state: StudyActivityAttributes.ContentState, now: Date = .now) -> String {
+        if let range = state.timerRange {
+            let left = range.upperBound.timeIntervalSince(now)
+            if left <= 0 { return "„\(title)” · trwa dłużej niż zwykle" }
+            return "„\(title)” · jeszcze ok. \(StudyActivityAttributes.ContentState.about(left))"
+        }
+        switch state.status {
+        case "sources" where state.part == nil: return "„\(title)” · muzeum, Wikidata, Wikipedia"
+        case "writing" where state.part == nil: return "„\(title)” · zwykle 1–3 minuty"
+        default: return "„\(title)”"
         }
     }
 }

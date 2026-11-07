@@ -18,6 +18,9 @@ struct Notice: Identifiable, Equatable {
     var detail: String?
     /// 0…1 when the share done is known (a bar); otherwise only the spinner.
     var fraction: Double?
+    /// From when to when the work should take: a bar that fills by itself
+    /// (a study being written), when no `fraction` is known.
+    var span: ClosedRange<Date>?
     /// "12 z 40" next to the title.
     var count: String?
     /// Work that goes on after its screen closed (an album, a museum fetch):
@@ -70,15 +73,18 @@ final class Notices {
         return notice.id
     }
 
-    /// Progress of work under way; `fraction` nil keeps the one it had.
+    /// Progress of work under way; `fraction` nil keeps the one it had,
+    /// `span` nil too (`.some(nil)` takes it away).
     func update(
-        _ id: Notice.ID, title: String? = nil, detail: String? = nil, fraction: Double? = nil, count: String? = nil
+        _ id: Notice.ID, title: String? = nil, detail: String? = nil, fraction: Double? = nil, count: String? = nil,
+        span: ClosedRange<Date>?? = nil
     ) {
         guard let index = items.firstIndex(where: { $0.id == id }), items[index].kind == .working else { return }
         if let title { items[index].title = title }
         if let detail { items[index].detail = detail }
         if let fraction { items[index].fraction = min(max(fraction, 0), 1) }
         if let count { items[index].count = count }
+        if let span { items[index].span = span }
     }
 
     /// The work ended: its card shows the result where it is; with an
@@ -95,7 +101,9 @@ final class Notices {
             items[index].action = action
             items[index].count = nil
             // A bar that was there fills up; none appears when there was none.
-            items[index].fraction = kind == .done && items[index].fraction != nil ? 1 : nil
+            let bar = items[index].fraction != nil || items[index].span != nil
+            items[index].fraction = kind == .done && bar ? 1 : nil
+            items[index].span = nil
             clear(sameSlotAs: kind, except: id)
         }
         if let notice = items.first(where: { $0.id == id }) { settle(notice) }

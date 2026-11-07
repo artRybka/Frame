@@ -21,6 +21,7 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from datetime import date
+from functools import partial
 from typing import TYPE_CHECKING, Any
 
 import anthropic
@@ -1268,6 +1269,7 @@ class DailyJob(NoteJob):
         }
         if lacking := missing(data, ANSWERED):
             log.warning("page of %s came back without %s: asked again", item.id, ", ".join(lacking))
+            self._stage(item.id, "text_again")
             try:
                 again = ask(params)
             except (AiUnavailable, anthropic.APIError) as err:
@@ -1285,8 +1287,10 @@ class DailyJob(NoteJob):
 
         # Each detail is cut and shown to Claude again, which draws anew a box
         # that misses (Mateusz 2026-11-07, after three days without: "Często
-        # chybia"; "Popraw detale" always hits).
+        # chybia"; "Popraw detale" always hits). Kept before the composition:
+        # an order for later replays its answers in the order asked.
         try:
+            self._stage(item.id, "details_check")
             data = check_details(self.images, item, data, ask)
         except (AiUnavailable, anthropic.APIError) as err:
             log.warning("details of %s not checked: %s", item.id, err)
@@ -1297,12 +1301,18 @@ class DailyJob(NoteJob):
             from .prose import recent_openings
 
             recent = recent_openings(self.library, but=item.id)
-            data.update(compose(self.images, item, context or self.sources(item), ask, recent))
+            sources = context or self.sources(item)
+            step = partial(self._stage, item.id)
+            data.update(compose(self.images, item, sources, ask, recent, step=step))
         except (AiUnavailable, anthropic.APIError) as err:
             log.warning("composition of %s not asked: %s", item.id, err)
         except Exception:  # the page is paid for: never lost to its composition
             log.exception("composition of %s failed", item.id)
         return replace(answer, data=data)
+
+    def _stage(self, item_id: str, stage: str) -> None:
+        """A part of the page being written (``frame_server.study.PARTS``):
+        told by the study of a work, where the app shows it."""
 
     def apply(self, item: Item, note: Note) -> None:
         """Keeps the answer cleaned: what the app shows."""

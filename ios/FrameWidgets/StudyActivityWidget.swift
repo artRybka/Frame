@@ -3,8 +3,9 @@ import SwiftUI
 import WidgetKit
 
 /// A study of a work being written, on the Lock Screen and in the Dynamic
-/// Island: its three steps as on the app's card, and at the end "Gotowe",
-/// which opens the study when tapped.
+/// Island: what Claude does now, a bar that moves on by itself towards the
+/// end the server expects, its four steps as on the app's card, and at the
+/// end "Gotowe", which opens the study when tapped.
 struct StudyActivityWidget: Widget {
     typealias State = StudyActivityAttributes.ContentState
 
@@ -38,6 +39,7 @@ struct StudyActivityWidget: Widget {
                             .font(.footnote)
                             .foregroundStyle(.white.opacity(0.75))
                             .lineLimit(2)
+                        StudyBar(state: state, ink: .white, soft: .white.opacity(0.6))
                         StudySteps(state: state, on: .white, off: .white.opacity(0.45))
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -60,7 +62,7 @@ struct StudyActivityWidget: Widget {
     }
 }
 
-/// The Lock Screen card: the work, what goes on and the three steps.
+/// The Lock Screen card: the work, what goes on, the bar and the four steps.
 private struct StudyLockScreenCard: View {
     let title: String
     let picture: Data?
@@ -85,6 +87,7 @@ private struct StudyLockScreenCard: View {
                 }
                 Spacer(minLength: 0)
             }
+            StudyBar(state: state, ink: Palette.ink, soft: Palette.inkSoft)
             StudySteps(state: state, on: Palette.ink, off: Palette.inkSoft)
         }
         .padding(16)
@@ -116,6 +119,38 @@ private struct StudySteps: View {
     }
 }
 
+/// The bar while Claude writes it: it fills by itself towards the end the
+/// server expects (moved on at each push), the time since it began under
+/// it on the left and the whole, about, on the right. Nothing while it
+/// waits, nor from a server before 1.118.0.
+private struct StudyBar: View {
+    let state: StudyActivityAttributes.ContentState
+    let ink: Color
+    let soft: Color
+
+    var body: some View {
+        if let range = state.timerRange {
+            VStack(spacing: 4) {
+                ProgressView(timerInterval: range, countsDown: false) {
+                    EmptyView()
+                } currentValueLabel: {
+                    EmptyView()
+                }
+                .progressViewStyle(.linear)
+                .tint(ink)
+                HStack {
+                    Text(range.lowerBound, style: .timer)
+                        .monospacedDigit()
+                    Spacer(minLength: 8)
+                    if let whole = state.aboutWhole { Text(whole) }
+                }
+                .font(.caption2)
+                .foregroundStyle(soft)
+            }
+        }
+    }
+}
+
 /// The AI sparkles while it is written, then the result.
 private struct StudyMark: View {
     let state: StudyActivityAttributes.ContentState
@@ -127,12 +162,22 @@ private struct StudyMark: View {
     }
 }
 
-/// The island's trailing mark: the step (1/3 …) or the result.
+/// The island's trailing mark: a ring filling towards the expected end,
+/// the step (1/4 …) without one, or the result.
 private struct StudyCompact: View {
     let state: StudyActivityAttributes.ContentState
 
     var body: some View {
-        if state.isActive {
+        if let range = state.timerRange {
+            ProgressView(timerInterval: range, countsDown: false) {
+                EmptyView()
+            } currentValueLabel: {
+                EmptyView()
+            }
+            .progressViewStyle(.circular)
+            .tint(StudyText.islandTint(state))
+            .frame(width: 20, height: 20)
+        } else if state.isActive {
             Text(state.stepIndex.map { "\($0 + 1)/\(StudyActivityAttributes.ContentState.steps.count)" } ?? "…")
                 .font(.caption2.weight(.semibold).monospacedDigit())
                 .foregroundStyle(StudyText.islandTint(state))

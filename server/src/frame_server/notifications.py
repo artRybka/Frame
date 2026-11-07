@@ -58,6 +58,7 @@ if TYPE_CHECKING:
     from .night import Night
     from .service import FrameService
     from .store import ContentInfo
+    from .study import Progress as StudyProgress
 
 log = logging.getLogger(__name__)
 
@@ -129,6 +130,9 @@ STUDY_STALE = timedelta(minutes=15)
 STUDY_READY_FOR = timedelta(minutes=2)
 STUDY_FAILED_FOR = timedelta(minutes=5)
 STUDY_ON_WAY = ("waiting", "sources", "writing", "details")
+# The parts that begin a step of the app's four (Źródła · Tekst · Kompozycja
+# · Detale): pushed at once; the parts within a step at low priority.
+STUDY_STEP_STARTS = ("waiting", "sources", "text", "composition", "cutting")
 
 # A send's Live Activity (the bar on the Lock Screen): the server moves it
 # on and ends it, so it does with the app asleep too. Once over, how long it
@@ -212,6 +216,21 @@ class SendActivity(BaseModel):
 
 def apple_time(moment: datetime) -> float:
     return round(moment.timestamp() - APPLE_EPOCH, 3)
+
+
+def study_state(status: str, error: str, progress: StudyProgress | None) -> dict[str, Any]:
+    """A study's Live Activity "content-state" (StudyActivityAttributes):
+    the older apps' status and why it failed, then its part and, once it is
+    written, since when and until when about (seconds since 2001, as
+    ActivityKit decodes dates)."""
+    state: dict[str, Any] = {"status": status, "error": error}
+    if progress is not None:
+        state["part"] = progress.part
+        if progress.started is not None:
+            state["startedAt"] = round(progress.started - APPLE_EPOCH, 3)
+        if progress.until is not None:
+            state["expectedEnd"] = round(progress.until - APPLE_EPOCH, 3)
+    return state
 
 
 _WEEKDAYS = (
@@ -344,13 +363,16 @@ class Apns:
         collapse: str | None = None,
         expires: datetime | None = None,
         live: bool = False,
+        quiet: bool = False,
     ) -> Sent:
-        """``live``: to a Live Activity's token, not to the app's."""
+        """``live``: to a Live Activity's token, not to the app's;
+        ``quiet``: low priority, for an update iOS may bring a little later
+        (it budgets the urgent ones)."""
         headers = {
             "authorization": f"bearer {self.token()}",
             "apns-topic": self.topic + LIVE_SUFFIX if live else self.topic,
             "apns-push-type": "liveactivity" if live else "alert",
-            "apns-priority": "10",
+            "apns-priority": "5" if quiet else "10",
         }
         if collapse:
             headers["apns-collapse-id"] = collapse[:64]
@@ -767,18 +789,33 @@ class Notifier:
     def unfollow_study(self, token: str) -> None:
         self._forget_activities({token.lower()})
 
-    def study_step(self, item_id: str, status: str, error: str = "", title: str = "") -> None:
-        """A step of a study asked for (study.py): to its Live Activities;
-        "ready" also as "Studium gotowe", on the Lock Screen card when there
-        is one (it lights the screen up), as a notification otherwise."""
+    def study_step(
+        self,
+        item_id: str,
+        status: str,
+        error: str = "",
+        title: str = "",
+        progress: StudyProgress | None = None,
+    ) -> None:
+        """A step of a study asked for (study.py): to its Live Activities,
+        with how far it is (``progress``); "ready" also as "Studium gotowe",
+        on the Lock Screen card when there is one (it lights the screen up),
+        as a notification otherwise."""
         followed = bool(self.study_activities(item_id))
         if status == "ready" and not followed:
             self.study_ready(item_id, title)
         elif followed:
-            self._spawn(self._study_step(item_id, status, error, title))
+            self._spawn(self._study_step(item_id, status, error, title, progress))
 
-    async def _study_step(self, item_id: str, status: str, error: str, title: str) -> None:
-        await self.push_study(item_id, status, error)
+    async def _study_step(
+        self,
+        item_id: str,
+        status: str,
+        error: str,
+        title: str,
+        progress: StudyProgress | None = None,
+    ) -> None:
+        await self.push_study(item_id, status, error, progress=progress)
         # Told as a notification of its own, not inside the card's end: only
         # a notification can carry the work's picture.
         if status == "ready" and self.wanted("study"):
@@ -799,11 +836,13 @@ class Notifier:
         *,
         only: str | None = None,
         now: datetime | None = None,
+        progress: StudyProgress | None = None,
     ) -> dict[str, Sent]:
         """The study's step to the Live Activities following it (``only``:
-        that one). Under way it moves them on; over ("ready", "failed", or
-        "stopped" when the server lost it) it ends them, and they are
-        forgotten here."""
+        that one). Under way it moves them on, with its part and when it
+        should be done (``progress``, from apps that know them); over
+        ("ready", "failed", or "stopped" when the server lost it) it ends
+        them, and they are forgotten here."""
         activities = [
             a for a in self.study_activities(item_id) if only is None or a.token == only.lower()
         ]
@@ -817,8 +856,9 @@ class Notifier:
         aps: dict[str, Any] = {
             "timestamp": int(now.timestamp()),
             "event": "end" if over else "update",
-            "content-state": {"status": status, "error": error},
+            "content-state": study_state(status, error, None if over else progress),
         }
+        quiet = not over and progress is not None and progress.part not in STUDY_STEP_STARTS
         if over:
             keep = STUDY_READY_FOR if status == "ready" else STUDY_FAILED_FOR
             aps["dismissal-date"] = int((now + keep).timestamp())
@@ -829,11 +869,21 @@ class Notifier:
         async with apns.client() as client:
             for activity in activities:
                 sent = await apns.send(
-                    client, activity.token, payload, sandbox=activity.sandbox, live=True
+                    client,
+                    activity.token,
+                    payload,
+                    sandbox=activity.sandbox,
+                    live=True,
+                    quiet=quiet,
                 )
                 if sent.reason == "BadDeviceToken":
                     other = await apns.send(
-                        client, activity.token, payload, sandbox=not activity.sandbox, live=True
+                        client,
+                        activity.token,
+                        payload,
+                        sandbox=not activity.sandbox,
+                        live=True,
+                        quiet=quiet,
                     )
                     if other.ok:
                         sent = other

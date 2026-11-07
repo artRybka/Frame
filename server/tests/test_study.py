@@ -19,6 +19,7 @@ from frame_server.ai.client import OPUS
 from frame_server.ai.study import KIND
 from frame_server.daily import HISTORY_KEY
 from frame_server.service import FrameService
+from frame_server.study import PARTS, TIMINGS_KEY
 
 
 def _studies(fake: FakeAnthropic) -> list[dict[str, Any]]:
@@ -64,19 +65,49 @@ def test_claude_writes_a_study_once_and_it_is_kept(tmp_path: Path) -> None:
             assert client.get("/api/study/met:3").json()["status"] == "none"
 
             steps: list[str] = []
-            svc.study.on_step = lambda item, status, error: steps.append(status)
+            parts: list[tuple[str, str]] = []
+
+            def step(item: Any, status: str, error: str) -> None:
+                steps.append(status)
+                progress = svc.study.progress(item.id)
+                parts.append((status, progress.part if progress else ""))
+                if progress is not None and progress.part != "waiting":
+                    assert progress.started is not None and progress.until is not None
+                    assert progress.until > progress.started
+
+            svc.study.on_step = step
             client.post("/api/study/met:1?wait=10")
             view = _ready(client, "met:1")
         finally:
             svc.ai.stop()
         assert view["status"] == "ready", view
+        assert view["part"] == "" and view["expected_end"] is None
         # Each step told (the Lock Screen card), "ready" once the fragments are cut.
         for _ in range(40):  # told just after the status says so
             if steps[-1:] == ["ready"]:
                 break
             time.sleep(0.05)
-        assert steps[-3:] == ["writing", "details", "ready"], steps
+        said = [s for n, s in enumerate(steps) if n == 0 or steps[n - 1] != s]
+        assert said[-3:] == ["writing", "details", "ready"], steps
         assert set(steps) <= {"waiting", "sources", "writing", "details", "ready"}
+        # Each part of it told, the older apps' word kept for each.
+        told = [p for _, p in parts if p and p != "waiting"]
+        assert told == [
+            "sources",
+            "text",
+            "details_check",
+            "composition",
+            "composition_check",
+            "composition_motion",
+            "composition_text",
+            "cutting",
+            "later",  # what the work led to, with pictures
+        ], parts
+        assert ("writing", "composition") in parts and ("details", "cutting") in parts
+        # Timed, for the next study's "how long".
+        (timed,) = svc.library.get_state(TIMINGS_KEY, [])
+        assert set(timed) == set(PARTS) and timed["text_again"] == 0
+        assert svc.study.expected() == {k: float(v) for k, v in timed.items()}
         work = view["work"]
         assert work["written"] is True and work["model"] == OPUS
         assert work["title"] == "Wielka fala w Kanagawie"
