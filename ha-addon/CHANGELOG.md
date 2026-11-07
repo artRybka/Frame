@@ -1,12 +1,19 @@
 # Changelog
 
-## 1.121.6
+## 1.121.7
 
 - Fotografia z Wikimedia Commons działa też bez wpisanych słów: serwer
   losuje stare zdjęcia (m.in. z zasobów Library of Congress na Commons),
   bez rycin, plakatów i map.
 - Szukanie w Wikimedia Commons pomija skany dokumentów z archiwów
   (formularze, nieśmiertelniki) i diagramy chemiczne.
+
+## 1.121.6
+
+- Kadr otwiera się płynniej: okienka kadru są widoczne od początku lotu
+  ramki, bez plakietki „Wczytuję podgląd…” w połowie animacji i bez
+  mignięcia podglądu w chwili dotknięcia.
+- Ekran Kadru nie ma już napisu „Kadr” u góry.
 
 ## 1.121.5
 

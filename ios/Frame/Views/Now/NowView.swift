@@ -22,6 +22,9 @@ struct NowView: View {
     /// asks for them by name, as the one cached from before shows the old crop.
     @State private var applied: [String: FramingCrops] = [:]
     @State private var cropping = false
+    /// Cropping's frame has left the preview (`CropScreen.onOpen`): only
+    /// then is the preview hidden under it.
+    @State private var cropAway = false
     /// Where the frame's preview is on the screen, for cropping to fly from ("pop").
     @State private var cropHome: CGRect?
     /// Held open, the preview had grown a touch: the frame starts that size.
@@ -252,8 +255,8 @@ struct NowView: View {
                         aspectRatio: model.isPortrait ? 9.0 / 16.0 : 16.0 / 9.0,
                         placeholder: selectedItem?.placeholderColor ?? browsed?.summary.placeholderColor ?? Theme.mat,
                         onFrame: offset == 0,
-                        draft: $draft, save: saveCrop, home: cropHome,
-                        onClose: { cropping = false }, homeGrow: cropGrow
+                        draft: $draft, save: saveCrop, home: cropHome, previewLoaded: loadedHero,
+                        onOpen: { cropAway = true }, onClose: { cropping = false }, homeGrow: cropGrow
                     )
                 }
             }
@@ -389,11 +392,14 @@ struct NowView: View {
             }
             .frameShadow()
             // Under the crop screen's frame while it is open: that one flies.
-            .opacity(cropping ? 0 : 1)
+            .opacity(cropping && cropAway ? 0 : 1)
             // Tap or hold (the phone taps closer and closer), like the picture on the card.
             .picturePress(enabled: canCrop && !sending && !stale) { held in
                 cropGrow = held ? PressHold.pictureGrow : 1
-                CropScreen.present { cropping = true }
+                CropScreen.present {
+                    cropAway = false
+                    cropping = true
+                }
             }
             // Cropping's frame comes out of it and goes back onto it. Out here,
             // so the place is the preview's own, not grown by the press.
