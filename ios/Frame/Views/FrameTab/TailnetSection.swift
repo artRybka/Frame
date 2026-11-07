@@ -1,12 +1,18 @@
 import SwiftUI
 
-/// Konfiguracja → Dostęp spoza domu: Tailscale built into the app (`Tailnet`,
-/// decision D16). The owner pastes the household's Tailscale key here, every
-/// phone takes it from the server; a household member sees how their phone's
-/// connection is doing (`editable: false`, in "Mój dostęp").
+/// Tailscale built into the app (`Tailnet`, decision D16): how this phone's
+/// connection is doing (Konfiguracja → Serwer, `.connection`), the
+/// household's key that every phone takes from the server (Klucze i
+/// certyfikaty, `.key`) and the log (Diagnostyka, `.log`). A household member
+/// sees it all but the key (`editable: false`, in "Mój dostęp").
 struct TailnetSection: View {
+    enum Part {
+        case connection, key, log
+    }
+
     @Environment(AppModel.self) private var model
     var editable = true
+    var parts: Set<Part> = [.connection, .key, .log]
     @State private var key = ""
     @State private var saving = false
     @State private var retrying = false
@@ -21,48 +27,57 @@ struct TailnetSection: View {
         Binding(get: { model.tailnet != .paused }, set: { model.setTailnetEnabled($0) })
     }
 
+    private var header: (String, String) {
+        if parts.contains(.connection) { return ("Dostęp spoza domu", "Tailscale wbudowany w aplikację") }
+        if parts.contains(.key) { return ("Tailscale", "Klucz do dostępu spoza domu") }
+        return ("Tailscale", "Dziennik połączenia na tym telefonie")
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            SectionHeader(title: "Dostęp spoza domu", subtitle: "Tailscale wbudowany w aplikację")
+            SectionHeader(title: header.0, subtitle: header.1)
             Card {
-                Text("Poza domem Frame łączy się z serwerem własnym połączeniem Tailscale, bez aplikacji Tailscale i bez VPN, więc działa obok innego VPN. Używa adresu „Spoza domu”, gdy to adres Tailscale (100.x.y.z albo nazwa .ts.net).")
-                    .font(.caption)
-                    .foregroundStyle(Theme.inkSoft)
-                    .fixedSize(horizontal: false, vertical: true)
-                Divider()
-                status
-                if keySet || model.tailnet != .off {
-                    Divider()
-                    Toggle(isOn: enabled) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Tailscale w aplikacji")
-                            Text("Na tym telefonie. Wyłączony: Frame łączy się przez VPN aplikacji Tailscale, jeśli jest włączony.")
-                                .font(.caption)
-                                .foregroundStyle(Theme.inkSoft)
+                if parts.contains(.connection) {
+                    status
+                    if keySet || model.tailnet != .off {
+                        Divider()
+                        Toggle(isOn: enabled) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Tailscale w aplikacji")
+                                Text("Wyłączony: Frame użyje VPN aplikacji Tailscale.")
+                                    .font(.caption)
+                                    .foregroundStyle(Theme.inkSoft)
+                            }
                         }
+                        .tint(Theme.ink)
                     }
-                    .tint(Theme.ink)
                 }
-                if editable {
-                    Divider()
+                if editable, parts.contains(.key) {
+                    if parts.contains(.connection) { Divider() }
                     keyEditor
                 }
-                if model.tailnet != .off {
-                    Divider()
-                    DisclosureGroup(isExpanded: $showLog) {
-                        ScrollView(.horizontal) {
-                            Text(log.isEmpty ? "Pusto: Tailscale jeszcze nie startował." : log)
-                                .font(.caption2.monospaced())
-                                .foregroundStyle(Theme.inkSoft)
-                                .textSelection(.enabled)
-                                .padding(.top, 6)
+                if parts.contains(.log) {
+                    if parts != [.log] { Divider() }
+                    if model.tailnet == .off {
+                        Text("Tailscale nie działa na tym telefonie.")
+                            .font(.subheadline)
+                            .foregroundStyle(Theme.inkSoft)
+                    } else {
+                        DisclosureGroup(isExpanded: $showLog) {
+                            ScrollView(.horizontal) {
+                                Text(log.isEmpty ? "Pusto: Tailscale jeszcze nie startował." : log)
+                                    .font(.caption2.monospaced())
+                                    .foregroundStyle(Theme.inkSoft)
+                                    .textSelection(.enabled)
+                                    .padding(.top, 6)
+                            }
+                        } label: {
+                            Text("Dziennik Tailscale").font(.subheadline)
                         }
-                    } label: {
-                        Text("Dziennik Tailscale").font(.subheadline)
-                    }
-                    .tint(Theme.ink)
-                    .onChange(of: showLog) { _, open in
-                        if open { log = Tailnet.recentLog() }
+                        .tint(Theme.ink)
+                        .onChange(of: showLog) { _, open in
+                            if open { log = Tailnet.recentLog() }
+                        }
                     }
                 }
             }
@@ -137,7 +152,7 @@ struct TailnetSection: View {
                         .foregroundStyle(Theme.good)
                 }
             }
-            Text("W panelu Tailscale (Settings → Keys) utwórz klucz „Reusable”, najlepiej z tagiem, np. tag:frame-app: wtedy połączenie nie wygasa. Telefony domowników dostaną klucz z serwera same, nie potrzebują konta Tailscale.")
+            Text("Klucz „Reusable” z tagiem, np. tag:frame-app (Settings → Keys). Domownicy dostaną go z serwera.")
                 .font(.caption)
                 .foregroundStyle(Theme.inkSoft)
                 .fixedSize(horizontal: false, vertical: true)

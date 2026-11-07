@@ -196,7 +196,9 @@ final class AppModel {
         let remote = defaults.string(forKey: Keys.remoteURL) ?? ""
         let token = KeychainStore.read(Keys.apiToken) ?? ""
         let forcedDemo = defaults.bool(forKey: "demo")  // launch argument -demo YES
-        let demo = forcedDemo || (defaults.object(forKey: Keys.demoMode) as? Bool ?? url.isEmpty)
+        // No switch for the demo any more: a phone that had it on with an
+        // address saved goes back to its server.
+        let demo = forcedDemo || Self.serverAddress(url) == nil
         serverURL = url
         remoteURL = remote
         apiToken = token
@@ -255,8 +257,11 @@ final class AppModel {
         return url
     }
 
-    /// Persist connection settings and switch backend.
+    /// Persist connection settings and switch backend. Without a server
+    /// address the app shows the demo's sample works (there is no switch
+    /// for it any more; CI screenshots force it with `-demo YES`).
     func applyConnection() async {
+        demoMode = Self.serverAddress(serverURL) == nil
         UserDefaults.standard.set(serverURL, forKey: Keys.serverURL)
         UserDefaults.standard.set(remoteURL, forKey: Keys.remoteURL)
         UserDefaults.standard.set(demoMode, forKey: Keys.demoMode)

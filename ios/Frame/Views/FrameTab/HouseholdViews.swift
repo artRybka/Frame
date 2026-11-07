@@ -126,7 +126,7 @@ struct HouseholdSection: View {
                         ), in: 0 ... 50) {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("Studia dziennie: \(people.studyLimit)")
-                                Text("Ile studiów dzieł domownik może zamówić w ciągu dnia (z Twojego klucza Claude).")
+                                Text("Na osobę dziennie, z Twojego klucza Claude.")
                                     .font(.caption)
                                     .foregroundStyle(Theme.inkSoft)
                             }
