@@ -494,3 +494,69 @@ def test_a_work_without_an_address_has_no_original(tmp_path: Path) -> None:
 
 def _refuse(request: httpx.Request) -> httpx.Response:
     raise AssertionError(f"asked {request.url}")
+
+
+def test_the_owner_does_not_wait_for_the_backgrounds_download(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The background's download of a thumbnail may wait out the app's use
+    with the thumbnail's lock held: a Szukaj tile asked for the same one
+    waited with no end (2026-11-07). It downloads its own after a moment."""
+    from frame_server.library import images
+    from frame_server.library.hosts import HostGuard, urgently
+
+    monkeypatch.setattr(images, "URGENT_LOCK_WAIT", 0.1)
+    stuck = threading.Event()
+    release = threading.Event()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if not stuck.is_set():
+            stuck.set()
+            release.wait(10)  # the background's, held up
+        return httpx.Response(200, content=_jpeg())
+
+    cache = ImageCache(tmp_path, lambda: httpx.Client(transport=httpx.MockTransport(handler)))
+    cache.hosts = HostGuard(pace={}, limits={})
+    item = _item(30)
+    background = threading.Thread(target=cache.ensure_thumb, args=(item,), name="job-catalogue")
+    background.start()
+    try:
+        assert stuck.wait(5)
+        started = time.monotonic()
+        with urgently():
+            path = cache.ensure_thumb(item)
+        assert path.is_file()
+        assert time.monotonic() - started < 5
+    finally:
+        release.set()
+        background.join(5)
+    assert cache.thumb_path(item).is_file()
+
+
+def test_the_background_waits_for_the_app_before_it_holds_a_picture(tmp_path: Path) -> None:
+    from frame_server.library.hosts import HostGuard, urgently
+
+    using = threading.Event()
+    using.set()
+    guard = HostGuard(pace={}, limits={})
+    guard.app_in_use = using.is_set
+    guard.sleep = lambda _: time.sleep(0.01)
+    cache = ImageCache(
+        tmp_path,
+        lambda: httpx.Client(
+            transport=httpx.MockTransport(lambda _: httpx.Response(200, content=_jpeg()))
+        ),
+    )
+    cache.hosts = guard
+    item = _item(31)
+    background = threading.Thread(target=cache.ensure_thumb, args=(item,), name="job-catalogue")
+    background.start()
+    time.sleep(0.05)
+    lock = cache._lock(f"t:{item.id}")
+    assert lock.acquire(timeout=0.5)  # not held while the background waits
+    lock.release()
+    with urgently():
+        assert cache.ensure_thumb(item).is_file()
+    using.clear()
+    background.join(5)
+    assert not background.is_alive()

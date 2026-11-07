@@ -7,6 +7,12 @@
   bez rycin, plakatów i map.
 - Szukanie w Wikimedia Commons pomija skany dokumentów z archiwów
   (formularze, nieśmiertelniki) i diagramy chemiczne.
+- Miniatury w Szukaj nie zostają już puste: gdy serwer pobierał tę samą
+  miniaturę w tle i czekał, aż przestaniesz korzystać z aplikacji, kafelek
+  czekał razem z nim. Teraz po chwili serwer pobiera ją od razu dla
+  aplikacji. To samo dotyczy obrazu na karcie dzieła.
+- Zdjęcia z Wikimedia Commons bez znanego autora mają podpis „Nieznany”
+  zamiast „NieznanyUnknown author”; zapisane wcześniej dzieła są poprawione.
 
 ## 1.121.6
 

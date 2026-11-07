@@ -245,10 +245,20 @@ def file_title(name: str, artist: str, year: int | None = None) -> str:
 #    capital ("peinture murale"; Mateusz 2026-11-06).
 # 10: years of any source from dates in words ("18th century", "ca. 1890s",
 #     "pierwsza dekada XX wieku"): works without one were never in Epoka.
-REPAIR_VERSION = 10
+# 11: Commons artists with the hidden English name glued to the Polish one
+#     ("NieznanyUnknown author", {{Unknown|author}}; Mateusz 2026-11-07).
+REPAIR_VERSION = 11
 REPAIR_STATE_KEY = "commons_text_repair"
 # The household's own photos: their captions are left as they were typed.
 OWN_SOURCES = frozenset({"upload", "icloud"})
+
+
+#: A Commons artist as older versions kept {{Unknown|author}},
+#: {{Anonymous}} and the like: the visible Polish name with the hidden
+#: English one glued on ("NieznanyUnknown author").
+_GLUED_UNKNOWN = re.compile(
+    r"^(.*\S)(?<! )(?:Unknown (?:author|artist|photographer|painter)|Anonymous)$"
+)
 
 
 def _louvre_repairs(item: Item) -> dict[str, object]:
@@ -314,6 +324,8 @@ def _source_repairs(item: Item) -> dict[str, object]:
         fixes["thumb_url"] = commons_rendition(item.image_url, 500, item.width)
     if item.source != "wmc":
         return fixes
+    if glued := _GLUED_UNKNOWN.match(str(fixes.get("artist", item.artist))):
+        fixes["artist"] = glued.group(1)
     title = strip_language_prefix(commons_plain(str(fixes.get("title", item.title)), title=True))
     title = strip_artist(title, str(fixes.get("artist", item.artist)))
     if title and title != item.title:
