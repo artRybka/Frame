@@ -113,85 +113,33 @@ enum ArtGlow {
         return lit.image
     }
 
-    /// The way in, on entering the work's card or the study: the picture as
-    /// it is, then its light parts brighter, then all of it, in about
+    /// The way in, on entering the work's card or the study: the picture
+    /// as it is at first, then brighter evenly up to the gain set, in about
     /// a second (Mateusz 2026-11-07). Seconds from the picture's view
     /// appearing.
     enum WayIn {
-        static let light: ClosedRange<Double> = 0.15...0.55
-        static let whole: ClosedRange<Double> = 0.55...1.0
+        static let span: ClosedRange<Double> = 0.15...1.0
 
-        /// How far a copy is shown `t` seconds in (0 to 1), easing in and out.
-        static func shown(_ span: ClosedRange<Double>, at t: Double) -> Double {
+        /// How far the brighter copy is shown `t` seconds in (0 to 1),
+        /// easing in and out.
+        static func shown(at t: Double) -> Double {
             let x = min(max((t - span.lowerBound) / (span.upperBound - span.lowerBound), 0), 1)
             return x * x * (3 - 2 * x)
         }
     }
 
-    /// Where the light parts begin and end, in linear luminance: a mid grey
-    /// gets nothing, a light tone (lightness about 0.84) all of the gain.
-    static let lightFrom = 0.18
-    static let lightTo = 0.6
-    /// How soft the edge of the light parts is, of the shorter side: whole
-    /// regions light up, not specks.
-    static let lightSoftness = 0.012
-
-    static func image(_ image: UIImage, gain: Double) async -> UIImage? {
-        await copies(image, gain: gain, lightParts: false)?.whole
-    }
-
-    /// The brighter copy (from the cache when made before) and, for the way
-    /// in, the one with only its light parts brighter, made together.
-    static func copies(_ image: UIImage, gain asked: Double, lightParts: Bool) async
-        -> (whole: UIImage, light: UIImage?)? {
-        let done = cached(image, gain: asked)
-        if let done, !lightParts { return (done, nil) }
+    static func image(_ image: UIImage, gain asked: Double) async -> UIImage? {
+        if let done = cached(image, gain: asked) { return done }
         let headroom = await ScreenBoost.shared.headroom
         let gain = min(CGFloat(asked), headroom * 0.9)
         guard gain > 1.05, let cg = image.cgImage else { return nil }
         let scale = image.scale
         let orientation = image.imageOrientation
-        let needsWhole = done == nil
-        let made = await Task.detached(priority: .userInitiated) { () -> (CGImage?, CGImage?) in
-            (needsWhole ? render(cg, gain: gain) : nil, lightParts ? renderLight(cg, gain: gain) : nil)
-        }.value
-        let whole: UIImage
-        if let done {
-            whole = done
-        } else {
-            guard let out = made.0 else { return nil }
-            whole = UIImage(cgImage: out, scale: scale, orientation: orientation)
-            cache.setObject(Lit(whole, gain: asked), forKey: image, cost: out.bytesPerRow * out.height)
-        }
-        return (whole, made.1.map { UIImage(cgImage: $0, scale: scale, orientation: orientation) })
-    }
-
-    /// Only the light parts brighter: the lifted picture over the picture
-    /// itself through a soft mask of how light each region is.
-    static func renderLight(_ source: CGImage, gain: CGFloat) -> CGImage? {
-        let picture = CIImage(cgImage: source)
-        let lifted = picture.applyingFilter("CIExposureAdjust", parameters: [kCIInputEVKey: log2(gain)])
-        let scale = 1 / (lightTo - lightFrom)
-        let weights = CIVector(x: 0.2126 * scale, y: 0.7152 * scale, z: 0.0722 * scale, w: 0)
-        let bias = -lightFrom * scale
-        let ramp = picture
-            .applyingFilter("CIColorMatrix", parameters: [
-                "inputRVector": weights, "inputGVector": weights, "inputBVector": weights,
-                "inputAVector": CIVector(x: 0, y: 0, z: 0, w: 1),
-                "inputBiasVector": CIVector(x: bias, y: bias, z: bias, w: 0),
-            ])
-            .applyingFilter("CIColorClamp", parameters: [
-                "inputMinComponents": CIVector(x: 0, y: 0, z: 0, w: 0),
-                "inputMaxComponents": CIVector(x: 1, y: 1, z: 1, w: 1),
-            ])
-        let sigma = Double(min(source.width, source.height)) * lightSoftness
-        let mask = sigma < 0.5 ? ramp
-            : ramp.clampedToExtent().applyingGaussianBlur(sigma: sigma).cropped(to: picture.extent)
-        let output = lifted.applyingFilter("CIBlendWithMask", parameters: [
-            kCIInputBackgroundImageKey: picture, kCIInputMaskImageKey: mask,
-        ])
-        guard let space = CGColorSpace(name: CGColorSpace.extendedLinearSRGB) else { return nil }
-        return context.createCGImage(output, from: picture.extent, format: .RGBAh, colorSpace: space)
+        guard let out = await Task.detached(priority: .userInitiated, operation: { render(cg, gain: gain) }).value
+        else { return nil }
+        let result = UIImage(cgImage: out, scale: scale, orientation: orientation)
+        cache.setObject(Lit(result, gain: asked), forKey: image, cost: out.bytesPerRow * out.height)
+        return result
     }
 
     static func render(_ source: CGImage, gain: CGFloat) -> CGImage? {
