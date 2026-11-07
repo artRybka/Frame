@@ -36,11 +36,10 @@ final class StudyLiveActivity {
 
     /// The card for a study on its way (only possible with the app open),
     /// or the one already there moved on.
-    func start(itemID: String, title: String, status: String) async {
-        let state = State(status: status)
+    func start(itemID: String, title: String, state: State) async {
         guard state.isActive else { return }
         if activity(for: itemID) != nil {
-            update(itemID: itemID, status: status)
+            update(itemID: itemID, state: state)
             return
         }
         guard ActivityAuthorizationInfo().areActivitiesEnabled, !starting.contains(itemID) else { return }
@@ -62,10 +61,9 @@ final class StudyLiveActivity {
     }
 
     /// A step heard by the app; a result ends the card (`finish`).
-    func update(itemID: String, status: String, error: String? = nil) {
-        let state = State(status: status, error: error)
+    func update(itemID: String, state: State) {
         guard state.isActive else {
-            finish(itemID: itemID, status: status, error: error)
+            finish(itemID: itemID, status: state.status, error: state.error)
             return
         }
         guard let activity = activity(for: itemID), activity.content.state != state else { return }

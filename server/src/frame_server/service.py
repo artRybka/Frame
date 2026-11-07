@@ -304,6 +304,7 @@ class FrameService:
             status,
             error,
             notifications.item_title(self, item) if status == "ready" else "",
+            self.study.progress(item.id),
         )
         # Favourite artists' birthdays, for the notifications.
         self.births = Births(self.library)

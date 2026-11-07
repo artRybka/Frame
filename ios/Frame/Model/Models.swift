@@ -1828,6 +1828,12 @@ struct StudyView: Codable, Hashable, Sendable {
     var status: String
     /// Why it failed, in Polish.
     var error: String
+    /// On its way: the part it is at (study.py `PARTS`), and since when
+    /// Claude writes it and when it should be done (nil from a server
+    /// before 1.117.0, and while it waits).
+    var part: String? = nil
+    var startedAt: Date? = nil
+    var expectedEnd: Date? = nil
     /// The page, once ready.
     var work: DailyWork?
     /// What one costs, about (USD): now, and ordered for later (nil from a
@@ -1841,6 +1847,14 @@ struct StudyView: Codable, Hashable, Sendable {
 
     /// Ordered for later: the server says "Studium gotowe" when it is.
     var isLater: Bool { status == "later" }
+
+    /// As the Lock Screen card shows it.
+    var activityState: StudyActivityAttributes.ContentState {
+        .init(
+            status: status, error: error, part: part?.isEmpty == false ? part : nil,
+            startedAt: startedAt, expectedEnd: expectedEnd
+        )
+    }
 }
 
 /// `POST`/`GET`/`PUT /api/study/{id}/composition`: the work's analysis of

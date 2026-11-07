@@ -21,7 +21,7 @@ from ..ai.details import KIND as MEND
 from ..library import Item
 from ..library.markup import strip_markup
 from ..library.vocabulary import other_art
-from ..notifications import PushError
+from ..notifications import APPLE_EPOCH, PushError
 from ..service import FrameService
 from ..study import PENDING, Status
 from ..users import User
@@ -42,6 +42,12 @@ class StudyView(BaseModel):
 
     status: Status
     error: str = ""
+    #: On its way, the part it is at (``frame_server.study.PARTS``, or
+    #: "waiting"), and once Claude writes it, since when and until when
+    #: about (seconds since 2001, as the app decodes dates).
+    part: str = ""
+    started_at: float | None = None
+    expected_end: float | None = None
     work: DailyWork | None = None
     #: What a study costs, about (USD): now, and ordered for later (the
     #: Batch API, "Przygotuj na później").
@@ -70,14 +76,22 @@ def _view(
     cost = svc.study.job.estimate_usd(1, batch=False)
     later = svc.study.job.estimate_usd(1, batch=True)
     left = svc.users.studies_left(user, date.today()) if user is not None else None
+    progress = svc.study.progress(item.id) if item is not None and status in PENDING else None
     return StudyView(
         status=status,
         error=error,
+        part=progress.part if progress else "",
+        started_at=_apple(progress.started) if progress else None,
+        expected_end=_apple(progress.until) if progress else None,
         work=work,
         cost_usd=round(cost, 2),
         later_cost_usd=round(later, 2),
         studies_left=left,
     )
+
+
+def _apple(moment: float | None) -> float | None:
+    return round(moment - APPLE_EPOCH, 3) if moment is not None else None
 
 
 class StudyBrief(BaseModel):
@@ -119,10 +133,16 @@ async def _wait(svc: FrameService, item: Item | None, wait: float) -> None:
     """Up to ``wait`` seconds for the study on its way to move on."""
     if item is None or not wait:
         return
-    status = svc.study.status(item)[0]
+    work = item
+
+    def where() -> tuple[str, str]:
+        progress = svc.study.progress(work.id)
+        return svc.study.status(work)[0], progress.part if progress else ""
+
+    status = where()
     loop = asyncio.get_running_loop()
     end = loop.time() + wait
-    while status in PENDING and svc.study.status(item)[0] == status and loop.time() < end:
+    while status[0] in PENDING and where() == status and loop.time() < end:
         await asyncio.sleep(0.5)
 
 
@@ -206,7 +226,8 @@ async def follow_study(item_id: str, body: StudyActivityToken, svc: Svc) -> None
     status, error = await run_in_threadpool(svc.study.status, svc.library.get(item_id))
     # Not on its way here ("none"): the server lost it.
     step = "stopped" if status == "none" else status
-    await svc.notifier.push_study(item_id, step, error, only=activity.token)
+    progress = svc.study.progress(item_id)
+    await svc.notifier.push_study(item_id, step, error, only=activity.token, progress=progress)
 
 
 @router.get("/study/{item_id:item}/detail")

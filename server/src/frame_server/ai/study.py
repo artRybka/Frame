@@ -39,7 +39,7 @@ class StudyJob(DailyJob):
         super().__init__(*args, **kwargs)
         #: Whether the owner asked for a study of the work; set by ``frame_server.study``.
         self.requested: Callable[[str], bool] = lambda item_id: False
-        #: How far the question being asked now is ("sources", "writing"), by item.
+        #: How far the question being asked now is (``frame_server.study.PARTS``), by item.
         self.stages: dict[str, str] = {}
         #: Told of each step (item id, stage), from the worker thread.
         self.on_stage: Callable[[str, str], None] = lambda item_id, stage: None
@@ -53,7 +53,7 @@ class StudyJob(DailyJob):
     def params(self, item: Item) -> dict[str, Any]:
         self._stage(item.id, "sources")  # the museum, Wikidata and Wikipedia first
         params = super().params(item)
-        self._stage(item.id, "writing")
+        self._stage(item.id, "text")
         return params
 
     def _stage(self, item_id: str, stage: str) -> None:
