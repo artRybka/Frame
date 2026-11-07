@@ -12,6 +12,7 @@ from frame_server.imaging import PRESETS
 from frame_server.imaging.color import linear_to_oklab
 from frame_server.imaging.interest import InterestMap, detect_faces
 from frame_server.imaging.layout import (
+    DESCRIPTION_MIN_MARGIN,
     WHOLE,
     Crop,
     Fit,
@@ -101,13 +102,27 @@ def test_description_gives_the_picture_priority() -> None:
     canvas = (1440, 2560)
     # A little wider than tall-and-narrow: across the frame, as close to its
     # sides as to its top; the close-up and the text below get the rest.
-    plan = plan_layout((750, 1000), canvas, Fit.DESCRIPTION)
+    plan = plan_layout((750, 1000), canvas, Fit.DESCRIPTION, margin=0.04)
     (x, y, w, _), (_, ry, _, rh) = (window.rect for window in plan.windows)
     assert x == y and w == canvas[0] - 2 * x and ry + rh == canvas[1] - y
     # Narrower (Monet's Rue Montorgueil): about as wide, a low row kept below.
-    plan = plan_layout((617, 1000), canvas, Fit.DESCRIPTION)
+    plan = plan_layout((617, 1000), canvas, Fit.DESCRIPTION, margin=0.04)
     (x, y, _, _), (_, _, _, rh) = (window.rect for window in plan.windows)
     assert x < 1.3 * y and 0.2 * canvas[0] <= rh < 0.12 * canvas[1]
+
+
+def test_description_mat_narrows_down_to_5_mm() -> None:
+    """Every step of the app's slider shows on the frame, from 5 mm up."""
+    canvas = (1440, 2560)
+    at = {
+        mm: plan_layout((750, 1000), canvas, Fit.DESCRIPTION, margin=mm / 391.68)
+        for mm in (5, 10, 15)
+    }
+    tops = {mm: plan.windows[0].rect[1] for mm, plan in at.items()}
+    assert tops[5] < tops[10] < tops[15]
+    assert tops[5] == round(1440 * DESCRIPTION_MIN_MARGIN) == 18  # 5 mm at 0.272 mm a pixel
+    # Narrower than that is not drawn: the close-up and the text keep apart.
+    assert plan_layout((750, 1000), canvas, Fit.DESCRIPTION, margin=0).windows == at[5].windows
 
 
 def test_fit_crop_takes_any_shape() -> None:

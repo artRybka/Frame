@@ -140,6 +140,9 @@ DETAIL_ZOOM = 3.0  # the close-up, if the source has the pixels
 DETAIL_MAX_UPSCALE = 1.6  # enlarge source pixels at most this much, unless...
 DETAIL_MIN_ENLARGEMENT = 1.8  # ...the close-up would be less than this times the picture
 PICTURE_TRIM = 0.02  # a mat window is a bit smaller than the picture behind it
+PIXEL_PITCH_MM = 0.272  # the EM32DX: the app shows the passe-partout in millimetres
+# DESCRIPTION: the narrowest passe-partout, 5 mm (the app's slider starts there).
+DESCRIPTION_MIN_MARGIN = 5 / (PANEL_HEIGHT * PIXEL_PITCH_MM)
 
 Rect = tuple[int, int, int, int]  # x, y, w, h
 # Picks crops automatically: (window aspect, one zoom per crop) -> crops,
@@ -369,7 +372,7 @@ def _beside(
 ) -> tuple[Rect, list[Rect]] | None:
     """One arrangement: (picture, [close-up, text])."""
     (iw, ih), (cw, ch) = size, canvas
-    m = round(min(cw, ch) * max(margin, 0.04))
+    m = round(min(cw, ch) * max(margin, DESCRIPTION_MIN_MARGIN))
     main: Rect
     if side:  # picture at the left; the rest stacked in a column at the right
         full_w = round(ch * iw / ih)
