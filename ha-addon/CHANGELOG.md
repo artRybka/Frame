@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.113.0
+
+- Konfiguracja to teraz krótka lista jak w Ustawieniach iOS: Na co dzień,
+  Dzieła i biblioteka, Ramka i serwer oraz Diagnostyka. Każdy wiersz
+  otwiera swoją stronę i podpowiada, co na niej najważniejsze.
+- Wszystkie klucze (Claude, APNs, Tailscale, muzea) i certyfikaty Samsunga
+  są w jednym miejscu: Klucze i certyfikaty.
+- Bez powtórek z zakładki Ramka (Wi-Fi ramki, restart aplikacji, wersja
+  serwera) i bez długich opisów.
+- Nie ma już przełącznika Tryb demo: przykładowe dzieła są tylko wtedy,
+  gdy aplikacja nie ma adresu serwera. Zniknął też przycisk „Przywróć
+  wartości z serwera”.
+
 ## 1.112.3
 
 - „Popraw detale” i „Wykonaj ponowną analizę” zamówione na kilku
