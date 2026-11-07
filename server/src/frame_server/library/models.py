@@ -17,7 +17,7 @@ from pydantic import (
     model_validator,
 )
 
-from ..imaging.layout import Crop, Fit
+from ..imaging.layout import Crop, Fit, mm
 from .viewer import OWNER_ID, VIEWER
 
 
@@ -62,7 +62,7 @@ class Look(BaseModel):
 
     fit: Literal[Fit.FILL, Fit.FIT] = Fit.FILL
     mat: Literal["white", "cream", "grey", "black", "picture", "picture_dark"] = "white"
-    margin: float = Field(0.05, ge=0, le=0.3)
+    margin: float = Field(mm(10), ge=0, le=0.3)
 
 
 class Framing(BaseModel):
