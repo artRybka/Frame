@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.118.4
+
+- Paralaksa w Studium dnia i na okładce Ukryte jest ok. trzy razy
+  słabsza: obraz przesuwa się tylko odrobinę, gdy obracasz telefon, i
+  ledwie zostaje z tyłu przy przewijaniu.
+
 ## 1.118.3
 
 - Okładka „Ukryte” w Playlistach ożyła: rozmyte dzieła powoli dryfują za
