@@ -28,6 +28,7 @@ from .seed import MORE_POLISH_PAINTERS, PACKS, POLISH_PAINTERS
 from .viewer import OWNER_ID, viewer_id
 from .vocabulary import (
     DECORATIVE,
+    EARLY_COLOUR,
     HIGHLIGHT,
     MANUSCRIPTS,
     OBJECT_CATEGORIES,
@@ -41,6 +42,7 @@ from .vocabulary import (
     object_category,
     other_art,
     set_aside,
+    term,
     term_matches,
     text_of,
 )
@@ -1104,13 +1106,17 @@ OTHER_ART_THEMES: list[Theme] = [
         "Prokudin-Gorski, fotochromy, autochromy i kolorowe slajdy FSA.",
         PHOTOGRAPHY,
         # Whole collections of the Library of Congress (loc.COLLECTION): its
-        # words alone found 2 of them (Mateusz 2026-11-06).
-        ("loc", "collection:prokudin-gorskii three-color"),
+        # words alone found 2 of them (Mateusz 2026-11-06). Prokudin-Gorsky's
+        # without words: its words take 17 s and its second page is a 404;
+        # his black-and-white album prints fail EARLY_COLOUR.
+        ("loc", "collection:prokudin-gorskii"),
         ("loc", "collection:photochrom-prints"),
         ("loc", "autochrome"),
         ("loc", "collection:fsa-owi-color-photographs"),
         ("cma", "autochrome"),
-        terms=("years:1850-1950",),
+        ("cma", "photochrom"),
+        ("aic", "autochrome"),
+        terms=("years:1850-1950", EARLY_COLOUR),
         colors=("colorful",),
     ),
     _other(
@@ -2021,6 +2027,9 @@ def search_page(
     asked = [k for k in found.terms if k in OBJECT_CATEGORIES]
     if asked:  # "Sztuki inne": the theme's technique only
         kept = [i for i in items if object_category(i) in asked and not set_aside(i, asked)]
+        # What the museum's data shows ("Pierwsze kolory": a colour process).
+        marks = [term(k) for k in found.terms if k.startswith("tag:") and k != HIGHLIGHT]
+        kept = [i for i in kept if all(m is not None and term_matches(m, i) for m in marks)]
     else:
         kept = [i for i in items if not set_aside(i)]
     if found.strict:

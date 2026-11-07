@@ -136,6 +136,12 @@ TURNOVER_KEY = "catalogue_turnover"
 OTHER_ART_SHARES = {PHOTOGRAPHY: 0.02, MANUSCRIPTS: 0.016, SCULPTURE: 0.012, DECORATIVE: 0.012}
 #: Works of one technique taken in at a time.
 OTHER_ART_BATCH = 40
+#: Thin cards of "Sztuki inne" filled a night, the thinnest first; each
+#: looks at :data:`THIN_DRAWS` museum works at most. A round for all of them
+#: by day, with every turnover, brought the Library of Congress's and the
+#: Met's bot walls down on the home address (2026-11-07).
+THIN_CARDS_A_NIGHT = 2
+THIN_DRAWS = 60
 #: How long the room each technique has is trusted (seconds), for searches.
 OTHER_ART_ROOM_FOR = 600.0
 #: At night a full catalogue takes in a day's works at once ...
@@ -1143,13 +1149,15 @@ class Player:
             self._other_art_room = (time.monotonic(), room)
         return room
 
-    def _add_other_art(self, job: Job) -> None:
+    def _add_other_art(self, job: Job, thin: bool = False) -> None:
         """Top up each technique of "Sztuki inne" towards its share of the
-        catalogue, :data:`OTHER_ART_BATCH` works at a time; first the
-        works of the themes whose cards have too few for a cover, whatever
-        room (their technique keeps to its share by :meth:`trim_other_art`
-        the next night, the works seen least going first)."""
-        for found, count in thin_other_art(self.library):
+        catalogue, :data:`OTHER_ART_BATCH` works at a time; at night
+        (``thin``) first the works of the themes whose cards have too few for
+        a cover (:data:`THIN_CARDS_A_NIGHT`), whatever room (their technique
+        keeps to its share by :meth:`trim_other_art` the next night, the
+        works seen least going first)."""
+        thinnest = sorted(thin_other_art(self.library), key=lambda pair: pair[1]) if thin else []
+        for found, count in thinnest[:THIN_CARDS_A_NIGHT]:
             category = next(k for k in found.terms if k in OBJECT_CATEGORIES)
             rules = found.rules()
             part = Job(id=job.id, description=f"other arts: {found.key}")
@@ -1159,6 +1167,7 @@ class Player:
                 COVER_MIN - count,
                 part,
                 fits=partial(matches, rules=rules),
+                most=THIN_DRAWS,
             )
             job.item_ids += part.item_ids
             log.info("catalogue: %d works for %s taken in", len(part.item_ids), found.key)
@@ -1326,7 +1335,7 @@ class Player:
                     highlights=CATALOGUE_HIGHLIGHTS,
                 )
                 self.trim_other_art()
-                self._add_other_art(job)
+                self._add_other_art(job, thin=night)
             if full:
                 self.trim_catalogue()
 
