@@ -11,7 +11,7 @@ import time
 from collections import Counter, OrderedDict
 from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import date
 from typing import Annotated
 from weakref import WeakKeyDictionary
 
@@ -23,7 +23,6 @@ from starlette.concurrency import run_in_threadpool
 
 from ..library import (
     Item,
-    ItemKind,
     Job,
     Playlist,
     PlaylistKind,
@@ -40,6 +39,7 @@ from ..library.repo import Hidden, Library
 from ..library.themes import (
     CARD_MIN,
     GROUPS,
+    MIX_PREFIX,
     OTHER_ART_THEMES,
     SECTION_YEARS,
     THEMES,
@@ -68,7 +68,6 @@ from ..library.vocabulary import (
     fold,
     museum_kind,
     museum_queries,
-    other_art,
     set_aside,
     suggest,
 )
@@ -100,10 +99,6 @@ DAY_ROW_MIN = 8
 DAY_ROW_WAIT = 3.0
 #: Museums that did not answer are asked again after this many seconds.
 DAY_ROW_RETRY = 600.0
-#: The owner's works not shown for this many days come back in a row.
-BACK_DAYS = 180
-#: Rows of works shown only with at least this many.
-ROW_MIN = 4
 #: A theme's cover: four works drawn each day from its best ones.
 COVER_POOL = 40
 
@@ -176,7 +171,7 @@ class ThemeCard(BaseModel):
 
 
 class SuggestionRow(BaseModel):
-    key: str  # "for-you", "theme", "back" ("like:<theme>" before "Bo lubisz" cards)
+    key: str  # "for-you", "theme" (also "back" and "like:<theme>" before)
     title: str
     subtitle: str = ""
     theme: str | None = None  # the theme to browse further
@@ -287,10 +282,6 @@ def _cover(items: list[Item], seed: str = "") -> list[Item]:
     return (picked + [i for i in items if i not in picked])[:4]
 
 
-def _since(days: int) -> str:
-    return (datetime.now(UTC) - timedelta(days=days)).isoformat(timespec="seconds")
-
-
 def _cards_key(svc: FrameService) -> tuple[object, ...]:
     """The cards stay as worked out while this stays: the day (covers and
     the week's themes), the catalogue's works, everyone's hearts ("Bo
@@ -327,7 +318,7 @@ def work_out_cards(svc: FrameService, force: bool = False) -> dict[str, tuple[in
         today = day.isoformat()
         mine: dict[str, Theme] = {}
         for user in svc.users.users():  # everyone's "Bo lubisz"
-            for found in make_liked(svc.library, svc.player.taste(user.id), user.id):
+            for found in make_liked(svc.library, svc.player.hearted(user.id), user.id):
                 mine.setdefault(found.key, found)
         weekly = for_you(svc.library, day)
         others = [*mine.values(), *THEMES, *OTHER_ART_THEMES, *colour_themes(svc.library, day)]
@@ -410,30 +401,6 @@ def _day_row(svc: FrameService, found: Theme, day: date) -> list[Item]:
     return _theme_rows.get(day) or picked
 
 
-def _back_row(svc: FrameService, day: date) -> SuggestionRow | None:
-    """The owner's works (kept or liked) the frame has not shown for half
-    a year or more."""
-    since = _since(BACK_DAYS)
-    hearts = svc.library.favorites()  # the asking person's
-    rules = PlaylistRules(kinds=[ItemKind.ARTWORK])
-    back = [
-        i
-        for i in svc.library.query(rules)[1]
-        if (i.id in hearts or not i.pooled)
-        and (i.last_shown_at or i.added_at or since) < since
-        and not other_art(i)  # "Sztuki inne" keep to their own group
-    ]
-    if len(back) < ROW_MIN:
-        return None
-    random.Random(day.toordinal()).shuffle(back)
-    return SuggestionRow(
-        key="back",
-        title="Dawno ich nie było",
-        subtitle="Twoje dzieła, których ramka nie pokazała od pół roku",
-        items=remote_items(svc, mixed(back[:ROW_SIZE])),
-    )
-
-
 def _suggestion_rows(svc: FrameService) -> list[SuggestionRow]:
     player = svc.player
     rows = []
@@ -461,8 +428,6 @@ def _suggestion_rows(svc: FrameService) -> list[SuggestionRow]:
                 items=remote_items(svc, mixed(day)),
             )
         )
-    if back := _back_row(svc, today):
-        rows.append(back)
     return [row.model_copy(update={"items": _light(row.items)}) for row in rows]
 
 
@@ -487,10 +452,11 @@ def suggestion_rows(svc: FrameService) -> list[SuggestionRow]:
 
 @router.get("/suggestions", response_model=list[SuggestionRow])
 async def suggestions(svc: Svc) -> list[SuggestionRow]:
-    """What Discover opens with: the works the server picked for the frame,
-    the theme of the day (a card of "Dziś dla Ciebie" in the app) and the
-    owner's works not shown for long. Works like the ones the owner likes
-    are the cards of "Bo lubisz" in ``/themes``."""
+    """What Discover opens with: the works the server picked for the frame
+    and the theme of the day (a card of "Dziś dla Ciebie" in the app). The
+    row of the owner's works not shown for long is gone (Mateusz
+    2026-11-07); works like the ones the owner likes are the cards
+    "Ponieważ lubisz" in ``/themes``."""
     return await run_in_threadpool(suggestion_rows, svc)
 
 
@@ -509,12 +475,14 @@ async def play_suggestions(svc: Svc) -> dict[str, bool]:
 def _theme_list(svc: FrameService) -> list[ThemeCard]:
     cards = _theme_cards(svc)
     playlists = svc.library.playlists(viewer_id())
-    # The week's themes and "Bo lubisz" once the cards have them (worked
-    # out with them).
+    # The week's themes and "Ponieważ lubisz" once the cards have them
+    # (worked out with them), the latter before the week's pairs.
     weekly = [t for t in for_you(svc.library, date.today()) if t.key in cards]
     mine = [t for t in liked(svc.library) if t.key in cards]
+    pairs = [t for t in weekly if t.key.startswith(MIX_PREFIX)]
+    weekly = [t for t in weekly if t not in pairs]
     colours = [t for t in colour_themes(svc.library, date.today()) if t.key in cards]
-    every = [*weekly, *mine, *THEMES, *OTHER_ART_THEMES, *colours]
+    every = [*weekly, *mine, *pairs, *THEMES, *OTHER_ART_THEMES, *colours]
     private = svc.player.settings.private_use
     every = [t for t in every if private or not t.private]
     # A card with too few works for a cover is not shown (it comes back

@@ -1,10 +1,10 @@
 import SwiftUI
 
 /// What Discover opens with: the work of the day, ideas for playlists in
-/// groups ("Dziś dla Ciebie" opens with the theme of the day, "Bo lubisz" has
-/// a card for each artist the owner likes), the owner's works not shown for
-/// long and, last, the works of the day and those with a study ("Studia
-/// dzieł").
+/// groups in the server's order ("Dziś dla Ciebie" has the theme of the day
+/// after the curator's cards and the artist of the week, then the cards
+/// "Ponieważ lubisz" from the hearts) and, last, the works of the day and
+/// those with a study ("Studia dzieł").
 ///
 /// The last ones loaded show at once (also after a launch) while fresh ones
 /// load, and only the cards and works on screen fetch their pictures.
@@ -15,12 +15,13 @@ struct SuggestionsView: View {
 
     private var rows: [SuggestionRow] { model.suggestionRows ?? [] }
     /// "Motyw dnia" is a card of "Dziś dla Ciebie"; "Dla Ciebie" (still the
-    /// cover of Propozycje in Playlisty) and "Nowe w katalogu" are not shown,
-    /// nor the rows "Bo lubisz: …" of older servers once they send its cards.
+    /// cover of Propozycje in Playlisty), "Nowe w katalogu" and "Dawno ich
+    /// nie było" (Mateusz 2026-11-07) are not shown, nor the rows "Bo
+    /// lubisz: …" of older servers once they send its cards.
     private var otherRows: [SuggestionRow] {
-        let liked = themes.contains { $0.group == DiscoverLayout.likes }
+        let liked = themes.contains { $0.key.hasPrefix(DiscoverLayout.likedPrefix) }
         return rows.filter { row in
-            !["theme", "for-you", "new"].contains(row.key) && !(liked && row.key.hasPrefix("like:"))
+            !["theme", "for-you", "new", "back"].contains(row.key) && !(liked && row.key.hasPrefix("like:"))
         }
     }
     private var themes: [ArtTheme] { DiscoverLayout.themes(model.themes ?? [], rows: rows) }
@@ -118,7 +119,10 @@ enum DiscoverLayout {
     static let weekly = "Dziś dla Ciebie"
     /// The same group as older servers name it.
     static let oldWeekly = "Na ten tydzień"
+    /// The group of the cards of favourite artists on older servers; they
+    /// are in "Dziś dla Ciebie" now.
     static let likes = "Bo lubisz"
+    static let likedPrefix = "like-"
     /// Groups made for this week or for this owner, not lasting themes.
     static let ownGroups: Set<String> = [weekly, likes]
 
@@ -147,8 +151,10 @@ enum DiscoverLayout {
         )
     }
 
-    /// The themes as Propozycje shows them: the theme of the day first in
-    /// "Dziś dla Ciebie" (the group made for it when the week has no themes).
+    /// The themes as Propozycje shows them: the theme of the day in "Dziś
+    /// dla Ciebie" after the curator's cards and the artist of the week,
+    /// before "Ponieważ lubisz" and the week's pairs (Mateusz 2026-11-07;
+    /// the group made for it when the week has no themes).
     static func themes(_ themes: [ArtTheme], rows: [SuggestionRow]) -> [ArtTheme] {
         let themes = themes.map { theme in
             var theme = theme
@@ -159,8 +165,20 @@ enum DiscoverLayout {
             return themes
         }
         var all = themes
-        all.insert(card, at: all.firstIndex { $0.group == weekly } ?? 0)
+        all.insert(card, at: dayCardIndex(all))
         return all
+    }
+
+    /// Where the theme of the day goes in ``themes``: before the first card
+    /// "Ponieważ lubisz" or pair of the week in "Dziś dla Ciebie", else
+    /// after its last card, else first.
+    static func dayCardIndex(_ themes: [ArtTheme]) -> Int {
+        let later = themes.firstIndex { theme in
+            theme.group == weekly && (theme.key.hasPrefix(likedPrefix) || theme.key.hasPrefix("week-mix-"))
+        }
+        if let later { return later }
+        if let last = themes.lastIndex(where: { $0.group == weekly }) { return last + 1 }
+        return 0
     }
 }
 
