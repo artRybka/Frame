@@ -4,8 +4,8 @@ over the catalogue and the museums."""
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
-import random
 import threading
 import time
 from collections import Counter, OrderedDict
@@ -267,12 +267,24 @@ def _light(items: list[RemoteItem]) -> list[RemoteItem]:
     return [r.model_copy(update={"item": r.item.model_copy(update=_HEAVY)}) for r in items]
 
 
+def _draw(seed: str, item: Item) -> bytes:
+    """Where ``item`` stands in the day's draw for a cover: its own, so a
+    work coming into or leaving the pool does not move the others."""
+    return hashlib.sha256(f"{seed}:{item.id}".encode()).digest()
+
+
 def _cover(items: list[Item], seed: str = "") -> list[Item]:
     """Four works by different artists where there are such, drawn from the
-    best ``COVER_POOL`` by ``seed`` (a day's covers differ from the next's)."""
+    best ``COVER_POOL`` by ``seed`` (a day's covers differ from the next's).
+
+    Each work draws on its own (:func:`_draw`), not a shuffle of the pool:
+    the cards are worked out again whenever the catalogue changes, and a
+    shuffle gave a card four other works after one new work came in, so
+    the covers kept changing while Odkrywaj was browsed (Mateusz
+    2026-11-07)."""
     items = items[:COVER_POOL]
     if seed:
-        random.Random(seed).shuffle(items)
+        items = sorted(items, key=lambda item: _draw(seed, item))
     picked: list[Item] = []
     for item in items:
         if all(item.artist != p.artist for p in picked):
