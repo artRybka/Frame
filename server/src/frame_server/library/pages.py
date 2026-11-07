@@ -46,7 +46,7 @@ PAGES_VERSION = "2"
 #: Museums not named read as "1".
 READINGS: dict[str, str] = {
     # 2026-11-07: old photographs (Fotografia, photo categories).
-    "wmc": "2",
+    "wmc": "4",
 }
 
 

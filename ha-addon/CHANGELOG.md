@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.121.6
+
+- Fotografia z Wikimedia Commons działa też bez wpisanych słów: serwer
+  losuje stare zdjęcia (m.in. z zasobów Library of Congress na Commons),
+  bez rycin, plakatów i map.
+- Szukanie w Wikimedia Commons pomija skany dokumentów z archiwów
+  (formularze, nieśmiertelniki) i diagramy chemiczne.
+
 ## 1.121.5
 
 - Fotografia w Szukaj sięga też do całej Wikimedia Commons: stare zdjęcia
