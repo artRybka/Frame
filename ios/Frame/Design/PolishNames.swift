@@ -76,11 +76,13 @@ extension Names {
         life(text).map { "\($0.born)–\($0.died)" }
     }
 
-    /// A theme's name, which for the artist of the week and "Bo lubisz" is
-    /// an artist's.
+    /// A theme's name, which for the artist of the week is an artist's and
+    /// for a card of a favourite one "Ponieważ lubisz: <artist>" (Mateusz
+    /// 2026-11-07: "muszą mieć dopisek w tytule").
     @MainActor
     static func theme(_ theme: ArtTheme) -> String {
-        theme.key.hasPrefix("week-artist-") || theme.key.hasPrefix("like-") ? artist(theme.name) : theme.name
+        if theme.key.hasPrefix("like-") { return "Ponieważ lubisz: \(artist(theme.name))" }
+        return theme.key.hasPrefix("week-artist-") ? artist(theme.name) : theme.name
     }
 }
 

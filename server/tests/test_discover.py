@@ -17,7 +17,6 @@ from frame_server.library.themes import (
     COLOUR,
     COLOUR_POOL,
     GROUPS,
-    LIKES,
     OTHER_ART_THEMES,
     OTHER_ARTS,
     THEMES,
@@ -118,8 +117,28 @@ def test_terms_are_suggested_in_polish_and_english() -> None:
     assert museum_queries(["subject:sea", "subject:flowers"]) == ["sea", "flower"]
     # Every theme's terms are known.
     assert all(t in BY_KEY for theme in THEMES for t in theme.terms)
-    # Made, not fixed: the week's themes, "Bo lubisz" and the week's colours.
-    assert {theme.group for theme in THEMES} == set(GROUPS) - {WEEKLY, LIKES, COLOUR, OTHER_ARTS}
+    # Made, not fixed: the week's themes ("Ponieważ lubisz" too) and the
+    # week's colours.
+    assert {theme.group for theme in THEMES} == set(GROUPS) - {WEEKLY, COLOUR, OTHER_ARTS}
+    # Mateusz's order of the groups (2026-11-07).
+    assert GROUPS == (
+        "Dziś dla Ciebie",
+        "Kierunki i style",
+        "Sztuka polska",
+        "Kolor i nastrój",
+        "Epoki",
+        "Tematy",
+        "Grafika i plakat",
+        "Sztuki inne",
+    )
+    prints = [t.key for t in THEMES if t.group == "Grafika i plakat"]
+    assert prints == ["posters", "ukiyo-e", "nature", "kacho-e", "black-white"]
+    assert [t.key for t in OTHER_ART_THEMES[:4]] == [
+        "other-manuscripts",
+        "other-sculpture",
+        "other-photography",
+        "other-decorative",
+    ]
     assert {theme.group for theme in OTHER_ART_THEMES} == {OTHER_ARTS}
     assert {theme.group for theme in COLOUR_POOL} == {COLOUR}
     assert theme_of_the_day.__name__  # importable

@@ -270,6 +270,14 @@ def test_the_curator_orders_at_night_and_its_cards_pass_the_checks(
     assert [t.key for t in weekly].count(faces.key) == 1
     mixes = [t for t in weekly if t.key.startswith("week-mix-")]
     assert len(mixes) <= WEEKLY_MIXES - 2
+    # Mateusz's order (2026-11-07): a curator's card, the artist of the
+    # week, the other curator's card, then the pairs.
+    kinds = [
+        t.key.split("-")[0] + ("-" + t.key.split("-")[1] if t.key.startswith("week") else "")
+        for t in weekly
+    ]
+    artist = kinds.count("week-artist")
+    assert kinds[: 2 + artist] == ["curator", *["week-artist"] * artist, "curator"]
     assert theme(faces.key, library) == faces
 
     # Opened in the app: made again the next night; the other stays.

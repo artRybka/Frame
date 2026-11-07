@@ -68,11 +68,11 @@ enum DemoDiscover {
             group: "Dziś dla Ciebie", rules: PlaylistRules(artists: ["Utagawa Hiroshige"])
         ),
         theme(
-            "like-claude-monet", "Claude Monet", "Cezanne, van Gogh i Seurat", group: "Bo lubisz",
+            "like-claude-monet", "Claude Monet", "Cezanne, van Gogh i Seurat", group: "Dziś dla Ciebie",
             rules: PlaylistRules(artists: ["Cezanne", "van Gogh", "Seurat"])
         ),
         theme(
-            "like-katsushika-hokusai", "Katsushika Hokusai", "Hiroshige i Utamaro", group: "Bo lubisz",
+            "like-katsushika-hokusai", "Katsushika Hokusai", "Hiroshige i Utamaro", group: "Dziś dla Ciebie",
             rules: PlaylistRules(artists: ["Hiroshige", "Utamaro"])
         ),
         theme(

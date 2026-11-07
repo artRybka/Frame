@@ -1003,13 +1003,14 @@ final class FrameAPITests: XCTestCase {
         let theme = try XCTUnwrap(themes.first { $0.key == rows[1].theme })
         XCTAssertNotNil(theme.group)
         XCTAssertFalse(theme.cover?.isEmpty ?? true)
-        // "Motyw dnia" is the first card of "Dziś dla Ciebie"; "Bo lubisz" has a card per artist.
+        // "Motyw dnia" comes after the artist of the week and before the cards
+        // "Ponieważ lubisz" of "Dziś dla Ciebie" (Mateusz 2026-11-07).
         let shown = DiscoverLayout.themes(themes, rows: rows)
-        let day = try XCTUnwrap(shown.first { $0.group == DiscoverLayout.weekly })
-        XCTAssertEqual(day.key, theme.key)
+        let weekly = shown.filter { $0.group == DiscoverLayout.weekly }
+        XCTAssertEqual(weekly.map(\.key), ["week-artist-utagawa-hiroshige", theme.key, "like-claude-monet", "like-katsushika-hokusai"])
+        let day = weekly[1]
         XCTAssertEqual(day.name, "Motyw dnia: \(theme.name)")
         XCTAssertFalse(day.cover?.isEmpty ?? true)
-        XCTAssertEqual(shown.filter { $0.group == DiscoverLayout.likes }.map(\.name), ["Claude Monet", "Katsushika Hokusai"])
         // An older server names the group "Na ten tydzień": the same group.
         let old = themes.map { theme in
             var theme = theme

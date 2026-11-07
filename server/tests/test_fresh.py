@@ -31,6 +31,7 @@ from frame_server.library.themes import (
     theme_of_the_day,
     weekly_themes,
 )
+from frame_server.library.viewer import OWNER_ID
 from frame_server.library.vocabulary import HIGHLIGHT
 
 
@@ -118,7 +119,7 @@ def test_new_and_returning_works_and_daily_covers(museums) -> None:  # noqa: F81
     with TestClient(app) as client:
         rows = {r["key"]: r for r in client.get("/api/suggestions").json()}
         assert "new" not in rows  # no "Nowe w katalogu" row (Mateusz, 2026-10-30)
-        assert len(rows["back"]["items"]) == 5
+        assert "back" not in rows  # no "Dawno ich nie było" (Mateusz, 2026-11-07)
         winter = next(c for c in client.get("/api/themes").json() if c["key"] == "winter")
         assert winter["count"] == 6 and "new_count" not in winter
 
@@ -279,7 +280,7 @@ def test_a_card_for_each_liked_artist(museums) -> None:  # noqa: F811
     with the most works in the catalogue (Mateusz, 2026-10-31)."""
     from fastapi.testclient import TestClient
 
-    from frame_server.library.themes import LIKES, liked, make_liked, surname
+    from frame_server.library.themes import LIKED_CARDS, liked, make_liked, surname
     from frame_server.web import create_app, discover_api
 
     assert [surname(n) for n in ("Berthe Morisot", "van Gogh", "Pieter de Hooch")] == [
@@ -301,16 +302,21 @@ def test_a_card_for_each_liked_artist(museums) -> None:  # noqa: F811
         library.update("cma:1", favorite=True)
     taste = service.player.taste()
     assert taste[0] == "Claude Monet"
+    # The cards come from hearts only: Renoir's five kept works do not count.
+    assert service.player.hearted(OWNER_ID) == ["Claude Monet"]
 
     made = make_liked(library, ["Claude Monet", "Monet", "Nobody Known"])
     assert [t.name for t in made] == ["Claude Monet"]  # once, and no theme names the third
     card = made[0]
-    assert card.group == LIKES and card.key == "like-claude-monet"
+    assert card.group == WEEKLY and card.key == "like-claude-monet"
     assert card.description == "Renoir, Degas i Gauguin"
     assert card.playlist == "Bo lubisz: Claude Monet"
     assert "Claude Monet" not in card.artists
     assert liked(library) == made
     assert theme(card.key, library) == card  # also after a restart
+    # Two cards at most (Mateusz 2026-11-07).
+    three = ["Claude Monet", "Pierre-Auguste Renoir", "Edgar Degas"]
+    assert len(make_liked(library, three)) == LIKED_CARDS == 2
 
     app = create_app(service.settings)
     app.state.service = service
@@ -319,7 +325,11 @@ def test_a_card_for_each_liked_artist(museums) -> None:  # noqa: F811
     with TestClient(app) as client:
         cards = client.get("/api/themes").json()
         groups = list(dict.fromkeys(c["group"] for c in cards))
-        assert groups[:2] == [WEEKLY, LIKES] or groups[0] == LIKES
+        assert groups[0] == WEEKLY and "Bo lubisz" not in groups
+        # Before the week's pairs.
+        weekly = [c["key"] for c in cards if c["group"] == WEEKLY]
+        pairs = [k for k in weekly if k.startswith("week-mix-")]
+        assert not pairs or weekly.index("like-claude-monet") < weekly.index(pairs[0])
         mine = next(c for c in cards if c["key"] == "like-claude-monet")
         assert mine["name"] == "Claude Monet" and mine["count"] == 9
         assert all(w["item"]["artist"] != "Claude Monet" for w in mine["cover"])

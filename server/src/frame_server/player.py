@@ -470,6 +470,17 @@ class Player:
             scores[artist] += min(times, SEARCHED_ARTIST_MAX)
         return [artist for artist, score in scores.most_common(TASTE_ARTISTS) if score > 0]
 
+    def hearted(self, user: str) -> list[str]:
+        """Artists of the works ``user`` gave a heart, the most hearts
+        first (the cards "Ponieważ lubisz" in Discover, Mateusz 2026-11-07:
+        "bazuj tylko na serduszkach")."""
+        hearts = self.library.favorites(user)
+        scores: Counter[str] = Counter()
+        for item in self.library.query(PlaylistRules(kinds=[ItemKind.ARTWORK]))[1]:
+            if item.id in hearts and is_artist(item.artist) and not other_art(item):
+                scores[item.artist] += 1
+        return [artist for artist, _ in scores.most_common()]
+
     def _refill(self, state: PlayerState, settings: FrameSettings) -> None:
         """The whole rotation: pictures not shown lately first, then those
         shown lately. (Only the first part would leave out most of a

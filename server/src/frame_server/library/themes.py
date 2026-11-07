@@ -53,16 +53,17 @@ SEARCH_SOURCES = ("aic", "cma", "met")
 #: for this many seconds at most; the app asks for the rest.
 BROWSE_WAIT = 8.0
 
+#: The groups of Discover in Mateusz's order (2026-11-07); the cards of
+#: "Bo lubisz" are in "Dziś dla Ciebie" now.
 GROUPS = (
     "Dziś dla Ciebie",
-    "Bo lubisz",
     "Kierunki i style",
-    "Grafika i plakat",
-    "Sztuki inne",
-    "Tematy",
     "Sztuka polska",
     "Kolor i nastrój",
     "Epoki",
+    "Tematy",
+    "Grafika i plakat",
+    "Sztuki inne",
 )
 
 
@@ -292,7 +293,6 @@ LATER = "Średniowiecze i dalej"
 SECTION_YEARS = {ANTIQUITY: "3100 p.n.e.–1453", LATER: "od 1250"}
 
 WEEKLY = "Dziś dla Ciebie"
-LIKES = "Bo lubisz"
 STYLES = "Kierunki i style"
 PRINTS = "Grafika i plakat"
 #: Manuscripts, photographs, sculpture and decorative arts, in their own
@@ -469,6 +469,14 @@ THEMES: list[Theme] = [
     ),
     # Prints and posters
     Theme(
+        "posters",
+        "Plakaty i secesja",
+        "Mucha, Toulouse-Lautrec, Steinlen, Chéret, Grasset i plakat przełomu wieków.",
+        PRINTS,
+        artists=("Mucha", "Toulouse-Lautrec", "Steinlen", "Chéret", "Grasset"),
+        queries=_pack_queries("posters"),
+    ),
+    Theme(
         "ukiyo-e",
         "Japońskie drzeworyty",
         "Hokusai, Hiroshige, Utamaro, Kuniyoshi, Harunobu i inni mistrzowie ukiyo-e.",
@@ -485,6 +493,20 @@ THEMES: list[Theme] = [
         queries=_pack_queries("ukiyo-e"),
     ),
     Theme(
+        "nature",
+        "Botanika i natura",
+        "Ryciny botaniczne, ptaki Audubona, motyle i kwiaty Merian.",
+        PRINTS,
+        terms=(
+            "subject:botany",
+            "subject:flowers",
+            "subject:birds",
+            "technique:print",
+            "technique:drawing",
+        ),
+        queries=_pack_queries("nature"),
+    ),
+    Theme(
         "kacho-e",
         "Kwiaty i ptaki ukiyo-e",
         "Kachō-e: ptaki, gałęzie i kwiaty u Hokusaia, Hiroshigego i Kosona.",
@@ -498,28 +520,6 @@ THEMES: list[Theme] = [
             ("cma", "Hiroshige bird"),
             ("met", "kacho-e"),
         ),
-    ),
-    Theme(
-        "posters",
-        "Plakaty i secesja",
-        "Mucha, Toulouse-Lautrec, Steinlen, Chéret, Grasset i plakat przełomu wieków.",
-        PRINTS,
-        artists=("Mucha", "Toulouse-Lautrec", "Steinlen", "Chéret", "Grasset"),
-        queries=_pack_queries("posters"),
-    ),
-    Theme(
-        "nature",
-        "Botanika i natura",
-        "Ryciny botaniczne, ptaki Audubona, motyle i kwiaty Merian.",
-        PRINTS,
-        terms=(
-            "subject:botany",
-            "subject:flowers",
-            "subject:birds",
-            "technique:print",
-            "technique:drawing",
-        ),
-        queries=_pack_queries("nature"),
     ),
     Theme(
         "black-white",
@@ -1019,16 +1019,16 @@ OTHER_ART_THEMES: list[Theme] = [
         MANUSCRIPTS,
     ),
     _other(
-        "other-photography",
-        "Fotografia",
-        "Od pierwszych odbitek Talbota po kolorowe slajdy lat 40.",
-        PHOTOGRAPHY,
-    ),
-    _other(
         "other-sculpture",
         "Rzeźba",
         "Marmur, brąz i drewno z pięciu tysięcy lat.",
         SCULPTURE,
+    ),
+    _other(
+        "other-photography",
+        "Fotografia",
+        "Od pierwszych odbitek Talbota po kolorowe slajdy lat 40.",
+        PHOTOGRAPHY,
     ),
     _other(
         "other-decorative",
@@ -1584,6 +1584,8 @@ def weekly_themes(library: Library, day: date) -> list[Theme]:
 
 
 ARTIST_PREFIX = "week-artist-"
+#: The keys of the week's pairs of terms.
+MIX_PREFIX = "week-mix-"
 
 
 def artist_of_the_week(library: Library, day: date) -> Theme | None:
@@ -1682,14 +1684,17 @@ def curated(library: Library) -> list[Theme]:
 
 
 def for_you(library: Library, day: date) -> list[Theme]:
-    """ "Dziś dla Ciebie" without the theme of the day (the app puts it
-    first): the artist of the week, the curator's cards, then as many of
-    the week's pairs of terms as the curator left room for."""
+    """ "Dziś dla Ciebie" without the theme of the day and the cards
+    "Ponieważ lubisz" (each person's, put before the pairs): the curator's
+    first card, the artist of the week, the curator's other card, then as
+    many of the week's pairs of terms as the curator left room for
+    (Mateusz's order, 2026-11-07; the app puts the theme of the day after
+    the curator's cards)."""
     weekly = weekly_themes(library, day)
     mine = curated(library)
     artists = [t for t in weekly if t.key.startswith(ARTIST_PREFIX)]
     mixes = [t for t in weekly if not t.key.startswith(ARTIST_PREFIX)]
-    return [*artists, *mine, *mixes[: max(0, WEEKLY_MIXES - len(mine))]]
+    return [*mine[:1], *artists, *mine[1:], *mixes[: max(0, WEEKLY_MIXES - len(mine))]]
 
 
 def curated_seen(library: Library, key: str) -> bool:
@@ -1883,6 +1888,9 @@ LIKED_KEY = "liked_themes"
 LIKED_ARTISTS = 4
 #: Least works of theirs the catalogue must have for the card.
 LIKED_MIN = 4
+#: Cards of favourite artists in "Dziś dla Ciebie", from hearts only
+#: (Mateusz 2026-11-07: "bazuj tylko na serduszkach; dajemy 2 artystów").
+LIKED_CARDS = 2
 
 
 def surname(name: str) -> str:
@@ -1906,8 +1914,9 @@ def liked_key(user: str) -> str:
 def make_liked(library: Library, taste: list[str], user: str = OWNER_ID) -> list[Theme]:
     """A card for each artist ``user`` likes (``taste``, most liked first):
     the artists of the first theme naming them, the ones with the most works
-    in the catalogue, browsed in the museums like the theme. Remembered in
-    ``library``, so a card opened after a restart is still found."""
+    in the catalogue, browsed in the museums like the theme; at most
+    ``LIKED_CARDS``, in "Dziś dla Ciebie". Remembered in ``library``, so a
+    card opened after a restart is still found."""
     rules = PlaylistRules(kinds=[ItemKind.ARTWORK])
     have = Counter(i.artist for i in library.query(rules)[1])
     made: list[Theme] = []
@@ -1937,20 +1946,23 @@ def make_liked(library: Library, taste: list[str], user: str = OWNER_ID) -> list
                 f"like-{_slug(artist)}",
                 artist,
                 _listed([surname(a) for a in others]),
-                LIKES,
+                WEEKLY,
                 artists=tuple(others),
                 queries=queries,
                 playlist=f"Bo lubisz: {artist}",
             )
         )
+        if len(made) == LIKED_CARDS:
+            break
     library.set_state(liked_key(user), [asdict(t) for t in made])
     return made
 
 
 def liked(library: Library, user: str | None = None) -> list[Theme]:
     """``user``'s cards of "Bo lubisz" as last made (default: the asking
-    person's)."""
-    return [_theme_from(t) for t in library.get_state(liked_key(user or viewer_id()), [])]
+    person's), in "Dziś dla Ciebie" also when made for the group of before."""
+    stored = library.get_state(liked_key(user or viewer_id()), [])
+    return [replace(_theme_from(t), group=WEEKLY) for t in stored[:LIKED_CARDS]]
 
 
 def browse_theme(
