@@ -1279,10 +1279,14 @@ struct PresentationSection: View {
         }
     }
 
+    /// The narrowest passe-partout the frame draws: Opis keeps a little
+    /// board between the picture, the close-up and the text.
+    private var minMillimetres: Double { isDescription ? Panel.descriptionMinMillimetres : 0 }
+
     /// The passe-partout's width in millimetres on the panel, in 5 mm steps.
     private var marginMillimetres: Binding<Double> {
         Binding(
-            get: { (Panel.millimetres(presentation.margin.wrappedValue) / 5).rounded() * 5 },
+            get: { max((Panel.millimetres(presentation.margin.wrappedValue) / 5).rounded() * 5, minMillimetres) },
             set: { presentation.margin.wrappedValue = Panel.margin(mm: $0) }
         )
     }
@@ -1419,6 +1423,9 @@ struct PresentationSection: View {
                             if mode.fit == "fit", presentation.margin.wrappedValue == 0 {
                                 presentation.margin.wrappedValue = Panel.margin(mm: 20)
                             }
+                            if mode.fit == "description", presentation.margin.wrappedValue < Panel.descriptionMinMargin {
+                                presentation.margin.wrappedValue = Panel.descriptionMinMargin
+                            }
                             if mode.fit == "multi", presentation.margin.wrappedValue < Panel.margin(mm: 20) {
                                 presentation.margin.wrappedValue = Panel.margin(mm: 30)
                             }
@@ -1440,11 +1447,11 @@ struct PresentationSection: View {
                         HStack {
                             Text(isDescription ? "Szerokość passe-partout" : "Szerokość")
                             Spacer()
-                            Text("\(Int(Panel.millimetres(presentation.margin.wrappedValue).rounded())) mm")
+                            Text("\(Int(max(Panel.millimetres(presentation.margin.wrappedValue), minMillimetres).rounded())) mm")
                                 .monospacedDigit()
                                 .foregroundStyle(Theme.inkSoft)
                         }
-                        Slider(value: marginMillimetres, in: 0 ... 80, step: 5)
+                        Slider(value: marginMillimetres, in: minMillimetres ... 80, step: 5)
                     }
                 }
                 if let title = labelTitle {

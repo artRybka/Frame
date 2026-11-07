@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.121.2
+
+- Opis: passe-partout można zwęzić do 5 mm, a ramka i podgląd pokazują
+  dokładnie to, co suwak; wcześniej wszystko poniżej ok. 15 mm wyglądało
+  tak samo. Suwak w Opisie zaczyna się od 5 mm.
+
 ## 1.121.1
 
 - Szukaj i edytor playlisty pytają muzea dopiero przy przewijaniu, gdy
