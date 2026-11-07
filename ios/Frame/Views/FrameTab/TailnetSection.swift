@@ -16,7 +16,6 @@ struct TailnetSection: View {
     @State private var key = ""
     @State private var saving = false
     @State private var retrying = false
-    @State private var savingAddress = false
     @State private var showLog = false
     @State private var log = ""
 
@@ -40,7 +39,7 @@ struct TailnetSection: View {
             Card {
                 if parts.contains(.connection) {
                     status
-                    if editable {
+                    if editable, keySet || !model.remoteURL.isEmpty {
                         Divider()
                         address
                     }
@@ -94,7 +93,7 @@ struct TailnetSection: View {
     private var status: some View {
         switch model.tailnet {
         case .off:
-            line(offText, icon: "circle.dashed", color: Theme.inkSoft)
+            line("Brak klucza Tailscale: poza domem potrzebna jest aplikacja Tailscale.", icon: "circle.dashed", color: Theme.inkSoft)
         case .paused:
             line("Wyłączony na tym telefonie.", icon: "pause.circle", color: Theme.inkSoft)
         case .idle:
@@ -132,42 +131,45 @@ struct TailnetSection: View {
         }
     }
 
-    private var offText: String {
-        guard keySet else { return "Brak klucza Tailscale: poza domem potrzebna jest aplikacja Tailscale." }
-        if model.remoteURL.trimmingCharacters(in: .whitespaces).isEmpty { return "Wpisz niżej adres serwera w Tailscale." }
-        return "Adres niżej nie jest adresem Tailscale (…ts.net albo 100.x)."
-    }
-
-    /// The server's address in the tailnet (`AppModel.remoteURL`, "Spoza
-    /// domu" before 1.113.1): the built-in node carries only requests to its
-    /// host, and with the node off the Tailscale app's VPN reaches it.
-    /// Saved with Return, with "Zapisz adres", or with "Połącz" above.
+    /// The server's address in the tailnet, found by the app: nobody types
+    /// it (Mateusz, 2026-11-07). The owner's phone finds it through its
+    /// node and the server hands it to every phone (`AppModel.placeServer`).
     @ViewBuilder
     private var address: some View {
-        @Bindable var model = model
-        VStack(alignment: .leading, spacing: 8) {
-            AddressField(title: "Adres serwera w Tailscale", prompt: "np. http://nas.tail1234.ts.net:8099", text: $model.remoteURL)
-                .onSubmit { Task { await saveAddress() } }
-            if model.remoteURL != model.savedRemoteURL {
-                Button {
-                    Task { await saveAddress() }
-                } label: {
-                    HStack {
-                        Text("Zapisz adres")
-                        if savingAddress { ProgressView() }
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Serwer w Tailscale").font(.caption).foregroundStyle(Theme.inkSoft)
+                if model.findingServer {
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text("Szukam serwera…").foregroundStyle(Theme.inkSoft)
                     }
+                } else if let shown = Self.shown(model.remoteURL) {
+                    Text(shown)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .textSelection(.enabled)
+                } else {
+                    Text("Jeszcze nie znaleziony").foregroundStyle(Theme.inkSoft)
                 }
-                .fontWeight(.semibold)
-                .disabled(savingAddress)
+            }
+            Spacer(minLength: 0)
+            if keySet, model.tailnet != .paused {
+                Button("Szukaj ponownie") {
+                    Task { await model.findServerInTailnet(announce: true) }
+                }
+                .font(.subheadline)
+                .disabled(model.findingServer)
             }
         }
     }
 
-    private func saveAddress() async {
-        guard !savingAddress else { return }
-        savingAddress = true
-        await model.applyConnection()
-        savingAddress = false
+    /// `host:port` of the address, without the scheme.
+    static func shown(_ address: String) -> String? {
+        guard let url = URL(string: address.trimmingCharacters(in: .whitespaces)), let host = url.host(percentEncoded: false) else {
+            return nil
+        }
+        return url.port.map { "\(host):\($0)" } ?? host
     }
 
     private func line(_ text: String, icon: String, color: Color) -> some View {

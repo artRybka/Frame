@@ -28,7 +28,7 @@ final class Tailnet: @unchecked Sendable {
     static let shared = Tailnet()
 
     enum State: Equatable, Sendable {
-        /// No key, or "Spoza domu" is not a Tailscale address.
+        /// No key.
         case off
         /// Switched off on this phone: the Tailscale app's VPN (if any) is used.
         case paused
@@ -42,8 +42,9 @@ final class Tailnet: @unchecked Sendable {
     /// What the node is started with.
     struct Setup: Equatable, Sendable {
         var key: String
-        /// The server's Tailscale host, as in "Spoza domu".
-        var host: String
+        /// The server's Tailscale host; nil until the server is found
+        /// (`findServer`), the node then carries nothing yet.
+        var host: String?
         /// The node's name in the Tailscale admin panel.
         var name: String
     }
@@ -54,12 +55,17 @@ final class Tailnet: @unchecked Sendable {
         let api: URLSession
         let images: URLSession
         let address: String?
+        /// The loopback address (SOCKS5 and LocalAPI) and LocalAPI's password.
+        let loopback: String
+        let apiKey: String
 
-        init(handle: tailscale, api: URLSession, images: URLSession, address: String?) {
+        init(handle: tailscale, api: URLSession, images: URLSession, address: String?, loopback: String, apiKey: String) {
             self.handle = handle
             self.api = api
             self.images = images
             self.address = address
+            self.loopback = loopback
+            self.apiKey = apiKey
         }
     }
 
@@ -118,11 +124,12 @@ final class Tailnet: @unchecked Sendable {
 
     // MARK: Setup
 
-    /// The key and the server's remote address; nil key or a remote address
-    /// outside Tailscale turns the node off.
+    /// The key and the server's remote address; no key turns the node off.
+    /// A remote address outside Tailscale (or none) leaves the node on for
+    /// `findServer`, carrying nothing.
     func configure(key: String?, remote: URL?, name: String) {
-        let host = remote?.host(percentEncoded: false).map { $0.lowercased() }
-        let wanted: Setup? = if let key, !key.isEmpty, let host, Self.isTailscale(host) {
+        let host = remote?.host(percentEncoded: false).map { $0.lowercased() }.flatMap { Self.isTailscale($0) ? $0 : nil }
+        let wanted: Setup? = if let key, !key.isEmpty {
             Setup(key: key, host: host, name: name)
         } else {
             nil
@@ -194,8 +201,99 @@ final class Tailnet: @unchecked Sendable {
     /// meant to carry it.
     func carries(_ url: URL?) -> Bool {
         guard let host = url?.host(percentEncoded: false)?.lowercased() else { return false }
-        return lock.withLock { enabled && setup?.host == host }
+        return lock.withLock { enabled && setup?.host != nil && setup?.host == host }
     }
+
+    // MARK: Finding the server
+
+    /// How long one machine of the tailnet may take to say whether it is a
+    /// frame server.
+    static let probeTimeout: TimeInterval = 6
+    /// At most this many machines are asked.
+    static let probeLimit = 32
+
+    /// The frame server among the tailnet's machines, as
+    /// `scheme://host:port` (MagicDNS name when there is one): the node lists
+    /// the machines it sees (LocalAPI status) and asks each online one at
+    /// `port` whether it is a frame server. Nil when the node is off or
+    /// switched off on this phone, or no machine answers.
+    func findServer(port: Int, scheme: String) async -> URL? {
+        guard let node = await ready(), let status = await Self.status(node),
+              let candidates = Self.candidates(status: status, port: port, scheme: scheme)
+        else { return nil }
+        return await withTaskGroup(of: URL?.self) { group in
+            for base in candidates {
+                group.addTask {
+                    await ServerRoute.answers(base, timeout: Self.probeTimeout, through: node.api) ? base : nil
+                }
+            }
+            for await found in group {
+                if let found {
+                    group.cancelAll()
+                    return found
+                }
+            }
+            return nil
+        }
+    }
+
+    /// The node's view of the tailnet (`tailscale status --json`, the parts
+    /// needed here).
+    private struct Status: Decodable {
+        struct Peer: Decodable {
+            var dnsName: String?
+            var ips: [String]?
+            var online: Bool?
+
+            enum CodingKeys: String, CodingKey {
+                case dnsName = "DNSName", ips = "TailscaleIPs", online = "Online"
+            }
+        }
+
+        var peer: [String: Peer]?
+
+        enum CodingKeys: String, CodingKey {
+            case peer = "Peer"
+        }
+    }
+
+    /// LocalAPI on the loopback address, straight (no proxy).
+    private static let local: URLSession = {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.connectionProxyDictionary = [:]
+        return URLSession(configuration: configuration)
+    }()
+
+    /// The node's status from LocalAPI, as JSON.
+    private static func status(_ node: Node) async -> Data? {
+        guard let url = URL(string: "http://\(node.loopback)/localapi/v0/status") else { return nil }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 5
+        request.setValue("localapi", forHTTPHeaderField: "Sec-Tailscale")
+        let credential = Data(":\(node.apiKey)".utf8).base64EncodedString()
+        request.setValue("Basic \(credential)", forHTTPHeaderField: "Authorization")
+        guard let (data, response) = try? await local.data(for: request),
+              (response as? HTTPURLResponse)?.statusCode == 200
+        else { return nil }
+        return data
+    }
+
+    /// The addresses to ask, from the node's `status`: each online machine
+    /// at `port`, by its MagicDNS name (else its IPv4 address), sorted so
+    /// the same tailnet is always asked the same way. Nil when `status` is
+    /// not the node's status.
+    static func candidates(status: Data, port: Int, scheme: String) -> [URL]? {
+        guard let decoded = try? JSONDecoder().decode(Status.self, from: status) else { return nil }
+        let hosts = (decoded.peer ?? [:]).values
+            .filter { $0.online != false }
+            .compactMap { peer -> String? in
+                let name = peer.dnsName.map { $0.hasSuffix(".") ? String($0.dropLast()) : $0 } ?? ""
+                return name.isEmpty ? peer.ips?.first(where: { $0.contains(".") }) : name.lowercased()
+            }
+        return Set(hosts).sorted().prefix(probeLimit).compactMap { URL(string: "\(scheme)://\($0):\(port)") }
+    }
+
+    // MARK: Requests through the node
 
     /// Sends `request` with `body` through the node when it goes to the
     /// server's Tailscale address, else through `fallback`. When the node
@@ -350,6 +448,7 @@ final class Tailnet: @unchecked Sendable {
         }
         let proxy = String(cString: addressBuffer)
         let credential = String(cString: credentialBuffer)
+        let apiKey = String(cString: apiKeyBuffer)
         let parts = proxy.split(separator: ":")
         guard parts.count == 2, let port = UInt16(parts[1]), let nwPort = NWEndpoint.Port(rawValue: port) else {
             throw fail("Tailscale podał zły adres pośrednika: \(proxy)")
@@ -369,7 +468,7 @@ final class Tailnet: @unchecked Sendable {
         }
         return Node(
             handle: handle, api: session(images: false), images: session(images: true),
-            address: addresses(handle).first
+            address: addresses(handle).first, loopback: proxy, apiKey: apiKey
         )
     }
 

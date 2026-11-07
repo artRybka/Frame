@@ -37,6 +37,40 @@ final class TailnetTests: XCTestCase {
         XCTAssertEqual(key.key, "tskey-auth-k123-ABCDEF")
     }
 
+    func testDecodesTheServersAddress() throws {
+        let json = """
+        {"key_set": false, "key_tail": null, "key": null, "saved_at": null, "address": "http://nas.tail1234.ts.net:8099"}
+        """
+        let key = try LiveBackend.decoder().decode(TailnetKey.self, from: Data(json.utf8))
+        XCTAssertEqual(key.address, "http://nas.tail1234.ts.net:8099")
+        let older = try LiveBackend.decoder().decode(TailnetKey.self, from: Data(#"{"key_set": false}"#.utf8))
+        XCTAssertNil(older.address)
+    }
+
+    /// The machines asked whether they are the frame server: online ones,
+    /// by MagicDNS name, else by IPv4 address.
+    func testAsksTheTailnetsOnlineMachines() throws {
+        let status = """
+        {"Self": {"DNSName": "frame-mateusz.tail1234.ts.net."},
+         "Peer": {
+           "nodekey:a": {"DNSName": "synology.tail1234.ts.net.", "TailscaleIPs": ["100.95.9.80", "fd7a:115c:a1e0::1"], "Online": true},
+           "nodekey:b": {"DNSName": "", "TailscaleIPs": ["fd7a:115c:a1e0::2", "100.70.1.2"], "Online": true},
+           "nodekey:c": {"DNSName": "macbook.tail1234.ts.net.", "TailscaleIPs": ["100.80.0.3"], "Online": false},
+           "nodekey:d": {"DNSName": "", "TailscaleIPs": ["fd7a:115c:a1e0::4"]}
+         }}
+        """
+        let found = try XCTUnwrap(Tailnet.candidates(status: Data(status.utf8), port: 8099, scheme: "http"))
+        XCTAssertEqual(found.map(\.absoluteString), ["http://100.70.1.2:8099", "http://synology.tail1234.ts.net:8099"])
+        XCTAssertEqual(Tailnet.candidates(status: Data(#"{"Self": {}}"#.utf8), port: 8099, scheme: "http"), [])
+        XCTAssertNil(Tailnet.candidates(status: Data("nope".utf8), port: 8099, scheme: "http"))
+    }
+
+    func testShowsTheAddressWithoutTheScheme() {
+        XCTAssertEqual(TailnetSection.shown("http://synology.tail1234.ts.net:8099"), "synology.tail1234.ts.net:8099")
+        XCTAssertEqual(TailnetSection.shown("https://nas.tail1234.ts.net"), "nas.tail1234.ts.net")
+        XCTAssertNil(TailnetSection.shown(""))
+    }
+
     func testDemoKeepsAKeyButNotAnything() async throws {
         let demo = DemoBackend()
         do {

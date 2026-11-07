@@ -32,11 +32,12 @@ final class AppModel {
     }
 
     var serverURL: String
-    /// Optional second address used away from home, e.g. the NAS in Tailscale.
+    /// The server's address in the tailnet, used away from home. Nobody
+    /// types it any more: it comes from the server, or this phone finds it
+    /// through its Tailscale node (`placeServer`).
     var remoteURL: String
-    /// `remoteURL` as last applied: the field shows "Zapisz adres" while
-    /// they differ.
-    private(set) var savedRemoteURL: String
+    /// Looking for the server among the tailnet's machines.
+    private(set) var findingServer = false
     var apiToken: String
     var demoMode: Bool
     private(set) var backend: any FrameBackend
@@ -204,7 +205,6 @@ final class AppModel {
         let demo = forcedDemo || Self.serverAddress(url) == nil
         serverURL = url
         remoteURL = remote
-        savedRemoteURL = remote
         apiToken = token
         demoMode = demo
         backend = DemoBackend()
@@ -268,7 +268,6 @@ final class AppModel {
         demoMode = Self.serverAddress(serverURL) == nil
         UserDefaults.standard.set(serverURL, forKey: Keys.serverURL)
         UserDefaults.standard.set(remoteURL, forKey: Keys.remoteURL)
-        savedRemoteURL = remoteURL
         UserDefaults.standard.set(demoMode, forKey: Keys.demoMode)
         KeychainStore.write(Keys.apiToken, value: apiToken)
         connect(demo: demoMode, url: serverURL, remote: remoteURL, token: apiToken)
@@ -1434,6 +1433,61 @@ final class AppModel {
         guard let found = try? await backend.tailnet() else { return }
         tailnetKey = found
         useTailnetKey(found.key)
+        await placeServer(known: found.address)
+    }
+
+    /// The server's address in the tailnet: the one the server keeps; else
+    /// the one this owner's phone already has (typed in before 1.113.1),
+    /// handed over to the server; else found through this phone's node.
+    private func placeServer(known: String?) async {
+        if let known, !known.isEmpty {
+            if known != remoteURL { useRemote(known) }
+            return
+        }
+        if isOwner, let away = Self.serverAddress(remoteURL), let host = away.host(percentEncoded: false), Tailnet.isTailscale(host) {
+            if let saved = try? await backend.saveTailnetAddress(remoteURL) { tailnetKey = saved }
+            return
+        }
+        guard tailnetKey?.keySet == true else { return }
+        await findServerInTailnet(announce: false)
+    }
+
+    /// Looks for the server among the tailnet's machines (also Konfiguracja
+    /// → Serwer → "Szukaj ponownie"); the owner's phone tells the server, so
+    /// every phone gets the address. True when found.
+    @discardableResult
+    func findServerInTailnet(announce: Bool) async -> Bool {
+        guard !demoMode, !findingServer, let home = route?.home else { return false }
+        guard Tailnet.shared.isEnabled else {
+            if announce { notices.info("Tailscale w aplikacji jest wyłączony", "Włącz go, by aplikacja sama znalazła serwer.") }
+            return false
+        }
+        findingServer = true
+        defer { findingServer = false }
+        let port = home.port ?? (home.scheme == "https" ? 443 : 80)
+        guard let found = await Tailnet.shared.findServer(port: port, scheme: home.scheme ?? "http") else {
+            if announce {
+                notices.fail("Nie znaleziono serwera w Tailscale", "Sprawdź, czy NAS jest w Tailscale i czy klucz ma dostęp do portu \(port).")
+            }
+            return false
+        }
+        let address = found.absoluteString
+        if address != remoteURL { useRemote(address) }
+        if isOwner, tailnetKey?.address != address, let saved = try? await backend.saveTailnetAddress(address) {
+            tailnetKey = saved
+        }
+        if announce { notices.done("Znaleziono serwer", found.host(percentEncoded: false)) }
+        return true
+    }
+
+    /// Switches to another address in the tailnet without starting over:
+    /// the route and the backend follow, the screens keep what they show.
+    private func useRemote(_ address: String) {
+        remoteURL = address
+        UserDefaults.standard.set(address, forKey: Keys.remoteURL)
+        guard !demoMode else { return }
+        connect(demo: false, url: serverURL, remote: address, token: apiToken)
+        serverPath = route?.active
     }
 
     private func useTailnetKey(_ key: String?) {
@@ -1464,6 +1518,7 @@ final class AppModel {
         switch await Tailnet.shared.warm() {
         case let .running(address):
             notices.done("Połączono z Tailscale", address)
+            Task { await placeServer(known: tailnetKey?.address) }
         case let .failed(message):
             notices.fail("Klucz zapisany, Tailscale się nie połączył", message)
         default:

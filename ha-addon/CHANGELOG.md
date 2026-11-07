@@ -4,9 +4,12 @@
 
 - Konfiguracja → Serwer: pole z kropkami ma podpis „Token API”. To
   hasło, którym aplikacja przedstawia się serwerowi.
-- Adres serwera spoza domu jest teraz w karcie „Dostęp spoza domu”, obok
-  Tailscale, jako „Adres serwera w Tailscale” (zapisuje go „Zapisz adres”).
-  Karta „Serwer ramki” ma już tylko adres w domu, token i „Połącz”.
+- Adresu serwera spoza domu nie trzeba już wpisywać. Tailscale wbudowany
+  w aplikację sam znajduje serwer wśród urządzeń w Tailscale, a serwer
+  przekazuje adres każdemu telefonowi, także domownikom i tym z wyłączonym
+  Tailscale w aplikacji. W karcie „Dostęp spoza domu” widać „Serwer w
+  Tailscale” i „Szukaj ponownie”. Karta „Serwer ramki” ma już tylko adres
+  w domu, token i „Połącz”.
 
 ## 1.113.1
 

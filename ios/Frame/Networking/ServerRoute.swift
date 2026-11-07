@@ -106,12 +106,19 @@ final class ServerRoute: @unchecked Sendable {
     /// Whether a frame server answers there. No token is sent: the home
     /// address is not private, so away from home it may belong to someone
     /// else. The remote one is asked through the app's own Tailscale node
-    /// when it is a Tailscale address (`Tailnet`).
-    static func answers(_ base: URL, timeout: TimeInterval) async -> Bool {
+    /// when it is a Tailscale address (`Tailnet`), or through `session`
+    /// when given (`Tailnet.findServer` asking the tailnet's machines).
+    static func answers(_ base: URL, timeout: TimeInterval, through session: URLSession? = nil) async -> Bool {
         var request = URLRequest(url: base.appending(path: "api/health"))
         request.timeoutInterval = timeout
         request.cachePolicy = .reloadIgnoringLocalCacheData
-        guard let (data, response) = try? await Tailnet.shared.data(for: request),
+        let answer: (Data, URLResponse)?
+        if let session {
+            answer = try? await session.data(for: request)
+        } else {
+            answer = try? await Tailnet.shared.data(for: request)
+        }
+        guard let (data, response) = answer,
               (response as? HTTPURLResponse)?.statusCode == 200,
               let health = try? LiveBackend.decoder().decode(Health.self, from: data)
         else { return false }

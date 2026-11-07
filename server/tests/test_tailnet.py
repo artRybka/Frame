@@ -9,7 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from frame_server.config import Settings
-from frame_server.tailnet import KeyInvalid, clean
+from frame_server.tailnet import AddressInvalid, KeyInvalid, clean, clean_address
 from frame_server.web import create_app
 
 OWNER = {"Authorization": "Bearer secret"}
@@ -36,7 +36,13 @@ def _member(client: TestClient) -> dict[str, str]:
 def test_the_owner_saves_the_key_and_every_phone_reads_it(tmp_path: Path) -> None:
     with TestClient(_app(tmp_path)) as client:
         empty = client.get("/api/tailnet", headers=OWNER).json()
-        assert empty == {"key_set": False, "key_tail": None, "key": None, "saved_at": None}
+        assert empty == {
+            "key_set": False,
+            "key_tail": None,
+            "key": None,
+            "saved_at": None,
+            "address": None,
+        }
 
         saved = client.put("/api/tailnet/key", json={"key": f"  {KEY}\n"}, headers=OWNER)
         assert saved.status_code == 200, saved.text
@@ -82,3 +88,59 @@ def test_clean_keeps_the_key_as_pasted(given: str, kept: str) -> None:
 def test_clean_refuses_what_is_not_a_key() -> None:
     with pytest.raises(KeyInvalid):
         clean("tskey-")
+
+
+def test_the_owners_phone_hands_over_the_servers_address(tmp_path: Path) -> None:
+    with TestClient(_app(tmp_path)) as client:
+        address = "http://synology.tail8a7550.ts.net:8099"
+        saved = client.put("/api/tailnet/address", json={"address": f" {address}/ "}, headers=OWNER)
+        assert saved.status_code == 200, saved.text
+        assert saved.json()["address"] == address
+
+        member = _member(client)
+        assert client.get("/api/tailnet", headers=member).json()["address"] == address
+        answer = client.put("/api/tailnet/address", json={"address": address}, headers=member)
+        assert answer.status_code == 403
+        assert client.delete("/api/tailnet/address", headers=member).status_code == 403
+
+        # The key and the address are kept apart.
+        client.put("/api/tailnet/key", json={"key": KEY}, headers=OWNER)
+        client.delete("/api/tailnet/key", headers=OWNER)
+        assert client.get("/api/tailnet", headers=OWNER).json()["address"] == address
+
+        wrong = client.put(
+            "/api/tailnet/address", json={"address": "http://192.168.1.5:8099"}, headers=OWNER
+        )
+        assert wrong.status_code == 400
+        assert client.delete("/api/tailnet/address", headers=OWNER).json()["address"] is None
+
+
+@pytest.mark.parametrize(
+    "address",
+    [
+        "http://100.95.9.80:8099",
+        "https://nas.tail1234.ts.net",
+        "http://synology:8099",
+        "http://[fd7a:115c:a1e0::1]:8099",
+    ],
+)
+def test_clean_address_takes_tailscale_addresses(address: str) -> None:
+    assert clean_address(address) == address
+
+
+@pytest.mark.parametrize(
+    "address",
+    [
+        "",
+        "synology.tail1234.ts.net:8099",
+        "ftp://100.95.9.80",
+        "http://192.100.3.185:8099",
+        "http://100.95.9.80:8099/api",
+        "http://example.com",
+        "http://localhost:8099",
+        "http://100.95.9.80:99999",
+    ],
+)
+def test_clean_address_refuses_the_rest(address: str) -> None:
+    with pytest.raises(AddressInvalid):
+        clean_address(address)
