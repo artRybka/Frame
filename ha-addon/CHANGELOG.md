@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.114.0
+
+- Szukaj i playlista inteligentna to teraz jedno szukanie. Edytor
+  playlisty pokazuje te same dzieła co Szukaj, z tą samą liczbą, i tak
+  samo dopytuje muzea o kolejne strony przy przewijaniu. Limit „Ile
+  dzieł” zostaje.
+- Po zapisaniu playlisty serwer pobiera z muzeów to, co pokazuje Szukaj:
+  ze słowami przetłumaczonymi na język muzeum („gitara” w Met to
+  „guitar”), a nie losowe dzieła sprawdzane potem słowo w słowo.
+- Dzieło znalezione w muzeum pamięta, na jakie szukanie je znaleziono,
+  i od tej pory pasuje do tych samych wyborów w Szukaj i w playliście,
+  nawet gdy jego opis nie zawiera wpisanego słowa. Epoki są dalej
+  sprawdzane na dziele: XVII i XIX wiek nie wciągają już XVIII.
+
 ## 1.113.4
 
 - Serwer trzyma się aktualnych zasad Library of Congress: najwyżej 17
