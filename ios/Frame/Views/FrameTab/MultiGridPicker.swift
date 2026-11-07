@@ -57,7 +57,7 @@ struct MultiGrid: Hashable, Sendable {
     /// canvas uses the grid transposed.
     func rects(in size: CGSize, margin: Double) -> [CGRect] {
         let portrait = size.height > size.width
-        let outer = min(size.width, size.height) * max(margin, 0.03)
+        let outer = min(size.width, size.height) * max(margin, Panel.photoMargin)
         let gap = outer * 0.55
         let inner = CGSize(width: size.width - 2 * outer, height: size.height - 2 * outer)
         let (c, r) = portrait ? (rows, cols) : (cols, rows)

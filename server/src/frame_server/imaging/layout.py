@@ -141,8 +141,15 @@ DETAIL_MAX_UPSCALE = 1.6  # enlarge source pixels at most this much, unless...
 DETAIL_MIN_ENLARGEMENT = 1.8  # ...the close-up would be less than this times the picture
 PICTURE_TRIM = 0.02  # a mat window is a bit smaller than the picture behind it
 PIXEL_PITCH_MM = 0.272  # the EM32DX: the app shows the passe-partout in millimetres
+
+
+def mm(millimetres: float) -> float:
+    """A passe-partout width on the panel as a share of its short side."""
+    return millimetres / (PANEL_HEIGHT * PIXEL_PITCH_MM)
+
+
 # DESCRIPTION: the narrowest passe-partout, 5 mm (the app's slider starts there).
-DESCRIPTION_MIN_MARGIN = 5 / (PANEL_HEIGHT * PIXEL_PITCH_MM)
+DESCRIPTION_MIN_MARGIN = mm(5)
 
 Rect = tuple[int, int, int, int]  # x, y, w, h
 # Picks crops automatically: (window aspect, one zoom per crop) -> crops,

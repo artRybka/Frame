@@ -1280,8 +1280,12 @@ struct PresentationSection: View {
     }
 
     /// The narrowest passe-partout the frame draws: Opis keeps a little
-    /// board between the picture, the close-up and the text.
-    private var minMillimetres: Double { isDescription ? Panel.descriptionMinMillimetres : 0 }
+    /// board between the picture, the close-up and the text, Multi between
+    /// the photos.
+    private var minMillimetres: Double {
+        if isDescription { return Panel.descriptionMinMillimetres }
+        return isMulti ? Panel.photoMillimetres : 0
+    }
 
     /// The passe-partout's width in millimetres on the panel, in 5 mm steps.
     private var marginMillimetres: Binding<Double> {
@@ -1421,13 +1425,13 @@ struct PresentationSection: View {
                         ) {
                             presentation.fit.wrappedValue = mode.fit
                             if mode.fit == "fit", presentation.margin.wrappedValue == 0 {
-                                presentation.margin.wrappedValue = Panel.margin(mm: 20)
+                                presentation.margin.wrappedValue = target == .photo ? Panel.photoMargin : Panel.margin(mm: 20)
                             }
                             if mode.fit == "description", presentation.margin.wrappedValue < Panel.descriptionMinMargin {
                                 presentation.margin.wrappedValue = Panel.descriptionMinMargin
                             }
-                            if mode.fit == "multi", presentation.margin.wrappedValue < Panel.margin(mm: 20) {
-                                presentation.margin.wrappedValue = Panel.margin(mm: 30)
+                            if mode.fit == "multi", presentation.margin.wrappedValue < Panel.photoMargin {
+                                presentation.margin.wrappedValue = Panel.photoMargin
                             }
                         }
                     }

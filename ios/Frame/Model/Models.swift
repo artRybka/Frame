@@ -1286,6 +1286,11 @@ enum Panel {
     /// "Opis": the narrowest passe-partout (server: layout.DESCRIPTION_MIN_MARGIN).
     static let descriptionMinMillimetres = 5.0
     static let descriptionMinMargin = margin(mm: descriptionMinMillimetres)
+
+    /// Photos: the passe-partout they start with, and Multi's narrowest
+    /// (server: schedule.Settings.photo, grids.MIN_MARGIN).
+    static let photoMillimetres = 10.0
+    static let photoMargin = margin(mm: photoMillimetres)
 }
 
 /// The same checks the server makes, to point at a typo before saving.
@@ -1368,7 +1373,7 @@ struct Look: Codable, Hashable, Sendable {
     init(_ photo: Presentation) {
         fit = photo.fit == "fit" ? "fit" : "fill"
         mat = photo.mat
-        margin = max(photo.margin, 0.05)
+        margin = max(photo.margin, Panel.photoMargin)
     }
 }
 
@@ -1437,7 +1442,7 @@ struct FrameSettings: Codable, Hashable, Sendable {
         quietStart: "22:00", shuffle: true, avoidRepeatDays: 14,
         orientation: "landscape", rotation: 90,
         art: Presentation(preset: "auto", fit: "fit", margin: 0.05, label: false),
-        photo: Presentation(preset: "auto", fit: "fill", margin: 0, label: false),
+        photo: Presentation(preset: "auto", fit: "fill", margin: Panel.photoMargin, label: false),
         timezone: "Europe/Warsaw", statusPollMinutes: 15, powerMode: "online", checkEveryHours: 0,
         checkQuietStart: "22:00", checkQuietEnd: "07:00"
     )
