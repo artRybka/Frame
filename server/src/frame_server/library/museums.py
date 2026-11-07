@@ -45,6 +45,7 @@ from .markup import (
     extension,
     strip_artist,
 )
+from .met_objects import met_objects
 from .models import Item, ItemKind
 
 log = logging.getLogger(__name__)
@@ -543,11 +544,23 @@ class MetropolitanMuseum(Museum):
         return int(body.get("total", len(items))), items
 
     def fetch(self, source_id: str) -> Item | None:
+        # Each work's record asked once (library/met_objects.py): a page of
+        # the search is a request a work.
+        kept = met_objects(self.access.data_dir) if self.access.data_dir else None
+        if kept is not None:
+            found, record = kept.get(source_id)
+            if found:
+                return None if record is None else self._map(record)
         resp = self.http.get(f"{self.api}/v1/objects/{source_id}")
         if resp.status_code == 404:
+            if kept is not None:
+                kept.put(source_id, None)
             return None
         resp.raise_for_status()
-        return self._map(resp.json())
+        record = resp.json()
+        if kept is not None and isinstance(record, dict) and record.get("objectID"):
+            kept.put(source_id, record)
+        return self._map(record)
 
 
 class WikimediaCommons(Museum):
