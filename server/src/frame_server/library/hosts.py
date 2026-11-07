@@ -43,10 +43,13 @@ from .policy import (
     LONG_BLOCKS,
     MEDIA_HOSTS,
     PACE,
+    SOURCES,
     WIKIMEDIA,
     WIKIMEDIA_HOSTS,
     WIKIMEDIA_MEDIA,
     Budget,
+    Source,
+    owner_of,
 )
 
 log = logging.getLogger(__name__)
@@ -145,6 +148,14 @@ class OverBudget(Resting):
 BUDGET_SAVE_EVERY = 30.0
 #: A spent quota is told in the log at most this often per host (seconds).
 BUDGET_LOG_EVERY = 600.0
+#: A tally's numbers: requests sent, turned away by a bot wall, throttled
+#: (429), failed (401, 403, 5xx), refused by the server itself (a resting
+#: host, a spent quota), and the bytes the answers said they hold.
+TALLY_FIELDS = ("sent", "walled", "throttled", "failed", "refused", "bytes")
+#: Days of tallies kept (Diagnostyka shows a week).
+TALLY_DAYS = 7
+#: The tallies are written at most this often (seconds), and when a day ends.
+TALLY_SAVE_EVERY = 60.0
 
 
 def walled(resp: httpx.Response) -> bool:
@@ -204,10 +215,11 @@ class HostGuard:
         self._budget_file: Path | None = None
         self._budget_saved = 0.0
         self._budget_told: dict[str, float] = {}
-        #: Today's requests by host: sent, walled, throttled (429), refused
-        #: while resting or over quota, bytes.
-        self._tally: dict[str, list[int]] = {}
+        #: Each kept day's requests by host (:data:`TALLY_FIELDS`).
+        self._days: dict[str, dict[str, list[int]]] = {}
         self._tally_day = ""
+        self._tally_file: Path | None = None
+        self._tally_saved = 0.0
         self._lock = threading.Lock()
         #: When the next request to a host may go (by host).
         self._next: dict[str, float] = {}
@@ -336,7 +348,7 @@ class HostGuard:
                 self._budget_saved = now
                 snapshot = {h: list(t) for h, t in self._spent.items()}
         if snapshot is not None:
-            self._save_budgets(snapshot)
+            self._save(self._budget_file, snapshot, "quotas")
         if over:
             who = "" if is_urgent() else "the background's share of "
             if tell:
@@ -350,8 +362,8 @@ class HostGuard:
                 )
             raise OverBudget(f"{host}: {who}its quota is spent", request=request)
 
-    def _save_budgets(self, snapshot: dict[str, list[float]]) -> None:
-        path = self._budget_file
+    @staticmethod
+    def _save(path: Path | None, snapshot: Any, what: str) -> None:
         if path is None:
             return
         try:
@@ -360,9 +372,38 @@ class HostGuard:
             tmp.write_text(json.dumps(snapshot))
             os.replace(tmp, path)
         except OSError as err:
-            log.warning("quotas not written to %s: %s", path, err)
+            log.warning("%s not written to %s: %s", what, path, err)
 
     # -- the day's tally -----------------------------------------------------
+
+    def keep_tally(self, path: Path) -> None:
+        """The last :data:`TALLY_DAYS` days' tallies are written to ``path``
+        (and read from it now), so that Diagnostyka shows a week's requests
+        across updates of the server."""
+        self._tally_file = path
+        try:
+            saved = json.loads(path.read_text())
+        except (OSError, ValueError):
+            return
+        if not isinstance(saved, dict):
+            return
+        with self._lock:
+            for day, hosts in saved.items():
+                if not isinstance(hosts, dict) or day in self._days:
+                    continue
+                self._days[day] = {
+                    host: [int(n) for n in row][: len(TALLY_FIELDS)]
+                    + [0] * (len(TALLY_FIELDS) - len(row))
+                    for host, row in hosts.items()
+                    if isinstance(row, list)
+                }
+            self._forget_days()
+
+    def _forget_days(self) -> None:
+        """Lets go of days before the last :data:`TALLY_DAYS` (today too)."""
+        first = time.strftime("%Y-%m-%d", time.localtime(self.wall() - (TALLY_DAYS - 1) * 86400))
+        for day in [d for d in self._days if d < first]:
+            del self._days[day]
 
     def _count(
         self,
@@ -370,44 +411,119 @@ class HostGuard:
         sent: int = 0,
         walls: int = 0,
         throttled: int = 0,
+        failed: int = 0,
         refused: int = 0,
         size: int = 0,
     ) -> None:
-        day = time.strftime("%Y-%m-%d", time.localtime(self.wall()))
+        now = self.wall()
+        day = time.strftime("%Y-%m-%d", time.localtime(now))
         with self._lock:
             done: dict[str, list[int]] = {}
             gone = self._tally_day
-            if day != self._tally_day:
-                done, self._tally = self._tally, {}
+            turned = day != self._tally_day
+            if turned:
+                done = self._days.get(gone, {}) if gone else {}
                 self._tally_day = day
-            row = self._tally.setdefault(host, [0, 0, 0, 0, 0])
-            for n, value in enumerate((sent, walls, throttled, refused, size)):
+            row = self._days.setdefault(day, {}).setdefault(host, [0] * len(TALLY_FIELDS))
+            if turned:
+                self._forget_days()
+            for n, value in enumerate((sent, walls, throttled, failed, refused, size)):
                 row[n] += value
+            snapshot = None
+            if self._tally_file is not None and (
+                done or now - self._tally_saved >= TALLY_SAVE_EVERY
+            ):
+                self._tally_saved = now
+                snapshot = {
+                    d: {h: list(r) for h, r in hosts.items()} for d, hosts in self._days.items()
+                }
+        if snapshot is not None:
+            self._save(self._tally_file, snapshot, "tallies")
         if done:
             self._tell(gone, done)
 
     def tally(self) -> dict[str, dict[str, int]]:
         """Today's requests by host (for the log and the debug API)."""
+        today = time.strftime("%Y-%m-%d", time.localtime(self.wall()))
         with self._lock:
             return {
-                host: dict(
-                    zip(("sent", "walled", "throttled", "refused", "bytes"), row, strict=True)
-                )
-                for host, row in self._tally.items()
+                host: dict(zip(TALLY_FIELDS, row, strict=True))
+                for host, row in self._days.get(today, {}).items()
             }
+
+    def days(self) -> dict[str, dict[str, dict[str, int]]]:
+        """The kept days' requests by host, the oldest day first."""
+        with self._lock:
+            self._forget_days()
+            return {
+                day: {h: dict(zip(TALLY_FIELDS, r, strict=True)) for h, r in hosts.items()}
+                for day, hosts in sorted(self._days.items())
+            }
+
+    def by_source(self) -> list[dict[str, Any]]:
+        """Requests of today and of the kept days, by source (Konfiguracja →
+        Diagnostyka): what was sent, how many the source refused (bot
+        walls, 429, 401/403/5xx), how many the server held back itself (a
+        resting host, a spent quota), the quota and the rest still ahead.
+        Hosts of no source come last, as one (``name`` None)."""
+        days = self.days()
+        today = time.strftime("%Y-%m-%d", time.localtime(self.wall()))
+        rows: dict[str | None, dict[str, Any]] = {}
+
+        def row(source: Source | None) -> dict[str, Any]:
+            key = None if source is None else source.name
+            if key not in rows:
+                rows[key] = {
+                    "name": key,
+                    "today": dict.fromkeys(TALLY_FIELDS, 0),
+                    "week": dict.fromkeys(TALLY_FIELDS, 0),
+                    "quota": None,
+                    "resting": 0.0,
+                }
+            return rows[key]
+
+        for source in SOURCES:
+            row(source)
+        for day, hosts in days.items():
+            for host, counts in hosts.items():
+                entry = row(owner_of(host))
+                for field, value in counts.items():
+                    entry["week"][field] += value
+                    if day == today:
+                        entry["today"][field] += value
+        for host, budget in self.budgets.items():
+            entry = row(owner_of(host))
+            entry["quota"] = {
+                "spent": self.spent(host),
+                "of": budget.count,
+                "background": budget.background,
+                "hours": budget.window / 3600,
+            }
+        with self._lock:
+            now = self.clock()
+            resting = {h: until - now for h, (until, _) in self._resting.items() if until > now}
+        for host, left in resting.items():
+            entry = row(owner_of(host))
+            entry["resting"] = max(entry["resting"], round(left))
+        others = rows.pop(None, None)
+        ordered = sorted(rows.values(), key=lambda r: (-r["week"]["sent"], r["name"]))
+        if others is not None and others["week"]["sent"] + others["week"]["refused"]:
+            ordered.append(others)
+        return ordered
 
     @staticmethod
     def _tell(day: str, tally: dict[str, list[int]]) -> None:
-        for host, (sent, walls, throttled, refused, size) in sorted(
+        for host, (sent, walls, throttled, failed, refused, size) in sorted(
             tally.items(), key=lambda kv: -kv[1][0]
         ):
             log.info(
-                "hosts %s: %s %d sent, %d walled, %d throttled, %d refused, %.1f MB",
+                "hosts %s: %s %d sent, %d walled, %d throttled, %d failed, %d refused, %.1f MB",
                 day,
                 host,
                 sent,
                 walls,
                 throttled,
+                failed,
                 refused,
                 size / 1e6,
             )
@@ -466,11 +582,14 @@ class HostGuard:
             size = int(response.headers.get("content-length") or 0)
         except ValueError:
             size = 0
+        wall = walled(response)
+        code = response.status_code
         self._count(
             host,
             sent=1,
-            walls=int(walled(response)),
-            throttled=int(response.status_code == 429),
+            walls=int(wall),
+            throttled=int(code == 429),
+            failed=int(not wall and (code in (401, 403) or code >= 500)),
             size=size,
         )
         key = lane(host)

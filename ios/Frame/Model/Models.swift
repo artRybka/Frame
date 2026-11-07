@@ -1051,6 +1051,51 @@ struct LibraryStorage: Codable, Hashable, Sendable {
     var originalsFromApp: Bool
 }
 
+/// Requests to each art source (Konfiguracja → Diagnostyka): today and over
+/// the last `days` days, what the source turned away and what the server
+/// held back itself (library/policy.py on the server). The sources most
+/// asked come first; hosts of no source (`name` nil) last.
+struct SourceRequests: Codable, Hashable, Sendable {
+    struct Counts: Codable, Hashable, Sendable {
+        var sent: Int
+        /// Turned away by a bot wall (Cloudflare, Imperva).
+        var walled: Int
+        /// "Too many requests" (429).
+        var throttled: Int
+        /// 401, 403 or a server error (5xx).
+        var failed: Int
+        /// Not sent: the source was resting or its quota spent.
+        var refused: Int
+        var bytes: Int64
+
+        /// What the source itself refused.
+        var turnedAway: Int { walled + throttled + failed }
+    }
+
+    struct Quota: Codable, Hashable, Sendable {
+        var spent: Int
+        var of: Int
+        /// The share the background may use; the rest is kept for the owner.
+        var background: Int
+        var hours: Double
+    }
+
+    struct Row: Codable, Hashable, Sendable, Identifiable {
+        var name: String?
+        var today: Counts
+        var week: Counts
+        var quota: Quota?
+        /// Seconds until the source is asked again; 0 when it may be now.
+        var resting: Double
+
+        var id: String { name ?? "" }
+        var quiet: Bool { week.sent == 0 && week.refused == 0 && resting == 0 }
+    }
+
+    var days: Int
+    var sources: [Row]
+}
+
 /// Updating the server from the app: only where the `frame updater` helper
 /// runs next to it (Synology, deploy/synology/docker-compose.yml).
 struct ServerUpdate: Codable, Hashable, Sendable {

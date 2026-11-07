@@ -204,6 +204,8 @@ protocol FrameBackend: Sendable {
     func askPanelScreenshot() async throws -> PanelScreenshot
     /// How much disk the library takes on the server, and its limits.
     func libraryStorage() async throws -> LibraryStorage
+    /// Requests to each art source lately, and the refusals (the owner's).
+    func sourceRequests() async throws -> SourceRequests
     /// A limit equal to its default goes back to frame.env or the add-on options.
     func saveLibraryLimits(_ update: LibraryStorageUpdate) async throws -> LibraryStorage
     /// The newest server image next to the running one (Synology).
