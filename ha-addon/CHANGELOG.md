@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.119.0
+
+- Kafelek „Teraz prezentowane” w Playlistach pokazuje jedno dzieło naraz
+  zamiast kolażu czterech. Co kilka sekund następne dzieło okładki powoli
+  wyłania się spod poprzedniego, a obraz leży odrobinę głębiej niż karta
+  i delikatnie przesuwa się przy obracaniu telefonu i przewijaniu, jak
+  w Studium dnia. Poza ekranem animacja stoi.
+
 ## 1.118.5
 
 - Okładka „Ukryte” nie ma już jasnych pasów u góry i u dołu, a odblask
