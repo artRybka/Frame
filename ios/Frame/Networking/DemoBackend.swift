@@ -30,8 +30,7 @@ actor DemoBackend: FrameBackend {
     private var currentID: String?
     private var holdValue: Hold?
     private static let demoPanel = PanelConfig(
-        host: "192.168.1.50", mac: "A4:30:7A:01:02:FF", port: 1515, pinSet: true, fromApp: false,
-        macFromPanel: "A4:30:7A:01:02:FF"
+        host: "192.168.1.50", mac: "A4:30:7A:01:02:FF", port: 1515, pinSet: true, fromApp: false
     )
     private var panelValue = DemoBackend.demoPanel
     private var catalogueLimitMb: Int?
@@ -1309,10 +1308,8 @@ actor DemoBackend: FrameBackend {
 
     func savePanelConfig(_ update: PanelConfigUpdate) async throws -> PanelConfig {
         let pinSet = update.pin.map { !$0.isEmpty } ?? panelValue.pinSet
-        let fromPanel = panelValue.macFromPanel
         panelValue = PanelConfig(
-            host: update.host, mac: update.mac ?? fromPanel, port: update.port, pinSet: pinSet, fromApp: true,
-            macFromPanel: fromPanel
+            host: update.host, mac: panelValue.mac, port: update.port, pinSet: pinSet, fromApp: true
         )
         return panelValue
     }

@@ -1019,8 +1019,6 @@ struct PanelConfig: Codable, Hashable, Sendable {
     var pinSet: Bool
     /// Saved in the app; otherwise taken from frame.env or the add-on options.
     var fromApp: Bool
-    /// The MAC the frame's app read on the panel; an empty field uses it.
-    var macFromPanel: String? = nil
 }
 
 /// How much disk the library takes on the server and how much it may take
@@ -1196,19 +1194,18 @@ struct PanelConfigUpdate: Encodable, Sendable {
     var host: String?
     /// Left out keeps the PIN on the server, "" removes it.
     var pin: String?
-    var mac: String?
     var port: Int
 
-    /// Optionals are always written, so an empty MAC clears it on the server.
+    /// The host is always written (null clears it); the PIN only when typed.
+    /// No MAC: the server takes the frame's own Wi-Fi one.
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(host, forKey: .host)
         try container.encodeIfPresent(pin, forKey: .pin)
-        try container.encode(mac, forKey: .mac)
         try container.encode(port, forKey: .port)
     }
 
-    private enum CodingKeys: String, CodingKey { case host, pin, mac, port }
+    private enum CodingKeys: String, CodingKey { case host, pin, port }
 }
 
 /// The EM32DX's screen: 2560×1440 pixels at a 0.272 mm pitch. A
@@ -1231,20 +1228,6 @@ enum PanelAddress {
         let allowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-")
         guard host.unicodeScalars.allSatisfy(allowed.contains) else { return nil }
         return host
-    }
-
-    /// Any common spelling as AA:BB:CC:DD:EE:FF, "" for none; nil if it cannot be one.
-    static func mac(_ text: String) -> String? {
-        let hex = text.filter { !" :-.".contains($0) }.uppercased()
-        if hex.isEmpty { return "" }
-        guard hex.count == 12, hex.allSatisfy(\.isHexDigit) else { return nil }
-        var pairs: [String] = []
-        var rest = Substring(hex)
-        while !rest.isEmpty {
-            pairs.append(String(rest.prefix(2)))
-            rest = rest.dropFirst(2)
-        }
-        return pairs.joined(separator: ":")
     }
 }
 

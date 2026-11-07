@@ -1,9 +1,13 @@
-"""The panel's address, MDC PIN and MAC, editable in the app.
+"""The panel's address and MDC PIN, editable in the app, and its MAC.
 
 frame.env (or the add-on options) gives the starting values. What the app
 saves wins over them and survives restarts; resetting goes back to them.
 The values live on the shared ``Settings``, so the panel client, Wake-on-LAN
 and status checks pick a change up with their next session.
+
+The MAC for Wake-on-LAN is the Wi-Fi one the frame's app reports; the app
+has no field for it (Mateusz 2026-11-07: only the Wi-Fi module is used).
+FRAME_DEVICE_MAC only stands in until the frame's app has reported once.
 """
 
 from __future__ import annotations
@@ -42,13 +46,12 @@ class PanelConfigView(BaseModel):
     port: int
     pin_set: bool
     from_app: bool  # saved in the app, not taken from frame.env / add-on options
-    mac_from_panel: str | None = None  # what the frame's app read on the panel
 
 
 class PanelConfigUpdate(BaseModel):
     host: str | None = None
     pin: str | None = None  # left out (None) keeps the PIN, "" removes it
-    mac: str | None = None
+    mac: str | None = None  # ignored: older apps still send the field
     port: int = Field(1515, ge=1, le=65535)
 
 
@@ -108,7 +111,6 @@ class PanelConfigStore:
             port=config.port,
             pin_set=bool(config.pin),
             from_app=self.from_app,
-            mac_from_panel=self.learnt_mac,
         )
 
     @property
@@ -119,13 +121,11 @@ class PanelConfigStore:
     def save(self, update: PanelConfigUpdate) -> bool:
         """Keep the app's values; True when the panel itself may have changed.
 
-        An empty MAC means the one the panel reports (once its app has run).
-        Raises ValueError on an address, MAC or PIN that cannot be right."""
+        Raises ValueError on an address or PIN that cannot be right."""
         old = self.current
         config = PanelConfig(
             host=clean_host(update.host),
             pin=old.pin if update.pin is None else clean_pin(update.pin),
-            mac=clean_mac(update.mac),
             port=update.port,
         )
         self.library.set_state(STATE_KEY, config.model_dump())
@@ -142,22 +142,16 @@ class PanelConfigStore:
         return (old.host, old.port) != (self.defaults.host, self.defaults.port)
 
     def learn_mac(self, mac: str) -> None:
-        """The panel's own MAC (its app read it): Wake-on-LAN uses it while
-        none is set; one set that differs is only logged, it may be right
-        for another way in (Ethernet)."""
-        learnt = self.library.get_state(LEARNT_MAC_KEY)
-        if learnt != mac:
+        """The panel's Wi-Fi MAC (its app read it): Wake-on-LAN goes there."""
+        if self.library.get_state(LEARNT_MAC_KEY) != mac:
             self.library.set_state(LEARNT_MAC_KEY, mac)
-            current = self.settings.device_mac
-            if current and current != mac:
-                log.warning("the panel says its MAC is %s, Wake-on-LAN goes to %s", mac, current)
-        if not self.settings.device_mac:
+        if self.settings.device_mac != mac:
             log.info("the panel's MAC %s is used for Wake-on-LAN", mac)
             self.settings.device_mac = mac
 
     def _fill_mac(self) -> None:
-        if not self.settings.device_mac:
-            self.settings.device_mac = self.learnt_mac
+        """The panel's own MAC once known, before that frame.env's."""
+        self.settings.device_mac = self.learnt_mac or self.defaults.mac
 
     def _apply(self, config: PanelConfig) -> None:
         s = self.settings
