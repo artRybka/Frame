@@ -14,7 +14,7 @@ import re
 from functools import lru_cache
 
 from .nationality import NATIONALITIES
-from .vocabulary import PER_WORK, fold
+from .vocabulary import PER_WORK, artist_matches, fold, name_words
 
 #: Words for "unknown", "anonymous" and "various" in museums' languages
 #: (folded: lower case, no accents).
@@ -345,3 +345,34 @@ def is_artist(name: str) -> bool:
     if not have - ROLES - _FILLER:
         return False
     return not (have & _CULTURES and have <= _CULTURES | _TIMES | _FILLER | ROLES)
+
+
+#: Words after which a name is not the work's maker: a copy after them
+#: ("Paul Gachet, after Vincent van Gogh", "d'après Millet", "wg Matejki"),
+#: their workshop, school, circle or follower. "Attributed to" still counts:
+#: the museum gives the work to them.
+_NOT_BY = (
+    (_ATTRIBUTED - {"attributed", "toegeschreven"})
+    | _GROUPS
+    | frozenset({"apres", "wg", "wedlug", "kopia", "copia", "segun", "style", "pupil", "assistant"})
+)
+
+
+@lru_cache(maxsize=PER_WORK)
+def _maker_words(artist: str) -> frozenset[str]:
+    """The words of ``artist`` before any "after", "workshop of" and the
+    like: the names of who made the work."""
+    words = re.findall(r"[^\W\d_]+", fold(artist))
+    cut = next((n for n, w in enumerate(words) if w in _NOT_BY), len(words))
+    return frozenset(words[:cut])
+
+
+def made_by(artist: str, wanted: list[str]) -> bool:
+    """A work with ``artist`` is by one of ``wanted`` (spelled as museums
+    do: "Gogh, Vincent van" is Vincent van Gogh), not a copy after them or
+    of their workshop or followers: searching an artist shows only their
+    own works (Mateusz, 2026-11-07)."""
+    if not artist_matches(artist, wanted):
+        return False
+    makers = _maker_words(artist)
+    return any(name_words(w) and name_words(w) <= makers for w in wanted)

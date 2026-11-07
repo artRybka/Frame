@@ -22,7 +22,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal, NamedTuple
 
-from .artists import is_artist
+from .artists import is_artist, made_by
 from .colors import has_colours, shown_tags
 from .duplicates import Works, dedupe, regroups
 from .models import (
@@ -43,7 +43,6 @@ from .models import (
 from .term_index import TermIndex
 from .viewer import OWNER_ID, STORE, viewer_id
 from .vocabulary import (
-    artist_matches,
     is_art_archive_photo,
     is_grey_copy,
     is_postal,
@@ -188,9 +187,13 @@ def found_together(had: list[str], found: list[str]) -> list[str]:
 
 def search_fits(item: Item, rules: PlaylistRules) -> bool:
     """Whether a work the museums' search found for ``rules`` fits them in
-    what that search doesn't decide itself: periods (with their places),
-    tags and two techniques at once. Szukaj shows what passes, and the
-    catalogue counts it in (:func:`matches`, ``Item.found_for``)."""
+    what that search doesn't decide itself: the artists (museums find
+    whatever names them: Guillaumin's self-portrait for Van Gogh, Mateusz
+    2026-11-07), periods (with their places), tags and two techniques at
+    once. Szukaj shows what passes, and the catalogue counts it in
+    (:func:`matches`, ``Item.found_for``)."""
+    if rules.artists and not made_by(item.artist, rules.artists):
+        return False
     return matches_terms(item, rules.terms, searched_kinds(rules.terms))
 
 
@@ -239,7 +242,7 @@ def matches(
         key = rules.search_key() if key is None else key
         if key and key in item.found_for:
             return search_fits(item, rules)
-    if rules.artists and not artist_matches(item.artist, rules.artists):
+    if rules.artists and not made_by(item.artist, rules.artists):
         return False
     if rules.styles and not _fold(item.styles) & _fold(rules.styles):
         return False
