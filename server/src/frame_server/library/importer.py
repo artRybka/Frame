@@ -87,6 +87,12 @@ SPREAD_MEMO = 20_000
 SEARCHED_QUEUE = 400
 #: Works a search showed that were taken or left out, not looked at again.
 SEARCHED_MEMO = 5_000
+#: Works a search brought but did not show (another colour, other years,
+#: another artist) whose thumbnail is here already, waiting to join the
+#: catalogue after the shown ones; more are left out ...
+SPARE_QUEUE = 400
+#: ... and this many are taken at a time, so works shown meanwhile go first.
+SPARE_BATCH = 24
 #: Museum searches answered lately, kept for the same page asked again (a
 #: set of Odkrywaj opened once more): how many and how long. The Met asks
 #: for each of a page's 24 works on its own, so a page takes it seconds.
@@ -209,6 +215,8 @@ class Importer:
         self._aspects: OrderedDict[str, float] = OrderedDict()
         #: Works a search showed, on their way into the catalogue.
         self._searched: OrderedDict[str, Item] = OrderedDict()
+        #: Works a search brought but did not show (:meth:`keep_spare`).
+        self._spare: OrderedDict[str, Item] = OrderedDict()
         self._searched_seen: OrderedDict[str, None] = OrderedDict()
         self._searched_lock = threading.Lock()
         self._searching: threading.Thread | None = None
@@ -1055,22 +1063,52 @@ class Importer:
                     break
                 if found and found not in item.found_for:
                     item = item.model_copy(update={"found_for": [*item.found_for, found]})
+                self._spare.pop(item.id, None)
                 self._searched[item.id] = item
-            if not self._searched or (self._searching and self._searching.is_alive()):
-                return
-            self._searching = threading.Thread(
-                target=self._take_searched, name="searched", daemon=True
-            )
-            self._searching.start()
+            self._start_searched()
+
+    def keep_spare(self, items: Iterable[Item], room: Iterable[str] = ()) -> None:
+        """Works a search brought but did not show (another colour, other
+        years, another artist: :meth:`.search.MuseumSearch.pages`) into the
+        catalogue (``pooled``) like :meth:`keep_searched`'s, after them:
+        the museum was asked for them already (Mateusz 2026-11-07). Only
+        those whose thumbnail is here, so they cost no request; they
+        remember no search, as they don't fit it."""
+        here = [i for i in items if self.cache.thumb_path(i).is_file()]
+        with self._searched_lock:
+            self._searched_room = tuple(room)
+            for item in here:
+                if (
+                    item.id in self._searched
+                    or item.id in self._spare
+                    or item.id in self._searched_seen
+                ):
+                    continue
+                if len(self._spare) >= SPARE_QUEUE:
+                    break
+                self._spare[item.id] = item
+            self._start_searched()
+
+    def _start_searched(self) -> None:
+        """Starts taking works in, unless it is under way (with
+        ``_searched_lock`` held)."""
+        if not (self._searched or self._spare) or (self._searching and self._searching.is_alive()):
+            return
+        self._searching = threading.Thread(target=self._take_searched, name="searched", daemon=True)
+        self._searching.start()
 
     def _take_searched(self) -> None:
         while True:
             with self._searched_lock:
-                if not self._searched:
+                if self._searched:
+                    batch = list(self._searched.values())
+                    self._searched.clear()
+                elif self._spare:
+                    count = min(SPARE_BATCH, len(self._spare))
+                    batch = [self._spare.popitem(last=False)[1] for _ in range(count)]
+                else:
                     self._searching = None
                     return
-                batch = list(self._searched.values())
-                self._searched.clear()
                 for item in batch:
                     self._searched_seen[item.id] = None
                 while len(self._searched_seen) > SEARCHED_MEMO:

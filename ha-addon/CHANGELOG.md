@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.122.0
+
+- Dzieła, które muzea przyniosły w Szukaj, ale nie pasowały do wyboru
+  (inny kolor, inne lata albo epoka, tagi, technika, inny autor), trafiają
+  do katalogu, jeśli ich miniatura jest już na serwerze. Nie kosztuje to
+  żadnego dodatkowego zapytania do muzeów, a katalog rośnie z tego, o co
+  i tak pytaliśmy. Dzieła pokazane w Szukaj idą do katalogu pierwsze.
+
 ## 1.121.6
 
 - Kadr otwiera się płynniej: okienka kadru są widoczne od początku lotu
