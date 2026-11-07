@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.121.7
+
+- Miniatury w Szukaj nie zostają już puste: gdy serwer pobierał tę samą
+  miniaturę w tle i czekał, aż przestaniesz korzystać z aplikacji, kafelek
+  czekał razem z nim. Teraz po chwili serwer pobiera ją od razu dla
+  aplikacji. To samo dotyczy obrazu na karcie dzieła.
+- Zdjęcia z Wikimedia Commons bez znanego autora mają podpis „Nieznany”
+  zamiast „NieznanyUnknown author”; zapisane wcześniej dzieła są poprawione.
+
 ## 1.121.6
 
 - Kadr otwiera się płynniej: okienka kadru są widoczne od początku lotu

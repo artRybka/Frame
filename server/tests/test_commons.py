@@ -247,6 +247,52 @@ def test_wikimedia_file_without_a_title_is_named_without_the_artist() -> None:
     assert (item.title, item.artist, item.year) == ("Skapiec", "Tadeusz Makowski", 1932)
 
 
+def test_wikimedia_unknown_author_shows_only_the_visible_name() -> None:
+    """{{Unknown|author}} hides its English name next to the Polish one:
+    "NieznanyUnknown author" on the tile (Mateusz 2026-11-07)."""
+    page = {
+        "pageid": 12,
+        "title": "File:Kraków, most Krakusa, finalny widok ogólny.jpg",
+        "imageinfo": [
+            {
+                "url": "https://upload/full.jpg",
+                "width": 1500,
+                "height": 574,
+                "extmetadata": {
+                    "Artist": {
+                        "value": '<div class="fn value">\nNieznany'
+                        '<span style="display: none;">Unknown author</span></div>'
+                    },
+                    "DateTimeOriginal": {"value": "1913"},
+                    "LicenseShortName": {"value": "Public domain"},
+                },
+            }
+        ],
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"query": {"pages": {"12": page}}})
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http:
+        _, items = WikimediaCommons(http).search_kind("kraków", "photograph")
+    assert items[0].artist == "Nieznany"
+
+
+def test_glued_unknown_artists_kept_before_are_repaired(tmp_path) -> None:
+    lib = Library(tmp_path / "lib.db")
+    lib.upsert(Item(id="wmc:20", source="wmc", source_id="20", artist="NieznanyUnknown author"))
+    lib.upsert(Item(id="wmc:21", source="wmc", source_id="21", artist="AnonimowyAnonymous"))
+    lib.upsert(Item(id="wmc:22", source="wmc", source_id="22", artist="Unknown author"))
+    lib.upsert(Item(id="met:20", source="met", source_id="20", artist="NieznanyUnknown author"))
+    repair_library(lib)
+    assert [lib.get(i).artist for i in ("wmc:20", "wmc:21", "wmc:22", "met:20")] == [
+        "Nieznany",
+        "Anonimowy",
+        "Unknown author",
+        "NieznanyUnknown author",
+    ]
+
+
 def test_repair_stored_items(tmp_path) -> None:
     lib = Library(tmp_path / "lib.db")
     broken = Item(

@@ -721,7 +721,10 @@ class WikimediaCommons(Museum):
                 return None
             told = f"{categories} {self._meta(info, 'ImageDescription')}"
             medium = next((m for p, m in self.processes if p.search(told)), "Photograph")
-        artist = artist_hint or self._meta(info, "Artist").split("\n")[0]
+        # Visible text only: {{Unknown|author}} hides its English name in
+        # the Polish one ("Nieznany<span style="display: none">Unknown
+        # author</span>" came as "NieznanyUnknown author", 2026-11-07).
+        artist = artist_hint or self._text(info, "Artist").split("\n")[0].strip()
         title = self._text(info, "ObjectName", title=True) or file_title(
             page.get("title", ""), clean_title(artist), year
         )

@@ -50,6 +50,11 @@ GONE_FOR = 7 * 86400.0
 #: width: a museum's scan can be 100 MB and 200 megapixels, far more than
 #: the frame's 2560 px, and too large for Pillow to open at all.
 COMMONS_WIDTH = 3840
+#: How long what the owner waits for waits for the background's download of
+#: the same picture before it downloads its own: the background's may wait
+#: out the app's use (:meth:`HostGuard.wait_calm`) with the picture's lock
+#: held, and a Szukaj tile waited for it with no end (2026-11-07).
+URGENT_LOCK_WAIT = 3.0
 #: Where :meth:`ImageCache._download` leaves the size of the file it read,
 #: in the picture's ``info``.
 BYTES = "frame_bytes"
@@ -78,7 +83,9 @@ class Gone(Unavailable):
 def _save_jpeg(img: Image.Image, path: Path, max_side: int, quality: int) -> None:
     img = img.convert("RGB")
     img.thumbnail((max_side, max_side), Image.Resampling.LANCZOS)
-    tmp = path.with_suffix(".tmp")
+    # Its own file per thread: an urgent asker may write the same picture
+    # beside the background's (:meth:`ImageCache._holding`).
+    tmp = path.with_name(f"{path.stem}.{threading.get_ident()}.tmp")
     img.save(tmp, "JPEG", quality=quality, optimize=True)
     tmp.replace(path)
 
@@ -169,6 +176,28 @@ class ImageCache:
         with self._guard:
             return self._locks.setdefault(key, threading.Lock())
 
+    @contextlib.contextmanager
+    def _holding(self, key: str, url: str, urgent: bool) -> Iterator[None]:
+        """One download of a picture at a time (``key``), but what the owner
+        waits for never waits long behind the background's: that one waits
+        out the quiet and the app's use (:meth:`HostGuard.wait_calm`) before
+        it takes the lock, and may still wait inside if the app comes back
+        meanwhile; after :data:`URGENT_LOCK_WAIT` the urgent one downloads
+        its own copy. The thumbnail of a Commons photograph in Szukaj stayed
+        empty for minutes while the background held it (2026-11-07)."""
+        urgent = urgent or is_urgent()
+        if not urgent:
+            self.hosts.wait_calm(urlsplit(url).hostname or "")
+        lock = self._lock(key)
+        held = lock.acquire(timeout=URGENT_LOCK_WAIT if urgent else -1)
+        if not held:
+            log.info("picture %s still on its way in the background; asked again now", key)
+        try:
+            yield
+        finally:
+            if held:
+                lock.release()
+
     def thumb_path(self, item: Item) -> Path:
         return self.thumbs / f"{item.file_stem}.jpg"
 
@@ -243,7 +272,7 @@ class ImageCache:
         path = self.thumb_path(item)
         if path.is_file():
             return path
-        with self._lock(f"t:{item.id}"):
+        with self._holding(f"t:{item.id}", item.thumb_url, urgent):
             if not path.is_file():
                 local = self.image_path(item)
                 img = load_image(local) if local.is_file() else self._thumbnail(item, urgent)
@@ -427,7 +456,7 @@ class ImageCache:
             return path
         if self.unavailable(item):
             raise Unavailable(f"original of {item.id} unavailable (failed lately)")
-        with self._lock(f"i:{item.id}"):
+        with self._holding(f"i:{item.id}", own_copy(item) or item.thumb_url, urgent):
             if not path.is_file():
                 img = self._original(item, urgent)
                 self._failed.pop(item.id, None)
