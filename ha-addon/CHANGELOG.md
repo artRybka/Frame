@@ -7,6 +7,11 @@
   do katalogu, jeśli ich miniatura jest już na serwerze. Nie kosztuje to
   żadnego dodatkowego zapytania do muzeów, a katalog rośnie z tego, o co
   i tak pytaliśmy. Dzieła pokazane w Szukaj idą do katalogu pierwsze.
+- Pełny katalog niczego już nie dobiera: serwer nie ściąga nowych dzieł
+  z muzeów, żeby zastąpić nimi starsze (ani w dzień, ani w nocy), i nie
+  dopisuje tego, co pokazało Szukaj. W Konfiguracji przy limicie katalogu
+  pojawia się wtedy komunikat „Katalog jest pełny”; żeby katalog rósł
+  dalej, wystarczy zwiększyć limit.
 
 ## 1.121.6
 

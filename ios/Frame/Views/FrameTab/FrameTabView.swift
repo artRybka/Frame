@@ -2332,7 +2332,19 @@ struct LibrarySizeSection: View {
                         defaultMb: storage.catalogueDefaultMb,
                         options: [500, 1000, 1500, 2000, 3000, 5000, 10000, 20000]
                     ) { mb in await model.setLibraryLimit(catalogueMb: mb) }
-                    caption("Ponad limit znikają dzieła, które serwer dobrał sam, od najdawniej dodanych. Ulubione, playlisty, kolejka i pokazane dzieła zostają. Większy katalog to więcej w Odkrywaj.")
+                    if storage.isCatalogueFull {
+                        Label {
+                            Text("Katalog jest pełny. Serwer nie dobiera już nowych dzieł z muzeów i nie wymienia tych, które ma. Żeby katalog dalej rósł, zwiększ limit.")
+                                .font(.caption)
+                                .foregroundStyle(Theme.ink)
+                                .fixedSize(horizontal: false, vertical: true)
+                        } icon: {
+                            Image(systemName: "tray.full")
+                                .font(.caption)
+                                .foregroundStyle(Theme.warn)
+                        }
+                    }
+                    caption("Do limitu serwer sam dobiera dzieła z muzeów. Po zmniejszeniu limitu znikają te, które dobrał sam, od najdawniej dodanych; Ulubione, playlisty, kolejka i pokazane dzieła zostają. Większy katalog to więcej w Odkrywaj.")
                 }
                 Divider()
                 VStack(alignment: .leading, spacing: 8) {

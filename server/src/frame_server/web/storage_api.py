@@ -36,7 +36,9 @@ async def reset_storage(svc: Svc) -> StorageView:
 
 def _after_change(svc: FrameService, lower: bool) -> None:
     """A lower limit trims the library now, in the background (thousands of
-    files on a slow disk); a higher one lets the catalogue grow now."""
+    files on a slow disk); a higher one lets the catalogue grow now. Either
+    way the catalogue is measured again: full, it takes nothing in."""
+    svc.player.limit_changed()
     if lower:
         svc.background(run_in_threadpool(svc.player.trim_cache))
     elif svc.settings.scheduler:  # it measures the thumbnails first: off the event loop

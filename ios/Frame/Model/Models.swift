@@ -1055,6 +1055,14 @@ struct LibraryStorage: Codable, Hashable, Sendable {
     var originalsMb: Int
     var originalsDefaultMb: Int
     var originalsFromApp: Bool
+    /// The catalogue reached its limit: the server takes no more works in
+    /// itself, none to replace others. Nil from a server before 1.122.0.
+    var catalogueFull: Bool? = nil
+
+    /// Full, by the server's word or, from an older one, by the sizes.
+    var isCatalogueFull: Bool {
+        catalogueFull ?? (catalogueMb > 0 && usage.catalogueBytes >= Int64(catalogueMb) * 1_048_576)
+    }
 }
 
 /// Requests to each art source (Konfiguracja → Diagnostyka): today and over
