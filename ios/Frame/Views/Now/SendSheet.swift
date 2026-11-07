@@ -90,7 +90,7 @@ struct SendSheet: View {
     /// The frame with nothing on it yet: a tap on its screen picks the photo.
     private var emptyFrame: some View {
         PhotosPicker(selection: $selection, matching: .images) {
-            FramedArtwork(ref: nil, aspectRatio: frameAspect, moulding: 7) {
+            FramedArtwork(ref: nil, aspectRatio: frameAspect) {
                 if !uploading {
                     VStack(spacing: 12) {
                         Image(systemName: "photo.on.rectangle.angled")
@@ -120,7 +120,7 @@ struct SendSheet: View {
     /// cropped right here: dragged and pinched in its window.
     private func framePreview(_ item: Item) -> some View {
         let ref = previewRef
-        return FramedArtwork(ref: ref, aspectRatio: frameAspect, moulding: 7) {
+        return FramedArtwork(ref: ref, aspectRatio: frameAspect) {
             if cropReady, loadedPreview != nil, !sending {
                 CropWindows(itemID: item.id, draft: $draft)
                     .transition(.opacity)

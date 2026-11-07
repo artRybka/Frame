@@ -242,8 +242,7 @@ struct FrameTabView: View {
             FramedArtwork(
                 ref: model.player?.current.map { ImageRef.path($0.previewUrl) },
                 aspectRatio: model.isPortrait ? 9.0 / 16.0 : 16.0 / 9.0,
-                placeholder: Theme.matWhite,
-                moulding: 4
+                placeholder: Theme.matWhite
             )
             .frame(width: model.isPortrait ? 108 : 150)
             VStack(alignment: .leading, spacing: 4) {

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.119.2
+
+- Biała ramka w podglądach ma grubość w proporcji do obrazu, wszędzie taką
+  samą: przy wejściu w „Kadr” i wyjściu z niego (z Teraz, karty dzieła i
+  Studium) obwódka już nie przeskakuje.
+
 ## 1.119.1
 
 - Jaśniejsze dzieła na karcie dzieła i w studium wchodzą płynnie, w około

@@ -1100,16 +1100,13 @@ struct DailyView: View {
     /// presentation is a new picture, not the old one from memory.
     private func framePreview(_ work: DailyWork, width: CGFloat) -> some View {
         let ratio: CGFloat = model.isPortrait ? 9.0 / 16.0 : 16.0 / 9.0
-        let moulding: CGFloat = 7
         let ref = previewRef
-        return FramedArtwork(
-            ref: ref, aspectRatio: ratio, placeholder: work.item.item.placeholderColor, moulding: moulding
-        )
+        return FramedArtwork(ref: ref, aspectRatio: ratio, placeholder: work.item.item.placeholderColor)
         .environment(\.artImageLoaded) { loaded in
             guard loaded == previewRef else { return }
             loadedPreview = loaded
         }
-        .frame(width: width, height: (width - 2 * moulding) / ratio + 2 * moulding)
+        .frame(width: width, height: Moulding.height(width: width, aspect: ratio))
         // Under the crop screen's frame while it is open: that one flies.
         .opacity(cropping ? 0 : 1)
         // Tap or hold (the phone taps closer and closer), as on Teraz and the card.

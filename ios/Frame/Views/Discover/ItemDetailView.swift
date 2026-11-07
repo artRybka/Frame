@@ -807,7 +807,7 @@ struct ItemDetailView: View {
         let ref = previewRef
         return FramedArtwork(
             ref: ref, aspectRatio: model.isPortrait ? 9.0 / 16.0 : 16.0 / 9.0,
-            placeholder: item.placeholderColor, moulding: 7, shadow: false
+            placeholder: item.placeholderColor, shadow: false
         ) {
             EmptyView()
         }

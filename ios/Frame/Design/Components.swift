@@ -48,14 +48,47 @@ struct SectionHeader: View {
     }
 }
 
-/// A picture in a real-looking frame: white moulding, as the real frame.
+/// The white moulding around the screen, as a share of the screen's shorter
+/// side, so a frame keeps its proportions at any size: the preview on Teraz,
+/// the card or the study and the large one in Kadr flying out of it are the
+/// same frame (Mateusz 2026-11-07: a fixed width jumped as Kadr opened and
+/// closed). About the EM32DX's own (~14 mm around a 398 mm tall screen).
+enum Moulding {
+    static let share: CGFloat = 1.0 / 30
+
+    /// The whole frame's shape, the moulding included, for a screen of `aspect`.
+    static func frameAspect(_ aspect: CGFloat) -> CGFloat {
+        let screen = aspect >= 1 ? CGSize(width: aspect, height: 1) : CGSize(width: 1, height: 1 / aspect)
+        return (screen.width + 2 * share) / (screen.height + 2 * share)
+    }
+
+    /// The moulding's width on a frame of `size` (the moulding included).
+    static func width(frame size: CGSize) -> CGFloat {
+        max(min(size.width, size.height), 0) * share / (1 + 2 * share)
+    }
+
+    /// A frame's height at `width`, the moulding included.
+    static func height(width: CGFloat, aspect: CGFloat) -> CGFloat {
+        width / frameAspect(aspect)
+    }
+
+    /// The frame (moulding included) as large as fits in `space`.
+    static func fitted(_ aspect: CGFloat, in space: CGSize) -> CGSize {
+        let shape = frameAspect(aspect)
+        guard space.width > 0, space.height > 0 else { return .zero }
+        return space.width / space.height > shape
+            ? CGSize(width: space.height * shape, height: space.height)
+            : CGSize(width: space.width, height: space.width / shape)
+    }
+}
+
+/// A picture in a real-looking frame: white moulding, as the real frame,
+/// in proportion to its size (`Moulding`).
 /// `inner` is laid over the picture (e.g. the crop windows on "Teraz").
 struct FramedArtwork<Inner: View>: View {
     let ref: ImageRef?
     var aspectRatio: CGFloat = 16.0 / 9.0
     var placeholder: Color = Theme.mat
-    var mat: CGFloat = 0
-    var moulding: CGFloat = 8
     /// Off when the frame is turned: the caller casts it, so it keeps falling down.
     var shadow = true
     /// A new picture fades in over the one before (`ArtImage.crossfade`).
@@ -67,6 +100,28 @@ struct FramedArtwork<Inner: View>: View {
         // made for the other orientation (the panel still shows it after
         // Orientacja changed) sits in it with the mat around, instead of
         // giving the frame its own shape and shrinking it.
+        Color.clear
+            .aspectRatio(Moulding.frameAspect(aspectRatio), contentMode: .fit)
+            .overlay {
+                GeometryReader { geo in
+                    screen
+                        .padding(Moulding.width(frame: geo.size))
+                        .frame(width: geo.size.width, height: geo.size.height)
+                }
+            }
+            .background(
+                LinearGradient(
+                    colors: [Theme.moulding, Theme.moulding.opacity(0.94)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 2))
+            .overlay(RoundedRectangle(cornerRadius: 2).strokeBorder(Theme.mouldingEdge, lineWidth: 0.5))
+            .frameShadow(shadow)
+    }
+
+    private var screen: some View {
         Color.clear
             .aspectRatio(aspectRatio, contentMode: .fit)
             .overlay {
@@ -80,20 +135,8 @@ struct FramedArtwork<Inner: View>: View {
                 }
             }
             .overlay { inner }
-            .padding(mat)
             .background(Theme.matWhite)
             .overlay { ScreenEdge().allowsHitTesting(false) }
-            .padding(moulding)
-            .background(
-                LinearGradient(
-                    colors: [Theme.moulding, Theme.moulding.opacity(0.94)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 2))
-            .overlay(RoundedRectangle(cornerRadius: 2).strokeBorder(Theme.mouldingEdge, lineWidth: 0.5))
-            .frameShadow(shadow)
     }
 }
 
@@ -123,11 +166,8 @@ private struct ScreenEdge: View {
 }
 
 extension FramedArtwork where Inner == EmptyView {
-    init(
-        ref: ImageRef?, aspectRatio: CGFloat = 16.0 / 9.0, placeholder: Color = Theme.mat,
-        mat: CGFloat = 0, moulding: CGFloat = 8
-    ) {
-        self.init(ref: ref, aspectRatio: aspectRatio, placeholder: placeholder, mat: mat, moulding: moulding) {
+    init(ref: ImageRef?, aspectRatio: CGFloat = 16.0 / 9.0, placeholder: Color = Theme.mat, shadow: Bool = true) {
+        self.init(ref: ref, aspectRatio: aspectRatio, placeholder: placeholder, shadow: shadow) {
             EmptyView()
         }
     }
