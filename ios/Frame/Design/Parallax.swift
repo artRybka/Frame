@@ -3,8 +3,9 @@ import SwiftUI
 
 /// A picture that sits a little deeper than its card: it drifts as the
 /// phone turns in the hand and lags behind as the page scrolls, inside a
-/// window that clips it. Only for the study of the day on Odkrywaj, so it
-/// stands out from the other cards (PLAN 3.3zzz33).
+/// window that clips it. For the study of the day on Odkrywaj, so it
+/// stands out from the other cards (PLAN 3.3zzz33), and for the collage
+/// behind the glass of the "Ukryte" card (`FrostedCover`, 3.3zzz35).
 enum Parallax {
     /// How much bigger than its window the picture is, on each side. It
     /// never moves further than this, so no edge ever shows.
