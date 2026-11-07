@@ -189,7 +189,7 @@ class NightQueue:
 def tasks(service: FrameService) -> list[NightTask]:
     """The night's tasks, in order: first what changes the catalogue, then
     what is worked out from it."""
-    from .library import courtauld, loc_index, louvre, met_index, nga
+    from .library import courtauld, dumps, loc_index, louvre, met_index, nga
     from .notifications import births_at_night
     from .web import discover_api
 
@@ -247,6 +247,17 @@ def tasks(service: FrameService) -> list[NightTask]:
         coordinates come with the original)."""
         return service.places.fill()
 
+    def dump(key: str) -> Callable[[Night], object]:
+        """A museum's published dump read again every two months
+        (library/dumps.py), for the sources on offer only."""
+
+        def refresh(night: Night) -> bool:
+            if key not in service.importer.sources():
+                return False
+            return dumps.refresh_at_night(key, service.settings.data_dir)
+
+        return refresh
+
     def themes(night: Night) -> None:
         discover_api.work_out_cards(service, force=True)
 
@@ -262,6 +273,7 @@ def tasks(service: FrameService) -> list[NightTask]:
         NightTask("louvre", lambda night: louvre.refresh_at_night(service.settings.data_dir)),
         NightTask("met", lambda night: met_index.refresh_at_night(service.settings.data_dir)),
         NightTask("loc", lambda night: loc_index.refresh_at_night(service.settings.data_dir)),
+        *(NightTask(f"{key} dump", dump(key)) for key in dumps.DUMPS),
         NightTask("births", lambda night: births_at_night(service, night)),
         NightTask("daily", daily),
         NightTask("playlists", playlists),

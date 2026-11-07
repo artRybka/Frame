@@ -197,12 +197,22 @@ class WellcomeCollection(Museum):
     def search(self, query: str, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
         if not query.strip():
             return self.discover(Discovery(kind="painting"), limit, page)
-        return self._get({"query": query.strip()}, limit, page)
+        return self._at_home(
+            query,
+            limit,
+            page,
+            lambda: self._get({"query": query.strip()}, limit, page),
+            kinds=self.kinds["any"],
+        )
 
     def discover(self, spec: Discovery, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
         genres = self.kinds.get(spec.kind)
         if spec.highlight or not genres:
             return 0, []
+        if (index := self._index()) is not None:
+            return self._from_dump(
+                index, spec.style, kinds=genres, spec=spec, limit=limit, page=page
+            )
         params: dict[str, Any] = {"genres.label": ",".join(genres)}
         if spec.style.strip():
             params["query"] = spec.style.strip()
@@ -213,6 +223,8 @@ class WellcomeCollection(Museum):
         return self._get(params, limit, page)
 
     def fetch(self, source_id: str) -> Item | None:
+        if (record := self._from_index(source_id)) is not None:
+            return self._map(record)
         resp = self.http.get(f"{self.api}/works/{source_id}", params={"include": self.include})
         if resp.status_code in (404, 410):
             return None

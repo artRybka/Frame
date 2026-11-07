@@ -102,6 +102,8 @@ SOURCES: tuple[Source, ...] = (
             # again within minutes, eight times; half an hour, no probes.
             "api.artic.edu": Host(pace=1.2, limit=1, wall_403=True, long_block=HOUR / 2),
             "www.artic.edu": Host(pace=1.0, limit=1, images=1),
+            # Its published dump (library/dumps.py), every two months.
+            "artic-api-data.s3.amazonaws.com": Host(),
         },
         domains=("artic.edu",),
     ),
@@ -167,7 +169,11 @@ SOURCES: tuple[Source, ...] = (
         "Smithsonian Open Access",
         "https://api.data.gov/docs/developer-manual/",
         "2026-11-04",
-        {"api.si.edu": Host(budget=Budget(1000, HOUR))},
+        {
+            "api.si.edu": Host(budget=Budget(1000, HOUR)),
+            # Its published metadata (library/dumps.py), every two months.
+            "smithsonian-open-access.s3-us-west-2.amazonaws.com": Host(),
+        },
         domains=("si.edu",),
     ),
     Source(
