@@ -49,7 +49,7 @@ log = logging.getLogger(__name__)
 
 KIND = "daily"
 #: Changed whenever the prompt changes, so the text is written again.
-PROMPT_VERSION = "daily-11"
+PROMPT_VERSION = "daily-12"
 #: The tile's two lines under the title (characters).
 TEASER_CHARS = 100
 #: The picture goes out this big: as large as Opus reads one, so that it
@@ -239,10 +239,14 @@ wyróżniał i w którym miejscu jego drogi powstało to dzieło. Bez powtarzani
 - "details": 2–3 fragmenty warte powiększenia, których w całym obrazie na telefonie nie \
 widać: twarz, dłoń, przedmiot, napis lub sygnatura, faktura farby, drobny motyw w tle. \
 Aplikacja wytnie je z oryginału w pełnej rozdzielczości. Każdy: "title" (1–3 słowa), "text" \
-(jedno-dwa zdania, najwyżej 220 znaków: co tu widać i dlaczego warto się przyjrzeć), "x" i \
-"y" (lewy górny róg kadru) oraz "w" i "h" (szerokość i wysokość kadru), wszystko w pikselach \
-obrazu. Kadr ciasno wokół rzeczy: bok 10–35% szerokości obrazu, \
-proporcje w pikselach od 3:4 do 4:3. Fragmenty różne od siebie.
+(jedno-dwa zdania, najwyżej 220 znaków: co tu widać i dlaczego warto się przyjrzeć), "where" \
+(gdzie to jest na obrazie, 3–8 słów, np. „lewy dolny róg, pod ławką”) i prostokąt, w którym \
+mieści się cała ta rzecz, podany czterema krawędziami w pikselach obrazu: "left" i "right" \
+(x lewej i prawej krawędzi), "top" i "bottom" (y górnej i dolnej krawędzi); lewy górny \
+narożnik to (left, top), prawy dolny (right, bottom). Najpierw znajdź rzecz na obrazie, potem \
+obwiedź ją ciasno: twarz cała z oczami i ustami, dłoń z tym, co trzyma, napis w całości. \
+Marginesu i proporcji nie dodajesz: kadr wokół prostokąta dobierze aplikacja. Fragmenty różne \
+od siebie.
 - "on_frame": jedno-dwa zdania, jak dzieło wypadnie na ramce. Ramka ma sześć tuszy: czarny, \
 biały, czerwony, żółty, niebieski, zielony; pozostałe barwy, beże i pastele składa z \
 drobnego rastra tych tuszy. Ocena serwera (0–1) jest w danych.
@@ -327,10 +331,11 @@ SCHEMA = _object(
         _object(
             title=_str(),
             text=_str(),
-            x={"type": "number"},
-            y={"type": "number"},
-            w={"type": "number"},
-            h={"type": "number"},
+            where=_str(),
+            left={"type": "number"},
+            top={"type": "number"},
+            right={"type": "number"},
+            bottom={"type": "number"},
         )
     ),
     on_frame=_str(),
@@ -1068,6 +1073,77 @@ def _scale(raw: dict[str, Any], keys: tuple[str, ...], size: tuple[int, int]) ->
             raw[key] = value / (size[0] if key in ("x", "w") else size[1])
 
 
+#: The four edges the model draws around a detail (pixels), tight around
+#: the thing; the cut around them is the server's (:func:`framed`).
+EDGES = ("left", "top", "right", "bottom")
+#: The cut around a detail's edges: a margin on every side (of the thing's
+#: own size), its longer side at least this much of the picture's longer
+#: side, proportions from 3:4 to 4:3, never more than DETAIL_MAX of a side.
+DETAIL_MARGIN = 0.15
+DETAIL_SIDE = 0.10
+DETAIL_ASPECT = 4 / 3
+
+
+def framed(
+    edges: tuple[float, float, float, float], size: tuple[int, int]
+) -> tuple[float, float, float, float]:
+    """The cut (x, y, w, h in pixels) around a detail the model drew as its
+    four edges (left, top, right, bottom): centred on the thing, with a
+    margin, made big enough to be worth a look and of sane proportions,
+    moved (not cut) to stay within the picture.
+
+    Asked for as x, y, w and h with the size rules left to the model, boxes
+    came back with the thing in a corner or beside it: it found the thing's
+    corner, then drew the width and height it was told to from there
+    (Mateusz 2026-11-07: "Często chybia / przesuwa się")."""
+    width, height = size
+    left, top, right, bottom = edges
+    left, right = sorted((min(max(left, 0.0), width), min(max(right, 0.0), width)))
+    top, bottom = sorted((min(max(top, 0.0), height), min(max(bottom, 0.0), height)))
+    cx, cy = (left + right) / 2, (top + bottom) / 2
+    w = max(right - left, 1.0) * (1 + 2 * DETAIL_MARGIN)
+    h = max(bottom - top, 1.0) * (1 + 2 * DETAIL_MARGIN)
+    if w > h * DETAIL_ASPECT:
+        h = w / DETAIL_ASPECT
+    elif h > w * DETAIL_ASPECT:
+        w = h / DETAIL_ASPECT
+    least = DETAIL_SIDE * max(width, height)
+    if max(w, h) < least:
+        w, h = w * least / max(w, h), h * least / max(w, h)
+    w, h = min(w, DETAIL_MAX * width), min(h, DETAIL_MAX * height)
+    x = min(max(cx - w / 2, 0.0), width - w)
+    y = min(max(cy - h / 2, 0.0), height - h)
+    return x, y, w, h
+
+
+def frame_details(data: dict[str, Any], size: tuple[int, int] | None) -> dict[str, Any]:
+    """The answer with each detail drawn as its edges (:data:`EDGES`) given
+    the cut around them (x, y, w, h, still in pixels: :func:`to_fractions`
+    divides them). Details given as x, y, w, h stay as they are."""
+    details = _dicts(data.get("details"))
+    if size is None or not any(all(_is_number(d.get(k)) for k in EDGES) for d in details):
+        return data
+    width, height = size
+    out = []
+    for raw in details:
+        d = dict(raw)
+        if all(_is_number(d.get(k)) for k in EDGES):
+            left, top, right, bottom = (float(d[k]) for k in EDGES)
+            if max(left, top, right, bottom) <= 1.5:  # fractions after all
+                left, right = left * width, right * width
+                top, bottom = top * height, bottom * height
+            x, y, w, h = framed((left, top, right, bottom), size)
+            d.update(x=x, y=y, w=w, h=h)
+            for key in EDGES:
+                d.pop(key, None)
+        out.append(d)
+    return {**data, "details": out}
+
+
+def _is_number(value: object) -> bool:
+    return isinstance(value, int | float) and not isinstance(value, bool)
+
+
 def to_fractions(data: dict[str, Any], size: tuple[int, int] | None) -> dict[str, Any]:
     """The answer with its pixels made fractions of the picture's sides (as
     the app and :func:`clean` take them). An answer already in fractions
@@ -1180,8 +1256,9 @@ class DailyJob(NoteJob):
         if answer.data is None:
             return answer
         seen = Seen(copy_id=item.sharper.item_id if item.sharper else "", url=display_copy(item))
+        size = sent_size(params)
         data = {
-            **to_fractions(answer.data, sent_size(params)),
+            **to_fractions(frame_details(answer.data, size), size),
             BOXES: BOXES_VERSION,
             SEEN: seen.model_dump(),
         }
@@ -1193,17 +1270,24 @@ class DailyJob(NoteJob):
                 log.warning("page of %s not asked again: %s", item.id, err)
             else:
                 answer = replace(answer, cost_usd=answer.cost_usd + again.cost_usd)
-                fresh = to_fractions(again.data, sent_size(params)) if again.data else None
+                fresh = to_fractions(frame_details(again.data, size), size) if again.data else None
                 if fresh is not None and len(missing(fresh, ANSWERED)) < len(lacking):
                     data = {**fresh, BOXES: BOXES_VERSION, SEEN: seen.model_dump()}
             if lacking := missing(data, ANSWERED):
                 log.warning("page of %s kept without %s", item.id, ", ".join(lacking))
                 data = {**data, INCOMPLETE: lacking}
         from .composition import compose
+        from .details import check as check_details
 
-        # Its details' boxes are not checked by themselves any more (Mateusz
-        # 2026-11-04: "zwykle trafiają"); the owner has a page's checked when
-        # asked ("Popraw detale", ``ai.details.MendJob``).
+        # Each detail is cut and shown to Claude again, which draws anew a box
+        # that misses (Mateusz 2026-11-07, after three days without: "Często
+        # chybia"; "Popraw detale" always hits).
+        try:
+            data = check_details(self.images, item, data, ask)
+        except (AiUnavailable, anthropic.APIError) as err:
+            log.warning("details of %s not checked: %s", item.id, err)
+        except Exception:  # the page is paid for: never lost to its details' check
+            log.exception("details check of %s failed", item.id)
         data = {**data, "composition": {"views": []}}
         try:
             data.update(compose(self.images, item, context or self.sources(item), ask))
