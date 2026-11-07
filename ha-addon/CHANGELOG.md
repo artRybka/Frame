@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.120.1
+
+- Okładka „Ukryte” nie ma już szronu z ziarnem ani kremowej warstwy: dzieła
+  rozmywa zwykła systemowa mgiełka, taka jak w iOS. Ruch zostaje, a odblask
+  przy przechyle telefonu jest słabszy.
+
 ## 1.120.0
 
 - Karta dzieła: style i tematy z muzeum („18th Century”, „boys”,
