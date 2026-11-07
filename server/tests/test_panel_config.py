@@ -47,6 +47,7 @@ def test_app_values_win_and_survive_restart(tmp_path: Path) -> None:
             "port": 1515,
             "pin_set": True,
             "from_app": False,
+            "mac_from_panel": None,
         }
         assert "pin" not in view
 
@@ -75,6 +76,26 @@ def test_app_values_win_and_survive_restart(tmp_path: Path) -> None:
     assert restarted.settings.device_host == "203.0.113.152"
     assert restarted.settings.device_pin == "123456"
     assert restarted.panel_config.view().from_app
+
+
+def test_empty_mac_means_the_panels_own(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, device_host="192.168.1.50", device_pin="0000"))
+    with TestClient(app) as client:
+        svc: FrameService = app.state.service
+        svc.panel_config.learn_mac("28:07:08:ED:0A:F6")
+        view = client.get("/api/device/config").json()
+        assert (view["mac"], view["mac_from_panel"]) == ("28:07:08:ED:0A:F6",) * 2
+
+        # One typed in wins (an Ethernet adapter has its own); the panel's stays shown.
+        view = client.put(
+            "/api/device/config", json={"host": "192.168.1.50", "mac": "a4307a0102ff"}
+        ).json()
+        assert (view["mac"], view["mac_from_panel"]) == ("A4:30:7A:01:02:FF", "28:07:08:ED:0A:F6")
+
+        # Emptied, Wake-on-LAN goes back to the panel's own MAC.
+        view = client.put("/api/device/config", json={"host": "192.168.1.50", "mac": ""}).json()
+        assert view["mac"] == "28:07:08:ED:0A:F6"
+        assert svc.settings.device_mac == "28:07:08:ED:0A:F6"
 
 
 def test_reset_goes_back_to_frame_env(tmp_path: Path) -> None:

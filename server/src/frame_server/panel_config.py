@@ -42,6 +42,7 @@ class PanelConfigView(BaseModel):
     port: int
     pin_set: bool
     from_app: bool  # saved in the app, not taken from frame.env / add-on options
+    mac_from_panel: str | None = None  # what the frame's app read on the panel
 
 
 class PanelConfigUpdate(BaseModel):
@@ -107,11 +108,18 @@ class PanelConfigStore:
             port=config.port,
             pin_set=bool(config.pin),
             from_app=self.from_app,
+            mac_from_panel=self.learnt_mac,
         )
+
+    @property
+    def learnt_mac(self) -> str | None:
+        learnt = self.library.get_state(LEARNT_MAC_KEY)
+        return learnt if isinstance(learnt, str) else None
 
     def save(self, update: PanelConfigUpdate) -> bool:
         """Keep the app's values; True when the panel itself may have changed.
 
+        An empty MAC means the one the panel reports (once its app has run).
         Raises ValueError on an address, MAC or PIN that cannot be right."""
         old = self.current
         config = PanelConfig(
@@ -122,6 +130,7 @@ class PanelConfigStore:
         )
         self.library.set_state(STATE_KEY, config.model_dump())
         self._apply(config)
+        self._fill_mac()
         return (old.host, old.port) != (config.host, config.port)
 
     def reset(self) -> bool:
@@ -148,9 +157,7 @@ class PanelConfigStore:
 
     def _fill_mac(self) -> None:
         if not self.settings.device_mac:
-            learnt = self.library.get_state(LEARNT_MAC_KEY)
-            if isinstance(learnt, str):
-                self.settings.device_mac = learnt
+            self.settings.device_mac = self.learnt_mac
 
     def _apply(self, config: PanelConfig) -> None:
         s = self.settings

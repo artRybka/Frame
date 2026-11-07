@@ -1019,6 +1019,8 @@ struct PanelConfig: Codable, Hashable, Sendable {
     var pinSet: Bool
     /// Saved in the app; otherwise taken from frame.env or the add-on options.
     var fromApp: Bool
+    /// The MAC the frame's app read on the panel; an empty field uses it.
+    var macFromPanel: String? = nil
 }
 
 /// How much disk the library takes on the server and how much it may take
