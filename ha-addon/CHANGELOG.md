@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.120.3
+
+- Szukaj po autorze pokazuje tylko jego dzieła: bez prac innych artystów,
+  które jedynie o nim wspominają (np. przy Van Goghu autoportret
+  Guillaumina czy anonimowe szkice), i bez kopii „według” niego ani prac
+  jego warsztatu czy naśladowców. To samo w playlistach inteligentnych z
+  artystą. Żeby wyników nie było mniej, serwer zagląda w muzeach o kilka
+  stron dalej.
+
 ## 1.120.2
 
 - Okładka „Ukryte” nie ma już szronu z ziarnem ani kremowej warstwy: dzieła
