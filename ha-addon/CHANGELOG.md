@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.121.8
+
+- „Kopie dzieła” znowu pytają wszystkie źródła. Od 1.121.0 szukanie stawało
+  na 3/20: muzea w sieci czekały, aż przestaniesz używać aplikacji, a po
+  20 s wszystkie zgłaszały brak odpowiedzi.
+- Szukaj, Odkrywaj i kopie nie czekają już na tę samą stronę wyników, którą
+  akurat pobiera praca w tle.
+
 ## 1.121.7
 
 - Fotografia z Wikimedia Commons działa też bez wpisanych słów: serwer

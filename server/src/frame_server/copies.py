@@ -33,6 +33,7 @@ from .imaging.layout import load_image
 from .library import Item, ItemKind
 from .library.aic import aic_large_size
 from .library.duplicates import surname
+from .library.hosts import as_asked
 from .library.images import IMAGE_MAX, display_copy, own_copy
 from .library.likeness import WHOLE_TURN, Fit, keypoints
 from .library.vocabulary import is_copy, is_photograph, is_reproduction
@@ -228,7 +229,7 @@ class Copies:
             new = fresh(hits)
             for copy in new:
                 emit(CopyLine(kind="copy", copy=self.view(copy, quality, "checking")))
-                judged.append(judging.submit(judge, copy))
+                judged.append(judging.submit(as_asked(judge), copy))
             if key:
                 emit(CopyLine(kind="source", source=key, found=len(new), failed=failed))
 
@@ -239,10 +240,15 @@ class Copies:
         asking = ThreadPoolExecutor(max(1, len(keys)) + 1, "copies-ask")
         try:
             with ThreadPoolExecutor(JUDGES, "copies-judge") as judging:
-                asked: dict[Future[list[Item]], str] = {asking.submit(self.known, stored): ""}
+                # The pools' threads ask as this one does (for the app, now):
+                # left to themselves they were the background's, which waits
+                # while the app is in use, so every museum stayed silent.
+                asked: dict[Future[list[Item]], str] = {
+                    asking.submit(as_asked(self.known), stored): ""
+                }
                 for key in keys:
                     if text := title if key in TITLE_ONLY else query:
-                        asked[asking.submit(self._ask, key, text)] = key
+                        asked[asking.submit(as_asked(self._ask), key, text)] = key
                 waiting = set(asked)
                 deadline = time.monotonic() + self.answer
                 while waiting and not gone.is_set():

@@ -24,7 +24,7 @@ from .colors import analyse, has_colours, tint_spread
 from .commons import OWN_SOURCES
 from .dates import text_year
 from .duplicates import dedupe, rank
-from .hosts import as_asked
+from .hosts import as_asked, deferrable
 from .images import ImageCache
 from .lifespan import LifeDates
 from .models import Item, ItemKind, Look, PhotoInfo, PlaylistRules
@@ -222,9 +222,11 @@ class Importer:
         ] = OrderedDict()
         #: Pages kept on disk that are asked again behind (library/pages.py).
         self._asking: set[tuple[str, str, int, int, str, bool]] = set()
-        #: Pages being asked for now: another asking for the same one waits
-        #: for that answer instead of asking the museum again.
-        self._inflight: dict[tuple[str, str, int, int, str, bool], Future[Any]] = {}
+        #: Pages being asked for now, and whether by work that may wait (the
+        #: background's): another asking for the same one waits for that
+        #: answer instead of asking the museum again, unless it may not wait
+        #: and that one may.
+        self._inflight: dict[tuple[str, str, int, int, str, bool], tuple[Future[Any], bool]] = {}
         #: Words typed in Szukaj in the museums' languages (the language
         #: model's, set by the service); none: asked as typed.
         self.translate: Callable[[str, float], Wording] | None = None
@@ -373,11 +375,20 @@ class Importer:
         """The museum's page of ``memo``, kept in memory and on disk; asked
         once when several want it at the same time (a set's stream, the
         same page asked again behind, the catalogue)."""
+        may_wait = deferrable()
         with self._remote_lock:
-            asking = self._inflight.get(memo)
-            mine = asking is None
-            if asking is None:
-                asking = self._inflight[memo] = Future()
+            other = self._inflight.get(memo)
+            # The background's request waits while the app is in use
+            # (hosts.HostGuard.wait_calm): what the app waits for never
+            # waits behind it, it asks on its own (2026-11-07: the copies'
+            # searches stood until the app was left alone).
+            if other is not None and (may_wait or not other[1]):
+                asking = other[0]
+                mine = False
+            else:
+                entry: tuple[Future[Any], bool] = (Future(), may_wait)
+                asking, mine = entry[0], True
+                self._inflight[memo] = entry
         if not mine:
             total, items = asking.result()
             return total, list(items)
@@ -388,7 +399,8 @@ class Importer:
             raise
         finally:
             with self._remote_lock:
-                self._inflight.pop(memo, None)
+                if self._inflight.get(memo) is entry:
+                    del self._inflight[memo]
         asking.set_result(found)
         return found[0], list(found[1])
 
