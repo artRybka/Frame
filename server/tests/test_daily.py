@@ -1164,6 +1164,84 @@ def test_a_detail_that_misses_is_drawn_again() -> None:
     assert mended(details, None, (2000, 1554)) is None
 
 
+def test_a_detail_is_drawn_as_its_edges_and_framed_by_the_server() -> None:
+    """Mateusz 2026-11-07: "Często chybia / przesuwa się". Told to give a
+    corner, a width and a height of set proportions, the model put the thing
+    in the box's corner; now it rings the thing with its four edges and the
+    server centres the cut on it, with a margin and sane proportions."""
+    from frame_server.ai.daily import DETAIL_MARGIN, frame_details, framed
+
+    size = (2000, 1500)
+    # A face 180 × 260 px: centred, a margin on every side, made 3:4.
+    x, y, w, h = framed((910, 400, 1090, 660), size)
+    assert (x + w / 2, y + h / 2) == (1000, 530)
+    assert h == pytest.approx(260 * (1 + 2 * DETAIL_MARGIN)) and w == pytest.approx(h * 3 / 4)
+    # A signature, long and thin, low in the corner: 4:3, within the picture,
+    # the whole of it inside.
+    x, y, w, h = framed((1700, 1440, 1990, 1490), size)
+    assert w / h == 4 / 3 and x + w <= 2000 and y + h <= 1500
+    assert x <= 1700 and y <= 1440 and x + w >= 1990 and y + h >= 1490
+    # A speck: made big enough to look at, still centred on it.
+    x, y, w, h = framed((500, 500, 520, 520), size)
+    assert max(w, h) == 200 and (x + w / 2, y + h / 2) == (510, 510)
+    # Edges the wrong way round or past the picture are read as meant.
+    assert framed((1100, 660, 900, 400), size) == framed((900, 400, 1100, 660), size)
+    x, y, w, h = framed((-50, -50, 150, 150), size)
+    assert x == 0 and y == 0
+
+    answer = {
+        "details": [
+            {"title": "Twarz", "text": "", "where": "środek", "left": 900, "top": 400,
+             "right": 1100, "bottom": 660},
+            {"title": "Stara", "text": "", "x": 10, "y": 20, "w": 300, "h": 300},
+        ]
+    }  # fmt: skip
+    face, old = frame_details(answer, size)["details"]
+    assert "left" not in face and (face["x"], face["w"]) == framed((900, 400, 1100, 660), size)[::2]
+    assert face["where"] == "środek"
+    assert old == answer["details"][1]  # drawn as before: left as it is
+    assert frame_details(answer, None) == answer
+
+
+def test_a_new_page_has_its_details_checked(offline: FrameService) -> None:
+    """Back since 2026-11-07 (Mateusz: "Popraw detale" always hits): a page
+    just written has each detail cut and shown to Claude again."""
+    from frame_server.ai.client import Answer
+    from frame_server.ai.daily import DETAILS_CHECKED, image_block
+    from frame_server.ai.details import SYSTEM as DETAILS_SYSTEM
+
+    _catalogue(offline)
+    item = offline.library.get("met:1")
+    assert item is not None
+    width, height = SIZE
+    params = {"messages": [{"content": [image_block(Image.new("RGB", SIZE))]}]}
+    page = copy.deepcopy(ANSWER)
+    page["details"] = [
+        {"title": "Pazury piany", "text": "", "left": 360, "top": 60, "right": 540, "bottom": 240},
+        {"title": "Wioślarze", "text": "", "left": 600, "top": 420, "right": 780, "bottom": 560},
+    ]
+    asked: list[dict[str, Any]] = []
+
+    def ask(p: dict[str, Any]) -> Answer:
+        asked.append(p)
+        if p["system"][0]["text"] == DETAILS_SYSTEM:
+            moved = {"n": 2, "ok": False, "x": 450, "y": 300, "w": 180, "h": 180}
+            return Answer({"details": [{"n": 1, "ok": True}, moved]}, False, 0.05, OPUS)
+        return Answer(None, True, 0, OPUS)  # the composition: nothing
+
+    data = offline.daily.job.revise(item, params, Answer(page, False, 0.3, OPUS), ask).data
+    assert data is not None
+    foam, rowers = data["details"]
+    # Framed by the server, then in fractions.
+    assert foam["x"] + foam["w"] / 2 == pytest.approx(450 / width)
+    assert foam["y"] + foam["h"] / 2 == pytest.approx(150 / height)
+    # The check drew the one that missed anew.
+    assert (rowers["x"], rowers["y"]) == (450 / width, 300 / height)
+    assert data[DETAILS_CHECKED] == ["Wioślarze"]
+    check = next(p for p in asked if p["system"][0]["text"] == DETAILS_SYSTEM)
+    assert "WYCINEK 2 „Wioślarze”" in check["messages"][0]["content"][-2]["text"]
+
+
 def test_the_owner_has_the_details_of_an_older_page_checked(tmp_path: Any) -> None:
     """ "Popraw detale" (Mateusz 2026-11-03: "Na żądanie, przytrzymaniem"):
     the details of a page written before the check, checked when asked; a

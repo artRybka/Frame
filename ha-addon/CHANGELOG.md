@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.112.1
+
+- Detale w studiach lepiej trafiają. Claude obwodzi rzecz czterema
+  krawędziami, a serwer sam centruje na niej wycinek, dodaje margines
+  i dobiera proporcje. Dotąd Claude podawał róg, szerokość i wysokość,
+  więc rzecz często lądowała w rogu wycinka albo obok niego.
+- Nowe studia znowu same sprawdzają detale tak jak „Popraw detale”:
+  Claude widzi każdy wycinek i poprawia ramkę, która chybia (ok. 0,07 USD
+  na studium, w zamówieniu na później połowa).
+
 ## 1.112.0
 
 - Odkrywaj w nowej kolejności: Dziś dla Ciebie, Kierunki i style,
