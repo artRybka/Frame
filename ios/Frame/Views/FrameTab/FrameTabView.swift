@@ -2150,7 +2150,7 @@ struct ServerSection: View {
                 Divider()
                 AddressField(title: "Spoza domu", prompt: "Tailscale, np. http://100.64.0.5:8099", text: $model.remoteURL)
                 Divider()
-                SecureField("Token API", text: $model.apiToken)
+                TokenField(text: $model.apiToken)
                 Divider()
                 Button {
                     Task {
@@ -2434,6 +2434,23 @@ private struct AddressField: View {
             Text(title).font(.caption).foregroundStyle(Theme.inkSoft)
             TextField(prompt, text: $text)
                 .keyboardType(.URL)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+        }
+    }
+}
+
+/// The token the app sends to the server's `/api/*` (Bearer). The owner's
+/// comes from the server's settings (`FRAME_API_TOKEN`), a household
+/// member's from the invitation. Captioned like the addresses: filled in,
+/// a bare secure field shows only dots.
+private struct TokenField: View {
+    @Binding var text: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Token API").font(.caption).foregroundStyle(Theme.inkSoft)
+            SecureField("wklej token", text: $text)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
         }

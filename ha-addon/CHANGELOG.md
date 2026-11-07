@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.113.1
+
+- Konfiguracja → Serwer: pole z kropkami pod adresami ma podpis
+  „Token API”. To hasło, którym aplikacja przedstawia się serwerowi.
+
 ## 1.113.0
 
 - Konfiguracja to teraz krótka lista jak w Ustawieniach iOS: Na co dzień,
