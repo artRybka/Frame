@@ -7,7 +7,8 @@ struct DiscoverView: View {
     @State private var path = NavigationPath()
     @State private var dailyShown = 0
     @State private var themeShown = 0
-    /// How far the page is scrolled, for the glow of the study of the day.
+    /// How far the page is scrolled, for the glow of the study of the day
+    /// and its picture's parallax.
     @State private var scrolled: CGFloat = 0
 
     var body: some View {
@@ -15,6 +16,7 @@ struct DiscoverView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     SuggestionsView(path: $path)
+                        .environment(\.parallaxLift, scrolled)
                         .pageWidth()
                         .padding(.horizontal, Theme.gutter)
                         .padding(.top, 8)

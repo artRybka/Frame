@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.118.2
+
+- Obraz w Studium dnia w Odkrywaj leży odrobinę głębiej niż karta:
+  przesuwa się delikatnie, gdy obracasz telefon w dłoni, i zostaje lekko
+  z tyłu przy przewijaniu. Przy „Ogranicz ruch” stoi w miejscu.
+
 ## 1.118.1
 
 - Konfiguracja → Diagnostyka ma nową sekcję „Zapytania do źródeł”: ile

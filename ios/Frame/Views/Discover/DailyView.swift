@@ -4,6 +4,7 @@ import SwiftUI
 /// (cropped around the place Claude named, else what draws the eye), its
 /// title and one sentence written to fit two lines, an arrow in the corner;
 /// the whole tile opens its page. Kept low, so the themes start right below it.
+/// The picture sits a little deeper than the card (`parallax()`).
 /// Held, the owner can draw another one (`drawDailyAgainMenu`).
 struct DailyTile: View {
     let work: DailyWork
@@ -28,6 +29,10 @@ struct DailyTile: View {
                             subjectFocus: true,
                             focusPoint: work.focus.map { UnitPoint(x: $0.x, y: $0.y) }
                         )
+                        // A touch bigger than the band, so it can drift in it.
+                        .padding(.horizontal, -Parallax.side)
+                        .padding(.vertical, -Parallax.top)
+                        .parallax()
                     }
                     .clipped()
                 VStack(alignment: .leading, spacing: 2) {
