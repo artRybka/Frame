@@ -40,7 +40,7 @@ def _importer(tmp_path: Path, handler: object) -> Importer:
     return Importer(Library(tmp_path / "lib.db"), cache, None)  # type: ignore[arg-type]
 
 
-def test_works_without_size_are_measured_on_small_thumbnails(tmp_path: Path) -> None:
+def test_works_without_size_are_measured_on_their_kept_thumbnails(tmp_path: Path) -> None:
     seen: list[str] = []
     shapes = {"1": (30, 60), "2": (80, 40)}
 
@@ -57,7 +57,9 @@ def test_works_without_size_are_measured_on_small_thumbnails(tmp_path: Path) -> 
     assert importer.known_aspect(items[1]) == 2.0
     assert importer.known_aspect(items[2]) == 3.0  # the source's own size
     assert len(seen) == 2
-    assert all("size=w200" in url for url in seen)
+    # The thumbnail the app shows, kept: not asked for again for the tile.
+    assert all("size=w400" in url for url in seen)
+    assert importer.cache.thumb_path(items[0]).is_file()
     # Known now: not asked again.
     importer.measure(items)
     assert len(seen) == 2

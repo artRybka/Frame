@@ -32,11 +32,11 @@ def _offline() -> Iterator[None]:
     anything but this machine fails at once as if offline.
 
     Nor is a big index built from a museum's site: the National Gallery of
-    Art's (~230 MB), the Courtauld's or the Louvre's lists. Tests that want
+    Art's (~230 MB), the Courtauld's, the Louvre's or the LoC's lists. Tests that want
     one build it from fake files themselves."""
     import httpx
 
-    from frame_server.library import courtauld, louvre, met_index, nga
+    from frame_server.library import courtauld, loc_index, louvre, met_index, nga
 
     def local(request: httpx.Request) -> None:
         if request.url.host not in LOCAL_HOSTS:
@@ -62,6 +62,7 @@ def _offline() -> Iterator[None]:
         patch.setattr(courtauld.INDEX, "_start", lambda path: None)
         patch.setattr(louvre.INDEX, "_start", lambda path: None)
         patch.setattr(met_index.INDEX, "_start", lambda path: None)
+        patch.setattr(loc_index.INDEX, "_start", lambda path: None)
         yield
 
 

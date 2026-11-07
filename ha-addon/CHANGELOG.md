@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.121.0
+
+- Serwer pyta muzea rzadziej i łagodniej, żeby nie blokowały domowego
+  adresu: przez 10 minut po aktualizacji pracuje tylko na Twoje prośby,
+  zapamiętane wyniki wyszukiwań są dobre przez 3 dni i nie znikają przy
+  aktualizacji, Met dostaje najwyżej 2 zapytania na sekundę i 1500 na
+  godzinę, a po odmowie Met i AIC serwer czeka, zamiast pukać dalej.
+- Aplikacja bierze wszystkie miniatury z serwera, który pobiera każdą raz
+  i ją zachowuje; telefon w domu nie pyta już muzeów sam. Miniatury z
+  Art Institute of Chicago dochodzą przez to po jednej na sekundę, tak jak
+  każe AIC.
+- Kolekcje Library of Congress, z których są zestawy i losowanie (np.
+  „Pierwsze kolory”), serwer trzyma u siebie i odświeża co 3 miesiące
+  nocą; LoC jest pytana tylko o to, czego szukasz, i nocą.
+- Praca w tle, na którą nikt nie czeka, stoi, gdy używasz aplikacji, i
+  idzie wolniej; polskie fakty z Wikidata serwer pamięta po aktualizacji.
+- Log serwera jest zapisywany na dysku przez 7 dni, a Konfiguracja →
+  Diagnostyka pokazuje przy każdym źródle, kto pytał (Szukaj, Odkrywaj,
+  noc, katalog…).
+
 ## 1.120.3
 
 - Szukaj po autorze pokazuje tylko jego dzieła: bez prac innych artystów,

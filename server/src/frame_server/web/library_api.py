@@ -597,6 +597,13 @@ def delete_item(item_id: str, svc: Svc) -> dict[str, bool]:
 
 @router.get("/library/items/{item_id:item}/thumb")
 async def item_thumb(item_id: str, svc: Svc) -> FileResponse:
+    """A work's thumbnail, the catalogue's or any museum work's: the app
+    shows every thumbnail from here, never from the museum itself."""
+    kept = svc.images.kept_thumb(item_id)
+    if kept is not None:
+        return FileResponse(
+            kept, media_type="image/jpeg", headers={"Cache-Control": "max-age=86400"}
+        )
     item = await _work(svc, item_id, threads=THUMB_THREADS)
     try:
         path = await to_thread.run_sync(

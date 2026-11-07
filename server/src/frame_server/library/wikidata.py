@@ -14,7 +14,7 @@ import re
 import threading
 from collections import OrderedDict
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import Any
 from urllib.parse import quote, urlsplit
 
@@ -22,6 +22,7 @@ import httpx
 
 from .models import Item
 from .nationality import Gender
+from .records import Records
 
 API = "https://www.wikidata.org/w/api.php"
 
@@ -42,6 +43,24 @@ GENDERS: dict[str, Gender] = {
     "Q2449503": "male",  # trans man
     "Q1052281": "female",  # trans woman
 }
+
+
+def _facts_from(record: Any) -> Facts | None:
+    """Facts as kept on disk (tuples come back as lists)."""
+    if not isinstance(record, dict):
+        return None
+    try:
+        return Facts(
+            qid=str(record["qid"]),
+            title_pl=str(record.get("title_pl") or ""),
+            depicts_pl=tuple(record.get("depicts_pl") or ()),
+            depicts_en=tuple(record.get("depicts_en") or ()),
+            creator_gender=record.get("creator_gender"),
+            wiki_pl=str(record.get("wiki_pl") or ""),
+            wiki_en=str(record.get("wiki_en") or ""),
+        )
+    except (KeyError, TypeError):
+        return None
 
 
 @dataclass(frozen=True)
@@ -85,12 +104,20 @@ def _ids(entity: dict[str, Any], prop: str) -> list[str]:
     return out
 
 
-class Wikidata:
-    """Facts by item id, kept in memory; ``None`` when Wikidata has none."""
+#: Facts kept on disk under this name (library/records.py), by item id.
+KEPT = "wikidata-facts"
 
-    def __init__(self) -> None:
+
+class Wikidata:
+    """Facts by item id, kept in memory and, with ``kept``, on disk for
+    :data:`.records.KEEP_DAYS` (an update of the server asked Wikidata about
+    every work again, 428 requests on 2026-11-07); ``None`` when Wikidata
+    has none."""
+
+    def __init__(self, kept: Records | None = None) -> None:
         self._known: dict[str, Facts | None] = {}
         self._lock = threading.Lock()
+        self.kept = kept
 
     def facts(self, http: httpx.Client, item: Item) -> Facts | None:
         with self._lock:
@@ -99,6 +126,13 @@ class Wikidata:
         ref = record_id(item)
         if ref is None:
             return None
+        if self.kept is not None:
+            found, record = self.kept.get(KEPT, item.id)
+            if found:
+                facts = _facts_from(record)
+                with self._lock:
+                    self._known[item.id] = facts
+                return facts
         try:
             qid = self._find(http, *ref)
             facts = self._facts(http, qid) if qid else None
@@ -106,6 +140,8 @@ class Wikidata:
             return None  # not remembered: asked again next time
         with self._lock:
             self._known[item.id] = facts
+        if self.kept is not None:
+            self.kept.put(KEPT, item.id, None if facts is None else asdict(facts))
         return facts
 
     @staticmethod

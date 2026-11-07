@@ -189,7 +189,7 @@ class NightQueue:
 def tasks(service: FrameService) -> list[NightTask]:
     """The night's tasks, in order: first what changes the catalogue, then
     what is worked out from it."""
-    from .library import courtauld, louvre, met_index, nga
+    from .library import courtauld, loc_index, louvre, met_index, nga
     from .notifications import births_at_night
     from .web import discover_api
 
@@ -261,6 +261,7 @@ def tasks(service: FrameService) -> list[NightTask]:
         NightTask("courtauld", lambda night: courtauld.refresh_at_night(service.settings.data_dir)),
         NightTask("louvre", lambda night: louvre.refresh_at_night(service.settings.data_dir)),
         NightTask("met", lambda night: met_index.refresh_at_night(service.settings.data_dir)),
+        NightTask("loc", lambda night: loc_index.refresh_at_night(service.settings.data_dir)),
         NightTask("births", lambda night: births_at_night(service, night)),
         NightTask("daily", daily),
         NightTask("playlists", playlists),

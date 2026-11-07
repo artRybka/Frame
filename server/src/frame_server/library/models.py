@@ -235,7 +235,12 @@ class Item(BaseModel):
 
     @property
     def file_stem(self) -> str:
-        return self.id.replace(":", "_").replace("/", "_")
+        return Item.stem_of(self.id)
+
+    @staticmethod
+    def stem_of(item_id: str) -> str:
+        """The name of a work's files (thumbnail, original) without suffix."""
+        return item_id.replace(":", "_").replace("/", "_")
 
     @field_serializer("favorite")
     def _favorite_for_viewer(self, value: bool, info: SerializationInfo) -> bool:

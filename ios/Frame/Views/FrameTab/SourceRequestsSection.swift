@@ -138,6 +138,11 @@ private struct SourceRequestRow: View {
             Text(weekLine)
                 .font(.caption)
                 .foregroundStyle(Theme.inkSoft)
+            if let askers = askersLine {
+                Text(askers)
+                    .font(.caption)
+                    .foregroundStyle(Theme.inkSoft)
+            }
             if row.week.turnedAway > 0 {
                 Text(turnedAwayLine)
                     .font(.caption)
@@ -164,6 +169,15 @@ private struct SourceRequestRow: View {
         var line = SourceRequestText.requests(row.week.sent) + " w \(days) dni"
         if row.week.bytes > 0 { line += " · " + ByteSize.bytes(row.week.bytes) }
         return line
+    }
+
+    /// "Kto pytał dziś: Odkrywaj 30 · Szukaj 12 · tło 5" (four at most).
+    private var askersLine: String? {
+        let askers = row.askers
+        guard !askers.isEmpty else { return nil }
+        let when = row.whyToday?.isEmpty == false ? "dziś" : "w \(days) dni"
+        let shown = askers.prefix(4).map { "\($0.0) \($0.1)" }.joined(separator: " · ")
+        return "Kto pytał \(when): " + shown + (askers.count > 4 ? " · …" : "")
     }
 
     private var turnedAwayLine: String {

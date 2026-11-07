@@ -36,6 +36,7 @@ from ..config import Settings
 from ..device import MdcError
 from ..imaging import PRESETS, RenderSettings, Strategy
 from ..imaging.layout import load_image
+from ..library.hosts import guard as host_guard
 from ..library.images import Gone
 from ..library.seed import seed_playlists
 from ..library.style import AUTO, preset_for_photo
@@ -69,6 +70,7 @@ from . import (
 )
 from .deps import require_owner, require_token
 from .ids import EncodedSlashes
+from .purposes import Purposes
 
 log = logging.getLogger(__name__)
 
@@ -77,6 +79,9 @@ log = logging.getLogger(__name__)
 PROGRESS_PATH = "/content-transfer-progress"
 #: Requests that are not someone using the app (the night's work goes on).
 NOT_USE = ("/api/health", "/api/debug/")
+#: The app counts as in use this long after its last request (seconds): the
+#: background's requests to the museums wait meanwhile.
+APP_IN_USE = 120.0
 
 
 def _photo_preset(data: bytes) -> str:
@@ -127,6 +132,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         tasks = []
         logbuffer.install()  # again: uvicorn's logging setup dropped it
+        if settings.scheduler:  # the server itself, not a test
+            logbuffer.keep_on_disk(settings.data_dir / "logs")
         service.notifier.bind(asyncio.get_running_loop())
         if settings.scheduler:
             tasks = [
@@ -164,6 +171,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             # Discover's first visit then finds its themes worked out.
             threading.Thread(target=discover_api.warm_up, args=(service,), daemon=True).start()
             threading.Thread(target=service.daily.run, name="daily", daemon=True).start()
+            # What all of that would ask the museums at once waits a while;
+            # what the app and the panel ask for goes. The background's own
+            # work waits while the app is in use too (library/hosts.py).
+            host_guard.calm()
+            host_guard.app_in_use = lambda: night.idle_for() < APP_IN_USE
         yield
         for task in tasks:
             task.cancel()
@@ -194,6 +206,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     for router in routers:
         app.include_router(router)
+    app.add_middleware(Purposes)  # what the museums' requests are for
     app.add_middleware(EncodedSlashes)  # work ids with a slash (SMK)
 
     @app.middleware("http")
@@ -534,6 +547,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {
             "today": guard.tally(),
             "days": guard.days(),
+            "purposes": guard.purposes(),
             "quotas": {
                 host: {"spent": guard.spent(host), "of": b.count, "background": b.background}
                 for host, b in guard.budgets.items()

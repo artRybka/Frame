@@ -21,6 +21,7 @@ requests went to each host and how many were turned away.
 from __future__ import annotations
 
 import contextlib
+import contextvars
 import heapq
 import itertools
 import json
@@ -38,12 +39,14 @@ import httpx
 
 from .policy import (
     BUDGETS,
+    CALM_START,
     DEFAULT_LIMIT,
     LIMITS,
     LONG_BLOCKS,
     MEDIA_HOSTS,
     PACE,
     SOURCES,
+    WALL_403,
     WIKIMEDIA,
     WIKIMEDIA_HOSTS,
     WIKIMEDIA_MEDIA,
@@ -73,28 +76,117 @@ THROTTLED_MAX = 3600.0
 #: still does, up to REST_MAX, and forgotten once it answers again.
 REST = 15 * 60.0
 REST_MAX = 4 * 3600.0
+#: While the app is in use, the background looks again this often whether it
+#: may go on (seconds).
+APP_PAUSE_STEP = 10.0
 #: While a host rests, one request this often still goes, to see whether it
 #: answers again: a wall that challenged one kind of request (a full-size
 #: original) or forgot us early lets the pictures through at once instead
 #: of after the whole rest. One a minute is far below anything that woke it.
 PROBE_EVERY = 60.0
 
-_asking = threading.local()
+#: Whether this request is one the owner waits for (:func:`urgently`).
+_urgent: contextvars.ContextVar[bool] = contextvars.ContextVar("urgent", default=False)
+#: What a request is for, as Diagnostyka counts it (:func:`asking_for`).
+_why: contextvars.ContextVar[str | None] = contextvars.ContextVar("why", default=None)
+#: Whether the app (or the panel) asked for it: such requests never wait for
+#: the quiet after a start (:meth:`HostGuard.calm`).
+_app: contextvars.ContextVar[bool] = contextvars.ContextVar("app", default=False)
+
+#: What requests are counted as when nobody said: asked from the app's
+#: requests, or by the server's own work in the background.
+APP = "aplikacja"
+BACKGROUND = "tło"
 
 
 @contextlib.contextmanager
 def urgently() -> Iterator[None]:
     """Requests this thread sends meanwhile go before the background's."""
-    before = is_urgent()
-    _asking.urgent = True
+    token = _urgent.set(True)
     try:
         yield
     finally:
-        _asking.urgent = before
+        _urgent.reset(token)
 
 
 def is_urgent() -> bool:
-    return bool(getattr(_asking, "urgent", False))
+    return _urgent.get()
+
+
+@contextlib.contextmanager
+def asking_for(why: str, app: bool | None = None) -> Iterator[None]:
+    """Requests sent meanwhile are counted as ``why`` (Szukaj, Odkrywaj, the
+    night, the catalogue...); ``app``: whether the app waits for them."""
+    token = _why.set(why)
+    marked = _app.set(app) if app is not None else None
+    try:
+        yield
+    finally:
+        _why.reset(token)
+        if marked is not None:
+            _app.reset(marked)
+
+
+#: The server's own threads and what their requests are for, where they
+#: did not say (:func:`asking_for`): by the thread's name, or the name of the
+#: function it runs.
+THREAD_PURPOSES: tuple[tuple[str, str], ...] = (
+    ("night", "noc"),
+    ("searched", "katalog"),
+    ("job-pool", "propozycje"),
+    ("job-catalogue", "katalog"),
+    ("job-", "import"),
+    ("search-page", "odświeżanie"),
+    ("sharper", "kopie"),
+    ("holder", "muzeum dzieła"),
+    ("real-size", "rozmiary"),
+    ("artist-works", "dzieła autora"),
+    ("later-works", "dzieła autora"),
+    ("study-details", "studium"),
+    ("daily", "studium dnia"),
+    ("ai-", "opisy"),
+    ("kept", "oryginały"),
+    ("-index", "spisy muzeów"),
+    ("work_out_cards", "karty Odkrywaj"),
+    ("_fetch_day_row", "Odkrywaj"),
+    ("_work_out_page", "Odkrywaj"),
+)
+
+
+def _thread_purpose() -> str | None:
+    name = threading.current_thread().name
+    return next((why for part, why in THREAD_PURPOSES if part in name), None)
+
+
+def purpose() -> str:
+    """What the requests sent now are for: as said (:func:`asking_for`),
+    else by the thread that sends them."""
+    said = _why.get()
+    if said:
+        return said
+    if _app.get() or is_urgent():
+        return APP
+    return _thread_purpose() or BACKGROUND
+
+
+#: The background's work nobody looks at while it runs: it waits out the
+#: quiet after a start and while the app is in use, and goes at half pace.
+#: Work the app started and shows when done (a sharper copy, a work's
+#: museum, its real size, a study) is not held back.
+DEFERRABLE = frozenset(
+    {BACKGROUND, "noc", "katalog", "propozycje", "odświeżanie", "spisy muzeów", "oryginały"}
+)
+#: How much slower the deferrable background asks a paced host.
+BACKGROUND_SLOWER = 2.0
+
+
+def deferrable() -> bool:
+    """Whether the requests sent now may wait (:data:`DEFERRABLE`)."""
+    return not from_app() and purpose() in DEFERRABLE
+
+
+def from_app() -> bool:
+    return _app.get() or is_urgent()
 
 
 def urgent_call[**P, T](fn: Callable[P, T]) -> Callable[P, T]:
@@ -107,9 +199,33 @@ def urgent_call[**P, T](fn: Callable[P, T]) -> Callable[P, T]:
     return call
 
 
+def for_purpose[**P, T](why: str, fn: Callable[P, T]) -> Callable[P, T]:
+    """``fn`` with its requests counted as ``why``, wherever it runs."""
+
+    def call(*args: P.args, **kwargs: P.kwargs) -> T:
+        with asking_for(why):
+            return fn(*args, **kwargs)
+
+    return call
+
+
 def as_asked[**P, T](fn: Callable[P, T]) -> Callable[P, T]:
-    """``fn``, to run in another thread as urgently as in this one."""
-    return urgent_call(fn) if is_urgent() else fn
+    """``fn``, to run in another thread as this one asks: as urgently, for
+    the same purpose, for the app or not."""
+    urgent, why, app = _urgent.get(), _why.get() or _thread_purpose(), _app.get()
+    if not (urgent or why or app):
+        return fn
+
+    def call(*args: P.args, **kwargs: P.kwargs) -> T:
+        tokens = (_urgent.set(urgent), _why.set(why), _app.set(app))
+        try:
+            return fn(*args, **kwargs)
+        finally:
+            _app.reset(tokens[2])
+            _why.reset(tokens[1])
+            _urgent.reset(tokens[0])
+
+    return call
 
 
 _held = threading.local()
@@ -164,6 +280,9 @@ def walled(resp: httpx.Response) -> bool:
     to a picture asked larger than it is)."""
     if resp.status_code != 403:
         return False
+    request = resp._request  # a response made by hand has none
+    if request is not None and request.url.host in WALL_403:  # 403 only to bursts
+        return True
     headers = resp.headers
     if "cf-mitigated" in headers or "x-iinfo" in headers:
         return True
@@ -220,6 +339,17 @@ class HostGuard:
         self._tally_day = ""
         self._tally_file: Path | None = None
         self._tally_saved = 0.0
+        #: Each kept day's requests by host and by what they were for.
+        self._purposes: dict[str, dict[str, dict[str, int]]] = {}
+        self._purposes_file: Path | None = None
+        #: Until when the background does not ask anyone (:meth:`calm`).
+        self.calm_until = 0.0
+        #: Whether the app is in use now: the background waits meanwhile
+        #: (set by the server, web/app.py).
+        self.app_in_use: Callable[[], bool] = lambda: False
+        #: How much slower the deferrable background asks a paced host
+        #: (:data:`BACKGROUND_SLOWER` for the process's guard).
+        self.background_slower = 1.0
         self._lock = threading.Lock()
         #: When the next request to a host may go (by host).
         self._next: dict[str, float] = {}
@@ -255,8 +385,35 @@ class HostGuard:
                 return 0.0
             return left
 
+    def calm(self, seconds: float = CALM_START) -> None:
+        """For ``seconds`` from now, the background's requests wait and only
+        what the app or the panel asks for goes: after an update of the
+        server everything the background left off (the catalogue, pages
+        asked again, Propozycje) went at once, 486 requests in nine minutes
+        (2026-11-07)."""
+        self.calm_until = self.clock() + seconds
+        log.info("the background asks no museum for %.0f min", seconds / 60)
+
+    def wait_calm(self, host: str) -> None:
+        """Waits out the quiet after a start, and while the app is in use
+        (:attr:`app_in_use`), before asking ``host`` of an art source,
+        unless what asks may not wait (:func:`deferrable`). Other hosts
+        (iCloud's photos) never wait."""
+        if owner_of(host) is None or not deferrable():
+            return
+        told = False
+        while True:
+            left = self.calm_until - self.clock()
+            if left <= 0 and not self.app_in_use():
+                return
+            if not told:
+                told = True
+                log.debug("%s waits: %s", purpose(), "quiet start" if left > 0 else "app in use")
+            self.sleep(min(left, 30.0) if left > 0 else APP_PAUSE_STEP)
+
     def before(self, request: httpx.Request) -> None:
         host = request.url.host
+        self.wait_calm(host)
         try:
             self._before(request, host)
         except Resting:
@@ -281,6 +438,8 @@ class HostGuard:
         )
         if not pace and not limit:
             return
+        if pace and self.background_slower != 1.0 and deferrable():
+            pace *= self.background_slower
         self._turn(key, pace, limit)
         if limit:
             assert held is not None
@@ -381,6 +540,20 @@ class HostGuard:
         (and read from it now), so that Diagnostyka shows a week's requests
         across updates of the server."""
         self._tally_file = path
+        self._purposes_file = path.with_name("purposes.json")
+        try:
+            why = json.loads(self._purposes_file.read_text())
+        except (OSError, ValueError):
+            why = {}
+        if isinstance(why, dict):
+            with self._lock:
+                for day, hosts in why.items():
+                    if isinstance(hosts, dict) and day not in self._purposes:
+                        self._purposes[day] = {
+                            host: {str(k): int(v) for k, v in counts.items()}
+                            for host, counts in hosts.items()
+                            if isinstance(counts, dict)
+                        }
         try:
             saved = json.loads(path.read_text())
         except (OSError, ValueError):
@@ -404,6 +577,8 @@ class HostGuard:
         first = time.strftime("%Y-%m-%d", time.localtime(self.wall() - (TALLY_DAYS - 1) * 86400))
         for day in [d for d in self._days if d < first]:
             del self._days[day]
+        for day in [d for d in self._purposes if d < first]:
+            del self._purposes[day]
 
     def _count(
         self,
@@ -414,6 +589,7 @@ class HostGuard:
         failed: int = 0,
         refused: int = 0,
         size: int = 0,
+        why: str | None = None,
     ) -> None:
         now = self.wall()
         day = time.strftime("%Y-%m-%d", time.localtime(now))
@@ -429,7 +605,11 @@ class HostGuard:
                 self._forget_days()
             for n, value in enumerate((sent, walls, throttled, failed, refused, size)):
                 row[n] += value
+            if why and sent:
+                counts = self._purposes.setdefault(day, {}).setdefault(host, {})
+                counts[why] = counts.get(why, 0) + 1
             snapshot = None
+            purposes: dict[str, dict[str, dict[str, int]]] = {}
             if self._tally_file is not None and (
                 done or now - self._tally_saved >= TALLY_SAVE_EVERY
             ):
@@ -437,8 +617,12 @@ class HostGuard:
                 snapshot = {
                     d: {h: list(r) for h, r in hosts.items()} for d, hosts in self._days.items()
                 }
+                purposes = {
+                    d: {h: dict(c) for h, c in hosts.items()} for d, hosts in self._purposes.items()
+                }
         if snapshot is not None:
             self._save(self._tally_file, snapshot, "tallies")
+            self._save(self._purposes_file, purposes, "purposes")
         if done:
             self._tell(gone, done)
 
@@ -460,6 +644,15 @@ class HostGuard:
                 for day, hosts in sorted(self._days.items())
             }
 
+    def purposes(self) -> dict[str, dict[str, dict[str, int]]]:
+        """The kept days' requests by host and by what they were for."""
+        with self._lock:
+            self._forget_days()
+            return {
+                day: {h: dict(c) for h, c in hosts.items()}
+                for day, hosts in sorted(self._purposes.items())
+            }
+
     def by_source(self) -> list[dict[str, Any]]:
         """Requests of today and of the kept days, by source (Konfiguracja →
         Diagnostyka): what was sent, how many the source refused (bot
@@ -479,6 +672,8 @@ class HostGuard:
                     "week": dict.fromkeys(TALLY_FIELDS, 0),
                     "quota": None,
                     "resting": 0.0,
+                    "why_today": {},
+                    "why_week": {},
                 }
             return rows[key]
 
@@ -491,6 +686,13 @@ class HostGuard:
                     entry["week"][field] += value
                     if day == today:
                         entry["today"][field] += value
+        for day, hosts in self.purposes().items():
+            for host, counts in hosts.items():
+                entry = row(owner_of(host))
+                for why, value in counts.items():
+                    entry["why_week"][why] = entry["why_week"].get(why, 0) + value
+                    if day == today:
+                        entry["why_today"][why] = entry["why_today"].get(why, 0) + value
         for host, budget in self.budgets.items():
             entry = row(owner_of(host))
             entry["quota"] = {
@@ -591,6 +793,7 @@ class HostGuard:
             throttled=int(code == 429),
             failed=int(not wall and (code in (401, 403) or code >= 500)),
             size=size,
+            why=purpose(),
         )
         key = lane(host)
         held = getattr(_held, "lanes", None)
@@ -647,3 +850,4 @@ class HostGuard:
 
 #: Shared by every client of the process: the museums see one address.
 guard = HostGuard(default_limit=DEFAULT_LIMIT, budgets=BUDGETS)
+guard.background_slower = BACKGROUND_SLOWER

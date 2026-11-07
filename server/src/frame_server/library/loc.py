@@ -18,6 +18,11 @@ Pictures come over IIIF: the full scan (``master:…u``) when there is one
 for at most 20 requests a minute to the JSON API and 150 to the image
 services (hosts.PACE), or the address is blocked for an hour
 (hosts.LONG_BLOCKS).
+
+The collections drawn from are kept at home (:mod:`.loc_index`): draws and
+searches within one of them read that, and the LoC's own API is asked only
+for what the app waits for (words typed, a card) and at night, never by the
+rest of the background (2026-11-07: blocked two mornings running).
 """
 
 from __future__ import annotations
@@ -25,6 +30,8 @@ from __future__ import annotations
 import re
 from typing import Any, ClassVar
 
+from .hosts import Resting, from_app, purpose
+from .loc_index import INDEX, KEPT, LocIndex
 from .models import Item
 from .museums import PRIVATE_LICENCE, Discovery, Kind, Museum
 
@@ -191,9 +198,35 @@ class LibraryOfCongress(Museum):
             thumb_url=thumb,
         )
 
+    def _kept(self, slug: str) -> LocIndex | None:
+        """The kept collections, when ``slug`` is one of them and they are
+        here."""
+        folder = self.access.data_dir
+        if slug not in KEPT or folder is None:
+            return None
+        return INDEX.get(folder)
+
+    def _may_ask(self) -> None:
+        """The LoC's own API: for what the app waits for, and at night (a
+        museum made without the server's data folder, as tools and tests
+        make it, asks it as before)."""
+        if from_app() or purpose() == "noc" or self.access.data_dir is None:
+            return
+        raise Resting("www.loc.gov: asked only for the app and at night")
+
+    def _local(
+        self, kept: LocIndex, slug: str, words: str, params: dict[str, Any], limit: int, page: int
+    ) -> tuple[int, list[Item]]:
+        begin, end = None, None
+        if dates := params.get("dates"):
+            begin, end = (int(y) for y in str(dates).split("/"))
+        total, records = kept.search(slug, words, begin, end, (page - 1) * limit, limit)
+        return total, [i for r in records if (i := self._map(r))]
+
     def _get(
         self, path: str, params: dict[str, Any], limit: int, page: int
     ) -> tuple[int, list[dict[str, Any]]]:
+        self._may_ask()
         resp = self.http.get(
             f"{API}{path}",
             params={**params, "fo": "json", "c": limit, "sp": page, "at": "results,pagination"},
@@ -211,7 +244,10 @@ class LibraryOfCongress(Museum):
         query = query.strip()
         if query.startswith(COLLECTION):
             slug, _, words = query.removeprefix(COLLECTION).partition(" ")
-            return self._words(words.strip(), {}, page, f"/collections/{slug.strip('/')}/")
+            slug = slug.strip("/")
+            if (kept := self._kept(slug)) is not None:
+                return self._local(kept, slug, words.strip(), {}, SEARCH_PAGE, page)
+            return self._words(words.strip(), {}, page, f"/collections/{slug}/")
         if not query:
             return self.discover(Discovery(kind="photograph"), limit, page)
         return self._words(query, {}, page)
@@ -244,9 +280,15 @@ class LibraryOfCongress(Museum):
         turn, deep = (page - 1) % count, (page - 1) // count + 1
         for step in range(count):
             slug = slugs[(turn + step) % count]
-            asked = {**params, "q": COLLECTIONS[slug]} if COLLECTIONS[slug] else params
-            total, results = self._get(f"/collections/{slug}/", asked, limit, deep)
-            items = [i for r in results if (i := self._map(r))]
+            if (kept := self._kept(slug)) is not None:
+                total, items = self._local(kept, slug, "", params, limit, deep)
+            else:
+                asked = {**params, "q": COLLECTIONS[slug]} if COLLECTIONS[slug] else params
+                try:
+                    total, results = self._get(f"/collections/{slug}/", asked, limit, deep)
+                except Resting:
+                    continue  # not asked from the background: the next one's turn
+                items = [i for r in results if (i := self._map(r))]
             if items:
                 # Every collection's pages count: the draw goes on while any has more.
                 return max(total, deep * limit + 1) * count, items
@@ -255,6 +297,11 @@ class LibraryOfCongress(Museum):
     def fetch(self, source_id: str) -> Item | None:
         if not source_id.isdigit():
             return None
+        folder = self.access.data_dir
+        kept = INDEX.get(folder) if folder is not None else None
+        if kept is not None and (record := kept.record(source_id)) is not None:
+            return self._map(record)
+        self._may_ask()
         resp = self.http.get(f"{API}/item/{source_id}/", params={"fo": "json"})
         if resp.status_code == 404:
             return None

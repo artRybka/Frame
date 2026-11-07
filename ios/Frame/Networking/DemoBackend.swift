@@ -1375,12 +1375,20 @@ actor DemoBackend: FrameBackend {
                 bytes: Int64(sent) * 180_000
             )
         }
-        func row(_ name: String?, _ today: Counts, _ week: Counts, quota: SourceRequests.Quota? = nil, resting: Double = 0) -> SourceRequests.Row {
-            SourceRequests.Row(name: name, today: today, week: week, quota: quota, resting: resting)
+        func row(
+            _ name: String?, _ today: Counts, _ week: Counts, quota: SourceRequests.Quota? = nil,
+            resting: Double = 0, why: [String: Int]? = nil
+        ) -> SourceRequests.Row {
+            SourceRequests.Row(
+                name: name, today: today, week: week, quota: quota, resting: resting, whyToday: why, whyWeek: why
+            )
         }
         return SourceRequests(days: 7, sources: [
             row("Wikimedia", counts(412, throttled: 3), counts(2_904, throttled: 11)),
-            row("The Metropolitan Museum of Art", counts(188), counts(1_327, walled: 4, refused: 36), resting: 0),
+            row(
+                "The Metropolitan Museum of Art", counts(188), counts(1_327, walled: 4, refused: 36), resting: 0,
+                why: ["Odkrywaj": 96, "Szukaj": 48, "miniatury": 30, "katalog": 10, "noc": 4]
+            ),
             row("Art Institute of Chicago", counts(96), counts(702)),
             row("Rijksmuseum", counts(41), counts(388, failed: 2)),
             row("Paris Musées", counts(23), counts(240), quota: SourceRequests.Quota(spent: 23, of: 1000, background: 600, hours: 24)),

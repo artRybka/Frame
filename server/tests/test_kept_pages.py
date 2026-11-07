@@ -100,16 +100,32 @@ def _work(n: int) -> Item:
 
 
 def test_pages_come_back_whole_fresh_then_stale_then_gone(tmp_path: Path) -> None:
-    store = SearchPages(tmp_path / "p.sqlite", "1.116.0")
+    store = SearchPages(tmp_path / "p.sqlite", "2")
     key = store.key("aic", "monet", 24, 1, "any", False)
     store.put(key, 120, [_work(1), _work(2)], now=1000.0)
     fresh, total, items = store.get(key, now=1000.0 + 60) or (False, 0, [])
     assert fresh and total == 120 and items == [_work(1), _work(2)]
     assert store.get(key, now=1000.0 + pages_module.FRESH + 1) == (False, 120, items)
     assert store.get(key, now=1000.0 + pages_module.STALE + 1) is None
-    # Another release's pages are shown, but asked for again.
-    newer = SearchPages(tmp_path / "p.sqlite", "1.117.0")
+    # Another way of keeping pages: shown, but asked for again.
+    newer = SearchPages(tmp_path / "p.sqlite", "3")
     assert newer.get(key, now=1000.0 + 60) == (False, 120, items)
+
+
+def test_a_release_keeps_pages_fresh_unless_their_museum_reads_anew(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Eight releases a day asked every set opened again (2026-11-07)."""
+    store = SearchPages(tmp_path / "p.sqlite", "2")
+    aic = store.key("aic", "monet", 24, 1, "any", False)
+    met = store.key("met", "monet", 24, 1, "any", False)
+    store.put(aic, 1, [_work(1)], now=1000.0)
+    store.put(met, 1, [_work(2)], now=1000.0)
+    again = SearchPages(tmp_path / "p.sqlite", "2")  # the next release
+    assert again.get(aic, now=1060.0) == (True, 1, [_work(1)])
+    monkeypatch.setitem(pages_module.READINGS, "met", "2")
+    assert again.get(met, now=1060.0) == (False, 1, [_work(2)])
+    assert again.get(aic, now=1060.0) == (True, 1, [_work(1)])
 
 
 def test_the_oldest_pages_go_first_when_the_room_is_full(tmp_path: Path) -> None:
