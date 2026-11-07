@@ -465,10 +465,7 @@ struct ArtImage: View {
     @AppStorage(ArtGlow.gainKey) private var glowGain = ArtGlow.defaultGain
     /// The brighter copy of the picture shown (`brighten`).
     @State private var glowing: UIImage?
-    /// The copy with only its light parts brighter, on the way in.
-    @State private var lightParts: UIImage?
-    /// How far each copy is shown over the picture (0 to 1).
-    @State private var lightShown = 0.0
+    /// How far the brighter copy is shown over the picture (0 to 1).
     @State private var glowShown = 0.0
     /// When the view first appeared: the way in runs from it.
     @State private var appeared: ContinuousClock.Instant?
@@ -543,12 +540,11 @@ struct ArtImage: View {
         }
     }
 
-    /// The brighter copies over the picture, as far as the way in is.
+    /// The brighter copy over the picture, as far as the way in is.
     @ViewBuilder
     private func glowLayers(_ image: UIImage) -> some View {
-        if glows {
-            if let lightParts { picture(lightParts).opacity(lightShown) }
-            if let lit = glowing ?? ArtGlow.cached(image, gain: glowGain) { picture(lit).opacity(glowShown) }
+        if glows, let lit = glowing ?? ArtGlow.cached(image, gain: glowGain) {
+            picture(lit).opacity(glowShown)
         }
     }
 
@@ -589,7 +585,6 @@ struct ArtImage: View {
             if appeared == nil { appeared = start }
             guard glows, let source = shown else {
                 glowing = nil
-                lightParts = nil
                 return
             }
             await glow(source, since: start)
@@ -603,52 +598,38 @@ struct ArtImage: View {
         case loaded, failed, missing, cancelled
     }
 
-    /// Makes the brighter copies of `source` and shows them: in the first
-    /// second the view is up one after another, as `ArtGlow.WayIn` has
-    /// them; later (another copy, another gain) at once. The last brighter
-    /// copy stays up until the new one is ready.
+    /// Makes the brighter copy of `source` and shows it: in the first
+    /// second the view is up as `ArtGlow.WayIn` has it (nothing at first,
+    /// then evenly brighter); later (another copy, another gain) at once.
+    /// The last brighter copy stays up until the new one is ready.
     private func glow(_ source: UIImage, since start: ContinuousClock.Instant) async {
         func seconds() -> Double { (ContinuousClock.now - start) / .seconds(1) }
-        let light = ArtGlow.WayIn.light
-        let whole = ArtGlow.WayIn.whole
-        let wayIn = !glowReady && seconds() < whole.upperBound
-        let made = await ArtGlow.copies(source, gain: glowGain, lightParts: wayIn)
+        let span = ArtGlow.WayIn.span
+        let wayIn = !glowReady && seconds() < span.upperBound
+        let made = await ArtGlow.image(source, gain: glowGain)
         guard !Task.isCancelled else { return }
         guard let made else {
             withAnimation(.easeOut(duration: 0.25)) { glowReady = true }
             return
         }
-        guard wayIn, let parts = made.light else {
-            lightParts = nil
+        guard wayIn else {
             withAnimation(.easeInOut(duration: 0.25)) {
-                glowing = made.whole
+                glowing = made
                 glowShown = 1
                 glowReady = true
             }
             return
         }
         var t = seconds()
-        glowing = made.whole
-        lightParts = parts
-        lightShown = ArtGlow.WayIn.shown(light, at: t)
-        glowShown = ArtGlow.WayIn.shown(whole, at: t)
+        glowing = made
+        glowShown = ArtGlow.WayIn.shown(at: t)
         withAnimation(.easeOut(duration: 0.25)) { glowReady = true }
-        if t < light.lowerBound {
-            try? await Task.sleep(for: .seconds(light.lowerBound - t))
-            t = light.lowerBound
-        }
-        if t < light.upperBound, !Task.isCancelled {
-            withAnimation(.easeInOut(duration: light.upperBound - t)) { lightShown = 1 }
-            try? await Task.sleep(for: .seconds(light.upperBound - t))
-            t = light.upperBound
+        if t < span.lowerBound {
+            try? await Task.sleep(for: .seconds(span.lowerBound - t))
+            t = span.lowerBound
         }
         guard !Task.isCancelled else { return }
-        let rest = max(whole.upperBound - max(t, whole.lowerBound), 0.2)
-        withAnimation(.easeInOut(duration: rest)) { glowShown = 1 }
-        try? await Task.sleep(for: .seconds(rest))
-        guard !Task.isCancelled else { return }
-        // All of it is brighter now, over the light copy: that one goes.
-        lightParts = nil
+        withAnimation(.easeInOut(duration: max(span.upperBound - t, 0.2))) { glowShown = 1 }
     }
 
     private func load() async {
