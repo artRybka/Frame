@@ -14,7 +14,9 @@ struct PlaylistEditorView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     @State private var playlist: Playlist
-    @State private var preview: RulesPreview?
+    /// What the catalogue and the museums have for the rules: Szukaj's own
+    /// search, so the same choices find the same works.
+    @State private var finder = WorkSearch()
     /// Works opened from the search, and their studies.
     @State private var path = NavigationPath()
     /// What a manual playlist's works are looked for with.
@@ -24,9 +26,6 @@ struct PlaylistEditorView: View {
     @FocusState private var nameFocused: Bool
     /// "Zapisz" was tapped with no name.
     @State private var nameMissing = false
-    /// What the museums have for the rules, as each answers (as in Szukaj).
-    @State private var remote: [RemoteItem] = []
-    @State private var askingMuseums = false
     @State private var lookup = TermLookup()
     @FocusState private var fieldFocused: Bool
     @FocusState private var descriptionFocused: Bool
@@ -97,9 +96,11 @@ struct PlaylistEditorView: View {
     /// after saving: up to its limit ("Wszystkie": up to the default), when
     /// museums can supply them; nil until the matching works are counted.
     private var missing: Int? {
-        guard playlist.kind == .smart, let preview else { return nil }
+        guard playlist.kind == .smart, finder.searched == searchKey, let catalogue = finder.catalogue else {
+            return nil
+        }
         guard fetchBlocker == nil else { return 0 }
-        return max(0, (playlist.limit ?? Playlist.defaultLimit) - preview.count)
+        return max(0, (playlist.limit ?? Playlist.defaultLimit) - catalogue.total)
     }
 
     var body: some View {
@@ -151,6 +152,12 @@ struct PlaylistEditorView: View {
                 }
                 .scrollDismissesKeyboard(.immediately)
                 .hidesOnScroll($groupsShown)
+                // As in Szukaj: the museums' next pages before the end shows.
+                .onScrollGeometryChange(for: Bool.self) { geometry in
+                    geometry.contentSize.height - geometry.visibleRect.maxY < geometry.containerSize.height
+                } action: { _, near in
+                    finder.scrolled(nearEnd: near)
+                }
                 .paperPage()
                 .modifier(EditorSearch(
                     enabled: playlist.kind != .album,
@@ -210,8 +217,14 @@ struct PlaylistEditorView: View {
                 }
             }
             .task { if museums.isEmpty { museums = (try? await model.backend.museums()) ?? [] } }
-            .task(id: searched.wrappedValue) { await refreshPreview() }
-            .task(id: playlist.kind == .album ? nil : searched.wrappedValue) { await askMuseums() }
+            .task(id: playlist.kind == .album ? nil : searchKey) {
+                guard playlist.kind != .album else { return }
+                let key = searchKey
+                guard key != finder.searched else { return }
+                try? await Task.sleep(for: .milliseconds(250))
+                guard !Task.isCancelled else { return }
+                finder.start(key, model: model)
+            }
             .task(id: picked) { await loadPhotos() }
             .task(id: playlist.kind == .album ? album.url : "") { await checkAlbum() }
         }
@@ -351,11 +364,13 @@ struct PlaylistEditorView: View {
 
     /// Under "Ile dzieł": how many match and what saving does about it.
     private var limitNote: AttributedString {
-        guard let preview, let missing else {
+        guard let catalogue = finder.catalogue, let missing else {
             return AttributedString(playlist.rules.isEmpty ? "Wyszukaj albo wybierz grupę, a policzę pasujące." : "Liczę pasujące…")
         }
-        let matching = preview.count
-        if let limit = playlist.limit, matching > limit {
+        // As many as Szukaj finds: the catalogue's and the museums' so far.
+        let found = finder.found
+        let matching = "\(found)" + (finder.more ? "+" : "")
+        if let limit = playlist.limit, catalogue.total > limit {
             var note = AttributedString("Pasuje \(matching), playlista weźmie ")
             var taken = AttributedString("\(limit)")
             taken.foregroundColor = Theme.ink
@@ -363,8 +378,8 @@ struct PlaylistEditorView: View {
             return note
         }
         if missing > 0 {
-            var note = AttributedString(matching == 0 ? "Jeszcze nic nie pasuje. " : "Pasuje \(matching). ")
-            var asked = AttributedString(matching == 0 ? "\(missing) dobiorę z muzeów" : "Brakujące \(missing) dobiorę z muzeów")
+            var note = AttributedString(found == 0 ? "Jeszcze nic nie pasuje. " : "Pasuje \(matching). ")
+            var asked = AttributedString(found == 0 ? "\(missing) dobiorę z muzeów" : "Brakujące \(missing) dobiorę z muzeów")
             asked.foregroundColor = Theme.ink
             note += asked + AttributedString(" w tle po zapisaniu.")
             return note
@@ -571,15 +586,18 @@ struct PlaylistEditorView: View {
         }
     }
 
+    /// What the search asks: the rules, the catalogue kept to their
+    /// sources, the museums among them asked (none: all of them).
+    private var searchKey: WorkSearch.Key {
+        let rules = searched.wrappedValue
+        return WorkSearch.Key(
+            rules: rules, sources: rules.sources, museums: asksMuseums, museumSources: museumKeys
+        )
+    }
+
     /// Museum works the catalogue doesn't hold, in any copy: what fetching
     /// would bring.
-    private var fromMuseums: [RemoteItem] {
-        let shown = Set(preview?.items.map(\.id) ?? [])
-        return remote.filter {
-            (!$0.inLibrary || playlist.itemIds.contains($0.id))
-                && !shown.contains($0.id) && !shown.contains($0.twin ?? "")
-        }
-    }
+    private var fromMuseums: [RemoteItem] { asksMuseums ? finder.shownFromMuseums : [] }
 
     /// The works as Szukaj shows them: the catalogue's, then the museums';
     /// the museums' first when the playlist fetches them.
@@ -589,7 +607,7 @@ struct PlaylistEditorView: View {
                 HStack(alignment: .firstTextBaseline) {
                     Text(summary)
                         .font(.serif(17, weight: .medium))
-                        .foregroundStyle(preview?.count == 0 && fromMuseums.isEmpty && !askingMuseums ? Theme.bad : Theme.ink)
+                        .foregroundStyle(finder.nothingFound ? Theme.bad : Theme.ink)
                         .contentTransition(.numericText())
                     Spacer()
                     if playlist.kind == .manual, !playlist.itemIds.isEmpty {
@@ -616,26 +634,27 @@ struct PlaylistEditorView: View {
                 smartPreview
             }
             // Waiting, as in Szukaj: the squares under what has come.
-            if preview == nil || askingMuseums {
+            if finder.busy || finder.more {
                 SearchWaiting()
             }
         }
     }
 
-    /// A smart playlist's works: those that match first, then (paler) what
-    /// the museums would add up to the limit after saving.
+    /// A smart playlist's works, as Szukaj shows them: the catalogue's
+    /// first, then (paler) the museums', which the playlist takes in up to
+    /// its limit.
     @ViewBuilder
     private var smartPreview: some View {
-        let remotes = asksMuseums ? Array(fromMuseums.prefix(missing ?? 0)) : []
+        let remotes = fromMuseums
         let byID = Dictionary(remotes.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        let known = preview?.items ?? []
+        let known = finder.shownCatalogue
         if !known.isEmpty || !remotes.isEmpty {
             MasonryGrid(items: known + remotes.map(\.summary)) { item in
                 let remote = byID[item.id]
                 card(item, remote: remote)
                     .opacity(remote == nil ? 1 : 0.55)
             }
-        } else if preview != nil, missing == 0 {
+        } else if finder.nothingFound {
             Text("Nic nie pasuje.")
                 .font(.subheadline)
                 .foregroundStyle(Theme.inkSoft)
@@ -646,14 +665,14 @@ struct PlaylistEditorView: View {
     /// the museums' coming in under them, without saying which is which.
     @ViewBuilder
     private var manualPreview: some View {
-        let remotes = asksMuseums && preview != nil ? fromMuseums : []
+        let remotes = fromMuseums
         let byID = Dictionary(remotes.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        let known = preview?.items ?? []
+        let known = finder.shownCatalogue
         if !known.isEmpty || !remotes.isEmpty {
             MasonryGrid(items: known + remotes.map(\.summary)) { item in
                 card(item, remote: byID[item.id])
             }
-        } else if preview != nil, !askingMuseums {
+        } else if finder.nothingFound {
             Text("Nic nie pasuje.")
                 .font(.subheadline)
                 .foregroundStyle(Theme.inkSoft)
@@ -701,10 +720,12 @@ struct PlaylistEditorView: View {
     }
 
     private var summary: String {
-        guard let preview else { return "Szukam…" }
-        if playlist.kind == .manual { return "Znalezione · " + Names.works(preview.count + fromMuseums.count) }
-        if let limit = playlist.limit, preview.count > limit { return "\(limit) z " + Names.works(preview.count) }
-        return Names.works(preview.count + (missing ?? 0))
+        // As many as Szukaj finds for the same choices.
+        guard finder.catalogue != nil else { return "Szukam…" }
+        let more = finder.more ? "+" : ""
+        if playlist.kind == .manual { return "Znalezione · " + Names.works(finder.found) + more }
+        if let limit = playlist.limit, finder.found > limit { return "\(limit) z " + Names.works(finder.found) + more }
+        return Names.works(finder.found) + more
     }
 
     /// Why museums can't supply works for these rules, if they can't.
@@ -767,38 +788,6 @@ struct PlaylistEditorView: View {
             model.notices.end(card, .error, "„\(name)”: nie udało się pobrać albumu", job.error)
         }
         await model.refreshPlaylists()
-    }
-
-    private func refreshPreview() async {
-        try? await Task.sleep(for: .milliseconds(250))
-        guard !Task.isCancelled else { return }
-        let result = try? await model.backend.previewRules(searched.wrappedValue)
-        withAnimation(.snappy) { preview = result }
-    }
-
-    /// Asks the museums what Discover's search would show for the rules,
-    /// taking in each one's answer as it comes.
-    private func askMuseums() async {
-        guard playlist.kind != .album, asksMuseums, !searched.wrappedValue.isEmpty else {
-            remote = []
-            askingMuseums = false
-            return
-        }
-        try? await Task.sleep(for: .milliseconds(400))
-        guard !Task.isCancelled else { return }
-        let rules = searched.wrappedValue
-        remote = []
-        askingMuseums = true
-        do {
-            let answers = try await model.backend.museumAnswers(rules, sources: museumKeys, page: 1)
-            for try await answer in answers {
-                guard !Task.isCancelled else { return }
-                withAnimation(.snappy) { remote = remote.adding(answer.items) }
-            }
-        } catch {}
-        // A newer search may have started meanwhile; it owns the spinner.
-        guard !Task.isCancelled else { return }
-        askingMuseums = false
     }
 
     /// Adds a found work to the manual playlist, or takes it out again; a

@@ -9,7 +9,7 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from frame_server.library import Item
+from frame_server.library import Item, search
 from frame_server.library.lifespan import LifeDates, death_in_name, free_in_eu, last_free_year
 from frame_server.library.museums import (
     Access,
@@ -518,7 +518,7 @@ def test_colours_look_deeper_and_the_stream_answers_museum_by_museum(service, mo
     from PIL import Image
 
     from frame_server.library.museums import MUSEUMS
-    from frame_server.web import create_app, discover_api
+    from frame_server.web import create_app
 
     pages: list[tuple[str, int]] = []
 
@@ -567,9 +567,9 @@ def test_colours_look_deeper_and_the_stream_answers_museum_by_museum(service, mo
         assert all(r["item"]["width"] is None for r in openverse[-1]["items"])
         assert all(r["aspect"] == 1.0 for r in openverse[-1]["items"])
         europeana = by_source["europeana"]
-        assert len(europeana) == discover_api.COLOR_PAGES
+        assert len(europeana) == search.COLOR_PAGES
         assert all(not a["items"] for a in europeana)
-        assert europeana[-1]["next"] == discover_api.COLOR_PAGES + 1
+        assert europeana[-1]["next"] == search.COLOR_PAGES + 1
 
         # More from where the last page stopped.
         pages.clear()

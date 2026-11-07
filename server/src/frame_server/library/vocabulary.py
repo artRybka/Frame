@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import date
 from functools import cache, cached_property, lru_cache
@@ -855,13 +856,25 @@ def _grouped(keys: tuple[str, ...]) -> dict[str, list[Term]]:
     return grouped(list(keys))
 
 
-def matches_terms(item: Item, keys: list[str]) -> bool:
-    """Every kind of term in ``keys`` has one that fits ``item``."""
-    groups = _grouped(tuple(keys))
+def matches_terms(item: Item, keys: list[str], judged: Collection[str] = ()) -> bool:
+    """Every kind of term in ``keys`` has one that fits ``item``; kinds in
+    ``judged`` (:func:`searched_kinds`) are not looked at."""
+    groups = {k: v for k, v in _grouped(tuple(keys)).items() if k not in judged}
     if not groups:
         return True
     text = text_of(item)
     return all(any(term_matches(t, item, text) for t in terms) for terms in groups.values())
+
+
+def searched_kinds(keys: list[str] | tuple[str, ...]) -> frozenset[str]:
+    """Kinds of the terms in ``keys`` that the museums' search itself decides
+    (:func:`museum_queries`: styles and subjects are asked as words, one
+    technique as the museum's own filter): a work it found for them fits
+    them. Periods, tags and two techniques at once are checked on the work."""
+    kinds = {"style", "subject"}
+    if museum_kind(list(keys)) != "any":
+        kinds.add("technique")
+    return frozenset(kinds)
 
 
 def wants_manuscripts(keys: list[str] | tuple[str, ...]) -> bool:

@@ -9,8 +9,7 @@ import logging
 import threading
 import time
 from collections import Counter, OrderedDict
-from collections.abc import AsyncIterator, Iterator
-from dataclasses import dataclass
+from collections.abc import AsyncIterator
 from datetime import date
 from typing import Annotated
 from weakref import WeakKeyDictionary
@@ -32,10 +31,11 @@ from ..library import (
 from ..library.artists import is_artist
 from ..library.duplicates import Shown
 from ..library.hosts import urgent_call
-from ..library.importer import ALL, span
+from ..library.importer import ALL
 from ..library.mix import mixed
 from ..library.museums import Discovery, Kind
 from ..library.repo import Hidden, Library
+from ..library.search import MuseumSearch
 from ..library.themes import (
     CARD_MIN,
     GROUPS,
@@ -64,10 +64,7 @@ from ..library.viewer import viewer_id
 from ..library.vocabulary import (
     TECHNIQUE_KINDS,
     TERMS,
-    category_fits,
     fold,
-    museum_kind,
-    museum_queries,
     set_aside,
     suggest,
 )
@@ -909,21 +906,6 @@ def rules_from(
     )
 
 
-def museum_text(rules: PlaylistRules, page: int, words: str | None = None) -> str:
-    """What to ask the museums: the words (``words``: as one museum's
-    language has them), an artist (one per page, in turns) and the styles
-    and subjects."""
-    artist = rules.artists[(page - 1) % len(rules.artists)] if rules.artists else ""
-    topics = museum_queries(rules.terms)[:1]
-    typed = rules.query.strip() if words is None else words
-    return " ".join(w for w in (typed, artist, *topics) if w)
-
-
-#: With colours asked, museum pages of this many works are looked at, until
-#: ``limit`` fit, this many pages are seen or this many seconds have passed.
-COLOR_PAGE = 24
-COLOR_PAGES = 6
-COLOR_SECONDS = 15.0
 #: Searches whose shown works later pages remember.
 SHOWN_SEARCHES = 16
 
@@ -955,98 +937,6 @@ class MuseumAnswer(RemotePage):
     next: int | None = None
 
 
-@dataclass(frozen=True)
-class MuseumSearch:
-    """What Discover's search asks the museums."""
-
-    rules: PlaylistRules
-    spec: Discovery
-    #: The museums chosen; none means all of them.
-    keys: list[str]
-    limit: int
-    #: Museums left out ("all but Yale"); none chosen, all the others.
-    skip: tuple[str, ...] = ()
-
-    def asked(self, offered: list[str]) -> list[str]:
-        """The museums to ask: those chosen or, none chosen, every one on
-        offer; without those left out. Empty when nothing is asked, or every
-        museum is left out."""
-        if self.empty:
-            return []
-        keys = self.keys or offered
-        return [k for k in keys if k not in self.skip]
-
-    @property
-    def empty(self) -> bool:
-        """Nothing asked: chosen museums show what they have, all of them
-        nothing; the owner's own works (favourites, playlists) none."""
-        if self.rules.asks_mine():
-            return True
-        start, end = self.spec.year_from, self.spec.year_to
-        return (
-            not self.keys
-            and not museum_text(self.rules, 1)
-            and not self.rules.colors
-            and start is None
-            and end is None
-            and self.spec.kind == "any"
-        )
-
-    def pages(
-        self, svc: FrameService, keys: list[str], page: int
-    ) -> Iterator[tuple[int, list[Item], list[str], int | None]]:
-        """Works of ``keys`` from ``page`` on, a museum page at a time:
-        (total, items, museums that failed, the page to ask next). Museums
-        don't know colours, so with colours their works are judged by their
-        thumbnails, pages deep, until ``limit`` fit or time runs out."""
-        importer = svc.importer
-        rules = self.rules
-        colors = rules.colors
-        asked = COLOR_PAGE if colors else self.limit
-        left = COLOR_PAGES if colors else 1
-        started = time.monotonic()
-        total = fitting = 0
-        at: int | None = page
-        # The words typed, in each museum's language ("gitara": "guitar").
-        named = keys or importer.asked_sources(self.spec.kind)
-        typed = importer.typed(rules.query, named) if rules.query.strip() else {}
-        while at is not None and left > 0:
-            text = museum_text(rules, at)
-            # Several artists take turns, so each page asks for one of them.
-            round_ = (at - 1) // len(rules.artists) + 1 if rules.artists else at
-            if text:
-                texts = {k: museum_text(rules, at, typed.get(k)) for k in named}
-                count, items, failed = importer.search_all(
-                    texts, asked, round_, keys, kind=self.spec.kind
-                )
-            else:
-                count, items, failed = importer.discover_all(self.spec, asked, at, keys)
-            total = total or count
-            found = [
-                i
-                for i in importer.in_colors(items, colors)
-                if self.spec.fits(i) and category_fits(i, rules.terms)
-            ]
-            # The app lays its grid out by the works' shapes.
-            importer.measure(found)
-            fitting += len(found)
-            # Totals of several artists' searches don't add up page by page.
-            done = not items or (not rules.artists and 0 < count <= round_ * asked)
-            at = None if done else at + 1
-            left -= 1
-            yield total, found, failed, at
-            if fitting >= self.limit or time.monotonic() - started > COLOR_SECONDS:
-                return
-
-    def ask(
-        self, svc: FrameService, keys: list[str], page: int
-    ) -> tuple[int, list[Item], list[str], int | None]:
-        """All of :meth:`pages` at once."""
-        answers = list(self.pages(svc, keys, page))
-        total, _, failed, at = answers[-1]
-        return total, [i for _, items, _, _ in answers for i in items], failed, at
-
-
 def museum_search(
     svc: FrameService,
     q: str,
@@ -1064,11 +954,21 @@ def museum_search(
     if unknown := [s for s in keys if s not in offered]:
         raise HTTPException(404, f"unknown museum {unknown[0]!r}")
     rules = rules_from(q, artist, term, color, year_from, year_to)
-    start, end = span(rules)
-    spec = Discovery(year_from=start, year_to=end, kind=museum_kind(rules.terms))
     # Museums left out need not be on offer (any more): they just stay out.
-    left_out = tuple(dict.fromkeys(skip or []))
-    return MuseumSearch(rules=rules, spec=spec, keys=keys, limit=limit, skip=left_out)
+    return MuseumSearch.of(rules, keys=keys, limit=limit, skip=skip or [])
+
+
+def keep_found(svc: FrameService, search: MuseumSearch, found: list[RemoteItem]) -> None:
+    """What the owner looks for, into the catalogue, remembering the search:
+    the library then counts it in for the same choices (a smart playlist of
+    them too), and so do Szukaj's next searches."""
+    key = search.key
+    for remote in found:
+        if remote.in_library:
+            svc.library.found(remote.item.id, key)
+        if remote.twin is not None:
+            svc.library.found(remote.twin, key)
+    svc.player.keep_searched((r.item for r in found if not r.in_library), found=key)
 
 
 Artists = Annotated[list[str] | None, Query()]
@@ -1107,13 +1007,17 @@ async def search_museums(
     keys = search.asked(offered) if search.skip else search.keys
     if search.empty or (search.skip and not keys):
         return MuseumAnswer(source=ALL, total=0, items=[])
-    total, items, failed, next_ = await run_in_threadpool(urgent_call(search.ask), svc, keys, page)
+    total, items, failed, next_ = await run_in_threadpool(
+        urgent_call(search.ask), svc.importer, keys, page
+    )
     if keys and len(failed) == len(keys):
         raise HTTPException(502, f"{', '.join(failed)} did not answer")
+    found = remote_items(svc, items, copies=len(keys) != 1)
+    keep_found(svc, search, found)
     return MuseumAnswer(
         source=keys[0] if len(keys) == 1 else ALL,
         total=total,
-        items=remote_items(svc, items, copies=len(keys) != 1),
+        items=found,
         failed=failed,
         next=next_,
     )
@@ -1152,7 +1056,7 @@ async def stream_museums(
     def ask(key: str) -> None:
         """One museum's pages onto ``answers``, then None."""
         try:
-            for total, items, failed, next_ in search.pages(svc, [key], page):
+            for total, items, failed, next_ in search.pages(svc.importer, [key], page):
                 if gone.is_set():
                     return
                 found = {r.item.id: r for r in remote_items(svc, items, copies)}
@@ -1163,8 +1067,7 @@ async def stream_museums(
                 ]
                 answer = MuseumAnswer(source=key, total=total, items=new, failed=failed, next=next_)
                 loop.call_soon_threadsafe(answers.put_nowait, answer)
-                # What the owner looks for, into the catalogue.
-                svc.player.keep_searched(r.item for r in new if not r.in_library)
+                keep_found(svc, search, new)
         except Exception:
             log.exception("searching %s failed", key)
             failure = MuseumAnswer(source=key, total=0, items=[], failed=[key])

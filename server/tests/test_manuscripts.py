@@ -10,11 +10,11 @@ import httpx
 from frame_server.library.models import PlaylistRules
 from frame_server.library.museums import Access, Discovery, MetropolitanMuseum
 from frame_server.library.paris import ParisMusees
+from frame_server.library.search import MuseumSearch
 from frame_server.library.smithsonian import Smithsonian
 from frame_server.library.vam import VictoriaAndAlbert
 from frame_server.library.vocabulary import MANUSCRIPTS, category_fits, museum_kind
 from frame_server.library.yale import YaleMuseums
-from frame_server.web.discover_api import MuseumSearch
 
 MET_LEAF = {
     "objectID": 453359,

@@ -871,11 +871,16 @@ class Importer:
         pooled: bool = False,
         terms: list[str] | None = None,
         most: int | None = None,
+        fits: Callable[[Item], bool] | None = None,
     ) -> None:
         """Take turns between ``streams`` until ``count`` new works pass
         ``before`` (on museum data) and ``after`` (once analysed); pages of
         manuscripts, photographs, sculpture and decorative arts only when
-        ``terms`` ask for them; ``most``: museum works looked at, at most."""
+        ``terms`` ask for them; ``most``: museum works looked at, at most.
+        A work found by a museum search (``Item.found_for``) that the library
+        has already, in this or another copy, remembers that search; with
+        ``fits`` (a smart playlist's rules) it counts too, when only that
+        made it fit."""
         job.total = count
         drawn = 0
         most = max(count * 20, 200) if most is None else most
@@ -896,8 +901,12 @@ class Importer:
                 if (known := self.library.get(item.id)) is not None:
                     if item.highlight and not known.highlight:  # taken in before 0.42
                         self.library.update(item.id, highlight=True)
+                    self._found_again(known, item.found_for, job, fits)
                     continue
-                if self.copy_of(item) or not before(item):
+                if (twin := self.copy_of(item)) is not None:
+                    self._found_again(twin, item.found_for, job, fits)
+                    continue
+                if not before(item):
                     continue
                 if set_aside(item, terms or []):
                     job.skipped += 1
@@ -922,13 +931,36 @@ class Importer:
                 job.done += 1
                 job.item_ids.append(item.id)
 
-    def keep_searched(self, items: Iterable[Item], room: Iterable[str] = ()) -> None:
+    def _found_again(
+        self, known: Item, found: list[str], job: Job, fits: Callable[[Item], bool] | None
+    ) -> None:
+        """``known`` (in the library) found again by the museum searches
+        ``found``: it fits them from now on (:meth:`Library.found`), and is
+        one of ``job``'s works when only that makes it ``fits``."""
+        new = [k for k in found if k not in known.found_for]
+        if not new:
+            return
+        was = fits is not None and fits(known)
+        now: Item | None = known
+        for key in new:
+            now = self.library.found(known.id, key)
+        if fits is None or was or now is None or now.excluded or now.id in job.item_ids:
+            return
+        if job.done < (job.total or 0) and fits(now):
+            job.done += 1
+            job.item_ids.append(now.id)
+
+    def keep_searched(
+        self, items: Iterable[Item], room: Iterable[str] = (), found: str = ""
+    ) -> None:
         """Works a search showed, into the catalogue (``pooled``) in the
         background, one at a time so the museums aren't hurried: what the
         owner looks for beats a random draw. As with the catalogue's own
         draws, copies and black-and-white copies are left out, however the
         works would do on e-paper, and manuscripts and the like unless
-        their technique has ``room`` (of "Sztuki inne") left."""
+        their technique has ``room`` (of "Sztuki inne") left. ``found``:
+        the search that found them (:meth:`PlaylistRules.search_key`), which
+        they fit from then on."""
         with self._searched_lock:
             self._searched_room = tuple(room)
             for item in items:
@@ -936,6 +968,8 @@ class Importer:
                     continue
                 if len(self._searched) >= SEARCHED_QUEUE:
                     break
+                if found and found not in item.found_for:
+                    item = item.model_copy(update={"found_for": [*item.found_for, found]})
                 self._searched[item.id] = item
             if not self._searched or (self._searching and self._searching.is_alive()):
                 return

@@ -43,6 +43,7 @@ from ..library.importer import ALL
 from ..library.models import Framing, SharperCopy
 from ..library.museums import MUSEUMS, Discovery, Kind
 from ..library.repo import Hidden, SortKey, now_iso
+from ..library.search import fill as fill_by_search
 from ..library.seed import PACKS, import_queries, pack
 from ..library.viewer import viewer_id
 from ..player import hold_from
@@ -1063,7 +1064,8 @@ def fill(request: FillRequest, svc: Svc) -> dict[str, Any]:
         raise HTTPException(422, "the rules allow no museum")
 
     def work(job: Job) -> None:
-        svc.importer.fill(rules, request.count, job)
+        # Szukaj's search for the same choices (Mateusz, 2026-11-07).
+        fill_by_search(svc.importer, rules, request.count, job)
 
     return {"job_id": svc.importer.start_job(f"fill: {request.count}", work).id}
 

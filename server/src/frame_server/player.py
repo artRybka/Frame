@@ -35,6 +35,7 @@ from .library.museums import Kind
 from .library.nationality import life_years, note_years
 from .library.photo_text import photo_line, photo_title
 from .library.repo import matches, sent_key
+from .library.search import fill as fill_by_search
 from .library.style import AUTO, auto_preset, toned_only
 from .library.themes import (
     COVER_MIN,
@@ -1071,6 +1072,11 @@ class Player:
             if want <= 0:
                 return None
         rules = rules.model_copy(update={"kinds": [ItemKind.ARTWORK]})
+        if playlist.theme is None:
+            # The owner's own playlist: what Szukaj finds for its choices.
+            return importer.start_job(
+                "pool", lambda job: fill_by_search(importer, rules, want, job, pooled=True)
+            )
         return importer.start_job("pool", lambda job: importer.fill(rules, want, job, pooled=True))
 
     def _pick_from_catalogue(self, count: int, settings: FrameSettings) -> list[Item]:
@@ -1121,13 +1127,14 @@ class Player:
         ids = set(self.library.get_state(STUDY_KEY, []))
         return ids | set(self.library.get_state(DAILY_KEY, {}).values())
 
-    def keep_searched(self, items: Iterable[Item]) -> None:
+    def keep_searched(self, items: Iterable[Item], found: str = "") -> None:
         """Works a search showed join the catalogue in the background (as
         the catalogue's own draws do, so not while tests run the server);
-        those of "Sztuki inne" while their technique has room."""
+        those of "Sztuki inne" while their technique has room. ``found``:
+        the museum search that found them, which they fit from then on."""
         settings = self.service.settings
         if settings.scheduler and settings.catalogue_mb:
-            self.service.importer.keep_searched(items, room=self.other_art_room())
+            self.service.importer.keep_searched(items, room=self.other_art_room(), found=found)
 
     def _catalogue_works(self) -> list[Item]:
         """The works the server picked (``pooled``), excluded ones too."""
