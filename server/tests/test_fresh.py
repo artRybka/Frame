@@ -231,16 +231,34 @@ def test_statens_museum_for_kunst_for_private_use() -> None:
     assert [i.license for i in items] == ["Public Domain Mark 1.0", PRIVATE_LICENCE]
 
 
-def test_a_full_catalogue_still_takes_in_new_works(museums) -> None:  # noqa: F811
+def test_a_full_catalogue_takes_nothing_in(museums) -> None:  # noqa: F811
+    # No works drawn to replace others (Mateusz 2026-11-07).
     service = museums
     player = service.player
     _wait(player.grow_catalogue())
+    before = {i.id for i in service.library.query(include_excluded=True)[1]}
     service.settings.catalogue_mb = 1
     service.images.thumbs_size = lambda: 2 * 1024 * 1024  # full
+    trimmed: list[bool] = []
+    player.trim_catalogue = lambda: trimmed.append(True) or 0  # type: ignore[method-assign]
+    assert player.grow_catalogue() is None
+    assert player.catalogue_full and trimmed  # only trimmed back to the limit
+    after = {i.id for i in service.library.query(include_excluded=True)[1]}
+    assert after == before
+    # What Szukaj shows stays out too.
+    service.settings.scheduler = True
+    taken: list[object] = []
+    service.importer.keep_searched = lambda *a, **k: taken.append(a)  # type: ignore[method-assign]
+    service.importer.keep_spare = lambda *a, **k: taken.append(a)  # type: ignore[method-assign]
+    player.keep_searched([])
+    player.keep_spare([])
+    assert taken == []
+    # A higher limit: measured again, it grows.
+    player.limit_changed()
+    service.images.thumbs_size = lambda: 0
     job = player.grow_catalogue()
-    assert job is not None  # a few new works, and as many old ones go
+    assert job is not None and not player.catalogue_full
     _wait(job)
-    assert player.grow_catalogue() is None  # not again for a while
 
 
 def test_the_catalogue_takes_in_museum_highlights(museums, monkeypatch) -> None:  # noqa: F811

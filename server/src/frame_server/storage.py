@@ -60,6 +60,9 @@ class StorageView(BaseModel):
     originals_mb: int
     originals_default_mb: int
     originals_from_app: bool
+    #: The catalogue reached its limit: the server takes no more works in
+    #: itself, none to replace others (Mateusz 2026-11-07).
+    catalogue_full: bool = False
 
 
 class StorageUpdate(BaseModel):
@@ -107,14 +110,16 @@ class StorageStore:
             self.library.delete_state(OLD_KEY)
 
     def view(self) -> StorageView:
+        usage = self.usage()
         return StorageView(
-            usage=self.usage(),
+            usage=usage,
             catalogue_mb=self.settings.catalogue_mb,
             catalogue_default_mb=self.defaults[0],
             catalogue_from_app=self.library.get_state(CATALOGUE_KEY) is not None,
             originals_mb=self.settings.image_cache_mb,
             originals_default_mb=self.defaults[1],
             originals_from_app=self.library.get_state(ORIGINALS_KEY) is not None,
+            catalogue_full=usage.catalogue_bytes >= self.settings.catalogue_mb * MB > 0,
         )
 
     def save(self, update: StorageUpdate) -> bool:

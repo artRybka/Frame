@@ -9,6 +9,11 @@
 - Bazy pobierają się nocą raz na dwa miesiące, i to tylko wtedy, gdy muzeum
   zmieniło plik. Pierwsza noc po aktualizacji je zbuduje, a do tego czasu
   wszystko działa jak dotąd.
+- Pełny katalog niczego już nie dobiera: serwer nie ściąga nowych dzieł
+  z muzeów, żeby zastąpić nimi starsze (ani w dzień, ani w nocy), i nie
+  dopisuje tego, co pokazało Szukaj. W Konfiguracji przy limicie katalogu
+  pojawia się wtedy komunikat „Katalog jest pełny”; żeby katalog rósł
+  dalej, wystarczy zwiększyć limit.
 
 ## 1.122.0
 

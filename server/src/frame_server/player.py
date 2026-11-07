@@ -126,12 +126,6 @@ CATALOGUE_HIGHLIGHT_MIN = 40
 CATALOGUE_HIGHLIGHT_EVERY = timedelta(days=1)
 #: When the catalogue's highlights were last topped up.
 HIGHLIGHTS_KEY = "catalogue_highlights"
-#: A full catalogue still takes in this many works at a time, at most every
-#: ``CATALOGUE_TURNOVER_EVERY``, and lets as many go: new works keep coming.
-CATALOGUE_TURNOVER = 60
-CATALOGUE_TURNOVER_EVERY = timedelta(hours=6)
-#: When a full catalogue last took works in.
-TURNOVER_KEY = "catalogue_turnover"
 #: "Sztuki inne": the share of the catalogue's works each technique keeps,
 #: so that Szukaj has some at once (Mateusz 2026-11-06: 6 % in all, 5:4:3:3).
 OTHER_ART_SHARES = {PHOTOGRAPHY: 0.02, MANUSCRIPTS: 0.016, SCULPTURE: 0.012, DECORATIVE: 0.012}
@@ -140,14 +134,13 @@ OTHER_ART_BATCH = 40
 #: Thin cards of "Sztuki inne" filled a night, the thinnest first; each
 #: looks at :data:`THIN_DRAWS` museum works at most. A round for all of them
 #: by day, with every turnover, brought the Library of Congress's and the
-#: Met's bot walls down on the home address (2026-11-07).
+#: Met's bot walls down on the home address (2026-11-07). A full catalogue
+#: takes nothing in any more (Mateusz 2026-11-07).
 THIN_CARDS_A_NIGHT = 2
 THIN_DRAWS = 60
 #: How long the room each technique has is trusted (seconds), for searches.
 OTHER_ART_ROOM_FOR = 600.0
-#: At night a full catalogue takes in a day's works at once ...
-NIGHT_TURNOVER = CATALOGUE_TURNOVER * 4
-#: ... and one still filling up at most this many batches.
+#: At night a catalogue still filling up takes in at most this many batches.
 NIGHT_BATCHES = 6
 # How long a due change may keep the panel from its night sleep.
 CHANGE_GRACE = timedelta(minutes=3)
@@ -1133,14 +1126,14 @@ class Player:
         those of "Sztuki inne" while their technique has room. ``found``:
         the museum search that found them, which they fit from then on."""
         settings = self.service.settings
-        if settings.scheduler and settings.catalogue_mb:
+        if settings.scheduler and settings.catalogue_mb and not self._full:
             self.service.importer.keep_searched(items, room=self.other_art_room(), found=found)
 
     def keep_spare(self, items: Iterable[Item]) -> None:
         """Works a search brought but did not show join the catalogue too,
         after the shown ones (:meth:`Importer.keep_spare`)."""
         settings = self.service.settings
-        if settings.scheduler and settings.catalogue_mb:
+        if settings.scheduler and settings.catalogue_mb and not self._full:
             self.service.importer.keep_spare(items, room=self.other_art_room())
 
     def _catalogue_works(self) -> list[Item]:
@@ -1296,9 +1289,13 @@ class Player:
     def grow_catalogue(self, night: bool = False) -> Job | None:
         """Add a batch of museum works to the catalogue while its thumbnails
         take less than ``catalogue_mb``; themes and random draws of every
-        kind, so the app can browse widely and filter by colour. With the
-        night queue (:attr:`at_night`), a full catalogue turns over only at
-        night (``night``), a day's works at once; by day it only fills up."""
+        kind, so the app can browse widely and filter by colour. A full
+        catalogue takes nothing in: no works are drawn to replace others
+        (Mateusz 2026-11-07, "gdy katalog jest pełny, nie odciągajmy więcej
+        dzieł"); Konfiguracja says so (``StorageView.catalogue_full``). It is
+        only trimmed back to the limit. With the night queue
+        (:attr:`at_night`) a full catalogue is measured again only at night
+        or when the limit changes (:meth:`limit_changed`)."""
         importer = self.service.importer
         limit = self.service.settings.catalogue_mb * 1024 * 1024
         if not limit or any(
@@ -1308,7 +1305,8 @@ class Player:
         if self._full and self.at_night and not night:
             return None
         full = self._full = self.service.images.thumbs_size() >= limit
-        if full and self.at_night and not night:
+        if full:
+            self.trim_catalogue()  # a lower limit, or a batch past it
             return None
         # "Arcydzieła muzeów" needs the museums' highlights in the catalogue,
         # which works taken in before 0.42 never say they are: asked for on
@@ -1319,17 +1317,6 @@ class Player:
             or not tried
             or utcnow() - datetime.fromisoformat(tried) >= CATALOGUE_HIGHLIGHT_EVERY
         )
-        turnover = True
-        if full:
-            self.trim_catalogue()
-            turned = self.library.get_state(TURNOVER_KEY, "")
-            turnover = night or (
-                not turned or utcnow() - datetime.fromisoformat(turned) >= CATALOGUE_TURNOVER_EVERY
-            )
-            if not turnover and not highlights:
-                return None
-            if turnover:
-                self.library.set_state(TURNOVER_KEY, utcnow().isoformat())
         if highlights:
             self.library.set_state(HIGHLIGHTS_KEY, utcnow().isoformat())
         queries = [search for theme in SEARCHABLE for search in theme.searches()]
@@ -1340,29 +1327,35 @@ class Player:
         def grow(job: Job) -> None:
             if highlights:
                 self._add_highlights(job)
-            if turnover:
-                importer.collect(
-                    (NIGHT_TURNOVER if night else CATALOGUE_TURNOVER) if full else CATALOGUE_BATCH,
-                    job,
-                    queries=queries,
-                    kinds=CATALOGUE_KINDS,
-                    highlights=CATALOGUE_HIGHLIGHTS,
-                )
-                self.trim_other_art()
-                self._add_other_art(job, thin=night)
-            if full:
-                self.trim_catalogue()
+            importer.collect(
+                CATALOGUE_BATCH,
+                job,
+                queries=queries,
+                kinds=CATALOGUE_KINDS,
+                highlights=CATALOGUE_HIGHLIGHTS,
+            )
+            self.trim_other_art()
+            self._add_other_art(job, thin=night)
 
         return importer.start_job("catalogue", grow)
 
+    def limit_changed(self) -> None:
+        """The catalogue's limit changed: measured again before it is
+        trusted to be full."""
+        self._full = False
+
+    @property
+    def catalogue_full(self) -> bool:
+        """The catalogue reached its limit when last measured: works the
+        server would add itself (draws, what Szukaj showed) stay out."""
+        return self._full
+
     def grow_at_night(self, night: Night) -> int:
-        """The night's task: a full catalogue turns over (a day's works at
-        once), one still filling up takes in batches while the night lasts.
-        How many batches."""
+        """The night's task: a catalogue still filling up takes in batches
+        while the night lasts; a full one nothing. How many batches."""
         batches = 0
         while batches < NIGHT_BATCHES and night.quiet():
             job = self.grow_catalogue(night=True)
-            full = self._full
             if job is None:
                 break
             batches += 1
@@ -1370,8 +1363,6 @@ class Player:
                 if not night.sleep(5.0):
                     return batches
             log.info("night: catalogue took in %d works", len(job.item_ids))
-            if full:
-                break
         return batches
 
     def _fix_up(self) -> None:
