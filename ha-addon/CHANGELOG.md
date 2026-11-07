@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.121.1
+
+- Szukaj i edytor playlisty pytają muzea dopiero przy przewijaniu, gdy
+  serwer sam ma co najmniej 60 pasujących dzieł; przy mniejszej liczbie
+  muzea są pytane od razu, jak dotąd.
+
 ## 1.121.0
 
 - Serwer pyta muzea rzadziej i łagodniej, żeby nie blokowały domowego

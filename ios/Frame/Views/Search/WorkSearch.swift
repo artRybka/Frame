@@ -29,6 +29,10 @@ final class WorkSearch {
     var results: [RemoteItem] = []
     /// The page to ask each museum for more; museums with no more are left out.
     private(set) var next: [String: Int] = [:]
+    /// The catalogue had plenty (`plenty`): the museums' first pages wait
+    /// until its end is near (Mateusz, 2026-11-07: "Gdy na serwerze mamy
+    /// sporo odpowiedzi, to nie zadawajmy pytania do muzeów").
+    private(set) var museumsWaiting = false
     /// The catalogue is being asked.
     private(set) var searching = false
     /// The museums are still answering their first pages.
@@ -56,6 +60,9 @@ final class WorkSearch {
     private static let retryPause: Duration = .seconds(10)
     /// Rounds bringing no work after which the museums are asked no more.
     private static let emptyRoundsLimit = 3
+    /// The catalogue's works for a search, from which the museums are asked
+    /// only once its end is near: a few screens of the grid.
+    static let plenty = 60
 
     // MARK: What is shown
 
@@ -87,7 +94,7 @@ final class WorkSearch {
     var found: Int { inCatalogue + fromMuseums.count }
 
     /// A museum may still have more.
-    var more: Bool { !next.isEmpty }
+    var more: Bool { museumsWaiting || !next.isEmpty }
 
     /// Still asking: the catalogue, or the museums' first pages.
     var busy: Bool { searching || asking }
@@ -119,6 +126,7 @@ final class WorkSearch {
     private func search(_ key: Key) async {
         results = []
         next = [:]
+        museumsWaiting = false
         emptyRounds = 0
         guard !key.isEmpty, let model else {
             catalogue = nil
@@ -129,7 +137,6 @@ final class WorkSearch {
         }
         searching = true
         asking = true
-        async let museumsAnswered: Void = listen(key, sources: key.museumSources ?? key.sources, page: 1)
         var query = LibraryQuery(rules: key.rules)
         query.sources = key.sources
         do {
@@ -142,7 +149,14 @@ final class WorkSearch {
             if !Task.isCancelled, !error.isCancellation { model.show(error) }
         }
         if !Task.isCancelled { searching = false }
-        await museumsAnswered
+        // The catalogue answers at once (it is the server's own); with
+        // plenty in it the museums are asked only when its end comes near.
+        if Task.isCancelled || key != searched { return }
+        if asksMuseums(key), (catalogue?.total ?? 0) >= Self.plenty {
+            museumsWaiting = true
+        } else {
+            await listen(key, sources: key.museumSources ?? key.sources, page: 1)
+        }
         // Nothing in the library nor on the museums' first pages: their
         // further pages won't do better. With colours asked the server looks
         // through random works page after page, and "Szukam…" spun for good
@@ -158,10 +172,15 @@ final class WorkSearch {
         }
     }
 
+    /// Whether the museums have anything for `key`: favourites and
+    /// playlists are the owner's, no museum has them.
+    private func asksMuseums(_ key: Key) -> Bool {
+        key.museums && !key.rules.asksMine
+    }
+
     /// Takes in the museums' answers as each comes.
     private func listen(_ key: Key, sources: [String], page: Int) async {
-        // Favourites and playlists are the owner's: no museum has them.
-        guard key.museums, !key.rules.asksMine, let model else { return }
+        guard asksMuseums(key), let model else { return }
         do {
             let answers = try await model.backend.museumAnswers(key.rules, sources: sources, page: page)
             for try await answer in answers {
@@ -214,8 +233,14 @@ final class WorkSearch {
         }
     }
 
-    /// The next page of each museum that has more.
+    /// The next page of each museum that has more; the first pages when
+    /// they waited for the catalogue's end.
     private func loadMore(_ key: Key) async {
+        if museumsWaiting {
+            museumsWaiting = false
+            await listen(key, sources: key.museumSources ?? key.sources, page: 1)
+            return
+        }
         // Museums looked through for colours stop at different pages.
         let byPage = Dictionary(grouping: next.keys.sorted()) { next[$0] ?? 1 }
         await withTaskGroup(of: Void.self) { group in
