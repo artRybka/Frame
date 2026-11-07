@@ -73,9 +73,19 @@ def lane(host: str) -> str:
 #: blocks a key for an hour; longer waits are taken as an hour too.
 THROTTLED_MAX = 3600.0
 #: How long a host that turned us away is not asked; doubled each time it
-#: still does, up to REST_MAX, and forgotten once it answers again.
+#: does again within WALL_MEMORY of the time before, up to REST_MAX.
 REST = 15 * 60.0
 REST_MAX = 4 * 3600.0
+#: A wall this soon after the one before doubles the rest: AIC let us in
+#: after each quarter of an hour and turned us away again within minutes,
+#: eight times on 2026-11-07, and the rest never grew because it was
+#: forgotten at the first answer.
+WALL_MEMORY = 6 * 3600.0
+#: Server errors (5xx) in a row after which a host is left alone for
+#: FAILING_REST (asked once a minute, to see): MNK's picture server answered
+#: 502 to 406 of 621 requests on 2026-11-07 and was asked on and on.
+FAIL_STREAK = 10
+FAILING_REST = 10 * 60.0
 #: While the app is in use, the background looks again this often whether it
 #: may go on (seconds).
 APP_PAUSE_STEP = 10.0
@@ -363,6 +373,11 @@ class HostGuard:
         self._resting: dict[str, tuple[float, float]] = {}
         #: When a resting host may be asked once more, to see (by host).
         self._probe_at: dict[str, float] = {}
+        #: When each host last turned us away, by the wall clock (by host).
+        self._last_wall: dict[str, float] = {}
+        #: Server errors in a row (by host).
+        self._fails: dict[str, int] = {}
+        self._rests_file: Path | None = None
 
     def resting(self, host: str) -> float:
         """Seconds until ``host`` is asked again; 0 when it may be now."""
@@ -803,22 +818,26 @@ class HostGuard:
         if response.status_code == 429:
             self._throttled(host, response)
             return
+        if code >= 500 and not wall:
+            self._failed(host)
+            return
         if key not in self.pace:
+            self._answered(host)
             return  # a single picture's host: its refusal is the picture's
-        if not walled(response):
-            with self._lock:
-                rested = self._resting.pop(host, None)
-                self._probe_at.pop(host, None)
-            if rested is not None and rested[0] > self.clock():
-                log.warning("%s answers again; asked as before", host)
+        if not wall:
+            self._answered(host)
             return
         with self._lock:
             until, rest = self._resting.get(host, (0.0, 0.0))
             now = self.clock()
+            today = self.wall()
             if until <= now:  # not one of the requests already under way
-                rest = min(rest * 2, REST_MAX) if rest else LONG_BLOCKS.get(host, REST)
+                last = self._last_wall.get(host)
+                again = rest and last is not None and today - last < WALL_MEMORY
+                rest = min(rest * 2, REST_MAX) if again else LONG_BLOCKS.get(host, REST)
                 self._resting[host] = (now + rest, rest)
                 self._probe_at[host] = now + (rest if host in LONG_BLOCKS else PROBE_EVERY)
+                self._last_wall[host] = today
                 log.warning(
                     "%s turned us away (%s %s); leaving it alone for %.0f min",
                     host,
@@ -826,7 +845,94 @@ class HostGuard:
                     response.headers.get("cf-mitigated") or "bot wall",
                     rest / 60,
                 )
+                changed = True
+            else:
+                changed = False
+        if changed:
+            self._save_rests()
         raise Resting(f"{host} turned us away", request=response.request)
+
+    def _answered(self, host: str) -> None:
+        """``host`` answered: its rest (if any) ends; how long the last one
+        was stays known for WALL_MEMORY, so that the next wall rests longer."""
+        with self._lock:
+            self._fails.pop(host, None)
+            until, rest = self._resting.get(host, (0.0, 0.0))
+            if not until:
+                return
+            self._resting[host] = (0.0, rest)
+            self._probe_at.pop(host, None)
+            early = until > self.clock()
+        if early:
+            log.warning("%s answers again; asked as before", host)
+        self._save_rests()
+
+    def _failed(self, host: str) -> None:
+        """A server error from ``host``: after FAIL_STREAK in a row it is
+        left alone for FAILING_REST, asked once a minute to see."""
+        with self._lock:
+            fails = self._fails[host] = self._fails.get(host, 0) + 1
+            until, rest = self._resting.get(host, (0.0, 0.0))
+            now = self.clock()
+            if fails < FAIL_STREAK or until > now:
+                return
+            self._fails[host] = 0
+            self._resting[host] = (now + FAILING_REST, rest)
+            self._probe_at[host] = now + PROBE_EVERY
+        log.warning(
+            "%s: %d server errors in a row; leaving it alone for %.0f min",
+            host,
+            fails,
+            FAILING_REST / 60,
+        )
+        self._save_rests()
+
+    # -- rests across restarts -------------------------------------------------
+
+    def keep_rests(self, path: Path) -> None:
+        """Rests are written to ``path`` (and read from it now): the Library
+        of Congress starts its hour again at every request during a block,
+        and each update of the server (several a day) asked it at once
+        (2026-11-07)."""
+        self._rests_file = path
+        try:
+            saved = json.loads(path.read_text())
+        except (OSError, ValueError):
+            return
+        if not isinstance(saved, dict):
+            return
+        now, today = self.clock(), self.wall()
+        with self._lock:
+            for host, entry in saved.items():
+                try:
+                    until, rest, last = (float(entry[k]) for k in ("until", "rest", "last_wall"))
+                except (KeyError, TypeError, ValueError):
+                    continue
+                left = until - today
+                if left <= 0 and today - last >= WALL_MEMORY:
+                    continue
+                self._resting[host] = (now + left if left > 0 else 0.0, rest)
+                if last:
+                    self._last_wall[host] = last
+                if left > 0:
+                    first = left if host in LONG_BLOCKS else PROBE_EVERY
+                    self._probe_at[host] = now + first
+                    log.info("%s rests %.0f min more (from before the start)", host, left / 60)
+
+    def _save_rests(self) -> None:
+        if self._rests_file is None:
+            return
+        with self._lock:
+            now, today = self.clock(), self.wall()
+            snapshot = {
+                host: {
+                    "until": today + (until - now) if until > now else 0.0,
+                    "rest": rest,
+                    "last_wall": self._last_wall.get(host, 0.0),
+                }
+                for host, (until, rest) in self._resting.items()
+            }
+        self._save(self._rests_file, snapshot, "rests")
 
     def _throttled(self, host: str, response: httpx.Response) -> None:
         """A 429 that says how long to wait: ``host`` is not asked until
@@ -843,6 +949,7 @@ class HostGuard:
             self._resting[host] = (now + wait, rest)
             self._probe_at[host] = now + wait
         log.warning("%s asks us to wait %.0f s (429); not asked until then", host, wait)
+        self._save_rests()
 
     def hooks(self) -> dict[str, list[Any]]:
         return {"request": [self.before], "response": [self.after]}

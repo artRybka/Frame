@@ -209,6 +209,7 @@ class FrameService:
         host_guard.keep_budgets(settings.data_dir / "hosts" / "quotas.json")
         # A week of requests by source, for Konfiguracja → Diagnostyka.
         host_guard.keep_tally(settings.data_dir / "hosts" / "tally.json")
+        host_guard.keep_rests(settings.data_dir / "hosts" / "rests.json")
         self.images = ImageCache(settings.data_dir / "library", museum_client)
         self.images.mirrors["europeana"] = europeana_mirrors
         self.images.mirrors["loc"] = loc_mirrors
