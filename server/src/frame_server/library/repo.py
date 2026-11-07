@@ -49,6 +49,7 @@ from .vocabulary import (
     is_postal,
     matches_terms,
     object_category,
+    searched_kinds,
     set_aside,
 )
 
@@ -173,15 +174,40 @@ def _is_mine(item: Item, mine: list[str], listed: Collection[str], liked: bool) 
     return (MINE_FAVORITES in mine and liked) or (MINE_PLAYLISTS in mine and item.id in listed)
 
 
+#: Museum searches a work remembers it was found by (``Item.found_for``),
+#: the latest kept.
+FOUND_KEEP = 24
+
+
+def found_together(had: list[str], found: list[str]) -> list[str]:
+    """The searches of ``had`` and then ``found``, each once, the latest
+    :data:`FOUND_KEEP`."""
+    keys = list(dict.fromkeys(k for k in [*had, *found] if k))
+    return keys[-FOUND_KEEP:]
+
+
+def search_fits(item: Item, rules: PlaylistRules) -> bool:
+    """Whether a work the museums' search found for ``rules`` fits them in
+    what that search doesn't decide itself: periods (with their places),
+    tags and two techniques at once. Szukaj shows what passes, and the
+    catalogue counts it in (:func:`matches`, ``Item.found_for``)."""
+    return matches_terms(item, rules.terms, searched_kinds(rules.terms))
+
+
 def matches(
     item: Item,
     rules: PlaylistRules,
     listed: Collection[str] = (),
     favorites: Collection[str] | None = None,
+    key: str | None = None,
 ) -> bool:
     """Whether ``item`` fits ``rules``; ``listed`` are the works on the
     person's playlists, for ``mine:playlists``, ``favorites`` their hearts
-    (None: anyone's, the stored ``Item.favorite``)."""
+    (None: anyone's, the stored ``Item.favorite``). A work the museums'
+    search for ``rules`` found (``key``: :meth:`PlaylistRules.search_key`,
+    worked out when not given) fits as that search judged it: Szukaj and a
+    smart playlist of the same choices hold the same works (Mateusz,
+    2026-11-07)."""
     liked = item.favorite if favorites is None else item.id in favorites
     if item.excluded or item.id in rules.exclude_ids:
         return False
@@ -209,6 +235,10 @@ def matches(
         return False
     if item.source in rules.exclude_sources:
         return False
+    if item.found_for:
+        key = rules.search_key() if key is None else key
+        if key and key in item.found_for:
+            return search_fits(item, rules)
     if rules.artists and not artist_matches(item.artist, rules.artists):
         return False
     if rules.styles and not _fold(item.styles) & _fold(rules.styles):
@@ -442,6 +472,7 @@ class Library:
                         "framing": existing.framing,
                         "keywords": existing.keywords,
                         "terms": existing.terms,
+                        "found_for": found_together(existing.found_for, item.found_for),
                         "sharper": existing.sharper,
                         "holder": item.holder or existing.holder,
                     }
@@ -494,6 +525,14 @@ class Library:
                 self._catalogue_version += 1
             self._regroup(item, updated, "change")
             return updated
+
+    def found(self, item_id: str, key: str) -> Item | None:
+        """``item_id`` was found by the museums' search ``key``
+        (:meth:`PlaylistRules.search_key`): it fits that search from now on."""
+        item = self.get(item_id)
+        if item is None or not key or key in item.found_for:
+            return item
+        return self._update(item_id, found_for=found_together(item.found_for, [key]))
 
     def delete(self, item_id: str) -> bool:
         with self._lock:
@@ -726,6 +765,7 @@ class Library:
         mine = rules.favorites_only or any(t in MINE for t in rules.terms)
         hearts = self.favorites(user) if mine else None
         hidden = Hidden() if include_excluded else self.hidden()
+        key = rules.search_key()
 
         # Photographs and pages of manuscripts the server picked only when
         # asked for (photographs never).
@@ -738,8 +778,8 @@ class Library:
                 return False
             if include_excluded and item.excluded:
                 unexcluded = item.model_copy(update={"excluded": False})
-                return matches(unexcluded, rules, listed, hearts)
-            return matches(item, rules, listed, hearts)
+                return matches(unexcluded, rules, listed, hearts, key)
+            return matches(item, rules, listed, hearts, key)
 
         items = [i for i in self._snapshot() if selected(i)]
         if not include_excluded:

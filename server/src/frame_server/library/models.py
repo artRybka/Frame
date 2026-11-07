@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from enum import StrEnum
 from typing import Any, Literal
 from urllib.parse import urlsplit
@@ -176,6 +178,10 @@ class Item(BaseModel):
     #: vocabulary's subjects (``"subject:sea"``) it found.
     keywords: list[str] = Field(default_factory=list)
     terms: list[str] = Field(default_factory=list)
+    #: The museum searches that found it (:meth:`PlaylistRules.search_key`):
+    #: it fits them, as the museum judged it, whatever its words say (Szukaj
+    #: and the smart playlist of one search show the same works).
+    found_for: list[str] = Field(default_factory=list)
     #: One of the works its museum counts among its most important.
     highlight: bool = False
     suitability: float | None = None
@@ -316,6 +322,24 @@ class PlaylistRules(BaseModel):
     min_suitability: float | None = None
     #: Works the owner removed from this smart playlist although they match.
     exclude_ids: list[str] = Field(default_factory=list)
+
+    def search_key(self) -> str:
+        """What a museum search for these rules asks, as a short key: the
+        words, artists, terms, colours and years (museums chosen or left out
+        are checked on their own); empty when it asks for none of them."""
+        words = " ".join(self.query.casefold().split())
+        asked = [
+            words,
+            sorted(self.artists),
+            sorted(self.terms),
+            sorted(self.colors),
+            self.year_from,
+            self.year_to,
+        ]
+        if not any(a not in ("", [], None) for a in asked):
+            return ""
+        text = json.dumps(asked, ensure_ascii=False)
+        return "s:" + hashlib.sha1(text.encode()).hexdigest()[:16]
 
     def is_empty(self) -> bool:
         """No filter at all: the whole catalogue (exceptions don't count)."""

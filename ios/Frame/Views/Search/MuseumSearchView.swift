@@ -19,35 +19,15 @@ struct MuseumSearchView: View {
     @State private var rules = PlaylistRules()
     /// Keys of the museums to ask; none means all of them.
     @State private var sources: [String] = []
-    @State private var catalogue: ItemPage?
-    @State private var results: [RemoteItem] = []
-    /// The page to ask each museum for more; museums with no more are left out.
-    @State private var next: [String: Int] = [:]
-    /// The catalogue is being asked.
-    @State private var searching = false
-    /// The museums are still answering.
-    @State private var asking = false
-    @State private var loadingMore = false
-    /// Rounds of museum pages in a row that brought no work.
-    @State private var emptyRounds = 0
-    /// The results' end is less than a screen away: time to ask for more.
-    @State private var nearEnd = false
-    /// What the results are for, so that coming back from a work doesn't
-    /// search again; the search goes on while a work is open.
-    @State private var searched: SearchKey?
-    @State private var loader: Task<Void, Never>?
+    /// The catalogue's and the museums' works for what is asked: the same
+    /// search as the playlist editor's.
+    @State private var search = WorkSearch()
     /// Works whose heart the server is still taking.
     @State private var liking: Set<String> = []
-    /// Works hidden here with "Ukryj dzieło": gone from the results at once,
-    /// back if the server refuses. The next search's answer leaves them out
-    /// itself, so it clears them.
-    @State private var hidden: Set<String> = []
     @State private var editing: Playlist?
     /// Nothing found: each choice with how many works the library has
     /// without it (only those with some), to give one up with a tap.
     @State private var without: [(token: SearchToken, count: Int)] = []
-    /// The search whose answer is all in, museums and the counts above too.
-    @State private var settled: SearchKey?
     /// Nothing found has stayed so for a moment: only then is it said, not
     /// at the start of every search (Mateusz).
     @State private var emptyShown = false
@@ -91,25 +71,7 @@ struct MuseumSearchView: View {
 
     private var asked: Bool { !rules.isEmpty || !sources.isEmpty }
 
-    private var searchKey: SearchKey { SearchKey(rules: rules, sources: sources) }
-
-    /// Museum works the catalogue doesn't hold already, in any copy.
-    private var fromMuseums: [RemoteItem] {
-        let known = Set(catalogue?.items.map(\.id) ?? [])
-        return results.filter {
-            !known.contains($0.id) && !known.contains($0.twin ?? "") && !hidden.contains($0.id)
-        }
-    }
-
-    /// The catalogue's works found, less those hidden here.
-    private var shownCatalogue: [ItemSummary] {
-        (catalogue?.items ?? []).filter { !hidden.contains($0.id) }
-    }
-
-    /// The museums' works on screen: only once the catalogue has answered,
-    /// so that its works don't come in above them (the museums' grid jumped
-    /// down) and the copies it holds are left out from the start.
-    private var shownFromMuseums: [RemoteItem] { searching ? [] : fromMuseums }
+    private var searchKey: WorkSearch.Key { WorkSearch.Key(rules: rules, sources: sources) }
 
     var body: some View {
         ScrollView {
@@ -136,8 +98,7 @@ struct MuseumSearchView: View {
         .onScrollGeometryChange(for: Bool.self) { geometry in
             geometry.contentSize.height - geometry.visibleRect.maxY < geometry.containerSize.height
         } action: { _, near in
-            nearEnd = near
-            moreIfNeeded()
+            search.scrolled(nearEnd: near)
         }
         .paperPage()
         .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -166,8 +127,6 @@ struct MuseumSearchView: View {
         .onChange(of: asked) { _, asked in
             if !asked, !groupsShown { withAnimation(.snappy) { groupsShown = true } }
         }
-        // A first page shorter than the screen asks for the next at once.
-        .onChange(of: asking) { moreIfNeeded() }
         .task {
             await model.loadVocabulary()
             if museums.isEmpty { museums = (try? await model.backend.museums()) ?? [] }
@@ -205,16 +164,20 @@ struct MuseumSearchView: View {
         }
         .task(id: searchKey) {
             let key = searchKey
-            guard key != searched else { return }
+            guard key != search.searched else { return }
             try? await Task.sleep(for: .milliseconds(150))
             guard !Task.isCancelled else { return }
-            searched = key
+            without = []
             // Something else asked: its results from their top, not from
             // where the last ones were scrolled to.
             withAnimation(.snappy) { position.scrollTo(edge: .top) }
-            loader?.cancel()
-            // Not tied to this view's task: it goes on while a work is open.
-            loader = Task { await search(key) }
+            search.start(key, model: model)
+        }
+        // Nothing found: what giving up each choice would find.
+        .task(id: search.settled) {
+            guard let key = search.settled, key == searchKey, search.found == 0, !search.more else { return }
+            let found = await withoutEach(tokens.wrappedValue)
+            if !Task.isCancelled, key == search.searched { without = found }
         }
         // Said only once nothing found has lasted a moment.
         .task(id: nothingFound) {
@@ -238,7 +201,7 @@ struct MuseumSearchView: View {
         .onChange(of: model.hearts) { _, hearts in
             // Liked or unliked on the work's card meanwhile.
             for (id, favorite) in hearts where !liking.contains(id) {
-                mark(id, favorite: favorite)
+                search.mark(id, favorite: favorite)
             }
         }
         .sheet(item: $editing) { playlist in
@@ -295,14 +258,14 @@ struct MuseumSearchView: View {
             }
             // One grid: the server's works first, the museums' coming in
             // under them. Where a work comes from isn't shown.
-            worksGrid(shownCatalogue, shownFromMuseums)
+            worksGrid(search.shownCatalogue, search.shownFromMuseums)
             // Only once nothing more can come.
             if emptyShown {
                 NothingFound(without: without) { token in
                     withAnimation(.snappy) { tokens.wrappedValue.removeAll { $0 == token } }
                 }
             }
-            if searching || asking || !next.isEmpty {
+            if search.busy || search.more {
                 // The squares say "waiting" (Mateusz): while the search is
                 // asked, and after as long as a museum may still have more,
                 // also one that hasn't answered and waits to be asked again.
@@ -322,7 +285,7 @@ struct MuseumSearchView: View {
             .contextMenu {
                 QueueButton(itemID: summary.id)
                 Button("Ukryj dzieło", systemImage: "eye.slash") {
-                    Task { await hide(summary.id) }
+                    Task { await search.hide(summary.id) }
                 }
             }
             .overlay(alignment: .topTrailing) { heart(summary) }
@@ -331,16 +294,10 @@ struct MuseumSearchView: View {
 
     /// The search is over and found nothing.
     private var nothingFound: Bool {
-        asked && settled == searchKey && !searching && !asking && next.isEmpty
-            && shownCatalogue.isEmpty && fromMuseums.isEmpty
+        asked && search.searched == searchKey && search.nothingFound
     }
 
-    private var summary: String {
-        let hiddenHere = (catalogue?.items ?? []).filter { hidden.contains($0.id) }.count
-        let inCatalogue = max(0, (catalogue?.total ?? 0) - hiddenHere)
-        if (searching || asking) && inCatalogue == 0 && fromMuseums.isEmpty { return "Szukam…" }
-        return Names.works(inCatalogue + fromMuseums.count) + (next.isEmpty ? "" : "+")
-    }
+    private var summary: String { search.summary }
 
     private func heart(_ item: ItemSummary) -> some View {
         TileHeart(favorite: item.favorite) {
@@ -350,55 +307,6 @@ struct MuseumSearchView: View {
     }
 
     // MARK: Loading
-
-    /// What a search depends on, to start it again when it changes.
-    private struct SearchKey: Hashable {
-        let rules: PlaylistRules
-        let sources: [String]
-    }
-
-    @MainActor
-    private func search(_ key: SearchKey) async {
-        results = []
-        next = [:]
-        emptyRounds = 0
-        guard !key.rules.isEmpty || !key.sources.isEmpty else {
-            catalogue = nil
-            searching = false
-            asking = false
-            return
-        }
-        searching = true
-        asking = true
-        async let museumsAnswered: Void = listen(key, sources: key.sources, page: 1)
-        var query = LibraryQuery(rules: key.rules)
-        query.sources = key.sources
-        do {
-            let found = try await model.backend.items(query)
-            if !Task.isCancelled {
-                catalogue = found
-                hidden = []
-            }
-        } catch {
-            if !Task.isCancelled, !error.isCancellation { model.show(error) }
-        }
-        if !Task.isCancelled { searching = false }
-        await museumsAnswered
-        // Nothing in the library nor on the museums' first pages: their
-        // further pages won't do better. With colours asked the server looks
-        // through random works page after page, and "Szukam…" spun for good
-        // on a mix nothing fits (Mono with turquoise, 2026-11-05).
-        if !Task.isCancelled, key == searched, (catalogue?.total ?? 0) == 0, results.isEmpty {
-            next = [:]
-        }
-        if !Task.isCancelled { asking = false }
-        without = []
-        if !Task.isCancelled, (catalogue?.total ?? 0) == 0, results.isEmpty {
-            let found = await withoutEach(tokens.wrappedValue)
-            if !Task.isCancelled, key == searched { without = found }
-        }
-        if !Task.isCancelled { settled = key }
-    }
 
     /// How many works the library has without each chip in turn, those
     /// with some (a single chip given up is no search at all).
@@ -426,116 +334,20 @@ struct MuseumSearchView: View {
         }
     }
 
-    /// Takes in the museums' answers as each comes.
-    @MainActor
-    private func listen(_ key: SearchKey, sources: [String], page: Int) async {
-        // Favourites and playlists are the owner's: no museum has them.
-        guard !key.rules.asksMine else { return }
-        do {
-            let answers = try await model.backend.museumAnswers(key.rules, sources: sources, page: page)
-            for try await answer in answers {
-                guard !Task.isCancelled, key == searched else { return }
-                results = results.adding(answer.items)
-                next[answer.source] = answer.next
-            }
-        } catch {
-            // A museum that doesn't answer (the Met's bot wall turns the
-            // server away for a while) is left out quietly: the others'
-            // works are enough (Mateusz, 2026-10-31).
-        }
-    }
-
-    /// Asks the museums for their next pages while the results' end is near,
-    /// again and again until it isn't (a page can bring few new works). When
-    /// a round brought nothing (a museum that didn't answer), the next waits
-    /// a while, so that the squares at the end keep their word without
-    /// asking a museum that is down over and over.
-    @MainActor
-    private func moreIfNeeded(after pause: Duration = .zero) {
-        guard nearEnd, asked, !asking, !loadingMore, !next.isEmpty, let key = searched else { return }
-        loadingMore = true
-        Task { @MainActor in
-            if pause > .zero { try? await Task.sleep(for: pause) }
-            guard key == searched, nearEnd, !next.isEmpty else {
-                loadingMore = false
-                moreIfNeeded()
-                return
-            }
-            let found = results.count
-            let pages = next
-            await loadMore(key)
-            loadingMore = false
-            guard key == searched else {
-                moreIfNeeded()
-                return
-            }
-            emptyRounds = results.count == found ? emptyRounds + 1 : 0
-            // Rounds that bring nothing in a row: the museums have no more
-            // that fits, however many pages they still have.
-            if emptyRounds >= Self.emptyRoundsLimit { next = [:] }
-            let moved = results.count != found || next != pages
-            moreIfNeeded(after: moved ? .zero : Self.retryPause)
-        }
-    }
-
-    /// How long a round that brought nothing waits before the next.
-    private static let retryPause: Duration = .seconds(10)
-    /// Rounds bringing no work after which the museums are asked no more.
-    private static let emptyRoundsLimit = 3
-
-    /// The next page of each museum that has more.
-    @MainActor
-    private func loadMore(_ key: SearchKey) async {
-        // Museums looked through for colours stop at different pages.
-        let byPage = Dictionary(grouping: next.keys.sorted()) { next[$0] ?? 1 }
-        await withTaskGroup(of: Void.self) { group in
-            for (page, keys) in byPage {
-                group.addTask { @MainActor in await listen(key, sources: keys, page: page) }
-            }
-        }
-    }
-
     /// Into Ulubione or out, the heart turned at once; a museum's work joins
     /// the library with it (the server keeps a work once it is liked).
     @MainActor
     private func setFavorite(_ id: String, _ favorite: Bool) async {
         liking.insert(id)
         defer { liking.remove(id) }
-        let joins = results.contains { $0.id == id && !$0.inLibrary }
-        mark(id, favorite: favorite)
+        let joins = search.results.contains { $0.id == id && !$0.inLibrary }
+        search.mark(id, favorite: favorite)
         guard let item = await model.setFavorite(id, favorite) else {
-            mark(id, favorite: !favorite)
+            search.mark(id, favorite: !favorite)
             return
         }
-        mark(id, favorite: item.favorite)
+        search.mark(id, favorite: item.favorite)
         if joins { await model.refreshFacets() }
-    }
-
-    /// "Ukryj dzieło" from the tile's menu: out of the results at once, and
-    /// with it the copies the catalogue's work stands for.
-    @MainActor
-    private func hide(_ id: String) async {
-        withAnimation { _ = hidden.insert(id) }
-        guard await model.setExcluded(id, true) != nil else {
-            withAnimation { _ = hidden.remove(id) }
-            return
-        }
-        // A museum's copies of the work hidden: the server leaves them out
-        // of the next answers, these ones go now.
-        let work = results.first { $0.id == id }?.work ?? ""
-        let copies = results.filter { $0.twin == id || (!work.isEmpty && $0.work == work) }.map(\.id)
-        hidden.formUnion(copies)
-    }
-
-    /// The tile's heart. A museum's work keeps its picture from the museum:
-    /// the server's own would load it again.
-    private func mark(_ id: String, favorite: Bool) {
-        if let index = results.firstIndex(where: { $0.id == id }) {
-            results[index].item.favorite = favorite
-        }
-        if let index = catalogue?.items.firstIndex(where: { $0.id == id }) {
-            catalogue?.items[index].favorite = favorite
-        }
     }
 }
 
