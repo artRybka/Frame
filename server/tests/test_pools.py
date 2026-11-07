@@ -271,6 +271,11 @@ def test_discover_endpoints(
     discover_api._theme_rows.clear()
     discover_api._day_fetch = (0.0, None)
     discover_api._cards = (0.0, {})
+    # A theme of the day the museums are asked for: a day drawing one of the
+    # catalogue only (2026-11-07: "Belle Époque") had no row in an empty one.
+    from frame_server.library.themes import BY_KEY
+
+    monkeypatch.setattr(discover_api, "theme_of_the_day", lambda *_: BY_KEY["impressionism"])
     with TestClient(app) as client:
         themes = client.get("/api/themes").json()
         assert themes and {"key", "name", "description"} <= themes[0].keys()

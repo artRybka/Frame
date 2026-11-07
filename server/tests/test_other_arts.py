@@ -85,7 +85,9 @@ def test_themes_of_other_arts_keep_to_their_group() -> None:
         assert all(term(k) is not None for k in found.terms), found.key
     # A card for each technique, from the catalogue, then themes searched in museums.
     cards = [t for t in OTHER_ART_THEMES if t.catalogue]
-    assert [t.terms for t in cards] == [(k,) for k in OBJECT_CATEGORIES]
+    # (In Mateusz's order, 2026-11-07: sculpture before photography.)
+    assert sorted(t.terms for t in cards) == sorted((k,) for k in OBJECT_CATEGORIES)
+    assert len(cards) == len(OBJECT_CATEGORIES)
     assert set(other_art_searches()) == set(OBJECT_CATEGORIES)
     assert abs(sum(OTHER_ART_SHARES.values()) - 0.06) < 1e-9
 

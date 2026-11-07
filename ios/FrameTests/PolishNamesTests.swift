@@ -50,6 +50,8 @@ final class PolishNamesTests: XCTestCase {
         XCTAssertEqual(Names.artist("Paul Cézanne"), "Paweł Cézanne")
         let week = ArtTheme(key: "week-artist-paul-cezanne", name: "Paul Cézanne", description: "")
         XCTAssertEqual(Names.theme(week), "Paweł Cézanne")
+        let liked = ArtTheme(key: "like-paul-cezanne", name: "Paul Cézanne", description: "")
+        XCTAssertEqual(Names.theme(liked), "Ponieważ lubisz: Paweł Cézanne")
         let other = ArtTheme(key: "impressionism", name: "Paul i przyjaciele", description: "")
         XCTAssertEqual(Names.theme(other), "Paul i przyjaciele")
     }

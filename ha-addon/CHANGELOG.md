@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.112.0
+
+- Odkrywaj w nowej kolejności: Dziś dla Ciebie, Kierunki i style,
+  Sztuka polska, Kolor i nastrój, Epoki, Tematy, Grafika i plakat,
+  Sztuki inne, a na końcu Studia dzieł.
+- W „Dziś dla Ciebie” najpierw karta Kuratora, Artysta tygodnia, druga
+  karta Kuratora i Motyw dnia, potem dwie karty „Ponieważ lubisz” i para
+  tygodnia. Karty ulubionych artystów (dawne „Bo lubisz”) liczą się
+  tylko z serduszek, jest ich najwyżej dwie, a osobnej grupy już nie ma.
+- Grafika i plakat zaczyna się od plakatów, a w Sztukach innych Rzeźba
+  jest przed Fotografią.
+- Wiersz „Dawno ich nie było” nie jest już pokazywany.
+
 ## 1.111.14
 
 - „Pierwsze kolory” w Sztukach innych bierze zdjęcia z całych kolekcji
