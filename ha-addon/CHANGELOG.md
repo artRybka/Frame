@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.119.0
+
+- Karta dzieła: style i tematy z muzeum („18th Century”, „boys”,
+  „pilgrimages”) są teraz w ramce z danymi, w wierszu „Słowa kluczowe”
+  (dawniej „Na obrazie”), po polsku i bez tych, które tylko powtarzają
+  słowa rozpoznane na obrazie. „Rodzaj” i „Pochodzenie” też po polsku
+  („obraz”, „Włochy”). Rzadsze etykiety tłumaczy model raz i serwer je
+  pamięta.
+
 ## 1.118.5
 
 - Okładka „Ukryte” nie ma już jasnych pasów u góry i u dołu, a odblask

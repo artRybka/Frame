@@ -48,8 +48,13 @@ struct ItemDetailView: View {
     @State private var peeking = false
     /// The picture the whole-screen viewer grows out of.
     @Namespace private var zoomSpace
-    /// What the model saw in the picture (keywords), once it has looked.
+    /// What the model saw in the picture (keywords), once it has looked,
+    /// with the museum's labels in Polish.
     @State private var seen: [String] = []
+    @State private var labels: SeenView?
+    /// The server has answered for good (or could not): the museum's own
+    /// words may show as they are.
+    @State private var seenDone = false
     /// The item the server was asked about, out of turn, as the card opened.
     @State private var described: String?
     /// "Pokaż na ramce" until the picture reached the frame (as on "Teraz").
@@ -212,14 +217,6 @@ struct ItemDetailView: View {
             about(item)
             studySection(item)
             facts(item)
-            if !(item.styles + item.subjects).isEmpty {
-                VStack(alignment: .leading, spacing: 10) {
-                    Eyebrow("Styl i tematy")
-                    FlowLayout(spacing: 6) {
-                        ForEach(item.styles + item.subjects, id: \.self) { TagLabel(text: $0) }
-                    }
-                }
-            }
         }
         .padding(.horizontal, Theme.gutter)
         .padding(.bottom, 40)
@@ -248,8 +245,12 @@ struct ItemDetailView: View {
             }
             return
         }
-        // Keywords and Polish texts ahead of the background queue.
-        _ = try? await model.backend.describe(itemID: itemID, wait: 0)
+        // Keywords and Polish texts ahead of the background queue; the
+        // museum's labels the server knows in Polish come back at once.
+        if let view = try? await model.backend.describe(itemID: itemID, wait: 0) {
+            seen = view.words
+            labels = view
+        }
         described = itemID
         await loadStudy()
         await loadPolish()
@@ -537,15 +538,31 @@ struct ItemDetailView: View {
 
     /// Waits for the keywords asked for as the card opened.
     private func loadSeen() async {
-        seen = []
+        seenDone = false
         guard let id = described, id == itemID else { return }
+        defer { if !Task.isCancelled { seenDone = true } }
         for attempt in 0..<3 {
             guard let view = try? await model.backend.describe(itemID: id, wait: attempt == 0 ? 20 : 30),
                   !Task.isCancelled
             else { return }
-            seen = view.words
+            withAnimation(.easeInOut(duration: 0.3)) {
+                seen = view.words
+                labels = view
+            }
             if view.status != "waiting" { return }
         }
+    }
+
+    /// "Słowa kluczowe": what the model saw, then the museum's styles and
+    /// subjects it did not (in Polish from the server; as the museum wrote
+    /// them only once the server has nothing better).
+    private func keywords(_ item: Item) -> [String] {
+        let museum = labels?.tags ?? (seenDone ? item.styles + item.subjects : [])
+        var shown: [String] = []
+        for word in seen + museum where !shown.contains(where: { $0.lowercased() == word.lowercased() }) {
+            shown.append(word)
+        }
+        return shown
     }
 
     /// "O dziele": the museum's description, its Polish translation or a
@@ -1038,10 +1055,13 @@ struct ItemDetailView: View {
 
     private func facts(_ item: Item) -> some View {
         Card {
-            fact(item.kind == .artwork ? "Na obrazie" : "Na zdjęciu", seen.joined(separator: ", "))
+            fact("Słowa kluczowe", keywords(item).joined(separator: ", "))
             fact("Technika", nonEmpty(shownPolish?.medium) ?? item.medium)
-            fact("Rodzaj", item.classification)
-            fact("Pochodzenie", item.culture)
+            // In Polish once the server answers (as the museum wrote them
+            // when it knows no better), not English first.
+            let answered = (labels != nil && labels?.status != "waiting") || seenDone
+            fact("Rodzaj", nonEmpty(labels?.classification) ?? (answered ? item.classification : ""))
+            fact("Pochodzenie", nonEmpty(labels?.culture) ?? (answered ? item.culture : ""))
             fact("Kolekcja", item.museumShown)
             if item.kind == .artwork && item.look == nil {
                 pictureFact(item)
