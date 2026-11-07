@@ -14,6 +14,17 @@ extension View {
         frame(maxWidth: .infinity, alignment: alignment)
     }
 
+    /// A row of cards scrolled sideways on a page with gutters, running to
+    /// the screen's edges: its first card lines up with the page's text,
+    /// and a card going off screen stays drawn until it is past the edge.
+    /// Kept inside the gutters (with `scrollClipDisabled` only), a lazy row
+    /// dropped a card as soon as it left the row's own width, a gutter
+    /// before the edge (Mateusz 2026-11-07).
+    func edgeToEdgeRow(gutter: CGFloat = Theme.gutter) -> some View {
+        contentMargins(.horizontal, gutter, for: .scrollContent)
+            .padding(.horizontal, -gutter)
+    }
+
     /// The paper behind a page (on the ScrollView), always the whole screen,
     /// also under the bars.
     func paperPage() -> some View {

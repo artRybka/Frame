@@ -498,12 +498,26 @@ struct ArtImage: View {
 
     /// The picture loaded, else one already in memory for `ref`: shown from
     /// the first frame, not faded in from the placeholder (which blinked
-    /// a picture the screen before had shown). Not where the subject is
-    /// still to be found: it would slide once found.
+    /// a picture the screen before had shown, and every cover of a lazy
+    /// row scrolled back into view). Not where the subject is still to be
+    /// found: it would slide once found.
     private var shown: UIImage? {
         if let image { return image }
-        guard !subjectFocus || focusPoint != nil, let request = model.backend.request(for: ref) else { return nil }
+        guard let request = model.backend.request(for: ref) else { return nil }
+        if subjectFocus, focusPoint == nil, SubjectFocus.known(ImageLoader.pictureKey(request)) == nil { return nil }
         return ImageLoader.inMemory(for: request, maxPixel: maxPixel)
+    }
+
+    /// Where the picture shown is cropped around: the point given, else
+    /// the one found for it; a picture from memory, not loaded yet, by the
+    /// point found for it before.
+    private var shownFocus: UnitPoint {
+        if let focusPoint { return focusPoint }
+        if image == nil, subjectFocus, let request = model.backend.request(for: ref),
+           let known = SubjectFocus.known(ImageLoader.pictureKey(request)) {
+            return known
+        }
+        return focus
     }
 
     /// What is drawn: the brighter copy once made (from the cache at once
@@ -517,7 +531,7 @@ struct ArtImage: View {
     var body: some View {
         ZStack {
             if let image = drawn, subjectFocus || focusPoint != nil, contentMode == .fill {
-                FocusedFill(image: image, focus: focusPoint ?? focus)
+                FocusedFill(image: image, focus: shownFocus)
                     .transition(.opacity)
             } else if let image = drawn {
                 Image(uiImage: image)

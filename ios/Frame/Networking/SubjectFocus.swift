@@ -21,13 +21,23 @@ actor SubjectFocus {
         return queue
     }()
 
-    private var cache: [String: UnitPoint] = [:]
+    /// The points worked out so far, by picture.
+    private static let found = Found()
+
+    /// The point already worked out for the picture under `key`, right
+    /// now: a cover or tile drawn again (scrolled back into a lazy row)
+    /// shows its picture from the first frame, already framed, instead of
+    /// fading in from its placeholder each time (Mateusz 2026-11-07: the
+    /// covers in Odkrywaj blinked while browsing).
+    nonisolated static func known(_ key: String) -> UnitPoint? {
+        found.point(key)
+    }
 
     /// Unit point in the picture, origin top-left. Waits `patience` seconds
     /// at most, then gives the middle (the answer still comes in for next
     /// time); a picture scrolled away before its turn is skipped.
     func point(in image: UIImage, key: String, patience: Double = 2.5) async -> UnitPoint {
-        if let cached = cache[key] { return cached }
+        if let cached = Self.found.point(key) { return cached }
         let job = Job()
         let operation = BlockOperation {
             let point = Self.find(in: image)
@@ -49,7 +59,21 @@ actor SubjectFocus {
     }
 
     private func remember(_ point: UnitPoint, for key: String) {
-        cache[key] = point
+        Self.found.remember(point, for: key)
+    }
+
+    /// Readable from any thread (a view's body), apart from the actor.
+    private final class Found: @unchecked Sendable {
+        private let lock = NSLock()
+        private var points: [String: UnitPoint] = [:]
+
+        func point(_ key: String) -> UnitPoint? {
+            lock.withLock { points[key] }
+        }
+
+        func remember(_ point: UnitPoint, for key: String) {
+            lock.withLock { points[key] = point }
+        }
     }
 
     /// One answer, from whichever comes first: Vision, the time limit or
