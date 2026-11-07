@@ -188,6 +188,10 @@ Tailscale. Tożsamość węzła leży w Application Support poza kopią zapasow�
 Węzeł startuje przy pierwszej potrzebie i od nowa po >20 s w tle, zmianie
 sieci albo nieudanym zapytaniu (iOS zabiera gniazda zawieszonej aplikacji).
 Przełącznik na telefonie wraca do VPN aplikacji Tailscale.
+Od 1.113.1 (2026-11-07) adresu „Spoza domu” nikt nie wpisuje: węzeł czyta
+listę urządzeń z LocalAPI, pyta każde o `/api/health` na porcie adresu
+domowego, a telefon właściciela zapisuje znaleziony adres na serwerze
+(`/api/tailnet/address`), skąd biorą go wszystkie telefony.
 **Konsekwencje.** Aplikacja jest większa o bibliotekę Go (ok. 15–25 MB),
 CI buduje ją skryptem `ios/scripts/build-tailscale.sh` (Go, wynik w cache).
 Klucz Tailscale wraca do telefonów, w przeciwieństwie do innych kluczy.

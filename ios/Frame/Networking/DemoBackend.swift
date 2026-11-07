@@ -1437,12 +1437,17 @@ actor DemoBackend: FrameBackend {
         guard key.hasPrefix("tskey-"), key.count >= 24 else {
             throw BackendError.http(status: 400, body: "to nie jest klucz Tailscale (zaczyna się od tskey-)")
         }
-        tailnetValue = TailnetKey(keySet: true, keyTail: String(key.suffix(4)), key: nil, savedAt: nil)
+        tailnetValue = TailnetKey(keySet: true, keyTail: String(key.suffix(4)), key: nil, savedAt: nil, address: tailnetValue.address)
         return tailnetValue
     }
 
     func deleteTailnetKey() async throws -> TailnetKey {
-        tailnetValue = TailnetKey(keySet: false)
+        tailnetValue = TailnetKey(keySet: false, address: tailnetValue.address)
+        return tailnetValue
+    }
+
+    func saveTailnetAddress(_ address: String) async throws -> TailnetKey {
+        tailnetValue.address = address
         return tailnetValue
     }
 

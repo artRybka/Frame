@@ -2146,8 +2146,8 @@ struct ServerSection: View {
             Card {
                 connectionLine
                 Divider()
-                // The address away from home lives with Tailscale below
-                // (`TailnetSection`): only Tailscale reaches it.
+                // The address away from home is found by the app and shown
+                // with Tailscale below (`TailnetSection`).
                 AddressField(title: "W domu", prompt: "http://homeassistant.local:8099", text: $model.serverURL)
                 Divider()
                 TokenField(text: $model.apiToken)
@@ -2424,7 +2424,7 @@ private struct LimitRow: View {
 }
 
 /// A server address with its label above.
-struct AddressField: View {
+private struct AddressField: View {
     let title: String
     let prompt: String
     @Binding var text: String
@@ -2436,7 +2436,6 @@ struct AddressField: View {
                 .keyboardType(.URL)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
-                .submitLabel(.done)
         }
     }
 }

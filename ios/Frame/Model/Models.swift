@@ -1178,6 +1178,9 @@ struct TailnetKey: Codable, Hashable, Sendable {
     var keyTail: String?
     var key: String?
     var savedAt: String?
+    /// The server's address in the tailnet, found by the owner's phone
+    /// (`AppModel.placeServer`); nil on older servers and until then.
+    var address: String?
 }
 
 /// What "Opisz bibliotekę" would ask about, and about what it costs.
