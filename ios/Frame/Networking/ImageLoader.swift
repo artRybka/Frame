@@ -465,6 +465,15 @@ struct ArtImage: View {
     @AppStorage(ArtGlow.gainKey) private var glowGain = ArtGlow.defaultGain
     /// The brighter copy of the picture shown (`brighten`).
     @State private var glowing: UIImage?
+    /// The copy with only its light parts brighter, on the way in.
+    @State private var lightParts: UIImage?
+    /// How far each copy is shown over the picture (0 to 1).
+    @State private var lightShown = 0.0
+    @State private var glowShown = 0.0
+    /// When the view first appeared: the way in runs from it.
+    @State private var appeared: ContinuousClock.Instant?
+    /// The first brighter copies are up (or can't be made).
+    @State private var glowReady = false
 
     private var glows: Bool { brighten && glowAllowed }
 
@@ -520,25 +529,42 @@ struct ArtImage: View {
         return focus
     }
 
-    /// What is drawn: the brighter copy once made (from the cache at once
-    /// when it was made before), else the picture itself.
-    private var drawn: UIImage? {
-        guard let shown else { return nil }
-        guard glows else { return shown }
-        return ArtGlow.cached(shown, gain: glowGain) ?? glowing ?? shown
+    /// Fills a box around a point, else fits or fills it plainly.
+    private var fills: Bool { (subjectFocus || focusPoint != nil) && contentMode == .fill }
+
+    @ViewBuilder
+    private func picture(_ image: UIImage) -> some View {
+        if fills {
+            FocusedFill(image: image, focus: shownFocus)
+        } else {
+            Image(uiImage: image)
+                .resizable()
+                .aspectRatio(contentMode: contentMode)
+        }
     }
+
+    /// The brighter copies over the picture, as far as the way in is.
+    @ViewBuilder
+    private func glowLayers(_ image: UIImage) -> some View {
+        if glows {
+            if let lightParts { picture(lightParts).opacity(lightShown) }
+            if let lit = glowing ?? ArtGlow.cached(image, gain: glowGain) { picture(lit).opacity(glowShown) }
+        }
+    }
+
+    /// A picture over another one (a clear placeholder: the card's original
+    /// over the tile's thumbnail) waits for its brighter copies on the way
+    /// in, not to show darker than the one under it.
+    private var waitsForGlow: Bool { glows && placeholder == .clear && !glowReady }
 
     var body: some View {
         ZStack {
-            if let image = drawn, subjectFocus || focusPoint != nil, contentMode == .fill {
-                FocusedFill(image: image, focus: shownFocus)
+            if let image = shown {
+                picture(image)
+                    .overlay { glowLayers(image) }
+                    .opacity(waitsForGlow ? 0 : 1)
                     .transition(.opacity)
-            } else if let image = drawn {
-                Image(uiImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: contentMode)
-                    .transition(.opacity)
-                    .id(crossfade ? ObjectIdentifier(image) : nil)
+                    .id(crossfade && !fills ? ObjectIdentifier(image) : nil)
             } else {
                 Rectangle()
                     .fill(placeholder.gradient)
@@ -559,15 +585,14 @@ struct ArtImage: View {
         .animation(.easeOut(duration: 0.35), value: image != nil)
         .allowedDynamicRange(glows ? .high : nil)
         .task(id: GlowJob(image: shown.map(ObjectIdentifier.init), on: glows, gain: glowGain)) {
+            let start = appeared ?? .now
+            if appeared == nil { appeared = start }
             guard glows, let source = shown else {
                 glowing = nil
+                lightParts = nil
                 return
             }
-            if ArtGlow.cached(source, gain: glowGain) != nil { return }
-            // The last brighter copy stays up until this one is ready.
-            if let lit = await ArtGlow.image(source, gain: glowGain), !Task.isCancelled {
-                withAnimation(.easeInOut(duration: 0.25)) { glowing = lit }
-            }
+            await glow(source, since: start)
         }
         .task(id: Round(ref: ref, picture: picture, retries: model.pictureRetries, switches: model.serverSwitches)) {
             await load()
@@ -576,6 +601,54 @@ struct ArtImage: View {
 
     private enum Outcome {
         case loaded, failed, missing, cancelled
+    }
+
+    /// Makes the brighter copies of `source` and shows them: in the first
+    /// second the view is up one after another, as `ArtGlow.WayIn` has
+    /// them; later (another copy, another gain) at once. The last brighter
+    /// copy stays up until the new one is ready.
+    private func glow(_ source: UIImage, since start: ContinuousClock.Instant) async {
+        func seconds() -> Double { (ContinuousClock.now - start) / .seconds(1) }
+        let light = ArtGlow.WayIn.light
+        let whole = ArtGlow.WayIn.whole
+        let wayIn = !glowReady && seconds() < whole.upperBound
+        let made = await ArtGlow.copies(source, gain: glowGain, lightParts: wayIn)
+        guard !Task.isCancelled else { return }
+        guard let made else {
+            withAnimation(.easeOut(duration: 0.25)) { glowReady = true }
+            return
+        }
+        guard wayIn, let parts = made.light else {
+            lightParts = nil
+            withAnimation(.easeInOut(duration: 0.25)) {
+                glowing = made.whole
+                glowShown = 1
+                glowReady = true
+            }
+            return
+        }
+        var t = seconds()
+        glowing = made.whole
+        lightParts = parts
+        lightShown = ArtGlow.WayIn.shown(light, at: t)
+        glowShown = ArtGlow.WayIn.shown(whole, at: t)
+        withAnimation(.easeOut(duration: 0.25)) { glowReady = true }
+        if t < light.lowerBound {
+            try? await Task.sleep(for: .seconds(light.lowerBound - t))
+            t = light.lowerBound
+        }
+        if t < light.upperBound, !Task.isCancelled {
+            withAnimation(.easeInOut(duration: light.upperBound - t)) { lightShown = 1 }
+            try? await Task.sleep(for: .seconds(light.upperBound - t))
+            t = light.upperBound
+        }
+        guard !Task.isCancelled else { return }
+        let rest = max(whole.upperBound - max(t, whole.lowerBound), 0.2)
+        withAnimation(.easeInOut(duration: rest)) { glowShown = 1 }
+        try? await Task.sleep(for: .seconds(rest))
+        guard !Task.isCancelled else { return }
+        // All of it is brighter now, over the light copy: that one goes.
+        lightParts = nil
     }
 
     private func load() async {

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.119.1
+
+- Jaśniejsze dzieła na karcie dzieła i w studium wchodzą płynnie, w około
+  sekundę: najpierw obraz jest zwykły, potem rozjaśniają się jego jasne
+  partie, a na końcu całe dzieło równo, z siłą ustawioną w Konfiguracji.
+
 ## 1.119.0
 
 - Kafelek „Teraz prezentowane” w Playlistach pokazuje jedno dzieło naraz
