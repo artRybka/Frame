@@ -409,3 +409,29 @@ def test_a_429_is_waited_out_as_the_host_asks() -> None:
     assert retry_after(plain) is None
     dated = httpx.Response(429, headers={"retry-after": "Wed, 21 Oct 2015 07:28:00 GMT"})
     assert retry_after(dated) == 0.0
+
+
+def test_the_library_of_congress_is_left_alone_for_its_hour() -> None:
+    """loc.gov blocks for an hour and may start counting again on a request
+    meanwhile (2026-11-07, the home address challenged): no look a minute,
+    and a 429 without Retry-After counts as that hour too."""
+    from frame_server.library.hosts import LONG_BLOCKS, PACE
+
+    assert PACE["www.loc.gov"] >= 3.0  # 20 a minute at most
+    assert PACE["tile.loc.gov"] >= 0.4  # 150 a minute at most
+    guard, clock = _guard({"www.loc.gov": 0.0})
+    answer = [httpx.Response(403, headers=CHALLENGE)]
+    sent: list[str] = []
+    url = "https://www.loc.gov/photos/?fo=json"
+    with _client(guard, answer, sent) as http:
+        with pytest.raises(Resting):
+            http.get(url)
+        assert guard.resting("www.loc.gov") == pytest.approx(LONG_BLOCKS["www.loc.gov"])
+        clock.now += PROBE_EVERY
+        with pytest.raises(Resting):
+            http.get(url)
+        assert len(sent) == 1  # no look meanwhile
+        clock.now += LONG_BLOCKS["www.loc.gov"]
+        answer[0] = httpx.Response(429)
+        assert http.get(url).status_code == 429
+        assert guard.resting("www.loc.gov") == pytest.approx(LONG_BLOCKS["www.loc.gov"])
