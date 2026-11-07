@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.118.3
+
+- Okładka „Ukryte” w Playlistach ożyła: rozmyte dzieła powoli dryfują za
+  szybą, a gdy przechylasz telefon, przesuwają się pod nią i po szkle
+  przechodzi odblask. Szron jest cieńszy, więc kolory są żywsze, a treść
+  nadal rozmyta. Krawędź daje szkło iOS, z niego jest też plakietka z okiem.
+  Z włączonym „Ogranicz ruch” okładka stoi.
+
+## 1.118.2
+
+- Obraz w Studium dnia w Odkrywaj leży odrobinę głębiej niż karta:
+  przesuwa się delikatnie, gdy obracasz telefon w dłoni, i zostaje lekko
+  z tyłu przy przewijaniu. Przy „Ogranicz ruch” stoi w miejscu.
+
+## 1.118.1
+
+- Konfiguracja → Diagnostyka ma nową sekcję „Zapytania do źródeł”: ile
+  zapytań serwer wysłał do każdego muzeum dziś i w ostatnich 7 dniach,
+  ile źródło odrzuciło (blokada przed robotami, „za dużo zapytań”, błędy),
+  ile serwer sam wstrzymał, bo źródło odpoczywało albo wyczerpał się
+  limit, oraz zużycie limitów Paris Musées, Smithsonian, Openverse
+  i WikiArt. Liczniki z tygodnia przeżywają aktualizację serwera.
+
 ## 1.118.0
 
 - Pisanie studium dzieła ma cztery kroki zamiast trzech: Źródła, Tekst,

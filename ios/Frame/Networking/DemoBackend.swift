@@ -1367,6 +1367,30 @@ actor DemoBackend: FrameBackend {
         )
     }
 
+    func sourceRequests() async throws -> SourceRequests {
+        typealias Counts = SourceRequests.Counts
+        func counts(_ sent: Int, walled: Int = 0, throttled: Int = 0, failed: Int = 0, refused: Int = 0) -> Counts {
+            Counts(
+                sent: sent, walled: walled, throttled: throttled, failed: failed, refused: refused,
+                bytes: Int64(sent) * 180_000
+            )
+        }
+        func row(_ name: String?, _ today: Counts, _ week: Counts, quota: SourceRequests.Quota? = nil, resting: Double = 0) -> SourceRequests.Row {
+            SourceRequests.Row(name: name, today: today, week: week, quota: quota, resting: resting)
+        }
+        return SourceRequests(days: 7, sources: [
+            row("Wikimedia", counts(412, throttled: 3), counts(2_904, throttled: 11)),
+            row("The Metropolitan Museum of Art", counts(188), counts(1_327, walled: 4, refused: 36), resting: 0),
+            row("Art Institute of Chicago", counts(96), counts(702)),
+            row("Rijksmuseum", counts(41), counts(388, failed: 2)),
+            row("Paris Musées", counts(23), counts(240), quota: SourceRequests.Quota(spent: 23, of: 1000, background: 600, hours: 24)),
+            row("Library of Congress", counts(4, throttled: 1, refused: 6), counts(52, throttled: 1, refused: 6), resting: 2_400),
+            row("Louvre", counts(0), counts(0)),
+            row("J. Paul Getty Museum", counts(0), counts(0)),
+            row(nil, counts(12), counts(80)),
+        ])
+    }
+
     func saveLibraryLimits(_ update: LibraryStorageUpdate) async throws -> LibraryStorage {
         if let mb = update.catalogueMb { catalogueLimitMb = mb == 1000 ? nil : mb }
         if let mb = update.originalsMb { originalsLimitMb = mb == 3000 ? nil : mb }

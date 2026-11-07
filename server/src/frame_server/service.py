@@ -205,6 +205,8 @@ class FrameService:
         self.panel_config = PanelConfigStore(settings, self.library)
         # Quotas of the sources that have one (library/policy.py) outlive a restart.
         host_guard.keep_budgets(settings.data_dir / "hosts" / "quotas.json")
+        # A week of requests by source, for Konfiguracja → Diagnostyka.
+        host_guard.keep_tally(settings.data_dir / "hosts" / "tally.json")
         self.images = ImageCache(settings.data_dir / "library", museum_client)
         self.images.mirrors["europeana"] = europeana_mirrors
         self.images.mirrors["loc"] = loc_mirrors

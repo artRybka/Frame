@@ -72,6 +72,9 @@ final class AppModel {
     /// The library's size on the server; loaded when Konfiguracja opens
     /// (measuring is slow on a NAS), nil on an older server.
     var libraryStorage: LibraryStorage?
+    /// Requests to each art source lately (Konfiguracja → Diagnostyka); nil
+    /// until loaded or on an older server.
+    var sourceRequests: SourceRequests?
     var serverUpdate: ServerUpdate?
     /// "Aktualizuj serwer": waiting for the server to come back as the new version.
     var updatingServer = false
@@ -279,6 +282,7 @@ final class AppModel {
         panelConfig = nil
         panelApp = nil
         libraryStorage = nil
+        sourceRequests = nil
         serverUpdate = nil
         aiSettings = nil
         sourceKeys = []
@@ -1194,6 +1198,10 @@ final class AppModel {
             return
         }
         await checkPanel(saved: "Przywrócono ustawienia z serwera")
+    }
+
+    func loadSourceRequests() async {
+        sourceRequests = try? await backend.sourceRequests()
     }
 
     func loadLibraryStorage() async {

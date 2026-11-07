@@ -325,6 +325,7 @@ struct SettingsPageView: View {
                 PanelCertificatesSection(app: app)
             }
         case .diagnostics:
+            SourceRequestsSection()
             TailnetSection(parts: [.log])
             NotificationsSection(parts: [.test])
         }
