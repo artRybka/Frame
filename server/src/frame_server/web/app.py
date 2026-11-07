@@ -526,17 +526,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/api/debug/hosts", dependencies=[Depends(require_owner)])
     def host_tally() -> dict[str, Any]:
-        """Today's requests to each source's hosts (sent, turned away,
-        throttled, refused while resting or over quota, bytes) and the
-        quotas spent (library/policy.py)."""
+        """The kept days' requests to each host (sent, turned away,
+        throttled, failed, refused while resting or over quota, bytes) and
+        the quotas spent (library/policy.py)."""
         from ..library.hosts import guard
 
         return {
             "today": guard.tally(),
+            "days": guard.days(),
             "quotas": {
                 host: {"spent": guard.spent(host), "of": b.count, "background": b.background}
                 for host, b in guard.budgets.items()
             },
         }
+
+    @app.get("/api/diagnostics/sources", dependencies=[Depends(require_owner)])
+    def source_requests() -> dict[str, Any]:
+        """Konfiguracja → Diagnostyka (Mateusz 2026-11-07): requests to each
+        source today and over the last days, the refusals, quotas and rests."""
+        from ..library.hosts import TALLY_DAYS, guard
+
+        return {"days": TALLY_DAYS, "sources": guard.by_source()}
 
     return app

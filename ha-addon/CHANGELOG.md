@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.118.1
+
+- Konfiguracja → Diagnostyka ma nową sekcję „Zapytania do źródeł”: ile
+  zapytań serwer wysłał do każdego muzeum dziś i w ostatnich 7 dniach,
+  ile źródło odrzuciło (blokada przed robotami, „za dużo zapytań”, błędy),
+  ile serwer sam wstrzymał, bo źródło odpoczywało albo wyczerpał się
+  limit, oraz zużycie limitów Paris Musées, Smithsonian, Openverse
+  i WikiArt. Liczniki z tygodnia przeżywają aktualizację serwera.
+
 ## 1.118.0
 
 - Pisanie studium dzieła ma cztery kroki zamiast trzech: Źródła, Tekst,
