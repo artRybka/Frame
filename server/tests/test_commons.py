@@ -518,3 +518,96 @@ def test_wikimedia_files_no_app_reads_come_rendered() -> None:
     assert urls["Work 1"].endswith("/3840px-Mondrian_SVG_kleeblatt.svg.png")
     assert urls["Work 2"].endswith("/lossy-page1-3840px-Wilki.tif.jpg")
     assert urls["Work 3"] == pages["3"]["imageinfo"][0]["url"]
+
+
+def _photo(
+    n: int,
+    date: str,
+    licence: str = "Public domain",
+    size: tuple[int, int] = (3600, 2700),
+    categories: str = "Photographs by Eugène Atget",
+    title: str = "",
+) -> dict:
+    info = {
+        "url": f"https://upload/{n}.jpg",
+        "width": size[0],
+        "height": size[1],
+        "extmetadata": {
+            "ObjectName": {"value": title or f"Photo {n}"},
+            "DateTimeOriginal": {"value": date},
+            "LicenseShortName": {"value": licence},
+            "Categories": {"value": categories},
+        },
+    }
+    return {"pageid": n, "title": f"File:{n}.jpg", "imageinfo": [info]}
+
+
+def test_old_photographs_come_from_all_of_commons() -> None:
+    """Fotografia (Mateusz 2026-11-07): files described as photographs, old,
+    in the public domain and big enough for the frame; today's snapshots,
+    small scans of cabinet cards and free licences are left out."""
+    pages = {
+        "1": _photo(1, "1899"),
+        "2": _photo(2, "2019", licence="CC BY-SA 4.0", categories="Taken with Canon EOS 5D"),
+        "3": _photo(3, "ca. 1890", size=(396, 600)),
+        "4": _photo(4, "1952"),
+        "5": _photo(5, "", categories="Photographs by unknown"),
+        "6": _photo(6, "1890–1900", categories="Photochrom prints collection (Holland)"),
+    }
+    sent: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        sent.append(request)
+        return httpx.Response(200, json={"query": {"pages": pages}})
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http:
+        commons = WikimediaCommons(http, private_use=True)
+        _, items = commons.search_kind("Paris", "photograph")
+        assert [i.title for i in items] == ["Photo 1", "Photo 6"]
+        assert {i.classification for i in items} == {"Photograph"}
+        assert [i.medium for i in items] == ["Photograph", "Photochrom print"]
+        assert "hastemplate:Photograph" in sent[0].url.params["gsrsearch"]
+        # Commons says nothing of sculpture: not asked at all.
+        assert commons.search_kind("Rodin", "sculpture") == (0, [])
+        assert len(sent) == 1
+        # Without Fotografia: works of art only, as before.
+        commons.search("Paris")
+        assert "hastemplate:Artwork" in sent[-1].url.params["gsrsearch"]
+
+
+def test_photo_categories_are_read_as_photographs() -> None:
+    """ "Pierwsze kolory" draws from the Library of Congress's collections as
+    Commons keeps them: a category or a category tree (deepcat:)."""
+    pages = {
+        "1": _photo(1, "1905–1915", categories="Photographs by Sergey Prokudin-Gorsky"),
+        "2": _photo(
+            2, "1942", categories="Color photographs from the Farm Security Administration"
+        ),
+    }
+    sent: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        sent.append(request)
+        return httpx.Response(200, json={"query": {"pages": pages}})
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http:
+        commons = WikimediaCommons(http)
+        _, items = commons.search('deepcat:"Photographs by Sergey Prokudin-Gorsky"')
+        assert sent[-1].url.params["gsrsearch"] == (
+            'deepcat:"Photographs by Sergey Prokudin-Gorsky" filetype:bitmap'
+        )
+        # A chosen collection: its 1940s colour slides too.
+        assert [(i.title, i.medium) for i in items] == [
+            ("Photo 1", "Three-colour photograph"),
+            ("Photo 2", "Kodachrome transparency"),
+        ]
+        _, items = commons.search(
+            "Category:Color photographs from the Farm Security Administration"
+        )
+        assert sent[-1].url.params["gcmtitle"].startswith("Category:Color photographs")
+        # A painting category is read as before.
+        _, items = commons.search("Category:Paintings by Claude Monet")
+        assert [i.classification for i in items] == ["Painting"]  # the snapshot is left out
+        # A photograph shown in a search is found again by its id.
+        assert commons.fetch("1") is not None
+        assert commons.fetch("1").classification == "Photograph"
