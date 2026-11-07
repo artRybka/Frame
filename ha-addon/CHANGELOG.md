@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.113.1
+
+- „Pierwsze kolory” pokazują tylko zdjęcia z prawdziwych procesów
+  barwnych (autochromy, fotochromy, kolorowe płyty Prokudina-Gorskiego,
+  slajdy). Ręcznie malowane albumy i portrety już tam nie trafiają.
+  Doszły fotochromy z Cleveland i autochromy z Art Institute of Chicago.
+- Serwer pyta Library of Congress rzadziej, a cienkie karty Sztuk innych
+  dopełnia tylko w nocy i po trochu. Rano 7 listopada Library of Congress
+  i Met zablokowały domowy adres, najpewniej po zbyt wielu zapytaniach.
+
 ## 1.113.0
 
 - Konfiguracja to teraz krótka lista jak w Ustawieniach iOS: Na co dzień,
