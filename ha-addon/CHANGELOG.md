@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.118.4
+## 1.118.5
 
 - Okładka „Ukryte” nie ma już jasnych pasów u góry i u dołu, a odblask
   przy przechyle telefonu jest słabszy.
