@@ -823,11 +823,15 @@ class Importer:
         count: int,
         job: Job,
         fits: Callable[[Item], bool],
+        most: int = 60,
     ) -> None:
         """Add up to ``count`` works (``pooled``) of one technique of "Sztuki
         inne" that a theme's ``searches`` find and that ``fits`` (its rules,
         once analysed: "Pierwsze kolory" wants colour): a card the catalogue
-        has too few works of."""
+        has too few works of. ``most`` museum works are looked at, at most:
+        each costs the museum requests (2026-11-07: the Library of Congress
+        and the Met turned the home address away after a morning's
+        catalogue round)."""
         offered = self.asked_sources(TECHNIQUE_KINDS[category])
         with self.http() as http:
             streams = [
@@ -843,6 +847,7 @@ class Importer:
                 after=fits,
                 pooled=True,
                 terms=[category],
+                most=most,
             )
 
     def discover_all(
@@ -865,14 +870,16 @@ class Importer:
         after: Callable[[Item], bool],
         pooled: bool = False,
         terms: list[str] | None = None,
+        most: int | None = None,
     ) -> None:
         """Take turns between ``streams`` until ``count`` new works pass
         ``before`` (on museum data) and ``after`` (once analysed); pages of
         manuscripts, photographs, sculpture and decorative arts only when
-        ``terms`` ask for them."""
+        ``terms`` ask for them; ``most``: museum works looked at, at most."""
         job.total = count
         drawn = 0
-        while streams and job.done < count and drawn < max(count * 20, 200):
+        most = max(count * 20, 200) if most is None else most
+        while streams and job.done < count and drawn < most:
             for stream in list(streams):
                 if job.done >= count:
                     break

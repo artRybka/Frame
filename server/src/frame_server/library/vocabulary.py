@@ -41,6 +41,12 @@ SCULPTURE = "technique:sculpture"
 DECORATIVE = "technique:decorative"
 #: Works their museum counts among its most important (``Item.highlight``).
 HIGHLIGHT = "tag:highlight"
+#: Photographs in colour from colour processes (autochromes, photochroms,
+#: three-colour plates, colour slides): not hand-coloured ones, which a
+#: colour check alone takes too (Mateusz 2026-11-07: "Pierwsze kolory"
+#: showed painted album pages and portraits). Kept out of :data:`TERMS`
+#: (not a suggestion in Szukaj); :func:`term` knows it.
+EARLY_COLOUR = "tag:early-colour"
 #: Works that are not pictures: shown only when one of these is asked for.
 OBJECT_CATEGORIES = (MANUSCRIPTS, PHOTOGRAPHY, SCULPTURE, DECORATIVE)
 
@@ -461,6 +467,19 @@ TERMS: list[Term] = [
 ]
 
 BY_KEY = {term.key: term for term in TERMS}
+BY_KEY[EARLY_COLOUR] = _t(
+    EARLY_COLOUR,
+    "Wczesna fotografia barwna",
+    "autochrome*",
+    "photochrom*",
+    "three-color",
+    "three-colour",
+    "kodachrome",
+    "dufaycolor",
+    "agfacolor",
+    "slide : color",
+    "transparency : color",
+)
 _YEARS = re.compile(r"^years:(\d{1,4})?-(\d{1,4})?$")
 
 #: Pages of manuscripts, codices and albums: mostly script in a narrow

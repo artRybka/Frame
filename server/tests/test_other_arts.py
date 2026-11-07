@@ -13,6 +13,7 @@ from test_pools import _fake, _wait, museums  # noqa: F401  (fixture)
 
 from frame_server.library import Item, Job, PlaylistRules
 from frame_server.library.museums import MUSEUMS, Discovery
+from frame_server.library.repo import matches
 from frame_server.library.themes import (
     COVER_MIN,
     GROUPS,
@@ -32,7 +33,7 @@ from frame_server.library.vocabulary import (
     object_category,
     term,
 )
-from frame_server.player import OTHER_ART_SHARES
+from frame_server.player import OTHER_ART_SHARES, THIN_CARDS_A_NIGHT, THIN_DRAWS
 
 #: A museum's type for each kind it is asked for.
 TYPES = {
@@ -172,16 +173,48 @@ def test_thin_cards_of_other_arts_are_filled_first(museums, monkeypatch) -> None
                 )
             )
     assert colours not in dict(thin_other_art(library))
+    # A hand-coloured album page is no colour process (2026-11-07: "The
+    # Madame B Album" and painted portraits on the card).
+    painted = _work(
+        800,
+        title="The Madame B Album",
+        classification="Photograph",
+        medium="Collage of albumen silver prints with watercolor",
+        year=1870,
+        color_tags=["colorful"],
+    )
+    assert not matches(painted, colours.rules())
 
-    asked: list[tuple[str, int]] = []
+    asked: list[tuple[str, int, int]] = []
 
-    def collect(category, searches, count, job, fits) -> None:
-        asked.append((category, count))
+    def collect(category, searches, count, job, fits, most) -> None:
+        asked.append((category, count, most))
         assert list(searches)
 
     monkeypatch.setattr(service.importer, "collect_searched", collect)
     monkeypatch.setattr(player, "other_art_room", lambda fresh=False: {})  # all full
     player._add_other_art(Job(id="test", description="catalogue"))
-    assert asked and all(count <= COVER_MIN for _, count in asked)
-    assert {c for c, _ in asked} <= set(OBJECT_CATEGORIES)
-    assert len(asked) == len(thin_other_art(library))
+    assert not asked  # by day: never (it brought bot walls down, 2026-11-07)
+    player._add_other_art(Job(id="test", description="catalogue"), thin=True)
+    assert len(asked) == THIN_CARDS_A_NIGHT < len(thin_other_art(library))
+    assert all(count <= COVER_MIN and most == THIN_DRAWS for _, count, most in asked)
+    assert {c for c, _, _ in asked} <= set(OBJECT_CATEGORIES)
+
+
+def test_museum_works_of_a_colour_process_only() -> None:
+    from frame_server.library.themes import search_page
+
+    colours = next(t for t in OTHER_ART_THEMES if t.key == "first-colours")
+    found = [
+        _work(1, classification="Photograph", medium="1 photograph : autochrome, color"),
+        _work(2, classification="Photograph", medium="1 slide : color."),
+        _work(3, classification="Photograph", medium="1 photographic print (mounted in album)"),
+        _work(4, classification="Photograph", medium="Albumen print with applied colour"),
+    ]
+
+    class Asked:
+        def search(self, source, query, limit, page):
+            return 4, found
+
+    kept, total = search_page(Asked(), colours, 1)  # type: ignore[arg-type]
+    assert total == 4 and [i.id for i in kept] == ["aic:1", "aic:2"]

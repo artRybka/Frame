@@ -25,6 +25,7 @@ from frame_server.library.themes import (
 )
 from frame_server.library.vocabulary import (
     BY_KEY,
+    EARLY_COLOUR,
     TERMS,
     artist_matches,
     category_fits,
@@ -401,7 +402,8 @@ def test_theme_playlists_and_terms(museums, monkeypatch) -> None:  # noqa: F811
             "/api/library/items", params={"term": ["subject:birds"], "kind": ["artwork"]}
         ).json()
         assert catalogue["total"] == 0
-        assert len(client.get("/api/vocabulary").json()) == len(BY_KEY)
+        keys = {t["key"] for t in client.get("/api/vocabulary").json()}
+        assert keys == set(BY_KEY) - {EARLY_COLOUR}  # a card's mark, no suggestion
 
 
 def test_discover_does_not_wait_for_slow_work(museums, monkeypatch) -> None:  # noqa: F811

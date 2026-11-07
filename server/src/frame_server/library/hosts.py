@@ -81,7 +81,9 @@ PACE = {
     "collections.louvre.fr": 0.5,
     # Searches: at most 20 in 10 s and 80 a minute, or an hour's block
     # (loc.gov/apis, "Working within limits"); pictures without rules.
-    "www.loc.gov": 1.0,
+    # Every 2 s, far below: a pace of 1 s and a morning's catalogue round
+    # came before a "403 challenge" for the home address (2026-11-07).
+    "www.loc.gov": 2.0,
     "tile.loc.gov": 0.25,
     # No published rules; the site's own search, gently.
     "www.getty.edu": 0.5,
