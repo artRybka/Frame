@@ -10,7 +10,7 @@ from PIL import Image
 
 from frame_server.imaging import RenderSettings, render_multi, render_original
 from frame_server.imaging.grids import GRIDS, MAX_PHOTOS, MIN_PHOTOS, choose, grid_rects
-from frame_server.imaging.layout import Fit, Orientation
+from frame_server.imaging.layout import Fit, Orientation, mm
 from frame_server.library import ItemKind, Look, Playlist, PlaylistKind
 from frame_server.schedule import FrameSettings, Presentation
 
@@ -207,3 +207,11 @@ def test_preview_of_a_board_with_art_on_the_frame(service) -> None:
     assert {i.id for i in board} == {p.id for p in [*photos, sent]}
     assert [i.id for i in player.preview_board(photos[0], settings)] == [i.id for i in board]
     assert player.state.queue == []  # nothing taken
+
+
+def test_multi_margin_narrows_down_to_10_mm() -> None:
+    """Every step of the app's slider shows on the frame, from 10 mm up."""
+    grid = GRIDS[3][0]
+    outer = {w: grid_rects(grid, (2560, 1440), mm(w))[0][0] for w in (0, 5, 10, 15)}
+    assert outer[0] == outer[5] == outer[10] < outer[15]
+    assert grid_rects(grid, (2560, 1440), mm(10)) == grid_rects(grid, (2560, 1440), 0)

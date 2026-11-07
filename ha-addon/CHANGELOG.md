@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.121.3
+
+- Zdjęcia: passe-partout zaczyna się od 10 mm, przy wyborze Passe-partout
+  i Multi oraz przy wysyłaniu zdjęcia na ramkę (wcześniej 20 i 30 mm).
+  Multi można zwęzić do 10 mm, a ramka pokazuje dokładnie to, co suwak;
+  wcześniej poniżej ok. 12 mm nic się nie zmieniało. Suwak w Multi zaczyna
+  się od 10 mm, krok zostaje 5 mm.
+
 ## 1.121.2
 
 - Opis: passe-partout można zwęzić do 5 mm, a ramka i podgląd pokazują

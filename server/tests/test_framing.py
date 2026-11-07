@@ -19,6 +19,7 @@ from frame_server.imaging.layout import (
     Orientation,
     crop_box,
     detail_zoom,
+    mm,
     plan_layout,
     resolve_fit,
     whole,
@@ -470,7 +471,7 @@ def test_photo_sent_once_has_its_own_look(service) -> None:
     }
     with TestClient(app) as client:
         item = client.post("/api/library/upload", **upload).json()
-        assert item["look"] == {"fit": "fit", "mat": "cream", "margin": 0.05}
+        assert item["look"] == {"fit": "fit", "mat": "cream", "margin": mm(10)}
         stored = svc.library.get(item["id"])
         assert not svc.player.multi(stored, svc.player.settings)
         layout = svc.player.render_settings(stored, svc.player.settings)

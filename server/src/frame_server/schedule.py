@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .imaging.grids import MAX_PHOTOS, MIN_PHOTOS
-from .imaging.layout import Fit, Orientation
+from .imaging.layout import Fit, Orientation, mm
 
 
 class Presentation(BaseModel):
@@ -80,7 +80,8 @@ class FrameSettings(BaseModel):
     # offers the other way, so older settings with 270 come back to 90.
     rotation: Literal[90, 270] = 90
     art: Presentation = Field(default_factory=Presentation)
-    photo: Presentation = Field(default_factory=lambda: Presentation(fit=Fit.FILL, margin=0.0))
+    # Photos in a passe-partout or Multi start with a 10 mm one.
+    photo: Presentation = Field(default_factory=lambda: Presentation(fit=Fit.FILL, margin=mm(10)))
     timezone: str = "Europe/Warsaw"
     status_poll_minutes: int = Field(15, ge=0, le=1440)  # 0 = only on demand
     # The frame is only seen at home: also accept works that are free to use

@@ -20,12 +20,12 @@ import random
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from .layout import AutoCrop, Crop, Fit, Plan, Rect, Window, crop_box
+from .layout import AutoCrop, Crop, Fit, Plan, Rect, Window, crop_box, mm
 
 MIN_PHOTOS = 2
 MAX_PHOTOS = 8
 GAP_SHARE = 0.55  # the gap between windows, as a share of the outer margin
-MIN_MARGIN = 0.03  # outer margin, fraction of the canvas's short side
+MIN_MARGIN = mm(10)  # outer margin, fraction of the short side: the app's slider starts there
 NEAR_BEST = 1.15  # automatic: grids this close to the best fit are equally good
 
 
