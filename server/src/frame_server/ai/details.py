@@ -8,11 +8,11 @@ with the whole picture, its title and its text: a box that shows what it
 is about stays, one that misses is drawn again. One short question more;
 a page whose check fails keeps its boxes as they were.
 
-Pages get it only when the owner asks ("Popraw detale", the held header
-"Detale"; Mateusz 2026-11-03: "Na żądanie, przytrzymaniem"):
-:class:`MendJob`, ahead of the background. New pages were checked as they
-were written until 1.94.1 (Mateusz 2026-11-04: boxes usually hit, the check
-is not worth its cost).
+New pages are checked as they are written (``DailyJob.revise``), as they
+were until 1.94.1 and again since Mateusz found their details missing
+(2026-11-07). Pages written in between get it when the owner asks ("Popraw
+detale", the held header "Detale"; Mateusz 2026-11-03: "Na żądanie,
+przytrzymaniem"): :class:`MendJob`, ahead of the background.
 """
 
 from __future__ import annotations
@@ -113,10 +113,12 @@ def question(details: list[dict[str, Any]], img: Image.Image) -> dict[str, Any]:
         cut.thumbnail((CUT_SIDE, CUT_SIDE), Image.Resampling.LANCZOS)
         about = _text(d.get("title"), 60)
         text = _text(d.get("text"), 300)
+        where = _text(d.get("where"), 80)
+        place = f"\nGdzie: {where}" if where else ""
         content += [
             {
                 "type": "text",
-                "text": f"WYCINEK {n} „{about}”: {text}\nRamka: x={x} y={y} w={w} h={h}",
+                "text": f"WYCINEK {n} „{about}”: {text}{place}\nRamka: x={x} y={y} w={w} h={h}",
             },
             image_block(cut),
         ]
