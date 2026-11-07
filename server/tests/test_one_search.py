@@ -182,3 +182,47 @@ def test_an_artist_search_looks_further_for_their_works(tmp_path) -> None:
     assert Mentions.asked == [1, 2]
     assert len(items) == 8 and {i.artist for i in items} == {"Vincent van Gogh"}
     assert not failed and after == 3
+
+
+def test_a_search_hands_on_the_works_that_do_not_fit(tmp_path) -> None:
+    # Asked for already: the catalogue may still want them (Mateusz,
+    # 2026-11-07, "szkoda byłoby tracić te odpytania").
+    saved = dict(MUSEUMS)
+    MUSEUMS.clear()
+    MUSEUMS.update(aic=Mentions)
+    Mentions.asked = []
+    spare: list[Item] = []
+    try:
+        library = Library(tmp_path / "lib.db")
+        importer = Importing(library, None, None)  # type: ignore[arg-type]
+        search = MuseumSearch.of(PlaylistRules(artists=["Vincent van Gogh"]), limit=8)
+        _total, items, _failed, _after = search.ask(importer, ["aic"], 1, spare.extend)
+    finally:
+        MUSEUMS.clear()
+        MUSEUMS.update(saved)
+    assert {i.artist for i in items} == {"Vincent van Gogh"}
+    assert len(spare) == 8 and {i.artist for i in spare} == {"Armand Guillaumin"}
+
+
+def test_works_not_shown_join_the_catalogue_after_the_shown_ones(tmp_path) -> None:
+    library = Library(tmp_path / "lib.db")
+
+    class Cache:
+        def thumb_path(self, item: Item):  # type: ignore[no-untyped-def]
+            return tmp_path / f"{item.source_id}.jpg"
+
+    importer = Importing(library, Cache(), None)  # type: ignore[arg-type]
+    taken: list[list[str]] = []
+    importer._start_searched = lambda: None  # type: ignore[method-assign]
+    importer._take = lambda streams, *a, **k: taken.append([i.id for i in streams[0]])  # type: ignore[method-assign]
+    for n in (1, 2, 4):
+        (tmp_path / f"{n}.jpg").write_bytes(b"jpeg")
+    # Only those whose thumbnail is here: they cost no request.
+    importer.keep_spare([_item(1), _item(2), _item(3)])
+    # Shown meanwhile: it goes first, and once.
+    importer.keep_searched([_item(4), _item(2)], found="s:1")
+    importer._take_searched()
+    assert taken == [["aic:4", "aic:2"], ["aic:1"]]
+    # Seen once, not queued again.
+    importer.keep_spare([_item(1), _item(4)])
+    assert not importer._spare

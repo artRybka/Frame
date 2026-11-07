@@ -7,7 +7,7 @@ for it as the museum judged them (:func:`repo.matches`)."""
 from __future__ import annotations
 
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 
 from .importer import Importer, Job, span
@@ -124,13 +124,20 @@ class MuseumSearch:
         return self.spec.fits(item) and category_fits(item, terms) and search_fits(item, self.rules)
 
     def pages(
-        self, importer: Importer, keys: list[str], page: int
+        self,
+        importer: Importer,
+        keys: list[str],
+        page: int,
+        spare: Callable[[list[Item]], None] | None = None,
     ) -> Iterator[tuple[int, list[Item], list[str], int | None]]:
         """Works of ``keys`` from ``page`` on, a museum page at a time:
         (total, items, museums that failed, the page to ask next). Museums
         don't know colours, so with colours their works are judged by their
         thumbnails, pages deep, until ``limit`` fit or time runs out; with
-        artists, a few pages, for the works by them."""
+        artists, a few pages, for the works by them. ``spare`` gets the works
+        a page brought that don't fit (another colour, other years, another
+        artist): asked for already, they may still do for the catalogue
+        (Mateusz 2026-11-07, "szkoda byłoby tracić te odpytania")."""
         rules = self.rules
         colors = rules.colors
         asked = COLOR_PAGE if colors else self.limit
@@ -154,6 +161,9 @@ class MuseumSearch:
                 count, items, failed = importer.discover_all(self.spec, asked, at, keys)
             total = total or count
             found = [i for i in importer.in_colors(items, colors) if self.fits(i)]
+            if spare is not None and len(found) < len(items):
+                chosen = {i.id for i in found}
+                spare([i for i in items if i.id not in chosen])
             # The app lays its grid out by the works' shapes.
             importer.measure(found)
             fitting += len(found)
@@ -166,10 +176,14 @@ class MuseumSearch:
                 return
 
     def ask(
-        self, importer: Importer, keys: list[str], page: int
+        self,
+        importer: Importer,
+        keys: list[str],
+        page: int,
+        spare: Callable[[list[Item]], None] | None = None,
     ) -> tuple[int, list[Item], list[str], int | None]:
         """All of :meth:`pages` at once."""
-        answers = list(self.pages(importer, keys, page))
+        answers = list(self.pages(importer, keys, page, spare))
         total, _, failed, at = answers[-1]
         return total, [i for _, items, _, _ in answers for i in items], failed, at
 

@@ -9,7 +9,7 @@ import logging
 import threading
 import time
 from collections import Counter, OrderedDict
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from datetime import date
 from typing import Annotated
 from weakref import WeakKeyDictionary
@@ -971,6 +971,20 @@ def keep_found(svc: FrameService, search: MuseumSearch, found: list[RemoteItem])
     svc.player.keep_searched((r.item for r in found if not r.in_library), found=key)
 
 
+def keeper(svc: FrameService) -> Callable[[list[Item]], None]:
+    """Where a search's works that don't fit go (:meth:`MuseumSearch.pages`):
+    into the catalogue after the shown ones, but not those the owner hid
+    or that have no picture (Mateusz 2026-11-07: "szkoda byłoby tracić te
+    odpytania")."""
+
+    def keep(items: list[Item]) -> None:
+        gone = svc.images.gone_ids()
+        hidden = svc.library.hidden()
+        svc.player.keep_spare(i for i in items if i.id not in gone and i not in hidden)
+
+    return keep
+
+
 Artists = Annotated[list[str] | None, Query()]
 Terms = Annotated[list[str] | None, Query()]
 Colors = Annotated[list[str] | None, Query()]
@@ -1008,7 +1022,7 @@ async def search_museums(
     if search.empty or (search.skip and not keys):
         return MuseumAnswer(source=ALL, total=0, items=[])
     total, items, failed, next_ = await run_in_threadpool(
-        urgent_call(search.ask), svc.importer, keys, page
+        urgent_call(search.ask), svc.importer, keys, page, keeper(svc)
     )
     if keys and len(failed) == len(keys):
         raise HTTPException(502, f"{', '.join(failed)} did not answer")
@@ -1053,10 +1067,12 @@ async def stream_museums(
     #: Set when the app stops listening: no more pages are asked for.
     gone = threading.Event()
 
+    spare = keeper(svc)
+
     def ask(key: str) -> None:
         """One museum's pages onto ``answers``, then None."""
         try:
-            for total, items, failed, next_ in search.pages(svc.importer, [key], page):
+            for total, items, failed, next_ in search.pages(svc.importer, [key], page, spare):
                 if gone.is_set():
                     return
                 found = {r.item.id: r for r in remote_items(svc, items, copies)}
