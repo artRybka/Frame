@@ -1,5 +1,37 @@
 # Changelog
 
+## 1.115.0
+
+- Serwer szuka dzieł Met we własnym katalogu na NAS-ie: raz w miesiącu
+  pobiera otwarty spis zbiorów Met (ok. 340 MB, 260 tys. dzieł z domeny
+  publicznej) i przeszukuje go w kilka milisekund, zamiast pytać
+  wyszukiwarkę Met. Met dostaje już tylko pytania o znalezione dzieła.
+- Gdy spis znajduje mało dzieł, serwer pyta wyszukiwarkę Met jak dawniej,
+  ale pomija dzieła, które według spisu nie są w domenie publicznej (np.
+  dla „Monet” żadne z pierwszych ośmiu wyników nie było).
+
+## 1.114.0
+
+- Analiza kompozycji w studium dzieła jest pisana jednym głosem. Dotąd
+  kroki analizy doklejały do tekstu własne zdania („Budowa jest…”, zdanie
+  o siatce), a prompt wyliczał zdania po kolei, więc połowa studiów
+  zaczynała się od „Najmocniej działa…”. Teraz ślady, siatkę i ruch nadal
+  sprawdzają osobne kroki, a na końcu Opus pisze z nich cały tekst. Wie,
+  jak zaczynały się ostatnie studia, i nie zaczyna tak samo. Kosztuje to
+  ok. 0,015 USD więcej na studium. Studium zamówione na później idzie
+  przez jeszcze jeden pakiet (tekst), więc bywa gotowe nieco później.
+- Studia napisane wcześniej dostaną w tle nowy tekst kompozycji, z tymi
+  samymi śladami na obrazie (ok. 0,65 USD za 42 studia).
+- Tło dzieła nie zaczyna się już od „Obraz powstał…”, a „Na ramce” mówi
+  konkretnie, co wyjdzie dobrze, a co straci, bez formuły o rastrze.
+
+## 1.113.5
+
+- Serwer pamięta opisy dzieł z Met i pyta o każde dzieło tylko raz na 90
+  dni. Ponowne wejście w zestaw nie pyta już Met o te same dzieła.
+- Do Met idzie jedno zapytanie naraz, zamiast serii przy otwieraniu kilku
+  zestawów. Rano 7 listopada zapora Met zablokowała domowy adres.
+
 ## 1.113.4
 
 - Serwer trzyma się aktualnych zasad Library of Congress: najwyżej 17

@@ -45,6 +45,8 @@ from .markup import (
     extension,
     strip_artist,
 )
+from .met_index import INDEX as MET_INDEX
+from .met_objects import met_objects
 from .models import Item, ItemKind
 
 log = logging.getLogger(__name__)
@@ -449,6 +451,11 @@ class ClevelandMuseum(Museum):
         return self._map(resp.json().get("data", {}))
 
 
+#: Works the Met's open data must find for words before its own search is
+#: left alone (met_index.py).
+MET_LOCAL_MIN = 24
+
+
 class MetropolitanMuseum(Museum):
     key = "met"
     name = "The Metropolitan Museum of Art"
@@ -516,15 +523,42 @@ class MetropolitanMuseum(Museum):
         return self._search({**params, "isPublicDomain": "true"}, limit, page)
 
     def _search(self, params: dict[str, Any], limit: int, page: int) -> tuple[int, list[Item]]:
-        resp = self.http.get(
-            f"{self.api}/v1.1/search",
-            params={**params, "hasImages": "true", "limit": limit, "offset": (page - 1) * limit},
-        )
-        resp.raise_for_status()
-        body = resp.json()
+        # The Met's open data searched at home once it is in (met_index.py):
+        # the Met is asked only for the works found.
+        index = MET_INDEX.get(self.access.data_dir) if self.access.data_dir else None
+        local = 0
+        if index is not None:
+            local, ids = index.search(
+                str(params.get("q") or ""),
+                department=params.get("departmentId"),
+                begin=params.get("dateBegin"),
+                end=params.get("dateEnd"),
+                highlight=params.get("isHighlight") == "true",
+                offset=(page - 1) * limit,
+                limit=limit,
+            )
+            total = local
+        # Words the open data has too few works for: the Met's own search
+        # reads its descriptions too ("Cimabue" in a Madonna's), and the
+        # open data only keeps the works it can show.
+        if index is None or (local < MET_LOCAL_MIN and str(params.get("q", "*")) != "*"):
+            resp = self.http.get(
+                f"{self.api}/v1.1/search",
+                params={
+                    **params,
+                    "hasImages": "true",
+                    "limit": limit,
+                    "offset": (page - 1) * limit,
+                },
+            )
+            resp.raise_for_status()
+            body = resp.json()
+            ids = [str(i) for i in body.get("objectIDs") or []]
+            total = int(body.get("total", len(ids)))
+            if index is not None:
+                ids = index.showable(ids)
         items = []
         missed: httpx.HTTPError | None = None
-        ids = body.get("objectIDs") or []
         for object_id in ids:
             try:
                 item = self.fetch(str(object_id))
@@ -538,16 +572,30 @@ class MetropolitanMuseum(Museum):
                 continue
             if item is not None:
                 items.append(item)
+            elif index is not None:
+                index.no_picture(str(object_id))  # not shown: not asked again
         if missed is not None and not items:
             raise missed
-        return int(body.get("total", len(items))), items
+        return total, items
 
     def fetch(self, source_id: str) -> Item | None:
+        # Each work's record asked once (library/met_objects.py): a page of
+        # the search is a request a work.
+        kept = met_objects(self.access.data_dir) if self.access.data_dir else None
+        if kept is not None:
+            found, record = kept.get(source_id)
+            if found:
+                return None if record is None else self._map(record)
         resp = self.http.get(f"{self.api}/v1/objects/{source_id}")
         if resp.status_code == 404:
+            if kept is not None:
+                kept.put(source_id, None)
             return None
         resp.raise_for_status()
-        return self._map(resp.json())
+        record = resp.json()
+        if kept is not None and isinstance(record, dict) and record.get("objectID"):
+            kept.put(source_id, record)
+        return self._map(record)
 
 
 class WikimediaCommons(Museum):

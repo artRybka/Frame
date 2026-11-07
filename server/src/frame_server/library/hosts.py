@@ -104,6 +104,10 @@ LIMITS = {
     "gallerycollections.courtauld.ac.uk": 2,
     "collections.louvre.fr": 2,
     "www.loc.gov": 1,
+    # One at a time: its search pages are a request a work, and several sets
+    # asked at once came to hundreds a minute, which its bot wall (Imperva)
+    # turned away (2026-11-07).
+    "collectionapi.metmuseum.org": 1,
 }
 #: The longest a host's ``Retry-After`` (on a 429) is kept to: api.data.gov
 #: blocks a key for an hour; longer waits are taken as an hour too.

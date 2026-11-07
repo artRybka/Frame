@@ -49,7 +49,7 @@ log = logging.getLogger(__name__)
 
 KIND = "daily"
 #: Changed whenever the prompt changes, so the text is written again.
-PROMPT_VERSION = "daily-12"
+PROMPT_VERSION = "daily-13"
 #: The tile's two lines under the title (characters).
 TEASER_CHARS = 100
 #: The picture goes out this big: as large as Opus reads one, so that it
@@ -228,7 +228,9 @@ tym tygodniu), pora roku, święto. Pusty, gdy nie ma prawdziwego powodu.
 - "headline": tytuł tekstu o okolicznościach (2–6 słów, bez kropki), konkretny dla tego \
 dzieła, np. „Pocztówka z pielgrzymki do Fudżi”. Nie „Kontekst”, nie tytuł dzieła.
 - "context": dwa krótkie akapity (po 300–550 znaków): kiedy i w jakich okolicznościach dzieło \
-powstało, co było w nim nowe, jak je przyjęto.
+powstało, czym się wyróżniało, jak je przyjęto. Zacznij od tego, co w tej historii \
+najciekawsze dla tego dzieła (zamówienie, spór, podróż, model, miejsce), nie od formuły \
+„Obraz powstał…”; bez zdań w rodzaju „Nowe było to, że…”.
 - "artist": krótka notka o autorze, dwa-trzy zdania (najwyżej 400 znaków): kim był, czym się \
 wyróżniał i w którym miejscu jego drogi powstało to dzieło. Bez powtarzania tekstu powyżej.
 """
@@ -249,7 +251,9 @@ Marginesu i proporcji nie dodajesz: kadr wokół prostokąta dobierze aplikacja.
 od siebie.
 - "on_frame": jedno-dwa zdania, jak dzieło wypadnie na ramce. Ramka ma sześć tuszy: czarny, \
 biały, czerwony, żółty, niebieski, zielony; pozostałe barwy, beże i pastele składa z \
-drobnego rastra tych tuszy. Ocena serwera (0–1) jest w danych.
+drobnego rastra tych tuszy. Ocena serwera (0–1) jest w danych. Powiedz konkretnie, co w tym \
+dziele wyjdzie dobrze, a co straci (np. „błękity nieba wyjdą czyste, a beże twarzy ziarniste”), \
+bez powtarzanej w każdym opisie formuły o rastrze.
 - "similar": z listy KANDYDACI wybierz 3–6 dzieł naprawdę podobnych i do każdego podaj krótką \
 etykietę, dlaczego (najwyżej 40 znaków, np. "ta sama seria", "ten sam motyw fali"). Używaj \
 tylko identyfikatorów z listy.
@@ -1290,7 +1294,10 @@ class DailyJob(NoteJob):
             log.exception("details check of %s failed", item.id)
         data = {**data, "composition": {"views": []}}
         try:
-            data.update(compose(self.images, item, context or self.sources(item), ask))
+            from .prose import recent_openings
+
+            recent = recent_openings(self.library, but=item.id)
+            data.update(compose(self.images, item, context or self.sources(item), ask, recent))
         except (AiUnavailable, anthropic.APIError) as err:
             log.warning("composition of %s not asked: %s", item.id, err)
         except Exception:  # the page is paid for: never lost to its composition
