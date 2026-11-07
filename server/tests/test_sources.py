@@ -445,10 +445,13 @@ def test_search_asks_the_chosen_museums_and_judges_colours(service, monkeypatch)
     app = create_app(service.settings)
     svc = app.state.service
     tints = {"red": (200, 30, 30), "blue": (30, 60, 210)}
+    # The samples are the works' thumbnails, downloaded once and kept.
     monkeypatch.setattr(
         svc.importer.cache,
-        "sample",
-        lambda url: Image.new("RGB", (32, 32), tints[url.rsplit("/", 1)[1].split(".")[0]]),
+        "_thumbnail",
+        lambda item, urgent=False: Image.new(
+            "RGB", (32, 32), tints[item.thumb_url.rsplit("/", 1)[1].split(".")[0]]
+        ),
     )
     with TestClient(app) as client:
         found = client.get(
@@ -546,10 +549,13 @@ def test_colours_look_deeper_and_the_stream_answers_museum_by_museum(service, mo
     app = create_app(service.settings)
     svc = app.state.service
     tints = {"red": (200, 30, 30), "blue": (30, 60, 210)}
+    # The samples are the works' thumbnails, downloaded once and kept.
     monkeypatch.setattr(
         svc.importer.cache,
-        "sample",
-        lambda url: Image.new("RGB", (32, 32), tints[url.rsplit("/", 1)[1].split(".")[0]]),
+        "_thumbnail",
+        lambda item, urgent=False: Image.new(
+            "RGB", (32, 32), tints[item.thumb_url.rsplit("/", 1)[1].split(".")[0]]
+        ),
     )
     params = {"q": "sea", "source": ["openverse", "europeana"], "color": ["red"], "limit": 8}
     with TestClient(app) as client:
