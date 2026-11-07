@@ -11,7 +11,9 @@ final class SourceRequestsTests: XCTestCase {
            "today": {"sent": 3, "walled": 0, "throttled": 1, "failed": 0, "refused": 2, "bytes": 1000},
            "week": {"sent": 40, "walled": 1, "throttled": 2, "failed": 3, "refused": 5, "bytes": 90000},
            "quota": {"spent": 40, "of": 1000, "background": 600, "hours": 24.0},
-           "resting": 600},
+           "resting": 600,
+           "why_today": {"Szukaj": 2, "noc": 0, "spisy muzeów": 1},
+           "why_week": {"Odkrywaj": 30, "Szukaj": 10}},
           {"name": null,
            "today": {"sent": 0, "walled": 0, "throttled": 0, "failed": 0, "refused": 0, "bytes": 0},
            "week": {"sent": 0, "walled": 0, "throttled": 0, "failed": 0, "refused": 0, "bytes": 0},
@@ -24,6 +26,11 @@ final class SourceRequestsTests: XCTestCase {
         XCTAssertEqual(report.sources[0].quota?.background, 600)
         XCTAssertFalse(report.sources[0].quiet)
         XCTAssertTrue(report.sources[1].quiet)
+        // Who asked: today's, most first, the keys as the server wrote them.
+        XCTAssertEqual(report.sources[0].askers.map { $0.0 }, ["Szukaj", "spisy muzeów"])
+        XCTAssertEqual(report.sources[0].askers.map { $0.1 }, [2, 1])
+        XCTAssertNil(report.sources[1].whyToday)  // an older server
+        XCTAssertTrue(report.sources[1].askers.isEmpty)
         XCTAssertEqual(SourceRequestText.name(report.sources[1].name), "Inne serwery (obrazy z Openverse i Europeany)")
     }
 

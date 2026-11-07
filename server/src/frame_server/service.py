@@ -41,6 +41,7 @@ from .library.hosts import guard as host_guard
 from .library.loc import loc_mirrors
 from .library.museums import PRIVATE_LICENCE, TEST_LICENCE, Access, WikiArt, europeana_mirrors
 from .library.museums import client as museum_client
+from .library.records import records
 from .library.wikidata import PROPERTIES, CommonsCopies
 from .night import NightQueue
 from .notifications import Notifier
@@ -281,6 +282,8 @@ class FrameService:
             DailyJob(self.library, self.images, self.ai_config),
         )
         self.ai.register(self.daily.job)
+        # What Wikidata knows of each work, kept on disk across updates.
+        self.pl_text.wikidata.kept = self.daily.job.wikidata.kept = records(settings.data_dir)
         # Discover's curator: two cards of "Dziś dla Ciebie", ordered at night.
         self.curator = Curator(self.library, self.claude, self.ai_config, self.player.taste)
         # What the pages say a work led to, looked up in the museums and on Wikipedia.

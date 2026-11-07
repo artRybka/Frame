@@ -33,15 +33,19 @@ PARIS = "https://apicollections.parismusees.paris.fr/graphql"
 
 def test_the_tables_keep_the_numbers_the_sources_ask_for() -> None:
     """The numbers of 1.115.0's tables, now read from one place."""
-    assert PACE["api.artic.edu"] == PACE["www.artic.edu"] == 1.0
-    assert PACE["collectionapi.metmuseum.org"] == 0.25
+    assert PACE["www.artic.edu"] == 1.0
+    assert PACE["api.artic.edu"] == 1.2
+    assert PACE["collectionapi.metmuseum.org"] == 0.5
     assert PACE[WIKIMEDIA] == 0.25
     assert PACE["www.loc.gov"] >= 3.0 and PACE["tile.loc.gov"] >= 0.4
     assert PACE["nominatim.openstreetmap.org"] == 1.0
     assert LIMITS[WIKIMEDIA] == 1 and LIMITS[WIKIMEDIA_MEDIA] == 2
     assert LIMITS["api.artic.edu"] == LIMITS["www.artic.edu"] == 1
     assert LIMITS["collectionapi.metmuseum.org"] == 1
-    assert LONG_BLOCKS == {"www.loc.gov": 3600.0}
+    assert LONG_BLOCKS == {"www.loc.gov": 3600.0, "collectionapi.metmuseum.org": 1800.0}
+    assert policy.BUDGETS["collectionapi.metmuseum.org"].count == 1500
+    assert PACE["lux.collections.yale.edu"] == PACE["manifests.collections.yale.edu"] == 0.5
+    assert "api.artic.edu" in policy.WALL_403
     assert HOST_LIMITS == {
         "upload.wikimedia.org": 2,
         "thumb.wikimedia.org": 2,
@@ -330,5 +334,5 @@ def test_the_owner_sees_requests_by_source(tmp_path: Path) -> None:
     names = [s["name"] for s in answer["sources"]]
     assert "Rijksmuseum" in names and "Louvre" in names
     first = answer["sources"][0]
-    assert set(first) == {"name", "today", "week", "quota", "resting"}
+    assert set(first) == {"name", "today", "week", "quota", "resting", "why_today", "why_week"}
     assert set(first["today"]) == {"sent", "walled", "throttled", "failed", "refused", "bytes"}
