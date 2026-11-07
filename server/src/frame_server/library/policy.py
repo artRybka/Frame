@@ -36,6 +36,9 @@ URGENT_EXTRA = 2
 
 HOUR = 3600.0
 DAY = 24 * HOUR
+#: After a start of the server the background asks nobody this long (only
+#: what the app and the panel wait for goes): see :meth:`.hosts.HostGuard.calm`.
+CALM_START = 10 * 60.0
 
 
 @dataclass(frozen=True)
@@ -67,6 +70,9 @@ class Host:
     #: Pictures downloaded at once (none of the urgent extra when set).
     images: int | None = None
     budget: Budget | None = None
+    #: Every 403 is its bot wall's, whatever it looks like (the AIC's API
+    #: answered bursts with plain 403s, 2026-11-07, and was asked on).
+    wall_403: bool = False
 
 
 @dataclass(frozen=True)
@@ -91,19 +97,24 @@ SOURCES: tuple[Source, ...] = (
         "https://api.artic.edu/docs/",
         "2026-11-04",
         {
-            "api.artic.edu": Host(pace=1.0, limit=1),
+            # 1.2 s, not 1.0: a hair under its 60 a minute, not on it.
+            "api.artic.edu": Host(pace=1.2, limit=1, wall_403=True),
             "www.artic.edu": Host(pace=1.0, limit=1, images=1),
         },
         domains=("artic.edu",),
     ),
     Source(
         # 80 requests a second; its bot wall (Imperva) turned bursts of a few
-        # hundred a minute away (2026-10-30, 2026-11-07): one at a time.
+        # hundred a minute away (2026-10-30, and twice on 2026-11-07 at one
+        # request every 0.25 s): one at a time, two a second, 1500 an hour,
+        # and a wall is left alone half an hour at once, not probed.
         "The Metropolitan Museum of Art",
         "https://metmuseum.github.io/",
         "2026-11-07",
         {
-            "collectionapi.metmuseum.org": Host(pace=0.25, limit=1),
+            "collectionapi.metmuseum.org": Host(
+                pace=0.5, limit=1, long_block=HOUR / 2, budget=Budget(1500, HOUR)
+            ),
             "images.metmuseum.org": Host(pace=0.25),
             # The open-access CSV (library/met_index.py), on GitHub's LFS.
             "media.githubusercontent.com": Host(),
@@ -193,13 +204,14 @@ SOURCES: tuple[Source, ...] = (
     ),
     Source(
         # No rates published; a result is two requests a work (cached:
-        # library/records.py), four at a time as before.
+        # library/records.py), four at a time as before, but two a second at
+        # most: it took ~30 a minute for hours (2026-11-07), our largest.
         "Yale (LUX)",
         "",
         "2026-11-07",
         {
-            "lux.collections.yale.edu": Host(limit=4),
-            "manifests.collections.yale.edu": Host(limit=4),
+            "lux.collections.yale.edu": Host(pace=0.5, limit=4),
+            "manifests.collections.yale.edu": Host(pace=0.5, limit=4),
         },
         domains=("yale.edu",),
     ),
@@ -294,6 +306,8 @@ LONG_BLOCKS: dict[str, float] = _table("long_block")
 IMAGE_LIMITS: dict[str, int] = _table("images")
 #: Quotas, by host.
 BUDGETS: dict[str, Budget] = _table("budget")
+#: Hosts whose every 403 is a bot wall's.
+WALL_403: frozenset[str] = frozenset(_table("wall_403"))
 
 
 def source_of(host: str) -> Source | None:

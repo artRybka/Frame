@@ -188,6 +188,8 @@ class ImageCache:
         ones are tried again after the wait the host asks for (a few seconds
         at most)."""
         urgent = urgent or is_urgent()
+        if not urgent:  # not holding the host's turn while the start is quiet
+            self.hosts.wait_calm()
         gate = self._gate(urlsplit(url).hostname or "")
         asking = urgently() if urgent else contextlib.nullcontext()
         with gate.turn(urgent), asking, self.http() as http:

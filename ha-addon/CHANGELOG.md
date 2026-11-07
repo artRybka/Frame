@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.121.0
+
+- Serwer pyta muzea rzadziej i łagodniej, żeby nie blokowały domowego
+  adresu: przez 10 minut po aktualizacji pracuje tylko na Twoje prośby,
+  zapamiętane wyniki wyszukiwań są dobre przez 3 dni i nie znikają przy
+  aktualizacji, Met dostaje najwyżej 2 zapytania na sekundę i 1500 na
+  godzinę, a po odmowie Met i AIC serwer czeka, zamiast pukać dalej.
+- Log serwera jest zapisywany na dysku przez 7 dni, a licznik zapytań do
+  źródeł pamięta, kto pytał (Szukaj, Odkrywaj, noc, katalog…).
+
 ## 1.120.2
 
 - Okładka „Ukryte” nie ma już szronu z ziarnem ani kremowej warstwy: dzieła

@@ -10,7 +10,7 @@ import threading
 import time
 from collections import OrderedDict
 from collections.abc import Callable, Iterable, Iterator, Mapping
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from concurrent.futures import wait as wait_for
 from dataclasses import dataclass, field, replace
 from itertools import chain, zip_longest
@@ -221,6 +221,9 @@ class Importer:
         ] = OrderedDict()
         #: Pages kept on disk that are asked again behind (library/pages.py).
         self._asking: set[tuple[str, str, int, int, str, bool]] = set()
+        #: Pages being asked for now: another asking for the same one waits
+        #: for that answer instead of asking the museum again.
+        self._inflight: dict[tuple[str, str, int, int, str, bool], Future[Any]] = {}
         #: Words typed in Szukaj in the museums' languages (the language
         #: model's, set by the service); none: asked as typed.
         self.translate: Callable[[str, float], Wording] | None = None
@@ -366,7 +369,31 @@ class Importer:
     def _ask(
         self, memo: tuple[str, str, int, int, str, bool], wait: float | None = None
     ) -> tuple[int, list[Item]]:
-        """The museum's page of ``memo``, kept in memory and on disk."""
+        """The museum's page of ``memo``, kept in memory and on disk; asked
+        once when several want it at the same time (a set's stream, the
+        same page asked again behind, the catalogue)."""
+        with self._remote_lock:
+            asking = self._inflight.get(memo)
+            mine = asking is None
+            if asking is None:
+                asking = self._inflight[memo] = Future()
+        if not mine:
+            total, items = asking.result()
+            return total, list(items)
+        try:
+            found = self._ask_museum(memo, wait)
+        except BaseException as err:
+            asking.set_exception(err)
+            raise
+        finally:
+            with self._remote_lock:
+                self._inflight.pop(memo, None)
+        asking.set_result(found)
+        return found[0], list(found[1])
+
+    def _ask_museum(
+        self, memo: tuple[str, str, int, int, str, bool], wait: float | None = None
+    ) -> tuple[int, list[Item]]:
         source, query, limit, page, kind, _ = memo
         access = self.access()
         with self.http() as http:
