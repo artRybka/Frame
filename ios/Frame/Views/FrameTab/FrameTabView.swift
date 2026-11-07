@@ -1921,6 +1921,17 @@ struct PanelSection: View {
     }
     private var valid: Bool { !(hostValue ?? "").isEmpty && macValue != nil }
 
+    /// The frame's app reads its MAC and the server uses it, so the field
+    /// only needs typing before the app has run (or for a USB-C Ethernet
+    /// adapter, which has its own).
+    private var macHint: String {
+        guard let panelMac = config.macFromPanel else {
+            return "Do budzenia ekranu (Wake-on-LAN). Ramka poda go sama po starcie aplikacji."
+        }
+        let typed = macValue ?? ""
+        return typed.isEmpty || typed == panelMac ? "Odczytany z ramki, do budzenia (Wake-on-LAN)." : "Do budzenia ekranu (Wake-on-LAN)."
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             SectionHeader(title: "W sieci", subtitle: "Gdzie serwer szuka ramki")
@@ -1939,12 +1950,22 @@ struct PanelSection: View {
                 Divider()
                 field(
                     "Adres MAC",
-                    hint: "Do budzenia ekranu (Wake-on-LAN). Puste pole wyłącza budzenie.",
+                    hint: macHint,
                     error: macValue == nil ? "MAC to 12 znaków szesnastkowych, np. A4:30:7A:01:02:FF" : nil
                 ) {
-                    TextField("AA:BB:CC:DD:EE:FF", text: $mac)
+                    TextField(config.macFromPanel ?? "AA:BB:CC:DD:EE:FF", text: $mac)
                         .textInputAutocapitalization(.characters)
                         .autocorrectionDisabled()
+                }
+                if let panelMac = config.macFromPanel, let typed = macValue, !typed.isEmpty, typed != panelMac {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text("Ramka podaje \(panelMac)")
+                            .font(.caption)
+                            .foregroundStyle(Theme.warn)
+                        Spacer()
+                        Button("Użyj") { mac = panelMac }
+                            .font(.caption.weight(.semibold))
+                    }
                 }
                 Divider()
                 Button {
@@ -1994,7 +2015,8 @@ struct PanelSection: View {
         let update = PanelConfigUpdate(
             host: hostValue,
             pin: pin.isEmpty ? nil : pin,
-            mac: macValue?.isEmpty == false ? macValue : nil,
+            // The frame's own MAC is sent as none, so a later reading wins.
+            mac: macValue?.isEmpty == false && macValue != config.macFromPanel ? macValue : nil,
             port: config.port
         )
         await model.savePanelConfig(update)

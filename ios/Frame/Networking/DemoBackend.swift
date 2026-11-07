@@ -29,7 +29,10 @@ actor DemoBackend: FrameBackend {
     private var history: [String] = []
     private var currentID: String?
     private var holdValue: Hold?
-    private static let demoPanel = PanelConfig(host: "192.168.1.50", mac: nil, port: 1515, pinSet: true, fromApp: false)
+    private static let demoPanel = PanelConfig(
+        host: "192.168.1.50", mac: "A4:30:7A:01:02:FF", port: 1515, pinSet: true, fromApp: false,
+        macFromPanel: "A4:30:7A:01:02:FF"
+    )
     private var panelValue = DemoBackend.demoPanel
     private var catalogueLimitMb: Int?
     /// "Aktualizuj serwer" in demo: the newer version is installed at once.
@@ -1306,7 +1309,11 @@ actor DemoBackend: FrameBackend {
 
     func savePanelConfig(_ update: PanelConfigUpdate) async throws -> PanelConfig {
         let pinSet = update.pin.map { !$0.isEmpty } ?? panelValue.pinSet
-        panelValue = PanelConfig(host: update.host, mac: update.mac, port: update.port, pinSet: pinSet, fromApp: true)
+        let fromPanel = panelValue.macFromPanel
+        panelValue = PanelConfig(
+            host: update.host, mac: update.mac ?? fromPanel, port: update.port, pinSet: pinSet, fromApp: true,
+            macFromPanel: fromPanel
+        )
         return panelValue
     }
 
