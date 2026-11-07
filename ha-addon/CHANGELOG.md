@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.120.2
+
+- Okładka „Ukryte” nie ma już szronu z ziarnem ani kremowej warstwy: dzieła
+  rozmywa zwykła systemowa mgiełka, taka jak w iOS. Ruch zostaje, a odblask
+  przy przechyle telefonu jest słabszy.
+
 ## 1.120.1
 
 - Jaśniejsze dzieła wchodzą płynnie bez etapu jasnych partii: przez

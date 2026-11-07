@@ -675,15 +675,15 @@ struct HiddenCard: View {
     }
 }
 
-/// A collage behind frosted glass that breathes: blurred as one picture,
+/// A collage behind misted glass that breathes: blurred as one picture,
 /// it drifts gently behind the pane (aside, nearer, a little turned) while a
-/// soft patch of light wanders over it, under a thin cream sheet with a fine
-/// grain. Turned in the hand, the collage also slides under the pane, as the
+/// soft patch of light wanders over it, under the system's own haze
+/// (`ultraThinMaterial`, as iOS mists what lies behind it); no cream sheet
+/// or grain any more (Mateusz 2026-11-07: "bez tego mrożenia"). Turned in the hand, the collage also slides under the pane, as the
 /// study of the day's picture does (`parallax()`), and a streak of gloss
 /// crosses the glass. No glass layer over the whole card: its rim lit the
 /// top and bottom edges as white bands (Mateusz 2026-11-07). Off screen or
-/// with Reduce Motion it stands still. With no works, the bare frosted sheet
-/// on the mat.
+/// with Reduce Motion it stands still. With no works, the bare haze on the mat.
 struct FrostedCover: View {
     let itemIDs: [String]
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -694,9 +694,8 @@ struct FrostedCover: View {
         // picture alone and leaves the seams sharp. Built once, outside the
         // timeline, so only its place changes frame by frame.
         let collage = Collage(itemIDs: itemIDs)
-            .saturation(0.95)
             .drawingGroup()
-            .blur(radius: 10, opaque: true)
+            .blur(radius: 6, opaque: true)
         let still = itemIDs.isEmpty || reduceMotion || !onScreen
         TimelineView(.animation(minimumInterval: 1.0 / 30, paused: still)) { context in
             let drift = CoverDrift(at: still ? 0 : context.date.timeIntervalSinceReferenceDate)
@@ -720,12 +719,9 @@ struct FrostedCover: View {
                     )
                     .blendMode(.softLight)
                 }
-                Theme.paper.opacity(0.26)
-                Image(uiImage: FrostGrain.tile)
-                    .resizable(resizingMode: .tile)
-                    .interpolation(.none)
-                    .blendMode(.overlay)
-                    .opacity(0.2)
+                // The collage is only pre-softened; the haze blurs it the
+                // rest of the way, and lightens or darkens with the scheme.
+                Rectangle().fill(.ultraThinMaterial)
                 if !itemIDs.isEmpty { GlassSheen() }
             }
         }
@@ -764,7 +760,7 @@ private struct GlassSheen: View {
     var body: some View {
         let tilt = Tilt.shared
         let middle = 0.5 + 0.3 * tilt.x - 0.1 * tilt.y
-        let strength = 0.6 * min(1, 1.4 * max(abs(tilt.x), abs(tilt.y)))
+        let strength = 0.4 * min(1, 1.4 * max(abs(tilt.x), abs(tilt.y)))
         LinearGradient(
             stops: [
                 .init(color: .white.opacity(0), location: middle - 0.16),
@@ -779,41 +775,6 @@ private struct GlassSheen: View {
         .opacity(strength)
         .allowsHitTesting(false)
     }
-}
-
-/// Grey noise around mid-grey, tiled over a picture in overlay mode: it
-/// lightens and darkens point by point without tinting, like the grain of
-/// sandblasted glass. Seeded, so every card has the same grain.
-enum FrostGrain {
-    static let tile: UIImage = {
-        let side = 128
-        var state: UInt64 = 0x9E37_79B9_7F4A_7C15
-        let pixels = (0 ..< side * side).map { _ -> UInt8 in
-            // xorshift64*: cheap and the same on every launch.
-            state ^= state >> 12
-            state ^= state << 25
-            state ^= state >> 27
-            let value = (state &* 0x2545_F491_4F6C_DD1D) >> 56
-            return UInt8(68 + value * 120 / 255)
-        }
-        guard
-            let provider = CGDataProvider(data: Data(pixels) as CFData),
-            let image = CGImage(
-                width: side,
-                height: side,
-                bitsPerComponent: 8,
-                bitsPerPixel: 8,
-                bytesPerRow: side,
-                space: CGColorSpaceCreateDeviceGray(),
-                bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue),
-                provider: provider,
-                decode: nil,
-                shouldInterpolate: false,
-                intent: .defaultIntent
-            )
-        else { return UIImage() }
-        return UIImage(cgImage: image, scale: 2, orientation: .up)
-    }()
 }
 
 struct NewPlaylistTile: View {
