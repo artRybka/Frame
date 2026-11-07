@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.123.0
+
+- Chicago (AIC), Cleveland, Smithsonian i Wellcome mają na serwerze własne
+  lokalne bazy, zbudowane z plików, które same publikują. Szukaj, Odkrywaj,
+  losowanie, playlisty i kopie nie pytają już tych muzeów o wyniki, tylko
+  obrazy dalej przychodzą od nich. Mniej blokad (AIC) i szybsze odpowiedzi.
+- Bazy pobierają się nocą raz na dwa miesiące, i to tylko wtedy, gdy muzeum
+  zmieniło plik. Pierwsza noc po aktualizacji je zbuduje, a do tego czasu
+  wszystko działa jak dotąd.
+
 ## 1.122.0
 
 - Dzieła, które muzea przyniosły w Szukaj, ale nie pasowały do wyboru

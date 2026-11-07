@@ -36,7 +36,7 @@ def _offline() -> Iterator[None]:
     one build it from fake files themselves."""
     import httpx
 
-    from frame_server.library import courtauld, louvre, met_index, nga
+    from frame_server.library import courtauld, dumps, louvre, met_index, nga
 
     def local(request: httpx.Request) -> None:
         if request.url.host not in LOCAL_HOSTS:
@@ -62,6 +62,7 @@ def _offline() -> Iterator[None]:
         patch.setattr(courtauld.INDEX, "_start", lambda path: None)
         patch.setattr(louvre.INDEX, "_start", lambda path: None)
         patch.setattr(met_index.INDEX, "_start", lambda path: None)
+        patch.setattr(dumps.INDEXES, "build_on_demand", False)
         yield
 
 
