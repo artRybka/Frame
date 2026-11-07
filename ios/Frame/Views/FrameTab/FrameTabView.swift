@@ -271,7 +271,7 @@ struct FrameTabView: View {
     /// under it only name the state (Sieć) and the power source (Zasilanie).
     private var connectionText: String {
         guard let device else { return "Brak danych" }
-        if !device.configured { return "Podaj adres i PIN ekranu pod trybikiem u góry" }
+        if !device.configured { return "Podaj adres i PIN ekranu pod trybikiem, w Ramce" }
         if let silent = appSilence { return "Ekran odpowiada · aplikacja milczy \(silent)" }
         switch device.powerState {
         case "online": return "Połączona · \(When.ago(device.lastSeen) ?? "teraz")"
@@ -339,7 +339,7 @@ struct FrameTabView: View {
                 NoticeRow(
                     icon: "app.badge",
                     color: Theme.inkSoft,
-                    text: "Ramka nie uruchomiła jeszcze aplikacji Frame. Serwer sam ją uruchomi, gdy ramka się obudzi; możesz też zrobić to pod trybikiem, w sekcji Aplikacja ramki."
+                    text: "Ramka nie uruchomiła jeszcze aplikacji Frame. Serwer sam ją uruchomi, gdy ramka się obudzi; możesz też zrobić to w menu kafelka Zasilanie."
                 )
             }
         }
@@ -1721,7 +1721,7 @@ struct ViewerSection: View {
                 Toggle(isOn: $glow) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Jaśniejsze dzieła")
-                        Text("Na karcie dzieła i w studium obraz i jego detale świecą trochę jaśniej niż strona wokół, równo na całej powierzchni. Działa na ekranach z HDR, poza trybem niskiego zużycia energii.")
+                        Text("Na karcie dzieła i w studium obraz świeci trochę jaśniej niż strona. Na ekranach z HDR.")
                             .font(.caption)
                             .foregroundStyle(Theme.inkSoft)
                     }
@@ -1746,7 +1746,7 @@ struct ViewerSection: View {
                         }
                         .tint(Theme.ink)
                         .accessibilityValue(ArtGlow.label(gain))
-                        Text("Ile razy jaśniej od strony świeci dzieło. Powyżej możliwości ekranu iPhone przycina. Domyślnie 1,6×.")
+                        Text("Domyślnie 1,6×.")
                             .font(.caption)
                             .foregroundStyle(Theme.inkSoft)
                     }
@@ -1767,7 +1767,7 @@ struct FunSection: View {
                 Toggle(isOn: $style.polishFirstNames) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Polskie imiona artystów")
-                        Text("Paul Cézanne jako Paweł Cézanne, Vincent van Gogh jako Wincenty van Gogh, Hieronymus Bosch jako Hieronim Bosch. Zmieniają się tylko imiona, nazwiska zostają.")
+                        Text("Np. Paweł Cézanne, Wincenty van Gogh.")
                             .font(.caption)
                             .foregroundStyle(Theme.inkSoft)
                     }
@@ -1778,7 +1778,9 @@ struct FunSection: View {
     }
 }
 
-/// Konfiguracja: where the server takes art from. Saved as soon as switched.
+/// Konfiguracja → Źródła dzieł: where the server takes art from. Saved as
+/// soon as switched. The museums' keys are in Klucze i certyfikaty
+/// (`SourceKeysSection`); here only which of them still lack one.
 struct SourcesSection: View {
     @Environment(AppModel.self) private var model
     let settings: FrameSettings
@@ -1795,28 +1797,50 @@ struct SourcesSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            SectionHeader(title: "Źródła dzieł")
+            SectionHeader(title: "Źródła dzieł", subtitle: "Muzea, Wikimedia Commons, Europeana i Openverse")
             Card {
-                Text("Muzea, Wikimedia Commons, Europeana i Openverse dają dzieła wolne do pokazywania: domenę publiczną (w UE 70 lat po śmierci twórcy). Przy użytku prywatnym także licencje Creative Commons, prace wciąż chronione, które muzea same udostępniają, i WikiArt.")
-                    .font(.caption)
-                    .foregroundStyle(Theme.inkSoft)
-                Divider()
                 Toggle(isOn: privateUse) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Użytek prywatny")
                         Text(
                             privateUse.wrappedValue
-                                ? "Z Wikimedia Commons i Openverse także dzieła na wolnych licencjach (np. CC BY-SA), z podanym autorem. Muzea Narodowe w Warszawie i Krakowie, Rijksmuseum, SMK, Europeana, Getty, Luwr i inne także prace wciąż chronione prawem autorskim, a WikiArt także sztukę współczesną. Tylko do oglądania w domu."
-                                : "Tylko dzieła w domenie publicznej (CC0). Opisy w oryginale, po angielsku."
+                                ? "Także licencje Creative Commons, prace chronione, które muzea udostępniają, i WikiArt. Tylko do oglądania w domu."
+                                : "Tylko domena publiczna (CC0)."
                         )
                         .font(.caption)
                         .foregroundStyle(Theme.inkSoft)
                     }
                 }
                 .tint(Theme.ink)
-                ForEach(model.sourceKeys) { source in
+                if !missingKeys.isEmpty {
                     Divider()
-                    SourceKeyRow(source: source)
+                    Label("Bez klucza: \(missingKeys). Dodasz go w Kluczach i certyfikatach.", systemImage: "key")
+                        .font(.caption)
+                        .foregroundStyle(Theme.inkSoft)
+                }
+            }
+        }
+    }
+
+    private var missingKeys: String {
+        model.sourceKeys.filter { !$0.keySet }.map(\.name).joined(separator: ", ")
+    }
+}
+
+/// Konfiguracja → Klucze i certyfikaty: the art sources' keys, each checked
+/// by the server with its source before it is saved.
+struct SourceKeysSection: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        if !model.sourceKeys.isEmpty {
+            VStack(alignment: .leading, spacing: 16) {
+                SectionHeader(title: "Muzea", subtitle: "Klucze źródeł dzieł")
+                Card {
+                    ForEach(Array(model.sourceKeys.enumerated()), id: \.element.id) { index, source in
+                        if index > 0 { Divider() }
+                        SourceKeyRow(source: source)
+                    }
                 }
             }
         }
@@ -1870,119 +1894,11 @@ struct SourceKeyRow: View {
                         .font(.subheadline)
                 }
             }
-            if source.keySet && !source.keyFromApp {
-                Text("Klucz z frame.env. Zapisany tutaj będzie miał pierwszeństwo.")
-                    .font(.caption)
-                    .foregroundStyle(Theme.inkSoft)
-            }
             if source.keyFromApp {
                 Button("Usuń klucz", role: .destructive) {
                     Task { await model.deleteSourceKey(source) }
                 }
                 .font(.subheadline)
-            }
-        }
-    }
-}
-
-/// The frame's Wi-Fi as the Frame app on the panel last read it: how strong
-/// the signal is, the network, its address and band, and a warning when it
-/// is not where the server looks for it.
-struct PanelWifiRow: View {
-    let wifi: PanelWifi
-
-    private var wrong: Bool { wifi.wrongNetwork == true }
-
-    private var details: String {
-        [wifi.ip, wifi.band, When.ago(wifi.readAt)].compactMap { $0 }.joined(separator: " · ")
-    }
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Group {
-                if !wrong, let arcs = wifi.arcs {
-                    WifiStrengthIcon(arcs: arcs, color: arcs <= 1 ? Theme.warn : Theme.good)
-                        .accessibilityLabel(wifi.strength ?? "Wi-Fi")
-                } else {
-                    Image(systemName: wrong ? "wifi.exclamationmark" : "wifi")
-                        .font(.title2)
-                        .foregroundStyle(wrong ? Theme.bad : Theme.good)
-                }
-            }
-            .frame(width: 32)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(wifi.ssid.map { "Wi-Fi ramki: \($0)" } ?? "Wi-Fi ramki")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(Theme.ink)
-                Text(details)
-                    .font(.caption)
-                    .foregroundStyle(Theme.inkSoft)
-                if let warning = wifi.warning {
-                    Text(warning)
-                        .font(.caption)
-                        .foregroundStyle(Theme.bad)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-        }
-        .accessibilityElement(children: .combine)
-    }
-}
-
-/// Behind the gear in "Ramka": how the server reaches the panel, how the
-/// app reaches the server, where the art comes from, how much disk the
-/// library may take and the language model's key; set once, rarely touched
-/// again.
-struct ConnectionSettingsView: View {
-    @Environment(AppModel.self) private var model
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 28) {
-                    if let panel = model.panelConfig {
-                        PanelSection(config: panel)
-                    }
-                    if let app = model.panelApp {
-                        PanelAppSection(app: app)
-                    }
-                    ServerSection()
-                    if !model.demoMode {
-                        TailnetSection()
-                    }
-                    HouseholdSection()
-                    NotificationsSection()
-                    if let settings = model.settings {
-                        SourcesSection(settings: settings)
-                    }
-                    if let storage = model.libraryStorage {
-                        LibrarySizeSection(storage: storage)
-                    }
-                    if let ai = model.aiSettings {
-                        AiSection(settings: ai)
-                    }
-                    ViewerSection()
-                    FunSection()
-                }
-                .pageWidth()
-                .padding(.horizontal, Theme.gutter)
-                .padding(.top, 8)
-                .padding(.bottom, 40)
-            }
-            .paperPage()
-            .scrollDismissesKeyboard(.interactively)
-            .task { await model.loadLibraryStorage() }
-            .task { await model.loadPanelApp() }
-            .task { await model.loadServerUpdate() }
-            .task { await model.loadAiSettings() }
-            .task { await model.loadSourceKeys() }
-            .navigationTitle("Konfiguracja")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Gotowe") { dismiss() }
-                }
             }
         }
     }
@@ -2007,12 +1923,8 @@ struct PanelSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            SectionHeader(title: "Połączenie z ekranem", subtitle: "Gdzie serwer szuka ramki w sieci")
+            SectionHeader(title: "W sieci", subtitle: "Gdzie serwer szuka ramki")
             Card {
-                if let wifi = model.status?.device.wifi {
-                    PanelWifiRow(wifi: wifi)
-                    Divider()
-                }
                 field("Adres IP ekranu", error: hostValue == nil ? "To nie wygląda na adres IP" : nil) {
                     TextField("np. 203.0.113.152", text: $host)
                         .keyboardType(.numbersAndPunctuation)
@@ -2020,7 +1932,7 @@ struct PanelSection: View {
                         .autocorrectionDisabled()
                 }
                 Divider()
-                field("Kod PIN", hint: "PIN do sterowania (MDC), ekran pokazuje go przy parowaniu w aplikacji Samsung E-Paper.") {
+                field("Kod PIN", hint: "PIN sterowania (MDC) z aplikacji Samsung E-Paper.") {
                     SecureField(config.pinSet ? "ustawiony · puste zostawia bez zmian" : "np. 000000", text: $pin)
                         .keyboardType(.numberPad)
                 }
@@ -2045,26 +1957,10 @@ struct PanelSection: View {
                 }
                 .fontWeight(.semibold)
                 .disabled(!changed || !valid || saving)
-                Text(config.fromApp
-                    ? "Ustawione w aplikacji, mają pierwszeństwo przed frame.env i opcjami add-onu."
-                    : "Wartości z frame.env lub opcji add-onu. Zapisane tutaj będą miały pierwszeństwo.")
-                    .font(.caption)
-                    .foregroundStyle(Theme.inkSoft)
                 if let device = model.status?.device, let firmware = device.firmware {
                     Text("Ekran \(device.model ?? "EM32DX") · firmware \(firmware)")
                         .font(.caption)
                         .foregroundStyle(Theme.inkSoft)
-                }
-                if config.fromApp {
-                    Button("Przywróć wartości z serwera") {
-                        Task {
-                            saving = true
-                            await model.resetPanelConfig()
-                            saving = false
-                        }
-                    }
-                    .font(.subheadline)
-                    .disabled(saving)
                 }
             }
         }
@@ -2120,9 +2016,9 @@ func certificatesText(_ expires: String) -> String {
     let date = When.date(expires)
     let day = date?.formatted(.dateTime.day().month(.wide).year().locale(Locale(identifier: "pl_PL"))) ?? expires
     if let date, date < .now {
-        return "Certyfikaty aplikacji ramki wygasły \(day). Odnów je w Certificate Managerze Tizen Studio i wgraj w Konfiguracji → Aplikacja ramki, inaczej ramka nie przyjmie nowej wersji aplikacji."
+        return "Certyfikaty aplikacji ramki wygasły \(day). Odnów je w Certificate Managerze Tizen Studio i wgraj w Konfiguracji → Klucze i certyfikaty, inaczej ramka nie przyjmie nowej wersji aplikacji."
     }
-    return "Certyfikaty aplikacji ramki wygasają \(day). Odnów je w Certificate Managerze Tizen Studio i wgraj w Konfiguracji → Aplikacja ramki."
+    return "Certyfikaty aplikacji ramki wygasają \(day). Odnów je w Certificate Managerze Tizen Studio i wgraj w Konfiguracji → Klucze i certyfikaty."
 }
 
 /// A one-line note under the status tiles.
@@ -2141,13 +2037,12 @@ struct NoticeRow: View {
 }
 
 /// The Frame app on the panel, the only way pictures reach the frame: the
-/// package the server built and signed, what the frame runs, the
-/// certificates, and a button that starts it again.
+/// package the server built and signed, what the frame runs, and a look at
+/// its screen. Whether it runs, its restart and the certificates' expiry are
+/// on the Ramka tab already (tiles, notices, Zasilanie); the certificates
+/// themselves in Konfiguracja → Klucze i certyfikaty.
 struct PanelAppSection: View {
-    @Environment(AppModel.self) private var model
     let app: PanelAppView
-    @State private var installing = false
-    @State private var uploading = false
     @State private var showingScreen = false
 
     /// The server built a package the frame does not run yet.
@@ -2156,69 +2051,31 @@ struct PanelAppSection: View {
         return onFrame != package
     }
 
-    private var certificatesUntil: String? {
-        let dates = (app.certificates ?? []).compactMap { When.date($0.expiresAt) }
-        return dates.min()?.formatted(.dateTime.day().month(.wide).year().locale(Locale(identifier: "pl_PL")))
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            SectionHeader(title: "Aplikacja ramki", subtitle: "Ramka sama się budzi i pobiera obrazy")
+            SectionHeader(title: "Aplikacja ramki")
             Card {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(app.active ? "Ramka działa w aplikacji Frame" : "Ramka nie uruchomiła jeszcze aplikacji")
-                        .foregroundStyle(Theme.ink)
-                    if app.active, let seen = When.ago(app.state.seenAt) {
-                        Text("Ostatnio pytała o obraz \(seen)")
-                            .font(.caption)
-                            .foregroundStyle(Theme.inkSoft)
-                    } else if !app.active {
-                        Text("Serwer uruchamia ją sam, gdy ramka nie śpi.")
-                            .font(.caption)
+                if let package = app.package {
+                    HStack {
+                        Text("Wersja")
+                        Spacer()
+                        Text(app.state.build.map { "\(package.version) · na ramce \($0)" } ?? package.version)
+                            .monospacedDigit()
                             .foregroundStyle(Theme.inkSoft)
                     }
-                }
-                Divider()
-                if let package = app.package {
-                    Text("Wersja \(package.version) zbudowana na serwerze\(app.state.build.map { ", na ramce \($0)" } ?? "").")
-                        .font(.caption)
-                        .foregroundStyle(Theme.inkSoft)
+                    .font(.subheadline)
                     if Self.waitsForButton(package: package.version, onFrame: app.state.build) {
                         // A restart from the server does not install it: only
                         // a cold start by the button does (E19b, 2026-11-05).
-                        Text("Nowa wersja czeka na instalację. Przytrzymaj przycisk na ramce ok. 6 s, aż się wyłączy, a potem ok. 3 s, aż mrugnie zielona dioda. Ramka pobierze ją przy starcie.")
+                        Text("Nowa wersja czeka: przytrzymaj przycisk na ramce ok. 6 s, a potem ok. 3 s, aż mrugnie zielona dioda.")
                             .font(.caption)
                             .foregroundStyle(Theme.warn)
                     }
                 } else {
-                    Text("Na serwerze nie ma jeszcze certyfikatów Samsunga, więc nie zbuduje aplikacji. Wgraj author.p12 i distributor.p12 poniżej albo skopiuj je z password.txt do folderu data/panel-app/certs serwera (np. File Station).")
+                    Text("Bez certyfikatów Samsunga serwer nie zbuduje aplikacji. Wgraj je w Kluczach i certyfikatach.")
                         .font(.caption)
                         .foregroundStyle(Theme.warn)
                 }
-                if let expires = app.certificatesExpireAt {
-                    Text(certificatesText(expires))
-                        .font(.caption)
-                        .foregroundStyle(Theme.warn)
-                } else if let until = certificatesUntil {
-                    Text("Certyfikaty ważne do \(until).")
-                        .font(.caption)
-                        .foregroundStyle(Theme.inkSoft)
-                }
-                Divider()
-                Button {
-                    Task {
-                        installing = true
-                        await model.installPanelApp()
-                        installing = false
-                    }
-                } label: {
-                    HStack {
-                        Text(app.active ? "Uruchom aplikację ponownie" : "Uruchom aplikację na ramce")
-                        if installing { ProgressView() }
-                    }
-                }
-                .fontWeight(.semibold)
-                .disabled(installing || app.package == nil)
                 Divider()
                 Button {
                     showingScreen = true
@@ -2226,6 +2083,43 @@ struct PanelAppSection: View {
                     Label("Pokaż ekran ramki", systemImage: "camera.viewfinder")
                 }
                 .disabled(!app.active)
+            }
+        }
+        .sheet(isPresented: $showingScreen) {
+            PanelScreenshotSheet()
+        }
+    }
+}
+
+/// Konfiguracja → Klucze i certyfikaty: the Samsung certificates the server
+/// signs the frame's app with, how long they last, and a button to upload
+/// renewed ones.
+struct PanelCertificatesSection: View {
+    let app: PanelAppView
+    @State private var uploading = false
+
+    private var certificatesUntil: String? {
+        let dates = (app.certificates ?? []).compactMap { When.date($0.expiresAt) }
+        return dates.min()?.formatted(.dateTime.day().month(.wide).year().locale(Locale(identifier: "pl_PL")))
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            SectionHeader(title: "Certyfikaty Samsunga", subtitle: "Do podpisu aplikacji ramki")
+            Card {
+                if let expires = app.certificatesExpireAt {
+                    Text(certificatesText(expires))
+                        .font(.caption)
+                        .foregroundStyle(Theme.warn)
+                } else if let until = certificatesUntil {
+                    Label("Ważne do \(until)", systemImage: "checkmark.circle.fill")
+                        .font(.subheadline)
+                        .foregroundStyle(Theme.good)
+                } else {
+                    Text("Serwer nie ma jeszcze certyfikatów, więc nie zbuduje aplikacji ramki.")
+                        .font(.caption)
+                        .foregroundStyle(Theme.warn)
+                }
                 Divider()
                 Button {
                     uploading = true
@@ -2238,9 +2132,6 @@ struct PanelAppSection: View {
         .sheet(isPresented: $uploading) {
             PanelCertificatesSheet()
         }
-        .sheet(isPresented: $showingScreen) {
-            PanelScreenshotSheet()
-        }
     }
 }
 
@@ -2251,26 +2142,15 @@ struct ServerSection: View {
     var body: some View {
         @Bindable var model = model
         VStack(alignment: .leading, spacing: 16) {
-            SectionHeader(title: "Serwer ramki", subtitle: "Add-on Home Assistant lub kontener na Synology")
+            SectionHeader(title: "Serwer ramki", subtitle: "Domowy adres ma pierwszeństwo")
             Card {
-                Toggle(isOn: $model.demoMode) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Tryb demo")
-                        Text("Przykładowe dzieła bez serwera").font(.caption).foregroundStyle(Theme.inkSoft)
-                    }
-                }
-                .tint(Theme.ink)
-                if !model.demoMode {
-                    Divider()
-                    AddressField(title: "W domu", prompt: "http://homeassistant.local:8099", text: $model.serverURL)
-                    Divider()
-                    AddressField(title: "Spoza domu", prompt: "Tailscale, np. http://100.64.0.5:8099", text: $model.remoteURL)
-                    Text("Opcjonalny. Aplikacja sama wybiera adres, który odpowiada, a domowy ma pierwszeństwo. Adres Tailscale łączy się przez Tailscale wbudowany w aplikację (niżej).")
-                        .font(.caption)
-                        .foregroundStyle(Theme.inkSoft)
-                    Divider()
-                    SecureField("Token API", text: $model.apiToken)
-                }
+                connectionLine
+                Divider()
+                AddressField(title: "W domu", prompt: "http://homeassistant.local:8099", text: $model.serverURL)
+                Divider()
+                AddressField(title: "Spoza domu", prompt: "Tailscale, np. http://100.64.0.5:8099", text: $model.remoteURL)
+                Divider()
+                SecureField("Token API", text: $model.apiToken)
                 Divider()
                 Button {
                     Task {
@@ -2280,19 +2160,16 @@ struct ServerSection: View {
                     }
                 } label: {
                     HStack {
-                        Text(model.demoMode ? "Zastosuj" : "Połącz")
+                        Text("Połącz")
                         if testing { ProgressView() }
                     }
                 }
                 .fontWeight(.semibold)
-                connectionLine
-                if let server = model.status?.server {
-                    Text("Serwer \(server.version) · \(Names.works(server.libraryCount)) · \(server.playlists) playlist")
-                        .font(.caption)
-                        .foregroundStyle(Theme.inkSoft)
-                }
-                if let update = model.serverUpdate {
-                    Divider()
+            }
+            // The Serwer tile on the Ramka tab updates a server with the
+            // helper; only the other ways need words here.
+            if let update = model.serverUpdate, update.addon || !update.updater {
+                Card {
                     ServerUpdateRow(update: update)
                 }
             }
@@ -2325,12 +2202,14 @@ struct ServerSection: View {
                 .font(.subheadline)
                 .foregroundStyle(Theme.bad)
         case .unknown:
-            EmptyView()
+            Text(model.demoMode ? "Przykładowe dzieła bez serwera. Wpisz adres niżej i stuknij „Połącz”." : "Nie połączono")
+                .font(.subheadline)
+                .foregroundStyle(Theme.inkSoft)
         }
     }
 
     private var connectedText: String {
-        if model.demoMode { return "Tryb demo" }
+        if model.demoMode { return "Przykładowe dzieła bez serwera" }
         switch model.serverPath {
         case .remote: return "Połączono spoza domu"
         case .home where !model.remoteURL.isEmpty: return "Połączono w domu"
@@ -2458,7 +2337,7 @@ struct LibrarySizeSection: View {
                         defaultMb: storage.catalogueDefaultMb,
                         options: [500, 1000, 1500, 2000, 3000, 5000, 10000, 20000]
                     ) { mb in await model.setLibraryLimit(catalogueMb: mb) }
-                    caption("Ponad limit znikają dzieła, które serwer dobrał sam, od najdawniej dodanych; oglądane na samym końcu. Ulubione, playlisty, kolejka i pokazane dzieła zostają. Większy katalog to więcej w Odkrywaj.")
+                    caption("Ponad limit znikają dzieła, które serwer dobrał sam, od najdawniej dodanych. Ulubione, playlisty, kolejka i pokazane dzieła zostają. Większy katalog to więcej w Odkrywaj.")
                 }
                 Divider()
                 VStack(alignment: .leading, spacing: 8) {
@@ -2469,15 +2348,12 @@ struct LibrarySizeSection: View {
                         defaultMb: storage.originalsDefaultMb,
                         options: [500, 1000, 2000, 3000, 5000, 10000, 20000, 50000]
                     ) { mb in await model.setLibraryLimit(originalsMb: mb) }
-                    caption("Oryginały dzieł z Ulubionych i ręcznych playlist serwer pobiera zaraz po dodaniu, a brakujące w nocy, do 90% limitu. Zachowuje też oryginał każdego dzieła, które oglądasz (karta, cały ekran, studium) albo pokazujesz na ramce, około 1,5 MB na dzieło. Ponad limit znikają najdawniej oglądane, a te z Ulubionych i playlist na samym końcu. Usunięty serwer pobierze ponownie z muzeum lub albumu, gdy będzie potrzebny.")
+                    caption("Pełne obrazy dzieł z Ulubionych, playlist i tych, które oglądasz, około 1,5 MB na dzieło. Ponad limit znikają najdawniej oglądane; usunięte serwer pobierze ponownie z muzeum.")
                 }
                 Divider()
                 VStack(alignment: .leading, spacing: 8) {
                     row("Przesłane zdjęcia i prace", usage.ownBytes)
-                    caption("Przesłanych plików nie da się pobrać ponownie, więc zostają zawsze i nie wliczają się do limitów.")
-                    if !storage.catalogueFromApp || !storage.originalsFromApp {
-                        caption("„domyślnie” to wartość z frame.env lub opcji add-onu. Zmieniona tutaj ma pierwszeństwo.")
-                    }
+                    caption("Zostają zawsze i nie wliczają się do limitów.")
                 }
             }
         }

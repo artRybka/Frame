@@ -2,9 +2,16 @@ import SwiftUI
 import UniformTypeIdentifiers
 import UserNotifications
 
-/// Konfiguracja → Powiadomienia: what the server tells this phone over APNs,
-/// the APNs key it signs with (uploaded once from Files), and a test.
+/// What the server tells this phone over APNs (Konfiguracja → Powiadomienia,
+/// `.phone`), the APNs key it signs with, uploaded once from Files
+/// (Klucze i certyfikaty, `.key`), and a test (Diagnostyka, `.test`). A
+/// household member's "Mój dostęp" has all of them.
 struct NotificationsSection: View {
+    enum Part {
+        case phone, key, test
+    }
+
+    var parts: Set<Part> = [.phone, .key, .test]
     @Environment(AppModel.self) private var model
     @Environment(\.openURL) private var openURL
     @State private var importing = false
@@ -20,51 +27,36 @@ struct NotificationsSection: View {
     private var settings: NotificationSettings? { model.notificationSettings }
     private var allowed: Bool { push.authorization == .authorized || push.authorization == .provisional }
 
+    private var header: (String, String?) {
+        if parts.contains(.phone) { return ("Powiadomienia", "Z serwera ramki, także poza domem") }
+        if parts.contains(.key) { return ("Powiadomienia", "Klucz APNs z konta Apple Developer") }
+        return ("Próbne powiadomienie", "Czy serwer dociera do tego telefonu")
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            SectionHeader(title: "Powiadomienia", subtitle: "Z serwera ramki, także poza domem")
+            SectionHeader(title: header.0, subtitle: header.1)
             Card {
-                permission
-                if allowed, let settings {
-                    if let device = settings.device {
-                        ForEach(settings.kinds) { kind in
-                            Divider()
-                            Toggle(isOn: Binding(
-                                get: { device.kinds.contains(kind.key) },
-                                set: { on in Task { await model.setNotification(kind.key, on: on) } }
-                            )) {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(kind.title)
-                                    Text(kind.hint).font(.caption).foregroundStyle(Theme.inkSoft)
-                                }
-                            }
-                            .tint(Theme.ink)
-                        }
+                if parts.contains(.phone) {
+                    phone
+                }
+                if parts.contains(.key), model.isOwner {
+                    if parts.contains(.phone) { Divider() }
+                    if settings == nil {
+                        ProgressView()
                     } else {
-                        Divider()
-                        HStack(spacing: 8) {
-                            ProgressView()
-                            Text("Zapisuję telefon na serwerze…").font(.subheadline).foregroundStyle(Theme.inkSoft)
-                        }
+                        keyRow
                     }
                 }
-                if let error = push.registrationError {
-                    Text("iOS nie dał tokenu APNs: \(error)")
-                        .font(.caption)
-                        .foregroundStyle(Theme.bad)
-                }
-                if settings != nil, model.isOwner {
-                    Divider()
-                    keyRow
-                } else if settings != nil, settings?.key == nil {
-                    // A household member: the key is the owner's to add.
-                    Text("Serwer nie ma jeszcze klucza APNs: poproś właściciela ramki, żeby go dodał.")
-                        .font(.caption)
-                        .foregroundStyle(Theme.inkSoft)
-                }
-                if allowed, settings?.key != nil, settings?.device != nil {
-                    Divider()
-                    testRow
+                if parts.contains(.test) {
+                    if parts != [.test] { Divider() }
+                    if allowed, settings?.key != nil, settings?.device != nil {
+                        testRow
+                    } else {
+                        Text("Najpierw włącz powiadomienia na tym telefonie i dodaj klucz APNs.")
+                            .font(.caption)
+                            .foregroundStyle(Theme.inkSoft)
+                    }
                 }
             }
         }
@@ -82,6 +74,49 @@ struct NotificationsSection: View {
         .task { await model.loadNotifications() }
     }
 
+    /// The permission, this phone's switches, and a word when the server
+    /// has no key yet.
+    @ViewBuilder
+    private var phone: some View {
+        permission
+        if allowed, let settings {
+            if let device = settings.device {
+                ForEach(settings.kinds) { kind in
+                    Divider()
+                    Toggle(isOn: Binding(
+                        get: { device.kinds.contains(kind.key) },
+                        set: { on in Task { await model.setNotification(kind.key, on: on) } }
+                    )) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(kind.title)
+                            Text(kind.hint).font(.caption).foregroundStyle(Theme.inkSoft)
+                        }
+                    }
+                    .tint(Theme.ink)
+                }
+            } else {
+                Divider()
+                HStack(spacing: 8) {
+                    ProgressView()
+                    Text("Zapisuję telefon na serwerze…").font(.subheadline).foregroundStyle(Theme.inkSoft)
+                }
+            }
+        }
+        if let error = push.registrationError {
+            Text("iOS nie dał tokenu APNs: \(error)")
+                .font(.caption)
+                .foregroundStyle(Theme.bad)
+        }
+        if settings != nil, settings?.key == nil {
+            // The owner adds it in Klucze i certyfikaty.
+            Text(model.isOwner
+                ? "Serwer nie ma jeszcze klucza APNs. Dodasz go w Kluczach i certyfikatach."
+                : "Serwer nie ma jeszcze klucza APNs: poproś właściciela ramki, żeby go dodał.")
+                .font(.caption)
+                .foregroundStyle(Theme.inkSoft)
+        }
+    }
+
     @ViewBuilder
     private var permission: some View {
         switch push.authorization {
@@ -95,7 +130,7 @@ struct NotificationsSection: View {
             }
         case .notDetermined:
             VStack(alignment: .leading, spacing: 6) {
-                Text("Bateria, błąd wysyłki, zmiana dzieła, nowa wersja serwera, Studium dnia, gotowe studium, Artysta tygodnia i urodziny ulubionych artystów.")
+                Text("Bateria, błąd wysyłki, Studium dnia i inne.")
                     .font(.subheadline)
                     .foregroundStyle(Theme.inkSoft)
                 Button {
@@ -129,7 +164,7 @@ struct NotificationsSection: View {
             }
         } else {
             VStack(alignment: .leading, spacing: 6) {
-                Text("Serwer potrzebuje klucza APNs z konta Apple Developer (Keys → Apple Push Notifications service, plik AuthKey_….p8). Wystarczy raz.")
+                Text("Plik AuthKey_….p8 z Apple Developer (Keys → Apple Push Notifications service).")
                     .font(.caption)
                     .foregroundStyle(Theme.inkSoft)
                 Button {

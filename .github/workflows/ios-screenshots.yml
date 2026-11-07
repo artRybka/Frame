@@ -109,6 +109,15 @@ jobs:
             capture presentation-photo 12 "presentation-photo-$appearance"
             capture orientation 10 "orientation-$appearance"
             capture connection 10 "connection-$appearance"
+            capture connection 10 "connection-display-$appearance" -settingsPage display
+            capture connection 10 "connection-notifications-$appearance" -settingsPage notifications
+            capture connection 10 "connection-sources-$appearance" -settingsPage sources
+            capture connection 10 "connection-ai-$appearance" -settingsPage ai
+            capture connection 10 "connection-library-$appearance" -settingsPage library
+            capture connection 10 "connection-frame-$appearance" -settingsPage frame
+            capture connection 10 "connection-server-$appearance" -settingsPage server
+            capture connection 10 "connection-keys-$appearance" -settingsPage keys
+            capture connection 10 "connection-diagnostics-$appearance" -settingsPage diagnostics
             capture battery 10 "battery-$appearance"
             capture museums 8 "museums-$appearance"
             capture search 8 "search-$appearance"
