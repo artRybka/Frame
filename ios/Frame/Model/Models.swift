@@ -1282,6 +1282,10 @@ enum Panel {
     static func millimetres(_ margin: Double) -> Double { margin * shortSideMillimetres }
 
     static func margin(mm: Double) -> Double { mm / shortSideMillimetres }
+
+    /// "Opis": the narrowest passe-partout (server: layout.DESCRIPTION_MIN_MARGIN).
+    static let descriptionMinMillimetres = 5.0
+    static let descriptionMinMargin = margin(mm: descriptionMinMillimetres)
 }
 
 /// The same checks the server makes, to point at a typo before saving.

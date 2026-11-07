@@ -261,7 +261,7 @@ enum DemoFraming {
     private static func beside(_ size: CGSize, _ canvas: CGSize, _ margin: Double, side: Bool) -> (CGRect, [CGRect])? {
         let (cw, ch) = (canvas.width, canvas.height)
         let short = min(cw, ch)
-        let m = (short * max(margin, 0.04)).rounded()
+        let m = (short * max(margin, Panel.descriptionMinMargin)).rounded()
         let share: CGFloat = 0.33
         let ratio = size.width / size.height
         let main: CGRect, rects: [CGRect]
