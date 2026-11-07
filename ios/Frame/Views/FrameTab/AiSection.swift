@@ -1,12 +1,21 @@
 import SwiftUI
 
-/// Konfiguracja: Claude (Anthropic's API) working for the library. The key,
-/// what the model may do, the monthly limit and how far it got. The models
-/// are fixed per task on the server: Haiku for keywords and translations,
-/// Sonnet for notes on works without a description.
+/// Konfiguracja → Claude: Anthropic's API working for the library. What the
+/// model may do, the monthly limit and how far it got; the key is in
+/// Konfiguracja → Klucze i certyfikaty (`part: .key`). The models are fixed
+/// per task on the server: Haiku for keywords and translations, Sonnet for
+/// notes on works without a description.
 struct AiSection: View {
+    enum Part {
+        /// The switches, the limit and the progress.
+        case settings
+        /// The Anthropic key alone.
+        case key
+    }
+
     @Environment(AppModel.self) private var model
     let settings: AiSettings
+    var part: Part = .settings
     @State private var key = ""
     @State private var savingKey = false
     @State private var estimating = false
@@ -23,10 +32,32 @@ struct AiSection: View {
     private var keywordsOn: Bool { settings.keywordsArtworks || settings.keywordsPhotos }
 
     var body: some View {
+        switch part {
+        case .settings: settingsBody
+        case .key: keyBody
+        }
+    }
+
+    private var keyBody: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            SectionHeader(title: "Claude", subtitle: "Klucz API Anthropic")
+            Card {
+                keyFields
+            }
+        }
+    }
+
+    private var settingsBody: some View {
         VStack(alignment: .leading, spacing: 16) {
             SectionHeader(title: "Model językowy (Claude)", subtitle: "Słowa kluczowe i polskie opisy dzieł")
             Card {
-                keyFields
+                if !settings.keySet {
+                    Label("Brak klucza Anthropic. Dodasz go w Kluczach i certyfikatach.", systemImage: "key")
+                        .font(.caption)
+                        .foregroundStyle(Theme.warn)
+                    Divider()
+                }
+                spending
                 Divider()
                 toggle(
                     "Polskie tytuły i opisy",
@@ -36,20 +67,20 @@ struct AiSection: View {
                 Divider()
                 toggle(
                     "Słowa kluczowe dla dzieł",
-                    hint: "Co przedstawia dzieło, dla Szukaj i inteligentnych playlist (Haiku).",
+                    hint: "Dla Szukaj i inteligentnych playlist.",
                     value: settings.keywordsArtworks
                 ) { AiSettingsUpdate(keywordsArtworks: $0) }
                 Divider()
                 toggle(
                     "Słowa kluczowe dla zdjęć",
-                    hint: "Miniatury Twoich zdjęć są wysyłane do Anthropic.",
+                    hint: "Miniatury zdjęć idą do Anthropic.",
                     value: settings.keywordsPhotos
                 ) { AiSettingsUpdate(keywordsPhotos: $0) }
                 if let daily = settings.daily {
                     Divider()
                     toggle(
                         "Studium dnia",
-                        hint: "Nowe studium dzieła na górze Odkrywaj, raz dziennie (Opus, zamawiane dzień wcześniej za pół ceny, ok. 4 USD miesięcznie).",
+                        hint: "Raz dziennie na górze Odkrywaj, ok. 4 USD miesięcznie.",
                         value: daily
                     ) { AiSettingsUpdate(daily: $0) }
                 }
@@ -57,7 +88,7 @@ struct AiSection: View {
                     Divider()
                     toggle(
                         "Tłumaczenie słów w Szukaj",
-                        hint: "Polskie słowa idą do muzeów zagranicznych po angielsku, np. gitara jako guitar (Haiku).",
+                        hint: "Np. gitara jako guitar dla muzeów zagranicznych.",
                         value: searchWords
                     ) { AiSettingsUpdate(searchWords: $0) }
                 }
@@ -65,12 +96,10 @@ struct AiSection: View {
                     Divider()
                     toggle(
                         "Kurator Odkrywaj",
-                        hint: "Dwie karty w „Dziś dla Ciebie” raz w tygodniu, a obejrzana wraca nowa następnego dnia (Opus, zamawiane nocą za pół ceny, do ok. 3 USD miesięcznie).",
+                        hint: "Dwie karty w „Dziś dla Ciebie”, do ok. 3 USD miesięcznie.",
                         value: curator
                     ) { AiSettingsUpdate(curator: $0) }
                 }
-                Divider()
-                spending
                 Divider()
                 progress
             }
@@ -113,7 +142,7 @@ struct AiSection: View {
             SecureField(settings.keySet ? "zapisany · wpisz nowy, by zmienić" : "sk-ant-…", text: $key)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
-            Text("Z console.anthropic.com → API Keys. Serwer sprawdza klucz przed zapisaniem i nie odsyła go do aplikacji.")
+            Text("Z console.anthropic.com → API Keys.")
                 .font(.caption)
                 .foregroundStyle(Theme.inkSoft)
         }
@@ -131,11 +160,6 @@ struct AiSection: View {
         }
         .fontWeight(.semibold)
         .disabled(key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || savingKey)
-        if settings.keySet && !settings.keyFromApp {
-            Text("Klucz z frame.env lub opcji add-onu. Zapisany tutaj będzie miał pierwszeństwo.")
-                .font(.caption)
-                .foregroundStyle(Theme.inkSoft)
-        }
         if settings.keyFromApp {
             Button("Usuń klucz", role: .destructive) {
                 Task { await model.deleteAiKey() }
@@ -232,7 +256,7 @@ struct AiSection: View {
         }
         .fontWeight(.semibold)
         .disabled(!settings.keySet || !keywordsOn || estimating || settings.keywordsProgress.preparing)
-        Text("Otwarte dzieło lub zdjęcie serwer opisuje od razu, poza kolejnością. W tle opisuje Twoje zdjęcia i dzieła z ulubionych, playlist i ekranu. Ten przycisk dokłada cały katalog Odkrywaj, taniej, w pakietach.")
+        Text("Dokłada cały katalog Odkrywaj, taniej, w pakietach.")
             .font(.caption)
             .foregroundStyle(Theme.inkSoft)
     }
