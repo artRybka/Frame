@@ -28,11 +28,17 @@ struct CropScreen: View {
     /// screen still slid away as a cream card with the frame in it, over
     /// the preview already shown again (two frames for a moment).
     var onClose: (() -> Void)?
+    /// The frame is leaving its preview: the preview there hides now, not
+    /// as the screen is asked for (hidden at the tap, it could leave an
+    /// empty place for a frame before this screen was up). Until then the
+    /// frame here lies on it casting no shadow, so the two don't darken.
+    var onOpen: (() -> Void)?
 
     init(
         itemID: String, preview: ImageRef?, aspectRatio: CGFloat, placeholder: Color = Theme.mat,
         onFrame: Bool = false, draft: Binding<FramingDraft>, save: @escaping () async -> Bool, home: CGRect? = nil,
-        onClose: (() -> Void)? = nil, homeGrow: CGFloat = 1
+        previewLoaded: ImageRef? = nil, onOpen: (() -> Void)? = nil, onClose: (() -> Void)? = nil,
+        homeGrow: CGFloat = 1
     ) {
         self.itemID = itemID
         self.preview = preview
@@ -42,7 +48,13 @@ struct CropScreen: View {
         _draft = draft
         self.save = save
         self.home = home
+        self.onOpen = onOpen
         self.onClose = onClose
+        // The preview the parent shows already: the windows are up from
+        // the first frame, not dropped in halfway through the flight with
+        // "Wczytuję podgląd…" over it for a moment.
+        _loaded = State(initialValue: previewLoaded)
+        _away = State(initialValue: onOpen == nil)
         _atHome = State(initialValue: home != nil)
         _grow = State(initialValue: homeGrow)
     }
@@ -58,6 +70,8 @@ struct CropScreen: View {
     /// The draft as it was when the screen opened, for "Anuluj".
     @State private var original: FramingDraft?
     @State private var loaded: ImageRef?
+    /// The frame has left its preview (`onOpen`) and casts its own shadow.
+    @State private var away: Bool
     /// `preview` as the parent has it now: closing waits for the saved
     /// crop's, which `self` in a task started before saving does not know.
     @State private var latest: ImageRef?
@@ -107,7 +121,7 @@ struct CropScreen: View {
                 .frame(width: box.width, height: box.height)
                 .rotationEffect(.degrees(turn ? 90 : 0))
                 // Cast after the turn, so it keeps falling down.
-                .frameShadow()
+                .frameShadow(away)
                 .modifier(AtHome(move: atHome ? homeMove(in: geo) : nil))
                 .opacity(gone ? 0 : 1)
                 .frame(width: geo.size.width, height: geo.size.height)
@@ -179,6 +193,11 @@ struct CropScreen: View {
         .task {
             // One frame on the preview first, so it is seen to come out of it.
             try? await Task.sleep(for: .seconds(0.03))
+            // The preview there hides as this frame takes its shadow over.
+            Self.present {
+                away = true
+                onOpen?()
+            }
             withAnimation(Self.out) {
                 atHome = false
                 shown = true
@@ -192,20 +211,15 @@ struct CropScreen: View {
         }
     }
 
-    /// "Anuluj" and the title, where a navigation bar would have them: a bar
-    /// of its own, so it fades with the rest while the frame flies.
+    /// "Anuluj", where a navigation bar would have it: a bar of its own, so
+    /// it fades with the rest while the frame flies. No title: the frame
+    /// says what the screen is (Mateusz 2026-11-07).
     private var header: some View {
         HStack {
             Button("Anuluj") { cancel() }
                 .buttonStyle(.glass)
                 .disabled(saving || closing)
             Spacer()
-        }
-        .overlay {
-            Text("Kadr")
-                .font(.headline)
-                .foregroundStyle(Theme.ink)
-                .accessibilityAddTraits(.isHeader)
         }
         .padding(.horizontal, Theme.gutter)
         .padding(.top, 6)

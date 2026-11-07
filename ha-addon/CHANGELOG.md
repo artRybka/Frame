@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.121.6
+
+- Kadr otwiera się płynniej: okienka kadru są widoczne od początku lotu
+  ramki, bez plakietki „Wczytuję podgląd…” w połowie animacji i bez
+  mignięcia podglądu w chwili dotknięcia.
+- Ekran Kadru nie ma już napisu „Kadr” u góry.
+
 ## 1.121.4
 
 - Serwer pamięta po aktualizacji, które muzeum go zablokowało i na jak
