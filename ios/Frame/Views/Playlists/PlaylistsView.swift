@@ -62,7 +62,7 @@ struct PlaylistsView: View {
                     } else if suggestionsActive {
                         NavigationLink(value: SuggestionsRoute()) {
                             NowPlayingCard(title: "Propozycje", subtitle: "dobór z Odkrywaj") {
-                                SuggestionsCover(works: model.suggestionCover)
+                                CoverSlideshow(slides: model.suggestionCover.prefix(4).map(CoverSlideshow.Slide.init))
                             }
                         }
                         .buttonStyle(.plain)
@@ -95,6 +95,7 @@ struct PlaylistsView: View {
                         .buttonStyle(.plain)
                     }
                 }
+                .environment(\.parallaxLift, scrolled)
                 .pageWidth()
                 .padding(.horizontal, Theme.gutter)
                 .padding(.bottom, 40)
@@ -306,7 +307,8 @@ extension PlaylistKind {
 
 /// Card for the playlist the frame presents (or Propozycje), J1 from the
 /// sketches (Mateusz 2026-11-05, `teraz-prezentowane-kafelek/szkic-7.png`):
-/// the cover's four works as a 2×2 square flush with the card's left edge,
+/// the cover's works one at a time (`CoverSlideshow`, 2026-11-07; a 2×2
+/// collage before) in a square flush with the card's left edge,
 /// a third of the card wide and as tall as the card; beside it on white
 /// "Teraz prezentowane", the name and, at the bottom, the count next to the
 /// arrow. The card is always a third as tall as it is wide, so a long name
@@ -373,11 +375,108 @@ struct NowPlayingCard<Cover: View>: View {
     }
 }
 
-extension NowPlayingCard where Cover == Collage {
+extension NowPlayingCard where Cover == CoverSlideshow {
     init(playlist: PlaylistSummary, opens: Bool = true) {
         self.init(title: playlist.name, subtitle: playlist.countText, opens: opens) {
-            Collage(itemIDs: playlist.coverItemIds, title: playlist.name)
+            CoverSlideshow(slides: playlist.coverItemIds.map(CoverSlideshow.Slide.init), title: playlist.name)
         }
+    }
+}
+
+/// The square of "Teraz prezentowane": the cover's works one at a time,
+/// each for a few seconds, the next slowly coming through the one before
+/// (variant A, "Ciche przenikanie", of
+/// `teraz-prezentowane-animacja/szkic.png`, Mateusz 2026-11-07). The
+/// pictures sit a little deeper than the card, with the study of the day's
+/// parallax. All of them are laid out at once, so the next one is loaded
+/// before its turn. Stands still off screen and with the app away.
+struct CoverSlideshow: View {
+    struct Slide: Identifiable, Equatable {
+        let id: String
+        var ref: ImageRef
+        var fallback: ImageRef?
+        var placeholder: Color = Theme.mat
+
+        init(_ id: String) {
+            self.id = id
+            ref = .thumb(id)
+        }
+
+        init(_ work: RemoteItem) {
+            id = work.id
+            ref = work.thumb
+            fallback = work.thumbFallback
+            placeholder = work.item.summary.placeholderColor
+        }
+    }
+
+    let slides: [Slide]
+    var title = ""
+
+    /// How long each work stands, and how long the next takes to come.
+    static let hold: Duration = .seconds(6)
+    static let fade: Double = 2
+
+    @Environment(\.scenePhase) private var phase
+    /// The work on top, and the one it is coming over while it does.
+    @State private var shown = 0
+    @State private var under: Int?
+    @State private var onScreen = false
+
+    private var running: Bool { onScreen && phase == .active && slides.count > 1 }
+
+    var body: some View {
+        ZStack {
+            Theme.mat
+            if slides.isEmpty {
+                Collage(itemIDs: [], title: title)
+            } else {
+                GeometryReader { geo in
+                    ZStack {
+                        ForEach(Array(slides.enumerated()), id: \.element.id) { index, slide in
+                            ArtImage(
+                                ref: slide.ref,
+                                fallback: slide.fallback,
+                                placeholder: slide.placeholder,
+                                maxPixel: 600,
+                                subjectFocus: true
+                            )
+                            .frame(width: geo.size.width, height: geo.size.height)
+                            .scaleEffect(CoverZoom.scale)
+                            .clipped()
+                            .opacity(index == shown || index == under ? 1 : 0)
+                            .zIndex(index == shown ? 2 : index == under ? 1 : 0)
+                        }
+                    }
+                }
+                // A touch bigger than the square, so it can drift in it.
+                .padding(.horizontal, -Parallax.side)
+                .padding(.vertical, -Parallax.top)
+                .parallax()
+            }
+        }
+        .clipped()
+        .onAppear { onScreen = true }
+        .onDisappear { onScreen = false }
+        .onScrollVisibilityChange(threshold: 0.05) { onScreen = $0 }
+        .onChange(of: slides.map(\.id)) {
+            shown = 0
+            under = nil
+        }
+        .task(id: running) {
+            guard running else { return }
+            while !Task.isCancelled {
+                try? await Task.sleep(for: Self.hold)
+                guard !Task.isCancelled, slides.count > 1 else { return }
+                under = shown
+                withAnimation(.easeInOut(duration: Self.fade)) {
+                    shown = (shown + 1) % slides.count
+                }
+                try? await Task.sleep(for: .seconds(Self.fade))
+                under = nil
+            }
+        }
+        .accessibilityHidden(true)
     }
 }
 

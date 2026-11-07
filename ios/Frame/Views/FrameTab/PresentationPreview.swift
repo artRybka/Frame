@@ -45,7 +45,6 @@ struct PresentationPreview<Note: View>: View {
 
     /// A portrait frame's height.
     static var height: CGFloat { 290 }
-    private static var moulding: CGFloat { 5 }
 
     private struct Shown: Equatable {
         let ref: ImageRef
@@ -109,12 +108,12 @@ struct PresentationPreview<Note: View>: View {
     /// The frame at its size on the wall, the moulding included: a
     /// landscape one as wide as there is room, a portrait one `height` tall.
     static func box(portrait: Bool, width: CGFloat) -> CGSize {
-        let m = 2 * moulding
         if portrait {
-            let height = min(Self.height, (width - m) * 16 / 9 + m)
-            return CGSize(width: (height - m) * 9 / 16 + m, height: height)
+            let shape = Moulding.frameAspect(9.0 / 16.0)
+            let height = min(Self.height, width / shape)
+            return CGSize(width: height * shape, height: height)
         }
-        return CGSize(width: width, height: (width - m) * 9 / 16 + m)
+        return CGSize(width: width, height: Moulding.height(width: width, aspect: 16.0 / 9.0))
     }
 
     /// The picture to show: the one asked for, else one of the same work
@@ -135,7 +134,6 @@ struct PresentationPreview<Note: View>: View {
             ref: nil,
             aspectRatio: layout.portrait ? 9.0 / 16.0 : 16.0 / 9.0,
             placeholder: MatSwatch.color(layout.mat),
-            moulding: Self.moulding,
             shadow: false
         ) {
             ZStack {

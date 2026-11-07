@@ -216,13 +216,11 @@ struct CropScreen: View {
     private func homeMove(in geo: GeometryProxy) -> AtHome.Move? {
         guard let home, home.width > 0 else { return nil }
         let space = geo.frame(in: .global)
-        let moulding: CGFloat = 8
-        let inner = CGSize(width: max(space.width - 2 * moulding, 1), height: max(space.height - 2 * moulding, 1))
-        let fitted = inner.width / inner.height > aspectRatio
-            ? CGSize(width: inner.height * aspectRatio, height: inner.height)
-            : CGSize(width: inner.width, height: inner.width / aspectRatio)
-        let width = fitted.width + 2 * moulding
+        let width = Moulding.fitted(aspectRatio, in: space.size).width
+        guard width > 0 else { return nil }
         return AtHome.Move(
+            // The moulding is in proportion, so the frame scaled down is the
+            // preview's own, moulding and all.
             scale: home.width / width * grow,
             offset: CGSize(width: home.midX - space.midX, height: home.midY - space.midY)
         )

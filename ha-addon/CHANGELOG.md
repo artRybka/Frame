@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.119.2
+
+- Biała ramka w podglądach ma grubość w proporcji do obrazu, wszędzie taką
+  samą: przy wejściu w „Kadr” i wyjściu z niego (z Teraz, karty dzieła i
+  Studium) obwódka już nie przeskakuje.
+
+## 1.119.1
+
+- Jaśniejsze dzieła na karcie dzieła i w studium wchodzą płynnie, w około
+  sekundę: najpierw obraz jest zwykły, potem rozjaśniają się jego jasne
+  partie, a na końcu całe dzieło równo, z siłą ustawioną w Konfiguracji.
+
+## 1.119.0
+
+- Kafelek „Teraz prezentowane” w Playlistach pokazuje jedno dzieło naraz
+  zamiast kolażu czterech. Co kilka sekund następne dzieło okładki powoli
+  wyłania się spod poprzedniego, a obraz leży odrobinę głębiej niż karta
+  i delikatnie przesuwa się przy obracaniu telefonu i przewijaniu, jak
+  w Studium dnia. Poza ekranem animacja stoi.
+
 ## 1.118.5
 
 - Okładka „Ukryte” nie ma już jasnych pasów u góry i u dołu, a odblask
