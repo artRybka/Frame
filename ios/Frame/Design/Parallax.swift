@@ -9,14 +9,16 @@ import SwiftUI
 enum Parallax {
     /// How much bigger than its window the picture is, on each side. It
     /// never moves further than this, so no edge ever shows.
-    static let side: CGFloat = 14
-    static let top: CGFloat = 22
-    /// The most the phone's turn moves it.
-    static let tiltSide: CGFloat = 11
-    static let tiltTop: CGFloat = 7
+    static let side: CGFloat = 5
+    static let top: CGFloat = 8
+    /// The most the phone's turn moves it (1.118.2 had 11 and 7: far too
+    /// much, Mateusz 2026-11-07, PLAN 3.3zzz36).
+    static let tiltSide: CGFloat = 3
+    static let tiltTop: CGFloat = 2
     /// Scrolled up, the picture moves down by this part of the way, up to
-    /// what is left above and below once the turn has had its share.
-    static let lag: CGFloat = 0.12
+    /// what is left above and below once the turn has had its share
+    /// (1.118.2: 0.12, up to 15 pt).
+    static let lag: CGFloat = 0.04
     static var liftMost: CGFloat { top - tiltTop }
 }
 
