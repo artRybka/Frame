@@ -268,6 +268,12 @@ struct SeenView: Codable, Hashable, Sendable {
     var status: String
     /// Polish words: things, places, the mood.
     var words: [String]
+    /// The museum's styles and subjects in Polish, without those the words
+    /// already say (nil from a server before 1.120.0).
+    var tags: [String]?
+    /// The kind of object and where it is from, in Polish ("" when not known).
+    var classification: String?
+    var culture: String?
 }
 
 struct ItemSummary: Codable, Identifiable, Hashable, Sendable {

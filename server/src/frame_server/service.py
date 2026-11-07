@@ -19,6 +19,7 @@ from .ai.composition import ComposeJob
 from .ai.curator import Curator
 from .ai.details import MendJob
 from .ai.extras import ExtrasJob
+from .ai.museum_words import MuseumWords
 from .ai.prose import ProseJob
 from .ai.search_words import SearchWords
 from .ai.study import StudyJob
@@ -266,6 +267,8 @@ class FrameService:
         # Polish words typed in Szukaj, in English for the museums abroad.
         self.search_words = SearchWords(self.library, self.claude, self.ai_config)
         self.importer.translate = self.search_words.wording
+        # The museum's labels on a work's card ("Painting", "Italy") in Polish.
+        self.museum_words = MuseumWords(self.library, self.claude, self.ai_config)
         self.ai = AiWorker(self.library, self.images, self.claude, self.ai_config)
         self.ai.register(KeywordsJob(self.library, self.images, self.ai_config))
         self.pl_text = PlTextJob(self.library, self.images, self.ai_config)

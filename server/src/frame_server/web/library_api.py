@@ -7,6 +7,7 @@ import contextlib
 import hashlib
 import logging
 import threading
+import time
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Annotated, Any, Literal
@@ -21,6 +22,7 @@ from starlette.concurrency import run_in_threadpool
 from ..ai import PolishText
 from ..ai.keywords import KIND as KEYWORDS
 from ..ai.keywords import polish_words
+from ..ai.museum_words import leftovers, museum_labels
 from ..ai.pl_text import KIND as PL_TEXT
 from ..copies import CopyLine, Spot
 from ..fsutil import own_files
@@ -348,10 +350,15 @@ async def item_polish(
 
 class SeenView(BaseModel):
     """What the model saw in the picture, for the card; ``status`` as in
-    PolishView."""
+    PolishView. With the museum's own labels in Polish: its styles and
+    subjects that the words do not already say (``tags``), the kind of
+    object and where it is from ("" when the work has none)."""
 
     status: Literal["ready", "waiting", "none", "off"]
     words: list[str] = Field(default_factory=list)  # Polish: things, places, mood
+    tags: list[str] = Field(default_factory=list)
+    classification: str = ""
+    culture: str = ""
 
 
 @router.post("/library/items/{item_id:item}/describe", response_model=SeenView)
@@ -360,29 +367,62 @@ async def describe_item(
 ) -> SeenView:
     """The card opened: the model's jobs for this work or photo (keywords,
     Polish texts) go ahead of everything else. ``wait``: seconds to wait for
-    the keywords; the Polish texts come from ``/polish``."""
+    the keywords and the museum's labels in Polish; the Polish texts come
+    from ``/polish``."""
     item = await _work(svc, item_id)
+    labels = museum_labels(item)
+    asking = svc.museum_words.ask(labels.all)
+    started = time.monotonic()
+    status = await _keywords(svc, item, wait)
+    if asking and wait:  # asked as the keywords were: what is left of the wait
+        left = max(1.0, wait - (time.monotonic() - started))
+        await run_in_threadpool(svc.museum_words.polish, labels.all, left)
+    polish, pending = svc.museum_words.polish(labels.all)
+    words: list[str] = []
+    if status == "ready":
+        note = svc.library.note(item_id, KEYWORDS)
+        words = polish_words(note.data) if note is not None else []
+        status = "ready" if words else "none"
+    if pending and status != "waiting":
+        status = "waiting"
+    culture = svc.museum_words.known(labels.culture) or "" if labels.culture else ""
+    kind = svc.museum_words.known(labels.kind) or "" if labels.kind else ""
+    return SeenView(
+        status=status,
+        words=words,
+        # A label still being asked is left out for now: not English first.
+        tags=leftovers(
+            [polish[t] for t in labels.tags if not pending or svc.museum_words.known(t)],
+            [*words, culture],
+        ),
+        classification=kind,
+        culture=culture,
+    )
+
+
+async def _keywords(svc: FrameService, item: Item, wait: float) -> str:
+    """The keywords of ``item`` asked ahead of the queue (with the Polish
+    texts): "ready" (in its note), "waiting", "none" or "off"."""
     jobs = [job for job in svc.ai.jobs.values() if job.enabled() and job.in_library(item)]
     if not jobs:
-        return SeenView(status="off")
-    if svc.library.get(item_id) is None:  # a museum work only looked at: pooled
+        return "off"
+    if svc.library.get(item.id) is None:  # a museum work only looked at: pooled
         item = await run_in_threadpool(svc.importer.add, item.model_copy(update={"pooled": True}))
-    futures = {job.kind: svc.ai.need_now(item_id, job.kind) for job in jobs}
+    futures = {job.kind: svc.ai.need_now(item.id, job.kind) for job in jobs}
     future = futures.get(KEYWORDS)
     if future is None:
-        return SeenView(status="off")
+        return "off"
     if wait:
         try:
             await asyncio.wait_for(asyncio.shield(asyncio.wrap_future(future)), wait)
         except TimeoutError:
             pass
         except Exception:  # the model is unavailable
-            return SeenView(status="none")
-    note = svc.library.note(item_id, KEYWORDS)
+            return "none"
+    note = svc.library.note(item.id, KEYWORDS)
     if note is not None and svc.ai.jobs[KEYWORDS].fresh(item, note):
-        words = polish_words(note.data)
-        return SeenView(status="ready" if words else "none", words=words)
-    return SeenView(status="none" if future.done() else "waiting")
+        return "ready"
+    return "none" if future.done() else "waiting"
 
 
 class SharperView(BaseModel):

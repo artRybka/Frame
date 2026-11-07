@@ -375,7 +375,8 @@ def test_opening_a_card_asks_out_of_turn(tmp_path: Path) -> None:
     with TestClient(app) as client:
         _add(svc, "icloud:1", kind=ItemKind.PHOTO, photo=PhotoInfo(caption="Port"))
         url = "/api/library/items/icloud:1/describe"
-        assert client.post(url).json() == {"status": "off", "words": []}
+        none = {"tags": [], "classification": "", "culture": ""}
+        assert client.post(url).json() == {"status": "off", "words": [], **none}
 
         svc.ai_config.set_key(GOOD_KEY)
         svc.ai.start()
@@ -383,7 +384,8 @@ def test_opening_a_card_asks_out_of_turn(tmp_path: Path) -> None:
             view = client.post(f"{url}?wait=10").json()
         finally:
             svc.ai.stop()
-        assert view == {"status": "ready", "words": ["żaglowiec", "port", "rybacy", "spokój"]}
+        words = ["żaglowiec", "port", "rybacy", "spokój"]
+        assert view == {"status": "ready", "words": words, **none}
         item = svc.library.get("icloud:1")
         assert item is not None and "subject:sea" in item.terms
 
