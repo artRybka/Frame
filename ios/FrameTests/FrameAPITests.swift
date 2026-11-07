@@ -709,18 +709,15 @@ final class FrameAPITests: XCTestCase {
     func testPanelAddressChecks() {
         XCTAssertEqual(PanelAddress.host(" http://203.0.113.152/ "), "203.0.113.152")
         XCTAssertNil(PanelAddress.host("203.0.113.152; rm"))
-        XCTAssertEqual(PanelAddress.mac("a4-30-7a-01-02-ff"), "A4:30:7A:01:02:FF")
-        XCTAssertEqual(PanelAddress.mac(""), "")
-        XCTAssertNil(PanelAddress.mac("A4:30:7A:01:02"))
     }
 
     func testPanelConfigUpdateKeepsPinUnlessTyped() throws {
-        let update = PanelConfigUpdate(host: "203.0.113.152", pin: nil, mac: nil, port: 1515)
+        let update = PanelConfigUpdate(host: "203.0.113.152", pin: nil, port: 1515)
         let json = try XCTUnwrap(
             JSONSerialization.jsonObject(with: LiveBackend.encoder().encode(update)) as? [String: Any]
         )
         XCTAssertNil(json["pin"])  // left out: the server keeps its PIN
-        XCTAssertTrue(json["mac"] is NSNull)  // sent as null: no Wake-on-LAN
+        XCTAssertNil(json["mac"])  // the server takes the frame's own
         let config = try LiveBackend.decoder().decode(
             PanelConfig.self,
             from: Data(#"{"host": "203.0.113.152", "mac": null, "port": 1515, "pin_set": true, "from_app": true}"#.utf8)

@@ -1357,7 +1357,7 @@ def test_the_panels_clock_is_measured_at_every_question(tmp_path: Path) -> None:
     assert service.status.status.clock_offset_s == 95.4
 
 
-def test_the_panels_mac_fills_in_for_wake_on_lan(tmp_path: Path) -> None:
+def test_the_panels_mac_is_used_for_wake_on_lan(tmp_path: Path) -> None:
     service = _service(tmp_path)
     assert service.settings.device_mac is None
     report = {"via": "webapis", "level": 3, "ssid": "IoT", "ip": "127.0.0.1", "mac": "aabbccddeeff"}
@@ -1365,12 +1365,12 @@ def test_the_panels_mac_fills_in_for_wake_on_lan(tmp_path: Path) -> None:
     assert service.settings.device_mac == "AA:BB:CC:DD:EE:FF"
     assert service.status.status.wifi is not None
     assert service.status.status.wifi.mac == "AA:BB:CC:DD:EE:FF"
-    # Kept over a restart; one set in the app is not overwritten.
+    # Kept over a restart; the frame's own Wi-Fi MAC always wins.
     again = _service(tmp_path)
     assert again.settings.device_mac == "AA:BB:CC:DD:EE:FF"
     again.settings.device_mac = "11:22:33:44:55:66"
     again.app.report("wifi", {**report, "mac": "AA:BB:CC:DD:EE:00"})
-    assert again.settings.device_mac == "11:22:33:44:55:66"
+    assert again.settings.device_mac == "AA:BB:CC:DD:EE:00"
 
 
 def test_a_screenshot_is_taken_only_when_asked_and_on_the_charger(tmp_path: Path) -> None:

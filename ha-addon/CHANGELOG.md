@@ -2,11 +2,8 @@
 
 ## 1.113.1
 
-- Adres MAC ramki nie musi być wpisywany: aplikacja ramki odczytuje go
-  sama, a Konfiguracja → Ramka pokazuje go z dopiskiem „Odczytany z ramki”.
-  Puste pole znaczy teraz „adres z ramki”, a nie wyłączone budzenie.
-- Gdy wpisany adres różni się od tego, który podaje ramka, pod polem
-  pojawia się „Ramka podaje …” z przyciskiem „Użyj”.
+- W Konfiguracji → Ramka nie ma już pola Adres MAC. Do budzenia serwer
+  używa zawsze adresu Wi-Fi, który podaje sama aplikacja ramki.
 
 ## 1.113.0
 

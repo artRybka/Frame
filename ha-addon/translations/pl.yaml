@@ -7,7 +7,7 @@ configuration:
     description: PIN do MDC, wyświetlany na ekranie podczas parowania w aplikacji Samsung E-Paper.
   device_mac:
     name: Adres MAC ekranu
-    description: Potrzebny do budzenia przez Wake-on-LAN.
+    description: Niepotrzebny. Ramka podaje swój adres Wi-Fi sama; ten służy tylko do jej pierwszego startu.
   port:
     name: Port HTTP
     description: Port, z którego ekran pobiera treści.
