@@ -16,6 +16,7 @@ struct TailnetSection: View {
     @State private var key = ""
     @State private var saving = false
     @State private var retrying = false
+    @State private var savingAddress = false
     @State private var showLog = false
     @State private var log = ""
 
@@ -39,6 +40,10 @@ struct TailnetSection: View {
             Card {
                 if parts.contains(.connection) {
                     status
+                    if editable {
+                        Divider()
+                        address
+                    }
                     if keySet || model.tailnet != .off {
                         Divider()
                         Toggle(isOn: enabled) {
@@ -89,10 +94,7 @@ struct TailnetSection: View {
     private var status: some View {
         switch model.tailnet {
         case .off:
-            line(
-                keySet ? "Adres „Spoza domu” nie jest adresem Tailscale." : "Brak klucza Tailscale: poza domem potrzebna jest aplikacja Tailscale.",
-                icon: "circle.dashed", color: Theme.inkSoft
-            )
+            line(offText, icon: "circle.dashed", color: Theme.inkSoft)
         case .paused:
             line("Wyłączony na tym telefonie.", icon: "pause.circle", color: Theme.inkSoft)
         case .idle:
@@ -128,6 +130,44 @@ struct TailnetSection: View {
                 .disabled(retrying)
             }
         }
+    }
+
+    private var offText: String {
+        guard keySet else { return "Brak klucza Tailscale: poza domem potrzebna jest aplikacja Tailscale." }
+        if model.remoteURL.trimmingCharacters(in: .whitespaces).isEmpty { return "Wpisz niżej adres serwera w Tailscale." }
+        return "Adres niżej nie jest adresem Tailscale (…ts.net albo 100.x)."
+    }
+
+    /// The server's address in the tailnet (`AppModel.remoteURL`, "Spoza
+    /// domu" before 1.113.1): the built-in node carries only requests to its
+    /// host, and with the node off the Tailscale app's VPN reaches it.
+    /// Saved with Return, with "Zapisz adres", or with "Połącz" above.
+    @ViewBuilder
+    private var address: some View {
+        @Bindable var model = model
+        VStack(alignment: .leading, spacing: 8) {
+            AddressField(title: "Adres serwera w Tailscale", prompt: "np. http://nas.tail1234.ts.net:8099", text: $model.remoteURL)
+                .onSubmit { Task { await saveAddress() } }
+            if model.remoteURL != model.savedRemoteURL {
+                Button {
+                    Task { await saveAddress() }
+                } label: {
+                    HStack {
+                        Text("Zapisz adres")
+                        if savingAddress { ProgressView() }
+                    }
+                }
+                .fontWeight(.semibold)
+                .disabled(savingAddress)
+            }
+        }
+    }
+
+    private func saveAddress() async {
+        guard !savingAddress else { return }
+        savingAddress = true
+        await model.applyConnection()
+        savingAddress = false
     }
 
     private func line(_ text: String, icon: String, color: Color) -> some View {

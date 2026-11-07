@@ -2,8 +2,11 @@
 
 ## 1.113.1
 
-- Konfiguracja → Serwer: pole z kropkami pod adresami ma podpis
-  „Token API”. To hasło, którym aplikacja przedstawia się serwerowi.
+- Konfiguracja → Serwer: pole z kropkami ma podpis „Token API”. To
+  hasło, którym aplikacja przedstawia się serwerowi.
+- Adres serwera spoza domu jest teraz w karcie „Dostęp spoza domu”, obok
+  Tailscale, jako „Adres serwera w Tailscale” (zapisuje go „Zapisz adres”).
+  Karta „Serwer ramki” ma już tylko adres w domu, token i „Połącz”.
 
 ## 1.113.0
 
