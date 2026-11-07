@@ -81,6 +81,7 @@ struct SuggestionsView: View {
                         .padding(.vertical, 2)
                     }
                     .scrollClipDisabled()
+                    .edgeToEdgeRow()
                 }
             }
             ForEach(otherRows) { row in rowView(row) }
@@ -348,6 +349,7 @@ struct StudyRow: View {
                 .padding(.vertical, 2)
             }
             .scrollClipDisabled()
+            .edgeToEdgeRow()
         }
     }
 }
@@ -477,6 +479,7 @@ struct SuggestionRowView: View {
                 .padding(.vertical, 4)
             }
             .scrollClipDisabled()
+            .edgeToEdgeRow()
         }
     }
 

@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.112.1
+
+- Odkrywaj: okładki kart nie migają już przy przewijaniu. Karta, która
+  wraca na ekran, od razu pokazuje swoje obrazy, zamiast za każdym razem
+  wyłaniać się z koloru tła.
+- Okładki kart nie zmieniają się w ciągu dnia, gdy do katalogu dochodzą
+  nowe dzieła. Nowe dzieło zmienia najwyżej jeden obraz okładki, a nie
+  wszystkie cztery; nowe okładki są jak dotąd co dzień.
+- Rzędy kart sięgają do krawędzi ekranu: karta przesuwana palcem znika
+  dopiero za krawędzią, a nie 2 cm przed nią.
+
 ## 1.112.0
 
 - Odkrywaj w nowej kolejności: Dziś dla Ciebie, Kierunki i style,
