@@ -79,12 +79,13 @@ PACE = {
     # No published rules (a bot wall on its search pages): entries (JSON) and
     # photographs gently, as from the Courtauld (library/louvre.py).
     "collections.louvre.fr": 0.5,
-    # Searches: at most 20 in 10 s and 80 a minute, or an hour's block
-    # (loc.gov/apis, "Working within limits"); pictures without rules.
-    # Every 2 s, far below: a pace of 1 s and a morning's catalogue round
-    # came before a "403 challenge" for the home address (2026-11-07).
-    "www.loc.gov": 2.0,
-    "tile.loc.gov": 0.25,
+    # loc.gov/apis "Working within limits" (read again 2026-11-07, after a
+    # "403 challenge" for the home address): the JSON API 20 requests a
+    # minute, image and storage services 150 a minute, else an hour's
+    # block. The pace of 1 s and 0.25 s kept to an older reading (20 in
+    # 10 s, 80 a minute) that the page no longer says.
+    "www.loc.gov": 3.5,
+    "tile.loc.gov": 0.5,
     # No published rules; the site's own search, gently.
     "www.getty.edu": 0.5,
 }
@@ -111,6 +112,11 @@ THROTTLED_MAX = 3600.0
 #: still does, up to REST_MAX, and forgotten once it answers again.
 REST = 15 * 60.0
 REST_MAX = 4 * 3600.0
+#: Hosts whose block lasts a fixed time (loc.gov: an hour; under load it
+#: may answer 429 or a CAPTCHA page even below its rates): rested that long
+#: at once, also after a 429 without Retry-After, and not looked at once a
+#: minute meanwhile (a request during a block may start its count again).
+LONG_BLOCKS: dict[str, float] = {"www.loc.gov": 3600.0}
 #: While a host rests, one request this often still goes, to see whether it
 #: answers again: a wall that challenged one kind of request (a full-size
 #: original) or forgot us early lets the pictures through at once instead
@@ -349,9 +355,9 @@ class HostGuard:
             until, rest = self._resting.get(host, (0.0, 0.0))
             now = self.clock()
             if until <= now:  # not one of the requests already under way
-                rest = min(rest * 2, REST_MAX) if rest else REST
+                rest = min(rest * 2, REST_MAX) if rest else LONG_BLOCKS.get(host, REST)
                 self._resting[host] = (now + rest, rest)
-                self._probe_at[host] = now + PROBE_EVERY
+                self._probe_at[host] = now + (rest if host in LONG_BLOCKS else PROBE_EVERY)
                 log.warning(
                     "%s turned us away (%s %s); leaving it alone for %.0f min",
                     host,
@@ -364,7 +370,7 @@ class HostGuard:
     def _throttled(self, host: str, response: httpx.Response) -> None:
         """A 429 that says how long to wait: ``host`` is not asked until
         then (not even once a minute to see), as every source asks."""
-        wait = retry_after(response)
+        wait = retry_after(response) or LONG_BLOCKS.get(host)
         if not wait:
             return
         wait = min(wait, THROTTLED_MAX)

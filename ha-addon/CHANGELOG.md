@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.113.4
+
+- Serwer trzyma się aktualnych zasad Library of Congress: najwyżej 17
+  zapytań o wyszukiwanie na minutę (wolno 20) i 120 o obrazy (wolno 150),
+  większe strony wyników, a po odmowie godzina przerwy bez sprawdzania
+  co minutę. Wcześniej pytał nawet 60 razy na minutę.
+
 ## 1.113.3
 
 - „Pierwsze kolory” pokazują tylko zdjęcia z prawdziwych procesów

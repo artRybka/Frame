@@ -15,8 +15,9 @@ negatives, Frances Benjamin Johnston and Lewis Hine.
 
 Pictures come over IIIF: the full scan (``master:…u``) when there is one
 (often 3000-8000 px), else the 1024 px service copy. The API's rules ask
-for at most 20 requests in 10 seconds and 80 a minute for searches
-(hosts.PACE), or the address is blocked for an hour.
+for at most 20 requests a minute to the JSON API and 150 to the image
+services (hosts.PACE), or the address is blocked for an hour
+(hosts.LONG_BLOCKS).
 """
 
 from __future__ import annotations
@@ -44,8 +45,10 @@ COLLECTIONS: dict[str, str] = {
     "frances-benjamin-johnston": "",
     "national-child-labor-committee": "",
 }
-#: Results asked for a page of words: some are prints or restricted.
-SEARCH_PAGE = 40
+#: Results asked for a page of words: some are prints or restricted. Large
+#: pages, few requests: the JSON API allows 20 a minute and recommends
+#: pages of up to 1000 results (loc.gov/apis, 2026-11-07).
+SEARCH_PAGE = 100
 #: A search of one collection: "collection:prokudin-gorskii three-color"
 #: (the collection's slug, then words, if any, within it). The words of all
 #: photographs bring what merely names it: "photochrom" brought the
