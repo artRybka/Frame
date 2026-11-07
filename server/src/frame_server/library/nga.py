@@ -2,9 +2,11 @@
 
 The gallery has no search API, but publishes its whole collection as CSV
 files on GitHub, refreshed daily, and serves every open-access picture over
-IIIF in full size. The server downloads the files once a week (~230 MB),
-keeps the ~45 000 open-access paintings, drawings, prints and photographs in
-a small SQLite file under the data folder and searches that.
+IIIF in full size. The server downloads the files once a month (~50 MB
+compressed, 240 MB as text; weekly before 1.116, Mateusz 2026-11-07: the
+lists less often, less data), keeps the ~45 000 open-access paintings,
+drawings, prints and photographs in a small SQLite file (20 MB) under the
+data folder and searches that.
 """
 
 from __future__ import annotations
@@ -30,7 +32,7 @@ log = logging.getLogger(__name__)
 
 DATA = "https://raw.githubusercontent.com/NationalGalleryOfArt/opendata/main/data"
 #: Rebuilt after this long.
-REFRESH_SECONDS = 7 * 24 * 3600
+REFRESH_SECONDS = 30 * 24 * 3600
 #: After a failed build, the next try waits this long.
 RETRY_SECONDS = 3600
 #: The night rebuilds the index this old, before a search would.

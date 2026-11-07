@@ -21,6 +21,7 @@ from .aic import aic_fallback
 from .hosts import HostGuard, Resting, guard, is_urgent, urgently, walled
 from .markup import commons_rendition
 from .models import Item
+from .policy import DEFAULT_IMAGES, IMAGE_LIMITS, URGENT_EXTRA
 
 log = logging.getLogger(__name__)
 
@@ -28,21 +29,13 @@ THUMB_MAX = 640
 IMAGE_MAX = 2560
 #: Thumbnails of works that are not in the library (browsed, previewed).
 THUMB_SPARE = 500
-#: Downloads at once from one host. Commons answers more than two parallel
-#: media requests with 429; museum CDNs throttle bursts too.
-#: The AIC asks for one picture at a time (its API docs, "Scraping Images").
-#: Commons' renditions (Special:FilePath) come from thumb.wikimedia.org.
-HOST_LIMITS = {
-    "upload.wikimedia.org": 2,
-    "thumb.wikimedia.org": 2,
-    "commons.wikimedia.org": 2,
-    "www.artic.edu": 1,
-}
-HOST_LIMIT = 4
-#: Extra downloads at once for what the owner looks at now (the card's
-#: original, a preview), so it never waits for the background's; hosts with
-#: a limit of their own in HOST_LIMITS get none.
-URGENT_EXTRA = 2
+#: Downloads at once from one host (library/policy.py): Commons answers more
+#: than two parallel media requests with 429, the AIC asks for one picture at
+#: a time, museum CDNs throttle bursts too. What the owner looks at now (the
+#: card's original, a preview) gets URGENT_EXTRA more, so it never waits for
+#: the background's; hosts with a limit of their own get none.
+HOST_LIMITS = IMAGE_LIMITS
+HOST_LIMIT = DEFAULT_IMAGES
 #: Answers worth another try (throttled or briefly down), and how many tries.
 RETRY_STATUS = {408, 429, 500, 502, 503, 504}
 ATTEMPTS = 3

@@ -36,6 +36,7 @@ from .kept import KeptOriginals
 from .later import LaterWorks
 from .library import ImageCache, Importer, Library, courtauld
 from .library.commons import repair_library
+from .library.hosts import guard as host_guard
 from .library.loc import loc_mirrors
 from .library.museums import PRIVATE_LICENCE, TEST_LICENCE, Access, WikiArt, europeana_mirrors
 from .library.museums import client as museum_client
@@ -202,6 +203,8 @@ class FrameService:
         self.users = Users(self.library, settings.api_token)
         # Before anything reads the panel's address: the app's values win.
         self.panel_config = PanelConfigStore(settings, self.library)
+        # Quotas of the sources that have one (library/policy.py) outlive a restart.
+        host_guard.keep_budgets(settings.data_dir / "hosts" / "quotas.json")
         self.images = ImageCache(settings.data_dir / "library", museum_client)
         self.images.mirrors["europeana"] = europeana_mirrors
         self.images.mirrors["loc"] = loc_mirrors

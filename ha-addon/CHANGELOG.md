@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.117.0
+
+- Serwer ma jedną tabelę zasad dla wszystkich źródeł dzieł: tempo, ile
+  zapytań naraz i limity na godzinę lub dobę, z linkiem do zasad każdego
+  muzeum. Liczby dla dotychczasowych źródeł się nie zmieniły.
+- Paris Musées, Smithsonian, Openverse i WikiArt mają liczone limity
+  dzienne lub godzinowe. Praca w tle zostawia 40% puli dla Szukaj i karty
+  dzieła, więc nocne zadania nie wyczerpią limitu.
+- Spis Met jest sprawdzany co trzy miesiące i pobierany tylko wtedy, gdy
+  się zmienił. Spis NGA jest pobierany raz w miesiącu zamiast co tydzień, a
+  Luwr pyta Commons tylko o nowe pliki. Razem ok. 170 MB pobrań miesięcznie
+  zamiast ok. 560 MB.
+- Serwer pamięta na dysku opisy dzieł z Rijksmuseum i Yale, więc ponowne
+  otwarcie wyników to jedno zapytanie zamiast 25 albo 49.
+- Strony wyników wyszukiwania są zapisywane na dysku i przeżywają
+  aktualizację serwera. Starsze niż 3 godziny pojawiają się od razu, a
+  serwer w tle pobiera ich świeżą wersję.
+- Raz na dobę log pokazuje, ile zapytań poszło do każdego źródła i ile
+  odmówiło.
+
 ## 1.116.0
 
 - Szukaj i playlista inteligentna to teraz jedno szukanie. Edytor

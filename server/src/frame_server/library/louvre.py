@@ -23,8 +23,8 @@ The server writes the list to a JSON file under the data folder: Wikidata
 once (one query), the Commons sizes 50 files a request, then each entry
 needed, paced by ``hosts.PACE`` (about an hour the first time, written as it
 goes). Once a
-month (night task) Wikidata and Commons are asked again and only new entries
-fetched.
+month (night task) Wikidata is asked again, Commons only about files not
+seen before (all of them twice a year), and only new entries fetched.
 """
 
 from __future__ import annotations
@@ -77,6 +77,9 @@ LONGEST_WAIT = 300.0
 SAVE_EVERY = 200
 REFRESH_SECONDS = 30 * 24 * 3600
 RETRY_SECONDS = 6 * 3600
+#: Every Commons file's size is asked again after this long; in between,
+#: only new files' (a month's list asked ~200 Commons requests before 1.116).
+SIZES_AGAIN = 180 * 24 * 3600
 LICENCE = "Domena publiczna, zdjęcie Luwru (użytek prywatny)"
 NAME = "Luwr"
 #: Wikidata's names for an unknown author.
@@ -395,7 +398,16 @@ def build(path: Path, http: httpx.Client) -> int:
     found = paintings(csv.DictReader(io.StringIO(resp.text)))
     if not found:
         raise RuntimeError("Wikidata lists no Louvre paintings")
-    sizes = commons_sizes(http, sorted({e["file"] for e in found.values() if e.get("file")}))
+    files = sorted({e["file"] for e in found.values() if e.get("file")})
+    # The Commons sizes: only of files not asked about before, and of all
+    # of them again every SIZES_AGAIN (Commons swaps in sharper scans).
+    known: dict[str, int] = listed.get("sizes") or {}
+    sized_at = float(listed.get("sized_at") or 0)
+    if not known or time.time() - sized_at >= SIZES_AGAIN:
+        known, sized_at = {}, time.time()
+    asked = [f for f in files if f not in known]
+    found_sizes = commons_sizes(http, asked) if asked else {}
+    sizes = {f: known[f] if f in known else found_sizes.get(f, 0) for f in files}
     works: dict[str, dict[str, Any]] = {}
     for ark, entry in found.items():
         entry["commons"] = sizes.get(entry.pop("file", ""), 0)
@@ -404,7 +416,13 @@ def build(path: Path, http: httpx.Client) -> int:
         if "work" in known and (current or known["work"] is None):
             entry["work"] = known["work"]
         works[ark] = entry
-    data = {"complete": False, "format": FORMAT, "works": works}
+    data = {
+        "complete": False,
+        "format": FORMAT,
+        "works": works,
+        "sizes": sizes,
+        "sized_at": sized_at,
+    }
     _write(path, data)
     looked = 0
     for ark, entry in works.items():
