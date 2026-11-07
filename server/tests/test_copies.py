@@ -18,6 +18,7 @@ from PIL import Image, ImageOps
 from test_sharper import OWN, OWN_THUMB, Web, _copy, _detail, _jpeg, _offer, _own, _print, _serve
 
 from frame_server.config import Settings
+from frame_server.library import hosts
 from frame_server.library.duplicates import surname
 from frame_server.service import FrameService
 from frame_server.web.app import create_app
@@ -164,6 +165,39 @@ def test_a_silent_source_is_told_as_failed_in_time(app: Any) -> None:
     assert not sources["openverse"]["failed"] and sources["openverse"]["found"] == 1
     assert "wmc:6" in _final(lines)
     assert len(queries["openverse"]) == 1 and len(queries["wmc"]) == 1  # kept, not asked again
+
+
+def test_the_sources_are_asked_at_once_while_the_app_is_in_use(app: Any) -> None:
+    """The look's own threads asked as the background, which waits while
+    the app is in use: every museum stayed silent, the sheet stopped at
+    the three sources kept at home (2026-11-07, 3 of 20)."""
+    client, service, web, hits = app
+    own = _own(service)
+    painting = _print(1, (3600, 2400))
+    sharper = _copy(1)
+    _offer(web, sharper, painting)
+    hits[:] = [sharper]
+    asked = service.copies.search_in
+    service.copies.sources = lambda: ["wmc", "aic"]
+    service.copies.answer = 5.0
+
+    def search_in(key: str, query: str, n: int) -> list[Any]:
+        hosts.guard.wait_calm("api.artic.edu")  # as a museum's request does
+        return list(asked(key, query, n)) if key == "wmc" else []
+
+    service.copies.search_in = search_in
+    in_use, calm = hosts.guard.app_in_use, hosts.guard.calm_until
+    hosts.guard.app_in_use = lambda: True
+    hosts.guard.calm_until = hosts.guard.clock() + 600
+    try:
+        started = time.monotonic()
+        lines = _lines(client, own.id)
+        assert time.monotonic() - started < 4
+    finally:
+        hosts.guard.app_in_use, hosts.guard.calm_until = in_use, calm
+    sources = {line["source"]: line for line in lines if line["kind"] == "source"}
+    assert not sources["wmc"]["failed"] and not sources["aic"]["failed"]
+    assert _final(lines)["wmc:1"]["verdict"] == "better"
 
 
 def test_the_owner_picks_a_copy_and_goes_back(app: Any) -> None:

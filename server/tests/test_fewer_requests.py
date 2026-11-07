@@ -204,6 +204,65 @@ def test_a_page_several_want_at_once_is_asked_once(
     assert all(total == 1 and [i.id for i in items] == ["smk:1"] for total, items in answers)
 
 
+def test_the_app_never_waits_behind_the_background_s_request_for_a_page(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The background's request waits while the app is in use; the app's
+    own request for the same page asking behind it stood with it
+    (2026-11-07: "Kopie dzieła" stopped at 3 of 20 sources)."""
+    import frame_server.library.importer as importer_module
+    from frame_server.library import Library
+    from frame_server.library.importer import Importer
+    from frame_server.library.models import Item, ItemKind
+    from frame_server.library.museums import Access
+
+    calls: list[str] = []
+    started = threading.Event()
+    release = threading.Event()
+
+    class Museum:
+        def search(self, query: str, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
+            calls.append(purpose())
+            if purpose() == BACKGROUND:
+                started.set()
+                release.wait(5)  # as waiting for the app to be left alone
+            item = Item(
+                id="smk:1",
+                source="smk",
+                source_id="1",
+                kind=ItemKind.ARTWORK,
+                title="One",
+                image_url="https://example.org/1.jpg",
+                thumb_url="https://example.org/1t.jpg",
+            )
+            return 1, [item]
+
+    monkeypatch.setattr(importer_module, "museum", lambda key, http, access: Museum())
+    importer = Importer(
+        Library(tmp_path / "lib.db"),
+        None,  # type: ignore[arg-type]
+        None,  # type: ignore[arg-type]
+        access=lambda: Access(data_dir=tmp_path),
+    )
+    monkeypatch.setattr(importer, "without_grey", lambda items: items)
+    memo = ("smk", "monet", 24, 1, "any", False)
+    try:
+        with ThreadPoolExecutor(3) as pool:
+            behind = pool.submit(importer._ask, memo)  # the background's
+            assert started.wait(5)
+            with asking_for("kopie", app=True):
+                app = pool.submit(as_asked(importer._ask), memo)
+            total, items = app.result(2)  # not behind the background's
+            assert total == 1 and [i.id for i in items] == ["smk:1"]
+            # Another of the app's joins the app's request, not the
+            # background's; the background's own ends as before.
+            release.set()
+            assert behind.result(5)[0] == 1
+    finally:
+        release.set()
+    assert calls == [BACKGROUND, "kopie"]
+
+
 def test_the_log_is_kept_on_disk_and_read_back_after_a_start(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
