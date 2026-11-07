@@ -21,6 +21,10 @@ from .vocabulary import category_fits, museum_kind, museum_queries
 COLOR_PAGE = 24
 COLOR_PAGES = 6
 COLOR_SECONDS = 15.0
+#: With artists asked, museums bring whatever names them (Guillaumin's
+#: self-portrait for Van Gogh); this many of their pages are looked at for
+#: ``limit`` works by the artists, within ``COLOR_SECONDS``.
+ARTIST_PAGES = 3
 #: Works of each museum page that a smart playlist's fetching asks for: the
 #: same works, in the same order, as Szukaj's smaller pages.
 FILL_PAGE = 24
@@ -114,7 +118,8 @@ class MuseumSearch:
 
     def fits(self, item: Item) -> bool:
         """A work a museum's search brought for this search: of its years
-        and categories, and of its periods and tags (:func:`search_fits`)."""
+        and categories, by its artists, and of its periods and tags
+        (:func:`search_fits`)."""
         terms = self.rules.terms
         return self.spec.fits(item) and category_fits(item, terms) and search_fits(item, self.rules)
 
@@ -124,11 +129,12 @@ class MuseumSearch:
         """Works of ``keys`` from ``page`` on, a museum page at a time:
         (total, items, museums that failed, the page to ask next). Museums
         don't know colours, so with colours their works are judged by their
-        thumbnails, pages deep, until ``limit`` fit or time runs out."""
+        thumbnails, pages deep, until ``limit`` fit or time runs out; with
+        artists, a few pages, for the works by them."""
         rules = self.rules
         colors = rules.colors
         asked = COLOR_PAGE if colors else self.limit
-        left = COLOR_PAGES if colors else 1
+        left = COLOR_PAGES if colors else ARTIST_PAGES if rules.artists else 1
         started = time.monotonic()
         total = fitting = 0
         at: int | None = page

@@ -116,3 +116,69 @@ def test_a_smart_playlist_fetches_what_szukaj_finds(tmp_path) -> None:
     assert job.item_ids == ["aic:0", "aic:1", "aic:2", "aic:3"]
     total, found = library.query(rules, sort="year")
     assert total == 4 and [i.id for i in found] == job.item_ids
+
+
+def test_an_artist_search_keeps_only_their_own_works() -> None:
+    # Museums find whatever names him: Guillaumin's self-portrait, an
+    # anonymous sheet, a print after him (Mateusz, 2026-11-07).
+    rules = PlaylistRules(artists=["Vincent van Gogh"])
+    key = rules.search_key()
+    search = MuseumSearch.of(rules)
+    his = [
+        _item(1, artist="Vincent van Gogh"),
+        _item(2, artist="Gogh, Vincent van"),
+        _item(3, artist="Vincent van Gogh (Dutch, 1853-1890)"),
+        _item(4, artist="Attributed to Vincent van Gogh"),
+    ]
+    others = [
+        _item(5, artist="Armand Guillaumin"),
+        _item(6, artist="Anonymous"),
+        _item(7, artist=""),
+        _item(8, artist="Paul Gachet, after Vincent van Gogh"),
+        _item(9, artist="Copy after Vincent van Gogh"),
+        _item(10, artist="Theo van Gogh"),
+    ]
+    for item in his:
+        assert search.fits(item), item.artist
+        assert matches(item.model_copy(update={"found_for": [key]}), rules), item.artist
+    for item in others:
+        assert not search.fits(item), item.artist
+        # Remembered from an earlier search: no longer counted in.
+        assert not matches(item.model_copy(update={"found_for": [key]}), rules), item.artist
+
+
+class Mentions(Museum):
+    """A museum whose search for an artist brings works naming him first."""
+
+    key = "aic"
+    name = "Mentions"
+    page_size = 100
+    asked: ClassVar[list[int]] = []
+
+    def search(self, query: str, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
+        Mentions.asked.append(page)
+        artists = ["Armand Guillaumin"] * 8 + ["Vincent van Gogh"] * 8
+        items = [self._item(str(n), title=f"Work {n}", artist=a) for n, a in enumerate(artists)]
+        return len(items), items[(page - 1) * limit : page * limit]
+
+    def fetch(self, source_id: str) -> Item | None:
+        return None
+
+
+def test_an_artist_search_looks_further_for_their_works(tmp_path) -> None:
+    saved = dict(MUSEUMS)
+    MUSEUMS.clear()
+    MUSEUMS.update(aic=Mentions)
+    Mentions.asked = []
+    try:
+        library = Library(tmp_path / "lib.db")
+        importer = Importing(library, None, None)  # type: ignore[arg-type]
+        search = MuseumSearch.of(PlaylistRules(artists=["Vincent van Gogh"]), limit=8)
+        _total, items, failed, after = search.ask(importer, ["aic"], 1)
+    finally:
+        MUSEUMS.clear()
+        MUSEUMS.update(saved)
+    # The first page names him only; the second has his works.
+    assert Mentions.asked == [1, 2]
+    assert len(items) == 8 and {i.artist for i in items} == {"Vincent van Gogh"}
+    assert not failed and after == 3
