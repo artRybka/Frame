@@ -633,6 +633,30 @@ class WikimediaCommons(Museum):
     )
     #: Category queries whose works are not paintings, and what they are.
     category_kinds: ClassVar[dict[str, str]] = {"Drawings": "Drawing", "Prints": "Print"}
+    #: Category (``Category:``) and category tree (``deepcat:``) queries of
+    #: old photographs: their files are photographs (Mateusz 2026-11-07:
+    #: "Pierwsze kolory" without waiting for the Library of Congress).
+    photo_queries = re.compile(r"photograph|photochrom|photos? of|autochrom", re.IGNORECASE)
+    #: Old photographs only: older than this year, whose 95 years are over…
+    photo_before = 1930
+    #: …and big enough for the frame (long side; Commons has many 600 px
+    #: scans of cabinet cards, 2026-11-07).
+    photo_min_side = 1500
+    #: How a photograph was made, from its categories and description: the
+    #: colour processes are what "Pierwsze kolory" asks for (EARLY_COLOUR).
+    processes: ClassVar[tuple[tuple[re.Pattern[str], str], ...]] = (
+        (re.compile(r"prokudin", re.IGNORECASE), "Three-colour photograph"),
+        (re.compile(r"photochrom", re.IGNORECASE), "Photochrom print"),
+        (re.compile(r"autochrom", re.IGNORECASE), "Autochrome"),
+        (re.compile(r"kodachrome", re.IGNORECASE), "Kodachrome transparency"),
+        (
+            re.compile(r"color photographs from the farm security", re.IGNORECASE),
+            "Kodachrome transparency",
+        ),
+        (re.compile(r"daguerreotyp", re.IGNORECASE), "Daguerreotype"),
+        (re.compile(r"albumen", re.IGNORECASE), "Albumen print"),
+        (re.compile(r"cyanotyp", re.IGNORECASE), "Cyanotype"),
+    )
 
     def _params(self, **extra: Any) -> dict[str, Any]:
         return {
@@ -659,24 +683,44 @@ class WikimediaCommons(Museum):
         return commons_html(self._raw(info, key), title=title)
 
     def _map(
-        self, page: dict[str, Any], artist_hint: str = "", classification: str = "Painting"
+        self,
+        page: dict[str, Any],
+        artist_hint: str = "",
+        classification: str = "Painting",
+        any_year: bool = False,
     ) -> Item | None:
+        """``page``'s file as a work of ``classification``, or None. A
+        photograph must be big enough and in the public domain; from a
+        search of all of Commons also old (``any_year``: from a chosen
+        collection, whose FSA colour slides are of the 1940s)."""
         infos = page.get("imageinfo") or []
         if not infos:
             return None
         info = infos[0]
         categories = self._meta(info, "Categories")
-        if self.snapshot.search(categories):
+        photo = classification == "Photograph"
+        # A photograph is what is asked for: none of these are works of art.
+        if not photo and self.snapshot.search(categories):
             return None
         if classification == "Painting" and self.printed_copy.search(categories):
             return None
         licence = self._meta(info, "LicenseShortName")
         public = "public domain" in licence.casefold() or "cc0" in licence.casefold()
-        # Everything on Commons is freely licensed; attribution is kept in ``credit``.
-        if not public and not (self.private_use and licence):
+        # Everything on Commons is freely licensed; attribution is kept in
+        # ``credit``. Photographs: public domain only (the free licences are
+        # today's snapshots).
+        if not public and (photo or not (self.private_use and licence)):
             return None
         date_text = self._text(info, "DateTimeOriginal")
         year = commons_year(self._meta(info, "DateTimeOriginal"))
+        medium = ""
+        if photo:
+            side = max(int(info.get("width") or 0), int(info.get("height") or 0))
+            old = year is not None and year < self.photo_before
+            if side < self.photo_min_side or not (old or any_year):
+                return None
+            told = f"{categories} {self._meta(info, 'ImageDescription')}"
+            medium = next((m for p, m in self.processes if p.search(told)), "Photograph")
         artist = artist_hint or self._meta(info, "Artist").split("\n")[0]
         title = self._text(info, "ObjectName", title=True) or file_title(
             page.get("title", ""), clean_title(artist), year
@@ -695,6 +739,7 @@ class WikimediaCommons(Museum):
             date_text=date_text[:40],
             year=year,
             classification=classification,
+            medium=medium,
             license=licence,
             credit=self._meta(info, "Credit")[:200],
             url=info.get("descriptionurl", ""),
@@ -706,8 +751,26 @@ class WikimediaCommons(Museum):
         )
 
     def search(self, query: str, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
+        named = re.sub(r"^(?:Category:|deepcat:)", "", query).strip('"')
+        photos = query.startswith(("Category:", "deepcat:")) and self.photo_queries.search(named)
+        return self._search(query, limit, page, photos=bool(photos))
+
+    def search_kind(
+        self, query: str, kind: Kind, limit: int = 20, page: int = 1
+    ) -> tuple[int, list[Item]]:
+        """Fotografia: old photographs from all of Commons ({{Photograph}},
+        :meth:`_map`). Commons says nothing else about what a file shows, so
+        sculpture, decorative arts and manuscripts are not asked for here:
+        its sculpture is today's snapshots (2026-11-07)."""
+        if kind == "photograph":
+            return self._search(query, limit, page, photos=True)
+        if kind in ("sculpture", "decorative", "manuscript"):
+            return 0, []
+        return self.search(query, limit, page)
+
+    def _search(self, query: str, limit: int, page: int, photos: bool) -> tuple[int, list[Item]]:
         artist_hint = ""
-        classification = "Painting"
+        classification = "Photograph" if photos else "Painting"
         offset = (page - 1) * limit
         if query.startswith("Category:"):
             if by := re.match(r"^Category:(Paintings|Works|Drawings|Prints) by (.+)", query):
@@ -715,13 +778,22 @@ class WikimediaCommons(Museum):
                 classification = self.category_kinds.get(by.group(1), classification)
             body = self._category_page(query, limit, offset)
         else:
+            if query.startswith("deepcat:"):  # a category and those under it
+                words = f"{query} filetype:bitmap"
+            elif photos:
+                # Files described as photographs ({{Photograph}}): 3.3
+                # million, archives' scans among today's snapshots, which
+                # :meth:`_map` leaves out.
+                words = f"{query} filetype:bitmap hastemplate:Photograph"
+            else:
+                # Only files described as works of art ({{Artwork}},
+                # {{Painting}}): free text alone finds mostly photographs.
+                words = f"{query} filetype:bitmap hastemplate:Artwork"
             resp = self.http.get(
                 self.api,
                 params=self._params(
                     generator="search",
-                    # Only files described as works of art ({{Artwork}},
-                    # {{Painting}}): free text alone finds mostly photographs.
-                    gsrsearch=f"{query} filetype:bitmap hastemplate:Artwork",
+                    gsrsearch=words,
                     gsrnamespace=6,
                     gsrlimit=limit,
                     gsroffset=offset,
@@ -730,7 +802,10 @@ class WikimediaCommons(Museum):
             resp.raise_for_status()
             body = resp.json()
         pages = body.get("query", {}).get("pages", {})
-        items = [i for p in pages.values() if (i := self._map(p, artist_hint, classification))]
+        chosen = query.startswith(("Category:", "deepcat:"))
+        items = [
+            i for p in pages.values() if (i := self._map(p, artist_hint, classification, chosen))
+        ]
         # Commons gives no total; claim one more page while it says there is one.
         total = offset + len(pages) + (limit if "continue" in body else 0)
         return total, items
@@ -763,7 +838,10 @@ class WikimediaCommons(Museum):
         resp.raise_for_status()
         pages = resp.json().get("query", {}).get("pages", {})
         page = pages.get(source_id)
-        return self._map(page) if page else None
+        if not page:
+            return None
+        # A photograph shown in a search: not a painting, but a photograph.
+        return self._map(page) or self._map(page, classification="Photograph", any_year=True)
 
     def file(self, name: str) -> Item | None:
         """The work in the file ``name`` ("Hokusai Great Wave.jpg", as

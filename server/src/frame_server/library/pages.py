@@ -44,7 +44,10 @@ PAGES_VERSION = "2"
 #: raise a museum's number with a change to its reading (titles, dates,
 #: pictures, what is left out), so that its kept pages are asked again.
 #: Museums not named read as "1".
-READINGS: dict[str, str] = {}
+READINGS: dict[str, str] = {
+    # 2026-11-07: old photographs (Fotografia, photo categories).
+    "wmc": "2",
+}
 
 
 def reading(source: str) -> str:
