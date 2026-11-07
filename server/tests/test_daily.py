@@ -1375,3 +1375,28 @@ def test_same_time_shows_other_cultures(
     assert ids[1] in {"a:1", "a:2"} and ids[4] == "a:3"
     assert "j:1" not in ids[1:2]  # Japonisme is a European's
     assert offline.daily.same_time(milkmaid) == picked  # the same each time
+
+
+def test_works_asked_for_at_once_are_all_kept(offline: FrameService) -> None:
+    """2026-11-07: "Popraw detale" on 42 works one after another left one
+    waiting for good, put back on the list by a request that read it before
+    the worker took it off. The list is changed under one lock."""
+    import threading
+
+    from frame_server.ai.jobs import listed, relist
+
+    key = "test_list"
+    relist(offline.library, key, "done", on=True)
+    ids = [f"w{n}" for n in range(40)]
+    threads = [
+        threading.Thread(target=relist, args=(offline.library, key, i), kwargs={"on": True})
+        for i in ids
+    ]
+    threads.append(
+        threading.Thread(target=relist, args=(offline.library, key, "done"), kwargs={"on": False})
+    )
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert listed(offline.library, key) == set(ids)

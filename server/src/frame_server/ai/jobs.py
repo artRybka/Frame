@@ -89,6 +89,29 @@ class Deferred(BaseException):
         self.seq = seq
 
 
+#: Lists of works kept in the library's state (the owner's "Popraw detale",
+#: "Wykonaj ponowną analizę") are changed by the app's requests and by the
+#: worker at once: read, changed and written under one lock, or one undoes
+#: the other (2026-11-07: "Popraw detale" asked for 42 works one after
+#: another left "Roman Interior" waiting for good, put back on the list by
+#: a request that read it before the worker took it off).
+_LISTS = threading.Lock()
+
+
+def listed(library: Library, key: str) -> set[str]:
+    """The works in the state's list ``key``."""
+    found = library.get_state(key, [])
+    return {str(i) for i in found} if isinstance(found, list) else set()
+
+
+def relist(library: Library, key: str, item_id: str, *, on: bool) -> None:
+    """``item_id`` put on the state's list ``key`` (``on``) or taken off it."""
+    with _LISTS:
+        ids = listed(library, key)
+        ids = ids | {item_id} if on else ids - {item_id}
+        library.set_state(key, sorted(ids))
+
+
 def text_hash(*parts: object) -> str:
     """A short hash of the text an answer was made from."""
     raw = "\x1f".join(str(p) for p in parts)

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.112.3
+
+- „Popraw detale” i „Wykonaj ponowną analizę” zamówione na kilku
+  dziełach naraz nie zostawiają już żadnego z nich w nieskończonym
+  „Claude sprawdza…”.
+
 ## 1.112.2
 
 - Detale w studiach lepiej trafiają. Claude obwodzi rzecz czterema
