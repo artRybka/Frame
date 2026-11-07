@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.118.4
+
+- Jaśniejsze dzieła na karcie dzieła i w studium wchodzą płynnie, w około
+  sekundę: najpierw obraz jest zwykły, potem rozjaśniają się jego jasne
+  partie, a na końcu całe dzieło równo, z siłą ustawioną w Konfiguracji.
+
 ## 1.118.3
 
 - Okładka „Ukryte” w Playlistach ożyła: rozmyte dzieła powoli dryfują za
