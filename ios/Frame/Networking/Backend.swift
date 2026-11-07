@@ -234,6 +234,7 @@ protocol FrameBackend: Sendable {
     func tailnet() async throws -> TailnetKey
     func saveTailnetKey(_ key: String) async throws -> TailnetKey
     func deleteTailnetKey() async throws -> TailnetKey
+    func saveTailnetAddress(_ address: String) async throws -> TailnetKey
     func keywordsEstimate() async throws -> AiEstimate
     /// Keywords for the whole library through Anthropic's batches (within a day).
     func describeLibrary() async throws -> AiStarted

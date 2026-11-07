@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.113.2
+
+- Konfiguracja → Serwer: pole z kropkami ma podpis „Token API”. To
+  hasło, którym aplikacja przedstawia się serwerowi.
+- Adresu serwera spoza domu nie trzeba już wpisywać. Tailscale wbudowany
+  w aplikację sam znajduje serwer wśród urządzeń w Tailscale, a serwer
+  przekazuje adres każdemu telefonowi, także domownikom i tym z wyłączonym
+  Tailscale w aplikacji. W karcie „Dostęp spoza domu” widać „Serwer w
+  Tailscale” i „Szukaj ponownie”. Karta „Serwer ramki” ma już tylko adres
+  w domu, token i „Połącz”.
+
+## 1.113.1
+
+- W Konfiguracji → Ramka nie ma już pola Adres MAC. Do budzenia serwer
+  używa zawsze adresu Wi-Fi, który podaje sama aplikacja ramki.
+
 ## 1.113.0
 
 - Konfiguracja to teraz krótka lista jak w Ustawieniach iOS: Na co dzień,

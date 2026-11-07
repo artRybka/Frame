@@ -39,6 +39,10 @@ struct TailnetSection: View {
             Card {
                 if parts.contains(.connection) {
                     status
+                    if editable, keySet || !model.remoteURL.isEmpty {
+                        Divider()
+                        address
+                    }
                     if keySet || model.tailnet != .off {
                         Divider()
                         Toggle(isOn: enabled) {
@@ -89,10 +93,7 @@ struct TailnetSection: View {
     private var status: some View {
         switch model.tailnet {
         case .off:
-            line(
-                keySet ? "Adres „Spoza domu” nie jest adresem Tailscale." : "Brak klucza Tailscale: poza domem potrzebna jest aplikacja Tailscale.",
-                icon: "circle.dashed", color: Theme.inkSoft
-            )
+            line("Brak klucza Tailscale: poza domem potrzebna jest aplikacja Tailscale.", icon: "circle.dashed", color: Theme.inkSoft)
         case .paused:
             line("Wyłączony na tym telefonie.", icon: "pause.circle", color: Theme.inkSoft)
         case .idle:
@@ -128,6 +129,47 @@ struct TailnetSection: View {
                 .disabled(retrying)
             }
         }
+    }
+
+    /// The server's address in the tailnet, found by the app: nobody types
+    /// it (Mateusz, 2026-11-07). The owner's phone finds it through its
+    /// node and the server hands it to every phone (`AppModel.placeServer`).
+    @ViewBuilder
+    private var address: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Serwer w Tailscale").font(.caption).foregroundStyle(Theme.inkSoft)
+                if model.findingServer {
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text("Szukam serwera…").foregroundStyle(Theme.inkSoft)
+                    }
+                } else if let shown = Self.shown(model.remoteURL) {
+                    Text(shown)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .textSelection(.enabled)
+                } else {
+                    Text("Jeszcze nie znaleziony").foregroundStyle(Theme.inkSoft)
+                }
+            }
+            Spacer(minLength: 0)
+            if keySet, model.tailnet != .paused {
+                Button("Szukaj ponownie") {
+                    Task { await model.findServerInTailnet(announce: true) }
+                }
+                .font(.subheadline)
+                .disabled(model.findingServer)
+            }
+        }
+    }
+
+    /// `host:port` of the address, without the scheme.
+    static func shown(_ address: String) -> String? {
+        guard let url = URL(string: address.trimmingCharacters(in: .whitespaces)), let host = url.host(percentEncoded: false) else {
+            return nil
+        }
+        return url.port.map { "\(host):\($0)" } ?? host
     }
 
     private func line(_ text: String, icon: String, color: Color) -> some View {

@@ -71,11 +71,13 @@ aplikacji Tailscale ani VPN (D16).
 3. W *Settings → Keys* utwórz klucz: *Reusable*, *Tags* `tag:frame-app`.
    Węzły z tagiem nie wygasają; sam klucz może wygasnąć (do 90 dni), wtedy
    tylko nowy telefon potrzebuje nowego klucza.
-4. W aplikacji Frame: *Ramka → trybik → Serwer ramki*, w polu *Spoza domu*
-   wpisz `http://100.x.y.z:8099` (albo nazwę MagicDNS, np.
-   `http://nas.tailXXXX.ts.net:8099`) i stuknij *Połącz*. Niżej, w *Dostęp
-   spoza domu*, wklej klucz i stuknij *Zapisz i połącz*. Telefon pojawi się
-   w panelu Tailscale jako `frame-<imię>`.
+4. W aplikacji Frame: *Konfiguracja → Klucze i certyfikaty → Tailscale*
+   wklej klucz i stuknij *Zapisz i połącz*. Adresu NAS-a nie trzeba
+   wpisywać: aplikacja pyta urządzenia w Tailscale na porcie z adresu
+   domowego (8099), który z nich jest serwerem ramki, i zapisuje jego adres
+   na serwerze dla wszystkich telefonów (*Konfiguracja → Serwer → Dostęp
+   spoza domu → Serwer w Tailscale*, tam też *Szukaj ponownie*). Telefon
+   pojawi się w panelu Tailscale jako `frame-<imię>`.
 
 Klucz trzyma serwer i oddaje go każdemu telefonowi domu, także domownikom,
 więc nie potrzebują konta Tailscale. Aplikacja sama wybiera adres, który

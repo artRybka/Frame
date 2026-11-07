@@ -29,7 +29,9 @@ actor DemoBackend: FrameBackend {
     private var history: [String] = []
     private var currentID: String?
     private var holdValue: Hold?
-    private static let demoPanel = PanelConfig(host: "192.168.1.50", mac: nil, port: 1515, pinSet: true, fromApp: false)
+    private static let demoPanel = PanelConfig(
+        host: "192.168.1.50", mac: "A4:30:7A:01:02:FF", port: 1515, pinSet: true, fromApp: false
+    )
     private var panelValue = DemoBackend.demoPanel
     private var catalogueLimitMb: Int?
     /// "Aktualizuj serwer" in demo: the newer version is installed at once.
@@ -1306,7 +1308,9 @@ actor DemoBackend: FrameBackend {
 
     func savePanelConfig(_ update: PanelConfigUpdate) async throws -> PanelConfig {
         let pinSet = update.pin.map { !$0.isEmpty } ?? panelValue.pinSet
-        panelValue = PanelConfig(host: update.host, mac: update.mac, port: update.port, pinSet: pinSet, fromApp: true)
+        panelValue = PanelConfig(
+            host: update.host, mac: panelValue.mac, port: update.port, pinSet: pinSet, fromApp: true
+        )
         return panelValue
     }
 
@@ -1437,12 +1441,17 @@ actor DemoBackend: FrameBackend {
         guard key.hasPrefix("tskey-"), key.count >= 24 else {
             throw BackendError.http(status: 400, body: "to nie jest klucz Tailscale (zaczyna się od tskey-)")
         }
-        tailnetValue = TailnetKey(keySet: true, keyTail: String(key.suffix(4)), key: nil, savedAt: nil)
+        tailnetValue = TailnetKey(keySet: true, keyTail: String(key.suffix(4)), key: nil, savedAt: nil, address: tailnetValue.address)
         return tailnetValue
     }
 
     func deleteTailnetKey() async throws -> TailnetKey {
-        tailnetValue = TailnetKey(keySet: false)
+        tailnetValue = TailnetKey(keySet: false, address: tailnetValue.address)
+        return tailnetValue
+    }
+
+    func saveTailnetAddress(_ address: String) async throws -> TailnetKey {
+        tailnetValue.address = address
         return tailnetValue
     }
 

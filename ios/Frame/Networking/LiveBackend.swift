@@ -685,6 +685,10 @@ struct LiveBackend: FrameBackend {
 
     func deleteTailnetKey() async throws -> TailnetKey { try await send("/api/tailnet/key", method: "DELETE") }
 
+    func saveTailnetAddress(_ address: String) async throws -> TailnetKey {
+        try await send("/api/tailnet/address", method: "PUT", body: ["address": address])
+    }
+
     func keywordsEstimate() async throws -> AiEstimate { try await get("/api/ai/keywords/estimate") }
 
     func describeLibrary() async throws -> AiStarted {

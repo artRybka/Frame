@@ -55,18 +55,17 @@ def test_app_values_win_and_survive_restart(tmp_path: Path) -> None:
             json={"host": "203.0.113.152", "pin": "123456", "mac": "a4307a0102ff"},
         )
         assert saved.status_code == 200, saved.text
-        assert saved.json()["mac"] == "A4:30:7A:01:02:FF"
+        assert saved.json()["mac"] is None  # the app no longer sets the MAC
         assert saved.json()["from_app"] is True
         svc: FrameService = app.state.service
         assert (svc.settings.device_host, svc.settings.device_pin) == ("203.0.113.152", "123456")
         assert svc.status.status.configured
 
         # No PIN in the request keeps the one saved.
-        client.put("/api/device/config", json={"host": "203.0.113.152", "mac": None})
+        client.put("/api/device/config", json={"host": "203.0.113.152"})
         assert svc.settings.device_pin == "123456"
-        assert svc.settings.device_mac is None
 
-        bad = client.put("/api/device/config", json={"host": "203.0.113.152", "mac": "nope"})
+        bad = client.put("/api/device/config", json={"host": "203.0.113.152; rm"})
         assert bad.status_code == 400
         assert svc.settings.device_host == "203.0.113.152"
 
@@ -75,6 +74,28 @@ def test_app_values_win_and_survive_restart(tmp_path: Path) -> None:
     assert restarted.settings.device_host == "203.0.113.152"
     assert restarted.settings.device_pin == "123456"
     assert restarted.panel_config.view().from_app
+
+
+def test_mac_is_the_panels_own_wifi_one(tmp_path: Path) -> None:
+    env = {"device_host": "192.168.1.50", "device_pin": "0000", "device_mac": "aa:bb:cc:dd:ee:ff"}
+    app = create_app(_settings(tmp_path, **env))
+    with TestClient(app) as client:
+        svc: FrameService = app.state.service
+        # frame.env's MAC only until the frame's app reports its own.
+        assert svc.settings.device_mac == "aa:bb:cc:dd:ee:ff"
+        svc.panel_config.learn_mac("28:07:08:ED:0A:F6")
+        assert client.get("/api/device/config").json()["mac"] == "28:07:08:ED:0A:F6"
+
+        # A MAC sent by an older app is ignored.
+        view = client.put(
+            "/api/device/config", json={"host": "192.168.1.50", "mac": "a4307a0102ff"}
+        ).json()
+        assert view["mac"] == "28:07:08:ED:0A:F6"
+        assert client.delete("/api/device/config").json()["mac"] == "28:07:08:ED:0A:F6"
+
+    # It survives a restart, over frame.env.
+    restarted = FrameService(_settings(tmp_path, **env))
+    assert restarted.settings.device_mac == "28:07:08:ED:0A:F6"
 
 
 def test_reset_goes_back_to_frame_env(tmp_path: Path) -> None:
@@ -104,9 +125,9 @@ def test_cli_uses_the_apps_panel_config(tmp_path: Path) -> None:
 
     settings = Settings(data_dir=tmp_path, device_host="203.0.113.152", device_mac=None)
     library = Library(tmp_path / "library.db")
-    PanelConfigStore(settings, library).save(
-        PanelConfigUpdate(host="192.0.2.20", pin="1234", mac="aa-bb-cc-dd-ee-ff")
-    )
+    store = PanelConfigStore(settings, library)
+    store.save(PanelConfigUpdate(host="192.0.2.20", pin="1234"))
+    store.learn_mac("AA:BB:CC:DD:EE:FF")
     library.close()
 
     fresh = _app_panel_config(Settings(data_dir=tmp_path, device_host="203.0.113.152"))

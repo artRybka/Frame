@@ -1904,22 +1904,19 @@ struct SourceKeyRow: View {
     }
 }
 
-/// How the server reaches the panel: its address, the MDC PIN and the MAC
-/// for Wake-on-LAN, saved on the server (over frame.env / add-on options).
+/// How the server reaches the panel: its address and the MDC PIN, saved on
+/// the server (over frame.env / add-on options). The MAC for Wake-on-LAN is
+/// not asked for: the frame's app reports its Wi-Fi one.
 struct PanelSection: View {
     @Environment(AppModel.self) private var model
     let config: PanelConfig
     @State private var host = ""
     @State private var pin = ""
-    @State private var mac = ""
     @State private var saving = false
 
     private var hostValue: String? { PanelAddress.host(host) }
-    private var macValue: String? { PanelAddress.mac(mac) }
-    private var changed: Bool {
-        hostValue != (config.host ?? "") || macValue != (config.mac ?? "") || !pin.isEmpty
-    }
-    private var valid: Bool { !(hostValue ?? "").isEmpty && macValue != nil }
+    private var changed: Bool { hostValue != (config.host ?? "") || !pin.isEmpty }
+    private var valid: Bool { !(hostValue ?? "").isEmpty }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -1935,16 +1932,6 @@ struct PanelSection: View {
                 field("Kod PIN", hint: "PIN sterowania (MDC) z aplikacji Samsung E-Paper.") {
                     SecureField(config.pinSet ? "ustawiony · puste zostawia bez zmian" : "np. 000000", text: $pin)
                         .keyboardType(.numberPad)
-                }
-                Divider()
-                field(
-                    "Adres MAC",
-                    hint: "Do budzenia ekranu (Wake-on-LAN). Puste pole wyłącza budzenie.",
-                    error: macValue == nil ? "MAC to 12 znaków szesnastkowych, np. A4:30:7A:01:02:FF" : nil
-                ) {
-                    TextField("AA:BB:CC:DD:EE:FF", text: $mac)
-                        .textInputAutocapitalization(.characters)
-                        .autocorrectionDisabled()
                 }
                 Divider()
                 Button {
@@ -1984,7 +1971,6 @@ struct PanelSection: View {
 
     private func load(_ config: PanelConfig) {
         host = config.host ?? ""
-        mac = config.mac ?? ""
         pin = ""
     }
 
@@ -1994,7 +1980,6 @@ struct PanelSection: View {
         let update = PanelConfigUpdate(
             host: hostValue,
             pin: pin.isEmpty ? nil : pin,
-            mac: macValue?.isEmpty == false ? macValue : nil,
             port: config.port
         )
         await model.savePanelConfig(update)
@@ -2142,15 +2127,15 @@ struct ServerSection: View {
     var body: some View {
         @Bindable var model = model
         VStack(alignment: .leading, spacing: 16) {
-            SectionHeader(title: "Serwer ramki", subtitle: "Domowy adres ma pierwszeństwo")
+            SectionHeader(title: "Serwer ramki", subtitle: "Domowy adres ma pierwszeństwo przed Tailscale")
             Card {
                 connectionLine
                 Divider()
+                // The address away from home is found by the app and shown
+                // with Tailscale below (`TailnetSection`).
                 AddressField(title: "W domu", prompt: "http://homeassistant.local:8099", text: $model.serverURL)
                 Divider()
-                AddressField(title: "Spoza domu", prompt: "Tailscale, np. http://100.64.0.5:8099", text: $model.remoteURL)
-                Divider()
-                SecureField("Token API", text: $model.apiToken)
+                TokenField(text: $model.apiToken)
                 Divider()
                 Button {
                     Task {
@@ -2434,6 +2419,23 @@ private struct AddressField: View {
             Text(title).font(.caption).foregroundStyle(Theme.inkSoft)
             TextField(prompt, text: $text)
                 .keyboardType(.URL)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+        }
+    }
+}
+
+/// The token the app sends to the server's `/api/*` (Bearer). The owner's
+/// comes from the server's settings (`FRAME_API_TOKEN`), a household
+/// member's from the invitation. Captioned like the addresses: filled in,
+/// a bare secure field shows only dots.
+private struct TokenField: View {
+    @Binding var text: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Token API").font(.caption).foregroundStyle(Theme.inkSoft)
+            SecureField("wklej token", text: $text)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
         }

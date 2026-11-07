@@ -10,7 +10,7 @@ MDC). Z serwerem łączy się aplikacja iOS.
 |---|---|
 | `device_host` | Adres IP ekranu (warto ustawić stały adres w routerze) |
 | `device_pin` | PIN do MDC, wyświetlany na ekranie podczas parowania w aplikacji Samsung E-Paper |
-| `device_mac` | MAC ekranu, potrzebny do budzenia (Wake-on-LAN) |
+| `device_mac` | MAC ekranu do budzenia (Wake-on-LAN); niepotrzebny, ramka podaje swój adres Wi-Fi sama po pierwszym starcie aplikacji |
 | `port` | Port HTTP, z którego ekran pobiera obrazy (domyślnie 8099) |
 | `public_host` | Adres, pod którym ekran widzi Home Assistanta; wykrywany automatycznie, gdy puste |
 | `api_token` | Token dla aplikacji iOS i narzędzi (zalecany) |
