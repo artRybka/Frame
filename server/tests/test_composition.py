@@ -2,7 +2,8 @@
 the picture's pixels, marks that mean something, a grid only under a take
 that lies on it, the analysis asked apart in steps (Opus, a Haiku check over
 the marks drawn on the picture, the grid measured by the server, Sonnet's
-movement), and pages written before written again."""
+movement, the text written last in one voice), and pages written before
+written again."""
 
 from __future__ import annotations
 
@@ -40,9 +41,10 @@ from frame_server.ai.daily import (
     takes,
     to_fractions,
 )
-from frame_server.ai.grid import SYSTEM as GRID_SYSTEM
 from frame_server.ai.motion import SYSTEM as MOTION_SYSTEM
 from frame_server.ai.motion import Movement, movement
+from frame_server.ai.prose import PROSE, PROSE_KEY
+from frame_server.ai.prose import SYSTEM as PROSE_SYSTEM
 from frame_server.ai.sketch import PHI, beats, draw, grid_fits, measure, measures
 from frame_server.ai.sketch import spiral as sketch_spiral
 from frame_server.ai.study import KIND as STUDY
@@ -370,11 +372,14 @@ def test_the_steps_are_put_together() -> None:
     flight = _mark({"shape": "motion", "points": _points((0.1, 0.9), (0.5, 0.3)), "title": "Lot"})
     assert flight is not None
     choice = grids.Choice("thirds", [grids.Held(Key(x=1 / 3, y=0.5, title="oś", axis="x"))])
-    both = merged(view, choice, ("Siatka.", 3), Movement("dynamiczna", "Ruch.", 0, 1, [flight]))
-    assert both.text == "Jeden. Ruch. Dwa. Trzy. Siatka."
+    both = merged(view, choice, Movement("dynamiczna", "Ruch.", 0, 1, [flight]))
+    assert both.text == "Jeden. Ruch. Dwa. Trzy."
     assert both.grid == "thirds" and [m.shape for m in both.marks] == ["loop", "motion"]
-    swapped = merged(view, None, None, Movement("statyczna", "Spokój.", 2, 0, []))
+    swapped = merged(view, None, Movement("statyczna", "Spokój.", 2, 0, []))
     assert swapped.text == "Jeden. Spokój. Trzy." and swapped.grid == "none"
+    # The text written last: the movement's marks, not its sentence.
+    unsaid = merged(view, None, Movement("dynamiczna", "Ruch.", 0, 1, [flight]), said=False)
+    assert unsaid.text == "Jeden. Dwa. Trzy." and len(unsaid.marks) == 2
     answer = {
         "sentence": "Ruch.",
         "replaces": 0,
@@ -445,9 +450,17 @@ ANALYSIS_V5 = {
 }
 
 
+#: The text as the writer puts it together at the end.
+WRITTEN = (
+    "Wielka fala zamyka lewą stronę i tnie krawędź, więc morze trwa dalej poza kadrem. "
+    "Grzbiet fali leży na przecięciu linii trójpodziału, a łuki fali niosą ruch. "
+    "Mała Fudżi w dole odpowiada na ten ciężar."
+)
+
+
 def _pipeline(asked: list[dict[str, Any]], analysis: dict[str, Any] = ANALYSIS_V5) -> Any:
-    """Every step answering: Opus, the Haiku check, the Haiku grid sentence
-    and Sonnet's movement."""
+    """Every step answering: Opus, the Haiku check, Sonnet's movement and
+    the writer of the text."""
 
     def ask(params: dict[str, Any]) -> Answer:
         asked.append(params)
@@ -462,9 +475,8 @@ def _pipeline(asked: list[dict[str, Any]], analysis: dict[str, Any] = ANALYSIS_V
                 "text": "",
             }
             return Answer(reply, False, 0.01, HAIKU)
-        if system == GRID_SYSTEM:
-            reply = {"sentence": "Grzbiet fali leży na przecięciu linii trójpodziału.", "where": 1}
-            return Answer(reply, False, 0.002, HAIKU)
+        if system == PROSE_SYSTEM:
+            return Answer({"text": WRITTEN}, False, 0.015, OPUS)
         if system == MOTION_SYSTEM:
             reply = {
                 "budowa": "dynamiczna",
@@ -494,26 +506,29 @@ def test_the_analysis_is_asked_apart_in_steps(service: FrameService) -> None:
     assert item is not None
     asked: list[dict[str, Any]] = []
     found = compose(service.images, item, service.daily.job.sources(item), _pipeline(asked))
-    first, check, grid, motion = asked
+    first, check, motion, writer = asked
     assert first["system"][0]["text"] == COMPOSITION_SYSTEM and first["model"] == OPUS
     assert first["output_config"]["effort"] == "medium"
     text = first["messages"][0]["content"][1]["text"]
     assert "OBRAZ: 900 × 600 px" in text and "OPIS MUZEUM" not in text  # the picture alone
     assert check["model"] == HAIKU and "loop „Fudżi”" in check["messages"][0]["content"][-1]["text"]
-    assert grid["model"] == HAIKU and "trójpodział" in grid["messages"][0]["content"][-1]["text"]
     assert motion["model"] == SONNET
+    # The writer gets the draft and the facts, no picture.
+    assert writer["model"] == OPUS and writer["output_config"]["effort"] == "low"
+    (content,) = writer["messages"][0]["content"]
+    assert content["type"] == "text"
+    facts = content["text"]
+    assert "Fala zamyka lewą stronę." in facts and "Siatka: trójpodział." in facts
+    assert "grzbiet fali: na linii" in facts and "Budowa: dynamiczna." in facts
     (view,) = found["composition"]["views"]
     assert view["title"] == TAKE and view["grid"] == "thirds"
-    assert view["text"] == (
-        "Fala zamyka lewą stronę. Grzbiet fali leży na przecięciu linii trójpodziału. "
-        "Kompozycja otwarta: fala tnie krawędź. Przeważają łuki fali, więc kompozycja jest "
-        "dynamiczna. Mała góra równoważy wielką falę."
-    )
+    assert view["text"] == WRITTEN
+    assert found[PROSE_KEY] == PROSE
     assert [m["shape"] for m in view["marks"]] == ["loop", "motion"]
     assert [k["title"] for k in view["keys"]] == ["grzbiet fali", "szczyt Fudżi"]
     assert found[CHECKED][0].startswith("przesunięty ślad 1 „Fudżi”")
     assert found[CHECK_ROUND] == ROUND
-    assert found[COST] == {"analysis": 0.07, "check": 0.01, "grid": 0.002, "motion": 0.03}
+    assert found[COST] == {"analysis": 0.07, "check": 0.01, "motion": 0.03, "text": 0.015}
     # An unusable analysis gives the page nothing.
     refused = compose(
         service.images, item, service.daily.job.sources(item), lambda p: Answer(None, True, 0, "o")
@@ -534,8 +549,9 @@ def test_a_step_that_fails_leaves_the_rest(service: FrameService) -> None:
     found = compose(service.images, item, service.daily.job.sources(item), ask)
     (view,) = found["composition"]["views"]
     assert [m["title"] for m in view["marks"]] == ["Fudżi", "Horyzont"]  # unchecked
-    assert view["grid"] == "thirds"  # measured, only its sentence missing
-    assert found[CHECKED] == []
+    assert view["grid"] == "thirds"  # measured
+    assert view["text"].startswith("Fala zamyka lewą stronę.")  # the draft, unwritten
+    assert found[CHECKED] == [] and PROSE_KEY not in found
 
 
 def _old_page(service: FrameService, **extra: Any) -> None:
