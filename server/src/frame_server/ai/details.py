@@ -45,7 +45,7 @@ from .daily import (
     sent_size,
 )
 from .daily import KIND as DAILY
-from .jobs import NoteJob, Usage, text_hash
+from .jobs import NoteJob, Usage, listed, relist, text_hash
 from .study import KIND as STUDY
 
 if TYPE_CHECKING:
@@ -214,8 +214,7 @@ class MendJob(NoteJob):
         return self.config.enabled(DAILY)
 
     def asked(self) -> set[str]:
-        found = self.library.get_state(AGAIN_KEY, [])
-        return {str(i) for i in found} if isinstance(found, list) else set()
+        return listed(self.library, AGAIN_KEY)
 
     def _pages_of(self, item_id: str) -> list[Note]:
         """The work's written pages with details (its study, its day's page)."""
@@ -228,7 +227,7 @@ class MendJob(NoteJob):
         if not self._pages_of(item.id):
             return False
         self.library.delete_notes(KIND, item.id)
-        self.library.set_state(AGAIN_KEY, sorted(self.asked() | {item.id}))
+        relist(self.library, AGAIN_KEY, item.id, on=True)
         return True
 
     def pending(self, item_id: str) -> bool:
@@ -292,4 +291,4 @@ class MendJob(NoteJob):
                 if page.data.get(BOXES) != BOXES_VERSION:
                     data["focus"] = essay.focus.model_dump() if essay.focus else None
                 self.library.save_note(page.model_copy(update={"data": data}))
-        self.library.set_state(AGAIN_KEY, sorted(self.asked() - {item.id}))
+        relist(self.library, AGAIN_KEY, item.id, on=False)

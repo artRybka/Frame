@@ -78,7 +78,7 @@ from .daily import (
 from .daily import (
     KIND as DAILY,
 )
-from .jobs import NoteJob, Usage, text_hash
+from .jobs import NoteJob, Usage, listed, relist, text_hash
 from .study import KIND as STUDY
 
 if TYPE_CHECKING:
@@ -500,8 +500,7 @@ class ComposeJob(NoteJob):
 
     def asked_again(self) -> set[str]:
         """The works whose analysis the owner asked for anew, not made yet."""
-        found = self.library.get_state(AGAIN_KEY, [])
-        return {str(i) for i in found} if isinstance(found, list) else set()
+        return listed(self.library, AGAIN_KEY)
 
     def _pages_of(self, item_id: str) -> list[Note]:
         """The work's written pages (its study, its day's page)."""
@@ -525,7 +524,7 @@ class ComposeJob(NoteJob):
             model = old.model if own and old is not None else page.model
             data = {**page.data, VERSIONS: [version(page.data, made, model)], SHOWN: 0}
             self.library.save_note(page.model_copy(update={"data": data}))
-        self.library.set_state(AGAIN_KEY, sorted(self.asked_again() | {item.id}))
+        relist(self.library, AGAIN_KEY, item.id, on=True)
         self.library.delete_notes(KIND, item.id)
         self.forget()
         return True
@@ -614,5 +613,5 @@ class ComposeJob(NoteJob):
                     data.setdefault(BEFORE, page.data.get("composition"))
                 self.library.save_note(page.model_copy(update={"data": data}))
         if item.id in again:  # made, or came back without a take: asked no more
-            self.library.set_state(AGAIN_KEY, sorted(again - {item.id}))
+            relist(self.library, AGAIN_KEY, item.id, on=False)
         self.forget()
