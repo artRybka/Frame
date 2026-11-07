@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.118.3
+
+- Okładka „Ukryte” w Playlistach ożyła: rozmyte dzieła powoli dryfują za
+  szybą, a gdy przechylasz telefon, przesuwają się pod nią i po szkle
+  przechodzi odblask. Szron jest cieńszy, więc kolory są żywsze, a treść
+  nadal rozmyta. Krawędź daje szkło iOS, z niego jest też plakietka z okiem.
+  Z włączonym „Ogranicz ruch” okładka stoi.
+
 ## 1.118.2
 
 - Obraz w Studium dnia w Odkrywaj leży odrobinę głębiej niż karta:

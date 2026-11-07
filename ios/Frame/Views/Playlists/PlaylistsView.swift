@@ -553,12 +553,12 @@ struct HiddenCard: View {
                 .aspectRatio(1, contentMode: .fit)
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .overlay(alignment: .bottomTrailing) {
+                    // A drop of the same glass, not a paper sticker.
                     Image(systemName: "eye.slash")
                         .font(.footnote.weight(.semibold))
                         .foregroundStyle(Theme.inkSoft)
                         .frame(width: 30, height: 30)
-                        .background(Theme.card, in: Circle())
-                        .shadow(color: .black.opacity(0.18), radius: 1.5, y: 1)
+                        .glassEffect(.regular, in: .circle)
                         .padding(9)
                 }
                 .shadow(color: .black.opacity(0.12), radius: 10, y: 6)
@@ -576,32 +576,113 @@ struct HiddenCard: View {
     }
 }
 
-/// A collage behind frosted glass: blurred as one picture, under a thin
-/// cream sheet with a fine grain like sandblasted glass; with no works,
-/// the bare frosted sheet on the mat.
+/// A collage behind frosted glass that breathes: blurred as one picture,
+/// it drifts gently behind the pane (aside, nearer, a little turned) while a
+/// soft patch of light wanders over it, under a thin cream sheet with a fine
+/// grain. Turned in the hand, the collage also slides under the pane, as the
+/// study of the day's picture does (`parallax()`), and a streak of gloss
+/// crosses the glass. iOS's own glass on top gives the rim. Off screen or
+/// with Reduce Motion it stands still. With no works, the bare frosted sheet
+/// on the mat.
 struct FrostedCover: View {
     let itemIDs: [String]
-    @Environment(\.colorScheme) private var scheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var onScreen = false
 
     var body: some View {
-        ZStack {
-            Theme.mat
-            if !itemIDs.isEmpty {
-                // Flattened first: a blur on the collage itself falls on
-                // each picture alone and leaves the seams sharp.
-                Collage(itemIDs: itemIDs)
-                    .saturation(0.85)
-                    .drawingGroup()
-                    .blur(radius: 16, opaque: true)
+        // Flattened first: a blur on the collage itself falls on each
+        // picture alone and leaves the seams sharp. Built once, outside the
+        // timeline, so only its place changes frame by frame.
+        let collage = Collage(itemIDs: itemIDs)
+            .saturation(0.95)
+            .drawingGroup()
+            .blur(radius: 10, opaque: true)
+        let still = itemIDs.isEmpty || reduceMotion || !onScreen
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: still)) { context in
+            let drift = CoverDrift(at: still ? 0 : context.date.timeIntervalSinceReferenceDate)
+            ZStack {
+                Theme.mat
+                if !itemIDs.isEmpty {
+                    GeometryReader { geo in
+                        collage
+                            // Big enough that, moved and turned, it still
+                            // covers the pane to its corners.
+                            .scaleEffect(1.3 * drift.scale)
+                            .rotationEffect(.degrees(drift.turn))
+                            .offset(x: geo.size.width * drift.x, y: geo.size.height * drift.y)
+                            .parallax()
+                    }
+                    RadialGradient(
+                        colors: [.white.opacity(0.3), .white.opacity(0)],
+                        center: drift.light,
+                        startRadius: 0,
+                        endRadius: 90
+                    )
+                    .blendMode(.softLight)
+                }
+                Theme.paper.opacity(0.26)
+                Image(uiImage: FrostGrain.tile)
+                    .resizable(resizingMode: .tile)
+                    .interpolation(.none)
+                    .blendMode(.overlay)
+                    .opacity(0.2)
+                if !itemIDs.isEmpty { GlassSheen() }
             }
-            Theme.paper.opacity(scheme == .dark ? 0.45 : 0.48)
-            Image(uiImage: FrostGrain.tile)
-                .resizable(resizingMode: .tile)
-                .interpolation(.none)
-                .blendMode(.overlay)
-                .opacity(0.6)
         }
+        .overlay {
+            Color.clear
+                .glassEffect(.clear, in: .rect(cornerRadius: 12))
+                .allowsHitTesting(false)
+        }
+        .onAppear { onScreen = true }
+        .onDisappear { onScreen = false }
         .accessibilityHidden(true)
+    }
+}
+
+/// Where the collage behind the glass is at a moment: a few slow, small sines
+/// with periods that never line up, so the drift does not visibly repeat;
+/// one sweep takes half a minute (Mateusz 2026-11-07: gentler than the sketch).
+struct CoverDrift {
+    var x: CGFloat
+    var y: CGFloat
+    var scale: CGFloat
+    var turn: Double
+    var light: UnitPoint
+
+    init(at time: TimeInterval) {
+        func wave(_ period: Double, _ shift: Double = 0) -> CGFloat {
+            CGFloat(sin(2 * .pi * time / period + shift))
+        }
+        x = 0.022 * wave(35)
+        y = 0.02 * wave(43, 1)
+        scale = 1 + 0.018 * (1 + wave(29, 2))
+        turn = 0.8 * Double(wave(47, 0.5))
+        light = UnitPoint(x: 0.45 + 0.2 * wave(26), y: 0.4 + 0.2 * wave(32, 1.3))
+    }
+}
+
+/// A streak of gloss across the glass that runs with the phone's turn
+/// (`Tilt`, started by the collage's `parallax()`) and fades out once the
+/// phone is held still, so a card at rest has none.
+private struct GlassSheen: View {
+    var body: some View {
+        let tilt = Tilt.shared
+        let middle = 0.5 + 0.4 * tilt.x - 0.15 * tilt.y
+        let strength = min(1, 1.4 * max(abs(tilt.x), abs(tilt.y)))
+        LinearGradient(
+            stops: [
+                .init(color: .white.opacity(0), location: middle - 0.16),
+                .init(color: .white.opacity(0.4), location: middle - 0.02),
+                .init(color: .white.opacity(0.12), location: middle + 0.04),
+                .init(color: .white.opacity(0), location: middle + 0.15),
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+        .blendMode(.softLight)
+        .opacity(strength)
+        .allowsHitTesting(false)
     }
 }
 
