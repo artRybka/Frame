@@ -1093,8 +1093,20 @@ struct SourceRequests: Codable, Hashable, Sendable {
         var quota: Quota?
         /// Seconds until the source is asked again; 0 when it may be now.
         var resting: Double
+        /// Requests sent by what they were for ("Szukaj", "Odkrywaj", "noc",
+        /// "katalog"…), today and over the days; nil from an older server.
+        var whyToday: [String: Int]?
+        var whyWeek: [String: Int]?
 
         var id: String { name ?? "" }
+
+        /// The few biggest askers, most first: today's when there are any.
+        var askers: [(String, Int)] {
+            let counts = (whyToday?.isEmpty == false ? whyToday : whyWeek) ?? [:]
+            return counts.filter { $0.value > 0 }
+                .sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }
+                .map { ($0.key, $0.value) }
+        }
         var quiet: Bool { week.sent == 0 && week.refused == 0 && resting == 0 }
     }
 
@@ -1600,16 +1612,15 @@ struct RemoteItem: Codable, Hashable, Sendable, Identifiable {
         return true
     }
 
-    /// The server's copy once it has one, else straight from the museum.
-    var thumb: ImageRef {
-        if inLibrary { return .thumb(id) }
-        return URL(string: item.thumbUrl).map(ImageRef.url) ?? .thumb(id)
-    }
+    /// Always the server's copy, also of a work the catalogue does not hold:
+    /// the server downloads each thumbnail once, at the museum's pace, and
+    /// keeps it. Straight from the museum, the phone at home asked from the
+    /// server's own address, a grid's worth at once and uncounted, which is
+    /// what the museums' bot walls turn away (2026-11-07).
+    var thumb: ImageRef { .thumb(id) }
 
-    /// The server's copy, when the museum refuses the thumbnail.
-    var thumbFallback: ImageRef? {
-        thumb == .thumb(id) ? nil : .thumb(id)
-    }
+    /// No other address to try: the server's copy is the only one.
+    var thumbFallback: ImageRef? { nil }
 }
 
 extension Array where Element == RemoteItem {

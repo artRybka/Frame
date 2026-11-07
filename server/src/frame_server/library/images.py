@@ -28,7 +28,7 @@ log = logging.getLogger(__name__)
 THUMB_MAX = 640
 IMAGE_MAX = 2560
 #: Thumbnails of works that are not in the library (browsed, previewed).
-THUMB_SPARE = 500
+THUMB_SPARE = 5000
 #: Downloads at once from one host (library/policy.py): Commons answers more
 #: than two parallel media requests with 429, the AIC asks for one picture at
 #: a time, museum CDNs throttle bursts too. What the owner looks at now (the
@@ -172,6 +172,13 @@ class ImageCache:
     def thumb_path(self, item: Item) -> Path:
         return self.thumbs / f"{item.file_stem}.jpg"
 
+    def kept_thumb(self, item_id: str) -> Path | None:
+        """The thumbnail of ``item_id`` when it is here (no need to know the
+        work: after an update, a museum work's record is not asked again
+        only to send a thumbnail already kept)."""
+        path = self.thumbs / f"{Item.stem_of(item_id)}.jpg"
+        return path if path.is_file() else None
+
     def image_path(self, item: Item) -> Path:
         return self.images / f"{item.file_stem}.jpg"
 
@@ -188,9 +195,10 @@ class ImageCache:
         ones are tried again after the wait the host asks for (a few seconds
         at most)."""
         urgent = urgent or is_urgent()
-        if not urgent:  # not holding the host's turn while the start is quiet
-            self.hosts.wait_calm()
-        gate = self._gate(urlsplit(url).hostname or "")
+        host = urlsplit(url).hostname or ""
+        if not urgent:  # not holding the host's turn while the background waits
+            self.hosts.wait_calm(host)
+        gate = self._gate(host)
         asking = urgently() if urgent else contextlib.nullcontext()
         with gate.turn(urgent), asking, self.http() as http:
             for attempt in range(1, ATTEMPTS + 1):

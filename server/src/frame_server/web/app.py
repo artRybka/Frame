@@ -79,6 +79,9 @@ log = logging.getLogger(__name__)
 PROGRESS_PATH = "/content-transfer-progress"
 #: Requests that are not someone using the app (the night's work goes on).
 NOT_USE = ("/api/health", "/api/debug/")
+#: The app counts as in use this long after its last request (seconds): the
+#: background's requests to the museums wait meanwhile.
+APP_IN_USE = 120.0
 
 
 def _photo_preset(data: bytes) -> str:
@@ -169,8 +172,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             threading.Thread(target=discover_api.warm_up, args=(service,), daemon=True).start()
             threading.Thread(target=service.daily.run, name="daily", daemon=True).start()
             # What all of that would ask the museums at once waits a while;
-            # what the app and the panel ask for goes.
+            # what the app and the panel ask for goes. The background's own
+            # work waits while the app is in use too (library/hosts.py).
             host_guard.calm()
+            host_guard.app_in_use = lambda: night.idle_for() < APP_IN_USE
         yield
         for task in tasks:
             task.cancel()

@@ -76,6 +76,9 @@ THROTTLED_MAX = 3600.0
 #: still does, up to REST_MAX, and forgotten once it answers again.
 REST = 15 * 60.0
 REST_MAX = 4 * 3600.0
+#: While the app is in use, the background looks again this often whether it
+#: may go on (seconds).
+APP_PAUSE_STEP = 10.0
 #: While a host rests, one request this often still goes, to see whether it
 #: answers again: a wall that challenged one kind of request (a full-size
 #: original) or forgot us early lets the pictures through at once instead
@@ -130,7 +133,9 @@ def asking_for(why: str, app: bool | None = None) -> Iterator[None]:
 THREAD_PURPOSES: tuple[tuple[str, str], ...] = (
     ("night", "noc"),
     ("searched", "katalog"),
-    ("job-", "katalog"),
+    ("job-pool", "propozycje"),
+    ("job-catalogue", "katalog"),
+    ("job-", "import"),
     ("search-page", "odświeżanie"),
     ("sharper", "kopie"),
     ("holder", "muzeum dzieła"),
@@ -143,9 +148,14 @@ THREAD_PURPOSES: tuple[tuple[str, str], ...] = (
     ("kept", "oryginały"),
     ("-index", "spisy muzeów"),
     ("work_out_cards", "karty Odkrywaj"),
-    ("_fetch_day_row", "odkrywaj"),
-    ("_work_out_page", "odkrywaj"),
+    ("_fetch_day_row", "Odkrywaj"),
+    ("_work_out_page", "Odkrywaj"),
 )
+
+
+def _thread_purpose() -> str | None:
+    name = threading.current_thread().name
+    return next((why for part, why in THREAD_PURPOSES if part in name), None)
 
 
 def purpose() -> str:
@@ -156,11 +166,23 @@ def purpose() -> str:
         return said
     if _app.get() or is_urgent():
         return APP
-    name = threading.current_thread().name
-    for part, why in THREAD_PURPOSES:
-        if part in name:
-            return why
-    return BACKGROUND
+    return _thread_purpose() or BACKGROUND
+
+
+#: The background's work nobody looks at while it runs: it waits out the
+#: quiet after a start and while the app is in use, and goes at half pace.
+#: Work the app started and shows when done (a sharper copy, a work's
+#: museum, its real size, a study) is not held back.
+DEFERRABLE = frozenset(
+    {BACKGROUND, "noc", "katalog", "propozycje", "odświeżanie", "spisy muzeów", "oryginały"}
+)
+#: How much slower the deferrable background asks a paced host.
+BACKGROUND_SLOWER = 2.0
+
+
+def deferrable() -> bool:
+    """Whether the requests sent now may wait (:data:`DEFERRABLE`)."""
+    return not from_app() and purpose() in DEFERRABLE
 
 
 def from_app() -> bool:
@@ -190,7 +212,7 @@ def for_purpose[**P, T](why: str, fn: Callable[P, T]) -> Callable[P, T]:
 def as_asked[**P, T](fn: Callable[P, T]) -> Callable[P, T]:
     """``fn``, to run in another thread as this one asks: as urgently, for
     the same purpose, for the app or not."""
-    urgent, why, app = _urgent.get(), _why.get(), _app.get()
+    urgent, why, app = _urgent.get(), _why.get() or _thread_purpose(), _app.get()
     if not (urgent or why or app):
         return fn
 
@@ -322,6 +344,12 @@ class HostGuard:
         self._purposes_file: Path | None = None
         #: Until when the background does not ask anyone (:meth:`calm`).
         self.calm_until = 0.0
+        #: Whether the app is in use now: the background waits meanwhile
+        #: (set by the server, web/app.py).
+        self.app_in_use: Callable[[], bool] = lambda: False
+        #: How much slower the deferrable background asks a paced host
+        #: (:data:`BACKGROUND_SLOWER` for the process's guard).
+        self.background_slower = 1.0
         self._lock = threading.Lock()
         #: When the next request to a host may go (by host).
         self._next: dict[str, float] = {}
@@ -366,17 +394,26 @@ class HostGuard:
         self.calm_until = self.clock() + seconds
         log.info("the background asks no museum for %.0f min", seconds / 60)
 
-    def wait_calm(self) -> None:
-        """Waits out the quiet after a start, unless the app asks."""
-        while not from_app():
+    def wait_calm(self, host: str) -> None:
+        """Waits out the quiet after a start, and while the app is in use
+        (:attr:`app_in_use`), before asking ``host`` of an art source,
+        unless what asks may not wait (:func:`deferrable`). Other hosts
+        (iCloud's photos) never wait."""
+        if owner_of(host) is None or not deferrable():
+            return
+        told = False
+        while True:
             left = self.calm_until - self.clock()
-            if left <= 0:
+            if left <= 0 and not self.app_in_use():
                 return
-            self.sleep(min(left, 30.0))
+            if not told:
+                told = True
+                log.debug("%s waits: %s", purpose(), "quiet start" if left > 0 else "app in use")
+            self.sleep(min(left, 30.0) if left > 0 else APP_PAUSE_STEP)
 
     def before(self, request: httpx.Request) -> None:
         host = request.url.host
-        self.wait_calm()
+        self.wait_calm(host)
         try:
             self._before(request, host)
         except Resting:
@@ -401,6 +438,8 @@ class HostGuard:
         )
         if not pace and not limit:
             return
+        if pace and self.background_slower != 1.0 and deferrable():
+            pace *= self.background_slower
         self._turn(key, pace, limit)
         if limit:
             assert held is not None
@@ -811,3 +850,4 @@ class HostGuard:
 
 #: Shared by every client of the process: the museums see one address.
 guard = HostGuard(default_limit=DEFAULT_LIMIT, budgets=BUDGETS)
+guard.background_slower = BACKGROUND_SLOWER

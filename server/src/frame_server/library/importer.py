@@ -77,7 +77,7 @@ HIGHLIGHT_SOURCES = ("met", "cma", "mnw", "mnk")
 TRANSLATE_SECONDS = 5.0
 #: Museum works seen in search results, kept in memory so that opening one
 #: needs no second request.
-REMOTE_MEMO = 500
+REMOTE_MEMO = 5000
 #: Sources whose paintings often come as black-and-white copies (album
 #: plates, old photographs): their results' thumbnails are looked at before
 #: they are shown. How many verdicts are remembered.
@@ -107,7 +107,8 @@ def language_of(key: str) -> str:
 
 def small_thumb(item: Item) -> str:
     """A small version of ``item``'s thumbnail, enough to judge its colour:
-    Commons' 120 px step, Europeana's 200 px preview."""
+    Commons' 120 px step, Europeana's 200 px preview. (Works are looked at on
+    their kept thumbnails since 2026-11-07, :meth:`Importer._thumbnail`.)"""
     url = item.thumb_url
     if item.source == "wmc" and "/thumb/" in url:
         return re.sub(r"/\d+px-([^/]+)$", r"/120px-\1", url)
@@ -452,7 +453,7 @@ class Importer:
             if item.id in self._spreads:
                 return self._spreads[item.id]
         try:
-            with self.cache.sample(small_thumb(item)) as img:
+            with self._thumbnail(item) as img:
                 spread = tint_spread(img)
                 self._remember_aspect(item, img)
         except (httpx.HTTPError, OSError, ValueError) as err:
@@ -476,7 +477,7 @@ class Importer:
             if item.id in self._tags:
                 return self._tags[item.id]
         try:
-            with self.cache.sample(small_thumb(item)) as img:
+            with self._thumbnail(item) as img:
                 spread = tint_spread(img)
                 _, tags, _, shares = analyse(img, self.palette, spread)
                 self._remember_aspect(item, img)
@@ -490,6 +491,12 @@ class Importer:
                 while len(memo) > SPREAD_MEMO:
                     memo.popitem(last=False)
         return tags, shares
+
+    def _thumbnail(self, item: Item, urgent: bool = False) -> Image.Image:
+        """``item``'s thumbnail to look at, downloaded once and kept: the app
+        shows the server's copy of it too, so a sample thrown away was asked
+        for again a moment later (2026-11-07)."""
+        return Image.open(self.cache.ensure_thumb(item, urgent))
 
     def _remember_aspect(self, item: Item, img: Image.Image) -> None:
         width, height = img.size
@@ -531,7 +538,7 @@ class Importer:
         if known is not None or not item.thumb_url:
             return known
         try:
-            with self.cache.sample(small_thumb(item), urgent=True) as img:
+            with self._thumbnail(item, urgent=True) as img:
                 self._remember_aspect(item, img)
         except (httpx.HTTPError, OSError, ValueError) as err:
             log.info("no thumbnail of %s to measure: %s", item.id, err)
@@ -549,7 +556,7 @@ class Importer:
             return
         pool = ThreadPoolExecutor(min(len(unknown), 8))
         try:
-            futures = [pool.submit(self.aspect_of, i) for i in unknown]
+            futures = [pool.submit(as_asked(self.aspect_of), i) for i in unknown]
             wait_for(futures, timeout=seconds)
         finally:
             # The late ones go on into the memo; those not started don't.

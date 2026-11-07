@@ -17,18 +17,18 @@ from ..library.hosts import asking_for
 #: Path beginnings and what they are for, the first that fits.
 _PREFIXES: tuple[tuple[str, str], ...] = (
     ("/panel/", "ramka"),
-    ("/api/themes", "odkrywaj"),
-    ("/api/suggestions", "odkrywaj"),
-    ("/api/browse", "odkrywaj"),
-    ("/api/daily", "odkrywaj"),
-    ("/api/discover/", "szukaj"),
-    ("/api/terms", "szukaj"),
-    ("/api/vocabulary", "szukaj"),
-    ("/api/museums", "szukaj"),
+    ("/api/themes", "Odkrywaj"),
+    ("/api/suggestions", "Odkrywaj"),
+    ("/api/browse", "Odkrywaj"),
+    ("/api/daily", "Odkrywaj"),
+    ("/api/discover/", "Szukaj"),
+    ("/api/terms", "Szukaj"),
+    ("/api/vocabulary", "Szukaj"),
+    ("/api/museums", "Szukaj"),
     ("/api/study", "studium"),
     ("/api/studies", "studium"),
     ("/api/playlists", "playlisty"),
-    ("/api/library/", "karta"),
+    ("/api/library/", "karta dzieła"),
 )
 
 

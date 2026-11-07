@@ -1057,7 +1057,7 @@ final class FrameAPITests: XCTestCase {
         XCTAssertTrue(after.isEmpty)
     }
 
-    func testMuseumThumbnailFallsBackToTheServer() async throws {
+    func testMuseumThumbnailComesFromTheServer() async throws {
         let demo = DemoBackend()
         let themes = try await demo.themes()
         let theme = try XCTUnwrap(themes.first)
@@ -1065,10 +1065,8 @@ final class FrameAPITests: XCTestCase {
         var item = try XCTUnwrap(page.items.first).item
         item.thumbUrl = "https://www.artic.edu/iiif/2/abc/full/600,/0/default.jpg"
         let remote = RemoteItem(item: item, inLibrary: false)
-        XCTAssertEqual(remote.thumb, .url(try XCTUnwrap(URL(string: item.thumbUrl))))
-        XCTAssertEqual(remote.thumbFallback, .thumb(item.id))
-        item.thumbUrl = ""
-        XCTAssertNil(RemoteItem(item: item, inLibrary: false).thumbFallback)
+        XCTAssertEqual(remote.thumb, .thumb(item.id))  // never straight from the museum
+        XCTAssertNil(remote.thumbFallback)
     }
 
     func testMeasuredShapeOfAWorkWithoutSizeReachesTheGrid() async throws {
