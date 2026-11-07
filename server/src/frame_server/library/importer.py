@@ -14,7 +14,7 @@ from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import wait as wait_for
 from dataclasses import dataclass, field, replace
 from itertools import chain, zip_longest
-from typing import Any
+from typing import Any, cast
 
 import httpx
 from PIL import Image
@@ -39,6 +39,7 @@ from .museums import (
     client,
     museum,
 )
+from .pages import search_pages
 from .repo import Library, matches, now_iso
 from .vocabulary import (
     HIGHLIGHT,
@@ -215,9 +216,11 @@ class Importer:
         self._searched_room: tuple[str, ...] = ()
         #: Pages of museum searches (:data:`SEARCH_MEMO`): when asked, how
         #: many in all, the works.
-        self._pages: OrderedDict[tuple[str, str, int, int, str], tuple[float, int, list[Item]]] = (
-            OrderedDict()
-        )
+        self._pages: OrderedDict[
+            tuple[str, str, int, int, str, bool], tuple[float, int, list[Item]]
+        ] = OrderedDict()
+        #: Pages kept on disk that are asked again behind (library/pages.py).
+        self._asking: set[tuple[str, str, int, int, str, bool]] = set()
         #: Words typed in Szukaj in the museums' languages (the language
         #: model's, set by the service); none: asked as typed.
         self.translate: Callable[[str, float], Wording] | None = None
@@ -338,29 +341,77 @@ class Importer:
         """``limit`` works from ``source``; ``wait``: seconds the source may
         take to answer, when not the client's own; ``kind``: what the
         search asks for (Fotografia: photographs). A page asked lately
-        comes from memory (:data:`SEARCH_SECONDS`)."""
-        memo = (source, query, limit, page, kind)
+        comes from memory (:data:`SEARCH_SECONDS`), an older one from disk
+        while it is asked again behind (library/pages.py)."""
+        access = self.access()
+        # Licences differ with private use: its pages are other pages.
+        memo = (source, query, limit, page, str(kind), access.private_use)
         with self._remote_lock:
             kept = self._pages.get(memo)
             if kept is not None and time.monotonic() - kept[0] < SEARCH_SECONDS:
                 return kept[1], list(kept[2])
+        disk = search_pages(access.data_dir) if access.data_dir else None
+        if disk is not None:
+            stored = disk.get(disk.key(*memo))
+            if stored is not None:
+                fresh, total, items = stored
+                self.remember(items)
+                if fresh:
+                    self._memo(memo, total, items)
+                else:  # shown now, asked again behind for the next look
+                    self._ask_behind(memo)
+                return total, list(items)
+        return self._ask(memo, wait)
+
+    def _ask(
+        self, memo: tuple[str, str, int, int, str, bool], wait: float | None = None
+    ) -> tuple[int, list[Item]]:
+        """The museum's page of ``memo``, kept in memory and on disk."""
+        source, query, limit, page, kind, _ = memo
+        access = self.access()
         with self.http() as http:
             if wait is not None:
                 http.timeout = httpx.Timeout(wait)
-            found = museum(source, http, self.access())
+            found = museum(source, http, access)
             if kind == "any":
                 total, items = found.search(query, limit=limit, page=page)
             else:
-                total, items = found.search_kind(query, kind, limit=limit, page=page)
+                total, items = found.search_kind(query, cast(Kind, kind), limit=limit, page=page)
         items = self.without_grey([dated(i) for i in items if not is_copy(i)])
         self.remember(items)
         if items:
-            with self._remote_lock:
-                self._pages[memo] = (time.monotonic(), total, list(items))
-                self._pages.move_to_end(memo)
-                while len(self._pages) > SEARCH_MEMO:
-                    self._pages.popitem(last=False)
+            self._memo(memo, total, items)
+            if access.data_dir:
+                pages = search_pages(access.data_dir)
+                pages.put(pages.key(*memo), total, items)
         return total, items
+
+    def _memo(
+        self, memo: tuple[str, str, int, int, str, bool], total: int, items: list[Item]
+    ) -> None:
+        with self._remote_lock:
+            self._pages[memo] = (time.monotonic(), total, list(items))
+            self._pages.move_to_end(memo)
+            while len(self._pages) > SEARCH_MEMO:
+                self._pages.popitem(last=False)
+
+    def _ask_behind(self, memo: tuple[str, str, int, int, str, bool]) -> None:
+        """``memo``'s page asked again in the background (once at a time)."""
+        with self._remote_lock:
+            if memo in self._asking:
+                return
+            self._asking.add(memo)
+
+        def ask() -> None:
+            try:
+                self._ask(memo)
+            except Exception as err:
+                log.info("search page %s not asked again: %s", memo[:2], err)
+            finally:
+                with self._remote_lock:
+                    self._asking.discard(memo)
+
+        threading.Thread(target=ask, name="search-page", daemon=True).start()
 
     def spread_of(self, item: Item) -> float | None:
         """``item``'s tint spread, from the library, memory or a small

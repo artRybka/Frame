@@ -139,6 +139,6 @@ def test_a_failed_build_waits(tmp_path: Path, monkeypatch: Any) -> None:
         raise httpx.ConnectError("no network")
 
     monkeypatch.setattr(met_index, "build", broken)
-    monkeypatch.setattr(met_index, "_rows", lambda http: iter(()))
+    monkeypatch.setattr(met_index, "_rows", lambda http, *args: iter(()))
     assert index.refresh(tmp_path) is False
     assert index.failed_at > 0 and not index._claim()

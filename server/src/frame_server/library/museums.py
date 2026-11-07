@@ -48,6 +48,7 @@ from .markup import (
 from .met_index import INDEX as MET_INDEX
 from .met_objects import met_objects
 from .models import Item, ItemKind
+from .records import records
 
 log = logging.getLogger(__name__)
 
@@ -955,14 +956,26 @@ class Rijksmuseum(Museum):
         return total, items
 
     def fetch(self, source_id: str) -> Item | None:
+        # A search page is a request a work: each record asked once
+        # (library/records.py).
+        kept = records(self.access.data_dir) if self.access.data_dir else None
+        if kept is not None:
+            found, record = kept.get(self.key, source_id)
+            if found:
+                return None if record is None else self._map(record)
         resp = self.http.get(
             f"https://id.rijksmuseum.nl/{source_id}",
             headers={"Accept": "application/ld+json"},
         )
         if resp.status_code == 404:
+            if kept is not None:
+                kept.put(self.key, source_id, None)
             return None
         resp.raise_for_status()
-        return self._map(resp.json())
+        record = resp.json()
+        if kept is not None and isinstance(record, dict):
+            kept.put(self.key, source_id, record)
+        return self._map(record)
 
 
 def _first(values: Any) -> str:

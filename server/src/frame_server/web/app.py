@@ -14,7 +14,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
-from typing import Annotated
+from typing import Annotated, Any
 
 import httpx
 from fastapi import (
@@ -523,5 +523,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         """The server's last log records, oldest first (since its start, at
         most ``logbuffer.KEEP``), for a look from outside the NAS."""
         return "\n".join(log_buffer.lines(min(lines, logbuffer.KEEP), grep)) + "\n"
+
+    @app.get("/api/debug/hosts", dependencies=[Depends(require_owner)])
+    def host_tally() -> dict[str, Any]:
+        """Today's requests to each source's hosts (sent, turned away,
+        throttled, refused while resting or over quota, bytes) and the
+        quotas spent (library/policy.py)."""
+        from ..library.hosts import guard
+
+        return {
+            "today": guard.tally(),
+            "quotas": {
+                host: {"spent": guard.spent(host), "of": b.count, "background": b.background}
+                for host, b in guard.budgets.items()
+            },
+        }
 
     return app
