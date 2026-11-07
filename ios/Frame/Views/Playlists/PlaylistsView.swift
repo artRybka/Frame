@@ -581,7 +581,8 @@ struct HiddenCard: View {
 /// soft patch of light wanders over it, under a thin cream sheet with a fine
 /// grain. Turned in the hand, the collage also slides under the pane, as the
 /// study of the day's picture does (`parallax()`), and a streak of gloss
-/// crosses the glass. iOS's own glass on top gives the rim. Off screen or
+/// crosses the glass. No glass layer over the whole card: its rim lit the
+/// top and bottom edges as white bands (Mateusz 2026-11-07). Off screen or
 /// with Reduce Motion it stands still. With no works, the bare frosted sheet
 /// on the mat.
 struct FrostedCover: View {
@@ -629,11 +630,6 @@ struct FrostedCover: View {
                 if !itemIDs.isEmpty { GlassSheen() }
             }
         }
-        .overlay {
-            Color.clear
-                .glassEffect(.clear, in: .rect(cornerRadius: 12))
-                .allowsHitTesting(false)
-        }
         .onAppear { onScreen = true }
         .onDisappear { onScreen = false }
         .accessibilityHidden(true)
@@ -668,8 +664,8 @@ struct CoverDrift {
 private struct GlassSheen: View {
     var body: some View {
         let tilt = Tilt.shared
-        let middle = 0.5 + 0.4 * tilt.x - 0.15 * tilt.y
-        let strength = min(1, 1.4 * max(abs(tilt.x), abs(tilt.y)))
+        let middle = 0.5 + 0.3 * tilt.x - 0.1 * tilt.y
+        let strength = 0.6 * min(1, 1.4 * max(abs(tilt.x), abs(tilt.y)))
         LinearGradient(
             stops: [
                 .init(color: .white.opacity(0), location: middle - 0.16),
