@@ -19,8 +19,9 @@ from fastapi.testclient import TestClient
 from frame_server import notifications
 from frame_server.config import Settings
 from frame_server.library.models import ItemKind
-from frame_server.notifications import Apns, Notifier, PushError
+from frame_server.notifications import APPLE_EPOCH, Apns, Notifier, PushError
 from frame_server.progress import Stage
+from frame_server.study import Progress as StudyProgress
 from frame_server.updates import ImageInfo, UpdateFolder, UpdaterStatus
 from frame_server.web import create_app
 
@@ -342,6 +343,41 @@ def _step(notifier: Notifier, *args: str) -> None:
             await asyncio.gather(*notifier._tasks)
 
     asyncio.run(run())
+
+
+def test_a_study_s_parts_and_its_end_reach_the_lock_screen(
+    notifier: Notifier, apple: FakeApple
+) -> None:
+    """Each part with since when and until when (seconds since 2001); a
+    part within a step at low priority, a step's first at once."""
+    notifier.register(PHONE, sandbox=False)
+    notifier.follow_study("met:7", LIVE, sandbox=False)
+
+    def step(status: str, progress: StudyProgress) -> tuple[dict[str, str], dict[str, object]]:
+        async def run() -> None:
+            notifier.study_step("met:7", status, "", "", progress)
+            await asyncio.sleep(0)
+            if notifier._tasks:
+                await asyncio.gather(*notifier._tasks)
+
+        asyncio.run(run())
+        _, _, headers, payload = apple.sent[-1]
+        return headers, payload["aps"]["content-state"]  # type: ignore[index, return-value]
+
+    started = APPLE_EPOCH + 800_000_000.0
+    headers, state = step("writing", StudyProgress("composition", started, started + 200))
+    assert state == {
+        "status": "writing",
+        "error": "",
+        "part": "composition",
+        "startedAt": 800_000_000.0,
+        "expectedEnd": 800_000_200.0,
+    }
+    assert headers["apns-priority"] == "10"
+    headers, state = step("writing", StudyProgress("composition_check", started, started + 210))
+    assert state["part"] == "composition_check" and headers["apns-priority"] == "5"
+    headers, state = step("waiting", StudyProgress("waiting"))
+    assert state == {"status": "waiting", "error": "", "part": "waiting"}
 
 
 def test_a_study_moves_on_on_the_lock_screen(notifier: Notifier, apple: FakeApple) -> None:

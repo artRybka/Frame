@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.118.0
+
+- Pisanie studium dzieła ma cztery kroki zamiast trzech: Źródła, Tekst,
+  Kompozycja i Detale. Dotąd „Pisanie” trwało prawie cały czas.
+- Karta na ekranie blokady, wyspa i karta w aplikacji mówią, co dzieje się
+  w danej chwili, w pierwszej osobie: „Piszę studium”, „Analizuję
+  kompozycję dzieła”, „Sprawdzam ślady”, „Opisuję kompozycję”, „Wycinam
+  detale z oryginału” i tak dalej.
+- Pasek postępu płynie sam do przewidywanego końca. Pod nim widać, ile
+  minęło i ile studium zwykle trwa, a w aplikacji „jeszcze ok. 1½ min”.
+  Serwer liczy czas z ostatnich napisanych studiów. Zwinięta wyspa
+  pokazuje kółko postępu.
+- Starsza aplikacja z nowym serwerem działa jak dotąd.
+
 ## 1.117.0
 
 - Serwer ma jedną tabelę zasad dla wszystkich źródeł dzieł: tempo, ile

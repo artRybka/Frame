@@ -330,10 +330,13 @@ def written(
     ask: Callable[[dict[str, Any]], Answer],
     analysis_usd: float = 0.0,
     recent: list[str] | None = None,
+    step: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
     """The analysis checked, its grid chosen and its movement looked at, as
     it goes into a page. Every step that cannot be had (the month's limit,
-    an error, an unusable answer) is left out: the analysis is paid for."""
+    an error, an unusable answer) is left out: the analysis is paid for.
+    ``step``: told of each part as it begins (the study's Lock Screen card)."""
+    tell = step or (lambda part: None)
     img = picture(images, item, CHECK_SIDE)
     costs = {"analysis": analysis_usd}
     view, keys, changes = found.view, found.keys, list[str]()
@@ -352,6 +355,7 @@ def written(
             log.exception("composition %s of %s failed", step, item.id)
         return None
 
+    tell("composition_check")
     looked = run(
         "check",
         lambda: checked(
@@ -360,6 +364,7 @@ def written(
     )
     if looked is not None:
         view, keys, changes = looked.view, looked.keys, looked.changes
+    tell("composition_motion")
     picture_lines = run("lines", lambda: found_lines.find(img))
     choice = grids.choose(keys, picture_lines) if picture_lines is not None else None
     movement = None
@@ -372,6 +377,7 @@ def written(
     # The grid and the movement are facts; the text is written last, in one voice.
     with_grid = merged(view, choice, None)
     facts = prose.grid_facts(choice.grid, choice.held) if choice is not None else []
+    tell("composition_text")
     text = run(
         "text",
         lambda: prose.prose(
@@ -407,14 +413,18 @@ def compose(
     context: Context,
     ask: Callable[[dict[str, Any]], Answer],
     recent: list[str] | None = None,
+    step: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
     """The composition of a page being written: what goes into it (its
     take, what the check changed, the round, what it cost), or nothing when
-    the answer is unusable."""
+    the answer is unusable. ``step``: told of each part as it begins
+    ("composition", then those of :func:`written`)."""
+    if step is not None:
+        step("composition")
     params = question(images, item, context)
     answer = ask(params)
     found = draft(answer.data, params)
-    return written(images, item, found, ask, answer.cost_usd, recent) if found else {}
+    return written(images, item, found, ask, answer.cost_usd, recent, step) if found else {}
 
 
 def failed(note: Note | None) -> bool:

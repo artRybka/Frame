@@ -11,9 +11,12 @@ whole.
 from __future__ import annotations
 
 import logging
+import statistics
 import threading
+import time
 from collections.abc import Callable
 from concurrent.futures import Future
+from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
@@ -40,6 +43,71 @@ Status = Literal[
 PENDING: tuple[Status, ...] = ("waiting", "sources", "writing", "details")
 FAILED = "Claude nie napisał studium tego dzieła."
 
+#: The parts a study asked for now goes through, in order: each question to
+#: Claude and each longer piece of work, told to the app and the Lock Screen
+#: so a long step still moves (Mateusz 2026-11-07: "krok 2 to 99% czasu").
+#: The app groups them into its four steps (Źródła · Tekst · Kompozycja ·
+#: Detale); ``status`` keeps the three older words for older apps.
+PARTS = (
+    "sources",
+    "text",
+    "text_again",
+    "details_check",
+    "composition",
+    "composition_check",
+    "composition_motion",
+    "composition_text",
+    "cutting",
+    "later",
+)
+#: Each part as the older apps' status: the long middle is "writing".
+STATUS_OF: dict[str, Status] = {
+    "waiting": "waiting",
+    "sources": "sources",
+    "cutting": "details",
+    "later": "details",
+    **{part: "writing" for part in PARTS[1:8]},
+}
+#: How long each part takes before any study was timed here (seconds).
+TYPICAL_PARTS: dict[str, float] = {
+    "sources": 5,
+    "text": 90,
+    "text_again": 0,
+    "details_check": 15,
+    "composition": 40,
+    "composition_check": 5,
+    "composition_motion": 15,
+    "composition_text": 20,
+    "cutting": 10,
+    "later": 5,
+}
+#: The parts of the last studies written start to end, timed (state key).
+TIMINGS_KEY = "study_timings"
+#: How many are kept to say how long the next one takes.
+TIMINGS_KEPT = 12
+
+
+@dataclass(frozen=True)
+class Progress:
+    """How far a study asked for now is: its part (:data:`PARTS`, or
+    "waiting"), since when it is written (after any wait for Claude) and
+    when it should be done, judged by the last studies; both None while it
+    waits for Claude."""
+
+    part: str
+    started: float | None = None
+    until: float | None = None
+
+
+@dataclass
+class _Track:
+    part: str
+    since: float
+    started: float | None = None
+    spent: dict[str, float] = field(default_factory=dict)
+    #: Set when a part was missed (e.g. the server asked from a batch): not timed.
+    whole: bool = True
+
 
 class Study:
     def __init__(self, daily: Daily, ai: AiWorker, job: StudyJob) -> None:
@@ -58,6 +126,8 @@ class Study:
         #: "sources", "writing", "details"), then "ready" (fragments cut) or
         #: "failed" with why; from worker threads (notifications, Live Activity).
         self.on_step: Callable[[Item, Status, str], None] | None = None
+        #: Where each study asked for now is (:class:`Progress`).
+        self._tracks: dict[str, _Track] = {}
         job.on_stage = self._staged
         daily.on_written = self.adopt
         ai.on_later = self._made_later
@@ -134,7 +204,7 @@ class Study:
             if not future.done():
                 self._asking[item.id] = future
         if waiting:
-            self._step(item, self.job.stages.get(item.id, "waiting"))  # type: ignore[arg-type]
+            self._part(item, self.job.stages.get(item.id, "waiting"))
         future.add_done_callback(lambda done: self._written(item.id, done))
         return future
 
@@ -196,7 +266,9 @@ class Study:
             else:
                 self._cutting.add(item_id)
                 step = ("details", "")
-        if item is not None:
+        if item is not None and step[0] == "details":
+            self._part(item, "cutting")
+        elif item is not None:
             self._step(item, *step)
         if step[0] == "details" and item is not None:
             threading.Thread(
@@ -213,6 +285,7 @@ class Study:
             essay = self.job.essay(item)
             later = self.daily.later
             if later is not None and essay is not None and later.missing(item.id, essay.legacy):
+                self._part(item, "later")
                 later.look(item, essay.legacy)
         except Exception:
             log.exception("later works in the study of %s", item.id)
@@ -222,17 +295,81 @@ class Study:
             self._step(item, "ready")
 
     def _staged(self, item_id: str, stage: str) -> None:
-        """A step of Claude's question (``StudyJob.params``), when asked for here."""
+        """A part of Claude's question (``StudyJob``), when asked for here."""
         if item_id in self._asking and (item := self.library.get(item_id)) is not None:
-            self._step(item, stage)  # type: ignore[arg-type]
+            self._part(item, stage)
+
+    def _part(self, item: Item, part: str) -> None:
+        """The study moved on to ``part`` (:data:`PARTS`, or "waiting"):
+        timed, and told with the older apps' word for it."""
+        now = time.time()
+        with self._lock:
+            track = self._tracks.get(item.id)
+            if track is None:
+                track = self._tracks[item.id] = _Track(part, now)
+                # Picked up past its start (a batch's answer): not timed.
+                track.whole = part in ("waiting", "sources")
+            elif track.part != part:
+                track.spent[track.part] = track.spent.get(track.part, 0.0) + now - track.since
+                track.part, track.since = part, now
+            if track.started is None and part != "waiting":
+                track.started = now
+        self._step(item, STATUS_OF.get(part, "writing"))
 
     def _step(self, item: Item, status: Status, error: str = "") -> None:
+        if status not in PENDING:
+            self._done(item.id, timed=status == "ready")
         if self.on_step is None:
             return
         try:
             self.on_step(item, status, error)
         except Exception:
             log.exception("study step %s of %s", status, item.id)
+
+    def _done(self, item_id: str, *, timed: bool) -> None:
+        """The study is over: a whole one is kept to time the next ones."""
+        with self._lock:
+            track = self._tracks.pop(item_id, None)
+        if track is None or not timed or not track.whole or track.part == "waiting":
+            return
+        spent = {**track.spent, track.part: track.spent.get(track.part, 0.0)}
+        spent[track.part] += time.time() - track.since
+        spent.pop("waiting", None)
+        kept = [t for t in self.library.get_state(TIMINGS_KEY, []) if isinstance(t, dict)]
+        record = {part: round(spent.get(part, 0.0), 1) for part in PARTS}
+        self.library.set_state(TIMINGS_KEY, [*kept, record][-TIMINGS_KEPT:])
+        log.info(
+            "study of %s took %.0f s (%s)",
+            item_id,
+            sum(record.values()),
+            ", ".join(f"{k} {v:.0f}" for k, v in record.items() if v),
+        )
+
+    def expected(self) -> dict[str, float]:
+        """How long each part takes (seconds): the median of the last
+        studies timed here, :data:`TYPICAL_PARTS` before any."""
+        kept = [t for t in self.library.get_state(TIMINGS_KEY, []) if isinstance(t, dict)]
+        if not kept:
+            return dict(TYPICAL_PARTS)
+        return {
+            part: float(statistics.median(float(t.get(part, 0.0) or 0.0) for t in kept))
+            for part in PARTS
+        }
+
+    def progress(self, item_id: str) -> Progress | None:
+        """How far the study asked for now is; None when none is."""
+        with self._lock:
+            track = self._tracks.get(item_id)
+            if track is None:
+                return None
+            part, since, started = track.part, track.since, track.started
+        if started is None or part not in PARTS:
+            return Progress(part)
+        expected = self.expected()
+        left = expected[part] + sum(expected[p] for p in PARTS[PARTS.index(part) + 1 :])
+        if part == "text_again":  # as long as the first answer took
+            left += expected["text"]
+        return Progress(part, started, since + left)
 
     def status(self, item: Item | None) -> tuple[Status, str]:
         """Where the work's study is, and why it failed when it did."""
@@ -241,7 +378,7 @@ class Study:
         if item is not None and self.job.essay(item) is not None:
             return ("details" if item.id in self._cutting else "ready"), ""
         if item is not None and item.id in self._asking:
-            return self.job.stages.get(item.id, "waiting"), ""  # type: ignore[return-value]
+            return STATUS_OF.get(self.job.stages.get(item.id, "waiting"), "writing"), ""
         if item is not None and other_art(item):
             return "off", ""  # "Sztuki inne" have no study (Mateusz 2026-11-06)
         if item is not None and self.ai.later(KIND, item.id):
