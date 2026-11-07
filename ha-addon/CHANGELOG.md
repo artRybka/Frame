@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.118.1
+
+- Obraz w Studium dnia w Odkrywaj leży odrobinę głębiej niż karta:
+  przesuwa się delikatnie, gdy obracasz telefon w dłoni, i zostaje lekko
+  z tyłu przy przewijaniu. Przy „Ogranicz ruch” stoi w miejscu.
+
 ## 1.117.0
 
 - Serwer ma jedną tabelę zasad dla wszystkich źródeł dzieł: tempo, ile
