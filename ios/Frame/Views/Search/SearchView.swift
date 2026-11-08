@@ -23,7 +23,7 @@ struct SearchView: View {
                 }
         }
         .opensStudies(on: $path)
-        // A tapped artist's name: back to the top, on the search.
+        // A held artist's name: back to the top, on the search.
         .onChange(of: model.artistSearch, initial: true) { _, artist in
             if artist != nil { path = NavigationPath() }
         }
