@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.124.5
+
+- Szukaj → Muzeum, Styl, Temat: w otwartej grupie szukasz głównym paskiem
+  na dole, bez drugiego pola w okienku. Pasek mówi wtedy, czego szuka
+  („Muzeum albo miasto”, „Szukaj stylu”, „Szukaj tematu”), a dotknięcie go
+  nie zamyka grupy. Po „Gotowe” pasek znowu szuka artystów i słów, z tym,
+  co było w nim wpisane wcześniej. Gdy styl albo temat nic nie pasuje,
+  „Szukaj „…” jako słowa” przenosi wpisane słowa do wyszukiwania. Tak samo
+  w edytorze playlist.
+- Szukaj → Epoka: też szukasz głównym paskiem („Okres albo rok”). Na pasach
+  zostają nazwane okresy pasujące do wpisanych słów, a wpisany rok, np.
+  1890, zostawia okresy, w których ten rok leży. Wybrane okresy zostają
+  zawsze, oś czasu też.
+
 ## 1.124.4
 
 - Szukaj → Epoka: pod osią czasu jest zawsze miejsce na kreseczkę wybranego

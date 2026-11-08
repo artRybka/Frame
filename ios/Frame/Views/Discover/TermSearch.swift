@@ -26,12 +26,40 @@ final class TermLookup {
     var trimmed: String { text.trimmingCharacters(in: .whitespaces) }
     var typing: Bool { !trimmed.isEmpty }
 
+    /// The open group the field's words narrow (Muzeum, Styl, Temat): no
+    /// suggestions then, and Return adds no word. nil: the field searches.
+    private(set) var narrowing: TermFacet?
+    /// The words that were in the field when a group took it: back in it
+    /// when the group closes.
+    @ObservationIgnored private var held = ""
+
+    /// A group with a list to narrow opened (`facet`) or closed (nil): the
+    /// field is the group's, empty, or the search's again, with its words.
+    func narrow(_ facet: TermFacet?) {
+        guard facet != narrowing else { return }
+        if narrowing == nil { held = text }
+        narrowing = facet
+        text = facet == nil ? held : ""
+        if facet == nil { held = "" }
+    }
+
+    /// The field emptied, with the words a group's words stood in for.
+    func clear() {
+        text = ""
+        held = ""
+    }
+
+    /// What the field says it looks for.
+    func prompt(_ searching: String) -> String { narrowing?.fieldPrompt ?? searching }
+
     /// Below this many works in the catalogue the museums are asked too.
     private static let few = 6
     /// How many suggestions the guess shows (the server's answer has up to 11).
     private static let guessed = 10
 
     func lookUp(_ backend: any FrameBackend, vocabulary: [TermInfo] = []) async {
+        // The words are a group's, not the search's.
+        guard narrowing == nil else { return }
         let words = trimmed
         hint = nil
         guard !words.isEmpty else {
@@ -175,7 +203,7 @@ private struct TermSearch: ViewModifier {
     func body(content: Content) -> some View {
         content
             .searchable(
-                text: $lookup.text, tokens: fieldTokens, isPresented: $presented, prompt: Text(prompt)
+                text: $lookup.text, tokens: fieldTokens, isPresented: $presented, prompt: Text(lookup.prompt(prompt))
             ) { token in
                 Label(token.shownName, systemImage: token.icon)
             }
@@ -183,7 +211,7 @@ private struct TermSearch: ViewModifier {
             .onChange(of: presented) { _, presented in
                 if presented, quiet { putKeyboardAway() }
                 guard !presented else { return }
-                lookup.text = ""
+                lookup.clear()
                 if !tokens.isEmpty { withAnimation(.snappy) { tokens = [] } }
             }
             // A group's choice alone opens the search too, so that its X is
@@ -209,6 +237,12 @@ private struct TermSearch: ViewModifier {
             .autocorrectionDisabled()
             .searchFocused(focused)
             .onSubmit(of: .search) {
+                // A group's words: Return only puts the keyboard away, the
+                // narrowed list stays.
+                if lookup.narrowing != nil {
+                    focused.wrappedValue = false
+                    return
+                }
                 guard let typed = lookup.typed() else { return }
                 lookup.pick(typed.token, into: $tokens)
                 if typed.fromMuseums { pickedFromMuseums() }
@@ -291,7 +325,7 @@ extension View {
 
 extension TermLookup {
     /// The suggestions' panel is over the field (the groups make way for it).
-    func suggesting(_ focused: Bool) -> Bool { typing && focused }
+    func suggesting(_ focused: Bool) -> Bool { typing && focused && narrowing == nil }
 }
 
 private struct SuggestionsPanel: ViewModifier {

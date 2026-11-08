@@ -101,7 +101,7 @@ struct MuseumSearchView: View {
             // squares there) stays above them when they come back. (Taken
             // out, they gave it up, and coming back covered the end.)
             TermFacetBar(
-                tokens: tokens, museums: museums, colors: ColorTag.families + ColorTag.moods,
+                tokens: tokens, lookup: lookup, museums: museums, colors: ColorTag.families + ColorTag.moods,
                 focus: $fieldFocused, panelHeight: height * TermFacetBar.panelShare
             )
             .padding(.horizontal, Theme.gutter)

@@ -11,8 +11,10 @@ struct PlaceBands: View {
     @Binding var tokens: [SearchToken]
     /// Picked museums are left out, not asked alone.
     let out: Bool
+    /// The search field's words while the group is open ("Muzeum albo
+    /// miasto"): the museums the server finds for them.
+    var filter: String = ""
 
-    @State private var filter = ""
     @State private var places: [PlaceHit] = []
     @State private var loading = false
     /// Pictures Wikidata gave for museums with no work in the catalogue
@@ -35,30 +37,15 @@ struct PlaceBands: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass").foregroundStyle(Theme.inkSoft)
-                TextField("Muzeum albo miasto", text: $filter)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .submitLabel(.search)
-                if loading {
-                    ProgressView().controlSize(.small)
-                } else if !filter.isEmpty {
-                    Button { filter = "" } label: {
-                        Image(systemName: "xmark.circle.fill").foregroundStyle(Theme.inkSoft)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Wyczyść")
-                }
+        LazyVStack(spacing: 8) {
+            ForEach(rows) { place in
+                band(place)
             }
-            .padding(.horizontal, 12)
-            .frame(height: 38)
-            .background(Theme.card.opacity(0.7), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-            LazyVStack(spacing: 8) {
-                ForEach(rows) { place in
-                    band(place)
-                }
+            if !filter.isEmpty, rows.isEmpty, !loading {
+                Text("Żadne muzeum ani miasto nie pasuje do „\(filter)”.")
+                    .font(.footnote)
+                    .foregroundStyle(Theme.inkSoft)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .task(id: filter) {
