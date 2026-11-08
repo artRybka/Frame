@@ -441,6 +441,8 @@ def test_the_frame_prints_the_polish_texts() -> None:
     assert block.meta == ["J. M. W. Turner", "1842 · olej na płótnie"]
     assert block.body == "Parowiec ginie w zamieci."
     assert caption_for(item, polish) == "J. M. W. Turner — Burza śnieżna, 1842"
+    # The label on the frame goes without the date (Mateusz 2026-11-08).
+    assert caption_for(item, polish, dated=False) == "J. M. W. Turner — Burza śnieżna"
     assert text_block_for(item).title == "Snow Storm"
 
 

@@ -130,8 +130,9 @@ def card_masks(
     text_img = Image.new("1", (cw, ch), 0)
     draw = ImageDraw.Draw(text_img)
     draw.fontmode = "1"
-    for i, line in enumerate(lines):
-        draw.text((x + pad_x, y + pad_y + i * (line_h + leading)), line, font=fnt, fill=1)
+    for i, line in enumerate(lines):  # flush right, ragged left (Mateusz 2026-11-08)
+        left = x + w - pad_x - draw.textlength(line, font=fnt)
+        draw.text((left, y + pad_y + i * (line_h + leading)), line, font=fnt, fill=1)
     return card, np.asarray(text_img, dtype=bool)
 
 
