@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import threading
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -36,6 +37,7 @@ from ..config import Settings
 from ..device import MdcError
 from ..imaging import PRESETS, RenderSettings, Strategy
 from ..imaging.layout import load_image
+from ..library import dumps
 from ..library.hosts import guard as host_guard
 from ..library.images import Gone
 from ..library.seed import seed_playlists
@@ -532,10 +534,33 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get(
         "/api/debug/log", dependencies=[Depends(require_owner)], response_class=PlainTextResponse
     )
-    def recent_log(lines: int = 500, grep: str | None = None) -> str:
-        """The server's last log records, oldest first (since its start, at
-        most ``logbuffer.KEEP``), for a look from outside the NAS."""
-        return "\n".join(log_buffer.lines(min(lines, logbuffer.KEEP), grep)) + "\n"
+    def recent_log(lines: int = 500, grep: str | None = None, day: str | None = None) -> str:
+        """The server's last log records, oldest first (at most
+        ``logbuffer.KEEP``), for a look from outside the NAS: from memory,
+        or with ``day`` (``YYYY-MM-DD``) that day's as kept on disk."""
+        count = min(lines, logbuffer.KEEP)
+        if day is None:
+            return "\n".join(log_buffer.lines(count, grep)) + "\n"
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", day):
+            raise HTTPException(400, "day: YYYY-MM-DD")
+        found = logbuffer.day_lines(day, count, grep)
+        if found is None:
+            raise HTTPException(404, "the log is not kept on disk")
+        return "\n".join(found) + "\n"
+
+    @app.get("/api/debug/dumps", dependencies=[Depends(require_owner)])
+    def dump_states() -> list[dict[str, object]]:
+        """The museums' local indexes (library/dumps.py): built when, how
+        many works, building now, or why the last build failed."""
+        return dumps.states(settings.data_dir)
+
+    @app.post("/api/debug/dumps/{key}", dependencies=[Depends(require_owner)])
+    def build_dump(key: str) -> dict[str, object]:
+        """A museum's dump read now, in the background, without waiting for
+        the night (the owner's test, 2026-11-08)."""
+        if key not in dumps.DUMPS:
+            raise HTTPException(404, f"no dump {key!r}; one of {', '.join(dumps.DUMPS)}")
+        return {"started": dumps.build_now(key, settings.data_dir)}
 
     @app.get("/api/debug/hosts", dependencies=[Depends(require_owner)])
     def host_tally() -> dict[str, Any]:

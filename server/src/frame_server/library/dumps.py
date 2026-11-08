@@ -352,6 +352,8 @@ class _Indexes:
         self.lock = threading.Lock()
         self.building: set[str] = set()
         self.failed_at: dict[str, float] = {}
+        #: What the last failed build of a source said.
+        self.failed_why: dict[str, str] = {}
         self._open: dict[Path, tuple[float, DumpIndex]] = {}
         #: Builds may start when a search finds no index or an old one. Off:
         #: dumps are read at night only (the night's tasks), as the LoC's
@@ -411,11 +413,12 @@ class _Indexes:
             path.with_suffix(".tmp").unlink(missing_ok=True)
             os.utime(path)  # fresh for another REFRESH_SECONDS
             log.info("%s: the dump has not changed; the index stays", dump.key)
-        except Exception:
+        except Exception as err:
             path.with_suffix(".tmp").unlink(missing_ok=True)
             log.exception("%s: building the index failed", dump.key)
             with self.lock:
                 self.failed_at[dump.key] = time.time()
+                self.failed_why[dump.key] = f"{type(err).__name__}: {err}"
         finally:
             with self.lock:
                 self.building.discard(dump.key)
@@ -437,6 +440,44 @@ class _Indexes:
             return False
         self._build(dump, path, http)
         return path.is_file()
+
+    def start_now(self, dump: Dump, folder: Path) -> bool:
+        """The dump read now, in the background, whatever its index's age
+        (the owner's test, ``/api/debug/dumps``); False while one is read."""
+        with self.lock:
+            self.failed_at.pop(dump.key, None)
+        if not self._claim(dump.key):
+            return False
+        path = index_path(folder, dump.key)
+        threading.Thread(
+            target=self._build, args=(dump, path), name=f"{dump.key}-index", daemon=True
+        ).start()
+        return True
+
+    def state(self, dump: Dump, folder: Path) -> dict[str, Any]:
+        """``dump``'s index as it is: built when, how many works, or why not."""
+        path = index_path(folder, dump.key)
+        state: dict[str, Any] = {"key": dump.key, "index": path.is_file()}
+        with self.lock:
+            state["building"] = dump.key in self.building
+            if dump.key in self.failed_at:
+                state["failed_at"] = _iso(self.failed_at[dump.key])
+                state["failed"] = self.failed_why.get(dump.key, "")
+        if path.is_file():
+            stat = path.stat()
+            state["built"] = _iso(stat.st_mtime)
+            state["bytes"] = stat.st_size
+            try:
+                with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as db:
+                    state["works"] = db.execute("SELECT count(*) FROM works").fetchone()[0]
+            except sqlite3.Error as err:
+                state["works"] = None
+                state["unreadable"] = str(err)
+        return state
+
+
+def _iso(stamp: float) -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(stamp))
 
 
 INDEXES = _Indexes()
@@ -880,3 +921,11 @@ def local_index(key: str, folder: Path | None) -> DumpIndex | None:
 
 def refresh_at_night(key: str, data_dir: Path) -> bool:
     return INDEXES.refresh(DUMPS[key], data_dir)
+
+
+def build_now(key: str, data_dir: Path) -> bool:
+    return INDEXES.start_now(DUMPS[key], data_dir)
+
+
+def states(data_dir: Path) -> list[dict[str, Any]]:
+    return [INDEXES.state(dump, data_dir) for dump in DUMPS.values()]
