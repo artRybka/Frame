@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.123.0
+
+- Chicago (AIC), Cleveland, Smithsonian i Wellcome mają na serwerze własne
+  lokalne bazy, zbudowane z plików, które same publikują. Szukaj, Odkrywaj,
+  losowanie, playlisty i kopie nie pytają już tych muzeów o wyniki, tylko
+  obrazy dalej przychodzą od nich. Mniej blokad (AIC) i szybsze odpowiedzi.
+- Bazy pobierają się nocą raz na dwa miesiące, i to tylko wtedy, gdy muzeum
+  zmieniło plik. Pierwsza noc po aktualizacji je zbuduje, a do tego czasu
+  wszystko działa jak dotąd.
+- Pełny katalog niczego już nie dobiera: serwer nie ściąga nowych dzieł
+  z muzeów, żeby zastąpić nimi starsze (ani w dzień, ani w nocy), i nie
+  dopisuje tego, co pokazało Szukaj. W Konfiguracji przy limicie katalogu
+  pojawia się wtedy komunikat „Katalog jest pełny”; żeby katalog rósł
+  dalej, wystarczy zwiększyć limit.
+- Gdy muzeum dzieła nie daje obrazu (jak teraz Muzeum Narodowe w Krakowie,
+  którego serwer urywa oryginały), karta dzieła sama szuka zastępstwa:
+  najpierw w Wikimedia Commons, a gdy znajdzie ten sam obraz, od razu go
+  podmienia. Dopiero gdy Commons nic nie ma, pyta pozostałe źródła.
+- Dzieła z muzeów narodowych w Krakowie i Warszawie serwer znajduje na
+  Commons po numerze inwentarzowym, więc mają tam zapasowy obraz także
+  dla miniatur.
+- W nocy serwer sprawdza, czy muzeum znowu daje własny obraz; jeśli tak
+  i jest co najmniej tak dobry, wraca on na miejsce zastępstwa.
+- Zapasowe adresy obrazów (Commons przez Wikidata) są pytane dopiero, gdy
+  własny adres muzeum zawiedzie, więc zwykłe pobieranie miniatur nie
+  kosztuje już zapytań do Wikidata.
+
 ## 1.122.0
 
 - Dzieła, które muzea przyniosły w Szukaj, ale nie pasowały do wyboru

@@ -17,7 +17,7 @@ import re
 import threading
 import time
 from abc import ABC, abstractmethod
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, ClassVar, Literal
@@ -27,6 +27,8 @@ import httpx
 
 from .aic import AIC_IIIF, AIC_THUMB, aic_original, aic_picture
 from .commons import commons_html, commons_year, file_title
+from .dumps import LOCAL_MIN, DumpIndex, local_index
+from .dumps import match as dump_words
 from .hosts import Resting, guard
 from .lifespan import (
     EUROPEANA_AGENT,
@@ -205,6 +207,66 @@ class Museum(ABC):
             rng.shuffle(items)
             yield from items
 
+    # -- the source's dump, searched at home (library/dumps.py) -----------------
+
+    def _index(self) -> DumpIndex | None:
+        """The index of this source's published dump, None without one."""
+        return local_index(self.key, self.access.data_dir)
+
+    def _from_dump(
+        self,
+        index: DumpIndex,
+        words: str = "",
+        *,
+        limit: int,
+        page: int,
+        spec: Discovery | None = None,
+        **filters: Any,
+    ) -> tuple[int, list[Item]]:
+        """A page of the index's works, mapped as the API's records are."""
+        if spec is not None:
+            filters.setdefault("year_from", spec.year_from)
+            filters.setdefault("year_to", spec.year_to)
+        total, found = index.search(
+            words,
+            private_use=self.private_use,
+            offset=(page - 1) * limit,
+            limit=limit,
+            **filters,
+        )
+        return total, [i for r in found if (i := self._map(r))]  # type: ignore[attr-defined]
+
+    def _at_home(
+        self,
+        query: str,
+        limit: int,
+        page: int,
+        ask: Callable[[], tuple[int, list[Item]]],
+        **filters: Any,
+    ) -> tuple[int, list[Item]]:
+        """Works for words typed: from the dump's index when it finds enough
+        (:data:`LOCAL_MIN`), else from the museum's own search, as before
+        there was an index; the index's when the museum cannot be asked."""
+        index = self._index()
+        if index is None or not dump_words(query) or re.search(r'[:="]', query):
+            return ask()
+        found = self._from_dump(index, query, limit=limit, page=page, **filters)
+        if found[0] >= LOCAL_MIN:
+            return found
+        try:
+            asked = ask()
+        except (Resting, httpx.HTTPError) as err:
+            if not found[0]:
+                raise
+            log.info("%s: %s; the works found at home instead", self.key, err)
+            return found
+        return asked if asked[0] >= found[0] else found
+
+    def _from_index(self, source_id: str) -> dict[str, Any] | None:
+        """``source_id``'s record from the dump's index, if it has it."""
+        index = self._index()
+        return index.get(source_id) if index is not None else None
+
     def _item(self, source_id: str, **fields: Any) -> Item:
         for key in ("title", "artist"):
             if key in fields:
@@ -304,10 +366,35 @@ class ArtInstituteChicago(Museum):
         }
 
     def search(self, query: str, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
-        must = [self._text(query, self.search_fields)] if query.strip() else []
-        return self._post(query, must, [], limit, page)
+        def ask() -> tuple[int, list[Item]]:
+            must = [self._text(query, self.search_fields)] if query.strip() else []
+            return self._post(query, must, [], limit, page)
+
+        if not query.strip() and (index := self._index()) is not None:
+            return self._from_dump(index, limit=limit, page=page)
+        return self._at_home(query, limit, page, ask)
 
     def discover(self, spec: Discovery, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
+        index = self._index()
+        if index is not None:
+            kinds: tuple[str, ...] = ()
+            also: list[tuple[str, tuple[str, ...]]] = []
+            if spec.kind in ("poster", "manuscript"):
+                also.append((spec.kind, ("kind",)))
+            elif spec.kind in self.artwork_types:
+                kinds = (self.artwork_types[spec.kind],)
+            elif spec.kind == "decorative":
+                kinds = self.decorative_types
+            return self._from_dump(
+                index,
+                spec.style,
+                columns=("tags", "kind"),
+                also=also,
+                kinds=kinds,
+                spec=spec,
+                limit=limit,
+                page=page,
+            )
         must: list[dict[str, Any]] = []
         filters: list[dict[str, Any]] = []
         if spec.style.strip():
@@ -349,6 +436,8 @@ class ArtInstituteChicago(Museum):
         return int(body.get("pagination", {}).get("total", len(items))), items
 
     def fetch(self, source_id: str) -> Item | None:
+        if (record := self._from_index(source_id)) is not None:
+            return self._map(record)
         resp = self.http.get(f"{self.api}/artworks/{source_id}", params={"fields": self.fields})
         if resp.status_code == 404:
             return None
@@ -413,10 +502,22 @@ class ClevelandMuseum(Museum):
     }
 
     def search(self, query: str, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
-        return self._get({"q": query}, limit, page)
+        if not query.strip() and (index := self._index()) is not None:
+            return self._from_dump(index, limit=limit, page=page)
+        return self._at_home(query, limit, page, lambda: self._get({"q": query}, limit, page))
 
     def discover(self, spec: Discovery, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
         words = [spec.style.strip(), "poster" if spec.kind == "poster" else ""]
+        if (index := self._index()) is not None:
+            return self._from_dump(
+                index,
+                " ".join(w for w in words if w),
+                kinds=(self.types[spec.kind],) if spec.kind in self.types else (),
+                highlight=spec.highlight,
+                spec=spec,
+                limit=limit,
+                page=page,
+            )
         params: dict[str, Any] = {"q": " ".join(w for w in words if w)}
         if spec.kind in self.types:
             params["type"] = self.types[spec.kind]
@@ -445,6 +546,8 @@ class ClevelandMuseum(Museum):
         return int(body.get("info", {}).get("total", len(items))), items
 
     def fetch(self, source_id: str) -> Item | None:
+        if (record := self._from_index(source_id)) is not None:
+            return self._map(record)
         resp = self.http.get(f"{self.api}/artworks/{source_id}")
         if resp.status_code == 404:
             return None

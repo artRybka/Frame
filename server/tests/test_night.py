@@ -84,7 +84,7 @@ def test_by_day_only_the_originals_are_trimmed(service) -> None:
     assert called == ["spare"]
 
 
-def test_a_full_catalogue_turns_over_only_at_night(museums, monkeypatch) -> None:  # noqa: F811
+def test_a_full_catalogue_takes_nothing_in_at_night_either(museums, monkeypatch) -> None:  # noqa: F811
     monkeypatch.setattr(night, "_last_used", time.monotonic() - 3600)
     service = museums
     player = service.player
@@ -94,8 +94,7 @@ def test_a_full_catalogue_turns_over_only_at_night(museums, monkeypatch) -> None
     service.images.thumbs_size = lambda: 2 * 1024 * 1024  # full
     assert player.grow_catalogue() is None
     stop = threading.Event()
-    batches = player.grow_at_night(Night(stop, time.monotonic() + 30))
-    assert batches == 1  # a day's works at once
+    assert player.grow_at_night(Night(stop, time.monotonic() + 30)) == 0
     # Not counted again by day: the night measures it.
     service.images.thumbs_size = lambda: 0
     assert player.grow_catalogue() is None

@@ -36,6 +36,16 @@ PROPERTIES = {
     "louvre": "P9394",  # Louvre Museum ARK ID: the number without "cl"
 }
 
+#: Sources whose works Wikidata knows by their inventory number (P217), with
+#: the mark every number of that museum carries ("MNK XII-209", "MP 431 MNW"):
+#: a number without it could be another museum's.
+INVENTORIES = {
+    "mnk": "MNK",
+    "mnw": "MNW",
+}
+#: Wikidata's property of an inventory number.
+INVENTORY = "P217"
+
 #: P21 (sex or gender) values.
 GENDERS: dict[str, Gender] = {
     "Q6581097": "male",
@@ -89,6 +99,17 @@ def record_id(item: Item) -> tuple[str, str] | None:
     else:
         value = item.source_id
     return (prop, value) if value else None
+
+
+def inventory_number(item: Item) -> str:
+    """The museum's inventory number of ``item``, when its source is one
+    Wikidata knows by it (:data:`INVENTORIES`); "" otherwise. The Polish
+    museums give it after their name in the credit line."""
+    mark = INVENTORIES.get(item.source)
+    if not mark or not item.credit:
+        return ""
+    number = item.credit.rsplit(", ", 1)[-1].strip()
+    return number if re.search(rf"\b{mark}\b", number) else ""
 
 
 def _label(entity: dict[str, Any], lang: str) -> str:
@@ -151,7 +172,10 @@ class Wikidata:
             params={
                 "action": "query",
                 "list": "search",
-                "srsearch": f"haswbstatement:{prop}={value}",
+                # A number with spaces ("MNK XII-209") whole, in quotes.
+                "srsearch": f'haswbstatement:"{prop}={value}"'
+                if " " in value
+                else f"haswbstatement:{prop}={value}",
                 "srlimit": 1,
                 "format": "json",
             },
@@ -281,7 +305,10 @@ COPIES_KEPT = 4000
 class CommonsCopies:
     """The museum's picture as Wikimedia Commons keeps it (the work's P18
     on Wikidata): another address for a museum whose image server turns
-    programs away (the Art Institute of Chicago behind Cloudflare)."""
+    programs away (the Art Institute of Chicago behind Cloudflare) or does
+    not answer (the National Museum in Kraków's, 2026-11-07). The work is
+    found by its record id or, for the Polish museums, by its inventory
+    number."""
 
     def __init__(self, http: Callable[[], httpx.Client]) -> None:
         self.http = http
@@ -307,6 +334,8 @@ class CommonsCopies:
                 self._known.move_to_end(item.id)
                 return self._known[item.id]
         ref = record_id(item)
+        if ref is None and (number := inventory_number(item)):
+            ref = (INVENTORY, number)
         if ref is None:
             return ""
         try:
@@ -316,6 +345,8 @@ class CommonsCopies:
         except (httpx.HTTPError, ValueError, KeyError):
             return ""
         name = ""
+        if ref[0] == INVENTORY and not _holds(claims, INVENTORY, ref[1]):
+            claims = {}  # the search matched part of the number: not this work
         for claim in (claims.get("claims") or {}).get("P18") or []:
             value = claim.get("mainsnak", {}).get("datavalue", {}).get("value")
             if isinstance(value, str) and value:
@@ -326,3 +357,11 @@ class CommonsCopies:
             while len(self._known) > COPIES_KEPT:
                 self._known.popitem(last=False)
         return name
+
+
+def _holds(entity: dict[str, Any], prop: str, value: str) -> bool:
+    """Whether ``entity`` says ``value`` for ``prop`` word for word."""
+    for claim in (entity.get("claims") or {}).get(prop) or []:
+        if claim.get("mainsnak", {}).get("datavalue", {}).get("value") == value:
+            return True
+    return False

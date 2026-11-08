@@ -142,11 +142,22 @@ class Smithsonian(Museum):
 
     def search(self, query: str, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
         words = [f"({query.strip()})"] if query.strip() else ['object_type:"Paintings"']
-        return self._get(words, limit, page)
+        if not query.strip() and (index := self._index()) is not None:
+            return self._from_dump(index, kinds=("Paintings",), limit=limit, page=page)
+        return self._at_home(query, limit, page, lambda: self._get(words, limit, page))
 
     def discover(self, spec: Discovery, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
         if spec.highlight or (spec.kind != "any" and spec.kind not in self.kinds):
             return 0, []
+        if (index := self._index()) is not None:
+            return self._from_dump(
+                index,
+                spec.style,
+                kinds=(self.kinds.get(spec.kind, "Paintings"),),
+                spec=spec,
+                limit=limit,
+                page=page,
+            )
         words = [f'object_type:"{self.kinds.get(spec.kind, "Paintings")}"']
         if spec.style.strip():
             words.insert(0, f"({spec.style.strip()})")
@@ -161,6 +172,8 @@ class Smithsonian(Museum):
         return self._get(words, limit, page)
 
     def fetch(self, source_id: str) -> Item | None:
+        if (record := self._from_index(source_id)) is not None:
+            return self._map(record)
         key = self.access.smithsonian_key
         if not key:
             return None

@@ -42,7 +42,7 @@ from .library.loc import loc_mirrors
 from .library.museums import PRIVATE_LICENCE, TEST_LICENCE, Access, WikiArt, europeana_mirrors
 from .library.museums import client as museum_client
 from .library.records import records
-from .library.wikidata import PROPERTIES, CommonsCopies
+from .library.wikidata import INVENTORIES, PROPERTIES, CommonsCopies
 from .night import NightQueue
 from .notifications import Notifier
 from .panel_app import POLL, PanelApp
@@ -224,9 +224,10 @@ class FrameService:
                 log.info("%d works of the test switches now under private use", moved)
             self.library.set_state(TEST_LICENCES_KEY, True)
         # The museums' pictures as Commons keeps them, when a museum's image
-        # server turns us away (the AIC's IIIF behind a Cloudflare challenge).
+        # server turns us away (the AIC's IIIF behind a Cloudflare challenge)
+        # or does not answer (the MNK's, 2026-11-07).
         copies = CommonsCopies(lambda: self.images.http())
-        for source in PROPERTIES:
+        for source in [*PROPERTIES, *INVENTORIES]:
             if source != "wikiart":
                 self.images.mirrors[source] = copies
         # Before the player trims or grows the catalogue: the app's limit wins.

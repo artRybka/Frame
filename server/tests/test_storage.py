@@ -155,3 +155,14 @@ def test_the_one_limit_of_old_becomes_two(service: FrameService) -> None:
 def test_saving_one_limit_leaves_the_other(service: FrameService) -> None:
     service.storage.save(StorageUpdate(catalogue_mb=900))
     assert (service.settings.catalogue_mb, service.settings.image_cache_mb) == (900, 3000)
+
+
+def test_the_view_says_when_the_catalogue_is_full(service: FrameService) -> None:
+    # Konfiguracja says so: the server takes nothing in any more (Mateusz
+    # 2026-11-07).
+    service.settings.catalogue_mb = 1
+    assert service.storage.view().catalogue_full is False
+    service.images.thumbs.mkdir(parents=True, exist_ok=True)
+    (service.images.thumbs / "a.jpg").write_bytes(b"x" * 1024 * 1024)
+    service.storage.forget()
+    assert service.storage.view().catalogue_full is True
