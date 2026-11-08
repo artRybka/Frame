@@ -38,6 +38,7 @@ from .museums import (
     available,
     client,
     museum,
+    reachable,
 )
 from .pages import search_pages
 from .repo import Library, matches, now_iso
@@ -249,6 +250,11 @@ class Importer:
     def sources(self) -> list[str]:
         """Keys of the sources on offer now."""
         return list(available(self.access()))
+
+    def reachable(self) -> list[str]:
+        """Sources that may answer, those the owner turned off too (for the
+        works of museums chosen in Szukaj)."""
+        return reachable(self.access())
 
     def asked_sources(self, kind: Kind = "any") -> list[str]:
         """The sources on offer that a search for ``kind`` asks: those of one

@@ -280,6 +280,7 @@ def tasks(service: FrameService) -> list[NightTask]:
         NightTask("frame line", frame_line),
         NightTask("sharper", sharper),
         NightTask("museums", museums),
+        NightTask("museum places", lambda night: service.museum_places.at_night(night.quiet)),
         NightTask("places", places),
         # Waits for its batch while the night is quiet (an hour at most),
         # so that "themes" works out the new cards' covers.

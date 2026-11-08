@@ -510,6 +510,7 @@ struct ItemDetailView: View {
             }
             if let held = view.heldBy, !held.isEmpty, item?.heldBy?.isEmpty != false {
                 withAnimation(.easeOut(duration: 0.3)) { item?.heldBy = held }
+                if let key = view.heldAt, !key.isEmpty { item?.heldAt = key }
             }
             if let copy = view.sharper {
                 item?.sharper = copy
@@ -532,6 +533,7 @@ struct ItemDetailView: View {
             if view.status == "found", !view.name.isEmpty {
                 if item?.heldBy?.isEmpty != false {
                     withAnimation(.easeOut(duration: 0.3)) { item?.heldBy = view.name }
+                    if let key = view.key, !key.isEmpty { item?.heldAt = key }
                 }
                 return
             }
@@ -885,6 +887,9 @@ struct ItemDetailView: View {
             if !held.isEmpty {
                 Eyebrow(held, color: Theme.vermilion)
                     .transition(.opacity)
+                    .placePress(item.kind == .artwork ? item.heldAt : nil) {
+                        model.searchPlace(item.heldAt ?? "", name: held)
+                    }
             }
             let shown = title(item)
             let original = OriginalTitle.of(item.title, shown: shown)
@@ -1101,7 +1106,14 @@ struct ItemDetailView: View {
             place = sharper.museum.isEmpty ? Names.source(sharper.source) : sharper.museum
             size = "\(sharper.width) × \(sharper.height) px"
         } else {
-            place = item.museum.isEmpty ? Names.source(item.source) : item.museum
+            let source = item.museum.isEmpty ? Names.source(item.source) : item.museum
+            // A later copy of the work (the museum named over the title has
+            // the original): "Chromolitografia, Wellcome Collection".
+            if let copy = item.reproduction, !copy.isEmpty {
+                place = "\(copy), \(source)"
+            } else {
+                place = source
+            }
             size = pictureSize.map { "\($0.0) × \($0.1) px" }
         }
         return Button { findingCopies = true } label: {

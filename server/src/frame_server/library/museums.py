@@ -115,6 +115,9 @@ class Access:
     wikiart_keys: tuple[str, str] | None = None
     #: Where sources keep downloaded indexes (the National Gallery of Art's).
     data_dir: Path | None = None
+    #: Sources the owner turned off (Commons, Europeana…): not on offer, yet
+    #: still asked for the works of museums chosen in Szukaj.
+    sources_off: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True)
@@ -1453,6 +1456,16 @@ class Europeana(Museum):
             thumb_url=preview,
         )
 
+    #: Only works from these data providers (the places chosen in Szukaj:
+    #: :func:`museum` with ``europeana:Q…``); none: from every one.
+    providers: tuple[str, ...] = ()
+
+    def _providers(self) -> list[str]:
+        if not self.providers:
+            return []
+        names = " OR ".join('"' + p.replace('"', " ") + '"' for p in self.providers)
+        return [f"DATA_PROVIDER:({names})"]
+
     def _get(self, query: str, qf: list[str], limit: int, page: int) -> tuple[int, list[Item]]:
         start = (page - 1) * limit + 1
         if start + limit > self.random_depth + 1:
@@ -1464,6 +1477,7 @@ class Europeana(Museum):
             ("qf", "contentTier:(2 OR 3 OR 4)"),
             *(("qf", q) for q in self.not_art),
             *(("qf", q) for q in qf),
+            *(("qf", q) for q in self._providers()),
             ("media", "true"),
             ("thumbnail", "true"),
             ("profile", "rich"),
@@ -1938,14 +1952,50 @@ MUSEUMS: dict[str, type[Museum]] = {
 
 def available(access: Access) -> dict[str, type[Museum]]:
     """The sources on offer: those of "Użytek prywatny" just with it, those
-    needing a key just with one."""
-    return {k: m for k, m in MUSEUMS.items() if m.offered(access)}
+    needing a key just with one, none the owner turned off."""
+    return {k: m for k, m in MUSEUMS.items() if m.offered(access) and k not in access.sources_off}
+
+
+def reachable(access: Access) -> list[str]:
+    """The sources that may answer, those turned off too: what finds the
+    works of museums chosen in Szukaj (:data:`PLACES_WD`)."""
+    return [k for k, m in MUSEUMS.items() if m.offered(access)]
+
+
+#: A search of chosen places rather than of a source (Szukaj's "Muzeum"):
+#: ``wd:Q160112|Q1`` their works through Wikidata and Commons,
+#: ``europeana:Q2`` Europeana's works from their data providers.
+PLACES_WD = "wd:"
+PLACES_EUROPEANA = "europeana:"
+
+
+def places_in(key: str) -> tuple[str, ...]:
+    """The places of a key of a places' search, () for a source's key."""
+    for prefix in (PLACES_WD, PLACES_EUROPEANA):
+        if key.startswith(prefix):
+            return tuple(p for p in key[len(prefix) :].split("|") if p)
+    return ()
 
 
 def museum(key: str, http: httpx.Client, access: Access | bool = False) -> Museum:
     if isinstance(access, bool):
         access = Access(private_use=access)
-    sources = available(access)
+    # A source turned off still fetches its works the catalogue or a
+    # chosen museum's search has (a Prado painting from Commons).
+    sources = {k: MUSEUMS[k] for k in reachable(access)}
+    if key.startswith(PLACES_WD) and WikimediaCommons.offered(access):
+        from .wikidata_places import WikidataPlaces
+
+        return WikidataPlaces(http, access=access, places=places_in(key))
+    if key.startswith(PLACES_EUROPEANA) and Europeana.offered(access):
+        from .places import known_places
+
+        found = Europeana(http, access=access)
+        named = (known_places().provider(p) for p in places_in(key))
+        found.providers = tuple(dict.fromkeys(n for n in named if n))
+        if not found.providers:
+            raise KeyError(f"no Europeana provider for {key!r}")
+        return found
     if key not in sources:
         raise KeyError(f"unknown museum {key!r}; choose from {sorted(sources)}")
     return sources[key](http, access=access)

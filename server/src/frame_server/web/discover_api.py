@@ -33,7 +33,8 @@ from ..library.duplicates import Shown
 from ..library.hosts import urgent_call
 from ..library.importer import ALL
 from ..library.mix import mixed
-from ..library.museums import Discovery, Kind
+from ..library.museums import Discovery, Kind, places_in
+from ..library.places import OWN, known_places, migrate_sources
 from ..library.repo import Hidden, Library
 from ..library.search import MuseumSearch
 from ..library.themes import (
@@ -68,6 +69,7 @@ from ..library.vocabulary import (
     set_aside,
     suggest,
 )
+from ..museum_places import PlaceHit, commons_picture
 from ..player import POOL_SIZE, SUGGESTIONS_KEY
 from ..service import FrameService
 from .deps import require_owner, require_token, service
@@ -886,6 +888,78 @@ async def terms_in_museums(svc: Svc, q: str) -> MuseumHint:
     )
 
 
+# -- places ------------------------------------------------------------------------
+
+#: Letters typed before Wikidata is asked for museums no work is in yet.
+PLACE_SEARCH_LETTERS = 3
+
+
+@router.get("/places", response_model=list[PlaceHit])
+async def places(
+    svc: Svc, q: str = "", limit: Annotated[int, Query(ge=1, le=500)] = 200
+) -> list[PlaceHit]:
+    """Szukaj's "Muzeum": the places of the catalogue's works, the one with
+    most first, then the museums of our sources with none yet; with ``q``,
+    those whose name or town has it, and museums Wikidata knows by it."""
+    rows = await run_in_threadpool(svc.library.places)
+    offered = set(svc.importer.sources())
+    hits = [PlaceHit(**row.model_dump()) for row in rows]
+    have = {h.key for h in hits}
+    hits += [
+        PlaceHit(key=p.key, name=p.name, city=p.city, source=p.source)
+        for p in OWN.values()
+        if p.key not in have and p.source in offered
+    ]
+    known = known_places()
+    # Museums the playlists choose or leave out, with no work here yet:
+    # the app names their chips by this list.
+    have = {h.key for h in hits}
+    chosen = [
+        key
+        for playlist in await run_in_threadpool(svc.library.playlists)
+        for key in (*playlist.rules.places, *playlist.rules.exclude_places)
+    ]
+    for key in dict.fromkeys(chosen):
+        if key not in have and (name := known.name(key)):
+            place = known.place(key)
+            hits.append(PlaceHit(key=key, name=name, city=place.city if place else ""))
+    hits = [
+        h.model_copy(update={"picture": commons_picture(file)})
+        if not h.item_id and (file := known.picture(h.key))
+        else h
+        for h in hits
+    ]
+    words = fold(q)
+    if words:
+        hits = [h for h in hits if words in fold(f"{h.name} {h.city}")]
+    if len(words) >= PLACE_SEARCH_LETTERS:
+        try:
+            extra = await run_in_threadpool(urgent_call(svc.museum_places.hits), q)
+        except (httpx.HTTPError, ValueError) as err:
+            log.info("museums named %r: %s", q, err)
+            extra = []
+        have = {h.key for h in hits}
+        hits += [h for h in extra if h.key not in have]
+    return hits[:limit]
+
+
+class PlacePicture(BaseModel):
+    #: The address of a picture of a work in the place, "" when none is known.
+    picture: str = ""
+
+
+@router.get("/places/{key}/picture", response_model=PlacePicture)
+async def place_picture(svc: Svc, key: str) -> PlacePicture:
+    """A picture of a work in a place with none in the catalogue (Prado
+    typed in Szukaj): Wikidata's, looked for once and kept."""
+    try:
+        file = await run_in_threadpool(urgent_call(svc.museum_places.picture), key)
+    except (httpx.HTTPError, ValueError, KeyError) as err:
+        log.info("picture of %s: %s", key, err)
+        return PlacePicture()
+    return PlacePicture(picture=commons_picture(file) if file else "")
+
+
 # -- searching the museums --------------------------------------------------------
 
 
@@ -949,14 +1023,28 @@ def museum_search(
     source: list[str] | None,
     limit: int,
     skip: list[str] | None = None,
+    place: list[str] | None = None,
+    skip_place: list[str] | None = None,
 ) -> MuseumSearch:
+    # The sources to ask: a page further of one the search's answers named
+    # ("rijks", "wd:Q160112|Q1"), or an older app's museums.
     keys = [s for s in dict.fromkeys(source or []) if s != ALL]
-    offered = svc.importer.sources()
-    if unknown := [s for s in keys if s not in offered]:
+    # An older app's museums left out: a museum's own collection is its
+    # places now (PlaylistRules), the others stay sources.
+    left_out, skip = migrate_sources(dict.fromkeys(skip or []))
+    offered = {*svc.importer.sources(), *svc.importer.reachable()}
+    if unknown := [s for s in keys if s not in offered and not places_in(s)]:
         raise HTTPException(404, f"unknown museum {unknown[0]!r}")
     rules = rules_from(q, artist, term, color, year_from, year_to)
     # Museums left out need not be on offer (any more): they just stay out.
-    return MuseumSearch.of(rules, keys=keys, limit=limit, skip=skip or [])
+    return MuseumSearch.of(
+        rules,
+        keys=keys,
+        limit=limit,
+        skip=skip,
+        places=place or [],
+        skip_places=[*(skip_place or []), *left_out],
+    )
 
 
 def keep_found(svc: FrameService, search: MuseumSearch, found: list[RemoteItem]) -> None:
@@ -1006,6 +1094,8 @@ async def search_museums(
     year_to: Year = None,
     source: Sources = None,
     skip: Sources = None,
+    place: Sources = None,
+    skip_place: Sources = None,
     page: Page = 1,
     limit: Limit = 8,
 ) -> MuseumAnswer:
@@ -1014,13 +1104,16 @@ async def search_museums(
     ``skip``): their own search for words, artists, styles and subjects,
     else works of the periods and technique; with ``color``, those whose
     thumbnails have the colours."""
-    search = museum_search(svc, q, artist, term, color, year_from, year_to, source, limit, skip)
+    search = museum_search(
+        svc, q, artist, term, color, year_from, year_to, source, limit, skip, place, skip_place
+    )
     # With none left out, no keys still means every museum.
     # Sources of one kind only (the Library of Congress's photographs) just
     # when that kind is asked for.
     offered = svc.importer.asked_sources(search.spec.kind)
-    keys = search.asked(offered) if search.skip else search.keys
-    if search.empty or (search.skip and not keys):
+    narrowed = search.skip or search.places or search.skip_places
+    keys = search.asked(offered, svc.importer.reachable()) if narrowed else search.keys
+    if search.empty or (narrowed and not keys):
         return MuseumAnswer(source=ALL, total=0, items=[])
     total, items, failed, next_ = await run_in_threadpool(
         urgent_call(search.ask), svc.importer, keys, page, keeper(svc)
@@ -1049,6 +1142,8 @@ async def stream_museums(
     year_to: Year = None,
     source: Sources = None,
     skip: Sources = None,
+    place: Sources = None,
+    skip_place: Sources = None,
     page: Page = 1,
     limit: Limit = 8,
 ) -> StreamingResponse:
@@ -1056,9 +1151,11 @@ async def stream_museums(
     :class:`MuseumAnswer` per museum page (JSON lines), with colours several
     pages of each museum. A work comes once, from whichever museum answers
     first, unless a more reliable one brings it later (``replaces``)."""
-    search = museum_search(svc, q, artist, term, color, year_from, year_to, source, limit, skip)
-    keys = search.asked(svc.importer.asked_sources(search.spec.kind))
-    copies = len(search.keys) != 1
+    search = museum_search(
+        svc, q, artist, term, color, year_from, year_to, source, limit, skip, place, skip_place
+    )
+    keys = search.asked(svc.importer.asked_sources(search.spec.kind), svc.importer.reachable())
+    copies = len(keys) != 1
     shown = shown_in(search.rules, page)
     if page == 1:
         svc.player.searched_for(search.rules.artists, viewer_id())

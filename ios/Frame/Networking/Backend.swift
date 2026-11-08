@@ -161,6 +161,11 @@ protocol FrameBackend: Sendable {
         -> AsyncThrowingStream<MuseumAnswer, Error>
 
     func museums() async throws -> [Museum]
+    /// Szukaj's "Muzeum": the museums of the catalogue's works, ours, and
+    /// with `query` (3 letters or more) those Wikidata knows by it.
+    func places(query: String) async throws -> [PlaceHit]
+    /// A picture of a work in a museum with none in the catalogue.
+    func placePicture(key: String) async throws -> PlacePicture
     func searchMuseum(source: String, query: String, page: Int) async throws -> RemotePage
     func importArtwork(source: String, sourceID: String) async throws -> Item
     /// Imports up to `limit` search results in the background; returns the job id.

@@ -162,6 +162,36 @@ final class AppModel {
     /// An artist whose works Discover's search should show: set by holding
     /// the name on a work, taken (and cleared) by the search.
     var artistSearch: String?
+    /// A museum whose works Szukaj should show: set by holding its name on
+    /// a work (the line over the title), taken (and cleared) by the search.
+    var placeSearch: PlaceHit?
+    /// Museums' names by their keys, as Szukaj's "Muzeum" last listed them
+    /// (and as works named them): the chips' names.
+    var placeNames: [String: String] = [:]
+    @ObservationIgnored private var placeNamesLoaded = false
+
+    /// The name of a museum's chip: a place's as listed, a source's own.
+    func placeName(_ key: String) -> String {
+        placeNames[key] ?? (SearchToken.isPlace(key) ? key : Names.source(key))
+    }
+
+    /// The museums' names, once: chips and playlists name museums by them.
+    func loadPlaceNames() async {
+        guard !placeNamesLoaded else { return }
+        placeNamesLoaded = true
+        guard let found = try? await backend.places(query: "") else {
+            placeNamesLoaded = false
+            return
+        }
+        for place in found where placeNames[place.key] == nil { placeNames[place.key] = place.name }
+    }
+
+    /// Search the works of the museum `key` ("Q190804"), named `name`.
+    func searchPlace(_ key: String, name: String) {
+        guard !key.isEmpty else { return }
+        placeNames[key] = name
+        placeSearch = PlaceHit(key: key, name: name)
+    }
     /// Bumped to open Discover on Propozycje (from the menu of their tile
     /// in Playlisty).
     var suggestionsOpened = 0

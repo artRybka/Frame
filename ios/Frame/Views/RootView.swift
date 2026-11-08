@@ -62,6 +62,9 @@ struct RootView: View {
         .onChange(of: model.artistSearch) { _, artist in
             if artist != nil { tab = .search }
         }
+        .onChange(of: model.placeSearch) { _, place in
+            if place != nil { tab = .search }
+        }
         .onChange(of: model.suggestionsOpened) { tab = .discover }
         // A notification tapped: where it points.
         .onChange(of: PushCenter.shared.taps, initial: true) {

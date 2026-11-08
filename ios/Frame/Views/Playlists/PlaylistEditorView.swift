@@ -216,7 +216,10 @@ struct PlaylistEditorView: View {
                     manualSearch.artists = ["Utagawa Hiroshige"]
                 }
             }
-            .task { if museums.isEmpty { museums = (try? await model.backend.museums()) ?? [] } }
+            .task {
+                if museums.isEmpty { museums = (try? await model.backend.museums()) ?? [] }
+                await model.loadPlaceNames()
+            }
             .task(id: playlist.kind == .album ? nil : searchKey) {
                 guard playlist.kind != .album else { return }
                 let key = searchKey
@@ -397,20 +400,16 @@ struct PlaylistEditorView: View {
                 let keys = Set(museums.map(\.key))
                 return rules.wrappedValue.tokens(names: model.termNames)
                     + rules.wrappedValue.colors.map { SearchToken(kind: "color", key: $0, name: ColorTag.name($0)) }
-                    + rules.wrappedValue.sources.filter { keys.contains($0) }.map {
-                        SearchToken.museum($0, name: museumName($0))
-                    }
-                    + rules.wrappedValue.excludeSources.map {
-                        SearchToken.museum($0, name: museumName($0), out: true)
-                    }
+                    + rules.wrappedValue.museumTokens(
+                        name: model.placeName, sources: rules.wrappedValue.sources.filter { keys.contains($0) }
+                    )
             },
             set: { tokens in
                 let keys = Set(museums.map(\.key))
                 rules.wrappedValue.setTokens(tokens)
                 rules.wrappedValue.colors = tokens.filter { $0.kind == "color" }.map(\.key)
-                rules.wrappedValue.excludeSources = tokens.filter { $0.kind == SearchToken.museumOut }.map(\.key)
-                rules.wrappedValue.sources = rules.wrappedValue.sources.filter { !keys.contains($0) }
-                    + tokens.filter { $0.kind == "museum" }.map(\.key)
+                let picked = rules.wrappedValue.setMuseums(tokens)
+                rules.wrappedValue.sources = rules.wrappedValue.sources.filter { !keys.contains($0) } + picked
             }
         )
     }
@@ -419,10 +418,6 @@ struct PlaylistEditorView: View {
     private var museumKeys: [String] {
         let keys = Set(museums.map(\.key))
         return searched.wrappedValue.sources.filter { keys.contains($0) }
-    }
-
-    private func museumName(_ key: String) -> String {
-        museums.first { $0.key == key }?.name ?? Names.source(key)
     }
 
     private var cameraRoll: some View {
@@ -739,7 +734,7 @@ struct PlaylistEditorView: View {
             "nga", "mnw", "mnk", "yale", "si", "paris", "vam", "wellcome", "courtauld", "louvre",
             "loc", "getty",
         ]
-        if !rules.sources.isEmpty, museums.isDisjoint(with: rules.sources) {
+        if !rules.sources.isEmpty, rules.places.isEmpty, museums.isDisjoint(with: rules.sources) {
             return "Reguły nie dopuszczają żadnego muzeum."
         }
         if museums.isSubset(of: rules.excludeSources) {
