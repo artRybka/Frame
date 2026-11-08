@@ -797,6 +797,7 @@ struct NewPlaylistTile: View {
 
 /// Human description of smart rules as chips.
 struct RulesSummary: View {
+    @Environment(AppModel.self) private var model
     let rules: PlaylistRules
 
     var body: some View {
@@ -811,6 +812,9 @@ struct RulesSummary: View {
             if rules.favoritesOnly { TagLabel(text: "♥ ulubione") }
             ForEach(rules.sources, id: \.self) { TagLabel(text: Names.source($0)) }
             ForEach(rules.excludeSources, id: \.self) { TagLabel(text: "bez \(Names.source($0))") }
+            ForEach(rules.places, id: \.self) { TagLabel(text: model.placeName($0)) }
+            ForEach(rules.excludePlaces, id: \.self) { TagLabel(text: "bez \(model.placeName($0))") }
         }
+        .task { if !rules.places.isEmpty || !rules.excludePlaces.isEmpty { await model.loadPlaceNames() } }
     }
 }

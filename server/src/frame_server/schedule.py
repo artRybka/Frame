@@ -47,6 +47,10 @@ MAX_CHANGE_TIMES = 12
 PHOTO_FITS = (Fit.FIT, Fit.FILL, Fit.MULTI)
 
 
+#: Sources that gather many collections' pictures, which the owner can turn off.
+Aggregator = Literal["wmc", "europeana", "openverse", "wikiart"]
+
+
 class FrameSettings(BaseModel):
     model_config = ConfigDict(validate_assignment=True)
 
@@ -90,6 +94,11 @@ class FrameSettings(BaseModel):
     # switches "wikiart" and "ignore_term" went into it in 1.111.0; saved
     # settings that still carry them are read without them.)
     private_use: bool = False
+    # Collections of everyone's pictures (Commons, Europeana, Openverse,
+    # WikiArt) the owner turned off in Konfiguracja → Źródła dzieł: Szukaj
+    # and the background don't ask them. Museums chosen in Szukaj still find
+    # their works through Wikidata and Europeana (Mateusz 2026-11-08).
+    sources_off: list[Aggregator] = Field(default_factory=list)
     # The frame's name in the app; None: the name the panel reports.
     name: str | None = Field(None, max_length=40)
 

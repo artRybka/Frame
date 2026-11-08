@@ -35,11 +35,13 @@ from .models import (
     FacetValue,
     Item,
     Note,
+    PlaceCount,
     Playlist,
     PlaylistKind,
     PlaylistRules,
     PlaylistSummary,
 )
+from .places import Places, known_places, learn_places
 from .term_index import TermIndex
 from .viewer import OWNER_ID, STORE, viewer_id
 from .vocabulary import (
@@ -93,6 +95,8 @@ SLOW_WORKS = 1.0
 SENT_KEY = "sent_photos_playlist"
 #: Hearts were moved from ``Item.favorite`` to the owner's in ``favorites``.
 FAVORITES_MOVED_KEY = "favorites_moved"
+#: What was learnt of the museums (:class:`.places.Places`).
+PLACES_STATE = "places"
 
 
 def sent_key(user_id: str) -> str:
@@ -238,6 +242,13 @@ def matches(
         return False
     if item.source in rules.exclude_sources:
         return False
+    if rules.places or rules.exclude_places:
+        places = known_places()
+        held_at = item.held_at
+        if rules.places and held_at not in {places.canon(p) for p in rules.places}:
+            return False
+        if held_at and held_at in {places.canon(p) for p in rules.exclude_places}:
+            return False
     if item.found_for:
         key = rules.search_key() if key is None else key
         if key and key in item.found_for:
@@ -275,6 +286,16 @@ def matches(
         if not all(word in haystack for word in rules.query.casefold().split()):
             return False
     return True
+
+
+def _shown_more(item: Item, other: Item) -> bool:
+    """Whether ``item`` stands better for its place than ``other``: a
+    favourite, then the one shown more, then a highlight."""
+    return (item.favorite, item.show_count, item.highlight) > (
+        other.favorite,
+        other.show_count,
+        other.highlight,
+    )
 
 
 def sort_items(items: list[Item], sort: SortKey, seed: int = 0) -> list[Item]:
@@ -376,6 +397,8 @@ class Library:
             db.executescript(SCHEMA)
         self._move_favorites()
         self._kv_rows()  # read once here, never on the event loop
+        # Museums learnt from Wikidata, for every work's place (models).
+        learn_places(Places.from_state(self.get_state(PLACES_STATE)))
 
     @contextmanager
     def _db(self) -> Iterator[sqlite3.Connection]:
@@ -809,6 +832,47 @@ class Library:
             sources=top(Counter(i.source for i in items)),
             kinds=top(Counter(i.kind.value for i in items)),
         )
+
+    def save_places(self) -> None:
+        """Keep what was learnt of the museums (:mod:`.places`)."""
+        self.set_state(PLACES_STATE, known_places().state())
+
+    def places(self) -> list[PlaceCount]:
+        """The places of the catalogue's works, the one with most first:
+        how many works each has and a work to show for it (the one shown
+        most, a favourite first)."""
+        places = known_places()
+        counts: Counter[str] = Counter()
+        names: dict[str, Counter[str]] = {}
+        best: dict[str, Item] = {}
+        hidden = self.hidden()
+        for item in self._snapshot():
+            if item.excluded or item.look is not None or item in hidden:
+                continue
+            key = item.held_at
+            if not key:
+                continue
+            counts[key] += 1
+            names.setdefault(key, Counter())[item._held_by()] += 1
+            if item.source == "europeana" and item.credit:
+                places.provides(key, item.credit)  # asked for by that name
+            had = best.get(key)
+            if had is None or _shown_more(item, had):
+                best[key] = item
+        out: list[PlaceCount] = []
+        for key, count in counts.most_common():
+            place = places.place(key)
+            out.append(
+                PlaceCount(
+                    key=key,
+                    name=place.name if place else names[key].most_common(1)[0][0],
+                    city=place.city if place else "",
+                    count=count,
+                    item_id=best[key].id,
+                    source=place.source if place else "",
+                )
+            )
+        return out
 
     # -- playlists ----------------------------------------------------------
 

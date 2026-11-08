@@ -37,6 +37,7 @@ import httpx
 
 from .library import Item, ItemKind
 from .library.models import COLLECTIONS, Note
+from .library.places import QID, known_places
 from .library.wikidata import Wikidata, record_id
 
 if TYPE_CHECKING:
@@ -158,6 +159,8 @@ class Holders:
         self._looking: dict[str, Future[str]] = {}
         #: The last look's answer ("" for none), and when, by item id.
         self._known: OrderedDict[str, tuple[str, datetime]] = OrderedDict()
+        #: The Wikidata items of the museums found, by item id.
+        self._places: dict[str, str] = {}
 
     # -- what is known ---------------------------------------------------------
 
@@ -204,7 +207,9 @@ class Holders:
             known = self._known.get(item.id)
         if known is None or not known[0]:
             return item
-        return item.model_copy(update={"holder": known[0]})
+        with self._lock:
+            place = self._places.get(item.id, "")
+        return item.model_copy(update={"holder": known[0], "place": item.place or place})
 
     def soon(self, item: Item) -> Future[str]:
         """The museum of ``item``, looked up in the background unless it is
@@ -241,8 +246,8 @@ class Holders:
         name = ""
         try:
             with self._turns:
-                name = self.find(item)
-            self._remember(item, name)
+                name, qid = self.locate(item)
+            self._remember(item, name, qid)
         except (httpx.HTTPError, ValueError, KeyError) as err:
             log.info("museum of %s: %s", item.id, err)
             with self._lock:  # in memory only: asked again in a few minutes
@@ -258,9 +263,14 @@ class Holders:
 
     def find(self, item: Item) -> str:
         """The museum ``item`` is in, "" when nobody says (see the module)."""
+        return self.locate(item)[0]
+
+    def locate(self, item: Item) -> tuple[str, str]:
+        """The museum ``item`` is in and its Wikidata item; ("", "") when
+        nobody says, (name, "") when only its name is known."""
         twin = self.library.twin(item)
         if twin is not None and twin.source in COLLECTIONS and twin.museum:
-            return twin.museum
+            return twin.museum, twin.held_at if QID.match(twin.held_at) else ""
         with self.http() as http:
             qid, place_qid, place = "", "", ""
             page_id, title = commons_file(item)
@@ -275,12 +285,12 @@ class Holders:
             if qid:
                 work = Wikidata._entities(http, [qid], "claims").get(qid) or {}
                 if (where := _where(work)[:1]) and (name := self._label(http, where[0])):
-                    return name
+                    return name, where[0]
             if place and not place_qid:
                 place_qid = self._institution_qid(http, place)
             if place_qid and (name := self._label(http, place_qid)):
-                return name
-            return place
+                return name, place_qid
+            return place, ""
 
     @staticmethod
     def _label(http: httpx.Client, qid: str) -> str:
@@ -334,17 +344,22 @@ class Holders:
 
     # -- keeping it ----------------------------------------------------------------
 
-    def _remember(self, item: Item, name: str) -> None:
+    def _remember(self, item: Item, name: str, qid: str = "") -> None:
         with self._lock:
             self._known[item.id] = (name, self.clock())
             self._known.move_to_end(item.id)
+            if qid:
+                self._places[item.id] = qid
             while len(self._known) > REMEMBERED:
-                self._known.popitem(last=False)
+                gone, _ = self._known.popitem(last=False)
+                self._places.pop(gone, None)
+        if name and qid:
+            known_places().alias(name, qid)
         if self.library.get(item.id) is None:
             return  # a work only looked at: remembered in memory only
         if name:
-            self.library.update(item.id, holder=name)
-            log.info("museum of %s: %s", item.id, name)
+            self.library.update(item.id, holder=name, **({"place": qid} if qid else {}))
+            log.info("museum of %s: %s (%s)", item.id, name, qid or "no item")
         self.library.save_note(
             Note(
                 item_id=item.id,

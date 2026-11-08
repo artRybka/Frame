@@ -43,6 +43,7 @@ from .library.museums import PRIVATE_LICENCE, TEST_LICENCE, Access, WikiArt, eur
 from .library.museums import client as museum_client
 from .library.records import records
 from .library.wikidata import MIRRORED, CommonsCopies
+from .museum_places import MuseumPlaces
 from .night import NightQueue
 from .notifications import Notifier
 from .panel_app import POLL, PanelApp
@@ -306,6 +307,9 @@ class FrameService:
         # The museums of works from Commons, Openverse, WikiArt: looked up
         # when a card opens and at night.
         self.holders = Holders(self.library, museum_client)
+        # Where works are, for Szukaj's "Muzeum": the museums' Wikidata
+        # items, names and cities, learnt at night (library/places.py).
+        self.museum_places = MuseumPlaces(self.library, museum_client)
         # Town names of photos' coordinates: after each album sync and at night.
         self.places = Places(self.library)
         self.study = Study(self.daily, self.ai, StudyJob(self.library, self.images, self.ai_config))
@@ -359,6 +363,7 @@ class FrameService:
             paris_token=keys.get("paris") or "",
             wikiart_keys=wikiart,
             data_dir=config.data_dir,
+            sources_off=frozenset(chosen.sources_off),
         )
 
     @property

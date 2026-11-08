@@ -12,7 +12,8 @@ from dataclasses import dataclass
 
 from .importer import Importer, Job, span
 from .models import Item, PlaylistRules
-from .museums import Discovery
+from .museums import PLACES_EUROPEANA, PLACES_WD, Discovery
+from .places import QID, SOURCE_PLACES, known_places
 from .repo import matches, search_fits
 from .vocabulary import category_fits, museum_kind, museum_queries
 
@@ -64,6 +65,11 @@ class MuseumSearch:
     limit: int
     #: Museums left out ("all but Yale"); none chosen, all the others.
     skip: tuple[str, ...] = ()
+    #: Places chosen (:mod:`.places`): their own collections are asked, and
+    #: Wikidata and Europeana for their works; none, every source.
+    places: tuple[str, ...] = ()
+    #: Places left out: their works don't come, from whichever source.
+    skip_places: tuple[str, ...] = ()
 
     @classmethod
     def of(
@@ -72,18 +78,25 @@ class MuseumSearch:
         keys: list[str] | None = None,
         limit: int = 8,
         skip: list[str] | tuple[str, ...] = (),
+        places: list[str] | tuple[str, ...] | None = None,
+        skip_places: list[str] | tuple[str, ...] | None = None,
     ) -> MuseumSearch:
-        """The search for ``rules`` (their museums as ``keys`` and ``skip``
-        unless given)."""
+        """The search for ``rules`` (their museums as ``keys`` and ``skip``,
+        their places as ``places`` and ``skip_places``, unless given)."""
         asked = searched(rules)
         start, end = span(asked)
         spec = Discovery(year_from=start, year_to=end, kind=museum_kind(asked.terms))
+        known = known_places()
+        chosen = rules.places if places is None else places
+        left_out = rules.exclude_places if skip_places is None else skip_places
         return cls(
             rules=asked,
             spec=spec,
             keys=list(dict.fromkeys(keys if keys is not None else rules.sources)),
             limit=limit,
             skip=tuple(dict.fromkeys(skip or rules.exclude_sources)),
+            places=tuple(dict.fromkeys(known.canon(p) for p in chosen)),
+            skip_places=tuple(dict.fromkeys(known.canon(p) for p in left_out)),
         )
 
     @property
@@ -91,14 +104,53 @@ class MuseumSearch:
         """What the works it finds remember (:meth:`PlaylistRules.search_key`)."""
         return self.rules.search_key()
 
-    def asked(self, offered: list[str]) -> list[str]:
+    def asked(self, offered: list[str], reach: list[str] | None = None) -> list[str]:
         """The museums to ask: those chosen or, none chosen, every one on
         offer; without those left out. Empty when nothing is asked, or every
-        museum is left out."""
+        museum is left out. ``reach``: the sources that may answer for
+        places chosen, those turned off too (``offered`` when not given)."""
         if self.empty:
             return []
-        keys = self.keys or offered
-        return [k for k in keys if k not in self.skip]
+        # Keys given: a page further of those the answers named.
+        keys = self.keys or (self.place_keys(reach or offered) if self.places else offered)
+        skip = set(self.skip) | set(self._sources_left_out())
+        return [k for k in keys if k not in skip]
+
+    def place_keys(self, offered: list[str]) -> list[str]:
+        """What to ask for the places chosen: a museum's own collection when
+        it is on offer; for the others, Wikidata (their works with a picture
+        on Commons) and Europeana (works its data providers among them
+        brought)."""
+        known = known_places()
+        keys: list[str] = []
+        others: list[str] = []
+        for key in self.places:
+            place = known.place(key)
+            if place is not None and place.source in offered:
+                if place.source not in keys:
+                    keys.append(place.source)
+            elif QID.match(key):
+                others.append(key)
+        if others and "wmc" in offered:
+            keys.append(PLACES_WD + "|".join(others))
+        providers = [p for p in others if known.provider(p)]
+        if providers and "europeana" in offered:
+            keys.append(PLACES_EUROPEANA + "|".join(providers))
+        return keys
+
+    def _sources_left_out(self) -> list[str]:
+        """Sources every place of which is left out (Yale's two, say): not
+        asked at all."""
+        known = known_places()
+        out: list[str] = []
+        for key in self.skip_places:
+            place = known.place(key)
+            if place is None or not place.source:
+                continue
+            mine = SOURCE_PLACES.get(place.source, ())
+            if mine and all(p in self.skip_places for p in mine) and place.source != "paris":
+                out.append(place.source)
+        return out
 
     @property
     def empty(self) -> bool:
@@ -109,6 +161,7 @@ class MuseumSearch:
         start, end = self.spec.year_from, self.spec.year_to
         return (
             not self.keys
+            and not self.places
             and not museum_text(self.rules, 1)
             and not self.rules.colors
             and start is None
@@ -121,7 +174,20 @@ class MuseumSearch:
         and categories, by its artists, and of its periods and tags
         (:func:`search_fits`)."""
         terms = self.rules.terms
-        return self.spec.fits(item) and category_fits(item, terms) and search_fits(item, self.rules)
+        return (
+            self.spec.fits(item)
+            and category_fits(item, terms)
+            and search_fits(item, self.rules)
+            and self.in_place(item)
+        )
+
+    def in_place(self, item: Item) -> bool:
+        """Whether ``item`` is in a place chosen, and in none left out (a
+        source of several museums brings the others' works too)."""
+        held_at = item.held_at
+        if self.places and held_at not in self.places:
+            return False
+        return not (held_at and held_at in self.skip_places)
 
     def pages(
         self,
@@ -208,12 +274,12 @@ def fill(
     Szukaj shows for them, the museums taking turns; works the library has
     already that only the search makes fit count too."""
     offered = importer.sources()
-    if rules.sources and not any(s in offered for s in rules.sources):
+    if rules.sources and not rules.places and not any(s in offered for s in rules.sources):
         return  # only the owner's own sources (photos, albums)
-    search = MuseumSearch.of(
-        rules, keys=[s for s in rules.sources if s in offered], limit=FILL_PAGE
-    )
-    keys = search.asked(importer.asked_sources(search.spec.kind))
+    # Museums chosen are places, asked as their own (``asked``).
+    keys = [] if rules.places else [s for s in rules.sources if s in offered]
+    search = MuseumSearch.of(rules, keys=keys, limit=FILL_PAGE)
+    keys = search.asked(importer.asked_sources(search.spec.kind), importer.reachable())
     job.total = count
     if not keys:
         return

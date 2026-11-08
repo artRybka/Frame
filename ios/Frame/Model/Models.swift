@@ -70,6 +70,12 @@ struct Item: Codable, Identifiable, Hashable, Sendable {
     /// its picture is from: "" when the server does not know it (yet), nil
     /// from a server before 1.81.
     var heldBy: String? = nil
+    /// Szukaj's key of that museum (a Wikidata item, "Q160112"): what a hold
+    /// on its name searches; nil from a server before 1.124.
+    var heldAt: String? = nil
+    /// The picture is a later copy of the work ("Chromolitografia") and
+    /// `heldBy` is where the original is; nil or "": the work itself.
+    var reproduction: String? = nil
 
     /// The museum named on the card ("Kolekcja", "Teraz"): "" for a work
     /// whose museum is not known; a server before 1.81 names the source.
@@ -104,7 +110,7 @@ struct Item: Codable, Identifiable, Hashable, Sendable {
         ItemSummary(
             id: id, kind: kind, source: source, title: displayTitle, artist: artist, dateText: dateText,
             year: year, colors: colors, width: width, height: height, favorite: favorite,
-            suitability: suitability, heldBy: heldBy, picture: sharper?.itemId ?? "",
+            suitability: suitability, heldBy: heldBy, heldAt: heldAt, picture: sharper?.itemId ?? "",
             subtitle: photoLine
         )
     }
@@ -182,6 +188,8 @@ struct SharperView: Codable, Hashable, Sendable {
     var height: Int? = nil
     /// The museum the work is in: a copy from the museum itself names it.
     var heldBy: String? = nil
+    /// Its key in Szukaj's "Muzeum".
+    var heldAt: String? = nil
 }
 
 /// The museum a work from Commons, Openverse or WikiArt is in, looked up as
@@ -189,6 +197,8 @@ struct SharperView: Codable, Hashable, Sendable {
 struct HolderView: Codable, Hashable, Sendable {
     var status: String
     var name: String = ""
+    /// Its key in Szukaj's "Muzeum"; nil from a server before 1.124.
+    var key: String? = nil
 }
 
 /// One copy of a work's picture from another source ("Szukaj lepszej
@@ -296,6 +306,8 @@ struct ItemSummary: Codable, Identifiable, Hashable, Sendable {
     var aspect: Double? = nil
     /// `Item.heldBy`: the museum the work is in, "" when not known.
     var heldBy: String? = nil
+    /// `Item.heldAt`.
+    var heldAt: String? = nil
     /// Which copy the work shows (`Item.sharper`'s id), "" its own; nil
     /// from a server before 1.97.2. A change drops the thumbnail kept.
     var picture: String? = nil
@@ -353,6 +365,11 @@ struct PlaylistRules: Codable, Hashable, Sendable {
     /// museum added later comes in on its own. Like `excludeIds`, alone it
     /// is no rule.
     var excludeSources: [String] = []
+    /// Museums where the works are (Szukaj's "Muzeum"): Wikidata items
+    /// ("Q190804"), or "name:…" for one Wikidata doesn't know yet.
+    var places: [String] = []
+    /// Museums left out, like `excludeSources`.
+    var excludePlaces: [String] = []
     var yearFrom: Int?
     var yearTo: Int?
     var favoritesOnly: Bool = false
@@ -365,7 +382,7 @@ struct PlaylistRules: Codable, Hashable, Sendable {
     var isEmpty: Bool {
         query.isEmpty && artists.isEmpty && styles.isEmpty && subjects.isEmpty && terms.isEmpty
             && colors.isEmpty
-            && kinds.isEmpty && sources.isEmpty && yearFrom == nil && yearTo == nil
+            && kinds.isEmpty && sources.isEmpty && places.isEmpty && yearFrom == nil && yearTo == nil
             && !favoritesOnly && minSuitability == nil
     }
 
@@ -386,6 +403,8 @@ extension PlaylistRules {
         kinds = try c.decode([ItemKind].self, forKey: .kinds)
         sources = try c.decode([String].self, forKey: .sources)
         excludeSources = try c.decodeIfPresent([String].self, forKey: .excludeSources) ?? []  // older servers
+        places = try c.decodeIfPresent([String].self, forKey: .places) ?? []  // before 1.124
+        excludePlaces = try c.decodeIfPresent([String].self, forKey: .excludePlaces) ?? []
         yearFrom = try c.decodeIfPresent(Int.self, forKey: .yearFrom)
         yearTo = try c.decodeIfPresent(Int.self, forKey: .yearTo)
         favoritesOnly = try c.decode(Bool.self, forKey: .favoritesOnly)
@@ -1419,6 +1438,10 @@ struct FrameSettings: Codable, Hashable, Sendable {
     /// copyright that their collections publish, and WikiArt. (The test
     /// switches WikiArt and "Bez limitu 70 lat" went into it in 1.111.0.)
     var privateUse: Bool? = nil
+    /// Collections of everyone's pictures turned off in Konfiguracja →
+    /// Źródła dzieł ("wmc", "europeana", "openverse", "wikiart"); nil: a
+    /// server before 1.124.
+    var sourcesOff: [String]? = nil
     /// The frame's name in the app; nil: the name the panel reports.
     var name: String? = nil
     /// "online" or "economy" ("Oszczędny": on battery the frame sleeps with
@@ -1478,6 +1501,7 @@ extension FrameSettings {
         follow(\.timezone)
         follow(\.statusPollMinutes)
         follow(\.privateUse)
+        follow(\.sourcesOff)
         follow(\.name)
         follow(\.powerMode)
         follow(\.checkEveryHours)
@@ -1491,6 +1515,7 @@ extension FrameSettings {
     private enum CodingKeys: String, CodingKey {
         case playlistId, changeTimes, changeEveryDays, quietStart, shuffle, avoidRepeatDays
         case orientation, rotation, art, photo, timezone, statusPollMinutes, privateUse, name
+        case sourcesOff
         case powerMode, checkEveryHours, checkQuietStart, checkQuietEnd
         case quietEnd  // older servers: decoded only
     }
@@ -1512,6 +1537,7 @@ extension FrameSettings {
         timezone = try c.decode(String.self, forKey: .timezone)
         statusPollMinutes = try c.decode(Int.self, forKey: .statusPollMinutes)
         privateUse = try c.decodeIfPresent(Bool.self, forKey: .privateUse)
+        sourcesOff = try c.decodeIfPresent([String].self, forKey: .sourcesOff)
         name = try c.decodeIfPresent(String.self, forKey: .name)
         powerMode = try c.decodeIfPresent(String.self, forKey: .powerMode)
         checkEveryHours = try c.decodeIfPresent(Int.self, forKey: .checkEveryHours)
@@ -1534,6 +1560,7 @@ extension FrameSettings {
         try c.encode(timezone, forKey: .timezone)
         try c.encode(statusPollMinutes, forKey: .statusPollMinutes)
         try c.encodeIfPresent(privateUse, forKey: .privateUse)
+        try c.encodeIfPresent(sourcesOff, forKey: .sourcesOff)
         try c.encodeIfPresent(name, forKey: .name)
         try c.encodeIfPresent(powerMode, forKey: .powerMode)
         try c.encodeIfPresent(checkEveryHours, forKey: .checkEveryHours)
@@ -2107,6 +2134,75 @@ extension SearchToken {
     static func museum(_ key: String, name: String, out: Bool = false) -> SearchToken {
         SearchToken(kind: out ? museumOut : "museum", key: key, name: out ? "bez \(name)" : name)
     }
+
+    /// Whether a museum's key is a place (a Wikidata item, "Q190804", or
+    /// "name:…"), not a source of pictures ("wmc", or an older app's "rijks").
+    static func isPlace(_ key: String) -> Bool {
+        if key.hasPrefix("name:") { return true }
+        guard key.first == "Q", key.count > 1 else { return false }
+        return key.dropFirst().allSatisfy(\.isNumber)
+    }
+}
+
+extension PlaylistRules {
+    /// The museums' chips: places first, then sources still chosen (an
+    /// older search's, or Commons, which gathers many museums' pictures).
+    func museumTokens(name: (String) -> String, sources: [String]? = nil) -> [SearchToken] {
+        places.map { SearchToken.museum($0, name: name($0)) }
+            + (sources ?? self.sources).map { SearchToken.museum($0, name: name($0)) }
+            + excludePlaces.map { SearchToken.museum($0, name: name($0), out: true) }
+            + excludeSources.map { SearchToken.museum($0, name: name($0), out: true) }
+    }
+
+    /// Sets the museums from the chips: places to `places`, sources to the
+    /// sources returned (the caller keeps them where it does).
+    mutating func setMuseums(_ tokens: [SearchToken]) -> [String] {
+        let picked = tokens.filter { $0.kind == "museum" }.map(\.key)
+        let out = tokens.filter { $0.kind == SearchToken.museumOut }.map(\.key)
+        places = picked.filter(SearchToken.isPlace)
+        excludePlaces = out.filter(SearchToken.isPlace)
+        excludeSources = out.filter { !SearchToken.isPlace($0) }
+        return picked.filter { !SearchToken.isPlace($0) }
+    }
+}
+
+/// A museum Szukaj's "Muzeum" offers (`GET /api/places`).
+struct PlaceHit: Codable, Hashable, Sendable, Identifiable {
+    let key: String
+    let name: String
+    var city: String = ""
+    /// A work of the catalogue in it, shown behind its name; "" none.
+    var itemId: String = ""
+    /// Its own collection is one of the server's sources ("rijks").
+    var source: String = ""
+    /// A picture of a work in it from Wikidata, for a museum with none in
+    /// the catalogue; "" not known (yet).
+    var picture: String = ""
+    var id: String { key }
+
+    init(key: String, name: String, city: String = "", itemId: String = "", source: String = "", picture: String = "") {
+        self.key = key
+        self.name = name
+        self.city = city
+        self.itemId = itemId
+        self.source = source
+        self.picture = picture
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        key = try c.decode(String.self, forKey: .key)
+        name = try c.decode(String.self, forKey: .name)
+        city = try c.decodeIfPresent(String.self, forKey: .city) ?? ""
+        itemId = try c.decodeIfPresent(String.self, forKey: .itemId) ?? ""
+        source = try c.decodeIfPresent(String.self, forKey: .source) ?? ""
+        picture = try c.decodeIfPresent(String.self, forKey: .picture) ?? ""
+    }
+}
+
+/// `GET /api/places/<key>/picture`
+struct PlacePicture: Codable, Hashable, Sendable {
+    var picture: String = ""
 }
 
 extension PlaylistRules {
@@ -2246,6 +2342,9 @@ struct LibraryQuery: Hashable, Sendable {
     var sources: [String] = []
     /// Sources left out, as in `PlaylistRules.excludeSources`.
     var excludeSources: [String] = []
+    /// Museums, as in `PlaylistRules.places`.
+    var places: [String] = []
+    var excludePlaces: [String] = []
     var yearFrom: Int?
     var yearTo: Int?
     var favoritesOnly = false
@@ -2271,6 +2370,8 @@ struct LibraryQuery: Hashable, Sendable {
         terms = rules.terms
         sources = rules.sources
         excludeSources = rules.excludeSources
+        places = rules.places
+        excludePlaces = rules.excludePlaces
         yearFrom = rules.yearFrom
         yearTo = rules.yearTo
         self.sort = sort

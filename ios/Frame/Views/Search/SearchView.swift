@@ -27,5 +27,8 @@ struct SearchView: View {
         .onChange(of: model.artistSearch, initial: true) { _, artist in
             if artist != nil { path = NavigationPath() }
         }
+        .onChange(of: model.placeSearch, initial: true) { _, place in
+            if place != nil { path = NavigationPath() }
+        }
     }
 }

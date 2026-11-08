@@ -133,6 +133,20 @@ extension View {
             .accessibilityHint(Text("Przytrzymaj, by szukać innych dzieł tego autora"))
             .accessibilityAction(named: "Szukaj innych dzieł tego autora") { search() }
     }
+
+    /// The museum's name over the title: a hold searches the works there,
+    /// as the artist's does theirs (Mateusz 2026-11-08). No key (a server
+    /// before 1.124, or the museum not known): nothing.
+    @ViewBuilder
+    func placePress(_ key: String?, search: @escaping () -> Void) -> some View {
+        if let key, !key.isEmpty {
+            pressHold(action: search)
+                .accessibilityHint(Text("Przytrzymaj, by szukać dzieł z tego muzeum"))
+                .accessibilityAction(named: "Szukaj dzieł z tego muzeum") { search() }
+        } else {
+            self
+        }
+    }
 }
 
 /// A Polish title the card opened with: a second after, a soft lighter

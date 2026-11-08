@@ -18,6 +18,7 @@ from pydantic import (
 )
 
 from ..imaging.layout import Crop, Fit, mm
+from .places import known_places, migrate_sources, source_place
 from .viewer import OWNER_ID, VIEWER
 
 
@@ -215,16 +216,49 @@ class Item(BaseModel):
     #: on Commons or WikiArt, the institution on its Commons page, WikiArt's
     #: gallery); "" when not known. See :attr:`held_by`.
     holder: str = ""
+    #: The Wikidata item of the place the work is in, when a look found it
+    #: (the holder's item, the collection a Commons search by place asked
+    #: for, the painting a reproduction is of); "" else. See :attr:`held_at`.
+    place: str = ""
+    #: What the picture is when it is not of the work itself but a copy kept
+    #: elsewhere ("Chromolitografia"): its place is then the original's.
+    reproduction: str = ""
 
     @computed_field  # type: ignore[prop-decorator]
     @property
     def held_by(self) -> str:
         """The museum the work is in ("Muzeum Narodowe w Warszawie"), named on
         the card above its title; "" when not known. Not where the picture is
-        from: a work on Wikimedia Commons hangs in a museum, not on Commons."""
+        from: a work on Wikimedia Commons hangs in a museum, not on Commons.
+        One museum has one name, however its source writes it."""
+        key = self.held_at
+        return (known_places().name(key) if key else "") or self._held_by()
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def held_at(self) -> str:
+        """The key of the place the work is in (:mod:`.places`): a Wikidata
+        item ("Q190804"), else the folded name ("name:…"); "" when not
+        known. Szukaj's "Muzeum" chooses by it."""
         if self.kind != ItemKind.ARTWORK or self.look is not None:
             return ""
-        if self.source in COLLECTIONS:
+        places = known_places()
+        if self.place:
+            return places.canon(self.place)
+        raw = self._held_by()
+        if self.source in COLLECTIONS and not self.reproduction:
+            return places.key_of(raw, self.source) if raw else source_place(self.source)
+        if not raw:
+            return ""
+        if self.sharper is not None and raw == self.sharper.museum:
+            return places.key_of(raw, self.sharper.source)
+        return places.key_of(raw)
+
+    def _held_by(self) -> str:
+        """The museum's name as the work's data give it."""
+        if self.kind != ItemKind.ARTWORK or self.look is not None:
+            return ""
+        if self.source in COLLECTIONS and not (self.place and self.reproduction):
             return self.museum
         if self.holder:
             return self.holder
@@ -276,6 +310,8 @@ class ItemSummary(BaseModel):
     title_pl: str | None = None
     #: ``Item.held_by``: the museum the work is in, "" when not known.
     held_by: str = ""
+    #: ``Item.held_at``: its key, for Szukaj with that museum.
+    held_at: str = ""
     #: Which picture the work shows: the id of the copy in its place
     #: (``Item.sharper``), "" for its own. The app asks for the thumbnail
     #: again when it changes, instead of the one kept from before.
@@ -295,6 +331,19 @@ class ItemSummary(BaseModel):
             summary.title = photo_title(item)
             summary.subtitle = photo_line(item)
         return summary
+
+
+class PlaceCount(BaseModel):
+    """A place of the catalogue's works, for Szukaj's "Muzeum"."""
+
+    key: str
+    name: str
+    city: str = ""
+    count: int = 0
+    #: A work of the place to show beside its name.
+    item_id: str = ""
+    #: The source that is its own collection ("rijks"), "" when it has none.
+    source: str = ""
 
 
 #: Terms for the owner's own works ("Moje" in the app's "+"): those with a
@@ -323,6 +372,11 @@ class PlaylistRules(BaseModel):
     #: so that a museum added later comes in on its own. Like
     #: ``exclude_ids``, an exception: alone it is no rule.
     exclude_sources: list[str] = Field(default_factory=list)
+    #: Where the works are (:mod:`.places`: "Q190804", "name:…"): Szukaj's
+    #: "Muzeum" (Mateusz 2026-11-08), whichever source brings the picture.
+    places: list[str] = Field(default_factory=list)
+    #: Places left out: an exception, like ``exclude_sources``.
+    exclude_places: list[str] = Field(default_factory=list)
     year_from: int | None = None
     year_to: int | None = None
     favorites_only: bool = False
@@ -331,6 +385,25 @@ class PlaylistRules(BaseModel):
     min_suitability: float | None = None
     #: Works the owner removed from this smart playlist although they match.
     exclude_ids: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _museums_as_places(cls, data: Any) -> Any:
+        """Museums chosen as sources before there were places (rules kept
+        before 1.124, an older app): a museum's own collection becomes its
+        places; sources gathering pictures from many stay sources."""
+        if not isinstance(data, dict):
+            return data
+        changes: dict[str, Any] = {}
+        for old, new in (("sources", "places"), ("exclude_sources", "exclude_places")):
+            sources = data.get(old)
+            if not sources:
+                continue
+            places, kept = migrate_sources(sources)
+            if places:
+                changes[new] = list(dict.fromkeys([*(data.get(new) or []), *places]))
+                changes[old] = kept
+        return {**data, **changes} if changes else data
 
     def search_key(self) -> str:
         """What a museum search for these rules asks, as a short key: the
@@ -361,6 +434,7 @@ class PlaylistRules(BaseModel):
             or self.colors
             or self.kinds
             or self.sources
+            or self.places
             or self.year_from is not None
             or self.year_to is not None
             or self.favorites_only

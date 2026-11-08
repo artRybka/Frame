@@ -1008,6 +1008,9 @@ struct ArtworkInfo: View {
                         Eyebrow(eyebrow, color: Theme.vermilion)
                             .fixedSize(horizontal: false, vertical: true)
                             .transition(.opacity)
+                            .placePress(item.kind == .artwork ? item.heldAt : nil) {
+                                model.searchPlace(item.heldAt ?? "", name: eyebrow)
+                            }
                     }
                     Spacer(minLength: 12)
                     Button {

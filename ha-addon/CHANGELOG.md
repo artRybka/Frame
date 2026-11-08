@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.124.0
+
+- Szukaj → Muzeum wybiera teraz miejsce, w którym dzieło fizycznie jest,
+  a nie źródło zdjęcia. Lista to pasy z wycinkiem dzieła z tego muzeum.
+  Muzeum bez dzieła w katalogu dostaje obraz z Wikidaty, a gdy i tego nie
+  ma, miękki gradient z ziemistych barw, za każdym razem ten sam. Pole
+  „Muzeum albo miasto” od trzech liter podpowiada też muzea spoza katalogu
+  (np. Prado). Ich dzieła serwer znajduje przez Wikidatę i Commons oraz
+  Europeanę. Wybrane i Wykluczone działają jak dotąd.
+- Przytrzymanie nazwy muzeum nad tytułem (w Teraz i na karcie dzieła)
+  otwiera Szukaj z dziełami tego muzeum, tak jak przytrzymanie nazwiska
+  autora.
+- Reprodukcje dawnych obrazów (chromolitografia, oleodruk, fotograwiura,
+  fotografia itp. dzieła malarza zmarłego przed wynalezieniem techniki)
+  serwer w nocy przypisuje miejscu oryginału. Np. „Adoracja Baranka”
+  z Wellcome Collection to Katedra św. Bawona w Gandawie, a wiersz
+  „Zdjęcie dzieła” mówi „Chromolitografia, Wellcome Collection”.
+- Konfiguracja → Źródła dzieł: przełączniki Wikimedia Commons, Europeana,
+  Openverse i WikiArt. Wyłączone nie dokładają dzieł do Szukaj ani do
+  playlist; muzeum wybrane w Szukaj i tak znajdzie przez nie swoje dzieła.
+- Playlisty z wybranymi lub wykluczonymi muzeami przechodzą na miejsca same.
+
 ## 1.123.6
 
 - Stuknięcie w imię i nazwisko autora w Teraz, na karcie dzieła i w studium
