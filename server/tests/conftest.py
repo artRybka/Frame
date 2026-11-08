@@ -78,6 +78,17 @@ def _forget_artist_names() -> Iterator[None]:
 
 
 @pytest.fixture(autouse=True)
+def _forget_places() -> Iterator[None]:
+    """Museums learnt by a library (Szukaj's "Muzeum"): each test starts
+    with only those of our own sources."""
+    from frame_server.library.places import Places, learn_places
+
+    learn_places(Places())
+    yield
+    learn_places(Places())
+
+
+@pytest.fixture(autouse=True)
 def _no_real_sizes(monkeypatch: pytest.MonkeyPatch) -> None:
     """A study's page looks up its work's real size in the background: never
     on the internet in tests (each museum answers 404)."""

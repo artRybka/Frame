@@ -625,7 +625,7 @@ struct TermFacetPanel: View {
     /// Under the group; the Kolor sheet says what it does by itself.
     private var footnote: String? {
         switch facet {
-        case .museum: "Nic nie wybrane: pytam wszystkie muzea."
+        case .museum: nil
         // Epoka says it with its beads and band.
         case .color, .technique, .period: nil
         default: "Wybierz dowolnie wiele: wystarczy, że dzieło pasuje do jednego z nich."
@@ -927,15 +927,11 @@ struct TermFacetPanel: View {
                 withAnimation(.snappy) {
                     tokens = tokens.map { token in
                         guard facet.holds(token) else { return token }
-                        return SearchToken.museum(token.key, name: museumName(token.key), out: out)
+                        return SearchToken.museum(token.key, name: model.placeName(token.key), out: out)
                     }
                 }
             }
         )
-    }
-
-    private func museumName(_ key: String) -> String {
-        museums.first { $0.key == key }?.name ?? Names.source(key)
     }
 
     private var museumList: some View {
@@ -947,70 +943,10 @@ struct TermFacetPanel: View {
                 Text(out && count > 0 ? "Wykluczone · \(count)" : "Wykluczone").tag(true)
             }
             .pickerStyle(.segmented)
-            Text(out
-                ? "Pytam wszystkie muzea oprócz zaznaczonych."
-                : "Pytam tylko zaznaczone muzea.")
-                .font(.footnote)
-                .foregroundStyle(Theme.inkSoft)
-            checkList(
-                museums.map {
-                    CheckRow(
-                        kind: out ? SearchToken.museumOut : "museum", key: $0.key, name: $0.name,
-                        icon: "building.columns"
-                    )
-                },
-                out: out
-            )
+            // Bands with the museums' works, on the panel's glass (szkic 4;
+            // no counts nor notes under them, Mateusz 2026-11-08).
+            PlaceBands(tokens: $tokens, out: out)
         }
-    }
-
-    private struct CheckRow: Identifiable {
-        let kind: String
-        let key: String
-        let name: String
-        let icon: String
-        var id: String { key }
-    }
-
-    /// The rows to pick; `out`: picked ones are left out (a minus, the name
-    /// struck through), not asked alone (a tick).
-    private func checkList(_ rows: [CheckRow], out: Bool = false) -> some View {
-        VStack(spacing: 0) {
-            ForEach(rows) { row in
-                let on = picked(row.kind, row.key)
-                Button {
-                    toggle(row.kind, row.key, SearchToken.museum(row.key, name: row.name, out: out).name)
-                } label: {
-                    HStack(spacing: 10) {
-                        GroupMark(kind: row.kind, symbol: row.icon, side: 17)
-                            .font(.subheadline)
-                            .foregroundStyle(on && out ? Theme.inkSoft : Theme.ink)
-                            .frame(width: 22)
-                        Text(row.name)
-                            .font(.body)
-                            .strikethrough(on && out, color: Theme.inkSoft)
-                            .foregroundStyle(on && out ? Theme.inkSoft : Theme.ink)
-                        Spacer()
-                        Image(systemName: on ? (out ? "minus.circle.fill" : "checkmark.circle.fill") : "circle")
-                            .foregroundStyle(on ? (out ? Theme.vermilion : Theme.ink) : Theme.hairline)
-                            .font(.title3)
-                            .contentTransition(.symbolEffect(.replace))
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .sensoryFeedback(.selection, trigger: on)
-                .accessibilityLabel(on && out ? "\(row.name), wykluczone" : row.name)
-                .accessibilityAddTraits(on ? .isSelected : [])
-                if row.id != rows.last?.id {
-                    Divider().overlay(Theme.hairline).padding(.leading, 44)
-                }
-            }
-        }
-        .background(Theme.card, in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.hairline))
     }
 }
 

@@ -59,8 +59,9 @@ struct RootView: View {
         .background { NoticeWindowInstaller(model: model) }
         // "Teraz" shows the full send bar under the picture.
         .onChange(of: tab, initial: true) { _, tab in model.notices.nowTabOpen = tab == .now }
-        .onChange(of: model.artistSearch) { _, artist in
-            if artist != nil { tab = .search }
+        // A held artist's or museum's name: their works on Szukaj.
+        .onChange(of: model.artistSearch != nil || model.placeSearch != nil) { _, held in
+            if held { tab = .search }
         }
         .onChange(of: model.suggestionsOpened) { tab = .discover }
         // A notification tapped: where it points.

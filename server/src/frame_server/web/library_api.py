@@ -218,6 +218,8 @@ def list_items(
     year_to: Annotated[int | None, Query(ge=0, le=2100)] = None,
     source: Annotated[list[str] | None, Query()] = None,
     skip: Annotated[list[str] | None, Query()] = None,
+    place: Annotated[list[str] | None, Query()] = None,
+    skip_place: Annotated[list[str] | None, Query()] = None,
     favorites: bool = False,
     kept: bool = False,
     sort: SortKey = "recent",
@@ -237,6 +239,8 @@ def list_items(
         year_to=year_to,
         sources=source or [],
         exclude_sources=skip or [],
+        places=place or [],
+        exclude_places=skip_place or [],
         favorites_only=favorites,
         kept_only=kept,
         # Works with no picture anywhere: an empty tile helps nobody.
@@ -271,6 +275,8 @@ class HolderView(BaseModel):
 
     status: Literal["found", "looking", "none", "off"]
     name: str = ""
+    #: ``Item.held_at``: the place's key, for Szukaj with it (a hold).
+    key: str = ""
 
 
 @router.post("/library/items/{item_id:item}/holder", response_model=HolderView)
@@ -286,7 +292,8 @@ async def item_holder(
         with contextlib.suppress(TimeoutError):
             await asyncio.wait_for(asyncio.shield(asyncio.wrap_future(future)), wait)
     status, name = svc.holders.look(item, 0)
-    return HolderView(status=status, name=name)
+    held = svc.holders.fill(svc.library.get(item.id) or item)
+    return HolderView(status=status, name=held.held_by or name, key=held.held_at)
 
 
 class PolishView(BaseModel):
@@ -440,6 +447,8 @@ class SharperView(BaseModel):
     #: The museum the work is in (``Item.held_by``): a copy from the museum
     #: itself names it.
     held_by: str = ""
+    #: ``Item.held_at``: its key.
+    held_at: str = ""
 
 
 @router.post("/library/items/{item_id:item}/sharpen", response_model=SharperView)
@@ -464,6 +473,7 @@ async def sharpen_item(
         width=size[0],
         height=size[1],
         held_by=svc.holders.fill(stored or item).held_by,
+        held_at=svc.holders.fill(stored or item).held_at,
     )
 
 

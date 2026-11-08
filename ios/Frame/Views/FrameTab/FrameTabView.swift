@@ -1805,6 +1805,29 @@ struct SourcesSection: View {
         Task { await model.saveSettings(new) }
     }
 
+    /// The collections of everyone's pictures, which Szukaj's "Muzeum" no
+    /// longer lists (Mateusz 2026-11-08: "agregatory do konfiguracji").
+    private static let gatherers: [(key: String, name: String, about: String)] = [
+        ("wmc", "Wikimedia Commons", "Zdjęcia dzieł z wielu muzeów, od użytkowników Wikipedii."),
+        ("europeana", "Europeana", "Zbiory europejskich muzeów, bibliotek i archiwów."),
+        ("openverse", "Openverse", "Wolne zdjęcia z Flickra, Wikimedia i innych serwisów."),
+        ("wikiart", "WikiArt", "Encyklopedia malarstwa, także dzieła chronione. Tylko z Użytkiem prywatnym."),
+    ]
+
+    private func gatherer(_ key: String) -> Binding<Bool> {
+        Binding(
+            get: { !(settings.sourcesOff ?? []).contains(key) },
+            set: { on in
+                save { settings in
+                    var off = settings.sourcesOff ?? []
+                    off.removeAll { $0 == key }
+                    if !on { off.append(key) }
+                    settings.sourcesOff = off
+                }
+            }
+        )
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             SectionHeader(title: "Źródła dzieł", subtitle: "Muzea, Wikimedia Commons, Europeana i Openverse")
@@ -1828,6 +1851,25 @@ struct SourcesSection: View {
                         .font(.caption)
                         .foregroundStyle(Theme.inkSoft)
                 }
+            }
+            // A server before 1.124 doesn't know them.
+            if settings.sourcesOff != nil {
+                Card {
+                    ForEach(Array(Self.gatherers.enumerated()), id: \.element.key) { index, source in
+                        if index > 0 { Divider() }
+                        Toggle(isOn: gatherer(source.key)) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(source.name)
+                                Text(source.about).font(.caption).foregroundStyle(Theme.inkSoft)
+                            }
+                        }
+                        .tint(Theme.ink)
+                    }
+                }
+                Text("Wyłączone nie dokładają dzieł do Szukaj ani do playlist. Muzeum wybrane w Szukaj i tak znajdzie przez nie swoje dzieła.")
+                    .font(.caption)
+                    .foregroundStyle(Theme.inkSoft)
+                    .padding(.horizontal, 4)
             }
         }
     }

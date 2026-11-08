@@ -316,5 +316,5 @@ def test_card_asks_for_the_museum(tmp_path: Path) -> None:
         svc.library.upsert(_commons(favorite=True))
         assert client.get("/api/library/items/wmc:8030452").json()["held_by"] == ""
         view = client.post("/api/library/items/wmc:8030452/holder?wait=5").json()
-        assert view == {"status": "found", "name": MNW}
+        assert view == {"status": "found", "name": MNW, "key": "Q2"}
         assert client.get("/api/library/items/wmc:8030452").json()["held_by"] == MNW

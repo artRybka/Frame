@@ -169,6 +169,8 @@ actor DemoBackend: FrameBackend {
         if !rules.kinds.isEmpty && !rules.kinds.contains(item.kind) { return false }
         if !rules.sources.isEmpty && !rules.sources.contains(item.source) { return false }
         if rules.excludeSources.contains(item.source) { return false }
+        if !rules.places.isEmpty && !rules.places.contains(Self.placeKey(item)) { return false }
+        if rules.excludePlaces.contains(Self.placeKey(item)) { return false }
         if !rules.artists.isEmpty && !DemoDiscover.artistMatches(item.artist, rules.artists) { return false }
         func overlaps(_ a: [String], _ b: [String]) -> Bool {
             Set(a.map { $0.lowercased() }).intersection(b.map { $0.lowercased() }).isEmpty == false
@@ -473,7 +475,8 @@ actor DemoBackend: FrameBackend {
         let rules = PlaylistRules(
             query: query.text, artists: query.artists, styles: query.styles, subjects: query.subjects,
             terms: query.terms, colors: query.colors, kinds: query.kinds, sources: query.sources,
-            excludeSources: query.excludeSources, yearFrom: query.yearFrom,
+            excludeSources: query.excludeSources, places: query.places,
+            excludePlaces: query.excludePlaces, yearFrom: query.yearFrom,
             yearTo: query.yearTo, favoritesOnly: query.favoritesOnly
         )
         let listed = listed(for: rules)
@@ -1194,6 +1197,29 @@ actor DemoBackend: FrameBackend {
             Museum(key: "wikiart", name: "WikiArt"),
         ]
     }
+
+    /// The museum a demo work is in, as Szukaj's "Muzeum" keys it.
+    private static func placeKey(_ item: Item) -> String {
+        if let key = item.heldAt, !key.isEmpty { return key }
+        return "name:" + item.museumShown.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
+    }
+
+    func places(query: String) async throws -> [PlaceHit] {
+        var hits: [String: (hit: PlaceHit, count: Int)] = [:]
+        for item in items where item.kind == .artwork && !item.museumShown.isEmpty {
+            let key = Self.placeKey(item)
+            let count = (hits[key]?.count ?? 0) + 1
+            hits[key] = (hits[key]?.hit ?? PlaceHit(key: key, name: item.museumShown, itemId: item.id), count)
+        }
+        let wanted = query.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
+            .trimmingCharacters(in: .whitespaces)
+        return hits.values.sorted { $0.count > $1.count }.map(\.hit).filter { hit in
+            wanted.isEmpty
+                || hit.name.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil).contains(wanted)
+        }
+    }
+
+    func placePicture(key: String) async throws -> PlacePicture { PlacePicture() }
 
     func searchMuseum(source: String, query: String, page: Int) async throws -> RemotePage {
         let rules = PlaylistRules(query: query)

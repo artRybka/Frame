@@ -72,6 +72,8 @@ struct LiveBackend: FrameBackend {
         query += q.terms.map { URLQueryItem(name: "term", value: $0) }
         query += q.sources.map { URLQueryItem(name: "source", value: $0) }
         query += q.excludeSources.map { URLQueryItem(name: "skip", value: $0) }
+        query += q.places.map { URLQueryItem(name: "place", value: $0) }
+        query += q.excludePlaces.map { URLQueryItem(name: "skip_place", value: $0) }
         if let from = q.yearFrom { query.append(URLQueryItem(name: "year_from", value: String(from))) }
         if let to = q.yearTo { query.append(URLQueryItem(name: "year_to", value: String(to))) }
         if q.favoritesOnly { query.append(URLQueryItem(name: "favorites", value: "true")) }
@@ -442,6 +444,8 @@ struct LiveBackend: FrameBackend {
         ]
         query += sources.map { URLQueryItem(name: "source", value: $0) }
         query += rules.excludeSources.map { URLQueryItem(name: "skip", value: $0) }
+        query += rules.places.map { URLQueryItem(name: "place", value: $0) }
+        query += rules.excludePlaces.map { URLQueryItem(name: "skip_place", value: $0) }
         query += rules.artists.map { URLQueryItem(name: "artist", value: $0) }
         query += rules.terms.map { URLQueryItem(name: "term", value: $0) }
         query += rules.colors.map { URLQueryItem(name: "color", value: $0) }
@@ -453,6 +457,15 @@ struct LiveBackend: FrameBackend {
     // MARK: Museums
 
     func museums() async throws -> [Museum] { try await get("/api/museums") }
+
+    func places(query: String) async throws -> [PlaceHit] {
+        try await get("/api/places", query: [URLQueryItem(name: "q", value: query)])
+    }
+
+    func placePicture(key: String) async throws -> PlacePicture {
+        let path = key.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed.subtracting(CharacterSet(charactersIn: "/"))) ?? key
+        return try await get("/api/places/\(path)/picture")
+    }
 
     func searchMuseum(source: String, query: String, page: Int) async throws -> RemotePage {
         try await get(

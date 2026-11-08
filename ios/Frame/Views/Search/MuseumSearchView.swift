@@ -48,8 +48,7 @@ struct MuseumSearchView: View {
             get: {
                 var tokens = rules.tokens(names: model.termNames)
                 tokens += rules.colors.map { SearchToken(kind: "color", key: $0, name: ColorTag.name($0)) }
-                tokens += sources.map { SearchToken.museum($0, name: museumName($0)) }
-                tokens += rules.excludeSources.map { SearchToken.museum($0, name: museumName($0), out: true) }
+                tokens += rules.museumTokens(name: model.placeName, sources: sources)
                 return tokens
             },
             set: { tokens in (rules, sources) = rulesAsked(by: tokens) }
@@ -61,12 +60,8 @@ struct MuseumSearchView: View {
         var rules = rules
         rules.setTokens(tokens)
         rules.colors = tokens.filter { $0.kind == "color" }.map(\.key)
-        rules.excludeSources = tokens.filter { $0.kind == SearchToken.museumOut }.map(\.key)
-        return (rules, tokens.filter { $0.kind == "museum" }.map(\.key))
-    }
-
-    private func museumName(_ key: String) -> String {
-        museums.first { $0.key == key }?.name ?? Names.source(key)
+        let sources = rules.setMuseums(tokens)
+        return (rules, sources)
     }
 
     private var asked: Bool { !rules.isEmpty || !sources.isEmpty }
@@ -129,6 +124,7 @@ struct MuseumSearchView: View {
         }
         .task {
             await model.loadVocabulary()
+            await model.loadPlaceNames()
             if museums.isEmpty { museums = (try? await model.backend.museums()) ?? [] }
             if LaunchRoute.screen == "museums", rules.isEmpty {
                 rules.artists = ["Utagawa Hiroshige"]
@@ -157,9 +153,10 @@ struct MuseumSearchView: View {
                 rules.terms = ["technique:painting", "technique:drawing"]
             }
             // CI screenshots: every museum but the Met, with a colour.
-            if LaunchRoute.screen == "search-museums", rules.excludeSources.isEmpty {
+            if LaunchRoute.screen == "search-museums", rules.excludePlaces.isEmpty {
                 rules.colors = ["blue@much"]
-                rules.excludeSources = ["met"]
+                model.placeNames["Q160236"] = "Metropolitan Museum of Art"
+                rules.excludePlaces = ["Q160236"]
             }
         }
         .task(id: searchKey) {
@@ -197,6 +194,14 @@ struct MuseumSearchView: View {
             sources = []
             // Later, so the tab and the search's stack see the request first.
             Task { model.artistSearch = nil }
+        }
+        .onChange(of: model.placeSearch, initial: true) { _, place in
+            guard let place else { return }
+            var asked = PlaylistRules()
+            asked.places = [place.key]
+            rules = asked
+            sources = []
+            Task { model.placeSearch = nil }
         }
         .onChange(of: model.hearts) { _, hearts in
             // Liked or unliked on the work's card meanwhile.
@@ -248,7 +253,7 @@ struct MuseumSearchView: View {
                     playlistRules.sources = sources
                     let name = rules.suggestedName(names: model.termNames)
                     editing = Playlist(
-                        name: name.isEmpty ? sources.map(museumName).joined(separator: " · ") : name,
+                        name: name.isEmpty ? (rules.places + sources).map(model.placeName).joined(separator: " · ") : name,
                         kind: .smart, rules: playlistRules
                     )
                 } label: {
