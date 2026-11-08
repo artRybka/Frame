@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.125.0
+
+- Szukaj → Styl: każdy kierunek to mały obrazek w ramie z jasnego dębu, z
+  nazwą i latami pod spodem, zamiast chmury kapsułek. Style leżą na pięciu
+  półkach po kolei w czasie (Dawni mistrzowie, Romantyzm i realizm, Przełom
+  wieków, Awangarda, Japonia), każdą przewijasz w bok. Wybrany ma otok, a
+  pastylka „Styl” pokazuje małe obrazki wybranych stylów.
+
 ## 1.124.5
 
 - Szukaj → Muzeum, Styl, Temat: w otwartej grupie szukasz głównym paskiem

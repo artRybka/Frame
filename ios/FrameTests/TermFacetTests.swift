@@ -1,3 +1,4 @@
+import UIKit
 import XCTest
 @testable import Frame
 
@@ -231,6 +232,23 @@ final class TermFacetTests: XCTestCase {
         XCTAssertNil(TechniqueArt.asset("style:impressionism"))
         XCTAssertTrue(TechniqueArt.objects.contains("technique:photography"))
         XCTAssertFalse(TechniqueArt.objects.contains("technique:poster"))
+    }
+
+    func testEveryStyleHasItsWorkYearsAndOneShelf() {
+        let keys = StyleArt.shelves.flatMap(\.keys)
+        XCTAssertEqual(keys.count, 28)
+        XCTAssertEqual(Set(keys).count, keys.count, "a style on two shelves")
+        for key in keys {
+            let asset = StyleArt.asset(key)
+            XCTAssertNotNil(asset, key)
+            XCTAssertNotNil(asset.flatMap { UIImage(named: $0) }, "no picture for \(key)")
+            XCTAssertNotNil(StyleArt.years[key], key)
+        }
+        XCTAssertEqual(StyleArt.asset("style:rococo"), "style-rococo")
+        XCTAssertNil(StyleArt.asset("style:mannerism"))
+        XCTAssertNil(StyleArt.asset("technique:painting"))
+        XCTAssertEqual(StyleArt.label("style:young-poland", name: "Młoda Polska"), "Młoda\nPolska")
+        XCTAssertEqual(StyleArt.label("style:cubism", name: "Kubizm"), "Kubizm")
     }
 
     func testOneLetterWordsKeepToTheNextWord() {
