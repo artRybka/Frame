@@ -689,6 +689,31 @@ class Player:
         self._preview_boards[key] = (now, [i.id for i in board])
         return board
 
+    def chosen_board(
+        self, item: Item, ids: list[str], settings: FrameSettings
+    ) -> list[Item] | None:
+        """A preview's Multi board of the owner's chosen photos (``ids``,
+        ``FrameSettings.multi_photos``) as many as the board holds, ``item``
+        first; more than chosen: the photos that would join ``item`` fill
+        the rest. None when fewer than two of them are left."""
+        chosen = [i for i in (self.library.get(x) for x in ids) if i and not i.excluded]
+        chosen = [i for i in chosen if i.kind == ItemKind.PHOTO][:MAX_PHOTOS]
+        if item.id in {i.id for i in chosen}:
+            chosen = [item, *(i for i in chosen if i.id != item.id)]
+        if len(chosen) < MIN_PHOTOS:
+            return None
+        pres = settings.photo
+        if pres.multi_random:  # the same count each time for this choice
+            count = random.Random(",".join(i.id for i in chosen)).randint(MIN_PHOTOS, MAX_PHOTOS)
+        else:
+            count = pres.multi_count
+        board = chosen[:count]
+        if len(board) < count:
+            taken = {i.id for i in board}
+            more = (i for i in self.preview_board(item, settings) if i.id not in taken)
+            board += list(more)[: count - len(board)]
+        return board
+
     # -- showing -------------------------------------------------------------
 
     def preset_for(self, item: Item, settings: FrameSettings) -> str:

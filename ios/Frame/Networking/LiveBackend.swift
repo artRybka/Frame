@@ -206,8 +206,19 @@ struct LiveBackend: FrameBackend {
 
     func board(itemID: String, settings: FrameSettings, ownLook: Bool) async throws -> PhotoBoard {
         var query = framingQuery(settings)
-        if !ownLook { query.append(URLQueryItem(name: "own_look", value: "false")) }
+        if !ownLook {
+            query.append(URLQueryItem(name: "own_look", value: "false"))
+            query += multiPhotosQuery(settings)
+        }
         return try await get("/api/library/items/\(escape(itemID))/board", query: query)
+    }
+
+    /// Prezentacja (a preview without the photo's own look) tries Multi
+    /// grids on the photos the owner chose for it.
+    private func multiPhotosQuery(_ settings: FrameSettings?) -> [URLQueryItem] {
+        guard let settings, settings.photo.fit == "multi", let photos = settings.multiPhotos, !photos.isEmpty
+        else { return [] }
+        return [URLQueryItem(name: "photos", value: photos.joined(separator: ","))]
     }
 
     private struct FramingUpdate: Encodable {
@@ -758,7 +769,10 @@ struct LiveBackend: FrameBackend {
             req = request("/api/library/items/\(escape(id))/image", query: [URLQueryItem(name: "v", value: version)])
         case let .framePreview(id, settings, framing, ownLook):
             var query = framingQuery(settings)
-            if !ownLook { query.append(URLQueryItem(name: "own_look", value: "false")) }
+            if !ownLook {
+                query.append(URLQueryItem(name: "own_look", value: "false"))
+                query += multiPhotosQuery(settings)
+            }
             let encoder = Self.encoder()
             encoder.outputFormatting = .sortedKeys
             if let framing, let data = try? encoder.encode(framing) {

@@ -1455,6 +1455,9 @@ struct FrameSettings: Codable, Hashable, Sendable {
     var checkQuietStart: String? = nil
     /// nil: a server before economy quiet hours.
     var checkQuietEnd: String? = nil
+    /// The photos Prezentacja tries Multi grids on (at most eight, in the
+    /// order chosen); nil or empty: those that would join the one previewed.
+    var multiPhotos: [String]? = nil
 
     var isEconomy: Bool { powerMode == "economy" }
 

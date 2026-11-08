@@ -1261,11 +1261,12 @@ struct PresentationSection: View {
         let mat: String
         let count: Int
         let random: Bool
+        let chosen: [String]
 
         /// The same photos: a margin or mat just changed draws the old
         /// board until the new one comes.
         func samePhotos(_ other: BoardKey) -> Bool {
-            id == other.id && count == other.count && random == other.random
+            id == other.id && count == other.count && random == other.random && chosen == other.chosen
         }
     }
 
@@ -1328,7 +1329,13 @@ struct PresentationSection: View {
         return (item.kind == .photo) == (target == .photo) ? item.id : nil
     }
 
-    private var previewID: String? { currentID ?? standIns[target] }
+    private var previewID: String? { chosenPhotos.first ?? currentID ?? standIns[target] }
+
+    /// Multi: the photos the owner chose to try the grids on.
+    private var chosenPhotos: [String] {
+        guard isMulti else { return [] }
+        return settings.multiPhotos ?? []
+    }
 
     /// A picture of `target`'s kind to preview: the last one on the frame,
     /// else a random one of the library, the owner's works first.
@@ -1390,7 +1397,8 @@ struct PresentationSection: View {
         let photo = settings.photo
         guard target == .photo, photo.fit == "multi", let previewID else { return nil }
         return BoardKey(
-            id: previewID, margin: photo.margin, mat: photo.mat, count: photo.multiCount, random: photo.multiRandom
+            id: previewID, margin: photo.margin, mat: photo.mat, count: photo.multiCount, random: photo.multiRandom,
+            chosen: settings.multiPhotos ?? []
         )
     }
 
@@ -1477,6 +1485,11 @@ struct PresentationSection: View {
                 if isMulti {
                     Divider()
                     MultiSettings(presentation: presentation, portrait: settings.orientation == "portrait")
+                    Divider()
+                    MultiPhotosRow(photos: Binding(
+                        get: { settings.multiPhotos ?? [] },
+                        set: { settings.multiPhotos = $0 }
+                    ))
                 }
                 if hasMat {
                     Divider()
