@@ -192,8 +192,9 @@ class Plan:
 
 
 #: FILL's caption card: its distance from the canvas's right and bottom
-#: edges (share of the short side) and its widest width (share of the width).
-CARD_INSET = 0.03
+#: edges (share of the short side; 0.03 until Mateusz 2026-11-08 asked for it
+#: nearer the edge) and its widest width (share of the width).
+CARD_INSET = 0.018
 CARD_MAX_WIDTH = 0.6
 
 

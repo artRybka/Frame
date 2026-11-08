@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.123.7
+
+- Karteczka z podpisem przy Wypełnij jest mniejsza: mniejsze pismo,
+  ciaśniejsze marginesy wokół liter i bliżej rogu ekranu.
+
 ## 1.123.6
 
 - Stuknięcie w imię i nazwisko autora w Teraz, na karcie dzieła i w studium
