@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.123.4
+
+- Jeden artysta to jeden wiersz w podpowiedziach Szukaj, choć muzea zapisują
+  go różnie: „Rembrandt van Rijn”, „Rembrandt”, „Rembrandt (Rembrandt van
+  Rijn)” i „Rembrandt Harmensz. van Rijn” to teraz jeden Rembrandt z łączną
+  liczbą dzieł, a „Jan van Eyck” i „Jan Van Eyck” jeden van Eyck. Wybrany
+  artysta znajduje dzieła pod każdym z tych zapisów, także w playlistach.
+  Serwer łączy zapisy o tych samych słowach (bez względu na wielkość liter,
+  kolejność i nawiasy), zapis Met „X (Y)” oraz dłuższe imię z patronimikiem
+  albo drugim nazwiskiem. Osobno zostają „Starszy/Młodszy”, „II”, warsztat
+  i uczniowie, a także inna osoba o tym samym imieniu (Rembrandt Peale).
+
 ## 1.123.3
 
 - Diagnostyka dla właściciela: log całego dnia z dysku serwera
