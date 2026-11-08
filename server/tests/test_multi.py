@@ -268,6 +268,42 @@ def test_board_for_the_app_to_draw(service) -> None:
         assert other.json()["layouts"] == []
 
 
+def test_board_of_the_owners_chosen_photos(service) -> None:
+    """Prezentacja tries the grids on the photos the owner chose
+    (``multi_photos``), as many as the board holds, in their order."""
+    from fastapi.testclient import TestClient
+
+    from frame_server.web import create_app
+
+    app = create_app(service.settings)
+    svc = app.state.service
+    photos = [_photo(svc, n) for n in range(10)]
+    chosen = [p.id for p in photos[2:9]]
+    with TestClient(app) as client:
+        settings = client.get("/api/settings").json()
+        settings["photo"].update(fit="multi", multi_count=4)
+        settings["multi_photos"] = chosen
+        assert client.put("/api/settings", json=settings).status_code == 200
+        assert client.get("/api/settings").json()["multi_photos"] == chosen
+        query = {"settings": json.dumps(settings), "own_look": "false", "photos": ",".join(chosen)}
+        board = client.get(f"/api/library/items/{chosen[0]}/board", params=query).json()
+        assert board["photos"] == chosen[:4]
+        preview = client.get(f"/api/library/items/{chosen[0]}/preview", params=query)
+        assert preview.status_code == 200
+        # More photos on the board than chosen: the rest are the usual ones.
+        settings["photo"]["multi_count"] = 8
+        query["settings"] = json.dumps(settings)
+        query["photos"] = ",".join(chosen[:3])
+        board = client.get(f"/api/library/items/{chosen[0]}/board", params=query).json()
+        assert board["photos"][:3] == chosen[:3] and len(set(board["photos"])) == 8
+        # One photo is no board of its own.
+        query["photos"] = chosen[0]
+        board = client.get(f"/api/library/items/{chosen[0]}/board", params=query).json()
+        assert len(board["photos"]) == 8 and board["photos"][0] == chosen[0]
+        settings["multi_photos"] = [p.id for p in photos[:9]]
+        assert client.put("/api/settings", json=settings).status_code == 422  # eight at most
+
+
 def test_preview_board_of_a_random_count_stays_the_same(service) -> None:
     photos = [_photo(service, n) for n in range(9)]
     player = service.player

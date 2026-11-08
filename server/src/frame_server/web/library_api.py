@@ -712,6 +712,7 @@ async def item_preview(
     settings: str | None = None,
     framing: str | None = None,
     own_look: bool = True,
+    photos: str | None = None,
 ) -> Response:
     """The picture framed as on the panel (crop, mat, lettering), in its own
     colours: the correction for the inks is left to the panel's image.
@@ -721,7 +722,10 @@ async def item_preview(
     ``framing`` (Framing JSON) likewise tries crops before they are saved:
     the ones it gives replace the saved ones for that orientation.
     Without ``own_look`` a photo sent once is framed as the settings frame
-    photos, to try them on it.
+    photos, to try them on it. ``photos`` (ids, comma-separated): a Multi
+    board of these, the owner's photos for trying the grids on
+    (``FrameSettings.multi_photos``), rather than those that would join
+    ``item_id`` on the frame.
     """
     item = await _work(svc, item_id, threads=SHOWN_THREADS)
     if not own_look and item.look is not None:
@@ -735,7 +739,9 @@ async def item_preview(
         # Off the event loop: a Multi board's photos come from the library
         # (2026-11-08: about 1 s on the NAS, every other request waiting).
         render_settings = svc.player.render_settings(item, frame_settings)
-        board = svc.player.preview_board(item, frame_settings)  # MULTI: with the photos beside it
+        board = _preview_board(
+            svc, item, frame_settings, photos
+        )  # MULTI: with the photos beside it
         ids = ",".join(i.id for i in board)
         # A sharper copy of a picture since: another preview.
         copies = ",".join(shown.sharper.item_id for shown in board if shown.sharper is not None)
@@ -819,7 +825,11 @@ class BoardView(BaseModel):
 
 @router.get("/library/items/{item_id:item}/board")
 async def item_board(
-    item_id: str, svc: Svc, settings: str | None = None, own_look: bool = True
+    item_id: str,
+    svc: Svc,
+    settings: str | None = None,
+    own_look: bool = True,
+    photos: str | None = None,
 ) -> BoardView:
     """Where each photo of the Multi board a preview of ``item_id`` shows
     goes, and which part of it, for every grid of its count; ``settings``
@@ -829,26 +839,43 @@ async def item_board(
     if not own_look and item.look is not None:
         item = item.model_copy(update={"look": None})
     item, frame_settings = _trial_settings(svc, item, settings, None)
-    return await to_thread.run_sync(_board_view, svc, item, frame_settings, limiter=SHOWN_THREADS)
+    return await to_thread.run_sync(
+        _board_view, svc, item, frame_settings, photos, limiter=SHOWN_THREADS
+    )
 
 
-def _board_view(svc: FrameService, item: Item, frame_settings: FrameSettings) -> BoardView:
+def _preview_board(
+    svc: FrameService, item: Item, frame_settings: FrameSettings, photos: str | None
+) -> list[Item]:
+    """The photos a preview's Multi board shows: ``photos`` (the owner's
+    choice for trying grids on, Mateusz 2026-11-08) when given, those that
+    would join ``item`` otherwise."""
+    if photos and svc.player.multi(item, frame_settings):
+        chosen = svc.player.chosen_board(item, [i for i in photos.split(",") if i], frame_settings)
+        if chosen is not None:
+            return chosen
+    return svc.player.preview_board(item, frame_settings)
+
+
+def _board_view(
+    svc: FrameService, item: Item, frame_settings: FrameSettings, photos: str | None = None
+) -> BoardView:
     render_settings = svc.player.render_settings(item, frame_settings)
     mat = render_settings.layout.mat
-    board = svc.player.preview_board(item, frame_settings)
-    photos = [i.id for i in board]
+    board = _preview_board(svc, item, frame_settings, photos)
+    ids = [i.id for i in board]
     if not svc.player.multi(item, frame_settings) or len(board) < MIN_PHOTOS:
-        return BoardView(photos=photos, mat="#ffffff", layouts=[])
+        return BoardView(photos=ids, mat="#ffffff", layouts=[])
     thumbs: list[Image.Image] = []
     for shown in board:
         try:
             thumbs.append(load_image(svc.images.ensure_thumb(shown, True)))
         except (Gone, Resting, httpx.HTTPError, OSError):
-            return BoardView(photos=photos, mat="#ffffff", layouts=[])
+            return BoardView(photos=ids, mat="#ffffff", layouts=[])
     maps = _interest(svc, board)
     auto = [m.pick if m else None for m in maps]
     sizes = [img.size for img in thumbs]
-    seed = ",".join(photos)
+    seed = ",".join(ids)
     margin = render_settings.layout.margin
     layouts = []
     for orientation in Orientation:
@@ -876,7 +903,7 @@ def _board_view(svc: FrameService, item: Item, frame_settings: FrameSettings) ->
                 BoardLayout(orientation=orientation, grid=grid, shown=shown_grid, windows=windows)
             )
     r, g, b = board_rgb(thumbs, mat)
-    return BoardView(photos=photos, mat=f"#{r:02x}{g:02x}{b:02x}", layouts=layouts)
+    return BoardView(photos=ids, mat=f"#{r:02x}{g:02x}{b:02x}", layouts=layouts)
 
 
 Box = tuple[float, float, float, float]  # x, y, w, h as fractions of the canvas
