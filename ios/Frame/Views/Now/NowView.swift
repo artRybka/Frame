@@ -289,6 +289,20 @@ struct NowView: View {
                 redrawFrom = now ? model.displayProgress?.fraction : nil
             }
             .task(id: inFlight ? current?.previewUrl : nil) { await loadSwap() }
+            .task {
+                // CI screenshots: `-screen swap` sends the next picture, so
+                // the bar and the frame are caught on the way.
+                guard LaunchRoute.screen == "swap", !routed else { return }
+                routed = true
+                for _ in 0 ..< 40 where upcoming.isEmpty {
+                    try? await Task.sleep(for: .milliseconds(250))
+                }
+                try? await Task.sleep(for: .seconds(2))
+                guard let next = upcoming.first?.id,
+                      await model.present(itemID: next, offset: 1, framing: nil)
+                else { return }
+                await model.followPlayer()
+            }
             .onChange(of: history.first?.id, initial: true) { _, first in
                 // CI screenshots: `-screen history-back` starts at the picture before.
                 guard LaunchRoute.screen == "history-back", !routed, let first else { return }
