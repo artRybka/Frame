@@ -38,9 +38,19 @@ enum TermFacet: String, CaseIterable, Identifiable, Sendable {
         !allCases.contains { $0.holds(token) }
     }
 
-    /// The long groups: their sheet can be pulled up to the whole screen and
-    /// has a field to narrow the list.
-    var long: Bool { self == .style || self == .subject }
+    /// The groups narrowed by words (Mateusz 2026-11-08): while one is open,
+    /// the search field's words narrow its list instead of searching, and
+    /// the field says what they look for. nil: the field keeps searching
+    /// (and tapping it closes the group). A group's own list reads the words
+    /// as `filter` (`TermFacetPanel`).
+    var fieldPrompt: String? {
+        switch self {
+        case .museum: "Muzeum albo miasto"
+        case .style: "Szukaj stylu"
+        case .subject: "Szukaj tematu"
+        case .technique, .period, .color: nil
+        }
+    }
 
     /// What the group holds: "Ukiyo-e", "Ukiyo-e +2", nil for nothing;
     /// periods side by side on the axis read as one span ("1700–1900").
@@ -337,6 +347,9 @@ enum PeriodAxis {
 struct TermFacetBar: View {
     @Environment(AppModel.self) private var model
     @Binding var tokens: [SearchToken]
+    /// The search field's words: they narrow an open group that has a list
+    /// to narrow (`TermFacet.fieldPrompt`).
+    var lookup: TermLookup
     var museums: [Museum] = []
     var colors: [String] = []
     /// The search field: a group opening puts its keyboard away, and the
@@ -409,7 +422,10 @@ struct TermFacetBar: View {
             if let open {
                 TermFacetPanel(
                     facet: open, tokens: $tokens, museums: museums, colors: colors,
-                    maxHeight: open == .period ? panelHeight * Self.periodGrowth : panelHeight,
+                    filter: open.fieldPrompt == nil ? "" : lookup.trimmed,
+                    // Over the keyboard the bar stands higher: so much less room.
+                    maxHeight: (open == .period ? panelHeight * Self.periodGrowth : panelHeight)
+                        - (focus.wrappedValue ? Self.overField : 0),
                     close: close
                 )
                 // The words come in once the glass has grown, and go first.
@@ -441,9 +457,19 @@ struct TermFacetBar: View {
         }
         .preference(key: GroupPanelOpen.self, value: open != nil)
         .padding(.bottom, focus.wrappedValue ? Self.overField : 8)
+        // The field tapped: a group with a list takes its words, any other
+        // closes.
         .onChange(of: focus.wrappedValue) { _, focused in
-            if focused, open != nil { close() }
+            if focused, let open, open.fieldPrompt == nil { close() }
         }
+        .onChange(of: open, initial: true) { _, open in
+            lookup.narrow(open?.fieldPrompt == nil ? nil : open)
+            // CI's screenshots of a narrowed group.
+            if let open, open == Self.launched, let typed = LaunchRoute.typed { lookup.text = typed }
+        }
+        // Gone with a group open (the editor hides the groups while its
+        // name is typed): the field searches again.
+        .onDisappear { lookup.narrow(nil) }
         .task { await model.loadVocabulary() }
     }
 
@@ -456,6 +482,8 @@ struct TermFacetBar: View {
     /// The glass shrinks back into the button; then the panel goes.
     private func close() {
         guard open != nil else { return }
+        // Its "Gotowe" also ends the words typed for it.
+        if lookup.narrowing != nil { focus.wrappedValue = false }
         withAnimation(Self.motion) {
             grown = false
         } completion: {
@@ -567,10 +595,12 @@ struct TermFacetPanel: View {
     @Binding var tokens: [SearchToken]
     var museums: [Museum] = []
     var colors: [String] = []
+    /// The search field's words, narrowing the group's list (only for the
+    /// groups with a `TermFacet.fieldPrompt`; "" for the others).
+    var filter: String = ""
     var maxHeight: CGFloat = 460
     var close: () -> Void
 
-    @State private var filter = ""
     /// The Kolor sheet's card: Kolorystyka or Tonacja.
     @State private var colourCard = ColourCard.colours
     /// Museums: the picked ones are left out ("Wykluczone"), with none
@@ -676,26 +706,6 @@ struct TermFacetPanel: View {
         // Older playlists' museum facet values: shown picked, a tap takes them off.
         let legacy = tokens.filter { facet.holds($0) && $0.kind.hasPrefix("legacy-") }
         return VStack(alignment: .leading, spacing: 12) {
-            if facet.long {
-                HStack(spacing: 8) {
-                    Image(systemName: "magnifyingglass").foregroundStyle(Theme.inkSoft)
-                    TextField(facet == .style ? "Szukaj stylu" : "Szukaj tematu", text: $filter)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .submitLabel(.done)
-                    if !filter.isEmpty {
-                        Button { filter = "" } label: {
-                            Image(systemName: "xmark.circle.fill").foregroundStyle(Theme.inkSoft)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Wyczyść")
-                    }
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 9)
-                .background(Theme.card, in: RoundedRectangle(cornerRadius: 10))
-                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Theme.hairline))
-            }
             FlowLayout(spacing: 8) {
                 ForEach(legacy) { token in
                     Chip(title: token.name, selected: true) {
@@ -709,9 +719,24 @@ struct TermFacetPanel: View {
                 }
             }
             if shown.isEmpty, !wanted.isEmpty {
-                Text("Nic takiego. Wpisz to w pole wyszukiwania: znajdę to jako słowo.")
-                    .font(.footnote)
-                    .foregroundStyle(Theme.inkSoft)
+                // The words typed for the group find nothing in it: they can
+                // go to the search as a word, the group closing.
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Nic takiego w tej grupie.")
+                        .font(.footnote)
+                        .foregroundStyle(Theme.inkSoft)
+                    Button {
+                        let words = filter.trimmingCharacters(in: .whitespaces)
+                        let word = SearchToken(kind: "word", key: words, name: words)
+                        if !tokens.contains(word) { tokens.append(word) }
+                        close()
+                    } label: {
+                        Label("Szukaj „\(filter)” jako słowa", systemImage: "magnifyingglass")
+                            .font(.footnote.weight(.semibold))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Theme.ink)
+                }
             }
         }
     }
@@ -950,7 +975,7 @@ struct TermFacetPanel: View {
             .pickerStyle(.segmented)
             // Bands with the museums' works, on the panel's glass (szkic 4;
             // no counts nor notes under them, Mateusz 2026-11-08).
-            PlaceBands(tokens: $tokens, out: out)
+            PlaceBands(tokens: $tokens, out: out, filter: filter)
         }
     }
 }

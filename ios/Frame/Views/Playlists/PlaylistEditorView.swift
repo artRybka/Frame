@@ -940,7 +940,7 @@ private struct EditorSearch: ViewModifier {
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     if groupsShown {
                         TermFacetBar(
-                            tokens: tokens, museums: museums, colors: ColorTag.families + ColorTag.moods,
+                            tokens: tokens, lookup: lookup, museums: museums, colors: ColorTag.families + ColorTag.moods,
                             focus: focused, panelHeight: height * TermFacetBar.panelShare
                         )
                         .padding(.horizontal, Theme.gutter)

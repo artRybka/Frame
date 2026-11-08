@@ -39,6 +39,40 @@ final class TermLookupTests: XCTestCase {
         }
     }
 
+    /// An open group with a list takes the field's words; closed, the
+    /// search's words come back.
+    func testAGroupNarrowedByTheFieldGivesTheSearchsWordsBack() async {
+        let lookup = TermLookup()
+        lookup.text = "rembrandt"
+        lookup.narrow(.museum)
+        XCTAssertEqual(lookup.text, "")
+        XCTAssertEqual(lookup.prompt("Artysta albo słowo"), "Muzeum albo miasto")
+        lookup.text = "krak"
+        // No suggestions for a group's words, nor asking the server.
+        XCTAssertFalse(lookup.suggesting(true))
+        await lookup.lookUp(DemoBackend(), vocabulary: DemoDiscover.terms)
+        XCTAssertTrue(lookup.hits.isEmpty)
+        // Another group with a list: empty again, the search's words still held.
+        lookup.narrow(.style)
+        XCTAssertEqual(lookup.text, "")
+        XCTAssertEqual(lookup.prompt("Artysta albo słowo"), "Szukaj stylu")
+        lookup.narrow(nil)
+        XCTAssertEqual(lookup.text, "rembrandt")
+        XCTAssertEqual(lookup.prompt("Artysta albo słowo"), "Artysta albo słowo")
+        XCTAssertTrue(lookup.suggesting(true))
+
+        // The X empties the field with the held words too.
+        lookup.narrow(.subject)
+        lookup.text = "koń"
+        lookup.clear()
+        lookup.narrow(nil)
+        XCTAssertEqual(lookup.text, "")
+        // Groups without a list never take the field.
+        XCTAssertNil(TermFacet.period.fieldPrompt)
+        XCTAssertNil(TermFacet.color.fieldPrompt)
+        XCTAssertNil(TermFacet.technique.fieldPrompt)
+    }
+
     func testFoldingIgnoresCaseAndPolishLetters() {
         XCTAssertEqual(TermLookup.fold("Łódź"), "lodz")
         XCTAssertEqual(TermLookup.fold("Chełmoński"), "chelmonski")

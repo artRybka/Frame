@@ -12,6 +12,9 @@ enum LaunchRoute {
     static let scroll = UserDefaults.standard.string(forKey: "scroll")
     /// The composition's take shown first (CI screenshots of the later takes).
     static let take = UserDefaults.standard.integer(forKey: "take")
+    /// Words in the search field over an open group (CI screenshots of a
+    /// group narrowed by the field).
+    static let typed = UserDefaults.standard.string(forKey: "typed")
 }
 
 struct RootView: View {
