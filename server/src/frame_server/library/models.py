@@ -140,6 +140,11 @@ class SharperCopy(BaseModel):
     #: The copy's small picture, for the work's thumbnail when it has to be
     #: had again; "" for copies kept before it was noted (then ``url``).
     thumb_url: str = ""
+    #: Found because the work's own source gave no picture (down, or
+    #: turning us away), not because it is sharper: at night the own is
+    #: asked for again and takes its place back when it comes and is as
+    #: good (``Sharper.own_back``).
+    stand_in: bool = False
 
 
 class Item(BaseModel):

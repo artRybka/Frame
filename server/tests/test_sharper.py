@@ -67,8 +67,8 @@ def _serve(service: FrameService, web: Web) -> list[str]:
     def handler(request: httpx.Request) -> httpx.Response:
         url = str(request.url)
         asked.append(url)
-        if url in web:
-            return httpx.Response(200, content=web[url])
+        if url in web:  # nothing kept: the server is there, but fails
+            return httpx.Response(200, content=web[url]) if web[url] else httpx.Response(502)
         return httpx.Response(404)
 
     service.images.http = lambda: httpx.Client(transport=httpx.MockTransport(handler))
@@ -320,3 +320,184 @@ def test_the_work_of_the_day_gets_its_sharper_copy_before_its_page(frame: Any) -
     service.library.set_state(HISTORY_KEY, {date.today().isoformat(): own.id})
     service.daily.tick()
     assert asked == ["wmc:9"]  # the page is written from the sharper copy
+
+
+# -- stand-ins: the work's own source gives no picture ---------------------------
+
+MNK = "https://cdn-zbiory.mnk.pl/upload/multimedia/45/dd/own.jpg"
+MNK_THUMB = "https://cdn-zbiory.mnk.pl/upload/cache/multimedia_big/45/dd/own.jpg"
+
+
+def _mnk(service: FrameService, **kw: Any) -> Item:
+    kw.setdefault("title", "Dama z gronostajem")
+    kw.setdefault("artist", "Leonardo da Vinci")
+    return service.library.upsert(
+        Item(
+            id="mnk:157417",
+            kind=ItemKind.ARTWORK,
+            source="mnk",
+            source_id="157417",
+            museum="Muzeum Narodowe w Krakowie",
+            credit="Muzeum Narodowe w Krakowie, MNK XII-209",
+            classification="Painting",
+            image_url=MNK,
+            thumb_url=MNK_THUMB,
+            **kw,
+        )
+    )
+
+
+def _leonardo(n: int, **kw: Any) -> Item:
+    kw.setdefault("title", "Lady with an Ermine")
+    kw.setdefault("artist", "Leonardo da Vinci")
+    return _copy(n, **kw)
+
+
+@pytest.fixture
+def down(frame: Any) -> Any:
+    """The fake web with the MNK's image server failing every original (as
+    on 2026-11-08), its 1024 px thumbnail still there, and what is asked of
+    Commons and of every source kept."""
+    service, web, answer = frame
+    service.images.sleep = lambda seconds: None
+    web[MNK] = b""  # 502
+    web[MNK_THUMB] = _jpeg(_print(3, (1024, 1365)))
+    commons: list[Item] = []
+    asked: dict[str, list[str]] = {"commons": [], "all": []}
+
+    def search_commons(query: str, n: int) -> list[Item]:
+        asked["commons"].append(query)
+        return list(commons)
+
+    def search_all(query: str, n: int) -> tuple[int, list[Item], list[str]]:
+        asked["all"].append(query)
+        return 0, [], []
+
+    service.sharper.search_commons = search_commons
+    service.sharper.search = search_all
+    return service, web, answer, commons, asked
+
+
+def test_a_copy_from_commons_stands_in_when_the_museum_gives_no_picture(down: Any) -> None:
+    """Mateusz, 2026-11-08: the MNK's originals did not come; a card opened
+    looks on Commons first and takes the first copy of the same picture,
+    without asking the other sources."""
+    service, web, _, commons, asked = down
+    own = _mnk(service)
+    copy = _leonardo(5, width=3000, height=4000)
+    _offer(web, copy, _print(3, (3000, 4000)))
+    other = _leonardo(6, title="Lady with an Ermine (detail)")
+    _offer(web, other, _detail(_print(3, (3000, 4000))))
+    commons[:] = [other, copy]
+    assert service.sharper.soon(own).result(30) == "found"
+    stored = service.library.get(own.id)
+    assert stored is not None and stored.sharper is not None
+    assert stored.sharper.item_id == "wmc:5"
+    assert stored.sharper.stand_in
+    assert asked == {"commons": ["Dama z gronostajem vinci"], "all": []}
+    with Image.open(service.images.image_path(stored)) as img:
+        assert max(img.size) == 2560  # the copy, cut down to the frame
+
+
+def test_a_work_known_to_be_fine_gets_a_stand_in_too(down: Any) -> None:
+    """Its picture was good when the card was last opened; the original was
+    pruned since, and its source fails now."""
+    service, web, _, commons, _ = down
+    own = _mnk(service)
+    service.sharper._remember(own, "fine")
+    assert service.sharper.status(own) == "fine"
+    copy = _leonardo(5, width=3000, height=4000)
+    _offer(web, copy, _print(3, (3000, 4000)))
+    commons[:] = [copy]
+    assert service.sharper.soon(own).result(30) == "found"
+    stored = service.library.get(own.id)
+    assert stored is not None and stored.sharper is not None and stored.sharper.stand_in
+
+
+def test_other_sources_are_asked_when_commons_has_none(down: Any) -> None:
+    service, web, _, _, asked = down
+    own = _mnk(service)
+    copy = _copy(8, title="Dama z gronostajem", artist="Leonardo da Vinci", width=2400, height=3200)
+    copy = copy.model_copy(update={"id": "europeana:8", "source": "europeana"})
+    _offer(web, copy, _print(3, (2400, 3200)))
+    hits = [copy]
+    service.sharper.search = lambda query, n: (asked["all"].append(query), (1, hits, []))[1]
+    assert service.sharper.soon(own).result(30) == "found"
+    assert asked["commons"] == ["Dama z gronostajem vinci"]
+    assert asked["all"] == ["Dama z gronostajem vinci"]
+    stored = service.library.get(own.id)
+    assert stored is not None and stored.sharper is not None
+    assert stored.sharper.item_id == "europeana:8"
+
+
+def test_nothing_found_is_not_looked_for_again_at_once(down: Any) -> None:
+    service, _, _, _, asked = down
+    own = _mnk(service)
+    assert service.sharper.soon(own).result(30) == "none"
+    assert service.sharper.soon(own).result(30) == "none"
+    assert asked["commons"] == ["Dama z gronostajem vinci"]  # once
+    stored = service.library.get(own.id)
+    assert stored is not None and stored.sharper is None
+
+
+def test_a_source_that_works_needs_no_stand_in(down: Any) -> None:
+    service, web, _, _, asked = down
+    web[MNK] = _jpeg(_print(1, (3000, 2000)))
+    own = _mnk(service)
+    assert service.sharper.soon(own).result(30) == "fine"
+    assert asked == {"commons": [], "all": []}
+
+
+def test_without_a_thumbnail_only_a_certain_copy_stands_in(down: Any) -> None:
+    """Nothing to compare with: the work's own Commons file (by its record)
+    or a copy of the same title and artist will do, not a guess."""
+    service, web, _, commons, _ = down
+    web[MNK_THUMB] = b""
+    own = _mnk(service)
+    guess = _leonardo(5, width=3000, height=4000)  # another title: a guess
+    _offer(web, guess, _print(3, (3000, 4000)))
+    commons[:] = [guess]
+    assert service.sharper.soon(own).result(30) == "none"
+    certain = _leonardo(7, width=3000, height=4000)
+    _offer(web, certain, _print(3, (3000, 4000)))
+    service.sharper.commons_file = lambda item: "Lady with an Ermine.jpg"
+    service.importer.commons_file = lambda name: certain  # type: ignore[method-assign]
+    service.sharper._stood.clear()
+    assert service.sharper.soon(own).result(30) == "found"
+    stored = service.library.get(own.id)
+    assert stored is not None and stored.sharper is not None
+    assert stored.sharper.item_id == "wmc:7"
+
+
+def test_the_own_picture_comes_back_at_night(down: Any) -> None:
+    service, web, _, commons, _ = down
+    own = _mnk(service)
+    copy = _leonardo(5, width=1500, height=2000)
+    _offer(web, copy, _print(3, (1500, 2000)))
+    commons[:] = [copy]
+    assert service.sharper.soon(own).result(30) == "found"
+    assert [i.id for i in service.sharper.stand_ins()] == [own.id]
+    # Still down: the copy stays.
+    assert not service.sharper.own_back(own)
+    # The museum answers again, with a larger picture: its own is back.
+    web[MNK] = _jpeg(_print(3, (3000, 4000)))
+    assert service.sharper.own_back(own)
+    stored = service.library.get(own.id)
+    assert stored is not None and stored.sharper is None
+    assert service.sharper.stand_ins() == []
+    with Image.open(service.images.image_path(stored)) as img:
+        assert max(img.size) == 2560
+
+
+def test_a_sharper_stand_in_stays_when_the_own_comes_back(down: Any) -> None:
+    service, web, _, commons, _ = down
+    own = _mnk(service)
+    copy = _leonardo(5, width=3000, height=4000)
+    _offer(web, copy, _print(3, (3000, 4000)))
+    commons[:] = [copy]
+    assert service.sharper.soon(own).result(30) == "found"
+    web[MNK] = _jpeg(_print(3, (900, 1200)))  # back, but small
+    assert service.sharper.own_back(own)
+    stored = service.library.get(own.id)
+    assert stored is not None and stored.sharper is not None
+    assert stored.sharper.item_id == "wmc:5" and not stored.sharper.stand_in

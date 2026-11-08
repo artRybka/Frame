@@ -12,6 +12,15 @@ colours (no black-and-white plate of a painting, no colourised print), not
 a reproduction by its own description, and clearly larger or less
 squeezed. The work keeps its texts and its id; only its picture changes
 (``Item.sharper``), for the card, the frame and the study's details.
+
+When the work's own source gives no picture at all as its card opens (the
+National Museum in Kraków's image server cutting every original short,
+Mateusz 2026-11-08), a copy stands in for it: Wikimedia Commons first (the
+work's own file by its Wikidata record, then a search of Commons), and the
+first copy that is the same picture takes its place at once; only when
+Commons has none are the other sources asked. Such a copy is marked a
+stand-in (``SharperCopy.stand_in``): at night the work's own picture is
+asked for again and, when it comes and is as good, takes its place back.
 """
 
 from __future__ import annotations
@@ -19,7 +28,7 @@ from __future__ import annotations
 import logging
 import threading
 from collections import OrderedDict
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from concurrent.futures import Future
 from concurrent.futures import TimeoutError as Late
 from datetime import UTC, datetime, timedelta
@@ -87,6 +96,11 @@ THREADS = 2
 DAILY_WAIT = 300.0
 #: Works whose last look is kept in memory (also those not in the library).
 REMEMBERED = 2000
+#: A work whose own source gave no picture is looked at for a stand-in
+#: again after this (the source may be back; Commons may have it since).
+STAND_IN_AGAIN = timedelta(hours=6)
+#: Stand-ins whose work's own picture is asked for again in one night.
+BACK_A_NIGHT = 30
 #: Thumbnails made again from the copies in the works' place, once
 #: (:meth:`Sharper.thumbs_again`).
 THUMBS_KEY = "copy_thumbs"
@@ -191,6 +205,10 @@ class Sharper:
         self.search: Callable[[str, int], tuple[int, list[Item], list[str]]] = lambda query, n: (
             importer.search_all(query, n)
         )
+        #: Wikimedia Commons alone, asked first for a stand-in.
+        self.search_commons: Callable[[str, int], list[Item]] = lambda query, n: (
+            importer.search_all(query, n, keys=["wmc"])[1] if "wmc" in importer.sources() else []
+        )
         #: Where a study's details are cut (cut again from a sharper copy).
         self.details_dir = images.thumbs.parent / "details"
         self.clock: Callable[[], datetime] = _now
@@ -199,6 +217,8 @@ class Sharper:
         self._looking: dict[str, Future[Status]] = {}
         #: The last look's end, by item id: what it found, and when.
         self._known: OrderedDict[str, tuple[Status, datetime]] = OrderedDict()
+        #: When a stand-in was last looked for, by item id.
+        self._stood: OrderedDict[str, datetime] = OrderedDict()
 
     # -- what is known ---------------------------------------------------------
 
@@ -232,9 +252,11 @@ class Sharper:
 
     def soon(self, item: Item) -> Future[Status]:
         """Looks for a sharper copy in the background, unless it is known;
-        the same look for every asker while it runs."""
+        the same look for every asker while it runs. A work known to be fine
+        (or to have no sharper copy) whose original is not here is looked at
+        still: when its source gives no picture now, a copy stands in."""
         known = self.status(item)
-        if known is not None:
+        if known is not None and not (known in ("fine", "none") and self._may_stand_in(item)):
             done: Future[Status] = Future()
             done.set_result(known)
             return done
@@ -245,7 +267,7 @@ class Sharper:
             future: Future[Status] = Future()
             self._looking[item.id] = future
         threading.Thread(
-            target=self._look_then_done, args=(item, future), name="sharper", daemon=True
+            target=self._look_then_done, args=(item, future, known), name="sharper", daemon=True
         ).start()
         return future
 
@@ -257,11 +279,13 @@ class Sharper:
         except Late:
             return "looking"
 
-    def _look_then_done(self, item: Item, future: Future[Status]) -> None:
-        status: Status = "none"
+    def _look_then_done(
+        self, item: Item, future: Future[Status], known: Status | None = None
+    ) -> None:
+        status: Status = known or "none"
         try:
             with self._turns:
-                status = self._look(item)
+                status = self._look(item, known)
         except Exception:
             log.exception("sharper copy of %s", item.id)
         finally:
@@ -271,10 +295,17 @@ class Sharper:
 
     # -- looking -----------------------------------------------------------------
 
-    def _look(self, item: Item) -> Status:
-        own = self.own(item)
+    def _look(self, item: Item, known: Status | None = None) -> Status:
+        """Looks for a sharper copy, or for a stand-in when the work's own
+        source gives no picture now; ``known``: what an earlier look found
+        (the own came: it stands)."""
+        own, failing = self._own_now(item)
+        if failing:
+            return self._stand_in(item, own) if self._may_stand_in(item) else known or "none"
         if own is None:
             return "none"  # not even its thumbnail: the network, not the work
+        if known is not None:
+            return known
         if not own.weak:
             self._remember(item, "fine")
             return "fine"
@@ -300,6 +331,24 @@ class Sharper:
         self._remember(item, "none")
         return "none"
 
+    def _own_now(self, item: Item) -> tuple[Quality | None, bool]:
+        """:meth:`own`, and whether the work's own source gave no original
+        now (down, cut short, turning us away): then the quality is its
+        thumbnail's (side 0), None when not even that came."""
+        try:
+            self.images.ensure_image(item)
+        except (httpx.HTTPError, OSError) as err:
+            log.info("original of %s: %s", item.id, err)
+        else:
+            size = self.images.source_size(item)
+            return (Quality(0) if size is None else Quality.of(*size)), False
+        try:
+            self.images.ensure_thumb(item)
+        except (httpx.HTTPError, OSError) as err:
+            log.info("thumbnail of %s: %s", item.id, err)
+            return None, True
+        return Quality(0), True
+
     def own(self, item: Item) -> Quality | None:
         """The work's own picture: as its source gave it; side 0 when only its
         thumbnail can be had; None when not even that."""
@@ -311,12 +360,13 @@ class Sharper:
         size = self.images.source_size(item) if original else None
         return Quality(0) if size is None else Quality.of(*size)
 
-    def candidates(self, item: Item) -> list[Item]:
+    def candidates(self, item: Item, commons: bool = True) -> list[Item]:
         """Other copies of the work to compare, likeliest first: its Commons
-        file, the catalogue's copies, then what the sources find for its
-        title and artist, the largest first."""
+        file (unless ``commons`` is False: asked already), the catalogue's
+        copies, then what the sources find for its title and artist, the
+        largest first."""
         found: list[Item] = []
-        if self.commons_file is not None and (name := self.commons_file(item)):
+        if commons and self.commons_file is not None and (name := self.commons_file(item)):
             try:
                 if (copy := self.importer.commons_file(name)) is not None:
                     found.append(copy)
@@ -391,9 +441,134 @@ class Sharper:
         except OSError:
             return False
 
+    # -- standing in ---------------------------------------------------------------
+
+    def _may_stand_in(self, item: Item) -> bool:
+        """Whether ``item`` may want a stand-in: a museum work with no copy
+        in its place, whose original is not here, not looked for lately."""
+        if item.kind != ItemKind.ARTWORK or item.look is not None:
+            return False
+        if (self.library.get(item.id) or item).sharper is not None:
+            return False
+        if self.images.has_image(item):
+            return False
+        with self._lock:
+            last = self._stood.get(item.id)
+        return last is None or self.clock() - last >= STAND_IN_AGAIN
+
+    def _stand_in(self, item: Item, own: Quality | None) -> Status:
+        """A copy in place of the work's picture, which its source does not
+        give now: the first that is the same picture, Commons first.
+        ``own``: the thumbnail's quality (side 0) when it came, else None:
+        then only a copy that is certainly this work will do (its own file
+        by its record, or the same title, artist and shape)."""
+        with self._lock:
+            self._stood[item.id] = self.clock()
+            self._stood.move_to_end(item.id)
+            while len(self._stood) > REMEMBERED:
+                self._stood.popitem(last=False)
+        log.info("no picture of %s from its source; looking for a stand-in", item.id)
+        least = own or Quality(0)
+        seen: set[str] = {item.id}
+        downloaded = 0
+        for certain, copy in self._stand_ins(item):
+            if downloaded == DOWNLOADED:
+                break
+            if copy.id in seen or copy.source == item.source or not self._eligible(item, copy):
+                continue  # the own source's other copies come from where it fails
+            seen.add(copy.id)
+            if own is not None:
+                if not self.same_picture(item, copy):
+                    continue
+            elif not (certain or same_work(item, copy)):
+                continue
+            downloaded += 1
+            try:
+                img = self.images.sample(display_copy(copy))
+            except (httpx.HTTPError, OSError) as err:
+                log.info("stand-in %s of %s: %s", copy.id, item.id, err)
+                continue
+            if not Quality.of_image(img).better(least):
+                log.info("stand-in %s of %s is too small (%s)", copy.id, item.id, img.size)
+                continue
+            self._adopt(item, copy, img, stand_in=True)
+            return "found"
+        log.info("no stand-in for %s anywhere", item.id)
+        return "none"
+
+    def _stand_ins(self, item: Item) -> Iterator[tuple[bool, Item]]:
+        """Copies to stand in for ``item``'s picture, in the order asked:
+        its own file on Commons (certain: found by its record), what a
+        search of Commons finds, then the catalogue's copies and every
+        other source. Each is asked only when the ones before had none."""
+        if self.commons_file is not None and (name := self.commons_file(item)):
+            try:
+                if (copy := self.importer.commons_file(name)) is not None:
+                    yield True, copy
+            except (httpx.HTTPError, ValueError) as err:
+                log.info("Commons file of %s: %s", item.id, err)
+        if not item.title.strip():
+            return
+        query = f"{item.title[:80]} {surname(item.artist)}".strip()
+        try:
+            hits = self.search_commons(query, HITS)
+        except (httpx.HTTPError, ValueError) as err:
+            log.info("Commons on %r: %s", query, err)
+            hits = []
+        for copy in sorted(
+            (h for h in hits if self._by_artist(item, h)),
+            key=lambda h: -max(h.width or 0, h.height or 0),
+        ):
+            yield False, copy
+        for copy in self.candidates(item, commons=False):
+            yield False, copy
+
+    def own_back(self, item: Item) -> bool:
+        """The work's own picture asked for again in place of a stand-in:
+        when it comes and is as good as the copy, it takes its place back;
+        when the copy is better, the copy stays as a sharper one. True when
+        the own came."""
+        stored = self.library.get(item.id) or item
+        copy = stored.sharper
+        if copy is None or not copy.stand_in:
+            return False
+        try:
+            img = self.images.sample(own_copy(stored))
+        except (httpx.HTTPError, OSError) as err:
+            log.info("own picture of %s still not there: %s", item.id, err)
+            return False
+        own = Quality.of_image(img)
+        if Quality(max(copy.width, copy.height)).better(own):
+            kept = copy.model_copy(update={"stand_in": False})
+            self.library.update(item.id, sharper=kept)
+            log.info("own picture of %s is back, the copy %s is sharper", item.id, copy.item_id)
+            return True
+        stored = self.library.update(item.id, sharper=None) or stored
+        self.images.adopt(stored, img)
+        self._measure_again(stored)
+        self._cut_again(item)
+        self._remember(stored, "fine" if not own.weak else "none")
+        log.info("own picture of %s is back in place of %s", item.id, copy.item_id)
+        return True
+
+    def stand_ins(self) -> list[Item]:
+        """The library's works whose picture a stand-in is."""
+        return [
+            item
+            for item in self.library.all_items()
+            if item.sharper is not None and item.sharper.stand_in
+        ]
+
     # -- keeping it ----------------------------------------------------------------
 
-    def _adopt(self, item: Item, copy: Item, img: Image.Image, chosen: bool = False) -> Item:
+    def _adopt(
+        self,
+        item: Item,
+        copy: Item,
+        img: Image.Image,
+        chosen: bool = False,
+        stand_in: bool = False,
+    ) -> Item:
         stored = self.library.get(item.id)
         if stored is None:  # a museum work only looked at: kept for a while
             stored = self.importer.add(item.model_copy(update={"pooled": True}))
@@ -408,6 +583,7 @@ class Sharper:
             height=height,
             chosen=chosen,
             thumb_url=copy.thumb_url,
+            stand_in=stand_in,
         )
         updated = self.library.update(item.id, sharper=sharper) or stored
         self.images.adopt(updated, img)
@@ -416,7 +592,7 @@ class Sharper:
         self._remember(item, "chosen" if chosen else "found", copy.id, own)
         log.info(
             "%s copy of %s: %s (%d×%d) from %s",
-            "chosen" if chosen else "sharper",
+            "chosen" if chosen else "stand-in" if stand_in else "sharper",
             item.id,
             copy.id,
             width,
