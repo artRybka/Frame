@@ -7,6 +7,9 @@
   Gdy któreś z tych muzeów nie odpowiada, miniatury, karta i ramka biorą
   ten sam obraz z Commons zamiast zostawiać puste miejsce. Commons ma pliki
   dla ok. 120 tys. ich dzieł. Getty i Wellcome nie mają takiego powiązania.
+- Obraz zastępczy zostaje na stałe: serwer nie pyta już w nocy muzeum
+  o jego własny obraz. Własny obraz muzeum można przywrócić ręcznie na
+  karcie dzieła („Przywróć zdjęcie muzeum”).
 
 ## 1.123.0
 

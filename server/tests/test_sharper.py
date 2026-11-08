@@ -467,37 +467,3 @@ def test_without_a_thumbnail_only_a_certain_copy_stands_in(down: Any) -> None:
     stored = service.library.get(own.id)
     assert stored is not None and stored.sharper is not None
     assert stored.sharper.item_id == "wmc:7"
-
-
-def test_the_own_picture_comes_back_at_night(down: Any) -> None:
-    service, web, _, commons, _ = down
-    own = _mnk(service)
-    copy = _leonardo(5, width=1500, height=2000)
-    _offer(web, copy, _print(3, (1500, 2000)))
-    commons[:] = [copy]
-    assert service.sharper.soon(own).result(30) == "found"
-    assert [i.id for i in service.sharper.stand_ins()] == [own.id]
-    # Still down: the copy stays.
-    assert not service.sharper.own_back(own)
-    # The museum answers again, with a larger picture: its own is back.
-    web[MNK] = _jpeg(_print(3, (3000, 4000)))
-    assert service.sharper.own_back(own)
-    stored = service.library.get(own.id)
-    assert stored is not None and stored.sharper is None
-    assert service.sharper.stand_ins() == []
-    with Image.open(service.images.image_path(stored)) as img:
-        assert max(img.size) == 2560
-
-
-def test_a_sharper_stand_in_stays_when_the_own_comes_back(down: Any) -> None:
-    service, web, _, commons, _ = down
-    own = _mnk(service)
-    copy = _leonardo(5, width=3000, height=4000)
-    _offer(web, copy, _print(3, (3000, 4000)))
-    commons[:] = [copy]
-    assert service.sharper.soon(own).result(30) == "found"
-    web[MNK] = _jpeg(_print(3, (900, 1200)))  # back, but small
-    assert service.sharper.own_back(own)
-    stored = service.library.get(own.id)
-    assert stored is not None and stored.sharper is not None
-    assert stored.sharper.item_id == "wmc:5" and not stored.sharper.stand_in

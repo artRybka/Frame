@@ -19,8 +19,9 @@ Mateusz 2026-11-08), a copy stands in for it: Wikimedia Commons first (the
 work's own file by its Wikidata record, then a search of Commons), and the
 first copy that is the same picture takes its place at once; only when
 Commons has none are the other sources asked. Such a copy is marked a
-stand-in (``SharperCopy.stand_in``): at night the work's own picture is
-asked for again and, when it comes and is as good, takes its place back.
+stand-in (``SharperCopy.stand_in``) and stays: the museum is not asked for
+its own picture again (Mateusz, 2026-11-08: the picture is on the server's
+disk already; "Przywróć zdjęcie muzeum" brings the own back by hand).
 """
 
 from __future__ import annotations
@@ -99,8 +100,6 @@ REMEMBERED = 2000
 #: A work whose own source gave no picture is looked at for a stand-in
 #: again after this (the source may be back; Commons may have it since).
 STAND_IN_AGAIN = timedelta(hours=6)
-#: Stand-ins whose work's own picture is asked for again in one night.
-BACK_A_NIGHT = 30
 #: Thumbnails made again from the copies in the works' place, once
 #: (:meth:`Sharper.thumbs_again`).
 THUMBS_KEY = "copy_thumbs"
@@ -522,42 +521,6 @@ class Sharper:
             yield False, copy
         for copy in self.candidates(item, commons=False):
             yield False, copy
-
-    def own_back(self, item: Item) -> bool:
-        """The work's own picture asked for again in place of a stand-in:
-        when it comes and is as good as the copy, it takes its place back;
-        when the copy is better, the copy stays as a sharper one. True when
-        the own came."""
-        stored = self.library.get(item.id) or item
-        copy = stored.sharper
-        if copy is None or not copy.stand_in:
-            return False
-        try:
-            img = self.images.sample(own_copy(stored))
-        except (httpx.HTTPError, OSError) as err:
-            log.info("own picture of %s still not there: %s", item.id, err)
-            return False
-        own = Quality.of_image(img)
-        if Quality(max(copy.width, copy.height)).better(own):
-            kept = copy.model_copy(update={"stand_in": False})
-            self.library.update(item.id, sharper=kept)
-            log.info("own picture of %s is back, the copy %s is sharper", item.id, copy.item_id)
-            return True
-        stored = self.library.update(item.id, sharper=None) or stored
-        self.images.adopt(stored, img)
-        self._measure_again(stored)
-        self._cut_again(item)
-        self._remember(stored, "fine" if not own.weak else "none")
-        log.info("own picture of %s is back in place of %s", item.id, copy.item_id)
-        return True
-
-    def stand_ins(self) -> list[Item]:
-        """The library's works whose picture a stand-in is."""
-        return [
-            item
-            for item in self.library.all_items()
-            if item.sharper is not None and item.sharper.stand_in
-        ]
 
     # -- keeping it ----------------------------------------------------------------
 
