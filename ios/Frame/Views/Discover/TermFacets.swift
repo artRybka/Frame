@@ -501,10 +501,12 @@ struct TermFacetBar: View {
         } label: {
             // Picked, the symbol stands for the group's name: "✎ Olej +1";
             // Kolor shows the picked colours' dots instead, Technika the
-            // picked techniques' works in small circles.
+            // picked techniques' works in small circles, Styl the picked
+            // styles' works in small frames.
             HStack(spacing: 5) {
                 let swatches = facet == .color ? picked.map(\.key) : []
                 let works = facet == .technique ? picked.compactMap { TechniqueArt.asset($0.key) } : []
+                let covers = facet == .style ? picked.compactMap { StyleArt.asset($0.key) } : []
                 if !swatches.isEmpty {
                     HStack(spacing: 3) {
                         ForEach(Array(swatches.prefix(3)), id: \.self) { tag in
@@ -520,6 +522,13 @@ struct TermFacetBar: View {
                                 .frame(width: 17, height: 17)
                                 .clipShape(Circle())
                                 .overlay(Circle().stroke(.white.opacity(0.75), lineWidth: 1.5))
+                        }
+                    }
+                    .accessibilityHidden(true)
+                } else if !covers.isEmpty {
+                    HStack(spacing: -4) {
+                        ForEach(Array(covers.prefix(3)), id: \.self) { asset in
+                            StyleCover(asset: asset, width: 14, height: 18, moulding: 1.5, shadow: false)
                         }
                     }
                     .accessibilityHidden(true)
@@ -670,7 +679,8 @@ struct TermFacetPanel: View {
     @ViewBuilder private var content: some View {
         switch facet {
         case .technique: techniques
-        case .style, .subject: terms
+        case .style: styles
+        case .subject: terms
         case .period: PeriodPicker(tokens: $tokens, filter: filter)
         case .color: palette
         case .museum: museumList
@@ -697,23 +707,27 @@ struct TermFacetPanel: View {
         text.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
     }
 
-    private var terms: some View {
-        let all = model.vocabulary.filter { $0.kind == facet.rawValue }
+    /// The group's terms the search field's words fit (all with none).
+    private func matching(_ all: [TermInfo]) -> [TermInfo] {
         let wanted = fold(filter.trimmingCharacters(in: .whitespaces))
-        let shown = wanted.isEmpty ? all : all.filter { term in
+        guard !wanted.isEmpty else { return all }
+        return all.filter { term in
             fold(term.name).contains(wanted) || term.words.contains { fold($0).contains(wanted) }
         }
-        // Older playlists' museum facet values: shown picked, a tap takes them off.
-        let legacy = tokens.filter { facet.holds($0) && $0.kind.hasPrefix("legacy-") }
+    }
+
+    /// Older playlists' museum facet values: shown picked, a tap takes them off.
+    private var legacy: [SearchToken] {
+        tokens.filter { facet.holds($0) && $0.kind.hasPrefix("legacy-") }
+    }
+
+    private var terms: some View {
+        let shown = matching(model.vocabulary.filter { $0.kind == facet.rawValue })
         return VStack(alignment: .leading, spacing: 12) {
             // Temat: each subject with its drawing, the rows centred
-            // (PLAN 3.3zzz58).
+            // (PLAN 3.3zzz59).
             FlowLayout(spacing: 8, centred: facet == .subject) {
-                ForEach(legacy) { token in
-                    Chip(title: token.name, selected: true) {
-                        tokens.removeAll { $0.id == token.id }
-                    }
-                }
+                legacyChips
                 ForEach(shown) { term in
                     let selected = picked(term.kind, term.key)
                     if facet == .subject, let drawing = TopicArt.drawing(term.key) {
@@ -727,25 +741,104 @@ struct TermFacetPanel: View {
                     }
                 }
             }
-            if shown.isEmpty, !wanted.isEmpty {
-                // The words typed for the group find nothing in it: they can
-                // go to the search as a word, the group closing.
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Nic takiego w tej grupie.")
-                        .font(.footnote)
-                        .foregroundStyle(Theme.inkSoft)
-                    Button {
-                        let words = filter.trimmingCharacters(in: .whitespaces)
-                        let word = SearchToken(kind: "word", key: words, name: words)
-                        if !tokens.contains(word) { tokens.append(word) }
-                        close()
-                    } label: {
-                        Label("Szukaj „\(filter)” jako słowa", systemImage: "magnifyingglass")
-                            .font(.footnote.weight(.semibold))
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(Theme.ink)
+            if shown.isEmpty { nothingFound }
+        }
+    }
+
+    @ViewBuilder private var legacyChips: some View {
+        ForEach(legacy) { token in
+            Chip(title: token.name, selected: true) {
+                tokens.removeAll { $0.id == token.id }
+            }
+        }
+    }
+
+    /// The words typed for the group find nothing in it: they can go to the
+    /// search as a word, the group closing.
+    @ViewBuilder private var nothingFound: some View {
+        let words = filter.trimmingCharacters(in: .whitespaces)
+        if !words.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Nic takiego w tej grupie.")
+                    .font(.footnote)
+                    .foregroundStyle(Theme.inkSoft)
+                Button {
+                    let word = SearchToken(kind: "word", key: words, name: words)
+                    if !tokens.contains(word) { tokens.append(word) }
+                    close()
+                } label: {
+                    Label("Szukaj „\(filter)” jako słowa", systemImage: "magnifyingglass")
+                        .font(.footnote.weight(.semibold))
                 }
+                .buttonStyle(.plain)
+                .foregroundStyle(Theme.ink)
+            }
+        }
+    }
+
+    // MARK: Styles
+
+    /// The Styl sheet (PLAN 3.3zzz61): a small framed work for each style,
+    /// in light oak, its years under its name, on five shelves in the order
+    /// of time that scroll sideways (`StyleArt.shelves`). A style the app
+    /// has no work for (a new one on the server) is a chip under them.
+    private var styles: some View {
+        let shown = matching(model.vocabulary.filter { $0.kind == "style" })
+        let shelves = StyleArt.shelves.compactMap { shelf -> StyleArt.Shelf? in
+            let terms = shelf.keys.compactMap { key in shown.first { $0.key == key } }
+            return terms.isEmpty ? nil : StyleArt.Shelf(title: shelf.title, span: shelf.span, terms: terms)
+        }
+        let rest = shown.filter { StyleArt.asset($0.key) == nil }
+        return VStack(alignment: .leading, spacing: 6) {
+            ForEach(shelves, id: \.title) { shelf in
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Eyebrow(shelf.title)
+                    Text("· \(shelf.span)")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.inkSoft)
+                }
+                .padding(.leading, 4)
+                styleShelf(shelf.terms)
+            }
+            if !rest.isEmpty || !legacy.isEmpty {
+                FlowLayout(spacing: 8) {
+                    legacyChips
+                    ForEach(rest) { term in
+                        Chip(title: term.name, selected: picked(term.kind, term.key)) {
+                            toggle(term.kind, term.key, term.name)
+                        }
+                    }
+                }
+                .padding(.top, 6)
+            }
+            if shown.isEmpty { nothingFound }
+        }
+    }
+
+    /// One shelf, as wide as the panel (past its margins), scrolled at
+    /// first to its first picked style.
+    private func styleShelf(_ terms: [TermInfo]) -> some View {
+        let first = terms.first { picked($0.kind, $0.key) }?.key
+        return ScrollViewReader { proxy in
+            ScrollView(.horizontal) {
+                HStack(alignment: .top, spacing: 0) {
+                    ForEach(terms) { term in
+                        if let asset = StyleArt.asset(term.key) {
+                            StyleFrame(key: term.key, name: term.name, asset: asset,
+                                       picked: picked(term.kind, term.key)) {
+                                withAnimation(.snappy(duration: 0.25)) { toggle(term.kind, term.key, term.name) }
+                            }
+                            .id(term.key)
+                        }
+                    }
+                }
+                .padding(.bottom, 8)
+            }
+            .scrollIndicators(.hidden)
+            .contentMargins(.horizontal, 12, for: .scrollContent)
+            .padding(.horizontal, -18)
+            .onAppear {
+                if let first { proxy.scrollTo(first, anchor: .center) }
             }
         }
     }
@@ -1430,6 +1523,173 @@ enum TechniqueArt {
 /// A technique in the Technika sheet: a work in a circle, picked with a
 /// ring like a colour's in the Kolor sheet (Mateusz 2026-11-06, C2), its
 /// name under it.
+/// The works that stand for the styles in the Styl sheet and on its
+/// button, and the sheet's shelves (Mateusz 2026-11-08): public-domain
+/// museum images in the app's assets ("style-rococo": Fragonard's Swing),
+/// the years of each style, the shelves in the order of time.
+enum StyleArt {
+    struct Shelf {
+        let title: String
+        let span: String
+        let keys: [String]
+        /// The sheet's: the styles on it the search field's words fit.
+        var terms: [TermInfo] = []
+
+        init(title: String, span: String, keys: [String]) {
+            self.title = title
+            self.span = span
+            self.keys = keys
+        }
+
+        init(title: String, span: String, terms: [TermInfo]) {
+            self.title = title
+            self.span = span
+            keys = terms.map(\.key)
+            self.terms = terms
+        }
+    }
+
+    static let shelves: [Shelf] = [
+        Shelf(title: "Dawni mistrzowie", span: "XIV–XVIII w.", keys: [
+            "style:gothic", "style:renaissance", "style:mannerism", "style:dutch-golden-age", "style:baroque",
+            "style:rococo", "style:neoclassicism",
+        ]),
+        Shelf(title: "Romantyzm i realizm", span: "1790–1900", keys: [
+            "style:romanticism", "style:hudson-river", "style:barbizon", "style:academic", "style:orientalism",
+            "style:realism", "style:pre-raphaelite", "style:munich-school",
+        ]),
+        Shelf(title: "Przełom wieków", span: "1867–1918", keys: [
+            "style:impressionism", "style:japonisme", "style:tonalism", "style:symbolism", "style:pointillism",
+            "style:post-impressionism", "style:nabis", "style:art-nouveau", "style:young-poland",
+        ]),
+        Shelf(title: "Awangarda", span: "1904–1940", keys: [
+            "style:fauvism", "style:expressionism", "style:cubism", "style:futurism", "style:abstraction",
+            "style:constructivism", "style:dada", "style:de-stijl", "style:bauhaus", "style:new-objectivity",
+            "style:surrealism", "style:art-deco",
+        ]),
+        Shelf(title: "Japonia", span: "1600–1960", keys: ["style:rinpa", "style:ukiyo-e", "style:shin-hanga"]),
+    ]
+
+    /// When each style was, under its name.
+    static let years: [String: String] = [
+        "style:gothic": "1250–1500", "style:renaissance": "1400–1600", "style:dutch-golden-age": "1600–1690",
+        "style:baroque": "1600–1750", "style:rococo": "1720–1780", "style:neoclassicism": "1760–1830",
+        "style:romanticism": "1790–1850", "style:hudson-river": "1825–1875", "style:academic": "1830–1900",
+        "style:realism": "1840–1880", "style:pre-raphaelite": "1848–1900", "style:impressionism": "1867–1890",
+        "style:tonalism": "1880–1915", "style:symbolism": "1880–1910", "style:post-impressionism": "1886–1905",
+        "style:nabis": "1888–1900", "style:art-nouveau": "1890–1910", "style:young-poland": "1890–1918",
+        "style:fauvism": "1904–1908", "style:expressionism": "1905–1925", "style:cubism": "1907–1920",
+        "style:abstraction": "od 1910", "style:constructivism": "1913–1930", "style:de-stijl": "1917–1931",
+        "style:bauhaus": "1919–1933", "style:art-deco": "1920–1940", "style:ukiyo-e": "1660–1900",
+        "style:shin-hanga": "od 1915",
+        "style:mannerism": "1520–1600", "style:barbizon": "1830–1870", "style:orientalism": "1830–1900",
+        "style:munich-school": "1860–1900", "style:japonisme": "1860–1910", "style:pointillism": "1884–1910",
+        "style:futurism": "1909–1916", "style:dada": "1916–1924", "style:new-objectivity": "1919–1933",
+        "style:surrealism": "od 1924", "style:rinpa": "1600–1870",
+    ]
+
+    /// Where a long name breaks under its small frame.
+    private static let lines: [String: String] = [
+        "style:post-impressionism": "Post-\nimpresjonizm",
+        "style:constructivism": "Konstruktywizm\ni\u{00A0}suprematyzm",
+        "style:hudson-river": "Szkoła znad\nrzeki Hudson",
+        "style:dutch-golden-age": "Złoty wiek\nholenderski",
+        "style:young-poland": "Młoda\nPolska",
+        "style:barbizon": "Szkoła z\nBarbizonu",
+        "style:munich-school": "Szkoła\nmonachijska",
+        "style:new-objectivity": "Nowa\nRzeczowość",
+    ]
+
+    private static let drawn = Set(shelves.flatMap(\.keys))
+
+    /// The asset's name for a style, nil for one with no work.
+    static func asset(_ key: String) -> String? {
+        guard drawn.contains(key) else { return nil }
+        return "style-\(key.dropFirst("style:".count))"
+    }
+
+    /// The name as it stands under the frame.
+    static func label(_ key: String, name: String) -> String {
+        lines[key] ?? TechniqueSwatch.bound(name)
+    }
+}
+
+/// A style's work in its light-oak frame: a 3 pt moulding and a soft
+/// shadow, like a small picture on the wall; on the Styl button smaller,
+/// with no shadow.
+struct StyleCover: View {
+    let asset: String
+    var width: CGFloat = 50
+    var height: CGFloat = 64
+    var moulding: CGFloat = 3
+    var shadow = true
+
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        Image(asset)
+            .resizable()
+            .scaledToFill()
+            .frame(width: width - 2 * moulding, height: height - 2 * moulding)
+            .clipped()
+            .overlay(Rectangle().strokeBorder(.black.opacity(0.3), lineWidth: 0.5))
+            .padding(moulding)
+            .background(Theme.oak)
+            .shadow(color: Self.shade.opacity(shadow ? (scheme == .dark ? 0.6 : 0.3) : 0), radius: 2.5, y: 2)
+    }
+
+    private static let shade = Color(red: 30 / 255, green: 20 / 255, blue: 10 / 255)
+}
+
+/// A style in the Styl sheet: its framed work, a square ink ring around it
+/// when picked, its name and years under it.
+struct StyleFrame: View {
+    let key: String
+    let name: String
+    let asset: String
+    let picked: Bool
+    let action: () -> Void
+
+    static let width: CGFloat = 76
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 0) {
+                ZStack {
+                    if picked {
+                        RoundedRectangle(cornerRadius: 3)
+                            .strokeBorder(Theme.ink, lineWidth: 2.5)
+                            .transition(.opacity)
+                    }
+                    StyleCover(asset: asset)
+                }
+                .frame(width: 58, height: 72)
+                .padding(.top, 2)
+                Text(StyleArt.label(key, name: name))
+                    .font(.system(size: 11, weight: picked ? .semibold : .regular))
+                    .foregroundStyle(picked ? Theme.ink : Theme.inkSoft)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.85)
+                    .padding(.top, 4)
+                if let years = StyleArt.years[key] {
+                    Text(years)
+                        .font(.system(size: 10.5))
+                        .monospacedDigit()
+                        .foregroundStyle(Theme.inkSoft.opacity(0.8))
+                        .padding(.top, 1)
+                }
+            }
+            .frame(width: Self.width)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .sensoryFeedback(.selection, trigger: picked)
+        .accessibilityLabel(StyleArt.years[key].map { "\(name), \($0)" } ?? name)
+        .accessibilityAddTraits(picked ? .isSelected : [])
+    }
+}
+
 struct TechniqueSwatch: View {
     let name: String
     let asset: String

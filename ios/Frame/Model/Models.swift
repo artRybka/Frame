@@ -687,7 +687,7 @@ struct DisplayProgress: Codable, Hashable, Sendable {
     var title: String
     var fraction: Double
     /// Of the current phase alone, so the bar fills one part per phase
-    /// (1.127.0+; nil from older servers).
+    /// (1.127.1+; nil from older servers).
     var phaseFraction: Double? = nil
     var secondsLeft: Int?
     var startedAt: String?

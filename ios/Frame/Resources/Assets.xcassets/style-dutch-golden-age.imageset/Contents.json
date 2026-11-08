@@ -1,0 +1,12 @@
+{
+  "images" : [
+    {
+      "filename" : "style-dutch-golden-age.jpg",
+      "idiom" : "universal"
+    }
+  ],
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
+  }
+}
