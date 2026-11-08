@@ -74,7 +74,7 @@ actor DemoBackend: FrameBackend {
     )
     private var demoAsleep = false
     /// The picture "on its way" to the pretend frame, for the progress bar.
-    private var run: (title: String, start: Date)?
+    private var run: (title: String, itemID: String?, start: Date)?
     /// Demo stages: 14 s in all, where a real panel takes about a minute.
     private static let runStages: [(stage: String, phase: String, seconds: Double)] = [
         ("rendering", "processing", 2.5), ("sending", "loading", 1), ("downloading", "loading", 1.5),
@@ -403,13 +403,13 @@ actor DemoBackend: FrameBackend {
     private var runElapsed: Double? { run.map { Date.now.timeIntervalSince($0.start) } }
 
     /// A picture on its way to the frame: drawn with the settings as they are now.
-    private func startRun(_ title: String) {
-        run = (title: title, start: Date.now)
+    private func startRun(_ title: String, itemID: String? = nil) {
+        run = (title: title, itemID: itemID, start: Date.now)
         shared.shown = settingsValue
     }
 
     private func startRun(itemID: String?) {
-        startRun(items.first { $0.id == itemID }?.title ?? "")
+        startRun(items.first { $0.id == itemID }?.title ?? "", itemID: itemID)
     }
 
     func progress() async throws -> DisplayProgress {
@@ -420,10 +420,14 @@ actor DemoBackend: FrameBackend {
         for step in Self.runStages {
             end += step.seconds
             if elapsed < end {
+                // The phase's own share: its stages from the first to the last.
+                let before = Self.runStages.prefix { $0.phase != step.phase }.reduce(0) { $0 + $1.seconds }
+                let length = Self.runStages.filter { $0.phase == step.phase }.reduce(0) { $0 + $1.seconds }
                 return DisplayProgress(
                     stage: step.stage, phase: step.phase, active: true, title: run.title,
-                    fraction: elapsed / total, secondsLeft: Int((total - elapsed).rounded(.up)),
-                    startedAt: stamp, origin: "app"
+                    fraction: elapsed / total, phaseFraction: (elapsed - before) / length,
+                    secondsLeft: Int((total - elapsed).rounded(.up)),
+                    startedAt: stamp, origin: "app", itemId: run.itemID
                 )
             }
         }

@@ -719,6 +719,23 @@ final class FrameAPITests: XCTestCase {
         XCTAssertEqual(progress.stageLabel, "Obraz poczeka, aż ramka się obudzi")
     }
 
+    func testEachPhaseFillsItsOwnPart() throws {
+        let json = #"{"stage": "refreshing", "phase": "displaying", "active": true, "title": "Uliczka", "fraction": 0.7, "phase_fraction": 0.25}"#
+        let progress = try LiveBackend.decoder().decode(DisplayProgress.self, from: Data(json.utf8))
+        XCTAssertEqual(progress.stageLabel, "Ramka rysuje obraz")
+        XCTAssertEqual(DisplayProgress.phases.map(\.label), ["Przygotowanie", "Wysyłanie", "Rysowanie"])
+        XCTAssertEqual(progress.phaseFill(0), 1)
+        XCTAssertEqual(progress.phaseFill(1), 1)
+        XCTAssertEqual(progress.phaseFill(2), 0.25, accuracy: 0.001)
+        // An older server: the whole way's share stands in for the phase's.
+        let older = DisplayProgress(stage: "rendering", phase: "processing", active: true, title: "", fraction: 0.05)
+        XCTAssertEqual(older.phaseFill(0), 0.05, accuracy: 0.001)
+        XCTAssertEqual(older.phaseFill(2), 0)
+        // The faint print covers the old picture first, and is whole at the end.
+        XCTAssertEqual(FrameDevelop.developed(at: 0), FrameDevelop.faint, accuracy: 0.001)
+        XCTAssertEqual(FrameDevelop.developed(at: 1), 1, accuracy: 0.001)
+    }
+
     func testPanelAddressChecks() {
         XCTAssertEqual(PanelAddress.host(" http://203.0.113.152/ "), "203.0.113.152")
         XCTAssertNil(PanelAddress.host("203.0.113.152; rm"))

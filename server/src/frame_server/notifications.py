@@ -159,7 +159,7 @@ SEND_LABELS = {
     "sending": "Łączę się z ramką",
     "waking": "Budzę ramkę",
     "downloading": "Ramka pobiera obraz",
-    "refreshing": "Ramka odświeża ekran",
+    "refreshing": "Ramka rysuje obraz",
     "done": "Obraz jest na ramce",
     "waiting": "Obraz poczeka, aż ramka się obudzi",
     "failed": "Nie udało się wysłać obrazu",
