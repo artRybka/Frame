@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.123.5
+
+- Podpis na dziele: obie linie karteczki są wyrównane do prawej
+  (chorągiewka), a podpis, na karteczce i pod dziełem, jest bez daty.
+  Tryb Opis bez zmian.
+
 ## 1.123.4
 
 - Jeden artysta to jeden wiersz w podpowiedziach Szukaj, choć muzea zapisują

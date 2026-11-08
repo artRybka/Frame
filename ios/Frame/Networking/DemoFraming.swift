@@ -52,13 +52,13 @@ enum DemoFraming {
         id.replacingOccurrences(of: ":", with: "_").replacingOccurrences(of: "/", with: "_")
     }
 
-    /// Museum-label text, as the server's `caption_for`.
+    /// Museum-label text, as the server's `caption_for(dated=False)`: the
+    /// label on the frame goes without the date.
     static func caption(for item: Item) -> String {
         if item.kind == .photo {
             return [item.displayTitle, item.photoLine].filter { !$0.isEmpty }.joined(separator: " · ")
         }
-        let text = [item.artist, item.title].filter { !$0.isEmpty }.joined(separator: " — ")
-        return item.dateText.isEmpty ? text : "\(text), \(item.dateText)"
+        return [item.artist, item.title].filter { !$0.isEmpty }.joined(separator: " — ")
     }
 
     /// What "Opis" prints, as the server's `text_block_for`.
@@ -465,6 +465,7 @@ enum DemoFraming {
         let size = captionSize(canvas)
         let pad = CGSize(width: (size * 0.9).rounded(), height: (size * 0.55).rounded())
         let style = NSMutableParagraphStyle()
+        style.alignment = .right  // flush right, ragged left
         style.lineBreakMode = .byTruncatingTail
         let attributes: [NSAttributedString.Key: Any] = [
             .font: UIFont.systemFont(ofSize: size),
