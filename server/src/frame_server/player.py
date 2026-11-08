@@ -209,12 +209,14 @@ def hold_from(spec: str | int | None) -> Hold | None:
     return Hold(until=(utcnow() + timedelta(minutes=minutes)).isoformat(timespec="seconds"))
 
 
-def caption_for(item: Item, polish: PolishText | None = None) -> str:
+def caption_for(item: Item, polish: PolishText | None = None, dated: bool = True) -> str:
+    """ "Artist — Title, date"; the label on the frame goes without the date
+    (``dated=False``, Mateusz 2026-11-08)."""
     if item.kind == ItemKind.PHOTO:
         return " · ".join(p for p in (photo_title(item), photo_line(item)) if p)
     parts = [item.artist, polish.title if polish else item.title]
     text = " — ".join(p for p in parts if p)
-    date = (polish.date if polish else "") or item.date_text
+    date = ((polish.date if polish else "") or item.date_text) if dated else ""
     return f"{text}, {date}" if date else text
 
 
@@ -686,7 +688,7 @@ class Player:
         polish = self.polish(item, settings)
         if pres.fit == Fit.DESCRIPTION:
             base.text = text_block_for(item, polish)
-        base.caption = caption_for(item, polish) if pres.label else None
+        base.caption = caption_for(item, polish, dated=False) if pres.label else None
         return base
 
     # -- Polish texts --------------------------------------------------------

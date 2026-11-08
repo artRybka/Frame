@@ -287,6 +287,17 @@ def test_fill_puts_the_caption_on_a_card_on_the_picture() -> None:
     assert h2 > h + 30 and w2 <= 1440 * 0.6  # a second line, same width limit
     _, lines = card_layout(CANVAS, plan.card_at, "Someone — " + "Long title " * 60)
     assert lines[0] == "Someone" and lines[1].endswith("…")
+    # Flush right: both lines end at the card's right padding.
+    from frame_server.imaging.caption import card_masks
+
+    text = "Rembrandt van Rijn — Portret mężczyzny w wysokim kapeluszu"
+    (x3, y3, w3, h3), _ = card_layout((1440, 2560), upright.card_at, text)
+    _, letters = card_masks((1440, 2560), upright.card_at, text)
+    rows = letters[y3 : y3 + h3, x3 : x3 + w3]
+    top, bottom = rows[: h3 // 2], rows[h3 // 2 :]
+    right_edge = [int(np.nonzero(half.any(axis=0))[0].max()) for half in (top, bottom)]
+    left_edge = [int(np.nonzero(half.any(axis=0))[0].min()) for half in (top, bottom)]
+    assert abs(right_edge[0] - right_edge[1]) <= 3 and left_edge[0] > left_edge[1] + 100
 
     settings = PRESETS["painting"].model_copy(deep=True)
     settings.layout.fit = Fit.FILL
