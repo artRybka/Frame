@@ -230,6 +230,25 @@ def _mat_rgb(img: Image.Image, mat: str) -> tuple[int, int, int]:
     return _NOMINAL_MATS.get(mat, (255, 255, 255))
 
 
+def board_rgb(imgs: Sequence[Image.Image], mat: str) -> tuple[int, int, int]:
+    """About the colour of a Multi board of ``imgs`` (small copies will do),
+    for the app to draw it before the preview comes: a mat of the
+    pictures' tint from all of them, as the render takes it from all the
+    windows."""
+    if mat not in PICTURE_MATS or not imgs:
+        return _mat_rgb(imgs[0], mat) if imgs else _NOMINAL_MATS.get(mat, (255, 255, 255))
+    parts = []
+    for img in imgs:
+        small = img.copy()
+        small.thumbnail((128, 128))
+        parts.append(u8_to_linear(np.asarray(small.convert("RGB"))).reshape(-1, 3))
+    dark = mat == "picture_dark"
+    tint = picture_tint(
+        np.concatenate(parts), np.ones(3, np.float32), np.zeros(3, np.float32), dark
+    )
+    return tuple(int(v) for v in linear_to_u8(tint))  # type: ignore[return-value]
+
+
 def plan_for(img: Image.Image, layout: LayoutSettings, caption: bool) -> Plan:
     """Where things go; the picture is analysed only if a crop must be chosen."""
     return plan_layout(
@@ -274,6 +293,7 @@ def render_original(
     palette: Palette = EM32DX,
     multi: bool = False,
     seed: str = "",
+    auto: Sequence[AutoCrop | None] | None = None,
 ) -> Image.Image:
     """The framed picture in its own colours, as ``original_image()`` of
     ``render`` (or ``render_multi`` with ``multi``), several times faster:
@@ -287,7 +307,7 @@ def render_original(
     several = multi and len(sources) >= MIN_PHOTOS
     imgs = [_preview_image(source, several) for source in sources[:MAX_PHOTOS]]
     if several:
-        linear, plan = _compose_multi(imgs, s, seed, fast=True)
+        linear, plan = _compose_multi(imgs, s, seed, fast=True, auto=auto)
         s = s.model_copy(update={"caption": None, "text": None})
     else:
         linear, plan = _compose_one(imgs[0], s, fast=True)
@@ -326,9 +346,13 @@ def _compose_one(
 
 
 def _compose_multi(
-    imgs: list[Image.Image], s: RenderSettings, seed: str, fast: bool = False
+    imgs: list[Image.Image],
+    s: RenderSettings,
+    seed: str,
+    fast: bool = False,
+    auto: Sequence[AutoCrop | None] | None = None,
 ) -> tuple[FloatArray, Plan]:
-    pickers = [_interest_picker(img) for img in imgs]
+    pickers = list(auto) if auto else [_interest_picker(img) for img in imgs]
     plan, order = plan_multi(
         [img.size for img in imgs],
         canvas_size(s.layout.orientation),

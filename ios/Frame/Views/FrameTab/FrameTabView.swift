@@ -1249,6 +1249,25 @@ struct PresentationSection: View {
     @State private var standIns: [Target: String] = [:]
     /// Kinds the library has nothing of.
     @State private var emptyKinds: Set<Target> = []
+    /// Multi: the board of the photo previewed, drawn at once from the
+    /// thumbnails (the server's preview of each grid took seconds).
+    @State private var board: (key: BoardKey, board: PhotoBoard)?
+
+    /// What a Multi board's photos and crops depend on: not the grid, nor
+    /// the orientation (the board holds them all).
+    struct BoardKey: Hashable {
+        let id: String
+        let margin: Double
+        let mat: String
+        let count: Int
+        let random: Bool
+
+        /// The same photos: a margin or mat just changed draws the old
+        /// board until the new one comes.
+        func samePhotos(_ other: BoardKey) -> Bool {
+            id == other.id && count == other.count && random == other.random
+        }
+    }
 
     enum Target: String, CaseIterable {
         case art = "Sztuka"
@@ -1354,24 +1373,41 @@ struct PresentationSection: View {
         previewID.map { ImageRef.framePreview($0, settings: settings, ownLook: false) }
     }
 
-    /// What the owner may try next, rendered ahead: the frame turned, and
-    /// on a Multi board the count's other grids.
+    /// What the owner may try next, rendered ahead: the frame turned. Not
+    /// on a Multi board: the phone draws its every grid and both
+    /// orientations itself, and the renders ahead (one per grid) kept the
+    /// server busy while the one asked for waited (2026-11-08).
     private var warmRefs: [ImageRef] {
         let shown = previewed ?? settings
-        var tries: [FrameSettings] = []
+        if isMulti { return [] }
         var turned = shown
         turned.orientation = shown.orientation == "portrait" ? "landscape" : "portrait"
         if turned.orientation == "portrait" { turned.rotation = 90 }  // as OrientationPicker sets it
-        tries.append(turned)
-        let presentation = shown[keyPath: presentationPath]
-        if presentation.fit == "multi", !presentation.multiRandom {
-            for grid in ["auto"] + MultiGrid.grids(presentation.multiCount).map(\.id) where grid != presentation.multiGrid {
-                var other = shown
-                other[keyPath: presentationPath].multiGrid = grid
-                tries.append(other)
-            }
-        }
-        return tries.compactMap(ref)
+        return [turned].compactMap(ref)
+    }
+
+    private func boardKey(_ settings: FrameSettings) -> BoardKey? {
+        let photo = settings.photo
+        guard target == .photo, photo.fit == "multi", let previewID else { return nil }
+        return BoardKey(
+            id: previewID, margin: photo.margin, mat: photo.mat, count: photo.multiCount, random: photo.multiRandom
+        )
+    }
+
+    /// The board drawn for these settings: of the same photos.
+    private var shownBoard: PhotoBoard? {
+        guard let board, let key = boardKey(settings), board.key.samePhotos(key) else { return nil }
+        return board.board
+    }
+
+    private func loadBoard() async {
+        let shown = previewed ?? settings
+        guard let key = boardKey(shown), let previewID else { return }
+        if board?.key == key { return }
+        guard let found = try? await model.backend.board(itemID: previewID, settings: shown, ownLook: false),
+              !Task.isCancelled
+        else { return }
+        board = (key, found)
     }
 
     /// The frame with the picture on it, or, for the other kind, with one of
@@ -1381,7 +1417,8 @@ struct PresentationSection: View {
         return PresentationPreview(
             ref: ref(previewed ?? settings),
             layout: PreviewLayout(portrait: settings.orientation == "portrait", presentation: presentation.wrappedValue),
-            warm: warmRefs
+            warm: warmRefs,
+            board: shownBoard
         ) {
             if empty {
                 Text(target == .photo ? "Brak zdjęć w bibliotece" : "Brak dzieł w bibliotece")
@@ -1408,6 +1445,7 @@ struct PresentationSection: View {
                     if sliding { try? await Task.sleep(for: .milliseconds(450)) }
                     if !Task.isCancelled { previewed = settings }
                 }
+                .task(id: boardKey(previewed ?? settings)) { await loadBoard() }
                 .task(id: "\(target.rawValue) \(model.player != nil)") {  // the history comes with the player
                     if model.player != nil, currentID == nil, standIns[target] == nil { await drawStandIn() }
                 }

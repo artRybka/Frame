@@ -70,6 +70,8 @@ log = logging.getLogger(__name__)
 SETTINGS_KEY = "settings"
 STATE_KEY = "player"
 HISTORY_MAX = 50
+PREVIEW_BOARD_SECONDS = 300.0  # a previewed Multi board keeps its photos this long
+PREVIEW_BOARDS_KEPT = 64
 #: Said in the app (the send bar, a card) when no panel is set up yet.
 PANEL_NOT_SET = "Ramka nie jest jeszcze ustawiona: podaj jej adres w Połączeniu z ekranem."
 #: Next pictures whose originals are downloaded ahead of their turn.
@@ -290,6 +292,8 @@ class Player:
         #: A change made early (:meth:`next_early`): the one after it counts
         #: from the time this one was due, not from now.
         self._due_at: datetime | None = None
+        #: The photos of lately previewed Multi boards (:meth:`preview_board`).
+        self._preview_boards: dict[tuple[object, ...], tuple[float, list[str]]] = {}
 
     @property
     def busy(self) -> bool:
@@ -634,19 +638,56 @@ class Player:
 
     def preview_board(self, item: Item, settings: FrameSettings) -> list[Item]:
         """The board a preview of ``item`` shows: the one on the frame if
-        ``item`` is current, else the photos that would join it next."""
+        ``item`` is current, else the photos that would join it next.
+
+        Kept for :data:`PREVIEW_BOARD_SECONDS`: the app asks for one preview
+        per grid, margin and mat, and finding the photos went through the
+        whole catalogue each time (about 1 s on the NAS, on the server's
+        event loop; Mateusz 2026-11-08: "buduje się ekstremalnie długo")."""
         state = self.state
         keep = state.current_group if state.current_item_id == item.id else None
-        spare = None
-        if self.multi(item, settings):
-            # A playlist of art has no photos to join it: the library's
-            # photos and those sent once fill the board, the same ones each
-            # time for one photo.
-            listed = self.library.query(PlaylistRules(kinds=[ItemKind.PHOTO]))[1]
-            sent = (self.library.get(i) for i in sorted(self.library.sent_photo_ids()))
-            spare = sorted([*listed, *(i for i in sent if i is not None)], key=lambda i: i.id)
-            random.Random(item.id).shuffle(spare)
-        return self.board(item, state, settings, keep, spare)  # state is a copy: nothing is taken
+        if not self.multi(item, settings):
+            return [item]
+        pres = settings.photo
+        if pres.multi_random and not keep:
+            # A random count, the same each time for one photo: the board the
+            # app draws and the preview it then gets must hold the same photos.
+            count = random.Random(item.id).randint(MIN_PHOTOS, MAX_PHOTOS)
+            photo = pres.model_copy(update={"multi_random": False, "multi_count": count})
+            settings = settings.model_copy(update={"photo": photo})
+            pres = photo
+        key = (
+            item.id,
+            pres.multi_random,
+            pres.multi_count,
+            settings.playlist_id,
+            state.current_item_id,
+            tuple(keep or ()),
+            tuple(state.queue[:MAX_PHOTOS]),
+        )
+        now = time.monotonic()
+        kept = self._preview_boards.get(key)
+        if kept is not None and now - kept[0] < PREVIEW_BOARD_SECONDS:
+            found = [self.library.get(i) for i in kept[1]]
+            if all(i is not None for i in found):
+                return [i for i in found if i is not None]
+        # A playlist of art has no photos to join it: the library's photos
+        # and those sent once fill the board, the same ones each time for
+        # one photo. Photos are never copies of one another, so a plain look
+        # through the items does what a library query did, many times faster.
+        listed = [
+            i
+            for i in self.library.all_items()
+            if i.kind == ItemKind.PHOTO and i.look is None and not i.excluded
+        ]
+        sent = (self.library.get(i) for i in sorted(self.library.sent_photo_ids()))
+        spare = sorted([*listed, *(i for i in sent if i is not None)], key=lambda i: i.id)
+        random.Random(item.id).shuffle(spare)
+        board = self.board(item, state, settings, keep, spare)  # state is a copy: nothing is taken
+        if len(self._preview_boards) > PREVIEW_BOARDS_KEPT:
+            self._preview_boards.clear()
+        self._preview_boards[key] = (now, [i.id for i in board])
+        return board
 
     # -- showing -------------------------------------------------------------
 

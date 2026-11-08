@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.126.0
+
+- Ramka → Zdjęcia → Multi: podgląd układu jest od razu. Aplikacja układa
+  planszę sama z miniatur zdjęć, z kadrami takimi jak na ramce, dla każdego
+  układu i obu orientacji naraz. Zmiana układu nie czeka więc na serwer,
+  a dokładny podgląd z serwera podmienia rysunek po cichu, gdy przyjdzie.
+- Serwer nie przegląda już przy każdym podglądzie Multi całej biblioteki
+  w głównej pętli (ok. 1 s na NAS, w tym czasie czekało wszystko inne),
+  pamięta wybrane zdjęcia planszy i ich kadry, a aplikacja nie zamawia na
+  zapas podglądów wszystkich układów naraz. Zapytania aplikacji dłuższe niż
+  2 s trafiają do logu serwera.
+
 ## 1.124.6
 
 - Szukaj: kafelek Muzeum jest od pierwszej chwili, razem z pozostałymi
