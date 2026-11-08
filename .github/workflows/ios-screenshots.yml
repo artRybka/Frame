@@ -126,6 +126,7 @@ jobs:
             capture search-tones 8 "search-tones-$appearance"
             capture search-empty 8 "search-empty-$appearance"
             capture search-styles 8 "search-styles-$appearance"
+            capture search-subjects 8 "search-subjects-$appearance"
             capture search-techniques 8 "search-techniques-$appearance"
             capture search-chosen 8 "search-chosen-$appearance"
             capture search-museums 8 "search-museums-$appearance"

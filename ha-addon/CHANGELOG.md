@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.125.0
+
+- Szukaj → Temat: każdy temat ma przed nazwą mały rysunek, czarną kreską
+  i najwyżej jednym kolorem (pagórki, fale, żaglówka, most, góry, płatek
+  śniegu, księżyc, kłos, kurtyna…). Kapsułki są wyśrodkowane na karcie, podpis
+  pod nimi też. Na ciemnej kapsułce (wybranej w jasnym trybie, każdej
+  w ciemnym) rysunek leży na kremowym kółku, żeby kreska zawsze była czarna.
+
 ## 1.124.6
 
 - Szukaj: kafelek Muzeum jest od pierwszej chwili, razem z pozostałymi

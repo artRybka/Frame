@@ -384,6 +384,7 @@ struct TermFacetBar: View {
         case "search-colors", "search-tones": .color
         case "search-museums": .museum
         case "search-styles": .style
+        case "search-subjects": .subject
         case "search-techniques": .technique
         default: nil
         }
@@ -628,7 +629,9 @@ struct TermFacetPanel: View {
                         Text(footnote)
                             .font(.footnote)
                             .foregroundStyle(Theme.inkSoft)
+                            .multilineTextAlignment(facet == .subject ? .center : .leading)
                             .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: facet == .subject ? .center : .leading)
                     }
                 }
                 .padding(.horizontal, 18)
@@ -703,15 +706,24 @@ struct TermFacetPanel: View {
         // Older playlists' museum facet values: shown picked, a tap takes them off.
         let legacy = tokens.filter { facet.holds($0) && $0.kind.hasPrefix("legacy-") }
         return VStack(alignment: .leading, spacing: 12) {
-            FlowLayout(spacing: 8) {
+            // Temat: each subject with its drawing, the rows centred
+            // (PLAN 3.3zzz58).
+            FlowLayout(spacing: 8, centred: facet == .subject) {
                 ForEach(legacy) { token in
                     Chip(title: token.name, selected: true) {
                         tokens.removeAll { $0.id == token.id }
                     }
                 }
                 ForEach(shown) { term in
-                    Chip(title: term.name, selected: picked(term.kind, term.key)) {
-                        toggle(term.kind, term.key, term.name)
+                    let selected = picked(term.kind, term.key)
+                    if facet == .subject, let drawing = TopicArt.drawing(term.key) {
+                        TopicChip(drawing: drawing, title: term.name, selected: selected) {
+                            toggle(term.kind, term.key, term.name)
+                        }
+                    } else {
+                        Chip(title: term.name, selected: selected) {
+                            toggle(term.kind, term.key, term.name)
+                        }
                     }
                 }
             }
