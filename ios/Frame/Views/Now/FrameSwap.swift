@@ -1,7 +1,53 @@
 import SwiftUI
 import UIKit
 
-/// How the old picture goes over to the new one while the panel redraws.
+/// The picture on its way "developing" over the one the frame still shows,
+/// while the panel draws it: first it covers the old one as a faint print,
+/// pale and soft, as in the developer's tray; then it takes on its colour
+/// and sharpness in step with the bar, whole when the frame is done.
+struct FrameDevelop: View, Animatable {
+    let image: UIImage
+    /// How far the panel's redraw is, 0…1.
+    var progress: Double
+    /// "Ogranicz ruch": no softness that sharpens, only the paleness lifting.
+    var reduceMotion = false
+
+    var animatableData: Double {
+        get { progress }
+        set { progress = newValue }
+    }
+
+    /// The faint print has covered the old picture by this share of the
+    /// redraw (about 2 s of the panel's 45).
+    static let cover = 0.04
+    /// How developed the print is when it covers the old picture.
+    static let faint = 0.14
+
+    /// 0…1: how far the print has developed at `progress`.
+    static func developed(at progress: Double) -> Double {
+        let x = min(max((progress - cover) / (1 - cover), 0), 1)
+        return faint + (1 - faint) * x * x * (3 - 2 * x)
+    }
+
+    var body: some View {
+        let shown = min(max(progress / Self.cover, 0), 1)
+        let developed = Self.developed(at: progress)
+        ZStack {
+            Image(uiImage: image)
+                .resizable()
+                .saturation(0.25 + 0.75 * developed)
+                .blur(radius: reduceMotion ? 0 : (1 - developed) * 2, opaque: true)
+            // The panel's own paper, lifting off as the print develops.
+            Theme.matWhite.opacity(0.52 * (1 - developed))
+        }
+        .opacity(shown * shown * (3 - 2 * shown))
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+}
+
+/// How the old picture goes over to the new one as the e-paper draws it
+/// (the first launch's picture).
 enum SwapStyle {
     /// Fine squares in a scattered order, each for a moment in ink.
     case pixels

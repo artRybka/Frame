@@ -36,7 +36,7 @@ struct SendActivityAttributes: ActivityAttributes {
 
         /// The three parts of the bar, as in the app.
         static let phases: [(key: String, label: String)] = [
-            ("processing", "Przetwarzanie"), ("loading", "Ładowanie"), ("displaying", "Wyświetlanie"),
+            ("processing", "Przygotowanie"), ("loading", "Wysyłanie"), ("displaying", "Rysowanie"),
         ]
 
         var phaseIndex: Int? {

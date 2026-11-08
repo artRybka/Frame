@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.127.0
+
+- Teraz: zmiana dzieła jest czytelna. Pasek pod ramką od pierwszej sekundy
+  pokazuje, co jedzie na ramkę: miniaturę, tytuł i to, co się właśnie dzieje,
+  a zamiast jednej belki ma trzy odcinki (Przygotowanie, Wysyłanie,
+  Rysowanie), z których każdy wypełnia się osobno. Podgląd ramki trzyma stare
+  dzieło, dopóki ramka naprawdę go nie zmienia; gdy zaczyna rysować, nowe
+  dzieło pojawia się na nim jako blada odbitka i w tempie paska nabiera koloru
+  i ostrości, zamiast rozsypywać stare w kropki farb. Opis pod ramką przechodzi
+  na nowe dzieło razem z początkiem rysowania.
+- „Ramka odświeża ekran” to teraz „Ramka rysuje obraz” (także na ekranie
+  blokady).
+
 ## 1.126.0
 
 - Ramka → Zdjęcia → Multi: podgląd układu jest od razu. Aplikacja układa

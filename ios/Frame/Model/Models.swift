@@ -686,6 +686,9 @@ struct DisplayProgress: Codable, Hashable, Sendable {
     var active: Bool
     var title: String
     var fraction: Double
+    /// Of the current phase alone, so the bar fills one part per phase
+    /// (1.127.0+; nil from older servers).
+    var phaseFraction: Double? = nil
     var secondsLeft: Int?
     var startedAt: String?
     var finishedAt: String?
@@ -701,7 +704,7 @@ struct DisplayProgress: Codable, Hashable, Sendable {
 
     /// The three parts of the bar, in order.
     static let phases: [(key: String, label: String)] = [
-        ("processing", "Przetwarzanie"), ("loading", "Ładowanie"), ("displaying", "Wyświetlanie"),
+        ("processing", "Przygotowanie"), ("loading", "Wysyłanie"), ("displaying", "Rysowanie"),
     ]
 
     var isDone: Bool { stage == "done" }
@@ -714,13 +717,24 @@ struct DisplayProgress: Codable, Hashable, Sendable {
         return phase.flatMap { key in Self.phases.firstIndex { $0.key == key } }
     }
 
+    /// How full the part of the bar for phase `index` is, 0…1: the ones
+    /// before the current are full, the ones after empty. Older servers
+    /// give no share of the phase: the whole way's stands in for it.
+    func phaseFill(_ index: Int) -> Double {
+        guard let current = phaseIndex else { return 0 }
+        if index < current { return 1 }
+        if index > current { return 0 }
+        if isFailed || isWaiting { return min(max(phaseFraction ?? 0, 0), 1) }
+        return min(max(phaseFraction ?? fraction, 0), 1)
+    }
+
     var stageLabel: String {
         switch stage {
         case "rendering": "Przygotowuję obraz dla e-papieru"
         case "sending": "Łączę się z ramką"
         case "waking": "Budzę ramkę"
         case "downloading": "Ramka pobiera obraz"
-        case "refreshing": "Ramka odświeża ekran"
+        case "refreshing": "Ramka rysuje obraz"
         case "done": "Obraz jest na ramce"
         case "waiting": When.at(wakesAt).map { "Pojawi się \($0)" } ?? "Obraz poczeka, aż ramka się obudzi"
         case "failed": "Nie udało się wysłać obrazu"

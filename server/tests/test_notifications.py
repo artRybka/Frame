@@ -665,7 +665,7 @@ def test_the_server_ends_the_send_bar_shortly_after_the_picture_is_on(
     update, end = pushes[2], pushes[3]
     assert update["event"] == "update"
     state = update["content-state"]
-    assert state["label"] == "Ramka odświeża ekran"  # type: ignore[index]
+    assert state["label"] == "Ramka rysuje obraz"  # type: ignore[index]
     assert state["phase"] == "displaying"  # type: ignore[index]
     # Swift's Date: seconds since 2001, not 1970.
     since_2001 = datetime.now(UTC).timestamp() - 978_307_200

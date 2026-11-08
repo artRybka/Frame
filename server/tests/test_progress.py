@@ -55,6 +55,37 @@ def test_a_picture_goes_through_the_three_phases() -> None:
     assert view.finished_at is not None and view.title == "Zachód słońca"
 
 
+def test_each_phase_fills_its_own_part_of_the_bar() -> None:
+    clock = Clock()
+    tracker = ProgressTracker(clock)
+    tracker.begin("Uliczka")
+    assert tracker.view().phase_fraction == 0.0
+    clock.now += DEFAULT_SECONDS[Stage.RENDERING] / 2
+    assert tracker.view().phase_fraction == 0.5
+
+    # Loading is sending and downloading together: it starts again from 0.
+    clock.now += DEFAULT_SECONDS[Stage.RENDERING] / 2
+    tracker.advance(Stage.SENDING)
+    assert tracker.view().phase_fraction == 0.0
+    clock.now += DEFAULT_SECONDS[Stage.SENDING]
+    tracker.advance(Stage.DOWNLOADING)
+    loading = tracker.view().phase_fraction
+    sending, downloading = DEFAULT_SECONDS[Stage.SENDING], DEFAULT_SECONDS[Stage.DOWNLOADING]
+    expected = sending / (sending + downloading)
+    assert loading == round(expected, 3)
+
+    tracker.advance(Stage.REFRESHING)
+    assert tracker.view().phase_fraction == 0.0
+    clock.now += DEFAULT_SECONDS[Stage.REFRESHING] / 4
+    assert tracker.view().phase_fraction == 0.25
+    # Late: never back, never past the end.
+    clock.now += DEFAULT_SECONDS[Stage.REFRESHING] * 0.74
+    assert 0.98 <= (tracker.view().phase_fraction or 0) <= 0.99
+    clock.now += DEFAULT_SECONDS[Stage.REFRESHING]
+    view = tracker.view()
+    assert (view.stage, view.phase_fraction) == (Stage.DONE, None)
+
+
 def test_the_panel_apps_download_sets_the_pace() -> None:
     clock = Clock()
     tracker = ProgressTracker(clock)
