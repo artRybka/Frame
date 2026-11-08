@@ -348,3 +348,47 @@ def test_a_failed_build_keeps_the_index_there_was(tmp_path: Path, aic: Web) -> N
     total, _ = _museum("aic", tmp_path).search("haystacks", 24, 1)
     assert total == 30
     dumps.INDEXES.failed_at.clear()
+
+
+def test_the_owner_sees_the_indexes_and_builds_one_now(tmp_path: Path, aic: Web) -> None:
+    from fastapi.testclient import TestClient
+
+    from frame_server.config import Settings
+    from frame_server.web import create_app
+
+    owner = {"Authorization": "Bearer secret"}
+    settings = Settings(data_dir=tmp_path, seed_library=False, scheduler=False, api_token="secret")
+    with TestClient(create_app(settings)) as client:
+        assert client.get("/api/debug/dumps").status_code == 401
+        states = {s["key"]: s for s in client.get("/api/debug/dumps", headers=owner).json()}
+        assert set(states) == set(dumps.DUMPS)
+        assert states["aic"]["index"] and states["aic"]["works"] == 32
+        assert not states["cma"]["index"] and "works" not in states["cma"]
+        assert client.post("/api/debug/dumps/louvre", headers=owner).status_code == 404
+
+    started: list[str] = []
+    dumps.INDEXES.failed_at["cma"] = 1e12  # a build failed a moment ago
+    real = dumps.INDEXES._build
+    try:
+        dumps.INDEXES._build = lambda dump, path, http=None: started.append(dump.key)  # type: ignore[method-assign]
+        assert dumps.build_now("cma", tmp_path)  # the owner does not wait for a retry
+        dumps.INDEXES.building.add("si")
+        assert not dumps.build_now("si", tmp_path)  # one is read already
+    finally:
+        dumps.INDEXES._build = real  # type: ignore[method-assign]
+        dumps.INDEXES.building.discard("si")
+        dumps.INDEXES.building.discard("cma")
+    assert "cma" not in dumps.INDEXES.failed_at
+
+
+def test_a_failed_build_says_why(tmp_path: Path) -> None:
+    broken = Web({dumps.AicDump.url: (b"not a tarball", '"v2"')})
+    try:
+        assert not dumps.INDEXES.refresh(
+            dumps.DUMPS["aic"], tmp_path, older=0, http=broken.client()
+        )
+        [state] = [s for s in dumps.states(tmp_path) if s["key"] == "aic"]
+        assert not state["index"] and state["failed"] and state["failed_at"]
+    finally:
+        dumps.INDEXES.failed_at.clear()
+        dumps.INDEXES.failed_why.clear()

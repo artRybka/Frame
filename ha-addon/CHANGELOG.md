@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.123.3
+
+- Diagnostyka dla właściciela: log całego dnia z dysku serwera
+  (`/api/debug/log?day=RRRR-MM-DD`), bo bufor w pamięci sięga tylko kilku
+  ostatnich godzin i rano nie było już widać nocy. Stan lokalnych baz muzeów
+  (`/api/debug/dumps`: kiedy zbudowana, ile dzieł, czy się buduje, czemu się
+  nie udało) i ręczne zbudowanie jednej bazy od razu, bez czekania na noc
+  (`POST /api/debug/dumps/<klucz>`: aic, cma, si, wellcome).
+
 ## 1.123.2
 
 - Podpis na dziele (karteczka przy Wypełnij) nie jest już ucinany

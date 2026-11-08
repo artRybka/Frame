@@ -98,6 +98,8 @@ def install() -> LogBuffer:
 
 
 _file: logging.Handler | None = None
+#: Where the log is kept on disk (today's file; older days beside it).
+_path: Path | None = None
 
 
 class _DayFiles(logging.handlers.TimedRotatingFileHandler):
@@ -116,7 +118,7 @@ def keep_on_disk(folder: Path) -> None:
     """The log written to ``folder`` too (a file a day, :data:`DAYS` kept),
     and the end of what it held before this start read back into the
     buffer. Once per process; the buffer must be installed."""
-    global _file
+    global _file, _path
     if _file is not None or _buffer is None:
         return
     try:
@@ -128,7 +130,7 @@ def keep_on_disk(folder: Path) -> None:
         logging.getLogger(__name__).warning("the log is not kept on disk: %s", err)
         return
     handler.setFormatter(logging.Formatter(FORMAT))
-    _file = handler
+    _file, _path = handler, path
     _buffer.preload(before[-KEEP:])
     install()
 
@@ -148,3 +150,42 @@ def _records_of(path: Path) -> list[str]:
         elif records:
             records[-1] += "\n" + line
     return [_shorten(r) for r in records]
+
+
+def day_lines(day: str, count: int, grep: str | None = None) -> list[str] | None:
+    """The last ``count`` records of ``day`` (``YYYY-MM-DD``, the log's own
+    time) as kept on disk, oldest first; with ``grep`` only the ones
+    containing it (any case). None when the log is not kept on disk.
+
+    The buffer holds only the last hours: on a busy morning the night's
+    records are gone from it by 8 (2026-11-08)."""
+    if _path is None:
+        return None
+    needle = grep.lower() if grep else None
+    found: deque[str] = deque(maxlen=max(count, 0))
+
+    def keep(record: str | None) -> None:
+        if (
+            record is not None
+            and record.startswith(day)
+            and (needle is None or needle in record.lower())
+        ):
+            found.append(_shorten(record))
+
+    # A day's file is named after it once the day is over; until the first
+    # record after midnight, today's file still holds yesterday.
+    for path in (_path.with_name(f"{_path.name}.{day}"), _path):
+        record: str | None = None
+        try:
+            with path.open(encoding="utf-8", errors="replace") as f:
+                for line in f:
+                    line = line.rstrip("\n")
+                    if line[:4].isdigit() and line[4:5] == "-":
+                        keep(record)
+                        record = line
+                    elif record is not None:
+                        record += "\n" + line
+        except OSError:
+            continue
+        keep(record)
+    return list(found)

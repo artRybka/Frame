@@ -64,6 +64,54 @@ def test_the_log_survives_uvicorns_logging_setup(tmp_path: Path) -> None:
         assert text.count("Exception after uvicorn's setup") == 1
 
 
+def test_the_owner_reads_a_day_kept_on_disk(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The buffer holds only the last hours: the night's records are read
+    from the day's file (2026-11-08: gone from the buffer by 8)."""
+    monkeypatch.setattr(logbuffer, "_file", None)
+    monkeypatch.setattr(logbuffer, "_path", None)
+    folder = tmp_path / "logs"
+    folder.mkdir()
+    (folder / "server.log.2026-11-07").write_text(
+        "2026-11-07 23:59:00,000 INFO x: the day before\n"
+    )
+    (folder / "server.log").write_text(
+        "2026-11-07 23:59:59,000 INFO x: before the file turned\n"
+        "2026-11-08 01:30:00,000 INFO frame_server.night: night: catalogue in 12.0 s\n"
+        "2026-11-08 02:00:00,000 ERROR frame_server.night: night: cma dump failed\n"
+        "Traceback (most recent call last):\n"
+        "ValueError: the dump held no work to show\n"
+        "2026-11-08 08:00:00,000 INFO x: the morning\n"
+    )
+    settings = Settings(data_dir=tmp_path, seed_library=False, scheduler=False, api_token="secret")
+    with TestClient(create_app(settings)) as client:
+        day = {"day": "2026-11-08"}
+        assert client.get("/api/debug/log", params=day, headers=OWNER).status_code == 404
+        logbuffer.keep_on_disk(folder)
+        try:
+            text = client.get("/api/debug/log", params=day, headers=OWNER).text
+            assert "before the file turned" not in text and "the morning" in text
+            night = client.get(
+                "/api/debug/log", params={**day, "grep": "NIGHT:"}, headers=OWNER
+            ).text
+            assert night.startswith("2026-11-08 01:30:00,000") and "the morning" not in night
+            assert night.rstrip().endswith("ValueError: the dump held no work to show")
+            before = client.get("/api/debug/log", params={"day": "2026-11-07"}, headers=OWNER)
+            assert before.text.splitlines() == [
+                "2026-11-07 23:59:00,000 INFO x: the day before",
+                "2026-11-07 23:59:59,000 INFO x: before the file turned",
+            ]
+            bad = client.get("/api/debug/log", params={"day": "../x"}, headers=OWNER)
+            assert bad.status_code == 400
+        finally:
+            handler = logbuffer._file
+            for logger in (logging.getLogger(), logging.getLogger("uvicorn.error")):
+                logger.removeHandler(handler)  # type: ignore[arg-type]
+            if handler is not None:
+                handler.close()
+
+
 def test_a_record_through_two_loggers_is_kept_once() -> None:
     buffer = logbuffer.LogBuffer(keep=3)
     record = logging.LogRecord("x", logging.INFO, __file__, 1, "once", None, None)
