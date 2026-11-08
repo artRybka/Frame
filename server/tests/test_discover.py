@@ -70,6 +70,22 @@ def test_terms_match_works() -> None:
     assert not matches(portrait, PlaylistRules(terms=["subject:sea"]))
 
 
+def test_schools_split_off_their_bigger_styles() -> None:
+    """Barbizon and pointillism are styles of their own (Mateusz 2026-11-08),
+    no longer caught by realism and post-impressionism."""
+    corot = _work(3, title="Landscape", styles=["Barbizon School"], year=1860)
+    seurat = _work(4, title="Study", styles=["Neo-Impressionism"], year=1886)
+    assert matches(corot, PlaylistRules(terms=["style:barbizon"]))
+    assert not matches(corot, PlaylistRules(terms=["style:realism"]))
+    assert matches(seurat, PlaylistRules(terms=["style:pointillism"]))
+    assert not matches(seurat, PlaylistRules(terms=["style:post-impressionism"]))
+    dada = _work(5, title="Merz picture", styles=["Dada"], year=1920)
+    assert matches(dada, PlaylistRules(terms=["style:dada"]))
+    hive = _work(6, title="Dadant hive", year=1900)
+    assert not matches(hive, PlaylistRules(terms=["style:dada"]))
+    assert len([t for t in TERMS if t.kind == "style"]) == 39
+
+
 def test_techniques_follow_what_the_object_is() -> None:
     painting = PlaylistRules(terms=["technique:painting"])
     drawing = PlaylistRules(terms=["technique:drawing"])

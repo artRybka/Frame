@@ -236,7 +236,7 @@ final class TermFacetTests: XCTestCase {
 
     func testEveryStyleHasItsWorkYearsAndOneShelf() {
         let keys = StyleArt.shelves.flatMap(\.keys)
-        XCTAssertEqual(keys.count, 28)
+        XCTAssertEqual(keys.count, 39)
         XCTAssertEqual(Set(keys).count, keys.count, "a style on two shelves")
         for key in keys {
             let asset = StyleArt.asset(key)

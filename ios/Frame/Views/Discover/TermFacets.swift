@@ -1543,21 +1543,23 @@ enum StyleArt {
 
     static let shelves: [Shelf] = [
         Shelf(title: "Dawni mistrzowie", span: "XIV–XVIII w.", keys: [
-            "style:gothic", "style:renaissance", "style:dutch-golden-age", "style:baroque", "style:rococo",
-            "style:neoclassicism",
+            "style:gothic", "style:renaissance", "style:mannerism", "style:dutch-golden-age", "style:baroque",
+            "style:rococo", "style:neoclassicism",
         ]),
         Shelf(title: "Romantyzm i realizm", span: "1790–1900", keys: [
-            "style:romanticism", "style:hudson-river", "style:academic", "style:realism", "style:pre-raphaelite",
+            "style:romanticism", "style:hudson-river", "style:barbizon", "style:academic", "style:orientalism",
+            "style:realism", "style:pre-raphaelite", "style:munich-school",
         ]),
         Shelf(title: "Przełom wieków", span: "1867–1918", keys: [
-            "style:impressionism", "style:tonalism", "style:symbolism", "style:post-impressionism", "style:nabis",
-            "style:art-nouveau", "style:young-poland",
+            "style:impressionism", "style:japonisme", "style:tonalism", "style:symbolism", "style:pointillism",
+            "style:post-impressionism", "style:nabis", "style:art-nouveau", "style:young-poland",
         ]),
         Shelf(title: "Awangarda", span: "1904–1940", keys: [
-            "style:fauvism", "style:expressionism", "style:cubism", "style:abstraction", "style:constructivism",
-            "style:de-stijl", "style:bauhaus", "style:art-deco",
+            "style:fauvism", "style:expressionism", "style:cubism", "style:futurism", "style:abstraction",
+            "style:constructivism", "style:dada", "style:de-stijl", "style:bauhaus", "style:new-objectivity",
+            "style:surrealism", "style:art-deco",
         ]),
-        Shelf(title: "Japonia", span: "1660–1960", keys: ["style:ukiyo-e", "style:shin-hanga"]),
+        Shelf(title: "Japonia", span: "1600–1960", keys: ["style:rinpa", "style:ukiyo-e", "style:shin-hanga"]),
     ]
 
     /// When each style was, under its name.
@@ -1572,6 +1574,10 @@ enum StyleArt {
         "style:abstraction": "od 1910", "style:constructivism": "1913–1930", "style:de-stijl": "1917–1931",
         "style:bauhaus": "1919–1933", "style:art-deco": "1920–1940", "style:ukiyo-e": "1660–1900",
         "style:shin-hanga": "od 1915",
+        "style:mannerism": "1520–1600", "style:barbizon": "1830–1870", "style:orientalism": "1830–1900",
+        "style:munich-school": "1860–1900", "style:japonisme": "1860–1910", "style:pointillism": "1884–1910",
+        "style:futurism": "1909–1916", "style:dada": "1916–1924", "style:new-objectivity": "1919–1933",
+        "style:surrealism": "od 1924", "style:rinpa": "1600–1870",
     ]
 
     /// Where a long name breaks under its small frame.
@@ -1581,6 +1587,9 @@ enum StyleArt {
         "style:hudson-river": "Szkoła znad\nrzeki Hudson",
         "style:dutch-golden-age": "Złoty wiek\nholenderski",
         "style:young-poland": "Młoda\nPolska",
+        "style:barbizon": "Szkoła z\nBarbizonu",
+        "style:munich-school": "Szkoła\nmonachijska",
+        "style:new-objectivity": "Nowa\nRzeczowość",
     ]
 
     private static let drawn = Set(shelves.flatMap(\.keys))

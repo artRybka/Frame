@@ -7,6 +7,11 @@
   półkach po kolei w czasie (Dawni mistrzowie, Romantyzm i realizm, Przełom
   wieków, Awangarda, Japonia), każdą przewijasz w bok. Wybrany ma otok, a
   pastylka „Styl” pokazuje małe obrazki wybranych stylów.
+- Jedenaście nowych stylów: Manieryzm, Szkoła z Barbizonu, Orientalizm,
+  Szkoła monachijska, Japonizm, Puentylizm, Futuryzm, Dadaizm, Nowa
+  Rzeczowość, Surrealizm i Rinpa. Barbizon i Puentylizm były dotąd w
+  Realizmie i Postimpresjonizmie. Dzieła dadaizmu, Nowej Rzeczowości i
+  surrealizmu znajdziesz głównie z Użytkiem prywatnym.
 
 ## 1.124.5
 
