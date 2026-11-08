@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.123.1
+
+- Zapasowy obraz z Wikimedia Commons mają teraz także dzieła z National
+  Gallery of Art, Yale, Smithsonian, Paris Musées, SMK, Courtauld i V&A.
+  Gdy któreś z tych muzeów nie odpowiada, miniatury, karta i ramka biorą
+  ten sam obraz z Commons zamiast zostawiać puste miejsce. Commons ma pliki
+  dla ok. 120 tys. ich dzieł. Getty i Wellcome nie mają takiego powiązania.
+- Obraz zastępczy zostaje na stałe: serwer nie pyta już w nocy muzeum
+  o jego własny obraz. Własny obraz muzeum można przywrócić ręcznie na
+  karcie dzieła („Przywróć zdjęcie muzeum”).
+
 ## 1.123.0
 
 - Chicago (AIC), Cleveland, Smithsonian i Wellcome mają na serwerze własne

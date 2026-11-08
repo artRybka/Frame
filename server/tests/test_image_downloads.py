@@ -378,6 +378,62 @@ def test_a_polish_museums_work_is_found_on_wikidata_by_its_inventory_number() ->
     assert copies.file(mnk(4, "Muzeum Narodowe w Krakowie, MNK XII-209")) == ""
 
 
+def test_every_museum_wikidata_knows_has_a_commons_mirror() -> None:
+    """Mateusz, 2026-11-08: the mirror as a rule, for every museum whose
+    works Wikidata can name exactly (checked on the query service)."""
+    from frame_server.library.wikidata import MIRRORED, commons_ref
+
+    def work(source: str, source_id: str, credit: str = "") -> Item:
+        return Item(id=f"{source}:{source_id}", source=source, source_id=source_id, credit=credit)
+
+    assert commons_ref(work("nga", "1158")) == ("P4683", "1158")
+    assert commons_ref(work("paris", "151109")) == ("P6246", "151109")
+    assert commons_ref(work("vam", "O115274")) == ("P3929", "O115274")
+    assert commons_ref(work("yale", "yuag-25955")) == ("P8583", "25955")
+    assert commons_ref(work("yale", "ycba-10038")) == ("P9789", "10038")
+    assert commons_ref(work("yale", "peabody-1")) is None
+    assert commons_ref(work("si", "edanmdm-saam_1909.7.35")) == ("P7851", "saam_1909.7.35")
+    assert commons_ref(work("si", "ld1-123")) is None
+    assert commons_ref(work("smk", "KMS1620")) == ("P217", "KMS1620")
+    courtauld = work("courtauld", "p-1934-sc-234", "Samuel Courtauld Trust, P.1934.SC.234")
+    assert commons_ref(courtauld) == ("P217", "P.1934.SC.234")
+    assert commons_ref(work("met", "436535")) == ("P3634", "436535")
+    assert commons_ref(work("getty", "1")) is None  # Wikidata has none of its ids
+    assert commons_ref(work("wellcome", "abc")) is None
+    assert {"nga", "paris", "vam", "yale", "si", "smk", "courtauld", "mnk", "aic"} <= MIRRORED
+    assert "wikiart" not in MIRRORED and "getty" not in MIRRORED
+
+
+def test_an_inventory_number_counts_only_in_its_museum() -> None:
+    """SMK's numbers carry no mark: the statement must name the SMK."""
+    from frame_server.library.wikidata import CommonsCopies
+
+    searched: list[str] = []
+    collection = ["Q671384"]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        params = request.url.params
+        if params.get("action") == "query":
+            searched.append(params["srsearch"])
+            return httpx.Response(200, json={"query": {"search": [{"title": "Q1"}]}})
+        number = {
+            "mainsnak": {"datavalue": {"value": "KKS1984-23/366"}},
+            "qualifiers": {"P195": [{"datavalue": {"value": {"id": collection[0]}}}]},
+        }
+        file = {"mainsnak": {"datavalue": {"value": "Print.jpg"}}}
+        return httpx.Response(
+            200, json={"entities": {"Q1": {"claims": {"P217": [number], "P18": [file]}}}}
+        )
+
+    copies = CommonsCopies(lambda: httpx.Client(transport=httpx.MockTransport(handler)))
+    smk = Item(id="smk:KKS1984-23/366", source="smk", source_id="KKS1984-23/366")
+    assert copies.file(smk) == "Print.jpg"
+    assert searched == ['haswbstatement:"P217=KKS1984-23/366"']
+    collection[0] = "Q190804"  # another museum's work of that number
+    other = smk.model_copy(update={"id": "smk:KKS1984-23/366b"})
+    assert copies.file(other) == ""
+
+
 def test_a_bot_wall_does_not_make_a_work_gone(tmp_path: Path) -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return _challenge(request)

@@ -42,7 +42,7 @@ from .library.loc import loc_mirrors
 from .library.museums import PRIVATE_LICENCE, TEST_LICENCE, Access, WikiArt, europeana_mirrors
 from .library.museums import client as museum_client
 from .library.records import records
-from .library.wikidata import INVENTORIES, PROPERTIES, CommonsCopies
+from .library.wikidata import MIRRORED, CommonsCopies
 from .night import NightQueue
 from .notifications import Notifier
 from .panel_app import POLL, PanelApp
@@ -227,9 +227,8 @@ class FrameService:
         # server turns us away (the AIC's IIIF behind a Cloudflare challenge)
         # or does not answer (the MNK's, 2026-11-07).
         copies = CommonsCopies(lambda: self.images.http())
-        for source in [*PROPERTIES, *INVENTORIES]:
-            if source != "wikiart":
-                self.images.mirrors[source] = copies
+        for source in MIRRORED:
+            self.images.mirrors[source] = copies
         # Before the player trims or grows the catalogue: the app's limit wins.
         self.storage = StorageStore(settings, self.library, self.images, self.store)
         # Keys of art sources, entered in the app.
