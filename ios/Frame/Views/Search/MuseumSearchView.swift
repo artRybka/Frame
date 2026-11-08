@@ -14,7 +14,6 @@ import SwiftUI
 /// work joins the library with it).
 struct MuseumSearchView: View {
     @Environment(AppModel.self) private var model
-    @State private var museums: [Museum] = []
     /// What is asked for, as playlist rules (a playlist can be made from it).
     @State private var rules = PlaylistRules()
     /// Keys of the museums to ask; none means all of them.
@@ -101,7 +100,7 @@ struct MuseumSearchView: View {
             // squares there) stays above them when they come back. (Taken
             // out, they gave it up, and coming back covered the end.)
             TermFacetBar(
-                tokens: tokens, lookup: lookup, museums: museums, colors: ColorTag.families + ColorTag.moods,
+                tokens: tokens, lookup: lookup, colors: ColorTag.families + ColorTag.moods,
                 focus: $fieldFocused, panelHeight: height * TermFacetBar.panelShare
             )
             .padding(.horizontal, Theme.gutter)
@@ -125,7 +124,6 @@ struct MuseumSearchView: View {
         .task {
             await model.loadVocabulary()
             await model.loadPlaceNames()
-            if museums.isEmpty { museums = (try? await model.backend.museums()) ?? [] }
             if LaunchRoute.screen == "museums", rules.isEmpty {
                 rules.artists = ["Utagawa Hiroshige"]
             }
@@ -356,42 +354,52 @@ struct MuseumSearchView: View {
     }
 }
 
-/// Wrapping row of chips.
+/// Wrapping row of chips; `centred` puts each row in the middle (the Temat
+/// sheet).
 struct FlowLayout: Layout {
     var spacing: CGFloat = 8
+    var centred = false
+
+    private struct Row {
+        var indices: [Int] = []
+        var width: CGFloat = 0
+        var height: CGFloat = 0
+    }
+
+    private func rows(_ subviews: Subviews, width: CGFloat) -> [Row] {
+        var rows: [Row] = []
+        var row = Row()
+        for (index, view) in subviews.enumerated() {
+            let size = view.sizeThatFits(.unspecified)
+            if !row.indices.isEmpty && row.width + spacing + size.width > width {
+                rows.append(row)
+                row = Row()
+            }
+            row.width += (row.indices.isEmpty ? 0 : spacing) + size.width
+            row.height = max(row.height, size.height)
+            row.indices.append(index)
+        }
+        if !row.indices.isEmpty { rows.append(row) }
+        return rows
+    }
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let width = proposal.width ?? .infinity
-        var x: CGFloat = 0
-        var y: CGFloat = 0
-        var rowHeight: CGFloat = 0
-        for view in subviews {
-            let size = view.sizeThatFits(.unspecified)
-            if x > 0 && x + size.width > width {
-                x = 0
-                y += rowHeight + spacing
-                rowHeight = 0
-            }
-            x += size.width + spacing
-            rowHeight = max(rowHeight, size.height)
-        }
-        return CGSize(width: width.isFinite ? width : x, height: y + rowHeight)
+        let lines = rows(subviews, width: width)
+        let height = lines.map(\.height).reduce(0, +) + spacing * CGFloat(max(lines.count - 1, 0))
+        return CGSize(width: width.isFinite ? width : lines.map(\.width).max() ?? 0, height: height)
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        var x = bounds.minX
         var y = bounds.minY
-        var rowHeight: CGFloat = 0
-        for view in subviews {
-            let size = view.sizeThatFits(.unspecified)
-            if x > bounds.minX && x + size.width > bounds.maxX {
-                x = bounds.minX
-                y += rowHeight + spacing
-                rowHeight = 0
+        for row in rows(subviews, width: bounds.width) {
+            var x = bounds.minX + (centred ? max((bounds.width - row.width) / 2, 0) : 0)
+            for index in row.indices {
+                let size = subviews[index].sizeThatFits(.unspecified)
+                subviews[index].place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
+                x += size.width + spacing
             }
-            view.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
-            x += size.width + spacing
-            rowHeight = max(rowHeight, size.height)
+            y += row.height + spacing
         }
     }
 }

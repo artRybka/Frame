@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import json
 from itertools import combinations
 
 import numpy as np
@@ -207,6 +208,77 @@ def test_preview_of_a_board_with_art_on_the_frame(service) -> None:
     assert {i.id for i in board} == {p.id for p in [*photos, sent]}
     assert [i.id for i in player.preview_board(photos[0], settings)] == [i.id for i in board]
     assert player.state.queue == []  # nothing taken
+
+
+def test_board_for_the_app_to_draw(service) -> None:
+    """Every grid of the board in both orientations, from one request: the
+    app draws the board from its thumbnails at once (2026-11-08)."""
+    from fastapi.testclient import TestClient
+
+    from frame_server.web import create_app
+
+    app = create_app(service.settings)
+    svc = app.state.service
+    photos = [_photo(svc, n, (300, 400) if n == 2 else (400, 300)) for n in range(5)]
+    playlist = svc.library.save_playlist(
+        Playlist(name="Rolka", kind=PlaylistKind.MANUAL, item_ids=[p.id for p in photos])
+    )
+    with TestClient(app) as client:
+        settings = client.get("/api/settings").json()
+        settings["playlist_id"] = playlist.id
+        settings["photo"].update(fit="multi", margin=0.07, multi_count=5, mat="black")
+        assert client.put("/api/settings", json=settings).status_code == 200
+        board = client.get(f"/api/library/items/{photos[0].id}/board").json()
+        assert len(board["photos"]) == 5 and board["photos"][0] == photos[0].id
+        assert board["mat"] == "#000000"
+        grids = ["auto", *(g.id for g in GRIDS[5])]
+        assert [(b["orientation"], b["grid"]) for b in board["layouts"]] == [
+            (o, g) for o in ("landscape", "portrait") for g in grids
+        ]
+        for layout in board["layouts"]:
+            assert layout["shown"] in grids[1:]
+            if layout["grid"] != "auto":
+                assert layout["shown"] == layout["grid"]
+            assert sorted(w["photo"] for w in layout["windows"]) == list(range(5))
+            canvas = PORTRAIT if layout["orientation"] == "portrait" else LANDSCAPE
+            for window in layout["windows"]:
+                x, y, w, h = window["rect"]
+                assert x > 0 and y > 0 and x + w < 1 and y + h < 1
+                cx, cy, cw, ch = window["crop"]
+                assert cx >= 0 and cy >= 0 and cx + cw <= 1.0001 and cy + ch <= 1.0001
+                pw, ph = (
+                    (300, 400) if board["photos"][window["photo"]] == photos[2].id else (400, 300)
+                )
+                # The part shown has the window's shape.
+                assert cw * pw / (ch * ph) == pytest.approx(
+                    w * canvas[0] / (h * canvas[1]), rel=0.03
+                )
+        # A preview the app then gets shows the same photos.
+        settings["photo"]["multi_grid"] = "B"
+        query = {"settings": json.dumps(settings)}
+        assert (
+            client.get(f"/api/library/items/{photos[0].id}/preview", params=query).status_code
+            == 200
+        )
+        # Not a board: nothing to draw.
+        settings["photo"]["fit"] = "fit"
+        other = client.get(
+            f"/api/library/items/{photos[0].id}/board", params={"settings": json.dumps(settings)}
+        )
+        assert other.json()["layouts"] == []
+
+
+def test_preview_board_of_a_random_count_stays_the_same(service) -> None:
+    photos = [_photo(service, n) for n in range(9)]
+    player = service.player
+    settings = player.settings
+    settings.playlist_id = None
+    settings.photo = Presentation(fit=Fit.MULTI, multi_random=True)
+    player.save_settings(settings)
+    board = [i.id for i in player.preview_board(photos[0], settings)]
+    assert MIN_PHOTOS <= len(board) <= MAX_PHOTOS
+    player._preview_boards.clear()  # not only from the memo
+    assert [i.id for i in player.preview_board(photos[0], settings)] == board
 
 
 def test_multi_margin_narrows_down_to_10_mm() -> None:

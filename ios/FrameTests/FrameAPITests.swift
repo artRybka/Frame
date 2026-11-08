@@ -361,6 +361,19 @@ final class FrameAPITests: XCTestCase {
         XCTAssertEqual(old.takes.first?.marks.count, 3)
     }
 
+    func testPhotoBoardDecodesFromServer() throws {
+        let json = """
+        {"photos": ["icloud:a", "icloud:b"], "mat": "#1f1e1c",
+         "layouts": [{"orientation": "portrait", "grid": "auto", "shown": "B",
+                      "windows": [{"photo": 1, "rect": [0.05, 0.05, 0.9, 0.4], "crop": [0.0, 0.1, 1.0, 0.5]},
+                                  {"photo": 0, "rect": [0.05, 0.5, 0.9, 0.45], "crop": [0.2, 0.0, 0.6, 1.0]}]}]}
+        """
+        let board = try LiveBackend.decoder().decode(PhotoBoard.self, from: Data(json.utf8))
+        XCTAssertEqual(board.layout(portrait: true, grid: "auto")?.shown, "B")
+        XCTAssertNil(board.layout(portrait: false, grid: "auto"))
+        XCTAssertEqual(board.layout(portrait: true, grid: "auto")?.windows.first?.photo, 1)
+    }
+
     func testNotificationSettingsDecodeFromServer() throws {
         let json = """
         {"key": {"key_id": "ABCDE12345", "team_id": "3MQRJF4A9D", "added_at": "2026-10-31T12:00:00+00:00"},

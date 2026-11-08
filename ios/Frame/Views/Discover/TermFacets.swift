@@ -351,7 +351,6 @@ struct TermFacetBar: View {
     /// The search field's words: they narrow an open group that has a list
     /// to narrow (`TermFacet.fieldPrompt`).
     var lookup: TermLookup
-    var museums: [Museum] = []
     var colors: [String] = []
     /// The search field: a group opening puts its keyboard away, and the
     /// field tapped closes the group.
@@ -385,19 +384,18 @@ struct TermFacetBar: View {
         case "search-colors", "search-tones": .color
         case "search-museums": .museum
         case "search-styles": .style
+        case "search-subjects": .subject
         case "search-techniques": .technique
         default: nil
         }
     }
 
+    /// Muzeum is always there (Mateusz 2026-11-08): its bands load their
+    /// own places when opened, so the button waits for nothing. (It used to
+    /// wait for the sources' list, and on the first visit the second row
+    /// came without it for a moment.)
     private var facets: [TermFacet] {
-        TermFacet.allCases.filter { facet in
-            switch facet {
-            case .color: !colors.isEmpty
-            case .museum: !museums.isEmpty
-            default: true
-            }
-        }
+        TermFacet.allCases.filter { $0 != .color || !colors.isEmpty }
     }
 
     private var periods: [TermInfo] { model.vocabulary.filter { $0.kind == "period" } }
@@ -422,7 +420,7 @@ struct TermFacetBar: View {
             // and back into it (PanelGlass).
             if let open {
                 TermFacetPanel(
-                    facet: open, tokens: $tokens, museums: museums, colors: colors,
+                    facet: open, tokens: $tokens, colors: colors,
                     filter: open.fieldPrompt == nil ? "" : lookup.trimmed,
                     // Over the keyboard the bar stands higher: so much less room.
                     maxHeight: (open == .period ? panelHeight * Self.periodGrowth : panelHeight)
@@ -603,7 +601,6 @@ struct TermFacetPanel: View {
     @Environment(AppModel.self) private var model
     let facet: TermFacet
     @Binding var tokens: [SearchToken]
-    var museums: [Museum] = []
     var colors: [String] = []
     /// The search field's words, narrowing the group's list (only for the
     /// groups with a `TermFacet.fieldPrompt`; "" for the others).
@@ -641,7 +638,9 @@ struct TermFacetPanel: View {
                         Text(footnote)
                             .font(.footnote)
                             .foregroundStyle(Theme.inkSoft)
+                            .multilineTextAlignment(facet == .subject ? .center : .leading)
                             .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: facet == .subject ? .center : .leading)
                     }
                 }
                 .padding(.horizontal, 18)
@@ -725,11 +724,20 @@ struct TermFacetPanel: View {
     private var terms: some View {
         let shown = matching(model.vocabulary.filter { $0.kind == facet.rawValue })
         return VStack(alignment: .leading, spacing: 12) {
-            FlowLayout(spacing: 8) {
+            // Temat: each subject with its drawing, the rows centred
+            // (PLAN 3.3zzz59).
+            FlowLayout(spacing: 8, centred: facet == .subject) {
                 legacyChips
                 ForEach(shown) { term in
-                    Chip(title: term.name, selected: picked(term.kind, term.key)) {
-                        toggle(term.kind, term.key, term.name)
+                    let selected = picked(term.kind, term.key)
+                    if facet == .subject, let drawing = TopicArt.drawing(term.key) {
+                        TopicChip(drawing: drawing, title: term.name, selected: selected) {
+                            toggle(term.kind, term.key, term.name)
+                        }
+                    } else {
+                        Chip(title: term.name, selected: selected) {
+                            toggle(term.kind, term.key, term.name)
+                        }
                     }
                 }
             }
@@ -770,7 +778,7 @@ struct TermFacetPanel: View {
 
     // MARK: Styles
 
-    /// The Styl sheet (PLAN 3.3zzz58): a small framed work for each style,
+    /// The Styl sheet (PLAN 3.3zzz61): a small framed work for each style,
     /// in light oak, its years under its name, on five shelves in the order
     /// of time that scroll sideways (`StyleArt.shelves`). A style the app
     /// has no work for (a new one on the server) is a chip under them.

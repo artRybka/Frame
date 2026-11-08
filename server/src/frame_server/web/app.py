@@ -11,6 +11,7 @@ import json
 import logging
 import re
 import threading
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import asdict
@@ -81,6 +82,7 @@ log = logging.getLogger(__name__)
 PROGRESS_PATH = "/content-transfer-progress"
 #: Requests that are not someone using the app (the night's work goes on).
 NOT_USE = ("/api/health", "/api/debug/")
+SLOW_REQUEST = 2.0  # seconds: an app request this slow goes in the log
 #: The app counts as in use this long after its last request (seconds): the
 #: background's requests to the museums wait meanwhile.
 APP_IN_USE = 120.0
@@ -215,7 +217,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def log_panel_requests(request: Request, call_next):
         if request.url.path.startswith("/api/") and not request.url.path.startswith(NOT_USE):
             night.used()  # the night's work waits while the app is in use
+        started = time.monotonic()
         response = await call_next(request)
+        took = time.monotonic() - started
+        if took >= SLOW_REQUEST and request.url.path.startswith("/api/"):
+            # The app's requests are not logged otherwise: a slow one shows
+            # what the owner waited for (2026-11-08, Multi previews).
+            log.info(
+                "slow %s %s -> %s in %.1f s",
+                request.method,
+                request.url.path,
+                response.status_code,
+                took,
+            )
         if request.url.path.startswith("/panel/"):
             # The Frame app's page is a file:// origin.
             response.headers["Access-Control-Allow-Origin"] = "*"
