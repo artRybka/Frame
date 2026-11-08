@@ -83,6 +83,11 @@ enum PeriodAxis {
         Region(id: "east-asia", title: "Japonia i Chiny", colour: Color(light: 0x3F7A55, dark: 0x7CC49A)),
     ]
 
+    /// A named period's group colour; red for one with no group known.
+    static func colour(of period: TermInfo) -> Color {
+        regions.first { $0.id == period.region }?.colour ?? Theme.bad
+    }
+
     static func split(_ periods: [TermInfo]) -> (axis: [TermInfo], named: [TermInfo]) {
         // The server says which are named; an older one doesn't.
         if periods.contains(where: { $0.region != nil }) {
@@ -1067,7 +1072,9 @@ struct PeriodPicker: View {
 
     /// The rail with a tick at every piece's edge, two beads on it, the
     /// years picked a darker stroke between them, and their years under
-    /// them; a red line under the rail for each named period picked.
+    /// them; a line under the rail for each named period picked, in its
+    /// group's colour. The room for those lines is always kept, so the
+    /// sheet does not jump when one is picked.
     private func line(_ axis: [TermInfo], edges: [CGFloat], range: ClosedRange<Int>?, brackets: [TermInfo]) -> some View {
         let rail = Self.rail
         let low = range?.lowerBound ?? 0
@@ -1081,7 +1088,7 @@ struct PeriodPicker: View {
         let room = CGFloat(left.count) * 3.5 + CGFloat(right.count) * 7
         let narrow = x1 - x0 < max(Self.narrow, room)
         let showBrackets = !brackets.isEmpty && !(range != nil && narrow)
-        let labelsTop = rail + (showBrackets ? 14 : 10)
+        let labelsTop = rail + 14
         let ink = range == nil ? Theme.inkSoft : Theme.ink
         return ZStack(alignment: .topLeading) {
             Capsule()
@@ -1105,7 +1112,7 @@ struct PeriodPicker: View {
                     let from = PeriodAxis.position(period.yearFrom ?? Int.min / 2, on: axis) * width
                     let to = PeriodAxis.position(period.yearTo ?? Int.max / 2, on: axis) * width
                     Capsule()
-                        .fill(Theme.bad)
+                        .fill(PeriodAxis.colour(of: period))
                         .frame(width: max(to - from, 4), height: 2.5)
                         .offset(x: min(from, width - 4), y: rail + 9)
                 }
