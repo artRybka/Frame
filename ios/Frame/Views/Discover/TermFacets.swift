@@ -746,11 +746,11 @@ struct TermFacetPanel: View {
     /// playlists' values are chips under them.
     private func subjectList(_ shown: [TermInfo]) -> some View {
         let groups = TopicArt.groups.compactMap { group -> (title: String, terms: [TermInfo])? in
-            let terms = group.keys.compactMap { key in shown.first { $0.key == key } }
+            let terms = group.keys.compactMap { key in shown.first { TopicArt.bare($0.key) == key } }
             return terms.isEmpty ? nil : (title: group.title, terms: terms)
         }
         let grouped = Set(TopicArt.groups.flatMap { $0.keys })
-        let rest = shown.filter { !grouped.contains($0.key) }
+        let rest = shown.filter { !grouped.contains(TopicArt.bare($0.key)) }
         let columns = [GridItem(.flexible(), spacing: 14, alignment: .top), GridItem(.flexible(), alignment: .top)]
         return VStack(alignment: .leading, spacing: 4) {
             ForEach(groups, id: \.title) { group in

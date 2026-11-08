@@ -46,6 +46,9 @@ final class TopicArtTests: XCTestCase {
         let keys = TopicArt.groups.flatMap { $0.keys }
         XCTAssertEqual(keys.count, 29)
         XCTAssertEqual(Set(keys), Set(TopicArt.drawings.keys))
+        // The vocabulary's keys carry "subject:"; the groups find them all.
+        let subjects = DemoDiscover.terms.filter { $0.kind == "subject" }.map { TopicArt.bare($0.key) }
+        XCTAssertEqual(Set(subjects), Set(keys))
     }
 
     /// A drawing with a colour has its watercolour wash; one without has none.

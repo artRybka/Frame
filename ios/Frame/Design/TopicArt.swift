@@ -28,9 +28,14 @@ enum TopicArt {
         ("Opowieści", ["mythology", "religion", "history", "hunting"]),
     ]
 
+    /// A subject's key without `subject:` (the vocabulary's keys carry it).
+    static func bare(_ key: String) -> String {
+        key.hasPrefix("subject:") ? String(key.dropFirst(8)) : key
+    }
+
     /// The wash picture's asset name for a drawing with a colour.
     static func washAsset(_ key: String) -> String? {
-        let key = key.hasPrefix("subject:") ? String(key.dropFirst(8)) : key
+        let key = bare(key)
         return drawings[key]?.tint == nil ? nil : "topic-wash-\(key)"
     }
 
@@ -66,7 +71,7 @@ enum TopicArt {
 
     /// The drawing for a subject key ("subject:sea" or "sea").
     static func drawing(_ key: String) -> Drawing? {
-        drawings[key.hasPrefix("subject:") ? String(key.dropFirst(8)) : key]
+        drawings[bare(key)]
     }
 
     /// Reads the generated path data: absolute `M`, `L`, `C` and `Z`.
