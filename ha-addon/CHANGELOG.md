@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.124.3
+
+- Szukaj → Muzeum: muzeum, które katalog znał tylko z nazwy (np. „Prado”),
+  i to samo muzeum podpowiedziane przez Wikidatę są jednym pasem, nie
+  dwoma. Serwer od razu zapamiętuje, że ta nazwa to to muzeum, więc jego
+  dzieła z katalogu też do niego należą.
+- Lista muzeów otwiera się od razu: aplikacja pobiera ją już przy wejściu
+  w Szukaj i pokazuje ostatnią, a w tle odświeża. Serwer trzyma policzoną
+  listę przez półtorej minuty (do 10 minut, gdy katalog się nie zmienia).
+- Wycinki dzieł w pasach muzeów są kadrowane na twarzach albo motywie, jak
+  kafelki w Szukaj.
+
 ## 1.124.2
 
 - Karteczka z podpisem przy Wypełnij jest zawsze w dwóch liniach: autor

@@ -328,3 +328,26 @@ def test_learnt_places_survive_a_restart(service) -> None:
 
     Library(service.settings.data_dir / "library.db")
     assert known_places().name(PRADO) == "Muzeum Prado"
+
+
+def test_a_museum_named_and_found_on_wikidata_is_one_row(service, monkeypatch) -> None:
+    """The catalogue's "Prado" (its works only name it) and Wikidata's
+    Prado typed: one row, Wikidata's key, the catalogue's work."""
+    from frame_server.museum_places import PlaceHit
+    from frame_server.web import create_app
+
+    app = create_app(service.settings)
+    with TestClient(app) as client:
+        library = app.state.service.library
+        library.upsert(_item("wmc", 5, title="The Garden of Earthly Delights", holder="Prado"))
+        assert library.get("wmc:5").held_at == "name:prado"
+        monkeypatch.setattr(
+            app.state.service.museum_places,
+            "hits",
+            lambda text, limit=7: [PlaceHit(key=PRADO, name="Prado")],
+        )
+        rows = client.get("/api/places", params={"q": "prado"}).json()
+        assert [(r["key"], r["name"], r["item_id"]) for r in rows] == [(PRADO, "Prado", "wmc:5")]
+        # Learnt: the works count for it, and the search asks for it.
+        assert library.get("wmc:5").held_at == PRADO
+        assert [r["key"] for r in client.get("/api/places").json()][:1] == [PRADO]
