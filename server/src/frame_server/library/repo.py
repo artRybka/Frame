@@ -57,6 +57,10 @@ from .vocabulary import (
 #: Item fields that tell copies of a work apart or choose between them.
 log = logging.getLogger(__name__)
 
+#: Seconds the places of the catalogue's works are kept while nothing changes.
+PLACES_KEPT = 600.0
+#: Seconds they are kept whatever the library does meanwhile.
+PLACES_FRESH = 90.0
 #: Seconds between rebuilds of the suggestions' index while the library changes.
 TERM_INDEX_EVERY = 10.0
 
@@ -372,6 +376,8 @@ class Library:
         self._favorites: dict[str, set[str]] | None = None
         #: Goes up with every change of an item (for the suggestions' index).
         self._version = 0
+        #: ``places()`` as last counted: (library version, when, places).
+        self._places_kept: tuple[int, float, list[PlaceCount]] | None = None
         #: Go up with every change of a playlist, and of someone's hearts.
         self._playlists_version = 0
         self._hearts_version = 0
@@ -836,11 +842,28 @@ class Library:
     def save_places(self) -> None:
         """Keep what was learnt of the museums (:mod:`.places`)."""
         self.set_state(PLACES_STATE, known_places().state())
+        self._places_kept = None  # their keys and names may have changed
 
     def places(self) -> list[PlaceCount]:
         """The places of the catalogue's works, the one with most first:
         how many works each has and a work to show for it (the one shown
-        most, a favourite first)."""
+        most, a favourite first). Kept while the library is the same, for
+        ``PLACES_KEPT`` seconds at most (names learnt meanwhile), and
+        ``PLACES_FRESH`` seconds whatever comes in: going
+        through every work took the Muzeum panel a while (Mateusz
+        2026-11-08: "Lista dosyć długo się wczytuje")."""
+        kept = self._places_kept
+        if kept is not None:
+            age = time.monotonic() - kept[1]
+            # Works the background adds meanwhile change little of it.
+            if age < PLACES_FRESH or (kept[0] == self._version and age < PLACES_KEPT):
+                return kept[2]
+        version = self._version
+        found = self._count_places()
+        self._places_kept = (version, time.monotonic(), found)
+        return found
+
+    def _count_places(self) -> list[PlaceCount]:
         places = known_places()
         counts: Counter[str] = Counter()
         names: dict[str, Counter[str]] = {}

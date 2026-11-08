@@ -62,6 +62,8 @@ struct PlaceBands: View {
             }
         }
         .task(id: filter) {
+            // The list as last seen, at once; the server's comes after.
+            if filter.isEmpty, places.isEmpty { places = model.placeList }
             // Typing: a moment's pause before the server (and Wikidata) is asked.
             if !filter.isEmpty { try? await Task.sleep(for: .milliseconds(300)) }
             guard !Task.isCancelled else { return }
@@ -76,7 +78,11 @@ struct PlaceBands: View {
         guard let found = try? await model.backend.places(query: asked), !Task.isCancelled, asked == filter else {
             return
         }
-        for place in found { model.placeNames[place.key] = place.name }
+        if asked.isEmpty {
+            model.placesLoaded(found)
+        } else {
+            for place in found { model.placeNames[place.key] = place.name }
+        }
         withAnimation(.snappy(duration: 0.2)) { places = found }
     }
 
@@ -197,7 +203,9 @@ struct PlaceBand: View {
             OrganicMesh(seed: place.key + place.name)
                 .opacity(struck ? 0.7 : 1)
             if let picture {
-                ArtImage(ref: picture, placeholder: .clear, maxPixel: Self.maxPixel)
+                // Cropped around the faces or what draws the eye, as the
+                // tiles are (Mateusz 2026-11-08).
+                ArtImage(ref: picture, placeholder: .clear, maxPixel: Self.maxPixel, subjectFocus: true)
                     .opacity(pictured ? 1 : 0)
             }
             // The same shade from the left on every band, picture or mesh,
