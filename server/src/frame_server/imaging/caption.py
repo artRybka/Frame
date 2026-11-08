@@ -77,19 +77,17 @@ CARD_SHADOW_OFFSET = (4, 14)
 CARD_SHADOW_DEPTH = 0.7
 
 
-#: Where a caption too long for one line breaks: the artist above, the title
-#: (with its date) below; for photos, the title above, the place below.
+#: Where the card's caption breaks: the artist above, the title below; for
+#: photos, the title above, the place below.
 CAPTION_BREAKS = (" — ", " · ")
 #: Extra space between the card's two lines, in card letter sizes.
 CARD_LEADING = 0.25
 
 
 def caption_lines(draw: ImageDraw.ImageDraw, text: str, fnt: Font, max_width: int) -> list[str]:
-    """``text`` on one line when it fits; otherwise broken in two at the first
-    separator (Mateusz 2026-11-08: author, then title), each line shortened
-    with "…" only when it still does not fit."""
-    if draw.textlength(text, font=fnt) <= max_width:
-        return [text]
+    """``text`` always in two lines, broken at the first separator, however
+    short (Mateusz 2026-11-08: author, then title); each line shortened with
+    "…" only when it does not fit. One line only without a separator."""
     for sep in CAPTION_BREAKS:
         head, found, tail = text.partition(sep)
         if found and head.strip() and tail.strip():
