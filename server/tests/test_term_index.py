@@ -140,3 +140,50 @@ def test_keywords_and_subjects_are_suggested(tmp_path) -> None:
     words = [(h.name, h.count) for h in hits if h.kind == "word"]
     assert words == [("góra fuji", 2), ("Mount Fuji", 1), ("fuj", 2)]
     assert hits[0].name == "góra fuji" and hits[-1].name == "fuj"
+
+
+def test_one_artist_under_many_spellings_is_one_suggestion(tmp_path) -> None:
+    """Mateusz, 2026-11-08: "Rembrandt van Rijn" 169, "Rembrandt" 48,
+    "Rembrandt (Rembrandt van Rijn)" 36 and "Rembrandt Harmensz. van Rijn"
+    15 in the search are one artist; so are "Jan van Eyck" and "Jan Van
+    Eyck"."""
+    lib = Library(tmp_path / "lib.db")
+    spellings = [
+        ("rijks", "Rembrandt van Rijn", 4),
+        ("commons", "Rembrandt", 2),
+        ("met", "Rembrandt (Rembrandt van Rijn)", 2),
+        ("europeana", "Rembrandt Harmensz. van Rijn", 1),
+        ("nga", "Rembrandt Peale", 1),
+        ("aic", "Pupil of Rembrandt", 1),
+        ("rijks", "Jan van Eyck", 2),
+        ("europeana", "Jan Van Eyck", 1),
+    ]
+    n = 0
+    for source, artist, count in spellings:
+        for _ in range(count):
+            n += 1
+            lib.upsert(
+                Item(
+                    id=f"{source}:{n}",
+                    source=source,
+                    source_id=str(n),
+                    title=f"Work {n}",
+                    artist=artist,
+                )
+            )
+    index = lib.term_index()
+    assert index.artists("rembrandt") == [
+        ("Rembrandt van Rijn", 9),
+        ("Pupil of Rembrandt", 1),
+        ("Rembrandt Peale", 1),
+    ]
+    # Any spelling finds the person.
+    assert index.artists("harmensz") == [("Rembrandt van Rijn", 9)]
+    assert index.artists("eyck") == [("Jan van Eyck", 3)]
+    # The chip finds every spelling, not the pupil's or Peale's works.
+    for name in ["Rembrandt van Rijn", "Rembrandt (Rembrandt van Rijn)"]:
+        assert lib.query(PlaylistRules(artists=[name]))[0] == 9, name
+    assert lib.query(PlaylistRules(artists=["Jan Van Eyck"]))[0] == 3
+    facets = {f.value: f.count for f in lib.facets().artists}
+    assert facets["Rembrandt van Rijn"] == 9
+    assert "Rembrandt" not in facets
