@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.123.6
+
+- Stuknięcie w imię i nazwisko autora w Teraz, na karcie dzieła i w studium
+  niczego już nie otwiera. Inne dzieła autora w Szukaj pokazuje tylko
+  przytrzymanie nazwiska, jak dotąd z narastającym drżeniem i lekkim
+  powiększeniem. VoiceOver ma do tego osobną czynność.
+
 ## 1.123.5
 
 - Podpis na dziele: obie linie karteczki są wyrównane do prawej

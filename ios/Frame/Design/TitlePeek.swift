@@ -5,7 +5,7 @@ import UIKit
 /// and firmer, while the finger stays, and the text (or picture) growing a
 /// touch; held long enough, `action` runs with a firm tap and it settles
 /// back. A quick tap does `onTap`. Used by "Tytuł w oryginale", the
-/// artist's name (held: their other works on Szukaj) and the picture
+/// artist's name (held, not tapped: their other works on Szukaj) and the picture
 /// (held: the whole screen).
 struct PressHold: ViewModifier {
     var enabled = true
@@ -125,12 +125,13 @@ extension View {
         }
     }
 
-    /// The artist's name: a tap or a hold searches their other works.
+    /// The artist's name: a hold searches their other works; a tap does
+    /// nothing (Mateusz 2026-11-08: "Zostawmy tylko przytrzymanie").
     func artistPress(_ search: @escaping () -> Void) -> some View {
-        pressHold(onTap: search, action: search)
-            .accessibilityAddTraits(.isButton)
-            .accessibilityHint(Text("Szuka innych dzieł tego autora"))
-            .accessibilityAction { search() }
+        pressHold(action: search)
+            // VoiceOver cannot hold: an action instead.
+            .accessibilityHint(Text("Przytrzymaj, by szukać innych dzieł tego autora"))
+            .accessibilityAction(named: "Szukaj innych dzieł tego autora") { search() }
     }
 }
 
