@@ -459,8 +459,7 @@ enum DemoFraming {
 
     /// The caption on a small white card laid on the picture, with a soft
     /// shadow (caption.card_layout, shade_card; the canvas here is half size).
-    /// Too long for one line: the artist above, the title below
-    /// (caption.caption_lines).
+    /// Always the artist above, the title below (caption.caption_lines).
     private static func drawCard(_ text: String, corner: CGPoint, width: CGFloat, canvas: CGSize, in context: CGContext) {
         let size = (captionSize(canvas) * 0.8).rounded()  // caption.CARD_TEXT, CARD_PADDING
         let pad = CGSize(width: (size * 0.65).rounded(), height: (size * 0.4).rounded())
@@ -473,7 +472,7 @@ enum DemoFraming {
             .paragraphStyle: style,
         ]
         let room = width - 2 * pad.width
-        let lines = captionLines(text, room: room, attributes: attributes)
+        let lines = captionLines(text)
         let leading = (size * 0.25).rounded()
         let sizes = lines.map { ($0 as NSString).size(withAttributes: attributes) }
         let lineHeight = ceil(sizes.map(\.height).max() ?? size)
@@ -494,10 +493,9 @@ enum DemoFraming {
         }
     }
 
-    /// One line when it fits, otherwise split at the first " — " (or " · "
-    /// for photos) into two, each still shortened with "…" if it must be.
-    static func captionLines(_ text: String, room: CGFloat, attributes: [NSAttributedString.Key: Any]) -> [String] {
-        if (text as NSString).size(withAttributes: attributes).width <= room { return [text] }
+    /// Always two lines, split at the first " — " (or " · " for photos),
+    /// however short; each still shortened with "…" if it must be.
+    static func captionLines(_ text: String) -> [String] {
         for separator in [" — ", " · "] {
             if let range = text.range(of: separator) {
                 let head = text[..<range.lowerBound].trimmingCharacters(in: .whitespaces)

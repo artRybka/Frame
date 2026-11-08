@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.124.2
+
+- Karteczka z podpisem przy Wypełnij jest zawsze w dwóch liniach: autor
+  w pierwszej, tytuł w drugiej, także gdy podpis jest krótki.
+
 ## 1.124.1
 
 - Karteczka z podpisem przy Wypełnij jest mniejsza: mniejsze pismo,

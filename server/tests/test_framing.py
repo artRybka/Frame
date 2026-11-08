@@ -270,13 +270,16 @@ def test_fill_puts_the_caption_on_a_card_on_the_picture() -> None:
     (window,) = plan.windows
     assert window.rect == (0, 0, 2560, 1440)  # no strip: the picture fills the frame
     assert plan.caption_at is None and plan.card_at is not None
+    # Always two lines, however short: the artist above, the title below
+    # (Mateusz 2026-11-08).
     (x, y, w, h), lines = card_layout(CANVAS, plan.card_at, "Someone — Something, 1900")
-    assert lines == ["Someone — Something, 1900"]
+    assert lines == ["Someone", "Something, 1900"]
     assert x + w == plan.card_at[0] < 2560 and y + h == plan.card_at[1] < 1440  # bottom right
     assert w < 2560 * 0.6 and 30 < h < 120
     _, lines = card_layout(CANVAS, plan.card_at, "Long title " * 60)
     assert len(lines) == 1 and lines[0].endswith("…")  # never wider than its share of the frame
-    # Too long for one line: the artist above, the title below (Mateusz 2026-11-08).
+    (_, _, _, h1), _ = card_layout(CANVAS, plan.card_at, "Untitled")
+    assert h > h1 + 20  # one line only without a separator
     upright = plan_layout((900, 1600), (1440, 2560), Fit.FILL, caption=True)
     assert upright.card_at is not None
     long_title = "Portret mężczyzny w wysokim kapeluszu, ok. 1663"
@@ -284,7 +287,7 @@ def test_fill_puts_the_caption_on_a_card_on_the_picture() -> None:
         (1440, 2560), upright.card_at, f"Rembrandt van Rijn — {long_title}"
     )
     assert lines == ["Rembrandt van Rijn", long_title]
-    assert h2 > h + 20 and w2 <= 1440 * 0.6  # a second line, same width limit
+    assert h2 == h and w2 <= 1440 * 0.6
     _, lines = card_layout(CANVAS, plan.card_at, "Someone — " + "Long title " * 60)
     assert lines[0] == "Someone" and lines[1].endswith("…")
     # Flush right: both lines end at the card's right padding.
