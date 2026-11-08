@@ -246,24 +246,33 @@ struct OrganicMesh: View {
     }
 
     var body: some View {
-        let bytes = digest
         let dark = scheme == .dark
-        let base = Color(hex: dark ? 0x262320 : 0xEFE8DC)
-        let picks = (0 ..< 3).map { Self.tones[Int(bytes[$0]) % Self.tones.count] }
-        let colours = picks.map { Color(hex: dark ? $0.1 : $0.0) }
-        // Where each colour sits on the 3×3 mesh's middle row and corners.
+        MeshGradient(width: 3, height: 3, points: points, colors: colours(dark: dark))
+            .opacity(dark ? 0.9 : 0.95)
+            .background(Self.base(dark: dark))
+    }
+
+    private static func base(dark: Bool) -> Color { Color(hex: dark ? 0x262320 : 0xEFE8DC) }
+
+    /// The mesh's points, its middles nudged a little by the seed.
+    private var points: [SIMD2<Float>] {
+        let bytes = digest
         func nudge(_ i: Int) -> Float { Float(Int(bytes[3 + i]) % 30 - 15) / 100 }
-        let points: [SIMD2<Float>] = [
+        return [
             [0, 0], [0.5 + nudge(0), 0], [1, 0],
             [0, 0.5 + nudge(1)], [0.5 + nudge(2), 0.5 + nudge(3)], [1, 0.5 + nudge(4)],
             [0, 1], [0.5 + nudge(5), 1], [1, 1],
         ]
-        let order = Int(bytes[9]) % 2 == 0
-        let mesh: [Color] = order
-            ? [colours[0], base, colours[2], colours[0], colours[1], base, base, colours[1], colours[2]]
-            : [base, colours[1], colours[0], colours[2], colours[1], colours[0], colours[2], base, colours[1]]
-        MeshGradient(width: 3, height: 3, points: points, colors: mesh)
-            .opacity(dark ? 0.9 : 0.95)
-            .background(base)
+    }
+
+    /// Three of the tones and the mat, laid out one of two ways.
+    private func colours(dark: Bool) -> [Color] {
+        let bytes = digest
+        let base = Self.base(dark: dark)
+        let picks = (0 ..< 3).map { Self.tones[Int(bytes[$0]) % Self.tones.count] }
+        let c = picks.map { Color(hex: dark ? $0.1 : $0.0) }
+        return Int(bytes[9]) % 2 == 0
+            ? [c[0], base, c[2], c[0], c[1], base, base, c[1], c[2]]
+            : [base, c[1], c[0], c[2], c[1], c[0], c[2], base, c[1]]
     }
 }
