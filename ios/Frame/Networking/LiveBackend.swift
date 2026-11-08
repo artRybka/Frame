@@ -204,6 +204,12 @@ struct LiveBackend: FrameBackend {
         return try await get("/api/library/items/\(escape(itemID))/framing", query: query)
     }
 
+    func board(itemID: String, settings: FrameSettings, ownLook: Bool) async throws -> PhotoBoard {
+        var query = framingQuery(settings)
+        if !ownLook { query.append(URLQueryItem(name: "own_look", value: "false")) }
+        return try await get("/api/library/items/\(escape(itemID))/board", query: query)
+    }
+
     private struct FramingUpdate: Encodable {
         let orientation: String
         let crops: [Crop]

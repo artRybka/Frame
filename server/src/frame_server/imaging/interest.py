@@ -17,7 +17,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from .layout import Crop, crop_box
+from .layout import Crop, crop_box, load_image
 
 log = logging.getLogger(__name__)
 
@@ -129,3 +129,16 @@ class InterestMap:
 
     def auto(self, aspect: float, zooms: Sequence[float]) -> list[Crop]:
         return self.pick(aspect, zooms)
+
+
+@lru_cache(maxsize=96)
+def _interest_at(path: str, stamp: tuple[int, int]) -> InterestMap:
+    return InterestMap(load_image(Path(path)))
+
+
+def interest_of(path: Path) -> InterestMap:
+    """The interest analysis of the picture in ``path`` (a thumbnail), kept
+    while the file stays the same: a Multi board's previews, one per grid,
+    margin or mat, looked for the faces of all its photos each time."""
+    st = path.stat()
+    return _interest_at(str(path), (st.st_mtime_ns, st.st_size))

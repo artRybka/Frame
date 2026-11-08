@@ -77,6 +77,9 @@ protocol FrameBackend: Sendable {
     func framing(itemID: String, orientation: String, automatic: Bool) async throws -> FramingView
     func saveFraming(itemID: String, orientation: String, crops: [Crop]) async throws -> FramingView
     func resetFraming(itemID: String, orientation: String) async throws -> FramingView
+    /// The Multi board a preview of `itemID` with `settings` shows, for the
+    /// app to draw from thumbnails (every grid, both orientations).
+    func board(itemID: String, settings: FrameSettings, ownLook: Bool) async throws -> PhotoBoard
 
     func playlists() async throws -> [PlaylistSummary]
     func playlist(id: Int) async throws -> PlaylistDetail
@@ -288,6 +291,11 @@ extension FrameBackend {
 }
 
 extension FrameBackend {
+    /// Only the server has the photos' crops: elsewhere the sketch stays.
+    func board(itemID: String, settings: FrameSettings, ownLook: Bool) async throws -> PhotoBoard {
+        throw BackendError.notFound
+    }
+
     func framing(itemID: String, orientation: String) async throws -> FramingView {
         try await framing(itemID: itemID, orientation: orientation, automatic: false)
     }

@@ -10,6 +10,8 @@ struct PreviewLayout: Hashable {
     var margin: Double
     /// Multi: the grid drawn (the chosen one, else the count's first).
     var grid: MultiGrid?
+    /// Multi: the grid asked for, "auto" included (random counts: "auto").
+    var multiGrid = "auto"
 
     init(portrait: Bool, presentation: Presentation) {
         self.portrait = portrait
@@ -20,6 +22,7 @@ struct PreviewLayout: Hashable {
             let count = presentation.multiRandom ? 4 : presentation.multiCount
             let grids = MultiGrid.grids(count)
             grid = grids.first { $0.id == presentation.multiGrid } ?? grids.first
+            multiGrid = presentation.multiRandom ? "auto" : presentation.multiGrid
         }
     }
 
@@ -41,6 +44,9 @@ struct PresentationPreview<Note: View>: View {
     /// Previews likely asked for next (the other orientation, the other
     /// grids), loaded once this one is in, so they come at once.
     var warm: [ImageRef] = []
+    /// Multi: the board's photos and their crops, drawn from thumbnails at
+    /// once while the preview renders.
+    var board: PhotoBoard?
     @ViewBuilder var note: Note
 
     /// A portrait frame's height.
@@ -56,6 +62,8 @@ struct PresentationPreview<Note: View>: View {
     /// orientation, it turns with the frame and fades.
     @State private var shown: Shown?
     @State private var failed: ImageRef?
+    /// The board's thumbnails, by photo.
+    @State private var thumbs: [String: UIImage] = [:]
     /// The room across, for the height: a landscape frame takes no more.
     @State private var width: CGFloat = 0
 
@@ -103,6 +111,30 @@ struct PresentationPreview<Note: View>: View {
         }
         .frame(height: width > 0 ? Self.box(portrait: layout.portrait, width: width).height : Self.height)
         .task(id: ref) { await load() }
+        .task(id: board?.photos) { await loadThumbs() }
+    }
+
+    /// The board drawn whole from thumbnails: nothing left to pulse.
+    private var boardDrawn: Bool {
+        guard layout.fit == "multi", let board,
+              let drawn = board.layout(portrait: layout.portrait, grid: layout.multiGrid)
+        else { return false }
+        return drawn.windows.allSatisfy { board.photos.indices.contains($0.photo) && thumbs[board.photos[$0.photo]] != nil }
+    }
+
+    private func loadThumbs() async {
+        guard let board else { return }
+        await withTaskGroup(of: (String, UIImage?).self) { group in
+            for id in board.photos where thumbs[id] == nil {
+                guard let request = model.backend.request(for: .thumb(id)) else { continue }
+                group.addTask {
+                    (id, try? await ImageLoader.shared.image(for: request, maxPixel: 640, priority: .high))
+                }
+            }
+            for await (id, image) in group {
+                if let image { thumbs[id] = image }
+            }
+        }
     }
 
     /// The frame at its size on the wall, the moulding included: a
@@ -137,7 +169,7 @@ struct PresentationPreview<Note: View>: View {
             shadow: false
         ) {
             ZStack {
-                LayoutSketch(layout: layout, pulsing: waiting)
+                LayoutSketch(layout: layout, pulsing: waiting && !boardDrawn, board: board, thumbs: thumbs)
                 if let picture {
                     Image(uiImage: picture.image)
                         .resizable()
@@ -206,13 +238,35 @@ struct PresentationPreview<Note: View>: View {
 struct LayoutSketch: View {
     let layout: PreviewLayout
     var pulsing = true
+    /// Multi: the board's photos, drawn in their windows as the server
+    /// crops them, from the thumbnails in `thumbs`.
+    var board: PhotoBoard?
+    var thumbs: [String: UIImage] = [:]
     @State private var dim = false
+
+    private var drawn: PhotoBoard.Layout? {
+        guard layout.fit == "multi" else { return nil }
+        return board?.layout(portrait: layout.portrait, grid: layout.multiGrid)
+    }
+
+    /// The board's own colour where it comes from the pictures.
+    private var matColor: Color {
+        if drawn != nil, let board, ["picture", "picture_dark", "edge"].contains(layout.mat),
+           let color = Color(hexString: board.mat) {
+            return color
+        }
+        return MatSwatch.color(layout.mat)
+    }
 
     var body: some View {
         ZStack {
-            Rectangle().fill(MatSwatch.color(layout.mat))
+            Rectangle().fill(matColor)
             Canvas { context, size in
                 let field = layout.darkMat ? Color.white.opacity(0.14) : Theme.ink.opacity(0.09)
+                if let drawn, let board {
+                    Self.draw(drawn, of: board, thumbs: thumbs, dark: layout.darkMat, field: field, in: &context, size: size)
+                    return
+                }
                 let (windows, lines) = Self.parts(of: layout, in: size)
                 for window in windows {
                     context.fill(Path(window), with: .color(field))
@@ -227,6 +281,41 @@ struct LayoutSketch: View {
             withAnimation(.easeInOut(duration: 0.85).repeatForever(autoreverses: true)) { dim = true }
         }
         .accessibilityHidden(true)
+    }
+
+    /// The board's photos in their windows, each cropped as the server
+    /// crops it, with a hint of the bevel around the cut.
+    static func draw(
+        _ drawn: PhotoBoard.Layout, of board: PhotoBoard, thumbs: [String: UIImage],
+        dark: Bool, field: Color, in context: inout GraphicsContext, size: CGSize
+    ) {
+        let bevel = max(min(size.width, size.height) * 0.006, 0.75)
+        let edge = dark ? Color.white.opacity(0.22) : Color.black.opacity(0.10)
+        for window in drawn.windows {
+            guard window.rect.count == 4, window.crop.count == 4 else { continue }
+            let rect = CGRect(
+                x: window.rect[0] * size.width, y: window.rect[1] * size.height,
+                width: window.rect[2] * size.width, height: window.rect[3] * size.height
+            )
+            context.stroke(Path(rect.insetBy(dx: -bevel / 2, dy: -bevel / 2)), with: .color(edge), lineWidth: bevel)
+            guard board.photos.indices.contains(window.photo), let image = thumbs[board.photos[window.photo]],
+                  window.crop[2] > 0, window.crop[3] > 0
+            else {
+                context.fill(Path(rect), with: .color(field))
+                continue
+            }
+            // The whole photo laid so that its cropped part fills the window.
+            let width = rect.width / window.crop[2]
+            let height = rect.height / window.crop[3]
+            let whole = CGRect(
+                x: rect.minX - window.crop[0] * width, y: rect.minY - window.crop[1] * height,
+                width: width, height: height
+            )
+            context.drawLayer { layer in
+                layer.clip(to: Path(rect))
+                layer.draw(Image(uiImage: image), in: whole)
+            }
+        }
     }
 
     /// The windows and the lines of text on a canvas of `size`.
