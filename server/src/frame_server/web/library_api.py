@@ -16,6 +16,7 @@ import httpx
 from anyio import CapacityLimiter, to_thread
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, Response, StreamingResponse
+from PIL import Image
 from pydantic import BaseModel, Field, ValidationError
 from starlette.concurrency import run_in_threadpool
 
@@ -26,6 +27,8 @@ from ..ai.museum_words import leftovers, museum_labels
 from ..ai.pl_text import KIND as PL_TEXT
 from ..copies import CopyLine, Spot
 from ..fsutil import own_files
+from ..imaging.grids import GRIDS, MIN_PHOTOS, choose, plan_multi
+from ..imaging.interest import InterestMap, interest_of
 from ..imaging.layout import (
     WHOLE,
     Crop,
@@ -36,7 +39,13 @@ from ..imaging.layout import (
     fit_area,
     load_image,
 )
-from ..imaging.pipeline import RenderSettings, encode_image, plan_for, render_original
+from ..imaging.pipeline import (
+    RenderSettings,
+    board_rgb,
+    encode_image,
+    plan_for,
+    render_original,
+)
 from ..library import Facets, Item, ItemKind, ItemSummary, Job, Look, PhotoInfo, PlaylistRules
 from ..library.duplicates import work_key
 from ..library.hosts import Resting, urgent_call
@@ -653,7 +662,8 @@ PREVIEW_CACHE_FILES = 200
 #: How long a preview waits for the work's Polish texts (asked first in line).
 PREVIEW_POLISH_SECONDS = 20.0
 NO_STORE = {"Cache-Control": "no-store"}
-PREVIEW_KIND = "fast"  # part of the cache key: earlier previews went through the whole render
+PREVIEW_KIND = "fast2"  # part of the cache key: earlier previews went through the whole render,
+# then Multi boards cropped by the originals rather than the thumbnails
 
 
 def _prune(directory: Path, keep: int) -> None:
@@ -661,6 +671,38 @@ def _prune(directory: Path, keep: int) -> None:
     files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
     for old in files[keep:]:
         old.unlink(missing_ok=True)
+
+
+def _trial_settings(
+    svc: FrameService, item: Item, settings: str | None, framing: str | None
+) -> tuple[Item, FrameSettings]:
+    """The work and the frame settings a preview tries (see :func:`item_preview`)."""
+    frame_settings = svc.player.settings
+    try:
+        if settings:
+            frame_settings = FrameSettings.model_validate_json(settings)
+        if framing:
+            orientation = frame_settings.orientation.value
+            saved = item.framing.get(orientation) or Framing()
+            trial = Framing.model_validate_json(framing).model_dump(exclude_none=True)
+            tried = Framing.model_validate(saved.model_dump() | trial)
+            item = item.model_copy(update={"framing": {**item.framing, orientation: tried}})
+    except ValidationError as err:
+        raise HTTPException(422, f"invalid preview: {err}") from err
+    return item, frame_settings
+
+
+def _interest(svc: FrameService, board: list[Item]) -> list[InterestMap | None]:
+    """The interest analyses of a Multi board's photos, from their
+    thumbnails and kept: the previews of every grid, margin and mat crop the
+    photos alike, as the app's own drawing of the board does."""
+    found: list[InterestMap | None] = []
+    for shown in board:
+        try:
+            found.append(interest_of(svc.images.ensure_thumb(shown, True)))
+        except (Gone, Resting, httpx.HTTPError, OSError):
+            found.append(None)
+    return found
 
 
 @router.get("/library/items/{item_id:item}/preview")
@@ -684,32 +726,31 @@ async def item_preview(
     item = await _work(svc, item_id, threads=SHOWN_THREADS)
     if not own_look and item.look is not None:
         item = item.model_copy(update={"look": None})
-    frame_settings = svc.player.settings
-    try:
-        if settings:
-            frame_settings = FrameSettings.model_validate_json(settings)
-        if framing:
-            orientation = frame_settings.orientation.value
-            saved = item.framing.get(orientation) or Framing()
-            trial = Framing.model_validate_json(framing).model_dump(exclude_none=True)
-            tried = Framing.model_validate(saved.model_dump() | trial)
-            item = item.model_copy(update={"framing": {**item.framing, orientation: tried}})
-    except ValidationError as err:
-        raise HTTPException(422, f"invalid preview: {err}") from err
+    item, frame_settings = _trial_settings(svc, item, settings, framing)
     # The texts on the mat in Polish, as the frame will show them: an
     # English preview would stay in the app's cache after they come.
     await svc.player.wait_for_polish(item, frame_settings, PREVIEW_POLISH_SECONDS)
-    render_settings = svc.player.render_settings(item, frame_settings)
-    board = svc.player.preview_board(item, frame_settings)  # MULTI: with the photos beside it
-    ids = ",".join(i.id for i in board)
-    # A sharper copy of a picture since: another preview.
-    copies = ",".join(shown.sharper.item_id for shown in board if shown.sharper is not None)
-    shape = render_settings.model_dump_json() + svc.palette.name
-    key = hashlib.sha1(
-        (PREVIEW_KIND + shape + ids + copies).encode(),
-        usedforsecurity=False,
-    ).hexdigest()[:12]
-    path = svc.images.thumbs.parent / "previews" / f"{item.file_stem}-{key}.jpg"
+
+    def plan() -> tuple[RenderSettings, list[Item], Path]:
+        # Off the event loop: a Multi board's photos come from the library
+        # (2026-11-08: about 1 s on the NAS, every other request waiting).
+        render_settings = svc.player.render_settings(item, frame_settings)
+        board = svc.player.preview_board(item, frame_settings)  # MULTI: with the photos beside it
+        ids = ",".join(i.id for i in board)
+        # A sharper copy of a picture since: another preview.
+        copies = ",".join(shown.sharper.item_id for shown in board if shown.sharper is not None)
+        shape = render_settings.model_dump_json() + svc.palette.name
+        key = hashlib.sha1(
+            (PREVIEW_KIND + shape + ids + copies).encode(),
+            usedforsecurity=False,
+        ).hexdigest()[:12]
+        return (
+            render_settings,
+            board,
+            svc.images.thumbs.parent / "previews" / f"{item.file_stem}-{key}.jpg",
+        )
+
+    render_settings, board, path = await run_in_threadpool(plan)
     if not path.is_file():
         async with _preview_locks.setdefault(path.name, asyncio.Lock()):
             if not path.is_file():
@@ -726,8 +767,16 @@ async def item_preview(
 
                 def build() -> bytes:
                     multi = svc.player.multi(item, frame_settings)
+                    auto = None
+                    if multi:
+                        auto = [m.pick if m else None for m in _interest(svc, board)]
                     img = render_original(
-                        sources, render_settings, svc.palette, multi=multi, seed=ids
+                        sources,
+                        render_settings,
+                        svc.palette,
+                        multi=multi,
+                        seed=",".join(i.id for i in board),
+                        auto=auto,
                     )
                     img.thumbnail((1280, 1280))
                     return encode_image(img, "jpeg", quality=90)
@@ -743,6 +792,91 @@ async def item_preview(
     # changes: the app must ask again rather than keep the old framing.
     cache = "max-age=3600" if settings else "no-cache"
     return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": cache})
+
+
+class BoardWindow(BaseModel):
+    photo: int  # which of the board's photos (index in BoardView.photos)
+    rect: tuple[float, float, float, float]  # x, y, w, h as fractions of the canvas
+    crop: tuple[float, float, float, float]  # x, y, w, h of the photo shown, as fractions of it
+
+
+class BoardLayout(BaseModel):
+    orientation: Orientation
+    grid: str  # as asked: "auto" or a grid's letter
+    shown: str  # the grid drawn ("auto": the one it picks for these photos)
+    windows: list[BoardWindow]
+
+
+class BoardView(BaseModel):
+    """A Multi board for the app to draw from the thumbnails it has, at once
+    and for every grid, while the preview renders (the previews of one
+    board took 2–5 s each on the NAS, Mateusz 2026-11-08)."""
+
+    photos: list[str]  # the photos on the board, ``item_id`` first
+    mat: str  # "#rrggbb", about the board's colour
+    layouts: list[BoardLayout]  # both orientations, "auto" and each grid; none: not a board
+
+
+@router.get("/library/items/{item_id:item}/board")
+async def item_board(
+    item_id: str, svc: Svc, settings: str | None = None, own_look: bool = True
+) -> BoardView:
+    """Where each photo of the Multi board a preview of ``item_id`` shows
+    goes, and which part of it, for every grid of its count; ``settings``
+    and ``own_look`` as for :func:`item_preview` (only the photos'
+    presentation matters: margin, mat and count, not the grid)."""
+    item = await _work(svc, item_id, threads=SHOWN_THREADS)
+    if not own_look and item.look is not None:
+        item = item.model_copy(update={"look": None})
+    item, frame_settings = _trial_settings(svc, item, settings, None)
+    return await to_thread.run_sync(_board_view, svc, item, frame_settings, limiter=SHOWN_THREADS)
+
+
+def _board_view(svc: FrameService, item: Item, frame_settings: FrameSettings) -> BoardView:
+    render_settings = svc.player.render_settings(item, frame_settings)
+    mat = render_settings.layout.mat
+    board = svc.player.preview_board(item, frame_settings)
+    photos = [i.id for i in board]
+    if not svc.player.multi(item, frame_settings) or len(board) < MIN_PHOTOS:
+        return BoardView(photos=photos, mat="#ffffff", layouts=[])
+    thumbs: list[Image.Image] = []
+    for shown in board:
+        try:
+            thumbs.append(load_image(svc.images.ensure_thumb(shown, True)))
+        except (Gone, Resting, httpx.HTTPError, OSError):
+            return BoardView(photos=photos, mat="#ffffff", layouts=[])
+    maps = _interest(svc, board)
+    auto = [m.pick if m else None for m in maps]
+    sizes = [img.size for img in thumbs]
+    seed = ",".join(photos)
+    margin = render_settings.layout.margin
+    layouts = []
+    for orientation in Orientation:
+        canvas = canvas_size(orientation)
+        for grid in ["auto", *(g.id for g in GRIDS[len(board)])]:
+            plan, order = plan_multi(sizes, canvas, margin, grid, seed, auto)
+            shown_grid = choose([w / h for w, h in sizes], canvas, margin, grid, seed)[0].id
+            windows = []
+            for window, photo in zip(plan.windows, order, strict=True):
+                pw, ph = sizes[photo]
+                x0, y0, x1, y1 = window.box
+                windows.append(
+                    BoardWindow(
+                        photo=photo,
+                        rect=_box(window.rect, canvas),
+                        crop=(
+                            round(x0 / pw, 5),
+                            round(y0 / ph, 5),
+                            round((x1 - x0) / pw, 5),
+                            round((y1 - y0) / ph, 5),
+                        ),
+                    )
+                )
+            layouts.append(
+                BoardLayout(orientation=orientation, grid=grid, shown=shown_grid, windows=windows)
+            )
+    r, g, b = board_rgb(thumbs, mat)
+    return BoardView(photos=photos, mat=f"#{r:02x}{g:02x}{b:02x}", layouts=layouts)
 
 
 Box = tuple[float, float, float, float]  # x, y, w, h as fractions of the canvas

@@ -2451,6 +2451,33 @@ struct FramingCrops: Codable, Hashable, Sendable {
     }
 }
 
+/// `GET /api/library/items/{id}/board`: a Multi board for the app to draw
+/// from the thumbnails it has, at once and for every grid, while the
+/// server's preview renders.
+struct PhotoBoard: Codable, Hashable, Sendable {
+    struct Window: Codable, Hashable, Sendable {
+        let photo: Int  // index in `photos`
+        let rect: [Double]  // x, y, w, h as fractions of the canvas
+        let crop: [Double]  // x, y, w, h of the photo shown, as fractions of it
+    }
+
+    struct Layout: Codable, Hashable, Sendable {
+        let orientation: String
+        let grid: String  // as asked: "auto" or a grid's letter
+        let shown: String  // the grid drawn
+        let windows: [Window]
+    }
+
+    let photos: [String]
+    let mat: String  // "#rrggbb"
+    let layouts: [Layout]
+
+    func layout(portrait: Bool, grid: String) -> Layout? {
+        let orientation = portrait ? "portrait" : "landscape"
+        return layouts.first { $0.orientation == orientation && $0.grid == grid }
+    }
+}
+
 /// `GET /api/library/items/{id}/framing`
 struct FramingView: Codable, Hashable, Sendable {
     let orientation: String
