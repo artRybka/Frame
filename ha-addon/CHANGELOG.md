@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.124.4
+
+- Szukaj → Epoka: pod osią czasu jest zawsze miejsce na kreseczkę wybranego
+  okresu, więc karta nie podskakuje, gdy go zaznaczysz. Kreseczka ma kolor
+  grupy okresu: złoty Starożytność, niebieski Europa, czerwony Polska,
+  zielony Japonia i Chiny.
+
 ## 1.124.3
 
 - Szukaj → Muzeum: muzeum, które katalog znał tylko z nazwy (np. „Prado”),
