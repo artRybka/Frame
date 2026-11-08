@@ -169,6 +169,16 @@ final class AppModel {
     /// (and as works named them): the chips' names.
     var placeNames: [String: String] = [:]
     @ObservationIgnored private var placeNamesLoaded = false
+    /// Szukaj's "Muzeum" list as last loaded (nothing typed): shown at once
+    /// when the group opens again, then brought up to date (Mateusz
+    /// 2026-11-08: "Lista dosyć długo się wczytuje").
+    var placeList: [PlaceHit] = []
+
+    /// Remembers the list of museums (nothing typed) and their names.
+    func placesLoaded(_ found: [PlaceHit]) {
+        placeList = found
+        for place in found { placeNames[place.key] = place.name }
+    }
 
     /// The name of a museum's chip: a place's as listed, a source's own.
     func placeName(_ key: String) -> String {
@@ -183,6 +193,7 @@ final class AppModel {
             placeNamesLoaded = false
             return
         }
+        if placeList.isEmpty { placeList = found }
         for place in found where placeNames[place.key] == nil { placeNames[place.key] = place.name }
     }
 

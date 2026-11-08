@@ -34,7 +34,8 @@ from ..library.hosts import urgent_call
 from ..library.importer import ALL
 from ..library.mix import mixed
 from ..library.museums import Discovery, Kind, places_in
-from ..library.places import OWN, known_places, migrate_sources
+from ..library.places import NAME as NAME_KEY
+from ..library.places import OWN, QID, known_places, migrate_sources
 from ..library.repo import Hidden, Library
 from ..library.search import MuseumSearch
 from ..library.themes import (
@@ -940,7 +941,40 @@ async def places(
             extra = []
         have = {h.key for h in hits}
         hits += [h for h in extra if h.key not in have]
-    return hits[:limit]
+    merged, learnt = _one_each(hits)
+    if learnt:
+        await run_in_threadpool(svc.library.save_places)
+    return merged[:limit]
+
+
+def _one_each(hits: list[PlaceHit]) -> tuple[list[PlaceHit], bool]:
+    """One row for each museum: the catalogue's "Prado" whose works only
+    named it (``name:prado``, the night not having asked Wikidata yet) and
+    Wikidata's Prado typed are one, with Wikidata's key (learnt from then
+    on) and the catalogue's work (Mateusz 2026-11-08: "Nawet 2x?"). Also
+    whether a name was learnt so."""
+    known = known_places()
+    learnt = False
+    out: list[PlaceHit] = []
+    by_name: dict[str, int] = {}
+    for hit in hits:
+        name = fold(hit.name)
+        at = by_name.get(name)
+        if at is None:
+            by_name[name] = len(out)
+            out.append(hit)
+            continue
+        first = out[at]
+        if first.key.startswith(NAME_KEY) and QID.match(hit.key):
+            # The night would learn it so: the name is that museum.
+            known.alias(first.name, hit.key)
+            learnt = True
+            out[at] = first.model_copy(
+                update={"key": hit.key, "city": first.city or hit.city, "source": hit.source}
+            )
+        elif first.city and hit.city and fold(first.city) != fold(hit.city):
+            out.append(hit)  # two museums of one name, in two towns
+    return out, learnt
 
 
 class PlacePicture(BaseModel):
