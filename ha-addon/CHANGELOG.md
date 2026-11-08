@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.128.0
+
+- Szukaj → Temat: zamiast kapsułek spis w dwóch kolumnach, pogrupowany
+  (Krajobraz, Przyroda, Ludzie, Życie i miejsca, Opowieści). Przy każdym
+  temacie rysunek cienkopisem, a kolor jak akwarela: plama wylewa się poza
+  linię, jasna w środku, z ostrym, nierównym brzegiem. Wybrany temat ma
+  ptaszek. Kolory są bardziej różne, Ptaki, Muzyka i Mitologia też mają
+  swój.
+
 ## 1.127.0
 
 - Szukaj → Styl: każdy kierunek to mały obrazek w ramie z jasnego dębu, z

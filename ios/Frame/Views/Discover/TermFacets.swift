@@ -724,24 +724,63 @@ struct TermFacetPanel: View {
     private var terms: some View {
         let shown = matching(model.vocabulary.filter { $0.kind == facet.rawValue })
         return VStack(alignment: .leading, spacing: 12) {
-            // Temat: each subject with its drawing, the rows centred
-            // (PLAN 3.3zzz59).
-            FlowLayout(spacing: 8, centred: facet == .subject) {
-                legacyChips
-                ForEach(shown) { term in
-                    let selected = picked(term.kind, term.key)
-                    if facet == .subject, let drawing = TopicArt.drawing(term.key) {
-                        TopicChip(drawing: drawing, title: term.name, selected: selected) {
-                            toggle(term.kind, term.key, term.name)
-                        }
-                    } else {
-                        Chip(title: term.name, selected: selected) {
+            if facet == .subject {
+                subjectList(shown)
+            } else {
+                FlowLayout(spacing: 8) {
+                    legacyChips
+                    ForEach(shown) { term in
+                        Chip(title: term.name, selected: picked(term.kind, term.key)) {
                             toggle(term.kind, term.key, term.name)
                         }
                     }
                 }
             }
             if shown.isEmpty { nothingFound }
+        }
+    }
+
+    /// Temat as a list (PLAN 3.3zzz62): the subjects in five groups, two
+    /// columns of rows with their drawings in watercolour. A subject the
+    /// app has no drawing for (a new one on the server) and older
+    /// playlists' values are chips under them.
+    private func subjectList(_ shown: [TermInfo]) -> some View {
+        let groups = TopicArt.groups.compactMap { group -> (title: String, terms: [TermInfo])? in
+            let terms = group.keys.compactMap { key in shown.first { $0.key == key } }
+            return terms.isEmpty ? nil : (title: group.title, terms: terms)
+        }
+        let grouped = Set(TopicArt.groups.flatMap { $0.keys })
+        let rest = shown.filter { !grouped.contains($0.key) }
+        let columns = [GridItem(.flexible(), spacing: 14, alignment: .top), GridItem(.flexible(), alignment: .top)]
+        return VStack(alignment: .leading, spacing: 4) {
+            ForEach(groups, id: \.title) { group in
+                Eyebrow(group.title)
+                    .padding(.leading, 4)
+                    .padding(.top, group.title == groups.first?.title ? 0 : 12)
+                LazyVGrid(columns: columns, spacing: 0) {
+                    ForEach(group.terms) { term in
+                        TopicRow(
+                            drawing: TopicArt.drawing(term.key),
+                            wash: TopicArt.washAsset(term.key),
+                            title: term.name,
+                            selected: picked(term.kind, term.key)
+                        ) {
+                            toggle(term.kind, term.key, term.name)
+                        }
+                    }
+                }
+            }
+            if !rest.isEmpty || !legacy.isEmpty {
+                FlowLayout(spacing: 8) {
+                    legacyChips
+                    ForEach(rest) { term in
+                        Chip(title: term.name, selected: picked(term.kind, term.key)) {
+                            toggle(term.kind, term.key, term.name)
+                        }
+                    }
+                }
+                .padding(.top, 12)
+            }
         }
     }
 
