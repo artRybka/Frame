@@ -322,6 +322,62 @@ def test_a_thumbnail_refused_by_the_museum_comes_from_a_copy(tmp_path: Path) -> 
     assert not cache.gone("aic:1")
 
 
+def test_mirrors_are_asked_only_once_the_own_address_fails(tmp_path: Path) -> None:
+    """A mirror may ask Wikidata: no business of a download that works."""
+    asked: list[bool] = []
+
+    def mirror(item: Item, thumb: bool) -> list[str]:
+        asked.append(thumb)
+        return [f"https://commons.wikimedia.org/{item.source_id}"]
+
+    cache = ImageCache(
+        tmp_path,
+        lambda: httpx.Client(
+            transport=httpx.MockTransport(lambda r: httpx.Response(200, content=_jpeg()))
+        ),
+    )
+    cache.mirrors["aic"] = mirror
+    assert cache.ensure_thumb(_aic(1)).is_file()
+    assert cache.ensure_image(_aic(1)).is_file()
+    assert asked == []
+
+
+def test_a_polish_museums_work_is_found_on_wikidata_by_its_inventory_number() -> None:
+    """The MNK's image server failed every original (2026-11-08); Wikidata
+    knows its works by inventory number (P217), not by the record id."""
+    from frame_server.library.wikidata import CommonsCopies, inventory_number
+
+    searched: list[str] = []
+    number = "MNK XII-209"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        params = request.url.params
+        if params.get("action") == "query":
+            searched.append(params["srsearch"])
+            return httpx.Response(200, json={"query": {"search": [{"title": "Q474338"}]}})
+        claims = {
+            "P217": [{"mainsnak": {"datavalue": {"value": number}}}],
+            "P18": [{"mainsnak": {"datavalue": {"value": "Lady with an Ermine.jpg"}}}],
+        }
+        return httpx.Response(200, json={"entities": {"Q474338": {"claims": claims}}})
+
+    def mnk(n: int, credit: str) -> Item:
+        return Item(id=f"mnk:{n}", source="mnk", source_id=str(n), credit=credit)
+
+    lady = mnk(1, "Muzeum Narodowe w Krakowie, MNK XII-209")
+    assert inventory_number(lady) == "MNK XII-209"
+    assert inventory_number(mnk(2, "Muzeum Narodowe w Krakowie, XII-209")) == ""  # whose?
+    assert inventory_number(mnk(3, "")) == ""
+    warsaw = Item(id="mnw:1", source="mnw", source_id="1", credit="Muzeum Narodowe, MP 431 MNW")
+    assert inventory_number(warsaw) == "MP 431 MNW"
+    copies = CommonsCopies(lambda: httpx.Client(transport=httpx.MockTransport(handler)))
+    assert copies.file(lady) == "Lady with an Ermine.jpg"
+    assert searched == ['haswbstatement:"P217=MNK XII-209"']
+    # A search that matched part of another number is not the work.
+    number = "MNK XII-2090"
+    assert copies.file(mnk(4, "Muzeum Narodowe w Krakowie, MNK XII-209")) == ""
+
+
 def test_a_bot_wall_does_not_make_a_work_gone(tmp_path: Path) -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return _challenge(request)

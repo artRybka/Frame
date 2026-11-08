@@ -191,6 +191,7 @@ def tasks(service: FrameService) -> list[NightTask]:
     what is worked out from it."""
     from .library import courtauld, dumps, loc_index, louvre, met_index, nga
     from .notifications import births_at_night
+    from .sharper import BACK_A_NIGHT
     from .web import discover_api
 
     player, library = service.player, service.library
@@ -212,8 +213,15 @@ def tasks(service: FrameService) -> list[NightTask]:
         player.catch_up()
 
     def sharper(night: Night) -> int:
-        """The frame's next pictures from sharper copies, where there are."""
+        """The frame's next pictures from sharper copies, where there are;
+        first, the own pictures of works a copy stands in for, asked again
+        (their source may be back)."""
         looked = 0
+        for item in service.sharper.stand_ins()[:BACK_A_NIGHT]:
+            if not night.quiet():
+                return looked
+            service.sharper.own_back(item)
+            looked += 1
         for item in player.upcoming(SHARPER_AHEAD):
             if service.sharper.status(item) is not None:
                 continue  # known

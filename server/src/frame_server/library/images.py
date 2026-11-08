@@ -291,7 +291,8 @@ class ImageCache:
         return self.hosts.resting(urlsplit(item.thumb_url).hostname or "")
 
     def _addresses(self, item: Item, thumb: bool) -> list[str]:
-        mirrors = self.mirrors.get(item.source)
+        """The picture's own addresses (a sharper copy's first), without
+        the mirrors (:meth:`_mirrored`)."""
         image_url = own_copy(item)
         first = [item.thumb_url, image_url] if thumb else [image_url or item.thumb_url]
         if not thumb and (allowed := aic_fallback(image_url, item.width)):
@@ -299,20 +300,36 @@ class ImageCache:
         if item.sharper is not None:  # the sharper copy first, the own after
             copy = [item.sharper.thumb_url, item.sharper.url] if thumb else [item.sharper.url]
             first[:0] = copy
-        urls = [*first, *(mirrors(item, thumb) if mirrors else [])]
-        return list(dict.fromkeys(u for u in urls if u))
+        return list(dict.fromkeys(u for u in first if u))
+
+    def _mirrored(self, item: Item, thumb: bool, urls: list[str]) -> list[str]:
+        """``urls`` and, after them, the mirrors' addresses of the picture:
+        asked only once the own failed (a mirror may ask Wikidata, which is
+        no business of a download that works)."""
+        mirrors = self.mirrors.get(item.source)
+        more = mirrors(item, thumb) if mirrors else []
+        return list(dict.fromkeys([*urls, *(u for u in more if u)]))
 
     def _thumbnail(self, item: Item, urgent: bool) -> Image.Image:
         urls = self._addresses(item, thumb=True)
+        mirrored = not urls  # none of its own: the mirrors at once
+        if mirrored:
+            urls = self._mirrored(item, True, urls)
         refused = True
         resting: Resting | None = None
-        for n, url in enumerate(urls, 1):
+        n = 0
+        while n < len(urls):
+            url = urls[n]
+            n += 1
             try:
                 return self._download(url, urgent)
             except (httpx.HTTPError, OSError) as err:
                 refused = refused and _missing(err)
                 if isinstance(err, Resting):
                     resting = resting or err
+                if n == len(urls) and not mirrored:
+                    mirrored = True
+                    urls = self._mirrored(item, True, urls)
                 if n < len(urls):
                     log.info("thumbnail of %s from %s failed: %s; next address", item.id, url, err)
                     continue
@@ -510,13 +527,22 @@ class ImageCache:
             img.info[BYTES] = len(data)
             return img
         urls = self._addresses(item, thumb=False)
+        mirrored = not urls  # none of its own: the mirrors at once
+        if mirrored:
+            urls = self._mirrored(item, False, urls)
         refused = True
-        for n, url in enumerate(urls, 1):
+        n = 0
+        while n < len(urls):
+            url = urls[n]
+            n += 1
             try:
                 # Not an image (a "verify you are human" page): load_image raises.
                 return self._download(url, urgent)
             except (httpx.HTTPError, OSError) as err:
                 refused = refused and _refused(err)
+                if n == len(urls) and not mirrored:
+                    mirrored = True
+                    urls = self._mirrored(item, False, urls)
                 if n < len(urls):
                     log.info("original of %s from %s failed: %s; next address", item.id, url, err)
                     continue
