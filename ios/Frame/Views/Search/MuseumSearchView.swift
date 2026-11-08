@@ -14,7 +14,6 @@ import SwiftUI
 /// work joins the library with it).
 struct MuseumSearchView: View {
     @Environment(AppModel.self) private var model
-    @State private var museums: [Museum] = []
     /// What is asked for, as playlist rules (a playlist can be made from it).
     @State private var rules = PlaylistRules()
     /// Keys of the museums to ask; none means all of them.
@@ -101,7 +100,7 @@ struct MuseumSearchView: View {
             // squares there) stays above them when they come back. (Taken
             // out, they gave it up, and coming back covered the end.)
             TermFacetBar(
-                tokens: tokens, lookup: lookup, museums: museums, colors: ColorTag.families + ColorTag.moods,
+                tokens: tokens, lookup: lookup, colors: ColorTag.families + ColorTag.moods,
                 focus: $fieldFocused, panelHeight: height * TermFacetBar.panelShare
             )
             .padding(.horizontal, Theme.gutter)
@@ -125,7 +124,6 @@ struct MuseumSearchView: View {
         .task {
             await model.loadVocabulary()
             await model.loadPlaceNames()
-            if museums.isEmpty { museums = (try? await model.backend.museums()) ?? [] }
             if LaunchRoute.screen == "museums", rules.isEmpty {
                 rules.artists = ["Utagawa Hiroshige"]
             }

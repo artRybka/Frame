@@ -351,7 +351,6 @@ struct TermFacetBar: View {
     /// The search field's words: they narrow an open group that has a list
     /// to narrow (`TermFacet.fieldPrompt`).
     var lookup: TermLookup
-    var museums: [Museum] = []
     var colors: [String] = []
     /// The search field: a group opening puts its keyboard away, and the
     /// field tapped closes the group.
@@ -390,14 +389,12 @@ struct TermFacetBar: View {
         }
     }
 
+    /// Muzeum is always there (Mateusz 2026-11-08): its bands load their
+    /// own places when opened, so the button waits for nothing. (It used to
+    /// wait for the sources' list, and on the first visit the second row
+    /// came without it for a moment.)
     private var facets: [TermFacet] {
-        TermFacet.allCases.filter { facet in
-            switch facet {
-            case .color: !colors.isEmpty
-            case .museum: !museums.isEmpty
-            default: true
-            }
-        }
+        TermFacet.allCases.filter { $0 != .color || !colors.isEmpty }
     }
 
     private var periods: [TermInfo] { model.vocabulary.filter { $0.kind == "period" } }
@@ -422,7 +419,7 @@ struct TermFacetBar: View {
             // and back into it (PanelGlass).
             if let open {
                 TermFacetPanel(
-                    facet: open, tokens: $tokens, museums: museums, colors: colors,
+                    facet: open, tokens: $tokens, colors: colors,
                     filter: open.fieldPrompt == nil ? "" : lookup.trimmed,
                     // Over the keyboard the bar stands higher: so much less room.
                     maxHeight: (open == .period ? panelHeight * Self.periodGrowth : panelHeight)
@@ -594,7 +591,6 @@ struct TermFacetPanel: View {
     @Environment(AppModel.self) private var model
     let facet: TermFacet
     @Binding var tokens: [SearchToken]
-    var museums: [Museum] = []
     var colors: [String] = []
     /// The search field's words, narrowing the group's list (only for the
     /// groups with a `TermFacet.fieldPrompt`; "" for the others).
