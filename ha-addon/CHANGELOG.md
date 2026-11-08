@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.127.0
+
+- Szukaj → Styl: każdy kierunek to mały obrazek w ramie z jasnego dębu, z
+  nazwą i latami pod spodem, zamiast chmury kapsułek. Style leżą na pięciu
+  półkach po kolei w czasie (Dawni mistrzowie, Romantyzm i realizm, Przełom
+  wieków, Awangarda, Japonia), każdą przewijasz w bok. Wybrany ma otok, a
+  pastylka „Styl” pokazuje małe obrazki wybranych stylów.
+- Jedenaście nowych stylów: Manieryzm, Szkoła z Barbizonu, Orientalizm,
+  Szkoła monachijska, Japonizm, Puentylizm, Futuryzm, Dadaizm, Nowa
+  Rzeczowość, Surrealizm i Rinpa. Barbizon i Puentylizm były dotąd w
+  Realizmie i Postimpresjonizmie. Dzieła dadaizmu, Nowej Rzeczowości i
+  surrealizmu znajdziesz głównie z Użytkiem prywatnym.
+
 ## 1.126.0
 
 - Ramka → Zdjęcia → Multi: podgląd układu jest od razu. Aplikacja układa
