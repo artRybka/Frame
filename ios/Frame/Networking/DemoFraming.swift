@@ -459,6 +459,8 @@ enum DemoFraming {
 
     /// The caption on a small white card laid on the picture, with a soft
     /// shadow (caption.card_layout, shade_card; the canvas here is half size).
+    /// Too long for one line: the artist above, the title below
+    /// (caption.caption_lines).
     private static func drawCard(_ text: String, corner: CGPoint, width: CGFloat, canvas: CGSize, in context: CGContext) {
         let size = captionSize(canvas)
         let pad = CGSize(width: (size * 0.9).rounded(), height: (size * 0.55).rounded())
@@ -469,18 +471,40 @@ enum DemoFraming {
             .foregroundColor: UIColor(white: 0.1, alpha: 1),
             .paragraphStyle: style,
         ]
-        let measured = (text as NSString).size(withAttributes: attributes)
-        let line = CGSize(width: min(ceil(measured.width), width - 2 * pad.width), height: ceil(measured.height))
+        let room = width - 2 * pad.width
+        let lines = captionLines(text, room: room, attributes: attributes)
+        let leading = (size * 0.25).rounded()
+        let sizes = lines.map { ($0 as NSString).size(withAttributes: attributes) }
+        let lineHeight = ceil(sizes.map(\.height).max() ?? size)
+        let lineWidth = min(ceil(sizes.map(\.width).max() ?? 0), room)
+        let textHeight = CGFloat(lines.count) * lineHeight + CGFloat(lines.count - 1) * leading
         let card = CGRect(
-            x: corner.x - line.width - 2 * pad.width, y: corner.y - line.height - 2 * pad.height,
-            width: line.width + 2 * pad.width, height: line.height + 2 * pad.height
+            x: corner.x - lineWidth - 2 * pad.width, y: corner.y - textHeight - 2 * pad.height,
+            width: lineWidth + 2 * pad.width, height: textHeight + 2 * pad.height
         )
         context.saveGState()
         context.setShadow(offset: CGSize(width: 2, height: 7), blur: 8, color: UIColor.black.withAlphaComponent(0.5).cgColor)
         context.setFillColor(UIColor.white.cgColor)
         context.fill(card)
         context.restoreGState()
-        (text as NSString).draw(in: CGRect(origin: CGPoint(x: card.minX + pad.width, y: card.minY + pad.height), size: line), withAttributes: attributes)
+        for (i, line) in lines.enumerated() {
+            let origin = CGPoint(x: card.minX + pad.width, y: card.minY + pad.height + CGFloat(i) * (lineHeight + leading))
+            (line as NSString).draw(in: CGRect(origin: origin, size: CGSize(width: lineWidth, height: lineHeight)), withAttributes: attributes)
+        }
+    }
+
+    /// One line when it fits, otherwise split at the first " — " (or " · "
+    /// for photos) into two, each still shortened with "…" if it must be.
+    static func captionLines(_ text: String, room: CGFloat, attributes: [NSAttributedString.Key: Any]) -> [String] {
+        if (text as NSString).size(withAttributes: attributes).width <= room { return [text] }
+        for separator in [" — ", " · "] {
+            if let range = text.range(of: separator) {
+                let head = text[..<range.lowerBound].trimmingCharacters(in: .whitespaces)
+                let tail = text[range.upperBound...].trimmingCharacters(in: .whitespaces)
+                if !head.isEmpty && !tail.isEmpty { return [head, tail] }
+            }
+        }
+        return [text]
     }
 
     /// Right-aligned on the mat, like a museum label.

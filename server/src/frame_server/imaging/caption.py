@@ -74,19 +74,47 @@ CARD_SHADOW_OFFSET = (4, 14)
 CARD_SHADOW_DEPTH = 0.7
 
 
-def card_layout(canvas: tuple[int, int], at: tuple[int, int, int], text: str) -> tuple[Rect, str]:
-    """The white card for ``text`` whose bottom right corner is ``at`` =
-    (right x, bottom y, max width), and the line printed on it."""
-    right, bottom, width = at
+#: Where a caption too long for one line breaks: the artist above, the title
+#: (with its date) below; for photos, the title above, the place below.
+CAPTION_BREAKS = (" — ", " · ")
+#: Extra space between the card's two lines, in caption sizes.
+CARD_LEADING = 0.25
+
+
+def caption_lines(draw: ImageDraw.ImageDraw, text: str, fnt: Font, max_width: int) -> list[str]:
+    """``text`` on one line when it fits; otherwise broken in two at the first
+    separator (Mateusz 2026-11-08: author, then title), each line shortened
+    with "…" only when it still does not fit."""
+    if draw.textlength(text, font=fnt) <= max_width:
+        return [text]
+    for sep in CAPTION_BREAKS:
+        head, found, tail = text.partition(sep)
+        if found and head.strip() and tail.strip():
+            return [fit_text(draw, part.strip(), fnt, max_width) for part in (head, tail)]
+    return [fit_text(draw, text, fnt, max_width)]
+
+
+def _card_geometry(canvas: tuple[int, int]) -> tuple[Font, int, int, int]:
+    """The card's font, padding (x, y) and the step from one line to the next."""
     size = caption_size(canvas)
     fnt = font(size)
-    pad_x, pad_y = round(size * CARD_PADDING[0]), round(size * CARD_PADDING[1])
-    draw = ImageDraw.Draw(Image.new("1", (1, 1)))
-    line = fit_text(draw, text, fnt, width - 2 * pad_x)
     ascent, descent = fnt.getmetrics() if isinstance(fnt, ImageFont.FreeTypeFont) else (size, 0)
-    w = round(draw.textlength(line, font=fnt)) + 2 * pad_x
-    h = ascent + descent + 2 * pad_y
-    return (right - w, bottom - h, w, h), line
+    return fnt, round(size * CARD_PADDING[0]), round(size * CARD_PADDING[1]), ascent + descent
+
+
+def card_layout(
+    canvas: tuple[int, int], at: tuple[int, int, int], text: str
+) -> tuple[Rect, list[str]]:
+    """The white card for ``text`` whose bottom right corner is ``at`` =
+    (right x, bottom y, max width), and the one or two lines printed on it."""
+    right, bottom, width = at
+    fnt, pad_x, pad_y, line_h = _card_geometry(canvas)
+    draw = ImageDraw.Draw(Image.new("1", (1, 1)))
+    lines = caption_lines(draw, text, fnt, width - 2 * pad_x)
+    leading = round(caption_size(canvas) * CARD_LEADING)
+    w = round(max(draw.textlength(line, font=fnt) for line in lines)) + 2 * pad_x
+    h = len(lines) * line_h + (len(lines) - 1) * leading + 2 * pad_y
+    return (right - w, bottom - h, w, h), lines
 
 
 def card_masks(
@@ -94,15 +122,16 @@ def card_masks(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Boolean masks of the white card and of the black letters on it."""
     cw, ch = canvas
-    (x, y, w, h), line = card_layout(canvas, at, text)
+    (x, y, w, h), lines = card_layout(canvas, at, text)
     card = np.zeros((ch, cw), dtype=bool)
     card[y : y + h, x : x + w] = True
-    size = caption_size(canvas)
-    pad_x, pad_y = round(size * CARD_PADDING[0]), round(size * CARD_PADDING[1])
+    fnt, pad_x, pad_y, line_h = _card_geometry(canvas)
+    leading = round(caption_size(canvas) * CARD_LEADING)
     text_img = Image.new("1", (cw, ch), 0)
     draw = ImageDraw.Draw(text_img)
     draw.fontmode = "1"
-    draw.text((x + pad_x, y + pad_y), line, font=font(size), fill=1)
+    for i, line in enumerate(lines):
+        draw.text((x + pad_x, y + pad_y + i * (line_h + leading)), line, font=fnt, fill=1)
     return card, np.asarray(text_img, dtype=bool)
 
 
