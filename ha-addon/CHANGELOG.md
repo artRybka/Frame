@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.124.1
+
+- Karteczka z podpisem przy Wypełnij jest mniejsza: mniejsze pismo,
+  ciaśniejsze marginesy wokół liter i bliżej rogu ekranu.
+
 ## 1.124.0
 
 - Szukaj → Muzeum wybiera teraz miejsce, w którym dzieło fizycznie jest,

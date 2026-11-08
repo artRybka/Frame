@@ -219,7 +219,7 @@ enum DemoFraming {
         let window = Window(rect: rect, box: cropBox(size, aspect: rect.width / rect.height, crop: chosen), role: "fill", crop: chosen)
         var plan = Plan(fit: "fill", canvas: canvas, windows: [window], captionAt: nil)
         if caption {  // layout.CARD_INSET, CARD_MAX_WIDTH
-            let pad = (min(canvas.width, canvas.height) * 0.03).rounded()
+            let pad = (min(canvas.width, canvas.height) * 0.018).rounded()
             plan.cardAt = (CGPoint(x: canvas.width - pad, y: canvas.height - pad), canvas.width * 0.6)
         }
         return plan
@@ -462,8 +462,8 @@ enum DemoFraming {
     /// Too long for one line: the artist above, the title below
     /// (caption.caption_lines).
     private static func drawCard(_ text: String, corner: CGPoint, width: CGFloat, canvas: CGSize, in context: CGContext) {
-        let size = captionSize(canvas)
-        let pad = CGSize(width: (size * 0.9).rounded(), height: (size * 0.55).rounded())
+        let size = (captionSize(canvas) * 0.8).rounded()  // caption.CARD_TEXT, CARD_PADDING
+        let pad = CGSize(width: (size * 0.65).rounded(), height: (size * 0.4).rounded())
         let style = NSMutableParagraphStyle()
         style.alignment = .right  // flush right, ragged left
         style.lineBreakMode = .byTruncatingTail
