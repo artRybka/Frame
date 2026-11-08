@@ -79,6 +79,9 @@ class DisplayProgress(BaseModel):
     active: bool = False
     title: str = ""
     fraction: float = 0.0  # of the whole way, estimated
+    #: Of the current phase alone (``processing``, ``loading``,
+    #: ``displaying``), estimated: the app's bar fills one part per phase.
+    phase_fraction: float | None = None
     seconds_left: int | None = None  # estimated
     started_at: str | None = None
     finished_at: str | None = None
@@ -119,6 +122,8 @@ class ProgressTracker:
         self._stage_start = 0.0
         self._end: float | None = None
         self._shown = 0.0  # the bar never goes back
+        self._phase_start = 0.0
+        self._phase_shown = 0.0  # nor does the part of it for the phase
         self._downloaded = 0.0  # the share the panel app said it has
 
     @property
@@ -178,9 +183,10 @@ class ProgressTracker:
         self._item_id = item_id
         self._message = None
         self._wakes_at = None
-        self._start = self._stage_start = now
+        self._start = self._stage_start = self._phase_start = now
         self._end = None
         self._shown = 0.0
+        self._phase_shown = 0.0
         self._downloaded = 0.0
         self._changed()
 
@@ -208,6 +214,9 @@ class ProgressTracker:
         if stage not in self._planned:
             self._planned = sorted([*self._planned, stage], key=ORDER.index)
         self._shown = max(self._shown, self._fraction(now))
+        if PHASES.get(stage) != PHASES.get(self._stage):
+            self._phase_start = now
+            self._phase_shown = 0.0
         self._stage = stage
         self._stage_start = now
         if stage == Stage.REFRESHING:
@@ -279,6 +288,20 @@ class ProgressTracker:
         later = self._planned[self._planned.index(self._stage) + 1 :]
         return left + sum(self._expected(s) for s in later)
 
+    def _phase_fraction(self, now: float) -> float:
+        """How far the current phase is: its stages so far against those
+        still planned in it, as the whole bar is reckoned."""
+        phase = PHASES.get(self._stage)
+        spent = now - self._stage_start
+        left = max(self._expected(self._stage) - spent, 0.0)
+        if self._stage == Stage.DOWNLOADING and self._downloaded >= MIN_DOWNLOADED:
+            left = spent * (1 - self._downloaded) / self._downloaded
+        later = self._planned[self._planned.index(self._stage) + 1 :]
+        left += sum(self._expected(s) for s in later if PHASES.get(s) == phase)
+        elapsed = now - self._phase_start
+        total = elapsed + left
+        return min(elapsed / total if total > 0 else 0.0, MAX_FRACTION)
+
     def _fraction(self, now: float) -> float:
         if self._stage not in ACTIVE:
             return self._shown
@@ -294,12 +317,15 @@ class ProgressTracker:
         wall = datetime.now(UTC)
         active = self._stage in ACTIVE
         self._shown = max(self._shown, self._fraction(now))
+        if active:
+            self._phase_shown = max(self._phase_shown, self._phase_fraction(now))
         return DisplayProgress(
             stage=self._stage,
             phase=PHASES.get(self._stage),
             active=active,
             title=self._title,
             fraction=round(self._shown, 3),
+            phase_fraction=round(self._phase_shown, 3) if active else None,
             seconds_left=round(self._remaining(now)) if active else None,
             started_at=_stamp(wall - timedelta(seconds=now - self._start)),
             finished_at=(

@@ -36,8 +36,8 @@ struct NowView: View {
     @State private var loadedHero: ImageRef?
     /// What the panel shows, kept while a new picture is on its way.
     @State private var frameShows: NowShowing?
-    /// The picture on its way, cut for the swap, by its preview's address.
-    @State private var swapPlan: (url: String, plan: SwapPlan)?
+    /// The picture on its way, for the swap, by its preview's address.
+    @State private var swapImage: (url: String, image: UIImage)?
     /// The bar's fraction when the panel began its redraw.
     @State private var redrawFrom: Double?
     /// A first launch, with nothing kept from before: the icon's squares in
@@ -114,7 +114,9 @@ struct NowView: View {
 
     /// How far the panel's redraw is, 0…1, from when it began.
     private var redrawProgress: Double? {
-        guard redrawing, let fraction = model.displayProgress?.fraction else { return nil }
+        guard redrawing, let progress = model.displayProgress else { return nil }
+        if let share = progress.phaseFraction { return min(max(share, 0), 1) }
+        let fraction = progress.fraction
         let from = min(redrawFrom ?? fraction, 0.99)
         return min(max((fraction - from) / (1 - from), 0), 1)
     }
@@ -132,9 +134,14 @@ struct NowView: View {
         return inFlight ? nil : current
     }
 
-    /// The picture whose texts and colours are shown below.
+    /// The picture whose texts and colours are shown below: the one on
+    /// the frame, and once the panel draws the next one, that one.
+    private var textShowing: NowShowing? {
+        redrawing ? current : heroShowing
+    }
+
     private var shownItem: Item? {
-        offset == 0 ? heroShowing?.item : selectedItem
+        offset == 0 ? textShowing?.item : selectedItem
     }
 
     private var draftKey: String {
@@ -155,7 +162,8 @@ struct NowView: View {
                                 .transition(.opacity)
                         }
                         if let progress = model.displayProgress {
-                            DisplayProgressBar(progress: progress)
+                            DisplayProgressBar(progress: progress, picture: onTheWayPicture(progress),
+                                               title: onTheWayTitle(progress))
                                 .frame(maxWidth: model.isPortrait ? 420 : .infinity)
                                 .frame(maxWidth: .infinity)
                                 .transition(.opacity.combined(with: .move(edge: .top)))
@@ -182,11 +190,11 @@ struct NowView: View {
                         }
                         if let shownItem {
                             ArtworkInfo(
-                                item: shownItem, polish: offset == 0 ? heroShowing?.polish : nil,
+                                item: shownItem, polish: offset == 0 ? textShowing?.polish : nil,
                                 open: { path.append(shownItem.id) }
                             )
                                 .id(shownItem.id)
-                        } else if offset == 0, let current = heroShowing {
+                        } else if offset == 0, let current = textShowing {
                             Card {
                                 Text(current.title.isEmpty ? "Bez tytułu" : current.title)
                                     .font(.serif(26, weight: .semibold))
@@ -281,6 +289,20 @@ struct NowView: View {
                 redrawFrom = now ? model.displayProgress?.fraction : nil
             }
             .task(id: inFlight ? current?.previewUrl : nil) { await loadSwap() }
+            .task {
+                // CI screenshots: `-screen swap` sends the next picture, so
+                // the bar and the frame are caught on the way.
+                guard LaunchRoute.screen == "swap", !routed else { return }
+                routed = true
+                for _ in 0 ..< 40 where upcoming.isEmpty {
+                    try? await Task.sleep(for: .milliseconds(250))
+                }
+                try? await Task.sleep(for: .seconds(2))
+                guard let next = upcoming.first?.id,
+                      await model.present(itemID: next, offset: 1, framing: nil)
+                else { return }
+                await model.followPlayer()
+            }
             .onChange(of: history.first?.id, initial: true) { _, first in
                 // CI screenshots: `-screen history-back` starts at the picture before.
                 guard LaunchRoute.screen == "history-back", !routed, let first else { return }
@@ -331,19 +353,40 @@ struct NowView: View {
         return nil
     }
 
-    /// The new picture laid over the old one while the panel redraws; once
-    /// it is done, whole until the hero itself has the new picture, so the
-    /// old one never shows again for a moment.
-    private var swapOverlay: FrameSwap? {
+    /// The new picture over the old one while the panel draws it: faint
+    /// at first, in full colour by the end. Until then the old one stays,
+    /// as on the frame. Once done, whole until the hero itself has the new
+    /// picture, so the old one never shows again for a moment.
+    private var swapOverlay: FrameDevelop? {
         guard offset == 0, let current else { return nil }
-        let plan = swapPlan?.url == current.previewUrl ? swapPlan?.plan : nil
+        let image = swapImage?.url == current.previewUrl ? swapImage?.image : nil
+        guard let image else { return nil }
         if let progress = redrawProgress, current.previewUrl != heroShowing?.previewUrl {
-            return FrameSwap(plan: plan, progress: progress)
+            return FrameDevelop(image: image, progress: progress, reduceMotion: reduceMotion)
         }
-        if !inFlight, let plan, loadedHero != heroRef {
-            return FrameSwap(plan: plan, progress: 1)
+        if !inFlight, loadedHero != heroRef {
+            return FrameDevelop(image: image, progress: 1, reduceMotion: reduceMotion)
         }
         return nil
+    }
+
+    /// The bar's thumbnail of the picture on its way: the work's own, or
+    /// for a run the server names no work for, the frame's preview of it.
+    private func onTheWayPicture(_ progress: DisplayProgress) -> ImageRef? {
+        if let id = progress.itemId { return .thumb(id) }
+        guard progress.active, let current else { return nil }
+        return .path(current.previewUrl)
+    }
+
+    /// The bar's title, as the card below says it (Polish when written),
+    /// when the picture on its way is the one "Teraz" knows.
+    private func onTheWayTitle(_ progress: DisplayProgress) -> String? {
+        guard let current, let item = current.item, progress.itemId == nil || progress.itemId == item.id
+        else { return nil }
+        if let polish = current.polish?.title.trimmingCharacters(in: .whitespaces), !polish.isEmpty {
+            return polish
+        }
+        return item.displayTitle
     }
 
     /// The server is still making the preview, or it is on its way.
@@ -367,7 +410,7 @@ struct NowView: View {
                 shadow: false,
                 // The last launch's picture to the fresh one; a swap ends on
                 // its own picture instead.
-                crossfade: swapPlan?.url != current?.previewUrl
+                crossfade: swapImage?.url != current?.previewUrl
             ) {
                 if let swapOverlay {
                     // The bar is asked once a second: glide between answers.
@@ -731,18 +774,17 @@ struct NowView: View {
         }
     }
 
-    /// The picture on its way, ahead of the redraw: as the hero loads it,
-    /// and cut for the swap.
+    /// The picture on its way, ahead of the redraw: as the hero loads it.
     private func loadSwap() async {
-        guard inFlight, let url = current?.previewUrl, swapPlan?.url != url,
+        guard inFlight, let url = current?.previewUrl, swapImage?.url != url,
               let request = model.backend.request(for: .path(url)),
               let image = try? await ImageLoader.shared.image(for: request, maxPixel: 1600, priority: .high),
-              !Task.isCancelled,
-              let plan = SwapPlan(image: image, portrait: model.isPortrait, style: Self.swapStyle)
+              !Task.isCancelled
         else { return }
-        swapPlan = (url, plan)
+        swapImage = (url, image)
     }
 
+    /// The first launch's picture appears as the e-paper draws it.
     static let swapStyle = SwapStyle.raster
 
     private var connectionFailed: Bool {

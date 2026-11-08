@@ -101,6 +101,10 @@ class FrameSettings(BaseModel):
     sources_off: list[Aggregator] = Field(default_factory=list)
     # The frame's name in the app; None: the name the panel reports.
     name: str | None = Field(None, max_length=40)
+    # The owner's photos the app tries Multi grids on in Prezentacja (at
+    # most eight, in the order chosen); empty: the photos that would join
+    # the one previewed (Mateusz 2026-11-08).
+    multi_photos: list[str] = Field(default_factory=list, max_length=8)
 
     @model_validator(mode="before")
     @classmethod
