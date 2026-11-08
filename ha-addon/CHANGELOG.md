@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.123.2
+
+- Podpis na dziele (karteczka przy Wypełnij) nie jest już ucinany
+  wielokropkiem: gdy się nie mieści w jednej linii, autor idzie w pierwszej,
+  a tytuł z datą w drugiej. Tak samo na ramce i w podglądach aplikacji.
+
 ## 1.123.1
 
 - Zapasowy obraz z Wikimedia Commons mają teraz także dzieła z National
