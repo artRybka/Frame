@@ -245,7 +245,7 @@ final class TermFacetTests: XCTestCase {
             XCTAssertNotNil(StyleArt.years[key], key)
         }
         XCTAssertEqual(StyleArt.asset("style:rococo"), "style-rococo")
-        XCTAssertNil(StyleArt.asset("style:mannerism"))
+        XCTAssertNil(StyleArt.asset("style:rayonism"))
         XCTAssertNil(StyleArt.asset("technique:painting"))
         XCTAssertEqual(StyleArt.label("style:young-poland", name: "Młoda Polska"), "Młoda\nPolska")
         XCTAssertEqual(StyleArt.label("style:cubism", name: "Kubizm"), "Kubizm")
