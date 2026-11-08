@@ -1,0 +1,12 @@
+{
+  "images" : [
+    {
+      "filename" : "style-shin-hanga.jpg",
+      "idiom" : "universal"
+    }
+  ],
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
+  }
+}

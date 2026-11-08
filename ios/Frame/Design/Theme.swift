@@ -19,6 +19,9 @@ enum Theme {
     /// The frame around the panel: white, like the real one.
     static let moulding = Color(light: 0xFFFFFF, dark: 0xE6E2DA)
     static let mouldingEdge = Color(light: 0xD3CBBE, dark: 0x4A453F)
+    /// The light-oak moulding of the small framed works in the Styl sheet
+    /// (Mateusz 2026-11-08, "K5").
+    static let oak = Color(light: 0xB89466, dark: 0xA88758)
     static let good = Color(light: 0x3E7B56, dark: 0x7CC49A)
     static let warn = Color(light: 0xB7832A, dark: 0xE2B45E)
     static let bad = Color(light: 0xB8432F, dark: 0xE58A6F)
