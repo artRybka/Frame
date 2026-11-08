@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.124.6
+
+- Szukaj: kafelek Muzeum jest od pierwszej chwili, razem z pozostałymi
+  grupami. Przy pierwszym wejściu w Szukaj czekał na listę muzeów
+  z serwera i przez moment go brakowało. Tak samo w edytorze playlist.
+
 ## 1.124.5
 
 - Szukaj → Muzeum, Styl, Temat: w otwartej grupie szukasz głównym paskiem

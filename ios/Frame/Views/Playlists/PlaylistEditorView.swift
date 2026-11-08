@@ -164,8 +164,7 @@ struct PlaylistEditorView: View {
                     lookup: lookup,
                     tokens: tokens,
                     focused: $fieldFocused,
-                    groupsShown: groupsShown && !nameFocused && !descriptionFocused,
-                    museums: museums
+                    groupsShown: groupsShown && !nameFocused && !descriptionFocused
                 ))
                 .onChange(of: showChosen) {
                     withAnimation(.snappy) { scroller.scrollTo(Self.chosenID, anchor: .top) }
@@ -929,7 +928,6 @@ private struct EditorSearch: ViewModifier {
     let focused: FocusState<Bool>.Binding
     /// Not while the name or description is being typed.
     let groupsShown: Bool
-    let museums: [Museum]
     /// The sheet's height, for how tall an open group may be.
     @State private var height: CGFloat = 700
 
@@ -940,7 +938,7 @@ private struct EditorSearch: ViewModifier {
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     if groupsShown {
                         TermFacetBar(
-                            tokens: tokens, lookup: lookup, museums: museums, colors: ColorTag.families + ColorTag.moods,
+                            tokens: tokens, lookup: lookup, colors: ColorTag.families + ColorTag.moods,
                             focus: focused, panelHeight: height * TermFacetBar.panelShare
                         )
                         .padding(.horizontal, Theme.gutter)
