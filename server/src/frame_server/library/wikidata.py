@@ -36,15 +36,48 @@ PROPERTIES = {
     "louvre": "P9394",  # Louvre Museum ARK ID: the number without "cl"
 }
 
-#: Sources whose works Wikidata knows by their inventory number (P217), with
-#: the mark every number of that museum carries ("MNK XII-209", "MP 431 MNW"):
-#: a number without it could be another museum's.
+#: Sources whose works Wikidata knows by another record id, used for their
+#: Commons file only (counted 2026-11-08: works with the id / with a file).
+COMMONS_IDS = {
+    "nga": "P4683",  # National Gallery of Art artwork ID: 127 915 / 53 090
+    "paris": "P6246",  # Paris Musées work ID, the node: 8751 / 4522
+    "vam": "P3929",  # V&A item ID, the system number "O115274": 434 / 322
+}
+#: Yale's museums by the start of the id ("yuag-25955"): Yale University Art
+#: Gallery ID (19 694 / 14 990), Yale Center for British Art's TMS id (30 388
+#: / 30 384).
+YALE = {"yuag": "P8583", "ycba": "P9789"}
+#: Smithsonian resource ID: "saam_1909.7.35" of "edanmdm-saam_1909.7.35"
+#: (18 125 / 6229).
+SMITHSONIAN = "P7851"
+
+
+@dataclass(frozen=True)
+class Inventory:
+    """How Wikidata tells one museum's inventory numbers (P217) from
+    another's: every number carries the museum's ``mark`` ("MNK XII-209",
+    "MP 431 MNW"), or the number's statement names the museum's item
+    (``collection``, its P195 qualifier). ``in_credit``: the number is the
+    credit line's last part, else the work's record id."""
+
+    mark: str = ""
+    collection: str = ""
+    in_credit: bool = True
+
+
+#: Sources whose works Wikidata knows by their inventory number.
 INVENTORIES = {
-    "mnk": "MNK",
-    "mnw": "MNW",
+    "mnk": Inventory(mark="MNK"),
+    "mnw": Inventory(mark="MNW"),
+    "smk": Inventory(collection="Q671384", in_credit=False),  # 7005 / 4741
+    "courtauld": Inventory(collection="Q12110695"),  # 529 / 380
 }
 #: Wikidata's property of an inventory number.
 INVENTORY = "P217"
+#: Sources whose pictures Commons keeps by the work's Wikidata item.
+MIRRORED = frozenset(
+    [*(k for k in PROPERTIES if k != "wikiart"), *COMMONS_IDS, "yale", "si", *INVENTORIES]
+)
 
 #: P21 (sex or gender) values.
 GENDERS: dict[str, Gender] = {
@@ -104,12 +137,36 @@ def record_id(item: Item) -> tuple[str, str] | None:
 def inventory_number(item: Item) -> str:
     """The museum's inventory number of ``item``, when its source is one
     Wikidata knows by it (:data:`INVENTORIES`); "" otherwise. The Polish
-    museums give it after their name in the credit line."""
-    mark = INVENTORIES.get(item.source)
-    if not mark or not item.credit:
+    museums and the Courtauld give it after their name in the credit line."""
+    known = INVENTORIES.get(item.source)
+    if known is None:
         return ""
-    number = item.credit.rsplit(", ", 1)[-1].strip()
-    return number if re.search(rf"\b{mark}\b", number) else ""
+    if known.in_credit:
+        number = item.credit.rsplit(", ", 1)[-1].strip() if item.credit else ""
+    else:
+        number = item.source_id
+    if not number or (known.mark and not re.search(rf"\b{known.mark}\b", number)):
+        return ""
+    return number
+
+
+def commons_ref(item: Item) -> tuple[str, str] | None:
+    """(property, value) that finds ``item`` on Wikidata for its Commons
+    file: its record id, as :func:`record_id` or by the ids used for that
+    only, else its inventory number."""
+    if (ref := record_id(item)) is not None:
+        return ref
+    if (prop := COMMONS_IDS.get(item.source)) is not None:
+        return (prop, item.source_id) if item.source_id else None
+    if item.source == "yale":
+        museum, _, number = item.source_id.partition("-")
+        return (YALE[museum], number) if museum in YALE and number.isdigit() else None
+    if item.source == "si":
+        value = item.source_id.removeprefix("edanmdm-")
+        return (SMITHSONIAN, value) if value and value != item.source_id else None
+    if number := inventory_number(item):
+        return (INVENTORY, number)
+    return None
 
 
 def _label(entity: dict[str, Any], lang: str) -> str:
@@ -174,7 +231,7 @@ class Wikidata:
                 "list": "search",
                 # A number with spaces ("MNK XII-209") whole, in quotes.
                 "srsearch": f'haswbstatement:"{prop}={value}"'
-                if " " in value
+                if not re.fullmatch(r"[\w.-]+", value)
                 else f"haswbstatement:{prop}={value}",
                 "srlimit": 1,
                 "format": "json",
@@ -333,9 +390,7 @@ class CommonsCopies:
             if item.id in self._known:
                 self._known.move_to_end(item.id)
                 return self._known[item.id]
-        ref = record_id(item)
-        if ref is None and (number := inventory_number(item)):
-            ref = (INVENTORY, number)
+        ref = commons_ref(item)
         if ref is None:
             return ""
         try:
@@ -345,8 +400,10 @@ class CommonsCopies:
         except (httpx.HTTPError, ValueError, KeyError):
             return ""
         name = ""
-        if ref[0] == INVENTORY and not _holds(claims, INVENTORY, ref[1]):
-            claims = {}  # the search matched part of the number: not this work
+        if ref[0] == INVENTORY and not _holds(
+            claims, INVENTORY, ref[1], INVENTORIES[item.source].collection
+        ):
+            claims = {}  # another museum's number, or part of a longer one
         for claim in (claims.get("claims") or {}).get("P18") or []:
             value = claim.get("mainsnak", {}).get("datavalue", {}).get("value")
             if isinstance(value, str) and value:
@@ -359,9 +416,15 @@ class CommonsCopies:
         return name
 
 
-def _holds(entity: dict[str, Any], prop: str, value: str) -> bool:
-    """Whether ``entity`` says ``value`` for ``prop`` word for word."""
+def _holds(entity: dict[str, Any], prop: str, value: str, collection: str = "") -> bool:
+    """Whether ``entity`` says ``value`` for ``prop`` word for word, in
+    ``collection`` (its P195 qualifier) when one is given."""
     for claim in (entity.get("claims") or {}).get(prop) or []:
-        if claim.get("mainsnak", {}).get("datavalue", {}).get("value") == value:
+        if claim.get("mainsnak", {}).get("datavalue", {}).get("value") != value:
+            continue
+        if not collection:
             return True
+        for qualifier in (claim.get("qualifiers") or {}).get("P195") or []:
+            if (qualifier.get("datavalue", {}).get("value") or {}).get("id") == collection:
+                return True
     return False
