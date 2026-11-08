@@ -11,6 +11,7 @@ of unrelated works, so they are left out there.
 from __future__ import annotations
 
 import re
+from collections.abc import Collection, Hashable, Mapping
 from functools import lru_cache
 
 from .nationality import NATIONALITIES
@@ -372,7 +373,197 @@ def made_by(artist: str, wanted: list[str]) -> bool:
     do: "Gogh, Vincent van" is Vincent van Gogh), not a copy after them or
     of their workshop or followers: searching an artist shows only their
     own works (Mateusz, 2026-11-07)."""
+    if _known.alike(artist, wanted):
+        return True  # "Rembrandt" for "Rembrandt van Rijn" (2026-11-08)
     if not artist_matches(artist, wanted):
         return False
     makers = _maker_words(artist)
     return any(name_words(w) and name_words(w) <= makers for w in wanted)
+
+
+# -- one artist under many spellings -------------------------------------------
+
+#: Words that make another person of the same name: "Pieter Bruegel the
+#: Younger", "Utagawa Hiroshige II", "Vernet fils".
+_GENERATIONS = frozenset(
+    {
+        "elder",
+        "younger",
+        "oude",
+        "jonge",
+        "jongere",
+        "altere",
+        "jungere",
+        "vecchio",
+        "giovane",
+        "giovine",
+        "ancien",
+        "jeune",
+        "pere",
+        "fils",
+        "viejo",
+        "mozo",
+        "starszy",
+        "mlodszy",
+        "jr",
+        "sr",
+        "junior",
+        "senior",
+        "ii",
+        "iii",
+        "iv",
+    }
+)
+#: Words a longer spelling may not add to a name and still be the same
+#: person: another generation, a workshop or copy, nobody, a firm.
+_OTHER_PERSON = _GENERATIONS | _NOT_BY | NOBODY | _FIRMS
+_LETTERS = re.compile(r"[^\W\d_]+")
+#: The Met's "Rembrandt (Rembrandt van Rijn)", "El Greco (Domenikos
+#: Theotokopoulos)": the name known by, then the full one.
+_KNOWN_AS = re.compile(r"^(.*?)\s*\(([^()]*)\)\s*$")
+
+
+@lru_cache(maxsize=PER_WORK)
+def name_key(name: str) -> frozenset[str]:
+    """The words of the name's first line in lower case without accents:
+    the same for "Jan van Eyck", "Jan Van Eyck", "Eyck, Jan van" and
+    "Rembrandt (Rembrandt van Rijn)" with "Rembrandt van Rijn"."""
+    return frozenset(_LETTERS.findall(fold(name.split("\n")[0])))
+
+
+def _own_name(name: str) -> bool:
+    """``name`` names one artist by their own name: not nobody, not a copy
+    after them or their workshop ("Pupil of Rembrandt")."""
+    key = name_key(name)
+    return bool(key - _FILLER) and is_artist(name) and not key & _NOT_BY
+
+
+class ArtistNames:
+    """Which of the catalogue's artists are one person: museums spell
+    Rembrandt "Rembrandt van Rijn" (Rijksmuseum, NGA), "Rembrandt" (Commons),
+    "Rembrandt (Rembrandt van Rijn)" (the Met) and "Rembrandt Harmensz. van
+    Rijn" (Europeana), and Jan van Eyck once "Jan Van Eyck" (Mateusz,
+    2026-11-08: one artist in the search, not four).
+
+    Names are one person when they have the same words (case, order and
+    brackets aside); when the Met says one is the other ("X (Y)"); and when
+    one is in a longer one that adds no "the Younger", "II", "workshop" or
+    the like ("Rembrandt Harmensz. van Rijn", "Hokusai" in "Katsushika
+    Hokusai") and in no other person's name: with "Rembrandt Peale" in the
+    catalogue too, "Rembrandt" alone is Rembrandt van Rijn only on the Met's
+    say, and "Bruegel" stays nobody's."""
+
+    def __init__(self, works: Mapping[str, Collection[Hashable]] | None = None) -> None:
+        """``works``: each artist's name as the catalogue spells it, with its
+        works (anything that tells works apart)."""
+        works = works or {}
+        names = sorted(n for n in works if _own_name(n))
+        parent: dict[frozenset[str], frozenset[str]] = {}
+
+        def find(key: frozenset[str]) -> frozenset[str]:
+            parent.setdefault(key, key)
+            while parent[key] != key:
+                parent[key] = parent[parent[key]]
+                key = parent[key]
+            return key
+
+        def join(a: frozenset[str], b: frozenset[str]) -> None:
+            ra, rb = find(a), find(b)
+            if ra != rb:
+                parent[max(ra, rb, key=sorted)] = min(ra, rb, key=sorted)
+
+        for name in names:
+            find(name_key(name))
+            known_as = _KNOWN_AS.match(name.split("\n")[0])
+            if known_as is None:
+                continue
+            short, full = known_as.group(1), known_as.group(2)
+            short_key, full_key = name_key(short), name_key(full)
+            if (
+                short_key
+                and len(full_key - _FILLER) >= 2
+                and is_artist(short)
+                and is_artist(full)
+                and not (short_key | full_key) & _OTHER_PERSON
+            ):
+                join(name_key(name), short_key)
+                join(name_key(name), full_key)
+
+        keys = sorted(parent, key=sorted)
+        with_word: dict[str, list[frozenset[str]]] = {}
+        for key in keys:
+            for word in key:
+                with_word.setdefault(word, []).append(key)
+        for key in keys:
+            core = key - _FILLER
+            if not core or key & _GENERATIONS or (len(core) == 1 and len(min(core)) < 4):
+                continue
+            rarest = min(core, key=lambda w: (len(with_word[w]), w))
+            longer = {
+                find(other)
+                for other in with_word[rarest]
+                if key < other and not (other - key) & _OTHER_PERSON
+            }
+            # In one person's names only: "Rembrandt", the Met's Rembrandt
+            # van Rijn, stays out of "Rembrandt Peale".
+            if len(longer) == 1:
+                join(key, longer.pop())
+
+        #: Each name's key -> its person (a number).
+        self._person: dict[frozenset[str], int] = {}
+        roots: dict[frozenset[str], int] = {}
+        for key in keys:
+            self._person[key] = roots.setdefault(find(key), len(roots))
+        spellings: dict[int, list[str]] = {}
+        for name in names:
+            spellings.setdefault(self._person[name_key(name)], []).append(name)
+
+        def shown(name: str) -> tuple[bool, int, int, str]:
+            # The most works' spelling, a plain one before "X (Y)" and
+            # "Gogh, Vincent van".
+            plain = "(" not in name and "," not in name.split("\n")[0]
+            return (not plain, -len(works[name]), len(name), name)
+
+        #: Each person's name as shown -> all its spellings, that first.
+        self.spellings: dict[str, list[str]] = {}
+        self._shown: dict[int, str] = {}
+        for person, found in spellings.items():
+            found.sort(key=shown)
+            self.spellings[found[0]] = found
+            self._shown[person] = found[0]
+
+    def __len__(self) -> int:
+        return len(self.spellings)
+
+    def person(self, name: str) -> int | None:
+        """The person ``name`` is among the catalogue's artists, if any."""
+        return self._person.get(name_key(name)) if name else None
+
+    def shown(self, name: str) -> str:
+        """``name`` as its person is shown: "Rembrandt van Rijn" for
+        "Rembrandt (Rembrandt van Rijn)"; an unknown name as it is."""
+        person = self.person(name)
+        return self._shown.get(person, name) if person is not None else name
+
+    def alike(self, artist: str, wanted: list[str]) -> bool:
+        """``artist`` is one of the people ``wanted`` under another spelling
+        (only its own name: "Pupil of Rembrandt" is not Rembrandt)."""
+        person = self.person(artist)
+        if person is None or name_key(artist) & _NOT_BY:
+            return False
+        return any(self.person(w) == person for w in wanted)
+
+
+#: The catalogue's artists as last counted (:meth:`learn`): who is who for
+#: the searches.
+_known = ArtistNames()
+
+
+def known_names() -> ArtistNames:
+    return _known
+
+
+def learn(names: ArtistNames) -> None:
+    """Search with ``names`` from now on (built with the term index)."""
+    global _known
+    _known = names

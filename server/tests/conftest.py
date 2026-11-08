@@ -67,6 +67,17 @@ def _offline() -> Iterator[None]:
 
 
 @pytest.fixture(autouse=True)
+def _forget_artist_names() -> Iterator[None]:
+    """Who is who among the artists is learnt by any library's term index:
+    each test starts with nobody known."""
+    from frame_server.library.artists import ArtistNames, learn
+
+    learn(ArtistNames())
+    yield
+    learn(ArtistNames())
+
+
+@pytest.fixture(autouse=True)
 def _no_real_sizes(monkeypatch: pytest.MonkeyPatch) -> None:
     """A study's page looks up its work's real size in the background: never
     on the internet in tests (each museum answers 404)."""

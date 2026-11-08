@@ -9,7 +9,7 @@ from datetime import date
 import pytest
 
 from frame_server.library import Item, ItemKind
-from frame_server.library.artists import is_artist
+from frame_server.library.artists import ArtistNames, is_artist, learn, made_by
 from frame_server.library.duplicates import artist_words
 from frame_server.library.themes import (
     WEEK_KEY,
@@ -234,3 +234,85 @@ def test_konfiguracja_draws_another_artist_of_the_week(service) -> None:
         keys = [c["key"] for c in client.get("/api/themes").json()]
         assert card["key"] in keys and first.key not in keys
         assert client.post("/api/themes/week-artist/again").status_code == 409
+
+
+def _people(*names: str) -> list[list[str]]:
+    found = ArtistNames({n: {n} for n in names})
+    return sorted(sorted(s) for s in found.spellings.values())
+
+
+def test_spellings_of_one_artist() -> None:
+    assert _people("Jan van Eyck", "Jan Van Eyck", "Eyck, Jan van") == [
+        ["Eyck, Jan van", "Jan Van Eyck", "Jan van Eyck"]
+    ]
+    # The Met's "X (Y)" says the one-word name is the full one.
+    assert _people(
+        "Rembrandt",
+        "Rembrandt (Rembrandt van Rijn)",
+        "Rembrandt Harmensz. van Rijn",
+        "Rembrandt Peale",
+    ) == [
+        ["Rembrandt", "Rembrandt (Rembrandt van Rijn)", "Rembrandt Harmensz. van Rijn"],
+        ["Rembrandt Peale"],
+    ]
+    assert _people(
+        "El Greco", "El Greco (Domenikos Theotokopoulos)", "Domenikos Theotokopoulos"
+    ) == [["Domenikos Theotokopoulos", "El Greco", "El Greco (Domenikos Theotokopoulos)"]]
+    assert _people("Diego Velázquez", "Diego Rodríguez de Silva y Velázquez") == [
+        ["Diego Rodríguez de Silva y Velázquez", "Diego Velázquez"]
+    ]
+    # One name in one longer one only.
+    assert _people("Hokusai", "Katsushika Hokusai") == [["Hokusai", "Katsushika Hokusai"]]
+
+
+def test_other_people_of_a_name_stay_apart() -> None:
+    # Without the Met, "Rembrandt" is in two people's names: nobody's.
+    assert _people("Rembrandt", "Rembrandt van Rijn", "Rembrandt Peale") == [
+        ["Rembrandt"],
+        ["Rembrandt Peale"],
+        ["Rembrandt van Rijn"],
+    ]
+    assert _people("Pieter Bruegel", "Pieter Bruegel the Elder", "Pieter Bruegel the Younger") == [
+        ["Pieter Bruegel"],
+        ["Pieter Bruegel the Elder"],
+        ["Pieter Bruegel the Younger"],
+    ]
+    assert _people("Utagawa Hiroshige", "Utagawa Hiroshige II") == [
+        ["Utagawa Hiroshige"],
+        ["Utagawa Hiroshige II"],
+    ]
+    assert _people("Rembrandt van Rijn", "Workshop of Rembrandt van Rijn", "Unknown") == [
+        ["Rembrandt van Rijn"]
+    ]
+    assert _people("Pieter Bruegel (the Elder)", "Pieter Bruegel") == [
+        ["Pieter Bruegel"],
+        ["Pieter Bruegel (the Elder)"],
+    ]
+
+
+def test_the_shown_name_is_the_one_of_most_works() -> None:
+    names = ArtistNames(
+        {
+            "Rembrandt van Rijn": {1, 2, 3},
+            "Rembrandt (Rembrandt van Rijn)": {4, 5, 6, 7},
+            "Rembrandt": {8},
+        }
+    )
+    # A plain spelling before the Met's.
+    assert names.shown("Rembrandt") == "Rembrandt van Rijn"
+    assert names.shown("REMBRANDT VAN RIJN") == "Rembrandt van Rijn"
+    assert names.shown("Someone Else") == "Someone Else"
+
+
+def test_a_search_for_an_artist_finds_every_spelling() -> None:
+    assert not made_by("Rembrandt", ["Rembrandt van Rijn"])  # nothing learnt yet
+    learn(
+        ArtistNames(
+            {"Rembrandt (Rembrandt van Rijn)": {1}, "Rembrandt": {2}, "Rembrandt Peale": {3}}
+        )
+    )
+    assert made_by("Rembrandt", ["Rembrandt van Rijn"])
+    assert made_by("Rembrandt (Rembrandt van Rijn)", ["Rembrandt"])
+    assert not made_by("Rembrandt Peale", ["Rembrandt van Rijn"])
+    assert not made_by("Pupil of Rembrandt", ["Rembrandt van Rijn"])
+    assert not made_by("After Rembrandt", ["Rembrandt"])

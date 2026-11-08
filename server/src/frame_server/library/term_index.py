@@ -19,7 +19,7 @@ from collections import Counter
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 
-from .artists import is_artist
+from .artists import ArtistNames, is_artist
 from .models import MINE, Item, PlaylistRules
 from .vocabulary import (
     OBJECT_CATEGORIES,
@@ -104,9 +104,18 @@ class TermIndex:
                 spellings[phrase] += 1
                 works_with.add(entry.work if entry.work is not None else item.id)
         self._sorted_words = sorted(self._words)
-        #: (folded name, name, how many works), most works first.
+        #: Who is who among the artists: one row for Rembrandt, not four.
+        self.names = ArtistNames(by_artist)
+        people: dict[str, tuple[list[str], set[object]]] = {}
+        for name, found in by_artist.items():
+            shown = self.names.shown(name)
+            written, works_of_person = people.setdefault(shown, ([], set()))
+            written.append(fold(name))
+            works_of_person |= found
+        #: (each spelling folded, the name shown, how many works), most
+        #: works first.
         self._artists = sorted(
-            ((fold(name), name, len(found)) for name, found in by_artist.items()),
+            ((tuple(written), name, len(found)) for name, (written, found) in people.items()),
             key=lambda a: (-a[2], a[1]),
         )
         #: (folded phrase, its words, the commonest spelling, how many
@@ -129,13 +138,14 @@ class TermIndex:
         return len(self._entries)
 
     def artists(self, text: str, limit: int = 5) -> list[tuple[str, int]]:
-        """Artists whose name has ``text`` in it, most works first."""
+        """Artists whose name has ``text`` in it, most works first; one
+        artist once, under the name :class:`ArtistNames` shows."""
         wanted = fold(text.strip())
         if not wanted:
             return []
         found: list[tuple[str, int]] = []
-        for folded, name, count in self._artists:
-            if wanted in folded:
+        for spellings, name, count in self._artists:
+            if any(wanted in folded for folded in spellings):
                 found.append((name, count))
                 if len(found) == limit:
                     break

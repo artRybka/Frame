@@ -28,7 +28,7 @@ from ..library import (
     PlaylistRules,
     PlaylistSummary,
 )
-from ..library.artists import is_artist
+from ..library.artists import is_artist, known_names
 from ..library.duplicates import Shown
 from ..library.hosts import urgent_call
 from ..library.importer import ALL
@@ -876,8 +876,9 @@ async def terms_in_museums(svc: Svc, q: str) -> MuseumHint:
     )
     items = [i for i in items if not set_aside(i)]
     wanted = fold(words)
+    known = known_names()  # one row for Rembrandt, however a museum spells him
     names: Counter[str] = Counter(
-        i.artist for i in items if wanted in fold(i.artist) and is_artist(i.artist)
+        known.shown(i.artist) for i in items if wanted in fold(i.artist) and is_artist(i.artist)
     )
     artists = [TermHit(kind="artist", key=n, name=n, count=c) for n, c in names.most_common(3)]
     return MuseumHint(

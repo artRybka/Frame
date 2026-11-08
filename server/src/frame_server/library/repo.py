@@ -22,7 +22,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal, NamedTuple
 
-from .artists import is_artist, made_by
+from .artists import is_artist, known_names, learn, made_by
 from .colors import has_colours, shown_tags
 from .duplicates import Works, dedupe, regroups
 from .models import (
@@ -702,6 +702,7 @@ class Library:
             spare = works.spare()
             groups = {i.id: g for i in items if (g := works.group_index(i.id)) is not None}
         index = TermIndex(items, spare, groups, version, lambda rules: self.query(rules)[0])
+        learn(index.names)  # who is who for the searches, too
         self._term_index_built_at = time.monotonic()
         return index
 
@@ -795,12 +796,13 @@ class Library:
 
     def facets(self) -> Facets:
         items = [i for i in self._snapshot() if not i.excluded]
+        names = known_names()
 
         def top(counter: Counter[str], limit: int = 60) -> list[FacetValue]:
             return [FacetValue(value=v, count=c) for v, c in counter.most_common(limit) if v]
 
         return Facets(
-            artists=top(Counter(i.artist for i in items if is_artist(i.artist))),
+            artists=top(Counter(names.shown(i.artist) for i in items if is_artist(i.artist))),
             styles=top(Counter(s for i in items for s in i.styles)),
             subjects=top(Counter(s for i in items for s in i.subjects)),
             colors=top(Counter(c for i in items for c in shown_tags(i.color_tags))),
