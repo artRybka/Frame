@@ -48,7 +48,8 @@ enum TermFacet: String, CaseIterable, Identifiable, Sendable {
         case .museum: "Muzeum albo miasto"
         case .style: "Szukaj stylu"
         case .subject: "Szukaj tematu"
-        case .technique, .period, .color: nil
+        case .period: "Okres albo rok"
+        case .technique, .color: nil
         }
     }
 
@@ -671,7 +672,7 @@ struct TermFacetPanel: View {
         switch facet {
         case .technique: techniques
         case .style, .subject: terms
-        case .period: PeriodPicker(tokens: $tokens)
+        case .period: PeriodPicker(tokens: $tokens, filter: filter)
         case .color: palette
         case .museum: museumList
         }
@@ -987,6 +988,9 @@ struct TermFacetPanel: View {
 struct PeriodPicker: View {
     @Environment(AppModel.self) private var model
     @Binding var tokens: [SearchToken]
+    /// The search field's words ("Okres albo rok"): only the named periods
+    /// they fit stay on the lanes (and the picked ones).
+    var filter: String = ""
 
     @State private var width: CGFloat = 0
     /// While dragging: what was picked before and what the finger holds.
@@ -1012,10 +1016,23 @@ struct PeriodPicker: View {
         tokens.contains { $0.kind == "period" && $0.key == key }
     }
 
+    /// The named period fits the words: its name or one of its words has
+    /// them, or a year typed is in its years.
+    private func fits(_ period: TermInfo) -> Bool {
+        let wanted = TermLookup.fold(filter.trimmingCharacters(in: .whitespaces))
+        guard !wanted.isEmpty, !picked(period.key) else { return true }
+        if let year = Int(wanted) {
+            return (period.yearFrom ?? Int.min) <= year && year <= (period.yearTo ?? Int.max)
+        }
+        return TermLookup.fold(period.name).contains(wanted)
+            || period.words.contains { TermLookup.fold($0.replacingOccurrences(of: "*", with: "")).contains(wanted) }
+    }
+
     var body: some View {
         let split = PeriodAxis.split(periods)
         let axis = split.axis
-        let named = split.named
+        let all = split.named
+        let named = all.filter(fits)
         let vocabulary = Set(periods.map(\.key))
         // Spans of older playlists ("years:1880-1914").
         let other = tokens.filter { $0.kind == "period" && !vocabulary.contains($0.key) }
@@ -1040,12 +1057,18 @@ struct PeriodPicker: View {
             OfferedWidth(fallback: width > 0 ? width : 320) {
                 VStack(alignment: .leading, spacing: 10) {
                     if !axis.isEmpty, width > 0 {
-                        line(axis, edges: edges, range: range, brackets: named.filter { picked($0.key) })
+                        line(axis, edges: edges, range: range, brackets: all.filter { picked($0.key) })
                     }
                     if width > 0 {
                         ForEach(regions) { region in
                             lanes(region, named.filter { $0.region == region.id }, axis: axis, range: range)
                         }
+                    }
+                    if named.isEmpty, !all.isEmpty, !filter.isEmpty {
+                        Text("Żaden nazwany okres nie pasuje do „\(filter)”.")
+                            .font(.footnote)
+                            .foregroundStyle(Theme.inkSoft)
+                            .padding(.top, 4)
                     }
                 }
             }

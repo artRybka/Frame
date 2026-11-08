@@ -67,8 +67,9 @@ final class TermLookupTests: XCTestCase {
         lookup.clear()
         lookup.narrow(nil)
         XCTAssertEqual(lookup.text, "")
-        // Groups without a list never take the field.
-        XCTAssertNil(TermFacet.period.fieldPrompt)
+        // Groups without a list never take the field (Epoka's named periods
+        // are a list).
+        XCTAssertEqual(TermFacet.period.fieldPrompt, "Okres albo rok")
         XCTAssertNil(TermFacet.color.fieldPrompt)
         XCTAssertNil(TermFacet.technique.fieldPrompt)
     }

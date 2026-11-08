@@ -9,6 +9,10 @@
   co było w nim wpisane wcześniej. Gdy styl albo temat nic nie pasuje,
   „Szukaj „…” jako słowa” przenosi wpisane słowa do wyszukiwania. Tak samo
   w edytorze playlist.
+- Szukaj → Epoka: też szukasz głównym paskiem („Okres albo rok”). Na pasach
+  zostają nazwane okresy pasujące do wpisanych słów, a wpisany rok, np.
+  1890, zostawia okresy, w których ten rok leży. Wybrane okresy zostają
+  zawsze, oś czasu też.
 
 ## 1.124.4
 
