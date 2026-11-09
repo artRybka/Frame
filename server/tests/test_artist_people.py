@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from types import SimpleNamespace
 from urllib.parse import parse_qs
 
@@ -159,3 +160,102 @@ def test_a_keyword_that_is_an_artist_is_not_suggested_again(tmp_path) -> None:
     words = [h.name for h in hits if h.kind == "word"]
     assert words == ["vermeer blue", "vermeer"]
     assert [h.name for h in hits if h.kind == "artist"] == ["Johannes Vermeer"]
+
+
+def _failing(
+    asked: list[str], fail: Callable[[httpx.Request], bool], code: int = 502
+) -> httpx.Client:
+    """Wikidata as :func:`_wikidata`, but answering ``code`` to the requests
+    ``fail`` picks."""
+    inner = _wikidata(asked)
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        if fail(request):
+            return httpx.Response(code, request=request)
+        return inner.send(request)
+
+    return httpx.Client(transport=httpx.MockTransport(answer))
+
+
+def _vermeers(lib: Library) -> None:
+    _works(lib, "Johannes Vermeer", [1660, 1665, 1670])
+    _works(lib, "Jan Vermeer", [1658, 1666], source="commons")
+    _works(lib, "Jan Vermeer van Haarlem", [1670, 1680])
+    _works(lib, "Jan Vermeer van Haarlem the Elder", [1650, 1660])
+    _works(lib, "Nobody Known", [1900, 1901])
+
+
+def test_a_passing_wikidata_error_is_asked_again(tmp_path) -> None:
+    """One 502 of query.wikidata.org ended the first round after 2200 of
+    3000 spellings (Mateusz 2026-11-09): it is asked again after a wait."""
+    lib = Library(tmp_path / "lib.db")
+    _vermeers(lib)
+    sparql: list[int] = []
+
+    def once(request: httpx.Request) -> bool:
+        if request.url.host != "query.wikidata.org":
+            return False
+        sparql.append(1)
+        return len(sparql) == 1
+
+    people = ArtistPeople(lib, lambda: _failing([], once))
+    slept: list[float] = []
+    people.sleep = slept.append
+    assert people.after_start() == 4
+    assert slept == [15.0]
+    assert len(people.ids()) == 5
+
+
+def test_a_failing_batch_is_left_and_the_round_goes_on(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr("frame_server.artist_people.BATCH", 1)
+    lib = Library(tmp_path / "lib.db")
+    _vermeers(lib)
+
+    def jan(request: httpx.Request) -> bool:
+        return request.url.params.get("search") == "Jan Vermeer"
+
+    people = ArtistPeople(lib, lambda: _failing([], jan, code=503))
+    slept: list[float] = []
+    people.sleep = slept.append
+    assert people.after_start() == 3
+    assert slept == [15.0, 60.0]
+    ids = people.ids()
+    assert "Jan Vermeer" not in ids  # asked next time
+    assert ids["Johannes Vermeer"][0] == "Q41264"
+    assert ids["Jan Vermeer van Haarlem the Elder"][0] == "Q1680603"
+    assert "Nobody Known" in ids
+
+
+def test_wikidata_failing_on_and_on_ends_the_round(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr("frame_server.artist_people.BATCH", 1)
+    lib = Library(tmp_path / "lib.db")
+    _vermeers(lib)
+    asked: list[str] = []
+    sent: list[int] = []
+
+    def always(request: httpx.Request) -> bool:
+        sent.append(1)
+        return True
+
+    people = ArtistPeople(lib, lambda: _failing(asked, always))
+    people.sleep = lambda _: None
+    assert people.after_start() == 0
+    assert len(sent) == 3 * 3  # three batches, each tried three times
+    assert people.ids() == {}
+
+
+def test_a_429_ends_the_round_at_once(tmp_path) -> None:
+    lib = Library(tmp_path / "lib.db")
+    _vermeers(lib)
+    sent: list[int] = []
+
+    def always(request: httpx.Request) -> bool:
+        sent.append(1)
+        return True
+
+    people = ArtistPeople(lib, lambda: _failing([], always, code=429))
+    slept: list[float] = []
+    people.sleep = slept.append
+    assert people.after_start() == 0
+    assert sent == [1]
+    assert slept == []

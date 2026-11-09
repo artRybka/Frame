@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.137.4
+
+- Łączenie artystów przez Wikidata nie przerywa się po jednym błędzie
+  Wikidaty: zapytanie idzie jeszcze raz po chwili, a paczka nazwisk, która
+  dalej nie przechodzi, czeka na następną rundę, zamiast kończyć całą.
+  Pierwsza runda zatrzymała się tak po 2200 z 3000 nazwisk.
+
 ## 1.137.3
 
 - Szukając artysty, serwer pyta muzea o niego po ich własnym polu autora
