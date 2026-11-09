@@ -353,9 +353,9 @@ struct NowView: View {
         return nil
     }
 
-    /// The new picture over the old one while the panel draws it: faint
-    /// at first, in full colour by the end. Until then the old one stays,
-    /// as on the frame. Once done, whole until the hero itself has the new
+    /// The new picture painted over the old one in watercolour while the
+    /// panel draws it, whole by the end. Until then the old one stays, as
+    /// on the frame. Once done, whole until the hero itself has the new
     /// picture, so the old one never shows again for a moment.
     private var swapOverlay: FrameDevelop? {
         guard offset == 0, let current else { return nil }

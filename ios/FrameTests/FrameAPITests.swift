@@ -731,9 +731,9 @@ final class FrameAPITests: XCTestCase {
         let older = DisplayProgress(stage: "rendering", phase: "processing", active: true, title: "", fraction: 0.05)
         XCTAssertEqual(older.phaseFill(0), 0.05, accuracy: 0.001)
         XCTAssertEqual(older.phaseFill(2), 0)
-        // The faint print covers the old picture first, and is whole at the end.
-        XCTAssertEqual(FrameDevelop.developed(at: 0), FrameDevelop.faint, accuracy: 0.001)
-        XCTAssertEqual(FrameDevelop.developed(at: 1), 1, accuracy: 0.001)
+        // With "Ogranicz ruch" the old picture stays at first, the new one whole at the end.
+        XCTAssertEqual(FrameDevelop.faded(at: 0), 0, accuracy: 0.001)
+        XCTAssertEqual(FrameDevelop.faded(at: 1), 1, accuracy: 0.001)
     }
 
     func testPanelAddressChecks() {
