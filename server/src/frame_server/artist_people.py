@@ -30,6 +30,7 @@ import httpx
 
 from .births import search_name
 from .library.artists import IDS_STATE, PEOPLE_STATE, is_artist
+from .library.hosts import Resting
 from .library.wikidata import API
 
 if TYPE_CHECKING:
@@ -79,6 +80,30 @@ FACTS = """SELECT ?item ?human ?born ?died ?en ?pl WHERE {
 }"""
 #: Items asked about in one query.
 FACTS_BATCH = 200
+#: A request Wikidata failed (a 5xx, a timeout, no answer) is sent again
+#: after each of these waits (seconds); a batch that still fails is left for
+#: the next round and the round goes on, until FAILED_BATCHES in a row
+#: failed. One 502 of query.wikidata.org ended the first round after 2200 of
+#: 3000 spellings (Mateusz 2026-11-09). A 429 or a resting host
+#: (``library.hosts``) still ends the round at once: it asked us to stop.
+RETRY_WAITS = (15.0, 60.0)
+FAILED_BATCHES = 3
+
+
+def told_to_stop(err: Exception) -> bool:
+    """Whether ``err`` asks us to leave Wikidata alone for now: a 429, or
+    its host resting (``library.hosts``)."""
+    if isinstance(err, Resting):
+        return True
+    return isinstance(err, httpx.HTTPStatusError) and err.response.status_code == 429
+
+
+def _passing(err: httpx.HTTPError) -> bool:
+    """Whether ``err`` is one that may pass: a server error, a timeout, a
+    connection that broke."""
+    if isinstance(err, httpx.HTTPStatusError):
+        return err.response.status_code >= 500
+    return isinstance(err, httpx.TransportError)
 
 
 class Facts(dict[str, Any]):
@@ -100,6 +125,7 @@ class ArtistPeople:
     def __init__(self, library: Library, http: Callable[[], httpx.Client]) -> None:
         self.library = library
         self.http = http
+        self.sleep: Callable[[float], None] = time.sleep
         self._lock = threading.Lock()
 
     # -- what is kept --------------------------------------------------------------
@@ -162,16 +188,29 @@ class ArtistPeople:
                 return 0
             started = time.monotonic()
             log.info("artist people %s: asking Wikidata about %d spellings", why, len(wanted))
-            found = asked = 0
+            found = asked = failed = 0
             with self.http() as http:
                 for start in range(0, len(wanted), BATCH):
                     if not quiet():
                         break
+                    batch = wanted[start : start + BATCH]
                     try:
-                        got = self._ask(http, wanted[start : start + BATCH])
+                        got = self._ask(http, batch)
                     except (httpx.HTTPError, ValueError) as err:
-                        log.info("artist people: %s", err)
-                        break  # the rest next time
+                        if told_to_stop(err):
+                            log.info("artist people: %s", err)
+                            break  # the rest next time
+                        failed += 1
+                        log.info(
+                            "artist people: %s; %d spellings left for the next round",
+                            err,
+                            len(batch),
+                        )
+                        if failed >= FAILED_BATCHES:
+                            log.info("artist people: Wikidata keeps failing; the rest next time")
+                            break
+                        continue
+                    failed = 0
                     asked += len(got)
                     found += sum(1 for qid in got.values() if qid)
             log.info(
@@ -227,41 +266,57 @@ class ArtistPeople:
                 return qid
         return ""
 
-    @staticmethod
-    def _search(http: httpx.Client, name: str) -> list[tuple[str, str]]:
+    def _send(self, request: Callable[[], httpx.Response]) -> httpx.Response:
+        """``request``'s answer, sent again after each of :data:`RETRY_WAITS`
+        while Wikidata fails it (a 5xx, a timeout, no answer)."""
+        waits = list(RETRY_WAITS)
+        while True:
+            try:
+                resp = request()
+                resp.raise_for_status()
+                return resp
+            except httpx.HTTPError as err:
+                if not waits or told_to_stop(err) or not _passing(err):
+                    raise
+                wait = waits.pop(0)
+                log.info("artist people: %s; again in %.0f s", err, wait)
+            self.sleep(wait)
+
+    def _search(self, http: httpx.Client, name: str) -> list[tuple[str, str]]:
         """Wikidata's items for ``name``: (item, description), the likeliest
         first."""
         if not name:
             return []
-        resp = http.get(
-            API,
-            params={
-                "action": "wbsearchentities",
-                "search": name,
-                "language": "en",
-                "type": "item",
-                "limit": HITS,
-                "format": "json",
-            },
+        resp = self._send(
+            lambda: http.get(
+                API,
+                params={
+                    "action": "wbsearchentities",
+                    "search": name,
+                    "language": "en",
+                    "type": "item",
+                    "limit": HITS,
+                    "format": "json",
+                },
+            )
         )
-        resp.raise_for_status()
         return [
             (str(hit["id"]), str(hit.get("description") or ""))
             for hit in resp.json().get("search") or []
             if "id" in hit
         ]
 
-    @staticmethod
-    def _facts(http: httpx.Client, ids: list[str]) -> dict[str, Facts]:
+    def _facts(self, http: httpx.Client, ids: list[str]) -> dict[str, Facts]:
         """Whether each of ``ids`` is a person, their years and names."""
         query = FACTS % " ".join(f"wd:{qid}" for qid in ids if re.fullmatch(r"Q\d+", qid))
-        resp = http.post(
-            SPARQL,
-            data={"query": query},
-            headers={"Accept": "application/sparql-results+json"},
-            timeout=60,
+        resp = self._send(
+            lambda: http.post(
+                SPARQL,
+                data={"query": query},
+                headers={"Accept": "application/sparql-results+json"},
+                timeout=60,
+            )
         )
-        resp.raise_for_status()
         found: dict[str, Facts] = {}
         for row in resp.json().get("results", {}).get("bindings") or []:
             qid = str(row.get("item", {}).get("value", "")).rsplit("/", 1)[-1]
