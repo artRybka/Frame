@@ -12,7 +12,7 @@ from dataclasses import dataclass
 
 from .importer import Importer, Job, span
 from .models import Item, PlaylistRules
-from .museums import PLACES_EUROPEANA, PLACES_WD, Discovery
+from .museums import PLACES_EUROPEANA, PLACES_WD, Discovery, by_artist
 from .phrases import phrases
 from .places import QID, SOURCE_PLACES, known_places
 from .repo import matches, said_as, says, search_fits
@@ -57,7 +57,10 @@ def museum_text(rules: PlaylistRules, page: int, words: str | None = None) -> st
     artist = artists[(page - 1) % len(artists)] if artists else ""
     topics = asked_topics(rules.artists, artist, rules.terms)
     typed = rules.query.strip() if words is None else words
-    return " ".join(w for w in (typed, artist, *topics) if w)
+    others = " ".join(w for w in (typed, *topics) if w)
+    # The artist by the museum's own author field where it has one
+    # (``Museum.search_by``): not pages of works only naming them.
+    return by_artist(artist, others) if artist else others
 
 
 @dataclass(frozen=True)

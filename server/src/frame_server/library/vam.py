@@ -91,6 +91,13 @@ class VictoriaAndAlbert(Museum):
             return self._get({"q_object_type": "painting"}, limit, page)
         return self._get({"q": query.strip()}, limit, page)
 
+    def search_by(
+        self, artist: str, words: str = "", limit: int = 20, page: int = 1
+    ) -> tuple[int, list[Item]]:
+        # ``q_actor``: the people the object record names as its makers.
+        params = {"q_actor": artist, **({"q": words.strip()} if words.strip() else {})}
+        return self._get(params, limit, page)
+
     def discover(self, spec: Discovery, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
         if spec.highlight or (spec.kind != "any" and spec.kind not in self.kinds):
             return 0, []
