@@ -339,6 +339,9 @@ class Works:
         self._group: dict[str, int] = {}
         self._by_title: dict[str, list[int]] = defaultdict(list)
         self._by_link: dict[str, list[int]] = defaultdict(list)
+        #: Goes up with every change; :meth:`spare` as last worked out.
+        self._changes = 0
+        self._spare: tuple[int, frozenset[str], frozenset[str]] | None = None
         for item in sorted(items, key=preference):
             self.add(item)
 
@@ -375,6 +378,7 @@ class Works:
         at = next((n for n, i in enumerate(group) if preference(item) < preference(i)), len(group))
         group.insert(at, item)
         self._group[item.id] = index
+        self._changes += 1
         if item.kind == ItemKind.ARTWORK:
             if title := title_key(item.title, item.artist):
                 self._by_title[title].append(index)
@@ -393,6 +397,7 @@ class Works:
         for n, held in enumerate(group):
             if held.id == item.id:
                 group[n] = item
+                self._changes += 1
                 return True
         return False
 
@@ -408,20 +413,29 @@ class Works:
             return False
         self.groups[index] = []  # the other groups keep their numbers
         del self._group[item_id]
+        self._changes += 1
         return True
 
-    def spare(self, skip: Iterable[str] = ()) -> set[str]:
+    def spare(self, skip: Iterable[str] = ()) -> frozenset[str]:
         """Ids of needless copies: works the server added (``pooled``) of
         which the owner kept another copy, or the server holds one from a
         more reliable source. Copies the owner kept all stay. Copies from
-        the sources ``skip`` don't count: the next copy takes their place."""
-        left_out = set(skip)
-        return {
+        the sources ``skip`` don't count: the next copy takes their place.
+        Kept while nothing changes (every search asks: 20 ms of 79 000)."""
+        left_out = frozenset(skip)
+        kept = self._spare
+        if kept is not None and kept[0] == self._changes and kept[1] == left_out:
+            return kept[2]
+        changes = self._changes
+        found = frozenset(
             i.id
             for group in self.groups
             for i in [i for i in group if i.source not in left_out][1:]
             if i.pooled
-        }
+        )
+        if not left_out:
+            self._spare = (changes, left_out, found)
+        return found
 
     def once(self, items: list[Item]) -> list[Item]:
         """``items`` (grouped here) with each work once: of its copies among

@@ -11,14 +11,16 @@ import hashlib
 import json
 import logging
 import random
+import re
 import sqlite3
 import threading
 import time
 import weakref
-from collections import Counter
-from collections.abc import Collection, Iterable, Iterator
+from collections import Counter, OrderedDict
+from collections.abc import Callable, Collection, Iterable, Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal, NamedTuple
 
@@ -44,6 +46,7 @@ from .models import (
 from .phrases import fold as phrase_fold
 from .phrases import has_phrase, parsed
 from .places import Places, known_places, learn_places
+from .search_index import SearchIndex, item_text
 from .term_index import TermIndex
 from .viewer import OWNER_ID, STORE, viewer_id
 from .vocabulary import (
@@ -63,8 +66,18 @@ log = logging.getLogger(__name__)
 PLACES_KEPT = 600.0
 #: Seconds they are kept whatever the library does meanwhile.
 PLACES_FRESH = 90.0
-#: Seconds between rebuilds of the suggestions' index while the library changes.
-TERM_INDEX_EVERY = 10.0
+#: Seconds between rebuilds of the suggestions' artists while the library
+#: changes (their counts are always the search's own, asked afresh).
+TERM_INDEX_EVERY = 60.0
+#: Share of the search index's entries changed since it was made at which
+#: it is made anew in the background.
+SEARCH_DEAD_SHARE = 0.3
+#: A library this small makes its search index when first asked; a larger
+#: one makes it in the background and searches item after item meanwhile.
+SEARCH_INLINE = 5000
+#: Searches whose whole answer is kept for their next pages (while the
+#: library stays as it is).
+QUERIES_KEPT = 16
 
 
 class _Counted(NamedTuple):
@@ -130,7 +143,9 @@ def sent_key(user_id: str) -> str:
     return SENT_KEY if user_id == OWNER_ID else f"{SENT_KEY}:{user_id}"
 
 
-SortKey = Literal["recent", "title", "artist", "year", "random", "suitability", "shown"]
+SortKey = Literal[
+    "recent", "title", "artist", "year", "random", "suitability", "shown", "relevance"
+]
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS items (id TEXT PRIMARY KEY, data TEXT NOT NULL);
@@ -302,39 +317,77 @@ def matches(
     return not rules.query or has_words(item, rules.query)
 
 
-def item_text(item: Item) -> str:
-    """What typed words are looked for in: the work's title, artist,
-    technique, culture, description, styles, subjects and keywords."""
-    return " ".join(
-        [
-            item.title,
-            item.artist,
-            item.medium,
-            item.classification,
-            item.culture,
-            item.description,
-            *item.styles,
-            *item.subjects,
-            *item.keywords,
-        ]
-    )
+@lru_cache(maxsize=256)
+def word_start(token: str) -> re.Pattern[str]:
+    """A folded text's word starting with ``token`` (folded too)."""
+    return re.compile(r"(?<!\w)" + re.escape(phrase_fold(token)))
 
 
 def has_words(item: Item, query: str) -> bool:
     """Whether ``item`` has every token of ``query`` (:mod:`.phrases`): a
-    word anywhere in its texts, a phrase as a phrase."""
-    text = item_text(item)
-    haystack = text.casefold()
-    folded: str | None = None
+    word starting so anywhere in its texts (case and accents aside: "zolw"
+    finds "żółw", "art" no longer Stuttgart), a phrase as a phrase."""
+    folded = phrase_fold(item_text(item))
     for token, wanted in parsed(query):
         if " " in token:
-            if folded is None:
-                folded = haystack if haystack.isascii() else phrase_fold(text)
             if not has_phrase(wanted, folded, folded=True):
                 return False
-        elif token.casefold() not in haystack:
+        elif not word_start(token).search(folded):
             return False
     return True
+
+
+#: Where a search's words are found, the best first (:func:`relevance`).
+_FIELDS = 4
+
+
+def _check(token: str, wanted: tuple[str, ...]) -> Callable[[str], bool]:
+    """Whether a folded text has ``token`` as :func:`has_words` looks for it."""
+    if " " in token:
+        return lambda text: has_phrase(wanted, text, folded=True)
+    pattern = word_start(token)
+    return lambda text: pattern.search(text) is not None
+
+
+def relevance(rules: PlaylistRules) -> Callable[[Item], tuple[Any, ...]]:
+    """How well each work fits a search, for "Trafność": first those by the
+    artists asked for (the museums' search also finds what only names
+    them), then those whose artist has the typed words, their title, their
+    keywords and subjects, the rest of their texts; highlights first among
+    equals, then by artist and year (Mateusz 2026-11-09: Vermeer's works
+    first, not works that mention him)."""
+    tokens = parsed(rules.query)
+    checks = [_check(token, wanted) for token, wanted in tokens if wanted]
+    terms = [t for t in rules.terms if t not in MINE]
+
+    def rank(item: Item) -> tuple[Any, ...]:
+        by_them = not rules.artists or made_by(item.artist, rules.artists)
+        where = 0
+        if checks:
+            fields = [
+                phrase_fold(item.artist),
+                phrase_fold(item.title),
+                phrase_fold(" ".join([*item.styles, *item.subjects, *item.keywords])),
+                phrase_fold(item_text(item)),
+            ]
+            for check in checks:
+                at = next((n for n, text in enumerate(fields) if check(text)), _FIELDS)
+                where = max(where, at)
+                if where == _FIELDS:
+                    break
+        tagged = all(t in item.terms for t in terms)
+        return (
+            not by_them,
+            where,
+            not tagged,
+            not item.highlight,
+            item.artist.casefold(),
+            item.year is None,
+            item.year or 0,
+            item.title.casefold(),
+        )
+
+    return rank
 
 
 def says(item: Item, phrases: list[list[str]]) -> bool:
@@ -472,6 +525,20 @@ class Library:
         #: A playlist changed is counted at once, and one of hearts once
         #: they change.
         self.counts_may_lag = False
+        #: The catalogue's search index (:class:`SearchIndex`), changed with
+        #: every item; one is made at a time, outside ``_lock``, with the
+        #: changes made meanwhile kept here and applied when it is done.
+        self._search: SearchIndex | None = None
+        self._search_lock = threading.Lock()
+        self._search_changes: list[tuple[str, Item | None]] | None = None
+        self._search_building = False
+        #: Searches' whole answers, for their next pages (:meth:`query`).
+        self._queries: OrderedDict[tuple[Any, ...], tuple[tuple[Any, ...], list[Item]]] = (
+            OrderedDict()
+        )
+        self._queries_lock = threading.Lock()
+        #: ``hidden()`` as last worked out: (catalogue version, works, it).
+        self._hidden_kept: tuple[int, Works, Hidden] | None = None
         self._term_index: TermIndex | None = None
         self._term_index_lock = threading.Lock()
         self._term_index_building = False
@@ -604,6 +671,7 @@ class Library:
                     (item.id, item.model_dump_json(context=STORE)),
                 )
             self._all()[item.id] = item
+            self._indexed(item.id, item)
             self._version += 1
             if existing is None or existing.excluded != item.excluded:
                 self._catalogue_version += 1
@@ -639,6 +707,7 @@ class Library:
                     (updated.model_dump_json(context=STORE), item_id),
                 )
             self._all()[item_id] = updated
+            self._indexed(item_id, updated)
             self._version += 1
             if item.excluded != updated.excluded:
                 self._catalogue_version += 1
@@ -665,6 +734,7 @@ class Library:
                 for kept in self._notes.values():
                     kept.pop(item_id, None)
             removed = self._all().pop(item_id)
+            self._indexed(item_id, None)
             self._version += 1
             self._catalogue_version += 1
             if self._favorites is not None:
@@ -843,6 +913,74 @@ class Library:
                 return made
         raise AssertionError("unreachable")  # pragma: no cover
 
+    # -- the search index ------------------------------------------------------
+
+    def _indexed(self, item_id: str, item: Item | None) -> None:
+        """``item_id`` is now ``item`` (None: gone), with ``_lock`` held."""
+        index = self._search
+        if index is not None:
+            if item is None:
+                index.remove(item_id)
+            else:
+                index.add(item)
+            if index.dead_share() > SEARCH_DEAD_SHARE:
+                self._make_search_later()
+        if self._search_changes is not None:
+            self._search_changes.append((item_id, item))
+
+    def _make_search(self) -> SearchIndex:
+        """A new search index of the library (``_search_lock`` held): made
+        outside ``_lock``, then brought up to date with the changes made
+        meanwhile."""
+        started = time.monotonic()
+        with self._lock:
+            items = list(self._all().values())
+            self._search_changes = []
+        index = SearchIndex(items)
+        with self._lock:
+            changes, self._search_changes = self._search_changes or [], None
+            for item_id, item in changes:
+                if item is None:
+                    index.remove(item_id)
+                else:
+                    index.add(item)
+            self._search = index
+        log.info("search index made in %.1f s (%d items)", time.monotonic() - started, len(index))
+        return index
+
+    def _make_search_later(self) -> None:
+        if self._search_building:
+            return
+        self._search_building = True
+
+        def make() -> None:
+            try:
+                with self._search_lock:
+                    self._make_search()
+            except Exception:
+                log.exception("search index: making it failed")
+            finally:
+                self._search_building = False
+
+        threading.Thread(target=make, name="search-index", daemon=True).start()
+
+    def search_index(self, wait: bool = True) -> SearchIndex | None:
+        """The catalogue's search index; ``wait``: made now when there is
+        none yet (else None, and it is made in the background)."""
+        index = self._search
+        if index is not None:
+            return index
+        if not wait:
+            self._make_search_later()
+            return None
+        # With the library's lock held, the one being made may wait for it.
+        if not self._search_lock.acquire(blocking=not self._lock._is_owned()):  # type: ignore[attr-defined]
+            return None
+        try:
+            return self._search or self._make_search()
+        finally:
+            self._search_lock.release()
+
     def term_index(self) -> TermIndex:
         """The catalogue as searches see it, for the suggestions while typing.
 
@@ -866,13 +1004,13 @@ class Library:
 
     def _build_term_index(self) -> TermIndex:
         self.works()  # made first, outside the lock
-        with self._lock:
-            version = self._version
-            items = list(self._all().values())
-            works = self.works()
-            spare = works.spare()
-            groups = {i.id: g for i in items if (g := works.group_index(i.id)) is not None}
-        index = TermIndex(items, spare, groups, version, lambda rules: self.query(rules)[0])
+        search = self.search_index()
+        if search is None:  # being made by a thread waiting for this one
+            search = SearchIndex(self._snapshot())
+        version = self._version
+        index = TermIndex(
+            search, search.artists(), version, lambda rules: self.query(rules, limit=0)[0]
+        )
         learn(index.names)  # who is who for the searches, too
         self._term_index_built_at = time.monotonic()
         return index
@@ -888,7 +1026,7 @@ class Library:
             with self._term_index_lock:
                 self._term_index_building = False
 
-    def spare_copies(self, skip: Iterable[str] = ()) -> set[str]:
+    def spare_copies(self, skip: Iterable[str] = ()) -> frozenset[str]:
         """Works the server added again from a less reliable source, or of
         which the owner kept another copy; with the copies of the sources
         ``skip`` left out, the next copy of their works is the one shown."""
@@ -897,13 +1035,20 @@ class Library:
     def hidden(self) -> Hidden:
         """The works hidden in the app ("Ukryj dzieło"): the hidden items and
         every copy of their works, here or at a museum."""
+        version = self._catalogue_version
+        works = self.works()
+        kept = self._hidden_kept
+        if kept is not None and kept[0] == version and kept[1] is works:
+            return kept[2]
         ids = {i.id for i in self._snapshot() if i.excluded}
         if not ids:
-            return Hidden()
-        works = self.works()
-        groups = {g for i in ids if (g := works.group_index(i)) is not None}
-        ids |= {c.id for g in groups for c in works.groups[g]}
-        return Hidden(ids, groups, works)
+            found = Hidden()
+        else:
+            groups = {g for i in ids if (g := works.group_index(i)) is not None}
+            ids |= {c.id for g in groups for c in works.groups[g]}
+            found = Hidden(ids, groups, works)
+        self._hidden_kept = (version, works, found)
+        return found
 
     def hidden_items(self) -> list[Item]:
         """The items hidden in the app, the last hidden first (the list
@@ -929,12 +1074,62 @@ class Library:
         user: str | None = None,
     ) -> tuple[int, list[Item]]:
         """``user``: whose hearts and playlists "Ulubione" and "Moje" mean
-        (default: whoever is asking, the owner in the background)."""
+        (default: whoever is asking, the owner in the background).
+
+        The search index narrows the catalogue to the works the rules may
+        fit and only those are checked (:func:`matches`); the whole answer
+        is kept for the next pages while the library stays as it is.
+        ``limit=0``: only how many."""
         rules = rules or PlaylistRules()
         user = user or viewer_id()
+        if sort in ("relevance", "suitability") and _searches(rules):
+            sort = "relevance"  # a search's best first ("suitability" is no more)
+        elif sort == "relevance":
+            sort = "recent"
+        works = self.works()
+        kept = (
+            rules.model_dump_json(),
+            sort,
+            seed if sort == "random" else 0,
+            include_excluded,
+            user,
+            self._version,
+            self._hearts_version,
+            self._playlists_version,
+        )
+        # What else decides the answer, compared as the objects they are.
+        made_with = (works, known_names(), known_places())
+        with self._queries_lock:
+            found = self._queries.get(kept)
+            if found is not None and all(a is b for a, b in zip(found[0], made_with, strict=True)):
+                self._queries.move_to_end(kept)
+                items: list[Item] | None = found[1]
+            else:
+                items = None
+        if items is None:
+            items = self._query(rules, sort, seed, include_excluded, user, limit == 0)
+            if limit != 0:
+                with self._queries_lock:
+                    self._queries[kept] = (made_with, items)
+                    while len(self._queries) > QUERIES_KEPT:
+                        self._queries.popitem(last=False)
+        end = None if limit is None else offset + limit
+        return len(items), items[offset:end]
+
+    def _query(
+        self,
+        rules: PlaylistRules,
+        sort: SortKey,
+        seed: int,
+        include_excluded: bool,
+        user: str,
+        count_only: bool,
+    ) -> list[Item]:
         # Spare copies of a work stay out, unless a source is asked for.
         spare = (
-            set() if include_excluded or rules.sources else self.spare_copies(rules.exclude_sources)
+            frozenset()
+            if include_excluded or rules.sources
+            else self.spare_copies(rules.exclude_sources)
         )
         listed = self.listed(user) if MINE_PLAYLISTS in rules.terms else set()
         mine = rules.favorites_only or any(t in MINE for t in rules.terms)
@@ -961,14 +1156,19 @@ class Library:
                 return matches(unexcluded, rules, listed, hearts, key)
             return matches(item, rules, listed, hearts, key)
 
-        items = [i for i in self._snapshot() if selected(i)]
+        index = self.search_index(wait=len(self._all()) <= SEARCH_INLINE)
+        entries = index.candidates(rules, hearts) if index is not None else None
+        pool = list(index.items(entries)) if index is not None and entries is not None else None
+        items = [i for i in (self._snapshot() if pool is None else pool) if selected(i)]
         if not include_excluded:
             # Copies the owner kept of one work: the best of those asked for
             # stands for them.
             items = self.works().once(items)
-        items = sort_items(items, sort, seed)
-        end = None if limit is None else offset + limit
-        return len(items), items[offset:end]
+        if count_only:
+            return items
+        if sort == "relevance":
+            return sorted(items, key=relevance(rules))
+        return sort_items(items, sort, seed)
 
     def facets(self) -> Facets:
         items = [i for i in self._snapshot() if not i.excluded]
