@@ -273,6 +273,7 @@ class FrameService:
         # Polish words typed in Szukaj, in English for the museums abroad.
         self.search_words = SearchWords(self.library, self.claude, self.ai_config)
         self.importer.translate = self.search_words.wording
+        self.library.wording = self.search_words.known
         # The museum's labels on a work's card ("Painting", "Italy") in Polish.
         self.museum_words = MuseumWords(self.library, self.claude, self.ai_config)
         self.ai = AiWorker(self.library, self.images, self.claude, self.ai_config)
@@ -311,6 +312,9 @@ class FrameService:
         # when a card opens and at night.
         self.holders = Holders(self.library, museum_client)
         self.copies.work_qid = self.holders.work_qid
+        # Commons' tile sets in place of works' pictures (deeper zoom).
+        self.sharper.tiled_copies = self.copies.tiled_copies
+        self.sharper.is_tiled = self.copies.tiled
         # Where works are, for Szukaj's "Muzeum": the museums' Wikidata
         # items, names and cities, learnt at night (library/places.py).
         self.museum_places = MuseumPlaces(self.library, museum_client)

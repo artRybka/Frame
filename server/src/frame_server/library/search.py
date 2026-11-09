@@ -15,7 +15,7 @@ from .models import Item, PlaylistRules
 from .museums import PLACES_EUROPEANA, PLACES_WD, Discovery
 from .phrases import phrases
 from .places import QID, SOURCE_PLACES, known_places
-from .repo import matches, says, search_fits
+from .repo import matches, said_as, says, search_fits
 from .vocabulary import asked_artists, asked_topics, category_fits, museum_kind
 
 #: With colours asked, museum pages of this many works are looked at, until
@@ -224,7 +224,7 @@ class MuseumSearch:
         named = keys or importer.asked_sources(self.spec.kind)
         words = importer.asked(rules.query, named) if rules.query.strip() else None
         typed = words.texts if words is not None else {}
-        said = words.phrases if words is not None else []
+        said = words.said if words is not None else []
         while at is not None and left > 0:
             text = museum_text(rules, at)
             # Several artists take turns, so each page asks for one of them.
@@ -237,9 +237,11 @@ class MuseumSearch:
             else:
                 count, items, failed = importer.discover_all(self.spec, asked, at, keys)
             total = total or count
-            # Phrases checked here too: most museums find the words anywhere
-            # ("night" in one sentence, "watches" in another), before the
-            # colours are judged by thumbnails.
+            # The words checked here too, as typed or translated: most
+            # museums find a phrase's words anywhere ("night" in one sentence,
+            # "watches" in another) and a name in whatever they think goes
+            # with it (ter Borch for "vermeer"); before the colours are judged
+            # by thumbnails.
             said_it = [i for i in items if says(i, said)]
             found = [i for i in importer.in_colors(said_it, colors) if self.fits(i)]
             if spare is not None and len(found) < len(items):
@@ -307,5 +309,6 @@ def fill(
         after=lambda item: True,
         pooled=pooled,
         terms=rules.terms,
-        fits=lambda item: matches(item, rules),
+        # The words as the museums were asked them (translated by then).
+        fits=lambda item: matches(item, rules, said=said_as(rules.query, importer.library.wording)),
     )

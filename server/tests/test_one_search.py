@@ -33,11 +33,18 @@ def test_the_search_key_is_what_the_museums_are_asked() -> None:
 
 def test_a_work_the_search_found_fits_its_choices() -> None:
     rules = PlaylistRules(query="gitara", terms=["style:cubism"])
-    # The museum's own text said "guitar"; ours has neither word nor style.
-    item = _item(1, title="Still Life", year=1913)
+    # The museum was asked "guitar"; ours has neither the typed word nor
+    # the style.
+    item = _item(1, title="Still Life with a Guitar", year=1913)
+    said = [["gitara", "guitar"]]
     assert not matches(item, rules)
     found = item.model_copy(update={"found_for": [rules.search_key()]})
-    assert matches(found, rules)
+    assert matches(found, rules, said=said)
+    # Without the words, as typed or as asked, the museum's say is not
+    # enough (Mateusz 2026-11-09: Yale's three sheep for "vermeer").
+    assert not matches(found, rules)
+    sheep = found.model_copy(update={"title": "Three Sheep"})
+    assert not matches(sheep, rules, said=said)
     # Another search, or a museum left out: no.
     assert not matches(found, PlaylistRules(query="lutnia", terms=["style:cubism"]))
     assert not matches(found, rules.model_copy(update={"exclude_sources": ["aic"]}))
@@ -49,21 +56,23 @@ def test_periods_are_checked_on_the_work_also_when_found() -> None:
     # takes in the 18th century too.
     rules = PlaylistRules(query="gitara", terms=["period:17c", "period:19c"])
     key = rules.search_key()
-    assert matches(_item(1, year=1650, found_for=[key]), rules)
-    assert not matches(_item(2, year=1750, found_for=[key]), rules)
+    said = [["gitara", "guitar"]]
+    assert matches(_item(1, title="Guitar", year=1650, found_for=[key]), rules, said=said)
+    assert not matches(_item(2, title="Guitar", year=1750, found_for=[key]), rules, said=said)
     search = MuseumSearch.of(rules)
     assert search.fits(_item(1, year=1650)) and not search.fits(_item(2, year=1750))
 
 
 def test_the_library_remembers_the_searches(tmp_path) -> None:
     library = Library(tmp_path / "lib.db")
-    library.upsert(_item(1, title="Still Life"))
+    library.wording = lambda text: ("guitar",) if text == "gitara" else ()
+    library.upsert(_item(1, title="Still Life with a Guitar"))
     rules = PlaylistRules(query="gitara")
     assert library.query(rules)[0] == 0
     library.found("aic:1", rules.search_key())
     assert [i.id for i in library.query(rules)[1]] == ["aic:1"]
     # Taken in again from the museum: the search stays.
-    library.upsert(_item(1, title="Still Life", found_for=["s:other"]))
+    library.upsert(_item(1, title="Still Life with a Guitar", found_for=["s:other"]))
     stored = library.get("aic:1")
     assert stored is not None
     assert stored.found_for == [rules.search_key(), "s:other"]
@@ -77,7 +86,7 @@ class Guitars(Museum):
 
     def search(self, query: str, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
         Guitars.asked.append(query)
-        items = [self._item(str(n), title=f"Still Life {n}", year=1910 + n) for n in range(6)]
+        items = [self._item(str(n), title=f"Guitar {n}", year=1910 + n) for n in range(6)]
         return len(items), items[(page - 1) * limit : page * limit]
 
     def fetch(self, source_id: str) -> Item | None:
@@ -99,8 +108,10 @@ def test_a_smart_playlist_fetches_what_szukaj_finds(tmp_path) -> None:
     Guitars.asked = []
     try:
         library = Library(tmp_path / "lib.db")
-        # Already in the library, without the word: the search makes it fit.
-        library.upsert(_item(0, title="Still Life 0", year=1910))
+        library.wording = lambda text: ("guitar", "guitare") if text == "gitara" else ()
+        # Already in the library, without the typed word: the search makes
+        # it fit, with the word the museum was asked.
+        library.upsert(_item(0, title="Guitar 0", year=1910))
         importer = Importing(library, None, None)  # type: ignore[arg-type]
         importer.cache = type("Cache", (), {"remove": lambda self, item: None})()
         importer.translate = lambda text, wait: Wording(text, en="guitar", fr="guitare")

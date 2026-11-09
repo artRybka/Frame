@@ -160,23 +160,31 @@ class Fragments:
         """Whether ``item``'s source may have fragments of it (no request)."""
         if item.part_of:
             return False
+        if item.sharper is not None:  # a Commons copy in its place: its tiles
+            return item.sharper.source == "wmc"
         if item.source == "cma":
             return ratio(item.width, item.height) >= CMA_RATIO
         return item.source == "wmc"  # only files with tiles are asked about
+
+    @staticmethod
+    def _key(item: Item) -> str:
+        """What a work's fragments are kept under: the picture shown."""
+        return item.id if item.sharper is None else f"{item.id}@{item.sharper.item_id}"
 
     def parts(self, item: Item) -> list[Part]:
         """The fragments' pictures of ``item``, in order; [] when it has
         none, or its source cannot be asked now (asked again next time)."""
         if not self.may_have(item):
             return []
+        key = self._key(item)
         with self._lock:
-            kept = self._kept.get(item.id)
-            asking = self._asking.setdefault(item.id, threading.Lock())
+            kept = self._kept.get(key)
+            asking = self._asking.setdefault(key, threading.Lock())
         if kept is not None and self.clock() - kept[0] < KEPT_FOR:
             return kept[1]
         with asking:  # one look per work at once
             with self._lock:
-                kept = self._kept.get(item.id)
+                kept = self._kept.get(key)
             if kept is not None and self.clock() - kept[0] < KEPT_FOR:
                 return kept[1]
             try:
@@ -187,7 +195,7 @@ class Fragments:
             if found is None:  # a Commons file without tiles: nothing kept
                 return []
             with self._lock:
-                self._kept[item.id] = (self.clock(), found[:MOST])
+                self._kept[key] = (self.clock(), found[:MOST])
                 self._save()
             return found[:MOST]
 
@@ -227,6 +235,16 @@ class Fragments:
             with self._lock:
                 self._works = works
         return works[1].get(qid, [])
+
+    def all_tiled_files(self) -> list[str]:
+        """Every Commons file with a tile set that names its work, as a
+        "File:" title (the list read once a month)."""
+        self.tiled_files("Q0")  # the list, read when it is not kept
+        with self._lock:
+            works = self._works
+        if works is None:
+            return []
+        return sorted({title for files in works[1].values() for title in files})
 
     def _tiled_works(self, http: httpx.Client) -> dict[str, list[str]]:
         ids = sorted(self._tiled_pages(http))
@@ -268,6 +286,9 @@ class Fragments:
 
     def _ask(self, item: Item) -> list[Part] | None:
         with self.http() as http:
+            if item.sharper is not None:
+                _, _, page_id = item.sharper.item_id.partition(":")
+                return self._commons(http, item.model_copy(update={"source_id": page_id}))
             if item.source == "cma":
                 return self._cleveland(http, item)
             return self._commons(http, item)

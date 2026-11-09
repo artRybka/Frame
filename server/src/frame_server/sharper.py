@@ -27,7 +27,18 @@ A work whose picture is an art history archive's photograph of it
 (Europeana's Foto Marburg: colour slides decades old, their dyes faded to
 blue and white, Mateusz 2026-11-09) takes any other copy of the same picture
 whole as large as its own, in other colours too: the museums' scans have the
-painting's colours, the slide has lost them.
+painting's colours, the slide has lost them. Such a photograph is never a
+copy itself (Mateusz 2026-11-09: two van Goghs from Foto Marburg took
+another Marburg slide, as faded, before Commons was asked). Of the copies
+that pass, the largest is taken, and one still too small for the frame is
+looked past again after :data:`WEAK_AGAIN`.
+
+A work Commons keeps in a tile set (``{{Tile set available}}``: Bosch's
+"Garden of Earthly Delights", Rembrandt's "Night Watch"; some 70 files)
+takes that file in its place even when its own picture is good: the
+full-screen viewer then goes far closer in on its tiles (Mateusz
+2026-11-09). Found by the work's Wikidata item when it is looked at, and
+once for the catalogue's works after the update (:meth:`Sharper.tiled_once`).
 """
 
 from __future__ import annotations
@@ -70,7 +81,8 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 KIND = "sharper"
-VERSION = "sharper-1"
+#: 2: works found fine are looked at again, for a copy in a tile set.
+VERSION = "sharper-2"
 #: The version of the look at an art archive's photograph: those looked at
 #: before they took copies in other colours are looked at again.
 ARCHIVE_VERSION = "sharper-archive-1"
@@ -114,6 +126,9 @@ COMPARED = 10
 DOWNLOADED = 3
 #: A work with no sharper copy anywhere is asked about again after this.
 AGAIN = timedelta(days=30)
+#: A work whose copy is still weak (smaller than the frame wants) is
+#: looked at again after this.
+WEAK_AGAIN = timedelta(days=1)
 #: Looked for at once.
 THREADS = 2
 #: How long the work of the day waits for its look.
@@ -131,9 +146,20 @@ THUMBS_VERSION = 1
 #: update, not night by night (Mateusz 2026-11-09: "odpal już podmiany",
 #: :meth:`Sharper.archives_once`).
 ARCHIVES_KEY = "archive_copies"
-ARCHIVES_VERSION = 1
+#: 2: works shown in an archive's photograph taken as a copy are looked at
+#: again, without it.
+ARCHIVES_VERSION = 2
+#: Where an art archive's photographs are, for a copy no longer in the
+#: library (Foto Marburg's Bildindex, KIK-IRPA's BALaT).
+ARCHIVE_HOSTS = ("bildindex.de", "fotomarburg.de", "kikirpa.be")
 #: One look at such a work takes this long at most (seconds).
 ARCHIVE_WAIT = 600.0
+#: The catalogue's works of Commons' tile sets taken once after the update.
+TILES_KEY = "tiled_copies"
+TILES_VERSION = 1
+#: A copy in a tile set takes the place of a picture this many times as
+#: large (kept, as the frame's server keeps it), not much smaller.
+TILED_SIDE = 0.9
 
 Status = Literal["looking", "found", "none", "fine", "off"]
 
@@ -274,6 +300,11 @@ class Sharper:
         self.search_commons: Callable[[str, int], list[Item]] = lambda query, n: (
             importer.search_all(query, n, keys=["wmc"])[1] if "wmc" in importer.sources() else []
         )
+        #: The Commons files with a tile set that show a work (found by its
+        #: Wikidata item, ``Copies.tiled_copies``), and whether a picture
+        #: (by item id) is one; set by the service.
+        self.tiled_copies: Callable[[Item], list[Item]] | None = None
+        self.is_tiled: Callable[[str], bool] = lambda item_id: False
         #: Where a study's details are cut (cut again from a sharper copy).
         self.details_dir = images.thumbs.parent / "details"
         self.clock: Callable[[], datetime] = _now
@@ -294,8 +325,9 @@ class Sharper:
         if item.kind != ItemKind.ARTWORK or item.look is not None:
             return "off"
         stored = self.library.get(item.id)
-        if (stored or item).sharper is not None:
-            return "found"
+        copy = (stored or item).sharper
+        if copy is not None:
+            return "found" if not self.weak_copy(stored or item) else self._weak_status(item)
         with self._lock:
             known = self._known.get(item.id)
         if known is None:
@@ -303,7 +335,9 @@ class Sharper:
             if note is None:
                 return None
             if note.data.get("status") == "kept":
-                return "fine"  # the owner's choice stands whatever the version
+                # The owner's choice stands, but for a tile set: looked at
+                # once more for one (``_look`` keeps the choice otherwise).
+                return "fine" if note.prompt_version == version(item) else None
             if note.prompt_version != version(item):
                 return None
             try:
@@ -317,6 +351,33 @@ class Sharper:
             return "fine"
         if status == "none" and self.clock() - at < AGAIN:
             return "none"
+        return None
+
+    @staticmethod
+    def weak_copy(item: Item) -> bool:
+        """``item`` shows a copy the server found that is still smaller
+        than the frame wants: the owner's pick and stand-ins stay as they
+        are."""
+        copy = item.sharper
+        if copy is None or copy.chosen or copy.stand_in:
+            return False
+        return Quality.sized(copy.width, copy.height).weak
+
+    def _weak_status(self, item: Item) -> Status | None:
+        """ "found" while a weak copy was looked past lately, else None."""
+        with self._lock:
+            known = self._known.get(item.id)
+        at: datetime | None
+        if known is not None:
+            at = known[1]
+        else:
+            note = self.library.note(item.id, KIND)
+            try:
+                at = datetime.fromisoformat(str(note.data.get("at"))) if note else None
+            except ValueError:
+                at = None
+        if at is not None and self.clock() - at < WEAK_AGAIN:
+            return "found"
         return None
 
     def soon(self, item: Item) -> Future[Status]:
@@ -376,11 +437,21 @@ class Sharper:
         if known is not None:
             return known
         faded = archive_own(item)
+        if self._take_tiled(item, own):
+            return "found"
+        note = self.library.note(item.id, KIND)
+        if note is not None and note.data.get("status") == "kept":
+            stored = self.library.get(item.id) or item
+            self._remember(item, "kept", "", self.own_size(stored))  # the owner's choice stands
+            return "fine"
         if not own.weak and not faded:
             self._remember(item, "fine")
             return "fine"
         log.info("picture of %s is poor (%s); looking for a sharper copy", item.id, own)
         downloaded = 0
+        # The largest of the copies that pass, not the first: a slightly
+        # larger one from the catalogue must not shut out Commons' scan.
+        best: tuple[int, Item, Image.Image] | None = None
         for copy in self.candidates(item)[:COMPARED]:
             if downloaded == DOWNLOADED:
                 break
@@ -396,10 +467,91 @@ class Sharper:
             if not quality.better(own, faded):
                 log.info("copy %s of %s is no better (%s)", copy.id, item.id, quality)
                 continue
-            self._adopt(item, copy, img)
+            if best is None or quality.kept(own.ratio) > best[0]:
+                best = (quality.kept(own.ratio), copy, img)
+            if not quality.weak:
+                break  # as large as the frame wants: no need to look further
+        if best is not None:
+            self._adopt(item, best[1], best[2])
+            return "found"
+        stored = self.library.get(item.id) or item
+        if stored.sharper is not None:  # its weak copy stays, looked past again later
+            self._remember(item, "found", stored.sharper.item_id, self.own_size(stored))
             return "found"
         self._remember(item, "none")
         return "none"
+
+    def shows_tiles(self, item: Item) -> bool:
+        """``item``'s picture shown now is a Commons file with a tile set."""
+        shown = item.sharper.item_id if item.sharper is not None else item.id
+        return self.is_tiled(shown)
+
+    def _take_tiled(self, item: Item, own: Quality, copies: list[Item] | None = None) -> bool:
+        """A Commons file in a tile set of ``item``'s work (``copies``, else
+        found by its Wikidata item) in place of its picture, when it is the
+        same picture whole in its colours and not much smaller; whether one
+        was taken. Also over the owner's pick of the museum's picture or of
+        another copy (Mateusz 2026-11-09: "ten w ultra-rozdzielczości będzie
+        po prostu lepszy")."""
+        stored = self.library.get(item.id) or item
+        if self.shows_tiles(stored):
+            return False
+        if copies is None:
+            if self.tiled_copies is None:
+                return False
+            try:
+                copies = self.tiled_copies(stored)
+            except Exception:
+                log.exception("tile sets of %s", item.id)
+                return False
+        for copy in copies:
+            if copy.id == item.id or not self._eligible(stored, copy):
+                continue
+            if not self.same_picture(stored, copy):
+                log.info("tile set %s is not the picture of %s", copy.id, item.id)
+                continue
+            try:
+                img = self.images.sample(display_copy(copy))
+            except (httpx.HTTPError, OSError) as err:
+                log.info("tile set %s of %s: %s", copy.id, item.id, err)
+                continue
+            quality = Quality.of_image(img)
+            ratio = max(quality.ratio, own.ratio)
+            if own.side and quality.kept(ratio) < own.kept(ratio) * TILED_SIDE:
+                log.info("tile set %s of %s is too small (%s)", copy.id, item.id, quality)
+                continue
+            self._adopt(stored, copy, img)
+            log.info("tile set %s in place of the picture of %s", copy.id, item.id)
+            return True
+        return False
+
+    def tiled_once(self, files: Callable[[], list[Item]]) -> int:
+        """Once after the update: the catalogue's works of Commons' tile
+        sets (``files``: one copy per file) take them; how many did."""
+        if self.library.get_state(TILES_KEY, 0) >= TILES_VERSION:
+            return 0
+        try:
+            found = files()
+        except Exception:
+            log.exception("tile sets not listed")
+            return 0
+        works = self.library.works()
+        taken = 0
+        for copy in found:
+            index = works.group_of(copy)
+            if index is None:
+                continue
+            for work in list(works.groups[index]):
+                if work.id == copy.id or work.kind != ItemKind.ARTWORK or work.part_of:
+                    continue
+                with self._turns:
+                    own, failing = self._own_now(work)
+                    if own is None or failing:
+                        continue
+                    taken += self._take_tiled(work, own, [copy])
+        self.library.set_state(TILES_KEY, TILES_VERSION)
+        log.info("tile sets: %d of the catalogue's works took one (%d files)", taken, len(found))
+        return taken
 
     def _own_now(self, item: Item) -> tuple[Quality | None, bool]:
         """:meth:`own`, and whether the work's own source gave no original
@@ -478,9 +630,11 @@ class Sharper:
     @staticmethod
     def _eligible(item: Item, copy: Item) -> bool:
         """Nothing a reproduction by its own description, a photograph of
-        a work that is none, a photo sent once."""
+        a work that is none, a photo sent once, nor an art archive's
+        photograph (faded slides, Mateusz 2026-11-09)."""
         return (
             copy.kind == ItemKind.ARTWORK
+            and not is_art_archive_photo(copy)
             and copy.look is None
             and copy.sharper is None
             and not is_copy(copy)
@@ -695,13 +849,47 @@ class Sharper:
             if archive_own(i) and not i.excluded and not is_grey_copy(i) and self.status(i) is None
         ]
 
+    def archive_copy(self, item: Item) -> bool:
+        """``item`` shows an art archive's photograph the server took as a
+        copy (not the owner's pick)."""
+        copy = item.sharper
+        if copy is None or copy.chosen:
+            return False
+        kept = self.library.get(copy.item_id)
+        if kept is not None:
+            return is_art_archive_photo(kept)
+        return any(host in copy.url for host in ARCHIVE_HOSTS)
+
+    def drop_archive_copies(self) -> list[Item]:
+        """The works shown in an archive's photograph taken as a copy, back
+        to their own picture, to be looked at again."""
+        dropped = []
+        for item in self.library.all_items():
+            if item.sharper is None or not self.archive_copy(item):
+                continue
+            taken = item.sharper.item_id
+            stored = self.library.update(item.id, sharper=None) or item
+            self.images.drop_picture(stored)
+            with self._lock:
+                self._known.pop(item.id, None)
+            self.library.save_note(
+                Note(item_id=item.id, kind=KIND, model="", prompt_version="", data={})
+            )
+            self._cut_again(item)
+            log.info("archive copy of %s let go: %s", item.id, taken)
+            dropped.append(stored)
+        return dropped
+
     def archives_once(self) -> int:
         """Once after the update: every work shown in an art archive's faded
-        slide looked at for another copy, one after another; how many. A
-        look too slow leaves the rest for the next start (and the night)."""
+        slide (its own, or one taken as a copy before) looked at for another
+        copy, one after another; how many. A look too slow leaves the rest
+        for the next start (and the night)."""
         if self.library.get_state(ARCHIVES_KEY, 0) >= ARCHIVES_VERSION:
             return 0
+        dropped = self.drop_archive_copies()
         works = self.archive_works()
+        works += [i for i in dropped if all(i.id != w.id for w in works)]
         log.info("archive slides: looking for other copies of %d works", len(works))
         found = 0
         for n, item in enumerate(works):

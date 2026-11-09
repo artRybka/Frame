@@ -1504,6 +1504,29 @@ class Player:
             log.info("night: catalogue took in %d works", len(job.item_ids))
         return batches
 
+    def _copies_once(self) -> None:
+        """Once after an update, a work at a time: the works shown in an art
+        archive's slide, then those Commons keeps in a tile set."""
+        sharper = self.service.sharper
+        sharper.archives_once()
+        fragments = self.service.importer.fragments
+        if fragments is None:
+            return
+
+        def files() -> list[Item]:
+            found = []
+            for title in fragments.all_tiled_files():
+                try:
+                    copy = self.service.importer.commons_file(title.removeprefix("File:"))
+                except (httpx.HTTPError, ValueError) as err:
+                    log.info("tile set %s: %s", title, err)
+                    continue
+                if copy is not None:
+                    found.append(copy)
+            return found
+
+        sharper.tiled_once(files)
+
     def _fix_up(self) -> None:
         """Once after an update: the kept pictures without their blank
         margins, the pictures analysed again, the thumbnails of works shown
@@ -1516,9 +1539,7 @@ class Player:
         self.rescore()
         self.service.sharper.thumbs_again()
         # Network work, a work at a time: in its own thread.
-        threading.Thread(
-            target=self.service.sharper.archives_once, name="archive slides", daemon=True
-        ).start()
+        threading.Thread(target=self._copies_once, name="archive slides", daemon=True).start()
         if not self.library.get_state(WIDE_KEY, False):
             items = self.library.query(include_excluded=True)[1]
             grown = self.service.images.wide_again(items)
