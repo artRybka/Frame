@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.130.1
+
+- Ramka → Zdjęcia → Multi: bez wiersza „Zdjęcia do podglądu”. Podgląd
+  układów dostanie stały zestaw przykładowych zdjęć.
+
 ## 1.130.0
 
 - Szukaj → Temat: zamiast kapsułek spis w dwóch kolumnach, pogrupowany

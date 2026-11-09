@@ -1485,11 +1485,6 @@ struct PresentationSection: View {
                 if isMulti {
                     Divider()
                     MultiSettings(presentation: presentation, portrait: settings.orientation == "portrait")
-                    Divider()
-                    MultiPhotosRow(photos: Binding(
-                        get: { settings.multiPhotos ?? [] },
-                        set: { settings.multiPhotos = $0 }
-                    ))
                 }
                 if hasMat {
                     Divider()
