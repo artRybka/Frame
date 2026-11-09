@@ -278,6 +278,9 @@ struct SettingsPageView: View {
         case .display:
             ViewerSection()
             FunSection()
+            if let settings = model.settings {
+                SamplePhotosSection(settings: settings)
+            }
         case .notifications:
             NotificationsSection(parts: [.phone])
         case .household:

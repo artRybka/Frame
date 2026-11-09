@@ -1,9 +1,11 @@
 # Changelog
 
-## 1.130.1
+## 1.131.0
 
-- Ramka → Zdjęcia → Multi: bez wiersza „Zdjęcia do podglądu”. Podgląd
-  układów dostanie stały zestaw przykładowych zdjęć.
+- „Zdjęcia do podglądu” przeniesione z Ramki do Konfiguracji →
+  Wyświetlanie → „Przykładowe zdjęcia”. Wgrywasz tam z telefonu do ośmiu
+  zdjęć, a podgląd układów Multi pokazuje każdy układ na nich, w kolejności
+  dodania. Nie trafiają do biblioteki ani na ramkę; krzyżyk je usuwa.
 
 ## 1.130.0
 
