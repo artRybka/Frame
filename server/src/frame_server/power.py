@@ -99,7 +99,7 @@ class PowerManager:
         return PowerState.model_validate(self.service.library.get_state(POWER_KEY, {}))
 
     def _save(self, state: PowerState) -> None:
-        self.service.library.set_state(POWER_KEY, state.model_dump(mode="json"))
+        self.service.library.keep_state(POWER_KEY, state.model_dump(mode="json"))
         self.publish_status()
 
     def publish_status(self) -> None:

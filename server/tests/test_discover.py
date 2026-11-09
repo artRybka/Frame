@@ -26,6 +26,7 @@ from frame_server.library.themes import (
 from frame_server.library.vocabulary import (
     BY_KEY,
     EARLY_COLOUR,
+    STYLE_YEARS,
     TERMS,
     artist_matches,
     category_fits,
@@ -84,6 +85,30 @@ def test_schools_split_off_their_bigger_styles() -> None:
     hive = _work(6, title="Dadant hive", year=1900)
     assert not matches(hive, PlaylistRules(terms=["style:dada"]))
     assert len([t for t in TERMS if t.kind == "style"]) == 39
+
+
+def test_a_style_keeps_to_its_years() -> None:
+    """A museum's search for "art deco" also finds Rubens and Mucha
+    (Mateusz 2026-11-09): what it found must have been made when the style
+    was, give or take; an undated work stays."""
+    deco = PlaylistRules(terms=["style:art-deco"])
+    key = deco.search_key()
+    rubens = _work(7, title="The Calydonian Boar Hunt", year=1611, found_for=[key])
+    mucha = _work(8, title="Sarah Bernhardt in the role of La Tosca", year=1899, found_for=[key])
+    lamp = _work(9, title="Art deco lamp", year=1928, found_for=[key])
+    undated = _work(10, title="Metal mesh purse", found_for=[key])
+    assert not matches(rubens, deco)
+    assert not matches(mucha, deco)
+    assert matches(lamp, deco)
+    assert matches(undated, deco)
+    # Either of two styles will do; the slack keeps early and late works.
+    both = PlaylistRules(terms=["style:art-deco", "style:art-nouveau"])
+    assert matches(mucha.model_copy(update={"found_for": [both.search_key()]}), both)
+    scream = _work(11, title="The Scream", styles=["Expressionism"], year=1893)
+    assert matches(scream, PlaylistRules(terms=["style:expressionism"]))
+    lilies = _work(12, title="Water Lilies", styles=["Impressionism"], year=1916)
+    assert matches(lilies, PlaylistRules(terms=["style:impressionism"]))
+    assert {t.key for t in TERMS if t.kind == "style"} == set(STYLE_YEARS)
 
 
 def test_techniques_follow_what_the_object_is() -> None:

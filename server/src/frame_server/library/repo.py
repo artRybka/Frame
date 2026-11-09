@@ -372,6 +372,12 @@ class Library:
         self._conn: sqlite3.Connection | None = None
         #: The key/value table, read once (:meth:`_kv_rows`).
         self._kv: dict[str, str] | None = None
+        #: State kept by :meth:`keep_state` and not yet on disk, by key: read
+        #: before the table, written by the thread "state-writer".
+        self._pending: dict[str, str] = {}
+        self._pending_lock = threading.Lock()
+        self._pending_due = threading.Event()
+        self._writer: threading.Thread | None = None
         self._depth = 0  # nested _db() blocks share the outermost transaction
         self._favorites: dict[str, set[str]] | None = None
         #: Goes up with every change of an item (for the suggestions' index).
@@ -448,6 +454,7 @@ class Library:
             yield
 
     def close(self) -> None:
+        self.write_kept()
         with self._lock:
             if self._conn is not None:
                 self._conn.close()
@@ -456,6 +463,9 @@ class Library:
     # -- items --------------------------------------------------------------
 
     def _all(self) -> dict[str, Item]:
+        items = self._items
+        if items is not None:  # read without the lock: never waits for a write
+            return items
         with self._lock:
             if self._items is None:
                 with self._db() as db:
@@ -1080,16 +1090,62 @@ class Library:
         return kv
 
     def get_state(self, key: str, default: Any = None) -> Any:
-        text = self._kv_rows().get(key)
+        text = self._pending.get(key)
+        if text is None:
+            text = self._kv_rows().get(key)
         return default if text is None else json.loads(text)
 
     def set_state(self, key: str, value: Any) -> None:
         text = json.dumps(value)
+        with self._pending_lock:
+            self._pending.pop(key, None)
         with self._db() as db:
             db.execute("INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)", (key, text))
             self._kv_rows()[key] = text
 
+    def keep_state(self, key: str, value: Any) -> None:
+        """:meth:`set_state` for the event loop: read back at once, written to
+        disk a moment later by a thread. The frame's question once waited 78 s
+        for the library's lock to write when it was last heard from, and with
+        it every answer of the server (Szukaj's thumbnails, 2026-11-09)."""
+        text = json.dumps(value)
+        with self._pending_lock:
+            self._pending[key] = text
+            if self._writer is None:
+                self._writer = threading.Thread(
+                    target=self._write_kept_ever, name="state-writer", daemon=True
+                )
+                self._writer.start()
+        self._pending_due.set()
+
+    def _write_kept_ever(self) -> None:
+        while True:
+            self._pending_due.wait()
+            self._pending_due.clear()
+            try:
+                self.write_kept()
+            except Exception:
+                log.exception("state: kept state not written, tried again with the next")
+
+    def write_kept(self) -> None:
+        """What :meth:`keep_state` kept, written to disk now."""
+        if not self._pending:
+            return
+        with self._db() as db:
+            # Taken again with the library's lock held: a set_state since
+            # (no longer pending) is not written over with an older value.
+            with self._pending_lock:
+                pending = dict(self._pending)
+            db.executemany("INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)", pending.items())
+            self._kv_rows().update(pending)
+        with self._pending_lock:
+            for key, text in pending.items():
+                if self._pending.get(key) == text:
+                    del self._pending[key]
+
     def delete_state(self, key: str) -> None:
+        with self._pending_lock:
+            self._pending.pop(key, None)
         with self._db() as db:
             db.execute("DELETE FROM kv WHERE key = ?", (key,))
             self._kv_rows().pop(key, None)

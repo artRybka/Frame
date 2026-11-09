@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.131.0
+
+- „Zdjęcia do podglądu” przeniesione z Ramki do Konfiguracji →
+  Wyświetlanie → „Przykładowe zdjęcia”. Wgrywasz tam z telefonu do ośmiu
+  zdjęć, a podgląd układów Multi pokazuje każdy układ na nich, w kolejności
+  dodania. Nie trafiają do biblioteki ani na ramkę; krzyżyk je usuwa.
+
+## 1.130.2
+
+- Serwer nie staje już na ponad minutę, gdy ramka pyta o obraz w chwili, gdy
+  inna praca zapisuje bibliotekę. 9 listopada przy szukaniu „Edward Munch”
+  stał tak 78 s: miniatury zostawały puste, a aplikacja pisała „Serwer nie
+  odpowiedział na czas”. Gdyby serwer znów stanął, log pokaże też, która
+  praca go trzymała.
+
+## 1.130.1
+
+- Szukaj → Styl: pod obrazkami została sama nazwa stylu, lata są tylko przy
+  nagłówkach półek. Obrazki stoją bliżej siebie, więc na ekranie mieści się
+  ich więcej.
+- Wybrany styl pilnuje swoich lat: dzieło z datą musi powstać mniej więcej
+  wtedy, gdy ten styl istniał (z zapasem 15 lat przed i 40 po). Art déco nie
+  pokazuje już Rubensa ani Muchy, których muzea znalazły po słowach w opisie.
+
 ## 1.130.0
 
 - Szukaj → Temat: zamiast kapsułek spis w dwóch kolumnach, pogrupowany

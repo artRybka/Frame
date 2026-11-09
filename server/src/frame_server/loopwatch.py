@@ -7,7 +7,9 @@ was answered that late and the server took its clock for 104 s off. Now a
 thread looks at the loop every second; when it has not moved for
 :data:`STALL_S`, the log gets the loop's stack (again every
 :data:`STACK_EVERY` while it stays stuck), and how long it stood once it
-moves on."""
+moves on. With the loop's stack go the other threads at work: on 2026-11-09
+the loop stood 78 s waiting for the library's lock, and the log could not
+say which thread held it."""
 
 from __future__ import annotations
 
@@ -26,6 +28,11 @@ STALL_S = 5.0
 STACK_EVERY = 30.0
 #: How often the loop says it is alive, and the watcher looks.
 BEAT_S = 1.0
+#: A thread whose innermost call is in one of these waits for work: not shown.
+IDLE = ("/threading.py", "/queue.py", "/selectors.py", "/concurrent/futures/thread.py")
+#: The innermost calls shown of each other thread, and at most this many threads.
+THREAD_DEPTH = 10
+THREADS_SHOWN = 12
 
 
 class LoopWatch:
@@ -67,7 +74,13 @@ class LoopWatch:
             if beat_at == stuck_since and stood - told_at < self.every:
                 continue
             stuck_since, told_at = beat_at, stood
-            log.warning("the event loop has stood still for %.0f s, at:\n%s", stood, self.stack())
+            others = self.others()
+            log.warning(
+                "the event loop has stood still for %.0f s, at:\n%s%s",
+                stood,
+                self.stack(),
+                f"\nother threads at work:\n{others}" if others else "",
+            )
 
     def stack(self) -> str:
         """Where the loop's thread is now, innermost call last."""
@@ -75,6 +88,22 @@ class LoopWatch:
         if frame is None:
             return "  (the loop's thread is gone)"
         return "".join(traceback.format_stack(frame)).rstrip()
+
+    def others(self) -> str:
+        """The other threads not waiting for work, innermost call last of
+        each: among them whoever holds what the loop waits for."""
+        names = {t.ident: t.name for t in threading.enumerate()}
+        shown: list[str] = []
+        for ident, frame in sys._current_frames().items():
+            if ident in (self._ident, threading.get_ident()):
+                continue
+            stack = traceback.extract_stack(frame)
+            if not stack or stack[-1].filename.endswith(IDLE):
+                continue
+            calls = "".join(traceback.format_list(stack[-THREAD_DEPTH:])).rstrip()
+            shown.append(f"  thread {names.get(ident, ident)}:\n{calls}")
+        more = len(shown) - THREADS_SHOWN
+        return "\n".join(shown[:THREADS_SHOWN] + ([f"  and {more} more"] if more > 0 else []))
 
     def stop(self) -> None:
         self._stop.set()

@@ -25,6 +25,7 @@ from .vocabulary import (
     OBJECT_CATEGORIES,
     Term,
     fold,
+    in_style_years,
     is_copy,
     is_postal,
     object_category,
@@ -190,7 +191,10 @@ class TermIndex:
         else:
             sure, maybe = self._found_by_words(found)
             checked = (n for n in maybe - sure if term_matches(found, self._entries[n].item))
-            count = self._works(self._entries[n] for n in (*sure, *checked))
+            fits = (*sure, *checked)
+            if found.kind == "style":  # and made in its years (matches_terms)
+                fits = tuple(n for n in fits if in_style_years(self._entries[n].item, [key]))
+            count = self._works(self._entries[n] for n in fits)
         with self._lock:
             self._counts[key] = count
         return count
