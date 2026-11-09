@@ -1689,7 +1689,7 @@ struct StyleFrame: View {
     let picked: Bool
     let action: () -> Void
 
-    static let width: CGFloat = 76
+    static let width: CGFloat = 68
 
     var body: some View {
         Button(action: action) {
@@ -1709,15 +1709,10 @@ struct StyleFrame: View {
                     .foregroundStyle(picked ? Theme.ink : Theme.inkSoft)
                     .multilineTextAlignment(.center)
                     .lineLimit(2)
-                    .minimumScaleFactor(0.85)
+                    .minimumScaleFactor(0.8)
                     .padding(.top, 4)
-                if let years = StyleArt.years[key] {
-                    Text(years)
-                        .font(.system(size: 10.5))
-                        .monospacedDigit()
-                        .foregroundStyle(Theme.inkSoft.opacity(0.8))
-                        .padding(.top, 1)
-                }
+                // No years under the name: the shelf heading carries the
+                // span (Mateusz 2026-11-09, PLAN 3.3zzz65).
             }
             .frame(width: Self.width)
             .contentShape(Rectangle())
