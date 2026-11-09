@@ -1093,8 +1093,8 @@ struct ArtworkInfo: View {
                     VStack(alignment: .leading, spacing: 0) {
                         if !item.artist.isEmpty {
                             // Their other works, on Discover's search.
-                            Text(Names.artist(item.artist)).font(.serif(18)).foregroundStyle(Theme.ink)
-                                .multilineTextAlignment(.leading)
+                            // Not Text: it can cut a name short with "…" (NameText).
+                            NameText(text: Names.artist(item.artist), size: 18)
                                 .artistPress { model.artistSearch = item.artist }
                         }
                         if !artistNote.isEmpty {

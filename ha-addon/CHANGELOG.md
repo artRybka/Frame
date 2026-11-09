@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.138.3
+
+- Nazwisko artysty pod tytułem dzieła (na karcie dzieła i w Teraz) nie jest
+  już ucinane na „…”, gdy obok jest miejsce; za długie zawija się do
+  drugiego wiersza.
+
 ## 1.137.7
 
 - Wycinki dzieł (np. głowy ze „Straży nocnej”) są rozpoznawane po dużym
