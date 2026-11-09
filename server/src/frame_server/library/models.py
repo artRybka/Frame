@@ -113,6 +113,17 @@ COLLECTIONS = frozenset(
     }
 )
 
+#: Europeana's providers that are art history photo archives, not
+#: collections: they photographed the work where it hangs, so their name is
+#: not its museum (``Item.held_by``; Mateusz 2026-11-09: van Gogh's still
+#: life "in" the Marburg Picture Index). See ``vocabulary.is_art_archive_photo``.
+ART_PHOTO_ARCHIVES = frozenset(
+    {
+        "German Documentation Center for Art History - Marburg Picture Index",
+        "Royal Institute for Cultural Heritage",
+    }
+)
+
 #: Openverse's museums, by the host of a work's page there.
 OPENVERSE_HOSTS = {
     "metmuseum.org": "Metropolitan Museum of Art",
@@ -270,7 +281,8 @@ class Item(BaseModel):
         if self.sharper is not None and self.sharper.source in COLLECTIONS and self.sharper.museum:
             return self.sharper.museum  # the same picture whole, from the museum itself
         if self.source == "europeana":
-            return self.credit  # its data provider: the collection
+            # Its data provider: the collection, unless a photo archive.
+            return "" if self.credit in ART_PHOTO_ARCHIVES else self.credit
         if self.source == "openverse":
             host = (urlsplit(self.url).hostname or "").removeprefix("www.")
             return next((n for h, n in OPENVERSE_HOSTS.items() if host.endswith(h)), "")

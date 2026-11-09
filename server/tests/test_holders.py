@@ -83,6 +83,17 @@ def test_europeana_names_its_provider_and_openverse_a_museum_host() -> None:
     assert flickr.held_by == ""
 
 
+def test_a_photo_archive_is_no_museum() -> None:
+    """Foto Marburg photographed van Gogh's still life where it hangs; it is
+    not in the Marburg Picture Index (Mateusz 2026-11-09)."""
+    marburg = "German Documentation Center for Art History - Marburg Picture Index"
+    item = Item(id="europeana:199~x", source="europeana", source_id="199~x", kind=ItemKind.ARTWORK)
+    assert item.model_copy(update={"credit": marburg}).held_by == ""
+    assert item.model_copy(update={"credit": "Royal Institute for Cultural Heritage"}).held_by == ""
+    looked = item.model_copy(update={"credit": marburg, "holder": "Kröller-Müller Museum"})
+    assert looked.held_by == "Kröller-Müller Museum"
+
+
 def test_photos_have_no_museum() -> None:
     photo = Item(id="upload:1", source="upload", source_id="1", kind=ItemKind.PHOTO, museum="x")
     assert photo.held_by == ""
@@ -128,6 +139,22 @@ def test_commons_file_of_items() -> None:
     assert commons_file(by_title) == ("", "File:Jan Matejko, Stańczyk.jpg")
     flickr = openverse.model_copy(update={"url": "https://www.flickr.com/photos/1"})
     assert commons_file(flickr) == ("", "")
+
+
+def test_a_work_in_a_commons_copys_place_is_found_by_its_page() -> None:
+    """An archive's slide whose place a Commons copy took (``sharper``)."""
+    slide = Item(
+        id="europeana:199~x",
+        source="europeana",
+        source_id="199~x",
+        url="https://www.europeana.eu/item/199/x",
+        sharper=SharperCopy(url="u", item_id="wmc:8030452", source="wmc", width=9, height=9),
+    )
+    assert commons_file(slide) == ("8030452", "")
+    wikiart = slide.model_copy(
+        update={"sharper": slide.sharper.model_copy(update={"item_id": "wikiart:1"})}  # type: ignore[union-attr]
+    )
+    assert commons_file(wikiart) == ("", "")
 
 
 # -- looking it up -----------------------------------------------------------------
@@ -255,6 +282,36 @@ def test_nobody_knows_and_it_is_remembered(tmp_path: Path) -> None:
     later = datetime.now(UTC) + timedelta(days=31)
     holders.clock = lambda: later
     assert holders.known(_commons()) is None  # asked again after a month
+
+
+def test_nobody_knew_until_a_copy_took_its_place(tmp_path: Path) -> None:
+    """Foto Marburg's slide names no museum; once Commons' copy takes its
+    place, the copy's page is asked at once, not in a month."""
+    web = FakeWeb(
+        {
+            "8030452": _artwork_page(" |institution = {{Institution:Louvre}}\n"),
+        },
+        {},
+    )
+    holders, library = _holders(tmp_path, web)
+    slide = library.upsert(
+        Item(
+            id="europeana:199~x",
+            source="europeana",
+            source_id="199~x",
+            kind=ItemKind.ARTWORK,
+            credit="German Documentation Center for Art History - Marburg Picture Index",
+        )
+    )
+    assert holders.look(slide, 5) == ("none", "")
+    assert holders.known(slide) == ("none", "")
+    copy = SharperCopy(url="u", item_id="wmc:8030452", source="wmc", width=9, height=9)
+    swapped = library.update(slide.id, sharper=copy)
+    assert swapped is not None
+    assert holders.known(swapped) is None
+    assert holders.look(swapped, 5) == ("found", "Louvre")
+    holders._known.clear()  # after a restart: from the note
+    assert holders.known(library.get(slide.id) or swapped) == ("found", "Luwr")  # its Polish name
 
 
 def test_the_library_copy_from_a_museum(tmp_path: Path) -> None:

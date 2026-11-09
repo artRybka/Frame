@@ -193,9 +193,7 @@ def tasks(service: FrameService) -> list[NightTask]:
     """The night's tasks, in order: first what changes the catalogue, then
     what is worked out from it."""
     from .library import courtauld, dumps, loc_index, louvre, met_index, nga
-    from .library.vocabulary import is_grey_copy
     from .notifications import births_at_night
-    from .sharper import archive_own
     from .web import discover_api
 
     player, library = service.player, service.library
@@ -221,14 +219,7 @@ def tasks(service: FrameService) -> list[NightTask]:
         then the library's works shown in an art archive's old photograph,
         from any other copy (their slides' colours have faded)."""
         looked = 0
-        archives = [
-            i
-            for i in library.all_items()
-            if archive_own(i)
-            and not i.excluded
-            and not is_grey_copy(i)
-            and service.sharper.status(i) is None
-        ][:ARCHIVES_A_NIGHT]
+        archives = service.sharper.archive_works()[:ARCHIVES_A_NIGHT]
         for item in [*player.upcoming(SHARPER_AHEAD), *archives]:
             if service.sharper.status(item) is not None:
                 continue  # known
