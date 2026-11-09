@@ -15,7 +15,19 @@ import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 from PIL import Image, ImageOps
-from test_sharper import OWN, OWN_THUMB, Web, _copy, _detail, _jpeg, _offer, _own, _print, _serve
+from test_sharper import (
+    OWN,
+    OWN_THUMB,
+    Web,
+    _copy,
+    _detail,
+    _jpeg,
+    _offer,
+    _own,
+    _print,
+    _serve,
+    _slide,
+)
 
 from frame_server.config import Settings
 from frame_server.library import hosts
@@ -115,6 +127,21 @@ def test_every_copy_is_listed_with_its_verdict(app: Any) -> None:
     assert copies["wmc:2"]["verdict"] == "off" and "fragment" in copies["wmc:2"]["notes"]
     assert copies["wmc:3"]["verdict"] == "off" and "grey" in copies["wmc:3"]["notes"]
     assert copies["wmc:5"]["verdict"] == "worse"
+
+
+def test_a_copy_in_other_colours_than_an_archives_slide_is_better(app: Any) -> None:
+    """Foto Marburg's faded slide (Mateusz 2026-11-09): Commons' copy in the
+    painting's colours is better, WikiArt's about as large too, with no
+    warning about its colours."""
+    client, service, web, hits = app
+    own = _slide(service, web)
+    larger, as_large = _copy(1), _copy(2, width=1618, height=1079)
+    _offer(web, larger, _print(1, (3600, 2400)))
+    _offer(web, as_large, _print(1, (1618, 1079)))
+    hits[:] = [larger, as_large]
+    copies = _final(_lines(client, own.id))
+    assert copies["wmc:1"]["verdict"] == "better" and "colour-off" in copies["wmc:1"]["notes"]
+    assert copies["wmc:2"]["verdict"] == "better"
 
 
 def test_a_silent_source_is_told_as_failed_in_time(app: Any) -> None:

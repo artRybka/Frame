@@ -112,6 +112,22 @@ def test_dedupe_keeps_the_museums_copy_where_the_first_copy_was() -> None:
     assert [i.id for i in dedupe(found)] == ["met:3", "aic:2", "europeana:5"]
 
 
+def test_an_art_archives_slide_comes_after_every_other_copy() -> None:
+    """Foto Marburg's faded colour slides on Europeana (Mateusz 2026-11-09):
+    Commons' and WikiArt's copies come first; Europeana's museums' own
+    scans keep their place before Commons."""
+    marburg = "German Documentation Center for Art History - Marburg Picture Index"
+    found = [
+        _work("europeana", "199~a", title="Olive Grove", credit=marburg),
+        _work("wikiart", 2, title="Olive Grove"),
+        _work("wmc", 3, title="Olive Grove"),
+    ]
+    assert [i.id for i in dedupe(found)] == ["wmc:3"]
+    assert [i.id for i in dedupe([found[0], found[1]])] == ["wikiart:2"]
+    museum = _work("europeana", "2048~b", title="Olive Grove", credit="Nationalmuseum Sweden")
+    assert [i.id for i in dedupe([found[2], museum])] == ["europeana:2048~b"]
+
+
 def test_works_keep_one_copy_per_source() -> None:
     """A copy without a year fits the first of two paintings with one name,
     not both."""

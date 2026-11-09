@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.136.4
+
+- Dzieła z Europeany w wyblakłych, zimnych kolorach (np. „Gaj oliwny” van
+  Gogha): to stare kolorowe przezrocza z archiwum fotografii Foto Marburg,
+  którym z latami wyblakł barwnik, a nie błąd przetwarzania. Takie zdjęcie
+  przegrywa teraz z każdą inną kopią tego dzieła (muzeum, Commons, WikiArt),
+  a dzieło już w katalogu samo bierze kopię we właściwych kolorach, także
+  tak samo dużą: przy otwarciu karty albo w nocy (do 40 dzieł na noc).
+  W „Kopie dzieła” takie kopie są „Lepsze” bez ostrzeżenia o kolorach.
+- „Kopie dzieła”: kopia dużo barwniejsza od obecnej ma teraz znaczek „Inne
+  kolory”, a nie „Te kolory”. Wcześniej porównywany był tylko średni kolor
+  całego obrazu, który u wyblakłego przezrocza potrafił wyjść podobny.
+
 ## 1.136.3
 
 - Szukaj i playlisty z artystą: dopiski muzeów w nawiasie, np. „(signed by

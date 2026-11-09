@@ -37,7 +37,7 @@ from .library.hosts import as_asked
 from .library.images import IMAGE_MAX, display_copy, own_copy
 from .library.likeness import WHOLE_TURN, Fit, keypoints
 from .library.vocabulary import is_copy, is_photograph, is_reproduction
-from .sharper import Quality, colour_note, tone
+from .sharper import Quality, archive_own, colour_note, tone
 
 if TYPE_CHECKING:
     from .sharper import Sharper
@@ -468,12 +468,15 @@ class Copies:
                 view.bits = quality.bits
                 view.measured = True
                 view.gain = gain(quality, current)
+        # An archive's old slide shown now: a copy in other colours is the
+        # painting's, the slide's have faded.
+        faded = archive_own(item)
         if off:
             view.verdict = "off"
-        elif not quality.better(current):
+        elif not quality.better(current, faded):
             view.verdict = "worse"
         else:
-            view.verdict = "warn" if colours else "better"
+            view.verdict = "warn" if colours and not faded else "better"
         view.notes = notes
         return view
 
