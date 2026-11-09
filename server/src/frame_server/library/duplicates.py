@@ -323,10 +323,12 @@ def regroups(old: Item, new: Item) -> bool:
     return any(getattr(old, f) != getattr(new, f) for f in GROUPING_FIELDS)
 
 
-def preference(item: Item) -> tuple[bool, int]:
-    """Sort key, best copy first: kept by the owner, then the most
-    reliable source."""
-    return item.pooled, item_rank(item)
+def preference(item: Item) -> tuple[bool, bool, int]:
+    """Sort key, best copy first: an art archive's photograph after every
+    other copy, even one the owner kept (Mateusz 2026-11-09: a heart or a
+    playlist says nothing of the picture); then kept by the owner, then the
+    most reliable source."""
+    return is_art_archive_photo(item), item.pooled, item_rank(item)
 
 
 class Works:

@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.137.2
+
+- Szukaj i playlisty inteligentne pokazują dzieło znalezione przez muzeum
+  tylko wtedy, gdy ma szukane słowa: tak jak je wpisano albo tak, jak
+  zapytano muzea (po angielsku, po francusku). Dla „vermeer” znikają
+  dzieła ter Borcha, de Hoocha czy owce z Yale, a dla „nocna straż”
+  zostaje „The Night Watch” Rembrandta.
+- Lepsza kopia zdjęcia dzieła nigdy nie jest zdjęciem z archiwum (Foto
+  Marburg, KIK-IRPA), a z kopii, które pasują, serwer bierze największą,
+  nie pierwszą. Kopia wciąż za mała dla ramki jest szukana dalej. Dzieła,
+  które dostały kopię z archiwum, są sprawdzane od nowa po starcie.
+- Zdjęcie z archiwum ustępuje każdej innej kopii tego samego dzieła, także
+  wtedy, gdy jest w ulubionych albo na playliście.
+- Dzieła, które Wikimedia Commons ma w ultrawysokiej rozdzielczości
+  podzielonej na kafle (np. „Straż nocna”, „Ogród rozkoszy ziemskich”),
+  same dostają ten plik w miejsce zdjęcia, nawet gdy zdjęcie muzeum jest
+  dobre albo wybrane ręcznie; w pełnym ekranie można je przybliżać po
+  kaflach. Dzieła z katalogu są sprawdzane raz po starcie.
+
 ## 1.137.1
 
 - Szukaj wie, kim są artyści: serwer raz pyta Wikidata o każdego artystę

@@ -359,3 +359,27 @@ def test_tile_sets_are_known_by_their_work(tmp_path: Path) -> None:
     assert fragments.tiled_files("Q219831") == ["File:Nachtwacht - Google Art Project.jpg"]
     assert fragments.tiled_files("Q1") == []
     assert fragments.tiled_files("") == []
+
+
+def test_a_works_commons_copy_brings_its_tiles(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """A work shown in Commons' file in a tile set (``Sharper``) has that
+    file's tiles."""
+    from frame_server.library.fragments import Fragments
+    from frame_server.library.models import SharperCopy
+
+    work = Item(id="rijks:1", source="rijks", source_id="1", title="De Nachtwacht")
+    fragments = Fragments(tmp_path / "f.json", lambda: httpx.Client())
+    assert not fragments.may_have(work)
+    shown = work.model_copy(
+        update={
+            "sharper": SharperCopy(
+                url="https://upload.wikimedia.org/x.jpg",
+                item_id="wmc:123",
+                source="wmc",
+                width=3840,
+                height=3200,
+            )
+        }
+    )
+    assert fragments.may_have(shown)
+    assert Fragments._key(shown) == "rijks:1@wmc:123"

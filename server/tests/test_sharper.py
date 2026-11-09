@@ -562,7 +562,7 @@ def test_another_sources_picture_keeps_its_colours(frame: Any) -> None:
 
 def test_an_archive_slide_looked_at_before_is_looked_at_again(frame: Any) -> None:
     from frame_server.library.models import Note
-    from frame_server.sharper import KIND, VERSION
+    from frame_server.sharper import KIND, VERSION, version
 
     service, web, _ = frame
     own = _slide(service, web)
@@ -577,13 +577,14 @@ def test_an_archive_slide_looked_at_before_is_looked_at_again(frame: Any) -> Non
         )
     )
     assert service.sharper.status(own) is None
-    # The owner's own choice of the slide stands.
+    # The owner's own choice of the slide stands (once looked at for a
+    # tile set: noted in the look's version).
     service.library.save_note(
         Note(
             item_id=own.id,
             kind=KIND,
             model="",
-            prompt_version=VERSION,
+            prompt_version=version(own),
             data={"status": "kept", "at": when},
         )
     )
@@ -607,3 +608,211 @@ def test_archive_slides_are_looked_at_once_after_the_update(frame: Any) -> None:
     assert service.sharper.archive_works() == []
     service.sharper.search = lambda query, n: pytest.fail("looked again")
     assert service.sharper.archives_once() == 0  # once
+
+
+def _archived(n: int, **kw: Any) -> Item:
+    """Another art archive's photograph of the work (Foto Marburg's)."""
+    kw.setdefault("width", 3600)
+    kw.setdefault("height", 2400)
+    return Item(
+        id=f"europeana:199~slide{n}",
+        kind=ItemKind.ARTWORK,
+        source="europeana",
+        source_id=f"199~slide{n}",
+        museum="Europeana",
+        title="Bathing Nymphs and Child",
+        artist="Camille Corot",
+        classification="paintings (visual works)",
+        credit=MARBURG,
+        image_url=f"http://www.bildindex.de/bilder/d/fmc{n}",
+        thumb_url=f"http://www.bildindex.de/bilder/t/fmc{n}",
+        **kw,
+    )
+
+
+def test_an_archive_photograph_is_never_a_copy(frame: Any) -> None:
+    """Mateusz 2026-11-09: two van Goghs from Foto Marburg took another
+    Marburg slide, as faded, larger by half."""
+    service, web, answer = frame
+    own = _own(service)
+    slide = _archived(7)
+    _offer(web, slide, _print(1, (3600, 2400)))
+    answer([slide])
+    assert service.sharper.soon(own).result(60) == "none"
+    assert service.sharper.candidates(own) == []
+
+
+def test_the_largest_copy_that_passes_is_taken(frame: Any) -> None:
+    """Not the first: a slightly larger one must not shut out Commons'."""
+    service, web, answer = frame
+    own = _slide(service, web)
+    small, large = _copy(5, width=1618, height=1079), _copy(6, width=3600, height=2400)
+    _offer(web, small, _print(1, (1618, 1079)))
+    _offer(web, large, _print(1, (3600, 2400)))
+    answer([small, large])
+    service.sharper.candidates = lambda item, commons=True: [small, large]  # as found
+    assert service.sharper.soon(own).result(60) == "found"
+    stored = service.library.get(own.id)
+    assert stored is not None and stored.sharper is not None
+    assert stored.sharper.item_id == "wmc:6"
+
+
+def test_a_copy_still_too_small_is_looked_past_again(frame: Any) -> None:
+    from datetime import timedelta
+
+    from frame_server.sharper import WEAK_AGAIN
+
+    service, web, answer = frame
+    own = _slide(service, web)
+    small = _copy(5, width=1618, height=1079)
+    _offer(web, small, _print(1, (1618, 1079)))
+    answer([small])
+    assert service.sharper.soon(own).result(60) == "found"
+    stored = service.library.get(own.id)
+    assert stored is not None and service.sharper.status(stored) == "found"
+    # A day on, a sharper one turned up: it takes the small one's place.
+    now = service.sharper.clock()
+    service.sharper.clock = lambda: now + WEAK_AGAIN + timedelta(minutes=1)
+    assert service.sharper.status(stored) is None
+    large = _copy(6, width=3600, height=2400)
+    _offer(web, large, _print(1, (3600, 2400)))
+    answer([large])
+    assert service.sharper.soon(stored).result(60) == "found"
+    again = service.library.get(own.id)
+    assert again is not None and again.sharper is not None
+    assert again.sharper.item_id == "wmc:6"
+    # As large as the frame wants: left alone.
+    assert service.sharper.status(again) == "found"
+    service.sharper.clock = lambda: now + WEAK_AGAIN * 30
+    assert service.sharper.status(again) == "found"
+
+
+def test_archive_copies_taken_before_are_let_go_once(frame: Any) -> None:
+    from frame_server.sharper import ARCHIVES_KEY
+
+    service, web, answer = frame
+    service.library.set_state(ARCHIVES_KEY, 1)
+    own = _own(service)
+    taken = SharperCopy(
+        url="http://www.bildindex.de/bilder/d/fmc7",
+        item_id="europeana:199~slide7",
+        source="europeana",
+        width=2400,
+        height=1600,
+    )
+    service.library.update(own.id, sharper=taken)
+    chosen = service.library.upsert(
+        _copy(9, title="Another", artist="Somebody").model_copy(
+            update={"sharper": taken.model_copy(update={"chosen": True})}
+        )
+    )
+    copy = _copy(5)
+    _offer(web, copy, _print(1, (3600, 2400)))
+    answer([copy])
+    assert service.sharper.archives_once() == 1
+    stored = service.library.get(own.id)
+    assert stored is not None and stored.sharper is not None
+    assert stored.sharper.item_id == "wmc:5"
+    # The owner's own pick stays.
+    kept = service.library.get(chosen.id)
+    assert kept is not None and kept.sharper is not None and kept.sharper.chosen
+
+
+def test_an_archive_photograph_stands_for_a_work_last_even_when_kept() -> None:
+    """Mateusz 2026-11-09: a heart or a playlist says nothing of the picture."""
+    from frame_server.library.duplicates import Works
+
+    museum = Item(
+        id="aic:1",
+        kind=ItemKind.ARTWORK,
+        source="aic",
+        source_id="1",
+        title="Bathing Nymphs and Child",
+        artist="Camille Corot",
+        year=1870,
+        pooled=True,
+    )
+    slide = _archived(7, year=1870, pooled=False)
+    works = Works([slide, museum])
+    assert works.best(slide) is not None and works.best(slide).id == "aic:1"  # type: ignore[union-attr]
+
+
+def _tiled(frame: Any) -> tuple[FrameService, Web, Item, Item]:
+    """A work with a good picture of its own, and Commons' file of it in a
+    tile set."""
+    service, web, _ = frame
+    web[OWN] = _jpeg(_print(1, (2400, 1600)), 90)
+    own = _own(service)
+    copy = _copy(8, width=3840, height=2560)
+    _offer(web, copy, _print(1, (3840, 2560)))
+    service.sharper.tiled_copies = lambda item: [copy]
+    service.sharper.is_tiled = lambda item_id: item_id == copy.id
+    return service, web, own, copy
+
+
+def test_a_tile_set_takes_the_place_of_a_good_picture(frame: Any) -> None:
+    """Mateusz 2026-11-09: Bosch's and Rembrandt's tile sets on Commons,
+    taken by themselves, for the full-screen viewer's deeper zoom."""
+    service, _, own, copy = _tiled(frame)
+    assert service.sharper.soon(own).result(60) == "found"
+    stored = service.library.get(own.id)
+    assert stored is not None and stored.sharper is not None
+    assert stored.sharper.item_id == copy.id
+    assert service.sharper.shows_tiles(stored)
+
+
+def test_a_tile_set_beats_the_owners_pick_too(frame: Any) -> None:
+    """Over the museum's picture kept by hand, once (Mateusz 2026-11-09:
+    "ten w ultra-rozdzielczości będzie po prostu lepszy")."""
+    from frame_server.library.models import Note
+    from frame_server.sharper import KIND
+
+    service, _, own, copy = _tiled(frame)
+    service.library.save_note(
+        Note(
+            item_id=own.id,
+            kind=KIND,
+            model="",
+            prompt_version="sharper-1",
+            data={"status": "kept", "at": "2026-11-08T10:00:00+00:00"},
+        )
+    )
+    assert service.sharper.status(own) is None  # looked at once more
+    assert service.sharper.soon(own).result(60) == "found"
+    stored = service.library.get(own.id)
+    assert stored is not None and stored.sharper is not None
+    assert stored.sharper.item_id == copy.id
+
+
+def test_the_owners_pick_stands_without_a_tile_set(frame: Any) -> None:
+    from frame_server.library.models import Note
+    from frame_server.sharper import KIND
+
+    service, _, own, _ = _tiled(frame)
+    service.sharper.tiled_copies = lambda item: []
+    service.library.save_note(
+        Note(
+            item_id=own.id,
+            kind=KIND,
+            model="",
+            prompt_version="sharper-1",
+            data={"status": "kept", "at": "2026-11-08T10:00:00+00:00"},
+        )
+    )
+    assert service.sharper.soon(own).result(60) == "fine"
+    note = service.library.note(own.id, KIND)
+    assert note is not None and note.data["status"] == "kept"
+    assert service.sharper.status(own) == "fine"
+
+
+def test_the_catalogues_works_of_tile_sets_take_them_once(frame: Any) -> None:
+    from frame_server.sharper import TILES_KEY
+
+    service, _, own, copy = _tiled(frame)
+    service.sharper.tiled_copies = lambda item: pytest.fail("found by its file")
+    service.library.set_state(TILES_KEY, 0)
+    assert service.sharper.tiled_once(lambda: [copy]) == 1
+    stored = service.library.get(own.id)
+    assert stored is not None and stored.sharper is not None
+    assert stored.sharper.item_id == copy.id
+    assert service.sharper.tiled_once(lambda: pytest.fail("once")) == 0

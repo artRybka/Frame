@@ -20,7 +20,7 @@ import math
 import threading
 import time
 from collections import OrderedDict
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Collection, Iterable
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, as_completed, wait
 from typing import TYPE_CHECKING, Literal
 
@@ -311,14 +311,14 @@ class Copies:
                     found.append(copy)
             except (httpx.HTTPError, ValueError) as err:
                 log.info("Commons file of %s: %s", item.id, err)
-        found += self._tiled_copies(item, {c.id for c in found})
+        found += self.tiled_copies(item, {c.id for c in found})
         works = self.sharper.library.works()
         index = works.group_of(item)
         if index is not None:
             found += [i for i in works.groups[index] if i.id != item.id]
         return found
 
-    def _tiled_copies(self, item: Item, seen: set[str]) -> list[Item]:
+    def tiled_copies(self, item: Item, seen: Collection[str] = ()) -> list[Item]:
         """The Commons files with a tile set that show ``item``'s work
         (found by its Wikidata item: a search by title missed "Nachtwacht"
         for "Nocna straż", Mateusz 2026-11-09)."""

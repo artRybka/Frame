@@ -126,11 +126,12 @@ def quotes_of(key: str) -> bool:
 class Asked:
     """Words typed in Szukaj as the museums are asked them: each museum's
     text (its language; phrases quoted where its search keeps to them) and,
-    for each phrase, its forms a work found must have one of (the phrase as
-    typed and translated: "nocna straż", "night watch", "ronde de nuit")."""
+    for each token, its forms a work found must have one of (as typed and
+    translated: "nocna straż", "night watch", "ronde de nuit"; Mateusz
+    2026-11-09: a museum's answer without the words is no answer)."""
 
     texts: dict[str, str]
-    phrases: list[list[str]]
+    said: list[list[str]]
 
 
 def small_thumb(item: Item) -> str:
@@ -765,11 +766,9 @@ class Importer:
             said = [w.in_language(language) for w in wordings]
             texts[key] = quote(said) if quotes_of(key) else " ".join(said)
         forms = [
-            list(dict.fromkeys(f for f in (w.text, w.en, w.fr) if f))
-            for w in wordings
-            if " " in w.text
+            list(dict.fromkeys(f for f in (w.text, w.en, w.fr) if f.strip())) for w in wordings
         ]
-        return Asked(texts, forms)
+        return Asked(texts, [f for f in forms if f])
 
     def _from_all(
         self, ask: Callable[[str], tuple[int, list[Item]]], keys: list[str] | None = None
