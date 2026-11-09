@@ -59,6 +59,7 @@ def app(tmp_path: Path) -> Iterator[tuple[TestClient, FrameService, Web, list[An
             return list(hits)
 
         service.copies.search_in = search_in
+        service.copies.tiled = lambda item_id: False  # Commons not asked
         yield client, service, web, hits
 
 
@@ -142,6 +143,26 @@ def test_a_copy_in_other_colours_than_an_archives_slide_is_better(app: Any) -> N
     copies = _final(_lines(client, own.id))
     assert copies["wmc:1"]["verdict"] == "better" and "colour-off" in copies["wmc:1"]["notes"]
     assert copies["wmc:2"]["verdict"] == "better"
+
+
+def test_a_copy_with_a_tile_set_is_offered(app: Any) -> None:
+    """ "Nocna straż" (Mateusz 2026-11-09): of two Commons copies as large,
+    the one with a tile set goes first and says so."""
+    client, service, web, hits = app
+    own = _own(service)
+    tiled, plain = _copy(1, width=1618, height=1079), _copy(2, width=1618, height=1079)
+    for copy in (tiled, plain):
+        _offer(web, copy, _print(1, (1618, 1079)))
+    hits[:] = [tiled, plain]
+    service.copies.tiled = lambda item_id: item_id == "wmc:1"
+    copies = _final(_lines(client, own.id))
+    assert copies["wmc:1"]["verdict"] == "better" and "tiles" in copies["wmc:1"]["notes"]
+    assert copies["wmc:2"]["verdict"] == "worse" and "tiles" not in copies["wmc:2"]["notes"]
+    # Shown already with tiles: another tile set is not offered for them.
+    service.copies.tiled = lambda item_id: item_id in ("wmc:1", own.id)
+    copies = _final(_lines(client, own.id))
+    assert "tiles" in copies[own.id]["notes"]
+    assert copies["wmc:1"]["verdict"] == "worse" and "tiles" in copies["wmc:1"]["notes"]
 
 
 def test_a_silent_source_is_told_as_failed_in_time(app: Any) -> None:

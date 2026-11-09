@@ -79,7 +79,7 @@ struct OriginalViewer: View {
         .statusBarHidden(!chrome)
         .sensoryFeedback(.selection, trigger: brighten)
         .task(id: item.id) { await load() }
-        .task(id: item.id) { await loadTiles() }
+        .task(id: item.fragmentsID) { await loadTiles() }
         .onAppear { if brighten { ScreenBoost.shared.raise() } }
         // A swipe down starts closing long before the screen is gone: the
         // brightness goes back from its first frame (and comes up again
@@ -151,8 +151,9 @@ struct OriginalViewer: View {
     /// The work's tiles with their places, when the server knows them
     /// (Commons tile sets; Cleveland's scroll sections have none yet).
     private func loadTiles() async {
-        guard !item.isFragment, item.source == "wmc" || item.source == "cma",
-              let view = await Fragments.load(item.id, backend: model.backend),
+        let ids = [item.fragmentsID, item.id]
+        guard !item.isFragment, ids.contains(where: { $0.hasPrefix("wmc:") || $0.hasPrefix("cma:") }),
+              let view = await Fragments.load(shownWith: item, backend: model.backend),
               let places = view.places, !places.isEmpty
         else { return }
         let fragments = Dictionary(view.fragments.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })

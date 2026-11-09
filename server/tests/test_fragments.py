@@ -319,3 +319,18 @@ def test_fragments_keep_their_margins(tmp_path: Path) -> None:
     assert cache.drop_fragments() == 1
     assert not (tmp_path / "images" / "wmc_5~p2.jpg").exists()
     assert (tmp_path / "images" / "wmc_5.jpg").exists()
+
+
+def test_tile_sets_are_listed_once(tmp_path: Path) -> None:
+    asked: list[str] = []
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        asked.append(str(request.url))
+        return httpx.Response(200, json={"query": {"embeddedin": [{"pageid": 13276351}]}})
+
+    fragments = Fragments(tmp_path / "f.json", lambda: _client(httpx.MockTransport(answer)))
+    assert fragments.tiled("wmc:13276351")
+    assert not fragments.tiled("wmc:1")
+    assert not fragments.tiled("wmc:13276351~p2")
+    assert not fragments.tiled("rijks:SK-C-5")
+    assert len(asked) == 1

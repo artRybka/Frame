@@ -7,6 +7,10 @@
   z obrazu dzieła, który bywał innym zdjęciem (inna kopia, inny kadr, inne
   barwy). Kafle nie tracą już ciemnych brzegów przy przycinaniu marginesów;
   zapisane wcześniej zostaną raz pobrane od nowa.
+- Kopie dzieła: kopia z Commons z zestawem kafli ma znacznik „Kafle przy
+  powiększeniu” i jest proponowana na górze listy zamiast obrazu bez kafli
+  (np. „Nocna straż”). Po jej wybraniu karta i pełny ekran pokazują jej
+  kafle.
 
 ## 1.136.8
 

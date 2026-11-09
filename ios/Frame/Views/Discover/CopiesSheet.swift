@@ -27,6 +27,8 @@ struct CopiesSheet: View {
         copies.filter { !$0.isCurrent && ($0.verdict == "better" || $0.verdict == "warn") }
             .sorted { a, b in
                 if (a.verdict == "better") != (b.verdict == "better") { return a.verdict == "better" }
+                // A tile set first: sharp far closer in, in full screen.
+                if a.hasTiles != b.hasTiles { return a.hasTiles }
                 return (a.gain ?? 0) > (b.gain ?? 0)
             }
     }
@@ -405,6 +407,7 @@ struct CopyRow: View {
             } else if copy.side > 0 {
                 tags.append(.init(text: "Mniej niż ramka (2560)", tone: .plain))
             }
+            if copy.hasTiles, let tag = noteTag("tiles") { tags.append(tag) }
             if copy.chosen { tags.append(.init(text: "Wybrana przez Ciebie", tone: .plain)) }
             return tags
         }
@@ -412,7 +415,10 @@ struct CopyRow: View {
         case "checking":
             return [.init(text: "Porównuję…", tone: .plain)]
         case "better", "warn":
-            if let gain = copy.gain { tags.append(.init(text: "Ostrzejsza \(times(gain))", tone: .good)) }
+            // Offered for its tiles, about as sharp on the frame: no "×1,0".
+            if let gain = copy.gain, !(copy.hasTiles && gain < 1.05) {
+                tags.append(.init(text: "Ostrzejsza \(times(gain))", tone: .good))
+            }
         case "worse":
             if copy.isOwn {
                 tags.append(.init(text: "Zdjęcie muzeum", tone: .plain))
@@ -446,6 +452,7 @@ struct CopyRow: View {
         case "other": CopyTag.Tag(text: "Inne dzieło", tone: .bad)
         case "unseen": CopyTag.Tag(text: "Nie udało się porównać", tone: .bad)
         case "larger": CopyTag.Tag(text: "Większe zdjęcie muzeum", tone: .good)
+        case "tiles": CopyTag.Tag(text: "Kafle przy powiększeniu", tone: .good)
         default: nil
         }
     }
